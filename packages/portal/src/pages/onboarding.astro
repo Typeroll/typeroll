@@ -1,0 +1,33 @@
+---
+// /onboarding — Shown to authenticated users who have no org yet.
+// Redirect to /login if there's no session at all.
+// Redirect to /app if the session already has an org.
+import MarketingLayout from '../layouts/MarketingLayout.astro';
+import OnboardingForm from '../components/OnboardingForm.tsx';
+import { getSession } from '../lib/auth';
+
+const session = await getSession(Astro.cookies);
+
+// No session at all → send to login.
+if (!session) return Astro.redirect('/login');
+
+// Already has an org → nothing to onboard; send to the app.
+if (session.orgId) return Astro.redirect('/app');
+
+// Pick up a pre-filled invite token from ?invite= so the Join tab is
+// activated automatically when someone follows an invite link.
+const prefillToken = Astro.url.searchParams.get('invite') ?? undefined;
+---
+<MarketingLayout title="Set up your organization — Typeroll">
+  <section class="container--narrow" style="padding: 4rem 1.5rem;">
+    <div class="card stack">
+      <div>
+        <h1 style="font-size: 1.5rem; margin-bottom: 0.25rem;">Welcome to Typeroll</h1>
+        <p class="muted text-sm">
+          Your account is ready. To get started, create a new organization or join an existing one.
+        </p>
+      </div>
+      <OnboardingForm client:load prefillToken={prefillToken} />
+    </div>
+  </section>
+</MarketingLayout>

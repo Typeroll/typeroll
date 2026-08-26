@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.typeroll.com/specs/typeroll-extension-manifest-v3.schema.json",
+  "title": "Typeroll Extension Manifest v3",
+  "type": "object",
+  "required": ["schema_version", "id", "name", "version", "runtime_compatibility", "distribution", "developer", "permissions"],
+  "properties": {
+    "schema_version": { "const": 3 },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9][a-z0-9-]*){2,}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
+    "runtime_compatibility": { "type": "string", "minLength": 1 },
+    "distribution": { "enum": ["private", "unlisted", "public"] },
+    "developer": {
+      "type": "object",
+      "required": ["name", "support_url", "privacy_url"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "support_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "privacy_url": { "type": "string", "format": "uri", "pattern": "^https://" }
+      },
+      "additionalProperties": false
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scope", "reason"],
+        "properties": {
+          "scope": { "enum": ["content:read", "content:write", "collections:read", "collections:write", "forms:read", "forms:submit", "forms:write", "submissions:read", "media:read", "media:write", "deploy:request", "extension:config:read"] },
+          "reason": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "auth": {
+      "type": "object",
+      "properties": { "pairing_url": { "type": "string", "format": "uri", "pattern": "^https://" } },
+      "additionalProperties": false
+    },
+    "config_schema": { "$ref": "#/$defs/objectSchema" },
+    "frontend": {
+      "type": "object",
+      "required": ["components"],
+      "properties": {
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "render_mode", "entry"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$" },
+              "label": { "type": "string", "minLength": 1 },
+              "category": { "type": "string" },
+              "icon": { "type": "string" },
+              "description": { "type": "string" },
+              "render_mode": { "enum": ["bundled_component", "embedded_app"] },
+              "props_schema": { "$ref": "#/$defs/objectSchema" },
+              "url_context": { "$ref": "#/$defs/urlContext" },
+              "form_bindings": { "type": "array", "items": { "$ref": "#/$defs/formBinding" } },
+              "entry": { "oneOf": [{ "$ref": "#/$defs/bundledEntry" }, { "$ref": "#/$defs/embeddedEntry" }] },
+              "unavailable_message": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "admin": {
+      "type": "object",
+      "required": ["pages"],
+      "properties": {
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "launch_url", "minimum_permission"],
+            "properties": {
+              "id": { "type": "string" }, "label": { "type": "string" }, "icon": { "type": "string" },
+              "launch_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+              "minimum_permission": { "enum": ["read", "write", "admin"] }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "api": {
+      "type": "object",
+      "required": ["base_url", "routes"],
+      "properties": {
+        "base_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "authentication": { "enum": ["signed_installation", "none"] },
+        "routes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "methods"],
+            "properties": {
+              "path": { "type": "string", "pattern": "^/" },
+              "methods": { "type": "array", "items": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] }, "minItems": 1 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "events": {
+      "type": "object",
+      "required": ["subscriptions", "webhook_url"],
+      "properties": {
+        "subscriptions": { "type": "array", "items": { "enum": ["extension.installed", "extension.updated", "extension.disabled", "extension.uninstalled", "extension.credential_rotated"] } },
+        "webhook_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "secret_config_key": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "data_handling": {
+      "type": "object",
+      "required": ["personal_data"],
+      "properties": {
+        "personal_data": { "type": "boolean" }, "data_location": { "type": "string" },
+        "retention_url": { "type": "string", "format": "uri", "pattern": "^https://" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "schemaProperty": {
+      "type": "object",
+      "properties": {
+        "type": { "enum": ["string", "number", "integer", "boolean", "object", "array"] },
+        "enum": { "type": "array" }, "format": { "enum": ["secret", "url", "email"] },
+        "title": { "type": "string" }, "description": { "type": "string" }, "default": {}, "public": { "type": "boolean" },
+        "properties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/schemaProperty" } },
+        "items": { "$ref": "#/$defs/schemaProperty" }
+      },
+      "additionalProperties": false
+    },
+    "objectSchema": {
+      "type": "object", "required": ["type"],
+      "properties": {
+        "type": { "const": "object" }, "properties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/schemaProperty" } },
+        "required": { "type": "array", "items": { "type": "string" } }, "additionalProperties": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "urlInput": {
+      "type": "object", "required": ["name"],
+      "properties": {
+        "name": { "type": "string" }, "segment": { "type": "integer", "minimum": -64, "maximum": 63 }, "expose_as": { "type": "string" }, "sensitive": { "type": "boolean" },
+        "consume": { "type": "boolean" }, "max_length": { "type": "integer", "minimum": 1, "maximum": 8192 }, "pattern": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "urlContext": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "array", "items": { "$ref": "#/$defs/urlInput" } },
+        "fragment": { "type": "array", "items": { "$ref": "#/$defs/urlInput" } },
+        "path": { "type": "array", "items": { "$ref": "#/$defs/urlInput" } },
+        "raw_query": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "formBinding": {
+      "type": "object",
+      "required": ["id", "form_id"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,62}$" },
+        "form_id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,62}$" }
+      },
+      "additionalProperties": false
+    },
+    "bundledEntry": {
+      "type": "object", "required": ["script_url", "script_sha256"],
+      "properties": {
+        "script_url": { "type": "string", "format": "uri", "pattern": "^https://" }, "script_sha256": { "type": "string" },
+        "style_url": { "type": "string", "format": "uri", "pattern": "^https://" }, "style_sha256": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "embeddedEntry": {
+      "type": "object", "required": ["frame_url"],
+      "properties": {
+        "frame_url": { "type": "string", "format": "uri", "pattern": "^https://" }, "frame_origin": { "type": "string" },
+        "sandbox": { "type": "array", "items": { "enum": ["allow-forms", "allow-modals", "allow-popups", "allow-downloads"] } }
+      },
+      "additionalProperties": false
+    }
+  }
+}

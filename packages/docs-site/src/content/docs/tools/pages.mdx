@@ -1,0 +1,143 @@
+---
+title: Pages Tools
+description: Tools for creating, reading, updating and managing pages on your Typeroll site.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+<Aside type="note" title="Content edits are drafts until you save">
+  `update_page`, `replace_page` and every block edit land in a working copy, not
+  on the page itself. Say "save it" when you're happy, then deploy. See [Drafts
+  & Saving](/tools/drafts-and-saving/). Page **status** is the exception —
+  publishing or unpublishing applies immediately.
+</Aside>
+
+## Page fields
+
+| Field             | Type                                                     | Description                                                                                                                                             |
+| ----------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`           | string                                                   | Page title. Used in nav and as default `<title>` tag.                                                                                                   |
+| `slug`            | string                                                   | URL path. `""` = homepage. No leading slash.                                                                                                            |
+| `content_mode`    | `"blocks"` \| `"html"`                                   | `"blocks"` is the default for new pages. See [Blocks](/tools/blocks/) for the block-mode editing surface.                                               |
+| `html_content`    | string                                                   | Full page body HTML — used when `content_mode === "html"`.                                                                                              |
+| `blocks`          | `Block[]`                                                | Block tree — used when `content_mode === "blocks"`. Edit via `add_block`, `update_block`, `move_block`, `remove_block`, `duplicate_block`.              |
+| `template`        | string                                                   | Optional PageTemplate id. The renderer composes the template's block tree with the page's `blocks` at build time.                                       |
+| `status`          | `"published"` \| `"draft"` \| `"review"` \| `"unlisted"` | Only `published` and `unlisted` pages are built into the static site. `unlisted` pages are reachable by URL but excluded from listings and the sitemap. |
+| `publish_at`      | string                                                   | ISO 8601. Schedule the page to go live automatically at this time. Cleared once it fires.                                                               |
+| `unpublish_at`    | string                                                   | ISO 8601. Schedule the page to come down automatically.                                                                                                 |
+| `kind`            | `"page"` \| `"article"`                                  | `"article"` enables Article JSON-LD schema.                                                                                                             |
+| `seo_title`       | string                                                   | Custom `<title>` tag. Defaults to `title + suffix`.                                                                                                     |
+| `seo_description` | string                                                   | `<meta name="description">`. 150–160 chars recommended.                                                                                                 |
+| `og_image`        | string                                                   | Absolute CDN URL for Open Graph image.                                                                                                                  |
+| `canonical_url`   | string                                                   | Override the canonical URL (e.g. after a migration).                                                                                                    |
+| `noindex`         | boolean                                                  | Set `true` to add `<meta name="robots" content="noindex">`.                                                                                             |
+| `language`        | string                                                   | Per-page language override (e.g. `"en"`, `"sv"`).                                                                                                       |
+| `author`          | string                                                   | Article author. Used in Article JSON-LD.                                                                                                                |
+| `date_published`  | string                                                   | ISO 8601 date. Used in Article JSON-LD.                                                                                                                 |
+| `json_ld`         | string                                                   | Custom JSON-LD schema as a JSON string.                                                                                                                 |
+
+## Homepage
+
+The homepage has `slug: ""` and is stored with `id: "home"`. Claude uses this automatically when you say "the homepage" or "the start page".
+
+<Aside type="caution">
+  There can only be one homepage per site. Creating a second page with `slug:
+  ""` returns a 409 error.
+</Aside>
+
+## `create_page`
+
+Creates a new page. Required: `title`. Defaults: `status: "draft"`, `content_mode: "blocks"`. Claude picks the block library to compose the body unless you ask for HTML mode explicitly.
+
+```
+Create a page titled "Tjänster" at slug "tjanster" with three service sections.
+```
+
+## `set_page_mode`
+
+Switches a page between `"html"` and `"blocks"` modes. Snapshots a revision first. With `convert: true` (only meaningful for `html → blocks`), runs the heuristic converter so the page starts with a populated block tree rather than empty.
+
+```
+Convert the About page to blocks mode.
+  → set_page_mode page_id=about to=blocks convert=true
+```
+
+## `convert_page_to_blocks`
+
+Dry-run preview of the heuristic HTML→blocks converter. Returns the proposed tree without writing. Useful before committing the flip on a long page.
+
+## `update_page`
+
+Updates one or more fields on an existing page. Pass only the fields you want to change — others are preserved.
+
+```
+Update the Services page: change the seo_description to "..."
+```
+
+## `batch_update_pages`
+
+Updates multiple pages in one call. More efficient than individual updates for bulk changes like SEO fixes.
+
+```
+Write meta descriptions for all pages.
+```
+
+Claude uses `batch_update_pages` automatically for multi-page operations.
+
+## `list_pages`
+
+Returns all pages with title, slug, status and SEO fields — but not the HTML body (to keep responses small).
+
+Add `full: true` to include `html_content` — use sparingly on large sites.
+
+## `read_page`
+
+Returns a single page including its full `html_content`. Claude uses this before editing a page.
+
+## `batch_read_pages`
+
+Reads multiple pages by ID in one call. Returns `{ pages_by_id: { id: page }, not_found: [] }`.
+
+## `search_pages`
+
+Finds pages containing a substring in their HTML content:
+
+```
+search_pages contains="<h1"        ← pages with an H1
+search_pages contains="calendly"   ← pages with a Calendly embed
+search_pages contains="/old-path"  ← pages with a stale internal link
+```
+
+## `delete_page`
+
+Permanently deletes a page. This also removes it from the next deploy.
+
+## Scheduled publishing
+
+Set `publish_at` on a draft and it goes live on its own — no one has to be at a
+keyboard:
+
+```
+Publish the spring campaign page on 1 April at 08:00.
+Take the winter offer down on 28 February.
+```
+
+A sweep runs regularly and flips anything that's due, clears the timer so a
+re-run can't double-fire, and triggers **one** deploy per site no matter how many
+pages changed. Collection items support the same two fields.
+
+The times are absolute (ISO 8601). A scheduled publish still only shows content
+that was **saved** — a page with unsaved drafts publishes its saved version.
+
+## HTML conventions (HTML-mode pages)
+
+When a page is in `content_mode: "html"`, Claude follows these conventions for the body content:
+
+- **CSS variables for colours and fonts** — `var(--color-primary)`, `var(--font-heading)`, never hardcoded hex
+- **One `<h1>` per page** — the page title. Sections use `<h2>`.
+- **No `<nav>`, `<header>`, `<footer>` in page HTML** — those live in partials
+- **Inline `<style>` blocks are allowed** — scoped to the page's classes
+- **`<iframe>` allowed** for YouTube, Vimeo, Calendly, Google Maps
+- **No `<script>` tags** — use site settings for analytics/chat widgets
+
+In block-mode pages, none of these conventions apply directly — the block library handles structure and the renderer enforces semantics. See the [Blocks](/tools/blocks/) reference.

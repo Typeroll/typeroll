@@ -1,0 +1,90 @@
+---
+title: Your First Site
+description: A complete walkthrough — from a blank portal to a deployed site — using Claude and the Typeroll MCP server.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+This guide walks you through creating a complete site from scratch. By the end you'll have a deployed site with a homepage, inner pages, and a working deploy pipeline.
+
+## Before you start
+
+- MCP server installed and connected (see [Install the MCP Server](/getting-started/mcp-server/))
+- Skills installed in `.claude/skills/` or `~/.claude/skills/`
+- A site created in the portal (or ask Claude to create one)
+
+## The conversation
+
+Open Claude Code and start chatting. Claude picks up the `tr-new-site` skill automatically when you describe a new site.
+
+```
+Create a new site for Bergström Arkitektur — a Stockholm architecture firm.
+Minimal Scandinavian aesthetic: lots of white space, dark charcoal text,
+one accent colour (terracotta). They have a portfolio of projects, an about page
+and a contact form. The site should be in Swedish.
+```
+
+Claude will:
+
+1. **Read the existing site** (or ask you for a site ID if there's more than one)
+2. **Update settings** — site name, language (`sv`), fonts, colour palette
+3. **Create the header partial** — logo, navigation with links to all planned pages
+4. **Create the footer partial** — contact info, social links
+5. **Create the homepage** — hero, featured projects section, about teaser, CTA
+6. **Create inner pages** — Portfolio, Om oss, Kontakt (with a form)
+7. **Get a preview link** — so you can review before deploying
+8. **Deploy** — when you say "looks good, deploy it"
+
+<Aside type="tip">
+  You don't need to give Claude all the details upfront. Start with the basics;
+  you can always say "now add a Services section to the homepage" or "change the
+  accent colour to indigo" later.
+</Aside>
+
+## Review and iterate
+
+After Claude finishes the initial setup, ask for a preview:
+
+```
+Show me the preview link
+```
+
+Open the link and look at:
+
+- Does the navigation include all pages?
+- Does the colour palette match what you described?
+- Are fonts loading correctly?
+- Does the homepage tell the right story?
+
+Give feedback naturally:
+
+```
+The hero text is too long — trim it to one punchy line.
+The navigation should also include "Projekt" not just "Portfolio".
+Add a footer link to their Instagram: @bergstromarkitektur
+```
+
+Claude reads the current state of the site and makes targeted changes. You never touch the HTML directly.
+
+## Deploy
+
+When you're happy:
+
+```
+Deploy it
+```
+
+Claude calls `trigger_deploy`, waits for the build to finish, and gives you the live URL. The site is on Cloudflare Pages — globally fast, no servers to manage.
+
+```
+Site deployed! Live at: https://bergstromarkitektur.sites.typeroll.com
+
+You can connect a custom domain in the portal under Settings → Domain.
+```
+
+## What's next
+
+- **Custom domain** — [connect your own domain](/guides/custom-domain/)
+- **Add a blog** — tell Claude "set up a blog with three seed articles"
+- **Contact form** — tell Claude "add a contact form that sends to hej@bergstrom.se"
+- **SEO** — tell Claude "audit and fix the SEO for all pages"

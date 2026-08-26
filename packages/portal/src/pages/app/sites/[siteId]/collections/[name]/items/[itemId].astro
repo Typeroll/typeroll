@@ -1,0 +1,49 @@
+---
+import AppLayout from '../../../../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../../../../lib/version-store';
+import CollectionItemEditor from '../../../../../../../components/CollectionItemEditor.tsx';
+import { loadSiteContext } from '../../../../../../../lib/access';
+import { getStore } from '../../../../../../../lib/datastore';
+import { readWorkingCopy } from '../../../../../../../lib/working-copy';
+import { liveBaseFor } from '../../../../../../../lib/site-urls';
+import { paths, buildCollectionRoutes } from '@typeroll/shared';
+import type { CollectionDef, CollectionItem, Site, SiteVersion } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+const { name, itemId } = Astro.params;
+if (!name || !itemId) return Astro.redirect('/app');
+
+const store = getStore();
+
+const coll = await vstore.collection(orgId, siteId, versionId, name);
+if (!coll) return Astro.redirect(`/app/sites/${siteId}/collections`);
+
+const item = await vstore.collectionItem(orgId, siteId, versionId, name, itemId);
+if (!item) return Astro.redirect(`/app/sites/${siteId}/collections/${name}`);
+
+const workingCopy = await readWorkingCopy(
+  { orgId, siteId, versionId },
+  { kind: 'item', collection: name, id: itemId },
+);
+const versionDoc = await store.getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
+const lastDeployedAt = versionDoc?.last_deployed_at ?? null;
+
+// The item's URL path per the collection's route template — feeds the
+// Preview + Live URL buttons in the Publish menu.
+const itemRoute = buildCollectionRoutes([coll], new Map([[coll.name, [item]]]))[0] ?? null;
+const previewUrl = itemRoute ? `/api/sites/${siteId}/preview/browse${itemRoute.path}` : null;
+const liveBase = liveBaseFor(site, versionDoc ?? null);
+const liveUrl = itemRoute && liveBase ? `${liveBase}${itemRoute.path}` : null;
+---
+<AppLayout title={`${coll.label_singular} — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <a href={`/app/sites/${siteId}/collections/${name}`} class="muted text-sm">← {coll.label_plural}</a>
+      <h1>{coll.label_singular}</h1>
+    </div>
+  </div>
+  <CollectionItemEditor client:load siteId={siteId} collection={coll} item={item} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+</AppLayout>

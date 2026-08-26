@@ -1,0 +1,95 @@
+---
+title: Extension manifest reference
+description: Reference for Typeroll Extension manifest v3 fields, permissions, components, direct APIs, events, and data handling.
+---
+
+The repository-root `typeroll-extension.json` is the source of truth for an
+Extension release. Manifest v3 uses these top-level fields:
+
+| Field                   | Required | Purpose                                                            |
+| ----------------------- | -------- | ------------------------------------------------------------------ |
+| `schema_version`        | yes      | Must be `3`.                                                       |
+| `id`                    | yes      | Lowercase namespaced identifier, for example `com.example.quotes`. |
+| `name`                  | yes      | Human-readable product name.                                       |
+| `version`               | yes      | Immutable semantic version.                                        |
+| `runtime_compatibility` | yes      | Supported Typeroll runtime range.                                  |
+| `distribution`          | yes      | `private`, `unlisted`, or `public`.                                |
+| `developer`             | yes      | Provider name, support URL, and privacy URL.                       |
+| `permissions`           | yes      | Requested site scopes with a reason for each scope.                |
+| `auth`                  | no       | Optional self-host issuer pairing endpoint.                        |
+| `config_schema`         | no       | Installation configuration and public/secret fields.               |
+| `frontend`              | no       | Bundled components or embedded applications.                       |
+| `admin`                 | no       | Provider-hosted admin pages.                                       |
+| `api`                   | no       | Provider-owned API and direct browser-call contract.               |
+| `events`                | no       | Lifecycle subscriptions and signed webhook endpoint.               |
+| `data_handling`         | no       | Personal-data, location, and retention disclosures.                |
+
+## Frontend entries
+
+A `bundled_component` declares HTTPS `script_url` and `script_sha256`, plus an
+optional style URL and matching hash. An `embedded_app` declares a frame URL
+and only the sandbox capabilities it needs. Each component can define a JSON
+schema for editor props, a restricted `url_context` declaration, and optional
+`form_bindings`:
+
+```json
+{
+  "id": "calculator",
+  "label": "Quote calculator",
+  "render_mode": "bundled_component",
+  "form_bindings": [{ "id": "lead", "form_id": "quote-leads" }],
+  "entry": {
+    "script_url": "https://releases.example.com/quote/1.0.0/index.js",
+    "script_sha256": "…"
+  }
+}
+```
+
+Binding IDs are local to the component and are the names passed to
+`context.forms.submit()`. A binding can target only the fixed form ID declared
+in the immutable manifest version.
+
+## Available scopes
+
+- `content:read`, `content:write`
+- `collections:read`, `collections:write`
+- `forms:read`, `forms:submit`, `forms:write`
+- `submissions:read`
+- `media:read`, `media:write`
+- `deploy:request`
+- `extension:config:read`
+
+The effective permission is the intersection of the manifest request, the
+site administrator's grant, and the current Typeroll user's permission. The
+portal rejects unknown scopes and routes.
+
+`forms:submit` is deliberately narrower than `forms:write`: it permits a
+component to submit to its declared bindings, but cannot create or edit forms
+or read submitted data.
+
+## Direct provider API
+
+`api.base_url` is the provider-owned HTTPS endpoint. Routes declare a path
+pattern and allowed HTTP methods. Paths are relative to `api.base_url`.
+`authentication` is `signed_installation` by default or `none` when the
+provider uses only its own public authentication. These declarations constrain
+the Typeroll runtime but do not replace provider-side authorization or CORS.
+
+Typeroll never proxies these routes. The direct runtime always omits browser
+credentials and rejects redirects. A signed installation token, when enabled,
+uses `X-Typeroll-Extension-Token` and contains no visitor identity.
+
+## Version lifecycle
+
+- `draft`: editable and available to its developer organization.
+- `review`: queued for hosted public-catalog review.
+- `published`: immutable and installable according to its distribution.
+- `deprecated`: existing installations work, but new installs are blocked.
+- `revoked`: new Extension tokens, admin launch, new builds, and catalog availability are blocked.
+
+Download the complete
+[`typeroll-extension-manifest-v3.schema.json`](/specs/typeroll-extension-manifest-v3.schema.json).
+The published file is generated from the same schema used by the portal.
+
+For production self-hosting variables and key rotation, see
+[Self-Hosting](/guides/self-hosting/).

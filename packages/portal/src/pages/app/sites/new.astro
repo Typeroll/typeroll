@@ -1,0 +1,57 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import { getSession } from '../../../lib/auth';
+
+const session = await getSession(Astro.cookies);
+if (!session) return Astro.redirect('/login');
+void session;
+---
+<AppLayout title="New site">
+  <div class="app-header">
+    <h1>Create a new site</h1>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
+    <form method="POST" action="/api/sites/create" class="card stack">
+      <h2 style="font-size: 1.125rem;">Start from scratch</h2>
+      <p class="muted text-sm">Create a blank site you can populate yourself or with AI.</p>
+      <div class="field">
+        <label for="name">Site name</label>
+        <input id="name" name="name" required placeholder="My new site" />
+      </div>
+      <div class="field">
+        <label for="domain">Primary domain (optional)</label>
+        <input id="domain" name="domain" placeholder="example.com" />
+      </div>
+      <button type="submit" class="btn">Create site</button>
+    </form>
+
+    <form method="POST" action="/api/sites/create-and-migrate" class="card stack">
+      <h2 style="font-size: 1.125rem;">Migrate from WordPress</h2>
+      <p class="muted text-sm">Point us at your WordPress site. We render every page as clean semantic HTML and bring over images, menus, and SEO data.</p>
+      <div class="field">
+        <label for="wp_name">Site name</label>
+        <input id="wp_name" name="name" required placeholder="My migrated site" />
+      </div>
+      <div class="field">
+        <label for="wp_url">WordPress URL</label>
+        <input id="wp_url" name="wp_url" type="url" required placeholder="https://oldsite.com" />
+      </div>
+      <button type="submit" class="btn">Start migration</button>
+    </form>
+
+    <form method="POST" action="/api/sites/create-and-plan" class="card stack">
+      <h2 style="font-size: 1.125rem;">Plan a new site with AI</h2>
+      <p class="muted text-sm">Describe your business; AI proposes a site structure and writes every page.</p>
+      <div class="field">
+        <label for="plan_name">Site name</label>
+        <input id="plan_name" name="name" required placeholder="My new business" />
+      </div>
+      <div class="field">
+        <label for="plan_desc">Business description</label>
+        <textarea id="plan_desc" name="business_description" required rows="3" placeholder="A small hair salon in downtown Portland…"></textarea>
+      </div>
+      <button type="submit" class="btn">Plan & generate</button>
+    </form>
+  </div>
+</AppLayout>

@@ -1,0 +1,154 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../../lib/version-store';
+import { SYSTEM_COLLECTIONS } from '../../../../../lib/system-collections';
+import { loadSiteContext } from '../../../../../lib/access';
+import { getStore } from '../../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { CollectionDef, CollectionItem, Page, Site } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const collections = await vstore.collections(orgId, siteId, versionId);
+collections.sort((a, b) => a.label_plural.localeCompare(b.label_plural));
+
+// Hydrate per-collection item counts in parallel (cheap on fixtures, fast on Firestore).
+const userCollections = await Promise.all(
+  collections.map(async (coll) => {
+    const items = await store.listDocs<CollectionItem>(
+      paths.collectionItems(orgId, siteId, coll.name, versionId),
+    );
+    return { coll, count: items.length };
+  }),
+);
+
+// System collections need their item count from their backing store.
+const pageList = await vstore.pages(orgId, siteId, versionId);
+const systemCounts: Record<string, number> = { pages: pageList.length };
+---
+<AppLayout title={`Collections — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>Content collections</h1>
+      <p class="muted">Repeatable content — pages, blog posts, team members, anything.</p>
+    </div>
+    <a href={`/app/sites/${siteId}/collections/new`} class="btn">+ New collection</a>
+  </div>
+
+  <section class="coll-section">
+    <div class="coll-section__head">
+      <h2>System</h2>
+      <span class="coll-section__hint">Built-in. Schema is fixed.</span>
+    </div>
+    <div class="coll-grid">
+      {SYSTEM_COLLECTIONS.map((sys) => (
+        <a href={`/app/sites/${siteId}/${sys.route}`} class="card coll-card coll-card--system">
+          <div class="coll-card__icon">{sys.icon}</div>
+          <h3 class="coll-card__title">{sys.label_plural}</h3>
+          <p class="muted text-sm coll-card__meta">
+            {systemCounts[sys.name] ?? 0} item{(systemCounts[sys.name] ?? 0) === 1 ? '' : 's'}
+            · {sys.fields.length} field{sys.fields.length === 1 ? '' : 's'}
+          </p>
+          <span class="coll-card__badge">system</span>
+        </a>
+      ))}
+    </div>
+  </section>
+
+  <section class="coll-section">
+    <div class="coll-section__head">
+      <h2>Your collections</h2>
+      <span class="coll-section__hint">{userCollections.length} defined</span>
+    </div>
+    {userCollections.length === 0 ? (
+      <div class="card coll-empty">
+        <h3 style="font-size: 1.125rem; margin-bottom: 0.5rem;">No collections yet</h3>
+        <p class="muted" style="margin-bottom: 1.25rem;">
+          Collections store repeatable items — blog posts, team members, products, events.
+          Each one has its own schema and gets a Posts / Schema / Templates tab layout.
+        </p>
+        <a href={`/app/sites/${siteId}/collections/new`} class="btn">Create your first collection</a>
+      </div>
+    ) : (
+      <div class="coll-grid">
+        {userCollections.map(({ coll, count }) => (
+          <a href={`/app/sites/${siteId}/collections/${coll.name}`} class="card coll-card">
+            <div class="coll-card__icon">{coll.icon ?? '📋'}</div>
+            <h3 class="coll-card__title">{coll.label_plural}</h3>
+            <p class="muted text-sm coll-card__meta">
+              {count} item{count === 1 ? '' : 's'}
+              · {coll.fields.length} field{coll.fields.length === 1 ? '' : 's'}
+              · /{coll.name}
+            </p>
+          </a>
+        ))}
+      </div>
+    )}
+  </section>
+
+  <style>
+    .coll-section + .coll-section { margin-top: 2.5rem; }
+    .coll-section__head {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .coll-section__head h2 {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+    }
+    .coll-section__hint {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+      opacity: 0.7;
+    }
+    .coll-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+    .coll-card {
+      position: relative;
+      text-decoration: none;
+      display: block;
+      transition: border-color 120ms ease, transform 120ms ease;
+    }
+    .coll-card:hover {
+      text-decoration: none;
+      border-color: var(--color-text);
+    }
+    .coll-card__icon {
+      font-size: 1.6rem;
+      margin-bottom: 0.4rem;
+      line-height: 1;
+    }
+    .coll-card__title { font-size: 1.05rem; }
+    .coll-card__meta { margin-top: 0.25rem; }
+    .coll-card__badge {
+      position: absolute;
+      top: 0.85rem;
+      right: 0.85rem;
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      color: var(--color-text-muted);
+    }
+    .coll-empty {
+      text-align: center;
+      padding: 3rem 2rem;
+    }
+  </style>
+</AppLayout>

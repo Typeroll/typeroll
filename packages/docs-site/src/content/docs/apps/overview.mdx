@@ -1,0 +1,92 @@
+---
+title: Core modules overview
+description: Built-in Typeroll capabilities, how core modules differ from premium Typeroll Apps, Extensions, and reusable recipes.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+Typeroll core modules are CMS capabilities with their own configuration,
+runtime behavior, validation, and lifecycle. A module can add code to a
+published site, expose server-side endpoints, contribute forms or blocks, or
+unlock an admin feature. Some modules are always available; others are enabled
+per site.
+
+“Typeroll Apps” is a different term: it names the separately sold premium app
+collection operated exclusively in Typeroll-controlled accounts. It is not a
+synonym for the open-source core module registry. A self-hosted CMS contains
+the Extension support needed to buy and use Typeroll Apps, but never hosts the
+premium app backend.
+
+## Modules, Apps, Extensions, and recipes
+
+| Label                  | Meaning                                                    | Public documentation                                  |
+| ---------------------- | ---------------------------------------------------------- | ----------------------------------------------------- |
+| **Core module**        | A general capability implemented in the CMS core           | One stable module reference                           |
+| **Typeroll App**       | A premium app operated in Typeroll's own accounts          | Product documentation and subscription terms          |
+| **Extension**          | A SaaS or bespoke app operated in its developer's accounts | Extension documentation                               |
+| **Integration module** | A core adapter for external services                       | One reference plus its supported provider catalog     |
+| **Recipe**             | A reusable configuration of one or more modules            | A task-focused guide with no customer-specific values |
+| **Bespoke Extension**  | Behavior built for one customer's domain or workflow       | Documented privately unless it becomes reusable       |
+
+The distinction is about product scope, not who may enable a capability. Public
+module docs describe what exists and how it behaves. Account availability and
+rollout policy can change independently.
+
+<Aside type="note" title="Keep customer configuration out of the catalog">
+  A general booking-attribution module belongs here. A customer's domain,
+  campaign names, destination path, analytics property, and cookie decision
+  belong in that customer's internal configuration. A public recipe uses neutral
+  sample values instead.
+</Aside>
+
+## Available core modules
+
+| Module                              | Type               | What it provides                                                                                           | Runtime                                            |
+| ----------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| [Analytics](/apps/analytics/)       | Core module        | Traffic, Core Web Vitals, AI referrals, campaign attribution, first-party events, and conversion reporting | Browser runtimes, event intake, and portal reports |
+| [Forms](/apps/forms/)               | Core module        | Contact forms, multi-step funnels, partial saves, submissions, and notifications                           | Published-site runtime and forms service           |
+| [Integrations](/apps/integrations/) | Integration module | Maintained tags for analytics, advertising, marketing, and support providers                               | Build-time tag injection with consent gating       |
+| [Directory](/apps/directory/)       | Core module        | Passwordless self-service editing for directory listings                                                   | Server endpoints, forms, and collection writes     |
+
+## Lifecycle
+
+Optional core modules use a code-defined registry. Each definition declares its
+configuration fields, validation, public build data, and any forms, blocks,
+actions, or endpoints it contributes. Always-on core modules can expose the same primitives
+without requiring a per-site activation switch. Modules that affect a static build
+require a deploy before the new runtime reaches visitors.
+
+## Manage modules with the publishing API key
+
+An admin-scoped Typeroll API key can manage the same legacy `apps` registry as the portal.
+This is the recommended surface for agents and automated publishing systems:
+
+```text
+GET /api/v1/sites/{siteId}/apps
+GET /api/v1/sites/{siteId}/apps/{appId}
+PUT /api/v1/sites/{siteId}/apps/{appId}
+```
+
+The list and read responses include each module's field schema and masked state.
+The write body is `{ "enabled": true, "config": { ... } }`. Omitted fields
+preserve their current values. Secret fields are encrypted server-side and are
+never returned; audit entries record only the names of submitted config fields,
+not their values. Analytics provisioning and module-provided forms or blocks run
+through the same service whether the change comes from the portal or API.
+
+MCP clients expose this contract as `list_apps`, `read_app`, and `update_app`.
+Use `trigger_deploy` after a successful update when `affects_build` is true.
+Module management requires admin permission; a read- or write-only site share
+cannot change activation or configuration.
+
+The public reference for each module covers:
+
+- capability and intended scope;
+- configuration and validation;
+- visitor data, cookies, and consent;
+- build or server runtime behavior;
+- agent and API surfaces;
+- operational verification.
+
+Narrow solutions should link back to these references instead of duplicating
+the platform contract.

@@ -1,0 +1,33 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { loadSiteContext } from '../../../../../lib/access';
+import EmailSettings from '../../../../../components/EmailSettings.tsx';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, permission } = ctx;
+const siteId = site.id;
+
+// Email credentials are sensitive — admins only.
+if (permission !== 'admin') return Astro.redirect(`/app/sites/${siteId}/settings`);
+---
+<AppLayout title={`Email — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>Email &amp; notifications</h1>
+      <p class="muted text-sm" style="max-width: 720px;">
+        Configure how <strong>{site.name}</strong> sends email — used by form
+        notifications today, and by other core modules in future. Credentials are
+        encrypted at rest and never shown again after saving.
+      </p>
+    </div>
+  </div>
+
+  <div style="max-width: 640px;">
+    <EmailSettings client:load siteId={siteId} />
+  </div>
+
+  <p class="text-sm muted" style="margin-top: 1.5rem;">
+    <a href={`/app/sites/${siteId}/settings`}>← Back to site settings</a>
+  </p>
+</AppLayout>

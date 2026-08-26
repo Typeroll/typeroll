@@ -1,0 +1,91 @@
+---
+title: Build an Extension
+description: Create, validate, install, and publish a Typeroll Extension from an external repository.
+---
+
+An Extension lives in its own repository. A typical repository contains an
+Extension manifest, a browser entry module, an optional provider backend, and
+deployment configuration for the provider's chosen platform.
+
+Use the [Typeroll Extension starter](https://github.com/Typeroll/extension-starter)
+as a GitHub template to get a working frontend, local host, provider example,
+manifest tooling, tests, and CI.
+
+## Prerequisites
+
+- Node.js 22 or later;
+- a Typeroll organization and a site where you have admin permission;
+- an organization-scoped API key;
+- HTTPS origins for production assets and provider endpoints.
+
+In Typeroll, open **Developer → Extensions**, register a lowercase namespaced
+Extension ID, and copy the client secret when the Extension uses admin SSO.
+The secret is shown once and must remain server-side.
+
+## Development workflow
+
+1. Add `typeroll-extension.json` to the repository root.
+2. Implement a browser module that exports `mount(element, props, context)`.
+3. Build the frontend into immutable JavaScript and CSS assets.
+4. Put the exact SHA-256 asset hashes and public HTTPS URLs in the manifest.
+5. Validate and upload a draft.
+6. Install the draft on a development site owned by the same Typeroll
+   organization and approve its requested scopes.
+7. Publish a private or unlisted version, or submit a public version for review.
+
+The `@typeroll/mcp-server` package includes the `typeroll` developer CLI:
+
+```sh
+export TYPEROLL_API_URL="https://your-admin.example.com"
+export TYPEROLL_API_KEY="your organization-scoped API key"
+
+npx --package @typeroll/mcp-server typeroll extension validate
+npx --package @typeroll/mcp-server typeroll extension push --draft
+npx --package @typeroll/mcp-server typeroll extension install --site your-site-id \
+  --config extension-config.json
+npx --package @typeroll/mcp-server typeroll extension promote 1.0.0
+```
+
+Local validation is a fast shape check. The portal remains authoritative for
+schema compatibility, trusted origins, permissions, configuration, and asset
+hash verification.
+
+Manifest v3 replaces the old gateway transport with a direct `api` contract.
+Provider requests must go straight from the browser to the provider backend;
+do not add a Typeroll relay or a customer Cloudflare Pages Function.
+
+For a backend-free lead tool, first create the receiving form in Typeroll,
+declare it under the component's `form_bindings`, and request `forms:submit`.
+The form ID must match on the installation's site. Its fields and post-submit
+email or webhook actions remain managed in the ordinary Forms admin.
+
+Draft and review versions can only be installed on sites owned by the
+Extension's developer organization. Other organizations can only install a
+published version. You may change `distribution` while every saved version is
+still a draft; Typeroll updates those draft manifests and hashes together. Once
+any version has been published or submitted for review, distribution is locked.
+
+## Add the component to a page
+
+After installation, the component appears in the editor's block picker. In
+HTML mode, use the provisioned block ID displayed under **Settings →
+Extensions**:
+
+```html
+<x-extension
+  block="extension--install-abc--quote"
+  props='{"heading":"Your quote"}'
+/>
+```
+
+This is an authoring directive, not a second script runtime. Preview and build
+replace it with the same inert mount shell used by a visual-editor block.
+
+## Versioning rules
+
+Published versions are immutable. Never replace asset bytes at a URL while
+reusing the same version and hashes. Release a new semantic version, upload it,
+then upgrade the installation. Typeroll keeps the previous version available
+for rollback.
+
+Continue with the [frontend runtime and recipient-link contract](/extensions/frontend/).

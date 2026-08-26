@@ -1,0 +1,78 @@
+---
+import AppLayout from '../../../../layouts/AppLayout.astro';
+import MigrationUrls from '../../../../components/MigrationUrls.tsx';
+import { getStore } from '../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { Site } from '@typeroll/shared';
+import { analyzeCoverage } from '../../../../lib/wp/url-inventory';
+import { runMigrationPreflight } from '../../../../lib/migration-preflight';
+import { loadSiteContext } from '../../../../lib/access';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+// Server-render the first snapshot so the page is useful even with JS off.
+const initial = await analyzeCoverage(store, orgId, siteId);
+
+// Readiness is shown on the SAME page as the coverage report, above it:
+// a blocker here (no media storage, stub hosting) invalidates the numbers
+// below — a site can be at 100% coverage and still be serving every image
+// from the host it's migrating away from.
+const preflight = await runMigrationPreflight(orgId, siteId, ctx.versionId);
+const problems = [...preflight.blockers, ...preflight.warnings];
+---
+<AppLayout title={`Migration coverage — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>Migration coverage</h1>
+      <p class="muted">Every URL discovered on the old site, with its current status on the new one.</p>
+    </div>
+  </div>
+
+  {problems.length > 0 && (
+    <div class={`card preflight ${preflight.ready ? 'preflight--warn' : 'preflight--block'}`}>
+      <h2>
+        {preflight.ready
+          ? `Ready to migrate — ${preflight.warnings.length} thing(s) worth knowing`
+          : `Not ready to migrate — ${preflight.blockers.length} blocker(s)`}
+      </h2>
+      <ul>
+        {problems.map((c) => (
+          <li>
+            <strong>{c.severity === 'blocker' ? 'Blocker' : 'Warning'}: {c.label}</strong>
+            <p>{c.detail}</p>
+            {c.fix && <p class="muted">{c.fix}</p>}
+          </li>
+        ))}
+      </ul>
+      {!preflight.ready && (
+        <p class="muted">
+          The migration workflow refuses to start while a blocker stands. Coverage numbers below can
+          still reach 100% with a blocker present — they measure URLs, not whether the site is
+          actually self-hosted yet.
+        </p>
+      )}
+    </div>
+  )}
+
+  {initial.urls.length === 0 ? (
+    <div class="card" style="text-align: center; padding: 3rem 2rem;">
+      <h2 style="font-size: 1.25rem;">No URLs discovered yet</h2>
+      <p class="muted" style="margin-top: 0.5rem;">Run a migration workflow first. The inventory step populates this page from the source site's sitemap and the helper plugin.</p>
+    </div>
+  ) : (
+    <MigrationUrls client:load siteId={siteId} initial={initial} />
+  )}
+</AppLayout>
+
+<style>
+  .preflight { margin-bottom: 1.5rem; border-left: 4px solid var(--color-warning, #d97706); }
+  .preflight--block { border-left-color: var(--color-danger, #dc2626); }
+  .preflight h2 { font-size: 1.05rem; margin: 0 0 0.75rem; }
+  .preflight ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.75rem; }
+  .preflight li p { margin: 0.15rem 0 0; font-size: 0.9rem; }
+</style>

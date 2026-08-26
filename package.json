@@ -1,0 +1,27 @@
+{
+  "name": "typeroll",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source CMS for building and operating static websites",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:portal": "npm run dev --workspace=@typeroll/portal",
+    "dev:site": "npm run dev --workspace=@typeroll/site-template",
+    "dev:docs": "npm run dev --workspace=@typeroll/docs-site",
+    "build:portal": "npm run build --workspace=@typeroll/portal",
+    "build:site": "npm run build --workspace=@typeroll/site-template",
+    "build:docs": "npm run build --workspace=@typeroll/docs-site",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test:infra && npm run test --workspaces --if-present",
+    "test:infra": "node --test scripts/*.test.mjs",
+    "test:e2e": "npm run test:e2e --workspace=@typeroll/portal",
+    "smoke:mcp": "node scripts/smoke-mcp.mjs",
+    "smoke:extensions": "node scripts/smoke-extensions.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

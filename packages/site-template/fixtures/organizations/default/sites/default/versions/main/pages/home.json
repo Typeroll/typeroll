@@ -1,0 +1,11 @@
+{
+  "title": "Home",
+  "slug": "home",
+  "content_mode": "html",
+  "status": "published",
+  "html_content": "<x-include name=\"cta\" />\n\n<img src=\"https://cdn.typeroll.com/orgs/default/sites/default/images/1779275903935-couple-moving-in.jpg\" alt=\"Couple moving in\" style=\"width:100%;display:block;\" />\n\n<h1>Updated for review</h1>",
+  "seo_title": "ACME Studio",
+  "seo_description": "A timeless website, free from WordPress.",
+  "date_updated": "2026-05-20T11:33:19.043Z",
+  "date_published": "2026-05-20T11:33:18.169Z"
+}

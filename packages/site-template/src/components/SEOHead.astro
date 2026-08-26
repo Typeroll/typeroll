@@ -1,0 +1,277 @@
+---
+import type { Page, PostalAddress, SiteSettings } from '@typeroll/shared';
+import { ogLocale, resolveAlternates } from '@typeroll/shared';
+import { isVersionRobotsBlocked } from '../lib/content';
+
+interface Props {
+  page: Page;
+  settings: SiteSettings;
+  /**
+   * Additional JSON-LD objects to emit alongside the auto-generated ones.
+   * Each entry is a *pre-serialised* JSON string (the caller has already
+   * called JSON.stringify). Used for context-specific schemas the static
+   * page itself doesn't know how to build — collection-item Schema.org
+   * objects (PodcastEpisode, BlogPosting, …), page-specific schemas
+   * (Service, Course, …). Pass strings, not objects, so the caller is
+   * the single place that has to know about </script> escaping.
+   */
+  extraJsonLd?: string[];
+}
+
+const { page, settings, extraJsonLd } = Astro.props;
+
+const isHome = !page.slug || page.slug === 'home' || page.slug === 'index';
+const isArticle = page.kind === 'article';
+
+const title = (() => {
+  const base = page.seo_title || page.title;
+  if (!settings.default_seo_suffix) return base;
+  return base.endsWith(settings.default_seo_suffix) ? base : `${base}${settings.default_seo_suffix}`;
+})();
+
+// Description fallback chain: page-specific → site default → tagline.
+const description =
+  page.seo_description || settings.default_meta_description || settings.tagline || '';
+
+const canonical = page.canonical_url || new URL(Astro.url.pathname, Astro.site).toString();
+
+// OG image fallback chain: page-specific → site default OG → site logo.
+const ogImage = page.og_image || settings.default_og_image || settings.logo;
+
+// Alt text for og:image / twitter:image. Falls back to seo_image_alt → the
+// first <img alt> on the page body (best-effort regex — robust enough for
+// the bulk of imported and AI-written content).
+function firstImgAltFromHtml(html: string | undefined | null): string {
+  if (!html) return '';
+  const m = html.match(/<img\b[^>]*\balt=["']([^"']*)["']/i);
+  return m ? m[1] : '';
+}
+const ogImageAlt = page.seo_image_alt || firstImgAltFromHtml(page.html_content) || '';
+
+const language = page.language || settings.language || 'en';
+const locale = ogLocale(language);
+
+// hreflang cluster. Only the OTHER language variants are declared on the
+// page; the self-reference is injected here because Google drops a cluster
+// whose members don't all list themselves. Invalid entries are dropped by
+// the shared validator rather than escaped into the attribute.
+const alternates = resolveAlternates(page.alternates, canonical, language);
+
+// Page-level noindex wins; otherwise the version (branches default to blocked).
+const versionBlocked = await isVersionRobotsBlocked();
+const robots = page.noindex || versionBlocked ? 'noindex,nofollow' : 'index,follow';
+
+// Twitter site handle — used for both site and (in absence of an author
+// override) creator. Stored without the leading @.
+const twHandle = settings.twitter_handle?.replace(/^@/, '');
+
+function safeJsonLd(str: string | null | undefined): string | null {
+  if (!str) return null;
+  // The script tag is emitted via set:html, so an attacker-controlled JSON
+  // string could close the tag and inject markup. The Unicode escapes the
+  // JSON parser still accepts.
+  return str.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '\\u003C!--');
+}
+
+// Per-page JSON-LD set by the editor / AI (e.g. FAQPage, Recipe).
+const pageJsonLd = safeJsonLd(page.json_ld);
+
+// Auto Organization schema. Site-level — Typeroll orgs can host many
+// brands (an agency with 100 customer sites), so the Organization
+// represented in JSON-LD is the *site's* brand, not the platform org.
+// Data is pulled from existing SiteSettings fields:
+//   - name:      organization.name || site_name
+//   - logo:      organization.logo || logo
+//   - email:     contact.email
+//   - telephone: contact.phone
+//   - address:   contact.address (string → no structured emit; object →
+//                PostalAddress with camelCase Schema.org property names)
+//   - sameAs:    organization.same_as ∪ social.* URLs
+// Emits on home only — repeating Organization on every page is noisy
+// and Google explicitly recommends a single canonical declaration.
+function postalAddressJsonLd(addr: PostalAddress): Record<string, unknown> {
+  const out: Record<string, unknown> = { '@type': 'PostalAddress' };
+  if (addr.street_address) out.streetAddress = addr.street_address;
+  if (addr.postal_code) out.postalCode = addr.postal_code;
+  if (addr.address_locality) out.addressLocality = addr.address_locality;
+  if (addr.address_region) out.addressRegion = addr.address_region;
+  if (addr.address_country) out.addressCountry = addr.address_country;
+  return out;
+}
+
+function collectSameAs(): string[] {
+  const out: string[] = [];
+  const social = settings.social ?? {};
+  for (const key of ['facebook', 'instagram', 'linkedin', 'x', 'youtube'] as const) {
+    const v = social[key];
+    if (typeof v === 'string' && v.startsWith('http')) out.push(v);
+  }
+  const override = settings.organization?.same_as ?? [];
+  for (const url of override) {
+    if (typeof url === 'string' && url && !out.includes(url)) out.push(url);
+  }
+  return out;
+}
+
+function orgSchema(): string | null {
+  if (!isHome) return null;
+  const org = settings.organization ?? {};
+  const contact = settings.contact ?? {};
+  const name = org.name || settings.site_name;
+  if (!name) return null;
+  const obj: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name,
+  };
+  if (Astro.site) obj.url = Astro.site.toString();
+  const logo = org.logo || settings.logo;
+  if (logo) obj.logo = logo;
+  if (contact.email) obj.email = contact.email;
+  if (contact.phone) obj.telephone = contact.phone;
+  if (contact.address && typeof contact.address === 'object') {
+    obj.address = postalAddressJsonLd(contact.address);
+  }
+  const sameAs = collectSameAs();
+  if (sameAs.length) obj.sameAs = sameAs;
+  return safeJsonLd(JSON.stringify(obj));
+}
+
+// Auto WebSite schema on home only. Drives sitelinks search box if a real
+// search endpoint is wired up later — for now we just declare the site
+// itself, which Google still uses for entity disambiguation.
+function websiteSchema(): string | null {
+  if (!isHome || !Astro.site) return null;
+  const obj: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    url: Astro.site.toString(),
+    name: settings.site_name,
+  };
+  if (settings.tagline) obj.description = settings.tagline;
+  return safeJsonLd(JSON.stringify(obj));
+}
+
+// Auto Article schema for kind=article pages.
+function articleSchema(): string | null {
+  if (!isArticle) return null;
+  const obj: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: page.title,
+    mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },
+  };
+  if (description) obj.description = description;
+  if (ogImage) obj.image = ogImage;
+  if (page.date_published) obj.datePublished = page.date_published;
+  if (page.date_updated) obj.dateModified = page.date_updated;
+  if (page.author) obj.author = { '@type': 'Person', name: page.author };
+  if (settings.organization?.name) {
+    obj.publisher = {
+      '@type': 'Organization',
+      name: settings.organization.name,
+      ...(settings.organization.logo
+        ? { logo: { '@type': 'ImageObject', url: settings.organization.logo } }
+        : {}),
+    };
+  }
+  return safeJsonLd(JSON.stringify(obj));
+}
+
+// Auto BreadcrumbList for any non-home page. We can't always look up parent
+// page titles at build time without an async dance, so we generate items
+// from the URL slug segments. Search engines accept that — the names will
+// be the Title-Cased path components.
+function breadcrumbSchema(): string | null {
+  if (isHome || !Astro.site) return null;
+  const segments = page.slug.split('/').filter(Boolean);
+  if (segments.length === 0) return null;
+  const base = Astro.site.toString().replace(/\/$/, '');
+  const items: Array<Record<string, unknown>> = [
+    { '@type': 'ListItem', position: 1, name: settings.site_name, item: `${base}/` },
+  ];
+  let acc = '';
+  segments.forEach((seg, i) => {
+    acc += '/' + seg;
+    const isLast = i === segments.length - 1;
+    items.push({
+      '@type': 'ListItem',
+      position: i + 2,
+      name: isLast ? page.title : prettyName(seg),
+      item: `${base}${acc}`,
+    });
+  });
+  const obj = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items,
+  };
+  return safeJsonLd(JSON.stringify(obj));
+}
+
+function prettyName(seg: string): string {
+  return seg.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+const orgJsonLd = orgSchema();
+const websiteJsonLd = websiteSchema();
+const articleJsonLd = articleSchema();
+const breadcrumbJsonLd = breadcrumbSchema();
+---
+<title>{title}</title>
+<meta name="description" content={description} />
+<meta name="robots" content={robots} />
+<link rel="canonical" href={canonical} />
+{alternates.map((a) => (
+  <link rel="alternate" hreflang={a.hreflang} href={a.href} />
+))}
+
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:type" content={isArticle ? 'article' : 'website'} />
+<meta property="og:url" content={canonical} />
+<meta property="og:locale" content={locale} />
+<meta property="og:site_name" content={settings.site_name} />
+{ogImage && <meta property="og:image" content={ogImage} />}
+{ogImage && ogImageAlt && <meta property="og:image:alt" content={ogImageAlt} />}
+
+{isArticle && page.date_published && (
+  <meta property="article:published_time" content={page.date_published} />
+)}
+{isArticle && page.date_updated && (
+  <meta property="article:modified_time" content={page.date_updated} />
+)}
+{isArticle && page.author && (
+  <meta property="article:author" content={page.author} />
+)}
+
+<meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
+<meta name="twitter:title" content={title} />
+<meta name="twitter:description" content={description} />
+{ogImage && <meta name="twitter:image" content={ogImage} />}
+{ogImage && ogImageAlt && <meta name="twitter:image:alt" content={ogImageAlt} />}
+{twHandle && <meta name="twitter:site" content={`@${twHandle}`} />}
+{twHandle && <meta name="twitter:creator" content={`@${twHandle}`} />}
+
+{settings.favicon && <link rel="icon" href={settings.favicon} />}
+{settings.apple_touch_icon && <link rel="apple-touch-icon" sizes="180x180" href={settings.apple_touch_icon} />}
+
+{pageJsonLd && (
+  <script type="application/ld+json" set:html={pageJsonLd} />
+)}
+{orgJsonLd && (
+  <script type="application/ld+json" set:html={orgJsonLd} />
+)}
+{websiteJsonLd && (
+  <script type="application/ld+json" set:html={websiteJsonLd} />
+)}
+{articleJsonLd && (
+  <script type="application/ld+json" set:html={articleJsonLd} />
+)}
+{breadcrumbJsonLd && (
+  <script type="application/ld+json" set:html={breadcrumbJsonLd} />
+)}
+{extraJsonLd?.map((raw) => {
+  const safe = safeJsonLd(raw);
+  return safe ? <script type="application/ld+json" set:html={safe} /> : null;
+})}

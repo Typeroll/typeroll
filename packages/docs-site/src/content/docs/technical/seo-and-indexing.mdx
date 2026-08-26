@@ -1,0 +1,238 @@
+---
+title: SEO & indexing
+description: How Typeroll's deploy pipeline produces clean canonical URLs, blocks duplicate-content indexing on the fallback subdomain, and emits the sitemap / robots / structured-data signals search engines expect.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+This page documents what Typeroll emits at build time, what the runtime layer does on every request, and how it all interacts with custom domains. If you're trying to understand why your site looks the way it does in Search Console — start here.
+
+## The two-URL problem
+
+Every Typeroll site is reachable from at least two URLs:
+
+1. **The fallback subdomain** — `<slug>.sites.typeroll.com` (or your self-hosted equivalent). Auto-provisioned when the site is created. Never goes away.
+2. **The custom domain** — `www.example.com`. Optional. Declared through the [domain lifecycle](/guides/custom-domain/) (domain-first: it becomes canonical the moment you declare it, before DNS).
+
+Both serve the same Cloudflare Pages build. Without deliberate effort, Google would treat them as duplicate content, split page rank between them, and possibly surface the wrong URL in SERPs.
+
+Typeroll's defense is layered: a strong canonical URL signal at the HTML layer, and a stricter `X-Robots-Tag` header at the Edge for crawlers that don't honour canonicals.
+
+## Canonical URL
+
+Every page in a Typeroll build carries a `<link rel="canonical">` tag in `<head>`. The href points at the URL the site should be indexed under:
+
+| Site state                                              | Canonical points at                        |
+| ------------------------------------------------------- | ------------------------------------------ |
+| No custom domain declared                               | `https://<slug>.sites.typeroll.com/<path>` |
+| Custom domain declared (any status: pending/verified/…) | `https://<custom-domain>/<path>`           |
+| Site with legacy `domain` field (no lifecycle metadata) | `https://<custom-domain>/<path>`           |
+
+This is the **domain-first** model: the moment a custom domain is declared it
+becomes the canonical host, regardless of DNS-verification status. The whole
+point is that the canonical is already correct when DNS lands — there's never a
+window where the public site advertises the internal `*.sites` fallback. (That
+window is exactly the autopilot.se leak that prompted this: a verified-but-not-
+activated domain shipped a sitemap full of `*.sites.typeroll.com` URLs.) The
+resolver is `isCanonicalReady(site) = !!site.domain` in `lib/site-public-urls.ts`.
+
+`domain_status` (`pending`/`verified`/`failed`) does **not** gate the canonical —
+it's a DNS-health diagnostic that gates only the agent-facing `production` /
+`live_url` (so agents don't send a customer to a domain that doesn't resolve
+yet — a separate, earlier autopilot report).
+
+The canonical is baked at build time from `Astro.site`, which the deploy runner sets based on the site doc. The URL also feeds into:
+
+- `sitemap.xml` — every page's `<loc>` is the canonical URL
+- `sitemap-images.xml` — image URLs and their parent page URLs
+- `<meta property="og:url">` — OpenGraph URL for social shares
+- JSON-LD `mainEntityOfPage.@id` — for Article schema and related types
+
+<Aside type="caution" title="Re-deploy applies the new canonical">
+  The canonical is baked into the static build, so changing the domain only
+  takes effect on the next deploy. Declaring a domain in the UI republishes by
+  default (the "Publish now" checkbox) — leave it checked unless you have
+  unpublished drafts you don't want to ship. There is no separate "activate"
+  step: declaring the domain is what cuts the canonical over.
+</Aside>
+
+## Fallback-subdomain de-indexing
+
+The canonical URL alone is enough for Google and the major Western search engines in clean duplicate-content scenarios — they consolidate ranking on the canonical and drop the duplicate from SERPs. But:
+
+- Smaller / regional crawlers don't always respect canonicals.
+- Bing and Yandex have historically been less consistent.
+- AI training crawlers (GPTBot, ClaudeBot, etc.) often skip canonical consolidation entirely.
+
+The hosted platform enforces this once at the fallback-zone edge. Customer
+site builds remain static and do not contain a `robots.txt` Function or
+middleware. A single Cloudflare Transform Rule on the `typeroll.com` zone
+adds `X-Robots-Tag: noindex, nofollow` whenever the request hostname matches
+`*.sites.typeroll.com`. The rule applies to every existing and future fallback
+host without adding Functions or invocations to customer Pages projects.
+
+**Hosted typeroll.com**: a single Transform Rule on the `typeroll.com` zone (sites.typeroll.com is a subdomain within that zone, not its own zone). Dashboard path:
+
+```
+Cloudflare → typeroll.com → Rules → Transform Rules → "Modify Response Header"
+  Rule name:    Noindex Typeroll fallback subdomains
+  When:         ends_with(http.host, ".sites.typeroll.com")
+  Then:         Set static header  X-Robots-Tag = noindex, nofollow
+  Deploy:       enabled
+```
+
+The cloud platform repository contains an idempotent Rulesets API command. It
+preserves unrelated response-header rules and manages only the stable
+`typeroll_fallback_noindex` rule:
+
+```bash
+Configure the equivalent response-header rule at your edge provider and verify
+it with a request to the fallback hostname before publishing customer sites.
+```
+
+The token needs zone read plus Transform Rules read for `--check`, and
+Transform Rules write for `--apply`. Applying the rule is a production change
+and belongs behind the platform release approval gate.
+
+**Self-hosted**: a normal installation with only customer production domains
+needs no fallback-zone rule. An operator who deliberately offers a shared
+fallback domain configures the equivalent rule on that zone. Typeroll does not
+generate a per-site fallback Function.
+
+This staging/indexing rule is hosting infrastructure. It is unrelated to
+Typeroll Apps, Extensions, Forms or provider APIs.
+
+## robots.txt
+
+Generated as a static file by the renderer at `/robots.txt`. The zone-level
+fallback rule adds its header independently and never changes this file's
+customer-domain content. Default policy:
+
+```
+User-agent: *
+Allow: /
+
+Sitemap: https://<canonical-host>/sitemap.xml
+```
+
+Per-site overrides:
+
+- **Site setting `robots_txt`** — when non-empty, replaces the default body entirely. Use this for site-specific allow/disallow rules.
+- **Version flag `robots_blocked`** — when true, the renderer emits a hard `Disallow: /` regardless of the override. Branches default to `robots_blocked: true` so previews don't get crawled; main is always indexable.
+
+The `User-agent: *` block keeps it permissive by default — Typeroll doesn't enumerate specific bots. To block a specific crawler (e.g. AI training), add it explicitly via the `robots_txt` override:
+
+```
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: *
+Allow: /
+
+Sitemap: https://www.example.com/sitemap.xml
+```
+
+## Sitemap
+
+Two XML sitemaps emitted per build:
+
+- **`/sitemap.xml`** — every published page + every collection item that has an `item_template_html` and `route_template`. URLs use the canonical host.
+- **`/sitemap-images.xml`** — images referenced from published content, grouped by parent page.
+
+Both filter out items with `noindex: true`. Both honour the canonical URL rules above.
+
+The sitemap is referenced from `robots.txt` and is picked up automatically by Google Search Console / Bing Webmaster Tools when you verify ownership. You don't need to submit it manually after every deploy — search engines re-crawl it on their own schedule.
+
+## `llms.txt` — being readable to AI assistants
+
+Every build emits **`/llms.txt`**: a plain-text, machine-readable map of the site
+— what it is, and what's on it, with titles, URLs and descriptions.
+
+It's the emerging convention for the same job `robots.txt` and `sitemap.xml` do
+for crawlers, aimed at assistants like ChatGPT, Claude and Perplexity. Where a
+sitemap says _which URLs exist_, `llms.txt` says _what this site is about_ in a
+form a model can consume without rendering pages or guessing from markup.
+
+Nothing to configure — it regenerates on every deploy from your published pages,
+so it can't drift from the site the way a hand-maintained file would.
+
+This matters more than it looks. Assistants increasingly answer "who should I
+hire for X in Y" directly, and a site they can parse confidently is a site
+they're more likely to cite. If you've enabled the
+[Analytics app](/guides/apps-and-analytics/), the Insights page shows how many
+visits actually arrive from those assistants.
+
+## Structured data (JSON-LD)
+
+Pages can carry arbitrary JSON-LD via the `Page.json_ld` field. Common patterns:
+
+- **Article** — for blog posts, set `kind: "article"` on the page. The renderer emits Article schema with `headline`, `datePublished`, `dateModified`, `author`, `image`. Combines with the canonical URL via `mainEntityOfPage.@id`.
+- **Organization** — site-level. Configured under Settings → Organization (name, logo, sameAs profile URLs). Emitted on every page so search engines pick up the entity consistently.
+- **PostalAddress** — site-level. Configured under Settings → Contact → Address (either a single string or a structured `streetAddress` / `addressLocality` / `postalCode` / `addressCountry` object). The structured form emits a full Schema.org PostalAddress in the Organization block.
+- **Custom JSON-LD** — paste raw JSON into the page's `json_ld` field. The renderer escapes `</script` and `<!--` defensively before injecting.
+
+Per-page JSON-LD is added to the page's `<head>`; site-level JSON-LD is added by `SEOHead.astro` on every page automatically.
+
+## Meta tags emitted on every page
+
+```html
+<title>Page title — Site Name</title>
+<meta name="description" content="…" />
+<meta name="robots" content="index,follow" />
+<!-- or noindex,nofollow if blocked -->
+<link rel="canonical" href="https://www.example.com/path" />
+<meta name="generator" content="Typeroll" />
+
+<!-- OpenGraph (Facebook, LinkedIn, Slack previews) -->
+<meta property="og:title" content="Page title" />
+<meta property="og:description" content="…" />
+<meta property="og:type" content="website" />
+<!-- or "article" for article pages -->
+<meta property="og:url" content="https://www.example.com/path" />
+<meta property="og:image" content="https://www.example.com/og.png" />
+<meta property="og:locale" content="en_US" />
+<!-- derived from site language -->
+
+<!-- Twitter card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@yoursitehandle" />
+<meta name="twitter:title" content="Page title" />
+<meta name="twitter:description" content="…" />
+<meta name="twitter:image" content="https://www.example.com/og.png" />
+
+<!-- Optional, when site-level fields are set -->
+<meta name="author" content="…" />
+
+<!-- Language cluster, when the page declares alternates -->
+<link rel="alternate" hreflang="sv" href="https://example.se/om-oss" />
+<link rel="alternate" hreflang="de" href="https://example.de/ueber-uns" />
+```
+
+The full set, plus per-page overrides, lives in [packages/site-template/src/components/SEOHead.astro](https://github.com/typeroll/typeroll/blob/main/packages/site-template/src/components/SEOHead.astro).
+
+## Multi-language sites and hreflang
+
+A Typeroll site serves one domain, so a family of language sites (`example.se`, `example.de`, `example.co.uk`) is a family of sites. Nothing can derive which page corresponds to which, so each page declares its equivalents:
+
+- Set them per page via `alternates` (Claude does this with `update_page`, or `batch_update_pages` for a whole cluster at once).
+- The renderer adds the page's **self-reference** automatically — Google ignores a cluster whose members don't list themselves.
+- Clusters must be **reciprocal**: every page lists every other one. Write all sides.
+- Use `x-default` for the language selector or fallback market.
+- Use the final domains, never the temporary `*.typeroll` URL.
+- Invalid tags or non-absolute URLs are refused at write time rather than emitted as broken markup.
+
+Pages with no equivalent elsewhere get no alternates — a cluster of one is meaningless. Per-page `language` also drives `<html lang>` and `og:locale`.
+
+## Custom domains and SEO timing
+
+The order of operations when bringing a new domain live:
+
+1. **Declare the domain** in Settings → Custom domain. With "Publish now" on (default) a build is immediately enqueued that bakes the custom domain into canonical / sitemap / OG. The platform's zone-level rule independently keeps the fallback subdomain `noindex, nofollow`. No DNS required yet. Status starts `pending`.
+2. **Point DNS** at the registrar — CNAME (or A/AAAA for an apex) to the target the dialog shows. This is the **last** step: your published site already claims the domain as canonical, so doing DNS last means visitors and Google never see the fallback.
+3. **Cloudflare verifies + issues the SSL cert.** Click "Check DNS status" to refresh. Status: `verified` — the site is now reachable on the domain, and the agent-facing `live_url` switches to it.
+4. **Wait for Google to recrawl.** Search Console will surface the new canonical within 1–2 weeks for established sites. To accelerate, request indexing of the homepage manually in Search Console and submit the new sitemap if needed.
+
+Changing the domain without re-deploying leaves the canonical pointing at the previous URL until the next build, so declaring a domain republishes by default. See [Custom Domain guide](/guides/custom-domain/) for the user-facing walkthrough.

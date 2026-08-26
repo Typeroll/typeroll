@@ -1,0 +1,33 @@
+---
+import AppLayout from '../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../lib/version-store';
+import ChatInterface from '../../../../components/ChatInterface.tsx';
+import { loadSiteContext } from '../../../../lib/access';
+import { getStore } from '../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { Page, Site } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const pages = await vstore.pages(orgId, siteId, versionId);
+const pageSummaries = pages.map((p) => ({
+  id: p.id,
+  title: p.title,
+  slug: p.slug,
+  status: p.status,
+}));
+---
+<AppLayout title={`AI chat — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>AI chat</h1>
+      <p class="muted">Edit pages by describing what you want changed.</p>
+    </div>
+  </div>
+  <ChatInterface client:load siteId={siteId} pages={pageSummaries} />
+</AppLayout>

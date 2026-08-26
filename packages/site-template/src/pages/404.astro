@@ -1,0 +1,75 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { getBlockRegistry, getPartials, getSiteSettings } from '../lib/content';
+import { collectBlockAssets, siteContext } from '@typeroll/shared';
+import type { Block, Page, RenderContext } from '@typeroll/shared';
+
+const settings = await getSiteSettings();
+const { header, footer } = await getPartials();
+
+// The 404 body is static markup, but the header and footer are the site's own
+// partials and may carry blocks — so their CSS and JS have to ship here too,
+// or the 404 page renders the header unstyled and inert.
+const partialBlocks: Block[] = [
+  ...(header?.content_mode === 'blocks' ? header.blocks ?? [] : []),
+  ...(footer?.content_mode === 'blocks' ? footer.blocks ?? [] : []),
+];
+const { css: blockCss, js: blockJs } = collectBlockAssets(
+  partialBlocks,
+  await getBlockRegistry(),
+);
+
+// The 404 has no real page, but partials may bind {{site.*}}, so they still
+// need a context. `page` below is the synthetic doc declared underneath.
+
+// Localize the 404 body to the site's language. Falls back to English
+// for anything not in the table. Add more as needed — the language
+// code comes from settings.language (BCP-47), so 'sv', 'sv-SE',
+// 'en-GB' all work via the first-two-letter lookup.
+type Strings = { title: string; body: string; back: string };
+const TRANSLATIONS: Record<string, Strings> = {
+  en: { title: 'Page not found', body: "Sorry, that page doesn't exist.", back: 'Back to home' },
+  sv: { title: 'Sidan hittades inte', body: 'Tyvärr finns inte den sidan.', back: 'Tillbaka till startsidan' },
+  no: { title: 'Siden ble ikke funnet', body: 'Beklager, den siden finnes ikke.', back: 'Tilbake til forsiden' },
+  nb: { title: 'Siden ble ikke funnet', body: 'Beklager, den siden finnes ikke.', back: 'Tilbake til forsiden' },
+  da: { title: 'Siden blev ikke fundet', body: 'Beklager, den side findes ikke.', back: 'Tilbage til forsiden' },
+  de: { title: 'Seite nicht gefunden', body: 'Entschuldigung, diese Seite existiert nicht.', back: 'Zur Startseite' },
+  fr: { title: 'Page introuvable', body: "Désolé, cette page n'existe pas.", back: "Retour à l'accueil" },
+  es: { title: 'Página no encontrada', body: 'Lo sentimos, esa página no existe.', back: 'Volver al inicio' },
+  nl: { title: 'Pagina niet gevonden', body: 'Sorry, die pagina bestaat niet.', back: 'Terug naar de startpagina' },
+  fi: { title: 'Sivua ei löydy', body: 'Valitettavasti sivua ei ole olemassa.', back: 'Takaisin etusivulle' },
+};
+const langTag = (settings.language || 'en').toLowerCase();
+const lang2 = langTag.split('-')[0];
+const t = TRANSLATIONS[lang2] ?? TRANSLATIONS.en;
+
+const page: Page = {
+  id: '404',
+  title: t.title,
+  slug: '404',
+  content_mode: 'html',
+  status: 'published',
+  noindex: true,
+};
+
+const renderCtx: RenderContext = {
+  page: page as unknown as Record<string, unknown>,
+  site: siteContext(settings as unknown as Record<string, unknown>),
+};
+---
+<BaseLayout page={page} settings={settings} blockCss={blockCss} blockJs={blockJs}>
+  <Header partial={header} settings={settings} context={renderCtx} />
+  <main class="page-content not-found">
+    <h1>{t.title}</h1>
+    <p>{t.body}</p>
+    <p><a href="/">{t.back}</a></p>
+  </main>
+  <Footer partial={footer} settings={settings} context={renderCtx} />
+</BaseLayout>
+
+<style>
+  .not-found { text-align: center; padding: var(--spacing-xl) var(--spacing-md); }
+  .not-found h1 { font-size: 3rem; margin-bottom: var(--spacing-md); }
+</style>

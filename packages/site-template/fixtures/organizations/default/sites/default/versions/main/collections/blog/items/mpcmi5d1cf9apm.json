@@ -1,0 +1,11 @@
+{
+  "status": "published",
+  "title": "Hello from a smoke-test blog post",
+  "slug": "hello-from-smoke-test",
+  "excerpt": "Sanity post that drives the collection-item build path.",
+  "body": "<p>This item exists so the smoke build exercises <code>getCollectionItemRoutes</code> + <code>pageForItem</code>. Without a published item the collection branch of getStaticPaths never runs and a regression there ships silently to prod (which is exactly how the Sundsvallsflytt build was broken).</p>",
+  "author": "Smoke test",
+  "published_at": "2026-05-19",
+  "created_at": "2026-05-19T12:42:40.933Z",
+  "updated_at": "2026-05-19T12:42:40.933Z"
+}

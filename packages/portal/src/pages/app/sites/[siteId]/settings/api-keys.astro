@@ -1,0 +1,44 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { getStore } from '../../../../../lib/datastore';
+import { listApiKeys } from '../../../../../lib/api-keys';
+import ApiKeyManager from '../../../../../components/ApiKeyManager.tsx';
+import { paths } from '@typeroll/shared';
+import type { Site } from '@typeroll/shared';
+import { loadSiteContext } from '../../../../../lib/access';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const keys = await listApiKeys(orgId, siteId);
+const summaries = keys.map((k) => ({
+  id: k.id,
+  name: k.name,
+  created_at: k.created_at,
+  created_by: k.created_by,
+  last_used_at: k.last_used_at,
+  last_used_ip: k.last_used_ip,
+  revoked_at: k.revoked_at,
+}));
+---
+<AppLayout title={`API keys — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <h1>API keys</h1>
+    <p class="muted text-sm" style="max-width: 720px;">
+      Generate keys for external tools (Claude Code, custom scripts, the Typeroll MCP server) to read and update this site through the public REST API.
+      Keys are scoped to <strong>{site.name}</strong> only — they cannot access other sites in your organization.
+    </p>
+  </div>
+
+  <div style="max-width: 760px;">
+    <ApiKeyManager client:load siteId={siteId} initialKeys={summaries} />
+  </div>
+
+  <p class="text-sm muted" style="margin-top: 1.5rem;">
+    <a href={`/app/sites/${siteId}/settings`}>← Back to site settings</a>
+  </p>
+</AppLayout>

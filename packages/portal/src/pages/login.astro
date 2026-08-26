@@ -1,0 +1,41 @@
+---
+import MarketingLayout from '../layouts/MarketingLayout.astro';
+import LoginForm from '../components/LoginForm.tsx';
+import { isDevAuthEnabled, isFirebaseConfigured, getSession } from '../lib/auth';
+
+// If already signed in, send where they need to go.
+// Pending sessions (no org yet) go to onboarding; full sessions go to the app.
+const session = await getSession(Astro.cookies);
+if (session) return Astro.redirect(session.orgId ? '/app' : '/onboarding');
+
+const firebaseReady = isFirebaseConfigured();
+const devAuthEnabled = isDevAuthEnabled();
+---
+<MarketingLayout title="Sign in — Typeroll">
+  <section class="container--narrow" style="padding: 4rem 1.5rem;">
+    <div class="card stack">
+      <h1 style="font-size: 1.5rem;">Sign in to Typeroll</h1>
+      {firebaseReady ? (
+        <LoginForm client:load />
+      ) : devAuthEnabled ? (
+        <>
+          <p class="muted text-sm">
+            Firebase is not configured on this server. Dev mode is enabled — click below to continue with a local dev session.
+          </p>
+          <form method="POST" action="/api/auth/dev-session">
+            <button type="submit" class="btn" style="width: 100%; justify-content: center;">
+              Continue as Dev User
+            </button>
+          </form>
+          <p class="muted text-sm">
+            To enable real auth, set <code>FIREBASE_SERVICE_ACCOUNT</code> and the <code>PUBLIC_FIREBASE_*</code> env vars.
+          </p>
+        </>
+      ) : (
+        <p class="muted text-sm">
+          Authentication is unavailable because Firebase is not configured on this production server.
+        </p>
+      )}
+    </div>
+  </section>
+</MarketingLayout>

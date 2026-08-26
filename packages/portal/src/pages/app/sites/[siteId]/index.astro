@@ -1,0 +1,130 @@
+---
+import AppLayout from '../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../lib/version-store';
+import { loadSiteContext } from '../../../../lib/access';
+import { getStore } from '../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { Site, Page, SiteSettings, SiteVersion } from '@typeroll/shared';
+import DeployBanner from '../../../../components/DeployBanner.tsx';
+import DeployHistory from '../../../../components/DeployHistory.tsx';
+import { siteDisplayHost } from '../../../../lib/site-urls';
+import { domainState, DOMAIN_STATE_LABEL } from '../../../../lib/site-public-urls';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const settings = await vstore.settings(orgId, siteId, versionId);
+const pages = await vstore.pages(orgId, siteId, versionId);
+const partials = await vstore.partials(orgId, siteId, versionId);
+const versionDoc = await store.getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
+const lastDeployedAt = versionDoc?.last_deployed_at ?? null;
+
+// Count things that would be in the next deploy but were edited since the
+// last deploy. This is the user's "what's not live yet?" answer.
+function isPending(updatedAt: string | undefined, eligible: boolean): boolean {
+  if (!eligible) return false;
+  if (!lastDeployedAt) return true;
+  if (!updatedAt) return false;
+  return updatedAt > lastDeployedAt;
+}
+const pendingPages = pages.filter((p) =>
+  isPending(p.date_updated, p.status === 'published' || p.status === 'unlisted'),
+).length;
+const pendingPartials = partials.filter((p) =>
+  isPending(p.date_updated, p.status === 'published'),
+).length;
+const totalPending = pendingPages + pendingPartials;
+
+const counts = {
+  published: pages.filter((p) => p.status === 'published').length,
+  draft: pages.filter((p) => p.status === 'draft').length,
+  unlisted: pages.filter((p) => p.status === 'unlisted').length,
+  review: pages.filter((p) => p.status === 'review').length,
+};
+
+const hostInfo = siteDisplayHost(site);
+---
+<AppLayout title={site.name} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>{site.name}</h1>
+      <p class="muted">
+        {hostInfo ? (
+          <>
+            <a href={`https://${hostInfo.host}`} target="_blank" rel="noopener">{hostInfo.host}</a>
+            {hostInfo.isFallback && (
+              <span class="text-sm" style="margin-left: 0.5em;">— preview URL; set your real domain in Settings</span>
+            )}
+          </>
+        ) : (
+          <>No domain</>
+        )}
+        {' '}&middot;{' '}
+        {DOMAIN_STATE_LABEL[domainState(site)]}
+      </p>
+    </div>
+    <div class="row">
+      <a href={`/app/sites/${siteId}/pages`} class="btn btn--secondary">Manage pages</a>
+      <a href={`/app/sites/${siteId}/ai`} class="btn">AI chat</a>
+    </div>
+  </div>
+
+  <DeployBanner
+    client:load
+    siteId={siteId}
+    pendingPages={pendingPages}
+    pendingPartials={pendingPartials}
+    totalPending={totalPending}
+    lastDeployedAt={lastDeployedAt}
+  />
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+    <div class="card">
+      <div class="muted text-sm">Published</div>
+      <div style="font-size: 2rem; font-weight: 600;">{counts.published}</div>
+    </div>
+    <div class="card">
+      <div class="muted text-sm">Drafts</div>
+      <div style="font-size: 2rem; font-weight: 600;">{counts.draft}</div>
+    </div>
+    <div class="card">
+      <div class="muted text-sm">In review</div>
+      <div style="font-size: 2rem; font-weight: 600;">{counts.review}</div>
+    </div>
+    <div class="card">
+      <div class="muted text-sm">Unlisted</div>
+      <div style="font-size: 2rem; font-weight: 600;">{counts.unlisted}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size: 1.125rem; margin-bottom: 1rem;">Recent pages</h2>
+    {pages.length === 0 ? (
+      <p class="muted">No pages yet.</p>
+    ) : (
+      <ul style="list-style: none; padding: 0; margin: 0;">
+        {pages.slice(0, 8).map(page => (
+          <li style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-top: 1px solid var(--color-border);">
+            <a href={`/app/sites/${siteId}/pages/${page.id}`}>{page.title}</a>
+            <span class="muted text-sm">/{page.slug} &middot; {page.status}</span>
+          </li>
+        ))}
+      </ul>
+    )}
+  </div>
+
+  <div class="card" style="margin-top: 1.5rem;">
+    <h2 style="font-size: 1.125rem; margin-bottom: 1rem;">Recent deploys</h2>
+    <DeployHistory client:load siteId={siteId} />
+  </div>
+
+  <p class="muted text-sm" style="margin-top: 2rem;">
+    Theme: <strong>{settings?.colors.primary ?? '—'}</strong>
+    {' '}/{' '}
+    <strong>{settings?.fonts.body ?? '—'}</strong>
+  </p>
+</AppLayout>

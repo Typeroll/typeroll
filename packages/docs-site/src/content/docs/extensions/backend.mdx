@@ -1,0 +1,98 @@
+---
+title: Provider backend & admin SSO
+description: Verify direct Extension tokens, delegated admin identity, self-hosted issuers, and lifecycle webhooks.
+---
+
+The provider backend owns business data and authorization. Typeroll supplies
+two distinct identity types; they must not be interchangeable:
+
+- a short-lived delegated user token for an admin launch;
+- a public Extension token attached to a direct frontend API request.
+
+Always validate the token issuer dynamically. A hosted portal and a
+self-hosted portal publish discovery and JWKS from different domains.
+
+## Admin launch
+
+Typeroll posts a 60-second launch code, issuer, installation ID, and page ID to
+the manifest's exact `launch_url`. Exchange the code server-to-server:
+
+```http
+POST {issuer}/api/extensions/token
+Content-Type: application/json
+
+{
+  "grant_type": "authorization_code",
+  "code": "…",
+  "client_id": "…",
+  "client_secret": "…"
+}
+```
+
+Validate the returned ES256 JWT against the issuer's discovery document and
+JWKS. Check at least `iss`, `aud`, `sub`, `org_id`, `site_id`,
+`installation_id`, `permission`, `scopes`, `jti`, `iat`, and `exp`. The client
+secret and access token must never reach frontend code or logs.
+
+## Direct frontend requests
+
+Frontend code calls a declared relative path with `context.api.fetch()`. The
+browser sends the request directly to `api.base_url`; Typeroll does not receive
+or forward its payload. Configure CORS for each installed site origin and
+accept the `X-Typeroll-Extension-Token` request header.
+
+When `api.authentication` is `signed_installation`, verify that token's ES256
+signature and `iss`, `aud`, `sub`, `token_use=public_extension`, `org_id`,
+`site_id`, `installation_id`, `origin`, `jti`, `iat`, and `exp`. Fetch keys
+from the issuer's discovery/JWKS endpoints. The token proves installation
+identity only. Authenticate and authorize the visitor, recipient token and
+business action separately.
+
+For bundled components, require the verified `origin` claim to equal the
+request's browser `Origin` header. Embedded apps use Typeroll's validated
+browser-side message bridge, so the provider request is likewise made by the
+published site origin. Never use the token claim to relax CORS dynamically
+before the signature and issuer have been verified.
+
+Do not accept a site or organization ID supplied by browser input when a
+verified Extension token already contains that identity. Do not put durable
+provider credentials in frontend code. Typeroll's route declaration is a
+client contract, not a provider-side access-control substitute.
+
+There is no supported architecture where Typeroll or a generated customer
+Function reverse-proxies this request. Third-party and bespoke backends remain
+in the app developer's accounts. Typeroll Apps use the same direct contract,
+but their backends are operated separately in Typeroll-controlled accounts.
+
+## Pair a self-hosted issuer
+
+If the manifest declares `auth.pairing_url`, an administrator can explicitly
+pair a portal. The provider receives an issuer, discovery URL, nonce, JWKS
+fingerprint, and signed pairing assertion. Fetch discovery and JWKS from the
+declared issuer, compare the canonical JWKS fingerprint, verify the assertion,
+then store the trusted issuer. Never trust keys included only in the inbound
+request body.
+
+## Lifecycle webhooks
+
+Typeroll signs the exact raw body with HMAC-SHA256:
+
+```text
+X-Typeroll-Event
+X-Typeroll-Event-Id
+X-Typeroll-Timestamp
+X-Typeroll-Signature: v1=<hex hmac>
+```
+
+Verify the signature over `<timestamp>.<raw-body>`, reject stale timestamps,
+and deduplicate `X-Typeroll-Event-Id`. Return a success response for an event
+already processed. Delivery retries network failures, 408, 429, and 5xx.
+
+## Service credentials
+
+Server-to-server calls into Typeroll use an installation credential, not an
+admin launch token. Send it as Bearer along with the owner organization and
+installation headers required by the site API. Store the secret outside source
+control and rotate it from the Extension installation settings.
+
+See the [manifest reference](/extensions/manifest/) for the declared surfaces.

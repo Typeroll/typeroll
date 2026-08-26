@@ -1,0 +1,347 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { buildFormSource,
+  buildBacklinks,
+  buildCollectionSource,
+  getAllMedia,
+  getAllPages,
+  getAppsPublic,
+  getExtensionsPublic,
+  getBlockTypes,
+  getBlockRegistry,
+  getCollectionItemRoutes,
+  getAllCollections,
+  getCollectionItems,
+  getPartials,
+  pageForFacet,
+  getSiteSettings,
+  isHomePage,
+  pageForItem,
+  urlFor,
+} from '../lib/content';
+import { sanitizeBody } from '../lib/sanitize';
+import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
+  buildCollectionItemSchema,
+  buildCoreBlockRegistry,
+  buildMediaLookup,
+  buildPageSchema,
+  collectBlockAssets,
+  composePageWithTemplate,
+  expandExtensionIncludes,
+  expandFormIncludes,
+  expandIncludes,
+  facetRoutes,
+  findPaginatedListing,
+  renderBlocks,
+  renderItemTemplate,
+  siteContext,
+  transformBodyForSeo,
+} from '@typeroll/shared';
+import type { Block, BlockType, CollectionDef, CollectionItem, FacetRoute, Page, PageTemplate, RenderContext } from '@typeroll/shared';
+import { getPageTemplate } from '../lib/content';
+
+// A taxonomy page IS a page — synthetic Page doc, optional PageTemplate,
+// same block pipeline. It only differs in carrying a facet scope that
+// listing blocks inherit, so it rides PageProps rather than forking the
+// renderer into a third branch.
+type PageProps = { kind: 'page'; page: Page; pageNum?: number; facet?: FacetRoute };
+type ItemProps = { kind: 'item'; collection: CollectionDef; item: CollectionItem; page: Page };
+type Props = PageProps | ItemProps;
+
+export async function getStaticPaths() {
+  const pages = await getAllPages({ includeUnlisted: true });
+  // urlFor honours the optional `path` field (C6 nested-URL support),
+  // falling back to "/" + slug. Strip the leading slash for Astro's
+  // `[...slug]` rest-param.
+  const pageRoutes = pages.map((page) => ({
+    params: { slug: isHomePage(page) ? undefined : urlFor(page).replace(/^\/+/, '') },
+    props: { kind: 'page' as const, page },
+  }));
+
+  // Archive pagination: a page whose block tree holds a collection listing
+  // with `paginate` set gets /page/2/, /page/3/… sibling routes. The
+  // repeater slices per page and renders the pager; this only decides HOW
+  // MANY pages exist (same item query the renderer runs).
+  const archiveRegistry = buildCoreBlockRegistry();
+  for (const bt of await getBlockTypes()) archiveRegistry.set(bt.id, bt);
+  const archiveSource = await buildCollectionSource();
+  const archiveRoutes: Array<{ params: { slug: string }; props: PageProps }> = [];
+  for (const page of pages) {
+    if (page.content_mode !== 'blocks' || !page.blocks?.length) continue;
+    let effectiveBlocks: Block[] = page.blocks;
+    if (page.template) {
+      const tpl = await getPageTemplate(page.template);
+      if (tpl?.blocks?.length) effectiveBlocks = composePageWithTemplate(tpl.blocks, page.blocks);
+    }
+    const listing = findPaginatedListing(effectiveBlocks, archiveRegistry);
+    if (!listing) continue;
+    const total = archiveSource({
+      collection: listing.collection,
+      sort_by: listing.sort_by,
+      sort_order: listing.sort_order,
+      filter_field: listing.filter_field,
+      filter_value: listing.filter_value,
+    }).length;
+    const totalPages = Math.ceil(total / listing.per_page);
+    const base = isHomePage(page) ? '' : `${urlFor(page).replace(/^\/+/, '')}/`;
+    for (let n = 2; n <= totalPages; n++) {
+      archiveRoutes.push({
+        params: { slug: `${base}page/${n}` },
+        props: { kind: 'page' as const, page, pageNum: n },
+      });
+    }
+  }
+
+  // Collection items materialize one static page each. Pages always win
+  // on collision so adding/removing items can't accidentally shadow a real
+  // page (and a redirect rule covers the reverse case if needed).
+  const reservedSlugs = new Set(pages.map((p) => urlFor(p).replace(/^\/+/, '')));
+  const itemRoutes = await getCollectionItemRoutes();
+  const itemEntries = itemRoutes
+    .filter((r) => !reservedSlugs.has(r.path.replace(/^\/+/, '')))
+    .map(({ path, collection, item }) => ({
+      params: { slug: path.replace(/^\/+/, '') },
+      props: {
+        kind: 'item' as const,
+        collection,
+        item,
+        page: pageForItem(collection, item, path),
+      },
+    }));
+
+  // Taxonomy pages. Generated per collection from its declared facets; the
+  // min_items guard inside facetRoutes is what keeps 500 records from
+  // becoming several thousand thin-content routes.
+  const facetEntries: Array<{ params: { slug: string }; props: PageProps }> = [];
+  for (const coll of await getAllCollections()) {
+    if (!coll.facets?.length) continue;
+    const published = (await getCollectionItems(coll.name)).filter((i) => i.status === 'published');
+    for (const route of facetRoutes(coll, published)) {
+      const slug = route.path.replace(/^\/+/, '');
+      // Real pages and collection items always win a path collision, same
+      // rule that already protects item routes.
+      if (reservedSlugs.has(slug)) continue;
+      facetEntries.push({
+        params: { slug },
+        props: { kind: 'page', page: pageForFacet(coll, route), facet: route },
+      });
+    }
+  }
+
+  return [...pageRoutes, ...archiveRoutes, ...itemEntries, ...facetEntries];
+}
+
+const props = Astro.props as Props;
+const settings = await getSiteSettings();
+const appsPublic = await getAppsPublic();
+const extensionsPublic = await getExtensionsPublic();
+const { header, footer, freeBlocks } = await getPartials();
+
+// Inline <x-include name="…" /> references before sanitization. The sanitizer
+// would otherwise strip the unknown tag; the inlined block bodies are already
+// sanitized at save time so a second pass on the merged HTML stays idempotent.
+//
+// Block-mode pages render via the block-tree renderer. The registry is the
+// core library + every BlockType this site has authored or installed —
+// merged with collisions resolved in favour of the per-site doc (which
+// matches the Firestore truth). Output passes through the same sanitizer
+// so any unsafe template substitution (data-injected scripts, event
+// handlers) is stripped defense-in-depth.
+// Memoized for the build — see getBlockRegistry. Read-only from here: it is
+// the same Map on every route.
+const blockRegistry = await getBlockRegistry();
+const extensionSource = (blockTypeId: string) => {
+  const blockType = blockRegistry.get(blockTypeId);
+  return blockType?.extension ? {
+    extension_id: blockType.extension.extension_id,
+    installation_id: blockType.extension.installation_id,
+    component_id: blockType.extension.component_id,
+    label: blockType.label,
+  } : undefined;
+};
+
+// Render context exposed via {{page.*}} / {{site.*}} / {{item.*}}
+// substitution. Tokens that don't resolve render to an empty string —
+// safer than failing the build on a missing field.
+const backlinks = await buildBacklinks();
+const renderCtx: RenderContext = {
+  page: props.page as unknown as Record<string, unknown>,
+  site: siteContext(settings as unknown as Record<string, unknown>),
+  item: props.kind === 'item' ? (props.item as unknown as Record<string, unknown>) : undefined,
+  collection: props.kind === 'item' ? { name: props.collection.name } : undefined,
+  // Archive pagination: which slice a paginating repeater renders + where
+  // its pager links point. Present on every page render (current: 1 when
+  // this is the page's own URL) so the pager shows on page 1 too.
+  // Reverse reference index — lets a `backlinks` repeater on an item page
+  // list "who points at me" without anyone maintaining that list by hand.
+  backlinks,
+  // Taxonomy scope — a listing block that declares no filter of its own
+  // inherits this, so the same block works on a normal page and on
+  // /bransch/rormokare/ without per-route configuration.
+  facet: props.kind === 'page' && props.facet ? { filters: props.facet.filters } : undefined,
+  pagination: props.kind === 'page'
+    ? {
+        current: props.pageNum ?? 1,
+        base_url: (() => {
+          const u = urlFor(props.page);
+          return u.endsWith('/') ? u : `${u}/`;
+        })(),
+      }
+    : undefined,
+};
+
+// Collection-backed repeaters fetch their items via this resolver. Built
+// once per build (it pre-loads all published items from every collection)
+// so per-page rendering stays synchronous.
+const collectionSource = await buildCollectionSource();
+// Forms 2.0: core/form blocks resolve through this (token + steps baked
+// into fixtures by the deploy's materialize step).
+const formSource = await buildFormSource(blockRegistry, settings.language);
+
+let bodyHtml: string | null = null;
+let blockCss = '';
+let blockJs = '';
+// The body's block tree, kept so CSS/JS can be collected in ONE pass together
+// with the header's and footer's — see below. Null for HTML-mode bodies.
+let bodyBlocks: Block[] | null = null;
+// Blocks-mode bodies get the unconstrained shell (`page-content--blocks`):
+// core/section is designed as full-bleed-outer + constrained-inner, so the
+// shell must not impose max-width/padding — that's what made "white hero
+// flush under the header" impossible and forced 100vw margin hacks.
+// HTML-mode keeps the padded container (customer HTML expects it).
+let blocksBody = false;
+let formsRuntimeTag = '';
+if (props.kind === 'page') {
+  if (props.page.content_mode === 'html' && props.page.html_content) {
+    bodyHtml = sanitizeBody(expandExtensionIncludes(
+      expandFormIncludes(
+        expandIncludes(props.page.html_content, freeBlocks),
+        formSource,
+      ),
+      extensionSource,
+    ));
+  } else if (props.page.content_mode === 'blocks' && props.page.blocks?.length) {
+    let effectiveBlocks: Block[] = props.page.blocks;
+    if (props.page.template) {
+      const tpl = await getPageTemplate(props.page.template);
+      if (tpl?.blocks?.length) {
+        effectiveBlocks = composePageWithTemplate(tpl.blocks, props.page.blocks);
+      }
+    }
+    bodyHtml = sanitizeBody(renderBlocks(effectiveBlocks, {
+      registry: blockRegistry,
+      context: renderCtx,
+      collectionSource,
+      formSource,
+    }));
+    bodyBlocks = effectiveBlocks;
+    blocksBody = true;
+  }
+}
+ else {
+  // Collection items: prefer the block-tree template when set, fall back
+  // to the legacy HTML template otherwise. The block path pushes the
+  // item into the render context so `template/item_*` blocks (and any
+  // {{item.*}} substitution) resolve against THIS item's fields.
+  //
+  // Same sanitiser pass on the output of either path so item-template
+  // authoring can't smuggle scripts past the final defense-in-depth.
+  if (props.collection.item_template_blocks?.length) {
+    const itemCtx: RenderContext = {
+      ...renderCtx,
+      item: props.item as unknown as Record<string, unknown>,
+      collection: { name: props.collection.name, label_singular: props.collection.label_singular, label_plural: props.collection.label_plural },
+    };
+    bodyHtml = sanitizeBody(renderBlocks(props.collection.item_template_blocks, {
+      registry: blockRegistry,
+      context: itemCtx,
+      collectionSource,
+    }));
+    bodyBlocks = props.collection.item_template_blocks;
+    blocksBody = true;
+  } else {
+    const merged = renderItemTemplate(props.collection.item_template_html, props.item);
+    bodyHtml = sanitizeBody(expandExtensionIncludes(
+      expandIncludes(merged, freeBlocks),
+      extensionSource,
+    ));
+  }
+}
+
+// Block assets for EVERYTHING on the page — the header and footer partials as
+// well as the body. Collected in one call so a block type used in both the
+// header and the body emits its CSS once (collectBlockAssets dedupes per type
+// within a call, not across calls).
+//
+// Partials were previously left out entirely, so a custom block placed in a
+// header rendered its markup with neither its styles nor its script. This also
+// reaches HTML-mode pages, which never collected assets at all and would have
+// dropped a block-mode header's CSS.
+{
+  const partialBlocks: Block[] = [
+    ...(header?.content_mode === 'blocks' ? header.blocks ?? [] : []),
+    ...(footer?.content_mode === 'blocks' ? footer.blocks ?? [] : []),
+  ];
+  const assets = collectBlockAssets([...partialBlocks, ...(bodyBlocks ?? [])], blockRegistry);
+  blockCss = assets.css;
+  blockJs = assets.js;
+}
+// Forms 2.0 runtime ships once per page when any form rendered. Appended
+// AFTER sanitization on purpose: the runtime is platform code (same trust
+// class as BLOCKS_RUNTIME_CSS), and the sanitizer would strip <script>.
+if (bodyHtml && bodyHtml.includes('data-tr-form')) {
+  formsRuntimeTag = `<style>${FORM_SHELL_CSS}</style><script>${FORMS_RUNTIME_JS}</script>`;
+  bodyHtml += formsRuntimeTag;
+}
+
+// Post-render SEO/Core Web Vitals transform. Runs on the final body HTML
+// regardless of source (html-mode preserved-body, block-mode renderBlocks
+// output, collection-item template). Resolves cdn.typeroll.com URLs to
+// pre-generated AVIF/WebP variants from the Media doc, injects width/
+// height for CLS, wraps in <picture>. The html-mode save-time pass
+// already did most of this — running again is idempotent. Block-mode
+// pages get optimised here for the first time.
+if (bodyHtml) {
+  const mediaList = await getAllMedia();
+  const mediaLookup = buildMediaLookup(mediaList);
+  // Resolve the responsive-image `sizes` default: page-level overrides the
+  // site-wide setting; a per-<img> `sizes` attr still wins over both inside
+  // the transform. Block-mode pages reach the transform here for the first
+  // time, so this is where their `sizes` gets baked.
+  const defaultSizes =
+    (props.kind === 'page' ? props.page.image_sizes_default : undefined) ||
+    settings.image_sizes_default ||
+    undefined;
+  bodyHtml = transformBodyForSeo(bodyHtml, mediaLookup, { defaultSizes });
+}
+
+// Auto JSON-LD for the current route. Pages with schema_type get a Service
+// (or generic-envelope) shape; collection items with collection.schema_type
+// get the item shape. SEOHead emits these alongside Article/Org/Breadcrumb.
+const canonical = new URL(Astro.url.pathname, Astro.site ?? 'https://example.com').toString();
+const extraJsonLd: string[] = [];
+if (props.kind === 'page') {
+  const ld = buildPageSchema(props.page, settings, canonical);
+  if (ld) extraJsonLd.push(ld);
+} else {
+  const ld = buildCollectionItemSchema(props.item, props.collection, settings, canonical);
+  if (ld) extraJsonLd.push(ld);
+}
+---
+<BaseLayout page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} extraJsonLd={extraJsonLd}>
+  <Header partial={header} settings={settings} context={renderCtx} />
+
+  {bodyHtml ? (
+    <main
+      class={blocksBody ? 'page-content page-content--blocks' : 'page-content'}
+      data-pagefind-body={props.page.noindex ? undefined : ''}
+      set:html={bodyHtml}
+    />
+  ) : (
+    <main class="page-content" />
+  )}
+
+  <Footer partial={footer} settings={settings} context={renderCtx} />
+</BaseLayout>

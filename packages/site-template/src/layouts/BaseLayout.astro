@@ -1,0 +1,239 @@
+---
+import type { ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
+import { asFunnelAttributionConfig, buildExtensionRuntimeScript, buildFunnelAttributionRuntime, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import SEOHead from '../components/SEOHead.astro';
+import CookieConsent from '../components/CookieConsent.astro';
+import '../styles/reset.css';
+import '../styles/global.css';
+
+interface Props {
+  page: Page;
+  settings: SiteSettings;
+  /**
+   * Public apps snapshot (enabled Typeroll apps + their public config).
+   * Drives opt-in injections like the analytics beacon. Absent → no apps.
+   */
+  apps?: SiteApps;
+  /** Public, secret-free metadata for enabled external Extensions. */
+  extensions?: ExtensionRuntimeSnapshot;
+  /**
+   * Concatenated CSS for every block type used by this page. Inlined in
+   * <head> so blocks render unstyled-free on first paint. Tree-shaken
+   * per-page by the renderer — pages that don't use a block don't pay
+   * for its CSS.
+   */
+  blockCss?: string;
+  /**
+   * Concatenated JS for every block type with a `script` field that's
+   * used on this page. Loaded at end-of-body — non-blocking. Wrapped in
+   * an IIFE that exposes window.TyperollBlocks.register/init so
+   * blocks coordinate without polluting global scope.
+   */
+  blockJs?: string;
+  /**
+   * Pre-serialised JSON-LD objects emitted into <head> alongside the
+   * auto-generated ones in SEOHead. Used for context-specific schemas the
+   * static page itself doesn't know how to build — collection-item shapes
+   * (PodcastEpisode, BlogPosting, …), page-specific shapes (Service,
+   * Course, …). See SEOHead for the contract.
+   */
+  extraJsonLd?: string[];
+}
+
+const { page, settings, blockCss, blockJs, extraJsonLd, apps, extensions } = Astro.props;
+const extensionRuntime = extensions?.installations?.length
+  ? buildExtensionRuntimeScript(extensions)
+  : '';
+const extensionUsesSensitiveUrlContext = Boolean(extensions?.installations.some((installation) =>
+  installation.components.some((component) => {
+    const declaration = component.url_context;
+    return [
+      ...(declaration?.query ?? []),
+      ...(declaration?.fragment ?? []),
+      ...(declaration?.path ?? []),
+      ...(declaration?.raw_query ? [declaration.raw_query] : []),
+    ].some((input) => input.sensitive === true);
+  }),
+));
+
+// Analytics app (opt-in): inject the Cloudflare Web Analytics beacon when the
+// app is enabled AND a beacon token is present. Cookieless; deferred. Only
+// the public token reaches here (materialize filters), so it's safe to embed.
+// Integrations app (opt-in): ~20 third-party tags built from validated IDs
+// in the app config. Tags outside the `necessary` consent category go
+// through the SAME gate as cookie_consent.scripts_optional — held inert
+// until the visitor accepts — so the site has one consent mechanism, not
+// two. With no banner enabled the owner declared no consent requirement and
+// they fire directly.
+const integrations = apps?.apps?.integrations?.enabled
+  ? renderIntegrationTags(apps.apps.integrations.config)
+  : null;
+const consentGated = settings.cookie_consent?.enabled === true;
+const integrationsHead = integrations
+  ? integrations.head + (consentGated ? wrapConsentScripts(integrations.headConsent) : integrations.headConsent)
+  : '';
+const integrationsBodyEnd = integrations
+  ? integrations.bodyEnd + (consentGated ? wrapConsentScripts(integrations.bodyEndConsent) : integrations.bodyEndConsent)
+  : '';
+
+const analyticsBeacon = (apps?.apps?.analytics?.enabled
+  && typeof apps.apps.analytics.config?.beacon_token === 'string'
+  && apps.apps.analytics.config.beacon_token)
+  ? String(apps.apps.analytics.config.beacon_token)
+  : null;
+
+const funnelConfig = apps?.apps?.funnel_attribution?.enabled
+  ? asFunnelAttributionConfig({
+      funnels: apps.apps.funnel_attribution.config?.funnels,
+      allow_personal_data: apps.apps.funnel_attribution.config?.allow_personal_data === true,
+      allow_synthetic_fallbacks: apps.apps.funnel_attribution.config?.allow_synthetic_fallbacks === true,
+    })
+  : null;
+const funnelRuntime = funnelConfig
+  ? buildFunnelAttributionRuntime(
+      funnelConfig,
+      settings.cookie_consent?.enabled === true,
+      apps?.apps?.analytics?.enabled
+        && typeof apps.apps.analytics.config?.event_endpoint === 'string'
+        && typeof apps.apps.analytics.config?.event_token === 'string'
+        ? {
+            endpoint: apps.apps.analytics.config.event_endpoint,
+            token: apps.apps.analytics.config.event_token,
+          }
+        : undefined,
+    )
+  : '';
+
+// Merge with inline defaults so optional fields (surface, text_light, size_base)
+// never produce "undefined" / "undefinedpx" in CSS for sites whose settings doc
+// predates these fields or used a partial PATCH. Spread first, then per-field
+// nullish-coalescing — avoids TS ts(2783) "specified more than once".
+const c = {
+  ...settings.colors,
+  surface: settings.colors?.surface ?? '#f8fafc',
+  text_light: settings.colors?.text_light ?? '#64748b',
+};
+const f = {
+  ...settings.fonts,
+  heading: settings.fonts?.heading ?? 'Inter',
+  body: settings.fonts?.body ?? 'Inter',
+  size_base: settings.fonts?.size_base ?? 16,
+};
+
+// Inline CSS variables — these are the runtime values for the design tokens
+// the rest of the stylesheet (and any template blocks) reference.
+const themeStyle = `:root{
+  --color-primary:${c.primary};
+  --color-secondary:${c.secondary};
+  --color-accent:${c.accent};
+  --color-background:${c.background};
+  --color-surface:${c.surface};
+  --color-text:${c.text};
+  --color-text-light:${c.text_light};
+  --font-heading:'${f.heading}';
+  --font-body:'${f.body}';
+  --font-size-base:${f.size_base}px;
+}`;
+
+const googleFontFamilies = (() => {
+  const fams = new Set<string>();
+  if (f.heading) fams.add(f.heading);
+  if (f.body) fams.add(f.body);
+  return Array.from(fams);
+})();
+const googleFontUrl = googleFontFamilies.length
+  ? `https://fonts.googleapis.com/css2?${googleFontFamilies
+      .map((fam) => `family=${encodeURIComponent(fam)}:wght@400;500;600;700`)
+      .join('&')}&display=swap`
+  : null;
+
+// CLS guard: while the Google webfont is loading, the browser uses the
+// generic fallback (Arial / sans-serif). When the webfont arrives and
+// swaps in, layout shifts unless the fallback metrics are close enough.
+// `size-adjust` + override descriptors fake-match Arial's metrics to
+// Inter's (the platform default). Sites that use a wildly different
+// font still get *some* shift, but the average case drops from CLS
+// ~0.2 (autopilot.se field report) to <0.05.
+const fontFallbackStyle = googleFontFamilies.length
+  ? `@font-face{font-family:'tr-fallback';src:local('Arial');size-adjust:107%;ascent-override:90%;descent-override:22%;line-gap-override:0%}body{font-family:var(--font-body),'tr-fallback',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}h1,h2,h3,h4,h5,h6{font-family:var(--font-heading),'tr-fallback',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}`
+  : null;
+---
+<!doctype html>
+<html lang={page.language || settings.language || 'en'}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {extensionUsesSensitiveUrlContext && <meta name="referrer" content="no-referrer" />}
+
+    <SEOHead page={page} settings={settings} extraJsonLd={extraJsonLd} />
+
+    <style set:html={themeStyle} />
+
+    {googleFontUrl && (
+      <>
+        {/* Webfont loading optimised for Core Web Vitals:
+           - preconnect warms the TLS handshake to fonts.gstatic.com so
+             the woff2 fetch starts on first paint instead of after the
+             CSS roundtrip (≈300 ms saved on a cold cache).
+           - The stylesheet link uses the rel="preload"/onload swap
+             pattern. The browser fetches the CSS asynchronously and
+             promotes it to a real stylesheet once it lands — render no
+             longer blocks waiting for fonts.googleapis.com (≈1500 ms
+             saved per autopilot.se Lighthouse).
+           - <noscript> fallback keeps the page accessible when JS is
+             disabled (crawlers, accessibility tools).
+           - The size-adjusted 'tr-fallback' @font-face (above) keeps
+             layout stable while swap happens, cutting CLS from ~0.2 to
+             <0.05 in the common case. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+          rel="preload"
+          as="style"
+          href={googleFontUrl}
+          onload="this.onload=null;this.rel='stylesheet'"
+        />
+        <noscript><link rel="stylesheet" href={googleFontUrl} /></noscript>
+      </>
+    )}
+    {fontFallbackStyle && <style set:html={fontFallbackStyle} />}
+
+    {blockCss && <style set:html={blockCss} />}
+    {settings.custom_css && <style set:html={settings.custom_css} />}
+    {/* Page-level CSS after site CSS so a page can override the site theme. */}
+    {page.custom_css && <style set:html={page.custom_css} />}
+    {settings.scripts_head && <Fragment set:html={settings.scripts_head} />}
+    {integrationsHead && <Fragment set:html={integrationsHead} />}
+
+    {/* Analytics app (opt-in): Cloudflare Web Analytics beacon. Cookieless,
+       deferred; the token is the public client beacon token. */}
+    {analyticsBeacon && (
+      <script
+        is:inline
+        defer
+        src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon={JSON.stringify({ token: analyticsBeacon })}
+      />
+    )}
+
+    {/* Early-paint flag for cookie consent: if no choice cookie is set, add
+       a class to <html> BEFORE the body renders so the modal isn't a visible
+       afterthought. Tiny inline script — no measurable perf cost; runs
+       synchronously during HTML parse. */}
+    {settings.cookie_consent?.enabled && (
+      <script is:inline set:html={`(function(){if(!document.cookie.match(/(?:^|;\\s*)tr_consent=/))document.documentElement.classList.add('tr-consent-needed');})();`} />
+    )}
+  </head>
+  <body>
+    <slot />
+    {blockJs && (
+      <script set:html={`(function(){var registry={};window.TyperollBlocks={register:function(id,init){registry[id]=init;},init:function(){Object.keys(registry).forEach(function(id){document.querySelectorAll('[data-block-type="'+id+'"]').forEach(function(el){try{registry[id](el,JSON.parse(el.getAttribute('data-block-data')||'{}'));}catch(e){console.error('[block init]',id,e);}});});}};${blockJs};window.TyperollBlocks.init();})();`} />
+    )}
+    {extensionRuntime && <script is:inline set:html={extensionRuntime} />}
+    {integrationsBodyEnd && <Fragment set:html={integrationsBodyEnd} />}
+    {settings.scripts_body_end && <Fragment set:html={settings.scripts_body_end} />}
+    {funnelRuntime && <script is:inline set:html={funnelRuntime} />}
+
+    <CookieConsent settings={settings} />
+  </body>
+</html>

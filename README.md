@@ -1,29 +1,87 @@
 # Typeroll
 
-Typeroll is an open-source website and application platform.
+Typeroll is an open-source CMS for building and operating fast static websites.
+The repository contains the editor, public API, MCP server, Forms backend,
+Extension runtime, static renderer, and self-hosting adapters as open-source
+software. Most code is MIT-licensed; the WordPress helper plugin is
+GPL-2.0-or-later for WordPress compatibility.
 
-The open-source edition is being prepared for publication in this repository. The source will be added after the boundary between the community edition and Typeroll Cloud has been completed and reviewed.
+## What is included
 
-This repository is not ready for production use yet.
+- block and HTML page editing with live preview;
+- collections, reusable blocks, media, redirects, templates, and workflows;
+- server-backed Forms with stored submissions, email actions, and webhooks;
+- the Extension manifest, installation, admin SSO, and browser runtime;
+- the WordPress migration workflow, URL coverage tools, and helper plugin;
+- a REST API and `@typeroll/mcp-server` for agent-driven site management;
+- static site generation and Cloudflare Pages deployment support;
+- Firebase/Firestore, R2, and local fixture-store adapters.
 
-## Extensions
+Forms is a core module in both the open-source edition and Typeroll Cloud. A
+self-hosted installation stores submissions in its own datastore and sends
+notifications and webhooks through services configured by its operator.
 
-Developers can start building integrations with the [Typeroll Extension starter](https://github.com/Typeroll/extension-starter).
+## Repository layout
 
-Typeroll uses three explicit runtime boundaries:
+```text
+packages/shared/         Shared data contracts and block renderer
+packages/site-template/  Astro static site generator
+packages/portal/         Astro/React CMS, API, Forms, and Extension runtime
+packages/mcp-server/     Public MCP server and CLI
+packages/docs-site/      Public documentation
+wp-helper-plugin/         Read-only WordPress migration helper
+examples/                Extension examples
+```
 
-- **Core modules** such as Forms are included with the CMS: in Typeroll Cloud for hosted customers and in the operator's environment for self-hosted installations. Forms does not require a Typeroll App or Extension purchase.
-- **Typeroll Apps** are optional premium products operated only in Typeroll-controlled cloud accounts. Self-hosting the CMS never deploys a Typeroll App backend into the operator's infrastructure.
-- **Third-party Extensions** integrate provider-owned SaaS or bespoke systems. Their backends and data remain in the developer's own accounts, and published components call those APIs directly. Typeroll and customer hosting accounts do not act as reverse proxies.
+## Quick start
 
-Customer sites remain static. A custom calculator, quiz or lead interface may submit directly to the site's ordinary Forms module without requiring a separate application backend.
+Use Node.js 22 or later.
 
-See the public [Extension architecture](https://docs.typeroll.com/extensions/overview/) and [self-hosting guide](https://docs.typeroll.com/guides/self-hosting/) for the protocol and deployment model.
+```sh
+npm install
+npm run dev:portal
+```
 
-## Documentation
+The development server uses the fixture datastore and a local development
+identity when Firebase is not configured. Open `http://localhost:4321`.
 
-Public documentation is available at [docs.typeroll.com](https://docs.typeroll.com/).
+Run the static renderer separately with:
+
+```sh
+npm run dev:site
+```
+
+Before contributing, run:
+
+```sh
+npm run typecheck
+npm test
+npm run build
+```
+
+See the [self-hosting guide](https://docs.typeroll.com/guides/self-hosting/)
+for production configuration.
+
+## Cloud and premium products
+
+Typeroll Cloud is the managed distribution operated from the private
+`Typeroll/typeroll-cloud` repository. Its deployment automation, operator
+console, marketing site, and operational configuration are not part of this
+repository. The migration code is open source; Typeroll Cloud can provide its
+execution, infrastructure, and support as a managed service.
+
+Typeroll Apps are separately operated premium applications. They connect to
+either Typeroll Cloud or a self-hosted installation through the same open
+Extension protocol. Third-party Extensions remain hosted in their developers'
+own accounts.
+
+## Security
+
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+Do not open a public issue for an undisclosed vulnerability.
 
 ## License
 
-Typeroll is released under the [MIT License](LICENSE).
+Most of the repository is [MIT-licensed](LICENSE). The WordPress helper plugin
+is distributed under
+[GPL-2.0-or-later](wp-helper-plugin/LICENSE).

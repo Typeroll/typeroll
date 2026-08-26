@@ -1,0 +1,14 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import ExtensionSettings from '../../../../../components/ExtensionSettings.tsx';
+import { loadSiteContext, requirePermission } from '../../../../../lib/access';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const admin = requirePermission(ctx, 'admin');
+if (!admin.ok) return Astro.redirect(`/app/sites/${ctx.site.id}`);
+---
+<AppLayout title={`Extensions — ${ctx.site.name}`} siteId={ctx.site.id}>
+  <div class="app-header"><div><a href={`/app/sites/${ctx.site.id}/settings`} class="muted text-sm">← Site settings</a><h1>Extensions</h1><p class="muted">Typeroll Apps, third-party SaaS products, and bespoke applications installed for this site. Each backend remains in its owner's account.</p></div></div>
+  <ExtensionSettings client:load siteId={ctx.site.id} />
+</AppLayout>

@@ -1,0 +1,83 @@
+{
+  "schema_version": 3,
+  "id": "se.typeroll.example.quote-generator",
+  "name": "Quote Generator Pilot",
+  "version": "1.0.0",
+  "runtime_compatibility": ">=0.38.0 <1.0.0",
+  "distribution": "private",
+  "developer": {
+    "name": "Example provider",
+    "support_url": "https://quotes.vendor.example/support",
+    "privacy_url": "https://quotes.vendor.example/privacy"
+  },
+  "permissions": [
+    { "scope": "content:read", "reason": "Reads product content when composing quotes." }
+  ],
+  "auth": {
+    "pairing_url": "https://quotes.vendor.example/typeroll/pair"
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "heading_default": { "type": "string", "title": "Default heading", "public": true },
+      "event_webhook_secret": { "type": "string", "format": "secret", "title": "Lifecycle signing secret" }
+    },
+    "required": ["event_webhook_secret"]
+  },
+  "frontend": {
+    "components": [
+      {
+        "id": "calculator",
+        "label": "Quote calculator",
+        "category": "custom",
+        "description": "Calculate a quote or open a recipient-specific quote.",
+        "render_mode": "bundled_component",
+        "props_schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "heading": { "type": "string", "title": "Heading", "default": "Your quote" }
+          }
+        },
+        "url_context": {
+          "query": [
+            { "name": "quote", "expose_as": "quote_token", "sensitive": true, "consume": true, "max_length": 256, "pattern": "^[A-Za-z0-9_-]+$" }
+          ],
+          "fragment": [
+            { "name": "quote", "expose_as": "quote_fragment", "sensitive": true, "consume": true, "max_length": 256, "pattern": "^[A-Za-z0-9_-]+$" }
+          ]
+        },
+        "entry": {
+          "script_url": "https://quotes.vendor.example/assets/1.0.0/index.js",
+          "script_sha256": "1706d35448c26e2df300729509c4f4ce12ba24af25dfc1c2447349392a3239ee",
+          "style_url": "https://quotes.vendor.example/assets/1.0.0/index.css",
+          "style_sha256": "a48afdeef849031b1a408472e6c9f773f8f79d9e7028043ac6fa7ce1c478ec00"
+        },
+        "unavailable_message": "The quote service is temporarily unavailable."
+      }
+    ]
+  },
+  "admin": {
+    "pages": [
+      { "id": "quotes", "label": "Quotes", "launch_url": "https://quotes.vendor.example/admin/launch", "minimum_permission": "write" }
+    ]
+  },
+  "api": {
+    "base_url": "https://quotes.vendor.example/typeroll",
+    "authentication": "signed_installation",
+    "routes": [
+      { "path": "/quotes/*", "methods": ["GET", "POST"] }
+    ]
+  },
+  "events": {
+    "subscriptions": ["extension.installed", "extension.updated", "extension.disabled", "extension.uninstalled", "extension.credential_rotated"],
+    "webhook_url": "https://quotes.vendor.example/typeroll/events",
+    "secret_config_key": "event_webhook_secret"
+  },
+  "data_handling": {
+    "personal_data": true,
+    "data_location": "EU",
+    "retention_url": "https://quotes.vendor.example/privacy#retention"
+  }
+}

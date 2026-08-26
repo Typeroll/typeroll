@@ -1,0 +1,16 @@
+---
+title: Technical Reference
+description: Implementation details for Typeroll-powered sites — what the renderer emits, what the deploy pipeline writes, and how the platform optimises for the web.
+---
+
+This section documents the technical contract Typeroll honours when it builds and serves a site. It's a reference for self-hosters, agency engineers, and anyone curious about what's actually under the hood — most customers never need it.
+
+Topics covered:
+
+- **[SEO & indexing](/technical/seo-and-indexing/)** — canonical URLs, robots, sitemap, structured data, fallback-subdomain de-duplication, and how custom-domain activation affects all of the above.
+- **Image optimisation** _(coming)_ — how images move from upload through Cloudflare's CDN into the page, what formats are served, caching behaviour.
+- **Social media tags** _(coming)_ — OpenGraph + Twitter card defaults, per-page overrides, image sizing.
+- **Cache headers & deploy invalidation** _(coming)_ — what the `_headers` file the deploy emits says, how to opt out, when stale assets matter.
+- **Site security** _(coming)_ — sanitiser behaviour, CSS scrubbing, iframe allow-list, what scripts can and can't ship.
+
+If something here disagrees with what you observe, the code wins — file an issue or fix it. The pages in this section are written to match the runner / renderer behaviour 1:1, but the implementations are the source of truth.

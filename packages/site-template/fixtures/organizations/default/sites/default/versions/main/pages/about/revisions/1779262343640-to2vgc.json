@@ -1,0 +1,14 @@
+{
+  "kind": "page",
+  "created_at": "2026-05-20T07:32:23.640Z",
+  "created_by": "dev@typeroll.local",
+  "doc": {
+    "title": "About",
+    "slug": "about",
+    "content_mode": "html",
+    "status": "published",
+    "html_content": "<h1>About us</h1><p>We're a small studio building things that last. Our websites don't have a database. They don't run server code. They're files on a CDN — and they'll keep working until the sun burns out.</p><h2>What we do</h2><p>We migrate WordPress sites onto a static, CDN-hosted stack. The result is faster, more secure, and never needs maintenance again.</p><h2>Get in touch</h2><p>Drop us a line at <a href=\"mailto:hello@acme.example.com\">hello@acme.example.com</a>.</p>",
+    "seo_title": "About",
+    "seo_description": "Learn about ACME Studio."
+  }
+}

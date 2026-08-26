@@ -1,0 +1,23 @@
+# Files excluded from Docker build context. Keeps the image small and the
+# upload fast.
+node_modules
+**/node_modules
+**/dist
+**/.astro
+**/.next
+**/.turbo
+.git
+.github
+.claude
+.cursor
+.idea
+.vscode
+*.log
+**/.env
+**/.env.local
+**/coverage
+**/playwright-report
+**/test-results
+packages/site-template/fixtures/organizations/default/sites/default/chat_messages
+packages/site-template/fixtures/organizations/default/sites/default/media
+docs

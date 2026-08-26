@@ -1,0 +1,204 @@
+---
+title: Self-Hosting
+description: Run Typeroll on your own infrastructure — requirements, environment variables, and deployment.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+Typeroll is open-source (MIT) and can be self-hosted. This guide covers running the portal on your own infrastructure.
+
+<Aside type="note">
+  The hosted version at [app.typeroll.com](https://app.typeroll.com) includes
+  the WordPress migration workflow, managed deployments, email delivery for
+  forms, and support. Self-hosting gives you full control but requires more
+  setup.
+</Aside>
+
+## Architecture
+
+```
+Portal (Astro SSR)   ──────▶  Firestore (content)
+      │                         R2 / S3 (media CDN)
+      ▼                         Cloudflare Pages (static site output)
+  Static site builder (Astro SSG)
+```
+
+## Prerequisites
+
+- **Node.js 22+**
+- **Firebase project** with Firestore and Authentication enabled
+- **Cloudflare account** with R2 for media storage and Pages for site output
+- **Anthropic API key** for the AI chat feature
+
+## Quick start (local dev)
+
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/typeroll/typeroll
+cd typeroll
+npm install
+```
+
+The portal includes a **fixtures backend** — a JSON file store that replaces Firestore for local development. No Firebase configuration needed to run locally:
+
+```bash
+npm run dev:portal
+```
+
+Open `http://localhost:4321`. You'll be logged in as a dev user with access to the sample content in `packages/portal/fixtures/`.
+
+## Environment variables
+
+For production, create a `.env` file in `packages/portal/`:
+
+```ini
+# Firebase (required for auth in production)
+FIREBASE_SERVICE_ACCOUNT={"type":"service_account","project_id":"..."}
+
+# AI chat
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Media CDN (Cloudflare R2 or any S3-compatible store)
+R2_ACCOUNT_ID=...
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET=typeroll-media
+R2_PUBLIC_BASE_URL=https://cdn.yourdomain.com
+
+# Static site output (Cloudflare Pages)
+CLOUDFLARE_ACCOUNT_ID=...
+CLOUDFLARE_API_TOKEN=...
+CLOUDFLARE_PAGES_PROJECT=your-pages-project
+
+# Security
+FORMS_HMAC_SECRET=a-random-64-char-hex-string
+# Optional dedicated Forms origin; otherwise PORTAL_PUBLIC_URL is used
+FORMS_PUBLIC_URL=https://forms.yourdomain.com
+PREVIEW_HMAC_SECRET=another-random-64-char-hex-string
+# Signs the OAuth JWTs the hosted-MCP endpoint at /api/mcp issues.
+# Required to enable Claude Desktop / claude.ai's Add Custom Connector
+# flow against your self-hosted portal.
+MCP_OAUTH_SIGNING_KEY=yet-another-random-64-char-hex-string
+
+# Extensions: ES256 issuer key
+EXTENSION_SIGNING_PRIVATE_JWK={"kty":"EC","crv":"P-256","d":"...","x":"...","y":"..."}
+
+# Portal URL (used in deploy output and preview links)
+PORTAL_PUBLIC_URL=https://app.yourdomain.com
+SITES_BASE_DOMAIN=sites.yourdomain.com
+
+# Deploy queue (in_process for single-server; cloud_tasks for production scale)
+DEPLOY_QUEUE=in_process
+
+# Build-cost accounting (optional — see below). Defaults suit a
+# request-billed container with 1 vCPU / 1 GiB.
+DEPLOY_COST_CURRENCY=USD
+DEPLOY_COST_CPU_PER_VCPU_SECOND=0.000024
+DEPLOY_COST_MEM_PER_GIB_SECOND=0.0000025
+DEPLOY_COST_PER_REQUEST=0.0000004
+DEPLOY_COST_VCPU=1
+DEPLOY_COST_MEMORY_GIB=1
+```
+
+## Build-cost accounting
+
+Every deploy records what the build cost in server time, on the deploy job
+itself. You'll see it in `get_deploy_status` responses — total, a
+CPU/memory/request split, wall-clock duration, per-phase timings, and the size
+of the generated site.
+
+Nothing needs configuring to get this. The defaults above are the published
+rates for a request-billed container at 1 vCPU / 1 GiB, which is how the
+reference deployment runs.
+
+Adjust the rates when your hosting differs:
+
+- **Different provider or region.** Substitute your own per-second rates.
+- **Committed-use or reserved pricing.** Use your effective discounted rates.
+- **Your own hardware.** Set the rates to `0` — every build then costs nothing,
+  which is accurate: you've already paid for the machine.
+
+Two things to keep in mind:
+
+- **`DEPLOY_COST_VCPU` and `DEPLOY_COST_MEMORY_GIB` must match what you
+  actually allocate** to the portal container. Change your container's CPU or
+  memory without changing these and every subsequent build is mispriced.
+- **The rate card is snapshotted onto each deploy job when it runs.** Changing
+  a rate affects future builds only; history keeps the numbers it was costed
+  with, so a rate change never silently rewrites past figures.
+
+The numbers are estimates from that rate card, not billing records, and they're
+gross — free-tier allowances and discounts aren't deducted, so your real
+invoice will be lower.
+
+## Firebase setup
+
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+2. Enable **Firestore** (Native mode) and **Authentication** (Email/Password)
+3. Create a service account: **Project Settings → Service Accounts → Generate new private key**
+4. Set `FIREBASE_SERVICE_ACCOUNT` to the full JSON content (one line)
+5. For each user, set an `org_id` custom claim via the Firebase Admin SDK:
+
+```javascript
+await admin.auth().setCustomUserClaims(uid, { org_id: "your-org-id" });
+```
+
+All content is scoped under `organizations/{org_id}/` in Firestore.
+
+## Docker
+
+A `Dockerfile` is included at the repo root:
+
+```bash
+docker build -t typeroll-portal .
+docker run -p 4321:4321 --env-file .env typeroll-portal
+```
+
+## Deploy to Cloud Run
+
+The included GitHub Actions workflow (`.github/workflows/deploy.yml`) deploys to Google Cloud Run. See the workflow file for the full configuration — it uses Workload Identity Federation (no long-lived service account keys).
+
+## Hosted MCP connector
+
+A self-hosted portal serves the MCP Streamable HTTP transport at `/api/mcp` automatically — no extra deployment step. Your users add `https://<your-portal-host>/api/mcp` to Claude Desktop / claude.ai under **Settings → Connectors → Add custom connector**, follow the consent screen, and paste a Typeroll API key (org-scoped from `/app/settings/api-keys` is the right default).
+
+Requirements specific to this endpoint:
+
+- `MCP_OAUTH_SIGNING_KEY` set (see above). Without it the `/api/mcp/oauth/token` endpoint refuses to issue JWTs.
+- `PORTAL_PUBLIC_URL` set to the public origin (`https://<your-portal-host>`). The OAuth `aud` claim and the well-known metadata endpoints use this to bind issued tokens to your domain per RFC 8707.
+- TLS — Claude Desktop refuses non-HTTPS connectors.
+
+Claude Code users with terminal access can keep using the stdio install (`npx -y @typeroll/mcp-server` with `TYPEROLL_API_URL` pointed at your portal). Same tool surface, same API keys.
+
+## Extensions
+
+A self-hosted portal can register and install private or unlisted Extensions
+without contacting Typeroll's hosted catalog. Set
+`EXTENSION_SIGNING_PRIVATE_JWK` to a P-256 private JWK and keep it outside
+source control.
+
+Native Extension form bindings also require `FORMS_HMAC_SECRET`. Set
+`FORMS_PUBLIC_URL` when form submissions are served from a dedicated service;
+otherwise components call the self-hosted `PORTAL_PUBLIC_URL` endpoint
+directly. Customer site deployment remains static and contains no generated
+Functions.
+
+The portal publishes issuer discovery and JWKS from its own
+`PORTAL_PUBLIC_URL`. Extension providers must pair and validate that issuer
+instead of assuming the hosted Typeroll domain. During key rotation, set
+`EXTENSION_SIGNING_PREVIOUS_PUBLIC_JWKS` to the old public JWKS for an overlap
+window, issue all new tokens with the new private key, then remove the old keys
+after the longest token and pairing lifetime has passed.
+
+See [Extensions](/extensions/overview/) for the manifest, runtime, provider,
+and recipient-link contracts.
+
+The Extension protocol does not bundle premium Typeroll Apps. Those apps are
+sold and operated separately in Typeroll-controlled accounts even when the CMS
+is self-hosted. Third-party and bespoke backends likewise remain in their
+developer's accounts. In both cases the browser calls the provider directly;
+the self-hosted portal issues identity tokens but never proxies provider API
+traffic.
+
+For other platforms (Fly.io, Railway, etc.), the portal is a standard Node.js SSR application. Set all the environment variables and run `node dist/server/entry.mjs`.

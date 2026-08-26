@@ -1,0 +1,62 @@
+---
+import type { Partial as PartialDoc, RenderContext, SiteSettings } from '@typeroll/shared';
+import { renderPartialHtml } from '../lib/content';
+
+interface Props {
+  partial: PartialDoc | null;
+  settings: SiteSettings;
+  /** The page's render context, so {{site.*}} and context-bound blocks in the
+   *  header resolve the same way they do in the portal's preview. */
+  context?: RenderContext;
+}
+
+const { partial, settings, context } = Astro.props;
+
+// Rendered + sanitized once per distinct partial content, unless the partial
+// can vary by route — see renderPartialHtml.
+const html: string | null = partial ? await renderPartialHtml(partial, context) : null;
+
+// Skip the outer <header class="site-header"> wrapper when the partial
+// already begins with its own <header>. Avoids nested-header output that
+// MCP-FEEDBACK-2 reported on get_page_preview.
+const startsWithHeader = !!html && /^\s*(?:<!--[\s\S]*?-->\s*)*<header(?:\s|>)/i.test(html);
+---
+{html && startsWithHeader ? (
+  <Fragment set:html={html} />
+) : html ? (
+  <header class="site-header" set:html={html} />
+) : (
+  <header class="site-header site-header--default">
+    <div class="site-header__inner">
+      {settings.logo ? (
+        <a href="/" class="site-header__logo-link">
+          <img src={settings.logo} alt={settings.site_name} class="site-header__logo" />
+        </a>
+      ) : (
+        <a href="/" class="site-header__title">{settings.site_name}</a>
+      )}
+    </div>
+  </header>
+)}
+
+<style>
+  .site-header--default {
+    border-bottom: 1px solid var(--color-surface);
+    background: var(--color-background);
+  }
+  .site-header__inner {
+    max-width: var(--container-wide);
+    margin: 0 auto;
+    padding: var(--spacing-md);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .site-header__logo { max-height: 48px; width: auto; }
+  .site-header__title {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 1.25rem;
+    color: var(--color-text);
+  }
+</style>

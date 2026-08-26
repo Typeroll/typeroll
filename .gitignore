@@ -1,0 +1,79 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+.astro/
+.output/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Service account keys
+firebase-service-account.json
+service-account*.json
+
+# Cache
+.cache/
+.turbo/
+.claude/
+
+# Test + browser-MCP artifacts
+test-results/
+playwright-report/
+.playwright-mcp/
+
+# Dev-time runtime state in the fixtures store.
+#
+# The fixtures backend (packages/site-template/fixtures/) doubles as the
+# seed content for new dev installs AND the live datastore when running
+# the portal locally. These collections are 100% runtime — they never
+# belong as seed:
+#   - api_key_lookup/        root-level lookup index
+#   - api_audit/             write-audit log
+#   - api_keys/              user-created API key metadata
+#   - deploys/               deploy job state
+#   - working_copies/        the editor's unsaved-draft buffer
+#   - _tombstones_*          chain-read tombstones for branch overrides
+#
+# working_copies/ is runtime by definition: it's the per-doc draft buffer
+# that commitWorkingCopy() drains into the canonical doc. A committed one
+# would seed every new dev install with someone else's half-finished edit,
+# and deploys ignore it anyway (saved content only).
+#
+# Content collections (pages/, partials/, collections/.../items/, etc.)
+# can't be gitignored at the path level because seed content lives there
+# too — clean up agent-generated test content by hand or via `git restore`.
+#
+# Bigger fix: separate dev-runtime entirely from seed (TYPEROLL_FIXTURES_DIR
+# pointing at a gitignored sibling, seed copied in on first boot).
+# Tracked under docs/dev-runtime-isolation.md (TODO).
+packages/site-template/fixtures/api_key_lookup/
+packages/site-template/fixtures/organizations/*/sites/*/api_audit/
+packages/site-template/fixtures/organizations/*/sites/*/api_keys/
+packages/site-template/fixtures/organizations/*/sites/*/deploys/
+packages/site-template/fixtures/organizations/*/sites/*/versions/*/working_copies/
+packages/site-template/fixtures/organizations/*/sites/*/versions/*/_tombstones_*/
+
+# Scratch dir for screenshots, generated images, and any throwaway working
+# files — humans AND agents put temporary artifacts here, never in the repo
+# root or a package dir. Contents are ignored; the dir itself is kept (.gitkeep)
+# so it always exists. See CLAUDE.md → "Scratch / temporary files".
+temp/*
+!temp/.gitkeep

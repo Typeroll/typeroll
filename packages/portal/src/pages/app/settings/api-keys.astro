@@ -1,0 +1,38 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import { getSession } from '../../../lib/auth';
+import { listApiKeys } from '../../../lib/api-keys';
+import OrgApiKeyManager from '../../../components/OrgApiKeyManager.tsx';
+
+const session = await getSession(Astro.cookies);
+if (!session) return Astro.redirect('/login');
+const orgId = session.orgId;
+if (!orgId) return Astro.redirect('/onboarding');
+
+const keys = await listApiKeys(orgId, null);
+const summaries = keys.map((k) => ({
+  id: k.id,
+  name: k.name,
+  created_at: k.created_at,
+  created_by: k.created_by,
+  last_used_at: k.last_used_at,
+  last_used_ip: k.last_used_ip,
+  revoked_at: k.revoked_at,
+}));
+---
+<AppLayout title="Org API keys">
+  <div class="app-header">
+    <h1>Org API keys</h1>
+    <p class="muted text-sm" style="max-width: 720px;">
+      One token, every site in your org. Use these for the hosted Claude connector and the <code>@typeroll/mcp-server</code> stdio install. Per-site keys still exist for tighter blast-radius needs — manage them inside each site's settings.
+    </p>
+  </div>
+
+  <div style="max-width: 760px;">
+    <OrgApiKeyManager client:load initialKeys={summaries} />
+  </div>
+
+  <p class="text-sm muted" style="margin-top: 1.5rem;">
+    <a href="/app/settings">← Back to account settings</a>
+  </p>
+</AppLayout>

@@ -1,0 +1,96 @@
+---
+title: Drafts & Saving
+description: Every content change lands in a draft first. Nothing reaches your visitors until you save and deploy.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Content edits don't apply straight to your site. Every write — from Claude, from
+the portal editor, from the REST API — lands in a **working copy**: a per-document
+draft layer that sits on top of the saved content.
+
+Think of it like a text editor. The working copy is the buffer, the saved
+document is the file on disk, and deploying is publishing that file.
+
+<Aside type="tip" title="Why it works this way">
+  It means an agent can restructure ten pages, show you the result, and throw it
+  all away if you don't like it — without a single visitor ever seeing the
+  intermediate states.
+</Aside>
+
+## The loop
+
+<Steps>
+
+1. **Claude edits.** Changes go into the working copy. Your live site is
+   untouched. So is the saved version.
+
+2. **You review.** Ask for a preview link that includes drafts, or open the page
+   in the portal editor — it shows the same draft layer with an "Unsaved
+   changes" marker.
+
+3. **You save.** Say "save it" (Claude calls `commit_working_copy`), or click
+   **Save** in the portal's Publish menu. The draft is written into the real
+   document and a revision snapshot is taken.
+
+4. **You deploy.** Saved content reaches visitors on the next deploy.
+
+</Steps>
+
+Steps 3 and 4 are separate on purpose: saving makes a change permanent, deploying
+makes it public.
+
+## What this means in practice
+
+**Chained edits compose.** When Claude reads a page it gets the draft view, not
+the saved one, along with a `has_unsaved_changes` flag. So "add a section" then
+"now make its heading shorter" works exactly as you'd expect — the second edit
+sees the first.
+
+**Deploys never carry unsaved work.** A deploy builds from _saved_ content only.
+If you deploy with a draft outstanding, the draft stays behind, waiting. This is
+deliberate: an unreviewed edit can never ride along with an unrelated publish.
+
+**Plain preview links show saved content too.** To see your drafts you need a
+preview that explicitly includes them — just ask ("show me a preview with the
+unsaved changes"), and Claude will request one.
+
+<Aside type="caution" title="Don't end a session on an uncommitted draft">
+  If you're happy with what Claude built, say so — "save it". Otherwise the work
+  sits in the working copy indefinitely, invisible to your visitors and easy to
+  forget. Asking Claude to deploy without saving first is the most common way
+  people end up wondering why the site didn't change.
+</Aside>
+
+## Discarding
+
+Changed your mind? "Discard the unsaved changes" throws the working copy away and
+leaves the saved document untouched. Nothing is lost that had been saved.
+
+## What isn't drafted
+
+A few things apply immediately, because they're not content edits:
+
+| Applies immediately                                              | Why                                                                |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Page status (`draft` / `published`) and `date_published`         | These _are_ the publish decision — drafting them would be circular |
+| Creating and deleting pages, partials, collection items          | There's no prior version to buffer against                         |
+| Switching a page between block and HTML mode                     | Structural, not a content edit                                     |
+| Site settings, redirects, block types, media, collection schemas | Configuration, not page content                                    |
+| Page templates and collection item templates                     | These have no working-copy layer at all                            |
+
+Everything else — page content, blocks, partials, collection item fields — goes
+through the draft layer.
+
+## For API and MCP users
+
+- Writes (`update_page`, block mutations, `update_partial`,
+  `update_collection_item`, batch and bulk tools) stage a draft.
+- Reads return the **draft view** plus `has_unsaved_changes`.
+- Commit with `commit_working_copy`, or pass `save: true` on the write call to
+  write and commit in one step.
+- `discard_working_copy` drops the draft; `read_working_copy` inspects it.
+
+Commit always runs through one code path, so every surface behaves identically:
+revision snapshot, SEO transform, HTML sanitisation, and redirect hygiene
+(including an automatic 301 when a page's URL changes).

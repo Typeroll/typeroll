@@ -1,0 +1,30 @@
+{
+  "site_name": "ACME Studio",
+  "tagline": "A timeless website that runs forever",
+  "colors": {
+    "primary": "#3b82f6",
+    "secondary": "#1e293b",
+    "accent": "#f59e0b",
+    "background": "#ffffff",
+    "surface": "#f8fafc",
+    "text": "#0f172a",
+    "text_light": "#64748b"
+  },
+  "fonts": {
+    "heading": "Inter",
+    "body": "Inter",
+    "size_base": 16
+  },
+  "contact": {
+    "email": "hello@acme.example.com",
+    "phone": "(555) 010-2030"
+  },
+  "default_seo_suffix": " — ACME Studio",
+  "cookie_consent": {
+    "enabled": true,
+    "privacy_policy_url": "/privacy",
+    "scripts_necessary": "<script>window.__smokeNecessary = true;</script>",
+    "scripts_optional": "<script async src=\"https://tracker.example/lib.js?id=G-SMOKE\"></script>\n<script>window.__smokeOptionalConfig = true;</script>\n<noscript><img src=\"https://tracker.example/px\" alt=\"\" /></noscript>",
+    "reload_after_consent": false
+  }
+}

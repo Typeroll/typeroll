@@ -1,0 +1,82 @@
+---
+title: Analytics
+description: Traffic measurement, campaign attribution, first-party conversion events, Core Web Vitals, and AI-assistant referral insights.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+- **Type:** Core module
+- **Build impact:** Adds small, independently loaded browser runtimes
+- **Modules:** Traffic, Attribution, Events and conversions
+
+Analytics is the product surface for understanding traffic and outcomes. Its
+modules remain technically independent: campaign forwarding must still work
+if traffic reporting or an external analytics provider is unavailable.
+
+| Module                 | Purpose                                                                               | Reference                                |
+| ---------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Traffic                | Cookieless visits, page views, referrers, Core Web Vitals, and AI-assistant referrals | This page                                |
+| Attribution            | Preserve approved campaign context and forward it to exact destinations               | [Attribution](/apps/funnel-attribution/) |
+| Events and conversions | Record validated first-party funnel events and report their sources                   | [Events and conversions](/apps/events/)  |
+
+## Configuration
+
+| Field          | Purpose                                               | Exposure                       |
+| -------------- | ----------------------------------------------------- | ------------------------------ |
+| `beacon_token` | Identifies the site to the browser beacon             | Included in the published HTML |
+| `site_tag`     | Identifies the property when the portal reads reports | Server-side only               |
+
+Hosted installations can provision these identifiers automatically when the
+site has a usable domain and the platform has Cloudflare access. Self-hosted
+installations can supply them from Cloudflare. First-party conversion events
+also require a public portal or forms-service URL and the platform signing
+secret; without both, builds omit the event endpoint while traffic and
+attribution continue to work.
+
+## Traffic insights
+
+The Traffic module reports visits and page views over 7, 30, or 90 days, top
+referrers, Core Web Vitals, and visits referred by AI assistants such as
+ChatGPT, Claude, and Perplexity. AI referrals are ordinary referral traffic at
+the collection layer; Insights classifies their referring hosts so each
+assistant can be reported separately.
+
+This complements the `llms.txt`, semantic HTML, and structured data Typeroll
+publishes to help search engines and assistants understand the site. See
+[SEO and indexing](/technical/seo-and-indexing/).
+
+## Runtime and privacy
+
+The beacon is emitted during the static build. Cloudflare Web Analytics is
+cookieless and intended for aggregate traffic measurement. Confirm the legal
+requirements that apply to your site and jurisdiction before relying on a
+particular consent treatment.
+
+Attribution storage and conversion events follow the site's consent decision.
+The Traffic module does not automatically gain access to attribution cookies,
+and saved campaign values are not sent to third parties merely because they
+exist. See each module's privacy contract before combining them.
+
+## Insights states
+
+The Insights surface distinguishes a disabled module, missing server
+configuration, a missing site tag, and a valid property with no data yet. This
+lets operators diagnose setup without treating every empty report as the same
+problem.
+
+| State            | Meaning                                                           |
+| ---------------- | ----------------------------------------------------------------- |
+| `app_disabled`   | Analytics is not active for the site                              |
+| `not_configured` | The installation has no Cloudflare analytics credentials          |
+| `no_site_tag`    | Analytics is active but not linked to a Cloudflare property       |
+| `no_data`        | The property is linked but has no traffic for the selected period |
+| `ok`             | Traffic totals and breakdowns are available                       |
+
+The same surface reports first-party conversion events separately. Conversion
+reporting can continue to show data when Cloudflare traffic reporting is
+temporarily unavailable.
+
+<Aside type="tip">
+  AI-referral counts are usually small at first. Trends over longer periods are
+  more useful than a single week.
+</Aside>

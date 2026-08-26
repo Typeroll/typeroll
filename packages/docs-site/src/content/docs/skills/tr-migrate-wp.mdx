@@ -1,0 +1,95 @@
+---
+title: tr-migrate-wp — Migrate from WordPress
+description: Full WordPress migration — pages, posts, custom post types, media, redirects — all adapted to your Typeroll design.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+**Triggers on:** "migrate from WordPress", a `wp-json` URL, "move my WordPress site"
+
+This skill uses the open-source migration workflow. Typeroll Cloud can also run
+and support the same workflow as a managed service.
+
+## What it does
+
+The migration workflow runs in stages:
+
+| Stage               | What happens                                                                              |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| **Discover**        | Verifies the WP REST API is reachable, probes for the helper plugin                       |
+| **Inventory**       | Walks the sitemap + REST API to build a complete URL list                                 |
+| **Custom types**    | ACF/CPT schemas inferred; each becomes a Typeroll collection                              |
+| **Extract content** | Pages, posts and custom items reconstructed in your new design; images transferred to CDN |
+| **Redirects**       | Old WordPress URLs mapped to new Typeroll slugs                                           |
+| **Review**          | Paused for your approval — shows unhandled URLs                                           |
+
+All imported pages start with `status: "review"`. You sign off before anything goes live.
+
+## Example prompts
+
+```
+Migrate my WordPress site at acme.se to this Typeroll site.
+```
+
+```
+The source site is at https://old.acme.com/wp-json — migrate it here.
+I also have the helper plugin installed with key: abc123xyz
+```
+
+## Before you start
+
+The target Typeroll site should already have:
+
+- Colour palette and fonts configured
+- Header and footer partials built (at least a basic version)
+- 1–2 example pages if possible — Claude uses them as design references
+
+The migration imports **content**, not the old design. Your new design is applied automatically.
+
+## The helper plugin
+
+The optional open-source Typeroll Helper Plugin exposes:
+
+- Custom post types regardless of `show_in_rest` setting
+- ACF field values with image references normalised
+- Navigation menus
+- Page builder JSON (Elementor, Breakdance)
+- Canonical URL list
+
+Without the plugin, the migration falls back to the standard `/wp-json/wp/v2/` API, which may miss CPTs and ACF data.
+
+### Installing the helper plugin
+
+1. Download the `wp-helper-plugin` directory from the Typeroll repository and create a ZIP archive from it.
+2. Upload to WordPress: **Plugins → Add New → Upload Plugin**
+3. Activate it
+4. Go to **Settings → Typeroll Helper** and generate an API key
+5. Provide the key in your migration prompt
+
+<Aside type="tip">
+  The helper plugin is read-only — it never modifies your WordPress site.
+</Aside>
+
+## Custom post types
+
+Each CPT becomes a Typeroll collection. The schema is inferred from a sample item's ACF fields and post meta:
+
+- ACF `image` fields → `type: "image"`
+- ACF `text` / `textarea` → `type: "text"` / `type: "textarea"`
+- ACF `date_picker` → `type: "date"`
+- Unknown fields → `type: "text"` (safe default)
+
+## URL coverage
+
+After migration, the portal's **Migration** tab shows every URL from the source site classified as:
+
+- ✅ **Migrated** — content imported as a page
+- ↪ **Redirected** — old URL redirects to a new slug
+- ⬜ **Excluded** — pagination, admin, CDN URLs (expected)
+- ⚠️ **Unhandled** — needs attention before go-live
+
+You can add redirects directly from the Migration tab for any unhandled URL.
+
+## Media
+
+Images are transferred just-in-time during content extraction. Only images that are actually referenced on imported pages move to the Typeroll CDN — unused images from the WordPress media library are not transferred.

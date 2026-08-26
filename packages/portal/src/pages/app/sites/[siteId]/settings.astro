@@ -1,0 +1,350 @@
+---
+import AppLayout from '../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../lib/version-store';
+import { loadSiteContext } from '../../../../lib/access';
+import { getStore } from '../../../../lib/datastore';
+import { defaultSiteSettings, paths } from '@typeroll/shared';
+import type { Site, SiteSettings } from '@typeroll/shared';
+import DomainManager from '../../../../components/DomainManager.tsx';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
+---
+<AppLayout title={`Settings — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <h1>Site settings</h1>
+  </div>
+
+  <!--
+    Domain lifecycle component sits outside the settings form so adding
+    a hostname doesn't accidentally flip the live URL — the customer
+    must walk through pending → verified → live. See
+    docs/domain-lifecycle-plan.md.
+  -->
+  <div class="card stack" style="max-width: 720px; margin-bottom: 1rem;">
+    <h2 style="font-size: 1.125rem;">Custom domain</h2>
+    <DomainManager
+      client:load
+      siteId={siteId}
+      fallbackUrl={site.hosting_config?.fallback_subdomain ? `https://${site.hosting_config.fallback_subdomain}` : undefined}
+    />
+  </div>
+
+  <form method="POST" action={`/api/sites/${siteId}/settings`} class="stack" style="max-width: 720px;">
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem;">Identity</h2>
+      <div class="field">
+        <label>Site name</label>
+        <input name="site_name" value={settings.site_name} required />
+      </div>
+      <div class="field">
+        <label>Tagline</label>
+        <input name="tagline" value={settings.tagline ?? ''} />
+      </div>
+      <div class="field">
+        <label>Logo URL</label>
+        <input name="logo" value={settings.logo ?? ''} placeholder="https://cdn.example.com/sites/.../logo.png" />
+      </div>
+      <div class="field">
+        <label>Favicon URL</label>
+        <input name="favicon" value={settings.favicon ?? ''} />
+      </div>
+      <div class="field">
+        <label>Apple touch icon URL <span class="muted text-sm">(180×180 PNG, home-screen bookmarks)</span></label>
+        <input name="apple_touch_icon" value={settings.apple_touch_icon ?? ''} />
+      </div>
+      <div class="field">
+        <label>SEO title suffix</label>
+        <input name="default_seo_suffix" value={settings.default_seo_suffix ?? ''} placeholder=" — Site Name" />
+      </div>
+    </div>
+
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem;">Custom domain</h2>
+      <!--
+        The Domain card has moved OUT of the settings form into its own
+        DomainManager component (mounted at the top of this page). The
+        old single-input flow conflated "add a domain" with "make it the
+        live URL" — typing a hostname would immediately flip the live
+        URL via the resolver, and agents pointed customers at a domain
+        that wasn't actually serving yet. The lifecycle component
+        guides the customer through pending → verified → live with
+        explicit activation. See docs/domain-lifecycle-plan.md.
+      -->
+      <p class="muted text-sm">Manage the custom domain at the top of this page.</p>
+      <div class="field">
+        <label>Staging URL <span class="muted">(optional)</span></label>
+        <input name="staging_url" value={site.staging_url ?? ''} placeholder="https://staging.example.com" />
+        <p class="muted text-sm">Where preview deploys go before promotion to the live domain. Defaults to the fallback subdomain.</p>
+      </div>
+    </div>
+
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem;">Colors</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem;">
+        {(['primary', 'secondary', 'accent', 'background', 'surface', 'text', 'text_light'] as const).map(key => (
+          <div class="field">
+            <label>{key.replace('_', ' ')}</label>
+            <input name={`colors.${key}`} type="color" value={settings.colors[key]} style="height: 40px; padding: 0.25rem;" />
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem;">Typography</h2>
+      <div class="field">
+        <label>Heading font (Google Fonts family name)</label>
+        <input name="fonts.heading" value={settings.fonts.heading} />
+      </div>
+      <div class="field">
+        <label>Body font</label>
+        <input name="fonts.body" value={settings.fonts.body} />
+      </div>
+      <div class="field">
+        <label>Base font size (px)</label>
+        <input name="fonts.size_base" type="number" min="12" max="24" value={settings.fonts.size_base} />
+      </div>
+    </div>
+
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem;">SEO defaults</h2>
+      <p class="muted text-sm">Fallback values used when a page doesn't set its own SEO. Yoast/RankMath/SEOPress/AIOSEO equivalents.</p>
+      <div class="field">
+        <label>Language</label>
+        <input name="language" value={settings.language ?? 'en'} placeholder="en" />
+        <p class="muted text-sm">BCP 47 tag — e.g. <code>en</code>, <code>sv</code>, <code>en-GB</code>. Sets the <code>&lt;html lang&gt;</code> attribute and the OpenGraph locale.</p>
+      </div>
+      <div class="field">
+        <label>Twitter / X handle</label>
+        <input name="twitter_handle" value={settings.twitter_handle ?? ''} placeholder="acme" />
+        <p class="muted text-sm">Without the @. Used for <code>twitter:site</code> and <code>twitter:creator</code> meta on share cards.</p>
+      </div>
+      <div class="field">
+        <label>Default meta description</label>
+        <textarea name="default_meta_description" rows="2" placeholder="Used when a page has no description of its own.">{settings.default_meta_description ?? ''}</textarea>
+      </div>
+      <div class="field">
+        <label>Default OpenGraph image URL</label>
+        <input name="default_og_image" value={settings.default_og_image ?? ''} placeholder="https://cdn.example.com/social-card.png" />
+        <p class="muted text-sm">Shown when a page is shared on Facebook, LinkedIn, etc. and has no per-page og_image.</p>
+      </div>
+      <div class="field">
+        <label>Default image <code>sizes</code></label>
+        <input name="image_sizes_default" value={settings.image_sizes_default ?? ''} placeholder="(max-width: 640px) 360px, 560px" />
+        <p class="muted text-sm">Site-wide <code>sizes</code> for responsive images, telling the browser how wide images actually render so it picks the smallest sufficient variant. A page can override this, and a per-image <code>sizes</code> attribute wins over both. Leave blank for the generic <code>(max-width: 768px) 100vw, 800px</code> default.</p>
+      </div>
+    </div>
+
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem;">Organization schema</h2>
+      <p class="muted text-sm">Emitted as JSON-LD on every page. Helps search engines pick the right brand info.</p>
+      <div class="field">
+        <label>Organization name</label>
+        <input name="organization.name" value={settings.organization?.name ?? ''} placeholder={settings.site_name} />
+      </div>
+      <div class="field">
+        <label>Logo URL</label>
+        <input name="organization.logo" value={settings.organization?.logo ?? ''} placeholder="https://cdn.example.com/logo.png" />
+      </div>
+      <div class="field">
+        <label>Profile URLs (sameAs) — one per line</label>
+        <textarea name="organization.same_as" rows="3" placeholder="https://www.linkedin.com/company/...&#10;https://www.facebook.com/...&#10;https://x.com/...">{(settings.organization?.same_as ?? []).join('\n')}</textarea>
+      </div>
+    </div>
+
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem;">Cookies &amp; consent</h2>
+      <p class="muted text-sm">
+        Show a blocking consent dialog on a visitor's first visit. We set a
+        cookie (<code>tr_consent</code>) that remembers the choice for 12 months
+        so the dialog doesn't reappear. The scripts below are injected according
+        to that choice — Google Analytics, Meta Pixel and similar belong in
+        "Optional scripts".
+      </p>
+      <p class="muted text-sm" style="margin-top: -0.5rem;">
+        A small floating "Cookies" button appears bottom-left once the visitor
+        has chosen, so they can change their mind. Want the link in the footer
+        instead? Put <code>data-tr-open-consent</code> on any link or button in
+        the footer partial, e.g.
+        <code>&lt;a href="#" data-tr-open-consent&gt;Cookies&lt;/a&gt;</code>,
+        and hide the floating button in Custom CSS with
+        <code>.tr-consent__manage{'{'}display:none{'}'}</code>.
+      </p>
+      <div class="field">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+          <input
+            type="checkbox"
+            name="cookie_consent.enabled"
+            checked={settings.cookie_consent?.enabled === true}
+            style="width: auto; margin: 0;"
+          />
+          <span>Enable cookie consent on this site</span>
+        </label>
+      </div>
+      <div class="field">
+        <label>Dialog text (HTML)</label>
+        <textarea name="cookie_consent.text" rows="3" placeholder="We use cookies to improve your experience. Read more in our &lt;a href=&quot;/privacy&quot;&gt;privacy policy&lt;/a&gt;.">{settings.cookie_consent?.text ?? ''}</textarea>
+        <p class="muted text-sm">Leave empty to use the built-in default text. You can put <code>&lt;a&gt;</code> links straight in here.</p>
+      </div>
+      <div class="field">
+        <label>Privacy policy URL (optional)</label>
+        <input
+          name="cookie_consent.privacy_policy_url"
+          value={settings.cookie_consent?.privacy_policy_url ?? ''}
+          placeholder="/privacy-policy"
+        />
+        <p class="muted text-sm">When set, a "Read our privacy policy" link appears under the text.</p>
+      </div>
+      <div class="field">
+        <label>Necessary scripts (always run)</label>
+        <textarea name="cookie_consent.scripts_necessary" rows="3" style="font-family: var(--font-mono);">{settings.cookie_consent?.scripts_necessary ?? ''}</textarea>
+        <p class="muted text-sm">
+          Put <code>&lt;script&gt;</code> tags here that are strictly necessary,
+          or that must load before consent (e.g. Google Consent Mode v2 with a
+          default of <code>denied</code>).
+        </p>
+      </div>
+      <div class="field">
+        <label>Optional scripts (run only after "Accept all")</label>
+        <textarea name="cookie_consent.scripts_optional" rows="4" style="font-family: var(--font-mono);">{settings.cookie_consent?.scripts_optional ?? ''}</textarea>
+        <p class="muted text-sm">
+          Google Analytics, Meta Pixel, Hotjar, marketing cookies and the like.
+          They render into the page but stay inert until the visitor accepts all
+          cookies — at which point they activate without a reload.
+        </p>
+      </div>
+      <div class="field">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+          <input
+            type="checkbox"
+            name="cookie_consent.reload_after_consent"
+            checked={settings.cookie_consent?.reload_after_consent === true}
+            style="width: auto; margin: 0;"
+          />
+          <span>Reload the page after consent (if your scripts misbehave without it)</span>
+        </label>
+        <p class="muted text-sm">
+          Leave unchecked for seamless activation without a reload. Check it if
+          you use scripts that can't cope with being injected after page load
+          (some older GTM containers, chat widgets).
+        </p>
+      </div>
+    </div>
+
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem;">Advanced</h2>
+      <div class="field">
+        <label>&lt;head&gt; scripts (analytics, etc.)</label>
+        <textarea name="scripts_head" rows="3">{settings.scripts_head ?? ''}</textarea>
+      </div>
+      <div class="field">
+        <label>End-of-body scripts (chat widgets, etc.)</label>
+        <textarea name="scripts_body_end" rows="3">{settings.scripts_body_end ?? ''}</textarea>
+      </div>
+      <div class="field">
+        <label>Custom CSS</label>
+        <textarea name="custom_css" rows="4" style="font-family: var(--font-mono);">{settings.custom_css ?? ''}</textarea>
+      </div>
+      <div class="field">
+        <label>robots.txt (leave blank for default)</label>
+        <textarea name="robots_txt" rows="3" style="font-family: var(--font-mono);">{settings.robots_txt ?? ''}</textarea>
+      </div>
+    </div>
+
+    <div class="row">
+      <button type="submit" class="btn">Save settings</button>
+    </div>
+  </form>
+
+  <div style="max-width: 720px; margin-top: 2rem;">
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem; margin: 0;">AI block scripts</h2>
+      <p class="muted text-sm" style="margin: 0;">
+        Custom block types can ship client-side JavaScript that runs in every
+        visitor's browser. By default, AI surfaces (chat, MCP agents, API keys)
+        can build blocks with HTML + CSS only — scripts require a human to add
+        them in the block type editor. Enable this to let AI author block
+        scripts directly. <strong>Only do this if you review what your agents
+        build:</strong> an agent that reads untrusted content can be tricked
+        into embedding malicious code.
+      </p>
+      <form method="POST" action={`/api/sites/${siteId}/ai-scripts`} class="row" style="align-items: center; gap: 0.75rem;">
+        <label style="display: inline-flex; gap: 0.5rem; align-items: center; cursor: pointer;">
+          <input type="checkbox" name="ai_scripts_enabled" checked={site.ai_scripts_enabled === true} />
+          <span>Allow AI to write block scripts</span>
+        </label>
+        <button type="submit" class="btn">Save</button>
+      </form>
+    </div>
+  </div>
+
+  <div style="max-width: 720px; margin-top: 1rem;">
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem; margin: 0;">External access</h2>
+      <p class="muted text-sm" style="margin: 0;">
+        Generate API keys for agencies, Claude Code, and other external tools that need to manage this site through the public REST API.
+      </p>
+      <div>
+        <a href={`/app/sites/${siteId}/settings/api-keys`} class="btn">Manage API keys →</a>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width: 720px; margin-top: 1rem;">
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem; margin: 0;">Core modules</h2>
+      <p class="muted text-sm" style="margin: 0;">
+        Turn on optional features for this site — analytics and more. Everything is off by
+        default; enable only what you need.
+      </p>
+      <div>
+        <a href={`/app/sites/${siteId}/settings/apps`} class="btn">Manage modules →</a>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width: 720px; margin-top: 1rem;">
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem; margin: 0;">Email &amp; notifications</h2>
+      <p class="muted text-sm" style="margin: 0;">
+        Connect Postmark or SMTP so forms can send submission notifications and autoresponders. Shared by the site's core modules.
+      </p>
+      <div>
+        <a href={`/app/sites/${siteId}/settings/email`} class="btn">Manage email →</a>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width: 720px; margin-top: 1rem;">
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem; margin: 0;">Sharing</h2>
+      <p class="muted text-sm" style="margin: 0;">
+        Grant another organization read, write, or admin access to this site — useful when an agency hosts a site for a customer, or a customer collaborates with an agency on their own.
+      </p>
+      <div>
+        <a href={`/app/sites/${siteId}/settings/sharing`} class="btn">Manage sharing →</a>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width: 720px; margin-top: 1rem;">
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem; margin: 0;">Export your content</h2>
+      <p class="muted text-sm" style="margin: 0;">
+        Download everything — pages, partials, collections, forms, redirects, block types, settings — as
+        JSON in the same layout the open-source site renderer builds from. Your content is yours;
+        the zip includes a manifest with every media URL for mirroring the images too.
+      </p>
+      <div>
+        <a href={`/api/sites/${siteId}/export`} class="btn" download>Download content export</a>
+      </div>
+    </div>
+  </div>
+</AppLayout>

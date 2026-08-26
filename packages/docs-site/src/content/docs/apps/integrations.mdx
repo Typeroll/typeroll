@@ -1,0 +1,39 @@
+---
+title: Integrations
+description: Maintained, validated site-wide tags for analytics, advertising, marketing, and support providers.
+---
+
+- **Type:** Integration module
+- **Build impact:** Injects configured provider tags
+- **Consent:** Uses Typeroll's existing consent categories
+
+Integrations replaces pasted third-party snippets with maintained platform
+code around validated provider identifiers. A malformed identifier is dropped
+instead of being embedded into the site. When a provider changes its standard
+tag, Typeroll can update the shared implementation centrally.
+
+## Supported providers
+
+| Group       | Providers                                                                                                                   |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Analytics   | Google Analytics 4, Google Tag Manager, Hotjar, Microsoft Clarity, Plausible, Fathom Analytics, Matomo                      |
+| Advertising | Meta Pixel, LinkedIn Insight Tag, TikTok Pixel, Pinterest Tag, Snap Pixel, Reddit Pixel, X Pixel, Microsoft Advertising UET |
+| Marketing   | HubSpot, Mailchimp Connected Site                                                                                           |
+| Support     | Intercom, Crisp Chat, Tawk.to                                                                                               |
+
+Each provider declares its identifier fields, validation pattern, placement,
+and consent category. Client identifiers are public by design because the
+provider's browser tag needs them; they are not treated as server secrets.
+
+## Consent behavior
+
+Providers use the shared categories `necessary`, `functional`, `analytics`,
+and `marketing`. If the site uses Typeroll's consent banner, non-necessary tags
+remain inert until the matching optional consent is granted. Google Tag Manager
+uses the marketing category because a container may load advertising tags.
+
+## Scope
+
+This module owns site-wide tags placed in the document head or at the end of the
+body. A widget or embed placed at a particular point in page content belongs in
+a block, not in this catalog.

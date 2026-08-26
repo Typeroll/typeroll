@@ -1,0 +1,48 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../../lib/version-store';
+import PartialEditor from '../../../../../components/PartialEditor.tsx';
+import { loadSiteContext } from '../../../../../lib/access';
+import { getStore } from '../../../../../lib/datastore';
+import { readWorkingCopy } from '../../../../../lib/working-copy';
+import { paths } from '@typeroll/shared';
+import type { Partial as PartialDoc, Site, SiteVersion } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+const { partialId } = Astro.params;
+if (!partialId) return Astro.redirect('/app');
+
+const store = getStore();
+
+const partial = await vstore.partial(orgId, siteId, versionId, partialId);
+const inferKind: PartialDoc['kind'] =
+  partialId === 'header' ? 'header' : partialId === 'footer' ? 'footer' : 'free';
+const defaultDoc: PartialDoc = partial ?? {
+  id: partialId,
+  name: partialId === 'header' ? 'Main Header' : partialId === 'footer' ? 'Main Footer' : partialId,
+  kind: inferKind,
+  content_mode: 'html',
+  status: 'draft',
+  html_content: '',
+};
+const kindLabel = defaultDoc.kind === 'free' ? 'Free block' : defaultDoc.kind === 'header' ? 'Header' : 'Footer';
+const workingCopy = await readWorkingCopy(
+  { orgId, siteId, versionId },
+  { kind: 'partial', id: partialId },
+);
+const versionDoc = await store.getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
+const lastDeployedAt = versionDoc?.last_deployed_at ?? null;
+---
+<AppLayout title={`${defaultDoc.name} — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <a href={`/app/sites/${siteId}/partials`} class="muted text-sm">← Global blocks</a>
+      <h1>{defaultDoc.name}</h1>
+      <p class="muted">{kindLabel}</p>
+    </div>
+  </div>
+  <PartialEditor client:load siteId={siteId} partial={defaultDoc} workingCopy={workingCopy} lastDeployedAt={lastDeployedAt} />
+</AppLayout>

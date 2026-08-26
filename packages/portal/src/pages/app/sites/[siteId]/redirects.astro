@@ -1,0 +1,84 @@
+---
+import AppLayout from '../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../lib/version-store';
+import { loadSiteContext } from '../../../../lib/access';
+import { getStore } from '../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { Redirect, Site } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const redirects = await vstore.redirects(orgId, siteId, versionId);
+redirects.sort((a, b) => a.from_path.localeCompare(b.from_path));
+---
+<AppLayout title={`Redirects — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>Redirects</h1>
+      <p class="muted">{redirects.length} rule{redirects.length === 1 ? '' : 's'}</p>
+    </div>
+  </div>
+
+  <form method="POST" action={`/api/sites/${siteId}/redirects`} class="card stack" style="max-width: 720px; margin-bottom: 1.5rem;">
+    <h2 style="font-size: 1rem;">Add a redirect</h2>
+    <div class="row" style="gap: 0.5rem; align-items: stretch;">
+      <div class="field" style="flex: 1;">
+        <label>From</label>
+        <input name="from_path" required placeholder="/old-page" />
+      </div>
+      <div class="field" style="flex: 1;">
+        <label>To</label>
+        <input name="to_path" required placeholder="/new-page" />
+      </div>
+      <div class="field" style="width: 100px;">
+        <label>Code</label>
+        <select name="status_code">
+          <option value="301">301</option>
+          <option value="302">302</option>
+        </select>
+      </div>
+      <div style="display: flex; align-items: flex-end;">
+        <button type="submit" class="btn">Add</button>
+      </div>
+    </div>
+  </form>
+
+  {redirects.length === 0 ? (
+    <div class="card" style="text-align: center; padding: 2rem;" class:list={['muted']}>No redirects yet.</div>
+  ) : (
+    <div class="card" style="padding: 0;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="text-align: left; background: var(--color-bg);">
+            <th style="padding: 0.75rem 1rem;">From</th>
+            <th style="padding: 0.75rem 1rem;">To</th>
+            <th style="padding: 0.75rem 1rem;">Code</th>
+            <th style="padding: 0.75rem 1rem;">Source</th>
+            <th style="padding: 0.75rem 1rem;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {redirects.map(r => (
+            <tr style="border-top: 1px solid var(--color-border);">
+              <td style="padding: 0.75rem 1rem; font-family: var(--font-mono); font-size: 0.85rem;">{r.from_path}</td>
+              <td style="padding: 0.75rem 1rem; font-family: var(--font-mono); font-size: 0.85rem;">{r.to_path}</td>
+              <td style="padding: 0.75rem 1rem;">{r.status_code}</td>
+              <td style="padding: 0.75rem 1rem;" class="muted text-sm">{r.auto_generated ? 'migration' : 'manual'}</td>
+              <td style="padding: 0.75rem 1rem;">
+                <form method="POST" action={`/api/sites/${siteId}/redirects/delete`} style="display: inline;">
+                  <input type="hidden" name="id" value={r.id} />
+                  <button class="btn btn--ghost btn--sm" type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</AppLayout>

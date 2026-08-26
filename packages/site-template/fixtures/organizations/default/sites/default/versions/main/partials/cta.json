@@ -1,0 +1,7 @@
+{
+  "name": "CTA",
+  "kind": "free",
+  "content_mode": "html",
+  "html_content": "<div style=\"background-color:green\">\nHej hej!\n</div>",
+  "status": "published"
+}

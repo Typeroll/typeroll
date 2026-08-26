@@ -1,0 +1,53 @@
+---
+title: tr-migrate-multisite — Migrate a family of sites
+description: Move a WordPress multisite or a set of country/language domains to Typeroll together — shared design, preserved URLs, hreflang, and a parity check before DNS moves.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+**Triggers on:** "multisite", "network of sites", "our .se/.de/.co.uk sites", "migrate all our sites", "language versions"
+
+For a single site, use [tr-migrate-wp](/skills/tr-migrate-wp/) or [tr-import-url](/skills/tr-import-url/) instead.
+
+## One site or several?
+
+The first thing this skill settles, because it's the expensive decision to reverse. **A Typeroll site owns one domain** (plus its www/apex sibling):
+
+| Your old setup                              | What you build                              |
+| ------------------------------------------- | ------------------------------------------- |
+| `example.se`, `example.de`, `example.co.uk` | One Typeroll site per domain                |
+| `example.com/se/`, `example.com/de/`        | One site, language folders as page paths    |
+| Subdomains you want merged onto one domain  | One site, plus redirects from the old hosts |
+
+## What it does
+
+| Phase               | What happens                                                                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Plan**            | A written table of old site → new site → domain → language, confirmed with you before anything is created                                    |
+| **Inventory**       | Every URL of every old site recorded up front — sitemaps, REST, Search Console exports. This is the artefact that tells you when you're done |
+| **Reference build** | One site built and approved properly, so design mistakes aren't multiplied by ten                                                            |
+| **Replicate**       | The design travels as a block-type package; settings, partials and templates follow per site                                                 |
+| **Content**         | Pages migrated with their paths preserved; internal links rewritten to the new site                                                          |
+| **Redirects**       | Every URL that didn't keep its path gets a redirect, or an explicit sign-off that it may 404                                                 |
+| **hreflang**        | Each page declares its equivalents on the sister domains, on all sides                                                                       |
+| **Verify**          | Every old URL is requested against the new site and the gaps fixed — before DNS is touched                                                   |
+
+<Aside type="tip">
+  The verification step runs against the site's temporary Typeroll URL, so your
+  old sites keep serving the whole time. Nothing switches over until the gap
+  list is empty.
+</Aside>
+
+## Linking language versions (hreflang)
+
+Because each market is its own site, nothing can work out which German page corresponds to which Swedish one — that mapping is declared per page:
+
+> "Link the Swedish, German and UK versions of the About page together."
+
+Claude writes the cluster on **all** sides (search engines ignore one-sided clusters), uses the final domains rather than temporary URLs, and adds each page's self-reference automatically.
+
+## Try it
+
+> "We have ten WordPress sites in a multisite — a .se, a .de, a .co.uk and seven more. Read the tr-migrate-multisite skill and let's plan the move."
+
+Claude starts with the plan table and the URL inventories, not with building. That order is deliberate: the inventory is what makes "are we finished?" answerable.

@@ -1,0 +1,188 @@
+# Typeroll Extensions
+
+Extensions let an external repository add frontend blocks and external admin
+pages to a Typeroll site while its business functions and data remain in the
+provider's GCP, AWS, Vercel or other environment. The same protocol supports
+multi-tenant SaaS extensions and one-customer bespoke systems.
+
+## Development flow
+
+1. Open **Developer → Extensions**, register a namespaced id and copy the
+   one-time client secret.
+2. Create a v3 manifest using
+   [`typeroll-extension-manifest-v3.schema.json`](specs/typeroll-extension-manifest-v3.schema.json).
+3. Serve immutable bundle assets over HTTPS and put their SHA-256 hashes in
+   the manifest.
+4. Save a draft and install it on a site owned by the developer organization.
+   Private/unlisted releases publish directly; public releases enter the hosted
+   review queue. Customer organizations can only install published versions.
+5. Open a site's **Settings → Extensions**, review scopes and data handling,
+   then install. Typeroll provisions the declared block types and admin nav.
+6. Deploy the site. The build vendors bundle bytes; the component calls its
+   provider API directly, without a Typeroll or customer-hosted proxy.
+
+See the runnable contract fixture in [`examples/quote-extension`](../examples/quote-extension/README.md).
+
+The npm package `@typeroll/mcp-server` also installs the `typeroll` developer
+CLI. It reads `TYPEROLL_API_URL` and an organization-scoped
+`TYPEROLL_API_KEY` and supports `extension validate`, `push --draft`,
+`install --site` and `promote`. The CLI calls the same APIs as the portal; the
+server remains authoritative for full validation.
+
+## Frontend contract
+
+A bundled component exports:
+
+```js
+export async function mount(element, props, context) {}
+```
+
+`context` contains protocol/runtime versions, installation/component ids,
+public config, the declared URL-context accessor, an in-memory navigation
+object, and `api.fetch()`. Navigation is per mount:
+
+```js
+context.navigation.subscribe(render);
+context.navigation.navigate('confirmation');
+```
+
+This changes the Extension's internal view without changing the Typeroll page
+path. URL context captured when the block mounted remains in its closure. A
+reload starts a new provider/customer session; it does not require multiple
+Typeroll pages.
+
+Embedded apps receive `typeroll.extension.init` with protocol version,
+installation/component ids, props, public config, URL context and current
+navigation state. They may request resize and internal navigation with the
+versioned postMessage messages implemented in the shared runtime.
+
+The same installed component can be mounted in HTML mode without copying
+provider scripts into page HTML:
+
+```html
+<x-extension
+  block="extension--install-abc--calculator"
+  props='{"heading":"Your quote"}'
+/>
+```
+
+The `block` value is the provisioned block type id shown by Typeroll. During
+preview/build, Typeroll replaces this authoring directive with an inert mount
+shell and public initial props. The directive and props are not a second
+runtime or an executable shortcode. URL tokens are captured later in the
+visitor's browser and are never serialized into the generated shell.
+
+### Recipient links
+
+Declare only the inputs the component needs:
+
+```json
+{
+  "url_context": {
+    "query": [{
+      "name": "quote",
+      "expose_as": "quote_token",
+      "sensitive": true,
+      "consume": true,
+      "max_length": 256,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    }]
+  }
+}
+```
+
+The provider creates and emails the token. Typeroll treats it as opaque,
+captures it before any component mounts, removes consumed representations in
+one `history.replaceState`, and passes only declared values. The provider must
+validate expiry, revocation, recipient/action scope and replay behavior.
+
+The block editor's **URL context** action sets synthetic string values for the
+live preview only. They are sent directly to the isolated canvas and never
+stored in page block data.
+
+## Admin SSO
+
+Typeroll posts a 60-second launch code, issuer, installation id and page id to
+the exact declared launch URL. The provider exchanges the code server-to-server:
+
+```http
+POST /api/extensions/token
+Content-Type: application/json
+
+{"grant_type":"authorization_code","code":"…","client_id":"…","client_secret":"…"}
+```
+
+The access token is a five-minute ES256 JWT. Validate `iss`, `aud`, `sub`,
+`org_id`, `site_id`, `installation_id`, `permission`, `scopes`, `jti`, `iat`
+and `exp` against the issuer's discovery/JWKS. Never expose the Extension
+client secret in the browser.
+
+Self-hosted portals publish discovery and JWKS on their own canonical
+`PORTAL_PUBLIC_URL`. If `auth.pairing_url` is declared, a site admin can start
+an explicit pairing. Typeroll sends a signed, five-minute pairing assertion,
+nonce and JWKS fingerprint; the provider must fetch discovery/JWKS itself and
+echo the exact issuer, nonce and fingerprint only after verification.
+
+## Service credentials and direct provider API
+
+Installation credentials use the existing `/api/v1/sites/{siteId}/…` API.
+Send the credential as Bearer plus:
+
+```http
+X-Typeroll-Organization-Id: <owner org>
+X-Typeroll-Installation-Id: <installation id>
+```
+
+The API maps route/method to one required Extension scope and rejects unknown
+routes. Rotation returns a secret once and can leave a short grace window for
+the previous credential.
+
+Frontend code calls manifest-declared provider paths through
+`context.api.fetch()`. The browser calls `api.base_url` directly with
+`credentials: omit`; Typeroll never forwards the payload. When the manifest
+requests `signed_installation`, the provider receives a five-minute,
+origin-bound `X-Typeroll-Extension-Token`. It proves the enabled installation,
+not the visitor's identity or authority over provider-owned data.
+
+## Lifecycle events
+
+Events use `Idempotency-Key` and the headers:
+
+```text
+X-Typeroll-Event
+X-Typeroll-Event-Id
+X-Typeroll-Timestamp
+X-Typeroll-Signature: v1=<hex hmac>
+```
+
+Verify HMAC-SHA256 over `<timestamp>.<raw-body>`, reject stale timestamps and
+deduplicate the event id. Delivery retries network failures, 408, 429 and 5xx.
+
+## Self-hosting configuration
+
+Required for production Extension identity:
+
+```text
+PORTAL_PUBLIC_URL=https://admin.example.com
+EXTENSION_SIGNING_PRIVATE_JWK=<P-256 private JWK JSON>
+```
+
+During signing-key rotation, set `EXTENSION_SIGNING_PREVIOUS_PUBLIC_JWKS` to a
+JWKS document containing the previous public key(s). The discovery endpoint
+publishes both new and overlapping old keys while all new tokens use the new
+private key. Remove old keys after the longest token/pairing validity window.
+
+Self-hosted installations use their local catalog and can install private or
+unlisted Extensions without contacting Typeroll Cloud. Public catalog review
+is a Typeroll Cloud operation and is not included in this repository.
+
+## Operational behavior
+
+- Disable immediately blocks new Extension tokens and launch but keeps configuration.
+- Deprecation warns admins and blocks new installs of that version.
+- Revocation blocks new Extension tokens, launch and new builds and withdraws the matching
+  catalog entry.
+- Uninstall revokes credentials and removes derived definitions/nav, but page
+  block instances remain as explicit unavailable placeholders.
+- Diagnostics list health, credential metadata, audit actions, event delivery
+  classes and declared URL inputs without exposing secrets or token values.

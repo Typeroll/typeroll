@@ -1,0 +1,118 @@
+---
+title: What are Skills?
+description: Skills are markdown recipes that teach Claude how to handle common Typeroll tasks — step by step.
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+Skills are short markdown files that Claude reads on demand. Each skill contains a numbered recipe for a specific task — which tools to call, in which order, and what pitfalls to avoid.
+
+Without skills, Claude still has access to all 75+ Typeroll tools. Skills help it:
+
+- Pick the right sequence of calls for complex multi-step tasks
+- Avoid common mistakes (e.g. field name encoding, token expiry in forms)
+- Work faster and with fewer back-and-forth iterations
+
+## Install
+
+```bash
+# Project-scoped (recommended — one per project)
+mkdir -p .claude/skills
+npx @typeroll/mcp-server install-skills .claude/skills
+
+# User-scoped (available in every project)
+npx @typeroll/mcp-server install-skills ~/.claude/skills
+```
+
+## Available skills
+
+<CardGrid>
+  <Card title="tr-new-site" icon="rocket">
+    Full site setup: settings → header/footer → homepage → inner pages → deploy.
+    [Read more →](/skills/tr-new-site/)
+  </Card>
+  <Card title="tr-brand" icon="seti:image">
+    Palette recipes by mood, typography pairings, CSS variable setup. [Read more
+    →](/skills/tr-brand/)
+  </Card>
+  <Card title="tr-blog" icon="document">
+    Collection schema → seed articles → listing page → per-article pages →
+    deploy. [Read more →](/skills/tr-blog/)
+  </Card>
+  <Card title="tr-forms" icon="email">
+    Form definition → signed embed HTML → honeypot → JS feedback → deploy. [Read
+    more →](/skills/tr-forms/)
+  </Card>
+  <Card title="tr-seo" icon="magnifier">
+    Audit → meta descriptions → OG images → JSON-LD → robots.txt → deploy. [Read
+    more →](/skills/tr-seo/)
+  </Card>
+  <Card title="tr-import-url" icon="external">
+    Import from Squarespace, Wix, Webflow or any HTML URL. [Read more
+    →](/skills/tr-import-url/)
+  </Card>
+  <Card title="tr-migrate-wp" icon="setting">
+    Full WordPress migration: pages, posts, CPTs, media, redirects. [Read more
+    →](/skills/tr-migrate-wp/)
+  </Card>
+</CardGrid>
+
+### The rest of the library
+
+These ship with the MCP server too. They don't have a walkthrough page here yet
+— run `list_skills` and `read_skill name=…` to read any of them in full, or open
+them in `.claude/skills/` after installing.
+
+| Skill                    | Use it when                                                               |
+| ------------------------ | ------------------------------------------------------------------------- |
+| `tr-content-write`       | Writing, drafting or rewriting the copy on a page                         |
+| `tr-responsive`          | A layout needs to behave differently across screen sizes                  |
+| `tr-header-footer`       | You want a vetted header/footer preset rather than building one           |
+| `tr-page-template`       | Several pages share the same outer structure                              |
+| `tr-collection-template` | Building a rich per-item detail page for a collection                     |
+| `tr-images`              | An image, hero, illustration or logo needs creating or sourcing           |
+| `tr-imagegen`            | Generating images with AI models specifically                             |
+| `tr-design-review`       | Reviewing a deployed page like a designer — a measured routine, not vibes |
+| `tr-redesign-branch`     | Redesigning or restructuring an existing site safely on a branch          |
+| `tr-directory`           | Building a directory site or importing a structured dataset               |
+| `tr-migrate-astro`       | Migrating an existing Astro site                                          |
+
+## Triggering a skill
+
+Skills have a `description` frontmatter field that Claude uses to decide when to load them. You don't invoke them by name — just describe what you want:
+
+| You say                   | Skill that triggers |
+| ------------------------- | ------------------- |
+| "Create a new site for…"  | `tr-new-site`       |
+| "Set up a blog"           | `tr-blog`           |
+| "Add a contact form"      | `tr-forms`          |
+| "Fix the SEO"             | `tr-seo`            |
+| "Import from Squarespace" | `tr-import-url`     |
+| "Migrate from WordPress"  | `tr-migrate-wp`     |
+
+## Writing your own skills
+
+A skill is just a markdown file with YAML frontmatter:
+
+```markdown
+---
+name: my-skill
+description: Use when the user wants to... Triggers on "some phrase" or similar.
+---
+
+# My skill title
+
+## Preconditions
+
+- What needs to be true before running this skill
+
+## Recipe
+
+### 1. First step
+
+...
+```
+
+Save it to `.claude/skills/my-skill.md` and Claude will pick it up automatically.
+
+Keep skills under ~150 lines. If a skill grows large, split it into two.

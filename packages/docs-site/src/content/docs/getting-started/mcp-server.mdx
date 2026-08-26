@@ -1,0 +1,249 @@
+---
+title: Install the MCP Server
+description: How to install and configure the Typeroll MCP server so Claude can manage your sites.
+---
+
+import { Aside, Code } from "@astrojs/starlight/components";
+
+Typeroll's MCP server connects Claude (Desktop, claude.ai, or Code) to your portal so it can create pages, update settings, deploy sites, and much more — all by calling the tools the MCP server exposes.
+
+## 1. Get an API key
+
+Two scope options:
+
+- **Org-scoped key** (recommended) — log in to [app.typeroll.com](https://app.typeroll.com), open **Settings → Org API keys**, click **New key**. One credential covers every site your org owns plus every site shared into your org. This is what the hosted Claude connector expects.
+- **Site-scoped key** — open a site, then **Settings → API keys** under "External access". Useful when you want to hand someone access to a single site only.
+
+Copy the token shown once — you won't see it again. Tokens look like:
+
+```
+typeroll_live_5bb88adff25a_b2924f4f715d8459a3752a07bd61daa714b4541f7d769076
+```
+
+Revoke any time from the same page to kill access immediately.
+
+## 2. Add the MCP server
+
+Two paths — pick whichever matches your client:
+
+- **Claude Desktop / claude.ai** — paste a single URL. No CLI, no Node.js install. See _Hosted connector_ below.
+- **Claude Code (CLI)** — one `claude mcp add` command in your terminal. Best for local dev and developer machines where you already have Node.js. See _Stdio install_ below.
+
+Both transports talk to the same tool surface, so you can use them on the same machine.
+
+## Hosted connector — Claude Desktop / claude.ai
+
+In Claude, open **Settings → Connectors → Add custom connector** and paste:
+
+```
+https://app.typeroll.com/api/mcp
+```
+
+(Self-hosting? Use `https://<your-portal>/api/mcp` instead.)
+
+Claude will open a browser window with a Typeroll consent screen — paste your API key (from step 1) and click **Grant access**. Claude stores the issued OAuth token; you can disconnect at any time by revoking the key in `/app/settings/api-keys`.
+
+The hosted connector accepts both **org-scoped** keys (one connector covers every site in your org and every site shared into your org) and **site-scoped** keys (single-site, useful for handing a customer a tight credential). The plan recommends org-scoped for the agency-and-multi-site use case — that's what the Settings → API Keys page creates by default.
+
+<Aside type="note">
+  Behind the scenes the hosted endpoint speaks the MCP Streamable HTTP transport
+  with an OAuth 2.1 shim (RFC 8414 metadata, RFC 7591 DCR, PKCE). You don't need
+  to know any of that — the URL above is the only thing you paste.
+</Aside>
+
+## Stdio install — Claude Code (CLI)
+
+<Aside type="note">
+  Stdio is the right choice when you're already in a terminal — local dev,
+  agency staff using Claude Code on their laptop, anything Node-aware. The
+  hosted connector covers the Claude Desktop / claude.ai case where you can't
+  run `npx`.
+</Aside>
+
+You also need **Node.js 20 or later** installed (the MCP server runs via `npx`). Check with `node -v`.
+
+### The recommended command
+
+In your project directory, run this single command. Replace `typeroll_live_...` with your actual API key:
+
+<Code
+  lang="bash"
+  code={`claude mcp add typeroll -e TYPEROLL_API_KEY=typeroll_live_... -e TYPEROLL_API_URL=https://app.typeroll.com -- npx -y @typeroll/mcp-server`}
+/>
+
+That's it — no manual JSON editing, no approval prompts, no committed secrets. The command writes the config to `~/.claude.json` under this project's entry (Claude Code calls this **local scope**, the default). Your API key stays out of any git-tracked file.
+
+<Aside type="tip" title="Verify the env block landed">
+  Confirm the credentials actually got saved before starting `claude`:
+
+```bash
+claude mcp get typeroll
+```
+
+You should see your `TYPEROLL_API_KEY` and `TYPEROLL_API_URL` under
+`Environment`. If `Environment` is empty, the `-e` flags didn't make it
+through (most often because a pasted line-break ate them). Run `claude mcp
+  remove typeroll` and try again on a single line.
+
+</Aside>
+
+### Other scopes (advanced)
+
+The default `claude mcp add` saves the config in **local scope** — per-project, per-machine, private to you. That's the right choice for almost everyone. Two alternatives exist if you have a specific reason:
+
+- **`--scope user`** — same config available in _every_ project on your machine. Convenient on a personal laptop, but the API key is loaded for any project you open. Stored at the top level of `~/.claude.json`.
+- **`--scope project`** — writes `.mcp.json` in the project root, which can be committed to git so teammates share the setup. Two caveats: (1) the API key ends up in plain text in a tracked file — replace the literal value with `"TYPEROLL_API_KEY": "${TYPEROLL_API_KEY}"` and keep the real value in `.env` or a secrets manager if the repo is public, and (2) Claude Code requires an explicit approval prompt the first time anyone opens the project (see Troubleshooting below if you miss it).
+
+Both alternatives use the same command shape, just with the extra flag inserted before `typeroll`.
+
+<Aside type="caution" title="Don't add it to multiple scopes">
+  If you run `claude mcp add` more than once with different scopes, you'll end
+  up with multiple `typeroll` entries and Claude Code refuses to disambiguate.
+  Pick one scope. If you've already created duplicates, see Troubleshooting.
+</Aside>
+
+## 3. Restart Claude Code
+
+If you already had `claude` running while you ran the command above, **exit it (Ctrl+C twice) and start a new session** — Claude Code only reads MCP config at startup.
+
+## 4. Verify the connection
+
+Start Claude Code in your project:
+
+```bash
+claude
+```
+
+Ask it to list your sites:
+
+```
+What sites do I have in Typeroll?
+```
+
+Claude should call `list_sites` and respond with your sites. If it says "Missing bearer token" or "Invalid or revoked token", double-check the API key in your config.
+
+## 5. Install skills (optional but recommended)
+
+Skills are short markdown files that give Claude step-by-step recipes for common tasks. Without them, Claude still has all the tools — but skills help it pick the right sequence and avoid common pitfalls.
+
+```bash
+# Project-scoped (recommended)
+mkdir -p .claude/skills
+npx @typeroll/mcp-server install-skills .claude/skills
+
+# Or user-scoped (available in every project)
+npx @typeroll/mcp-server install-skills ~/.claude/skills
+```
+
+<Aside type="note">
+  Skills are a **Claude Code** feature — they live as markdown files in
+  `.claude/skills/`. Claude Desktop and claude.ai don't read these files, so the
+  install-skills step only applies if you're using Claude Code. The MCP server
+  itself works identically in both clients.
+</Aside>
+
+`install-skills` doesn't talk to the portal — it just copies bundled files — so it works regardless of whether you use the stdio or hosted MCP transport. No API key required.
+
+### Customizing skills without losing updates
+
+By default, `install-skills` **skips files that already exist** so your edits are safe across re-runs. But this means you also won't get upstream improvements unless you opt in.
+
+**Three patterns**, pick what fits:
+
+1. **Keep your edits, ignore upstream updates** — just edit `tr-blog.md` (or any other `tr-*.md`) in place. Subsequent `install-skills` calls leave your version alone. Simplest, but you don't see new recipes.
+
+2. **Reset to upstream, lose your edits** — run with `--force`:
+
+   ```bash
+   npx @typeroll/mcp-server install-skills .claude/skills --force
+   ```
+
+3. **Keep both** — treat `tr-*.md` files as Typeroll-managed (don't edit those), and put your customizations in differently-named files alongside. Example: copy `tr-blog.md` to `my-blog-tweaks.md` first, then edit the copy. Claude Code reads every `.md` file in the directory, so both are active — and `install-skills` only touches `tr-*.md`, so your `my-*.md` files survive every update.
+
+The recommended pattern for sustained use is **#3**: keep upstream skills pristine and own your customizations under a different prefix.
+
+<Aside type="tip">
+  Skills are just markdown files. See [What are Skills?](/skills/overview/) for
+  the full list of bundled Typeroll skills.
+</Aside>
+
+## Environment variables (stdio only)
+
+The hosted connector reads no env vars on your machine — Claude stores its OAuth token and that's it. The variables below only apply to the stdio install (`npx @typeroll/mcp-server` via Claude Code).
+
+| Variable           | Required | Description                                                                                                                                         |
+| ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TYPEROLL_API_KEY` | ✓        | API key from your portal settings. Org-scoped keys (recommended) cover every site in the org; site-scoped keys restrict the connection to one site. |
+| `TYPEROLL_API_URL` | ✓        | Portal URL. Use `https://app.typeroll.com` for the hosted version, or `https://<your-portal>` for self-hosted Typeroll.                             |
+
+## Testing the hosted connector locally
+
+Useful if you're self-hosting Typeroll or developing against it.
+
+1. Generate an HMAC signing key (any 32+ char string):
+   ```bash
+   node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+   ```
+   Set it as `MCP_OAUTH_SIGNING_KEY` for the portal process (Secret Manager in prod, `.env.local` in dev).
+2. Start the portal as usual (`npm run dev -w @typeroll/portal`). The `/api/mcp`, `/.well-known/*`, and `/mcp/consent` routes are live.
+3. In Claude Desktop or claude.ai, open **Settings → Connectors → Add custom connector** and paste:
+   ```
+   http://localhost:4321/api/mcp
+   ```
+   (Local HTTPS isn't required for testing — Claude tolerates plain http for localhost.)
+4. Claude opens a browser tab pointing at `/mcp/consent`. Paste an API key (create one in **Settings → Org API keys** or under any single site) and click **Grant access**.
+5. Claude redirects back and stores the issued OAuth token. The connector flips to "Connected" and your sites become visible to the conversation.
+
+If anything fails, the consent page surfaces the error string from the server (invalid key, missing fields, etc.). The OAuth round-trip is also covered by the test suite — see `packages/portal/src/__tests__/lib/mcp-oauth-flow.test.ts`.
+
+## Troubleshooting
+
+**`/mcp` doesn't list typeroll** — You're probably running `claude` from a different directory than the one you ran `claude mcp add` in. Local scope is per-project, so it only appears in the project you added it to. Confirm with `pwd` and re-add if needed.
+
+**`/mcp` lists typeroll but it's in project scope and shows "needs approval"** — This only happens if you used `--scope project`. Claude Code requires explicit approval the first time anyone opens a project with `.mcp.json`. Look for the approval prompt at startup; if you previously dismissed it, run `claude mcp reset-project-choices` and restart `claude`.
+
+**"MCP server typeroll exists in multiple scopes"** — You ran `claude mcp add` more than once with different (or default) scopes. Pick one and remove the other:
+
+```bash
+claude mcp remove typeroll -s local    # remove from ~/.claude.json (project entry)
+claude mcp remove typeroll -s project  # remove from .mcp.json
+claude mcp remove typeroll -s user     # remove from ~/.claude.json (top level)
+```
+
+Then re-add in the scope you actually want.
+
+**typeroll listed as "failed"** — The server is crashing on startup. The most common cause is an empty `env` block: when a pasted multi-line `claude mcp add` command loses its line continuations, the `-e` flags get dropped and the server starts without credentials. Check first:
+
+```bash
+claude mcp get typeroll
+```
+
+If `Environment` is empty, run `claude mcp remove typeroll` and re-add it as a single-line command (see step 2). If `Environment` is populated, run the server manually to see the real error:
+
+```bash
+TYPEROLL_API_KEY="typeroll_live_..." \
+TYPEROLL_API_URL="https://app.typeroll.com" \
+npx -y @typeroll/mcp-server
+```
+
+It should start silently and wait on stdin. Any error message will appear here.
+
+**"Missing bearer token"** — `TYPEROLL_API_KEY` is not set or not reaching the MCP server process. Run `claude mcp get typeroll` to inspect the `Environment` block. If it's empty, re-add the server.
+
+**"Invalid or revoked token"** — The key was deleted or rotated. Create a new one in **Settings → Org API keys** (for org-scoped) or in a site's **Settings → API keys** (for site-scoped).
+
+**"Site not found"** — The site ID doesn't exist or isn't reachable by your token. With an org-scoped key, the token reaches every site your org owns plus every site shared into your org. Use `list_sites` to see what's available. If a site you expected is missing, check whether its share was revoked or whether the site lives in a different org.
+
+**Claude doesn't use the tools** — Make sure you started `claude` _after_ adding the MCP server. Exit (Ctrl+C twice) and start a new session.
+
+### Hosted connector
+
+**Consent page shows "That doesn't look like a valid Typeroll API key"** — The key you pasted isn't recognised by `verifyApiToken()`. Most common causes: trailing whitespace pasted with the key, a key that was already revoked, or a key from a different portal (e.g. you pasted a production key into a staging consent page). Generate a fresh key under the portal you're connecting to.
+
+**Connector flips back to "Reconnect" repeatedly** — The underlying API key has been revoked. Refresh tokens re-run `verifyApiToken()` on every use, so a revoked key kills the refresh chain. Create a new key, click **Reconnect** in Claude's connector settings, and paste the new key.
+
+**"site_id is required. This connector covers multiple sites; pick one from list_sites"** — You used an org-scoped key, which makes the connector multi-site. Ask Claude to call `list_sites` first, then reference a site by name or id in subsequent prompts. The tool descriptions include the list of allowed site ids — Claude should pick one automatically once it sees them.
+
+**"Tool ... requires write permission on site ..., this connection has read"** — The site is shared _into_ your org with `read` permission only. Mutating operations (edit, deploy, etc.) require `write` or `admin`. Ask the owning org to upgrade your share permission, or use a different token.
+
+**Connection works but no tools listed** — Hard-reload the connector page (Cmd+R in Claude Desktop, browser refresh in claude.ai). Claude caches tool lists per connection and a stale cache shows zero tools if the first handshake raced the cache.

@@ -1,0 +1,12 @@
+{
+  "kind": "partial",
+  "created_at": "2026-05-20T11:21:01.971Z",
+  "created_by": "dev@typeroll.local",
+  "doc": {
+    "name": "CTA",
+    "kind": "free",
+    "content_mode": "html",
+    "html_content": "",
+    "status": "draft"
+  }
+}

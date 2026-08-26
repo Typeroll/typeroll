@@ -1,0 +1,16 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import DeveloperExtensions from '../../../components/DeveloperExtensions.tsx';
+import { getSession } from '../../../lib/auth';
+import { requireOrgAdmin } from '../../../lib/access';
+
+const session = await getSession(Astro.cookies);
+if (!session) return Astro.redirect('/login');
+if (!session.orgId) return Astro.redirect('/onboarding');
+const access = await requireOrgAdmin(session as typeof session & { orgId: string });
+if (!access.ok) return Astro.redirect('/app');
+---
+<AppLayout title="Developer">
+  <div class="app-header"><div><h1>Developer Portal</h1><p class="muted">Register Extension manifests, publish immutable versions, and inspect private distribution.</p></div></div>
+  <DeveloperExtensions client:load />
+</AppLayout>

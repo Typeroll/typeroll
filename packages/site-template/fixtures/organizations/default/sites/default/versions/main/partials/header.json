@@ -1,0 +1,7 @@
+{
+  "name": "Main header",
+  "kind": "header",
+  "content_mode": "html",
+  "status": "published",
+  "html_content": "<div style=\"background:var(--color-surface);border-bottom:1px solid color-mix(in srgb,var(--color-text) 8%,transparent)\">\n  <div style=\"display:flex;align-items:center;justify-content:space-between;gap:var(--spacing-lg);max-width:var(--container-medium);margin:0 auto;padding:var(--spacing-md)\">\n    <a href=\"/\" style=\"font-family:var(--font-heading),sans-serif;font-weight:700;font-size:1.2rem;color:var(--color-text);text-decoration:none;letter-spacing:-0.01em\">ACME Studio</a>\n    <nav style=\"display:flex;align-items:center;gap:var(--spacing-md);flex-wrap:wrap\">\n      <a href=\"/\" style=\"color:var(--color-text);text-decoration:none;font-weight:500;padding:0.35rem 0\">Home</a>\n      <a href=\"/about\" style=\"color:var(--color-text);text-decoration:none;font-weight:500;padding:0.35rem 0\">About</a>\n      <a href=\"/contact\" style=\"background:var(--color-primary);color:var(--color-background);text-decoration:none;font-weight:600;padding:0.45rem 0.9rem;border-radius:var(--radius-md);line-height:1\">Contact</a>\n    </nav>\n  </div>\n</div>"
+}

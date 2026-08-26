@@ -1,0 +1,32 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { loadSiteContext } from '../../../../../lib/access';
+import { listSharesForSite } from '../../../../../lib/shares';
+import SharingManager from '../../../../../components/SharingManager.tsx';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, owner_org_id: orgId, permission } = ctx;
+const siteId = site.id;
+
+// Only admins (owner-org users or admin-shared users) can manage shares.
+if (permission !== 'admin') return Astro.redirect(`/app/sites/${siteId}/settings`);
+
+const shares = await listSharesForSite(orgId, siteId);
+---
+<AppLayout title={`Sharing — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <h1>Sharing</h1>
+    <p class="muted text-sm" style="max-width: 720px;">
+      Grant other organizations read, write, or admin access to <strong>{site.name}</strong> without adding their users to your org. Used by agencies to give customers visibility into their own site, or by customers to collaborate with an agency.
+    </p>
+  </div>
+
+  <div style="max-width: 760px;">
+    <SharingManager client:load siteId={siteId} initialShares={shares} />
+  </div>
+
+  <p class="text-sm muted" style="margin-top: 1.5rem;">
+    <a href={`/app/sites/${siteId}/settings`}>← Back to site settings</a>
+  </p>
+</AppLayout>

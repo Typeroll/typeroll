@@ -1,0 +1,12 @@
+{
+  "kind": "partial",
+  "created_at": "2026-05-20T11:22:57.254Z",
+  "created_by": "dev@typeroll.local",
+  "doc": {
+    "name": "CTA",
+    "kind": "free",
+    "content_mode": "html",
+    "html_content": "<div style=\"background-color:green\">\nHej hej!\n</div>",
+    "status": "draft"
+  }
+}

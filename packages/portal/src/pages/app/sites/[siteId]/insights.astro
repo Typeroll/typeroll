@@ -1,0 +1,25 @@
+---
+import AppLayout from '../../../../layouts/AppLayout.astro';
+import { loadSiteContext } from '../../../../lib/access';
+import Insights from '../../../../components/Insights.tsx';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site } = ctx;
+const siteId = site.id;
+---
+<AppLayout title={`Insights — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>Insights</h1>
+      <p class="muted text-sm" style="max-width: 720px;">
+        Traffic and AI-assistant referrals for <strong>{site.name}</strong> — see how many
+        visitors arrive from ChatGPT, Claude, Perplexity and others.
+      </p>
+    </div>
+  </div>
+
+  <div style="max-width: 820px;">
+    <Insights client:load siteId={siteId} />
+  </div>
+</AppLayout>

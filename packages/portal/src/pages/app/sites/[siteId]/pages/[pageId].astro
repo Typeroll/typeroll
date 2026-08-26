@@ -1,0 +1,52 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../../lib/version-store';
+import HtmlPageEditor from '../../../../../components/HtmlPageEditor.tsx';
+import BlockPageEditor from '../../../../../components/BlockPageEditor.tsx';
+import { loadSiteContext } from '../../../../../lib/access';
+import { getStore } from '../../../../../lib/datastore';
+import { pagePreviewUrl, liveBaseFor, pagePathSegment } from '../../../../../lib/site-urls';
+import { readWorkingCopy } from '../../../../../lib/working-copy';
+import { paths } from '@typeroll/shared';
+import type { Page, SiteVersion } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+const { pageId } = Astro.params;
+if (!pageId) return Astro.redirect(`/app/sites/${siteId}/pages`);
+
+const store = getStore();
+const page = await vstore.page(orgId, siteId, versionId, pageId);
+if (!page) return Astro.redirect(`/app/sites/${siteId}/pages`);
+
+// Unsaved autosaved edits (working copy) — the editor overlays these on the
+// canonical page and shows the "Unsaved changes" state in the Publish menu.
+const workingCopy = await readWorkingCopy(
+  { orgId, siteId, versionId },
+  { kind: 'page', id: pageId },
+);
+
+// Navigable preview — clicking links inside the iframe stays in preview
+// mode and sees drafts/edits across the whole site, not just this page.
+const previewUrl = pagePreviewUrl(siteId, page);
+
+// The editor's status indicator compares each page's date_updated to the
+// version's last_deployed_at to surface "pending deploy" state.
+const versionDoc = await store.getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
+const lastDeployedAt = versionDoc?.last_deployed_at ?? null;
+
+// Permalink on the deployed site. Computed status-agnostically — the
+// Publish menu decides whether to show it based on the CURRENT status.
+const liveBase = liveBaseFor(site, versionDoc ?? null);
+const seg = pagePathSegment(page);
+const liveUrl = liveBase ? (seg ? `${liveBase}/${seg}` : `${liveBase}/`) : null;
+---
+<AppLayout title={`${page.title} — ${site.name}`} siteId={siteId} bare>
+  {page.content_mode === 'blocks' ? (
+    <BlockPageEditor client:load siteId={siteId} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+  ) : (
+    <HtmlPageEditor client:load siteId={siteId} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+  )}
+</AppLayout>

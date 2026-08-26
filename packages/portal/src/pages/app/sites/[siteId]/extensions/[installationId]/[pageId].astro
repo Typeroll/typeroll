@@ -1,0 +1,72 @@
+---
+import AppLayout from '../../../../../../layouts/AppLayout.astro';
+import { loadSiteContext } from '../../../../../../lib/access';
+import { getStore } from '../../../../../../lib/datastore';
+import { issueExtensionLaunchGrant } from '../../../../../../lib/extensions/auth';
+import { paths, type ExtensionInstallation, type ExtensionVersion } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, owner_org_id: orgId, session, permission } = ctx;
+const { installationId, pageId } = Astro.params;
+if (!installationId || !pageId) return Astro.redirect(`/app/sites/${site.id}`);
+
+const installation = await getStore().getDoc<ExtensionInstallation>(
+  paths.extensionInstallation(orgId, site.id, installationId),
+);
+if (!installation || installation.status !== 'enabled') return Astro.redirect(`/app/sites/${site.id}/settings/extensions`);
+const version = await getStore().getDoc<ExtensionVersion>(
+  paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version),
+);
+const manifest = version?.manifest;
+const page = manifest?.admin?.pages.find((entry) => entry.id === pageId);
+if (!page || !manifest || version?.status === 'revoked') return Astro.redirect(`/app/sites/${site.id}/settings/extensions`);
+
+const launch = await issueExtensionLaunchGrant({
+  ownerOrgId: orgId,
+  siteId: site.id,
+  installationId,
+  userId: session.userId,
+  permission,
+  minimumPermission: page.minimum_permission,
+});
+const launchOrigin = new URL(page.launch_url).origin;
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+Astro.response.headers.set(
+  'Content-Security-Policy',
+  `default-src 'self'; frame-src ${launchOrigin}; form-action ${launchOrigin}; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:`,
+);
+const frameName = `tr-extension-${installationId}-${pageId}`;
+---
+<AppLayout title={`${page.label} — ${site.name}`} siteId={site.id}>
+  <div class="extension-admin-host">
+    <div class="app-header">
+      <div>
+        <h1>{page.label}</h1>
+        <p class="muted">Provided by {manifest.developer.name}</p>
+      </div>
+      <a class="btn btn--secondary" href={`/app/sites/${site.id}/settings/extensions`}>Extension settings</a>
+    </div>
+    <iframe
+      name={frameName}
+      title={page.label}
+      sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads allow-same-origin"
+      referrerpolicy="no-referrer"
+      class="extension-admin-frame"
+    ></iframe>
+    <form method="POST" action={page.launch_url} target={frameName} data-extension-launch>
+      <input type="hidden" name="code" value={launch.code} />
+      <input type="hidden" name="issuer" value={(process.env.PORTAL_PUBLIC_URL ?? Astro.url.origin).replace(/\/$/, '')} />
+      <input type="hidden" name="installation_id" value={installation.id} />
+      <input type="hidden" name="page_id" value={page.id} />
+      <noscript><button type="submit" class="btn">Open {page.label}</button></noscript>
+    </form>
+  </div>
+  <script is:inline>
+    document.querySelector('[data-extension-launch]')?.submit();
+  </script>
+  <style>
+    .extension-admin-host { display: flex; flex-direction: column; min-height: calc(100vh - 4rem); }
+    .extension-admin-frame { width: 100%; min-height: 720px; flex: 1; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: #fff; }
+  </style>
+</AppLayout>

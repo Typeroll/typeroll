@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 28" fill="none">
+  <rect x="0" y="4" width="20" height="20" rx="5" fill="#6b97ff"/>
+  <text x="9.8" y="19" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="white" text-anchor="middle">T</text>
+  <text x="28" y="20" font-family="system-ui, sans-serif" font-size="15" font-weight="600" fill="#f1f5f9">typeroll</text>
+</svg>

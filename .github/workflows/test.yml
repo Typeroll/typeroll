@@ -1,0 +1,56 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    name: Unit + integration (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Vitest
+        run: npm test
+      - name: Site-template smoke build
+        # Runs `astro build` against the in-repo fixtures (one page in
+        # html-mode + one in blocks-mode + one collection with
+        # route_template + items). Catches renderer regressions like the
+        # pageForItem ReferenceError that shipped to prod in 0.5.x.
+        # Already covered by `npm test` (it runs the workspace's `test`
+        # script), but pulling it into its own step makes the failure
+        # mode obvious in the Actions UI.
+        run: npm test --workspace=@typeroll/site-template
+
+  e2e:
+    name: Playwright e2e
+    runs-on: ubuntu-latest
+    # Only block the merge on e2e when the unit suite passes — saves CI
+    # minutes when the bug is somewhere obvious.
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Install Playwright browsers
+        run: npm run test:e2e:install --workspace=@typeroll/portal
+      - name: Run Playwright
+        run: npm run test:e2e
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: packages/portal/playwright-report
+          retention-days: 7

@@ -1,0 +1,48 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { loadSiteContext } from '../../../../../lib/access';
+import { getStore } from '../../../../../lib/datastore';
+import { paths, collectStepFields } from '@typeroll/shared';
+import type { Form } from '@typeroll/shared';
+import FormsManager from '../../../../../components/FormsManager.tsx';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, owner_org_id: orgId, permission } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+const forms = await store.listDocs<Form>(paths.forms(orgId, siteId));
+const subs = await store.listDocs<{ form_id?: string }>(paths.submissions(orgId, siteId));
+const counts = new Map<string, number>();
+for (const s of subs) if (s.form_id) counts.set(s.form_id, (counts.get(s.form_id) ?? 0) + 1);
+
+const initialForms = forms.map((f) => ({
+  id: f.id,
+  name: f.name,
+  kind: f.kind ?? 'form',
+  field_count: (f.steps ?? []).reduce((n, s) => n + collectStepFields(s.blocks).length, 0),
+  step_count: (f.steps ?? []).length,
+  has_steps: Array.isArray(f.steps) && f.steps.length > 0,
+  action_count: (f.actions ?? []).length,
+  submission_count: counts.get(f.id) ?? 0,
+  created_at: f.created_at,
+}));
+---
+<AppLayout title={`Forms — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>Forms</h1>
+      <p class="muted text-sm" style="max-width: 720px;">
+        Contact forms, lead funnels, and their submissions. Configure
+        post-submission email and webhook actions per form on the
+        <a href={`/app/sites/${siteId}/forms`}>form</a> page, after setting up an
+        <a href={`/app/sites/${siteId}/settings/email`}>email connector</a>.
+      </p>
+    </div>
+  </div>
+
+  <div style="max-width: 860px;">
+    <FormsManager client:load siteId={siteId} initialForms={initialForms} canWrite={permission !== 'read'} />
+  </div>
+</AppLayout>

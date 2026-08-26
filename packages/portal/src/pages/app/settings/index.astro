@@ -1,0 +1,26 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import { getSession } from '../../../lib/auth';
+
+const session = await getSession(Astro.cookies);
+if (!session) return Astro.redirect('/login');
+const orgId = session.orgId;
+if (!orgId) return Astro.redirect('/onboarding');
+---
+<AppLayout title="Account">
+  <div class="app-header">
+    <h1>Account</h1>
+  </div>
+
+  <div class="card stack" style="max-width: 720px;">
+    <div class="field"><label>Email</label><input value={session.email} disabled /></div>
+    <div class="field"><label>Organization</label><input value={orgId} disabled /></div>
+    <p class="muted text-sm">
+      Team management, billing, and white-label settings are in the roadmap.
+    </p>
+  </div>
+
+  <p class="muted text-sm" style="margin-top: 1rem;">
+    Looking for API keys? They have their own page in the sidebar now — <a href="/app/settings/api-keys">Account → API keys</a>.
+  </p>
+</AppLayout>

@@ -1,0 +1,70 @@
+---
+title: tr-blog — Set Up a Blog
+description: Create a blog or news section — collection schema, seed articles, listing page, individual article pages, and deploy.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+**Triggers on:** "add a blog", "set up news", "article section", "create posts", "inlägg", "nyheter"
+
+## What it does
+
+1. Creates a `blog` collection with a schema (title, slug, date, author, excerpt, body, image, tags)
+2. Seeds 2–3 real articles with your content
+3. Generates the listing page (`/blog`) with a card grid
+4. Creates individual article pages (`/blog/article-slug`)
+5. Updates the header navigation to include a link to the blog
+6. Deploys
+
+## Important: static site means manual sync
+
+Typeroll generates a static site — there is no template engine that auto-renders collection items. Instead, Claude writes the listing HTML directly from the current items. This means:
+
+- **Adding a new article** requires updating the listing page HTML too
+- Claude handles this automatically when you say "add a new article to the blog"
+- There is no magic sync — ask Claude explicitly after adding articles
+
+<Aside type="caution">
+  If you add articles directly in the portal's Collections UI (not through
+  Claude), the listing page won't update automatically. Ask Claude to
+  "regenerate the blog listing" afterwards.
+</Aside>
+
+## Example prompts
+
+```
+Add a blog to our site. The first three articles should be:
+1. "Vår designfilosofi" — about our minimal approach
+2. "Projekt: Östermalm" — a completed interior project
+3. "Höstens trender 2025" — trend roundup
+```
+
+```
+Add a new blog post: "Working with natural materials" — about our use
+of wood, stone and linen. Published today. Author: Maria Svensson.
+```
+
+## Field name rules
+
+Field names must be lowercase ASCII only. Swedish and other Nordic characters must be transliterated:
+
+| Wrong        | Right                                           |
+| ------------ | ----------------------------------------------- |
+| `rubrik`     | `title` (or `rubrik` — ASCII, this one is fine) |
+| `författare` | `forfattare`                                    |
+| `datum`      | `date` (or `datum` — fine)                      |
+| `ämne`       | `amne`                                          |
+
+The `label` shown in the portal UI can be any text — only the internal `name` must be ASCII.
+
+## Article page structure
+
+Each article gets its own page with `kind: "article"` which activates automatic Article JSON-LD schema:
+
+```
+/blog/                          ← listing page
+/blog/var-designfilosofi        ← individual article
+/blog/projekt-ostermalm
+```
+
+Slugs must be globally unique — the `/blog/` prefix prevents collisions with other pages.

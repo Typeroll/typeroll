@@ -1,0 +1,45 @@
+---
+import AppLayout from '../../../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../../../lib/version-store';
+import CollectionTabs from '../../../../../../components/CollectionTabs.astro';
+import { loadSiteContext } from '../../../../../../lib/access';
+import CollectionSchemaEditor from '../../../../../../components/CollectionSchemaEditor.tsx';
+import { getStore } from '../../../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { CollectionDef, CollectionItem, Site } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+const { name } = Astro.params;
+if (!name) return Astro.redirect('/app');
+
+const store = getStore();
+
+const coll = await vstore.collection(orgId, siteId, versionId, name);
+if (!coll) return Astro.redirect(`/app/sites/${siteId}/collections`);
+
+const items = await vstore.collectionItems(orgId, siteId, versionId, name);
+---
+<AppLayout title={`Schema — ${coll.label_plural}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>{coll.icon ?? '📋'} {coll.label_plural}</h1>
+      <p class="muted">/{coll.name}</p>
+    </div>
+  </div>
+
+  <CollectionTabs base={`/app/sites/${siteId}/collections/${name}`} active="schema" itemCount={items.length} fieldCount={coll.fields.length} />
+
+  <div class="card stack" style="max-width: 720px;">
+    <div>
+      <h2 style="font-size: 1.05rem;">Fields</h2>
+      <p class="muted text-sm" style="margin-top: 0.25rem;">
+        Define what each {coll.label_singular.toLowerCase()} stores. Renaming or removing a field stops it from being editable
+        but won't delete data already saved on existing items.
+      </p>
+    </div>
+    <CollectionSchemaEditor client:load siteId={siteId} collection={coll} />
+  </div>
+</AppLayout>

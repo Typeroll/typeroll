@@ -1,0 +1,122 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../../lib/version-store';
+import { loadSiteContext } from '../../../../../lib/access';
+import { getStore } from '../../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { Partial as PartialDoc, Site } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const partials = await vstore.partials(orgId, siteId, versionId);
+const header = partials.find((p) => p.kind === 'header');
+const footer = partials.find((p) => p.kind === 'footer');
+const freeBlocks = partials.filter((p) => p.kind === 'free').sort((a, b) => a.name.localeCompare(b.name));
+---
+<AppLayout title={`Global blocks — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>Global blocks</h1>
+      <p class="muted">Reusable HTML — header &amp; footer auto-render on every page, free blocks insert via <code class="inline-code">&lt;x-include name=&quot;…&quot; /&gt;</code>.</p>
+    </div>
+    <form method="POST" action={`/api/sites/${siteId}/partials/create`} class="row">
+      <input name="name" required placeholder="Block name" style="padding: 0.5rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md);" />
+      <button type="submit" class="btn">+ New block</button>
+    </form>
+  </div>
+
+  <section class="gb-section">
+    <div class="gb-section__head">
+      <h2>Layout</h2>
+      <span class="gb-section__hint">Auto-injected on every page</span>
+    </div>
+    <div class="gb-grid">
+      <a href={`/app/sites/${siteId}/partials/header`} class="card gb-card">
+        <div class="gb-card__icon">⬆️</div>
+        <h3 class="gb-card__title">Header</h3>
+        <p class="muted text-sm gb-card__meta">{header ? `${header.name} · ${header.status}` : 'not yet created'}</p>
+      </a>
+      <a href={`/app/sites/${siteId}/partials/footer`} class="card gb-card">
+        <div class="gb-card__icon">⬇️</div>
+        <h3 class="gb-card__title">Footer</h3>
+        <p class="muted text-sm gb-card__meta">{footer ? `${footer.name} · ${footer.status}` : 'not yet created'}</p>
+      </a>
+    </div>
+  </section>
+
+  <section class="gb-section">
+    <div class="gb-section__head">
+      <h2>Free blocks</h2>
+      <span class="gb-section__hint">{freeBlocks.length} defined · embed with <code class="inline-code">&lt;x-include&gt;</code></span>
+    </div>
+    {freeBlocks.length === 0 ? (
+      <div class="card gb-empty">
+        <p class="muted" style="max-width: 520px; margin: 0 auto;">
+          Create a free block for things you'll reuse across pages — announcement bars, newsletter CTAs, cookie banners.
+          Then drop <code class="inline-code">&lt;x-include name="block-id" /&gt;</code> anywhere in a page's HTML and the
+          renderer expands it at build time.
+        </p>
+      </div>
+    ) : (
+      <div class="gb-grid">
+        {freeBlocks.map((b) => (
+          <a href={`/app/sites/${siteId}/partials/${b.id}`} class="card gb-card">
+            <div class="gb-card__icon">◈</div>
+            <h3 class="gb-card__title">{b.name}</h3>
+            <p class="muted text-sm gb-card__meta">{b.status} · <code class="inline-code">{b.id}</code></p>
+          </a>
+        ))}
+      </div>
+    )}
+  </section>
+
+  <style>
+    .gb-section + .gb-section { margin-top: 2.5rem; }
+    .gb-section__head {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .gb-section__head h2 {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+    }
+    .gb-section__hint {
+      font-size: 0.78rem;
+      color: var(--color-text-muted);
+      opacity: 0.75;
+    }
+    .gb-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+    .gb-card {
+      text-decoration: none;
+      display: block;
+      transition: border-color 120ms ease;
+    }
+    .gb-card:hover { border-color: var(--color-text); text-decoration: none; }
+    .gb-card__icon { font-size: 1.5rem; line-height: 1; }
+    .gb-card__title { font-size: 1.05rem; margin-top: 0.45rem; }
+    .gb-card__meta { margin-top: 0.25rem; }
+    .gb-empty { text-align: center; padding: 2.5rem 1.5rem; }
+    .inline-code {
+      font-family: var(--font-mono);
+      font-size: 0.82em;
+      background: var(--color-bg);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+  </style>
+</AppLayout>

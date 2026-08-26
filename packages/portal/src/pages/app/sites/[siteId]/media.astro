@@ -1,0 +1,28 @@
+---
+import AppLayout from '../../../../layouts/AppLayout.astro';
+import MediaLibrary from '../../../../components/MediaLibrary.tsx';
+import { getStore } from '../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { Media, Site } from '@typeroll/shared';
+import { loadSiteContext } from '../../../../lib/access';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const media = await store.listDocs<Media>(paths.media(orgId, siteId));
+media.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+---
+<AppLayout title={`Media — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>Media library</h1>
+      <p class="muted">{media.length} item{media.length === 1 ? '' : 's'}</p>
+    </div>
+  </div>
+
+  <MediaLibrary client:load siteId={siteId} initialItems={media} />
+</AppLayout>

@@ -1,0 +1,14 @@
+{
+  "proseWrap": "preserve",
+  "plugins": ["prettier-plugin-astro"],
+  "overrides": [
+    {
+      "files": "*.mdx",
+      "options": { "parser": "mdx" }
+    },
+    {
+      "files": "*.astro",
+      "options": { "parser": "astro" }
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+---
+// Public chrome for the login page. The Typeroll marketing site (with
+// pricing, sign-up CTA, etc.) lives in the Typeroll Cloud repository and is
+// deployed separately — the portal shouldn't ship those pages, especially
+// to self-hosters.
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+const { title = 'Typeroll', description = 'Your website, free from WordPress. Forever.' } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <header class="marketing-nav">
+      <div class="container row" style="justify-content: space-between; padding-top: 1rem; padding-bottom: 1rem;">
+        <a href="/" aria-label="Typeroll">
+          <img src="/brand/typeroll-main.svg" alt="Typeroll" width="248" height="54" style="height: 26px; width: auto; display: block;" />
+        </a>
+      </div>
+    </header>
+    <main>
+      <slot />
+    </main>
+    <footer style="border-top: 1px solid var(--color-border); padding: 2rem 1.5rem; margin-top: 4rem; text-align: center; color: var(--color-text-muted); font-size: 0.875rem;">
+      <p>&copy; {new Date().getFullYear()} Typeroll</p>
+    </footer>
+  </body>
+</html>

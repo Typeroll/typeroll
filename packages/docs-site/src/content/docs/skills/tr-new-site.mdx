@@ -1,0 +1,69 @@
+---
+title: tr-new-site — Build a New Site
+description: Full site setup from scratch — settings, header/footer, homepage, inner pages and deploy.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+**Triggers on:** "create a new site", "bootstrap a site for…", "build a site for [client name]"
+
+## What it does
+
+Claude runs through a complete site setup in one session:
+
+1. Reads the current site state
+2. Updates site settings (name, language, fonts, colour palette)
+3. Creates the header partial (logo + navigation)
+4. Creates the footer partial (contact info, social links, copyright)
+5. Creates the homepage (hero + sections)
+6. Creates inner pages (About, Services, Contact, etc.)
+7. Gets a preview link for review
+8. Deploys after your approval
+
+## Example prompt
+
+```
+Create a site for Björk & Partners — a law firm in Gothenburg.
+Professional look: dark navy, gold accent, serif headings (Playfair Display),
+clean sans-serif body (Inter). Pages: Start, Om oss, Tjänster, Kontakt.
+Swedish. The contact page should have a form.
+```
+
+## Design conventions Claude follows
+
+- **One `<h1>` per page** — the page title. Sections use `<h2>`.
+- **CSS variables for all colours and fonts** — `var(--color-primary)`, `var(--font-heading)`, etc. Never hardcoded hex values in content HTML.
+- **Responsive layout** — CSS grid with `auto-fill` and `minmax()`. No fixed pixel widths.
+- **Navigation in the header partial** — not duplicated in page bodies.
+- **Footer in the footer partial** — not in page bodies.
+
+## The 7 colour tokens
+
+| Token                | Purpose                                                     |
+| -------------------- | ----------------------------------------------------------- |
+| `--color-primary`    | Main brand colour. Buttons, links, key highlights.          |
+| `--color-secondary`  | Supporting colour. Section backgrounds, cards.              |
+| `--color-accent`     | Pop colour. CTAs, hover states, badges.                     |
+| `--color-background` | Page background (usually near-white or very light).         |
+| `--color-surface`    | Card/panel background — slightly different from background. |
+| `--color-text`       | Main body text.                                             |
+| `--color-text-light` | Muted text: captions, metadata, placeholders.               |
+
+## Tips
+
+<Aside type="tip">
+  Give Claude a reference site or describe the "mood" (Nordic minimal, warm
+  artisan, modern tech) and it will pick a coherent palette. You can always say
+  "make it warmer" or "change the accent to terracotta" afterwards.
+</Aside>
+
+<Aside type="tip">
+  Mention the target language upfront (Swedish, English, etc.) — Claude sets
+  `language` on the site and writes all copy in that language from the start.
+</Aside>
+
+## Related skills
+
+- [tr-brand](/skills/tr-brand/) — refine the colour palette and typography after initial setup
+- [tr-blog](/skills/tr-blog/) — add a blog section
+- [tr-forms](/skills/tr-forms/) — add a contact or booking form

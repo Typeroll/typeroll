@@ -1,0 +1,81 @@
+---
+title: tr-import-url — Import from a URL
+description: Import content from Squarespace, Wix, Webflow, static HTML or any URL into your Typeroll site.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+**Triggers on:** "import from Squarespace/Wix/Webflow", "copy content from", "rebuild this site", any non-WordPress URL the user points at
+
+For WordPress sources, use [tr-migrate-wp](/skills/tr-migrate-wp/) instead.
+
+## What it does
+
+1. Fetches the source site's homepage and sitemap to build a URL inventory
+2. Learns the target Typeroll site's design (settings, partials, example pages)
+3. Fetches each source page, strips platform-specific classes and structure, transfers images
+4. Creates pages as **drafts** in the target site
+5. Creates redirects from old URLs to new slugs
+6. Shows a preview for review
+7. Publishes and deploys after approval
+
+## Platform notes
+
+### Squarespace
+
+- Content is inside `.content-wrapper` or `[data-section-theme]` blocks
+- Images are usually high-res originals — they transfer well
+- Strip all Squarespace JSON-LD (it's their own schema)
+- Gallery blocks → Claude converts to CSS grid with `<img>` tags
+
+### Wix
+
+- Wix sites are React SPAs — fetching returns an empty shell
+- Claude will ask you for an HTML export or take screenshots as reference
+- Best path: provide the text content and image files directly
+
+### Webflow
+
+- Usually fetchable with clean HTML output
+- Classes like `w-container`, `w-row`, `w-col-*` are stripped
+- Webflow CMS items are server-rendered and appear in the HTML
+
+### Static HTML
+
+- Often the cleanest import — fetch, strip nav/footer, keep body
+- Table-based layouts (pre-2010 sites) get converted to CSS grid
+
+## Example prompts
+
+```
+Import the content from https://acme.squarespace.com — keep the same pages
+but adapt them to our current Typeroll design.
+```
+
+```
+Rebuild this Wix site in Typeroll: https://acme.wixsite.com/studio
+Here are the screenshots I exported.
+```
+
+## What gets stripped
+
+- Platform-specific CSS classes (`sqsrte-*`, `wf-*`, `elementor-*`, `fl-*`, `divi-*`, `vc_*`)
+- `<style>` blocks from the source (they reference external fonts and classes that don't exist in Typeroll)
+- Analytics and tracking scripts (set those via site settings → `scripts_head`)
+- Cookie banners, chat widgets, nav/header/footer
+
+## What gets kept
+
+- All semantic HTML: `<h1>`–`<h6>`, `<p>`, `<ul>`, `<ol>`, `<img>`, `<a>`, `<table>`, `<blockquote>`, `<figure>`
+- YouTube and Vimeo `<iframe>` embeds
+- Images (transferred to the Typeroll CDN)
+- Text content and structure
+
+<Aside type="caution">
+  Forms from Squarespace/Wix are vendor-locked and won't work after import.
+  Claude will create new Typeroll forms in their place.
+</Aside>
+
+## Drafts first, always
+
+All imported pages start as `status: "draft"`. Claude shows you a preview and asks for approval before publishing. This gives you a chance to review the content before it goes live.

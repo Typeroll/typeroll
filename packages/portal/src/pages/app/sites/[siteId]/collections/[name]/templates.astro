@@ -1,0 +1,41 @@
+---
+import AppLayout from '../../../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../../../lib/version-store';
+import CollectionTabs from '../../../../../../components/CollectionTabs.astro';
+import { loadSiteContext } from '../../../../../../lib/access';
+import { getStore } from '../../../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { CollectionDef, CollectionItem, Site } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+const { name } = Astro.params;
+if (!name) return Astro.redirect('/app');
+
+const store = getStore();
+
+const coll = await vstore.collection(orgId, siteId, versionId, name);
+if (!coll) return Astro.redirect(`/app/sites/${siteId}/collections`);
+
+const items = await vstore.collectionItems(orgId, siteId, versionId, name);
+---
+<AppLayout title={`Templates — ${coll.label_plural}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>{coll.icon ?? '📋'} {coll.label_plural}</h1>
+      <p class="muted">/{coll.name}</p>
+    </div>
+  </div>
+
+  <CollectionTabs base={`/app/sites/${siteId}/collections/${name}`} active="templates" itemCount={items.length} fieldCount={coll.fields.length} />
+
+  <div class="card" style="text-align: center; padding: 3rem 2rem;">
+    <h2 style="font-size: 1.1rem;">Templates — coming soon</h2>
+    <p class="muted" style="max-width: 480px; margin: 0.75rem auto 0;">
+      Templates will let you define the layout used when {coll.label_plural.toLowerCase()} are rendered as listings
+      or single pages — without writing HTML by hand. For now the AI chat writes listings directly into page bodies.
+    </p>
+  </div>
+</AppLayout>

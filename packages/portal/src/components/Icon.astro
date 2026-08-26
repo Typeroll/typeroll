@@ -1,0 +1,25 @@
+---
+/**
+ * Inline Lucide icon. Picks the SVG string from lucide-static and stamps it
+ * into the document at the requested size. `currentColor` strokes match the
+ * surrounding text color, so we don't need to thread color through.
+ */
+import * as icons from 'lucide-static';
+
+interface Props {
+  name: string;
+  size?: number;
+  class?: string;
+}
+const { name, size = 20, class: className = '' } = Astro.props;
+const raw = (icons as unknown as Record<string, string>)[name];
+if (!raw) {
+  throw new Error(`Icon.astro: unknown lucide-static icon "${name}". PascalCase, e.g. "LayoutDashboard".`);
+}
+// lucide-static SVGs default to 24x24. Resize and tack on the caller's class.
+const html = raw
+  .replace(/width="24"/, `width="${size}"`)
+  .replace(/height="24"/, `height="${size}"`)
+  .replace('class="lucide', `class="lucide ${className}`);
+---
+<Fragment set:html={html} />

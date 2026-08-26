@@ -1,0 +1,12 @@
+/* Typeroll brand colour overrides for Starlight */
+:root {
+  --sl-color-accent-low: #e8f0ff;
+  --sl-color-accent: #3b6cf4;
+  --sl-color-accent-high: #1a3fa0;
+}
+
+[data-theme='dark'] {
+  --sl-color-accent-low: #1a2d5a;
+  --sl-color-accent: #6b97ff;
+  --sl-color-accent-high: #b3c8ff;
+}

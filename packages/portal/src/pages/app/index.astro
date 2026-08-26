@@ -1,0 +1,101 @@
+---
+import AppLayout from '../../layouts/AppLayout.astro';
+import { getSession } from '../../lib/auth';
+import { getStore } from '../../lib/datastore';
+import { hydrateSharedSites } from '../../lib/shares';
+import { paths } from '@typeroll/shared';
+import { domainState, DOMAIN_STATE_LABEL } from '../../lib/site-public-urls';
+import type { Site } from '@typeroll/shared';
+
+const session = await getSession(Astro.cookies);
+if (!session) return Astro.redirect('/login');
+const orgId = session.orgId;
+if (!orgId) return Astro.redirect('/onboarding');
+const sites = await getStore().listDocs<Site>(paths.sites(orgId));
+const sharedSites = await hydrateSharedSites(orgId);
+---
+<AppLayout title="Dashboard">
+  <div class="app-header">
+    <div>
+      <h1>Dashboard</h1>
+      <p class="muted">Welcome back, {session.displayName ?? session.email}.</p>
+    </div>
+    <a href="/app/sites/new" class="btn">+ New site</a>
+  </div>
+
+  {sites.length === 0 && sharedSites.length === 0 ? (
+    <div class="card" style="text-align: center; padding: 4rem 2rem;">
+      <h2 style="font-size: 1.5rem;">No sites yet</h2>
+      <p class="muted" style="margin: 1rem 0 1.5rem;">Migrate a WordPress site, or start from scratch.</p>
+      <a href="/app/sites/new" class="btn">Create your first site</a>
+    </div>
+  ) : (
+    <>
+      {sites.length > 0 && (
+        <section>
+          {sharedSites.length > 0 && <h2 style="font-size: 1rem; margin: 0 0 0.75rem;">Your sites</h2>}
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
+            {sites.map(site => (
+              <a href={`/app/sites/${site.id}`} class="card" style="text-decoration: none; display: block;">
+                <h3>{site.name}</h3>
+                <p class="muted text-sm" style="margin-top: 0.25rem;">{site.domain ?? 'No domain set'}</p>
+                <div style="margin-top: 1rem;">
+                  <span class={`status status--${domainState(site)}`}>{DOMAIN_STATE_LABEL[domainState(site)]}</span>
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {sharedSites.length > 0 && (
+        <section style="margin-top: 2rem;">
+          <h2 style="font-size: 1rem; margin: 0 0 0.75rem;">Shared with you</h2>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
+            {sharedSites.map(({ site, share }) => (
+              <a href={`/app/sites/${site.id}`} class="card" style="text-decoration: none; display: block;">
+                <h3>{site.name}</h3>
+                <p class="muted text-sm" style="margin-top: 0.25rem;">{site.domain ?? 'No domain set'}</p>
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; align-items: center;">
+                  <span class={`status status--${domainState(site)}`}>{DOMAIN_STATE_LABEL[domainState(site)]}</span>
+                  <span class={`perm perm--${share.permission}`}>{share.permission}</span>
+                </div>
+                {share.label && <p class="muted text-sm" style="margin-top: 0.5rem; font-style: italic;">{share.label}</p>}
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  )}
+
+  <style>
+    .status {
+      display: inline-block;
+      padding: 0.125rem 0.625rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .status--live { background: rgba(22,163,74,0.1); color: var(--color-success); }
+    .status--pending { background: rgba(245,158,11,0.1); color: var(--color-accent); }
+    .status--failed { background: rgba(220,38,38,0.1); color: var(--color-danger); }
+    .status--none { background: rgba(120,113,108,0.1); color: var(--color-text-muted); }
+
+    .perm {
+      display: inline-block;
+      padding: 0.125rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border: 1px solid var(--color-border);
+      color: var(--color-text-muted);
+    }
+    .perm--admin { border-color: var(--color-accent); color: var(--color-accent); }
+    .perm--write { border-color: var(--color-primary); color: var(--color-primary); }
+  </style>
+</AppLayout>

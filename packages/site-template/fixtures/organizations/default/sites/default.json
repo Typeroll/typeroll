@@ -1,0 +1,9 @@
+{
+  "name": "ACME Studio",
+  "domain": "www.autopilot.se",
+  "domain_status": "live",
+  "hosting_adapter": "cloudflare",
+  "status": "live",
+  "created_at": "2026-01-01T00:00:00.000Z",
+  "staging_url": null
+}

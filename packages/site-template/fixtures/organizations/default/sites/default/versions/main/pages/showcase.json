@@ -1,0 +1,49 @@
+{
+  "title": "Block showcase",
+  "slug": "showcase",
+  "content_mode": "blocks",
+  "status": "published",
+  "seo_title": "Block showcase",
+  "seo_description": "Smoke-build coverage for block-mode rendering: Tier 1 blocks + repeater alias + dynamic context.",
+  "date_updated": "2026-05-28T08:00:00.000Z",
+  "blocks": [
+    {
+      "id": "blk_hero",
+      "type": "core/hero",
+      "data": {
+        "eyebrow": "Showcase",
+        "heading": "Block-mode renderer",
+        "subheading": "<p>This page renders entirely from a block tree, exercising the Tier 1 library, alias expansion, and the template context substitution.</p>",
+        "layout": "centered",
+        "height": "half-screen",
+        "background": "#0f172a"
+      }
+    },
+    {
+      "id": "blk_features",
+      "type": "core/feature_grid",
+      "data": {
+        "cols": { "mobile": 1, "tablet": 2, "desktop": 3 },
+        "items": [
+          { "icon": "zap", "heading": "Fast", "text": "<p>Static HTML, CDN-served. No origin.</p>" },
+          { "icon": "shield", "heading": "Safe", "text": "<p>No PHP, no database, no exploits.</p>" },
+          { "icon": "smile", "heading": "Simple", "text": "<p>Edit content; the renderer does the rest.</p>" }
+        ]
+      }
+    },
+    {
+      "id": "blk_pagetitle",
+      "type": "template/page_title",
+      "data": { "level": "h2", "size": "lg", "align": "center" }
+    },
+    {
+      "id": "blk_cta",
+      "type": "core/cta",
+      "data": {
+        "heading": "Ready to migrate?",
+        "subheading": "<p>One command and your old WordPress site becomes a static, CDN-served Typeroll site.</p>",
+        "align": "center"
+      }
+    }
+  ]
+}

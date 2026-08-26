@@ -1,0 +1,102 @@
+---
+title: Custom Domain
+description: Connect your own domain to a Typeroll site on Cloudflare Pages.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+Every Typeroll site gets a free subdomain at `yoursite.sites.typeroll.com`. To use your own domain (e.g. `acme.se`), connect it in the portal and update your DNS.
+
+<Steps>
+
+1. **Open the portal**
+
+   Go to [app.typeroll.com](https://app.typeroll.com) → your site → **Settings → Domain**.
+
+2. **Enter your domain (this republishes your site)**
+
+   Type your domain (e.g. `acme.se` or `www.acme.se`) and click **Connect** with **Publish now** checked (the default).
+
+   This is the step that makes your domain the canonical address: Typeroll
+   immediately republishes so your sitemap, `canonical_url`, OG tags, and
+   internal links all use it. **You don't need DNS in place yet** — that's the
+   last step. The portal then shows you the DNS records to add.
+
+   <Aside type="tip">
+     Doing it in this order — domain first, DNS last — means your published site
+     already advertises the right address. Visitors and Google never see the
+     internal `*.sites.typeroll.com` fallback (which is kept out of search
+     indexes). There's no separate "activate" step.
+   </Aside>
+
+3. **Add DNS records (the last step)**
+
+   Log in to your DNS provider (Cloudflare, GoDaddy, Namecheap, etc.) and add the records shown. Typically:
+
+   | Type  | Name         | Value                    |
+   | ----- | ------------ | ------------------------ |
+   | CNAME | `@` or `www` | `your-project.pages.dev` |
+
+   If your DNS provider doesn't support CNAME on the root (`@`), use an ANAME/ALIAS record instead, or point to a `www` subdomain with a redirect.
+
+   <Aside type="tip">
+     If your domain is already on Cloudflare, you can add the Cloudflare Pages
+     project directly in the Cloudflare dashboard under **Pages → your project →
+     Custom domains**. Set the DNS record to **DNS only** (grey cloud) — not
+     proxied. Cloudflare Pages handles its own SSL; proxying would break it.
+   </Aside>
+
+4. **Wait for propagation**
+
+   DNS changes can take a few minutes to a few hours. The portal shows a green checkmark when the domain is verified and SSL is provisioned — at that point your site is reachable on the domain it already claims as canonical. (If you skipped "Publish now" in step 2, trigger a deploy now so the build picks up the domain.)
+
+   Your dashboard tracks the same thing: the badge on the site card reads
+   **DNS pending** while you're waiting and flips to **live** once the domain
+   is verified. **DNS failed** means the check ran and didn't find your
+   records — worth re-checking the CNAME before waiting any longer.
+
+</Steps>
+
+## Subdomain vs root domain
+
+| Setup         | Example          | Notes                                    |
+| ------------- | ---------------- | ---------------------------------------- |
+| Root domain   | `acme.se`        | Requires ANAME/ALIAS or Cloudflare Proxy |
+| www subdomain | `www.acme.se`    | CNAME works everywhere                   |
+| Subdomain     | `studio.acme.se` | CNAME works everywhere                   |
+
+For root domains with a registrar that doesn't support ANAME/ALIAS, the easiest solution is to use `www` as the canonical domain and redirect `acme.se` → `www.acme.se` at the DNS level.
+
+## apex + www — Typeroll handles the pair for you
+
+When you enter an apex (`acme.se`) or www (`www.acme.se`) domain in the portal, Typeroll treats it as a **pair** and does the wiring automatically:
+
+- **Registers BOTH variants** on the Cloudflare Pages project, so neither one returns a 522 (the classic "works for me, broken for customers who typed the other variant" trap).
+- **Picks one as canonical** — apex by default; you can switch to www in the connect dialog. All canonical URLs, OG tags, and sitemaps use the canonical variant.
+- **Emits a 301 from the other variant → canonical**, path preserved, into the build's `_redirects` file (e.g. `https://acme.se/blog/ → https://www.acme.se/blog/`).
+
+<Aside type="tip" title="You don't configure a redirect rule yourself">
+  Older guidance said to create a manual Cloudflare **Redirect Rule** for apex →
+  www because "`_redirects` can't redirect between domains." That's no longer
+  accurate for a Pages project with both domains attached: Cloudflare Pages
+  **does** honour a cross-host source in `_redirects` (verified in production —
+  `https://acme.se/x/` → 301 → `https://www.acme.se/x/`), and Typeroll emits
+  that line for you. No dashboard Redirect Rule needed.
+</Aside>
+
+### Your only job: point DNS for both variants
+
+| Type  | Name  | Target                   | Proxy    |
+| ----- | ----- | ------------------------ | -------- |
+| CNAME | `www` | `your-project.pages.dev` | DNS only |
+| CNAME | `@`   | `your-project.pages.dev` | DNS only |
+
+If your registrar doesn't support CNAME on `@`, use an ANAME/ALIAS record there instead. Both variants must resolve before the pair fully verifies — the portal tracks each separately.
+
+### Choosing apex vs www as canonical
+
+Some sites — especially those migrated from WordPress — prefer `www.acme.se` as the canonical. Enter `www.acme.se` (or pick **www** in the connect dialog) and every generated canonical URL, OG tag, and sitemap entry references the www version, with `acme.se` 301-ing to it.
+
+## SSL
+
+SSL certificates are provisioned automatically by Cloudflare Pages. No configuration needed.

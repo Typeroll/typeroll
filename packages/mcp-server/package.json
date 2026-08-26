@@ -1,0 +1,59 @@
+{
+  "name": "@typeroll/mcp-server",
+  "version": "0.38.0",
+  "description": "Model Context Protocol server for the Typeroll public API. Use with Claude Code or any MCP-compatible client to manage a Typeroll site.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Typeroll/typeroll.git",
+    "directory": "packages/mcp-server"
+  },
+  "homepage": "https://github.com/Typeroll/typeroll/tree/main/packages/mcp-server#readme",
+  "bugs": "https://github.com/Typeroll/typeroll/issues",
+  "type": "module",
+  "bin": {
+    "typeroll-mcp": "dist/index.js",
+    "typeroll": "dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./server": "./src/server.ts",
+    "./client": "./src/client.ts",
+    "./tools/helpers": "./src/tools/helpers.ts"
+  },
+  "files": [
+    "dist",
+    "AGENTS.md",
+    "README.md",
+    "skills"
+  ],
+  "scripts": {
+    "gen": "node scripts/embed-content.mjs",
+    "prebuild": "node scripts/embed-content.mjs",
+    "build": "tsc -p .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.7"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "mcp",
+    "typeroll",
+    "claude",
+    "model-context-protocol"
+  ]
+}

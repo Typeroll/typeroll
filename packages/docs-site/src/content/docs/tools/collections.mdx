@@ -1,0 +1,123 @@
+---
+title: Collections Tools
+description: Structured content — blog posts, team members, products, events and custom types.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+Collections are schemas plus items. They are the right tool for any content that:
+
+- Has a repeating structure (blog posts, team members, products)
+- Needs to be listed and individually linked
+- May grow over time
+
+## Field types
+
+| Type       | Use for                             |
+| ---------- | ----------------------------------- |
+| `text`     | Short strings                       |
+| `textarea` | Multi-line plain text               |
+| `richtext` | HTML body content                   |
+| `date`     | ISO 8601 date                       |
+| `number`   | Numeric values                      |
+| `boolean`  | True/false toggle                   |
+| `image`    | CDN image URL                       |
+| `url`      | Web address                         |
+| `select`   | Dropdown — provide `options: [...]` |
+
+## Field name rules
+
+Field names must be lowercase ASCII — `[a-z][a-z0-9_-]*`. The `label` (displayed in the portal UI) can be any text.
+
+| Wrong        | Right                                  |
+| ------------ | -------------------------------------- |
+| `Titel`      | `title`                                |
+| `Datum`      | `date` (or `datum` — fine, it's ASCII) |
+| `Författare` | `forfattare`                           |
+
+## `create_collection`
+
+Defines the collection schema. Once items exist, avoid renaming fields — it doesn't migrate existing data.
+
+Important options:
+
+- `slug_field` — which field is used for URLs (typically `"slug"`)
+- `sort_field` + `sort_dir` — default sort for listings
+- `route_template` — URL pattern for individual items: `"/blog/{slug}"`
+
+<Aside type="caution">
+  `route_template` declares the URL structure. The renderer automatically builds
+  one static page per published item using either `item_template_blocks` (block
+  tree, preferred) or `item_template_html` (HTML string, legacy) — both live on
+  the collection schema. See [Block-mode item
+  templates](#block-mode-item-templates) below.
+</Aside>
+
+## `create_collection_item`
+
+Adds an item to the collection with its field values.
+
+```
+Add a blog post: "Vår designfilosofi" — slug "var-designfilosofi",
+published 2025-05-15, author Anna Lindström, excerpt "Vi tror på enkelhet..."
+```
+
+## `list_collection_items`
+
+Returns all items in a collection. Claude uses this to regenerate listing HTML when new items are added.
+
+## `update_collection_item`
+
+Updates one or more fields on an existing item.
+
+## `delete_collection_item`
+
+Deletes an item. The listing page will need to be regenerated afterwards.
+
+## Listing pages
+
+The block library ships `core/collection_list` — a repeater wired to the collection source. Drop it on any page and the renderer fetches items at build time, applying any filter / sort / limit you set. No hand-rolled listing HTML needed:
+
+```
+"Show our 6 most recent blog posts on the home page."
+  → add_block target={kind:"page", id:"home"} block={
+      type:"core/collection_list",
+      data:{ collection:"blog", limit:6, sort_by:"published_at", sort_order:"desc" }
+    }
+```
+
+The default item layout uses `core/post_card` (image + title + excerpt + date). Pick a different item block by overriding `item_block` on the repeater, or roll your own item-compatible block type and reference it.
+
+### Pagination
+
+Set `paginate` to a per-page count and the listing splits itself across generated
+routes — `/blog/`, `/blog/page/2/`, `/blog/page/3/` — with prev/next links
+(carrying `rel="prev"` / `rel="next"` so search engines follow the sequence
+correctly):
+
+```
+"Paginate the blog archive at 10 posts per page."
+  → update_block ... data:{ paginate: 10 }
+```
+
+`paginate` supersedes `limit`: the collection is queried unbounded and then split
+into pages, rather than capped first. Use `limit` for "show the latest 6 on the
+home page", `paginate` for a real archive.
+
+## Block-mode item templates
+
+A collection's per-item layout is either:
+
+- **`item_template_blocks`** — `Block[]` tree using `template/item_*` family bindings (preferred for new collections). Bound to the current item's fields via `{{item.title}}`, `{{item.body}}`, etc. — Claude doesn't have to type these tokens by hand; the `template/item_title`, `template/item_body`, `template/item_image` blocks read from context.
+- **`item_template_html`** — legacy HTML string template with `{{field}}` substitution. Still supported; the block tree wins when both are set.
+
+Use [block instance tools](/tools/blocks/) with `target: { kind: "item_template", id: "<collection_name>" }` to edit the layout:
+
+```
+"Make blog posts show the featured image at the top, then the title, then the body."
+  → add_block target={kind:"item_template", id:"blog"} block={type:"template/item_image"}
+  → add_block target={kind:"item_template", id:"blog"} block={type:"template/item_title"}
+  → add_block target={kind:"item_template", id:"blog"} block={type:"template/item_body"}
+```
+
+The renderer pushes the current item into context for each iteration, so the same template renders correctly for every post.

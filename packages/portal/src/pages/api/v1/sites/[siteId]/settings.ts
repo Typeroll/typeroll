@@ -1,0 +1,76 @@
+// GET   /api/v1/sites/{siteId}/settings
+// PATCH /api/v1/sites/{siteId}/settings
+//
+// PATCH whitelists the editable fields. As of the agent-feedback round,
+// `scripts_head`, `scripts_body_end`, and `custom_css` are writable here:
+// the trust model is the same as user-authored block-type JS — an
+// authenticated API caller (Bearer token) takes responsibility for what
+// they ship. The chat AI in lib/anthropic.ts continues to NOT expose
+// these fields, so a model conversation can't smuggle scripts in.
+
+import type { APIRoute } from 'astro';
+import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
+import { vstore } from '../../../../../lib/version-store';
+import { publicUrlsFor } from '../../../../../lib/site-public-urls';
+import type { SiteSettings } from '@typeroll/shared';
+
+const TOP_LEVEL = new Set([
+  'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'default_seo_suffix',
+  'default_meta_description', 'language', 'robots_txt', 'image_sizes_default',
+  // Scriptable surfaces. Trusted because the caller has an API key.
+  'scripts_head', 'scripts_body_end', 'custom_css',
+]);
+const NESTED = new Set(['colors', 'fonts', 'contact', 'social']);
+
+export const GET: APIRoute = async ({ request, params }) => {
+  const guard = await requireApiKey(request, params.siteId);
+  if (!guard.ok) return guard.response;
+  const ctx = guard.value;
+  const s = (await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? {};
+  // Return all fields, including scripts_* and custom_css. An authenticated
+  // API caller authoring CSS/JS needs to read back what they wrote.
+  return apiResponse(ctx, { settings: s, urls: publicUrlsFor(ctx.site) });
+};
+
+export const PATCH: APIRoute = async ({ request, params }) => {
+  const guard = await requireApiKey(request, params.siteId);
+  if (!guard.ok) return guard.response;
+  const ctx = guard.value;
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body) return apiError('Invalid JSON body');
+
+  const existing = ((await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? {}) as Record<string, unknown>;
+  const update: Record<string, unknown> = {};
+  const unknown_keys: string[] = [];
+  for (const [k, v] of Object.entries(body)) {
+    if (v === undefined) continue;
+    if (NESTED.has(k) && v && typeof v === 'object') {
+      // For contact specifically, the `address` field accepts either a
+      // string (legacy) or a PostalAddress object. We pass whatever the
+      // caller sent — the renderer + JSON-LD generator branch on the type.
+      const before = (existing[k] as Record<string, unknown> | undefined) ?? {};
+      update[k] = { ...before, ...(v as Record<string, unknown>) };
+    } else if (TOP_LEVEL.has(k)) {
+      update[k] = v;
+    } else {
+      unknown_keys.push(k);
+    }
+  }
+  if (unknown_keys.length > 0 && Object.keys(update).length === 0) {
+    // All keys were unknown — almost certainly a schema mistake (e.g. the
+    // caller wrapped their fields in {"settings": {...}}). Return 400 so the
+    // error is visible instead of silently saving nothing.
+    return apiError(
+      `No recognized fields in body. Unknown keys: ${unknown_keys.join(', ')}. ` +
+      `Top-level fields: ${[...TOP_LEVEL].join(', ')}. ` +
+      `Nested objects: ${[...NESTED].join(', ')}.`,
+      400,
+    );
+  }
+  await vstore.writeSettings(ctx.orgId, ctx.siteId, ctx.versionId, update as Partial<SiteSettings>);
+  const resp: Record<string, unknown> = { ok: true, updated_fields: Object.keys(update) };
+  if (unknown_keys.length > 0) {
+    resp.warnings = [`Unrecognized keys were ignored: ${unknown_keys.join(', ')}`];
+  }
+  return apiResponse(ctx, resp, 200, body);
+};

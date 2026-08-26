@@ -1,0 +1,153 @@
+---
+// Consent screen for the MCP OAuth shim. Renders a "paste your Typeroll
+// API key to connect Claude" form. The form POSTs to /api/mcp/oauth/complete
+// which validates the key and redirects back to the OAuth client.
+//
+// SECURITY note: the API key is a credential the user already owns; pasting
+// it here is functionally identical to pasting it into Claude's config
+// dialog. We never persist it server-side — only the resulting auth code
+// (a signed JWT) is sent back to the client.
+
+const params = Astro.url.searchParams;
+const clientId = params.get('client_id') ?? '';
+const redirectUri = params.get('redirect_uri') ?? '';
+const codeChallenge = params.get('code_challenge') ?? '';
+const state = params.get('state') ?? '';
+const errorMsg = params.get('error') ?? '';
+
+// If any required param is missing, refuse to render the form — the
+// /api/mcp/oauth/authorize entry should have caught this, so this is
+// belt-and-braces only.
+const hasRequired = clientId && redirectUri && codeChallenge;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connect Claude to Typeroll</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #f8fafc;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        padding: 1rem;
+      }
+      .card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        padding: 2rem;
+        max-width: 480px;
+        width: 100%;
+      }
+      h1 { margin: 0 0 0.5rem; font-size: 1.25rem; }
+      .muted { color: #64748b; font-size: 0.875rem; }
+      label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+      input[type="text"], input[type="password"] {
+        width: 100%; padding: 0.6rem 0.75rem;
+        border: 1px solid #e2e8f0; border-radius: 6px;
+        font-family: ui-monospace, SF Mono, Menlo, monospace;
+        font-size: 0.85rem;
+        box-sizing: border-box;
+      }
+      button {
+        background: #0f172a; color: white;
+        border: none; border-radius: 6px;
+        padding: 0.7rem 1.25rem;
+        font-weight: 500;
+        cursor: pointer;
+        font-size: 0.95rem;
+      }
+      button:hover { background: #1e293b; }
+      .row { display: flex; gap: 0.5rem; align-items: center; }
+      .error {
+        background: #fef2f2; color: #991b1b;
+        border: 1px solid #fecaca; border-radius: 6px;
+        padding: 0.75rem 1rem; font-size: 0.875rem;
+        margin-bottom: 1rem;
+      }
+      .info {
+        background: #eff6ff; color: #1e3a8a;
+        border: 1px solid #bfdbfe; border-radius: 6px;
+        padding: 0.75rem 1rem; font-size: 0.875rem;
+        margin-bottom: 1rem;
+      }
+      .warn {
+        background: #fffbeb; color: #78350f;
+        border: 1px solid #fde68a; border-radius: 6px;
+        padding: 0.85rem 1rem; font-size: 0.9rem;
+      }
+      .warn strong { color: #7c2d12; }
+      .host {
+        font-family: ui-monospace, SF Mono, Menlo, monospace;
+        font-size: 0.95em;
+        background: rgba(120, 53, 15, 0.08);
+        padding: 0.05rem 0.35rem;
+        border-radius: 4px;
+      }
+      code { font-family: ui-monospace, SF Mono, Menlo, monospace; font-size: 0.85em; }
+      .stack > * + * { margin-top: 1rem; }
+    </style>
+  </head>
+  <body>
+    <div class="card stack">
+      <div>
+        <h1>Connect Claude to Typeroll</h1>
+        <p class="muted">
+          Paste your Typeroll API key to grant Claude access. Create a key in <code>/app/sites/.../settings/api-keys</code> if you don't have one.
+        </p>
+      </div>
+
+      {errorMsg && <div class="error">{errorMsg}</div>}
+
+      {!hasRequired ? (
+        <div class="error">
+          This consent link is missing required OAuth parameters. Return to your MCP client and try connecting again.
+        </div>
+      ) : (
+        <>
+          <div class="warn">
+            <strong>You are about to grant access to <span class="host">{new URL(redirectUri).host}</span>.</strong>
+            <p style="margin: 0.4rem 0 0; font-size: 0.85rem;">
+              Your Typeroll API key will be sent to this host so it can act on your sites. Only continue if you started this flow from a service you trust at that domain. To stop access later, revoke the key in your Typeroll settings.
+            </p>
+          </div>
+
+          <form method="POST" action="/api/mcp/oauth/complete" class="stack">
+            <input type="hidden" name="client_id" value={clientId} />
+            <input type="hidden" name="redirect_uri" value={redirectUri} />
+            <input type="hidden" name="code_challenge" value={codeChallenge} />
+            <input type="hidden" name="state" value={state} />
+            <div>
+              <label for="api_key">Typeroll API key</label>
+              <input
+                id="api_key"
+                name="api_key"
+                type="password"
+                autocomplete="off"
+                placeholder="typeroll_live_..."
+                required
+                pattern="typeroll_live_.+"
+              />
+              <p class="muted" style="margin-top: 0.5rem; font-size: 0.8rem;">
+                Org-scoped keys grant Claude access to every site in your organization. Site-scoped keys grant access to one site only.
+              </p>
+            </div>
+            <div class="row" style="justify-content: flex-end;">
+              <button type="submit">Grant access</button>
+            </div>
+          </form>
+        </>
+      )}
+
+      <p class="muted" style="margin-top: 1.5rem; font-size: 0.75rem;">
+        Your API key is verified on this server and never stored in plaintext anywhere outside of the MCP client you're connecting. Revoke the key in the portal to disconnect Claude.
+      </p>
+    </div>
+  </body>
+</html>

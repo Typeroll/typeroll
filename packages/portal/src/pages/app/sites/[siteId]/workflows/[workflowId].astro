@@ -1,0 +1,42 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import WorkflowDetail from '../../../../../components/WorkflowDetail.tsx';
+import { getStore } from '../../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { Site } from '@typeroll/shared';
+import type { WorkflowRecord } from '../../../../../lib/workflows/types';
+import { workflows as registry } from '../../../../../lib/workflows/registry';
+import { loadSiteContext } from '../../../../../lib/access';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+const { workflowId } = Astro.params;
+if (!workflowId) return Astro.redirect('/app');
+
+const store = getStore();
+
+const wf = await store.getDoc<WorkflowRecord>(`${paths.workflows(orgId)}/${workflowId}`);
+if (!wf || wf.site_id !== siteId) return Astro.redirect(`/app/sites/${siteId}/workflows`);
+
+const def = registry[wf.type];
+const stepNames = def?.steps.map((s) => ({ name: s.name, label: s.label })) ?? [];
+---
+<AppLayout title={`Workflow — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>{def?.label ?? wf.type}</h1>
+      <p class="muted">Started {wf.started_at ? new Date(wf.started_at).toLocaleString() : '—'}</p>
+    </div>
+    <a href={`/app/sites/${siteId}/workflows`} class="btn btn--secondary">← Back</a>
+  </div>
+
+  <WorkflowDetail
+    client:load
+    siteId={siteId}
+    workflowId={workflowId}
+    initial={wf}
+    stepNames={stepNames}
+  />
+</AppLayout>

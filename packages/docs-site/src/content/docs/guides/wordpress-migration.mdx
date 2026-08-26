@@ -1,0 +1,128 @@
+---
+title: WordPress Migration
+description: A complete guide to migrating a WordPress site to Typeroll using the AI migration workflow.
+---
+
+import { Steps, Aside } from "@astrojs/starlight/components";
+
+The migration workflow and helper plugin are included in the open-source
+Typeroll distribution. Typeroll Cloud also offers migration as an operated,
+supported service.
+
+## Overview
+
+The migration workflow imports all your WordPress content (pages, posts, custom post types) into a new Typeroll site, transfers your media to the Typeroll CDN, and generates redirects from old URLs to new slugs.
+
+**What it does:**
+
+- Imports pages and posts as Typeroll pages
+- Transfers media (images) to the CDN — only images actually used on imported pages
+- Maps custom post types to Typeroll collections
+- Generates URL redirects
+- Leaves everything as drafts for your review before going live
+
+**What it doesn't do:**
+
+- Import your old WordPress theme or CSS (you build a new design in Typeroll)
+- Import plugins or plugin-specific data that isn't content
+- Touch the source WordPress site in any way
+
+## Before you start
+
+<Steps>
+
+1. **Build the target site's design**
+
+   The migration imports content into your new design — not the old one. Before starting the migration, set up:
+   - Colour palette and fonts (`update_site_settings`)
+   - Header partial with navigation
+   - Footer partial
+   - 1–2 example pages (home, about) — Claude uses these as design references
+
+2. **Check that the WP REST API is accessible**
+
+   The migration needs `https://yoursite.com/wp-json/wp/v2/` to be publicly accessible. Test it in your browser — you should see a JSON response.
+
+   If the REST API is disabled or restricted, [install the helper plugin](#helper-plugin) which bypasses this restriction.
+
+3. **Optional: install the helper plugin**
+
+   The helper plugin gives Claude access to custom post types, ACF fields and navigation menus that may not be exposed via the standard REST API.
+
+</Steps>
+
+## Running the migration
+
+Start Claude Code and describe the migration:
+
+```
+Migrate my WordPress site at https://acme.se to this Typeroll site.
+```
+
+Or with the helper plugin:
+
+```
+Migrate the WordPress site at https://acme.se — I've installed the helper plugin
+with API key: abc123xyz
+```
+
+Claude will:
+
+1. Verify the WP REST API connection
+2. Build an inventory of all URLs on the site
+3. Import pages and posts, transferring images along the way
+4. Map any custom post types to collections
+5. Generate redirects
+6. Show you a coverage report
+
+## Reviewing the migration
+
+After the content is imported, Claude shows a coverage report:
+
+```
+Migration complete. Here's the coverage:
+
+✅ 24 pages migrated
+↪  8 redirects created
+⬜ 12 URLs excluded (pagination, feeds, admin)
+⚠️  3 URLs unhandled:
+
+  /category/projekt     → needs a redirect or category page
+  /tag/stockholm        → tag archive — exclude or redirect to /blog
+  /wp-content/uploads/2019/hero.pdf  → file, needs manual handling
+```
+
+For each unhandled URL, decide: add a redirect, create a page, or exclude it.
+
+## Publishing
+
+All imported pages start as `status: "review"`. When you're satisfied:
+
+```
+Publish all the imported pages and deploy.
+```
+
+Or review page by page and publish individually.
+
+## Helper plugin
+
+The Typeroll Helper Plugin gives the migration workflow access to:
+
+- Custom post types with `show_in_rest: false`
+- ACF fields with image references normalised
+- Navigation menus
+- Builder JSON (Elementor, Breakdance)
+- Complete canonical URL list
+
+**Installing:**
+
+1. Download the `wp-helper-plugin` directory from the Typeroll repository and create a ZIP archive from it.
+2. In WordPress: **Plugins → Add New → Upload Plugin**
+3. Activate the plugin
+4. Go to **Settings → Typeroll Helper** and generate an API key
+5. Provide the URL and key to Claude
+
+<Aside type="tip">
+  The helper plugin is read-only — it never modifies your WordPress database or
+  files.
+</Aside>

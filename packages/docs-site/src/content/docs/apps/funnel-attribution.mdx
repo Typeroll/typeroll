@@ -1,0 +1,72 @@
+---
+title: Analytics attribution
+description: Forward allowlisted campaign parameters, persist consented first- and last-touch attribution, and emit destination click events.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+- **Type:** Analytics module
+- **Build impact:** Adds a small data-driven browser runtime
+- **Targets:** Exact HTTPS host and path rules
+
+The Attribution module carries approved query parameters from a landing page to a
+link destination. It can also persist real incoming values as first-touch or
+last-touch snapshots and reuse them on a later visit.
+
+## Resolution order
+
+For every allowlisted parameter, the runtime resolves values in this order:
+
+1. a valid value on the current page URL;
+2. the configured first-touch or last-touch snapshot;
+3. an explicitly configured synthetic fallback;
+4. no outgoing parameter.
+
+<Aside type="caution" title="Fallbacks are synthetic attribution">
+  A fallback does not preserve an advertising value. It invents a value when no
+  incoming or stored value exists. The API rejects fallback configuration unless
+  `allow_synthetic_fallbacks=true` explicitly acknowledges that effect.
+</Aside>
+
+## Storage and consent
+
+Storage is independent from direct same-page forwarding. When enabled, the module
+stores compact versioned snapshots in `tr_attr_first_v1` and/or
+`tr_attr_last_v1`. Cookies use `Secure`, `SameSite=Lax`, and `Path=/`; the
+default lifetime is 30 days. They are host-only unless a cookie domain is
+explicitly configured.
+
+No attribution cookie is written before optional consent. Direct forwarding
+from the current URL can still work without storage. Rejecting or withdrawing
+consent removes the module's attribution cookies.
+
+## Safety rules
+
+- Only declared parameter names are read and forwarded.
+- Personal-data-like names are rejected unless separately allowed.
+- Values have configurable length limits and reject control characters.
+- Targets match protocol, hostname, and pathname structurally.
+- Existing unrelated target parameters and URL fragments are preserved.
+- Initialization is idempotent and never waits for analytics before navigation.
+
+## Agent and API support
+
+Agents can use `read_funnel_attribution` and `update_funnel_attribution` with
+admin permission. They should read the current state first and deploy after a
+successful update. The same validation applies to the bearer API and portal
+configuration.
+
+See [Booking-link attribution](/recipes/booking-link-attribution/) for a
+neutral implementation pattern.
+
+## Relationship to Analytics events
+
+Attribution does not depend on traffic measurement. Link rewriting and cookie
+resolution still work when no Analytics beacon or external provider is
+available.
+
+When both Analytics and a target's `click_event` are configured, the runtime
+also sends a non-blocking first-party event. It contains the event name, funnel,
+destination, page path, and only the resolved allowlisted attribution fields.
+The signed event endpoint verifies the active funnel rule before storage. See
+[Events and conversions](/apps/events/) for retention and reporting.

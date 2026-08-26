@@ -1,0 +1,72 @@
+---
+title: Forms
+description: Server-backed contact forms and multi-step funnels with validation, partial saves, submissions, and notifications.
+---
+
+Forms is Typeroll's built-in core module for collecting structured information
+from a published site. It covers simple contact forms, booking requests,
+applications, lead funnels, and other multi-step flows without requiring a
+third-party form provider.
+
+## Availability
+
+Forms is included in every Typeroll Cloud site and every self-hosted Typeroll
+installation. It requires no premium Typeroll App, Extension, or separate
+subscription. Typeroll Cloud sends submissions to the hosted Forms service; a
+self-hosted installation sends them to its own Forms endpoint and datastore.
+The published customer site remains static in both cases.
+
+Cloud plans may set submission-volume, retention, or delivery limits. Those
+limits do not turn Forms into an optional module. Self-hosted operators control
+their own capacity, storage, retention, and delivery costs.
+
+## Capabilities
+
+- single-step and multi-step forms;
+- reusable field blocks with client-side and server-side validation;
+- partial saves as a visitor advances through a funnel;
+- a submissions inbox and agent-readable submissions;
+- email notifications through a configured email provider;
+- post-submit actions, success messages, and redirects;
+- module-contributed forms, actions, and prefill sources.
+
+Forms are stored as steps. Each step contains the same block tree used by the
+rest of Typeroll, so a simple form is one step and a funnel is several steps.
+The `core/form` block places a form on a page and wires its signed submission
+token and runtime automatically.
+
+## Runtime and protection
+
+Published forms submit to Typeroll's forms service. Each submission is checked
+with a signed token, a honeypot, server-side validation, and rate limiting.
+Multi-step forms can save partial answers between steps. Submission data is not
+embedded in the static site build.
+
+Do not collect sensitive or regulated data unless the site's legal basis,
+retention, access controls, and downstream delivery have been reviewed for that
+specific use case.
+
+## Delivery
+
+Accepted submissions are stored for the site's submissions inbox. A form can
+also run configured actions, such as sending an email notification. Email
+credentials are configured separately under the site's email settings, stored
+encrypted, and kept off the agent-readable surface.
+
+## Agent and API surface
+
+Agents can create, read, update, list, and delete forms. They can also list and
+delete submissions. A caller may provide a flat field list for a simple form;
+Typeroll converts it to a one-step definition. Multi-step flows use explicit
+steps.
+
+See [Forms tools](/tools/forms/) for the API-oriented reference and
+[Build forms](/skills/tr-forms/) for the task workflow.
+
+## Scope boundary
+
+The Forms module documents the general form engine. A narrower flow such as a
+quote request, event registration, lead qualification funnel, or directory
+edit form should be documented as a recipe or as part of the Extension that
+ships that form. Customer-specific questions, recipients, legal copy, and
+routing stay in the site's configuration rather than this module reference.

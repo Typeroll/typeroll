@@ -1,0 +1,12 @@
+---
+// Portal root. Sends the user to /app if they're already signed in, /login
+// otherwise. Marketing for Typeroll itself lives in the Typeroll Cloud
+// package (deployed separately to typeroll.com), not in the portal —
+// self-hosters should not see Typeroll branding on their admin domain.
+
+import { getSession } from '../lib/auth';
+
+const session = await getSession(Astro.cookies);
+if (session) return Astro.redirect('/app');
+return Astro.redirect('/login');
+---

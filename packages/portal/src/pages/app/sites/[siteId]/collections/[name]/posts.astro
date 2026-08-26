@@ -1,0 +1,93 @@
+---
+import AppLayout from '../../../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../../../lib/version-store';
+import CollectionTabs from '../../../../../../components/CollectionTabs.astro';
+import { loadSiteContext } from '../../../../../../lib/access';
+import { getStore } from '../../../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { CollectionDef, CollectionItem, Site } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+const { name } = Astro.params;
+if (!name) return Astro.redirect('/app');
+
+const store = getStore();
+
+const coll = await vstore.collection(orgId, siteId, versionId, name);
+if (!coll) return Astro.redirect(`/app/sites/${siteId}/collections`);
+
+const items = await vstore.collectionItems(orgId, siteId, versionId, name);
+const sortField = coll.sort_field;
+const sortDir = coll.sort_dir ?? 'desc';
+if (sortField) {
+  items.sort((a, b) => {
+    const av = String(a[sortField] ?? '');
+    const bv = String(b[sortField] ?? '');
+    return sortDir === 'desc' ? bv.localeCompare(av) : av.localeCompare(bv);
+  });
+}
+
+const titleField = coll.fields[0]?.name ?? 'title';
+
+function previewValue(v: unknown): string {
+  if (v == null) return '—';
+  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  const s = String(v);
+  return s.length > 60 ? s.slice(0, 60) + '…' : s;
+}
+---
+<AppLayout title={`${coll.label_plural} — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>{coll.icon ?? '📋'} {coll.label_plural}</h1>
+      <p class="muted">/{coll.name}</p>
+    </div>
+    <form method="POST" action={`/api/sites/${siteId}/collections/${name}/items`} class="row">
+      <button type="submit" class="btn">+ New {coll.label_singular.toLowerCase()}</button>
+    </form>
+  </div>
+
+  <CollectionTabs base={`/app/sites/${siteId}/collections/${name}`} active="posts" itemCount={items.length} fieldCount={coll.fields.length} />
+
+  <div class="card" style="padding: 0;">
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="text-align: left; background: var(--color-bg);">
+          <th style="padding: 0.75rem 1rem;">{coll.fields[0]?.label ?? 'Title'}</th>
+          {coll.fields[1] && <th style="padding: 0.75rem 1rem;">{coll.fields[1].label}</th>}
+          <th style="padding: 0.75rem 1rem;">Status</th>
+          <th style="padding: 0.75rem 1rem;">Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.length === 0 ? (
+          <tr>
+            <td colspan="4" style="padding: 2rem; text-align: center;" class="muted">No items yet. Click "New" above to add one.</td>
+          </tr>
+        ) : (
+          items.map(item => (
+            <tr style="border-top: 1px solid var(--color-border);">
+              <td style="padding: 0.75rem 1rem;">
+                <a href={`/app/sites/${siteId}/collections/${name}/items/${item.id}`}>
+                  {String(item[titleField] ?? '(untitled)')}
+                </a>
+              </td>
+              {coll.fields[1] && (
+                <td style="padding: 0.75rem 1rem;" class="muted text-sm">
+                  {previewValue(item[coll.fields[1].name])}
+                </td>
+              )}
+              <td style="padding: 0.75rem 1rem;">{item.status}</td>
+              <td style="padding: 0.75rem 1rem;" class="muted text-sm">
+                {item.updated_at ? new Date(item.updated_at).toLocaleDateString() : '—'}
+              </td>
+            </tr>
+          ))
+        )}
+      </tbody>
+    </table>
+  </div>
+</AppLayout>

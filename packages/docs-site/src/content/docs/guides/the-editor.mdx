@@ -1,0 +1,177 @@
+---
+title: The Editor
+description: The visual block editor — adding blocks, editing on the canvas, responsive breakpoints, undo/redo, and getting work live.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+Most people let Claude build pages and only open the editor to adjust things by
+hand. That's the intended split: the agent does the heavy lifting, the editor is
+where you nudge, review and publish.
+
+Open it by clicking a page in **Pages**.
+
+## Layout
+
+The editor is three columns:
+
+| Column     | What it holds                                                                                         |
+| ---------- | ----------------------------------------------------------------------------------------------------- |
+| **Left**   | Two tabs — **Add** (the block library) and **Structure** (the block tree)                             |
+| **Centre** | A live preview of the page. This is the real renderer, not an approximation                           |
+| **Right**  | Fields for whatever is selected — a block's own fields, or **Page metadata** when nothing is selected |
+
+The header carries undo/redo, the device switcher, **Meta**, and the
+**Publish ▾** menu.
+
+## Adding blocks
+
+Open the **Add** tab and either:
+
+- **Click** a block — it's appended to the end of the page, or
+- **Drag** it into the **Structure** tree — a coloured drop-line follows your
+  pointer showing exactly where it will land, including inside containers
+
+Dragging is how you place a block precisely. Clicking is faster when you're just
+appending.
+
+Search the library by name at the top of the tab. Block ids are per-site — your
+custom blocks appear in the same list as the built-in ones.
+
+## Editing content
+
+Three ways, depending on what you're changing:
+
+**Click a block** in the preview or the tree to select it. Its fields appear in
+the right column, generated from the block's own schema.
+
+**Double-click text directly on the canvas** to edit it in place. Enter or
+clicking away commits; Escape cancels. This works on plain-text fields — headings,
+labels, button text — and is the fastest way to fix a typo.
+
+**Use the Structure tree** for anything about arrangement rather than content:
+reorder by dragging, duplicate, delete, or double-click a row to rename the block
+(the name is a label for you; it doesn't appear on the site).
+
+The tree shows each block's actual content — the heading text, the image
+filename — rather than just its type, so a long page stays navigable.
+
+## Keyboard shortcuts
+
+| Shortcut               | Does                                  |
+| ---------------------- | ------------------------------------- |
+| `⌘Z` / `Ctrl+Z`        | Undo                                  |
+| `⇧⌘Z` / `Ctrl+Shift+Z` | Redo                                  |
+| `⌘D` / `Ctrl+D`        | Duplicate the selected block          |
+| `Delete` / `Backspace` | Delete the selected block             |
+| `Enter`                | Commit an inline edit or a rename     |
+| `Escape`               | Cancel an inline edit, close a dialog |
+
+Undo covers block edits — adding, moving, deleting, field changes. A burst of
+typing in one field collapses into a single undo step, so one `⌘Z` takes you back
+to before you started typing, not one character at a time.
+
+<Aside type="tip">
+  Undo is cheap and safe here: it only ever rewrites your draft, never the saved
+  page. See [Drafts & Saving](/tools/drafts-and-saving/).
+</Aside>
+
+## Responsive editing
+
+The device buttons in the header do **two** things at once, and the second one is
+easy to miss:
+
+1. They resize the preview.
+2. They set **which breakpoint you're editing**.
+
+So if you pick **Phone** and then change a grid's column count, you've set that
+value _for phones only_. Switch back to **Desktop** and the desktop value is
+untouched.
+
+| Button             | Preview width | Breakpoint written |
+| ------------------ | ------------- | ------------------ |
+| Phone              | 390px         | `mobile` (< 640)   |
+| Phone — landscape  | 740px         | `tablet` (≥ 640)   |
+| Tablet             | 1024px        | `laptop` (≥ 1024)  |
+| Tablet — landscape | 1280px        | `desktop` (≥ 1280) |
+| Desktop            | full width    | `wide` (≥ 1536)    |
+
+Fields that support per-breakpoint values show a small badge with the current
+breakpoint. When a value is inherited rather than set explicitly, the badge says
+**inherited** and offers a reset control to drop back to the inherited value.
+
+Breakpoints inherit upward from mobile: set something once at Phone and it
+applies everywhere unless a larger breakpoint overrides it. That's why it's
+usually best to design mobile-first and only override where a larger screen
+genuinely needs something different.
+
+<Aside type="caution" title="Check which device is active before editing">
+  A responsive change lands on whichever device button is highlighted. If a
+  change seems not to apply, you're probably looking at a different breakpoint
+  than the one you edited.
+</Aside>
+
+## Page metadata
+
+Click **Meta** in the header, or just deselect the current block, to get the
+page's own fields: page title, SEO title, meta description, OG image and alt
+text, canonical URL, and the noindex toggle.
+
+The same panel holds the **Template** picker and the **Content mode** switch
+(blocks ↔ HTML).
+
+## Saving and publishing
+
+Everything you do autosaves — into a **draft**, not onto the live page. The
+header shows the save state, and the **Publish ▾** menu is where work actually
+goes out:
+
+<Steps>
+
+1. **Changes** — Save (commits the draft) or Discard (throws it away).
+
+2. **Status** — Draft, In review, Unlisted, or Published. Status changes apply
+   immediately; they aren't drafted, because the status _is_ the publish
+   decision.
+
+3. **Deploy** — rebuilds the static site from saved, published content. The panel
+   lists exactly what changed since the last deploy, so the button is never a
+   mystery.
+
+</Steps>
+
+This is the only place to save, change status or deploy — deliberately, so there
+aren't competing buttons that mean subtly different things.
+
+### Reviewing before you save
+
+If Claude built something substantial, use **Review changes**. It shows the saved
+page and your draft side by side in the same renderer, plus a structured list of
+what changed block by block.
+
+That's the intended way to audit an agent's work: look at the diff, then save.
+
+## HTML-mode pages
+
+Pages in HTML mode get a different editor — a CodeMirror pane with syntax
+highlighting instead of the block library, plus the same preview, metadata and
+Publish menu.
+
+You also get **SERP** and **Open Graph** previews showing how the page will look
+in Google results and when shared on social, and a **History** panel for
+restoring earlier revisions.
+
+Switch a page between modes with the **Content mode** control. Converting HTML to
+blocks is heuristic — check the result. Converting blocks to HTML discards the
+block tree. Both directions save a revision first, so neither is a one-way door.
+
+## Templates and custom blocks
+
+Two related editors, reachable from the site sidebar:
+
+- **Templates** — a block tree that wraps a page's content. Build the shared
+  outer structure once, drop a **content slot** where the page's own blocks
+  should render, then assign the template to pages.
+- **Blocks** — create reusable custom block types for this site: schema, HTML
+  template, scoped CSS, and optionally client-side JavaScript (which requires an
+  explicit opt-in, because it runs in your visitors' browsers).

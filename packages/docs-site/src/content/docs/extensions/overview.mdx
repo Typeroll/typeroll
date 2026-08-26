@@ -1,0 +1,92 @@
+---
+title: Extensions
+description: Add externally hosted frontend components and admin tools to Typeroll without moving application data or business logic into Typeroll.
+---
+
+Typeroll Extensions let an external application contribute frontend blocks and
+admin pages to a Typeroll site. The provider keeps its source code, backend,
+business data, and deployment in its own AWS, GCP, Vercel, Cloudflare, or other
+environment.
+
+Use an Extension when you are building either:
+
+- a multi-tenant SaaS product that many Typeroll customers can install; or
+- a private, customer-specific application such as a wedding planner, quote
+  generator, calculator, booking workflow, or customer portal.
+
+Both use the same versioned manifest and runtime. Their distribution policy is
+the only material difference.
+
+## What an Extension can add
+
+- **Bundled components** that behave like native blocks in the editor.
+- **Embedded applications** for larger interactive frontend experiences.
+- **Admin pages** launched inside Typeroll with delegated user identity.
+- **Direct provider APIs** called by the frontend without a Typeroll or
+  customer-hosted reverse proxy.
+- **Native lead tools** whose bespoke JavaScript and CSS submit into ordinary
+  Typeroll Forms without a separate provider backend.
+- **Lifecycle webhooks** for install, update, disable, credential rotation, and
+  uninstall events.
+
+Typeroll does not run or proxy arbitrary provider backend code. It installs an
+immutable manifest version, vendors hash-verified frontend assets into the site
+build, and issues narrowly scoped identity tokens for approved installations.
+
+The source code, manifest format, API routes, CLI, and product interface all
+use the term **Extension**. A premium product delivered through an Extension
+is a **Typeroll App**.
+
+## Typeroll Apps and third-party products
+
+Typeroll Apps is a separately sold premium collection operated only in
+Typeroll-controlled cloud accounts. Customers can buy and connect these apps
+whether their CMS is Typeroll Cloud or self-hosted. Self-hosting does not copy
+Typeroll Apps code or Functions into the operator's infrastructure.
+
+Third-party SaaS and bespoke applications use the same Extension protocol but
+remain entirely in the developer's accounts. Their frontend calls their API
+directly. Neither Typeroll nor the customer's Cloudflare Pages project acts as
+a provider API proxy.
+
+## Two frontend trust levels
+
+A `bundled_component` is trusted site code. Typeroll downloads the exact
+hash-pinned JavaScript and CSS during deployment and publishes those immutable
+bytes under the customer site's own `/_assets/extensions/…` paths. This avoids
+a mutable central runtime dependency and is ideal for customer-specific
+calculators, quizzes, lead magnets, and quote generators.
+
+Because that code executes on the customer origin, it has the same browser
+reach as other site JavaScript: DOM access, non-HttpOnly cookies, and web
+storage. Review it, pin it, and keep each release immutable. Use an
+`embedded_app` when the frontend should remain untrusted or needs isolation;
+it runs in a sandboxed provider-origin iframe instead.
+
+## Hosted and self-hosted Typeroll
+
+The Extension runtime and private/unlisted development flow are part of the
+self-hostable platform. A self-hosted portal issues tokens and publishes JWKS
+from its own admin domain; an Extension must not assume `app.typeroll.com`.
+The premium Typeroll Apps implementations are not part of the open-source
+package and continue to run in Typeroll's accounts.
+
+The hosted public catalog and its review process can remain a managed Typeroll
+service. Self-hosted installations do not contact that catalog unless an
+administrator explicitly imports or connects one.
+
+## Security boundary
+
+Provider frontend code never runs on the Typeroll admin origin. Admin pages run
+in a sandboxed frame on the provider origin and receive short-lived delegated
+identity through a server-to-server code exchange. A frontend block receives
+only public installation config, explicitly declared URL context, and
+capabilities approved for that installation. Form submission capabilities are
+limited to explicitly bound forms and do not grant submission reads or form
+administration.
+
+Recipient tokens in emailed links are owned by the provider. Typeroll can
+transport a declared opaque value to the component, but does not generate,
+validate, authorize, persist, or log that value.
+
+Next, [build your first Extension](/extensions/getting-started/).

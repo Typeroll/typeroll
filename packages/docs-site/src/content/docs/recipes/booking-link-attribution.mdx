@@ -1,0 +1,83 @@
+---
+title: Booking-link attribution
+description: Preserve advertising parameters across visits and forward them to an external booking link without inventing campaign values.
+---
+
+import { Aside, Steps } from "@astrojs/starlight/components";
+
+This recipe configures [Analytics attribution](/apps/funnel-attribution/) for a
+landing page that sends visitors to an external booking service. It is generic:
+replace the example paths and destination with values from your own site.
+
+## Intended behavior
+
+- Forward `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, and
+  `utm_term` from the current landing-page URL.
+- After optional consent, preserve first-touch and last-touch snapshots for 30
+  days.
+- Prefer current URL values; otherwise use stored last-touch values.
+- Add no fallback values. A visitor with neither current nor stored campaign
+  data reaches the original clean booking URL.
+
+## Example rule
+
+```json
+{
+  "id": "campaign-booking",
+  "page_paths": ["/campaign/"],
+  "source": "current_or_stored",
+  "parameters": [
+    { "from": "utm_source" },
+    { "from": "utm_medium" },
+    { "from": "utm_campaign" },
+    { "from": "utm_content" },
+    { "from": "utm_term" }
+  ],
+  "targets": [
+    {
+      "type": "link",
+      "host": "booking.example.com",
+      "path": "/consultation",
+      "click_event": "booking_click",
+      "destination": "booking"
+    }
+  ],
+  "storage": {
+    "enabled": true,
+    "ttl_days": 30,
+    "touch": "both",
+    "read_touch": "last_touch",
+    "consent": "optional"
+  }
+}
+```
+
+<Steps>
+
+1. **Read the existing app state.** Preserve unrelated funnel rules.
+
+2. **Confirm the consent surface.** Storage will not write until optional
+   consent is accepted.
+
+3. **Save and deploy.** The runtime is included in the static customer build.
+
+4. **Verify current attribution.** Use different values for every UTM field and
+   inspect the rewritten booking link without navigating.
+
+5. **Verify stored attribution.** In a controlled browser, grant consent, visit
+   once with campaign values, then revisit without query parameters. The link
+   should reuse the stored last-touch snapshot.
+
+6. **Verify the empty case.** With a fresh browser and no UTM values, the
+   booking URL must remain free of synthetic campaign parameters.
+
+7. **Verify the event without navigating.** When Analytics is enabled, inspect
+   the non-blocking `booking_click` request and confirm it contains only the
+   allowlisted campaign fields. Do not create a booking merely to test it.
+
+</Steps>
+
+<Aside type="note">
+  A controlled click records a conversion event when Analytics is enabled. It
+  still does not require completing a production booking.
+</Aside>

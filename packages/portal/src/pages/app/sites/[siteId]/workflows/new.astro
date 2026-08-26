@@ -1,0 +1,30 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import StartWorkflow from '../../../../../components/StartWorkflow.tsx';
+import { getStore } from '../../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { Site, WorkflowType } from '@typeroll/shared';
+import { workflows as registry } from '../../../../../lib/workflows/registry';
+import { loadSiteContext } from '../../../../../lib/access';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const type = (Astro.url.searchParams.get('type') ?? 'migration') as WorkflowType;
+const def = registry[type];
+if (!def) return Astro.redirect(`/app/sites/${siteId}/workflows`);
+---
+<AppLayout title={`${def.label} — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>{def.label}</h1>
+      <p class="muted">{def.description}</p>
+    </div>
+  </div>
+
+  <StartWorkflow client:load siteId={siteId} type={type} />
+</AppLayout>

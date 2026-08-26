@@ -1,0 +1,5 @@
+---
+const { siteId } = Astro.params;
+if (!siteId) return Astro.redirect('/app');
+return Astro.redirect(`/app/sites/${siteId}/pages/posts`);
+---

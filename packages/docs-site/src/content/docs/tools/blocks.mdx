@@ -1,0 +1,228 @@
+---
+title: Blocks Tools
+description: Compose pages, partials, page templates, and collection item templates from a library of ~40 reusable blocks. Author custom blocks. Make layouts responsive.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+Pages, partials, page templates, and collection item templates all share one editing surface: a tree of **blocks**. Claude reaches for blocks instead of writing raw HTML — it's faster, more consistent, and the same edits Claude makes are what you see in the editor's drag-and-drop panel.
+
+## The two verb families
+
+There are two distinct kinds of block tools — keep them straight:
+
+- **Block-instance tools** — `add_block`, `update_block`, `move_block`, `remove_block`, `duplicate_block`, `set_block_responsive`, `get_page_blocks`. These place + edit _instances_ of blocks inside a container.
+- **BlockType tools** — `list_block_types`, `read_block_type`, `create_block_type`, `update_block_type`, `delete_block_type`, `find_pages_using_block_type`, `export_block_types`, `import_block_types`. These manage the _type definitions_ — the things that show up in the block picker.
+
+> Asking "add another testimonial to the home page" is instance work. Asking "make me a custom price-card block with a built-in star rating" is type work.
+
+## Block containers
+
+A container is anything that holds a tree of blocks. Four kinds:
+
+| Kind            | What it is                                | `target.id`                                |
+| --------------- | ----------------------------------------- | ------------------------------------------ |
+| `page`          | A regular page in blocks-mode             | The page's id                              |
+| `partial`       | A header/footer/free block in blocks-mode | `"header"`, `"footer"`, or a free-block id |
+| `template`      | A page template                           | The template id (e.g. `"blog-post"`)       |
+| `item_template` | A collection's per-item layout            | The collection name (e.g. `"blog"`)        |
+
+Every instance tool accepts the same shape:
+
+```
+target: { kind: "page" | "partial" | "template" | "item_template", id: string }
+```
+
+For pages, `page_id: "<id>"` is a shorthand for `target: { kind: "page", id: "<id>" }`. Older prompts still work; new patterns should prefer `target`.
+
+```
+"Add a feature_grid in the header that appears on every page."
+  → add_block target={kind:"partial", id:"header"} block={type:"core/feature_grid", ...}
+
+"Build a blog post template — featured image at the top, then title, then the post body."
+  → add_block target={kind:"template", id:"blog-post"} block={type:"template/page_featured_image"}
+  → add_block target={kind:"template", id:"blog-post"} block={type:"template/page_title"}
+  → add_block target={kind:"template", id:"blog-post"} block={type:"template_content_slot"}
+
+"Change how every blog post lays out — show the date next to the title, then a wide image."
+  → add_block target={kind:"item_template", id:"blog"} block={type:"template/item_title"}
+  → add_block target={kind:"item_template", id:"blog"} block={type:"template/page_date"}
+  → add_block target={kind:"item_template", id:"blog"} block={type:"template/item_image"}
+```
+
+## The block library
+
+Claude calls `list_block_types` first to see what's available on the current site (core + custom + third-party in one list). Don't memorise ids — they're per-site. The library covers ~40 blocks across these groups:
+
+### Layout primitives
+
+- `core/section` — outer container with width + padding + bg
+- `core/container` — flex container (direction / wrap / gap / align)
+- `core/grid` — N-column grid that wraps automatically
+- `core/columns` — 2-slot Left/Right container for asymmetric layouts
+- `core/spacer`, `core/divider`
+
+### Content + marketing
+
+- `core/heading`, `core/prose`, `core/button`, `core/image`, `core/icon`, `core/icon_box`
+- `core/hero` (4 layout variants), `core/cta`, `core/feature_row` (gutter-hugging image + text row)
+- `core/accordion`, `core/tabs`, `core/video`, `core/form`, `core/media_card`
+- `core/search` — see [Site search](#site-search) below
+- `core/html` — the raw-HTML escape hatch for one-offs no block covers. Output is sanitised the same way HTML-mode pages are, so it isn't a script vector.
+
+### Item-compatible kernels
+
+Designed to tile cleanly inside a repeater — no outer padding, kernel layout. Render fine standalone too.
+
+- `core/testimonial`, `core/team_member`, `core/pricing_plan`, `core/post_card`, `core/logo_item`, `core/step_card`
+
+### Repeater + aliases
+
+The repeater abstraction collapses what used to be a dozen specialised widgets into one primitive. The aliases are author-friendly wrappers:
+
+- `core/gallery` — image grid
+- `core/logo_cloud` — client logos (greyscale by default)
+- `core/testimonials` — testimonial carousel
+- `core/feature_grid` — icon_box grid
+- `core/pricing_table` — pricing_plan grid
+- `core/team_grid` — team_member grid
+- `core/collection_list` — blog/news/any collection, items become post_cards
+
+Each alias accepts `items: [{...}]` directly — Claude passes the per-item field values and the renderer expands the alias to a repeater with the right item-block type.
+
+```
+"Add a feature grid with our three differentiators."
+  → add_block block={type:"core/feature_grid", data:{items:[
+       {icon:"zap", heading:"Fast", text:"<p>...</p>"},
+       {icon:"shield", heading:"Safe", text:"<p>...</p>"},
+       {icon:"smile", heading:"Simple", text:"<p>...</p>"}
+     ]}}
+```
+
+### Template/\* family (dynamic context)
+
+These read from the render context (`page`/`site`/`item`) rather than from authored block data. Used inside page templates and collection item templates so a blog template can render every post with its own title without per-post copy.
+
+- Page-context: `template/page_title`, `template/page_featured_image`, `template/page_excerpt`, `template/page_date`, `template/page_author`, `template/page_breadcrumbs`
+- Site-context: `template/site_logo`, `template/site_title`, `template/site_tagline`
+- Item-context: `template/item_title`, `template/item_body`, `template/item_image`
+- Conditional: `template/show_if` (renders children only if a condition is truthy)
+
+## Site search
+
+Add `core/search` to a page and your published site gets working full-text
+search. There is nothing to configure and no third-party service involved:
+
+```
+Add a search box to the header.
+```
+
+At deploy time, if any page uses the block, the built HTML is indexed with
+[Pagefind](https://pagefind.app/) and the index ships as static files alongside
+the site. Search runs entirely in the visitor's browser against that index — no
+search server, no per-query cost, and it works on any static host.
+
+Sites without the block skip the indexing step entirely, so adding search costs
+build time only when you actually use it.
+
+The only field is `placeholder`. The result UI inherits your site's colours
+through the same CSS variables as everything else.
+
+## Responsive — 5 breakpoints, fluid type
+
+Headings and prose already shrink fluidly on small screens — no per-page tuning needed. Beyond that, any field marked `responsive` accepts a per-breakpoint object.
+
+The five breakpoints are Tailwind-compatible:
+
+| Token     | Min width | Use                           |
+| --------- | --------- | ----------------------------- |
+| `mobile`  | 0         | Baseline                      |
+| `tablet`  | 640px     | Stora telefoner, små tablets  |
+| `laptop`  | 1024px    | Tablet landscape, små laptops |
+| `desktop` | 1280px    | Vanlig desktop                |
+| `wide`    | 1536px    | Stora skärmar                 |
+
+Mobile-first inheritance: missing breakpoints inherit upward from the previous defined one.
+
+```
+"Make the feature grid 1 column on mobile, 2 on tablet, 3 on desktop."
+  → set_block_responsive block_id=<feature_grid_id> field=cols
+       value={mobile:1, tablet:2, desktop:3}
+```
+
+`Block.hidden_on: ['mobile']` hides the entire block at a breakpoint — no BlockType opt-in needed.
+
+## Authoring custom block types
+
+When the library doesn't fit, Claude creates a custom type with `create_block_type`. The block ships immediately to the editor + the renderer's registry — no deploy needed.
+
+```
+"Make a 'quote with avatar' block: square photo on the left, quote + name on the right."
+  → create_block_type
+       name="quote_with_avatar"
+       label="Quote with avatar"
+       schema=[{name:"photo", type:"image", label:"Photo"},
+               {name:"quote", type:"richtext", label:"Quote"},
+               {name:"name", type:"text", label:"Name"}]
+       template="<figure data-block='quote_with_avatar'>
+                   <img src='{{photo}}' alt='{{name}}' />
+                   <blockquote>{{{quote}}}</blockquote>
+                   <figcaption>— {{name}}</figcaption>
+                 </figure>"
+       styles="[data-block='quote_with_avatar']{display:flex;gap:1rem}
+               [data-block='quote_with_avatar'] img{width:6rem;border-radius:50%}"
+```
+
+<Aside type="caution">
+  **Custom JavaScript is not available through Claude.** Block-level JS runs in
+  every visitor's browser with full DOM access — that's a trust decision a human
+  takes. To add a script to a custom block, open it in the portal's block-type
+  editor, toggle "Activate JS", and accept the warning.
+</Aside>
+
+Origin is auto-stamped `'ai'` so the portal UI can visually flag AI-authored blocks for audit.
+
+## Editing existing types
+
+`update_block_type` patches fields on an existing custom or third-party block type. Core blocks (id starts with `core/`) are managed in platform code and can't be changed via tool. Schema, template, and styles **replace wholesale** when included — don't send them unless you want to overwrite. The script field is silently dropped even on updates.
+
+```
+"Make the testimonial block default to bordered style instead of card."
+  → update_block_type id="<custom-testimonial-id>" schema=[…updated schema…]
+```
+
+`delete_block_type` removes a custom type. Pages currently using it render `<!-- unknown block type -->` comments instead, so Claude calls `find_pages_using_block_type` first and asks before deleting when there's usage.
+
+## Reorganising blocks
+
+- `move_block` — re-parent or reorder inside the same container. Cycles rejected.
+- `duplicate_block` — clones a block (subtree included), inserts the copy right after the original, returns the new id. Easiest way to add another card to a feature grid.
+- `remove_block` — drops a block and everything inside it.
+
+## Reference
+
+### Block instance tools
+
+| Tool                   | Purpose                                                                |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `get_page_blocks`      | Read the block tree of any container                                   |
+| `add_block`            | Insert a block (at top level, in a parent's children, or a named slot) |
+| `update_block`         | Shallow-merge new field values into `block.data`                       |
+| `move_block`           | Re-parent or reorder a block                                           |
+| `remove_block`         | Remove a block + its subtree                                           |
+| `duplicate_block`      | Clone a block + insert the copy right after                            |
+| `set_block_responsive` | Set per-breakpoint values on a responsive field                        |
+
+All accept `target: { kind, id }` or the `page_id` shorthand.
+
+### BlockType tools
+
+| Tool                                        | Purpose                                           |
+| ------------------------------------------- | ------------------------------------------------- |
+| `list_block_types`                          | Every type usable on this site                    |
+| `read_block_type`                           | Full schema + template + styles for one type      |
+| `create_block_type`                         | New custom type (origin=ai, no script)            |
+| `update_block_type`                         | Patch a custom or third-party type (no script)    |
+| `delete_block_type`                         | Remove a custom/third-party type (core protected) |
+| `find_pages_using_block_type`               | Reverse-index: which pages reference this type?   |
+| `export_block_types` / `import_block_types` | `.tcblocks` package format for portability        |

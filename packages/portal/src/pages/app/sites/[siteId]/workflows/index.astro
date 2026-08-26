@@ -1,0 +1,84 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { getStore } from '../../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { Site } from '@typeroll/shared';
+import { workflows as registry } from '../../../../../lib/workflows/registry';
+import type { WorkflowRecord } from '../../../../../lib/workflows/types';
+import { loadSiteContext } from '../../../../../lib/access';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const allWorkflows = await store.listDocs<WorkflowRecord>(paths.workflows(orgId));
+const recent = allWorkflows
+  .filter((w) => w.site_id === siteId)
+  .sort((a, b) => (b.started_at ?? '').localeCompare(a.started_at ?? ''))
+  .slice(0, 20);
+---
+<AppLayout title={`Workflows — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <h1>Workflows</h1>
+  </div>
+
+  <h2 style="font-size: 1rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); margin-bottom: 0.75rem;">Available workflows</h2>
+  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 2.5rem;">
+    {Object.entries(registry).map(([type, def]) => (
+      <a href={`/app/sites/${siteId}/workflows/new?type=${type}`} class="card" style="text-decoration: none;">
+        <h3 style="font-size: 1rem;">{def.label}</h3>
+        <p class="muted text-sm" style="margin-top: 0.5rem;">{def.description}</p>
+      </a>
+    ))}
+  </div>
+
+  <h2 style="font-size: 1rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); margin-bottom: 0.75rem;">Recent runs</h2>
+  {recent.length === 0 ? (
+    <div class="card" style="text-align: center; padding: 2rem;" class:list={['muted']}>No workflows have run yet.</div>
+  ) : (
+    <div class="card" style="padding: 0;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="text-align: left; background: var(--color-bg);">
+            <th style="padding: 0.75rem 1rem;">Type</th>
+            <th style="padding: 0.75rem 1rem;">Status</th>
+            <th style="padding: 0.75rem 1rem;">Started</th>
+            <th style="padding: 0.75rem 1rem;">Triggered by</th>
+          </tr>
+        </thead>
+        <tbody>
+          {recent.map(wf => (
+            <tr style="border-top: 1px solid var(--color-border);">
+              <td style="padding: 0.75rem 1rem;">
+                <a href={`/app/sites/${siteId}/workflows/${wf.id}`}>{registry[wf.type]?.label ?? wf.type}</a>
+              </td>
+              <td style="padding: 0.75rem 1rem;"><span class={`badge badge--${wf.status}`}>{wf.status}</span></td>
+              <td style="padding: 0.75rem 1rem;" class="muted text-sm">{wf.started_at ? new Date(wf.started_at).toLocaleString() : '—'}</td>
+              <td style="padding: 0.75rem 1rem;" class="muted text-sm">{wf.triggered_by}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  <style>
+    .badge {
+      display: inline-block;
+      padding: 0.125rem 0.625rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 500;
+    }
+    .badge--completed { background: rgba(22,163,74,0.12); color: var(--color-success); }
+    .badge--running { background: rgba(245,158,11,0.12); color: var(--color-accent); }
+    .badge--paused_for_review { background: rgba(59,130,246,0.12); color: #3b82f6; }
+    .badge--failed { background: rgba(220,38,38,0.12); color: var(--color-danger); }
+    .badge--pending { background: rgba(120,113,108,0.12); color: var(--color-text-muted); }
+  </style>
+</AppLayout>

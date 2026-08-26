@@ -1,0 +1,34 @@
+---
+title: Directory
+description: Passwordless, self-service editing for businesses and other entities listed in a Typeroll collection.
+---
+
+- **Type:** Core module
+- **Build impact:** Contributes forms and republishes edited listing content
+- **Authentication:** Single-use, time-limited links
+
+Directory lets an entity listed in a collection request a private edit link
+and correct its own data without creating an account. The link is sent only to
+the email address already stored on that listing.
+
+## Configuration
+
+| Field               | Purpose                                                |
+| ------------------- | ------------------------------------------------------ |
+| Listings collection | Collection containing the directory records            |
+| Contact email field | Existing field that may receive an edit link           |
+| Link lifetime       | Validity period for issued links, capped at seven days |
+
+The module seeds two ordinary Typeroll forms: one to request a link and one to edit
+the listing. Sites may extend those forms using the normal form editor.
+
+## Write boundaries
+
+An edit session is bound to one listing. It can update only collection fields
+whose write policy permits owner writes. Requests for an unrelated email
+address do not reveal whether a listing exists, and enabling the module is what
+opens its public endpoints.
+
+Directory builds on general platform primitives: collection field authority,
+prefill sources, form actions, passwordless sessions, and coalesced deploys.
+Only the listing-specific workflow belongs to the module.

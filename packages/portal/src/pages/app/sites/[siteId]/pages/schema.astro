@@ -1,0 +1,109 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../../lib/version-store';
+import CollectionTabs from '../../../../../components/CollectionTabs.astro';
+import { loadSiteContext } from '../../../../../lib/access';
+import { PAGES_SYSTEM_SCHEMA } from '../../../../../lib/system-collections';
+import { getStore } from '../../../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import type { Page, Site } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const pages = await vstore.pages(orgId, siteId, versionId);
+const base = `/app/sites/${siteId}/pages`;
+---
+<AppLayout title={`Pages — schema`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>📄 Pages</h1>
+      <p class="muted">System collection · routes to your site root</p>
+    </div>
+  </div>
+
+  <CollectionTabs base={base} active="schema" itemCount={pages.length} fieldCount={PAGES_SYSTEM_SCHEMA.length} system />
+
+  <div class="card stack" style="max-width: 720px;">
+    <div>
+      <h2 style="font-size: 1.05rem;">Built-in fields</h2>
+      <p class="muted text-sm" style="margin-top: 0.25rem;">
+        Pages are a system collection. The schema is fixed because the renderer, SEO pipeline, sitemap, and AI tools
+        depend on these field names — you can't add or remove fields here. Use a regular collection for custom shapes.
+      </p>
+    </div>
+
+    <div class="schema-readonly">
+      {PAGES_SYSTEM_SCHEMA.map((f) => (
+        <div class="schema-readonly__row">
+          <div class="schema-readonly__head">
+            <div class="schema-readonly__label">{f.label}</div>
+            {f.required && <span class="schema-readonly__pill">required</span>}
+            {f.group && <span class="schema-readonly__group">{f.group}</span>}
+          </div>
+          <div class="schema-readonly__meta">
+            <code>{f.name}</code>
+            <span class="schema-readonly__dot">·</span>
+            <span>{f.type}</span>
+            {f.note && (
+              <>
+                <span class="schema-readonly__dot">·</span>
+                <span class="muted">{f.note}</span>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <style>
+    .schema-readonly { display: flex; flex-direction: column; gap: 0.5rem; }
+    .schema-readonly__row {
+      padding: 0.65rem 0.85rem;
+      border: 1px solid var(--color-border);
+      border-radius: 0.5rem;
+      background: var(--color-surface);
+    }
+    .schema-readonly__head {
+      display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+      margin-bottom: 0.2rem;
+    }
+    .schema-readonly__label { font-weight: 500; font-size: 0.95rem; }
+    .schema-readonly__pill {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: rgba(15,23,42,0.06);
+      color: var(--color-text);
+    }
+    .schema-readonly__group {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-text-muted);
+      padding: 1px 6px;
+      border-radius: 999px;
+      border: 1px dashed var(--color-border);
+    }
+    .schema-readonly__meta {
+      font-size: 0.82rem;
+      color: var(--color-text-muted);
+      display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;
+    }
+    .schema-readonly__meta code {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      background: var(--color-bg);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .schema-readonly__dot { opacity: 0.5; }
+  </style>
+</AppLayout>

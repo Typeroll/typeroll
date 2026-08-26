@@ -1,0 +1,1021 @@
+---
+import '../styles/global.css';
+import { getSession } from '../lib/auth';
+import { resolveVersionId } from '../lib/access';
+import type { FullSession } from '../lib/access';
+import { getStore } from '../lib/datastore';
+import { hydrateSharedSites } from '../lib/shares';
+import type { SharePermission } from '@typeroll/shared';
+import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
+import type { ExtensionInstallation, ExtensionAdminPage, ExtensionVersion, Site, SiteVersion } from '@typeroll/shared';
+import SiteSwitcher from '../components/SiteSwitcher.tsx';
+import VersionPicker from '../components/VersionPicker.tsx';
+import Icon from '../components/Icon.astro';
+
+interface Props {
+  title?: string;
+  siteId?: string;
+  /** Full-bleed mode: hide the sidebar/nav and let the slot fill the whole
+   *  viewport. Used by the page/template editors so the editing surface owns
+   *  the screen (they provide their own "Exit editor" control). */
+  bare?: boolean;
+}
+const { title = 'Typeroll', siteId, bare = false } = Astro.props;
+
+const session = await getSession(Astro.cookies);
+// Middleware redirects pending sessions to /onboarding before this layout
+// is rendered. The cast to FullSession is therefore safe here.
+if (!session) return Astro.redirect('/login');
+if (!session.orgId) return Astro.redirect('/onboarding');
+const fullSession = session as FullSession;
+
+const store = getStore();
+const ownedSites = await store.listDocs<Site>(paths.sites(fullSession.orgId));
+const sharedSites = await hydrateSharedSites(fullSession.orgId);
+// SiteSwitcher gets the union — owned first, then shared-in. The switcher
+// itself doesn't need to distinguish; the dashboard handles labelling.
+const sites = [...ownedSites, ...sharedSites.map((s) => s.site)];
+const pathname = Astro.url.pathname;
+
+// Figure out which org owns the active site so the version picker and
+// permission badge point at the right place.
+let activeOwnerOrgId = fullSession.orgId;
+let activePermission: SharePermission = 'admin';
+if (siteId) {
+  const sharedMatch = sharedSites.find((s) => s.site.id === siteId);
+  if (sharedMatch) {
+    activeOwnerOrgId = sharedMatch.share.owner_org_id;
+    activePermission = sharedMatch.share.permission;
+  }
+}
+
+// Load version list for the active site (if any) so the picker can render.
+let siteVersions: SiteVersion[] = [];
+let currentVersionId: string = MAIN_VERSION_ID;
+if (siteId) {
+  siteVersions = await store.listDocs<SiteVersion>(paths.versions(activeOwnerOrgId, siteId));
+  if (!siteVersions.some((v) => v.id === MAIN_VERSION_ID)) {
+    siteVersions = [
+      {
+        id: MAIN_VERSION_ID,
+        name: 'Main',
+        kind: 'main',
+        created_at: new Date().toISOString(),
+        robots_blocked: false,
+      },
+      ...siteVersions,
+    ];
+  }
+  siteVersions.sort((a, b) =>
+    a.kind === 'main' ? -1 : b.kind === 'main' ? 1 : a.name.localeCompare(b.name),
+  );
+  currentVersionId = await resolveVersionId(activeOwnerOrgId, siteId, Astro.locals.versionId);
+}
+
+// Insights nav appears only when the analytics app is enabled (opt-in) —
+// one small doc read per page when a site is active.
+let analyticsEnabled = false;
+let extensionNavItems: Array<{ installationId: string; page: ExtensionAdminPage }> = [];
+if (siteId) {
+  const appsDoc = await store.getDoc<import('@typeroll/shared').SiteApps>(paths.apps(activeOwnerOrgId, siteId));
+  analyticsEnabled = Boolean(appsDoc?.apps?.analytics?.enabled);
+  const installations = await store.listDocs<ExtensionInstallation>(paths.extensionInstallations(activeOwnerOrgId, siteId));
+  const rank: Record<SharePermission, number> = { read: 0, write: 1, admin: 2 };
+  for (const installation of installations) {
+    if (installation.status !== 'enabled') continue;
+    const version = await store.getDoc<ExtensionVersion>(
+      paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version),
+    );
+    if (!version || version.status === 'revoked') continue;
+    for (const page of version.manifest.admin?.pages ?? []) {
+      if (rank[activePermission] >= rank[page.minimum_permission]) {
+        extensionNavItems.push({ installationId: installation.id, page });
+      }
+    }
+  }
+}
+
+// A site-nav item is active when the current path starts with its href.
+// Overview is the exception: it should only highlight when on the exact site root.
+function isActive(href: string, exact = false): boolean {
+  if (exact) return pathname === href;
+  return pathname === href || pathname.startsWith(href + '/');
+}
+
+const initials = (session.displayName ?? session.email ?? 'U')
+  .split(/[\s@.]+/)
+  .filter(Boolean)
+  .slice(0, 2)
+  .map((p) => p[0]?.toUpperCase() ?? '')
+  .join('') || 'U';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    {bare ? (
+      <main class="app-main app-main--bare"><slot /></main>
+    ) : (
+    <div class="app-shell" data-shell>
+      <button
+        type="button"
+        class="app-shell__mobile-bar-toggle"
+        aria-label="Open navigation"
+        aria-expanded="false"
+        aria-controls="app-sidebar"
+        data-shell-toggle
+      >
+        <span class="hamburger" aria-hidden>
+          <span></span><span></span><span></span>
+        </span>
+        <span class="app-shell__mobile-bar-title">{title}</span>
+      </button>
+      <div class="app-shell__backdrop" data-shell-backdrop aria-hidden="true"></div>
+      <aside class="app-sidebar" id="app-sidebar">
+        <div class="app-sidebar__top">
+          <a href="/app" class="app-sidebar__brand" aria-label="Typeroll — go to dashboard">
+            <img src="/brand/typeroll-main-white.svg" alt="Typeroll" width="248" height="54" />
+          </a>
+
+          <SiteSwitcher client:load sites={sites} currentSiteId={siteId} />
+          {siteId && activePermission !== 'admin' && (
+            <div class={`shared-badge shared-badge--${activePermission}`} title={`Shared with you (${activePermission}). The owning organization controls this site.`}>
+              <Icon name="Share2" /> Shared · {activePermission}
+            </div>
+          )}
+          {siteId && <VersionPicker client:load siteId={siteId} versions={siteVersions} currentVersionId={currentVersionId} />}
+        </div>
+
+        <nav class="app-sidebar__nav" aria-label="Main navigation">
+          {siteId && (
+            <div class="app-sidebar__section">
+              <div class="app-sidebar__section-label">Manage site</div>
+              <a href={`/app/sites/${siteId}`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}`, true) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="LayoutDashboard" /></span>
+                <span>Overview</span>
+              </a>
+              <a href={`/app/sites/${siteId}/pages`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/pages`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="FileText" /></span>
+                <span>Pages</span>
+              </a>
+              <a href={`/app/sites/${siteId}/collections`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/collections`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Layers" /></span>
+                <span>Collections</span>
+              </a>
+              <a href={`/app/sites/${siteId}/forms`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/forms`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Inbox" /></span>
+                <span>Forms</span>
+              </a>
+              <a href={`/app/sites/${siteId}/partials`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/partials`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Component" /></span>
+                <span>Global blocks</span>
+              </a>
+              <a href={`/app/sites/${siteId}/blocks`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/blocks`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Box" /></span>
+                <span>Block types</span>
+              </a>
+              <a href={`/app/sites/${siteId}/templates`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/templates`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="FileSymlink" /></span>
+                <span>Page templates</span>
+              </a>
+              <a href={`/app/sites/${siteId}/media`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/media`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Image" /></span>
+                <span>Media</span>
+              </a>
+              <a href={`/app/sites/${siteId}/redirects`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/redirects`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="ArrowRightLeft" /></span>
+                <span>Redirects</span>
+              </a>
+              <a href={`/app/sites/${siteId}/migration`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/migration`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="ArrowDownToLine" /></span>
+                <span>Migration</span>
+              </a>
+              <a href={`/app/sites/${siteId}/workflows`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/workflows`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Workflow" /></span>
+                <span>Workflows</span>
+              </a>
+              {analyticsEnabled && (
+                <a href={`/app/sites/${siteId}/insights`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/insights`) && "app-sidebar__link--active"]}>
+                  <span class="app-sidebar__link-icon" aria-hidden><Icon name="ChartLine" /></span>
+                  <span>Insights</span>
+                </a>
+              )}
+              {extensionNavItems.map(({ installationId, page }) => (
+                <a href={`/app/sites/${siteId}/extensions/${installationId}/${page.id}`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/extensions/${installationId}/${page.id}`) && "app-sidebar__link--active"]}>
+                  <span class="app-sidebar__link-icon" aria-hidden><Icon name="AppWindow" /></span>
+                  <span>{page.label}</span>
+                </a>
+              ))}
+              <a href={`/app/sites/${siteId}/ai`} class:list={["app-sidebar__link app-sidebar__link--accent", isActive(`/app/sites/${siteId}/ai`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Sparkles" /></span>
+                <span>AI Chat</span>
+              </a>
+              <a href={`/app/sites/${siteId}/settings`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/settings`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Settings" /></span>
+                <span>Site settings</span>
+              </a>
+              {activePermission === 'admin' && (
+                <a href={`/app/sites/${siteId}/settings/extensions`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/settings/extensions`) && "app-sidebar__link--active"]}>
+                  <span class="app-sidebar__link-icon" aria-hidden><Icon name="PlugZap" /></span>
+                  <span>Extensions</span>
+                </a>
+              )}
+            </div>
+          )}
+
+          {!siteId && (
+            <div class="app-sidebar__section">
+              <div class="app-sidebar__section-label">Overview</div>
+              <a href="/app" class:list={["app-sidebar__link", isActive('/app', true) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="LayoutDashboard" /></span>
+                <span>Dashboard</span>
+              </a>
+              <a href="/app/sites/new" class:list={["app-sidebar__link", isActive('/app/sites/new', true) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Plus" /></span>
+                <span>New site</span>
+              </a>
+            </div>
+          )}
+
+          <div class="app-sidebar__section">
+            <div class="app-sidebar__section-label">Account</div>
+            <a href="/app/settings" class:list={["app-sidebar__link", isActive('/app/settings', true) && "app-sidebar__link--active"]}>
+              <span class="app-sidebar__link-icon" aria-hidden><Icon name="User" /></span>
+              <span>Account</span>
+            </a>
+            {/* Direct shortcut to the hosted-MCP / agent-connector keys.
+               Was previously a button on /app/settings reachable only after
+               clicking the (unclear) "Preferences" link. The autopilot.se
+               install showed that customers landing here for the first time
+               can't find it — this top-level link saves the scroll. */}
+            <a href="/app/settings/api-keys" class:list={["app-sidebar__link", isActive('/app/settings/api-keys', true) && "app-sidebar__link--active"]}>
+              <span class="app-sidebar__link-icon" aria-hidden><Icon name="KeyRound" /></span>
+              <span>API keys</span>
+            </a>
+            <a href="/app/developer" class:list={["app-sidebar__link", isActive('/app/developer') && "app-sidebar__link--active"]}>
+              <span class="app-sidebar__link-icon" aria-hidden><Icon name="CodeXml" /></span>
+              <span>Developer</span>
+            </a>
+            <form method="POST" action="/api/auth/logout" class="app-sidebar__signout-form">
+              <button type="submit" class="app-sidebar__link app-sidebar__link--button">
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="LogOut" /></span>
+                <span>Sign out</span>
+              </button>
+            </form>
+          </div>
+        </nav>
+
+        {/* Whole card is now a link to /app/settings so the visually-
+           prominent "Account" area at the bottom of the sidebar actually
+           navigates somewhere — matches user expectation. The text
+           "Account" inside also no longer competes with the section
+           label above (which is also "Account"). */}
+        <a href="/app/settings" class="app-sidebar__user" aria-label="Account settings">
+          <div class="app-sidebar__avatar" aria-hidden>{initials}</div>
+          <div class="app-sidebar__user-meta">
+            <div class="app-sidebar__user-name">{session.displayName ?? 'Account'}</div>
+            <div class="app-sidebar__user-email">{session.email}</div>
+          </div>
+        </a>
+      </aside>
+      <main class="app-main">
+        <slot />
+      </main>
+    </div>
+    )}
+
+    <style is:global>
+      :root {
+        --sb-bg: #16161a;
+        --sb-bg-elevated: #1d1d22;
+        --sb-bg-hover: #23232a;
+        --sb-border: #2a2a30;
+        --sb-border-strong: #3a3a42;
+        --sb-text: #fafafa;
+        --sb-text-muted: #e4e4e7;
+        --sb-text-dim: #c4c4c8;
+        --sb-text-faint: #9a9aa0;
+        --sb-accent: #f6c177;
+        --sb-accent-soft: rgba(246, 193, 119, 0.12);
+
+        --font-display: 'Fraunces', ui-serif, Georgia, serif;
+        --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+
+      body {
+        font-family: var(--font-sans);
+      }
+
+      .app-shell {
+        display: grid;
+        grid-template-columns: 264px minmax(0, 1fr);
+        min-height: 100vh;
+        background: var(--color-bg);
+      }
+
+      /* ─────────── Sidebar shell ─────────── */
+      .app-sidebar {
+        background: var(--sb-bg);
+        color: var(--sb-text-muted);
+        border-right: 1px solid #0b0b0d;
+        padding: 18px 0 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        position: sticky;
+        top: 0;
+        max-height: 100vh;
+        overflow: hidden;
+      }
+
+      .app-sidebar__top {
+        padding: 0 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      /* ─────────── Brand wordmark ─────────── */
+      .app-sidebar__brand {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 6px;
+        text-decoration: none;
+      }
+      .app-sidebar__brand img {
+        height: 22px;
+        width: auto;
+        display: block;
+      }
+      .app-sidebar__brand:hover { text-decoration: none; }
+
+      /* ─────────── Shared-site badge ─────────── */
+      .shared-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin: 0.25rem 0 0;
+        padding: 0.25rem 0.5rem;
+        border-radius: var(--radius-sm, 4px);
+        font-size: 0.7rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        border: 1px solid var(--sb-text-dim);
+        color: var(--sb-text);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .shared-badge :global(svg) { width: 12px; height: 12px; }
+      .shared-badge--read { border-color: #6b7280; color: #d1d5db; }
+      .shared-badge--write { border-color: #f59e0b; color: #fbbf24; }
+
+      /* ─────────── Site switcher ─────────── */
+      .ws { position: relative; }
+      .ws__trigger {
+        all: unset;
+        box-sizing: border-box;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+        padding: 10px 12px;
+        background: var(--sb-bg-elevated);
+        border: 1px solid var(--sb-border);
+        border-radius: 10px;
+        transition: border-color 120ms ease, background 120ms ease;
+      }
+      .ws__trigger:hover { border-color: var(--sb-border-strong); background: #21212a; }
+      .ws__trigger:focus-visible {
+        outline: 2px solid var(--sb-accent);
+        outline-offset: 1px;
+      }
+      .ws__label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: var(--sb-text-faint);
+        font-weight: 500;
+      }
+      .ws__current {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--sb-text);
+        font-weight: 500;
+        font-size: 0.92rem;
+        line-height: 1.15;
+      }
+      .ws__name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .ws__name--placeholder { color: var(--sb-text-muted); font-style: italic; }
+      .ws__chev { color: var(--sb-text-dim); flex-shrink: 0; }
+      .ws__meta {
+        font-size: 11px;
+        color: var(--sb-text-dim);
+        font-family: var(--font-sans);
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Status dots */
+      .ws__dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        flex-shrink: 0;
+        position: relative;
+        background: var(--dot-color, var(--sb-text-faint));
+      }
+      .ws__dot::after {
+        content: '';
+        position: absolute;
+        inset: -3px;
+        border-radius: 999px;
+        background: var(--dot-color, transparent);
+        opacity: 0.22;
+        filter: blur(1.5px);
+        z-index: -1;
+      }
+      .ws__dot--live      { --dot-color: #4ade80; }
+      .ws__dot--pending   { --dot-color: #f6c177; animation: ws-pulse 2.4s ease-in-out infinite; }
+      .ws__dot--failed    { --dot-color: #f87171; }
+      .ws__dot--none      { --dot-color: #a1a1aa; }
+      .ws__dot--empty     { --dot-color: #3a3a42; }
+
+      @keyframes ws-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.45; }
+      }
+
+      .ws__menu {
+        position: absolute;
+        z-index: 30;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        background: #1a1a20;
+        border: 1px solid var(--sb-border-strong);
+        border-radius: 12px;
+        padding: 6px;
+        box-shadow:
+          0 1px 0 rgba(255,255,255,0.04) inset,
+          0 20px 40px -10px rgba(0,0,0,0.6),
+          0 4px 14px -4px rgba(0,0,0,0.5);
+        animation: ws-menu-in 140ms cubic-bezier(.2,.7,.3,1);
+      }
+      @keyframes ws-menu-in {
+        from { opacity: 0; transform: translateY(-4px) scale(0.99); }
+        to   { opacity: 1; transform: translateY(0)    scale(1); }
+      }
+      .ws__menu-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: var(--sb-text-faint);
+        padding: 8px 10px 4px;
+      }
+      .ws__empty {
+        padding: 14px;
+        color: var(--sb-text-dim);
+        font-size: 0.85rem;
+        text-align: center;
+      }
+      .ws__item {
+        all: unset;
+        box-sizing: border-box;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        color: var(--sb-text-muted);
+      }
+      .ws__item:hover { background: var(--sb-bg-hover); color: var(--sb-text); }
+      .ws__item--active {
+        background: var(--sb-accent-soft);
+        color: var(--sb-text);
+      }
+      .ws__item--active svg { color: var(--sb-accent); }
+      .ws__item-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+      .ws__item-name {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--sb-text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ws__item-meta {
+        font-size: 11px;
+        color: var(--sb-text-dim);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ws__sep { margin: 0 6px; opacity: 0.5; }
+      .ws__new {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        margin-top: 4px;
+        border-top: 1px dashed var(--sb-border);
+        color: var(--sb-text-muted);
+        font-size: 0.88rem;
+        font-weight: 500;
+        text-decoration: none;
+        border-radius: 8px;
+      }
+      .ws__new:hover { background: var(--sb-bg-hover); color: var(--sb-text); text-decoration: none; }
+      .ws__new-icon {
+        width: 18px; height: 18px;
+        display: grid; place-items: center;
+        border: 1px dashed var(--sb-text-dim);
+        border-radius: 5px;
+        font-weight: 400;
+        color: var(--sb-text-dim);
+      }
+      .ws__new:hover .ws__new-icon { color: var(--sb-text); border-color: var(--sb-text); }
+
+      /* ─────────── Version picker ─────────── */
+      .vp { position: relative; }
+      .vp__trigger {
+        all: unset;
+        box-sizing: border-box;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        width: 100%;
+        padding: 8px 11px;
+        background: transparent;
+        border: 1px solid var(--sb-border);
+        border-radius: 8px;
+        transition: border-color 120ms ease, background 120ms ease;
+      }
+      .vp__trigger:hover { border-color: var(--sb-border-strong); background: rgba(255,255,255,0.025); }
+      .vp__trigger:focus-visible {
+        outline: 2px solid var(--sb-accent);
+        outline-offset: 1px;
+      }
+      .vp__trigger--branch {
+        border-style: dashed;
+        border-color: rgba(246,193,119,0.4);
+      }
+      .vp__label {
+        font-size: 9.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: var(--sb-text-faint);
+        font-weight: 500;
+      }
+      .vp__current {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--sb-text);
+        font-weight: 500;
+        font-size: 0.85rem;
+        line-height: 1.15;
+      }
+      .vp__name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .vp__chev { color: var(--sb-text-dim); flex-shrink: 0; }
+      .vp__meta {
+        font-size: 10px;
+        color: var(--sb-accent);
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+      }
+      .vp__pip {
+        width: 6px; height: 6px;
+        border-radius: 999px;
+        flex-shrink: 0;
+        background: var(--pip, var(--sb-text-faint));
+      }
+      .vp__pip--main   { --pip: #4ade80; }
+      .vp__pip--branch { --pip: #f6c177; }
+
+      .vp__menu {
+        position: absolute;
+        z-index: 30;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        background: #1a1a20;
+        border: 1px solid var(--sb-border-strong);
+        border-radius: 11px;
+        padding: 5px;
+        box-shadow:
+          0 1px 0 rgba(255,255,255,0.04) inset,
+          0 16px 32px -10px rgba(0,0,0,0.55),
+          0 4px 12px -4px rgba(0,0,0,0.45);
+        animation: ws-menu-in 140ms cubic-bezier(.2,.7,.3,1);
+      }
+      .vp__menu-label {
+        font-size: 9.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: var(--sb-text-faint);
+        padding: 7px 9px 3px;
+      }
+      .vp__item {
+        all: unset;
+        box-sizing: border-box;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        padding: 7px 9px;
+        border-radius: 7px;
+        color: var(--sb-text-muted);
+      }
+      .vp__item:hover { background: var(--sb-bg-hover); color: var(--sb-text); }
+      .vp__item--active { background: var(--sb-accent-soft); color: var(--sb-text); }
+      .vp__item--active svg { color: var(--sb-accent); }
+      .vp__item-body { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+      .vp__item-name {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--sb-text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .vp__item-meta {
+        font-size: 10.5px;
+        color: var(--sb-text-dim);
+      }
+      .vp__new, .vp__delete {
+        all: unset;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 8px 9px;
+        margin-top: 3px;
+        border-top: 1px dashed var(--sb-border);
+        color: var(--sb-text-muted);
+        font-size: 0.82rem;
+        font-weight: 500;
+        border-radius: 7px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .vp__new:hover, .vp__delete:hover { background: var(--sb-bg-hover); color: var(--sb-text); }
+      .vp__new[disabled] { opacity: 0.55; cursor: progress; }
+      .vp__new-icon {
+        width: 16px; height: 16px;
+        display: grid; place-items: center;
+        border: 1px dashed var(--sb-text-dim);
+        border-radius: 5px;
+        color: var(--sb-text-dim);
+      }
+      .vp__new:hover .vp__new-icon { color: var(--sb-text); border-color: var(--sb-text); }
+      .vp__delete { color: #f87171; }
+      .vp__delete:hover { background: rgba(248,113,113,0.08); color: #fca5a5; }
+      .vp__delete-icon { font-size: 12px; }
+      .vp__error {
+        margin: 6px 9px 4px;
+        padding: 7px 9px;
+        background: rgba(248,113,113,0.08);
+        border: 1px solid rgba(248,113,113,0.2);
+        border-radius: 6px;
+        color: #fca5a5;
+        font-size: 0.78rem;
+      }
+
+      /* ─────────── Nav ─────────── */
+      .app-sidebar__nav {
+        flex: 1;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--sb-border-strong) transparent;
+        padding: 6px 0 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .app-sidebar__nav::-webkit-scrollbar { width: 6px; }
+      .app-sidebar__nav::-webkit-scrollbar-thumb { background: var(--sb-border); border-radius: 999px; }
+
+      .app-sidebar__section {
+        padding: 8px 14px 2px;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+      .app-sidebar__section + .app-sidebar__section {
+        margin-top: 4px;
+        position: relative;
+      }
+      .app-sidebar__section + .app-sidebar__section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 14px;
+        right: 14px;
+        height: 1px;
+        background: linear-gradient(to right, transparent, var(--sb-border) 18%, var(--sb-border) 82%, transparent);
+      }
+
+      .app-sidebar__section-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: var(--sb-text-faint);
+        font-weight: 500;
+        padding: 8px 8px 6px;
+      }
+
+      .app-sidebar__signout-form { display: contents; }
+
+      .app-sidebar__link {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 10px 7px 12px;
+        border-radius: 7px;
+        font-size: 0.9rem;
+        font-weight: 400;
+        color: var(--sb-text-muted);
+        text-decoration: none;
+        background: transparent;
+        border: 0;
+        text-align: left;
+        cursor: pointer;
+        line-height: 1.25;
+        transition: color 120ms ease, background 120ms ease;
+      }
+      .app-sidebar__link:hover {
+        color: var(--sb-text);
+        background: rgba(255,255,255,0.035);
+        text-decoration: none;
+      }
+      .app-sidebar__link--button { width: 100%; font: inherit; }
+
+      .app-sidebar__link-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        color: var(--sb-text-muted);
+        flex-shrink: 0;
+        transition: color 120ms ease;
+      }
+      .app-sidebar__link-icon svg {
+        display: block;
+      }
+      .app-sidebar__link:hover .app-sidebar__link-icon { color: var(--sb-text-muted); }
+
+      .app-sidebar__link--active {
+        color: var(--sb-text);
+        background: rgba(255,255,255,0.05);
+        font-weight: 500;
+      }
+      .app-sidebar__link--active::before {
+        content: '';
+        position: absolute;
+        left: 2px;
+        top: 8px;
+        bottom: 8px;
+        width: 2px;
+        background: var(--sb-accent);
+        border-radius: 999px;
+      }
+      .app-sidebar__link--active .app-sidebar__link-icon { color: var(--sb-accent); }
+
+      .app-sidebar__link--accent .app-sidebar__link-icon { color: var(--sb-accent); }
+
+      /* ─────────── User footer ─────────── */
+      .app-sidebar__user {
+        margin: 8px 12px 0;
+        padding: 10px 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-top: 1px solid var(--sb-border);
+        padding-top: 14px;
+        /* Now a real anchor — kill default link decoration and add a
+           subtle hover so users can tell it's clickable. */
+        text-decoration: none;
+        color: inherit;
+        border-radius: 6px;
+        transition: background-color 120ms ease;
+      }
+      .app-sidebar__user:hover {
+        background: var(--sb-bg-elevated);
+      }
+      .app-sidebar__user:focus-visible {
+        outline: 2px solid var(--sb-accent, currentColor);
+        outline-offset: 2px;
+      }
+      .app-sidebar__avatar {
+        width: 30px; height: 30px;
+        border-radius: 999px;
+        display: grid; place-items: center;
+        background: linear-gradient(135deg, #3a3a42, #1f1f25);
+        color: var(--sb-text);
+        font-family: var(--font-display);
+        font-style: italic;
+        font-size: 13px;
+        font-weight: 600;
+        flex-shrink: 0;
+        border: 1px solid var(--sb-border-strong);
+      }
+      .app-sidebar__user-meta { min-width: 0; }
+      .app-sidebar__user-name {
+        font-size: 0.85rem;
+        color: var(--sb-text);
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .app-sidebar__user-email {
+        font-size: 11px;
+        color: var(--sb-text-dim);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* ─────────── Main ─────────── */
+      .app-main {
+        padding: 2.25rem 2.5rem;
+        max-width: 100%;
+        overflow-x: auto;
+        min-width: 0;
+      }
+      /* Full-bleed editor mode — no sidebar, slot owns the viewport. The
+         editor components render their own 100vh shell + "Exit editor". */
+      .app-main--bare {
+        padding: 0;
+        max-width: none;
+        overflow: hidden;
+        height: 100vh;
+        min-height: 100vh;
+      }
+      /* HtmlPageEditor's .editor uses negative margins to cancel the normal
+         .app-main padding; in bare mode there is none, so reset it to fill. */
+      .app-main--bare .editor {
+        height: 100vh;
+        margin: 0;
+      }
+      .app-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .app-header h1 {
+        font-family: var(--font-display);
+        font-style: italic;
+        font-weight: 500;
+        font-size: 2rem;
+        letter-spacing: -0.01em;
+      }
+
+      /* ─────────── Mobile bar + backdrop ─────────── */
+      .app-shell__mobile-bar-toggle {
+        display: none;
+        position: sticky;
+        top: 0;
+        z-index: 25;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: rgba(250,250,249,0.88);
+        backdrop-filter: saturate(160%) blur(8px);
+        -webkit-backdrop-filter: saturate(160%) blur(8px);
+        border: 0;
+        border-bottom: 1px solid var(--color-border);
+        font: inherit;
+        cursor: pointer;
+        text-align: left;
+        width: 100%;
+        color: var(--color-text);
+      }
+      .app-shell__mobile-bar-title {
+        font-family: var(--font-display);
+        font-style: italic;
+        font-weight: 500;
+        font-size: 1.05rem;
+        letter-spacing: -0.01em;
+      }
+      .hamburger {
+        width: 22px;
+        height: 16px;
+        display: inline-grid;
+        grid-template-rows: repeat(3, 2px);
+        gap: 5px;
+        align-content: center;
+        position: relative;
+      }
+      .hamburger span {
+        display: block;
+        height: 2px;
+        background: currentColor;
+        border-radius: 2px;
+        width: 100%;
+        transition: transform 180ms ease, opacity 120ms ease;
+        transform-origin: center;
+      }
+      .app-shell.is-sidebar-open .hamburger span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+      .app-shell.is-sidebar-open .hamburger span:nth-child(2) { opacity: 0; }
+      .app-shell.is-sidebar-open .hamburger span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+      .app-shell__backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(8,8,10,0.45);
+        opacity: 0;
+        transition: opacity 180ms ease;
+        z-index: 40;
+        cursor: pointer;
+      }
+
+      /* ─────────── Responsive sidebar ─────────── */
+      @media (max-width: 960px) {
+        .app-shell { grid-template-columns: minmax(0, 1fr); }
+        .app-shell__mobile-bar-toggle { display: flex; }
+        .app-main { padding: 1.5rem 1.25rem; }
+
+        .app-sidebar {
+          position: fixed;
+          top: 0;
+          left: 0;
+          bottom: 0;
+          width: 280px;
+          max-height: 100vh;
+          z-index: 50;
+          transform: translateX(-100%);
+          transition: transform 220ms cubic-bezier(.2,.7,.3,1);
+          box-shadow: 12px 0 32px -12px rgba(0,0,0,0.45);
+        }
+        .app-shell.is-sidebar-open .app-sidebar { transform: translateX(0); }
+        .app-shell.is-sidebar-open .app-shell__backdrop { display: block; opacity: 1; }
+      }
+
+      @media (max-width: 480px) {
+        .app-main { padding: 1.25rem 1rem; }
+        .app-header h1 { font-size: 1.6rem; }
+        .app-sidebar { width: min(86vw, 320px); }
+      }
+    </style>
+
+    <script>
+      (() => {
+        const shell = document.querySelector<HTMLElement>('[data-shell]');
+        const toggle = document.querySelector<HTMLButtonElement>('[data-shell-toggle]');
+        const backdrop = document.querySelector<HTMLElement>('[data-shell-backdrop]');
+        if (!shell || !toggle) return;
+
+        function setOpen(open: boolean) {
+          shell!.classList.toggle('is-sidebar-open', open);
+          toggle!.setAttribute('aria-expanded', open ? 'true' : 'false');
+          document.body.style.overflow = open ? 'hidden' : '';
+        }
+
+        toggle.addEventListener('click', () => {
+          setOpen(!shell.classList.contains('is-sidebar-open'));
+        });
+        backdrop?.addEventListener('click', () => setOpen(false));
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && shell.classList.contains('is-sidebar-open')) setOpen(false);
+        });
+
+        // Close after navigating via a sidebar link (only fires on actual <a> clicks).
+        document.querySelectorAll('.app-sidebar a').forEach((link) => {
+          link.addEventListener('click', () => setOpen(false));
+        });
+
+        // If the user resizes back to desktop, ensure body scroll is restored.
+        const mql = window.matchMedia('(min-width: 961px)');
+        mql.addEventListener?.('change', (e) => {
+          if (e.matches) setOpen(false);
+        });
+      })();
+    </script>
+  </body>
+</html>

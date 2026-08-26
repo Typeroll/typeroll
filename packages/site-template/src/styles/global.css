@@ -1,0 +1,193 @@
+/* Site-wide design tokens. The actual color/font values are written
+   inline in BaseLayout from SiteSettings; the spacing/radius scales
+   are constants. */
+
+:root {
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 2rem;
+  --spacing-xl: 4rem;
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 1rem;
+
+  --container-narrow: 720px;
+  --container-medium: 1080px;
+  --container-wide: 1400px;
+
+  /* Standard breakpoints. Used by .tr-grid-N stacking utilities and the
+     image-left card pattern. Mirrors the values shipped to Claude via
+     the tr-cheatsheet — every block author can reference these instead
+     of inventing a custom px value. From the autopilot.se field report. */
+  --tr-bp-xs: 540px;  /* Phone portrait: buttons full-width, ultra-narrow card grids stack */
+  --tr-bp-sm: 720px;  /* Landscape phone: 2-col content stacks here */
+  --tr-bp-md: 900px;  /* iPad portrait: image-left cards shrink image col / collapse to 1-per-row */
+  --tr-bp-lg: 1000px; /* Small desktop: container padding bumps for breathing room */
+
+  /* Container width + responsive side padding. .tr-container is the
+     paint-target — pages, blocks, and partials should wrap their inner
+     content in it rather than rolling a custom max-width. */
+  --tr-container: 1140px;
+  --tr-container-narrow: 820px;
+  --tr-container-pad-x: 20px;
+}
+@media (max-width: 1000px) { :root { --tr-container-pad-x: 36px; } }
+@media (max-width: 720px)  { :root { --tr-container-pad-x: 20px; } }
+
+.tr-container {
+  width: min(var(--tr-container), calc(100% - var(--tr-container-pad-x) * 2));
+  margin-inline: auto;
+}
+.tr-container-narrow {
+  width: min(var(--tr-container-narrow), calc(100% - var(--tr-container-pad-x) * 2));
+  margin-inline: auto;
+}
+
+/* Standard stacking grid utilities. Use these inside block templates
+   instead of writing per-block media queries. Defaults: 2-col stacks at
+   sm (720), 3-col stacks at md (900), 4-col stacks at lg (1000) — the
+   most common patterns. Override with .stack-sm/.stack-md/.stack-lg
+   when a specific layout needs a different breakpoint. */
+.tr-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+.tr-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+.tr-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+
+@media (max-width: 1000px) {
+  .tr-grid-2.stack-lg,
+  .tr-grid-3.stack-lg,
+  .tr-grid-4.stack-lg,
+  .tr-grid-4:not(.stack-sm):not(.stack-md) { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .tr-grid-2.stack-md,
+  .tr-grid-3.stack-md,
+  .tr-grid-3:not(.stack-sm):not(.stack-lg) { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .tr-grid-2.stack-sm,
+  .tr-grid-2:not(.stack-md):not(.stack-lg),
+  .tr-grid-3.stack-sm,
+  .tr-grid-4.stack-sm { grid-template-columns: 1fr; }
+}
+
+/* Prose + sidebar pattern — the most common asymmetric 2-col layout. */
+.tr-grid-prose-sidebar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.5fr);
+  gap: 2rem;
+}
+@media (max-width: 720px) {
+  .tr-grid-prose-sidebar { grid-template-columns: 1fr; }
+}
+
+/* Image-left card pattern. Fixed-width image column shrinks at md (iPad
+   portrait), then stacks vertically at 470 (small phone) — when stacked,
+   the image becomes a full-width square. NEVER stack with `height:200px`
+   + auto aspect-ratio, that produces narrow centered images with empty
+   bands. The autopilot.se field report calls this out as a "must". */
+.tr-card-image-left {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  align-items: stretch;
+}
+.tr-card-image-left > .tr-card-image {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+@media (max-width: 900px) {
+  .tr-card-image-left { grid-template-columns: 150px minmax(0, 1fr); }
+}
+@media (max-width: 470px) {
+  .tr-card-image-left { grid-template-columns: 1fr; }
+  /* image keeps aspect-ratio:1 → becomes a full-width square */
+}
+
+/* Gradient-stroke decoration on cards. Cards with this class get sharp
+   corners — `border-radius` + `overflow:hidden` + a ::before gradient
+   bar visibly rounds the bar's ends, which is the autopilot.se "stroke
+   rounds at corners" complaint. Cards without strokes are free to use
+   var(--radius-md). */
+.tr-card.has-stroke,
+.tr-callout.has-stroke {
+  border-radius: 0;
+}
+
+html { font-size: var(--font-size-base, 16px); }
+body {
+  font-family: var(--font-body), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--color-text);
+  background: var(--color-background);
+}
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+a { color: var(--color-primary); }
+
+/* Default page-content styles for HTML mode pages. Customer-authored HTML
+   inherits sensible spacing without needing utility classes. */
+/* The page-content layout shell stays at normal specificity — these are
+   the geometric defaults the page needs to look right out of the box. */
+.page-content {
+  max-width: var(--container-medium);
+  margin: 0 auto;
+  padding: var(--spacing-lg) var(--spacing-md);
+}
+/* Blocks-mode shell: sections own their geometry (core/section is
+   full-bleed outer + constrained .block-section-inner), so the shell must
+   not constrain, pad, or space them — that's what lets a section's
+   background meet the header edge-to-edge with zero hacks. Top-level
+   blocks that are NOT sections (a bare heading/prose on a fresh page)
+   get the classic container as a fallback so they never render
+   edge-to-edge. */
+.page-content--blocks {
+  max-width: none;
+  padding: 0;
+}
+.page-content--blocks > * + * { margin-top: 0; }
+.page-content--blocks > :not(section, style, script) {
+  max-width: var(--container-medium);
+  margin-inline: auto;
+  padding-inline: var(--spacing-md);
+}
+.page-content--blocks > :not(section, style, script) + :not(section, style, script) {
+  margin-top: var(--spacing-md);
+}
+/* Descendant typography defaults wrap in :where() so they sit at
+   specificity 0 — every class-only rule a customer/AI writes
+   (specificity 0,1,0) automatically wins. Without this, a customer
+   setting `font-size: clamp(54px, 8vw, 108px)` on `.hero-h1` would
+   silently render at 2.5rem because `.page-content h1` (0,1,1) beats
+   `.hero-h1` (0,1,0). Reported from the autopilot.se build. */
+:where(.page-content) > * + * { margin-top: var(--spacing-md); }
+:where(.page-content) h1 { font-size: 2.5rem; margin-top: var(--spacing-lg); }
+:where(.page-content) h2 { font-size: 2rem;   margin-top: var(--spacing-lg); }
+:where(.page-content) h3 { font-size: 1.5rem; margin-top: var(--spacing-md); }
+:where(.page-content) img { border-radius: var(--radius-md); margin: var(--spacing-md) 0; }
+:where(.page-content) ul, :where(.page-content) ol { padding-left: 1.5rem; }
+:where(.page-content) blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding-left: var(--spacing-md);
+  color: var(--color-text-light);
+  font-style: italic;
+}
+:where(.page-content) pre, :where(.page-content) code {
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+}
+:where(.page-content) pre { padding: var(--spacing-md); overflow-x: auto; }
+:where(.page-content) code { padding: 0.125rem 0.375rem; font-size: 0.9em; }
+
+/* Responsive utilities used by blocks with per-instance overrides */
+@media (max-width: 768px) {
+  .tr-desktop-only { display: none !important; }
+  .tr-hidden-mobile { display: none !important; }
+}
+@media (min-width: 769px) {
+  .tr-mobile-only { display: none !important; }
+  .tr-hidden-desktop { display: none !important; }
+}

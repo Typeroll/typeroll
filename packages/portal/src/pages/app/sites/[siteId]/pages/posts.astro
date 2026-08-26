@@ -1,0 +1,109 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import Icon from '../../../../../components/Icon.astro';
+import { vstore } from '../../../../../lib/version-store';
+import CollectionTabs from '../../../../../components/CollectionTabs.astro';
+import { loadSiteContext } from '../../../../../lib/access';
+import { PAGES_SYSTEM_SCHEMA } from '../../../../../lib/system-collections';
+import { getStore } from '../../../../../lib/datastore';
+import { pageLiveUrl, pagePreviewUrl } from '../../../../../lib/site-urls';
+import { paths } from '@typeroll/shared';
+import type { Page, Site, SiteVersion } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { session, site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+const store = getStore();
+
+const pages = await vstore.pages(orgId, siteId, versionId);
+pages.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+const base = `/app/sites/${siteId}/pages`;
+
+// Load the active version doc so the URL helpers know how to build live
+// links (main → site.domain, branch → version.deploy_url, else null).
+const activeVersion = await store.getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
+---
+<AppLayout title={`Pages — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>📄 Pages</h1>
+      <p class="muted">System collection · routes to your site root</p>
+    </div>
+    <form method="POST" action={`/api/sites/${siteId}/pages/create`} class="row">
+      <input name="title" required placeholder="Page title" style="padding: 0.5rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md);" />
+      <button type="submit" class="btn">+ New page</button>
+    </form>
+  </div>
+
+  <CollectionTabs base={base} active="posts" itemCount={pages.length} fieldCount={PAGES_SYSTEM_SCHEMA.length} system />
+
+  <div class="card" style="padding: 0;">
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="text-align: left; background: var(--color-bg);">
+          <th style="padding: 0.75rem 1rem;">Title</th>
+          <th style="padding: 0.75rem 1rem;">URL</th>
+          <th style="padding: 0.75rem 1rem;">Mode</th>
+          <th style="padding: 0.75rem 1rem;">Status</th>
+          <th style="padding: 0.75rem 1rem;">Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {pages.map(page => (
+          <tr style="border-top: 1px solid var(--color-border);">
+            <td style="padding: 0.75rem 1rem;">
+              <a href={`/app/sites/${siteId}/pages/${page.id}`}>{page.title || '(untitled)'}</a>
+            </td>
+            <td style="padding: 0.75rem 1rem;" class="muted">
+              <a href={pagePreviewUrl(siteId, page)} target="_blank" rel="noopener" title="Open preview in new tab" style="color: inherit;">
+                /{page.slug}
+              </a>
+            </td>
+            <td style="padding: 0.75rem 1rem;" class="muted">{page.content_mode}</td>
+            <td style="padding: 0.75rem 1rem;">{page.status}</td>
+            <td style="padding: 0.75rem 1rem;" class="muted text-sm">
+              {page.date_updated ? new Date(page.date_updated).toLocaleDateString() : '—'}
+            </td>
+            <td style="padding: 0.75rem 1rem;" class="page-row__actions">
+              <a href={pagePreviewUrl(siteId, page)} target="_blank" rel="noopener" title="Preview (includes drafts)" class="page-row__action">
+                <Icon name="Eye" size={16} />
+              </a>
+              {pageLiveUrl(site, activeVersion, page) && (
+                <a href={pageLiveUrl(site, activeVersion, page)!} target="_blank" rel="noopener" title="Open live URL" class="page-row__action">
+                  <Icon name="ExternalLink" size={16} />
+                </a>
+              )}
+            </td>
+          </tr>
+        ))}
+        {pages.length === 0 && (
+          <tr>
+            <td colspan="6" style="padding: 2rem; text-align: center;" class="muted">No pages yet.</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+
+  <style>
+    .page-row__actions {
+      text-align: right;
+      white-space: nowrap;
+    }
+    .page-row__action {
+      display: inline-flex;
+      padding: 0.3rem;
+      border-radius: 0.35rem;
+      color: var(--color-text-muted);
+      transition: background 120ms ease, color 120ms ease;
+    }
+    .page-row__action:hover {
+      background: var(--color-bg);
+      color: var(--color-text);
+      text-decoration: none;
+    }
+    .page-row__action + .page-row__action { margin-left: 0.15rem; }
+  </style>
+</AppLayout>

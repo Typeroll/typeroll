@@ -1,0 +1,79 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { loadSiteContext } from '../../../../../lib/access';
+import { getStore } from '../../../../../lib/datastore';
+import { paths, collectStepFields } from '@typeroll/shared';
+import type { Form, FormField, SiteIntegrations } from '@typeroll/shared';
+import FormEditor from '../../../../../components/FormEditor.tsx';
+import { maskFormActionsForAdmin } from '../../../../../lib/forms-admin';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, owner_org_id: orgId, permission } = ctx;
+const siteId = site.id;
+const formId = Astro.params.formId!;
+
+const store = getStore();
+const form = await store.getDoc<Form>(`${paths.forms(orgId, siteId)}/${formId}`);
+if (!form) return Astro.redirect(`/app/sites/${siteId}/forms`);
+
+// Field names are the variables an email template can reference — derived
+// from the step blocks (steps are the only stored form model).
+const fields: FormField[] = (form.steps ?? []).flatMap((s) => collectStepFields(s.blocks));
+const simpleFieldBlocks = new Set([
+  'form/text', 'form/email', 'form/phone', 'form/url', 'form/number', 'form/textarea',
+  'form/select', 'form/radio_group', 'form/checkbox_group', 'form/toggle',
+  'form/consent', 'form/hidden',
+]);
+const onlyStepBlocks = form.steps?.length === 1 ? (form.steps[0]?.blocks ?? []) : [];
+const fieldsEditable = form.steps?.length === 1 && onlyStepBlocks.length > 0 &&
+  onlyStepBlocks.every((block) => simpleFieldBlocks.has(block.type) && !block.children?.length && !block.slots?.some((slot) => slot.length));
+
+const integrations = await store.getDoc<SiteIntegrations>(paths.integrations(orgId, siteId));
+const hasConnector = Boolean(integrations?.email);
+---
+<AppLayout title={`${form.name} — Forms`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>{form.name}</h1>
+      <p class="muted text-sm">
+        <a href={`/app/sites/${siteId}/forms`}>← Forms</a> · <code>{form.id}</code>
+      </p>
+    </div>
+  </div>
+
+  <div style="max-width: 860px;">
+    <FormEditor
+      client:load
+      siteId={siteId}
+      formId={form.id}
+      initialForm={{
+        name: form.name,
+        submit_text: form.submit_text ?? '',
+        success_message: form.success_message ?? '',
+        partial_ttl_days: form.partial_ttl_days ?? 30,
+        has_steps: Array.isArray(form.steps) && form.steps.length > 0,
+        // ALL actions, not just email. Filtering here used to be harmless
+        // because the editor only understood email; now it would silently
+        // drop an app-contributed action on the next save.
+        actions: (permission === 'admin' ? maskFormActionsForAdmin(form.actions ?? []) : []).map((a) => ({
+          id: a.id,
+          type: a.type,
+          config: (a.config ?? {}) as Record<string, unknown>,
+        })),
+      }}
+      fields={fields.map((f) => ({
+        name: f.name,
+        label: f.label,
+        type: String(f.type),
+        required: Boolean(f.required),
+        placeholder: f.placeholder ?? '',
+        options: f.options ?? [],
+      }))}
+      fieldsEditable={fieldsEditable}
+      hasConnector={hasConnector}
+      canWrite={permission !== 'read'}
+      canManageActions={permission === 'admin'}
+    />
+  </div>
+</AppLayout>

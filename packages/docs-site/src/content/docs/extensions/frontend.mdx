@@ -1,0 +1,159 @@
+---
+title: Frontend & recipient links
+description: Use the Extension runtime, direct provider APIs, internal navigation, and opaque recipient URL context safely.
+---
+
+A bundled component is an ES module with one exported function:
+
+```ts
+export async function mount(element, props, context) {
+  // Render into element. Return after initial setup is complete.
+}
+```
+
+Typeroll calls `mount` once per block instance. The runtime context is scoped
+to that mount and contains:
+
+- protocol, runtime, Extension, installation, and component identifiers;
+- the installation's public configuration;
+- `url.get()`, `url.has()`, and one-time `url.consume()` accessors;
+- an in-memory `navigation` object;
+- `api.fetch()` for direct calls to declared provider routes;
+- `forms.has()`, `forms.list()`, and `forms.submit()` for approved form
+  bindings.
+
+## Build a native lead tool on Typeroll Forms
+
+Create the receiving form in the site's ordinary Forms module, then declare
+its ID in the component manifest and request `forms:submit`. The bespoke
+frontend can calculate, branch, animate, or collect data however it wants and
+submit only the final fields:
+
+```ts
+const result = await context.forms.submit("lead", {
+  name: "Ada Lovelace",
+  email: "ada@example.com",
+  team_size: 12,
+  estimated_monthly_price: 4800,
+});
+
+if (result.ok === false) {
+  // Map result.errors to the custom interface.
+} else if (result.done) {
+  // Show the custom confirmation state.
+}
+```
+
+Typeroll adds its signed token, honeypot protocol fields, and proof of work. The
+request goes directly to the absolute Forms endpoint embedded by the CMS.
+Typeroll Cloud sites use the hosted Forms service and self-hosted sites use
+their own Forms endpoint. No Function or proxy is installed in the customer's
+static hosting project. Submissions, notifications, and configured webhooks
+behave exactly like submissions from a standard `core/form` block.
+
+The editor preview exposes binding names but intentionally rejects real
+submissions. Test writes on a deployed test page, where they appear in the
+normal Forms submission inbox.
+
+## Navigate without changing the page path
+
+An Extension can implement several screens inside one block:
+
+```ts
+context.navigation.subscribe((view) => render(view));
+context.navigation.navigate("confirmation");
+```
+
+Navigation belongs to the mounted component. It does not create a new
+Typeroll page or URL path, and the component's captured runtime context remains
+available until that mount is destroyed. A full reload starts a new mount and
+follows the provider's declared session strategy.
+
+## Receive an opaque recipient token
+
+Declare only the URL inputs that the component needs:
+
+```json
+{
+  "url_context": {
+    "query": [
+      {
+        "name": "quote",
+        "expose_as": "quote_token",
+        "sensitive": true,
+        "consume": true,
+        "max_length": 256,
+        "pattern": "^[A-Za-z0-9_-]+$"
+      }
+    ]
+  }
+}
+```
+
+The provider can email several recipients links to the same static Typeroll
+page, for example `/offer/?quote=opaque-value`. At mount time, Typeroll:
+
+1. reads only declared query, fragment, path, or raw-query inputs;
+2. rejects values that exceed the declared length or pattern;
+3. captures values in the component's private runtime closure;
+4. removes inputs marked `consume` with `history.replaceState`; and
+5. exposes the captured value through `context.url`.
+
+The token is not initial block state and is never inserted into generated
+HTML, saved page data, Typeroll's datastore, or diagnostics.
+
+```ts
+const quoteToken = context.url.consume("quote_token");
+
+await context.api.fetch("/quotes/approve", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ token: quoteToken }),
+});
+```
+
+The provider remains responsible for generating a cryptographically random
+token and enforcing expiry, revocation, intended recipient, allowed actions,
+and replay behavior. A difficult-to-guess URL is a bearer credential, not an
+authorization model by itself.
+
+## Call the provider directly
+
+Manifest v3 declares `api.base_url`, routes and an authentication mode.
+`context.api.fetch()` resolves only declared relative paths, sends the browser
+request directly to that provider URL with `credentials: omit`, and does not
+pass through Typeroll or Cloudflare Pages Functions.
+
+With `authentication: "signed_installation"`, the runtime first obtains a
+five-minute JWT from the CMS issuer and adds it as
+`X-Typeroll-Extension-Token`. The token confirms the enabled installation and
+requesting site origin. It is not a visitor login and does not authorize a
+quote, booking or wedding plan; the provider must still validate its own
+recipient token and requested action. The provider must allow the installed
+site origin in CORS and accept `X-Typeroll-Extension-Token` in its preflight
+policy.
+
+## Embedded applications
+
+An `embedded_app` runs in a sandboxed provider-origin iframe. It receives a
+versioned `typeroll.extension.init` message and can request resize or internal
+navigation with the matching protocol messages. Validate message origin,
+source window, protocol version, installation ID, and component ID on every
+message.
+
+An embedded app receives binding names in `typeroll.extension.init` but never
+receives the signed form tokens. It can request a submission with
+`typeroll.extension.form.submit`; the host responds with
+`typeroll.extension.form.result` after validating the frame, origin,
+installation, component, binding, and request IDs.
+
+For declared provider routes, the frame sends
+`typeroll.extension.api.request` with a unique `request_id`, relative `path`,
+and optional `method`, `headers`, and `body`. The site host performs the same
+direct, route-constrained request as `context.api.fetch()` and returns a
+serializable `typeroll.extension.api.result`. This browser-side message bridge
+does not relay traffic through Typeroll infrastructure or a hosting Function;
+the network request still goes straight from the published site to the
+provider API. Responses above 1 MiB fail closed.
+
+Next, implement the [provider backend and admin SSO](/extensions/backend/).

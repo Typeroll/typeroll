@@ -1,0 +1,56 @@
+---
+title: Events and conversions
+description: Consent-gated first-party conversion events from validated Analytics attribution funnels.
+---
+
+Events and conversions is the first-party outcome layer of Analytics. A funnel
+target can declare a `click_event`; when the visitor activates that target,
+Typeroll records the event without delaying navigation.
+
+## Event contract
+
+An accepted event contains only:
+
+- the declared event name;
+- funnel id and destination label;
+- the current page path;
+- resolved attribution fields already allowlisted by that funnel;
+- server-generated creation and expiry timestamps.
+
+The endpoint does not store an IP address, cookie id, user id, link text, full
+destination URL, referrer, or arbitrary browser properties. Undeclared event
+names and attribution fields are rejected or discarded.
+
+## Authenticity and abuse protection
+
+Published builds receive a site-bound signed token. The intake verifies the
+signature, request origin, enabled Analytics and Attribution modules, active
+funnel id, event name, destination, page path, and parameter allowlist. It also
+applies per-IP and per-site rate limits. The browser uses `sendBeacon` with a
+non-blocking keepalive fallback.
+
+The public token proves that an event came from a published site build; it is
+not a secret visitor credential. Server-side validation remains authoritative.
+
+## Consent and delivery
+
+When the site uses Typeroll's consent banner, no first-party conversion event
+is sent before optional consent. With no banner, the site's configured consent
+policy applies. Attribution cookies remain a separate mechanism and are never
+required for a current-page event.
+
+If Google Analytics is installed, the same declared click can also be sent to
+`gtag`. Failure in Typeroll Analytics or an external adapter never blocks the
+visitor's navigation.
+
+## Storage and reporting
+
+Events expire after 90 days; expired rows are removed during event intake and
+reporting. Insights reports total conversion events,
+counts by event and destination, and top `utm_source` and `utm_campaign`
+values for 7, 30, or 90 days. A report is marked truncated if more than 5,000
+matching raw events are returned for one period.
+
+This is event attribution, not person-level tracking. Do not use campaign
+parameter names to smuggle email addresses, phone numbers, or other personal
+data into the event pipeline.
