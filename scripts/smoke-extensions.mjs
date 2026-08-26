@@ -26,6 +26,7 @@ if (!base || !expectedIssuer) {
 
 const discoveryUrl = `${base}/.well-known/typeroll-extension-issuer`;
 const jwksUrl = `${base}/.well-known/jwks.json`;
+const expectedProtocolVersion = 3;
 const attempts = Number(process.env.SMOKE_ATTEMPTS || 8);
 const delayMs = Number(process.env.SMOKE_DELAY_MS || 5000);
 
@@ -64,7 +65,10 @@ async function check() {
     discovery.token_endpoint === `${expectedIssuer}/api/extensions/token`,
     "token_endpoint does not match the issuer",
   );
-  requireValue(discovery.protocol_version === 1, "protocol_version is not 1");
+  requireValue(
+    discovery.protocol_version === expectedProtocolVersion,
+    `protocol_version was ${discovery.protocol_version}, expected ${expectedProtocolVersion}`,
+  );
   requireValue(
     Array.isArray(discovery.signing_algorithms_supported) &&
       discovery.signing_algorithms_supported.includes("ES256"),
