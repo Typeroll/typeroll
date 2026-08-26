@@ -204,6 +204,10 @@ describe('extension URL context', () => {
     expect(runtime).toContain('typeroll.extension.form.result');
     expect(runtime).toContain('typeroll.extension.api.request');
     expect(runtime).toContain('typeroll.extension.api.result');
+    expect(runtime).toContain('frame.style.width="100%"');
+    expect(runtime).toContain('frame.style.border="0"');
+    expect(runtime).toContain('frame.style.display="block"');
+    expect(runtime.indexOf('frame.addEventListener("load"')).toBeLessThan(runtime.indexOf('entry.el.replaceChildren(frame)'));
     expect(runtime).toContain('forms:forms(entry.descriptor.component)');
     expect(runtime).toContain('api:apiClient(entry.descriptor.installation)');
     expect(runtime).toContain('X-Typeroll-Extension-Token');

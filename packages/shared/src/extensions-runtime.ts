@@ -145,8 +145,8 @@ async function mountBundle(entry,context){
 function mountFrame(entry,context){
   var component=entry.descriptor.component;var frame=document.createElement("iframe");var target=new URL(component.entry.frame_url);
   frame.src=target.href;frame.title=component.label;frame.loading="lazy";frame.referrerPolicy="no-referrer";
+  frame.style.width="100%";frame.style.border="0";frame.style.display="block";
   var capabilities=["allow-scripts","allow-same-origin"].concat(component.entry.sandbox||[]);frame.setAttribute("sandbox",Array.from(new Set(capabilities)).join(" "));
-  entry.el.replaceChildren(frame);
   function receive(event){
     if(event.source!==frame.contentWindow||event.origin!==target.origin||!event.data||event.data.version!==snapshot.protocol_version)return;
     if(event.data.installation_id!==context.installation_id||event.data.component_id!==context.component_id)return;
@@ -176,6 +176,7 @@ function mountFrame(entry,context){
   window.addEventListener("message",receive);
   context.navigation.subscribe(function(view){frame.contentWindow&&frame.contentWindow.postMessage({type:"typeroll.extension.navigation",version:snapshot.protocol_version,installation_id:context.installation_id,component_id:context.component_id,view:view},target.origin);});
   frame.addEventListener("load",function(){frame.contentWindow.postMessage({type:"typeroll.extension.init",version:snapshot.protocol_version,installation_id:context.installation_id,component_id:context.component_id,props:entry.props,config:context.config,url_context:entry.capture.values,navigation:{current:context.navigation.current},form_bindings:context.forms.list()},target.origin);},{once:true});
+  entry.el.replaceChildren(frame);
 }
 async function start(){
   document.querySelectorAll("[data-tr-extension-installation][data-tr-extension-component]").forEach(function(el){

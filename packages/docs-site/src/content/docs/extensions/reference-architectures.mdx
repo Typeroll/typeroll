@@ -1,0 +1,90 @@
+---
+title: Reference architectures
+description: Choose a Typeroll Extension architecture and understand who owns each runtime.
+---
+
+Typeroll supports the same Extension contract in Typeroll Cloud and in a
+self-hosted open-source installation. The deployment boundary depends on the
+product you are building, not on where Typeroll itself runs.
+
+| Reference | Use it for | Frontend | Application backend | Typeroll Forms |
+| --- | --- | --- | --- | --- |
+| Public SaaS, native | A reusable SaaS product with UI that should feel native to the site | Versioned bundle copied to the customer domain during site deployment | Provider account | Optional |
+| Private bespoke, native | A customer-specific calculator, quiz, lead magnet, or quote generator | Versioned bundle copied to the customer domain during site deployment | None required | Canonical lead storage and actions |
+| Public SaaS, embedded | A reusable portal or workflow that needs a stronger isolation boundary | Provider-hosted sandboxed iframe | Provider account | Optional through the host bridge |
+
+The public [Extension starter repository](https://github.com/Typeroll/extension-starter)
+contains the full native contract: bundled blocks, Forms bindings, opaque
+recipient links, direct provider API calls, issuer pairing, lifecycle events,
+and admin SSO. Keep each production Extension in its own provider-owned
+repository even when several services share one tools domain and cloud project.
+
+## Public SaaS with a native block
+
+Choose `bundled_component` when the provider wants a first-class, editable
+block and accepts that its reviewed JavaScript becomes customer-origin code.
+Typeroll fetches the declared immutable assets during site deployment, verifies
+their SHA-256 hashes, and publishes the verified copies below the site's own
+`/_assets/extensions/` path.
+
+The browser calls the provider API directly. Typeroll supplies a short-lived,
+installation-scoped assertion only for manifest-allowlisted routes. The
+provider still owns visitor authentication, recipient tokens, data, replay
+rules, and every business action. Neither Typeroll nor a customer Cloudflare
+Function proxies these calls.
+
+## Private bespoke block backed by Forms
+
+A customer-specific lead tool normally needs only a private
+`bundled_component`, the `forms:submit` scope, and an explicit form binding.
+The repository owns the creative JavaScript and CSS; the installed site's
+ordinary Forms module owns submissions, inbox access, email actions, and
+webhooks.
+
+This pattern needs no provider API, client credential, lifecycle webhook,
+customer-hosted Function, or separate lead database. It works unchanged in
+Cloud and self-hosted installations because each installation submits to its
+own Forms API. Forms webhooks can update an external CRM or register after the
+canonical submission is stored.
+
+## Public SaaS in an embedded app
+
+Choose `embedded_app` when the provider wants to deploy the UI continuously
+from its own account or should not receive customer-origin trust. Typeroll
+creates a sandboxed iframe with `allow-scripts allow-same-origin`, sends a
+versioned init message, and exposes narrow message bridges for resizing,
+internal navigation, declared Forms bindings, and allowlisted provider API
+routes.
+
+The frame should accept initialization only from `window.parent` over HTTPS,
+lock that exact origin, and validate source window, origin, protocol version,
+installation ID, and component ID on every subsequent message. It must not
+depend on `document.referrer`: Typeroll intentionally uses a no-referrer
+policy. The iframe never receives Typeroll's signed installation assertion.
+For API calls it asks the host to perform the same direct, route-constrained
+request used by a native component.
+
+An embedded app can keep a consumed recipient token in frame memory while users
+move between internal views. Those views do not require separate Typeroll
+pages or paths. The provider remains responsible for generating a
+cryptographically random, scoped, expiring, and revocable token and for binding
+every record and action to the verified installation.
+
+## Ownership boundary
+
+A Typeroll site deployment contains static pages, the runtime, verified native
+Extension assets, and iframe descriptors. It does not deploy third-party
+application functions.
+
+- Typeroll Cloud operates only Typeroll Cloud services.
+- A self-hosted operator runs only their open-source Typeroll installation.
+- Extension developers run their own SaaS or bespoke backend, if one exists.
+- Premium Typeroll Apps are operated only in Typeroll's accounts and can be
+  sold to both Cloud and self-hosted customers.
+- Customer static hosting never receives an application proxy merely because
+  an Extension is installed.
+
+Next, see [Frontend and recipient links](/extensions/frontend/) for the runtime
+API and [Provider backend and admin SSO](/extensions/backend/) for signed
+requests, pairing, and delegated admin access.
+

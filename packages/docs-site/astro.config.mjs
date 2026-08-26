@@ -62,6 +62,7 @@ export default defineConfig({
           items: [
             { label: 'Overview', slug: 'extensions/overview' },
             { label: 'Build an Extension', slug: 'extensions/getting-started' },
+            { label: 'Reference architectures', slug: 'extensions/reference-architectures' },
             { label: 'Frontend & recipient links', slug: 'extensions/frontend' },
             { label: 'Provider backend & admin SSO', slug: 'extensions/backend' },
             { label: 'Manifest reference', slug: 'extensions/manifest' },

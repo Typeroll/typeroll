@@ -56,6 +56,24 @@ function executionOrigins(manifest: Json): string[] {
   return [...new Set(urls.map((value) => new URL(value).origin))];
 }
 
+export function extensionMetadataUpdate(
+  manifest: Json,
+  registered: Json,
+  manifestOrigins: string[],
+): Json {
+  const trusted = Array.isArray(registered.trusted_origins)
+    ? registered.trusted_origins.map(String)
+    : [];
+  const update: Json = {
+    name: manifest.name,
+    trusted_origins: [...new Set([...trusted, ...manifestOrigins])],
+  };
+  if (registered.distribution !== manifest.distribution) {
+    update.distribution = manifest.distribution;
+  }
+  return update;
+}
+
 async function api(path: string, init: RequestInit = {}, allowed: number[] = []): Promise<{ status: number; data: Json }> {
   const baseUrl = process.env.TYPEROLL_API_URL?.trim().replace(/\/$/, '');
   const apiKey = process.env.TYPEROLL_API_KEY?.trim();
@@ -107,15 +125,10 @@ export async function runExtensionCli(args: string[]): Promise<number> {
         });
         if (created.data.client_secret) console.error('Extension client secret (shown once):', created.data.client_secret);
       } else {
-        const registered = current.data.extension as Json | undefined;
-        const trusted = Array.isArray(registered?.trusted_origins) ? registered.trusted_origins.map(String) : [];
+        const registered = current.data.extension as Json;
         await api(`/api/developer/extensions/${encodeURIComponent(extensionId)}`, {
           method: 'PATCH',
-          body: JSON.stringify({
-            name: manifest.name,
-            distribution: manifest.distribution,
-            trusted_origins: [...new Set([...trusted, ...executionOrigins(manifest)])],
-          }),
+          body: JSON.stringify(extensionMetadataUpdate(manifest, registered, executionOrigins(manifest))),
         });
       }
       const pushed = await api(`/api/developer/extensions/${encodeURIComponent(extensionId)}/versions`, {

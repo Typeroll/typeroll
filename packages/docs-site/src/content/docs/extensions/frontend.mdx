@@ -141,6 +141,11 @@ navigation with the matching protocol messages. Validate message origin,
 source window, protocol version, installation ID, and component ID on every
 message.
 
+For the first init message, require `event.source === window.parent` and an
+HTTPS `event.origin`, then lock that exact origin for the frame session. Do not
+derive it from `document.referrer`; the Typeroll host intentionally applies a
+`no-referrer` policy to Extension iframes.
+
 An embedded app receives binding names in `typeroll.extension.init` but never
 receives the signed form tokens. It can request a submission with
 `typeroll.extension.form.submit`; the host responds with

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateExtensionManifestShape } from '../src/extension-cli';
+import { extensionMetadataUpdate, validateExtensionManifestShape } from '../src/extension-cli';
 
 describe('Extension CLI preflight', () => {
   it('accepts the documented manifest shape and catches invalid assets', () => {
@@ -20,5 +20,30 @@ describe('Extension CLI preflight', () => {
     expect(validateExtensionManifestShape({ ...valid, frontend: { components: [{
       id: 'quote', label: 'Quote', render_mode: 'bundled_component', entry: { script_url: 'https://vendor.example/index.js', script_sha256: 'wrong' },
     }] } })).toContain('frontend.components[0] needs script_url and lowercase SHA-256');
+  });
+
+  it('does not resubmit an unchanged immutable distribution', () => {
+    const manifest = {
+      name: 'Quote Generator',
+      distribution: 'public',
+    };
+    const registered = {
+      distribution: 'public',
+      trusted_origins: ['https://vendor.example'],
+    };
+
+    expect(extensionMetadataUpdate(manifest, registered, ['https://vendor.example'])).toEqual({
+      name: 'Quote Generator',
+      trusted_origins: ['https://vendor.example'],
+    });
+    expect(extensionMetadataUpdate(
+      { ...manifest, distribution: 'unlisted' },
+      registered,
+      ['https://assets.vendor.example'],
+    )).toEqual({
+      name: 'Quote Generator',
+      distribution: 'unlisted',
+      trusted_origins: ['https://vendor.example', 'https://assets.vendor.example'],
+    });
   });
 });
