@@ -30,8 +30,11 @@ the only material difference.
   uninstall events.
 
 Typeroll does not run or proxy arbitrary provider backend code. It installs an
-immutable manifest version, vendors hash-verified frontend assets into the site
+immutable manifest release, vendors hash-verified frontend assets into the site
 build, and issues narrowly scoped identity tokens for approved installations.
+The installation itself is a timeless connection: Typeroll follows the newest
+compatible published release, while the administrator-approved scopes remain
+fixed until an administrator explicitly changes them.
 
 The source code, manifest format, API routes, CLI, and product interface all
 use the term **Extension**. A premium product delivered through an Extension
@@ -59,7 +62,7 @@ calculators, quizzes, lead magnets, and quote generators.
 
 Because that code executes on the customer origin, it has the same browser
 reach as other site JavaScript: DOM access, non-HttpOnly cookies, and web
-storage. Review it, pin it, and keep each release immutable. Use an
+storage. Review the Extension connection and keep each release immutable. Use an
 `embedded_app` when the frontend should remain untrusted or needs isolation;
 it runs in a sandboxed provider-origin iframe instead.
 

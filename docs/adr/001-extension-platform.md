@@ -13,7 +13,10 @@ into the portal or coupling customer sites to a single cloud vendor.
 
 ## Decision
 
-An Extension is an immutable, versioned manifest installed per site. The
+An Extension is installed per site as a timeless trust relationship. Each
+published manifest release is immutable, and Typeroll automatically resolves
+the installation to the newest runtime- and configuration-compatible release.
+The
 manifest can provision editor blocks and external admin pages, request
 explicit REST scopes, declare public/private/secret configuration, and expose
 a direct provider API contract. Frontend components are either hash-pinned
@@ -55,6 +58,10 @@ private and unlisted releases do not.
   identity, secret separation, auditing and safe failure behavior.
 - A published bundle is immutable and hash-pinned; a code change is a new
   Extension version.
+- Installation scopes never expand with a release. New access requires an
+  explicit site-admin grant, while compatible releases need no manual upgrade.
+- An unavailable or incompatible Extension is omitted and diagnosed without
+  failing the rest of the site build.
 - Self-hosted issuers require explicit provider trust pairing. Running the OSS
   code does not make an issuer automatically trusted by a public SaaS.
 - Existing page instances survive disable/uninstall and render an unavailable

@@ -60,14 +60,19 @@ export async function provisionExtensionBlocks(
 ): Promise<{ written: string[]; removed: string[] }> {
   const store = getStore();
   const result = { written: [] as string[], removed: [] as string[] };
-  for (const component of manifest.frontend?.components ?? []) {
+  const components = manifest.frontend?.components ?? [];
+  const expected = new Set(components.map((component) => extensionBlockTypeId(installation.id, component.id)));
+  const existing = await store.listDocs<BlockType>(paths.blockTypes(orgId, siteId, versionId));
+  for (const block of existing) {
+    if (block.extension?.installation_id !== installation.id) continue;
+    if (enabled && expected.has(block.id)) continue;
+    await store.deleteDoc(paths.blockType(orgId, siteId, block.id, versionId));
+    result.removed.push(block.id);
+  }
+  if (!enabled) return result;
+  for (const component of components) {
     const block = extensionBlockType(installation, manifest, component);
     const blockPath = paths.blockType(orgId, siteId, block.id, versionId);
-    if (!enabled) {
-      await store.deleteDoc(blockPath);
-      result.removed.push(block.id);
-      continue;
-    }
     const { id: _id, ...body } = block;
     await store.setDoc(blockPath, body);
     result.written.push(block.id);

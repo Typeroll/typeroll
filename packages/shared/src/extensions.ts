@@ -237,7 +237,11 @@ export interface ExtensionInstallation {
   id: string;
   extension_id: string;
   developer_org_id: string;
+  /** Release selected when the timeless connection was first approved. */
+  initial_version?: string;
+  /** Current control-plane release pointer; runtime resolution is authoritative. */
   version: string;
+  release_policy?: 'automatic';
   owner_org_id: string;
   site_id: string;
   status: ExtensionInstallationStatus;

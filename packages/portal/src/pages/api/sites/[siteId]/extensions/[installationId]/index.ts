@@ -1,8 +1,9 @@
 import type { APIRoute } from 'astro';
-import { paths, type ExtensionInstallation, type ExtensionScope, type ExtensionVersion } from '@typeroll/shared';
+import { paths, type ExtensionInstallation, type ExtensionScope } from '@typeroll/shared';
 import { json, requirePermission, requireSiteAccess } from '../../../../../../lib/access';
 import { getStore } from '../../../../../../lib/datastore';
 import { maskExtensionConfig } from '../../../../../../lib/extensions/config';
+import { resolveExtensionVersion } from '../../../../../../lib/extensions/resolution';
 import {
   ExtensionRegistryError,
   setExtensionInstallationStatus,
@@ -22,9 +23,18 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   if (!admin.ok) return admin.response;
   const installation = await load(guard.value.owner_org_id, guard.value.site.id, params.installationId);
   if (!installation) return json({ error: 'Installation not found' }, 404);
-  const version = await getStore().getDoc<ExtensionVersion>(paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version));
+  const resolution = await resolveExtensionVersion(installation);
+  const version = resolution.version;
   return json({
-    installation: { ...installation, private_config: undefined, secret_config_enc: undefined },
+    installation: {
+      ...installation,
+      private_config: undefined,
+      secret_config_enc: undefined,
+      initial_version: resolution.initial_version,
+      current_version: resolution.resolved_version,
+      automatically_updated: resolution.automatically_updated,
+      release_resolution: resolution.reason ?? 'resolved',
+    },
     config: maskExtensionConfig(version?.manifest.config_schema, installation),
     manifest: version?.manifest,
   });

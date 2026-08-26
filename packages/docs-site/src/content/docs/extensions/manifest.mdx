@@ -84,8 +84,13 @@ uses `X-Typeroll-Extension-Token` and contains no visitor identity.
 - `draft`: editable and available to its developer organization.
 - `review`: queued for hosted public-catalog review.
 - `published`: immutable and installable according to its distribution.
-- `deprecated`: existing installations work, but new installs are blocked.
-- `revoked`: new Extension tokens, admin launch, new builds, and catalog availability are blocked.
+- `deprecated`: existing timeless installations may keep using the release,
+  but new installs are blocked; a newer compatible release is selected
+  automatically when available.
+- `revoked`: the release is excluded from selection and catalog availability.
+  The installation falls back to another compatible release when possible;
+  otherwise its tokens, admin launch, and frontend are unavailable without
+  blocking the rest of the site build.
 
 Download the complete
 [`typeroll-extension-manifest-v3.schema.json`](/specs/typeroll-extension-manifest-v3.schema.json).

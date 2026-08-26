@@ -4,11 +4,11 @@ import {
   type ExtensionInstallation,
   type ExtensionEventDelivery,
   type ExtensionLifecycleEvent,
-  type ExtensionVersion,
 } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { decryptSecret } from '../secret-crypto';
 import { assertPublicDestination, parsePublicHttpsUrl } from './public-http';
+import { resolveExtensionVersion } from './resolution';
 
 const MAX_ATTEMPTS = 3;
 
@@ -19,10 +19,9 @@ export async function deliverExtensionLifecycleEvent(args: {
   fetchImpl?: typeof fetch;
 }): Promise<void> {
   const store = getStore();
-  const version = await store.getDoc<ExtensionVersion>(
-    paths.extensionVersion(args.installation.developer_org_id, args.installation.extension_id, args.installation.version),
-  );
-  const events = version?.manifest.events;
+  const version = (await resolveExtensionVersion(args.installation)).version;
+  if (!version) return;
+  const events = version.manifest.events;
   if (!events?.subscriptions.includes(args.eventType) || !events.webhook_url) return;
   const eventId = `evt_${crypto.randomUUID()}`;
   const deliveryId = eventId;
@@ -62,7 +61,7 @@ export async function deliverExtensionLifecycleEvent(args: {
     extension_id: args.installation.extension_id,
     installation_id: args.installation.id,
     site_id: args.installation.site_id,
-    version: args.installation.version,
+    version: version.version,
     metadata: args.metadata ?? {},
   });
   const timestamp = String(Math.floor(Date.now() / 1000));

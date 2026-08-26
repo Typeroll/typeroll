@@ -3,7 +3,8 @@ import AppLayout from '../../../../../../layouts/AppLayout.astro';
 import { loadSiteContext } from '../../../../../../lib/access';
 import { getStore } from '../../../../../../lib/datastore';
 import { issueExtensionLaunchGrant } from '../../../../../../lib/extensions/auth';
-import { paths, type ExtensionInstallation, type ExtensionVersion } from '@typeroll/shared';
+import { resolveExtensionVersion } from '../../../../../../lib/extensions/resolution';
+import { paths, type ExtensionInstallation } from '@typeroll/shared';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
@@ -15,12 +16,10 @@ const installation = await getStore().getDoc<ExtensionInstallation>(
   paths.extensionInstallation(orgId, site.id, installationId),
 );
 if (!installation || installation.status !== 'enabled') return Astro.redirect(`/app/sites/${site.id}/settings/extensions`);
-const version = await getStore().getDoc<ExtensionVersion>(
-  paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version),
-);
+const version = (await resolveExtensionVersion(installation)).version;
 const manifest = version?.manifest;
 const page = manifest?.admin?.pages.find((entry) => entry.id === pageId);
-if (!page || !manifest || version?.status === 'revoked') return Astro.redirect(`/app/sites/${site.id}/settings/extensions`);
+if (!page || !manifest) return Astro.redirect(`/app/sites/${site.id}/settings/extensions`);
 
 const launch = await issueExtensionLaunchGrant({
   ownerOrgId: orgId,

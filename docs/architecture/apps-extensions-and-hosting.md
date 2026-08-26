@@ -61,6 +61,9 @@ An Extension is an installation and identity protocol, not a reverse proxy.
 
 - The manifest declares immutable frontend assets, provider API base URL,
   client-visible routes, admin launch pages, configuration and permissions.
+- The site installation is timeless and resolves to the newest compatible
+  published release. Its approved scopes are installation state and never
+  expand automatically with a manifest release.
 - A trusted bundle is hash-pinned and copied into the static site build. An
   untrusted or independently updated UI uses a sandboxed provider iframe.
 - `context.api.fetch()` sends requests from the browser directly to the

@@ -85,7 +85,16 @@ replace it with the same inert mount shell used by a visual-editor block.
 
 Published versions are immutable. Never replace asset bytes at a URL while
 reusing the same version and hashes. Release a new semantic version, upload it,
-then upgrade the installation. Typeroll keeps the previous version available
-for rollback.
+and let Typeroll select it automatically for compatible installations.
+
+An installation is a timeless connection to the Extension ID. Its approved
+scopes never expand automatically: a new release can declare another scope,
+but it cannot use that scope until a site administrator grants it separately.
+Keep component IDs, props, configuration, and provider data backward
+compatible. Use a new Extension ID for a deliberately breaking product.
+
+If none of the published releases can run with the current runtime and stored
+configuration, Typeroll marks the Extension unavailable and omits it from the
+site build. Other pages and Extensions continue to build normally.
 
 Continue with the [frontend runtime and recipient-link contract](/extensions/frontend/).

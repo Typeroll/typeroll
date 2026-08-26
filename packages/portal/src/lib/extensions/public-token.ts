@@ -1,13 +1,12 @@
 import {
-  EXTENSION_MANIFEST_SCHEMA_VERSION,
   paths,
   type ExtensionInstallation,
-  type ExtensionVersion,
   type Site,
 } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { clientIp, rateLimit } from '../rate-limit';
 import { signPublicExtensionToken } from './auth';
+import { resolveExtensionVersion } from './resolution';
 
 export class PublicExtensionTokenError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -76,13 +75,8 @@ export async function issuePublicExtensionToken(args: {
     installation.owner_org_id !== args.orgId || installation.site_id !== args.siteId) {
     throw new PublicExtensionTokenError('Extension installation is unavailable', 404);
   }
-  const version = await store.getDoc<ExtensionVersion>(
-    paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version),
-  );
-  if (!version || version.status === 'revoked' ||
-    version.schema_version !== EXTENSION_MANIFEST_SCHEMA_VERSION ||
-    version.manifest.schema_version !== EXTENSION_MANIFEST_SCHEMA_VERSION ||
-    !version.manifest.api ||
+  const version = (await resolveExtensionVersion(installation)).version;
+  if (!version || !version.manifest.api ||
     (version.manifest.api.authentication ?? 'signed_installation') !== 'signed_installation') {
     throw new PublicExtensionTokenError('Signed Extension API is unavailable', 404);
   }

@@ -14,6 +14,7 @@ import {
 import { getStore, generateDocId } from '../datastore';
 import { buildExtensionConfig } from './config';
 import { provisionExtensionBlocks } from './provision';
+import { resolveExtensionVersion } from './resolution';
 
 export class ExtensionRegistryError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -392,7 +393,9 @@ export async function installExtension(args: {
     id: `inst_${generateDocId()}`,
     extension_id: args.extensionId,
     developer_org_id: args.developerOrgId,
+    initial_version: args.version,
     version: args.version,
+    release_policy: 'automatic',
     owner_org_id: args.ownerOrgId,
     site_id: args.siteId,
     status: 'enabled',
@@ -429,8 +432,8 @@ export async function setExtensionInstallationStatus(args: {
   const installation = await getStore().getDoc<ExtensionInstallation>(path);
   if (!installation) throw new ExtensionRegistryError('Installation not found', 404);
   if (installation.status === 'revoked') throw new ExtensionRegistryError('Installation is revoked', 409);
-  const version = await getStore().getDoc<ExtensionVersion>(paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version));
-  if (!version) throw new ExtensionRegistryError('Installed extension version not found', 409);
+  const version = (await resolveExtensionVersion(installation)).version;
+  if (!version) throw new ExtensionRegistryError('No compatible Extension release is available', 409);
   const now = new Date().toISOString();
   await getStore().updateDoc(path, {
     status: args.status,
@@ -467,12 +470,16 @@ export async function updateExtensionInstallation(args: {
   const current = await store.getDoc<ExtensionInstallation>(installationPath);
   if (!current) throw new ExtensionRegistryError('Installation not found', 404);
   if (current.status === 'revoked') throw new ExtensionRegistryError('Installation is revoked', 409);
-  const nextVersionName = args.version ?? current.version;
-  const nextVersion = await store.getDoc<ExtensionVersion>(
+  const developerOwned = current.developer_org_id === current.owner_org_id;
+  if (args.version && !developerOwned) {
+    throw new ExtensionRegistryError('Customer installations follow compatible published releases automatically', 409);
+  }
+  const resolvedVersion = args.version ? null : (await resolveExtensionVersion(current)).version;
+  const nextVersionName = args.version ?? resolvedVersion?.version ?? current.version;
+  const nextVersion = resolvedVersion ?? await store.getDoc<ExtensionVersion>(
     paths.extensionVersion(current.developer_org_id, current.extension_id, nextVersionName),
   );
   const extension = await store.getDoc<Extension>(paths.extension(current.developer_org_id, current.extension_id));
-  const developerOwned = current.developer_org_id === current.owner_org_id;
   const installableStatus = nextVersion?.status === 'published'
     || (developerOwned && (nextVersion?.status === 'draft' || nextVersion?.status === 'review'));
   if (!nextVersion || !extension || !installableStatus || nextVersion.manifest.distribution !== extension.distribution) {
@@ -480,7 +487,9 @@ export async function updateExtensionInstallation(args: {
   }
   const scopes = args.grantedScopes ?? current.granted_scopes;
   const requested = new Set(nextVersion.manifest.permissions.map((entry) => entry.scope));
-  if (scopes.some((scope) => !requested.has(scope))) throw new ExtensionRegistryError('Granted scopes must be requested by the manifest');
+  if (args.grantedScopes?.some((scope) => !requested.has(scope))) {
+    throw new ExtensionRegistryError('Granted scopes must be requested by the manifest');
+  }
   const config = buildExtensionConfig(nextVersion.manifest.config_schema, args.config ?? {}, current);
   if (typeof config === 'string') throw new ExtensionRegistryError(config);
   const previousVersion = current.version !== nextVersionName ? current.version : current.previous_version;
@@ -528,7 +537,9 @@ export async function uninstallExtension(args: {
   const path = paths.extensionInstallation(args.ownerOrgId, args.siteId, args.installationId);
   const installation = await getStore().getDoc<ExtensionInstallation>(path);
   if (!installation) throw new ExtensionRegistryError('Installation not found', 404);
-  const version = await getStore().getDoc<ExtensionVersion>(paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version));
+  const version = (await resolveExtensionVersion(installation)).version ?? await getStore().getDoc<ExtensionVersion>(
+    paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version),
+  );
   if (version) await provisionExtensionBlocks(args.ownerOrgId, args.siteId, installation, version.manifest, false);
   const now = new Date().toISOString();
   await getStore().updateDoc(path, { status: 'revoked', updated_at: now });

@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
-import { paths, type ExtensionInstallation, type ExtensionScope, type ExtensionVersion } from '@typeroll/shared';
+import { paths, type ExtensionInstallation, type ExtensionScope } from '@typeroll/shared';
 import { json } from '../../../../../lib/access';
 import { requireApiKey } from '../../../../../lib/api-auth';
 import { maskExtensionConfig } from '../../../../../lib/extensions/config';
 import { ExtensionRegistryError, installExtension } from '../../../../../lib/extensions/registry';
 import { getStore } from '../../../../../lib/datastore';
+import { resolveExtensionVersion } from '../../../../../lib/extensions/resolution';
 
 function canAdmin(permission: string): boolean {
   return permission === 'admin';
@@ -18,13 +19,16 @@ export const GET: APIRoute = async ({ request, params }) => {
     paths.extensionInstallations(guard.value.orgId, guard.value.siteId),
   );
   const safe = await Promise.all(installations.map(async (installation) => {
-    const version = await getStore().getDoc<ExtensionVersion>(
-      paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version),
-    );
+    const resolution = await resolveExtensionVersion(installation);
+    const version = resolution.version;
     return {
       ...installation,
       private_config: undefined,
       secret_config_enc: undefined,
+      initial_version: resolution.initial_version,
+      current_version: resolution.resolved_version,
+      automatically_updated: resolution.automatically_updated,
+      release_resolution: resolution.reason ?? 'resolved',
       config: maskExtensionConfig(version?.manifest.config_schema, installation),
       manifest: version?.manifest,
       version_status: version?.status ?? 'missing',

@@ -21,7 +21,10 @@ interface Installation {
   extension_id: string;
   developer_org_id: string;
   version: string;
-  previous_version?: string;
+  initial_version?: string;
+  current_version?: string;
+  automatically_updated?: boolean;
+  release_resolution?: 'resolved' | 'no_compatible_release';
   status: string;
   granted_scopes: string[];
   version_status?: string;
@@ -182,21 +185,6 @@ export default function ExtensionSettings({ siteId }: { siteId: string }) {
     await load();
   }
 
-  async function rollback(item: Installation) {
-    if (!item.previous_version || !confirm(`Roll back from ${item.version} to ${item.previous_version}?`)) return;
-    beginAction();
-    const response = await fetch(`/api/sites/${siteId}/extensions/${item.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ version: item.previous_version }),
-    });
-    const data = await response.json();
-    setBusy(false);
-    if (!response.ok) return setFeedback({ kind: 'error', message: data.error ?? 'Rollback failed' });
-    setFeedback({ kind: 'success', message: `${extensionName(item)} rolled back to ${item.previous_version}.` });
-    await load();
-  }
-
   async function copy(value: string, key: string) {
     try {
       await navigator.clipboard.writeText(value);
@@ -295,7 +283,6 @@ export default function ExtensionSettings({ siteId }: { siteId: string }) {
           onPair={pairIssuer}
           onSetStatus={setStatus}
           onRotate={rotate}
-          onRollback={rollback}
           onUninstall={uninstall}
         />)}
         {!items.length && <div className="extensions__empty">
@@ -334,7 +321,7 @@ function InstallForm({ entry, busy, onSubmit, onCancel }: {
       <label className="field extensions__version-field">
         <span>Version</span>
         <input name="version" required defaultValue={entry?.version} readOnly={Boolean(entry)} placeholder="1.0.0" autoComplete="off" />
-        <small>The exact version to install.</small>
+        <small>The starting release. Compatible published releases are selected automatically after installation.</small>
       </label>
     </div>
 
@@ -374,7 +361,7 @@ function InstallForm({ entry, busy, onSubmit, onCancel }: {
   </form>;
 }
 
-function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetStatus, onRotate, onRollback, onUninstall }: {
+function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetStatus, onRotate, onUninstall }: {
   item: Installation;
   siteId: string;
   busy: boolean;
@@ -383,12 +370,13 @@ function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetS
   onPair: (item: Installation) => void;
   onSetStatus: (item: Installation, status: 'enabled' | 'disabled') => void;
   onRotate: (item: Installation) => void;
-  onRollback: (item: Installation) => void;
   onUninstall: (item: Installation) => void;
 }) {
   const paired = item.issuer_trust?.status === 'trusted';
   const pairedAt = formatPairedAt(item.issuer_trust?.paired_at);
-  const active = item.status === 'enabled' && item.version_status !== 'revoked';
+  const available = item.release_resolution !== 'no_compatible_release';
+  const active = item.status === 'enabled' && available;
+  const currentVersion = item.current_version ?? item.version;
 
   return <article className="extensions__installed-card">
     <header className="extensions__installed-header">
@@ -396,16 +384,16 @@ function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetS
         <div className="extensions__app-icon extensions__app-icon--large">{extensionName(item).slice(0, 1).toUpperCase()}</div>
         <div>
           <h3>{extensionName(item)}</h3>
-          <p>{item.manifest?.developer.name || 'Unknown developer'} · Version {item.version}</p>
+          <p>{item.manifest?.developer.name || 'Unknown developer'} · Current release {currentVersion}</p>
         </div>
       </div>
-      <span className={`extensions__status extensions__status--${active ? 'active' : item.version_status === 'revoked' ? 'danger' : 'inactive'}`}>
-        <span />{active ? 'Active' : item.version_status === 'revoked' ? 'Revoked' : 'Disabled'}
+      <span className={`extensions__status extensions__status--${active ? 'active' : !available ? 'danger' : 'inactive'}`}>
+        <span />{active ? 'Active' : !available ? 'Unavailable' : 'Disabled'}
       </span>
     </header>
 
-    {item.version_status === 'deprecated' && <div className="extensions__inline-warning"><TriangleAlert size={18} />This version is deprecated. Review and approve an upgrade.</div>}
-    {item.version_status === 'revoked' && <div className="extensions__inline-error"><TriangleAlert size={18} />This version has been revoked. New Extension tokens, frontend deploys, and admin launch are blocked.</div>}
+    {item.version_status === 'deprecated' && <div className="extensions__inline-warning"><TriangleAlert size={18} />The current release is deprecated. Typeroll will select its compatible replacement automatically when one is published.</div>}
+    {!available && <div className="extensions__inline-error"><TriangleAlert size={18} />No compatible published release is currently available. This Extension is omitted, but it does not block the rest of the site from being built.</div>}
 
     <div className="extensions__setup">
       <div className="extensions__setup-card">
@@ -459,12 +447,14 @@ function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetS
             <div><dt>Installation ID</dt><dd><code>{item.id}</code></dd></div>
             <div><dt>Extension ID</dt><dd><code>{item.extension_id}</code></dd></div>
             <div><dt>Developer organization</dt><dd><code>{item.developer_org_id}</code></dd></div>
+            <div><dt>Initial release</dt><dd><code>{item.initial_version ?? item.version}</code></dd></div>
+            <div><dt>Current release</dt><dd><code>{item.current_version ?? 'Unavailable'}</code></dd></div>
+            <div><dt>Release policy</dt><dd>Automatic within approved permissions</dd></div>
           </dl>
         </section>
         <div className="extensions__management-actions">
           {item.status === 'enabled' ? <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => onSetStatus(item, 'disabled')}>Disable extension</button> : item.status === 'disabled' ? <button type="button" className="btn" disabled={busy} onClick={() => onSetStatus(item, 'enabled')}>Enable extension</button> : null}
           <button type="button" className="btn btn--secondary" disabled={busy || item.status === 'revoked'} onClick={() => onRotate(item)}>Rotate credential</button>
-          {item.previous_version && <button type="button" className="btn btn--secondary" disabled={busy || item.status === 'revoked'} onClick={() => onRollback(item)}>Roll back to {item.previous_version}</button>}
           <a className="btn btn--secondary" href={`/api/sites/${siteId}/extensions/${item.id}/diagnostics`} target="_blank" rel="noreferrer">Open diagnostics <ExternalLink size={14} /></a>
         </div>
         <div className="extensions__danger-zone">

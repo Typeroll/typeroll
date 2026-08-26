@@ -21,6 +21,26 @@ multi-tenant SaaS extensions and one-customer bespoke systems.
 6. Deploy the site. The build vendors bundle bytes; the component calls its
    provider API directly, without a Typeroll or customer-hosted proxy.
 
+## Installation and release policy
+
+An installation is a timeless trust relationship with an Extension ID, not a
+permanent pin to one release. The version selected during installation is kept
+as history. At runtime Typeroll selects the newest published release that is
+compatible with the installed Extension runtime and the site's stored
+configuration.
+
+The installation's `granted_scopes` are the security boundary and never expand
+when a developer publishes a release. A newer manifest may declare additional
+permissions, but the Extension does not receive them until a site administrator
+explicitly changes the installation grant. Existing launch tokens, service
+credentials and public Extension tokens continue to use only the approved
+scope set.
+
+Extension developers must keep releases backward compatible with existing
+component IDs, props and provider data. Breaking products should use a new
+Extension ID. If no compatible published release exists, Typeroll omits that
+Extension and reports it as unavailable; the rest of the site still builds.
+
 See the runnable contract fixture in [`examples/quote-extension`](../examples/quote-extension/README.md).
 
 The npm package `@typeroll/mcp-server` also installs the `typeroll` developer
@@ -172,16 +192,20 @@ JWKS document containing the previous public key(s). The discovery endpoint
 publishes both new and overlapping old keys while all new tokens use the new
 private key. Remove old keys after the longest token/pairing validity window.
 
-Self-hosted installations use their local catalog and can install private or
-unlisted Extensions without contacting Typeroll Cloud. Public catalog review
-is a Typeroll Cloud operation and is not included in this repository.
+`PLATFORM_ADMIN_EMAILS` enables the hosted-only public review surface. With no
+platform admin and no locally imported catalog entries, self-hosting remains a
+private/unlisted system and makes no catalog network call.
 
 ## Operational behavior
 
 - Disable immediately blocks new Extension tokens and launch but keeps configuration.
-- Deprecation warns admins and blocks new installs of that version.
-- Revocation blocks new Extension tokens, launch and new builds and withdraws the matching
-  catalog entry.
+- Deprecation warns admins; an installation follows a compatible replacement
+  automatically when one is published.
+- Revocation removes that release from automatic selection and withdraws the
+  matching catalog entry. If another compatible release exists, the timeless
+  installation continues on it.
+- No release can add scopes to an installation. New access always requires an
+  explicit site-admin grant.
 - Uninstall revokes credentials and removes derived definitions/nav, but page
   block instances remain as explicit unavailable placeholders.
 - Diagnostics list health, credential metadata, audit actions, event delivery

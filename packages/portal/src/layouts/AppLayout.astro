@@ -7,7 +7,8 @@ import { getStore } from '../lib/datastore';
 import { hydrateSharedSites } from '../lib/shares';
 import type { SharePermission } from '@typeroll/shared';
 import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
-import type { ExtensionInstallation, ExtensionAdminPage, ExtensionVersion, Site, SiteVersion } from '@typeroll/shared';
+import type { ExtensionInstallation, ExtensionAdminPage, Site, SiteVersion } from '@typeroll/shared';
+import { resolveExtensionVersion } from '../lib/extensions/resolution';
 import SiteSwitcher from '../components/SiteSwitcher.tsx';
 import VersionPicker from '../components/VersionPicker.tsx';
 import Icon from '../components/Icon.astro';
@@ -83,10 +84,8 @@ if (siteId) {
   const rank: Record<SharePermission, number> = { read: 0, write: 1, admin: 2 };
   for (const installation of installations) {
     if (installation.status !== 'enabled') continue;
-    const version = await store.getDoc<ExtensionVersion>(
-      paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version),
-    );
-    if (!version || version.status === 'revoked') continue;
+    const version = (await resolveExtensionVersion(installation)).version;
+    if (!version) continue;
     for (const page of version.manifest.admin?.pages ?? []) {
       if (rank[activePermission] >= rank[page.minimum_permission]) {
         extensionNavItems.push({ installationId: installation.id, page });

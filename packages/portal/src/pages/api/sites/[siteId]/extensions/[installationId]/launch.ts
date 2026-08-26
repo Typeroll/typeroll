@@ -1,8 +1,9 @@
 import type { APIRoute } from 'astro';
-import { paths, type ExtensionInstallation, type ExtensionVersion } from '@typeroll/shared';
+import { paths, type ExtensionInstallation } from '@typeroll/shared';
 import { json, requireSiteAccess } from '../../../../../../lib/access';
 import { getStore } from '../../../../../../lib/datastore';
 import { ExtensionAuthError, issueExtensionLaunchGrant } from '../../../../../../lib/extensions/auth';
+import { resolveExtensionVersion } from '../../../../../../lib/extensions/resolution';
 
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -14,9 +15,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
     paths.extensionInstallation(guard.value.owner_org_id, guard.value.site.id, params.installationId),
   );
   if (!installation) return json({ error: 'Installation not found' }, 404);
-  const version = await getStore().getDoc<ExtensionVersion>(
-    paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version),
-  );
+  const version = (await resolveExtensionVersion(installation)).version;
   const page = version?.manifest.admin?.pages.find((entry) => entry.id === body.page_id);
   if (!page) return json({ error: 'Extension page not found' }, 404);
   try {

@@ -3,16 +3,16 @@ import {
   paths,
   type ExtensionInstallation,
   type ExtensionScope,
-  type ExtensionVersion,
   type TrustedExtensionIssuer,
 } from '@typeroll/shared';
 import { json, requirePermission, requireSiteAccess } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
 import { maskExtensionConfig } from '../../../../../lib/extensions/config';
 import { ExtensionRegistryError, installExtension } from '../../../../../lib/extensions/registry';
-import { extensionBlockTypeId } from '../../../../../lib/extensions/provision';
+import { extensionBlockTypeId, provisionExtensionBlocks } from '../../../../../lib/extensions/provision';
 import { extensionIssuer } from '../../../../../lib/extensions/auth';
 import { trustedExtensionIssuerId } from '../../../../../lib/extensions/trust-pairing';
+import { resolveExtensionVersion } from '../../../../../lib/extensions/resolution';
 
 export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -22,9 +22,16 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const { owner_org_id, site } = guard.value;
   const installations = await getStore().listDocs<ExtensionInstallation>(paths.extensionInstallations(owner_org_id, site.id));
   const safe = await Promise.all(installations.map(async (installation) => {
-    const version = await getStore().getDoc<ExtensionVersion>(
-      paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version),
-    );
+    const resolution = await resolveExtensionVersion(installation);
+    const version = resolution.version;
+    if (version && installation.status === 'enabled') {
+      try {
+        await provisionExtensionBlocks(owner_org_id, site.id, installation, version.manifest, true);
+      } catch {
+        // Installation diagnostics remain available even if derived editor
+        // block definitions could not be reconciled during this request.
+      }
+    }
     let issuerTrust: Pick<TrustedExtensionIssuer, 'status' | 'paired_at'> | null = null;
     if (version?.manifest.auth?.pairing_url) {
       let issuer: string | null = null;
@@ -49,6 +56,10 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
       ...installation,
       private_config: undefined,
       secret_config_enc: undefined,
+      initial_version: resolution.initial_version,
+      current_version: resolution.resolved_version,
+      automatically_updated: resolution.automatically_updated,
+      release_resolution: resolution.reason ?? 'resolved',
       config: maskExtensionConfig(version?.manifest.config_schema, installation),
       manifest: version?.manifest,
       components: (version?.manifest.frontend?.components ?? []).map((component) => ({

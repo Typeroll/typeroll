@@ -268,6 +268,33 @@ describe('Extension control plane', () => {
     })).resolves.toMatchObject({ version: '1.0.1' });
   });
 
+  it('does not let customer installations pin or roll back a release', async () => {
+    const { installation } = await registeredInstallation();
+    await saveExtensionVersion({
+      developerOrgId: DEV_ORG,
+      extensionId: installation.extension_id,
+      actorId: 'developer-user',
+      manifest: manifest({ version: '1.1.0' }),
+    });
+    await publishExtensionVersion({
+      developerOrgId: DEV_ORG,
+      extensionId: installation.extension_id,
+      version: '1.1.0',
+      verifyAssets: async () => {},
+    });
+
+    await expect(updateExtensionInstallation({
+      ownerOrgId: OWNER_ORG,
+      siteId: SITE,
+      installationId: installation.id,
+      actorId: 'customer-admin',
+      version: '1.1.0',
+    })).rejects.toMatchObject({
+      status: 409,
+      message: 'Customer installations follow compatible published releases automatically',
+    });
+  });
+
   it('keeps draft and review versions unavailable to customer organizations', async () => {
     const publicManifest = manifest({ distribution: 'public' });
     await createExtension({
@@ -382,7 +409,49 @@ describe('Extension control plane', () => {
     expect((await buildExtensionRuntimeSnapshot(OWNER_ORG, SITE)).installations).toEqual([]);
   });
 
-  it('fails deployment snapshots closed for installed manifest v1 records', async () => {
+  it('moves timeless installations to the newest compatible published release', async () => {
+    const { installation } = await registeredInstallation();
+    const { getStore } = await import('../../lib/datastore');
+    const versionPath = paths.extensionVersion(DEV_ORG, installation.extension_id, installation.version);
+    const version = await getStore().getDoc<any>(versionPath);
+    await getStore().updateDoc(versionPath, {
+      schema_version: 1,
+      manifest: { ...version.manifest, schema_version: 1 },
+    });
+    const nextManifest = manifest({ version: '1.1.0' });
+    nextManifest.frontend?.components.push({
+      id: 'summary',
+      label: 'Quote summary',
+      render_mode: 'bundled_component',
+      props_schema: { type: 'object', properties: {} },
+      entry: { script_url: 'https://93.184.216.34/quote.js', script_sha256: SCRIPT_DIGEST },
+    });
+    await saveExtensionVersion({
+      developerOrgId: DEV_ORG,
+      extensionId: installation.extension_id,
+      actorId: 'developer-user',
+      manifest: nextManifest,
+    });
+    await publishExtensionVersion({
+      developerOrgId: DEV_ORG,
+      extensionId: installation.extension_id,
+      version: '1.1.0',
+      verifyAssets: async () => {},
+    });
+
+    const snapshot = await buildExtensionRuntimeSnapshot(OWNER_ORG, SITE);
+    expect(snapshot.installations[0]).toMatchObject({
+      installation_id: installation.id,
+      version: '1.1.0',
+    });
+    expect(snapshot.installations[0]?.components).toEqual(expect.arrayContaining([expect.objectContaining({
+        local_script_url: expect.stringContaining('/1.1.0/calculator/index.js'),
+      })]));
+    expect((await getStore().listDocs<any>(paths.blockTypes(OWNER_ORG, SITE)))
+      .map((block) => block.extension?.component_id).sort()).toEqual(['calculator', 'summary']);
+  });
+
+  it('omits an unavailable Extension instead of failing the site build', async () => {
     const { installation } = await registeredInstallation();
     const { getStore } = await import('../../lib/datastore');
     const versionPath = paths.extensionVersion(DEV_ORG, installation.extension_id, installation.version);
@@ -392,9 +461,78 @@ describe('Extension control plane', () => {
       manifest: { ...version.manifest, schema_version: 1 },
     });
 
-    await expect(buildExtensionRuntimeSnapshot(OWNER_ORG, SITE)).rejects.toThrow(
-      'uses unsupported manifest schema 1; reinstall a release using schema 3',
-    );
+    await expect(buildExtensionRuntimeSnapshot(OWNER_ORG, SITE)).resolves.toMatchObject({ installations: [] });
+  });
+
+  it('keeps using the latest release compatible with stored configuration', async () => {
+    const { installation } = await registeredInstallation();
+    await saveExtensionVersion({
+      developerOrgId: DEV_ORG,
+      extensionId: installation.extension_id,
+      actorId: 'developer-user',
+      manifest: manifest({
+        version: '1.1.0',
+        config_schema: {
+          type: 'object',
+          properties: {
+            price_list_id: { type: 'string', public: true },
+            api_secret: { type: 'string', format: 'secret' },
+            required_region: { type: 'string' },
+          },
+          required: ['price_list_id', 'api_secret', 'required_region'],
+        },
+      }),
+    });
+    await publishExtensionVersion({
+      developerOrgId: DEV_ORG,
+      extensionId: installation.extension_id,
+      version: '1.1.0',
+      verifyAssets: async () => {},
+    });
+
+    expect((await buildExtensionRuntimeSnapshot(OWNER_ORG, SITE)).installations[0]?.version).toBe('1.0.0');
+  });
+
+  it('keeps approved scopes fixed while following newer releases', async () => {
+    const { created, installation } = await registeredInstallation();
+    await saveExtensionVersion({
+      developerOrgId: DEV_ORG,
+      extensionId: installation.extension_id,
+      actorId: 'developer-user',
+      manifest: manifest({
+        version: '2.0.0',
+        permissions: [
+          { scope: 'content:read', reason: 'Reads products.' },
+          { scope: 'content:write', reason: 'Stores approved quote references.' },
+          { scope: 'media:write', reason: 'Stores generated documents.' },
+        ],
+      }),
+    });
+    await publishExtensionVersion({
+      developerOrgId: DEV_ORG,
+      extensionId: installation.extension_id,
+      version: '2.0.0',
+      verifyAssets: async () => {},
+    });
+
+    expect((await buildExtensionRuntimeSnapshot(OWNER_ORG, SITE)).installations[0]?.version).toBe('2.0.0');
+    const launch = await issueExtensionLaunchGrant({
+      ownerOrgId: OWNER_ORG,
+      siteId: SITE,
+      installationId: installation.id,
+      userId: 'customer-admin',
+      permission: 'admin',
+      minimumPermission: 'write',
+    });
+    const token = await exchangeExtensionLaunchCode({
+      code: launch.code,
+      clientId: created.extension.client_id,
+      clientSecret: created.client_secret,
+    });
+    expect(verifyDelegatedExtensionToken(token.access_token, installation.extension_id).scopes).toEqual([
+      'content:read',
+      'content:write',
+    ]);
   });
 
   it('holds public releases for operator review before catalog discovery', async () => {

@@ -2,13 +2,13 @@ import crypto from 'node:crypto';
 import {
   paths,
   type ExtensionInstallation,
-  type ExtensionVersion,
   type TrustedExtensionIssuer,
 } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { extensionIssuer, extensionJwks, signIssuerPairingAssertion } from './auth';
 import { assertPublicDestination, parsePublicHttpsUrl } from './public-http';
 import { ExtensionRegistryError, recordExtensionAudit } from './registry';
+import { resolveExtensionVersion } from './resolution';
 
 function hash(value: string): string {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -39,9 +39,7 @@ export async function pairExtensionIssuer(args: {
     paths.extensionInstallation(args.ownerOrgId, args.siteId, args.installationId),
   );
   if (!installation || installation.status === 'revoked') throw new ExtensionRegistryError('Installation not found', 404);
-  const version = await store.getDoc<ExtensionVersion>(
-    paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version),
-  );
+  const version = (await resolveExtensionVersion(installation)).version;
   const pairingUrlRaw = version?.manifest.auth?.pairing_url;
   if (!pairingUrlRaw) throw new ExtensionRegistryError('Extension does not declare an issuer pairing endpoint', 409);
   const pairingUrl = parsePublicHttpsUrl(pairingUrlRaw, 'Extension pairing URL');

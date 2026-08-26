@@ -1,16 +1,15 @@
 import {
-  EXTENSION_MANIFEST_SCHEMA_VERSION,
   EXTENSION_HOST_PROTOCOL_VERSION,
   EXTENSION_RUNTIME_VERSION,
   paths,
   type ExtensionInstallation,
   type ExtensionRuntimeSnapshot,
-  type ExtensionVersion,
   type PublicExtensionComponent,
 } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { formEmbedInfo, POW_BITS } from '../forms-signing';
-import { extensionBlockTypeId } from './provision';
+import { extensionBlockTypeId, provisionExtensionBlocks } from './provision';
+import { resolveExtensionVersion } from './resolution';
 
 function assetBase(extensionId: string, version: string, componentId: string): string {
   const safe = (value: string) => value.replace(/[^A-Za-z0-9_.-]+/g, '-');
@@ -26,19 +25,18 @@ export async function buildExtensionRuntimeSnapshot(
   const publicInstallations: ExtensionRuntimeSnapshot['installations'] = [];
   for (const installation of installations) {
     if (installation.status !== 'enabled') continue;
-    const version = await store.getDoc<ExtensionVersion>(
-      paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version),
-    );
-    if (!version || version.status === 'revoked') continue;
-    if (version.schema_version !== EXTENSION_MANIFEST_SCHEMA_VERSION ||
-      version.manifest.schema_version !== EXTENSION_MANIFEST_SCHEMA_VERSION) {
-      throw new Error(
-        `Extension ${installation.extension_id}@${installation.version} uses unsupported manifest schema ` +
-        `${version.manifest.schema_version}; reinstall a release using schema ${EXTENSION_MANIFEST_SCHEMA_VERSION}`,
-      );
+    const version = (await resolveExtensionVersion(installation)).version;
+    if (!version) {
+      console.warn(`Skipping Extension ${installation.extension_id}: no compatible published release is available`);
+      continue;
+    }
+    try {
+      await provisionExtensionBlocks(orgId, siteId, installation, version.manifest, true);
+    } catch {
+      console.warn(`Could not reconcile editor blocks for Extension ${installation.extension_id}`);
     }
     const components: PublicExtensionComponent[] = (version.manifest.frontend?.components ?? []).map((component) => {
-      const base = assetBase(installation.extension_id, installation.version, component.id);
+      const base = assetBase(installation.extension_id, version.version, component.id);
       const resolvedFormBindings = Object.fromEntries(
         (installation.granted_scopes.includes('forms:submit') ? component.form_bindings ?? [] : []).map((binding) => {
           const embed = formEmbedInfo(orgId, siteId, binding.form_id);
@@ -67,7 +65,7 @@ export async function buildExtensionRuntimeSnapshot(
     publicInstallations.push({
       installation_id: installation.id,
       extension_id: installation.extension_id,
-      version: installation.version,
+      version: version.version,
       public_config: installation.public_config,
       ...(version.manifest.api
         ? {

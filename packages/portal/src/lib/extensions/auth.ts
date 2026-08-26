@@ -7,12 +7,12 @@ import {
   type Extension,
   type ExtensionLaunchGrant,
   type ExtensionScope,
-  type ExtensionVersion,
   type InstallationCredential,
   type SharePermission,
 } from '@typeroll/shared';
 import { generateDocId, getStore } from '../datastore';
 import { recordExtensionAudit } from './registry';
+import { resolveExtensionVersion } from './resolution';
 
 const LAUNCH_TTL_SECONDS = 60;
 const USER_TOKEN_TTL_SECONDS = 5 * 60;
@@ -333,8 +333,8 @@ export async function issueExtensionLaunchGrant(args: {
   const store = getStore();
   const installation = await store.getDoc<ExtensionInstallation>(paths.extensionInstallation(args.ownerOrgId, args.siteId, args.installationId));
   if (!installation || installation.status !== 'enabled') throw new ExtensionAuthError('Extension installation is unavailable', 404);
-  const version = await store.getDoc<ExtensionVersion>(paths.extensionVersion(installation.developer_org_id, installation.extension_id, installation.version));
-  if (!version || version.status === 'revoked') throw new ExtensionAuthError('Extension version is unavailable', 409);
+  const version = (await resolveExtensionVersion(installation)).version;
+  if (!version) throw new ExtensionAuthError('No compatible Extension release is available', 409);
   const now = args.now ?? new Date();
   const expiresAt = new Date(now.getTime() + LAUNCH_TTL_SECONDS * 1000).toISOString();
   const grantId = `grant_${generateDocId()}`;

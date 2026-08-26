@@ -27,7 +27,8 @@ an external provider.
   cannot be public or have defaults and are encrypted at rest.
 - Scopes are granted explicitly and intersected with the current human
   permission. Installation credentials are site-bound, hash-stored, rate
-  limited and independently rotatable.
+  limited and independently rotatable. Automatic release selection never
+  expands the installation's approved scope set.
 - Launch codes are random, expire after 60 seconds and are consumed with an
   atomic compare-and-update. Delegated JWTs bind issuer, audience, user,
   organization, site, installation, scopes, `jti`, issue time and expiry.
@@ -57,9 +58,10 @@ availability, mail and incident response. Typeroll never proxies the request.
 
 - A provider can mishandle data it is explicitly granted. Review, disclosure
   and contractual controls complement technical isolation.
-- Revoking a version cannot erase already downloaded static assets. New
-  installation tokens and admin access stop immediately; a new deploy removes
-  the frontend. Providers must also honor lifecycle revocation promptly.
+- Revoking a version cannot erase already downloaded static assets. Typeroll
+  excludes it from new tokens, admin launch, and builds, then uses another
+  compatible release if one exists. A new deploy removes the revoked bytes.
+  Providers must also honor lifecycle revocation promptly.
 - The in-process rate limiter is per portal process. Horizontally scaled
   installations should replace it with a shared limiter.
 - A recipient URL may leak through the recipient's browser, extensions or
