@@ -10,6 +10,10 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 // protection:
 //   /api/forms/submit — HMAC token + per-IP rate limit + honeypot
 //   /api/analytics/events — site-bound HMAC + origin/rule validation + rate limits
+//   /api/extensions/public-token/* — stored site-origin allowlist + per-IP rate limit;
+//     this endpoint is intentionally called by customer sites, not the portal
+//   /api/extensions/token — server-to-server launch-code exchange authenticated
+//     with an Extension client secret and a short-lived single-use code
 //   /api/auth/session, /api/auth/dev-session — bootstrap auth; validate
 //     credentials themselves and have no cookie state yet to abuse
 //   /api/internal/deploy-worker — Cloud Tasks POSTs here with a Google
@@ -20,6 +24,7 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const CSRF_EXEMPT_PATHS = new Set([
   '/api/forms/submit',
   '/api/analytics/events',
+  '/api/extensions/token',
   '/api/auth/session',
   '/api/auth/dev-session',
   // MCP Streamable HTTP transport — Bearer-authed, not browser-driven.
@@ -36,6 +41,11 @@ const CSRF_EXEMPT_PATHS = new Set([
 // whole prefix here for clarity.
 const CSRF_EXEMPT_PREFIXES = [
   '/api/mcp/',
+  // Browser-facing Extension token minting performs its own exact site-origin
+  // validation before issuing a short-lived installation assertion. The
+  // generic portal-origin check must not reject that customer-site Origin
+  // before the route-specific check can run.
+  '/api/extensions/public-token/',
   // Every /api/internal/ route is called by a Google service (Cloud Tasks,
   // Cloud Scheduler) with an OIDC token and NO Origin header, and each one
   // verifies that token itself — the signature IS the auth. Exempting the

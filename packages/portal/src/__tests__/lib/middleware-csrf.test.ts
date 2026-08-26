@@ -87,6 +87,25 @@ describe('middleware CSRF — exempt paths', () => {
     expect(res.status).toBe(200);
   });
 
+  it('/api/extensions/public-token reaches its own site-origin check', async () => {
+    const res = await callMiddleware({
+      method: 'POST',
+      pathname: '/api/extensions/public-token/org/site/installation',
+      origin: 'https://customer.example',
+      contentType: 'application/json',
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('/api/extensions/token permits server-to-server launch-code exchange without Origin', async () => {
+    const res = await callMiddleware({
+      method: 'POST',
+      pathname: '/api/extensions/token',
+      contentType: 'application/json',
+    });
+    expect(res.status).toBe(200);
+  });
+
   it('/api/auth/session passes without Origin', async () => {
     const res = await callMiddleware({
       method: 'POST',
