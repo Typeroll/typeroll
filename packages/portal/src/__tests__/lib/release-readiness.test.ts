@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { CORE_VERSION, DATA_SCHEMA_VERSION, SITE_TEMPLATE_CAPABILITIES } from '@typeroll/shared';
+import {
+  CORE_VERSION,
+  DATA_SCHEMA_VERSION,
+  EXTENSION_HOST_PROTOCOL_VERSION,
+  EXTENSION_RUNTIME_VERSION,
+  SITE_TEMPLATE_CAPABILITIES,
+} from '@typeroll/shared';
 import { VERSION as MCP_VERSION } from '@typeroll/mcp-server/version';
 import { readinessReport } from '../../lib/readiness';
 import { releaseManifest } from '../../lib/release';
@@ -38,6 +44,8 @@ describe('release manifest', () => {
       data_schema_version: DATA_SCHEMA_VERSION,
       data_schema_readable: { min: 1, max: 1 },
       template_capabilities_version: SITE_TEMPLATE_CAPABILITIES.template_capabilities_version,
+      extension_host_protocol_version: EXTENSION_HOST_PROTOCOL_VERSION,
+      extension_runtime_version: EXTENSION_RUNTIME_VERSION,
       mcp_version: MCP_VERSION,
       source_sha: 'abc123',
       image_digest: 'sha256:deadbeef',
