@@ -13,6 +13,7 @@
 // redirects such users to /onboarding. Use isPendingSession() to check.
 
 import type { AstroCookies } from 'astro';
+import { readE2ESessionCookie } from './e2e-auth';
 
 export interface Session {
   userId: string;
@@ -56,6 +57,9 @@ export async function getSession(cookies: AstroCookies): Promise<Session | null>
   }
 
   if (raw === 'dev' && isDevAuthEnabled()) return DEV_USER;
+
+  const e2eSession = readE2ESessionCookie(raw);
+  if (e2eSession) return e2eSession;
 
   try {
     const { getAuth } = await import('firebase-admin/auth');

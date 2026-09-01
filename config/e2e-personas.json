@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "namespace": "typeroll-e2e",
+  "core_fixture": {
+    "owner_org_id": "e2e-core",
+    "site_id": "e2e-core-site",
+    "viewer_org_id": "e2e-viewer",
+    "outsider_org_id": "e2e-outsider"
+  },
+  "personas": [
+    {
+      "id": "owner",
+      "managed_by": "core",
+      "uid": "typeroll-e2e-owner",
+      "org_id": "e2e-core",
+      "member_role": "owner",
+      "site_permission": "admin",
+      "email_env": "TYPEROLL_E2E_OWNER_EMAIL",
+      "password_env": "TYPEROLL_E2E_OWNER_PASSWORD"
+    },
+    {
+      "id": "editor",
+      "managed_by": "core",
+      "uid": "typeroll-e2e-editor",
+      "org_id": "e2e-core",
+      "member_role": "editor",
+      "site_permission": "write",
+      "email_env": "TYPEROLL_E2E_EDITOR_EMAIL",
+      "password_env": "TYPEROLL_E2E_EDITOR_PASSWORD"
+    },
+    {
+      "id": "viewer",
+      "managed_by": "core",
+      "uid": "typeroll-e2e-viewer",
+      "org_id": "e2e-viewer",
+      "member_role": "owner",
+      "site_permission": "read",
+      "email_env": "TYPEROLL_E2E_VIEWER_EMAIL",
+      "password_env": "TYPEROLL_E2E_VIEWER_PASSWORD"
+    },
+    {
+      "id": "outsider",
+      "managed_by": "core",
+      "uid": "typeroll-e2e-outsider",
+      "org_id": "e2e-outsider",
+      "member_role": "owner",
+      "site_permission": "none",
+      "email_env": "TYPEROLL_E2E_OUTSIDER_EMAIL",
+      "password_env": "TYPEROLL_E2E_OUTSIDER_PASSWORD"
+    },
+    {
+      "id": "pending",
+      "managed_by": "core",
+      "uid": "typeroll-e2e-pending",
+      "org_id": null,
+      "member_role": null,
+      "site_permission": "pending",
+      "email_env": "TYPEROLL_E2E_PENDING_EMAIL",
+      "password_env": "TYPEROLL_E2E_PENDING_PASSWORD"
+    },
+    {
+      "id": "operator",
+      "managed_by": "cloud_control_plane",
+      "site_permission": "operator",
+      "email_env": "TYPEROLL_E2E_OPERATOR_EMAIL",
+      "password_env": "TYPEROLL_E2E_OPERATOR_PASSWORD"
+    },
+    {
+      "id": "app_entitled",
+      "managed_by": "cloud_apps",
+      "site_permission": "admin",
+      "entitlement": "active",
+      "email_env": "TYPEROLL_E2E_APP_ENTITLED_EMAIL",
+      "password_env": "TYPEROLL_E2E_APP_ENTITLED_PASSWORD"
+    },
+    {
+      "id": "app_unentitled",
+      "managed_by": "cloud_apps",
+      "site_permission": "admin",
+      "entitlement": "none",
+      "email_env": "TYPEROLL_E2E_APP_UNENTITLED_EMAIL",
+      "password_env": "TYPEROLL_E2E_APP_UNENTITLED_PASSWORD"
+    }
+  ]
+}

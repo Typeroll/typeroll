@@ -24,6 +24,7 @@ import { cpSync, existsSync, realpathSync, rmSync } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { seedLocalPersonas, verifyLocalPersonas } from '../../../../scripts/lib/e2e-personas.mjs';
 
 const PORTAL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SOURCE = resolve(PORTAL_DIR, '..', 'site-template', 'fixtures');
@@ -91,5 +92,7 @@ if (!tmpRoots.some((root) => resolvedDest.startsWith(root + sep))) {
 
 rmSync(resolvedDest, { recursive: true, force: true });
 cpSync(SOURCE, dest, { recursive: true, filter: (src) => !isRuntimeOnly(src) });
+seedLocalPersonas({ fixtureRoot: dest });
+verifyLocalPersonas({ fixtureRoot: dest });
 
 console.log(`[e2e-seed] seeded ${dest} from ${SOURCE}`);

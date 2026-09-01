@@ -1,4 +1,4 @@
-// The e2e dev server must never use the committed fixtures tree as its
+// The e2e server must never use the committed fixtures tree as its
 // datastore. It did until 2026-07: `npx playwright test` saved the home
 // page through the real editor, so the SEO transform rewrote a tracked
 // `pages/home.json`, dropped revision snapshots beside it, and created a
@@ -26,7 +26,7 @@ async function loadPlaywrightConfig() {
 }
 
 describe('e2e fixtures isolation', () => {
-  it('points the dev server at a fixtures dir outside the tracked tree', async () => {
+  it('points the test server at a fixtures dir outside the tracked tree', async () => {
     const config = await loadPlaywrightConfig();
     const dir = config.webServer?.env?.TYPEROLL_FIXTURES_DIR;
 
@@ -45,7 +45,7 @@ describe('e2e fixtures isolation', () => {
     // `webServer` before `globalSetup`, so a global-setup seed would land
     // after the server has already booted against an empty directory.
     expect(command).toContain(dir);
-    expect(command).toMatch(/seed-fixtures\.mjs.*&&.*npm run dev/);
+    expect(command).toMatch(/seed-fixtures\.mjs.*&&.*npm run build.*&&.*node \.\/dist\/server\/entry\.mjs/);
   });
 
   it('seed-fixtures.mjs produces a store the resolver accepts, without runtime state', () => {
