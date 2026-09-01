@@ -4,6 +4,7 @@
 // deployed separately — the portal shouldn't ship those pages, especially
 // to self-hosters.
 import '../styles/global.css';
+import RuntimeConfig from '../components/RuntimeConfig.astro';
 
 interface Props {
   title?: string;
@@ -19,6 +20,7 @@ const { title = 'Typeroll', description = 'Your website, free from WordPress. Fo
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <RuntimeConfig />
   </head>
   <body>
     <header class="marketing-nav">

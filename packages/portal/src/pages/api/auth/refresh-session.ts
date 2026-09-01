@@ -14,6 +14,7 @@
 import type { APIRoute } from 'astro';
 import { getSession, isDevAuthEnabled, isFirebaseConfigured, refreshSessionForUser } from '../../../lib/auth';
 import { json } from '../../../lib/access';
+import { firebaseApiKey } from '../../../lib/runtime-config-server';
 
 export const POST: APIRoute = async ({ cookies }) => {
   if (!isFirebaseConfigured()) {
@@ -27,7 +28,7 @@ export const POST: APIRoute = async ({ cookies }) => {
   const session = await getSession(cookies);
   if (!session) return json({ error: 'Not authenticated' }, 401);
 
-  const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY as string | undefined;
+  const apiKey = firebaseApiKey();
   if (!apiKey) {
     return json({ error: 'Firebase API key not configured' }, 500);
   }

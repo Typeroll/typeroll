@@ -6,6 +6,7 @@ import { defineMiddleware } from 'astro:middleware';
 import { MAIN_VERSION_ID } from '@typeroll/shared';
 import { enforceCsrf } from './lib/csrf';
 import { getSession, sessionNeedsRefresh, refreshSessionForUser } from './lib/auth';
+import { firebaseApiKey } from './lib/runtime-config-server';
 
 /**
  * The active site version (main vs a branch) travels in a cookie. Middleware
@@ -24,7 +25,13 @@ import { getSession, sessionNeedsRefresh, refreshSessionForUser } from './lib/au
 // (forms.typeroll.com) — same image as the portal, locked to the forms
 // surface. Everything else 404s so the portal admin/API never rides on
 // the public hostname.
-const FORMS_ROLE_ALLOWED = ['/api/forms/', '/api/analytics/', '/api/health'];
+const FORMS_ROLE_ALLOWED = [
+  '/api/forms/',
+  '/api/analytics/',
+  '/api/healthz',
+  '/api/readyz',
+  '/api/version',
+];
 
 const ONBOARDING_EXEMPT_PREFIXES = [
   '/onboarding',
@@ -90,7 +97,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // and strictly best-effort: a refresh failure must never break the page
     // view, the current cookie is still valid.
     if (session?.orgId && context.request.method === 'GET' && sessionNeedsRefresh(session)) {
-      const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY as string | undefined;
+      const apiKey = firebaseApiKey();
       if (apiKey) {
         try {
           await refreshSessionForUser(context.cookies, session.userId, apiKey);

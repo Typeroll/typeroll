@@ -17,6 +17,7 @@ import { slugifyOrgName, resolveUniqueSlug } from '../../../lib/org-slug';
 import { paths } from '@typeroll/shared';
 import type { Organization, Member } from '@typeroll/shared';
 import { isFirebaseConfigured, refreshSessionForUser } from '../../../lib/auth';
+import { firebaseApiKey } from '../../../lib/runtime-config-server';
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   // requireSession accepts pending sessions (orgId may be undefined).
@@ -99,7 +100,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     // Refresh the session cookie server-side so it carries the new org_id
     // claim immediately. If this fails (e.g. missing API key, network error),
     // fall back gracefully — the client's reauth() will handle it.
-    const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY as string | undefined;
+    const apiKey = firebaseApiKey();
     if (apiKey) {
       try {
         await refreshSessionForUser(cookies, userId, apiKey);

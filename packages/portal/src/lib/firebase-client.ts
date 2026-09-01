@@ -1,25 +1,24 @@
 // Firebase client SDK initialization. Used by the React components for auth
-// and (eventually) real-time content updates. Configuration is injected via
-// PUBLIC_* env vars so it ends up in the client bundle.
+// and (eventually) real-time content updates. Configuration is injected into
+// the HTML at request time so one immutable portal image can run in every
+// Cloud and self-hosted environment.
 
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
-
-const config = {
-  apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY,
-  authDomain: import.meta.env.PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.PUBLIC_FIREBASE_PROJECT_ID,
-  appId: import.meta.env.PUBLIC_FIREBASE_APP_ID,
-};
-
-export const firebaseConfigured = Boolean(config.apiKey && config.projectId);
+import { readPublicRuntimeConfig } from './runtime-config';
 
 let _auth: Auth | null = null;
 
 export function getFirebaseAuth(): Auth | null {
-  if (!firebaseConfigured) return null;
   if (_auth) return _auth;
+  const config = readPublicRuntimeConfig().firebase;
+  if (!config.apiKey || !config.projectId) return null;
   const app = getApps()[0] ?? initializeApp(config);
   _auth = getAuth(app);
   return _auth;
+}
+
+/** Test-only: drop the client singleton so a new runtime config is read. */
+export function _resetFirebaseAuthForTests(): void {
+  _auth = null;
 }

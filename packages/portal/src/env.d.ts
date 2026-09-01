@@ -19,7 +19,7 @@ interface ImportMetaEnv {
   readonly POSTMARK_API_KEY?: string;
   readonly TYPEROLL_FIXTURES_DIR?: string;
 
-  // Client-side (PUBLIC_ prefix exposes them to the browser)
+  // Public runtime configuration embedded in HTML by RuntimeConfig.astro.
   readonly PUBLIC_FIREBASE_API_KEY: string;
   readonly PUBLIC_FIREBASE_AUTH_DOMAIN: string;
   readonly PUBLIC_FIREBASE_PROJECT_ID: string;

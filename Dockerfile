@@ -48,20 +48,9 @@ COPY packages/site-template/ packages/site-template/
 # real source, not just the package.json stub.
 COPY packages/mcp-server/ packages/mcp-server/
 
-# Vite resolves `import.meta.env.PUBLIC_*` at build time and inlines the
-# values into the browser bundle. So Firebase client config has to be
-# present in the environment WHEN astro build runs — Cloud Run env vars
-# set at deploy time arrive too late. These are public values (apiKey
-# included; Firebase considers it safe to ship in HTML) so they go in
-# the image, not Secret Manager.
-ARG PUBLIC_FIREBASE_API_KEY
-ARG PUBLIC_FIREBASE_AUTH_DOMAIN
-ARG PUBLIC_FIREBASE_PROJECT_ID
-ARG PUBLIC_FIREBASE_APP_ID
-ENV PUBLIC_FIREBASE_API_KEY=$PUBLIC_FIREBASE_API_KEY \
-    PUBLIC_FIREBASE_AUTH_DOMAIN=$PUBLIC_FIREBASE_AUTH_DOMAIN \
-    PUBLIC_FIREBASE_PROJECT_ID=$PUBLIC_FIREBASE_PROJECT_ID \
-    PUBLIC_FIREBASE_APP_ID=$PUBLIC_FIREBASE_APP_ID
+# Public Firebase web configuration is read at request time and embedded in
+# the HTML by the portal. Keeping it out of the build is what makes this image
+# portable across installations and environments.
 
 WORKDIR /repo/packages/portal
 RUN npm run build
@@ -70,7 +59,9 @@ RUN npm run build
 FROM node:22-slim AS runtime
 WORKDIR /app
 
+ARG TYPEROLL_SOURCE_SHA=unknown
 ENV NODE_ENV=production
+ENV TYPEROLL_SOURCE_SHA=$TYPEROLL_SOURCE_SHA
 # Cloud Run injects PORT; default for local docker runs.
 ENV PORT=8080
 ENV HOST=0.0.0.0

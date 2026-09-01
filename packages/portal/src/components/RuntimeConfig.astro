@@ -1,0 +1,15 @@
+---
+import { RUNTIME_CONFIG_ELEMENT_ID } from '../lib/runtime-config';
+import {
+  publicRuntimeConfigFromEnv,
+  serializePublicRuntimeConfig,
+} from '../lib/runtime-config-server';
+
+const serialized = serializePublicRuntimeConfig(publicRuntimeConfigFromEnv());
+---
+<script
+  id={RUNTIME_CONFIG_ELEMENT_ID}
+  type="application/json"
+  is:inline
+  set:html={serialized}
+></script>

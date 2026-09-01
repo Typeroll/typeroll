@@ -26,3 +26,4 @@ export * from './redirect-patterns.js';
 export * from './diff-blocks.js';
 export * from './extensions.js';
 export * from './extensions-runtime.js';
+export * from './release.js';

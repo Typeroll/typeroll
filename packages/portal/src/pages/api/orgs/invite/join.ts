@@ -12,6 +12,7 @@ import { getStore } from '../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { Organization, Member } from '@typeroll/shared';
 import { isFirebaseConfigured, refreshSessionForUser } from '../../../../lib/auth';
+import { firebaseApiKey } from '../../../../lib/runtime-config-server';
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   const guard = await requireSession(cookies);
@@ -80,7 +81,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       return json({ ok: true, orgId, requiresReauth: true, claimWarning: true });
     }
 
-    const apiKey = import.meta.env.PUBLIC_FIREBASE_API_KEY as string | undefined;
+    const apiKey = firebaseApiKey();
     if (apiKey) {
       try {
         await refreshSessionForUser(cookies, session.userId, apiKey);
