@@ -42,15 +42,33 @@ function requirement(env: NodeJS.ProcessEnv, name: string, keys: string[], requi
 
 function firebaseAdminCheck(env: NodeJS.ProcessEnv, required: boolean): ReadinessCheck {
   const raw = env.FIREBASE_SERVICE_ACCOUNT?.trim();
-  if (!raw) return requirement(env, 'firebase_admin', ['FIREBASE_SERVICE_ACCOUNT'], required);
+  const projectId = env.FIREBASE_PROJECT_ID?.trim();
+  if (!raw) {
+    const check = requirement(env, 'firebase_admin', ['FIREBASE_PROJECT_ID'], required);
+    if (check.state !== 'pass') return check;
+    if (env.PUBLIC_FIREBASE_PROJECT_ID?.trim() && env.PUBLIC_FIREBASE_PROJECT_ID.trim() !== projectId) {
+      return {
+        name: 'firebase_admin',
+        state: 'fail',
+        required,
+        detail: 'FIREBASE_PROJECT_ID does not match PUBLIC_FIREBASE_PROJECT_ID',
+      };
+    }
+    return { ...check, detail: 'application_default_credentials' };
+  }
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const valid = Boolean(parsed.project_id && parsed.client_email && parsed.private_key);
+    const projectMatches = !projectId || parsed.project_id === projectId;
     return {
       name: 'firebase_admin',
-      state: valid ? 'pass' : 'fail',
+      state: valid && projectMatches ? 'pass' : 'fail',
       required,
-      detail: valid ? 'configured' : 'service account JSON lacks required fields',
+      detail: !valid
+        ? 'service account JSON lacks required fields'
+        : projectMatches
+          ? 'service_account_json'
+          : 'FIREBASE_PROJECT_ID does not match service account JSON',
     };
   } catch {
     return {

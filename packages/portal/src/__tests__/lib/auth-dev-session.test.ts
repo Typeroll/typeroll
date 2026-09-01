@@ -11,6 +11,7 @@ function cookiesWith(value?: string) {
 afterEach(() => {
   vi.unstubAllEnvs();
   delete process.env.FIREBASE_SERVICE_ACCOUNT;
+  delete process.env.FIREBASE_PROJECT_ID;
   vi.resetModules();
 });
 
@@ -18,6 +19,7 @@ describe('development authentication', () => {
   it('provides the built-in user outside production when Firebase is absent', async () => {
     vi.stubEnv('NODE_ENV', 'development');
     delete process.env.FIREBASE_SERVICE_ACCOUNT;
+    delete process.env.FIREBASE_PROJECT_ID;
 
     const { getSession, isDevAuthEnabled } = await import('../../lib/auth');
 
@@ -27,6 +29,15 @@ describe('development authentication', () => {
       email: 'dev@typeroll.local',
       orgId: 'default',
     });
+  });
+
+  it('disables development auth when the Cloud Run Firebase project is configured', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('FIREBASE_PROJECT_ID', 'customer-project');
+
+    const { isDevAuthEnabled } = await import('../../lib/auth');
+
+    expect(isDevAuthEnabled()).toBe(false);
   });
 
   it('fails closed in production when Firebase is absent', async () => {

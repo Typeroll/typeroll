@@ -12,6 +12,7 @@ import { getStore } from '../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { Organization, Member } from '@typeroll/shared';
 import { isFirebaseConfigured, refreshSessionForUser } from '../../../../lib/auth';
+import { getFirebaseAdminApp } from '../../../../lib/firebase-admin';
 import { firebaseApiKey } from '../../../../lib/runtime-config-server';
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -72,10 +73,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (isFirebaseConfigured()) {
     try {
       const { getAuth } = await import('firebase-admin/auth');
-      const { initializeApp, cert, getApps } = await import('firebase-admin/app');
-      const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
-      if (!getApps().length) initializeApp({ credential: cert(sa) });
-      await getAuth().setCustomUserClaims(session.userId, { org_id: orgId });
+      const app = await getFirebaseAdminApp();
+      await getAuth(app).setCustomUserClaims(session.userId, { org_id: orgId });
     } catch (e) {
       console.error('[orgs/invite/join] setCustomUserClaims failed:', e);
       return json({ ok: true, orgId, requiresReauth: true, claimWarning: true });

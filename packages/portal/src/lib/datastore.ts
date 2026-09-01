@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
 import { encodeNestedArrays, decodeNestedArrays } from './firestore-codec';
 
 export interface Filter {
@@ -233,14 +234,10 @@ function generateId(): string {
 class FirestoreStore implements ReadWriteStore {
   private dbPromise: Promise<import('firebase-admin/firestore').Firestore>;
 
-  constructor(serviceAccountJson: string) {
+  constructor() {
     this.dbPromise = (async () => {
-      const { initializeApp, cert, getApps } = await import('firebase-admin/app');
       const { getFirestore } = await import('firebase-admin/firestore');
-      const credentials = JSON.parse(serviceAccountJson);
-      const app =
-        getApps()[0] ??
-        initializeApp({ credential: cert(credentials), projectId: credentials.project_id });
+      const app = await getFirebaseAdminApp();
       const db = getFirestore(app);
       // Our doc shapes have lots of optional fields that arrive as
       // `undefined` from the route handlers. Firestore rejects those by
@@ -367,9 +364,8 @@ let cached: ReadWriteStore | null = null;
 
 export function getStore(): ReadWriteStore {
   if (cached) return cached;
-  const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (sa && sa.trim().startsWith('{')) {
-    cached = new FirestoreStore(sa);
+  if (isFirebaseAdminConfigured()) {
+    cached = new FirestoreStore();
   } else {
     const dir = process.env.TYPEROLL_FIXTURES_DIR || defaultFixturesDir();
     cached = new FixtureStore(dir);

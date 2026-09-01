@@ -4,7 +4,7 @@
 // /api/auth/session, which verifies it with firebase-admin and sets a signed
 // session cookie. Page routes read the cookie and load the current user.
 //
-// In non-production environments with no Firebase service account configured,
+// In non-production environments with no Firebase Admin credentials configured,
 // a `dev` cookie short-circuits to a default user so the portal is usable
 // without setup. Production always fails closed when Firebase is absent.
 //
@@ -14,6 +14,7 @@
 
 import type { AstroCookies } from 'astro';
 import { readE2ESessionCookie } from './e2e-auth';
+import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
 
 export interface Session {
   userId: string;
@@ -39,8 +40,7 @@ const DEV_USER: Session = {
 };
 
 export function isFirebaseConfigured(): boolean {
-  const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
-  return Boolean(sa && sa.trim().startsWith('{'));
+  return isFirebaseAdminConfigured();
 }
 
 export function isDevAuthEnabled(): boolean {
@@ -63,9 +63,7 @@ export async function getSession(cookies: AstroCookies): Promise<Session | null>
 
   try {
     const { getAuth } = await import('firebase-admin/auth');
-    const { initializeApp, cert, getApps } = await import('firebase-admin/app');
-    const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
-    if (!getApps().length) initializeApp({ credential: cert(sa) });
+    const app = await getFirebaseAdminApp();
 
     // checkRevoked=true needs a network round-trip to Firebase. A transient
     // failure there must NOT log the user out — fall back to the local
@@ -77,11 +75,11 @@ export async function getSession(cookies: AstroCookies): Promise<Session | null>
     // which re-validates against Firebase.
     let decoded;
     try {
-      decoded = await getAuth().verifySessionCookie(raw, true);
+      decoded = await getAuth(app).verifySessionCookie(raw, true);
     } catch (err) {
       const code = (err as { code?: string }).code ?? '';
       if (code === 'auth/session-cookie-revoked') return null;
-      decoded = await getAuth().verifySessionCookie(raw, false);
+      decoded = await getAuth(app).verifySessionCookie(raw, false);
     }
     const orgId = decoded.org_id as string | undefined;
     // Note: a missing org_id is a "pending session" — the user is authenticated
@@ -118,13 +116,11 @@ export async function setSessionFromIdToken(
   idToken: string
 ): Promise<Session> {
   const { getAuth } = await import('firebase-admin/auth');
-  const { initializeApp, cert, getApps } = await import('firebase-admin/app');
-  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
-  if (!getApps().length) initializeApp({ credential: cert(sa) });
+  const app = await getFirebaseAdminApp();
 
   const expiresIn = SESSION_LIFETIME_MS;
-  const sessionCookie = await getAuth().createSessionCookie(idToken, { expiresIn });
-  const decoded = await getAuth().verifyIdToken(idToken);
+  const sessionCookie = await getAuth(app).createSessionCookie(idToken, { expiresIn });
+  const decoded = await getAuth(app).verifyIdToken(idToken);
 
   cookies.set(SESSION_COOKIE, sessionCookie, {
     httpOnly: true,
@@ -168,15 +164,13 @@ export async function refreshSessionForUser(
   firebaseApiKey: string
 ): Promise<void> {
   const { getAuth } = await import('firebase-admin/auth');
-  const { initializeApp, cert, getApps } = await import('firebase-admin/app');
-  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
-  if (!getApps().length) initializeApp({ credential: cert(sa) });
+  const app = await getFirebaseAdminApp();
 
   // Step 1: create a signed custom token for this user. This is a short-lived
   // JWT signed by the service account; it carries no custom claims itself but
   // Firebase Auth uses the UID to look up the user's current claims when it
   // issues the real ID token.
-  const customToken = await getAuth().createCustomToken(userId);
+  const customToken = await getAuth(app).createCustomToken(userId);
 
   // Step 2: exchange the custom token for a full ID token via the Firebase
   // Identity Toolkit REST API. The returned ID token will include the latest
@@ -200,7 +194,7 @@ export async function refreshSessionForUser(
   // Step 3: create a long-lived session cookie from the fresh ID token and set
   // it on the response. This replaces the old cookie that lacked org_id.
   const expiresIn = SESSION_LIFETIME_MS;
-  const sessionCookie = await getAuth().createSessionCookie(idToken, { expiresIn });
+  const sessionCookie = await getAuth(app).createSessionCookie(idToken, { expiresIn });
 
   cookies.set(SESSION_COOKIE, sessionCookie, {
     httpOnly: true,

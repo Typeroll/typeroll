@@ -22,6 +22,7 @@
     "self-host:migrate": "node scripts/self-host-migrate.mjs",
     "self-host:backup": "node scripts/self-host-backup.mjs",
     "self-host:restore": "node scripts/self-host-restore.mjs",
+    "self-host:gcp:plan": "node scripts/self-host-gcp-plan.mjs",
     "e2e:personas": "node scripts/e2e-personas.mjs",
     "e2e:target:check": "node scripts/e2e-target-check.mjs",
     "test:infra": "node --test scripts/*.test.mjs",

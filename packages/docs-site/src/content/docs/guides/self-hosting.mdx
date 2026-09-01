@@ -6,8 +6,10 @@ description: Run Typeroll on your own infrastructure — requirements, environme
 import { Aside } from "@astrojs/starlight/components";
 
 Typeroll is open-source (MIT) and can be self-hosted. The supported reference
-profile runs the same immutable Core image as Typeroll Cloud, split into portal,
-Forms, and worker roles behind Caddy.
+profile runs entirely in a GCP/Firebase project you own. Cloud Run hosts the
+portal and Forms from the same immutable Core image used by Typeroll Cloud;
+Cloud Tasks and Cloud Scheduler invoke authenticated internal routes when work
+is ready. There is no VM or always-running worker.
 
 <Aside type="note">
   The hosted version at [app.typeroll.com](https://app.typeroll.com) adds
@@ -19,25 +21,31 @@ Forms, and worker roles behind Caddy.
 ## Architecture
 
 ```text
-                         ┌─ portal role ─┐
-Internet ── Caddy/TLS ───┤               ├── Firestore
-                         └─ Forms role ──┘       │
-                                                │ durable deploy queue
-                         worker role ───────────┘
-                              │
-                              ├── R2 media
-                              └── Cloudflare Pages static sites
+Internet ── Cloud Run portal ───── Firebase Auth + Firestore
+                 │                          │
+                 ├── Cloud Tasks ──────────┤ deploy-worker route
+                 ├── Cloud Scheduler ──────┤ publish-sweep route
+                 ├── R2 media
+                 └── Cloudflare Pages static sites
+
+Internet ── Cloud Run Forms ────── Firebase Auth + Firestore
 ```
 
-All three Core services use the exact image digest from `TYPEROLL_IMAGE`.
-The portal writes deploy requests to a Firestore queue. The worker leases them
-atomically and recovers expired leases after a process or host restart.
+Both Cloud Run services use the same verified Core release. The public image is
+copied by digest into the customer's Artifact Registry without rebuilding it.
+The portal enqueues durable Cloud Tasks; each task invokes
+`/api/internal/deploy-worker` with an OIDC token. Cloud Scheduler invokes
+`/api/internal/publish-sweep` with the same identity contract.
+
+The runtime uses Application Default Credentials from dedicated Cloud Run
+service accounts. Do not create or mount a Firebase service-account key for the
+reference profile.
 
 ## Prerequisites
 
 - **Development:** Node.js 22.12 or later
-- **Production host:** Linux amd64, Docker Engine, and Docker Compose
-- **Firebase project** with Firestore and Authentication enabled
+- **Production:** a GCP project with billing, `gcloud`, and `crane`
+- **Firebase:** Firestore Native mode, Authentication, and a Firebase Web App
 - **Cloudflare account** with R2 for media and Pages for static site output
 - Two public DNS names for the portal and Forms origins
 - **Optional:** Anthropic API key for AI chat
@@ -60,21 +68,62 @@ npm run dev:portal
 
 Open `http://localhost:4321`. You'll be logged in as a dev user with access to the sample content in `packages/portal/fixtures/`.
 
-## Install the reference profile
+## Plan the reference profile
 
-Clone a tagged Core release. Copy the environment contract, keep it readable
-only by the operator, and fill in every value:
+Clone a tagged Core release and copy the non-secret serverless configuration
+contract:
 
 ```bash
 git clone --branch core-v<VERSION> --depth 1 https://github.com/typeroll/typeroll
 cd typeroll
+cp config/self-host-gcp.example.json self-host.gcp.json
+```
+
+Fill in the customer project, region, Firebase Web App, public origins,
+resource names, Secret Manager resource names, and the release's published
+`@sha256:` image. The JSON contains references to secrets, never secret values.
+Generate an inspectable, non-mutating plan:
+
+```bash
+npm ci
+npm run self-host:gcp:plan -- --config self-host.gcp.json > self-host.gcp.plan.json
+```
+
+The plan fixes the supported topology before any remote mutation: required
+APIs, three least-privilege identities, Artifact Registry mirror, Cloud Run
+portal and Forms services, Cloud Tasks queue, Cloud Scheduler job, runtime
+configuration, and Secret Manager bindings. It also records that the artifact
+is copied by digest without a rebuild and explicitly forbids VM, managed
+instance group, reverse proxy, and long-running-worker resources.
+
+Every required Secret Manager resource must have an enabled `latest` version
+before deployment. Keep the actual secret values in your secret-management
+workflow; do not add them to `self-host.gcp.json` or Git.
+
+After deployment, verify both roles and the immutable release identity:
+
+```bash
+curl --fail https://cms.example.com/api/healthz
+curl --fail https://cms.example.com/api/readyz
+curl --fail https://cms.example.com/api/version
+curl --fail https://forms.example.com/api/readyz
+curl --fail https://forms.example.com/api/version
+```
+
+## Portable Compose fallback
+
+`compose.yaml` is retained for local evaluation and deployments outside GCP.
+It is not the production-supported profile and is not the permanent self-host
+E2E target. For this fallback only, copy the environment contract and keep it
+readable only by the operator:
+
+```bash
 cp .env.self-host.example .env
 chmod 600 .env
 ```
 
 `TYPEROLL_IMAGE` must use the release's published `@sha256:` digest, not a
-mutable tag. Set `TYPEROLL_IMAGE_DIGEST` to the same digest. This lets every
-role report the artifact it is actually expected to run through `/api/version`.
+mutable tag. Set `TYPEROLL_IMAGE_DIGEST` to the same digest.
 
 Generate each HMAC/encryption value independently:
 
@@ -89,7 +138,7 @@ single-line JSON in `EXTENSION_SIGNING_PRIVATE_JWK`:
 node --input-type=module -e "import { generateKeyPairSync } from 'node:crypto'; const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' }); console.log(JSON.stringify(privateKey.export({ format: 'jwk' })))"
 ```
 
-Validate the complete contract before Docker receives any credentials:
+Validate the complete portable contract before Docker receives credentials:
 
 ```bash
 npm ci
@@ -102,7 +151,7 @@ secret values. Keep `TYPEROLL_BACKUP_KEY` in a second, off-host secret store;
 losing both the host and this key makes encrypted backups unrecoverable. The
 Compose profile explicitly removes this key from every Core container.
 
-Bootstrap the data contract once before starting Core:
+Bootstrap the portable data contract once before starting Core:
 
 ```bash
 npm run self-host:bootstrap
@@ -120,7 +169,7 @@ docker compose ps
 ```
 
 Caddy requests TLS certificates after both DNS names point at the host and
-ports 80 and 443 are reachable. Verify every role:
+ports 80 and 443 are reachable. Verify every portable role:
 
 ```bash
 curl --fail https://cms.example.com/api/healthz
@@ -131,8 +180,9 @@ docker compose exec worker node -e "fetch('http://127.0.0.1:8080/api/readyz').th
 ```
 
 The Forms hostname exposes only Forms, Analytics, and diagnostic routes. The
-worker is not published through Caddy. Its Firestore queue is durable; do not
-replace `DEPLOY_QUEUE=firestore` with `in_process` in a production install.
+portable worker is not published through Caddy. Its Firestore queue is durable;
+do not replace `DEPLOY_QUEUE=firestore` with `in_process` in an internet-facing
+portable install.
 
 ## Build-cost accounting
 
@@ -170,25 +220,30 @@ invoice will be lower.
 1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com).
 2. Enable **Firestore** in Native mode and **Authentication → Email/Password**.
 3. Add a Firebase web app and copy its four public values to
-   `PUBLIC_FIREBASE_*` in `.env`.
-4. Create a service account under **Project Settings → Service Accounts** and
-   set `FIREBASE_SERVICE_ACCOUNT` to its complete JSON on one line. Keep the
-   escaped newlines in `private_key`.
-5. Ensure the service account can read the Authentication password hash
+   the serverless config.
+4. Attach the dedicated runtime service accounts from the generated plan to
+   the Cloud Run services. Core uses `FIREBASE_PROJECT_ID` and Application
+   Default Credentials; do not create a downloadable key.
+5. Ensure the backup identity can read the Authentication password hash
    configuration (`firebaseauth.configs.getHashConfig`) in addition to managing
    Auth users and Typeroll's Firestore data. Backups fail closed if password
    hashes or their hash configuration are unavailable.
 6. For each user, set an `org_id` custom claim with the modular Admin API:
 
 ```javascript
-import { cert, initializeApp } from "firebase-admin/app";
+import { applicationDefault, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
-initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
+initializeApp({
+  credential: applicationDefault(),
+  projectId: process.env.FIREBASE_PROJECT_ID,
+});
 await getAuth().setCustomUserClaims(uid, { org_id: "your-org-id" });
 ```
 
 All content is scoped under `organizations/{org_id}/` in Firestore.
+The portable Compose fallback instead accepts `FIREBASE_SERVICE_ACCOUNT` JSON
+because it does not have a GCP workload identity.
 
 ## Backups and disaster recovery
 
@@ -205,7 +260,8 @@ The manifest exposes only source identifiers, schema version, timestamps, and
 counts. Data, user records, object keys, and object bodies are encrypted with
 AES-256-GCM. Every file and the manifest are authenticated before restore.
 
-For a consistent manual backup, stop writers but leave infrastructure online:
+For a consistent manual backup of the portable Compose fallback, stop writers
+but leave its managed dependencies online:
 
 ```bash
 docker compose stop portal forms worker
@@ -248,10 +304,12 @@ test resources, start the pinned Core image against them, and run the browser
 and agent acceptance suite. A backup that has only been created is not yet a
 proven recovery path.
 
-## Upgrade, migration, and rollback
+## Portable upgrade, migration, and rollback
 
 Core reports both its release and readable data-schema range at `/api/version`.
-Use this maintenance sequence for every release:
+The command-level sequence below applies to the portable Compose fallback. The
+serverless profile instead promotes a new digest through the generated GCP plan
+and keeps the previous Cloud Run revision available for traffic rollback.
 
 1. Stop portal, Forms, and worker so the backup and migration have no writers.
 2. Create an encrypted backup and verify the copied backup directory.
@@ -291,16 +349,15 @@ against a schema outside the readable range reported by that image.
 
 ## Direct Docker smoke test
 
-Compose is the supported topology. For image development only, the container
-listens on port 8080:
+For image development only, the container listens on port 8080:
 
 ```bash
 docker build -t typeroll-core:dev .
 docker run --rm -p 8080:8080 --env-file .env typeroll-core:dev
 ```
 
-This single-container command does not provide the separate Forms origin or a
-durable worker and is not the production installation profile.
+This single-container command does not provide the separate Forms origin or
+durable jobs and is not the production installation profile.
 
 ## Hosted MCP connector
 

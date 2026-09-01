@@ -9,7 +9,8 @@ declare namespace App {
 
 interface ImportMetaEnv {
   // Server-side
-  readonly FIREBASE_SERVICE_ACCOUNT: string;
+  readonly FIREBASE_PROJECT_ID?: string;
+  readonly FIREBASE_SERVICE_ACCOUNT?: string;
   readonly ANTHROPIC_API_KEY: string;
   readonly R2_ACCOUNT_ID: string;
   readonly R2_ACCESS_KEY_ID: string;

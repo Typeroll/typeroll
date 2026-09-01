@@ -18,7 +18,8 @@ function secret(): string | null {
 
 export function isE2EAuthEnabled(): boolean {
   const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
-  return process.env.NODE_ENV === 'test' && !serviceAccount?.trim() && secret() !== null;
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  return process.env.NODE_ENV === 'test' && !serviceAccount?.trim() && !projectId?.trim() && secret() !== null;
 }
 
 export function matchesE2EAuthSecret(supplied: string | null): boolean {

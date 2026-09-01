@@ -11,6 +11,7 @@ vi.mock('firebase-admin/auth', () => ({
 vi.mock('firebase-admin/app', () => ({
   initializeApp: vi.fn(),
   cert: vi.fn(),
+  applicationDefault: vi.fn(),
   getApps: vi.fn(() => []),
 }));
 

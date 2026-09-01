@@ -63,6 +63,43 @@ describe('readiness report', () => {
     expect(report.checks.find((check) => check.name === 'deploy_queue')?.detail).toBe('cloud_tasks');
   });
 
+  it('accepts keyless Firebase Admin credentials for Cloud Run', async () => {
+    const env = productionPortalEnv();
+    delete env.FIREBASE_SERVICE_ACCOUNT;
+    env.FIREBASE_PROJECT_ID = 'test-project';
+
+    const report = await readinessReport(env, async () => undefined);
+
+    expect(report.ready).toBe(true);
+    expect(report.checks.find((check) => check.name === 'firebase_admin')?.detail)
+      .toBe('application_default_credentials');
+  });
+
+  it('rejects conflicting Firebase Admin project IDs', async () => {
+    const report = await readinessReport({
+      ...productionPortalEnv(),
+      FIREBASE_PROJECT_ID: 'different-project',
+    }, async () => undefined);
+
+    expect(report.ready).toBe(false);
+    expect(report.checks.find((check) => check.name === 'firebase_admin')).toMatchObject({
+      state: 'fail',
+      detail: 'FIREBASE_PROJECT_ID does not match service account JSON',
+    });
+  });
+
+  it('rejects a keyless runtime pointed at a different browser project', async () => {
+    const env = productionPortalEnv();
+    delete env.FIREBASE_SERVICE_ACCOUNT;
+    env.FIREBASE_PROJECT_ID = 'different-project';
+
+    const report = await readinessReport(env, async () => undefined);
+
+    expect(report.ready).toBe(false);
+    expect(report.checks.find((check) => check.name === 'firebase_admin')?.detail)
+      .toBe('FIREBASE_PROJECT_ID does not match PUBLIC_FIREBASE_PROJECT_ID');
+  });
+
   it('reports missing production requirements without exposing their values', async () => {
     const report = await readinessReport({ NODE_ENV: 'production' }, async () => undefined);
 

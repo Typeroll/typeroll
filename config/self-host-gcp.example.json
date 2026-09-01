@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "project_id": "your-gcp-project",
+  "region": "europe-west1",
+  "image": "ghcr.io/typeroll/typeroll@sha256:replace-with-release-digest",
+  "image_digest": "sha256:replace-with-release-digest",
+  "firebase": {
+    "api_key": "replace-with-firebase-web-api-key",
+    "auth_domain": "your-gcp-project.firebaseapp.com",
+    "app_id": "replace-with-firebase-web-app-id"
+  },
+  "origins": {
+    "portal": "https://cms.example.com",
+    "forms": "https://forms.example.com",
+    "sites_base_domain": "sites.example.com"
+  },
+  "resources": {
+    "artifact_repository": "typeroll-core",
+    "portal_service": "typeroll-portal",
+    "forms_service": "typeroll-forms",
+    "deploy_queue": "typeroll-deploy",
+    "publish_scheduler": "typeroll-publish-sweep",
+    "portal_service_account": "typeroll-portal",
+    "forms_service_account": "typeroll-forms",
+    "internal_invoker_service_account": "typeroll-internal-invoker"
+  },
+  "secrets": {
+    "FORMS_HMAC_SECRET": "typeroll-forms-hmac",
+    "PREVIEW_HMAC_SECRET": "typeroll-preview-hmac",
+    "INTEGRATIONS_SECRET_KEY": "typeroll-integrations-key",
+    "MCP_OAUTH_SIGNING_KEY": "typeroll-mcp-oauth-signing-key",
+    "EXTENSION_SIGNING_PRIVATE_JWK": "typeroll-extension-signing-jwk",
+    "R2_ACCOUNT_ID": "typeroll-r2-account-id",
+    "R2_ACCESS_KEY_ID": "typeroll-r2-access-key-id",
+    "R2_SECRET_ACCESS_KEY": "typeroll-r2-secret-access-key",
+    "R2_BUCKET": "typeroll-r2-bucket",
+    "R2_PUBLIC_BASE_URL": "typeroll-r2-public-base-url",
+    "CLOUDFLARE_ACCOUNT_ID": "typeroll-cloudflare-account-id",
+    "CLOUDFLARE_API_TOKEN": "typeroll-cloudflare-api-token"
+  }
+}

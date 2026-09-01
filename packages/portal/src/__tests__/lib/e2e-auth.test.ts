@@ -12,6 +12,7 @@ import {
 const previous = {
   nodeEnv: process.env.NODE_ENV,
   firebase: process.env.FIREBASE_SERVICE_ACCOUNT,
+  firebaseProjectId: process.env.FIREBASE_PROJECT_ID,
   secret: process.env.TYPEROLL_E2E_AUTH_SECRET,
 };
 
@@ -19,6 +20,7 @@ afterEach(() => {
   for (const [key, value] of [
     ['NODE_ENV', previous.nodeEnv],
     ['FIREBASE_SERVICE_ACCOUNT', previous.firebase],
+    ['FIREBASE_PROJECT_ID', previous.firebaseProjectId],
     ['TYPEROLL_E2E_AUTH_SECRET', previous.secret],
   ] as const) {
     if (value === undefined) delete process.env[key];
@@ -44,6 +46,7 @@ describe('local E2E authentication', () => {
   it('accepts only a signed known persona in an isolated non-Firebase process', () => {
     process.env.NODE_ENV = 'test';
     process.env.FIREBASE_SERVICE_ACCOUNT = '';
+    process.env.FIREBASE_PROJECT_ID = '';
     process.env.TYPEROLL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
     const cookie = createE2ESessionCookie('editor');
     expect(isE2EAuthEnabled()).toBe(true);
@@ -58,11 +61,15 @@ describe('local E2E authentication', () => {
     process.env.TYPEROLL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
     process.env.NODE_ENV = 'production';
     process.env.FIREBASE_SERVICE_ACCOUNT = '';
+    process.env.FIREBASE_PROJECT_ID = '';
     expect(isE2EAuthEnabled()).toBe(false);
     delete process.env.NODE_ENV;
     expect(isE2EAuthEnabled()).toBe(false);
     process.env.NODE_ENV = 'test';
     process.env.FIREBASE_SERVICE_ACCOUNT = '{"project_id":"real"}';
+    expect(isE2EAuthEnabled()).toBe(false);
+    process.env.FIREBASE_SERVICE_ACCOUNT = '';
+    process.env.FIREBASE_PROJECT_ID = 'real-project';
     expect(isE2EAuthEnabled()).toBe(false);
   });
 });
