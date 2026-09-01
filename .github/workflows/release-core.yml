@@ -21,6 +21,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Dependency security audit
+        run: npm run security:audit
       - name: Verify Core source
         run: |
           npm run typecheck

@@ -14,9 +14,9 @@
     "format:check": "prettier --check \"src/**/*.{md,mdx,astro}\""
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.39.2",
-    "astro": "^6.3.7",
-    "sharp": "^0.33.0"
+    "@astrojs/starlight": "^0.41.10",
+    "astro": "^7.2.10",
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "prettier": "^3.5.0",
