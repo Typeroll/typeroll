@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { checkE2ETarget, resolveE2ETarget } from './lib/e2e-target.mjs';
-import { reportError } from './lib/self-host-cli.mjs';
+import { reportError } from './lib/e2e-cli.mjs';
 
 try {
   const target = resolveE2ETarget();

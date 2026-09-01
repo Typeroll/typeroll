@@ -2,7 +2,7 @@
 
 import { parseArgs } from 'node:util';
 
-import { reportError, requireExactConfirmation } from './lib/self-host-cli.mjs';
+import { reportError, requireExactConfirmation } from './lib/e2e-cli.mjs';
 import {
   createFirebasePersonaServices,
   readPersonaManifest,
