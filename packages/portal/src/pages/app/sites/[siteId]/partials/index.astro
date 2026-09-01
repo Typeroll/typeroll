@@ -24,7 +24,7 @@ const freeBlocks = partials.filter((p) => p.kind === 'free').sort((a, b) => a.na
       <h1>Global blocks</h1>
       <p class="muted">Reusable HTML — header &amp; footer auto-render on every page, free blocks insert via <code class="inline-code">&lt;x-include name=&quot;…&quot; /&gt;</code>.</p>
     </div>
-    <form method="POST" action={`/api/sites/${siteId}/partials/create`} class="row">
+    <form method="POST" action={`/api/sites/${siteId}/partials/create`} class="row app-header__create-form">
       <input name="name" required placeholder="Block name" style="padding: 0.5rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md);" />
       <button type="submit" class="btn">+ New block</button>
     </form>

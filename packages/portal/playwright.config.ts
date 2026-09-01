@@ -85,6 +85,7 @@ export default defineConfig({
       // assumes.
       FIREBASE_SERVICE_ACCOUNT: '',
       ANTHROPIC_API_KEY: '',
+      FORMS_HMAC_SECRET: 'e2e-only-form-signing-secret-32-characters-minimum',
       DEPLOY_QUEUE: 'in_process',
       // Every write the suite provokes — page saves, revision snapshots,
       // created forms — lands in the throwaway copy seeded above instead

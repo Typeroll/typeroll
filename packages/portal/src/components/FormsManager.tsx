@@ -82,28 +82,34 @@ export default function FormsManager({ siteId, initialForms, canWrite }: Props) 
 
   return (
     <div className="stack">
-      {error && <p style={{ color: 'var(--danger, #b91c1c)' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
 
       {forms.length === 0 && <p className="muted">No forms yet.</p>}
 
       <div className="stack" style={{ gap: '0.5rem' }}>
         {forms.map((f) => (
-          <div key={f.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div key={f.id} className="card forms-list__item">
             <Inbox size={18} aria-hidden />
-            <a href={`/app/sites/${siteId}/forms/${f.id}`} style={{ fontWeight: 600 }}>{f.name}</a>
-            <span className="muted text-sm">{f.id}</span>
-            <span className="text-sm muted" style={{ marginLeft: 'auto' }}>
-              {f.submission_count} submission{f.submission_count === 1 ? '' : 's'}
-              {` · ${f.field_count} field${f.field_count === 1 ? '' : 's'}`}
-              {f.step_count > 1 && ` · ${f.step_count} steps`}
-              {f.action_count > 0 && (
-                <span title={`${f.action_count} email action(s)`} style={{ marginLeft: '0.4rem' }}>
-                  <Mail size={14} aria-hidden style={{ verticalAlign: 'middle' }} /> {f.action_count}
+            <div className="forms-list__body">
+              <div className="forms-list__heading">
+                <a className="forms-list__name" href={`/app/sites/${siteId}/forms/${f.id}`}>{f.name}</a>
+                <span className="muted text-sm forms-list__id">{f.id}</span>
+              </div>
+              <span className="text-sm muted forms-list__meta">
+                <span>
+                  {f.submission_count} submission{f.submission_count === 1 ? '' : 's'}
+                  {` · ${f.field_count} field${f.field_count === 1 ? '' : 's'}`}
+                  {f.step_count > 1 && ` · ${f.step_count} steps`}
                 </span>
-              )}
-            </span>
+                {f.action_count > 0 && (
+                  <span className="forms-list__email-count" title={`${f.action_count} email action(s)`}>
+                    <Mail size={14} aria-hidden /> {f.action_count}
+                  </span>
+                )}
+              </span>
+            </div>
             {canWrite && (
-              <button className="btn-icon" title="Delete form" onClick={() => deleteForm(f.id)}>
+              <button type="button" className="btn-icon" aria-label={`Delete form ${f.name}`} onClick={() => deleteForm(f.id)}>
                 <Trash2 size={16} aria-hidden />
               </button>
             )}
@@ -125,7 +131,7 @@ export default function FormsManager({ siteId, initialForms, canWrite }: Props) 
             </label>
             <div className="row" style={{ gap: '0.5rem' }}>
               <button type="submit" className="btn btn-primary" disabled={busy}>Create</button>
-              <button type="button" className="btn" onClick={() => { setCreating(false); setError(null); }}>Cancel</button>
+              <button type="button" className="btn btn--secondary" onClick={() => { setCreating(false); setError(null); }}>Cancel</button>
             </div>
           </form>
         ) : (

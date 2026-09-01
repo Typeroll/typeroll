@@ -7,17 +7,29 @@ Typeroll supports the same Extension contract in Typeroll Cloud and in a
 self-hosted open-source installation. The deployment boundary depends on the
 product you are building, not on where Typeroll itself runs.
 
-| Reference | Use it for | Frontend | Application backend | Typeroll Forms |
-| --- | --- | --- | --- | --- |
-| Public SaaS, native | A reusable SaaS product with UI that should feel native to the site | Versioned bundle copied to the customer domain during site deployment | Provider account | Optional |
-| Private bespoke, native | A customer-specific calculator, quiz, lead magnet, or quote generator | Versioned bundle copied to the customer domain during site deployment | None required | Canonical lead storage and actions |
-| Public SaaS, embedded | A reusable portal or workflow that needs a stronger isolation boundary | Provider-hosted sandboxed iframe | Provider account | Optional through the host bridge |
+| Reference               | Use it for                                                             | Frontend                                                              | Application backend | Typeroll Forms                     |
+| ----------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------- | ---------------------------------- |
+| Public SaaS, native     | A reusable SaaS product with UI that should feel native to the site    | Versioned bundle copied to the customer domain during site deployment | Provider account    | Optional                           |
+| Private bespoke, native | A customer-specific calculator, quiz, lead magnet, or quote generator  | Versioned bundle copied to the customer domain during site deployment | None required       | Canonical lead storage and actions |
+| Public SaaS, embedded   | A reusable portal or workflow that needs a stronger isolation boundary | Provider-hosted sandboxed iframe                                      | Provider account    | Optional through the host bridge   |
 
 The public [Extension starter repository](https://github.com/Typeroll/extension-starter)
 contains the full native contract: bundled blocks, Forms bindings, opaque
 recipient links, direct provider API calls, issuer pairing, lifecycle events,
 and admin SSO. Keep each production Extension in its own provider-owned
 repository even when several services share one tools domain and cloud project.
+
+## Live production references
+
+- [Architecture gallery](https://autopilot-extension-demo.sites.typeroll.com/)
+- [Public SaaS as a native recipient-quote block](https://autopilot-extension-demo.sites.typeroll.com/quote/?quote=demo-customer-token)
+- [Private bespoke lead tool as a visual block](https://autopilot-extension-demo.sites.typeroll.com/bespoke-lead/)
+- [The same bespoke component from HTML mode](https://autopilot-extension-demo.sites.typeroll.com/bespoke-lead-html/)
+- [Public SaaS as a sandboxed iframe portal](https://autopilot-extension-demo.sites.typeroll.com/portal/?portal=demo-portal-token-2026)
+
+The opaque values in these URLs belong only to the public demo records. A real
+provider must generate high-entropy, scoped, expiring, and revocable recipient
+tokens.
 
 ## Public SaaS with a native block
 
@@ -87,4 +99,3 @@ application functions.
 Next, see [Frontend and recipient links](/extensions/frontend/) for the runtime
 API and [Provider backend and admin SSO](/extensions/backend/) for signed
 requests, pairing, and delegated admin access.
-

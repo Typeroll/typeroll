@@ -31,7 +31,7 @@ const activeVersion = await store.getDoc<SiteVersion>(paths.version(orgId, siteI
       <h1>📄 Pages</h1>
       <p class="muted">System collection · routes to your site root</p>
     </div>
-    <form method="POST" action={`/api/sites/${siteId}/pages/create`} class="row">
+    <form method="POST" action={`/api/sites/${siteId}/pages/create`} class="row app-header__create-form">
       <input name="title" required placeholder="Page title" style="padding: 0.5rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md);" />
       <button type="submit" class="btn">+ New page</button>
     </form>
@@ -39,8 +39,8 @@ const activeVersion = await store.getDoc<SiteVersion>(paths.version(orgId, siteI
 
   <CollectionTabs base={base} active="posts" itemCount={pages.length} fieldCount={PAGES_SYSTEM_SCHEMA.length} system />
 
-  <div class="card" style="padding: 0;">
-    <table style="width: 100%; border-collapse: collapse;">
+  <div class="card pages-table-card" style="padding: 0;">
+    <table class="pages-table">
       <thead>
         <tr style="text-align: left; background: var(--color-bg);">
           <th style="padding: 0.75rem 1rem;">Title</th>
@@ -52,21 +52,21 @@ const activeVersion = await store.getDoc<SiteVersion>(paths.version(orgId, siteI
       </thead>
       <tbody>
         {pages.map(page => (
-          <tr style="border-top: 1px solid var(--color-border);">
-            <td style="padding: 0.75rem 1rem;">
+          <tr class="page-row">
+            <td class="page-row__title">
               <a href={`/app/sites/${siteId}/pages/${page.id}`}>{page.title || '(untitled)'}</a>
             </td>
-            <td style="padding: 0.75rem 1rem;" class="muted">
+            <td class="muted page-row__url" data-label="URL">
               <a href={pagePreviewUrl(siteId, page)} target="_blank" rel="noopener" title="Open preview in new tab" style="color: inherit;">
                 /{page.slug}
               </a>
             </td>
-            <td style="padding: 0.75rem 1rem;" class="muted">{page.content_mode}</td>
-            <td style="padding: 0.75rem 1rem;">{page.status}</td>
-            <td style="padding: 0.75rem 1rem;" class="muted text-sm">
+            <td class="muted" data-label="Mode">{page.content_mode}</td>
+            <td data-label="Status">{page.status}</td>
+            <td class="muted text-sm" data-label="Updated">
               {page.date_updated ? new Date(page.date_updated).toLocaleDateString() : '—'}
             </td>
-            <td style="padding: 0.75rem 1rem;" class="page-row__actions">
+            <td class="page-row__actions">
               <a href={pagePreviewUrl(siteId, page)} target="_blank" rel="noopener" title="Preview (includes drafts)" class="page-row__action">
                 <Icon name="Eye" size={16} />
               </a>
@@ -79,7 +79,7 @@ const activeVersion = await store.getDoc<SiteVersion>(paths.version(orgId, siteI
           </tr>
         ))}
         {pages.length === 0 && (
-          <tr>
+          <tr class="pages-table__empty">
             <td colspan="6" style="padding: 2rem; text-align: center;" class="muted">No pages yet.</td>
           </tr>
         )}
@@ -88,6 +88,12 @@ const activeVersion = await store.getDoc<SiteVersion>(paths.version(orgId, siteI
   </div>
 
   <style>
+    .pages-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .page-row { border-top: 1px solid var(--color-border); }
+    .page-row > td { padding: 0.75rem 1rem; }
     .page-row__actions {
       text-align: right;
       white-space: nowrap;
@@ -105,5 +111,51 @@ const activeVersion = await store.getDoc<SiteVersion>(paths.version(orgId, siteI
       text-decoration: none;
     }
     .page-row__action + .page-row__action { margin-left: 0.15rem; }
+
+    @media (max-width: 640px) {
+      .pages-table-card {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+      .pages-table,
+      .pages-table tbody { display: block; }
+      .pages-table thead { display: none; }
+      .page-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.45rem 0.75rem;
+        margin-bottom: 0.75rem;
+        padding: 0.875rem 1rem;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-surface);
+        box-shadow: var(--shadow-sm);
+      }
+      .page-row > td { padding: 0; }
+      .page-row__title {
+        grid-column: 1;
+        min-width: 0;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .page-row__actions { grid-column: 2; grid-row: 1; }
+      .page-row > td[data-label] {
+        display: grid;
+        grid-template-columns: 4.5rem minmax(0, 1fr);
+        grid-column: 1 / -1;
+        gap: 0.5rem;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .page-row > td[data-label]::before {
+        content: attr(data-label);
+        color: var(--color-text-muted);
+        font-size: 0.8125rem;
+        font-weight: 500;
+      }
+      .pages-table__empty { display: block; }
+      .pages-table__empty td { display: block; }
+    }
   </style>
 </AppLayout>

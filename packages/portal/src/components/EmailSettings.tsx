@@ -183,7 +183,7 @@ export default function EmailSettings({ siteId }: { siteId: string }) {
 
       <div className="card stack">
         <h2 style={{ fontSize: '1rem' }}>Send a test email</h2>
-        <div className="row" style={{ gap: '0.5rem', alignItems: 'stretch' }}>
+        <div className="row email-test-row" style={{ gap: '0.5rem', alignItems: 'stretch' }}>
           <input style={{ flex: 1 }} value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder="you@example.com" />
           <button type="button" className="btn" onClick={sendTest} disabled={testing || !testTo.trim()}>{testing ? 'Sending…' : 'Send test'}</button>
         </div>

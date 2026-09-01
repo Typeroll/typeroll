@@ -62,6 +62,12 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  function selectTab(next: Tab) {
+    setTab(next);
+    setMsg(null);
+    setError(null);
+  }
+
   async function save() {
     setSaving(true);
     setError(null);
@@ -159,18 +165,18 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
   }
 
   return (
-    <div className="stack">
-      <div className="row" style={{ gap: '0.25rem', borderBottom: '1px solid var(--sb-border, #e5e5e5)', marginBottom: '1rem' }}>
-        <TabButton active={tab === 'overview'} onClick={() => setTab('overview')}>Overview</TabButton>
-        {canManageActions && <TabButton active={tab === 'email'} onClick={() => setTab('email')}>Actions{form.actions.length > 0 ? ` (${form.actions.length})` : ''}</TabButton>}
-        <TabButton active={tab === 'submissions'} onClick={() => setTab('submissions')}>Submissions</TabButton>
+    <div className="stack form-editor">
+      <div className="form-editor__tabs" role="tablist" aria-label="Form sections">
+        <TabButton tabId="overview" active={tab === 'overview'} onClick={() => selectTab('overview')}>Overview</TabButton>
+        {canManageActions && <TabButton tabId="email" active={tab === 'email'} onClick={() => selectTab('email')}>Actions{form.actions.length > 0 ? ` (${form.actions.length})` : ''}</TabButton>}
+        <TabButton tabId="submissions" active={tab === 'submissions'} onClick={() => selectTab('submissions')}>Submissions</TabButton>
       </div>
 
-      {error && <p style={{ color: 'var(--danger, #b91c1c)' }}>{error}</p>}
-      {msg && <p style={{ color: 'var(--success, #15803d)' }}>{msg}</p>}
+      {error && <p style={{ color: 'var(--color-danger)' }}>{error}</p>}
+      {msg && <p style={{ color: 'var(--color-success)' }}>{msg}</p>}
 
       {tab === 'overview' && (
-        <div className="stack">
+        <div className="stack" role="tabpanel" id="form-panel-overview" aria-labelledby="form-tab-overview">
           <div className="card stack">
             <label className="field"><span>Name</span>
               <input value={form.name} disabled={!canWrite} onChange={(e) => patch('name', e.target.value)} />
@@ -241,7 +247,7 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
       )}
 
       {tab === 'email' && canManageActions && (
-        <div className="stack">
+        <div className="stack" role="tabpanel" id="form-panel-email" aria-labelledby="form-tab-email">
           {!hasConnector && (
             <div className="card" style={{ borderColor: 'var(--warning, #d97706)' }}>
               <p className="text-sm">
@@ -359,21 +365,25 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
         </div>
       )}
 
-      {tab === 'submissions' && <Submissions siteId={siteId} formId={formId} canWrite={canWrite} showWebhookStatus={canManageActions} />}
+      {tab === 'submissions' && (
+        <div role="tabpanel" id="form-panel-submissions" aria-labelledby="form-tab-submissions">
+          <Submissions siteId={siteId} formId={formId} canWrite={canWrite} showWebhookStatus={canManageActions} />
+        </div>
+      )}
     </div>
   );
 }
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function TabButton({ tabId, active, onClick, children }: { tabId: Tab; active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
+      type="button"
+      role="tab"
+      id={`form-tab-${tabId}`}
+      aria-controls={`form-panel-${tabId}`}
+      aria-selected={active}
       onClick={onClick}
-      className="btn"
-      style={{
-        border: 'none', borderRadius: 0, background: 'none',
-        borderBottom: active ? '2px solid var(--accent, #2563eb)' : '2px solid transparent',
-        fontWeight: active ? 600 : 400,
-      }}
+      className="form-editor__tab"
     >{children}</button>
   );
 }
@@ -439,41 +449,68 @@ function Submissions({ siteId, formId, canWrite, showWebhookStatus }: { siteId: 
   }
 
   if (loading && rows.length === 0) return <p className="muted">Loading…</p>;
-  if (error) return <p style={{ color: 'var(--danger, #b91c1c)' }}>{error}</p>;
+  if (error) return <p style={{ color: 'var(--color-danger)' }}>{error}</p>;
   if (rows.length === 0) return <p className="muted">No submissions yet.</p>;
 
   return (
-    <div className="stack" style={{ gap: '0.5rem' }}>
-      {rows.map((s) => (
-        <div key={s.id} className="card stack" style={{ gap: '0.5rem' }}>
-          <div className="row" style={{ alignItems: 'center' }}>
-            <button className="btn" style={{ border: 'none', background: 'none', padding: 0, marginRight: 'auto' }}
-              onClick={() => setOpen(open === s.id ? null : s.id)}>
-              {new Date(s.created_at).toLocaleString()} {s.status === 'partial' && <em className="muted">(partial)</em>}
-            </button>
-            {showWebhookStatus && s.webhook_deliveries?.map((delivery, index) => (
-              <span key={`${delivery.webhook_id}-${index}`} className="text-sm" title={delivery.last_error ?? `HTTP ${delivery.response_status ?? 'pending'}`}
-                style={{ color: delivery.status === 'delivered' ? 'var(--success, #15803d)' : delivery.status === 'failed' ? 'var(--danger, #b91c1c)' : 'var(--muted, #6b7280)' }}>
-                webhook: {delivery.status}
-              </span>
-            ))}
-            {canWrite && <button className="btn-icon" title="Delete" onClick={() => remove(s.id)}><Trash2 size={16} /></button>}
-          </div>
-          {open === s.id && (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <tbody>
-                {Object.entries(s.data ?? {}).map(([k, v]) => (
-                  <tr key={k}>
-                    <th align="left" style={{ padding: '4px 12px 4px 0', verticalAlign: 'top' }}>{k}</th>
-                    <td style={{ padding: '4px 0' }}>{Array.isArray(v) ? v.join(', ') : String(v ?? '')}</td>
-                  </tr>
+    <div className="stack-sm">
+      {rows.map((s) => {
+        const entries = Object.entries(s.data ?? {});
+        const preview = entries.slice(0, 2).map(([, value]) => formatSubmissionValue(value)).filter(Boolean).join(' · ');
+        const detailsId = `submission-details-${s.id}`;
+        const expanded = open === s.id;
+        return (
+          <div key={s.id} className="card submission-card">
+            <div className="submission-card__header">
+              <button
+                type="button"
+                className="submission-card__toggle"
+                aria-expanded={expanded}
+                aria-controls={detailsId}
+                onClick={() => setOpen(expanded ? null : s.id)}
+              >
+                <ChevronDown className="submission-card__toggle-icon" size={18} aria-hidden />
+                <span className="submission-card__summary">
+                  <span className="submission-card__label">Submission {s.status === 'partial' && <em className="muted">(partial)</em>}</span>
+                  <time className="submission-card__time" dateTime={s.created_at}>{new Date(s.created_at).toLocaleString()}</time>
+                  {preview && <span className="submission-card__preview">{preview}</span>}
+                </span>
+              </button>
+              <div className="submission-card__actions">
+                {showWebhookStatus && s.webhook_deliveries?.map((delivery, index) => (
+                  <span
+                    key={`${delivery.webhook_id}-${index}`}
+                    className={`text-sm submission-card__status submission-card__status--${delivery.status ?? 'pending'}`}
+                    title={delivery.last_error ?? `HTTP ${delivery.response_status ?? 'pending'}`}
+                  >
+                    webhook: {delivery.status}
+                  </span>
                 ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      ))}
+                {canWrite && (
+                  <button type="button" className="btn-icon" aria-label="Delete submission" onClick={() => remove(s.id)}>
+                    <Trash2 size={16} aria-hidden />
+                  </button>
+                )}
+              </div>
+            </div>
+            {expanded && (
+              <dl className="submission-data" id={detailsId}>
+                {entries.map(([key, value]) => (
+                  <div className="submission-data__row" key={key}>
+                    <dt>{key}</dt>
+                    <dd>{formatSubmissionValue(value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </div>
+        );
+      })}
       {cursor && <button className="btn" onClick={() => load(cursor)} disabled={loading}>{loading ? 'Loading…' : 'Load more'}</button>}
     </div>
   );
+}
+
+function formatSubmissionValue(value: unknown): string {
+  return Array.isArray(value) ? value.join(', ') : String(value ?? '');
 }

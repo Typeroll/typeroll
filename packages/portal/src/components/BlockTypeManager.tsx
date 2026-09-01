@@ -25,8 +25,8 @@ export default function BlockTypeManager({ siteId }: { siteId: string }) {
   const selected = creating ? null : (types.find((t) => t.id === selectedId) ?? null);
 
   return (
-    <div style={shell}>
-      <aside style={sidebar}>
+    <div className="block-type-manager" style={shell}>
+      <aside className="block-type-manager__sidebar" style={sidebar}>
         <button
           type="button"
           onClick={() => { setCreating(true); setSelectedId(null); }}
@@ -57,7 +57,7 @@ export default function BlockTypeManager({ siteId }: { siteId: string }) {
         </ul>
       </aside>
 
-      <main style={main}>
+      <main className="block-type-manager__main" style={main}>
         {creating || selected !== null ? (
           <BlockTypeEditor
             siteId={siteId}
@@ -74,19 +74,20 @@ export default function BlockTypeManager({ siteId }: { siteId: string }) {
             }}
           />
         ) : (
-          <div style={emptyState}>
+          <div className="block-type-manager__empty" style={emptyState}>
             <Box size={32} />
             <h2 style={{ margin: '1rem 0 0' }}>Egna block</h2>
             <p style={muted}>Create reusable blocks for this site.</p>
           </div>
         )}
       </main>
+      <style>{managerStyles}</style>
     </div>
   );
 }
 
 const shell: React.CSSProperties = {
-  display: 'grid', gridTemplateColumns: '260px 1fr', minHeight: 'calc(100vh - 64px)',
+  display: 'grid', minHeight: 'calc(100vh - 64px)',
   background: '#0f0f12', color: '#e4e4e7',
 };
 const sidebar: React.CSSProperties = {
@@ -119,3 +120,22 @@ const emptyState: React.CSSProperties = {
   textAlign: 'center', padding: '5rem 2rem', color: '#a1a1aa',
 };
 const muted: React.CSSProperties = { color: '#a1a1aa', fontSize: '.9rem' };
+
+const managerStyles = `
+.block-type-manager {
+  grid-template-columns: 260px minmax(0, 1fr);
+  min-width: 0;
+}
+.block-type-manager__main { min-width: 0; }
+@media (max-width: 640px) {
+  .block-type-manager {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0 !important;
+  }
+  .block-type-manager__sidebar {
+    border-right: 0 !important;
+    border-bottom: 1px solid #2a2a30;
+  }
+  .block-type-manager__empty { padding: 2.5rem 1rem !important; }
+}
+`;
