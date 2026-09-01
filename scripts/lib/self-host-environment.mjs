@@ -21,6 +21,7 @@ export const SELF_HOST_REQUIRED_KEYS = [
   'PREVIEW_HMAC_SECRET',
   'INTEGRATIONS_SECRET_KEY',
   'MCP_OAUTH_SIGNING_KEY',
+  'TYPEROLL_BACKUP_KEY',
   'EXTENSION_SIGNING_PRIVATE_JWK',
 ];
 
@@ -33,6 +34,7 @@ const SECRET_KEYS = new Set([
   'PREVIEW_HMAC_SECRET',
   'INTEGRATIONS_SECRET_KEY',
   'MCP_OAUTH_SIGNING_KEY',
+  'TYPEROLL_BACKUP_KEY',
   'EXTENSION_SIGNING_PRIVATE_JWK',
   'ANTHROPIC_API_KEY',
 ]);
@@ -116,6 +118,13 @@ export function validateSelfHostEnvironment(env) {
   for (const key of ['FORMS_HMAC_SECRET', 'PREVIEW_HMAC_SECRET', 'INTEGRATIONS_SECRET_KEY', 'MCP_OAUTH_SIGNING_KEY']) {
     const input = value(env, key);
     if (input && input.length < 32) errors.push(`${key}: must be at least 32 characters`);
+  }
+
+  const backupKey = value(env, 'TYPEROLL_BACKUP_KEY');
+  if (backupKey) {
+    if (!/^[A-Za-z0-9_-]{43}$/.test(backupKey) || Buffer.from(backupKey, 'base64url').length !== 32) {
+      errors.push('TYPEROLL_BACKUP_KEY: must be a base64url-encoded 32-byte key');
+    }
   }
 
   const extensionJwk = parseJson(value(env, 'EXTENSION_SIGNING_PRIVATE_JWK'));

@@ -7,6 +7,7 @@ dist/
 .astro/
 .output/
 build/
+backups/
 
 # Logs
 *.log

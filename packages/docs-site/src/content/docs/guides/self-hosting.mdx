@@ -98,7 +98,20 @@ docker compose config --quiet
 ```
 
 The check prints field names and validation failures only. It never prints
-secret values. Start the installation when both commands pass:
+secret values. Keep `TYPEROLL_BACKUP_KEY` in a second, off-host secret store;
+losing both the host and this key makes encrypted backups unrecoverable. The
+Compose profile explicitly removes this key from every Core container.
+
+Bootstrap the data contract once before starting Core:
+
+```bash
+npm run self-host:bootstrap
+```
+
+Bootstrap is idempotent. It refuses a project or bucket containing data unless
+you pass `--adopt`; use that flag only after verifying all existing resources
+belong to this Typeroll installation. Start the installation when the checks
+and bootstrap pass:
 
 ```bash
 docker compose pull
@@ -161,7 +174,11 @@ invoice will be lower.
 4. Create a service account under **Project Settings → Service Accounts** and
    set `FIREBASE_SERVICE_ACCOUNT` to its complete JSON on one line. Keep the
    escaped newlines in `private_key`.
-5. For each user, set an `org_id` custom claim with the modular Admin API:
+5. Ensure the service account can read the Authentication password hash
+   configuration (`firebaseauth.configs.getHashConfig`) in addition to managing
+   Auth users and Typeroll's Firestore data. Backups fail closed if password
+   hashes or their hash configuration are unavailable.
+6. For each user, set an `org_id` custom claim with the modular Admin API:
 
 ```javascript
 import { cert, initializeApp } from "firebase-admin/app";
@@ -172,6 +189,105 @@ await getAuth().setCustomUserClaims(uid, { org_id: "your-org-id" });
 ```
 
 All content is scoped under `organizations/{org_id}/` in Firestore.
+
+## Backups and disaster recovery
+
+Typeroll's backup is one encrypted, authenticated snapshot of all three state
+planes:
+
+- Firestore documents, subcollections, native value types, and installation
+  schema metadata
+- Firebase Authentication users, password hashes, password hash configuration,
+  provider identities, custom claims, and MFA metadata
+- R2 objects and their relevant HTTP metadata
+
+The manifest exposes only source identifiers, schema version, timestamps, and
+counts. Data, user records, object keys, and object bodies are encrypted with
+AES-256-GCM. Every file and the manifest are authenticated before restore.
+
+For a consistent manual backup, stop writers but leave infrastructure online:
+
+```bash
+docker compose stop portal forms worker
+npm run self-host:backup -- --output /srv/typeroll-backups/2026-09-01
+npm run self-host:restore -- --backup /srv/typeroll-backups/2026-09-01
+docker compose start portal forms worker
+```
+
+The restore command is verify-only unless `--apply` is present. Copy the
+completed backup directory off-host and test that copy with the verify-only
+command. Never copy a directory containing `INCOMPLETE`.
+
+Restore to a completely empty Firebase project and R2 bucket with exact target
+and backup confirmations:
+
+```bash
+npm run self-host:restore -- \
+  --backup /srv/typeroll-backups/2026-09-01 \
+  --apply --empty-target \
+  --confirm-project my-disaster-recovery-project \
+  --confirm-bucket my-disaster-recovery-bucket \
+  --confirm-backup <backup-id> \
+  --allow-target-mismatch
+```
+
+`--allow-target-mismatch` is required only when the backup source identifiers
+differ from an intentional disaster-recovery target. The restore writes the
+target identifiers into the recovered installation metadata.
+
+To replace an existing installation, stop every Core role and substitute
+`--replace` for `--empty-target`. Replace mode deletes Firestore documents,
+Auth users, and R2 objects that are absent from the backup. It verifies the
+entire backup first, requires all exact confirmations, and verifies the final
+record sets, but it cannot make three external services transactional. Keep the
+roles stopped until the command succeeds; if it fails, correct the cause and
+rerun the same idempotent restore.
+
+At least quarterly, restore the latest backup into isolated Firebase and R2
+test resources, start the pinned Core image against them, and run the browser
+and agent acceptance suite. A backup that has only been created is not yet a
+proven recovery path.
+
+## Upgrade, migration, and rollback
+
+Core reports both its release and readable data-schema range at `/api/version`.
+Use this maintenance sequence for every release:
+
+1. Stop portal, Forms, and worker so the backup and migration have no writers.
+2. Create an encrypted backup and verify the copied backup directory.
+3. Check out the new signed/tagged Core release, run `npm ci`,
+   `npm run self-host:check`, and `docker compose config --quiet`.
+4. Inspect the migration without changing data:
+
+   ```bash
+   npm run self-host:migrate
+   ```
+
+5. If migrations are pending, apply them only with the verified pre-migration
+   backup and exact project confirmation:
+
+   ```bash
+   npm run self-host:migrate -- \
+     --apply \
+     --backup /srv/typeroll-backups/2026-09-01 \
+     --confirm-project my-firebase-project
+   ```
+
+6. Set `TYPEROLL_IMAGE` and `TYPEROLL_IMAGE_DIGEST` to the new published digest,
+   then run `docker compose pull`, `docker compose up -d`, and the health,
+   readiness, and version checks above.
+7. Run a site edit/deploy smoke test, one Forms submission, the browser visual
+   suite, and the agent suite before ending the maintenance window.
+
+Migration steps are ordered, idempotent, protected by a renewable installation
+lock, and update schema metadata after each successful step. They will not run
+without a matching verified backup.
+
+If the new image fails while the previous image can read the resulting schema,
+pin the previous digest again and restart Compose. If the previous image cannot
+read the new schema, leave all roles stopped and restore the pre-migration
+backup with `--replace`, then start the previous digest. Never run an image
+against a schema outside the readable range reported by that image.
 
 ## Direct Docker smoke test
 

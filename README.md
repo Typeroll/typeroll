@@ -66,7 +66,9 @@ The supported Linux amd64 reference profile is defined in `compose.yaml`. It
 runs portal, Forms, and worker roles from one immutable Core image digest,
 uses Firestore as a durable deploy queue, and terminates TLS with Caddy. Start
 by copying `.env.self-host.example` to `.env` and running
-`npm run self-host:check`.
+`npm run self-host:check`. The reference operations contract also includes
+idempotent bootstrap/migrations and encrypted Firestore, Firebase Auth, and R2
+backup/restore commands; see the self-hosting guide before starting production.
 
 ## Cloud and premium products
 

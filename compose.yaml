@@ -17,6 +17,7 @@ services:
     <<: *core-service
     environment:
       NODE_ENV: production
+      TYPEROLL_BACKUP_KEY: ""
       SERVICE_ROLE: portal
       DEPLOY_QUEUE: firestore
       PORTAL_PUBLIC_URL: https://${TYPEROLL_PORTAL_HOST:?Set TYPEROLL_PORTAL_HOST in .env}
@@ -28,6 +29,7 @@ services:
     <<: *core-service
     environment:
       NODE_ENV: production
+      TYPEROLL_BACKUP_KEY: ""
       SERVICE_ROLE: forms
       DEPLOY_QUEUE: firestore
       PORTAL_PUBLIC_URL: https://${TYPEROLL_PORTAL_HOST:?Set TYPEROLL_PORTAL_HOST in .env}
@@ -39,6 +41,7 @@ services:
     <<: *core-service
     environment:
       NODE_ENV: production
+      TYPEROLL_BACKUP_KEY: ""
       SERVICE_ROLE: worker
       DEPLOY_QUEUE: firestore
       PORTAL_PUBLIC_URL: https://${TYPEROLL_PORTAL_HOST:?Set TYPEROLL_PORTAL_HOST in .env}

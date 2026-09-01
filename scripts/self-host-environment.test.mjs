@@ -39,6 +39,7 @@ function validEnvironment() {
     PREVIEW_HMAC_SECRET: 'p'.repeat(32),
     INTEGRATIONS_SECRET_KEY: 'i'.repeat(32),
     MCP_OAUTH_SIGNING_KEY: 'm'.repeat(32),
+    TYPEROLL_BACKUP_KEY: Buffer.alloc(32, 7).toString('base64url'),
     EXTENSION_SIGNING_PRIVATE_JWK: JSON.stringify({
       kty: 'EC', crv: 'P-256', x: 'test-x', y: 'test-y', d: 'test-d',
     }),
@@ -74,12 +75,14 @@ test('rejects mutable images, mismatched Firebase projects, and short secrets', 
   env.TYPEROLL_IMAGE = 'ghcr.io/typeroll/typeroll:latest';
   env.PUBLIC_FIREBASE_PROJECT_ID = 'another-project';
   env.FORMS_HMAC_SECRET = 'short';
+  env.TYPEROLL_BACKUP_KEY = 'not-valid-base64url';
   const result = validateSelfHostEnvironment(env);
 
   assert.equal(result.ok, false);
   assert.ok(result.errors.some((error) => error.includes('immutable @sha256')));
   assert.ok(result.errors.some((error) => error.includes('must match FIREBASE_SERVICE_ACCOUNT.project_id')));
   assert.ok(result.errors.some((error) => error.includes('FORMS_HMAC_SECRET')));
+  assert.ok(result.errors.some((error) => error.includes('TYPEROLL_BACKUP_KEY')));
 });
 
 test('the example file documents every required contract key', () => {
@@ -94,6 +97,7 @@ test('the Compose profile uses one immutable image for every Core role', () => {
   assert.match(compose, /SERVICE_ROLE: forms/);
   assert.match(compose, /SERVICE_ROLE: worker/);
   assert.match(compose, /DEPLOY_QUEUE: firestore/);
+  assert.equal(compose.match(/TYPEROLL_BACKUP_KEY: ""/g)?.length, 3);
   assert.doesNotMatch(compose, /:latest\b/);
 });
 
