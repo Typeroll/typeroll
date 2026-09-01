@@ -1,7 +1,7 @@
 /**
  * Deploy job queue abstraction.
  *
- * Two implementations:
+ * Three implementations:
  *   - InProcessQueue    runs the deploy inline as a fire-and-forget Promise.
  *                       Used for local dev (no infra to set up, instant
  *                       feedback). Caveat: not safe on Cloud Run without
@@ -12,6 +12,10 @@
  *                       that keeps the Cloud Run instance alive for the
  *                       duration. Retries, backoff, and visibility are all
  *                       provided by the queue.
+ *   - FirestoreDeployQueue persists an accepted task in Firestore. A
+ *                       separate worker role leases and executes tasks with
+ *                       retry and crash recovery. This is the supported
+ *                       self-host production backend.
  *
  * Choice is per-process via DEPLOY_QUEUE env var. Default in_process.
  *
@@ -25,6 +29,7 @@ import { getStore } from '../datastore';
 import { computeDeployCost, getRateCard, PhaseTimer } from './cost';
 import { acquireBuildSlot } from './concurrency';
 import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
+import { createHash } from 'node:crypto';
 
 export interface EnqueueArgs {
   jobId: string;
@@ -44,10 +49,29 @@ export interface EnqueueArgs {
 }
 
 export interface DeployQueue {
-  /** Hand off the deploy. Returns once the task is durably accepted (not
-   *  once it's done). For in-process this is immediate; for Cloud Tasks
-   *  this is the Cloud Tasks createTask call. */
+  /** Hand off the deploy. Returns once the task is accepted (not once it is
+   *  done). Firestore and Cloud Tasks are durable; in-process is explicitly
+   *  a development-only best-effort backend. */
   enqueue(args: EnqueueArgs): Promise<void>;
+}
+
+export interface FirestoreDeployQueueItem extends EnqueueArgs {
+  status: 'queued' | 'leased';
+  created_at: string;
+  available_at: string;
+  attempts: number;
+  lease_owner?: string;
+  lease_expires_at?: string;
+  last_error?: string;
+}
+
+export const FIRESTORE_DEPLOY_QUEUE_PATH = 'typeroll_system/deploy_queue/items';
+
+export function firestoreDeployQueueItemId(args: Pick<EnqueueArgs, 'jobId' | 'orgId' | 'siteId'>): string {
+  return createHash('sha256')
+    .update(`${args.orgId}\0${args.siteId}\0${args.jobId}`)
+    .digest('hex')
+    .slice(0, 40);
 }
 
 // ─── In-process (local dev) ─────────────────────────────────────────────
@@ -69,6 +93,32 @@ export class InProcessQueue implements DeployQueue {
 }
 
 /**
+ * Durable queue for the supported self-host profile.
+ *
+ * The portal only writes a queue document and returns. A separate worker role
+ * leases and executes it, so restarting the portal cannot lose an accepted
+ * deploy. The queue lives in the same Firestore project as the CMS data and
+ * therefore needs no second infrastructure service.
+ */
+export class FirestoreDeployQueue implements DeployQueue {
+  constructor(private store = getStore()) {}
+
+  async enqueue(args: EnqueueArgs): Promise<void> {
+    const now = new Date().toISOString();
+    await this.store.createDocIfMissing(
+      `${FIRESTORE_DEPLOY_QUEUE_PATH}/${firestoreDeployQueueItemId(args)}`,
+      {
+        ...args,
+        status: 'queued',
+        created_at: now,
+        available_at: now,
+        attempts: 0,
+      } satisfies FirestoreDeployQueueItem,
+    );
+  }
+}
+
+/**
  * `deferred` means no build slot was free within the wait budget — the caller
  * should hand the task back so it is redelivered, NOT mark the job failed. A
  * congested platform is not a broken build, and showing the user a failure
@@ -82,7 +132,7 @@ async function runDeployInline(
 ): Promise<DeployRunOutcome> {
   // One build per process at a time (DEPLOY_MAX_CONCURRENT, default 1). Taken
   // here rather than in either caller for the same reason cost accounting
-  // lives here: this is the ONE execution path both queue backends share, so
+  // lives here: this is the ONE execution path every queue backend shares, so
   // a new backend inherits the gate instead of having to remember it.
   const slot = await acquireBuildSlot(opts.slotWaitMs ?? Infinity);
   if (!slot) return 'deferred';
@@ -104,8 +154,8 @@ async function runDeployBody(args: EnqueueArgs): Promise<void> {
     try { await store.updateDoc(jobPath, patch); } catch { /* best effort */ }
   };
 
-  // Cost accounting. This function is the ONE execution path both queue
-  // backends use (in-process and the Cloud Tasks worker), so metering here
+  // Cost accounting. This function is the ONE execution path every queue
+  // backend uses, so metering here
   // covers every deploy without either caller having to remember to.
   //
   // The clock starts before runDeploy and stops in the finally: a failed
@@ -165,10 +215,9 @@ async function runDeployBody(args: EnqueueArgs): Promise<void> {
 /**
  * Exported so the worker route can reuse the same execution path.
  *
- * The worker passes a finite `slotWaitMs` because Cloud Tasks WILL redeliver a
+ * Durable workers pass a finite `slotWaitMs` because they can redeliver a
  * handed-back task; the in-process backend passes none (Infinity) because it
- * is fire-and-forget with no redelivery, so giving up there would silently
- * drop a deploy the user asked for.
+ * has no redelivery, so giving up there would silently drop a requested deploy.
  */
 export async function executeDeployJob(
   args: EnqueueArgs,
@@ -177,7 +226,7 @@ export async function executeDeployJob(
   return runDeployInline(args, opts);
 }
 
-// ─── Cloud Tasks (staging / prod) ───────────────────────────────────────
+// ─── Cloud Tasks (Typeroll Cloud) ───────────────────────────────────────
 
 export class CloudTasksQueue implements DeployQueue {
   constructor(
@@ -233,8 +282,12 @@ export function getDeployQueue(): DeployQueue {
       );
     }
     cached = new CloudTasksQueue(queue, url, sa);
-  } else {
+  } else if (mode === 'firestore') {
+    cached = new FirestoreDeployQueue();
+  } else if (mode === 'in_process') {
     cached = new InProcessQueue();
+  } else {
+    throw new Error(`Unsupported DEPLOY_QUEUE mode: ${mode}`);
   }
   return cached;
 }

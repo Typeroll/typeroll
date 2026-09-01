@@ -7,6 +7,7 @@ import { MAIN_VERSION_ID } from '@typeroll/shared';
 import { enforceCsrf } from './lib/csrf';
 import { getSession, sessionNeedsRefresh, refreshSessionForUser } from './lib/auth';
 import { firebaseApiKey } from './lib/runtime-config-server';
+import { serviceRole } from './lib/release';
 
 /**
  * The active site version (main vs a branch) travels in a cookie. Middleware
@@ -33,6 +34,13 @@ const FORMS_ROLE_ALLOWED = [
   '/api/version',
 ];
 
+const WORKER_ROLE_ALLOWED = [
+  '/api/internal/',
+  '/api/healthz',
+  '/api/readyz',
+  '/api/version',
+];
+
 const ONBOARDING_EXEMPT_PREFIXES = [
   '/onboarding',
   '/login',
@@ -52,6 +60,7 @@ let sweepTimerStarted = false;
 function ensureDevPublishSweep(): void {
   if (sweepTimerStarted) return;
   sweepTimerStarted = true;
+  if (serviceRole() !== 'portal') return;
   const queueMode = process.env.DEPLOY_QUEUE ?? 'in_process';
   if (queueMode !== 'in_process') return;
   setInterval(() => {
@@ -66,10 +75,21 @@ function ensureDevPublishSweep(): void {
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
-  ensureDevPublishSweep();
-  if (process.env.SERVICE_ROLE === 'forms') {
+  const role = serviceRole();
+  if (role === 'worker' && process.env.DEPLOY_QUEUE === 'firestore') {
+    const { ensureFirestoreWorkerLoop } = await import('./lib/deploy/firestore-worker');
+    ensureFirestoreWorkerLoop();
+  } else {
+    ensureDevPublishSweep();
+  }
+  if (role === 'forms') {
     const path = new URL(context.request.url).pathname;
     if (!FORMS_ROLE_ALLOWED.some((p) => path.startsWith(p))) {
+      return new Response('Not found', { status: 404 });
+    }
+  } else if (role === 'worker') {
+    const path = new URL(context.request.url).pathname;
+    if (!WORKER_ROLE_ALLOWED.some((p) => path.startsWith(p))) {
       return new Response('Not found', { status: 404 });
     }
   }

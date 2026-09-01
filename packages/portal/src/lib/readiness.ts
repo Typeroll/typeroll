@@ -68,7 +68,13 @@ function queueCheck(env: NodeJS.ProcessEnv, role: ServiceRole): ReadinessCheck {
   }
   const mode = (env.DEPLOY_QUEUE ?? 'in_process').trim().toLowerCase();
   if (mode === 'in_process') {
+    if (role === 'worker') {
+      return { name: 'deploy_queue', state: 'fail', required: true, detail: 'worker role requires firestore or cloud_tasks' };
+    }
     return { name: 'deploy_queue', state: 'pass', required: true, detail: 'in_process' };
+  }
+  if (mode === 'firestore') {
+    return { name: 'deploy_queue', state: 'pass', required: true, detail: 'firestore' };
   }
   if (mode !== 'cloud_tasks') {
     return { name: 'deploy_queue', state: 'fail', required: true, detail: `unsupported mode ${mode}` };

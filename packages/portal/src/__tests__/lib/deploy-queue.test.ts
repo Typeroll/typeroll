@@ -28,6 +28,18 @@ describe('getDeployQueue', () => {
     expect(() => mod.getDeployQueue()).toThrow(/CLOUD_TASKS_QUEUE/);
   });
 
+  it('selects the durable Firestore queue for self-hosted production', async () => {
+    process.env.DEPLOY_QUEUE = 'firestore';
+    const { FirestoreDeployQueue, getDeployQueue } = await import('../../lib/deploy/queue');
+    expect(getDeployQueue()).toBeInstanceOf(FirestoreDeployQueue);
+  });
+
+  it('rejects an unsupported queue mode instead of silently running in-process', async () => {
+    process.env.DEPLOY_QUEUE = 'typo';
+    const { getDeployQueue } = await import('../../lib/deploy/queue');
+    expect(() => getDeployQueue()).toThrow(/Unsupported DEPLOY_QUEUE mode/);
+  });
+
   it('in-process queue marks the job failed when runDeploy throws', async () => {
     makeTmpFixtures();
     await resetDatastore();

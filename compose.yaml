@@ -1,0 +1,76 @@
+name: typeroll
+
+x-core-service: &core-service
+  image: ${TYPEROLL_IMAGE:?Set TYPEROLL_IMAGE to a published image digest in .env}
+  platform: linux/amd64
+  env_file:
+    - .env
+  init: true
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  networks:
+    - typeroll
+
+services:
+  portal:
+    <<: *core-service
+    environment:
+      NODE_ENV: production
+      SERVICE_ROLE: portal
+      DEPLOY_QUEUE: firestore
+      PORTAL_PUBLIC_URL: https://${TYPEROLL_PORTAL_HOST:?Set TYPEROLL_PORTAL_HOST in .env}
+      FORMS_PUBLIC_URL: https://${TYPEROLL_FORMS_HOST:?Set TYPEROLL_FORMS_HOST in .env}
+    expose:
+      - "8080"
+
+  forms:
+    <<: *core-service
+    environment:
+      NODE_ENV: production
+      SERVICE_ROLE: forms
+      DEPLOY_QUEUE: firestore
+      PORTAL_PUBLIC_URL: https://${TYPEROLL_PORTAL_HOST:?Set TYPEROLL_PORTAL_HOST in .env}
+      FORMS_PUBLIC_URL: https://${TYPEROLL_FORMS_HOST:?Set TYPEROLL_FORMS_HOST in .env}
+    expose:
+      - "8080"
+
+  worker:
+    <<: *core-service
+    environment:
+      NODE_ENV: production
+      SERVICE_ROLE: worker
+      DEPLOY_QUEUE: firestore
+      PORTAL_PUBLIC_URL: https://${TYPEROLL_PORTAL_HOST:?Set TYPEROLL_PORTAL_HOST in .env}
+      FORMS_PUBLIC_URL: https://${TYPEROLL_FORMS_HOST:?Set TYPEROLL_FORMS_HOST in .env}
+    stop_grace_period: 2m
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    depends_on:
+      portal:
+        condition: service_healthy
+      forms:
+        condition: service_healthy
+    environment:
+      TYPEROLL_PORTAL_HOST: ${TYPEROLL_PORTAL_HOST:?Set TYPEROLL_PORTAL_HOST in .env}
+      TYPEROLL_FORMS_HOST: ${TYPEROLL_FORMS_HOST:?Set TYPEROLL_FORMS_HOST in .env}
+      TYPEROLL_ACME_EMAIL: ${TYPEROLL_ACME_EMAIL:?Set TYPEROLL_ACME_EMAIL in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./self-host/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - typeroll
+
+networks:
+  typeroll:
+
+volumes:
+  caddy_data:
+  caddy_config:

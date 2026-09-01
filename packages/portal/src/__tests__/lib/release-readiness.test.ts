@@ -103,4 +103,37 @@ describe('readiness report', () => {
     expect(report.checks.some((check) => check.name === 'firebase_web')).toBe(false);
     expect(report.checks.find((check) => check.name === 'deploy_queue')?.state).toBe('disabled');
   });
+
+  it('accepts the Firestore queue for the self-hosted portal and worker roles', async () => {
+    const portal = await readinessReport({
+      ...productionPortalEnv(),
+      DEPLOY_QUEUE: 'firestore',
+    }, async () => undefined);
+    const worker = await readinessReport({
+      NODE_ENV: 'production',
+      SERVICE_ROLE: 'worker',
+      FIREBASE_SERVICE_ACCOUNT: firebaseAdmin,
+      DEPLOY_QUEUE: 'firestore',
+    }, async () => undefined);
+
+    expect(portal.ready).toBe(true);
+    expect(portal.checks.find((check) => check.name === 'deploy_queue')?.detail).toBe('firestore');
+    expect(worker.ready).toBe(true);
+    expect(worker.role).toBe('worker');
+  });
+
+  it('rejects an in-process queue for the worker role', async () => {
+    const report = await readinessReport({
+      NODE_ENV: 'production',
+      SERVICE_ROLE: 'worker',
+      FIREBASE_SERVICE_ACCOUNT: firebaseAdmin,
+      DEPLOY_QUEUE: 'in_process',
+    }, async () => undefined);
+
+    expect(report.ready).toBe(false);
+    expect(report.checks.find((check) => check.name === 'deploy_queue')).toMatchObject({
+      state: 'fail',
+      required: true,
+    });
+  });
 });

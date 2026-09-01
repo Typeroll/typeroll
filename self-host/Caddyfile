@@ -1,0 +1,24 @@
+{
+	email {$TYPEROLL_ACME_EMAIL}
+	admin off
+}
+
+{$TYPEROLL_PORTAL_HOST} {
+	encode zstd gzip
+	reverse_proxy portal:8080
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}
+
+{$TYPEROLL_FORMS_HOST} {
+	encode zstd gzip
+	reverse_proxy forms:8080
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}

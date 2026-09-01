@@ -5,30 +5,42 @@ description: Run Typeroll on your own infrastructure — requirements, environme
 
 import { Aside } from "@astrojs/starlight/components";
 
-Typeroll is open-source (MIT) and can be self-hosted. This guide covers running the portal on your own infrastructure.
+Typeroll is open-source (MIT) and can be self-hosted. The supported reference
+profile runs the same immutable Core image as Typeroll Cloud, split into portal,
+Forms, and worker roles behind Caddy.
 
 <Aside type="note">
-  The hosted version at [app.typeroll.com](https://app.typeroll.com) includes
-  the WordPress migration workflow, managed deployments, email delivery for
-  forms, and support. Self-hosting gives you full control but requires more
-  setup.
+  The hosted version at [app.typeroll.com](https://app.typeroll.com) adds
+  managed infrastructure, migration execution, operations, and support. The
+  CMS, migration workflow, Forms, renderer, public API, and Extension protocol
+  are part of open-source Core.
 </Aside>
 
 ## Architecture
 
+```text
+                         ┌─ portal role ─┐
+Internet ── Caddy/TLS ───┤               ├── Firestore
+                         └─ Forms role ──┘       │
+                                                │ durable deploy queue
+                         worker role ───────────┘
+                              │
+                              ├── R2 media
+                              └── Cloudflare Pages static sites
 ```
-Portal (Astro SSR)   ──────▶  Firestore (content)
-      │                         R2 / S3 (media CDN)
-      ▼                         Cloudflare Pages (static site output)
-  Static site builder (Astro SSG)
-```
+
+All three Core services use the exact image digest from `TYPEROLL_IMAGE`.
+The portal writes deploy requests to a Firestore queue. The worker leases them
+atomically and recovers expired leases after a process or host restart.
 
 ## Prerequisites
 
-- **Node.js 22+**
+- **Development:** Node.js 22.12 or later
+- **Production host:** Linux amd64, Docker Engine, and Docker Compose
 - **Firebase project** with Firestore and Authentication enabled
-- **Cloudflare account** with R2 for media storage and Pages for site output
-- **Anthropic API key** for the AI chat feature
+- **Cloudflare account** with R2 for media and Pages for static site output
+- Two public DNS names for the portal and Forms origins
+- **Optional:** Anthropic API key for AI chat
 
 ## Quick start (local dev)
 
@@ -37,7 +49,7 @@ Clone the repository and install dependencies:
 ```bash
 git clone https://github.com/typeroll/typeroll
 cd typeroll
-npm install
+npm ci
 ```
 
 The portal includes a **fixtures backend** — a JSON file store that replaces Firestore for local development. No Firebase configuration needed to run locally:
@@ -48,58 +60,66 @@ npm run dev:portal
 
 Open `http://localhost:4321`. You'll be logged in as a dev user with access to the sample content in `packages/portal/fixtures/`.
 
-## Environment variables
+## Install the reference profile
 
-For production, create a `.env` file in `packages/portal/`:
+Clone a tagged Core release. Copy the environment contract, keep it readable
+only by the operator, and fill in every value:
 
-```ini
-# Firebase (required for auth in production)
-FIREBASE_SERVICE_ACCOUNT={"type":"service_account","project_id":"..."}
-
-# AI chat
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Media CDN (Cloudflare R2 or any S3-compatible store)
-R2_ACCOUNT_ID=...
-R2_ACCESS_KEY_ID=...
-R2_SECRET_ACCESS_KEY=...
-R2_BUCKET=typeroll-media
-R2_PUBLIC_BASE_URL=https://cdn.yourdomain.com
-
-# Static site output (Cloudflare Pages)
-CLOUDFLARE_ACCOUNT_ID=...
-CLOUDFLARE_API_TOKEN=...
-CLOUDFLARE_PAGES_PROJECT=your-pages-project
-
-# Security
-FORMS_HMAC_SECRET=a-random-64-char-hex-string
-# Optional dedicated Forms origin; otherwise PORTAL_PUBLIC_URL is used
-FORMS_PUBLIC_URL=https://forms.yourdomain.com
-PREVIEW_HMAC_SECRET=another-random-64-char-hex-string
-# Signs the OAuth JWTs the hosted-MCP endpoint at /api/mcp issues.
-# Required to enable Claude Desktop / claude.ai's Add Custom Connector
-# flow against your self-hosted portal.
-MCP_OAUTH_SIGNING_KEY=yet-another-random-64-char-hex-string
-
-# Extensions: ES256 issuer key
-EXTENSION_SIGNING_PRIVATE_JWK={"kty":"EC","crv":"P-256","d":"...","x":"...","y":"..."}
-
-# Portal URL (used in deploy output and preview links)
-PORTAL_PUBLIC_URL=https://app.yourdomain.com
-SITES_BASE_DOMAIN=sites.yourdomain.com
-
-# Deploy queue (in_process for single-server; cloud_tasks for production scale)
-DEPLOY_QUEUE=in_process
-
-# Build-cost accounting (optional — see below). Defaults suit a
-# request-billed container with 1 vCPU / 1 GiB.
-DEPLOY_COST_CURRENCY=USD
-DEPLOY_COST_CPU_PER_VCPU_SECOND=0.000024
-DEPLOY_COST_MEM_PER_GIB_SECOND=0.0000025
-DEPLOY_COST_PER_REQUEST=0.0000004
-DEPLOY_COST_VCPU=1
-DEPLOY_COST_MEMORY_GIB=1
+```bash
+git clone --branch core-v<VERSION> --depth 1 https://github.com/typeroll/typeroll
+cd typeroll
+cp .env.self-host.example .env
+chmod 600 .env
 ```
+
+`TYPEROLL_IMAGE` must use the release's published `@sha256:` digest, not a
+mutable tag. Set `TYPEROLL_IMAGE_DIGEST` to the same digest. This lets every
+role report the artifact it is actually expected to run through `/api/version`.
+
+Generate each HMAC/encryption value independently:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Generate the Extension issuer key once and store the resulting private JWK as
+single-line JSON in `EXTENSION_SIGNING_PRIVATE_JWK`:
+
+```bash
+node --input-type=module -e "import { generateKeyPairSync } from 'node:crypto'; const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' }); console.log(JSON.stringify(privateKey.export({ format: 'jwk' })))"
+```
+
+Validate the complete contract before Docker receives any credentials:
+
+```bash
+npm ci
+npm run self-host:check
+docker compose config --quiet
+```
+
+The check prints field names and validation failures only. It never prints
+secret values. Start the installation when both commands pass:
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+Caddy requests TLS certificates after both DNS names point at the host and
+ports 80 and 443 are reachable. Verify every role:
+
+```bash
+curl --fail https://cms.example.com/api/healthz
+curl --fail https://cms.example.com/api/readyz
+curl --fail https://cms.example.com/api/version
+curl --fail https://forms.example.com/api/readyz
+docker compose exec worker node -e "fetch('http://127.0.0.1:8080/api/readyz').then(async r => { console.log(await r.text()); process.exit(r.ok ? 0 : 1) })"
+```
+
+The Forms hostname exposes only Forms, Analytics, and diagnostic routes. The
+worker is not published through Caddy. Its Firestore queue is durable; do not
+replace `DEPLOY_QUEUE=firestore` with `in_process` in a production install.
 
 ## Build-cost accounting
 
@@ -122,7 +142,7 @@ Adjust the rates when your hosting differs:
 Two things to keep in mind:
 
 - **`DEPLOY_COST_VCPU` and `DEPLOY_COST_MEMORY_GIB` must match what you
-  actually allocate** to the portal container. Change your container's CPU or
+  actually allocate** to the worker container. Change your container's CPU or
   memory without changing these and every subsequent build is mispriced.
 - **The rate card is snapshotted onto each deploy job when it runs.** Changing
   a rate affects future builds only; history keeps the numbers it was costed
@@ -134,30 +154,37 @@ invoice will be lower.
 
 ## Firebase setup
 
-1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
-2. Enable **Firestore** (Native mode) and **Authentication** (Email/Password)
-3. Create a service account: **Project Settings → Service Accounts → Generate new private key**
-4. Set `FIREBASE_SERVICE_ACCOUNT` to the full JSON content (one line)
-5. For each user, set an `org_id` custom claim via the Firebase Admin SDK:
+1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com).
+2. Enable **Firestore** in Native mode and **Authentication → Email/Password**.
+3. Add a Firebase web app and copy its four public values to
+   `PUBLIC_FIREBASE_*` in `.env`.
+4. Create a service account under **Project Settings → Service Accounts** and
+   set `FIREBASE_SERVICE_ACCOUNT` to its complete JSON on one line. Keep the
+   escaped newlines in `private_key`.
+5. For each user, set an `org_id` custom claim with the modular Admin API:
 
 ```javascript
-await admin.auth().setCustomUserClaims(uid, { org_id: "your-org-id" });
+import { cert, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+
+initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
+await getAuth().setCustomUserClaims(uid, { org_id: "your-org-id" });
 ```
 
 All content is scoped under `organizations/{org_id}/` in Firestore.
 
-## Docker
+## Direct Docker smoke test
 
-A `Dockerfile` is included at the repo root:
+Compose is the supported topology. For image development only, the container
+listens on port 8080:
 
 ```bash
-docker build -t typeroll-portal .
-docker run -p 4321:4321 --env-file .env typeroll-portal
+docker build -t typeroll-core:dev .
+docker run --rm -p 8080:8080 --env-file .env typeroll-core:dev
 ```
 
-## Deploy to Cloud Run
-
-The included GitHub Actions workflow (`.github/workflows/deploy.yml`) deploys to Google Cloud Run. See the workflow file for the full configuration — it uses Workload Identity Federation (no long-lived service account keys).
+This single-container command does not provide the separate Forms origin or a
+durable worker and is not the production installation profile.
 
 ## Hosted MCP connector
 
@@ -201,4 +228,6 @@ developer's accounts. In both cases the browser calls the provider directly;
 the self-hosted portal issues identity tokens but never proxies provider API
 traffic.
 
-For other platforms (Fly.io, Railway, etc.), the portal is a standard Node.js SSR application. Set all the environment variables and run `node dist/server/entry.mjs`.
+Other platforms can run the same three image roles, but the Compose profile is
+the compatibility baseline. Preserve the separate origins, immutable digest,
+and durable queue contract when translating it to another orchestrator.

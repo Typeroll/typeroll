@@ -17,6 +17,8 @@ export interface Filter {
 export interface ReadWriteStore {
   getDoc<T = unknown>(path: string): Promise<(T & { id: string }) | null>;
   setDoc(path: string, data: Record<string, any>): Promise<void>;
+  /** Atomically create a document only when it does not already exist. */
+  createDocIfMissing(path: string, data: Record<string, any>): Promise<boolean>;
   updateDoc(path: string, data: Record<string, any>): Promise<void>;
   deleteDoc(path: string): Promise<void>;
   /**
@@ -102,6 +104,20 @@ class FixtureStore implements ReadWriteStore {
       void _id;
       await fs.promises.writeFile(tmpPath, JSON.stringify(rest, null, 2));
       await fs.promises.rename(tmpPath, docPath);
+    });
+  }
+
+  async createDocIfMissing(p: string, data: Record<string, any>): Promise<boolean> {
+    return this.withLock(p, async () => {
+      const { docPath } = this.resolve(p);
+      if (fs.existsSync(docPath)) return false;
+      await fs.promises.mkdir(path.dirname(docPath), { recursive: true });
+      const tmpPath = `${docPath}.${process.pid}.${Date.now()}.tmp`;
+      const { id: _id, ...rest } = data;
+      void _id;
+      await fs.promises.writeFile(tmpPath, JSON.stringify(rest, null, 2));
+      await fs.promises.rename(tmpPath, docPath);
+      return true;
     });
   }
 
@@ -248,6 +264,17 @@ class FirestoreStore implements ReadWriteStore {
     // the codec wraps inner arrays in marker maps on write and unwraps on
     // read, so callers see the same shape the fixtures backend stores.
     await db.doc(p).set(encodeNestedArrays(data));
+  }
+
+  async createDocIfMissing(p: string, data: Record<string, any>): Promise<boolean> {
+    const db = await this.dbPromise;
+    return db.runTransaction(async (transaction) => {
+      const ref = db.doc(p);
+      const snap = await transaction.get(ref);
+      if (snap.exists) return false;
+      transaction.create(ref, encodeNestedArrays(data));
+      return true;
+    });
   }
 
   async updateDoc(p: string, data: Record<string, any>): Promise<void> {

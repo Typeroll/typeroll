@@ -29,9 +29,8 @@ COPY packages/site-template/package.json packages/site-template/
 # stdio entry isn't used by the portal but resolving the export map
 # requires the full package.
 COPY packages/mcp-server/package.json packages/mcp-server/
-# Docs site requires Astro 6 which the portal's package-lock doesn't
-# resolve cleanly inside this image; provide a stub package.json (the
-# docs site is built separately by the Docs workflow).
+# The docs site is not built into the Core image, but npm needs every workspace
+# manifest while resolving the shared lockfile.
 COPY packages/docs-site/package.json packages/docs-site/
 
 RUN npm ci --workspaces --include-workspace-root

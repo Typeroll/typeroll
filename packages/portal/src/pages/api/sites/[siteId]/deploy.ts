@@ -7,7 +7,8 @@
 // The actual deploy runs in a separate context:
 //   - Local dev / in-process: fire-and-forget Promise (DeployQueue
 //     implementation = InProcessQueue).
-//   - Staging / production: Cloud Tasks enqueues a request to
+//   - Self-host production: Firestore queue consumed by SERVICE_ROLE=worker.
+//   - Typeroll Cloud: Cloud Tasks enqueues a request to
 //     POST /api/internal/deploy-worker (DeployQueue = CloudTasksQueue).
 //
 // Either way, the job doc is the source of truth for status. Consumers

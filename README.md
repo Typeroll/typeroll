@@ -62,6 +62,12 @@ npm run build
 See the [self-hosting guide](https://docs.typeroll.com/guides/self-hosting/)
 for production configuration.
 
+The supported Linux amd64 reference profile is defined in `compose.yaml`. It
+runs portal, Forms, and worker roles from one immutable Core image digest,
+uses Firestore as a durable deploy queue, and terminates TLS with Caddy. Start
+by copying `.env.self-host.example` to `.env` and running
+`npm run self-host:check`.
+
 ## Cloud and premium products
 
 Typeroll Cloud is the managed distribution operated from the private
