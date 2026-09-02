@@ -1,6 +1,6 @@
 {
   "name": "typeroll",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Open-source CMS for building and operating static websites",
   "workspaces": [
@@ -17,6 +17,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test:infra && npm run test --workspaces --if-present",
     "security:audit": "node scripts/audit-dependencies.mjs",
+    "core:release:verify": "node scripts/verify-core-release.mjs",
     "self-host:check": "node scripts/self-host-doctor.mjs",
     "self-host:bootstrap": "node scripts/self-host-bootstrap.mjs",
     "self-host:migrate": "node scripts/self-host-migrate.mjs",

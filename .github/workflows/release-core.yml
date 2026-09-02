@@ -20,6 +20,8 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - name: Verify Core release version
+        run: npm run core:release:verify -- "${{ github.ref_name }}"
       - run: npm ci
       - name: Dependency security audit
         run: npm run security:audit
