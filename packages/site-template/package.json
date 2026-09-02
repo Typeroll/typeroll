@@ -8,7 +8,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "typecheck": "astro check",
-    "test": "node scripts/smoke-build.mjs"
+    "test": "node --experimental-strip-types --test scripts/sanitize.test.ts && node scripts/smoke-build.mjs"
   },
   "dependencies": {
     "@typeroll/shared": "*",

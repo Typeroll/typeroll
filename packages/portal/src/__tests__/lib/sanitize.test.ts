@@ -50,6 +50,20 @@ describe('sanitizeBody', () => {
     expect(out).toContain('color');
   });
 
+  it('keeps the form honeypot out of the keyboard tab order', () => {
+    const out = sanitizeBody(
+      '<input type="text" name="_hp" class="form-hp" tabindex="-1" autocomplete="off" aria-hidden="true" />',
+    );
+    expect(out).toContain('name="_hp"');
+    expect(out).toContain('tabindex="-1"');
+    expect(out).toContain('aria-hidden="true"');
+  });
+
+  it('still strips positive tabindex values from authored inputs', () => {
+    const out = sanitizeBody('<input type="text" name="query" tabindex="1" />');
+    expect(out).not.toContain('tabindex');
+  });
+
   it('keeps img with srcset / loading / decoding / width / height', () => {
     const out = sanitizeBody(
       '<img src="/a.png" srcset="/a.png 1x" sizes="100vw" alt="A" width="200" height="100" loading="lazy" decoding="async" />',

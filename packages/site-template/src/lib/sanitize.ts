@@ -172,7 +172,7 @@ const options: IOptions = {
     pattern: ['x', 'y', 'width', 'height', 'patternunits', 'patterntransform', 'viewbox'],
     symbol: ['viewbox', 'preserveaspectratio'],
     form: ['action', 'method', 'enctype', 'target', 'name'],
-    input: ['type', 'name', 'value', 'placeholder', 'required', 'min', 'max', 'pattern', 'autocomplete', 'checked', 'readonly', 'disabled'],
+    input: ['type', 'name', 'value', 'placeholder', 'required', 'min', 'max', 'pattern', 'autocomplete', 'checked', 'readonly', 'disabled', 'tabindex'],
     textarea: ['name', 'placeholder', 'required', 'rows', 'cols'],
     select: ['name', 'required', 'multiple'],
     option: ['value', 'selected'],
@@ -202,6 +202,12 @@ const options: IOptions = {
   // <style> is opted into explicitly via allowVulnerableTags.
   allowVulnerableTags: true,
   parser: { lowerCaseAttributeNames: true },
+  transformTags: {
+    input: (tagName, attribs) => {
+      if (attribs.tabindex !== '-1') delete attribs.tabindex;
+      return { tagName, attribs };
+    },
+  },
 };
 
 /**
