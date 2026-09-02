@@ -1,11 +1,13 @@
 ---
 import AppLayout from '../../../layouts/AppLayout.astro';
 import { getSession } from '../../../lib/auth';
+import { releaseManifest } from '../../../lib/release';
 
 const session = await getSession(Astro.cookies);
 if (!session) return Astro.redirect('/login');
 const orgId = session.orgId;
 if (!orgId) return Astro.redirect('/onboarding');
+const typerollVersion = releaseManifest().core_version;
 ---
 <AppLayout title="Account">
   <div class="app-header">
@@ -22,5 +24,9 @@ if (!orgId) return Astro.redirect('/onboarding');
 
   <p class="muted text-sm" style="margin-top: 1rem;">
     Looking for API keys? They have their own page in the sidebar now — <a href="/app/settings/api-keys">Account → API keys</a>.
+  </p>
+
+  <p class="muted" style="margin-top: 3rem; font-size: 0.75rem;" data-typeroll-version>
+    Typeroll v{typerollVersion}
   </p>
 </AppLayout>
