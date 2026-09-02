@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import sanitizeHtml from 'sanitize-html';
 import { sanitizeBody } from '../../lib/sanitize';
 
 // The sanitizer is the only thing standing between a customer's HTML (or an
@@ -20,6 +21,23 @@ describe('sanitizeBody', () => {
   it('rejects javascript: URLs', () => {
     const out = sanitizeBody('<a href="javascript:alert(1)">x</a>');
     expect(out).not.toContain('javascript:');
+  });
+
+  it('rejects javascript destinations hidden later in an SVG SMIL URI list', () => {
+    const input =
+      '<svg><a><animate attributeName="href" values="#safe;javascript:alert(1)" dur=".01s" fill="freeze"></animate><text y="30">Click me</text></a></svg>';
+    const out = sanitizeHtml(input, {
+      allowedTags: [...sanitizeHtml.defaults.allowedTags, 'svg', 'animate', 'text'],
+      allowedAttributes: {
+        ...sanitizeHtml.defaults.allowedAttributes,
+        animate: ['attributename', 'values', 'dur', 'fill'],
+        text: ['y'],
+      },
+      allowedSchemesAppliedToAttributes: [...sanitizeHtml.defaults.allowedSchemesAppliedToAttributes, 'values'],
+    });
+
+    expect(out).not.toContain('javascript:');
+    expect(out).not.toMatch(/attributeName=["']href["']/i);
   });
 
   it('keeps semantic tags + safe attributes', () => {

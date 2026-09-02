@@ -51,18 +51,18 @@ const allowedTags = [
   'tspan',
   'use',
   'defs',
-  // sanitize-html's parser lowercases every tag name (HTML mode), so
-  // allowlist entries here MUST be the lowercase form — `linearGradient`
-  // (camelCase) never matches the parsed `lineargradient` and the entire
-  // element gets stripped. The post-pass `restoreSvgAttrCase` then
-  // recovers the user-facing camelCase for attribute names, but tag
-  // identity has to be allowlisted as lowercase. (Pre-2026-05 these were
-  // camelCase here and silently broke for any SVG using these elements.)
+  // sanitize-html has changed SVG tag casing across htmlparser2 versions:
+  // older versions lowercased these names, while current versions preserve
+  // their canonical case. Allow both forms; the post-pass normalizes output
+  // for XML-correct serialization.
   'lineargradient',
+  'linearGradient',
   'radialgradient',
+  'radialGradient',
   'stop',
   'mask',
   'clippath',
+  'clipPath',
   'pattern',
   'symbol',
   'title',
@@ -172,10 +172,13 @@ const options: IOptions = {
     // wouldn't match otherwise. HTML5's inline-SVG parsing is case-insensitive
     // for these so browsers still render them correctly.
     lineargradient: ['x1', 'y1', 'x2', 'y2', 'gradientunits', 'gradienttransform', 'spreadmethod'],
+    linearGradient: ['x1', 'y1', 'x2', 'y2', 'gradientunits', 'gradienttransform', 'spreadmethod'],
     radialgradient: ['cx', 'cy', 'r', 'fx', 'fy', 'gradientunits', 'gradienttransform', 'spreadmethod'],
+    radialGradient: ['cx', 'cy', 'r', 'fx', 'fy', 'gradientunits', 'gradienttransform', 'spreadmethod'],
     stop: ['offset', 'stop-color', 'stop-opacity'],
     mask: ['x', 'y', 'width', 'height', 'maskunits', 'maskcontentunits'],
     clippath: ['clippathunits'],
+    clipPath: ['clippathunits'],
     pattern: ['x', 'y', 'width', 'height', 'patternunits', 'patterntransform', 'viewbox'],
     symbol: ['viewbox', 'preserveaspectratio'],
     form: ['action', 'method', 'enctype', 'target', 'name'],
