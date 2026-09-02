@@ -93,7 +93,7 @@ export class InProcessQueue implements DeployQueue {
 }
 
 /**
- * Durable queue for the supported self-host profile.
+ * Durable queue for the portable non-GCP fallback profile.
  *
  * The portal only writes a queue document and returns. A separate worker role
  * leases and executes it, so restarting the portal cannot lose an accepted

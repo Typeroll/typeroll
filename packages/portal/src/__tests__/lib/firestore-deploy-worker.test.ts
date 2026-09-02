@@ -34,6 +34,13 @@ async function setup() {
   return store;
 }
 
+async function queuedAt(store: Awaited<ReturnType<typeof setup>>): Promise<Date> {
+  const id = firestoreDeployQueueItemId(args);
+  const item = await store.getDoc<FirestoreDeployQueueItem>(`${FIRESTORE_DEPLOY_QUEUE_PATH}/${id}`);
+  if (!item?.available_at) throw new Error('queued item is missing available_at');
+  return new Date(new Date(item.available_at).valueOf() + 60_000);
+}
+
 describe('Firestore deploy queue worker', () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
@@ -77,7 +84,8 @@ describe('Firestore deploy queue worker', () => {
     const store = await setup();
     await new FirestoreDeployQueue(store).enqueue(args);
     const execute = vi.fn(async (_args: EnqueueArgs) => 'ran' as const);
-    const now = () => new Date('2026-09-01T23:01:00.000Z');
+    const current = await queuedAt(store);
+    const now = () => current;
     const first = new FirestoreDeployWorker({ store, execute, workerId: 'worker-a', now });
     const second = new FirestoreDeployWorker({ store, execute, workerId: 'worker-b', now });
 
@@ -121,13 +129,13 @@ describe('Firestore deploy queue worker', () => {
   it('renews the lease while a long deploy is still executing', async () => {
     const store = await setup();
     await new FirestoreDeployQueue(store).enqueue(args);
-    let current = new Date('2026-09-01T23:01:00.000Z');
+    let current = await queuedAt(store);
     const id = firestoreDeployQueueItemId(args);
     const execute = vi.fn(async (_args: EnqueueArgs) => {
-      current = new Date('2026-09-01T23:01:25.000Z');
+      current = new Date(current.valueOf() + 25_000);
       await new Promise((resolve) => setTimeout(resolve, 10));
       const item = await store.getDoc<FirestoreDeployQueueItem>(`${FIRESTORE_DEPLOY_QUEUE_PATH}/${id}`);
-      expect(item?.lease_expires_at).toBe('2026-09-01T23:02:25.000Z');
+      expect(item?.lease_expires_at).toBe(new Date(current.valueOf() + 60_000).toISOString());
       return 'ran' as const;
     });
     const worker = new FirestoreDeployWorker({
@@ -146,6 +154,7 @@ describe('Firestore deploy queue worker', () => {
   it('fails the deploy safely after exhausting worker attempts', async () => {
     const store = await setup();
     await new FirestoreDeployQueue(store).enqueue(args);
+    const current = await queuedAt(store);
     const execute = vi.fn(async (_args: EnqueueArgs) => {
       throw new Error('credential detail that must not be copied to the job');
     });
@@ -153,7 +162,7 @@ describe('Firestore deploy queue worker', () => {
       store,
       execute,
       workerId: 'worker-failing',
-      now: () => new Date('2026-09-01T23:01:00.000Z'),
+      now: () => current,
       maxAttempts: 1,
     });
 
