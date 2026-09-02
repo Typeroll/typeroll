@@ -128,6 +128,7 @@ export function buildGcpSelfHostPlan(config) {
   const formsServiceAccount = serviceAccount(resources.forms_service_account, projectId);
   const internalInvoker = serviceAccount(resources.internal_invoker_service_account, projectId);
   const targetImage = `${region}-docker.pkg.dev/${projectId}/${resources.artifact_repository}/typeroll@${config.image_digest}`;
+  const targetTag = `${region}-docker.pkg.dev/${projectId}/${resources.artifact_repository}/typeroll:${config.image_digest.replace('sha256:', 'sha256-')}`;
   const queuePath = `projects/${projectId}/locations/${region}/queues/${resources.deploy_queue}`;
 
   return {
@@ -140,6 +141,7 @@ export function buildGcpSelfHostPlan(config) {
       source_digest: config.image_digest,
       artifact_repository: resources.artifact_repository,
       mirrored_image: targetImage,
+      mirror_tag: targetTag,
       rebuild: false,
     },
     required_tools: ['gcloud', 'crane'],
@@ -150,7 +152,7 @@ export function buildGcpSelfHostPlan(config) {
         email: portalServiceAccount,
         project_roles: ['roles/cloudtasks.enqueuer', 'roles/datastore.user', 'roles/firebaseauth.admin'],
         secret_access: REQUIRED_SECRET_ENV.map((envName) => secrets[envName]),
-        self_roles: ['roles/iam.serviceAccountTokenCreator'],
+        self_roles: [],
       },
       {
         purpose: 'forms-runtime',
@@ -165,7 +167,26 @@ export function buildGcpSelfHostPlan(config) {
         project_roles: [],
         secret_access: [],
         self_roles: [],
-        token_creators: ['cloud-tasks-service-agent', 'cloud-scheduler-service-agent'],
+      },
+    ],
+    service_agents: [
+      {
+        purpose: 'cloud-tasks-service-agent',
+        email: 'service-$PROJECT_NUMBER@gcp-sa-cloudtasks.iam.gserviceaccount.com',
+        project_roles: ['roles/cloudtasks.serviceAgent'],
+      },
+      {
+        purpose: 'cloud-scheduler-service-agent',
+        email: 'service-$PROJECT_NUMBER@gcp-sa-cloudscheduler.iam.gserviceaccount.com',
+        project_roles: ['roles/cloudscheduler.serviceAgent'],
+      },
+    ],
+    service_account_bindings: [
+      {
+        service_account: internalInvoker,
+        member: portalServiceAccount,
+        roles: ['roles/iam.serviceAccountUser'],
+        reason: 'portal creates Cloud Tasks that mint OIDC tokens as the internal invoker',
       },
     ],
     secrets: REQUIRED_SECRET_ENV.map((envName) => ({ env: envName, secret: secrets[envName], required_version: 'latest' })),

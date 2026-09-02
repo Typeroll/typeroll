@@ -62,13 +62,17 @@ npm run build
 See the [self-hosting guide](https://docs.typeroll.com/guides/self-hosting/)
 for production configuration.
 
-The supported Linux amd64 reference profile is defined in `compose.yaml`. It
-runs portal, Forms, and worker roles from one immutable Core image digest,
-uses Firestore as a durable deploy queue, and terminates TLS with Caddy. Start
-by copying `.env.self-host.example` to `.env` and running
-`npm run self-host:check`. The reference operations contract also includes
-idempotent bootstrap/migrations and encrypted Firestore, Firebase Auth, and R2
-backup/restore commands; see the self-hosting guide before starting production.
+The supported production reference profile is fully serverless in a
+customer-owned GCP/Firebase project: Cloud Run hosts portal and Forms, Cloud
+Tasks invokes deploy work, and Cloud Scheduler invokes publish sweeps. It uses
+one immutable Core image digest and Application Default Credentials, with no
+VM, service-account key, or always-running worker. Start with
+`config/self-host-gcp.example.json`, then run `npm run self-host:gcp:plan` and
+the dry-run-first `npm run self-host:gcp:apply`. The read-only
+`npm run self-host:gcp:doctor` verifies the control plane without reading
+secret values. `compose.yaml` remains a portable fallback, not the supported
+production profile. See the self-hosting guide before changing remote
+resources.
 
 ## Cloud and premium products
 

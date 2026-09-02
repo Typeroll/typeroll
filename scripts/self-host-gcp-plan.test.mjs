@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  buildGcpSelfHostPlan,
-  REQUIRED_GCP_APIS,
-  REQUIRED_SECRET_ENV,
-  validateGcpSelfHostConfig,
-} from './lib/self-host-gcp-plan.mjs';
+import { buildGcpSelfHostPlan, REQUIRED_GCP_APIS, REQUIRED_SECRET_ENV, validateGcpSelfHostConfig } from './lib/self-host-gcp-plan.mjs';
 
 const digest = `sha256:${'a'.repeat(64)}`;
 
@@ -42,7 +37,10 @@ function config() {
 }
 
 test('accepts a complete customer-owned serverless config', () => {
-  assert.deepEqual(validateGcpSelfHostConfig(config()), { ok: true, errors: [] });
+  assert.deepEqual(validateGcpSelfHostConfig(config()), {
+    ok: true,
+    errors: [],
+  });
 });
 
 test('requires immutable matching image identity and every secret reference', () => {
@@ -63,6 +61,7 @@ test('plans Cloud Run, Tasks, and Scheduler without a VM or service-account key'
 
   assert.equal(plan.topology, 'gcp-firebase-serverless');
   assert.equal(plan.release.rebuild, false);
+  assert.equal(plan.release.mirror_tag.endsWith(`:sha256-${'a'.repeat(64)}`), true);
   assert.equal(plan.cloud_run.portal.env.FIREBASE_PROJECT_ID, 'customer-typeroll');
   assert.equal('FIREBASE_SERVICE_ACCOUNT' in plan.cloud_run.portal.env, false);
   assert.equal(plan.cloud_run.portal.env.DEPLOY_QUEUE, 'cloud_tasks');
@@ -84,13 +83,22 @@ test('keeps runtime identities least-privileged and separated by service', () =>
   assert.ok(portal.project_roles.includes('roles/firebaseauth.admin'));
   assert.equal(portal.project_roles.includes('roles/secretmanager.secretAccessor'), false);
   assert.equal(portal.secret_access.length, REQUIRED_SECRET_ENV.length);
-  assert.ok(portal.self_roles.includes('roles/iam.serviceAccountTokenCreator'));
+  assert.deepEqual(portal.self_roles, []);
   assert.equal(forms.project_roles.includes('roles/cloudtasks.enqueuer'), false);
-  assert.deepEqual(forms.secret_access.sort(), [
-    config().secrets.FORMS_HMAC_SECRET,
-    config().secrets.INTEGRATIONS_SECRET_KEY,
-  ].sort());
+  assert.deepEqual(forms.secret_access.sort(), [config().secrets.FORMS_HMAC_SECRET, config().secrets.INTEGRATIONS_SECRET_KEY].sort());
   assert.deepEqual(invoker.project_roles, []);
   assert.notEqual(portal.email, forms.email);
   assert.notEqual(portal.email, invoker.email);
+  assert.deepEqual(plan.service_account_bindings, [
+    {
+      service_account: invoker.email,
+      member: portal.email,
+      roles: ['roles/iam.serviceAccountUser'],
+      reason: 'portal creates Cloud Tasks that mint OIDC tokens as the internal invoker',
+    },
+  ]);
+  assert.deepEqual(
+    plan.service_agents.map((agent) => agent.project_roles[0]),
+    ['roles/cloudtasks.serviceAgent', 'roles/cloudscheduler.serviceAgent'],
+  );
 });

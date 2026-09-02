@@ -3,7 +3,7 @@ title: Self-Hosting
 description: Run Typeroll on your own infrastructure — requirements, environment variables, and deployment.
 ---
 
-import { Aside } from "@astrojs/starlight/components";
+import { Aside } from '@astrojs/starlight/components';
 
 Typeroll is open-source (MIT) and can be self-hosted. The supported reference
 profile runs entirely in a GCP/Firebase project you own. Cloud Run hosts the
@@ -12,10 +12,9 @@ Cloud Tasks and Cloud Scheduler invoke authenticated internal routes when work
 is ready. There is no VM or always-running worker.
 
 <Aside type="note">
-  The hosted version at [app.typeroll.com](https://app.typeroll.com) adds
-  managed infrastructure, migration execution, operations, and support. The
-  CMS, migration workflow, Forms, renderer, public API, and Extension protocol
-  are part of open-source Core.
+  The hosted version at [app.typeroll.com](https://app.typeroll.com) adds managed infrastructure, migration execution,
+  operations, and support. The CMS, migration workflow, Forms, renderer, public API, and Extension protocol are part of
+  open-source Core.
 </Aside>
 
 ## Architecture
@@ -99,6 +98,63 @@ instance group, reverse proxy, and long-running-worker resources.
 Every required Secret Manager resource must have an enabled `latest` version
 before deployment. Keep the actual secret values in your secret-management
 workflow; do not add them to `self-host.gcp.json` or Git.
+
+## Apply and verify the reference profile
+
+The apply command is a dry run unless `--apply` and an exact project
+confirmation are both present. Its two rerunnable phases separate resources
+that contain no secret values from the runtime deployment:
+
+```bash
+# Local preview only; makes no remote calls.
+npm run self-host:gcp:apply -- --config self-host.gcp.json
+
+# APIs, service accounts, IAM, Artifact Registry, Cloud Tasks, and empty
+# Secret Manager containers. This changes the named GCP project.
+npm run self-host:gcp:apply -- \
+  --config self-host.gcp.json \
+  --phase foundation \
+  --apply \
+  --confirm-project your-gcp-project
+```
+
+Add one enabled version to every Secret Manager resource using your normal
+secret-management workflow. The apply command creates secret containers and
+IAM bindings, but it never accepts, reads, prints, or copies secret values.
+Then preview and apply the runtime phase:
+
+```bash
+npm run self-host:gcp:apply -- \
+  --config self-host.gcp.json \
+  --phase runtime
+
+npm run self-host:gcp:apply -- \
+  --config self-host.gcp.json \
+  --phase runtime \
+  --apply \
+  --confirm-project your-gcp-project
+```
+
+The runtime phase fails before copying an image or deploying Cloud Run if any
+secret lacks an enabled version. It verifies the source digest, copies the
+release to Artifact Registry under a deterministic digest tag without a
+rebuild, deploys the portal and Forms roles, and converges the publish-sweep
+Scheduler job. A new portal receives one bootstrap revision so its stable
+`run.app` URL can be discovered; the command immediately converges the active
+revision and both OIDC callers on that URL.
+
+Run the read-only control-plane doctor at any time. It reads resource and
+secret-version metadata, never secret contents:
+
+```bash
+npm run self-host:gcp:doctor -- --config self-host.gcp.json
+npm run self-host:gcp:doctor -- --config self-host.gcp.json --json
+```
+
+The operator running apply must already be allowed to enable services, manage
+the listed project resources and IAM bindings, and act as the three dedicated
+runtime service accounts. Core does not grant roles to the human or automation
+identity running the installer.
 
 After deployment, verify both roles and the immutable release identity:
 
@@ -231,14 +287,14 @@ invoice will be lower.
 6. For each user, set an `org_id` custom claim with the modular Admin API:
 
 ```javascript
-import { applicationDefault, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { applicationDefault, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 
 initializeApp({
   credential: applicationDefault(),
   projectId: process.env.FIREBASE_PROJECT_ID,
 });
-await getAuth().setCustomUserClaims(uid, { org_id: "your-org-id" });
+await getAuth().setCustomUserClaims(uid, { org_id: 'your-org-id' });
 ```
 
 All content is scoped under `organizations/{org_id}/` in Firestore.
