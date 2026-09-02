@@ -3,7 +3,7 @@ title: Self-Hosting
 description: Run Typeroll on your own infrastructure — requirements, environment variables, and deployment.
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+import { Aside } from "@astrojs/starlight/components";
 
 Typeroll is open-source (MIT) and can be self-hosted. The supported reference
 profile runs entirely in a GCP/Firebase project you own. Cloud Run hosts the
@@ -12,9 +12,10 @@ Cloud Tasks and Cloud Scheduler invoke authenticated internal routes when work
 is ready. There is no VM or always-running worker.
 
 <Aside type="note">
-  The hosted version at [app.typeroll.com](https://app.typeroll.com) adds managed infrastructure, migration execution,
-  operations, and support. The CMS, migration workflow, Forms, renderer, public API, and Extension protocol are part of
-  open-source Core.
+  The hosted version at [app.typeroll.com](https://app.typeroll.com) adds
+  managed infrastructure, migration execution, operations, and support. The CMS,
+  migration workflow, Forms, renderer, public API, and Extension protocol are
+  part of open-source Core.
 </Aside>
 
 ## Architecture
@@ -287,14 +288,14 @@ invoice will be lower.
 6. For each user, set an `org_id` custom claim with the modular Admin API:
 
 ```javascript
-import { applicationDefault, initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
+import { applicationDefault, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 
 initializeApp({
   credential: applicationDefault(),
   projectId: process.env.FIREBASE_PROJECT_ID,
 });
-await getAuth().setCustomUserClaims(uid, { org_id: 'your-org-id' });
+await getAuth().setCustomUserClaims(uid, { org_id: "your-org-id" });
 ```
 
 All content is scoped under `organizations/{org_id}/` in Firestore.
