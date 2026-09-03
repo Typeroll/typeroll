@@ -36,6 +36,8 @@ export interface SiteTemplateCapabilities {
   // Collections
   supports_collection_item_routes: boolean;
   supports_collection_listings: boolean;
+  supports_grouped_collection_listings: boolean;
+  supports_collection_item_navigation: boolean;
   /**
    * Tri-state semantics for CollectionDef.route_template:
    *   null / undefined → backfilled to `/{name}/{slug_field}` at
@@ -66,6 +68,7 @@ export interface SiteTemplateCapabilities {
    * "/" + slug. See docs/page-path-plan.md (C6).
    */
   supports_nested_page_paths: boolean;
+  supports_page_seo_suffix_opt_out: boolean;
 
   // Block-type library
   supports_core_blocks: boolean;
@@ -91,6 +94,8 @@ export interface SiteTemplateCapabilities {
    * it edits. Off by default — production output is never annotated.
    */
   supports_block_annotation: boolean;
+  supports_table_of_contents_block: boolean;
+  supports_structured_field_editor: boolean;
 
   // Site settings
   supports_writable_scripts_head_body: boolean;
@@ -106,6 +111,10 @@ export interface SiteTemplateCapabilities {
    * (no nested-picture re-wrap) from this version on.
    */
   supports_responsive_image_sizes_default: boolean;
+  supports_site_trailing_slash_policy: boolean;
+  supports_icon_192: boolean;
+  supports_iframe_host_allowlist: boolean;
+  supports_media_batch_upload: boolean;
 
   // Build pipeline
   supports_dry_run_deploys: boolean;
@@ -190,10 +199,18 @@ export interface SiteTemplateCapabilities {
    * and keeps per-mount in-memory navigation state without changing page paths.
    */
   supports_extension_blocks: boolean;
-  /** 0.35.0+: HTML-mode pages can mount an installed Extension through x-extension. */
+  /** 0.35.0+: HTML-mode pages mount Extensions. */
   supports_extension_html_directive: boolean;
-  /** 0.38.0+: browser components call provider APIs directly, optionally with a signed installation token. */
+  /** 0.40.1+: HTML header/footer partials mount Extensions in static builds, including when Astro renders 404 first. */
+  supports_extension_html_partial_directive: boolean;
+  /** 0.38.2+: browser components call provider APIs directly in deploys and isolated previews, optionally with a signed installation token. */
   supports_direct_extension_api: boolean;
+  /** 0.41.0+: Extension context resolves and navigates root-relative site paths inside deploys and navigable previews. */
+  supports_extension_site_navigation: boolean;
+  /** 0.41.0+: Extension context provides installation-scoped session/local JSON storage, with tab-scoped preview persistence. */
+  supports_extension_storage: boolean;
+  /** 0.38.2+: admin API keys and MCP can read and update schema-defined Extension installation config. */
+  supports_extension_installation_config_api: boolean;
   /** 0.36.0+: Extension components can submit to explicitly bound Typeroll forms. */
   supports_extension_form_bindings: boolean;
   /** Extension host protocol understood by this renderer. */
@@ -205,7 +222,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.38.0',
+  template_capabilities_version: '0.41.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -216,7 +233,11 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_funnel_attribution: true,
   supports_extension_blocks: true,
   supports_extension_html_directive: true,
+  supports_extension_html_partial_directive: true,
   supports_direct_extension_api: true,
+  supports_extension_site_navigation: true,
+  supports_extension_storage: true,
+  supports_extension_installation_config_api: true,
   supports_extension_form_bindings: true,
   extension_protocol_version: EXTENSION_HOST_PROTOCOL_VERSION,
   extension_runtime_version: EXTENSION_RUNTIME_VERSION,
@@ -230,12 +251,15 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
 
   supports_collection_item_routes: true,
   supports_collection_listings: true,
+  supports_grouped_collection_listings: true,
+  supports_collection_item_navigation: true,
   collection_route_default_backfill: true,
   collection_route_empty_string_is_opt_out: true,
 
   supports_page_templates: true,
   supports_content_mode_switching: true,
   supports_nested_page_paths: true,
+  supports_page_seo_suffix_opt_out: true,
 
   supports_core_blocks: true,
   supports_custom_block_types: true,
@@ -243,12 +267,18 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_custom_block_scripts: true,
   supports_section_dividers: true,
   supports_block_annotation: true,
+  supports_table_of_contents_block: true,
+  supports_structured_field_editor: true,
 
   supports_writable_scripts_head_body: true,
   supports_writable_custom_css: true,
   supports_structured_postal_address: true,
   supports_language_per_page: true,
   supports_responsive_image_sizes_default: true,
+  supports_site_trailing_slash_policy: true,
+  supports_icon_192: true,
+  supports_iframe_host_allowlist: true,
+  supports_media_batch_upload: true,
 
   supports_dry_run_deploys: true,
   supports_block_asset_bundling: true,
@@ -263,6 +293,8 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
     'core/button',
     'core/html',
     'core/media_card',
+    'core/table_of_contents',
+    'template/item_navigation',
   ],
 
   supports_core_icon_rendering: true,

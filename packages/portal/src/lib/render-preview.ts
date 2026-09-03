@@ -23,6 +23,8 @@ import type {
 import { vstore } from './version-store';
 import {
   buildCollectionRoutes,
+  collectionRouteNavigation,
+  collectionFieldMatches,
   buildCoreBlockRegistry,
   collectBlockAssets,
   composePageWithTemplate,
@@ -100,6 +102,9 @@ export interface PreviewOptions {
   /** Enables the authority-free postMessage bridge used by the isolated
    * editor canvas. The id is an unguessable per-frame correlation value. */
   editorCanvasId?: string;
+  /** Connects an opaque, navigable preview document to its inert parent shell
+   * for site navigation and tab-scoped Extension storage. */
+  extensionPreviewBridge?: { id: string; parentOrigin: string };
 }
 
 export async function renderPreview(
@@ -139,7 +144,6 @@ export async function renderPreview(
     robotsBlocked = v?.robots_blocked !== false;
   }
 
-  const safe = (s?: string) => (s ? sanitizeBody(s) : '');
   const rewriteIf = (html: string) =>
     opts.browseRoot ? rewriteInternalHrefs(html, opts.browseRoot, opts.embedSuffix ?? '') : html;
 
@@ -190,7 +194,7 @@ export async function renderPreview(
     let out: CollectionItem[] = base.slice();
     if (config.filter_field && config.filter_value !== undefined) {
       const f = config.filter_field, v = config.filter_value;
-      out = out.filter((it) => String((it as Record<string, unknown>)[f] ?? '') === v);
+      out = out.filter((it) => collectionFieldMatches(it as Record<string, unknown>, f, v));
     }
     if (config.sort_by) {
       const k = config.sort_by;
@@ -224,7 +228,11 @@ export async function renderPreview(
     pagination: (() => {
       const slug = String((page as { slug?: string }).slug ?? '');
       const path = String((page as { path?: string }).path ?? '') || (slug ? `/${slug}` : '/');
-      return { current: 1, base_url: path.endsWith('/') ? path : `${path}/` };
+      return {
+        current: 1,
+        base_url: path.endsWith('/') ? path : `${path}/`,
+        trailing_slash: settings.trailing_slash ?? 'always',
+      };
     })(),
   };
 
@@ -261,9 +269,14 @@ export async function renderPreview(
     if (p.content_mode === 'blocks' && p.blocks?.length) {
       return sanitizeBody(
         renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, collectionSource }),
+        settings.iframe_allowed_hosts,
       );
     }
-    return safe(p.html_content);
+    const expanded = expandExtensionIncludes(
+      expandIncludes(p.html_content ?? '', freeBlocks),
+      extensionSource,
+    );
+    return sanitizeBody(expanded, settings.iframe_allowed_hosts);
   };
   let bodyHtml = '';
   let blockCss = '';
@@ -279,7 +292,7 @@ export async function renderPreview(
       ),
       extensionSource,
     );
-    bodyHtml = rewriteIf(sanitizeBody(expanded));
+    bodyHtml = rewriteIf(sanitizeBody(expanded, settings.iframe_allowed_hosts));
   } else if (page.content_mode === 'blocks' && page.blocks?.length) {
     // Apply a page template if assigned — same composition as the
     // static renderer so the preview matches a real build.
@@ -301,7 +314,7 @@ export async function renderPreview(
       // blocks aren't reachable through the page's blocks route, so
       // stamping them would produce dead editing affordances.
       editable: opts.editable,
-    })));
+    }), settings.iframe_allowed_hosts));
     const assets = collectBlockAssets(effectiveBlocks, blockRegistry, {
       includeScripts: opts.allowScripts === true,
     });
@@ -314,16 +327,36 @@ export async function renderPreview(
     const { FORMS_RUNTIME_JS, FORM_SHELL_CSS } = await import('@typeroll/shared');
     bodyHtml += `<style>${FORM_SHELL_CSS}</style><script>${FORMS_RUNTIME_JS}</script>`;
   }
-  const editorExtensionRuntime = opts.editorCanvasId && bodyHtml.includes('data-tr-extension-installation')
+  const headerHtml = rewriteIf(renderPartial(header));
+  const footerHtml = rewriteIf(renderPartial(footer));
+  const mountedHtml = `${headerHtml}${bodyHtml}${footerHtml}`;
+  const editorExtensionRuntime = opts.editorCanvasId && mountedHtml.includes('data-tr-extension-installation')
     ? await (await import('./extensions/editor-runtime')).buildExtensionEditorRuntimeScript(orgId, siteId, versionId, opts.editorCanvasId)
     : '';
+  const extensionRuntime = !opts.editorCanvasId && opts.allowScripts === true
+    && mountedHtml.includes('data-tr-extension-installation')
+    ? await (await import('./extensions/preview-runtime')).buildExtensionPreviewRuntimeScript(orgId, siteId, {
+        ...(opts.browseRoot
+          ? { site_navigation: { base_path: opts.browseRoot, suffix: opts.embedSuffix } }
+          : {}),
+        ...(opts.extensionPreviewBridge
+          ? {
+              preview_bridge: {
+                id: opts.extensionPreviewBridge.id,
+                parent_origin: opts.extensionPreviewBridge.parentOrigin,
+              },
+            }
+          : {}),
+      })
+    : '';
+  const previewNavigationBridge = buildPreviewNavigationBridgeScript(opts);
 
   return buildHtml({
     page,
     versionId,
     settings,
-    headerHtml: rewriteIf(renderPartial(header)),
-    footerHtml: rewriteIf(renderPartial(footer)),
+    headerHtml,
+    footerHtml,
     bodyHtml,
     blocksBody,
     blockCss,
@@ -331,7 +364,9 @@ export async function renderPreview(
     allowScripts: opts.allowScripts === true,
     editorCanvasId: opts.editorCanvasId,
     editorCanvasInteractive: opts.annotate === true,
+    extensionRuntime,
     editorExtensionRuntime,
+    previewNavigationBridge,
     robotsBlocked,
     banner: opts.showBanner ? {
       versionId,
@@ -362,10 +397,10 @@ export async function renderPreviewBySlug(
   const isHome = slugPath === '' || slugPath === 'home' || slugPath === 'index';
   const pageMatch = isHome
     ? pages.find((p) => {
-        const s = norm(p.slug);
+        const s = norm(p.path !== undefined ? p.path : p.slug);
         return s === '' || s === 'home' || s === 'index';
       })
-    : pages.find((p) => norm(p.slug) === slugPath);
+    : pages.find((p) => norm(p.path !== undefined ? p.path : p.slug) === slugPath);
   if (pageMatch) return renderPreview(orgId, siteId, pageMatch.id, versionId, opts);
 
   // No page matched — check collection items. Same precedence as the
@@ -395,8 +430,9 @@ export async function renderPreviewCollectionItemById(
   if (!collection) return null;
   const item = await vstore.collectionItem(orgId, siteId, versionId, collectionName, itemId);
   if (!item) return null;
-  const routes = buildCollectionRoutes([collection], new Map([[collection.name, [item]]]));
-  const route = routes[0];
+  const items = await vstore.collectionItems(orgId, siteId, versionId, collectionName);
+  const routes = buildCollectionRoutes([collection], new Map([[collection.name, items]]));
+  const route = routes.find((candidate) => candidate.item.id === itemId);
   if (!route) return null;
   const html = await renderPreviewCollectionItem(orgId, siteId, versionId, route, opts);
   return html ? { html, path: route.path } : null;
@@ -436,6 +472,12 @@ async function renderPreviewCollectionItem(
   opts: PreviewOptions,
 ): Promise<string | null> {
   const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
+  const siblingItems = await vstore.collectionItems(orgId, siteId, versionId, route.collection.name);
+  const siblingRoutes = buildCollectionRoutes(
+    [route.collection],
+    new Map([[route.collection.name, siblingItems]]),
+  );
+  const navigation = collectionRouteNavigation(route, siblingRoutes, settings.trailing_slash ?? 'always');
   let partials = await vstore.partials(orgId, siteId, versionId);
   if (opts.includeWorkingCopies) {
     const wcs = await listWorkingCopies({ orgId, siteId, versionId });
@@ -495,13 +537,14 @@ async function renderPreviewCollectionItem(
         name: route.collection.name,
         label_singular: route.collection.label_singular,
         label_plural: route.collection.label_plural,
+        ...navigation,
       },
     };
     bodyHtml = sanitizeBody(renderBlocks(route.collection.item_template_blocks, {
       registry: blockRegistry,
       context: itemCtx,
       collectionSource,
-    }));
+    }), settings.iframe_allowed_hosts);
     blocksBody = true;
     const assets = collectBlockAssets(route.collection.item_template_blocks, blockRegistry, {
       includeScripts: opts.allowScripts === true,
@@ -510,7 +553,7 @@ async function renderPreviewCollectionItem(
     blockJs = assets.js;
   } else {
     const merged = renderItemTemplate(route.collection.item_template_html, route.item);
-    bodyHtml = sanitizeBody(expandIncludes(merged, freeBlocks));
+    bodyHtml = sanitizeBody(expandIncludes(merged, freeBlocks), settings.iframe_allowed_hosts);
   }
 
   const data = route.item as Record<string, unknown>;
@@ -533,7 +576,7 @@ async function renderPreviewCollectionItem(
 
   const rewriteIf = (html: string) =>
     opts.browseRoot ? rewriteInternalHrefs(html, opts.browseRoot, opts.embedSuffix ?? '') : html;
-  const safe = (s?: string) => (s ? sanitizeBody(s) : '');
+  const safe = (s?: string) => (s ? sanitizeBody(s, settings.iframe_allowed_hosts) : '');
   const editorExtensionRuntime = opts.editorCanvasId && bodyHtml.includes('data-tr-extension-installation')
     ? await (await import('./extensions/editor-runtime')).buildExtensionEditorRuntimeScript(orgId, siteId, versionId, opts.editorCanvasId)
     : '';
@@ -551,6 +594,7 @@ async function renderPreviewCollectionItem(
     editorCanvasId: opts.editorCanvasId,
     editorCanvasInteractive: opts.annotate === true,
     editorExtensionRuntime,
+    previewNavigationBridge: buildPreviewNavigationBridgeScript(opts),
     robotsBlocked,
     banner: opts.showBanner ? {
       versionId,
@@ -588,6 +632,19 @@ function rewriteInternalHrefs(html: string, root: string, suffix: string): strin
   );
 }
 
+function buildPreviewNavigationBridgeScript(opts: PreviewOptions): string {
+  if (!opts.extensionPreviewBridge || !opts.browseRoot) return '';
+  const authQuery = Array.from(
+    new URLSearchParams((opts.embedSuffix ?? '').replace(/^\?/, '')).entries(),
+  );
+  const config = JSON.stringify({
+    root: opts.browseRoot.replace(/\/$/, ''),
+    authQuery,
+    bridge: opts.extensionPreviewBridge,
+  }).replace(/</g, '\\u003c');
+  return `(function(){"use strict";var config=${config};document.addEventListener("click",function(event){if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;var target=event.target;if(!(target instanceof Element))return;var anchor=target.closest("a[href]");if(!anchor||anchor.target&&anchor.target!=="_self"||anchor.hasAttribute("download"))return;var url;try{url=new URL(anchor.href,location.href);}catch(_){return;}if(url.origin!==location.origin||!(url.pathname===config.root||url.pathname.startsWith(config.root+"/")))return;var query=new URLSearchParams(url.search);config.authQuery.forEach(function(pair){var values=query.getAll(pair[0]),removed=false;query.delete(pair[0]);values.forEach(function(value){if(!removed&&value===pair[1])removed=true;else query.append(pair[0],value);});});var path=url.pathname.slice(config.root.length)||"/";var suffix=query.toString();event.preventDefault();parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:config.bridge.id,action:"site.navigate",path:path+(suffix?"?"+suffix:"")+url.hash},config.bridge.parentOrigin);},true);})();`;
+}
+
 function joinUrl(base: string, slug: string): string {
   const b = base.replace(/\/$/, '');
   const s = (slug ?? '').replace(/^\/+/, '');
@@ -610,7 +667,7 @@ interface BannerArgs {
  */
 function composePageTitle(page: Page, settings: SiteSettings): string {
   const base = page.seo_title || page.title;
-  if (!settings.default_seo_suffix) return base;
+  if (!settings.default_seo_suffix || page.append_seo_suffix === false) return base;
   return base.endsWith(settings.default_seo_suffix) ? base : `${base}${settings.default_seo_suffix}`;
 }
 
@@ -631,11 +688,13 @@ function buildHtml(args: {
   allowScripts: boolean;
   editorCanvasId?: string;
   editorCanvasInteractive?: boolean;
+  extensionRuntime?: string;
   editorExtensionRuntime?: string;
+  previewNavigationBridge?: string;
   robotsBlocked: boolean;
   banner: BannerArgs | null;
 }): string {
-  const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, editorExtensionRuntime, robotsBlocked, banner } = args;
+  const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, robotsBlocked, banner } = args;
   // Merge with hardcoded defaults so optional fields (surface, text_light,
   // size_base) never produce "undefined" / "undefinedpx" in CSS when a site's
   // settings object was created before those fields were added, or when only
@@ -665,6 +724,7 @@ function buildHtml(args: {
 <meta name="robots" content="${robots}" />
 ${settings.favicon ? `<link rel="icon" href="${escapeAttr(settings.favicon)}" />` : ''}
 ${settings.apple_touch_icon ? `<link rel="apple-touch-icon" sizes="180x180" href="${escapeAttr(settings.apple_touch_icon)}" />` : ''}
+${settings.icon_192 ? `<link rel="icon" type="image/png" sizes="192x192" href="${escapeAttr(settings.icon_192)}" />` : ''}
 ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>${
       // The async-CSS pattern flips rel from preload to stylesheet in an
       // inline onload handler. The editor canvas serves `script-src 'none'`,
@@ -767,7 +827,9 @@ ${headerHtml ? (looksLikeSemanticTag(headerHtml, 'header') ? headerHtml : `<head
 <main class="${blocksBody ? 'page-content page-content--blocks' : 'page-content'}">${bodyHtml}</main>
 ${footerHtml ? (looksLikeSemanticTag(footerHtml, 'footer') ? footerHtml : `<footer class="site-footer">${footerHtml}</footer>`) : ''}
 ${blockJs ? `<script data-blocks="1">(function(){var registry={};window.TyperollBlocks={register:function(id,init){registry[id]=init;},init:function(){Object.keys(registry).forEach(function(id){document.querySelectorAll('[data-block-type="'+id+'"]').forEach(function(el){try{registry[id](el,JSON.parse(el.getAttribute('data-block-data')||'{}'));}catch(e){console.error('[block init]',id,e);}});});}};${blockJs};window.TyperollBlocks.init();})();</script>` : ''}
+${extensionRuntime ? `<script data-extension-runtime="1">${extensionRuntime}</script>` : ''}
 ${editorExtensionRuntime ? `<script data-editor-extension-runtime="1">${editorExtensionRuntime}</script>` : ''}
+${previewNavigationBridge ? `<script data-preview-navigation-bridge="1">${previewNavigationBridge}</script>` : ''}
 ${editorCanvasId ? `<script data-editor-canvas-bridge="1">${editorCanvasBridgeScript(editorCanvasId, editorCanvasInteractive === true)}</script>` : ''}
 </body>
 </html>`;

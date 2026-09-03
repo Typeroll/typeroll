@@ -18,3 +18,17 @@ test('strips positive tabindex values from authored inputs', () => {
 
   assert.doesNotMatch(out, /tabindex/);
 });
+
+test('allows only an exact configured iframe host', () => {
+  const configured = sanitizeBody(
+    '<iframe src="https://player.vendor.example/embed/42"></iframe>',
+    ['player.vendor.example'],
+  );
+  const subdomain = sanitizeBody(
+    '<iframe src="https://sub.player.vendor.example/embed/42"></iframe>',
+    ['player.vendor.example'],
+  );
+
+  assert.match(configured, /src="https:\/\/player\.vendor\.example\/embed\/42"/);
+  assert.doesNotMatch(subdomain, /src=/);
+});

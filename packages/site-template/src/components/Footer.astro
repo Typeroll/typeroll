@@ -1,5 +1,5 @@
 ---
-import type { Partial as PartialDoc, RenderContext, SiteSettings } from '@typeroll/shared';
+import type { ExtensionIncludeDescriptor, Partial as PartialDoc, RenderContext, SiteSettings } from '@typeroll/shared';
 import { renderPartialHtml } from '../lib/content';
 
 interface Props {
@@ -8,13 +8,17 @@ interface Props {
   /** The page's render context, so {{site.*}} and context-bound blocks in the
    *  footer resolve the same way they do in the portal's preview. */
   context?: RenderContext;
+  freeBlocks?: PartialDoc[];
+  extensionSource?: (blockTypeId: string) => ExtensionIncludeDescriptor | undefined;
 }
 
-const { partial, settings, context } = Astro.props;
+const { partial, settings, context, freeBlocks, extensionSource } = Astro.props;
 
 // Rendered + sanitized once per distinct partial content, unless the partial
 // can vary by route — see renderPartialHtml.
-const html: string | null = partial ? await renderPartialHtml(partial, context) : null;
+const html: string | null = partial
+  ? await renderPartialHtml(partial, context, { freeBlocks, extensionSource, iframeAllowedHosts: settings.iframe_allowed_hosts })
+  : null;
 
 const startsWithFooter = !!html && /^\s*(?:<!--[\s\S]*?-->\s*)*<footer(?:\s|>)/i.test(html);
 const year = new Date().getFullYear();

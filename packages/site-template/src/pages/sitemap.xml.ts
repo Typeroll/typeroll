@@ -1,14 +1,16 @@
 import type { APIRoute } from 'astro';
-import { getAllPages, getCollectionItemRoutes, urlFor } from '../lib/content';
+import { applyTrailingSlash } from '@typeroll/shared';
+import { getAllPages, getCollectionItemRoutes, getSiteSettings, urlFor } from '../lib/content';
 
 export const GET: APIRoute = async ({ site }) => {
   const base = site ? site.toString().replace(/\/$/, '') : '';
   const pages = await getAllPages({ includeUnlisted: false });
+  const settings = await getSiteSettings();
 
   const pageEntries = pages
     .filter((p) => !p.noindex)
     .map((p) => {
-      const loc = `${base}${urlFor(p)}`;
+      const loc = `${base}${urlFor(p, settings.trailing_slash)}`;
       // lastmod_override: explicit string wins; empty string suppresses
       // lastmod entirely; undefined falls back to the timestamps. Editors
       // use this to avoid bumping freshness on minor edits.
@@ -37,8 +39,7 @@ export const GET: APIRoute = async ({ site }) => {
       // Match astro.config trailingSlash: 'always' — buildCollectionRoutes
       // returns paths without the trailing slash. Sitemap should mirror
       // the canonical the renderer emits.
-      const withSlash = path === '/' || path.endsWith('/') ? path : `${path}/`;
-      const loc = `${base}${withSlash}`;
+      const loc = `${base}${applyTrailingSlash(path, settings.trailing_slash ?? 'always')}`;
       const lastmod = item.updated_at ?? item.created_at;
       return [
         '<url>',

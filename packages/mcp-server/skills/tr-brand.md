@@ -126,12 +126,12 @@ partial just to keep it off live; that's no longer necessary.
 
 ### Site icons — always propose them, never leave them empty
 
-Every site gets a favicon + apple touch icon as part of brand setup:
+Every site gets a favicon + apple touch icon + 192px app icon as part of brand setup:
 
 1. **Brand assets exist** (favicon-*.png, app icon, symbol): upload the
    right sizes via `upload_media_inline` (favicon: 32–64px PNG or SVG;
-   apple touch icon: 180×180 PNG) and set BOTH in one call:
-   `update_site_settings { "favicon": "<url>", "apple_touch_icon": "<url>" }`.
+   apple touch icon: 180×180 PNG; app icon: 192×192 PNG) and set all three in one call:
+   `update_site_settings { "favicon": "<url>", "apple_touch_icon": "<url>", "icon_192": "<url>" }`.
 2. **No icon assets:** derive a proposal instead of skipping — crop the
    logo's symbol to a square and resize locally (`sips -z 180 180 in.png
    --out icon-180.png` on macOS, or ImageMagick), or generate a simple

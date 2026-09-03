@@ -9,6 +9,13 @@ The Typeroll API does NOT accept image bytes directly. Uploads go
 through a signed PUT URL straight to Cloudflare R2, and the API only
 sees the metadata. Two-step flow:
 
+For public source URLs, prefer `upload_media_from_url`; for 2–50 files use
+`upload_media_batch_from_urls` (max 25 MiB per file). Both download, upload,
+and finalize each asset automatically. Batch results preserve input order and
+report failures per item, so retry only the failed entries. Use the manual
+signed-URL flow below for local files or when you need direct control over the
+PUT.
+
 ## Recipe
 
 ### 1. Get an image

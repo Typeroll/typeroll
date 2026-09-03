@@ -226,7 +226,85 @@ await (async function integrationsScenario() {
   });
 })();
 
-// Scenario 5 (renderer additions): taxonomy routes, core/embed's per-instance
+// Scenario 5 (Extension directives in HTML partials): preview and static
+// generation must expand the same authoring reference. This deliberately
+// puts one instance in each HTML-mode partial and none in the page body, so a
+// body-only expansion cannot make the assertion pass accidentally.
+await (async function extensionPartialScenario() {
+  const tmpFixtures = mkdtempSync(join(tmpdir(), 'tr-smoke-fx-extension-partials-'));
+  const tmpOut = mkdtempSync(join(tmpdir(), 'tr-smoke-out-extension-partials-'));
+  process.on('exit', () => {
+    try { rmSync(tmpFixtures, { recursive: true, force: true }); } catch { /* ignore */ }
+    try { rmSync(tmpOut, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+  cpSync(FIXTURES_DIR, tmpFixtures, { recursive: true });
+
+  const base = join(tmpFixtures, 'organizations', 'default', 'sites', 'default', 'versions', 'main');
+  const blockTypeId = 'extension--inst-smoke--lead-form';
+  const blockTypesDir = join(base, 'block_types');
+  mkdirSync(blockTypesDir, { recursive: true });
+  writeFileSync(join(blockTypesDir, `${blockTypeId}.json`), JSON.stringify({
+    id: blockTypeId,
+    name: 'lead-form',
+    label: 'Lead form',
+    category: 'extension',
+    origin: 'extension',
+    schema: [],
+    template: '',
+    extension: {
+      extension_id: 'se.example.market-engine',
+      installation_id: 'inst-smoke',
+      component_id: 'lead-form',
+    },
+  }));
+  writeFileSync(join(base, 'partials', 'header.json'), JSON.stringify({
+    id: 'header', kind: 'header', status: 'published', content_mode: 'html',
+    html_content: `<header id="extension-header"><x-extension block="${blockTypeId}" props='{&quot;mode&quot;:&quot;banner&quot;}' /></header>`,
+  }));
+  writeFileSync(join(base, 'partials', 'footer.json'), JSON.stringify({
+    id: 'footer', kind: 'footer', status: 'published', content_mode: 'html',
+    html_content: `<footer id="extension-footer"><x-extension block="${blockTypeId}" props='{&quot;mode&quot;:&quot;banner&quot;}' /></footer>`,
+  }));
+
+  log('[extension-html-partials] building with Extension directives in header + footer…');
+  await new Promise((res) => {
+    const child = spawn('npx', ['astro', 'build', '--outDir', tmpOut], {
+      cwd: TEMPLATE_DIR,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        TYPEROLL_ORG_ID: 'default',
+        TYPEROLL_SITE_ID: 'default',
+        TYPEROLL_VERSION_ID: 'main',
+        TYPEROLL_FIXTURES_DIR: tmpFixtures,
+        TYPEROLL_SITE_URL: 'https://smoke.test',
+        FIREBASE_SERVICE_ACCOUNT: '',
+      },
+    });
+    child.on('exit', (code) => {
+      if (code !== 0) fail(`[extension-html-partials] astro build exited with ${code}`);
+      const html = readFileSync(join(tmpOut, 'index.html'), 'utf8');
+      if (html.includes('<x-extension')) {
+        fail('[extension-html-partials] raw Extension directive reached the static output');
+      }
+      if ((html.match(/class="tr-extension-mount"/g) ?? []).length !== 2) {
+        fail('[extension-html-partials] expected one Extension mount in each partial');
+      }
+      if (!html.includes('id="extension-header"') || !html.includes('id="extension-footer"')) {
+        fail('[extension-html-partials] header or footer wrapper missing from output');
+      }
+      const notFound = readFileSync(join(tmpOut, '404.html'), 'utf8');
+      if (notFound.includes('<x-extension')
+          || (notFound.match(/class="tr-extension-mount"/g) ?? []).length !== 2) {
+        fail('[extension-html-partials] 404 output did not expand both partial directives');
+      }
+      log('[extension-html-partials] ✓ header + footer directives expanded into mounts');
+      res();
+    });
+  });
+})();
+
+// Scenario 6 (renderer additions): taxonomy routes, core/embed's per-instance
 // JS, and reference-backed listings have unit tests, but none of them had ever
 // been through a REAL astro build — where getStaticPaths, the asset bundler
 // and the sanitizer all actually run. Route generation in particular can only
@@ -475,6 +553,64 @@ await (async function directoryRendererScenario() {
       log('[directory-renderer] ✓ facets gated + scoped, core/embed JS bundled outside the body');
       log('[directory-renderer] ✓ custom BlockType in a partial renders with its CSS + JS');
       log('[directory-renderer] ✓ hreflang cluster emitted with self-reference, junk dropped');
+      res();
+    });
+  });
+})();
+
+// Scenario 7 (URL policy): Astro's output layout and generated discovery
+// documents must switch together. A unit test can prove URL formatting, but
+// only a real build proves Astro read the materialized site setting before it
+// generated route canonicals. Astro's default directory build format still
+// stores the route as about/index.html for either URL policy.
+await (async function noTrailingSlashScenario() {
+  const tmpFixtures = mkdtempSync(join(tmpdir(), 'tr-smoke-fx-slash-'));
+  const tmpOut = mkdtempSync(join(tmpdir(), 'tr-smoke-out-slash-'));
+  process.on('exit', () => {
+    try { rmSync(tmpFixtures, { recursive: true, force: true }); } catch { /* ignore */ }
+    try { rmSync(tmpOut, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+  cpSync(FIXTURES_DIR, tmpFixtures, { recursive: true });
+  const settingsPath = join(
+    tmpFixtures, 'organizations', 'default', 'sites', 'default',
+    'versions', 'main', 'settings', 'default.json',
+  );
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  settings.trailing_slash = 'never';
+  writeFileSync(settingsPath, JSON.stringify(settings));
+
+  log('[trailing-slash-never] building with extensionless canonical URLs…');
+  await new Promise((res) => {
+    const child = spawn('npx', ['astro', 'build', '--outDir', tmpOut], {
+      cwd: TEMPLATE_DIR,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        TYPEROLL_ORG_ID: 'default',
+        TYPEROLL_SITE_ID: 'default',
+        TYPEROLL_VERSION_ID: 'main',
+        TYPEROLL_FIXTURES_DIR: tmpFixtures,
+        TYPEROLL_SITE_URL: 'https://smoke.test',
+        FIREBASE_SERVICE_ACCOUNT: '',
+      },
+    });
+    child.on('exit', (code) => {
+      if (code !== 0) fail(`[trailing-slash-never] astro build exited with ${code}`);
+      const about = readFileSync(join(tmpOut, 'about', 'index.html'), 'utf8');
+      if (!about.includes('<link rel="canonical" href="https://smoke.test/about"')) {
+        fail('[trailing-slash-never] page canonical did not use /about');
+      }
+      if (about.includes('<link rel="canonical" href="https://smoke.test/about/"')) {
+        fail('[trailing-slash-never] page canonical retained a trailing slash');
+      }
+      const sitemap = readFileSync(join(tmpOut, 'sitemap.xml'), 'utf8');
+      if (!sitemap.includes('<loc>https://smoke.test/about</loc>')) {
+        fail('[trailing-slash-never] sitemap did not emit the configured URL policy');
+      }
+      if (sitemap.includes('<loc>https://smoke.test/about/</loc>')) {
+        fail('[trailing-slash-never] sitemap mixed trailing-slash policies');
+      }
+      log('[trailing-slash-never] ✓ canonical and sitemap use extensionless URLs');
       res();
     });
   });

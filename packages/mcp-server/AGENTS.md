@@ -105,6 +105,15 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   reads and encrypted at rest; omitted fields preserve their current values.
   When `affects_build` is true, deploy after the update.
 
+- **Extension installations.** `list_extension_installations`,
+  `read_extension_installation`, and `update_extension_installation_config`
+  expose each installed Extension's manifest-defined config through the admin
+  API key. Read the installation before writing so you use the exact keys from
+  `manifest.config_schema`. This is the supported automation path for public
+  content such as consent copy, link text, and policy URLs; masked secrets are
+  preserved when omitted. A successful update returns
+  `redeploy_required: true`; review the result, then deploy explicitly.
+
 - **Page templates.** A `PageTemplate` is a Block[] tree that wraps a
   page's body. The template contains exactly one block of type
   `template_content_slot` — at render time that block gets replaced by
@@ -371,6 +380,17 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
 Don't hardcode assumptions about what's here. Every fact about the site
 goes through the MCP:
 
+**Capability discovery is a required gate for every build, migration and
+redesign.** Before choosing HTML mode, hand-writing a component, or reporting
+that Typeroll lacks a feature, call `get_site_capabilities` and
+`list_block_types` (`full:true` only when you need every template). If a likely
+type appears, call `read_block_type` and inspect its schema. A capability gap is
+valid only after those reads show that neither a core/site block nor a
+composition of `core/section`, layout blocks, `core/repeater`, template blocks,
+or a custom block type can express the requirement. Record the calls and the
+closest available primitive in any gap report. This is a completion criterion,
+not optional discovery.
+
 1. `get_site` — confirm the key works; learn the site name + URLs.
 2. `read_site_settings` — colors, fonts, contact info, SEO suffix,
    content language (used by `suggest_alt_text_context`).
@@ -380,14 +400,17 @@ goes through the MCP:
    `include_content: true` if you actually need the bodies inline.
 5. `list_collections` — what content types exist + their schemas +
    `route_template` (so you know if items have URLs).
-6. `list_block_types` — every block type usable on this site: core
+6. `get_site_capabilities` — renderer version and feature flags. Never infer
+   support from remembered release notes.
+7. `list_block_types` — every block type usable on this site: core
    (always available, ids like `core/section`), custom (origin: 'user'),
    and third-party (origin: 'third_party'). Each entry includes the
    full schema so you know what `data.X` fields each block accepts.
-7. `list_page_templates` — PageTemplate docs that wrap pages.
+8. `list_page_templates` — PageTemplate docs that wrap pages.
 
-You usually want at least #1 + #2 + a sampling from #3 before
-proposing any design change, so you mirror the conventions in use.
+For a build, migration, redesign, or capability report, #1–#8 are the
+preflight. For a small content-only edit, #1 + #2 + a sampling from #3 is
+usually sufficient.
 
 **Source of truth = the live site (the API), by default.** The content and
 structure you read back through the MCP (`read_page`, `read_partial`,
@@ -967,12 +990,13 @@ preview.
 | **Collections** | `create_collection`, `update_collection_schema`, `delete_collection`, `list_collections`, `read_collection`, `list_collection_items` (richtext hidden by default), `read_collection_item`, `batch_read_collection_items`, `create_collection_item`, `update_collection_item`, `delete_collection_item`, `regenerate_collection_listing` |
 | **Media** | `list_media`, `read_media`, `create_upload_url`, `upload_media_from_url`, `upload_media_inline`, `update_media`, `delete_media`, `finalize_media`, `finalize_all_media`, `generate_image_variants`, `suggest_alt_text_context` |
 | **Redirects** | `list_redirects`, `create_redirect`, `delete_redirect`. `from_path` may be a PATTERN: a trailing `*` (with `:splat` in the target) or `:name` for one segment — one rule retires a whole family of dead URLs (`/category/*` → `/blogg/:splat`). Mid-path splats and query strings are refused, as is any rule that would hide a live page. |
-| **Migration inventory** | `get_migration_readiness` (preflight — CALL FIRST on any import), `list_migration_urls`, `add_migration_urls`, `update_migration_url`, `delete_migration_url`, `verify_migration_urls`. The legacy site's URL list with LIVE coverage status (`migrated` / `redirected` / `excluded` / `unhandled`, recomputed on every read from current pages + redirects). `verify_migration_urls` is the pre-cutover check that REQUESTS every URL against the deployed site — see "Don't lose URLs in a migration" below. |
+| **Migration inventory** | `get_migration_readiness` (preflight — CALL FIRST), `list_migration_urls`, `add_migration_urls`, `update_migration_url`, `update_migration_urls`, `delete_migration_url`, `import_sitemap`, `import_gsc_performance`, `verify_migration_urls`. Sitemap indexes are recursive. GSC supports direct Search Console access or CSV and aggregates fragment variants. Verification is compact by default. |
 | **Forms** | `list_forms`, `read_form`, `create_form`, `update_form`, `delete_form`, `list_form_submissions`, `delete_form_submission` (removes one submission — e.g. cleaning up a test entry; `delete_form` with `delete_submissions` is the bulk path). **Steps (form/* block trees) are the ONLY stored model**: pass `steps` for funnels, or `fields` for simple forms — the server converts a flat field list to a single static step. Place with a `core/form` block on block-mode pages or `<x-form id="…" />` in HTML mode. Both expand server-side to the same complete signed shell and initial state. Email/webhook actions are admin-only in the portal and excluded from agent reads/writes. |
 | **Settings** | `update_site_settings` (whitelist) |
 | **Core modules** | `list_apps`, `read_app`, `update_app` (legacy API name; admin; schema-driven config, masked secrets, redeploy when `affects_build` is true) |
+| **Extension installations** | `list_extension_installations`, `read_extension_installation`, `update_extension_installation_config` (admin; schema-driven config, masked secrets preserved, redeploy after frontend-facing changes) |
 | **Analytics attribution** | `read_funnel_attribution`, `update_funnel_attribution` (specialized Analytics module tools; admin; redeploy after changes) |
-| **Search + bulk** | `search_pages`, `bulk_replace_text` |
+| **Search + bulk** | `search_pages`, `check_internal_links`, `bulk_replace_text`. The link check is database-driven. Bulk replace defaults to pages but can target partials, collection items or all resources, always dry-run first. |
 | **Branches** | `create_branch`, `read_version`, `delete_branch`, `merge_branch` |
 | **Deploy** | `trigger_deploy`, `list_deploys`, `get_deploy_status` |
 | **Preview** | `get_preview_link`, `get_page_preview` |

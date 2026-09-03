@@ -55,6 +55,7 @@ export async function addInventoryUrl(
     gsc_clicks?: number;
     gsc_impressions?: number;
     notes?: string;
+    excluded?: boolean;
   }
 ): Promise<void> {
   const id = makeUrlId(args.path);
@@ -72,6 +73,7 @@ export async function addInventoryUrl(
       patch.gsc_impressions = args.gsc_impressions;
     }
     if (args.notes !== undefined && args.notes !== existing.notes) patch.notes = args.notes;
+    if (args.excluded !== undefined && args.excluded !== existing.excluded) patch.excluded = args.excluded;
     if (Object.keys(patch).length) await store.updateDoc(docPath, patch);
     return;
   }
@@ -83,9 +85,35 @@ export async function addInventoryUrl(
     gsc_clicks: args.gsc_clicks,
     gsc_impressions: args.gsc_impressions,
     notes: args.notes,
+    excluded: args.excluded,
     found_at: new Date().toISOString(),
   };
   await store.setDoc(docPath, doc);
+}
+
+/** Record a bare-slug URL that WordPress may invent as a 404 permalink
+ * fallback. It is evidence, not a real source URL, so it is explicitly
+ * classified and auto-excluded until another inventory source proves it. */
+export async function addWordPressBareSlugGuess(
+  store: ReadWriteStore,
+  orgId: string,
+  siteId: string,
+  canonicalUrl: string,
+  slug: string,
+  sourceOrigin: string,
+): Promise<boolean> {
+  if (!slug) return false;
+  const canonicalPath = pathFromUrl(canonicalUrl, sourceOrigin);
+  const barePath = `/${slug.replace(/^\/+|\/+$/g, '')}`;
+  if (!canonicalPath || canonicalPath === barePath) return false;
+  await addInventoryUrl(store, orgId, siteId, {
+    path: barePath,
+    full_url: `${new URL(sourceOrigin).origin}${barePath}`,
+    source: 'wordpress-redirect-guess',
+    excluded: true,
+    notes: `Auto-excluded WordPress bare-slug guess; canonical source path is ${canonicalPath}.`,
+  });
+  return true;
 }
 
 export interface BulkUrlInput {
@@ -105,6 +133,82 @@ export interface BulkAddResult {
    *  agent that posts 400 sitemap URLs needs to know which 6 were dropped
    *  and why, or it will believe the inventory is complete when it isn't. */
   rejected: Array<{ url: string; reason: string }>;
+}
+
+export interface MigrationUrlPatch {
+  excluded?: boolean;
+  notes?: string;
+  gsc_clicks?: number;
+  gsc_impressions?: number;
+}
+
+export type InventoryUrlSelection =
+  | { ids: string[]; source?: never }
+  | { ids?: never; source: string };
+
+export interface BulkUpdateResult {
+  matched: number;
+  updated: number;
+  unchanged: number;
+  not_found: string[];
+}
+
+/**
+ * Apply one migration decision to a whole selection inside the server. This
+ * is deliberately one API write even though the datastore still receives one
+ * update per document: API rate limiting protects requests, not internal
+ * persistence, and callers should not need hundreds of PATCH round trips for
+ * one source-wide decision.
+ */
+export async function updateInventoryUrls(
+  store: ReadWriteStore,
+  orgId: string,
+  siteId: string,
+  selection: InventoryUrlSelection,
+  patch: MigrationUrlPatch,
+): Promise<BulkUpdateResult> {
+  let entries: MigrationUrl[] = [];
+  const notFound: string[] = [];
+
+  if ('source' in selection && selection.source) {
+    const all = await store.listDocs<MigrationUrl>(paths.migrationUrls(orgId, siteId));
+    entries = all.filter((entry) => entry.sources.includes(selection.source));
+  } else {
+    for (const id of selection.ids ?? []) {
+      const entry = await store.getDoc<MigrationUrl>(paths.migrationUrl(orgId, siteId, id));
+      if (entry) entries.push(entry);
+      else notFound.push(id);
+    }
+  }
+
+  let updated = 0;
+  let unchanged = 0;
+  const concurrency = 12;
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const index = cursor++;
+      const entry = entries[index];
+      if (!entry) return;
+      const changed = Object.entries(patch).some(
+        ([key, value]) => (entry as unknown as Record<string, unknown>)[key] !== value,
+      );
+      if (!changed) {
+        unchanged++;
+        continue;
+      }
+      await store.updateDoc(paths.migrationUrl(orgId, siteId, entry.id), patch);
+      updated++;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, entries.length) }, worker));
+
+  return {
+    matched: entries.length,
+    updated,
+    unchanged,
+    not_found: notFound,
+  };
 }
 
 /**
@@ -170,10 +274,8 @@ export async function addInventoryUrls(
       gsc_clicks: input.gsc_clicks,
       gsc_impressions: input.gsc_impressions,
       notes: input.notes,
+      excluded: input.excluded,
     });
-    if (input.excluded !== undefined) {
-      await store.updateDoc(paths.migrationUrl(orgId, siteId, id), { excluded: input.excluded });
-    }
     if (existed) result.merged++;
     else result.added++;
   }

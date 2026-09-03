@@ -77,9 +77,11 @@ export const GET: APIRoute = async ({ request, params }) => {
       }
       return out;
     });
-    return apiResponse(ctx, { items: summarised, next_cursor: nextCursor });
+    const data = { items: summarised, next_cursor: nextCursor };
+    return apiResponse(ctx, { ...data, data });
   }
-  return apiResponse(ctx, { items: slice, next_cursor: nextCursor });
+  const data = { items: slice, next_cursor: nextCursor };
+  return apiResponse(ctx, { ...data, data });
 };
 
 export const POST: APIRoute = async ({ request, params }) => {
@@ -107,5 +109,6 @@ export const POST: APIRoute = async ({ request, params }) => {
   const itemId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   await getStore().setDoc(paths.collectionItem(ctx.orgId, ctx.siteId, name, itemId, ctx.versionId), item);
   const created = await vstore.collectionItem(ctx.orgId, ctx.siteId, ctx.versionId, name, itemId);
-  return apiResponse(ctx, { item: created }, 201, body);
+  const data = { item: created };
+  return apiResponse(ctx, { ...data, data }, 201, body);
 };

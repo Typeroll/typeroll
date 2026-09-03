@@ -21,7 +21,7 @@ const enabled = cc?.enabled === true;
 const defaultText =
   'Vi använder cookies för att webbplatsen ska fungera och för att förstå hur den används. Du kan välja att godkänna alla cookies, bara de nödvändiga, eller neka.';
 
-const bodyHtml = cc?.text ? sanitizeBody(cc.text) : `<p>${defaultText}</p>`;
+const bodyHtml = cc?.text ? sanitizeBody(cc.text, settings.iframe_allowed_hosts) : `<p>${defaultText}</p>`;
 
 // The reload-after-consent flag is the only piece of state the modal
 // handler needs from the server — inlined as a literal in the script body.

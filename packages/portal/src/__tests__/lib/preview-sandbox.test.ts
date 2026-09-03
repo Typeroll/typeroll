@@ -16,6 +16,7 @@ import { paths } from '@typeroll/shared';
 import { PREVIEW_SANDBOX, isolatedPreviewHeaders } from '../../lib/preview-headers';
 
 const fakeCookies = { get: () => undefined } as never;
+const PREVIEW_FRAME = 'frame=1&bridge=12345678-1234-1234-1234-123456789abc';
 
 describe('PREVIEW_SANDBOX directive', () => {
   it('never grants allow-same-origin', () => {
@@ -60,7 +61,7 @@ describe('token-authed preview route', () => {
     expect(res.headers.get('Content-Security-Policy')).toBe(PREVIEW_SANDBOX);
   });
 
-  it('sandboxes a successfully rendered page', async () => {
+  it('keeps a successfully rendered page in an opaque child of the trusted storage shell', async () => {
     const { getStore } = await import('../../lib/datastore');
     const store = getStore();
     await store.setDoc(paths.site('default', 'mysite'), {
@@ -68,7 +69,7 @@ describe('token-authed preview route', () => {
     });
     await store.setDoc(paths.page('default', 'mysite', 'home'), {
       title: 'Home', slug: 'home', status: 'published',
-      content_mode: 'html', body_html: '<h1>Hello</h1>',
+      content_mode: 'html', html_content: '<h1>Hello</h1>',
     });
 
     const { signPreviewTicket } = await import('../../lib/preview-signing');
@@ -77,14 +78,36 @@ describe('token-authed preview route', () => {
     });
 
     const { GET } = await import('../../pages/preview/[siteId]/[...slug]');
-    const res = await GET({
+    const outer = await GET({
       params: { siteId: 'mysite', slug: 'home' },
       request: new Request(
         `https://app.typeroll.com/preview/mysite/home?t=${encodeURIComponent(token)}`,
       ),
     } as never);
-    expect(res.status).toBe(200);
-    expect(res.headers.get('Content-Security-Policy')).toBe(PREVIEW_SANDBOX);
+    expect(outer.status).toBe(200);
+    expect(outer.headers.get('Content-Security-Policy')).toContain("frame-src 'self'");
+    const shell = await outer.text();
+    expect(shell).toContain('sandbox="allow-scripts allow-forms allow-popups"');
+    expect(shell).not.toContain('allow-same-origin');
+    expect(shell).not.toContain('<h1>Hello</h1>');
+    expect(shell).toContain('sessionStorage');
+    expect(shell).toContain('typeroll.extension-preview');
+    expect(shell).not.toContain('window.name');
+    const shellScript = shell.match(/<script>([\s\S]*)<\/script>/)?.[1];
+    expect(shellScript).toBeTruthy();
+    expect(() => new Function(shellScript!)).not.toThrow();
+
+    const inner = await GET({
+      params: { siteId: 'mysite', slug: 'home' },
+      request: new Request(
+        `https://app.typeroll.com/preview/mysite/home?t=${encodeURIComponent(token)}&frame=1&bridge=12345678-1234-1234-1234-123456789abc`,
+      ),
+    } as never);
+    expect(inner.status).toBe(200);
+    expect(inner.headers.get('Content-Security-Policy')).toBe(PREVIEW_SANDBOX);
+    const innerHtml = await inner.text();
+    expect(innerHtml).toContain('<h1>Hello</h1>');
+    expect(innerHtml).toContain('data-preview-navigation-bridge="1"');
   });
 });
 
@@ -133,13 +156,13 @@ describe('editor canvas never runs block JS', () => {
   it('still runs it on the sandboxed preview, so fidelity is one click away', async () => {
     // Publish ▾ → Preview. Opaque origin, so the script has no portal access
     // to abuse and the author can verify their work.
-    const res = await browse('');
+    const res = await browse(`?${PREVIEW_FRAME}`);
     expect(res.headers.get('Content-Security-Policy')).toBe(PREVIEW_SANDBOX);
     expect(await res.text()).toContain(EMBED_JS);
   });
 
   it("runs it on the chat's draft links too — also sandboxed", async () => {
-    const res = await browse('?draft=1');
+    const res = await browse(`?draft=1&${PREVIEW_FRAME}`);
     expect(res.headers.get('Content-Security-Policy')).toBe(PREVIEW_SANDBOX);
     expect(await res.text()).toContain(EMBED_JS);
   });
@@ -183,16 +206,18 @@ describe('browse preview route — per-mode isolation', () => {
     } as never);
   };
 
-  it('sandboxes the plain preview (Publish ▾ → Preview)', async () => {
+  it('keeps the plain preview content in an opaque child shell', async () => {
     const res = await call('');
     expect(res.status).toBe(200);
-    expect(res.headers.get('Content-Security-Policy')).toBe(PREVIEW_SANDBOX);
+    expect(res.headers.get('Content-Security-Policy')).toContain("frame-src 'self'");
+    expect(await res.text()).toContain('sandbox="allow-scripts allow-forms allow-popups"');
   });
 
-  it("sandboxes the chat's draft=1 action links", async () => {
+  it("keeps the chat's draft=1 content in an opaque child shell", async () => {
     const res = await call('?draft=1');
     expect(res.status).toBe(200);
-    expect(res.headers.get('Content-Security-Policy')).toBe(PREVIEW_SANDBOX);
+    expect(res.headers.get('Content-Security-Policy')).toContain("frame-src 'self'");
+    expect(await res.text()).toContain('"draft":"1"');
   });
 
   it('sandboxes embed=1 now that the editor uses the postMessage bridge', async () => {
@@ -223,7 +248,7 @@ describe('browse preview route — per-mode isolation', () => {
     // The plain stylesheet link is a canvas-only concession; the sandboxed
     // preview should keep the public site's async-CSS behaviour so it stays a
     // faithful preview.
-    const html = await (await call('')).text();
+    const html = await (await call(`?${PREVIEW_FRAME}`)).text();
     expect(html).toMatch(/rel="preload" as="style"/);
   });
 

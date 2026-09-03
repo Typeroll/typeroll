@@ -7,6 +7,7 @@
 // which the layout drops into the page intentionally.
 
 import sanitizeHtml, { type IOptions } from 'sanitize-html';
+import { DEFAULT_IFRAME_ALLOWED_HOSTS, normalizeIframeAllowedHosts } from '@typeroll/shared';
 
 const allowedTags = [
   ...sanitizeHtml.defaults.allowedTags,
@@ -43,6 +44,7 @@ const allowedTags = [
   'path',
   'g',
   'circle',
+  'ellipse',
   'rect',
   'line',
   'polyline',
@@ -95,6 +97,10 @@ const allowedTags = [
 
 const options: IOptions = {
   allowedTags,
+  // sanitize-html currently classifies `download` as non-boolean and drops
+  // the common valueless form. HTML defines it as a boolean-like attribute,
+  // so keep an empty value when the caller writes `<a download>`.
+  nonBooleanAttributes: sanitizeHtml.defaults.nonBooleanAttributes.filter((name) => name !== 'download'),
   allowedAttributes: {
     // Schema.org microdata (itemscope/itemtype/itemprop/itemref/itemid) are
     // passive metadata attributes — no security risk, drive Google rich
@@ -104,7 +110,7 @@ const options: IOptions = {
     // microdata is sometimes simpler for small annotations.
     '*': ['id', 'class', 'style', 'data-*', 'aria-*', 'role', 'lang', 'dir',
       'itemscope', 'itemtype', 'itemprop', 'itemref', 'itemid'],
-    a: ['href', 'target', 'rel', 'title'],
+    a: ['href', 'target', 'rel', 'title', 'download'],
     'x-include': ['name'],
     'x-form': ['id'],
     'x-extension': ['block', 'props'],
@@ -193,16 +199,7 @@ const options: IOptions = {
     td: ['colspan', 'rowspan'],
   },
   // Restrict iframe sources to common embed providers + same origin
-  allowedIframeHostnames: [
-    'www.youtube.com',
-    'youtube.com',
-    'www.youtube-nocookie.com',
-    'player.vimeo.com',
-    'vimeo.com',
-    'www.google.com',
-    'maps.google.com',
-    'calendly.com',
-  ],
+  allowedIframeHostnames: [...DEFAULT_IFRAME_ALLOWED_HOSTS],
   allowedSchemes: ['http', 'https', 'mailto', 'tel'],
   allowedSchemesByTag: {
     img: ['http', 'https', 'data'],
@@ -260,7 +257,12 @@ function stripCssExploits(html: string): string {
 // sanitize-html's lowercase pass; the inner payload sits in a `data-tr`
 // attribute so the round-trip is byte-exact (no whitespace drift inside
 // the marker).
-const TYPEROLL_MARKER_RE = /<!--\s*(\/?typeroll:[^>]+?)\s*-->/g;
+// In addition to Typeroll's namespaced markers, preserve compact migration
+// placeholders such as `<!-- ME_BANNER -->`. A single-token marker is inert
+// and useful when a migration performs a later replacement pass. Prose
+// comments (which contain whitespace) are still dropped, keeping stored HTML
+// free from editorial notes that were never meant to ship.
+const TYPEROLL_MARKER_RE = /<!--\s*(\/?typeroll:[^>]+?|[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127})\s*-->/g;
 const TYPEROLL_TOKEN_RE = /<tr-marker\b[^>]*\bdata-tr="([^"]+)"[^>]*><\/tr-marker>/g;
 
 function protectMarkers(html: string): string {
@@ -277,10 +279,12 @@ function restoreMarkers(html: string): string {
   return html.replace(TYPEROLL_TOKEN_RE, (_m, payload: string) => `<!-- ${payload} -->`);
 }
 
-export function sanitizeBody(html: string): string {
+export function sanitizeBody(html: string, iframeAllowedHosts: string[] = []): string {
+  const customHosts = normalizeIframeAllowedHosts(iframeAllowedHosts).hosts;
   const protectedHtml = protectMarkers(html);
   const cleaned = stripCssExploits(sanitizeHtml(protectedHtml, {
     ...options,
+    allowedIframeHostnames: [...DEFAULT_IFRAME_ALLOWED_HOSTS, ...customHosts],
     allowedTags: [...allowedTags, 'tr-marker'],
     allowedAttributes: {
       ...options.allowedAttributes,

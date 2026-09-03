@@ -12,12 +12,17 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { runSiteParityCheck } from '../../../../../../lib/wp/url-parity';
+import type { ParityVerdict } from '../../../../../../lib/wp/url-parity';
 import type { UrlStatus } from '../../../../../../lib/wp/url-inventory';
 
 const STATUSES: UrlStatus[] = ['migrated', 'redirected', 'excluded', 'unhandled'];
 const DEFAULT_LIMIT = 150;
 const MAX_LIMIT = 500;
 const MAX_CONCURRENCY = 12;
+const VERDICTS: ParityVerdict[] = [
+  'ok', 'ok_redirect', 'missing', 'broken_redirect', 'error', 'excluded',
+];
+const DEFAULT_RESULT_VERDICTS: ParityVerdict[] = ['missing', 'broken_redirect', 'error'];
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -29,6 +34,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     source_origin?: string;
     check_source?: boolean;
     statuses?: string[];
+    verdicts?: string[];
+    include_successes?: boolean;
     limit?: number;
     concurrency?: number;
   };
@@ -48,6 +55,13 @@ export const POST: APIRoute = async ({ request, params }) => {
       return apiError(`statuses must be an array of: ${STATUSES.join(', ')}`);
     }
     statuses = body.statuses as UrlStatus[];
+  }
+  let verdicts: ParityVerdict[] | undefined;
+  if (body.verdicts !== undefined) {
+    if (!Array.isArray(body.verdicts) || body.verdicts.some((value) => !VERDICTS.includes(value as ParityVerdict))) {
+      return apiError(`verdicts must be an array of: ${VERDICTS.join(', ')}`);
+    }
+    verdicts = body.verdicts as ParityVerdict[];
   }
 
   const limit = Math.min(
@@ -73,10 +87,30 @@ export const POST: APIRoute = async ({ request, params }) => {
       limit,
       concurrency,
     });
-    const gaps = report.results.filter(
-      (r) => r.verdict === 'missing' || r.verdict === 'broken_redirect',
+    const selectedVerdicts = verdicts ?? (
+      body.include_successes === true ? VERDICTS : DEFAULT_RESULT_VERDICTS
     );
-    return apiResponse(ctx, { ...report, gaps }, 200, body);
+    const results = report.results.filter((result) => selectedVerdicts.includes(result.verdict));
+    const gaps = results.filter(
+      (result) => result.verdict === 'missing' || result.verdict === 'broken_redirect',
+    );
+    return apiResponse(ctx, {
+      ...report,
+      results,
+      returned_results: results.length,
+      omitted_results: report.results.length - results.length,
+      result_verdicts: selectedVerdicts,
+      gaps,
+    }, 200, {
+      target_origin: body.target_origin,
+      source_origin: body.source_origin,
+      check_source: body.check_source,
+      statuses: body.statuses,
+      verdicts: body.verdicts,
+      include_successes: body.include_successes,
+      limit,
+      concurrency,
+    });
   } catch (e) {
     return apiError(e instanceof Error ? e.message : 'Parity check failed', 400);
   }

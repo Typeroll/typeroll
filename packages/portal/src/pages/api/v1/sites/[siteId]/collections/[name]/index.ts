@@ -38,7 +38,7 @@ const WRITABLE_FIELDS: Array<keyof CollectionDef> = [
   'schema_type', 'schema_field_map',
 ];
 
-function pickWritable(body: Partial<CollectionDef>): Partial<CollectionDef> {
+function pickWritable(body: Partial<CollectionDef>, iframeAllowedHosts?: string[]): Partial<CollectionDef> {
   const out: Partial<CollectionDef> = {};
   for (const k of WRITABLE_FIELDS) {
     if (body[k] !== undefined) (out as Record<string, unknown>)[k] = body[k];
@@ -46,7 +46,7 @@ function pickWritable(body: Partial<CollectionDef>): Partial<CollectionDef> {
   // Sanitize the item template at save time so the renderer's pre-merge
   // substitution doesn't have to worry about embedded <script>.
   if (typeof out.item_template_html === 'string') {
-    out.item_template_html = sanitizeBody(out.item_template_html);
+    out.item_template_html = sanitizeBody(out.item_template_html, iframeAllowedHosts);
   }
   // Hand-authored block trees may lack ids — normalise (renderer +
   // per-block tools require them).
@@ -64,7 +64,8 @@ export const GET: APIRoute = async ({ request, params }) => {
   if (!name) return apiError('Missing name');
   const coll = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, name);
   if (!coll) return apiError('Not found', 404);
-  return apiResponse(ctx, { collection: project(coll) });
+  const data = { collection: project(coll) };
+  return apiResponse(ctx, { ...data, data });
 };
 
 export const PATCH: APIRoute = async ({ request, params }) => {
@@ -75,13 +76,18 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!name) return apiError('Missing name');
   const existing = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, name);
   if (!existing) return apiError('Not found', 404);
-  const body = (await request.json().catch(() => null)) as Partial<CollectionDef> | null;
-  if (!body) return apiError('Invalid JSON body');
-  const update = pickWritable(body);
+  const rawBody = (await request.json().catch(() => null)) as
+    | (Partial<CollectionDef> & { patch?: Partial<CollectionDef> })
+    | null;
+  if (!rawBody) return apiError('Invalid JSON body');
+  const body = rawBody.patch && typeof rawBody.patch === 'object' ? rawBody.patch : rawBody;
+  const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
+  const update = pickWritable(body, settings?.iframe_allowed_hosts);
   if (Object.keys(update).length === 0) return apiError('No writable fields in body');
   await vstore.writeCollection(ctx.orgId, ctx.siteId, ctx.versionId, name, update);
   const fresh = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, name);
-  return apiResponse(ctx, { collection: fresh ? project(fresh) : null }, 200, body);
+  const data = { collection: fresh ? project(fresh) : null };
+  return apiResponse(ctx, { ...data, data }, 200, rawBody);
 };
 
 export const DELETE: APIRoute = async ({ request, params }) => {

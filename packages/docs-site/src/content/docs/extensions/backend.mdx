@@ -54,6 +54,12 @@ browser-side message bridge, so the provider request is likewise made by the
 published site origin. Never use the token claim to relax CORS dynamically
 before the signature and issuer have been verified.
 
+Editor previews are the exception to ordinary site-origin binding: their
+sandbox has an opaque origin, so both the browser `Origin` header and the
+signed preview token's `origin` claim are the literal string `null`. That
+equality does not identify a site. Require the token's `preview: true` claim
+and enforce its exact `preview_routes` method/path allowlist server-side.
+
 Do not accept a site or organization ID supplied by browser input when a
 verified Extension token already contains that identity. Do not put durable
 provider credentials in frontend code. Typeroll's route declaration is a

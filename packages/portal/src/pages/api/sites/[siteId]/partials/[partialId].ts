@@ -23,7 +23,8 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
   // <x-include> expander assumes this (the merged HTML it produces is then
   // re-sanitized at render, so removing that wrapper would still be safe).
   if (typeof update.html_content === 'string') {
-    update.html_content = sanitizeBody(update.html_content);
+    const settings = await vstore.settings(owner_org_id, site.id, versionId);
+    update.html_content = sanitizeBody(update.html_content, settings?.iframe_allowed_hosts);
   }
 
   const existing = await vstore.partial(owner_org_id, site.id, versionId, partialId);

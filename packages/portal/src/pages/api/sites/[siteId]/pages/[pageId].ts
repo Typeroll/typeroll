@@ -26,6 +26,7 @@ const ALLOWED_FIELDS: Array<keyof Page> = [
   'blocks',
   'html_content',
   'seo_title',
+  'append_seo_suffix',
   'seo_description',
   'og_image',
   'seo_image_alt',

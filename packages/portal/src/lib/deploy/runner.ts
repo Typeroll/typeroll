@@ -58,6 +58,7 @@ export interface RunDeployResult {
    *  build-cost report can show what a build actually produced. */
   outputBytes?: number;
   outputFiles?: number;
+  warnings?: string[];
 }
 
 function repoRoot(): string {
@@ -85,6 +86,32 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   if (!site) throw new Error(`Site not found: ${args.siteId}`);
 
   const versionId = args.versionId ?? MAIN_VERSION_ID;
+  const warnings: string[] = [];
+
+  // Internal links are checked against the exact versioned datastore that
+  // will be materialized below. Broken links warn instead of blocking the
+  // deploy, so an emergency publish remains possible and the finding stays
+  // visible on the resulting deploy job.
+  await phase('checking internal links');
+  try {
+    const { checkInternalLinks } = await import('../internal-link-check');
+    const report = await checkInternalLinks({
+      store,
+      orgId: args.orgId,
+      siteId: args.siteId,
+      versionId,
+      site,
+    });
+    if (report.broken_links > 0) {
+      const examples = report.broken.slice(0, 3).map((entry) => `${entry.from} → ${entry.href}`).join('; ');
+      warnings.push(`${report.broken_links} broken internal link(s) found${examples ? `: ${examples}` : ''}`);
+      console.warn(`[deploy] ${warnings[warnings.length - 1]}`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    warnings.push(`Internal link preflight could not complete: ${message}`);
+    console.warn(`[deploy] ${warnings[warnings.length - 1]}`);
+  }
 
   // 0. Backfill missing media variants. Every uploader (in-portal UI +
   //    MCP `upload_media_from_url`/`_inline`) calls finalize automatically
@@ -292,7 +319,7 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   // 4. Optionally hand off to the hosting adapter.
   if (args.buildOnly) {
     await phase('done (build-only)');
-    return { buildDir, fixturesDir, ...output };
+    return { buildDir, fixturesDir, ...output, ...(warnings.length ? { warnings } : {}) };
   }
 
   await phase('uploading');
@@ -329,7 +356,7 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   }
   await store.updateDoc(versionPath, update);
 
-  return { buildDir, fixturesDir, deploy, ...output };
+  return { buildDir, fixturesDir, deploy, ...output, ...(warnings.length ? { warnings } : {}) };
 }
 
 /**

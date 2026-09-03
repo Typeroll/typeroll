@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { randomUUID } from 'node:crypto';
 import { requireSiteAccess } from '../../../../../../lib/access';
 import { renderPreviewBySlug } from '../../../../../../lib/render-preview';
 import { liveBaseFor } from '../../../../../../lib/site-urls';
@@ -6,6 +7,10 @@ import { PREVIEW_SANDBOX } from '../../../../../../lib/preview-headers';
 import { getStore } from '../../../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { SiteVersion } from '@typeroll/shared';
+import {
+  buildExtensionPreviewShell,
+  extensionPreviewShellHeaders,
+} from '../../../../../../lib/extensions/preview-shell';
 
 /**
  * Navigable site preview. Resolves the URL slug against the active version's
@@ -41,6 +46,20 @@ export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
   // unsaved draft the AI just wrote.
   const draft = url.searchParams.get('draft') === '1';
   const browseRoot = `/api/sites/${site.id}/preview/browse`;
+  const isFrame = url.searchParams.get('frame') === '1';
+  if (!embed && !isFrame) {
+    return new Response(buildExtensionPreviewShell({
+      siteId: site.id,
+      bridgeId: randomUUID(),
+      rootPath: browseRoot,
+      storageScope: `${versionId}:${draft ? 'draft' : 'saved'}`,
+      carriedQuery: draft ? { draft: '1' } : {},
+    }), { status: 200, headers: extensionPreviewShellHeaders() });
+  }
+  const bridgeId = isFrame ? (url.searchParams.get('bridge') ?? '') : '';
+  if (isFrame && !/^[0-9a-f-]{36}$/i.test(bridgeId)) {
+    return new Response('Invalid preview frame', { status: 400 });
+  }
   const activeVersion = await getStore().getDoc<SiteVersion>(
     paths.version(owner_org_id, site.id, versionId),
   );
@@ -82,6 +101,7 @@ export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
     // would buy, and it isn't worth an escalation in the meantime.
     allowScripts: !embed,
     editorCanvasId: canvasId,
+    extensionPreviewBridge: bridgeId ? { id: bridgeId, parentOrigin: url.origin } : undefined,
   });
   if (!html) {
     return new Response(

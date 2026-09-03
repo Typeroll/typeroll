@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { paths, type ExtensionManifest } from '@typeroll/shared';
+import { paths, type ExtensionManifest, type ExtensionRuntimeSnapshot } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import {
   createExtension,
@@ -15,6 +15,8 @@ import {
   uninstallExtension,
 } from '../../lib/extensions/registry';
 import { buildExtensionRuntimeSnapshot } from '../../lib/extensions/runtime-snapshot';
+import { prepareExtensionPreviewSnapshot } from '../../lib/extensions/preview-runtime';
+import { buildExtensionEditorRuntimeScript } from '../../lib/extensions/editor-runtime';
 import {
   exchangeExtensionLaunchCode,
   issueExtensionLaunchGrant,
@@ -57,6 +59,9 @@ function manifest(overrides: Partial<ExtensionManifest> = {}): ExtensionManifest
       type: 'object',
       properties: {
         price_list_id: { type: 'string', public: true },
+        consent_text: { type: 'string', public: true },
+        policy_link_text: { type: 'string', public: true },
+        policy_url: { type: 'string', public: true },
         internal_queue: { type: 'string' },
         api_secret: { type: 'string', format: 'secret' },
       },
@@ -74,7 +79,7 @@ function manifest(overrides: Partial<ExtensionManifest> = {}): ExtensionManifest
     api: {
       base_url: 'https://93.184.216.34/typeroll',
       authentication: 'signed_installation',
-      routes: [{ path: '/quotes/*', methods: ['GET', 'POST'] }],
+      routes: [{ path: '/quotes/*', methods: ['GET', 'POST'], preview_methods: ['GET'] }],
     },
     ...overrides,
   };
@@ -145,6 +150,140 @@ describe('Extension control plane', () => {
     expect(html).toContain(`data-tr-extension-installation="${installation.id}"`);
     expect(html).toContain('Personal quote');
     expect(html).not.toContain('<x-extension');
+  });
+
+  it('expands every Extension instance in HTML header, footer and included free blocks', async () => {
+    const { installation } = await registeredInstallation();
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    const blocks = await store.listDocs(paths.blockTypes(OWNER_ORG, SITE));
+    const blockId = String(blocks[0]!.id);
+    await store.setDoc(paths.site(OWNER_ORG, SITE), {
+      name: 'Customer site', hosting_adapter: 'cloudflare', created_at: new Date().toISOString(),
+    });
+    await store.setDoc(paths.partial(OWNER_ORG, SITE, 'price-bar', 'main'), {
+      name: 'Price bar', kind: 'free', content_mode: 'html', status: 'published',
+      html_content: `<x-extension block="${blockId}" props='{&quot;placement&quot;:&quot;header&quot;}' />`,
+    });
+    await store.setDoc(paths.partial(OWNER_ORG, SITE, 'header', 'main'), {
+      name: 'Header', kind: 'header', content_mode: 'html', status: 'published',
+      html_content: '<header><x-include name="price-bar" /></header>',
+    });
+    await store.setDoc(paths.partial(OWNER_ORG, SITE, 'footer', 'main'), {
+      name: 'Footer', kind: 'footer', content_mode: 'html', status: 'published',
+      html_content: `<footer><x-extension block="${blockId}" props='{&quot;placement&quot;:&quot;footer&quot;}' /></footer>`,
+    });
+    await store.setDoc(paths.page(OWNER_ORG, SITE, 'home'), {
+      title: 'Home', slug: '', status: 'published', content_mode: 'html', html_content: '<p>Home</p>',
+    });
+
+    const { renderPreview } = await import('../../lib/render-preview');
+    const html = await renderPreview(OWNER_ORG, SITE, 'home', 'main');
+    expect(html).not.toContain('<x-extension');
+    expect(html).not.toContain('<x-include');
+    expect(html!.match(new RegExp(`data-tr-extension-installation="${installation.id}"`, 'g')))
+      .toHaveLength(2);
+    expect(html).toContain('&quot;placement&quot;:&quot;header&quot;');
+    expect(html).toContain('&quot;placement&quot;:&quot;footer&quot;');
+  });
+
+  it('embeds verified Extension assets and a short-lived API proof in isolated preview HTML', async () => {
+    const { installation } = await registeredInstallation();
+    const publicHttp = await import('../../lib/extensions/public-http');
+    const assetSpy = vi.spyOn(publicHttp, 'fetchPublicAsset')
+      .mockResolvedValue(new TextEncoder().encode(SCRIPT));
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    const blockId = String((await store.listDocs(paths.blockTypes(OWNER_ORG, SITE)))[0]!.id);
+    await store.setDoc(paths.site(OWNER_ORG, SITE), {
+      name: 'Customer site', hosting_adapter: 'cloudflare', created_at: new Date().toISOString(),
+    });
+    await store.setDoc(paths.page(OWNER_ORG, SITE, 'quote'), {
+      title: 'Quote', slug: 'quote', status: 'published', content_mode: 'html',
+      html_content: `<x-extension block="${blockId}" />`,
+    });
+
+    const { renderPreview } = await import('../../lib/render-preview');
+    let html: string | null;
+    let editorScript: string;
+    try {
+      html = await renderPreview(OWNER_ORG, SITE, 'quote', 'main', { allowScripts: true });
+      editorScript = await buildExtensionEditorRuntimeScript(
+        OWNER_ORG,
+        SITE,
+        'main',
+        'canvas-test-editorbridge',
+      );
+    } finally {
+      assetSpy.mockRestore();
+    }
+    expect(html).toContain('data-extension-runtime="1"');
+    expect(html).toContain('data:text/javascript;base64,');
+    expect(html).toContain('preview_token');
+    const tokenMatch = html!.match(/preview_token\":\"([^\"]+)/);
+    expect(tokenMatch?.[1]?.split('.')).toHaveLength(3);
+    expect(verifyPublicExtensionToken(tokenMatch![1]!, installation.extension_id))
+      .toMatchObject({
+        installation_id: installation.id,
+        origin: 'null',
+        preview: true,
+        preview_routes: [{ path: '/quotes/*', methods: ['GET'] }],
+      });
+    expect(editorScript!).toContain('data-tr-extension');
+    expect(editorScript!).toContain('preview_token');
+    expect(editorScript!).toContain('signed_installation');
+    expect(editorScript!).not.toContain('POST');
+  });
+
+  it('removes undeclared API methods and every form submit capability from previews', () => {
+    const snapshot: ExtensionRuntimeSnapshot = {
+      runtime_version: '0.38.2',
+      protocol_version: 3,
+      installations: [{
+        installation_id: 'install-preview',
+        extension_id: 'se.vendor.preview',
+        version: '1.0.0',
+        public_config: {},
+        api: {
+          base_url: 'https://api.vendor.example',
+          authentication: 'signed_installation',
+          token_url: 'https://portal.example/token',
+          routes: [
+            { path: '/catalog/*', methods: ['GET', 'POST'], preview_methods: ['GET'] },
+            { path: '/checkout/*', methods: ['POST'] },
+          ],
+        },
+        components: [{
+          id: 'quote',
+          label: 'Quote',
+          render_mode: 'bundled_component',
+          block_type_id: 'extension--install-preview--quote',
+          entry: { script_url: 'https://cdn.vendor.example/index.js', script_sha256: 'a'.repeat(64) },
+          resolved_form_bindings: {
+            lead: {
+              id: 'lead', form_id: 'leads', submit_url: 'https://portal.example/forms/submit',
+              submit_token: 'live-submit-proof', pow_bits: 15,
+            },
+          },
+        }],
+      }],
+    };
+
+    const prepared = prepareExtensionPreviewSnapshot(snapshot);
+    expect(prepared.installations[0]).toMatchObject({
+      preview: true,
+      api: {
+        token_url: undefined,
+        preview_token: undefined,
+        routes: [{ path: '/catalog/*', methods: ['GET'] }],
+      },
+      components: [{
+        resolved_form_bindings: {
+          lead: { submit_token: null, pow_bits: 0 },
+        },
+      }],
+    });
+    expect(JSON.stringify(prepared)).not.toContain('live-submit-proof');
   });
 
   it('projects signed form capabilities only when the submit scope was granted', async () => {
@@ -226,6 +365,59 @@ describe('Extension control plane', () => {
       }), params: { siteId: SITE },
     } as never);
     expect(installed.status).toBe(201);
+  });
+
+  it('updates installation config through the bearer-authenticated v1 route', async () => {
+    const { installation } = await registeredInstallation();
+    const { createApiKey } = await import('../../lib/api-keys');
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.site(OWNER_ORG, SITE), {
+      name: 'Customer site', hosting_adapter: 'cloudflare', created_at: new Date().toISOString(),
+    });
+    const { token } = await createApiKey({
+      orgId: OWNER_ORG,
+      siteId: SITE,
+      name: 'MCP config test',
+      createdBy: 'customer-admin',
+    });
+    const route = await import('../../pages/api/v1/sites/[siteId]/extensions/[installationId]');
+    const response = await route.PATCH({
+      request: new Request(
+        `https://portal.example/api/v1/sites/${SITE}/extensions/${installation.id}`,
+        {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            config: {
+              consent_text: 'Jag samtycker till att {subject} behandlar mina uppgifter.',
+              policy_link_text: 'integritetspolicyn',
+              policy_url: '/anvandarvillkor/',
+            },
+          }),
+        },
+      ),
+      params: { siteId: SITE, installationId: installation.id },
+    } as never);
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.config).toMatchObject({
+      consent_text: 'Jag samtycker till att {subject} behandlar mina uppgifter.',
+      policy_link_text: 'integritetspolicyn',
+      policy_url: '/anvandarvillkor/',
+    });
+    expect(body).toMatchObject({ affects_build: true, redeploy_required: true });
+    expect(body.installation.private_config).toBeUndefined();
+    expect(body.installation.secret_config_enc).toBeUndefined();
+
+    const stored = await getStore().getDoc<any>(
+      paths.extensionInstallation(OWNER_ORG, SITE, installation.id),
+    );
+    expect(stored.public_config).toMatchObject({
+      consent_text: 'Jag samtycker till att {subject} behandlar mina uppgifter.',
+      policy_link_text: 'integritetspolicyn',
+      policy_url: '/anvandarvillkor/',
+    });
   });
 
   it('lets the developer organization install and update its own draft versions', async () => {

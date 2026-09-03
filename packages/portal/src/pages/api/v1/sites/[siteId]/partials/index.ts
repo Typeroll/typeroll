@@ -52,7 +52,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const existing = await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, id);
   if (existing) return apiError(`Block ${id} already exists; use PUT/PATCH`, 409);
 
-  const html = sanitizeBody(String(body.html_content ?? ''));
+  const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
+  const html = sanitizeBody(String(body.html_content ?? ''), settings?.iframe_allowed_hosts);
   const doc: Partial<PartialDoc> = {
     name: body.name ? String(body.name) : id,
     kind: 'free',

@@ -1,7 +1,7 @@
 import type { FieldDefinition, SharePermission } from './types.js';
 
 export const EXTENSION_MANIFEST_SCHEMA_VERSION = 3 as const;
-export const EXTENSION_RUNTIME_VERSION = '0.38.0';
+export const EXTENSION_RUNTIME_VERSION = '0.39.0';
 export const EXTENSION_HOST_PROTOCOL_VERSION = 3 as const;
 
 export type ExtensionDistribution = 'private' | 'unlisted' | 'public';
@@ -64,12 +64,15 @@ export interface ExtensionPermissionRequest {
 export interface ExtensionJsonSchemaProperty {
   type?: 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array';
   enum?: Array<string | number | boolean>;
+  /** Display labels corresponding 1:1 with `enum`. Values remain stable. */
+  enum_labels?: string[];
   format?: 'secret' | 'url' | 'email';
   title?: string;
   description?: string;
   default?: unknown;
   public?: boolean;
   properties?: Record<string, ExtensionJsonSchemaProperty>;
+  required?: string[];
   items?: ExtensionJsonSchemaProperty;
 }
 
@@ -144,9 +147,17 @@ export interface ExtensionAdminPage {
   minimum_permission: SharePermission;
 }
 
+export type ExtensionApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
 export interface ExtensionApiRoute {
   path: string;
-  methods: Array<'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'>;
+  methods: ExtensionApiMethod[];
+  /**
+   * Exact subset of methods that may be called from an isolated preview.
+   * Omitted means the route is unavailable in preview. Providers must enforce
+   * the preview_routes claim in the short-lived installation proof too.
+   */
+  preview_methods?: ExtensionApiMethod[];
 }
 
 export interface ExtensionApi {
@@ -361,12 +372,17 @@ export interface PublicExtensionInstallation {
   installation_id: string;
   extension_id: string;
   version: string;
+  /** True only for request-time isolated previews, never deployed snapshots. */
+  preview?: true;
   public_config: Record<string, unknown>;
   api?: {
     base_url: string;
     routes: ExtensionApiRoute[];
     authentication: 'signed_installation' | 'none';
     token_url?: string;
+    /** Preview-only five-minute proof embedded in an opaque-origin preview.
+     *  Never persisted in a deploy snapshot. */
+    preview_token?: string;
   };
   components: PublicExtensionComponent[];
 }
@@ -375,6 +391,22 @@ export interface ExtensionRuntimeSnapshot {
   runtime_version: string;
   protocol_version: number;
   installations: PublicExtensionInstallation[];
+}
+
+/** Request-local host information. It is supplied by preview rendering and
+ * is never persisted in a deployed Extension snapshot. */
+export interface ExtensionRuntimeHostConfig {
+  site_navigation?: {
+    /** Prefix that keeps a root-relative site path inside the preview. */
+    base_path: string;
+    /** Authentication/mode query string carried to the next preview page. */
+    suffix?: string;
+  };
+  /** Parent shell that owns private, tab-scoped storage for an opaque preview. */
+  preview_bridge?: {
+    id: string;
+    parent_origin: string;
+  };
 }
 
 export interface ExtensionUrlCapture {
@@ -579,6 +611,16 @@ function validateConfigSchema(schemaInput: unknown, path: string, errors: string
     if (property.public !== undefined && typeof property.public !== 'boolean') {
       errors.push(`${path}.properties.${key}.public must be a boolean`);
     }
+    if (property.enum_labels !== undefined) {
+      if (!Array.isArray(property.enum_labels) || property.enum_labels.some((label) => typeof label !== 'string')) {
+        errors.push(`${path}.properties.${key}.enum_labels must be an array of strings`);
+      } else if (!Array.isArray(property.enum) || property.enum_labels.length !== property.enum.length) {
+        errors.push(`${path}.properties.${key}.enum_labels must have the same length as enum`);
+      }
+    }
+    if (property.required !== undefined && (!Array.isArray(property.required) || property.required.some((name) => typeof name !== 'string'))) {
+      errors.push(`${path}.properties.${key}.required must be an array of strings`);
+    }
   }
   return secretKeys;
 }
@@ -732,7 +774,7 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
     if (!Array.isArray(api.routes)) errors.push('api.routes must be an array');
     routes.forEach((entry, index) => {
       const route = asRecord(entry, `api.routes[${index}]`, errors);
-      rejectUnknown(route, ['path', 'methods'], `api.routes[${index}]`, errors);
+      rejectUnknown(route, ['path', 'methods', 'preview_methods'], `api.routes[${index}]`, errors);
       const routePath = requireString(route.path, `api.routes[${index}].path`, errors);
       if (!routePath.startsWith('/') || routePath.includes('..') || (routePath.includes('*') && !routePath.endsWith('/*'))) {
         errors.push(`api.routes[${index}].path must be an absolute path with an optional trailing wildcard`);
@@ -740,6 +782,20 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
       const methods = Array.isArray(route.methods) ? route.methods : [];
       if (!methods.length || methods.some((method) => !['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method)))) {
         errors.push(`api.routes[${index}].methods contains an unsupported method`);
+      }
+      const previewMethods = route.preview_methods === undefined
+        ? []
+        : Array.isArray(route.preview_methods)
+          ? route.preview_methods
+          : [];
+      if (route.preview_methods !== undefined && !Array.isArray(route.preview_methods)) {
+        errors.push(`api.routes[${index}].preview_methods must be an array`);
+      } else if (route.preview_methods !== undefined && previewMethods.length === 0) {
+        errors.push(`api.routes[${index}].preview_methods must not be empty`);
+      } else if (previewMethods.some((method) => !['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method)))) {
+        errors.push(`api.routes[${index}].preview_methods contains an unsupported method`);
+      } else if (previewMethods.some((method) => !methods.includes(method))) {
+        errors.push(`api.routes[${index}].preview_methods must be a subset of methods`);
       }
     });
   }
@@ -904,22 +960,31 @@ export function createExtensionNavigation(initial = 'root') {
 
 export function extensionPropsToFields(schema: ExtensionObjectSchema | undefined): FieldDefinition[] {
   const required = new Set(schema?.required ?? []);
-  return Object.entries(schema?.properties ?? {}).map(([name, property]) => {
+  const fieldFor = (name: string, property: ExtensionJsonSchemaProperty, isRequired = false): FieldDefinition => {
     let type: FieldDefinition['type'] = 'text';
     if (property.type === 'boolean') type = 'boolean';
     else if (property.type === 'number' || property.type === 'integer') type = 'number';
     else if (property.format === 'url') type = 'url';
     else if (property.format === 'email') type = 'email';
     else if (property.enum?.length) type = 'select';
-    else if (property.type === 'array') type = 'list_simple';
-    else if (property.type === 'object') type = 'textarea';
+    else if (property.type === 'array') {
+      type = property.items?.type === 'object' ? 'array' : 'list_simple';
+    } else if (property.type === 'object') type = 'object';
     return {
       name,
       type,
       label: property.title ?? name.replace(/[_-]+/g, ' ').replace(/^./, (char) => char.toUpperCase()),
-      required: required.has(name),
+      required: isRequired,
       default: property.default,
       options: property.enum?.map(String),
+      option_labels: property.enum_labels,
+      fields: property.type === 'object'
+        ? Object.entries(property.properties ?? {}).map(([childName, child]) => fieldFor(childName, child, property.required?.includes(childName)))
+        : property.type === 'array' && property.items?.type === 'object'
+          ? Object.entries(property.items.properties ?? {}).map(([childName, child]) => fieldFor(childName, child, property.items?.required?.includes(childName)))
+          : undefined,
     };
-  });
+  };
+  return Object.entries(schema?.properties ?? {}).map(([name, property]) =>
+    fieldFor(name, property, required.has(name)));
 }

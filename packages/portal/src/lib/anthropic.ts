@@ -10,7 +10,6 @@ import './load-env';
 import Anthropic from '@anthropic-ai/sdk';
 import { vstore } from './version-store';
 import { getStore } from './datastore';
-import { sanitizeBody } from './sanitize';
 import { getBlockUsage, getAllBlockUsage } from './partials-usage';
 import { DESIGN_NOTES_STARTER } from './design-notes';
 import { PLAYBOOK_STARTER } from './playbook';
@@ -150,6 +149,7 @@ const tools: Anthropic.Tool[] = [
       properties: {
         page_id: { type: 'string' },
         seo_title: { type: 'string' },
+        append_seo_suffix: { type: 'boolean', description: 'Set false to omit the site default SEO suffix on this page.' },
         seo_description: { type: 'string' },
         og_image: { type: 'string' },
         seo_image_alt: { type: 'string', description: 'Alt text for og:image / twitter:image. Falls back to first <img alt> on the page when unset.' },
@@ -1387,7 +1387,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       if (!existing) return { result: { error: 'Page not found' } };
       const update: Record<string, unknown> = {};
       for (const k of [
-        'seo_title', 'seo_description', 'og_image', 'seo_image_alt',
+        'seo_title', 'append_seo_suffix', 'seo_description', 'og_image', 'seo_image_alt',
         'canonical_url', 'noindex', 'lastmod_override',
         'schema_type', 'service', 'kind', 'author',
       ] as const) {
@@ -2168,7 +2168,9 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
 
     case 'update_partial': {
       const id = String(input.partial_id);
-      const html = sanitizeBody(String(input.html_content ?? ''));
+      // applyContentWrite performs the site-aware sanitizer pass so a custom
+      // iframe allowlist is honored and sanitization warnings are preserved.
+      const html = String(input.html_content ?? '');
       const existing = await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, id);
       const inferKind = (): 'header' | 'footer' | 'free' => {
         if (input.kind === 'header' || input.kind === 'footer' || input.kind === 'free') return input.kind;

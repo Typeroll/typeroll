@@ -1,16 +1,50 @@
-import type { ExtensionRuntimeSnapshot } from './extensions.js';
+import type { ExtensionRuntimeHostConfig, ExtensionRuntimeSnapshot } from './extensions.js';
+
+/** Resolve a root-relative site path for either the published site or a
+ * navigable preview. Exported so the preview-path contract has direct tests. */
+export function resolveExtensionSiteUrl(
+  origin: string,
+  pathInput: string,
+  navigation?: ExtensionRuntimeHostConfig['site_navigation'],
+): string {
+  const path = String(pathInput || '/');
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\')) {
+    throw new Error('Extension site paths must be root-relative');
+  }
+  const requested = new URL(path, origin);
+  let destination = `${requested.pathname}${requested.search}`;
+  if (navigation) {
+    const base = navigation.base_path.replace(/\/+$/, '');
+    const suffix = navigation.suffix ?? '';
+    destination = `${base}${requested.pathname}`;
+    if (requested.search) destination += requested.search;
+    if (suffix) {
+      destination += `${destination.includes('?') ? '&' : '?'}${suffix.replace(/^\?/, '')}`;
+    }
+  }
+  return new URL(`${destination}${requested.hash}`, origin).href;
+}
 
 /**
  * Browser host for externally developed Extensions. The generated script
  * contains public installation metadata only; customer URL values are read
  * in the browser, held in per-mount closures, and never serialized into HTML.
  */
-export function buildExtensionRuntimeScript(snapshot: ExtensionRuntimeSnapshot): string {
+export function buildExtensionRuntimeScript(
+  snapshot: ExtensionRuntimeSnapshot,
+  hostConfig: ExtensionRuntimeHostConfig = {},
+): string {
   const serialized = JSON.stringify(snapshot).replace(/</g, '\\u003c');
+  const serializedHost = JSON.stringify(hostConfig).replace(/</g, '\\u003c');
+  const siteUrlResolver = resolveExtensionSiteUrl.toString();
   return `(function(){
 "use strict";
 var snapshot=${serialized};
+var host=${serializedHost};
+var resolveSiteUrl=${siteUrlResolver};
 var mounts=[];
+var previewBridgeReady=false;
+var previewBridgeState={session:{},local:{}};
 var styleUrls=new Set();
 function findDescriptor(el){
   var installationId=el.getAttribute("data-tr-extension-installation");
@@ -74,11 +108,31 @@ function navigation(){
   var current="root";var listeners=new Set();
   return {get current(){return current;},navigate:function(view){if(typeof view!=="string"||!view.trim()||view===current)return;current=view;listeners.forEach(function(fn){fn(current);});},subscribe:function(fn){listeners.add(fn);return function(){listeners.delete(fn);};}};
 }
+function siteRuntime(){
+  return {url:function(path){return resolveSiteUrl(location.origin,path,host.site_navigation);},navigate:function(path){var target=resolveSiteUrl(location.origin,path,host.site_navigation);if(host.preview_bridge&&previewBridgeReady){parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:host.preview_bridge.id,action:"site.navigate",path:String(path)},host.preview_bridge.parent_origin);return;}location.assign(target);}};
+}
+function storageKey(value){var key=String(value||"");if(!key||key.length>128)throw new Error("Extension storage keys must contain 1-128 characters");return key;}
+function encodeStorage(value){var encoded=JSON.stringify(value);if(encoded===undefined)throw new Error("Extension storage values must be JSON-compatible");if(encoded.length>65536)throw new Error("Extension storage values may not exceed 64 KiB");return encoded;}
+function nativeStorage(area,installationId){
+  var store=area==="local"?window.localStorage:window.sessionStorage;var prefix="typeroll:extension:"+installationId+":";
+  return {get:function(key){var raw=store.getItem(prefix+storageKey(key));if(raw===null)return undefined;try{return JSON.parse(raw);}catch(_){return undefined;}},set:function(key,value){store.setItem(prefix+storageKey(key),encodeStorage(value));},remove:function(key){store.removeItem(prefix+storageKey(key));}};
+}
+function previewStorage(area,installationId){
+  function bucket(){var areas=previewBridgeState[area]||(previewBridgeState[area]={});return areas[installationId]||(areas[installationId]={});}
+  function notify(action,key,value){if(!host.preview_bridge||!previewBridgeReady)return;parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:host.preview_bridge.id,action:action,area:area,installation_id:installationId,key:key,value:value},host.preview_bridge.parent_origin);}
+  return {get:function(key){var raw=bucket()[storageKey(key)];if(raw===undefined)return undefined;try{return JSON.parse(raw);}catch(_){return undefined;}},set:function(key,value){var normalized=storageKey(key),encoded=encodeStorage(value),values=bucket(),previous=values[normalized];values[normalized]=encoded;if(JSON.stringify(previewBridgeState).length>262144){if(previous===undefined)delete values[normalized];else values[normalized]=previous;throw new Error("Extension preview storage may not exceed 256 KiB");}notify("storage.set",normalized,encoded);},remove:function(key){var normalized=storageKey(key);delete bucket()[normalized];notify("storage.remove",normalized);}};
+}
+function storageRuntime(entry){var preview=entry.descriptor.installation.preview===true;var installationId=entry.descriptor.installation.installation_id;return {session:preview?previewStorage("session",installationId):nativeStorage("session",installationId),local:preview?previewStorage("local",installationId):nativeStorage("local",installationId)};}
+function initializePreviewBridge(){
+  if(!host.preview_bridge)return Promise.resolve();
+  return new Promise(function(resolve){var done=false;function finish(){if(done)return;done=true;removeEventListener("message",receive);resolve();}function receive(event){var data=event.data;if(event.source!==parent||event.origin!==host.preview_bridge.parent_origin||!data||data.channel!=="typeroll.extension-preview"||data.version!==1||data.bridge_id!==host.preview_bridge.id||data.action!=="storage.init")return;if(data.storage&&typeof data.storage==="object")previewBridgeState=data.storage;previewBridgeReady=true;finish();}addEventListener("message",receive);parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:host.preview_bridge.id,action:"storage.ready"},host.preview_bridge.parent_origin);setTimeout(finish,2000);});
+}
 function apiClient(installation){
   var declaration=installation.api;var tokenPromise=null;var tokenExpiresAt=0;
   function route(path,method){return declaration.routes.some(function(rule){var match=rule.path.endsWith("/*")?path.startsWith(rule.path.slice(0,-1)):path===rule.path;return match&&rule.methods.includes(method);});}
   function token(){
     if(!declaration||declaration.authentication==="none")return Promise.resolve("");
+    if(declaration.preview_token)return Promise.resolve(declaration.preview_token);
     if(!declaration.token_url)return Promise.reject(new Error("Extension API token endpoint is unavailable"));
     if(tokenPromise&&Date.now()>=tokenExpiresAt-30000)tokenPromise=null;
     if(!tokenPromise)tokenPromise=fetch(declaration.token_url,{method:"POST",headers:{accept:"application/json"},credentials:"omit"}).then(function(response){return response.json().catch(function(){return null;}).then(function(body){if(!response.ok||!body||typeof body.token!=="string")throw new Error("Extension API token request failed");tokenExpiresAt=Date.now()+Math.max(30,Number(body.expires_in)||300)*1000;return body.token;});}).catch(function(error){tokenPromise=null;tokenExpiresAt=0;throw error;});
@@ -134,7 +188,7 @@ function unavailable(el,component){
   el.replaceChildren();var message=document.createElement("p");message.className="tr-extension-unavailable";message.textContent=component.unavailable_message||"This feature is temporarily unavailable.";el.appendChild(message);
 }
 function contextFor(entry){
-  return {protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,url:urlRuntime(entry.capture.values),navigation:navigation(),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component)};
+  return {protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,preview:entry.descriptor.installation.preview===true,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,url:urlRuntime(entry.capture.values),navigation:navigation(),site:siteRuntime(),storage:storageRuntime(entry),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component)};
 }
 async function mountBundle(entry,context){
   var component=entry.descriptor.component;loadStyle(component.local_style_url);
@@ -175,10 +229,11 @@ function mountFrame(entry,context){
   }
   window.addEventListener("message",receive);
   context.navigation.subscribe(function(view){frame.contentWindow&&frame.contentWindow.postMessage({type:"typeroll.extension.navigation",version:snapshot.protocol_version,installation_id:context.installation_id,component_id:context.component_id,view:view},target.origin);});
-  frame.addEventListener("load",function(){frame.contentWindow.postMessage({type:"typeroll.extension.init",version:snapshot.protocol_version,installation_id:context.installation_id,component_id:context.component_id,props:entry.props,config:context.config,url_context:entry.capture.values,navigation:{current:context.navigation.current},form_bindings:context.forms.list()},target.origin);},{once:true});
+  frame.addEventListener("load",function(){frame.contentWindow.postMessage({type:"typeroll.extension.init",version:snapshot.protocol_version,preview:context.preview,installation_id:context.installation_id,component_id:context.component_id,props:entry.props,config:context.config,url_context:entry.capture.values,navigation:{current:context.navigation.current},form_bindings:context.forms.list()},target.origin);},{once:true});
   entry.el.replaceChildren(frame);
 }
 async function start(){
+  await initializePreviewBridge();
   document.querySelectorAll("[data-tr-extension-installation][data-tr-extension-component]").forEach(function(el){
     var descriptor=findDescriptor(el);if(!descriptor)return;
     var props={};try{props=JSON.parse(el.getAttribute("data-block-data")||"{}");}catch(_){}

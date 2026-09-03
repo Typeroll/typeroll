@@ -172,4 +172,62 @@ describe('bulkReplaceText', () => {
       bulkReplaceText(ORG, SITE, MAIN_VERSION_ID, { pattern: '', replacement: 'x' }),
     ).rejects.toThrow();
   });
+
+  it('replaces text in partials, block data, and collection schema fields', async () => {
+    await setup();
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    await store.setDoc(paths.partial(ORG, SITE, 'footer', MAIN_VERSION_ID), {
+      name: 'Footer', kind: 'footer', content_mode: 'html', status: 'published',
+      html_content: '<a href="/old">Old offer</a>',
+    });
+    await store.setDoc(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/blocks`, {
+      title: 'Blocks', slug: 'blocks', status: 'published', content_mode: 'blocks',
+      blocks: [{ id: 'b1', type: 'core/text', data: { text: 'Old offer' } }],
+    });
+    await store.setDoc(paths.collection(ORG, SITE, 'posts', MAIN_VERSION_ID), {
+      name: 'posts', label_singular: 'Post', label_plural: 'Posts',
+      fields: [{ name: 'body', label: 'Body', type: 'richtext' }],
+      created_at: new Date().toISOString(),
+    });
+    await store.setDoc(paths.collectionItem(ORG, SITE, 'posts', 'one', MAIN_VERSION_ID), {
+      status: 'published', body: '<p>Old offer</p>',
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+
+    const { bulkReplaceText } = await import('../../lib/bulk-operations');
+    const result = await bulkReplaceText(ORG, SITE, MAIN_VERSION_ID, {
+      pattern: 'Old offer', replacement: 'New offer', scope: 'all', save: true,
+    });
+    expect(result.resource_counts).toEqual({ pages: 1, collection_items: 1, partials: 1 });
+    expect(result.saved).toBe(3);
+
+    const { vstore } = await import('../../lib/version-store');
+    expect((await vstore.partial(ORG, SITE, MAIN_VERSION_ID, 'footer'))?.html_content).toContain('New offer');
+    const page = await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'blocks');
+    expect(page?.blocks?.[0].data.text).toBe('New offer');
+    const item = await vstore.collectionItem(ORG, SITE, MAIN_VERSION_ID, 'posts', 'one');
+    expect(item?.body).toContain('New offer');
+  });
+
+  it('reports collection-field authority conflicts without staging the item', async () => {
+    await setup();
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    await store.setDoc(paths.collection(ORG, SITE, 'locked', MAIN_VERSION_ID), {
+      name: 'locked', label_singular: 'Entry', label_plural: 'Entries',
+      fields: [{ name: 'body', label: 'Body', type: 'text', writable_by: ['portal'] }],
+      created_at: new Date().toISOString(),
+    });
+    await store.setDoc(paths.collectionItem(ORG, SITE, 'locked', 'one', MAIN_VERSION_ID), {
+      status: 'published', body: 'Old offer',
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+    const { bulkReplaceText } = await import('../../lib/bulk-operations');
+    const result = await bulkReplaceText(ORG, SITE, MAIN_VERSION_ID, {
+      pattern: 'Old offer', replacement: 'New offer', scope: 'collection_items', collection: 'locked',
+    });
+    expect(result.conflicts).toEqual([{ target: { kind: 'item', collection: 'locked', id: 'one' }, fields: ['body'] }]);
+    expect(result.updated).toBe(0);
+  });
 });

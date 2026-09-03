@@ -7,6 +7,7 @@
 // which the layout drops into the page intentionally.
 
 import sanitizeHtml, { type IOptions } from 'sanitize-html';
+import { DEFAULT_IFRAME_ALLOWED_HOSTS, normalizeIframeAllowedHosts } from '@typeroll/shared/iframe-policy';
 
 const allowedTags = [
   ...sanitizeHtml.defaults.allowedTags,
@@ -37,6 +38,7 @@ const allowedTags = [
   'path',
   'g',
   'circle',
+  'ellipse',
   'rect',
   'line',
   'polyline',
@@ -89,12 +91,13 @@ const allowedTags = [
 
 const options: IOptions = {
   allowedTags,
+  nonBooleanAttributes: sanitizeHtml.defaults.nonBooleanAttributes.filter((name) => name !== 'download'),
   allowedAttributes: {
     // Schema.org microdata is passive metadata — keep it on every element
     // for rich-results support. Mirror with packages/portal/src/lib/sanitize.ts.
     '*': ['id', 'class', 'style', 'data-*', 'aria-*', 'role', 'lang', 'dir',
       'itemscope', 'itemtype', 'itemprop', 'itemref', 'itemid'],
-    a: ['href', 'target', 'rel', 'title'],
+    a: ['href', 'target', 'rel', 'title', 'download'],
     'x-include': ['name'],
     'x-form': ['id'],
     'x-extension': ['block', 'props'],
@@ -183,16 +186,7 @@ const options: IOptions = {
     td: ['colspan', 'rowspan'],
   },
   // Restrict iframe sources to common embed providers + same origin
-  allowedIframeHostnames: [
-    'www.youtube.com',
-    'youtube.com',
-    'www.youtube-nocookie.com',
-    'player.vimeo.com',
-    'vimeo.com',
-    'www.google.com',
-    'maps.google.com',
-    'calendly.com',
-  ],
+  allowedIframeHostnames: [...DEFAULT_IFRAME_ALLOWED_HOSTS],
   allowedSchemes: ['http', 'https', 'mailto', 'tel'],
   allowedSchemesByTag: {
     img: ['http', 'https', 'data'],
@@ -230,7 +224,7 @@ function stripCssExploits(html: string): string {
 // HTML comments survive sanitization so regenerate_collection_listing's
 // markers don't disappear on the next page edit. See the longer
 // explanation in the portal sibling.
-const TYPEROLL_MARKER_RE = /<!--\s*(\/?typeroll:[^>]+?)\s*-->/g;
+const TYPEROLL_MARKER_RE = /<!--\s*(\/?typeroll:[^>]+?|[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127})\s*-->/g;
 const TYPEROLL_TOKEN_RE = /<tr-marker\b[^>]*\bdata-tr="([^"]+)"[^>]*><\/tr-marker>/g;
 
 function protectMarkers(html: string): string {
@@ -244,10 +238,12 @@ function restoreMarkers(html: string): string {
   return html.replace(TYPEROLL_TOKEN_RE, (_m, payload: string) => `<!-- ${payload} -->`);
 }
 
-export function sanitizeBody(html: string): string {
+export function sanitizeBody(html: string, iframeAllowedHosts: string[] = []): string {
+  const customHosts = normalizeIframeAllowedHosts(iframeAllowedHosts).hosts;
   const protectedHtml = protectMarkers(html);
   const cleaned = stripCssExploits(sanitizeHtml(protectedHtml, {
     ...options,
+    allowedIframeHostnames: [...DEFAULT_IFRAME_ALLOWED_HOSTS, ...customHosts],
     allowedTags: [...allowedTags, 'tr-marker'],
     allowedAttributes: {
       ...options.allowedAttributes,

@@ -25,7 +25,7 @@ const isArticle = page.kind === 'article';
 
 const title = (() => {
   const base = page.seo_title || page.title;
-  if (!settings.default_seo_suffix) return base;
+  if (!settings.default_seo_suffix || page.append_seo_suffix === false) return base;
   return base.endsWith(settings.default_seo_suffix) ? base : `${base}${settings.default_seo_suffix}`;
 })();
 
@@ -255,6 +255,7 @@ const breadcrumbJsonLd = breadcrumbSchema();
 
 {settings.favicon && <link rel="icon" href={settings.favicon} />}
 {settings.apple_touch_icon && <link rel="apple-touch-icon" sizes="180x180" href={settings.apple_touch_icon} />}
+{settings.icon_192 && <link rel="icon" type="image/png" sizes="192x192" href={settings.icon_192} />}
 
 {pageJsonLd && (
   <script type="application/ld+json" set:html={pageJsonLd} />

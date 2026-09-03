@@ -41,6 +41,7 @@ import {
 import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './item-refs.js';
+import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 
 /**
  * Render context — values exposed to templates via the dotted-path
@@ -60,13 +61,12 @@ export interface RenderContext {
   collection?: Record<string, unknown>;
   /**
    * Archive pagination for a repeater with `paginate` set (collection
-   * sources only). `current` is 1-based; `base_url` is the page's own URL
-   * with a trailing slash — page N links to `${base_url}page/N/`, page 1
-   * back to `base_url`. Route generation lives in the SSG ([...slug].astro
+   * sources only). `current` is 1-based; `base_url` is the page's own URL.
+   * Route generation lives in the SSG ([...slug].astro
    * emits the /page/N/ paths via countPaginatedRoutes); previews render
    * page 1.
    */
-  pagination?: { current: number; base_url: string };
+  pagination?: { current: number; base_url: string; trailing_slash?: TrailingSlashPolicy };
   /**
    * Reverse reference index, for `source_type: 'backlinks'` repeaters.
    * Computed by the caller from the item set it already loaded, never stored
@@ -420,7 +420,9 @@ function renderRepeater(
       const totalPages = Math.max(1, Math.ceil(items.length / perPage));
       const baseUrl = options.context?.pagination?.base_url ?? '';
       items = items.slice((current - 1) * perPage, current * perPage);
-      const pager = totalPages > 1 ? renderPager(current, totalPages, baseUrl) : '';
+      const pager = totalPages > 1
+        ? renderPager(current, totalPages, baseUrl, options.context?.pagination?.trailing_slash)
+        : '';
       return renderRepeaterItems(block, blockType, itemBlockType, data, items, options) + pager;
     }
   } else if (sourceType === 'related' || sourceType === 'backlinks') {
@@ -486,10 +488,10 @@ function renderRepeaterItems(
   // the item template can reference `{{item.title}}`, `{{item.url}}` etc.
   // The collection name flows along too for `{{collection.name}}`.
   const collectionName = String(data.collection ?? '');
-  const inner = items
+  const renderItems = (source: Record<string, unknown>[], offset = 0) => source
     .map((item, i) => {
       const itemBlock: Block = {
-        id: `${block.id}__i${i}`,
+        id: `${block.id}__i${offset + i}`,
         type: itemBlockType.id,
         // Item data takes precedence over the repeater's defaults; the
         // overrides win over BOTH (use this to lock heading levels etc.
@@ -514,15 +516,45 @@ function renderRepeaterItems(
     return wrapRepeater(block, blockType, data, escapeHtml(data.empty_state));
   }
 
-  return wrapRepeater(block, blockType, data, inner);
+  const groupBy = typeof data.group_by === 'string' ? data.group_by.trim() : '';
+  if (!groupBy) return wrapRepeater(block, blockType, data, renderItems(items));
+
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const item of items) {
+    const raw = item[groupBy];
+    const labels = Array.isArray(raw) ? raw.map(String) : [String(raw ?? '')];
+    for (const candidate of labels.length ? labels : ['']) {
+      const label = candidate.trim() || String(data.ungrouped_label ?? 'Other');
+      const group = groups.get(label) ?? [];
+      group.push(item);
+      groups.set(label, group);
+    }
+  }
+  const direction = data.group_sort_order === 'desc' ? -1 : 1;
+  const level = ['h2', 'h3', 'h4'].includes(String(data.group_heading_level))
+    ? String(data.group_heading_level) : 'h2';
+  let offset = 0;
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }) * direction)
+    .map(([label, group]) => {
+      const inner = renderItems(group, offset);
+      offset += group.length;
+      return `<section class="tr-repeater-group" data-repeater-group="${escapeHtml(label)}"><${level} class="tr-repeater-group-title">${escapeHtml(label)}</${level}>${wrapRepeater(block, blockType, data, inner)}</section>`;
+    })
+    .join('');
 }
 
 /** Archive pager: prev/next + numbered links. Page 1 is the page's own
  *  URL, page N lives at `${base}page/N/`. rel=prev/next help crawlers walk
  *  the archive even though paged routes stay out of the sitemap. */
-function renderPager(current: number, totalPages: number, baseUrl: string): string {
+function renderPager(
+  current: number,
+  totalPages: number,
+  baseUrl: string,
+  trailingSlash: TrailingSlashPolicy = 'always',
+): string {
   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
-  const urlFor = (n: number) => (n <= 1 ? base : `${base}page/${n}/`);
+  const urlFor = (n: number) => applyTrailingSlash(n <= 1 ? base : `${base}page/${n}`, trailingSlash);
   const link = (n: number, label: string, rel?: string, current_ = false) =>
     current_
       ? `<span class="tr-pager-current" aria-current="page">${label}</span>`

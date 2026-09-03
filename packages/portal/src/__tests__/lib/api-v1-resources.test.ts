@@ -428,6 +428,39 @@ describe('collections endpoints', () => {
     expect((item as Record<string, unknown>).injected).toBeUndefined();
   });
 
+  it('GET and PATCH resolve an item by its configured slug field', async () => {
+    const { token } = await setup();
+    await seedCollection('blog', {
+      slug_field: 'slug',
+      fields: [
+        { name: 'slug', label: 'Slug', type: 'text' },
+        { name: 'title', label: 'Title', type: 'text' },
+      ],
+    });
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.collectionItem(ORG, SITE, 'blog', 'opaque-id', MAIN_VERSION_ID), {
+      slug: 'hello-world', title: 'Old', status: 'draft',
+    });
+    const route = import('../../pages/api/v1/sites/[siteId]/collections/[name]/items/[itemId]');
+    const get = await callRoute(route, 'GET', `http://localhost/api/v1/sites/${SITE}/collections/blog/items/hello-world`, {
+      siteId: SITE, name: 'blog', itemId: 'hello-world',
+    }, { headers: bearer(token) });
+    const getBody = await get.json() as { item: { id: string }; resolved_by: string; data: unknown };
+    expect(getBody.item.id).toBe('opaque-id');
+    expect(getBody.resolved_by).toBe('slug');
+    expect(getBody.data).toBeTruthy();
+
+    const patchRes = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/collections/[name]/items/[itemId]'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SITE}/collections/blog/items/hello-world`,
+      { siteId: SITE, name: 'blog', itemId: 'hello-world' },
+      { headers: bearer(token), body: { patch: { title: 'New' }, save: true } },
+    );
+    expect(patchRes.status).toBe(200);
+    expect((await patchRes.json()).item.title).toBe('New');
+  });
+
   it('batch-read returns found/not-found per id', async () => {
     const { token } = await setup();
     await seedCollection('blog');
@@ -469,6 +502,22 @@ describe('collections endpoints', () => {
 
 describe('collection schema CRUD', () => {
   beforeEach(async () => { await resetDatastore(); });
+
+  it('accepts the MCP-shaped { patch } payload and returns the data envelope', async () => {
+    const { token } = await setup();
+    await seedCollection('blog');
+    const response = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/collections/[name]/index'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SITE}/collections/blog`,
+      { siteId: SITE, name: 'blog' },
+      { headers: bearer(token), body: { patch: { label_plural: 'Articles' } } },
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json() as { collection: { label_plural: string }; data: { collection: unknown } };
+    expect(body.collection.label_plural).toBe('Articles');
+    expect(body.data.collection).toEqual(body.collection);
+  });
 
   it('POST / creates a collection with routing fields, default route_template applied', async () => {
     const { token } = await setup();

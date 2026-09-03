@@ -51,6 +51,7 @@ function projectPage(p: Page, full = false): Record<string, unknown> {
     kind: p.kind,
     author: p.author,
     seo_title: p.seo_title,
+    append_seo_suffix: p.append_seo_suffix,
     seo_description: p.seo_description,
     og_image: p.og_image,
     noindex: p.noindex,
@@ -106,6 +107,7 @@ export const GET: APIRoute = async ({ request, params }) => {
 const CREATE_FIELDS = [
   'title', 'slug', 'path', 'html_content', 'blocks', 'status', 'content_mode', 'kind', 'author',
   'language', 'seo_title', 'seo_description', 'og_image', 'seo_image_alt', 'canonical_url',
+  'append_seo_suffix',
   'noindex', 'alternates', 'lastmod_override', 'json_ld', 'schema_type', 'service', 'template',
   'image_sizes_default', 'custom_css',
 ] as const;
@@ -226,11 +228,11 @@ export const POST: APIRoute = async ({ request, params }) => {
     // doc.html_content from string back to unknown (Record<string,
     // unknown> bracket access doesn't keep narrowed types across
     // suspension points).
-    let html: string = sanitizeBody(doc.html_content);
+    const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
+    let html: string = sanitizeBody(doc.html_content, settings?.iframe_allowed_hosts);
     const media = await getStore().listDocs<Media>(paths.media(ctx.orgId, ctx.siteId));
     // Responsive-image `sizes` default: new page's own value overrides the
     // site-wide setting; a per-<img> `sizes` still wins inside the transform.
-    const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
     const defaultSizes =
       (doc.image_sizes_default as string | undefined) ||
       settings?.image_sizes_default ||

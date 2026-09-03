@@ -7,19 +7,20 @@
 // meta tag.
 
 import type { APIRoute } from 'astro';
-import { getAllPages, urlFor } from '../lib/content';
+import { getAllPages, getSiteSettings, urlFor } from '../lib/content';
 import type { Page } from '@typeroll/shared';
 
 export const GET: APIRoute = async ({ site }) => {
   const base = site ? site.toString().replace(/\/$/, '') : '';
   const pages = await getAllPages({ includeUnlisted: false });
+  const settings = await getSiteSettings();
 
   const entries = pages
     .filter((p) => !p.noindex)
     .map((p) => {
       const images = extractImages(p);
       if (images.length === 0) return '';
-      const loc = `${base}${urlFor(p)}`;
+      const loc = `${base}${urlFor(p, settings.trailing_slash)}`;
       const imageTags = images
         .map((img) => `<image:image><image:loc>${escapeXml(img)}</image:loc></image:image>`)
         .join('');

@@ -18,6 +18,8 @@ to that mount and contains:
 - the installation's public configuration;
 - `url.get()`, `url.has()`, and one-time `url.consume()` accessors;
 - an in-memory `navigation` object;
+- `site.url()` and `site.navigate()` for root-relative Typeroll page paths;
+- installation-scoped `storage.session` and `storage.local` JSON storage;
 - `api.fetch()` for direct calls to declared provider routes;
 - `forms.has()`, `forms.list()`, and `forms.submit()` for approved form
   bindings.
@@ -68,6 +70,30 @@ Navigation belongs to the mounted component. It does not create a new
 Typeroll page or URL path, and the component's captured runtime context remains
 available until that mount is destroyed. A full reload starts a new mount and
 follows the provider's declared session strategy.
+
+## Navigate between Typeroll pages
+
+Use the site-navigation API instead of assigning a root-relative path directly:
+
+```ts
+context.storage.session.set("quote-draft", {
+  from: "Storgatan 1",
+  to: "Kungsgatan 2",
+});
+context.site.navigate("/flyttfirmeoffert/");
+```
+
+On a published site, `site.url(path)` resolves against the site's current
+origin. In a navigable preview it resolves to the matching preview route and
+preserves any signed preview ticket. Only root-relative paths are accepted.
+
+Both storage areas accept JSON-compatible values through `get`, `set`, and
+`remove`. They are namespaced by installation. On a published site they use
+the browser's corresponding Web Storage area. Because an isolated preview has
+an opaque origin, preview storage is tab-scoped and survives navigation inside
+that preview; preview `local` intentionally has the same lifetime as preview
+`session`. Values are not added to the URL, referrer, generated HTML, or
+Typeroll request body.
 
 ## Receive an opaque recipient token
 

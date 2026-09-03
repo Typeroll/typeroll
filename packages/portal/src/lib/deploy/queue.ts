@@ -189,6 +189,7 @@ async function runDeployBody(args: EnqueueArgs): Promise<void> {
       finished_at: new Date().toISOString(),
       deploy_url: args.dryRun ? null : (result.deploy?.url ?? null),
       dry_run: args.dryRun === true,
+      warnings: result.warnings ?? [],
       cost: computeDeployCost({
         durationMs: Date.now() - startedMs,
         rates,

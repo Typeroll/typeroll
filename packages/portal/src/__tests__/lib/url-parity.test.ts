@@ -49,6 +49,19 @@ describe('checkUrlParity', () => {
     expect(results[0].final_status).toBe(200);
   });
 
+  it('treats the configured trailing-slash redirect as canonical ok', async () => {
+    const { results } = await checkUrlParity([{ path: '/om-oss' }], {
+      targetOrigin: TARGET,
+      trailingSlashPolicy: 'always',
+      fetchImpl: fakeFetch({
+        [`${TARGET}/om-oss`]: { status: 308, location: '/om-oss/' },
+        [`${TARGET}/om-oss/`]: { status: 200 },
+      }),
+    });
+    expect(results[0].verdict).toBe('ok');
+    expect(results[0].hops).toBe(1);
+  });
+
   it('flags a 404 as missing — the gap a cutover would ship', async () => {
     const { results, summary } = await checkUrlParity([{ path: '/kampanj-2019' }], {
       targetOrigin: TARGET,

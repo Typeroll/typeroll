@@ -17,10 +17,15 @@
 // a page (HTML mode) or a future block-editor template.
 
 import type { CollectionDef, CollectionItem } from './types.js';
+import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 
 const TOKEN_RE = /\{([^{}]+)\}/g;
 const HTML_TRIPLE_RE = /\{\{\{([^{}]+)\}\}\}/g;
 const HTML_DOUBLE_RE = /\{\{([^{}]+)\}\}/g;
+// Match an innermost section. Repeating this pass supports nesting without
+// turning the intentionally small collection-template language into a full
+// Mustache implementation.
+const HTML_SECTION_RE = /\{\{#\s*([A-Za-z0-9_.-]+)\s*\}\}((?:(?!\{\{#)[\s\S])*?)\{\{\/\s*\1\s*\}\}/g;
 
 function escapeHtml(s: string): string {
   return s
@@ -36,6 +41,30 @@ function asString(v: unknown): string {
   if (typeof v === 'string') return v;
   if (typeof v === 'number' || typeof v === 'boolean') return String(v);
   try { return JSON.stringify(v); } catch { return ''; }
+}
+
+function sectionIsTruthy(value: unknown): boolean {
+  if (value == null || value === false || value === 0) return false;
+  if (typeof value === 'string') return value.length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+function renderSections(template: string, item: CollectionItem): string {
+  let out = template;
+  // A hard ceiling keeps malformed or adversarial templates bounded. Each
+  // successful pass removes at least one pair, so ordinary templates finish
+  // after one or two iterations.
+  for (let depth = 0; depth < 32; depth += 1) {
+    let changed = false;
+    out = out.replace(HTML_SECTION_RE, (_match, name: string, body: string) => {
+      changed = true;
+      const value = (item as Record<string, unknown>)[name.trim()];
+      return sectionIsTruthy(value) ? body : '';
+    });
+    if (!changed) break;
+  }
+  return out;
 }
 
 /**
@@ -87,14 +116,27 @@ export function renderItemTemplate(
   item: CollectionItem,
 ): string {
   const src = template && template.trim() ? template : DEFAULT_ITEM_TEMPLATE;
+  const withSections = renderSections(src, item);
   // Triple-brace first so the inner pattern doesn't get matched by the
   // double-brace pass.
-  const raw = src.replace(HTML_TRIPLE_RE, (_m, name: string) =>
+  const raw = withSections.replace(HTML_TRIPLE_RE, (_m, name: string) =>
     asString((item as Record<string, unknown>)[name.trim()]),
   );
   return raw.replace(HTML_DOUBLE_RE, (_m, name: string) =>
     escapeHtml(asString((item as Record<string, unknown>)[name.trim()])),
   );
+}
+
+/** Exact collection filter with multi-value membership semantics. */
+export function collectionFieldMatches(
+  item: Record<string, unknown>,
+  field: string,
+  expected: string,
+): boolean {
+  const value = item[field];
+  return Array.isArray(value)
+    ? value.some((entry) => String(entry) === expected)
+    : String(value ?? '') === expected;
 }
 
 /**
@@ -108,6 +150,47 @@ export interface CollectionItemRoute {
   path: string;
   collection: CollectionDef;
   item: CollectionItem;
+}
+
+export interface CollectionRouteLink {
+  id: string;
+  title: string;
+  url: string;
+}
+
+export interface CollectionRouteNavigation {
+  previous?: CollectionRouteLink;
+  next?: CollectionRouteLink;
+}
+
+/** Resolve deterministic neighbours using the collection's configured sort. */
+export function collectionRouteNavigation(
+  route: CollectionItemRoute,
+  routes: CollectionItemRoute[],
+  trailingSlash: TrailingSlashPolicy = 'ignore',
+): CollectionRouteNavigation {
+  const key = route.collection.sort_field;
+  const direction = route.collection.sort_dir === 'desc' ? -1 : 1;
+  const siblings = routes.filter((candidate) => candidate.collection.name === route.collection.name);
+  if (key) {
+    siblings.sort((a, b) => {
+      const av = (a.item as Record<string, unknown>)[key];
+      const bv = (b.item as Record<string, unknown>)[key];
+      if (av == null && bv != null) return 1;
+      if (av != null && bv == null) return -1;
+      const compared = String(av ?? '').localeCompare(String(bv ?? ''), undefined, { numeric: true });
+      return compared === 0 ? a.path.localeCompare(b.path) : compared * direction;
+    });
+  } else {
+    siblings.sort((a, b) => a.path.localeCompare(b.path));
+  }
+  const index = siblings.findIndex((candidate) => candidate.item.id === route.item.id);
+  const link = (candidate: CollectionItemRoute | undefined): CollectionRouteLink | undefined => candidate ? {
+    id: candidate.item.id,
+    title: String((candidate.item as Record<string, unknown>).title ?? (candidate.item as Record<string, unknown>).name ?? candidate.item.id),
+    url: applyTrailingSlash(candidate.path, trailingSlash),
+  } : undefined;
+  return { previous: link(siblings[index - 1]), next: link(siblings[index + 1]) };
 }
 
 export function buildCollectionRoutes(

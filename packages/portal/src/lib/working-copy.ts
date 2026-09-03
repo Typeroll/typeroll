@@ -291,7 +291,8 @@ export async function commitWorkingCopy(
     const existing = await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
     const update: Record<string, unknown> = { ...wc.fields, date_updated: now };
     if (typeof update.html_content === 'string') {
-      update.html_content = sanitizeBody(update.html_content as string);
+      const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
+      update.html_content = sanitizeBody(update.html_content as string, settings?.iframe_allowed_hosts);
     }
     // Create-on-write defaults, mirroring the canonical partial PUT.
     if (!update.kind) {

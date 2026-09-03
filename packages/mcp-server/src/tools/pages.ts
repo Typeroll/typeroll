@@ -92,6 +92,7 @@ export const pageTools: ToolDef[] = [
       blocks: z.array(z.any()).optional().describe('Block tree — only used when content_mode="blocks". Omit to get the default heading+prose seed.'),
       status: z.enum(['draft', 'review', 'unlisted', 'published']).optional(),
       seo_title: z.string().optional(),
+      append_seo_suffix: z.boolean().optional().describe('Set false to omit the site default SEO suffix on this page.'),
       seo_description: z.string().optional(),
       seo_image_alt: z.string().optional(),
       alternates: z
@@ -137,6 +138,7 @@ export const pageTools: ToolDef[] = [
           author: z.string().optional(),
           language: z.string().optional(),
           seo_title: z.string().optional(),
+          append_seo_suffix: z.boolean().optional().describe('Set false to use seo_title/page title verbatim without the site suffix.'),
           seo_description: z.string().optional(),
           og_image: z.string().optional(),
           seo_image_alt: z.string().optional().describe('Alt text for og:image/twitter:image. Falls back to first <img alt> on the page when unset.'),
@@ -261,6 +263,7 @@ export const pageTools: ToolDef[] = [
         html_content: srcMode === 'html' ? src.html_content : '',
         blocks: srcMode === 'blocks' ? (src.blocks ?? []) : undefined,
         seo_title: src.seo_title,
+        append_seo_suffix: src.append_seo_suffix,
         seo_description: src.seo_description,
         og_image: src.og_image,
         canonical_url: undefined,  // intentionally NOT copied — point of canonical is to differ

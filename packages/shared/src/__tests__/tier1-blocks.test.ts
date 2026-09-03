@@ -11,6 +11,12 @@ import type { Block, BlockType } from '../types.js';
 // in the editor preview tests once the editor wires up.
 
 describe('TIER1_BLOCK_TYPES — structural invariants', () => {
+  it('includes the table-of-contents block with a browser initializer', () => {
+    const toc = TIER1_BLOCK_TYPES.find((block) => block.id === 'core/table_of_contents');
+    expect(toc?.script).toContain("register('core/table_of_contents'");
+    expect(toc?.schema.find((field) => field.name === 'levels')?.options).toEqual(['h2', 'h2-h3', 'h2-h4']);
+  });
+
   it('every block has a unique id', () => {
     const ids = TIER1_BLOCK_TYPES.map((b) => b.id);
     expect(new Set(ids).size).toBe(ids.length);

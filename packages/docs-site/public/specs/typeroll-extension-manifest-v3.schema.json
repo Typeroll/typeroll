@@ -100,7 +100,8 @@
             "required": ["path", "methods"],
             "properties": {
               "path": { "type": "string", "pattern": "^/" },
-              "methods": { "type": "array", "items": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] }, "minItems": 1 }
+              "methods": { "type": "array", "items": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] }, "minItems": 1 },
+              "preview_methods": { "type": "array", "items": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] }, "minItems": 1 }
             },
             "additionalProperties": false
           }
@@ -134,9 +135,10 @@
       "type": "object",
       "properties": {
         "type": { "enum": ["string", "number", "integer", "boolean", "object", "array"] },
-        "enum": { "type": "array" }, "format": { "enum": ["secret", "url", "email"] },
+        "enum": { "type": "array" }, "enum_labels": { "type": "array", "items": { "type": "string" } }, "format": { "enum": ["secret", "url", "email"] },
         "title": { "type": "string" }, "description": { "type": "string" }, "default": {}, "public": { "type": "boolean" },
         "properties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/schemaProperty" } },
+        "required": { "type": "array", "items": { "type": "string" } },
         "items": { "$ref": "#/$defs/schemaProperty" }
       },
       "additionalProperties": false

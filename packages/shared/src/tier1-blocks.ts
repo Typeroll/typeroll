@@ -1261,6 +1261,52 @@ window.TyperollBlocks.register('core/search', (el) => {
   created_at: ISO_EPOCH,
 };
 
+/** Client-populated heading index. It assigns stable ids only when missing. */
+const tableOfContents: BlockType = {
+  id: 'core/table_of_contents',
+  name: 'table_of_contents',
+  label: 'Table of contents',
+  icon: 'list-tree',
+  category: 'content',
+  container: false,
+  schema: [
+    { name: 'title', type: 'text', label: 'Title', default: 'On this page' },
+    { name: 'levels', type: 'select', label: 'Heading levels', options: ['h2', 'h2-h3', 'h2-h4'], default: 'h2-h3' },
+  ],
+  template: `<nav data-block="table_of_contents" data-levels="{{levels}}" aria-label="{{title}}"><strong>{{title}}</strong><ol></ol></nav>`,
+  styles: `
+[data-block="table_of_contents"] { padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0.5rem; }
+[data-block="table_of_contents"] ol { margin: 0.65rem 0 0; padding-left: 1.25rem; }
+[data-block="table_of_contents"] li[data-level="3"] { margin-left: 1rem; }
+[data-block="table_of_contents"] li[data-level="4"] { margin-left: 2rem; }
+[data-block="table_of_contents"][data-empty="true"] { display: none; }
+`.trim(),
+  script: `
+window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
+window.TyperollBlocks.register('core/table_of_contents', (el) => {
+  const root = el.closest('main') || document.querySelector('main') || document.body;
+  const levels = el.dataset.levels === 'h2' ? 'h2' : el.dataset.levels === 'h2-h4' ? 'h2,h3,h4' : 'h2,h3';
+  const headings = Array.from(root.querySelectorAll(levels)).filter((heading) => !el.contains(heading));
+  const list = el.querySelector('ol');
+  if (!list || !headings.length) { el.dataset.empty = 'true'; return; }
+  const used = new Set(Array.from(document.querySelectorAll('[id]')).map((node) => node.id));
+  headings.forEach((heading, index) => {
+    if (!heading.id) {
+      const base = (heading.textContent || 'section').toLowerCase().normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
+      let id = base, suffix = 2;
+      while (used.has(id)) id = base + '-' + suffix++;
+      heading.id = id; used.add(id);
+    }
+    const li = document.createElement('li'); li.dataset.level = heading.tagName.slice(1);
+    const a = document.createElement('a'); a.href = '#' + heading.id; a.textContent = heading.textContent || ('Section ' + (index + 1));
+    li.appendChild(a); list.appendChild(li);
+  });
+});
+`.trim(),
+  origin: 'core',
+  created_at: ISO_EPOCH,
+};
+
 /**
  * `html` — raw HTML escape hatch. For the genuinely unique thing no block
  * covers: a third-party embed, a form with a signed hidden token, a
@@ -1361,6 +1407,7 @@ export const TIER1_BLOCK_TYPES: readonly BlockType[] = [
   tabs,
   mediaCard,
   featureRow,
+  tableOfContents,
   search,
   htmlBlock,
   embed,

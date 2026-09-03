@@ -75,8 +75,10 @@ client using it stops working immediately.
    > number of pages, what global blocks exist, what collections are
    > defined. Then I'll give you a task."
 
-   Claude will call `get_site`, `list_pages`, `list_partials`,
-   `list_collections` in sequence and report back.
+   Claude will call `get_site`, `get_site_capabilities`, `list_pages`,
+   `list_partials`, `list_collections`, and `list_block_types` in sequence and
+   report back. The capabilities + block palette are mandatory before it
+   chooses HTML mode or reports a missing site-building feature.
 
 ## Environment variables (stdio)
 
@@ -113,7 +115,7 @@ which tool.
 
 ## Tool surface
 
-Around 50 tools across these families. See [AGENTS.md](./AGENTS.md) for
+More than 100 tools across these families. See [AGENTS.md](./AGENTS.md) for
 the full reference + concrete operation recipes.
 
 - **Skills + guide (self-describing playbook)** — `read_guide`,
@@ -146,9 +148,14 @@ the full reference + concrete operation recipes.
   otherwise it's stripped with a warning.
 - **Collections + items** — create/update/delete the collection schema
   itself (incl. `route_template` for per-item URLs); list/read/batch-
-  read/create/update/delete items.
+  read/create/update/delete items. Existing-collection tools consistently
+  use `collection` (the old `name` argument remains accepted as an alias).
+  Collection repeaters support `group_by`, and item templates can place
+  `template/item_navigation` for deterministic previous/next links.
 - **Media** — list, read, signed upload URLs, `upload_media_from_url`,
-  `upload_media_inline` (both auto-finalize after PUT — see below),
+  `upload_media_batch_from_urls` (1–50 sources, max 25 MiB each, with
+  partial-success results),
+  `upload_media_inline` (all URL uploads auto-finalize after PUT — see below),
   patch metadata, delete, `finalize_media` (per-item: applies immutable
   Cache-Control + generates AVIF/WebP srcset variants — call after
   `create_upload_url`'s raw PUT path), `finalize_all_media` (bulk
@@ -156,12 +163,21 @@ the full reference + concrete operation recipes.
   variant half of finalize, kept for surgical reruns),
   `suggest_alt_text_context` (returns a tuned prompt for your own
   vision model).
+- **Rendering controls** — `core/table_of_contents`, per-site
+  `trailing_slash`, exact `iframe_allowed_hosts`, `icon_192`, and per-page
+  `append_seo_suffix=false`. The block editor supports labelled enums,
+  line-based lists, nested repeating arrays and an internal-page URL picker.
 - **Redirects** — list, create, delete. Plus automatic 301 on slug change.
 - **Forms** — list, read, create, update, delete, list submissions.
   Place forms with `core/form` blocks or an HTML-mode `<x-form id="…" />`
   reference; preview/build expands both server-side to the same complete,
   signed form shell. Admins configure email and allowlisted, signed webhooks
   in the portal; action configuration stays off agent surfaces.
+- **Extension installations** — list/read installed Extensions and update
+  manifest-defined installation config through the API key with
+  `update_extension_installation_config`; omitted and masked secrets are
+  preserved. Use this for frontend config such as consent copy and policy
+  links, then redeploy.
 - **Settings** — read + patch, including `scripts_head` /
   `scripts_body_end` / `custom_css` (trusted because the caller holds an
   API key; the in-portal chat AI does NOT get these).
@@ -170,8 +186,14 @@ the full reference + concrete operation recipes.
   and deploys. Secret fields are encrypted server-side and never returned;
   Analytics provisioning runs on the platform. Deploy after updates whose
   response has `affects_build: true`.
-- **Search** — `search_pages` with substring or regex.
-- **Bulk** — `bulk_replace_text` with dry-run.
+- **Search + link integrity** — `search_pages` plus `check_internal_links`,
+  which resolves saved database content against pages, collection/facet routes,
+  media and redirect chains without crawling the public site.
+- **Bulk** — `bulk_replace_text` with dry-run across pages, partials,
+  block data and schema-defined collection-item fields.
+- **Migration inventory** — bulk add/update decisions, recursive
+  `import_sitemap`, direct or CSV-fallback `import_gsc_performance`, and compact
+  `verify_migration_urls` (successful rows omitted unless requested).
 - **Branches** — create, read, delete, merge. Branch deploys get their
   own URL at `{branch}.{project}.pages.dev`.
 - **Deploy** — trigger (with `dry_run` to build without publishing), list, get
@@ -197,7 +219,9 @@ curl -H "Authorization: Bearer typeroll_live_..." \
   https://app.typeroll.com/api/v1/sites/<siteId>/pages
 ```
 
-The MCP server is purely an ergonomics layer on top of that.
+The MCP server is purely an ergonomics layer on top of that. The complete v1
+contract, including payload envelopes and collection-item slug addressing, is
+documented in [`docs/v1-api.md`](../../docs/v1-api.md).
 
 ## Security model
 

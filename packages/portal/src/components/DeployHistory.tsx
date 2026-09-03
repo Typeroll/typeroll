@@ -93,6 +93,11 @@ export default function DeployHistory({ siteId }: Props) {
                 {j.error}
               </div>
             )}
+            {j.warnings?.map((warning) => (
+              <div key={warning} className="text-sm" style={{ color: '#b7791f', marginTop: 2 }}>
+                Warning: {warning}
+              </div>
+            ))}
           </div>
           {j.deploy_url && (
             <a href={j.deploy_url} target="_blank" rel="noopener noreferrer" className="text-sm">

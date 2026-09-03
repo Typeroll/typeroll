@@ -74,12 +74,31 @@ describe('sanitizeBody', () => {
     expect(out).toContain('width="200"');
   });
 
+  it('keeps download links and ellipse SVG geometry', () => {
+    const out = sanitizeBody(
+      '<a href="/checklist.pdf" download>Download</a>' +
+      '<svg viewBox="0 0 20 10"><ellipse cx="10" cy="5" rx="8" ry="3" /></svg>',
+    );
+    expect(out).toContain('download');
+    expect(out).toContain('<ellipse');
+    expect(out).toContain('rx="8"');
+    expect(out).toContain('ry="3"');
+  });
+
   it('keeps iframes from allowed video hosts; strips src from others', () => {
     const yt = sanitizeBody('<iframe src="https://www.youtube.com/embed/abc"></iframe>');
     expect(yt).toContain('youtube.com');
     const evil = sanitizeBody('<iframe src="https://evil.example.com/"></iframe>');
     // The tag may survive but the dangerous src must not.
     expect(evil).not.toContain('evil.example.com');
+  });
+
+  it('allows an exact per-site iframe host without widening the default policy', () => {
+    const html = '<iframe src="https://player.vendor.example/embed/42"></iframe>';
+    expect(sanitizeBody(html)).not.toContain('src=');
+    expect(sanitizeBody(html, ['player.vendor.example'])).toContain('src="https://player.vendor.example/embed/42"');
+    expect(sanitizeBody('<iframe src="https://sub.player.vendor.example/embed/42"></iframe>', ['player.vendor.example']))
+      .not.toContain('src=');
   });
 
   it('is idempotent — sanitizing already-sanitized HTML changes nothing', () => {
@@ -146,6 +165,12 @@ describe('sanitizeBody', () => {
       expect(out).not.toContain('this is a note');
       expect(out).toContain('<p>visible</p>');
       expect(out).toContain('<p>also visible</p>');
+    });
+
+    it('preserves compact migration placeholder comments', () => {
+      const out = sanitizeBody('<header><!-- ME_BANNER --></header><!-- footer-slot -->');
+      expect(out).toContain('<!-- ME_BANNER -->');
+      expect(out).toContain('<!-- footer-slot -->');
     });
 
     it('preserves markers across repeated sanitization (idempotency)', () => {

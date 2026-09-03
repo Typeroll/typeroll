@@ -5,6 +5,12 @@ description: Use when building a rich per-item detail page for a Typeroll collec
 
 # Rich detail templates for collections
 
+Prefer `item_template_blocks` when the design fits the block system. It can
+include `template/item_navigation`, whose previous/next URLs and titles are
+derived from the collection's `sort_field` and `sort_dir`; do not precompute
+four navigation fields per item. Use the HTML patterns below when the detail
+page genuinely needs richer loops or markup than the block schema provides.
+
 `item_template_html` uses lightweight Mustache substitution:
 
 - `{{field}}` — HTML-escaped value

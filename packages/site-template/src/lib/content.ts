@@ -1,7 +1,7 @@
 // Build-time content fetching. All functions resolve the org+site IDs from
 // env vars so call sites don't need to thread them through.
 
-import { buildCollectionRoutes, paths, MAIN_VERSION_ID } from '@typeroll/shared';
+import { applyTrailingSlash, buildCollectionRoutes, collectionFieldMatches, paths, MAIN_VERSION_ID } from '@typeroll/shared';
 import type {
   Block,
   BlockType,
@@ -202,14 +202,14 @@ export function isHomePage(page: Pick<Page, 'slug' | 'path'>): boolean {
  * slug semantics). Otherwise fall back to "/" + slug (or "/" for the
  * homepage), which preserves every existing page's URL unchanged.
  */
-export function urlFor(page: Pick<Page, 'slug' | 'path'>): string {
+export function urlFor(page: Pick<Page, 'slug' | 'path'>, trailingSlash: SiteSettings['trailing_slash'] = 'always'): string {
   if (isHomePage(page)) return '/';
   const raw =
     typeof page.path === 'string' && page.path.length > 0
       ? page.path
       : page.slug;
   const withLeading = raw.startsWith('/') ? raw : `/${raw}`;
-  return withLeading.endsWith('/') ? withLeading : `${withLeading}/`;
+  return applyTrailingSlash(withLeading, trailingSlash ?? 'always');
 }
 
 /**
@@ -454,9 +454,31 @@ async function isRouteVarying(partial: PartialDoc): Promise<boolean> {
 export async function renderPartialHtml(
   partial: PartialDoc,
   context?: import('@typeroll/shared').RenderContext,
+  directives?: {
+    freeBlocks?: PartialDoc[];
+    extensionSource?: (
+      blockTypeId: string,
+    ) => import('@typeroll/shared').ExtensionIncludeDescriptor | undefined;
+    iframeAllowedHosts?: string[];
+  },
 ): Promise<string | null> {
-  const { renderBlocks } = await import('@typeroll/shared');
+  const { expandExtensionIncludes, expandIncludes, renderBlocks } = await import('@typeroll/shared');
   const { sanitizeBody } = await import('./sanitize.js');
+
+  // Expand HTML directives before selecting the cache key. The 404 route is
+  // generated before ordinary pages and historically called this helper
+  // without directive resolvers, which cached raw <x-extension> markup under
+  // the same key later used by fully configured page renders.
+  const expandedHtml = partial.html_content
+    ? (() => {
+        const withIncludes = directives?.freeBlocks
+          ? expandIncludes(partial.html_content!, directives.freeBlocks)
+          : partial.html_content!;
+        return directives?.extensionSource
+          ? expandExtensionIncludes(withIncludes, directives.extensionSource)
+          : withIncludes;
+      })()
+    : '';
 
   const render = async (): Promise<string | null> => {
     if (partial.content_mode === 'blocks' && partial.blocks?.length) {
@@ -474,9 +496,11 @@ export async function renderPartialHtml(
         registry: await getBlockRegistry(),
         context,
         collectionSource: await buildCollectionSource(),
-      }));
+      }), directives?.iframeAllowedHosts);
     }
-    if (partial.html_content) return sanitizeBody(partial.html_content);
+    if (expandedHtml) {
+      return sanitizeBody(expandedHtml, directives?.iframeAllowedHosts);
+    }
     return null;
   };
 
@@ -484,7 +508,7 @@ export async function renderPartialHtml(
 
   const key = partial.content_mode === 'blocks' && partial.blocks?.length
     ? `blocks:${partial.id}:${JSON.stringify(partial.blocks)}`
-    : `html:${partial.id}:${partial.html_content ?? ''}`;
+    : `html:${partial.id}:${expandedHtml}:iframes:${JSON.stringify(directives?.iframeAllowedHosts ?? [])}`;
   const hit = partialHtmlCache.get(key);
   if (hit !== undefined) return hit;
   const html = await render();
@@ -580,7 +604,7 @@ async function loadCollectionSource(): Promise<
       if (config.filter_field && config.filter_value !== undefined) {
         const f = config.filter_field;
         const v = config.filter_value;
-        out = out.filter((it) => String((it as Record<string, unknown>)[f] ?? '') === v);
+        out = out.filter((it) => collectionFieldMatches(it as Record<string, unknown>, f, v));
       }
       if (config.sort_by) {
         const k = config.sort_by;

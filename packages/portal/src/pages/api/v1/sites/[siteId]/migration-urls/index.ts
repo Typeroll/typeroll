@@ -1,5 +1,6 @@
 // GET  /api/v1/sites/{siteId}/migration-urls   — inventory + coverage summary
-// POST /api/v1/sites/{siteId}/migration-urls   — bulk add
+// POST  /api/v1/sites/{siteId}/migration-urls  — bulk add
+// PATCH /api/v1/sites/{siteId}/migration-urls  — bulk update
 //
 // The bearer-authed twin of the in-portal migration dashboard. Coverage is
 // recomputed from current pages + redirects on every read (see
@@ -13,7 +14,9 @@ import { getStore } from '../../../../../../lib/datastore';
 import {
   addInventoryUrls,
   analyzeCoverage,
+  updateInventoryUrls,
   type BulkUrlInput,
+  type MigrationUrlPatch,
   type UrlStatus,
 } from '../../../../../../lib/wp/url-inventory';
 
@@ -92,6 +95,79 @@ export const POST: APIRoute = async ({ request, params }) => {
   return apiResponse(ctx, { ...result, summary }, 201, body);
 };
 
+export const PATCH: APIRoute = async ({ request, params }) => {
+  const guard = await requireApiKey(request, params.siteId);
+  if (!guard.ok) return guard.response;
+  const ctx = guard.value;
+  const body = (await request.json().catch(() => null)) as {
+    ids?: unknown;
+    where?: unknown;
+    patch?: unknown;
+  } | null;
+  if (!body) return apiError('Invalid JSON body');
+
+  const ids = Array.isArray(body.ids) && body.ids.every((id) => typeof id === 'string' && id)
+    ? [...new Set(body.ids as string[])]
+    : undefined;
+  const where = body.where && typeof body.where === 'object'
+    ? body.where as Record<string, unknown>
+    : undefined;
+  const source = typeof where?.source === 'string' && where.source.trim()
+    ? where.source.trim()
+    : undefined;
+  if ((ids ? 1 : 0) + (source ? 1 : 0) !== 1) {
+    return apiError('Provide exactly one selector: non-empty ids[] or where.source');
+  }
+  if (ids && (ids.length === 0 || ids.length > MAX_BULK)) {
+    return apiError(`ids must contain 1-${MAX_BULK} entries`);
+  }
+  const invalidIds = ids?.filter((id) => !isInventoryUrlId(id)) ?? [];
+  if (invalidIds.length > 0) {
+    return apiError(`ids contains invalid inventory URL ids: ${invalidIds.join(', ')}`);
+  }
+
+  const rawPatch = body.patch && typeof body.patch === 'object'
+    ? body.patch as Record<string, unknown>
+    : null;
+  if (!rawPatch) return apiError('patch must be an object');
+  const writableFields = new Set(['excluded', 'notes', 'gsc_clicks', 'gsc_impressions']);
+  const unknownFields = Object.keys(rawPatch).filter((key) => !writableFields.has(key));
+  if (unknownFields.length > 0) {
+    return apiError(`patch contains non-writable fields: ${unknownFields.join(', ')}`);
+  }
+  const patch: MigrationUrlPatch = {};
+  for (const [key, value] of Object.entries(rawPatch)) {
+    if (key === 'excluded') {
+      if (typeof value !== 'boolean') return apiError('patch.excluded must be a boolean');
+      patch.excluded = value;
+    } else if (key === 'notes') {
+      if (typeof value !== 'string') return apiError('patch.notes must be a string');
+      patch.notes = value;
+    } else if (key === 'gsc_clicks' || key === 'gsc_impressions') {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+        return apiError(`patch.${key} must be a non-negative finite number`);
+      }
+      patch[key] = value;
+    }
+  }
+  if (Object.keys(patch).length === 0) {
+    return apiError('patch has no writable fields (excluded, notes, gsc_clicks, gsc_impressions)');
+  }
+
+  const result = await updateInventoryUrls(
+    getStore(),
+    ctx.orgId,
+    ctx.siteId,
+    ids ? { ids } : { source: source! },
+    patch,
+  );
+  const { summary } = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId);
+  return apiResponse(ctx, { ...result, summary }, 200, {
+    selector: ids ? { ids_count: ids.length } : { source },
+    patch,
+  });
+};
+
 function clamp(raw: string | null, fallback: number, max: number): number {
   const n = Number(raw ?? '');
   if (!Number.isFinite(n) || n <= 0) return fallback;
@@ -105,4 +181,11 @@ function isHttpUrl(s: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isInventoryUrlId(id: string): boolean {
+  return /^[a-zA-Z0-9._-]{1,100}$/.test(id)
+    && id !== '.'
+    && id !== '..'
+    && !/^__.*__$/.test(id);
 }

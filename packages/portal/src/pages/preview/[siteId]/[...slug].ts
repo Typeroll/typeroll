@@ -10,10 +10,15 @@
 // page.
 
 import type { APIRoute } from 'astro';
+import { randomUUID } from 'node:crypto';
 import { renderPreviewBySlug } from '../../../lib/render-preview';
 import { verifyPreviewToken } from '../../../lib/preview-signing';
 import { rateLimit } from '../../../lib/rate-limit';
 import { isolatedPreviewHeaders } from '../../../lib/preview-headers';
+import {
+  buildExtensionPreviewShell,
+  extensionPreviewShellHeaders,
+} from '../../../lib/extensions/preview-shell';
 
 function plain(body: string, status: number, contentType = 'text/html; charset=utf-8'): Response {
   return new Response(body, {
@@ -47,6 +52,22 @@ export const GET: APIRoute = async ({ params, request }) => {
   const raw = (params.slug ?? '') as string;
   const slugParts = raw.split('/').filter(Boolean);
 
+  // The outer page contains no customer content. It can therefore retain the
+  // portal origin safely and own tab-scoped Extension state, while all
+  // customer HTML remains in the opaque child response below.
+  const isFrame = url.searchParams.get('frame') === '1';
+  if (!isFrame) {
+    return new Response(buildExtensionPreviewShell({
+      siteId,
+      bridgeId: randomUUID(),
+      rootPath: `/preview/${siteId}`,
+      storageScope: token!,
+      carriedQuery: { t: token! },
+    }), { status: 200, headers: extensionPreviewShellHeaders() });
+  }
+  const bridgeId = url.searchParams.get('bridge') ?? '';
+  if (!/^[0-9a-f-]{36}$/i.test(bridgeId)) return plain('<h1>Invalid preview frame</h1>', 400);
+
   // Link rewriting: keep clicks inside /preview/{siteId}/... AND carry the
   // same ?t= so the agent's browser hops between pages without re-auth.
   const browseRoot = `/preview/${siteId}`;
@@ -69,6 +90,7 @@ export const GET: APIRoute = async ({ params, request }) => {
       // abuse. Keeping scripts on means an agent's preview matches the
       // deployed site.
       allowScripts: true,
+      extensionPreviewBridge: { id: bridgeId, parentOrigin: url.origin },
     },
   );
   if (!html) {

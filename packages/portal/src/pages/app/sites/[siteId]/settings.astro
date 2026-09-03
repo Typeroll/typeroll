@@ -60,6 +60,22 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
         <input name="apple_touch_icon" value={settings.apple_touch_icon ?? ''} />
       </div>
       <div class="field">
+        <label>192×192 app icon URL</label>
+        <input name="icon_192" value={settings.icon_192 ?? ''} />
+      </div>
+      <div class="field">
+        <label>Trailing slash policy</label>
+        <select name="trailing_slash">
+          <option value="always" selected={(settings.trailing_slash ?? 'always') === 'always'}>Always (/about/)</option>
+          <option value="never" selected={settings.trailing_slash === 'never'}>Never (/about)</option>
+          <option value="ignore" selected={settings.trailing_slash === 'ignore'}>Preserve authored paths</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Additional iframe hosts <span class="muted text-sm">(one exact hostname per line)</span></label>
+        <textarea name="iframe_allowed_hosts" rows="4" placeholder="player.example.com">{(settings.iframe_allowed_hosts ?? []).join('\n')}</textarea>
+      </div>
+      <div class="field">
         <label>SEO title suffix</label>
         <input name="default_seo_suffix" value={settings.default_seo_suffix ?? ''} placeholder=" — Site Name" />
       </div>

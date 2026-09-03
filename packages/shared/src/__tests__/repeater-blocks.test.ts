@@ -245,6 +245,24 @@ describe('Alias expansion', () => {
 });
 
 describe('Repeater layouts — CSS', () => {
+  it('groups items by a scalar or multi-value field with deterministic headings', () => {
+    const block: Block = {
+      id: 'grouped',
+      type: 'core/repeater',
+      data: {
+        source_type: 'static', item_block: 'core/logo_item', layout: 'list',
+        group_by: 'region', group_sort_order: 'asc', group_heading_level: 'h3',
+        items: [
+          { src: '/b.svg', region: 'West' },
+          { src: '/a.svg', region: ['East', 'West'] },
+        ],
+      },
+    };
+    const html = renderBlock(block, { registry });
+    expect(html.indexOf('>East</h3>')).toBeLessThan(html.indexOf('>West</h3>'));
+    expect(html.match(/src="\/a.svg"/g)).toHaveLength(2);
+  });
+
   it('grid layout uses --cols variable on the wrapper', () => {
     const block: Block = {
       id: 'r1',

@@ -5,6 +5,35 @@ const STATUS = z.enum(['migrated', 'redirected', 'excluded', 'unhandled']);
 
 export const migrationTools: ToolDef[] = [
   {
+    name: 'import_sitemap',
+    description:
+      'Import an explicit sitemap URL into the migration URL inventory. Sitemap indexes are followed recursively; URLs outside source_origin are rejected and reported.',
+    inputSchema: {
+      url: z.string().url().describe('Absolute URL of a sitemap or sitemap index.'),
+      source_origin: z.string().url().optional().describe('Expected legacy-site origin. Defaults to the sitemap origin.'),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      return ok(await client.post(siteId, 'migration-urls/import-sitemap', args));
+    }),
+  },
+  {
+    name: 'import_gsc_performance',
+    description:
+      'Import URL metrics from Google Search Console. Use property for a direct server-side Search Console API query, or csv for the manual export fallback. URL fragments are stripped, duplicate metrics are summed, and previously unknown URLs enter the inventory as unhandled.',
+    inputSchema: {
+      property: z.string().optional().describe('Search Console property, e.g. https://example.com/ or sc-domain:example.com.'),
+      months: z.number().int().min(1).max(16).optional(),
+      csv: z.string().optional().describe('Raw Search Console Pages CSV export.'),
+      source_origin: z.string().url().optional().describe('Legacy-site origin. Required for bare CSV paths or sc-domain properties.'),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      if ((typeof args.property === 'string') === (typeof args.csv === 'string')) {
+        throw new Error('Provide exactly one of property or csv.');
+      }
+      return ok(await client.post(siteId, 'migration-urls/import-gsc', args));
+    }),
+  },
+  {
     name: 'get_migration_readiness',
     description:
       "Preflight for an import: is this site actually ready to receive a migration? CALL THIS FIRST, before moving any content. Every check exists because its failure is INVISIBLE afterwards — the pages import, the previews render, the customer signs off, and something is quietly wrong. The blockers: media storage (without it every <img> keeps its original URL, so the shiny new site is still served images by the old host, and the day that hosting is cancelled every image breaks at once) and the hosting adapter (without credentials, deploys return a job id and publish nothing while reporting success). Warnings cover the pre-cutover verification URL, AI reconstruction, form notification email and whether the target has a design to rebuild INTO. Returns { ready, blockers[], warnings[], checks[] } — each with a `fix`. If `ready` is false, stop and report the blockers to the user rather than starting the import; the content work would have to be redone.",
@@ -88,6 +117,28 @@ export const migrationTools: ToolDef[] = [
     }),
   },
   {
+    name: 'update_migration_urls',
+    description:
+      'Apply one shared patch to many inventory entries in a single API request. Select either `ids` (up to 2000) or `where: { source }`, never both. This is the migration-scale path for decisions such as “every wordpress-redirect-guess URL is an intentional 404”; it avoids hundreds of rate-limited PATCH calls. Returns matched/updated/unchanged counts, unknown ids, and the refreshed coverage summary.',
+    inputSchema: {
+      ids: z.array(z.string()).min(1).max(2000).optional(),
+      where: z.object({ source: z.string().min(1) }).optional(),
+      patch: z.object({
+        excluded: z.boolean().optional(),
+        notes: z.string().optional(),
+        gsc_clicks: z.number().nonnegative().optional(),
+        gsc_impressions: z.number().nonnegative().optional(),
+      }).refine((value) => Object.keys(value).length > 0, 'patch must include at least one writable field'),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      if ((args.ids ? 1 : 0) + (args.where ? 1 : 0) !== 1) {
+        throw new Error('Provide exactly one selector: ids or where');
+      }
+      const res = await client.patch(siteId, 'migration-urls', args);
+      return ok(res);
+    }),
+  },
+  {
     name: 'delete_migration_url',
     description:
       'Remove an entry from the inventory entirely. Use for junk the crawl picked up (session URLs, faceted duplicates). To record a deliberate 404 instead, prefer update_migration_url with excluded: true — that keeps the decision visible in the coverage report.',
@@ -100,7 +151,7 @@ export const migrationTools: ToolDef[] = [
   {
     name: 'verify_migration_urls',
     description:
-      "Pre-cutover parity check: actually REQUEST every inventory URL against the new site and report what it answers. list_migration_urls tells you what the data says; this tells you what the server does — a redirect pointing at an unpublished page, a typo'd path, or a redirect loop all read as \"handled\" in coverage and as a 404 to Googlebot. Runs against the site's fallback subdomain by default, which is the right target while the real domain still points at the old host. Verdicts: `ok` (200 at the same path), `ok_redirect` (redirects to a 200), `missing` (404/410 — the gap), `broken_redirect` (loop or chain ending badly), `error` (5xx/timeout, inconclusive). Also stamps verified/last_checked on the redirect rules it exercised. Deploy before running this — it tests the DEPLOYED site, not your drafts.",
+      "Pre-cutover parity check: actually REQUEST every inventory URL against the new site and report what it answers. list_migration_urls tells you what the data says; this tells you what the server does — a redirect pointing at an unpublished page, a typo'd path, or a redirect loop all read as \"handled\" in coverage and as a 404 to Googlebot. Runs against the site's fallback subdomain by default. The response is compact by default: the full summary plus only `missing`, `broken_redirect`, and `error` rows; successful rows are counted but omitted. Pass `verdicts` for an exact result filter or `include_successes: true` for every row. Canonical trailing-slash normalization counts as `ok`, not `ok_redirect`. Also stamps verified/last_checked on redirect rules it exercised. Deploy before running this — it tests the DEPLOYED site, not your drafts.",
     inputSchema: {
       target_origin: z
         .string()
@@ -115,6 +166,14 @@ export const migrationTools: ToolDef[] = [
         .array(STATUS)
         .optional()
         .describe('Only check entries with these coverage statuses. Default: all — "migrated" is exactly the claim this check exists to falsify.'),
+      verdicts: z
+        .array(z.enum(['ok', 'ok_redirect', 'missing', 'broken_redirect', 'error', 'excluded']))
+        .optional()
+        .describe('Only return rows with these verdicts. The summary still covers every checked URL.'),
+      include_successes: z
+        .boolean()
+        .optional()
+        .describe('Return all rows when verdicts is omitted. Default false: successful/excluded rows are summarized but omitted.'),
       limit: z.number().int().positive().max(500).optional().describe('Max URLs per run (default 150). `truncated: true` in the response means there are more.'),
       concurrency: z.number().int().positive().max(12).optional(),
     },

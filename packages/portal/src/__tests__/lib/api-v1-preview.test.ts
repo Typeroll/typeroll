@@ -104,6 +104,7 @@ describe('POST /v1/.../preview-link', () => {
 });
 
 describe('GET /preview/{siteId}/{slug}', () => {
+  const frame = '&frame=1&bridge=12345678-1234-1234-1234-123456789abc';
   beforeEach(async () => { await resetDatastore(); });
 
   it('renders the page when given a valid token', async () => {
@@ -125,13 +126,48 @@ describe('GET /preview/{siteId}/{slug}', () => {
     const res = await callRoute(
       import('../../pages/preview/[siteId]/[...slug]'),
       'GET',
-      `http://localhost/preview/${SITE}/about?t=${encodeURIComponent(t)}`,
+      `http://localhost/preview/${SITE}/about?t=${encodeURIComponent(t)}${frame}`,
       { siteId: SITE, slug: 'about' },
     );
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('About');
     expect(res.headers.get('X-Robots-Tag')).toContain('noindex');
+  });
+
+  it('resolves nested pages by their explicit path instead of their leaf slug', async () => {
+    const { token } = await setup();
+    await seedPage('transport', {
+      slug: 'transport-kategori',
+      path: '/tips-om-flytt/transport-kategori',
+      html_content: '<h1>Transport category</h1>',
+    });
+    const minted = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/preview-link'),
+      'POST',
+      `http://localhost/api/v1/sites/${SITE}/preview-link`,
+      { siteId: SITE },
+      { headers: bearer(token), body: { page_id: 'transport' } },
+    );
+    const { url } = await minted.json() as { url: string };
+    const t = new URL(url).searchParams.get('t')!;
+
+    const nested = await callRoute(
+      import('../../pages/preview/[siteId]/[...slug]'),
+      'GET',
+      `http://localhost/preview/${SITE}/tips-om-flytt/transport-kategori?t=${encodeURIComponent(t)}${frame}`,
+      { siteId: SITE, slug: 'tips-om-flytt/transport-kategori' },
+    );
+    expect(nested.status).toBe(200);
+    expect(await nested.text()).toContain('Transport category');
+
+    const leafOnly = await callRoute(
+      import('../../pages/preview/[siteId]/[...slug]'),
+      'GET',
+      `http://localhost/preview/${SITE}/transport-kategori?t=${encodeURIComponent(t)}${frame}`,
+      { siteId: SITE, slug: 'transport-kategori' },
+    );
+    expect(leafOnly.status).toBe(404);
   });
 
   it('401 with no token', async () => {
@@ -171,6 +207,7 @@ describe('GET /preview/{siteId}/{slug}', () => {
 });
 
 describe('working-copy previews for agents', () => {
+  const frame = '&frame=1&bridge=12345678-1234-1234-1234-123456789abc';
   beforeEach(async () => { await resetDatastore(); });
 
   async function seedWc(pageId: string, html: string): Promise<void> {
@@ -232,7 +269,7 @@ describe('working-copy previews for agents', () => {
       const res = await callRoute(
         import('../../pages/preview/[siteId]/[...slug]'),
         'GET',
-        `http://localhost/preview/${SITE}/about?t=${encodeURIComponent(t)}`,
+        `http://localhost/preview/${SITE}/about?t=${encodeURIComponent(t)}${frame}`,
         { siteId: SITE, slug: 'about' },
       );
       expect(res.status).toBe(200);

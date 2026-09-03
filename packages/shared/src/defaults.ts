@@ -19,6 +19,7 @@ export const defaultSiteSettings: SiteSettings = {
   },
   language: 'en',
   default_seo_suffix: '',
+  trailing_slash: 'always',
   robots_txt: 'User-agent: *\nAllow: /\n',
 };
 

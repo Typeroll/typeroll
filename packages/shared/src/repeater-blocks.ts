@@ -46,6 +46,10 @@ const repeater: BlockType = {
     { name: 'filter_field', type: 'text', label: 'Filter on field' },
     { name: 'filter_value', type: 'text', label: 'Filter value' },
     { name: 'pinned_ids', type: 'list_simple', label: 'Pinned item ids' },
+    { name: 'group_by', type: 'text', label: 'Group by field' },
+    { name: 'group_sort_order', type: 'select', label: 'Group order', options: ['asc', 'desc'], default: 'asc' },
+    { name: 'group_heading_level', type: 'select', label: 'Group heading level', options: ['h2', 'h3', 'h4'], default: 'h2' },
+    { name: 'ungrouped_label', type: 'text', label: 'Ungrouped label', default: 'Other' },
 
     // ITEM BLOCK
     { name: 'item_block', type: 'block_type_ref', label: 'Item block', required: true },
@@ -113,6 +117,9 @@ const repeater: BlockType = {
   scrollbar-width: thin;
 }
 [data-block="repeater"][data-layout="carousel"] > * { flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--rep-gap)) / var(--cols, 3)); scroll-snap-align: start; }
+
+.tr-repeater-group + .tr-repeater-group { margin-top: 2rem; }
+.tr-repeater-group-title { margin: 0 0 0.75rem; }
 
 @media (max-width: 639px) {
   /* Default to single column on mobile when cols isn't responsively set */

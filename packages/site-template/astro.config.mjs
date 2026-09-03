@@ -1,4 +1,21 @@
 import { defineConfig } from 'astro/config';
+import fs from 'node:fs';
+import path from 'node:path';
+
+function trailingSlashPolicy() {
+  const root = process.env.TYPEROLL_FIXTURES_DIR;
+  if (!root) return 'always';
+  const org = process.env.TYPEROLL_ORG_ID || 'default';
+  const site = process.env.TYPEROLL_SITE_ID || 'default';
+  const version = process.env.TYPEROLL_VERSION_ID || 'main';
+  const file = path.join(root, 'organizations', org, 'sites', site, 'versions', version, 'settings', 'default.json');
+  try {
+    const value = JSON.parse(fs.readFileSync(file, 'utf8')).trailing_slash;
+    return value === 'never' || value === 'ignore' ? value : 'always';
+  } catch {
+    return 'always';
+  }
+}
 
 // Static site generation. One build per customer site.
 // Site config (URL, etc.) is injected via env vars at build time:
@@ -19,9 +36,8 @@ export default defineConfig({
     // Astro's plain inlined CSS.
     inlineStylesheets: 'always',
   },
-  // Always emit URLs with trailing slash so sitemap, canonical, internal
-  // links, and the static file layout all agree. Mixed behaviour was the
-  // autopilot.se field report — sitemap had no slash, canonical did.
-  trailingSlash: 'always',
+  // Resolve the site's canonical URL policy before Astro creates routes.
+  // Sitemaps and renderer-generated links read the same setting.
+  trailingSlash: trailingSlashPolicy(),
   compressHTML: true,
 });

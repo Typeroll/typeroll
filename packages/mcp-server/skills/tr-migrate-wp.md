@@ -177,7 +177,12 @@ Rules:
 Then verify against reality before anything is cut over:
 
 ```
-verify_migration_urls        # after trigger_deploy
+import_sitemap url="https://old.example.com/sitemap.xml"
+# Optional: direct Search Console query (platform service account must have property access)
+import_gsc_performance property="https://old.example.com/" months=6
+# Or paste a Search Console Pages CSV via csv="..." and source_origin.
+check_internal_links         # database preflight before deploy
+verify_migration_urls        # after trigger_deploy; compact exceptions by default
 ```
 
 ### 5. Preview + review with the user

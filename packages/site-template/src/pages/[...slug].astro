@@ -28,6 +28,7 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
   buildMediaLookup,
   buildPageSchema,
   collectBlockAssets,
+  collectionRouteNavigation,
   composePageWithTemplate,
   expandExtensionIncludes,
   expandFormIncludes,
@@ -47,16 +48,17 @@ import { getPageTemplate } from '../lib/content';
 // listing blocks inherit, so it rides PageProps rather than forking the
 // renderer into a third branch.
 type PageProps = { kind: 'page'; page: Page; pageNum?: number; facet?: FacetRoute };
-type ItemProps = { kind: 'item'; collection: CollectionDef; item: CollectionItem; page: Page };
+type ItemProps = { kind: 'item'; collection: CollectionDef; item: CollectionItem; page: Page; navigation: ReturnType<typeof collectionRouteNavigation> };
 type Props = PageProps | ItemProps;
 
 export async function getStaticPaths() {
   const pages = await getAllPages({ includeUnlisted: true });
+  const routeSettings = await getSiteSettings();
   // urlFor honours the optional `path` field (C6 nested-URL support),
   // falling back to "/" + slug. Strip the leading slash for Astro's
   // `[...slug]` rest-param.
   const pageRoutes = pages.map((page) => ({
-    params: { slug: isHomePage(page) ? undefined : urlFor(page).replace(/^\/+/, '') },
+    params: { slug: isHomePage(page) ? undefined : urlFor(page, routeSettings.trailing_slash).replace(/^\/+|\/+$/g, '') },
     props: { kind: 'page' as const, page },
   }));
 
@@ -85,7 +87,7 @@ export async function getStaticPaths() {
       filter_value: listing.filter_value,
     }).length;
     const totalPages = Math.ceil(total / listing.per_page);
-    const base = isHomePage(page) ? '' : `${urlFor(page).replace(/^\/+/, '')}/`;
+    const base = isHomePage(page) ? '' : `${urlFor(page, routeSettings.trailing_slash).replace(/^\/+|\/+$/g, '')}/`;
     for (let n = 2; n <= totalPages; n++) {
       archiveRoutes.push({
         params: { slug: `${base}page/${n}` },
@@ -97,17 +99,22 @@ export async function getStaticPaths() {
   // Collection items materialize one static page each. Pages always win
   // on collision so adding/removing items can't accidentally shadow a real
   // page (and a redirect rule covers the reverse case if needed).
-  const reservedSlugs = new Set(pages.map((p) => urlFor(p).replace(/^\/+/, '')));
+  const reservedSlugs = new Set(pages.map((p) => urlFor(p, routeSettings.trailing_slash).replace(/^\/+|\/+$/g, '')));
   const itemRoutes = await getCollectionItemRoutes();
   const itemEntries = itemRoutes
     .filter((r) => !reservedSlugs.has(r.path.replace(/^\/+/, '')))
-    .map(({ path, collection, item }) => ({
+    .map((route) => ({
+      ...route,
+      navigation: collectionRouteNavigation(route, itemRoutes, routeSettings.trailing_slash ?? 'always'),
+    }))
+    .map(({ path, collection, item, navigation }) => ({
       params: { slug: path.replace(/^\/+/, '') },
       props: {
         kind: 'item' as const,
         collection,
         item,
         page: pageForItem(collection, item, path),
+        navigation,
       },
     }));
 
@@ -135,6 +142,7 @@ export async function getStaticPaths() {
 
 const props = Astro.props as Props;
 const settings = await getSiteSettings();
+const iframeAllowedHosts = settings.iframe_allowed_hosts ?? [];
 const appsPublic = await getAppsPublic();
 const extensionsPublic = await getExtensionsPublic();
 const { header, footer, freeBlocks } = await getPartials();
@@ -170,7 +178,7 @@ const renderCtx: RenderContext = {
   page: props.page as unknown as Record<string, unknown>,
   site: siteContext(settings as unknown as Record<string, unknown>),
   item: props.kind === 'item' ? (props.item as unknown as Record<string, unknown>) : undefined,
-  collection: props.kind === 'item' ? { name: props.collection.name } : undefined,
+  collection: props.kind === 'item' ? { name: props.collection.name, ...props.navigation } : undefined,
   // Archive pagination: which slice a paginating repeater renders + where
   // its pager links point. Present on every page render (current: 1 when
   // this is the page's own URL) so the pager shows on page 1 too.
@@ -185,9 +193,10 @@ const renderCtx: RenderContext = {
     ? {
         current: props.pageNum ?? 1,
         base_url: (() => {
-          const u = urlFor(props.page);
+          const u = urlFor(props.page, settings.trailing_slash);
           return u.endsWith('/') ? u : `${u}/`;
         })(),
+        trailing_slash: settings.trailing_slash ?? 'always',
       }
     : undefined,
 };
@@ -221,7 +230,7 @@ if (props.kind === 'page') {
         formSource,
       ),
       extensionSource,
-    ));
+    ), iframeAllowedHosts);
   } else if (props.page.content_mode === 'blocks' && props.page.blocks?.length) {
     let effectiveBlocks: Block[] = props.page.blocks;
     if (props.page.template) {
@@ -235,7 +244,7 @@ if (props.kind === 'page') {
       context: renderCtx,
       collectionSource,
       formSource,
-    }));
+    }), iframeAllowedHosts);
     bodyBlocks = effectiveBlocks;
     blocksBody = true;
   }
@@ -252,13 +261,13 @@ if (props.kind === 'page') {
     const itemCtx: RenderContext = {
       ...renderCtx,
       item: props.item as unknown as Record<string, unknown>,
-      collection: { name: props.collection.name, label_singular: props.collection.label_singular, label_plural: props.collection.label_plural },
+      collection: { name: props.collection.name, label_singular: props.collection.label_singular, label_plural: props.collection.label_plural, ...props.navigation },
     };
     bodyHtml = sanitizeBody(renderBlocks(props.collection.item_template_blocks, {
       registry: blockRegistry,
       context: itemCtx,
       collectionSource,
-    }));
+    }), iframeAllowedHosts);
     bodyBlocks = props.collection.item_template_blocks;
     blocksBody = true;
   } else {
@@ -266,7 +275,7 @@ if (props.kind === 'page') {
     bodyHtml = sanitizeBody(expandExtensionIncludes(
       expandIncludes(merged, freeBlocks),
       extensionSource,
-    ));
+    ), iframeAllowedHosts);
   }
 }
 
@@ -331,7 +340,7 @@ if (props.kind === 'page') {
 }
 ---
 <BaseLayout page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} extraJsonLd={extraJsonLd}>
-  <Header partial={header} settings={settings} context={renderCtx} />
+  <Header partial={header} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
 
   {bodyHtml ? (
     <main
@@ -343,5 +352,5 @@ if (props.kind === 'page') {
     <main class="page-content" />
   )}
 
-  <Footer partial={footer} settings={settings} context={renderCtx} />
+  <Footer partial={footer} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
 </BaseLayout>

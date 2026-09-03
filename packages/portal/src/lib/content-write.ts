@@ -95,7 +95,8 @@ export async function applyContentWrite(
   // partial sanitize — both idempotent).
   if (typeof fields.html_content === 'string' && fields.html_content) {
     const raw = fields.html_content;
-    const clean = sanitizeBody(raw);
+    const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
+    const clean = sanitizeBody(raw, settings?.iframe_allowed_hosts);
     fields.html_content = clean;
     const diff = diffSanitizationDetails(raw, clean);
     result.sanitization_warnings = diff.messages;

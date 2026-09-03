@@ -7,9 +7,13 @@ import {
   isRuntimeCompatible,
   urlAfterExtensionContextConsumption,
   validateExtensionManifest,
+  extensionPropsToFields,
   type ExtensionManifest,
 } from '../extensions';
-import { buildExtensionRuntimeScript } from '../extensions-runtime';
+import {
+  buildExtensionRuntimeScript,
+  resolveExtensionSiteUrl,
+} from '../extensions-runtime';
 import { SITE_TEMPLATE_CAPABILITIES } from '../site-template-capabilities';
 import quotePilotManifest from '../../../../examples/quote-extension/typeroll-extension.json';
 
@@ -54,10 +58,49 @@ function manifest(): ExtensionManifest {
 }
 
 describe('extension manifest', () => {
+  it('maps labelled enums and nested object arrays into editable fields', () => {
+    const fields = extensionPropsToFields({
+      type: 'object',
+      properties: {
+        theme: { type: 'string', enum: ['light', 'dark'], enum_labels: ['Light mode', 'Dark mode'] },
+        links: { type: 'array', items: { type: 'object', required: ['url'], properties: { label: { type: 'string' }, url: { type: 'string', format: 'url' } } } },
+      },
+    });
+    expect(fields[0]).toMatchObject({ type: 'select', options: ['light', 'dark'], option_labels: ['Light mode', 'Dark mode'] });
+    expect(fields[1]).toMatchObject({ type: 'array', fields: [{ name: 'label', type: 'text' }, { name: 'url', type: 'url', required: true }] });
+  });
+
+  it('rejects enum labels that do not correspond to enum values', () => {
+    const input = manifest();
+    input.config_schema = {
+      type: 'object',
+      properties: { theme: { type: 'string', enum: ['light', 'dark'], enum_labels: ['Light'] } },
+    };
+    expect(validateExtensionManifest(input).errors).toContain(
+      'config_schema.properties.theme.enum_labels must have the same length as enum',
+    );
+  });
+
   it('accepts a compatible immutable component contract', () => {
     const result = validateExtensionManifest(manifest());
     expect(result.valid).toBe(true);
     expect(result.errors).toEqual([]);
+  });
+
+  it('accepts only preview API methods that are also live methods', () => {
+    const input = manifest();
+    input.api!.routes[0]!.preview_methods = ['GET'];
+    expect(validateExtensionManifest(input)).toMatchObject({ valid: true, errors: [] });
+
+    input.api!.routes[0]!.preview_methods = ['DELETE'];
+    expect(validateExtensionManifest(input).errors).toContain(
+      'api.routes[0].preview_methods must be a subset of methods',
+    );
+
+    input.api!.routes[0]!.preview_methods = [];
+    expect(validateExtensionManifest(input).errors).toContain(
+      'api.routes[0].preview_methods must not be empty',
+    );
   });
 
   it('keeps the quote pilot fixture conformant with the executable validator', () => {
@@ -210,11 +253,54 @@ describe('extension URL context', () => {
     expect(runtime.indexOf('frame.addEventListener("load"')).toBeLessThan(runtime.indexOf('entry.el.replaceChildren(frame)'));
     expect(runtime).toContain('forms:forms(entry.descriptor.component)');
     expect(runtime).toContain('api:apiClient(entry.descriptor.installation)');
+    expect(runtime).toContain('site:siteRuntime()');
+    expect(runtime).toContain('storage:storageRuntime(entry)');
+    expect(runtime).toContain('window.sessionStorage');
+    expect(runtime).toContain('typeroll.extension-preview');
+    expect(runtime).toContain('preview:entry.descriptor.installation.preview===true');
     expect(runtime).toContain('X-Typeroll-Extension-Token');
     expect(runtime).toContain('credentials:"omit"');
     expect(runtime).toContain('__TYPEROLL_EXTENSION_PATH_CONTEXT__');
     expect(() => new Function(runtime)).not.toThrow();
   });
+
+  it('keeps site navigation inside the current deploy or preview', () => {
+    expect(resolveExtensionSiteUrl(
+      'https://moveria.example',
+      '/flyttfirmeoffert/?step=2#form',
+    )).toBe('https://moveria.example/flyttfirmeoffert/?step=2#form');
+
+    expect(resolveExtensionSiteUrl(
+      'https://app.typeroll.com',
+      '/flyttfirmeoffert/?step=2#form',
+      { base_path: '/preview/moveria-staging', suffix: '?t=signed-preview' },
+    )).toBe('https://app.typeroll.com/preview/moveria-staging/flyttfirmeoffert/?step=2&t=signed-preview#form');
+
+    expect(() => resolveExtensionSiteUrl(
+      'https://moveria.example',
+      'https://attacker.example/',
+    )).toThrow('root-relative');
+  });
+
+  it('binds opaque-preview storage and navigation to the declared parent shell', () => {
+    const runtime = buildExtensionRuntimeScript(
+      { runtime_version: '0.39.0', protocol_version: 3, installations: [] },
+      {
+        site_navigation: { base_path: '/preview/site-one', suffix: '?t=signed' },
+        preview_bridge: {
+          id: '12345678-1234-1234-1234-123456789abc',
+          parent_origin: 'https://app.typeroll.com',
+        },
+      },
+    );
+    expect(runtime).toContain('event.source!==parent');
+    expect(runtime).toContain('event.origin!==host.preview_bridge.parent_origin');
+    expect(runtime).toContain('action:"storage.ready"');
+    expect(runtime).toContain('action:"site.navigate"');
+    expect(runtime).not.toContain('window.name');
+    expect(() => new Function(runtime)).not.toThrow();
+  });
+
 });
 
 describe('extension scopes', () => {
@@ -229,13 +315,17 @@ describe('extension scopes', () => {
 describe('extension renderer capabilities', () => {
   it('advertises the executable runtime contract', () => {
     expect(SITE_TEMPLATE_CAPABILITIES).toMatchObject({
-      template_capabilities_version: '0.38.0',
+      template_capabilities_version: '0.41.0',
       supports_extension_blocks: true,
       supports_extension_html_directive: true,
+      supports_extension_html_partial_directive: true,
       supports_direct_extension_api: true,
+      supports_extension_site_navigation: true,
+      supports_extension_storage: true,
       supports_extension_form_bindings: true,
       extension_protocol_version: 3,
-      extension_runtime_version: '0.38.0',
+      extension_runtime_version: '0.39.0',
+      supports_extension_installation_config_api: true,
       extension_render_modes: ['bundled_component', 'embedded_app'],
     });
   });

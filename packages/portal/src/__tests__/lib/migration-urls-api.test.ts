@@ -161,6 +161,45 @@ describe('v1 migration-urls', () => {
     expect(list.summary.unhandled).toBe(0);
   });
 
+  it('bulk-updates ids or an entire source in one PATCH', async () => {
+    await call(indexRoute(), 'POST', BASE, { siteId: SITE }, {
+      token,
+      body: {
+        urls: [
+          { url: '/a', source: 'wordpress-redirect-guess' },
+          { url: '/b', source: 'wordpress-redirect-guess' },
+          { url: '/c', source: 'sitemap' },
+        ],
+      },
+    });
+    const response = await call(indexRoute(), 'PATCH', BASE, { siteId: SITE }, {
+      token,
+      body: {
+        where: { source: 'wordpress-redirect-guess' },
+        patch: { excluded: true, notes: 'reviewed as CMS guesses' },
+      },
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.matched).toBe(2);
+    expect(body.updated).toBe(2);
+    expect(body.summary).toMatchObject({ excluded: 2, unhandled: 1 });
+
+    const missing = await call(indexRoute(), 'PATCH', BASE, { siteId: SITE }, {
+      token, body: { ids: ['c', 'does-not-exist'], patch: { excluded: true } },
+    });
+    expect((await missing.json()).not_found).toEqual(['does-not-exist']);
+  });
+
+  it('rejects inventory ids that Firestore reserves instead of returning 500', async () => {
+    const response = await call(indexRoute(), 'PATCH', BASE, { siteId: SITE }, {
+      token,
+      body: { ids: ['__reserved__'], patch: { excluded: true } },
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain('invalid inventory URL ids');
+  });
+
   it('404s a patch against an unknown entry rather than creating one', async () => {
     const res = await call(itemRoute(), 'PATCH', `${BASE}/nope`, { siteId: SITE, urlId: 'nope' }, {
       token, body: { excluded: true },
@@ -182,6 +221,19 @@ describe('v1 migration-urls', () => {
     expect(res.status).toBe(200);
     const list = await (await call(indexRoute(), 'GET', BASE, { siteId: SITE }, { token })).json();
     expect(list.summary.total).toBe(0);
+  });
+
+  it('classifies WordPress bare-slug guesses as auto-excluded evidence', async () => {
+    const { addWordPressBareSlugGuess } = await import('../../lib/wp/url-inventory');
+    const { getStore } = await import('../../lib/datastore');
+    expect(await addWordPressBareSlugGuess(
+      getStore(), ORG, SITE,
+      'https://old.example.com/blog/hello/', 'hello', 'https://old.example.com',
+    )).toBe(true);
+    const list = await (await call(indexRoute(), 'GET', BASE, { siteId: SITE }, { token })).json();
+    expect(list.urls[0]).toMatchObject({
+      path: '/hello', excluded: true, status: 'excluded', sources: ['wordpress-redirect-guess'],
+    });
   });
 });
 
@@ -237,6 +289,7 @@ describe('v1 migration-urls/verify', () => {
       const body = await res.json();
       expect(body.summary.ok).toBe(1);
       expect(body.summary.missing).toBe(1);
+      expect(body.results).toHaveLength(1);
       expect(body.gaps).toHaveLength(1);
       expect(body.gaps[0].path).toBe('/borta');
       // …and the redirect rule it exercised is now stamped as unverified.
@@ -247,6 +300,77 @@ describe('v1 migration-urls/verify', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it('supports an exact verdict filter without leaking other gaps', async () => {
+    await call(indexRoute(), 'POST', BASE, { siteId: SITE }, {
+      token, body: { urls: [{ url: '/gone' }, { url: '/fine' }] },
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      return new Response(null, { status: url.endsWith('/fine') ? 200 : 404 });
+    }) as typeof fetch;
+    try {
+      const response = await call(verifyRoute(), 'POST', `${BASE}/verify`, { siteId: SITE }, {
+        token, body: { target_origin: 'https://new.example.com', verdicts: ['ok'] },
+      });
+      const body = await response.json();
+      expect(body.results.map((entry: { verdict: string }) => entry.verdict)).toEqual(['ok']);
+      expect(body.gaps).toEqual([]);
+      expect(body.omitted_results).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe('v1 migration URL imports', () => {
+  let token: string;
+  beforeEach(async () => { ({ token } = await setup()); });
+
+  it('imports an explicit recursive sitemap', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/index.xml')) {
+        return new Response('<sitemapindex><sitemap><loc>https://example.com/pages.xml</loc></sitemap></sitemapindex>');
+      }
+      return new Response('<urlset><url><loc>https://example.com/hidden</loc></url></urlset>');
+    }) as typeof fetch;
+    try {
+      const response = await call(
+        import('../../pages/api/v1/sites/[siteId]/migration-urls/import-sitemap'),
+        'POST', `${BASE}/import-sitemap`, { siteId: SITE },
+        { token, body: { url: 'https://example.com/index.xml' } },
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toMatchObject({ discovered: 1, added: 1, sitemaps_read: 2 });
+      expect(body.coverage.unhandled).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('imports GSC CSV and reports URLs missing from the prior inventory', async () => {
+    const response = await call(
+      import('../../pages/api/v1/sites/[siteId]/migration-urls/import-gsc'),
+      'POST', `${BASE}/import-gsc`, { siteId: SITE },
+      {
+        token,
+        body: {
+          csv: 'Page,Clicks,Impressions\nhttps://old.example.com/forgotten#one,2,5\nhttps://old.example.com/forgotten#two,3,7',
+          source_origin: 'https://old.example.com',
+        },
+      },
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ rows: 1, added: 1, unhandled_imported: 1 });
+    expect(body.unhandled_urls).toEqual(['/forgotten']);
+    const list = await (await call(indexRoute(), 'GET', BASE, { siteId: SITE }, { token })).json();
+    expect(list.urls[0]).toMatchObject({ gsc_clicks: 5, gsc_impressions: 12 });
   });
 });
 

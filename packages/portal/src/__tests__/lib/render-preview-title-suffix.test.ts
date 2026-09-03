@@ -74,6 +74,11 @@ describe('renderPreview — <title> suffix (SEOHead parity)', () => {
     await seedSite({});
     expect(await previewTitle()).toBe('Home');
   });
+
+  it('honours a page-level suffix opt-out', async () => {
+    await seedSite({ default_seo_suffix: ' — Acme Inc' }, { seo_title: 'Campaign', append_seo_suffix: false });
+    expect(await previewTitle()).toBe('Campaign');
+  });
 });
 
 describe('renderPreview — meta description fallback chain (SEOHead parity)', () => {

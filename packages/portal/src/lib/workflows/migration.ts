@@ -57,9 +57,9 @@ import { htmlToBlocks } from '../html-to-blocks';
 import { inferCollection, projectItemFields } from '../wp/custom-types';
 import { fetchRendered, extractMainContent } from '../wp/page-fetcher';
 import { extractImageUrls } from '../wp/extract-image-urls';
-import { extractInternalLinks } from '../wp/internal-links';
+import { extractInternalLinks, resolveSourceRedirectsInHtml } from '../wp/internal-links';
 import { discoverSitemap } from '../wp/sitemap';
-import { addInventoryUrl, analyzeCoverage, pathFromUrl } from '../wp/url-inventory';
+import { addInventoryUrl, addWordPressBareSlugGuess, analyzeCoverage, pathFromUrl } from '../wp/url-inventory';
 import { WPHelperClient, type HelperItem } from '../wp/helper-client';
 import { reviewGate, type WorkflowDef } from './types';
 
@@ -433,6 +433,7 @@ export const migrationWorkflow: WorkflowDef = {
         let fallbackCount = 0;
         let imagesMoved = 0;
         const slugMap: Record<string, string> = {};
+        const sourceRedirectCache = new Map<string, Promise<string>>();
 
         // ── per-page helpers ─────────────────────────────────────────────
 
@@ -480,6 +481,9 @@ export const migrationWorkflow: WorkflowDef = {
             full_url: item.link,
             source: kind === 'page' ? 'rest-page' : 'rest-post',
           });
+          await addWordPressBareSlugGuess(
+            ctx.store, ctx.orgId, ctx.siteId, item.link, item.slug, sourceOrigin,
+          );
 
           let rawHtml = item.content?.rendered ?? '';
 
@@ -493,6 +497,10 @@ export const migrationWorkflow: WorkflowDef = {
               }
             }
           }
+
+          rawHtml = await resolveSourceRedirectsInHtml(rawHtml, sourceOrigin, {
+            cache: sourceRedirectCache,
+          });
 
           // Pick up internal links from the source body — anything pointing
           // at the old origin that the sitemap missed becomes a future
@@ -654,9 +662,15 @@ export const migrationWorkflow: WorkflowDef = {
               full_url: item.link,
               source: `rest-${ref.source_slug}`,
             });
+            await addWordPressBareSlugGuess(
+              ctx.store, ctx.orgId, ctx.siteId, item.link, item.slug ?? '', sourceOrigin,
+            );
           }
 
-          const rawHtml = item.content?.rendered ?? '';
+          let rawHtml = item.content?.rendered ?? '';
+          rawHtml = await resolveSourceRedirectsInHtml(rawHtml, sourceOrigin, {
+            cache: sourceRedirectCache,
+          });
           // Pick up internal links from the source body.
           for (const p of extractInternalLinks(rawHtml, sourceOrigin)) {
             await addInventoryUrl(ctx.store, ctx.orgId, ctx.siteId, {

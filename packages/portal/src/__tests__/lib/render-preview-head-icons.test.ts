@@ -32,10 +32,11 @@ async function seedSite(settings: Partial<SiteSettings> = {}): Promise<void> {
 describe('renderPreview — head icon links (SEOHead parity)', () => {
   beforeEach(async () => { await resetDatastore(); });
 
-  it('emits favicon + apple-touch-icon links when set in settings', async () => {
+  it('emits favicon, apple-touch and 192px icon links when set in settings', async () => {
     await seedSite({
       favicon: '/media/favicon.png',
       apple_touch_icon: '/media/apple-touch-icon.png',
+      icon_192: '/media/icon-192.png',
     });
     const { renderPreview } = await import('../../lib/render-preview');
     const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
@@ -44,6 +45,7 @@ describe('renderPreview — head icon links (SEOHead parity)', () => {
     expect(html!).toContain(
       '<link rel="apple-touch-icon" sizes="180x180" href="/media/apple-touch-icon.png" />',
     );
+    expect(html!).toContain('<link rel="icon" type="image/png" sizes="192x192" href="/media/icon-192.png" />');
   });
 
   it('omits icon links when not set', async () => {

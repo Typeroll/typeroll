@@ -3,6 +3,7 @@ import {
   EXTENSION_HOST_PROTOCOL_VERSION,
   effectiveExtensionScopes,
   paths,
+  type ExtensionApiRoute,
   type ExtensionInstallation,
   type Extension,
   type ExtensionLaunchGrant,
@@ -128,6 +129,9 @@ export interface PublicExtensionClaims {
   site_id: string;
   installation_id: string;
   origin: string;
+  /** Present only on isolated previews. Providers must enforce preview_routes. */
+  preview?: true;
+  preview_routes?: ExtensionApiRoute[];
   jti: string;
   iat: number;
   exp: number;
@@ -140,6 +144,7 @@ export interface PublicExtensionClaims {
 export function signPublicExtensionToken(args: {
   installation: ExtensionInstallation;
   origin: string;
+  previewRoutes?: ExtensionApiRoute[];
   now?: Date;
 }): { token: string; claims: PublicExtensionClaims } {
   const { privateKey, kid } = signingKey();
@@ -153,6 +158,7 @@ export function signPublicExtensionToken(args: {
     site_id: args.installation.site_id,
     installation_id: args.installation.id,
     origin: args.origin,
+    ...(args.previewRoutes ? { preview: true as const, preview_routes: args.previewRoutes } : {}),
     jti: crypto.randomUUID(),
     iat: issuedAt,
     exp: issuedAt + PUBLIC_EXTENSION_TOKEN_TTL_SECONDS,

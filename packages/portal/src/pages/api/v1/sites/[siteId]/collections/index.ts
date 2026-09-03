@@ -54,7 +54,8 @@ export const GET: APIRoute = async ({ request, params }) => {
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
   const colls = await vstore.collections(ctx.orgId, ctx.siteId, ctx.versionId);
-  return apiResponse(ctx, { collections: colls.map(project) });
+  const data = { collections: colls.map(project) };
+  return apiResponse(ctx, { ...data, data });
 };
 
 export const POST: APIRoute = async ({ request, params }) => {
@@ -81,8 +82,9 @@ export const POST: APIRoute = async ({ request, params }) => {
   // route_template default — items live under /{name}/{slug}. Set to ""
   // explicitly to opt out of per-item URLs (legacy listing-only behaviour).
   const route_template = typeof body.route_template === 'string' ? body.route_template : `/${name}/{slug}`;
+  const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
   const item_template_html = typeof body.item_template_html === 'string'
-    ? sanitizeBody(body.item_template_html)
+    ? sanitizeBody(body.item_template_html, settings?.iframe_allowed_hosts)
     : undefined;
 
   // Block-mode item template — the new default. Resolution order:
@@ -121,5 +123,6 @@ export const POST: APIRoute = async ({ request, params }) => {
   };
   await getStore().setDoc(paths.collection(ctx.orgId, ctx.siteId, name, ctx.versionId), doc);
   const fresh = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, name);
-  return apiResponse(ctx, { collection: fresh ? project(fresh) : null }, 201, body);
+  const data = { collection: fresh ? project(fresh) : null };
+  return apiResponse(ctx, { ...data, data }, 201, body);
 };

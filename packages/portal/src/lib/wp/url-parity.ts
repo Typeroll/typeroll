@@ -20,8 +20,9 @@
 // Every network call goes through the injected `fetchImpl` so the classifier
 // is testable without a network.
 
-import { paths } from '@typeroll/shared';
+import { applyTrailingSlash, paths } from '@typeroll/shared';
 import type { Redirect } from '@typeroll/shared';
+import type { TrailingSlashPolicy } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
 import { analyzeCoverage, type AnalyzedUrl, type UrlStatus } from './url-inventory';
 import { publicUrlsFor } from '../site-public-urls';
@@ -89,6 +90,10 @@ export interface CheckParityOptions {
   timeoutMs?: number;
   /** Cap on redirect hops before calling it a broken chain. */
   maxHops?: number;
+  /** Canonical URL policy for the target site. A redirect that only adds or
+   *  removes the canonical trailing slash is reported as `ok`, not as a
+   *  content redirect that needs review. */
+  trailingSlashPolicy?: TrailingSlashPolicy;
   fetchImpl?: typeof fetch;
   onProgress?: (done: number, total: number) => void;
 }
@@ -203,8 +208,14 @@ async function checkOne(
     }
 
     // Terminal response.
+    const canonicalOnly = hops > 0 && res.ok && isCanonicalSlashRedirect(
+      entry.path,
+      current,
+      targetOrigin,
+      opts.trailingSlashPolicy ?? 'ignore',
+    );
     const verdict: ParityVerdict = res.ok
-      ? (hops > 0 ? 'ok_redirect' : 'ok')
+      ? (hops > 0 && !canonicalOnly ? 'ok_redirect' : 'ok')
       : res.status === 404 || res.status === 410
         ? 'missing'
         : 'error';
@@ -284,6 +295,11 @@ export async function runSiteParityCheck(args: SiteParityArgs): Promise<SitePari
     timeoutMs: args.timeoutMs,
     fetchImpl: args.fetchImpl,
     onProgress: args.onProgress,
+    trailingSlashPolicy: (await vstore.settings(
+      args.orgId,
+      args.siteId,
+      args.versionId,
+    ))?.trailing_slash ?? 'always',
   });
 
   const redirects = await vstore.redirects(args.orgId, args.siteId, args.versionId);
@@ -393,4 +409,27 @@ function stripTrailingSlash(s: string): string {
 
 function join(origin: string, path: string): string {
   return `${origin}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+function isCanonicalSlashRedirect(
+  originalPath: string,
+  finalUrl: string,
+  targetOrigin: string,
+  policy: TrailingSlashPolicy,
+): boolean {
+  try {
+    const final = new URL(finalUrl);
+    const target = new URL(targetOrigin);
+    if (final.origin !== target.origin) return false;
+    const normalize = (value: string): string => {
+      if (policy === 'ignore') {
+        const [pathname, suffix = ''] = value.split(/(?=[?#])/u, 2);
+        return `${pathname.replace(/\/+$/, '') || '/'}${suffix}`;
+      }
+      return applyTrailingSlash(value, policy);
+    };
+    return normalize(originalPath) === normalize(`${final.pathname}${final.search}`);
+  } catch {
+    return false;
+  }
 }

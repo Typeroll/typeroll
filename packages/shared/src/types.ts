@@ -270,6 +270,12 @@ export interface SiteSettings {
    *  <link rel="apple-touch-icon"> when set. Brand kits usually ship one
    *  (e.g. an app icon export) — set it alongside favicon. */
   apple_touch_icon?: string;
+  /** 192×192 app icon used by installable/mobile surfaces. */
+  icon_192?: string;
+  /** Canonical URL style. Defaults to `always` for existing sites. */
+  trailing_slash?: 'always' | 'never' | 'ignore';
+  /** Additional exact HTTPS iframe hostnames allowed for this site. */
+  iframe_allowed_hosts?: string[];
   colors: {
     primary: string;
     secondary: string;
@@ -491,6 +497,8 @@ export interface Page {
   html_content?: string;
 
   seo_title?: string;
+  /** Set false to use the page SEO title verbatim, without the site suffix. */
+  append_seo_suffix?: boolean;
   seo_description?: string;
   og_image?: string;
   /**
@@ -805,6 +813,9 @@ export interface FieldDefinition {
   default?: unknown;
   placeholder?: string;
   options?: string[];
+  /** Human-readable labels for `options`, matched by index. Stored values
+   * remain the corresponding option so labels can be localized safely. */
+  option_labels?: string[];
   fields?: FieldDefinition[];
   responsive?: boolean;
   min?: number;
@@ -1593,6 +1604,9 @@ export interface DeployJob {
   deploy_url?: string;
   /** Final error message on failure. */
   error?: string;
+  /** Non-blocking preflight findings. The deploy still succeeds, but these
+   *  need editorial attention before launch. */
+  warnings?: string[];
   started_at: string;
   finished_at?: string;
   triggered_by?: string;

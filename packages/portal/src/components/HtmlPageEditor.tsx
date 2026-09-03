@@ -403,6 +403,10 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
                 <label>SEO title</label>
                 <input value={draft.seo_title ?? ''} onChange={(e) => update('seo_title', e.target.value)} placeholder={draft.title} />
               </div>
+              <label className="row text-sm">
+                <input type="checkbox" checked={draft.append_seo_suffix !== false} onChange={(e) => update('append_seo_suffix', e.target.checked)} />
+                Append the site SEO suffix
+              </label>
               <div className="field">
                 <label>Meta description</label>
                 <textarea

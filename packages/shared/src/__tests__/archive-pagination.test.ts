@@ -55,6 +55,16 @@ describe('paginated repeater rendering', () => {
     expect(html).toContain('data-block="pager"'); // pager shows on page 1 too
   });
 
+  it('honors a no-trailing-slash policy in pager links', () => {
+    const html = renderBlock(repeaterBlock({ paginate: 2 }), {
+      registry,
+      collectionSource: () => ITEMS,
+      context: { pagination: { current: 2, base_url: '/blog/', trailing_slash: 'never' } },
+    });
+    expect(html).toContain('href="/blog" rel="prev"');
+    expect(html).toContain('href="/blog/page/3" rel="next"');
+  });
+
   it('paginate supersedes limit — the source is queried unbounded', () => {
     let received: { limit?: number } | null = null;
     renderBlock(repeaterBlock({ paginate: 2, limit: 3 }), {

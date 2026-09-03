@@ -31,6 +31,7 @@ import { siteTools } from './tools/sites.js';
 import { domainTools } from './tools/domain.js';
 import { funnelAttributionTools } from './tools/funnel-attribution.js';
 import { appTools } from './tools/apps.js';
+import { extensionTools } from './tools/extensions.js';
 import { skillTools } from './tools/skills.js';
 import { fail, type ToolDef, type ToolDeps } from './tools/helpers.js';
 import { VERSION } from './version.js';
@@ -47,8 +48,8 @@ const PERM_RANK: Record<ToolEffect, number> = { read: 0, write: 1, admin: 2 };
  * conservative — anything that mutates is `write`. The MCP route's per-call
  * gate then checks `effect <= sitePermission`.
  *
- * Naming convention is followed by all 16 tool files: read paths are
- * `list_*` / `read_*` / `get_*` / `preview_*` / `search_*`; everything else
+ * Naming convention is followed by the tool modules: read paths are
+ * `list_*` / `read_*` / `get_*` / `preview_*` / `search_*` / `check_*`; everything else
  * mutates.
  */
 function effectFor(name: string): ToolEffect {
@@ -56,6 +57,9 @@ function effectFor(name: string): ToolEffect {
     name === 'list_apps'
     || name === 'read_app'
     || name === 'update_app'
+    || name === 'list_extension_installations'
+    || name === 'read_extension_installation'
+    || name === 'update_extension_installation_config'
     || name === 'read_funnel_attribution'
     || name === 'update_funnel_attribution'
   ) return 'admin';
@@ -65,7 +69,8 @@ function effectFor(name: string): ToolEffect {
     name.startsWith('get_') ||
     name.startsWith('batch_read_') ||
     name.startsWith('preview_') ||
-    name.startsWith('search_')
+    name.startsWith('search_') ||
+    name.startsWith('check_')
   ) {
     return 'read';
   }
@@ -112,8 +117,11 @@ playbook ships with this server — use it:
    list_skills FIRST, then read_skill <name> for the step-by-step recipe
    (tr-new-site, tr-migrate-wp, tr-brand, tr-blog, tr-responsive, …). These are
    the canonical how-to; don't improvise what a skill already covers.
-2. Discover before you write: get_site, read_site_settings, list_pages,
-   list_block_types. Never hardcode block ids or field names — they're per-site.
+2. Discover before you write: get_site, get_site_capabilities,
+   read_site_settings, list_pages, list_block_types. Never hardcode block ids
+   or field names — they're per-site. For installed Extension config, call
+   list_extension_installations then read_extension_installation before an
+   update.
 3. THE BUFFER MODEL: every content write (pages, blocks, partials,
    collection items) lands in an unsaved per-doc DRAFT — deploys and plain
    previews see saved content only. Iterate freely, view your drafts with
@@ -160,6 +168,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
     ...formTools,
     ...settingsTools,
     ...appTools,
+    ...extensionTools,
     ...funnelAttributionTools,
     ...searchTools,
     ...bulkTools,

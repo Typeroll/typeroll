@@ -14,7 +14,7 @@
 // across containers is a Phase 2.5 polish.
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import type { Block, BlockType, Page, Breakpoint, WorkingCopy } from '@typeroll/shared';
+import type { Block, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES, resolveResponsive, isResponsiveValue, BREAKPOINTS } from '@typeroll/shared';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
@@ -797,6 +797,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
         <aside style={rightPanel}>
           {selected ? (
             <BlockFieldForm
+              siteId={siteId}
               block={selected.block}
               blockType={registry.get(selected.block.type) ?? null}
               activeBp={activeBp}
@@ -1236,6 +1237,15 @@ function MetaPanel({
         />
       </div>
 
+      <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', margin: '0.25rem 0 1rem', color: '#d4d4d8', fontSize: '.85rem', cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          checked={draft.append_seo_suffix !== false}
+          onChange={(e) => onChange('append_seo_suffix', e.target.checked)}
+        />
+        Append the site SEO suffix
+      </label>
+
       <div style={fieldGroup}>
         <label style={fieldLabel}>Meta description</label>
         <textarea
@@ -1294,8 +1304,9 @@ function MetaPanel({
 }
 
 export function BlockFieldForm({
-  block, blockType, activeBp = DEFAULT_BP, onChange,
+  siteId, block, blockType, activeBp = DEFAULT_BP, onChange,
 }: {
+  siteId?: string;
   block: Block;
   blockType: BlockType | null;
   activeBp?: Breakpoint;
@@ -1356,6 +1367,7 @@ export function BlockFieldForm({
           return (
             <FieldInput
               key={f.name}
+              siteId={siteId}
               field={f}
               value={value}
               responsive={responsive}
@@ -1371,9 +1383,10 @@ export function BlockFieldForm({
 }
 
 function FieldInput({
-  field, value, onChange, responsive, activeBp, hasOwn,
+  siteId, field, value, onChange, responsive, activeBp, hasOwn,
 }: {
-  field: { name: string; type: string; label: string; options?: string[]; placeholder?: string; default?: unknown };
+  siteId?: string;
+  field: FieldDefinition;
   value: unknown;
   onChange: (v: unknown) => void;
   responsive?: boolean;
@@ -1417,8 +1430,8 @@ function FieldInput({
         <div style={fieldGroup}>
           {label}
           <select value={v} onChange={(e) => onChange(e.target.value)} style={selectInput}>
-            {(field.options ?? []).map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
+            {(field.options ?? []).map((opt, index) => (
+              <option key={opt} value={opt}>{field.option_labels?.[index] ?? opt}</option>
             ))}
           </select>
         </div>
@@ -1455,12 +1468,56 @@ function FieldInput({
           />
         </div>
       );
+    case 'list':
+    case 'list_simple':
+      return (
+        <div style={fieldGroup}>
+          {label}
+          <textarea
+            rows={5}
+            value={Array.isArray(value) ? value.map(String).join('\n') : ''}
+            placeholder={field.placeholder ?? 'One value per line'}
+            onChange={(e) => onChange(e.target.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean))}
+            style={textareaInput}
+          />
+        </div>
+      );
+    case 'array':
+      return (
+        <ArrayFieldInput
+          siteId={siteId}
+          field={field}
+          value={Array.isArray(value) ? value : []}
+          onChange={onChange}
+          label={label}
+        />
+      );
+    case 'object':
+      return (
+        <ObjectFieldInput
+          siteId={siteId}
+          field={field}
+          value={value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}}
+          onChange={onChange}
+          label={label}
+        />
+      );
+    case 'url':
+      return (
+        <UrlFieldInput
+          siteId={siteId}
+          field={field}
+          value={v}
+          onChange={onChange}
+          label={label}
+        />
+      );
     default:
       return (
         <div style={fieldGroup}>
           {label}
           <input
-            type={field.type === 'url' ? 'url' : field.type === 'email' ? 'email' : 'text'}
+            type={field.type === 'email' ? 'email' : field.type === 'date' ? 'date' : field.type === 'datetime' ? 'datetime-local' : 'text'}
             value={v}
             placeholder={field.placeholder}
             onChange={(e) => onChange(e.target.value)}
@@ -1469,6 +1526,176 @@ function FieldInput({
         </div>
       );
   }
+}
+
+function ObjectFieldInput({
+  siteId, field, value, onChange, label,
+}: {
+  siteId?: string;
+  field: FieldDefinition;
+  value: Record<string, unknown>;
+  onChange: (value: unknown) => void;
+  label: React.ReactNode;
+}) {
+  if (!field.fields?.length) {
+    return <JsonFieldInput value={value} onChange={onChange} label={label} expected="object" />;
+  }
+  return (
+    <fieldset style={{ ...fieldGroup, border: '1px solid #2a2a30', borderRadius: 6, padding: 10 }}>
+      <legend style={{ padding: '0 4px' }}>{label}</legend>
+      {(field.fields ?? []).map((child) => (
+        <FieldInput
+          key={child.name}
+          siteId={siteId}
+          field={child}
+          value={value[child.name]}
+          onChange={(next) => onChange({ ...value, [child.name]: next })}
+        />
+      ))}
+    </fieldset>
+  );
+}
+
+function ArrayFieldInput({
+  siteId, field, value, onChange, label,
+}: {
+  siteId?: string;
+  field: FieldDefinition;
+  value: unknown[];
+  onChange: (value: unknown) => void;
+  label: React.ReactNode;
+}) {
+  const children = field.fields ?? [];
+  if (children.length === 0) {
+    return <JsonFieldInput value={value} onChange={onChange} label={label} expected="array" />;
+  }
+  return (
+    <fieldset style={{ ...fieldGroup, border: '1px solid #2a2a30', borderRadius: 6, padding: 10 }}>
+      <legend style={{ padding: '0 4px' }}>{label}</legend>
+      {value.map((raw, index) => {
+        const row = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+        return (
+          <div key={index} style={{ borderBottom: '1px solid #2a2a30', marginBottom: 10, paddingBottom: 10 }}>
+            {children.map((child) => (
+              <FieldInput
+                key={child.name}
+                siteId={siteId}
+                field={child}
+                value={row[child.name]}
+                onChange={(next) => {
+                  const rows = value.slice();
+                  rows[index] = { ...row, [child.name]: next };
+                  onChange(rows);
+                }}
+              />
+            ))}
+            <button type="button" onClick={() => onChange(value.filter((_, i) => i !== index))} style={smallActionBtn}>
+              Remove item
+            </button>
+          </div>
+        );
+      })}
+      <button type="button" onClick={() => onChange([...value, {}])} style={smallActionBtn}>+ Add item</button>
+    </fieldset>
+  );
+}
+
+function JsonFieldInput({
+  value, onChange, label, expected,
+}: {
+  value: unknown;
+  onChange: (value: unknown) => void;
+  label: React.ReactNode;
+  expected: 'array' | 'object';
+}) {
+  const serialized = JSON.stringify(value, null, 2);
+  const [draft, setDraft] = useState(serialized);
+  const [error, setError] = useState('');
+  useEffect(() => setDraft(serialized), [serialized]);
+
+  const commit = () => {
+    try {
+      const parsed: unknown = JSON.parse(draft);
+      const valid = expected === 'array'
+        ? Array.isArray(parsed)
+        : Boolean(parsed && typeof parsed === 'object' && !Array.isArray(parsed));
+      if (!valid) throw new Error(`Expected a JSON ${expected}`);
+      setError('');
+      onChange(parsed);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : `Invalid JSON ${expected}`);
+    }
+  };
+
+  return (
+    <div style={fieldGroup}>
+      {label}
+      <textarea
+        rows={8}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        spellCheck={false}
+        style={textareaInput}
+      />
+      {error && <span role="alert" style={{ color: '#fca5a5', fontSize: '.75rem' }}>{error}</span>}
+    </div>
+  );
+}
+
+interface InternalPageOption { id: string; title: string; url: string }
+const internalPageRequests = new Map<string, Promise<InternalPageOption[]>>();
+
+function loadInternalPages(siteId: string): Promise<InternalPageOption[]> {
+  const existing = internalPageRequests.get(siteId);
+  if (existing) return existing;
+  const request = fetch(`/api/sites/${encodeURIComponent(siteId)}/pages`)
+    .then((response) => response.ok ? response.json() : Promise.reject(new Error('Page lookup failed')))
+    .then((payload) => Array.isArray(payload.pages) ? payload.pages as InternalPageOption[] : [])
+    .catch((error) => {
+      internalPageRequests.delete(siteId);
+      throw error;
+    });
+  internalPageRequests.set(siteId, request);
+  return request;
+}
+
+function UrlFieldInput({
+  siteId, field, value, onChange, label,
+}: {
+  siteId?: string;
+  field: FieldDefinition;
+  value: string;
+  onChange: (value: unknown) => void;
+  label: React.ReactNode;
+}) {
+  const [pages, setPages] = useState<InternalPageOption[]>([]);
+  useEffect(() => {
+    if (!siteId) return;
+    let active = true;
+    loadInternalPages(siteId)
+      .then((options) => { if (active) setPages(options); })
+      .catch(() => { if (active) setPages([]); });
+    return () => { active = false; };
+  }, [siteId]);
+
+  return (
+    <div style={fieldGroup}>
+      {label}
+      <input type="text" inputMode="url" value={value} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} style={textInput} />
+      {siteId && pages.length > 0 && (
+        <select
+          aria-label={`Choose internal page for ${field.label}`}
+          value={pages.some((page) => page.url === value) ? value : ''}
+          onChange={(e) => { if (e.target.value) onChange(e.target.value); }}
+          style={{ ...selectInput, marginTop: 6 }}
+        >
+          <option value="">Choose internal page…</option>
+          {pages.map((page) => <option key={page.id} value={page.url}>{page.title} ({page.url})</option>)}
+        </select>
+      )}
+    </div>
+  );
 }
 
 // ─── Responsive field badge ─────────────────────────────────────────────
@@ -1788,6 +2015,10 @@ const textareaInput: React.CSSProperties = {
   lineHeight: 1.5, resize: 'vertical', minHeight: '5.5rem',
 };
 const selectInput: React.CSSProperties = textInput;
+const smallActionBtn: React.CSSProperties = {
+  padding: '0.3rem 0.55rem', fontSize: '.75rem', cursor: 'pointer',
+  background: '#1f1f23', color: '#d4d4d8', border: '1px solid #3f3f46', borderRadius: 5,
+};
 const exitBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 5,
   padding: '0.3rem 0.6rem', fontSize: '.8rem',

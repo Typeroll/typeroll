@@ -43,6 +43,37 @@ list_partials           # check if header/footer already have content
 list_block_types        # the per-site block palette — NEVER assume, always list
 ```
 
+**Do not choose a content mode or file a platform gap before these calls
+return.** For every required visual/behavioral element, map it to an existing
+block or composition first. If the summary suggests a match, use
+`read_block_type` to inspect the exact schema. Only call something “missing”
+after checking capabilities, the complete palette, and custom block types.
+
+Common requirements that are easy to misclassify:
+
+| Requirement | Existing Typeroll primitive |
+|---|---|
+| Full-bleed hero flush below the header | `core/section` + `core/hero`; block-mode sections already own the full width and have no page-shell padding |
+| Responsive icon/card grid | `core/grid` + `core/icon_box`, or `core/feature_grid`; set responsive fields with `set_block_responsive` |
+| Custom cards backed by a collection | `core/repeater` / `core/collection_list` with a site-authored `item_compatible` block type as `item_block` |
+| Grouped collection listing | `core/repeater` with `group_by`; array-valued fields place an item in every matching group |
+| Breadcrumbs in a page template | `template/page_breadcrumbs` (verify that the relevant route supplies a breadcrumb trail) |
+| Generated heading index | `core/table_of_contents`; choose `h2`, `h2-h3`, or `h2-h4` |
+| Previous/next collection item links | `template/item_navigation` in the collection's block template; ordering follows `sort_field` / `sort_dir` |
+| Download CTA that disappears without a file | `template/show_if` around a context-bound `core/button`; a dedicated download block is only editor convenience |
+| Sticky/custom header and multi-column footer | Block-mode header/footer partials plus layout blocks, or one reusable custom block type |
+| Cookie notice | `settings.cookie_consent`, not a page block |
+| Consent copy owned by an installed Extension | `list_extension_installations` → `read_extension_installation` → `update_extension_installation_config`, using exact manifest schema keys |
+| One-off HTML + JavaScript embed | `core/embed`; reusable widgets use a custom block type with `script` |
+| CTA/button variants | `core/cta` and `core/button`, styled from site tokens or a narrowly scoped class |
+| Two-column image/text | `core/media_card`, `core/feature_row`, or `core/columns` |
+| Figures, captions and tables | `core/prose` / richtext; the sanitizer preserves these semantic tags |
+| Full-width block page without a content shell | Native block mode; top-level `core/section` is unconstrained |
+| Brand colors and typography | Site `colors`/`fonts` tokens consumed by core blocks |
+
+Real gaps should say what was checked and why the nearest primitive is not
+enough. “I did not see a dedicated block name” is not evidence by itself.
+
 ### 2. Brand + settings
 
 One `update_site_settings` call with every field you know:
@@ -52,6 +83,7 @@ One `update_site_settings` call with every field you know:
   "site_name": "Acme Studio",
   "tagline": "Short, punchy tagline",
   "language": "sv",
+  "trailing_slash": "always",
   "colors": {
     "primary":    "#1a1a2e",
     "secondary":  "#16213e",
@@ -70,11 +102,16 @@ One `update_site_settings` call with every field you know:
 Read it back with `read_site_settings`. Google Fonts names are
 case-sensitive display names ("Plus Jakarta Sans", not "plus jakarta").
 
-**Site icons are part of brand setup** — upload favicon (32–64px) and a
-180×180 apple touch icon, set `favicon` + `apple_touch_icon`. No icon
-assets? Derive a proposal (see `tr-brand`). Also set `settings.logo` to
-the uploaded brand mark — it feeds OG/schema even if the header uses a
-different lockup.
+**Site icons are part of brand setup** — upload favicon (32–64px), a
+180×180 apple touch icon, and a 192×192 app icon; set `favicon`,
+`apple_touch_icon`, and `icon_192`. No icon assets? Derive a proposal (see
+`tr-brand`). Also set `settings.logo` to the uploaded brand mark — it feeds
+OG/schema even if the header uses a different lockup.
+
+Set `iframe_allowed_hosts` when customer content embeds a provider outside
+the built-in YouTube/Vimeo/Google Maps/Calendly set. Values are exact domain
+hostnames, never URLs or wildcards. Read the setting back before deciding that
+an iframe cannot be represented.
 
 ### 3. Header + footer partials
 
@@ -85,9 +122,10 @@ traps: clipped logos (no `overflow:hidden` near the logo), distorted logos
 (`height` + `width:auto`), and broken mobile menus. Fill the placeholders and
 restyle to the palette.
 
-Partials are usually simplest in HTML mode (one nav, a few links — no
-per-field editing needed). Keep them lean; literal site name (no template
-engine in partials):
+Partials can use either mode. Use HTML for a compact hand-authored nav, or
+block mode when editors need per-field control or an installed Extension must
+be placed there. Partials receive the same `{{site.*}}` render context as page
+blocks, so literal brand data is optional rather than required:
 
 ```html
 <header class="site-header">
@@ -181,10 +219,15 @@ truth):
   `radius` field for rounded corners.
 - **Repeaters/listings:** `core/collection_list`, `gallery`,
   `feature_grid` etc. — alias blocks over `core/repeater`. Use these for
-  collection-driven content instead of hand-writing listing markup.
-- **Forms:** `create_form`, then a `core/html` block carrying the plain
-  `<form method="POST" action={submit_url}>` embed with the hidden
-  `_token` — see `tr-forms`.
+  collection-driven content instead of hand-writing listing markup. The base
+  repeater also supports `group_by`, group ordering/headings, multi-valued
+  membership, filters, custom `item_block`, and `item_overrides`.
+- **Long-form navigation:** `core/table_of_contents` builds an anchor list
+  from page headings. Collection block templates use
+  `template/item_navigation` for deterministic previous/next links.
+- **Forms:** `create_form`, then place `core/form` with its `form_id`.
+  HTML-mode pages use `<x-form id="…" />`; both paths render the same signed
+  shell and runtime. See `tr-forms`.
 - **`core/html`** is the escape hatch for the genuinely unique thing —
   not a default. If you reach for it more than once or twice per page,
   note why (that's block-library feedback).
@@ -210,6 +253,23 @@ curated Lucide subset — `check`, `star`, `shield-check`, `mail`,
 text) renders as text, so emoji stand-ins keep working. Icons inherit
 size from font-size and color from `currentColor`/the block's color
 field. On older sites icons don't render — use emoji or CSS markers.
+
+Editor schemas (template_capabilities_version ≥ 0.39.0): labelled enum
+options, newline-edited string lists, nested object/repeating-array fields,
+and internal-page pickers for URL fields are first-class. Do not flatten an
+Extension's `props_schema` merely to make it editable.
+
+For an Extension placed in an HTML header or footer, require
+`supports_extension_html_partial_directive: true`. The broader
+`supports_extension_html_directive` flag covers HTML page bodies and is not
+proof that an older static build expands partial directives.
+
+For a cross-page Extension flow, require both
+`supports_extension_site_navigation` and `supports_extension_storage`. Use
+`context.site.navigate("/path/")` and installation-scoped
+`context.storage.session` rather than direct root-path navigation, Web Storage,
+or personal data in query parameters. This keeps navigation inside the current
+preview and preserves state without exposing it through URLs or referrers.
 
 Known limitations (honest list — don't fight them):
 
@@ -291,5 +351,5 @@ For migrated legacy pages or a hand-crafted one-off, `content_mode:
   labels (`affärsutveckling`, not the ASCII-folded slug), keep titles
   verbatim; slugs are derived for URLs only.
 - **Minimal JS.** Inline `<script>` in page content is stripped by the
-  sanitizer. Interactivity ships via block-type `script` (requires the
-  site's AI-scripts opt-in) or the human-managed `scripts_body_end`.
+  sanitizer. One-off interactivity uses `core/embed`; reusable interactivity
+  uses a block-type `script`; site-wide code belongs in `scripts_body_end`.

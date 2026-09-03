@@ -12,10 +12,10 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
 import { vstore } from '../../../../../lib/version-store';
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
-import type { SiteSettings } from '@typeroll/shared';
+import { normalizeIframeAllowedHosts, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
-  'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'default_seo_suffix',
+  'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
   'default_meta_description', 'language', 'robots_txt', 'image_sizes_default',
   // Scriptable surfaces. Trusted because the caller has an API key.
   'scripts_head', 'scripts_body_end', 'custom_css',
@@ -38,6 +38,14 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return apiError('Invalid JSON body');
+  if (body.trailing_slash !== undefined && !['always', 'never', 'ignore'].includes(String(body.trailing_slash))) {
+    return apiError('trailing_slash must be one of: always, never, ignore', 400);
+  }
+  if (body.iframe_allowed_hosts !== undefined) {
+    const checked = normalizeIframeAllowedHosts(body.iframe_allowed_hosts);
+    if (checked.invalid.length) return apiError(`Invalid iframe hostnames: ${checked.invalid.join(', ')}`, 400);
+    body.iframe_allowed_hosts = checked.hosts;
+  }
 
   const existing = ((await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? {}) as Record<string, unknown>;
   const update: Record<string, unknown> = {};

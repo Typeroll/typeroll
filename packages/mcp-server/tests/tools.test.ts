@@ -11,6 +11,9 @@ import { previewTools } from '../src/tools/preview.js';
 import { siteTools } from '../src/tools/sites.js';
 import { blockTypeTools } from '../src/tools/block-types.js';
 import { settingsTools } from '../src/tools/settings.js';
+import { collectionTools } from '../src/tools/collections.js';
+import { mediaTools } from '../src/tools/media.js';
+import { migrationTools } from '../src/tools/migration.js';
 
 interface Recorded {
   method: string;
@@ -95,6 +98,43 @@ describe('pages tools', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('Not found');
     expect(result.content[0].text).toContain('"status": 404');
+  });
+});
+
+describe('collection and media tool contracts', () => {
+  it('uses collection consistently while retaining name as a compatibility alias', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ collection: {} }));
+    const tool = find(collectionTools, 'read_collection');
+    await tool.handler({ collection: 'news' } as never, { client, siteId });
+    expect(calls[0].url).toBe('https://example.test/api/v1/sites/mysite/collections/news');
+    await tool.handler({ name: 'legacy' } as never, { client, siteId });
+    expect(calls[1].url).toBe('https://example.test/api/v1/sites/mysite/collections/legacy');
+  });
+
+  it('exposes a bounded batch URL upload tool', () => {
+    const tool = find(mediaTools, 'upload_media_batch_from_urls');
+    expect(tool.description).toContain('1–50');
+    expect(tool.inputSchema).toHaveProperty('items');
+  });
+});
+
+describe('migration tool contracts', () => {
+  it('bulk-updates URL decisions in one PATCH', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ updated: 2 }));
+    const tool = find(migrationTools, 'update_migration_urls');
+    await tool.handler({ ids: ['a', 'b'], patch: { excluded: true } } as never, { client, siteId });
+    expect(calls[0]).toMatchObject({
+      method: 'PATCH',
+      url: 'https://example.test/api/v1/sites/mysite/migration-urls',
+      body: JSON.stringify({ ids: ['a', 'b'], patch: { excluded: true } }),
+    });
+  });
+
+  it('imports an explicit sitemap URL through the dedicated route', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ discovered: 3 }));
+    const tool = find(migrationTools, 'import_sitemap');
+    await tool.handler({ url: 'https://old.example.com/custom.xml' } as never, { client, siteId });
+    expect(calls[0].url).toBe('https://example.test/api/v1/sites/mysite/migration-urls/import-sitemap');
   });
 });
 

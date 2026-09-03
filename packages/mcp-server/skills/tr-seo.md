@@ -68,6 +68,12 @@ something different.
 ```
 update_site_settings {"default_seo_suffix": " — Acme Studio"}
 
+# Set the canonical URL style once per site. Existing sites default to `always`.
+update_site_settings {"trailing_slash": "always"}
+
+# A page that must keep its exact campaign/title text can opt out.
+update_page {"page_id": "campaign", "patch": {"append_seo_suffix": false}, "save": true}
+
 update_page page_id="home" patch={
   "seo_title": "Acme Studio — Inredningsdesign i Stockholm"
 }

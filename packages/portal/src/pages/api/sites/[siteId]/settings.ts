@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { defaultSiteSettings, paths } from '@typeroll/shared';
+import { defaultSiteSettings, normalizeIframeAllowedHosts, paths } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, cookies, params, redirect, locals }) => {
@@ -54,6 +54,12 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
         reload_after_consent: form.get('cookie_consent.reload_after_consent') === 'on',
       }
     : undefined;
+  const iframeHostCheck = normalizeIframeAllowedHosts(
+    String(form.get('iframe_allowed_hosts') ?? '').split(/\r?\n/).map((host) => host.trim()).filter(Boolean),
+  );
+  if (iframeHostCheck.invalid.length) {
+    return new Response(`Invalid iframe hostnames: ${iframeHostCheck.invalid.join(', ')}`, { status: 400 });
+  }
 
   const next: SiteSettings = {
     ...existing,
@@ -62,6 +68,11 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     logo: String(form.get('logo') ?? '') || undefined,
     favicon: String(form.get('favicon') ?? '') || undefined,
     apple_touch_icon: String(form.get('apple_touch_icon') ?? '') || undefined,
+    icon_192: String(form.get('icon_192') ?? '') || undefined,
+    trailing_slash: ['always', 'never', 'ignore'].includes(String(form.get('trailing_slash')))
+      ? String(form.get('trailing_slash')) as 'always' | 'never' | 'ignore'
+      : 'always',
+    iframe_allowed_hosts: iframeHostCheck.hosts,
     default_seo_suffix: String(form.get('default_seo_suffix') ?? '') || undefined,
     default_meta_description: String(form.get('default_meta_description') ?? '') || undefined,
     image_sizes_default: String(form.get('image_sizes_default') ?? '') || undefined,

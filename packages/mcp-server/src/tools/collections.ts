@@ -7,6 +7,12 @@ function v(version?: string): Record<string, string | undefined> | undefined {
   return version ? { version } : undefined;
 }
 
+function existingCollectionArg(args: { collection?: string; name?: string }): string {
+  const value = args.collection ?? args.name;
+  if (!value) throw new Error('collection is required');
+  return value;
+}
+
 export const collectionTools: ToolDef[] = [
   {
     name: 'create_collection',
@@ -45,9 +51,10 @@ export const collectionTools: ToolDef[] = [
   {
     name: 'update_collection_schema',
     description:
-      'PATCH a collection\'s schema or routing. Pass only the fields you want to change. Renaming a field would orphan existing item data — adding new fields is safe, removing fields is silently allowed but item docs keep the dropped data.',
+      'PATCH a collection\'s schema or routing. `collection` is required (`name` remains a deprecated compatibility alias). Pass only the fields you want to change. Renaming a field would orphan existing item data — adding new fields is safe, removing fields is silently allowed but item docs keep the dropped data.',
     inputSchema: {
-      name: z.string(),
+      collection: z.string().optional().describe('Collection machine name. Preferred argument name.'),
+      name: z.string().optional().describe('Deprecated alias for collection.'),
       patch: z
         .object({
           label_singular: z.string().optional(),
@@ -72,10 +79,11 @@ export const collectionTools: ToolDef[] = [
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const collection = existingCollectionArg(args);
       const res = await client.patch(
         siteId,
-        `collections/${encodeURIComponent(args.name)}`,
-        args.patch,
+        `collections/${encodeURIComponent(collection)}`,
+        { patch: args.patch },
         v(args.version),
       );
       return ok(res);
@@ -84,16 +92,18 @@ export const collectionTools: ToolDef[] = [
   {
     name: 'delete_collection',
     description:
-      'Delete a collection AND every item in it. Destructive; requires `confirm: true`. Get-the-user-to-confirm workflow recommended.',
+      'Delete a collection AND every item in it. `collection` is required (`name` remains a deprecated compatibility alias). Destructive; requires `confirm: true`. Get-the-user-to-confirm workflow recommended.',
     inputSchema: {
-      name: z.string(),
+      collection: z.string().optional().describe('Collection machine name. Preferred argument name.'),
+      name: z.string().optional().describe('Deprecated alias for collection.'),
       confirm: z.literal(true).describe('Must be true to actually delete.'),
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const collection = existingCollectionArg(args);
       const res = await client.del(
         siteId,
-        `collections/${encodeURIComponent(args.name)}`,
+        `collections/${encodeURIComponent(collection)}`,
         { confirm: 'true', ...v(args.version) },
       );
       return ok(res);
@@ -110,12 +120,17 @@ export const collectionTools: ToolDef[] = [
   },
   {
     name: 'read_collection',
-    description: 'Fetch one collection\'s schema (label, fields, icon).',
-    inputSchema: { name: z.string(), version: versionParam },
+    description: 'Fetch one collection\'s schema (label, fields, icon). `collection` is required; `name` remains a deprecated compatibility alias.',
+    inputSchema: {
+      collection: z.string().optional().describe('Collection machine name. Preferred argument name.'),
+      name: z.string().optional().describe('Deprecated alias for collection.'),
+      version: versionParam,
+    },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const collection = existingCollectionArg(args);
       const res = await client.get(
         siteId,
-        `collections/${encodeURIComponent(args.name)}`,
+        `collections/${encodeURIComponent(collection)}`,
         v(args.version),
       );
       return ok(res);
@@ -184,7 +199,7 @@ export const collectionTools: ToolDef[] = [
   },
   {
     name: 'read_collection_item',
-    description: 'Fetch a single item with all fields.',
+    description: 'Fetch a single item with all fields. item_id may be the internal id or the value of the collection\'s slug_field.',
     inputSchema: { collection: z.string(), item_id: z.string(), version: versionParam },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.get(
@@ -218,7 +233,7 @@ export const collectionTools: ToolDef[] = [
   },
   {
     name: 'update_collection_item',
-    description: 'Update a collection item. Fields outside the schema are dropped. BUFFER MODEL: field values land in the item\'s unsaved DRAFT (status applies immediately); pass save:true to commit in the same call, or commit_working_copy later. Scheduled publishing (0.29.0+): pass publish_at/unpublish_at INSIDE `fields` — ISO datetime at which the platform flips status (+ deploys the site); null clears; applies immediately like status.',
+    description: 'Update a collection item by internal id or slug_field value. Fields outside the schema are dropped. BUFFER MODEL: field values land in the item\'s unsaved DRAFT (status applies immediately); pass save:true to commit in the same call, or commit_working_copy later. Scheduled publishing (0.29.0+): pass publish_at/unpublish_at INSIDE `fields` — ISO datetime at which the platform flips status (+ deploys the site); null clears; applies immediately like status.',
     inputSchema: {
       collection: z.string(),
       item_id: z.string(),

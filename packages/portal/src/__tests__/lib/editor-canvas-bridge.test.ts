@@ -33,4 +33,44 @@ describe('isolated editor canvas bridge', () => {
     expect(script).not.toContain('allow-same-origin');
     expect(() => new Function(script)).not.toThrow();
   });
+
+  it('allows only preview-declared provider API calls inside the nested frame', () => {
+    const script = buildExtensionEditorHostScript(
+      {
+        runtime_version: '0.38.0',
+        protocol_version: 3,
+        installations: [{
+          installation_id: 'install-preview',
+          extension_id: 'se.vendor.preview',
+          version: '1.0.0',
+          preview: true,
+          public_config: {},
+          api: {
+            base_url: 'https://api.vendor.example/typeroll',
+            authentication: 'signed_installation',
+            routes: [{ path: '/catalog/*', methods: ['GET'] }],
+            preview_token: 'signed-preview-proof',
+          },
+          components: [{
+            id: 'catalog',
+            label: 'Catalog',
+            render_mode: 'bundled_component',
+            block_type_id: 'extension--install-preview--catalog',
+            entry: {
+              script_url: 'https://cdn.vendor.example/catalog.js',
+              script_sha256: 'a'.repeat(64),
+            },
+          }],
+        }],
+      },
+      {},
+      'site-one',
+      'canvas-test-editorbridge',
+    );
+    expect(script).toContain('Extension API route or method is not declared');
+    expect(script).toContain('X-Typeroll-Extension-Token');
+    expect(script).toContain('credentials:"omit"');
+    expect(script).not.toContain('Extension API calls are disabled in editor preview');
+    expect(() => new Function(script)).not.toThrow();
+  });
 });

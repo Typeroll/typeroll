@@ -273,6 +273,28 @@ const itemImage: BlockType = {
   created_at: ISO_EPOCH,
 };
 
+const itemNavigation: BlockType = {
+  id: 'template/item_navigation',
+  name: 'item_navigation',
+  label: 'Previous / next item',
+  icon: 'arrow-left-right',
+  category: 'content',
+  container: false,
+  schema: [
+    { name: 'previous_label', type: 'text', label: 'Previous label', default: 'Previous' },
+    { name: 'next_label', type: 'text', label: 'Next label', default: 'Next' },
+  ],
+  template: `<nav data-block="item_navigation" aria-label="Item navigation"><a class="item-navigation-previous" rel="prev" href="{{collection.previous.url}}"><small>{{previous_label}}</small><span>{{collection.previous.title}}</span></a><a class="item-navigation-next" rel="next" href="{{collection.next.url}}"><small>{{next_label}}</small><span>{{collection.next.title}}</span></a></nav>`,
+  styles: `
+[data-block="item_navigation"] { display: flex; justify-content: space-between; gap: 1rem; margin-block: 2rem; }
+[data-block="item_navigation"] a { display: flex; flex-direction: column; max-width: 48%; }
+[data-block="item_navigation"] a[href=""] { display: none; }
+[data-block="item_navigation"] .item-navigation-next { margin-left: auto; text-align: right; }
+`.trim(),
+  origin: 'core',
+  created_at: ISO_EPOCH,
+};
+
 export const TEMPLATE_BLOCK_TYPES: readonly BlockType[] = [
   // Page-context
   pageTitle,
@@ -291,4 +313,5 @@ export const TEMPLATE_BLOCK_TYPES: readonly BlockType[] = [
   itemTitle,
   itemBody,
   itemImage,
+  itemNavigation,
 ] as const;

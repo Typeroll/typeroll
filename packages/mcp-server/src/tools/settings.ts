@@ -17,7 +17,7 @@ export const settingsTools: ToolDef[] = [
   {
     name: 'read_site_settings',
     description:
-      "Read every site setting: name, tagline, logo, favicon, colors, fonts, contact info, social links, default SEO suffix, default meta description, language, robots_txt, image_sizes_default, plus the scriptable surfaces scripts_head, scripts_body_end, and custom_css. Pass `version` to read a branch's settings (with copy-on-write chain-fallback to main for fields the branch hasn't overridden).",
+      "Read every site setting: name, tagline, logo, favicon/app icons, colors, fonts, contact info, social links, URL trailing-slash policy, iframe host allowlist, default SEO suffix/description, language, robots_txt, image_sizes_default, plus the scriptable surfaces scripts_head, scripts_body_end, and custom_css. Pass `version` to read a branch's settings (with copy-on-write chain-fallback to main for fields the branch hasn't overridden).",
     inputSchema: {
       version: versionParam,
     },
@@ -43,6 +43,9 @@ export const settingsTools: ToolDef[] = [
       logo: z.string().optional(),
       favicon: z.string().optional(),
       apple_touch_icon: z.string().optional().describe('URL to a 180x180 PNG for iOS/Android home-screen bookmarks. Emitted as <link rel="apple-touch-icon">.'),
+      icon_192: z.string().optional().describe('URL to a 192x192 PNG app icon. Emitted with sizes="192x192".'),
+      trailing_slash: z.enum(['always', 'never', 'ignore']).optional().describe('Canonical URL style. `always` is the default; `never` emits extensionless URLs without a final slash; `ignore` preserves authored paths.'),
+      iframe_allowed_hosts: z.array(z.string()).max(50).optional().describe('Additional exact HTTPS iframe hostnames allowed on this site, e.g. ["player.example.com"]. No wildcards, schemes, ports or paths.'),
       default_seo_suffix: z.string().optional(),
       default_meta_description: z.string().optional().describe('Site-wide fallback <meta name="description">. Used when a page has no seo_description of its own; falls back further to the tagline when unset.'),
       language: z.string().optional().describe('BCP-47 tag (e.g. "en", "sv", "en-GB"). Drives <html lang> on the rendered site.'),

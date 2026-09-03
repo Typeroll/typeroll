@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.41.0
+
+- Added `context.site.url()` and `context.site.navigate()` so Extension flows
+  can move between site pages without escaping a signed preview.
+- Added installation-scoped `context.storage.session` and
+  `context.storage.local`. Published sites use Web Storage; opaque preview
+  frames use a source-bound parent bridge with tab-session lifetime, keeping
+  private handoff data out of URLs, referrers, generated HTML, and requests.
+- Added explicit site-navigation and storage capability flags.
+
+## 0.40.1
+
+- Fixed `<x-extension>` expansion inside HTML header and footer partials,
+  including the 404 build path and cache key that previously allowed raw
+  directives to reach deployed output.
+- Added a dedicated capability flag for Extension directives in HTML partials.
+
+## 0.40.0
+
+- Added authenticated REST and MCP operations for reading and updating
+  Extension installation config, with an explicit redeploy-required result.
+- Added migration inventory imports, URL verification, internal-link checks,
+  safer batch operations, and the corresponding MCP tools and skills.
+
+## 0.39.0
+
+- Added safe navigable Extension previews with short-lived preview proofs and
+  route-level `preview_methods` allowlists enforced by both runtime and
+  provider contracts.
+- Added localized `enum_labels`, richer nested prop editing, URL pickers, and
+  more precise site capability discovery.
+
 ## 0.38.0
 
 - Standardized the product and protocol name on **Extensions**. Manifest

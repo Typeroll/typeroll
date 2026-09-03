@@ -3,6 +3,8 @@ import {
   resolveItemPath,
   renderItemTemplate,
   buildCollectionRoutes,
+  collectionFieldMatches,
+  collectionRouteNavigation,
 } from '../collection-routes.js';
 import type { CollectionDef, CollectionItem } from '../types.js';
 
@@ -78,6 +80,25 @@ describe('renderItemTemplate', () => {
     const html = renderItemTemplate('<p>{{count}} {{active}}</p>', item({ count: 42, active: true }));
     expect(html).toBe('<p>42 true</p>');
   });
+
+  it('renders conditional sections only for non-empty values', () => {
+    const template =
+      '{{#pdf_url}}<a href="{{pdf_url}}">PDF</a>{{/pdf_url}}' +
+      '{{#previous}}<a href="{{previous}}">Previous</a>{{/previous}}';
+
+    expect(renderItemTemplate(template, item({ pdf_url: '', previous: '/one' })))
+      .toBe('<a href="/one">Previous</a>');
+    expect(renderItemTemplate(template, item({ pdf_url: null, previous: [] })))
+      .toBe('');
+  });
+
+  it('supports nested conditional sections', () => {
+    const template = '{{#download}}{{#pdf_url}}<a href="{{pdf_url}}">PDF</a>{{/pdf_url}}{{/download}}';
+    expect(renderItemTemplate(template, item({ download: true, pdf_url: '/file.pdf' })))
+      .toBe('<a href="/file.pdf">PDF</a>');
+    expect(renderItemTemplate(template, item({ download: false, pdf_url: '/file.pdf' })))
+      .toBe('');
+  });
 });
 
 describe('buildCollectionRoutes', () => {
@@ -127,5 +148,31 @@ describe('buildCollectionRoutes', () => {
       new Map([['restaurants', [item({ title: 'no slug' })]]]),
     );
     expect(routes).toEqual([]);
+  });
+
+  it('resolves previous and next using the collection sort configuration', () => {
+    const collection = coll({ sort_field: 'rank', sort_dir: 'asc' });
+    const routes = buildCollectionRoutes(
+      [collection],
+      new Map([['restaurants', [
+        item({ id: 'c', slug: 'c', title: 'C', rank: 3 }),
+        item({ id: 'a', slug: 'a', title: 'A', rank: 1 }),
+        item({ id: 'b', slug: 'b', title: 'B', rank: 2 }),
+      ]]]),
+    );
+    const current = routes.find((route) => route.item.id === 'b')!;
+    expect(collectionRouteNavigation(current, routes)).toEqual({
+      previous: { id: 'a', title: 'A', url: '/restaurants/a' },
+      next: { id: 'c', title: 'C', url: '/restaurants/c' },
+    });
+  });
+});
+
+describe('collectionFieldMatches', () => {
+  it('matches scalar fields and membership in multi-value fields', () => {
+    const record = { category_slug: 'transport', category_slugs: ['planning', 'transport'] };
+    expect(collectionFieldMatches(record, 'category_slug', 'transport')).toBe(true);
+    expect(collectionFieldMatches(record, 'category_slugs', 'transport')).toBe(true);
+    expect(collectionFieldMatches(record, 'category_slugs', 'packing')).toBe(false);
   });
 });

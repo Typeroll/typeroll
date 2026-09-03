@@ -42,3 +42,74 @@ export function extractInternalLinks(html: string, sourceOrigin: string): string
 
   return Array.from(out);
 }
+
+export interface SourceRedirectResolverOptions {
+  fetchImpl?: typeof fetch;
+  cache?: Map<string, Promise<string>>;
+  timeoutMs?: number;
+}
+
+/** Resolve same-origin source links before reconstruction. WordPress sites
+ * often keep renamed pages alive through a redirect plugin; carrying the
+ * stale href into the new site would recreate a broken internal link. */
+export async function resolveSourceRedirectsInHtml(
+  html: string,
+  sourceOrigin: string,
+  opts: SourceRedirectResolverOptions = {},
+): Promise<string> {
+  if (!html || !sourceOrigin) return html;
+  const origin = new URL(sourceOrigin).origin;
+  const cache = opts.cache ?? new Map<string, Promise<string>>();
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const matches = [...html.matchAll(/<a\b[^>]*\bhref=("([^"]*)"|'([^']*)')/giu)];
+  const replacements = new Map<string, string>();
+
+  await Promise.all(matches.map(async (match) => {
+    const raw = (match[2] ?? match[3] ?? '').trim();
+    if (!raw || raw.startsWith('#') || /^(mailto|tel|javascript):/iu.test(raw)) return;
+    let absolute: URL;
+    try { absolute = new URL(raw, origin); } catch { return; }
+    if (absolute.origin !== origin) return;
+    absolute.hash = '';
+    const key = absolute.toString();
+    let pending = cache.get(key);
+    if (!pending) {
+      pending = resolveOne(key, origin, fetchImpl, opts.timeoutMs ?? 10_000);
+      cache.set(key, pending);
+    }
+    const resolved = await pending;
+    if (resolved !== key) replacements.set(raw, resolved);
+  }));
+
+  if (replacements.size === 0) return html;
+  return html.replace(
+    /(<a\b[^>]*\bhref=)(["'])([^"']*)(\2)/giu,
+    (whole, prefix: string, quote: string, href: string) => {
+      const replacement = replacements.get(href);
+      return replacement ? `${prefix}${quote}${replacement}${quote}` : whole;
+    },
+  );
+}
+
+async function resolveOne(
+  url: string,
+  sourceOrigin: string,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+): Promise<string> {
+  try {
+    const response = await fetchImpl(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { 'user-agent': 'Typeroll-Migration/1.0' },
+    });
+    void response.body?.cancel?.().catch(() => {});
+    if (!response.ok || !response.redirected) return url;
+    const final = new URL(response.url);
+    final.hash = '';
+    return final.origin === sourceOrigin ? `${final.pathname}${final.search}` : url;
+  } catch {
+    return url;
+  }
+}

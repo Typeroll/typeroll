@@ -1,7 +1,7 @@
 // Media tools (list + signed upload URL + metadata patch).
 
 import { z } from 'zod';
-import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
+import { ok, withErrorBoundary, type ToolDef, type ToolDeps } from './helpers.js';
 
 interface UploadUrlResponse {
   upload_url: string;
@@ -10,6 +10,8 @@ interface UploadUrlResponse {
   media_id: string;
   expires_in: number;
 }
+
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 // Best-effort content-type inference from the URL extension. The server's
 // upload-URL endpoint requires content_type, so we have to pick *something*
@@ -35,6 +37,70 @@ function filenameFromUrl(url: string, fallback?: string): string {
     if (last) return decodeURIComponent(last);
   } catch { /* fall through */ }
   return `import-${Date.now()}`;
+}
+
+interface UrlUploadInput {
+  source_url: string;
+  filename?: string;
+  content_type?: string;
+  alt_text?: string;
+}
+
+async function readSourceBytes(response: Response): Promise<Uint8Array> {
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES) {
+    throw new Error(`Source file too large (max ${MAX_UPLOAD_BYTES} bytes)`);
+  }
+  if (!response.body) return new Uint8Array();
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_UPLOAD_BYTES) {
+      await reader.cancel();
+      throw new Error(`Source file too large (max ${MAX_UPLOAD_BYTES} bytes)`);
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+async function uploadFromUrl(args: UrlUploadInput, deps: ToolDeps): Promise<Record<string, unknown>> {
+  const filename = filenameFromUrl(args.source_url, args.filename);
+  const sourceRes = await fetch(args.source_url);
+  if (!sourceRes.ok) throw new Error(`Failed to fetch source URL: ${sourceRes.status} ${sourceRes.statusText}`);
+  const buf = await readSourceBytes(sourceRes);
+  const sourceCt = sourceRes.headers.get('content-type')?.split(';')[0]?.trim();
+  const contentType = args.content_type ?? sourceCt ?? inferContentType(filename);
+  const mint = await deps.client.post<UploadUrlResponse>(deps.siteId, 'media/upload-url', {
+    filename, content_type: contentType, size: buf.byteLength, alt_text: args.alt_text,
+  });
+  const putRes = await fetch(mint.upload_url, {
+    method: 'PUT', headers: { 'Content-Type': contentType }, body: buf,
+  });
+  if (!putRes.ok) throw new Error(`R2 upload failed: ${putRes.status} ${putRes.statusText}`);
+  let finalizeResult: unknown = null;
+  let finalizeError: string | null = null;
+  try {
+    finalizeResult = await deps.client.post(deps.siteId, `media/${encodeURIComponent(mint.media_id)}/finalize`);
+  } catch (error) {
+    finalizeError = error instanceof Error ? error.message : String(error);
+  }
+  return {
+    media_id: mint.media_id, cdn_url: mint.cdn_url, filename,
+    content_type: contentType, size_bytes: buf.byteLength,
+    finalize: finalizeResult, finalize_error: finalizeError,
+  };
 }
 
 export const mediaTools: ToolDef[] = [
@@ -84,59 +150,44 @@ export const mediaTools: ToolDef[] = [
       content_type: z.string().optional().describe('Override the inferred content type (e.g. when source_url has no extension).'),
       alt_text: z.string().optional(),
     },
-    handler: withErrorBoundary(async (args, { client, siteId }) => {
-      const filename = filenameFromUrl(args.source_url, args.filename);
-      // 1. Fetch the source bytes on the agent's machine.
-      const sourceRes = await fetch(args.source_url);
-      if (!sourceRes.ok) {
-        throw new Error(`Failed to fetch source URL: ${sourceRes.status} ${sourceRes.statusText}`);
-      }
-      const buf = new Uint8Array(await sourceRes.arrayBuffer());
-      // Prefer the source's content-type header; fall back to extension
-      // inference; let the caller override the whole thing.
-      const sourceCt = sourceRes.headers.get('content-type')?.split(';')[0]?.trim();
-      const contentType = args.content_type ?? sourceCt ?? inferContentType(filename);
-
-      // 2. Mint a signed PUT URL through the Typeroll API.
-      const mint = await client.post<UploadUrlResponse>(siteId, 'media/upload-url', {
-        filename,
-        content_type: contentType,
-        size: buf.byteLength,
-        alt_text: args.alt_text,
+    handler: withErrorBoundary(async (args, deps) => ok(await uploadFromUrl({
+      source_url: String(args.source_url),
+      filename: args.filename,
+      content_type: args.content_type,
+      alt_text: args.alt_text,
+    }, deps))),
+  },
+  {
+    name: 'upload_media_batch_from_urls',
+    description:
+      'Upload 1–50 public images/PDFs (max 25 MiB each) in one MCP call. Uses the same integrity-safe download → signed PUT → finalize pipeline as upload_media_from_url, with four concurrent workers. Returns one result per source URL; individual failures do not abort the batch.',
+    inputSchema: {
+      items: z.array(z.object({
+        source_url: z.string().url(),
+        filename: z.string().optional(),
+        content_type: z.string().optional(),
+        alt_text: z.string().optional(),
+      })).min(1).max(50),
+    },
+    handler: withErrorBoundary(async (args, deps) => {
+      const results: Array<Record<string, unknown>> = new Array(args.items.length);
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(4, args.items.length) }, async () => {
+        while (cursor < args.items.length) {
+          const index = cursor++;
+          const item = args.items[index]!;
+          try {
+            results[index] = { source_url: item.source_url, ok: true, ...(await uploadFromUrl(item, deps)) };
+          } catch (error) {
+            results[index] = { source_url: item.source_url, ok: false, error: error instanceof Error ? error.message : String(error) };
+          }
+        }
       });
-
-      // 3. PUT the bytes straight to R2.
-      const putRes = await fetch(mint.upload_url, {
-        method: 'PUT',
-        headers: { 'Content-Type': contentType },
-        body: buf,
-      });
-      if (!putRes.ok) {
-        throw new Error(`R2 upload failed: ${putRes.status} ${putRes.statusText}`);
-      }
-      // 4. Auto-finalize: set immutable Cache-Control on the original and
-      //    generate AVIF/WebP responsive variants. Best-effort — if it
-      //    fails (variant pipeline 500, missing env var on the server),
-      //    the upload itself still succeeded so we return ok with a
-      //    `finalize_error` flag instead of throwing.
-      let finalizeResult: unknown = null;
-      let finalizeError: string | null = null;
-      try {
-        finalizeResult = await client.post(
-          siteId,
-          `media/${encodeURIComponent(mint.media_id)}/finalize`,
-        );
-      } catch (e) {
-        finalizeError = e instanceof Error ? e.message : String(e);
-      }
+      await Promise.all(workers);
       return ok({
-        media_id: mint.media_id,
-        cdn_url: mint.cdn_url,
-        filename,
-        content_type: contentType,
-        size_bytes: buf.byteLength,
-        finalize: finalizeResult,
-        finalize_error: finalizeError,
+        results,
+        succeeded: results.filter((result) => result.ok === true).length,
+        failed: results.filter((result) => result.ok === false).length,
       });
     }),
   },

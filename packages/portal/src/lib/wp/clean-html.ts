@@ -74,6 +74,22 @@ export function cleanWordPressHtml(input: string, opts: CleanOptions = {}): stri
   // 2. Strip generic HTML comments.
   html = html.replace(/<!--[\s\S]*?-->/g, '');
 
+  // WordPress commonly wraps an image in a link to its attachment page.
+  // Once the image has moved, that attachment route no longer exists; point
+  // the wrapper at the same CDN asset as the image instead of preserving a
+  // guaranteed post-migration 404.
+  if (opts.mediaMap) {
+    html = html.replace(
+      /<a\b([^>]*?)\bhref=(['"])([^'"]+)\2([^>]*)>(\s*(?:<picture\b[\s\S]*?<\/picture>|<img\b[^>]*>)\s*)<\/a>/giu,
+      (whole, before: string, quote: string, href: string, after: string, imageMarkup: string) => {
+        const src = imageMarkup.match(/<img\b[^>]*\bsrc=(['"])([^'"]+)\1/iu)?.[2];
+        const mapped = src ? opts.mediaMap?.get(src) : undefined;
+        if (!mapped || href === mapped) return whole;
+        return `<a${before}href=${quote}${mapped}${quote}${after}>${imageMarkup}</a>`;
+      },
+    );
+  }
+
   // 3. Run through sanitize-html with our whitelist. Order: strip dangerous
   //    tags entirely, keep semantic tags with only the attrs we want.
   const allowedAttributes: Record<string, string[]> = {};

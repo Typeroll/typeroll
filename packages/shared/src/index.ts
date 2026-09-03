@@ -23,6 +23,8 @@ export * from './schema-generators.js';
 export * from './seo-transform.js';
 export * from './hreflang.js';
 export * from './redirect-patterns.js';
+export * from './url-policy.js';
+export * from './iframe-policy.js';
 export * from './diff-blocks.js';
 export * from './extensions.js';
 export * from './extensions-runtime.js';

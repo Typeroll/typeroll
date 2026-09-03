@@ -2,12 +2,23 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import { getBlockRegistry, getPartials, getSiteSettings } from '../lib/content';
+import { getBlockRegistry, getExtensionsPublic, getPartials, getSiteSettings } from '../lib/content';
 import { collectBlockAssets, siteContext } from '@typeroll/shared';
 import type { Block, Page, RenderContext } from '@typeroll/shared';
 
 const settings = await getSiteSettings();
-const { header, footer } = await getPartials();
+const extensionsPublic = await getExtensionsPublic();
+const { header, footer, freeBlocks } = await getPartials();
+const blockRegistry = await getBlockRegistry();
+const extensionSource = (blockTypeId: string) => {
+  const blockType = blockRegistry.get(blockTypeId);
+  return blockType?.extension ? {
+    extension_id: blockType.extension.extension_id,
+    installation_id: blockType.extension.installation_id,
+    component_id: blockType.extension.component_id,
+    label: blockType.label,
+  } : undefined;
+};
 
 // The 404 body is static markup, but the header and footer are the site's own
 // partials and may carry blocks — so their CSS and JS have to ship here too,
@@ -18,7 +29,7 @@ const partialBlocks: Block[] = [
 ];
 const { css: blockCss, js: blockJs } = collectBlockAssets(
   partialBlocks,
-  await getBlockRegistry(),
+  blockRegistry,
 );
 
 // The 404 has no real page, but partials may bind {{site.*}}, so they still
@@ -59,14 +70,14 @@ const renderCtx: RenderContext = {
   site: siteContext(settings as unknown as Record<string, unknown>),
 };
 ---
-<BaseLayout page={page} settings={settings} blockCss={blockCss} blockJs={blockJs}>
-  <Header partial={header} settings={settings} context={renderCtx} />
+<BaseLayout page={page} settings={settings} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs}>
+  <Header partial={header} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
   <main class="page-content not-found">
     <h1>{t.title}</h1>
     <p>{t.body}</p>
     <p><a href="/">{t.back}</a></p>
   </main>
-  <Footer partial={footer} settings={settings} context={renderCtx} />
+  <Footer partial={footer} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
 </BaseLayout>
 
 <style>

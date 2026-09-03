@@ -16,6 +16,20 @@ import {
   readWorkingCopy,
   WorkingCopyError,
 } from '../../../../../../../../lib/working-copy';
+import type { CollectionDef, CollectionItem } from '@typeroll/shared';
+
+async function resolveItem(
+  ctx: { orgId: string; siteId: string; versionId: string },
+  coll: CollectionDef,
+  reference: string,
+): Promise<{ item: CollectionItem; id: string; resolvedBy: 'id' | 'slug' } | null> {
+  const direct = await vstore.collectionItem(ctx.orgId, ctx.siteId, ctx.versionId, coll.name, reference);
+  if (direct) return { item: direct, id: direct.id, resolvedBy: 'id' };
+  const slugField = coll.slug_field ?? 'slug';
+  const items = await vstore.collectionItems(ctx.orgId, ctx.siteId, ctx.versionId, coll.name);
+  const match = items.find((item) => String(item[slugField] ?? '') === reference);
+  return match ? { item: match, id: match.id, resolvedBy: 'slug' } : null;
+}
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -23,13 +37,17 @@ export const GET: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const { name, itemId } = params;
   if (!name || !itemId) return apiError('Missing name or itemId');
-  const item = await vstore.collectionItem(ctx.orgId, ctx.siteId, ctx.versionId, name, itemId);
-  if (!item) return apiError('Not found', 404);
-  const wc = await readWorkingCopy(ctx, { kind: 'item', collection: name, id: itemId });
-  return apiResponse(ctx, {
-    item: overlayWorkingCopy(item, wc),
+  const coll = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, name);
+  if (!coll) return apiError('Collection not found', 404);
+  const resolved = await resolveItem(ctx, coll, itemId);
+  if (!resolved) return apiError('Not found', 404);
+  const wc = await readWorkingCopy(ctx, { kind: 'item', collection: name, id: resolved.id });
+  const data = {
+    item: overlayWorkingCopy(resolved.item, wc),
+    resolved_by: resolved.resolvedBy,
     has_unsaved_changes: !!wc,
-  });
+  };
+  return apiResponse(ctx, { ...data, data });
 };
 
 export const PATCH: APIRoute = async ({ request, params }) => {
@@ -40,11 +58,13 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!name || !itemId) return apiError('Missing name or itemId');
   const coll = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, name);
   if (!coll) return apiError('Collection not found', 404);
-  const existing = await vstore.collectionItem(ctx.orgId, ctx.siteId, ctx.versionId, name, itemId);
-  if (!existing) return apiError('Not found', 404);
+  const resolved = await resolveItem(ctx, coll, itemId);
+  if (!resolved) return apiError('Not found', 404);
+  const existing = resolved.item;
 
   const body = (await request.json().catch(() => null)) as {
     fields?: Record<string, unknown>;
+    patch?: Record<string, unknown>;
     status?: string;
     save?: boolean;
   } | null;
@@ -57,7 +77,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // authorship of a published value).
   const authority = applyFieldAuthority({
     fields: coll.fields,
-    incoming: { ...(body.fields ?? {}) },
+    incoming: { ...(body.patch ?? body.fields ?? {}) },
     existing,
     actor: 'agent',
     actorId: `api-key:${ctx.keyPrefix}`,
@@ -70,18 +90,20 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (body.status !== undefined) fields.status = body.status;
   try {
     const result = await applyContentWrite(
-      ctx, { kind: 'item', collection: name, id: itemId }, fields,
+      ctx, { kind: 'item', collection: name, id: resolved.id }, fields,
       { save: body.save === true, updatedBy: `api-key:${ctx.keyPrefix}`, actor: 'agent' },
     );
-    const fresh = await vstore.collectionItem(ctx.orgId, ctx.siteId, ctx.versionId, name, itemId);
-    const wc = await readWorkingCopy(ctx, { kind: 'item', collection: name, id: itemId });
-    return apiResponse(ctx, {
+    const fresh = await vstore.collectionItem(ctx.orgId, ctx.siteId, ctx.versionId, name, resolved.id);
+    const wc = await readWorkingCopy(ctx, { kind: 'item', collection: name, id: resolved.id });
+    const data = {
       item: fresh ? overlayWorkingCopy(fresh, wc) : null,
+      resolved_by: resolved.resolvedBy,
       has_unsaved_changes: !!wc,
       saved: result.committed,
       staged_fields: result.staged,
       applied_immediately: result.applied_immediately,
-    }, 200, body);
+    };
+    return apiResponse(ctx, { ...data, data }, 200, body);
   } catch (e) {
     if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
     throw e;
@@ -94,7 +116,11 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const { name, itemId } = params;
   if (!name || !itemId) return apiError('Missing name or itemId');
-  await vstore.deleteCollectionItem(ctx.orgId, ctx.siteId, ctx.versionId, name, itemId);
-  await discardWorkingCopy(ctx, { kind: 'item', collection: name, id: itemId });
-  return apiResponse(ctx, { ok: true });
+  const coll = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, name);
+  if (!coll) return apiError('Collection not found', 404);
+  const resolved = await resolveItem(ctx, coll, itemId);
+  if (!resolved) return apiError('Not found', 404);
+  await vstore.deleteCollectionItem(ctx.orgId, ctx.siteId, ctx.versionId, name, resolved.id);
+  await discardWorkingCopy(ctx, { kind: 'item', collection: name, id: resolved.id });
+  return apiResponse(ctx, { ok: true, resolved_by: resolved.resolvedBy });
 };
