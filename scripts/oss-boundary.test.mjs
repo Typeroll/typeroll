@@ -8,7 +8,6 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const cloudOnlyPaths = [
   '.github/workflows/deploy.yml',
-  '.github/workflows/docs.yml',
   'packages/marketing',
   'packages/portal/src/components/BuildCosts.tsx',
   'packages/portal/src/__tests__/lib/platform-admin-access.test.ts',
@@ -40,6 +39,13 @@ test('the public workspace does not expose Cloud-only scripts', () => {
   const scripts = Object.keys(pkg.scripts ?? {});
   assert.equal(scripts.some((name) => name.includes('marketing')), false);
   assert.equal(scripts.some((name) => name.includes('fallback-noindex')), false);
+});
+
+test('the public repository owns documentation publication', () => {
+  const workflow = readFileSync(path.join(root, '.github/workflows/docs.yml'), 'utf8');
+  assert.match(workflow, /packages\/docs-site\/\*\*/);
+  assert.match(workflow, /wrangler pages deploy packages\/docs-site\/dist/);
+  assert.doesNotMatch(workflow, /packages\/(?:operator|marketing)/);
 });
 
 test('the public repository includes the WordPress migration implementation', () => {
