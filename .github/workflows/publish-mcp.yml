@@ -1,246 +1,212 @@
 name: Publish MCP server
 
-# Three triggers, one workflow:
+# Normal release flow:
 #
-#   1. Push to main → if packages/mcp-server/package.json `version` was
-#      bumped relative to the version currently on npm, the workflow
-#      auto-creates the `mcp-vX.Y.Z` tag and publishes. This is the
-#      default path: bumping the version is the only deliberate step
-#      the developer takes; everything else happens automatically as
-#      part of the normal deploy flow.
+#   1. Bump packages/mcp-server/package.json.
+#   2. Push main.
+#   3. This workflow waits for the complete Tests workflow to pass, builds and
+#      inspects the package, publishes it through npm Trusted Publishing, and
+#      creates mcp-vX.Y.Z only after npm confirms the release.
 #
-#      Drift safety: if main has new commits under
-#      packages/mcp-server/src/, packages/mcp-server/AGENTS.md,
-#      packages/mcp-server/skills/, or packages/shared/src/ since the
-#      last published tag BUT package.json version wasn't bumped, the
-#      workflow emits a loud warning in the Actions UI (doesn't fail —
-#      the portal deploy still proceeds, but the developer knows agents
-#      will see stale tools until the next bump).
-#
-#   2. Push a tag like `mcp-v0.3.0` → verifies the tag matches
-#      package.json then publishes. Kept for manual rollouts and so the
-#      auto-tag push from path #1 re-enters the workflow cleanly (the
-#      idempotency guard short-circuits when npm already has the
-#      version).
-#
-#   3. workflow_dispatch → manual trigger from the Actions UI with an
-#      optional dry-run flag. Useful for verifying the Trusted
-#      Publishing config without shipping.
-#
-# Auth: npm Trusted Publishing (OIDC). No NPM_TOKEN secret needed —
-# the workflow's GitHub-issued OIDC token is exchanged for a
-# short-lived npm publish token at runtime. One-time configuration
-# instructions are at the bottom of this file.
+# A manual dry run remains available for validating the package artifact. The
+# workflow is serialized so adjacent main pushes cannot race each other.
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - 'mcp-v*.*.*'
+  workflow_run:
+    workflows:
+      - Tests
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Run npm publish --dry-run instead of a real publish'
+        description: Build and inspect the package without publishing
         type: boolean
-        default: false
+        default: true
 
 permissions:
-  # `write` (was `read`) so the auto-tag push from a main-branch
-  # version bump succeeds. The token is still scoped to this repo.
   contents: write
-  # Required so GitHub mints an OIDC token this job can present to npm.
-  # Trusted Publishing uses that token to authenticate the publish
-  # without any long-lived secret in the repo.
   id-token: write
+
+concurrency:
+  group: publish-mcp
+  cancel-in-progress: false
 
 jobs:
   publish:
     name: Build + publish to npm
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history so the drift-check step can diff against the
-          # last-released tag without a shallow-clone fetch dance.
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
-          # npm 11.5+ is the first version with built-in Trusted
-          # Publishing support. Node 22 ships with npm 10 — we install
-          # the newer npm explicitly below.
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: https://registry.npmjs.org
           scope: '@typeroll'
-          cache: 'npm'
+          cache: npm
 
-      - name: Upgrade npm for Trusted Publishing support
-        run: npm install -g npm@latest
+      # npm 11.5+ supports Trusted Publishing. Pin the toolchain so a new npm
+      # release cannot silently change the artifact or authentication path.
+      - name: Install Trusted Publishing client
+        run: npm install --global npm@11.6.2
 
-      - name: Install workspace deps
+      - name: Install workspace dependencies
         run: npm ci
 
       - name: Determine release plan
         id: plan
-        # Sets six outputs the rest of the workflow keys off:
-        #   trigger          tag | main_with_bump | main_no_bump | manual
-        #   pkg_version      semver from package.json
-        #   npm_version      semver currently on npm (or 0.0.0)
-        #   should_publish   true | false
-        #   should_tag       true (only main_with_bump)
-        #   already_on_npm   true when npm already has pkg_version (idempotency)
+        shell: bash
         run: |
           set -euo pipefail
-          PKG_VERSION=$(node -p "require('./packages/mcp-server/package.json').version")
-          NPM_VERSION=$(npm view @typeroll/mcp-server version 2>/dev/null || echo "0.0.0")
+
+          PACKAGE='@typeroll/mcp-server'
+          PACKAGE_VERSION=$(node -p "require('./packages/mcp-server/package.json').version")
+          RELEASE_SHA=$(git rev-parse HEAD)
+          RELEASE_TAG="mcp-v${PACKAGE_VERSION}"
+          NPM_LATEST=$(npm view "$PACKAGE" version 2>/dev/null || printf '0.0.0')
           ALREADY_ON_NPM=false
-          if npm view "@typeroll/mcp-server@${PKG_VERSION}" version >/dev/null 2>&1; then
+          TAG_EXISTS=false
+          SHOULD_TAG=false
+
+          if npm view "${PACKAGE}@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
             ALREADY_ON_NPM=true
           fi
-          echo "Local package.json version: $PKG_VERSION"
-          echo "Current npm latest:         $NPM_VERSION"
-          echo "Already on npm:             $ALREADY_ON_NPM"
-          echo "pkg_version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
-          echo "npm_version=$NPM_VERSION" >> "$GITHUB_OUTPUT"
-          echo "already_on_npm=$ALREADY_ON_NPM" >> "$GITHUB_OUTPUT"
 
-          if [[ "$GITHUB_REF" == refs/tags/mcp-v* ]]; then
-            TAG_VERSION="${GITHUB_REF#refs/tags/mcp-v}"
-            if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-              echo "::error::Tag $GITHUB_REF implies version $TAG_VERSION, but package.json is $PKG_VERSION. Bump package.json and re-tag."
+          if git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            TAG_EXISTS=true
+            TAG_SHA=$(git rev-list -n 1 "$RELEASE_TAG")
+            if [ "$TAG_SHA" != "$RELEASE_SHA" ] && [ "$ALREADY_ON_NPM" != 'true' ]; then
+              echo "::error::${RELEASE_TAG} points to ${TAG_SHA}, not release commit ${RELEASE_SHA}."
               exit 1
             fi
-            echo "trigger=tag" >> "$GITHUB_OUTPUT"
-            echo "should_publish=true" >> "$GITHUB_OUTPUT"
-            echo "should_tag=false" >> "$GITHUB_OUTPUT"
-          elif [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
-            if [ "$ALREADY_ON_NPM" = "true" ]; then
-              # Drift check: scan for mcp-relevant changes since the
-              # last published tag. If any, surface a loud warning so
-              # the developer knows the next portal deploy ships with
-              # stale npm-side tools.
-              LAST_TAG="mcp-v$NPM_VERSION"
-              LAST_TAG_SHA=$(git rev-list -n 1 "$LAST_TAG" 2>/dev/null || echo "")
-              if [ -n "$LAST_TAG_SHA" ]; then
-                CHANGED=$(git diff --name-only "$LAST_TAG_SHA" HEAD -- \
-                  packages/mcp-server/src \
-                  packages/mcp-server/AGENTS.md \
-                  packages/mcp-server/skills \
-                  packages/shared/src 2>/dev/null || true)
-                if [ -n "$CHANGED" ]; then
-                  echo "::warning title=MCP version drift::You touched MCP-relevant files since $LAST_TAG but didn't bump packages/mcp-server/package.json. Agents pinned to @typeroll/mcp-server@latest will see stale tools until the next bump."
-                  echo "Files changed since $LAST_TAG:"
-                  echo "$CHANGED" | sed 's/^/  - /'
-                fi
-              fi
-              echo "trigger=main_no_bump" >> "$GITHUB_OUTPUT"
-              echo "should_publish=false" >> "$GITHUB_OUTPUT"
-              echo "should_tag=false" >> "$GITHUB_OUTPUT"
-            else
-              echo "Version bump detected: $NPM_VERSION → $PKG_VERSION"
-              echo "trigger=main_with_bump" >> "$GITHUB_OUTPUT"
-              echo "should_publish=true" >> "$GITHUB_OUTPUT"
-              echo "should_tag=true" >> "$GITHUB_OUTPUT"
-            fi
+          elif [ "$ALREADY_ON_NPM" != 'true' ]; then
+            SHOULD_TAG=true
           else
-            # workflow_dispatch path
-            echo "trigger=manual" >> "$GITHUB_OUTPUT"
-            echo "should_publish=true" >> "$GITHUB_OUTPUT"
-            echo "should_tag=false" >> "$GITHUB_OUTPUT"
+            PUBLISHED_SHA=$(npm view "${PACKAGE}@${PACKAGE_VERSION}" gitHead 2>/dev/null || true)
+            if [ "$PUBLISHED_SHA" = "$RELEASE_SHA" ]; then
+              SHOULD_TAG=true
+            else
+              echo "::warning title=Missing release tag::${PACKAGE}@${PACKAGE_VERSION} exists on npm, but ${RELEASE_TAG} cannot be safely attached to ${RELEASE_SHA}. Published gitHead: ${PUBLISHED_SHA:-unavailable}."
+            fi
           fi
 
-      - name: Summary
-        run: |
-          echo "Trigger:        ${{ steps.plan.outputs.trigger }}"
-          echo "pkg_version:    ${{ steps.plan.outputs.pkg_version }}"
-          echo "npm_version:    ${{ steps.plan.outputs.npm_version }}"
-          echo "already_on_npm: ${{ steps.plan.outputs.already_on_npm }}"
-          echo "should_publish: ${{ steps.plan.outputs.should_publish }}"
-          echo "should_tag:     ${{ steps.plan.outputs.should_tag }}"
+          SHOULD_PUBLISH=true
+          if [ "$ALREADY_ON_NPM" = 'true' ]; then
+            SHOULD_PUBLISH=false
+          fi
 
-      - name: Stop early when nothing to publish
-        if: steps.plan.outputs.should_publish != 'true'
-        run: |
-          echo "Nothing to do — no version bump on this push."
-          echo "(If you wanted to publish, bump packages/mcp-server/package.json version and commit.)"
+          echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "npm_latest=$NPM_LATEST" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "already_on_npm=$ALREADY_ON_NPM" >> "$GITHUB_OUTPUT"
+          echo "tag_exists=$TAG_EXISTS" >> "$GITHUB_OUTPUT"
+          echo "should_publish=$SHOULD_PUBLISH" >> "$GITHUB_OUTPUT"
+          echo "should_tag=$SHOULD_TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Idempotency guard
-        if: steps.plan.outputs.should_publish == 'true' && steps.plan.outputs.already_on_npm == 'true'
-        # Handles the tag-push that follows a main-push auto-publish:
-        # the new tag re-triggers this workflow, but the version is
-        # already on npm so we exit cleanly instead of duplicating work.
-        run: |
-          echo "Version ${{ steps.plan.outputs.pkg_version }} is already on npm — nothing to do."
+          if [ "$ALREADY_ON_NPM" = 'true' ]; then
+            LAST_TAG="mcp-v${NPM_LATEST}"
+            LAST_TAG_SHA=$(git rev-list -n 1 "$LAST_TAG" 2>/dev/null || true)
+            if [ -n "$LAST_TAG_SHA" ]; then
+              CHANGED=$(git diff --name-only "$LAST_TAG_SHA" HEAD -- \
+                packages/mcp-server/src \
+                packages/mcp-server/AGENTS.md \
+                packages/mcp-server/skills \
+                packages/shared/src || true)
+              if [ -n "$CHANGED" ]; then
+                echo "::warning title=MCP version drift::MCP-relevant files changed since ${LAST_TAG}, but packages/mcp-server/package.json is still ${PACKAGE_VERSION}."
+                printf '%s\n' "$CHANGED" | sed 's/^/  - /'
+              fi
+            fi
+          fi
 
-      - name: Typecheck + tests
-        if: steps.plan.outputs.should_publish == 'true' && steps.plan.outputs.already_on_npm != 'true'
+      - name: Write release summary
+        run: |
+          {
+            echo '### MCP release plan'
+            echo
+            echo '| Field | Value |'
+            echo '| --- | --- |'
+            echo '| Commit | `${{ steps.plan.outputs.release_sha }}` |'
+            echo '| Package version | `${{ steps.plan.outputs.package_version }}` |'
+            echo '| npm latest before run | `${{ steps.plan.outputs.npm_latest }}` |'
+            echo '| Already on npm | `${{ steps.plan.outputs.already_on_npm }}` |'
+            echo '| Publish | `${{ steps.plan.outputs.should_publish }}` |'
+            echo '| Create tag | `${{ steps.plan.outputs.should_tag }}` |'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Typecheck and test MCP server
+        if: steps.plan.outputs.should_publish == 'true'
         run: |
           npm run typecheck --workspace=@typeroll/mcp-server
           npm test --workspace=@typeroll/mcp-server
 
-      - name: Build
-        if: steps.plan.outputs.should_publish == 'true' && steps.plan.outputs.already_on_npm != 'true'
+      - name: Build MCP server
+        if: steps.plan.outputs.should_publish == 'true'
         run: npm run build --workspace=@typeroll/mcp-server
 
-      - name: Inspect what would be published
-        if: steps.plan.outputs.should_publish == 'true' && steps.plan.outputs.already_on_npm != 'true'
+      - name: Inspect package artifact
+        if: steps.plan.outputs.should_publish == 'true'
         working-directory: packages/mcp-server
         run: npm publish --dry-run
 
-      - name: Create and push tag
-        # Only when main-push detected a fresh bump. Tag creation here
-        # re-triggers this same workflow, which then hits the
-        # idempotency guard above and exits — safe.
-        if: steps.plan.outputs.should_tag == 'true' && steps.plan.outputs.already_on_npm != 'true'
-        env:
-          NEW_TAG: mcp-v${{ steps.plan.outputs.pkg_version }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$NEW_TAG" -m "Auto-release $NEW_TAG (from main push, version bump in package.json)"
-          git push origin "$NEW_TAG"
-
       - name: Publish to npm
-        # Skip the publish when workflow_dispatch was invoked with
-        # dry_run=true. Tag- and main-push triggers always publish.
-        if: |
-          steps.plan.outputs.should_publish == 'true'
-          && steps.plan.outputs.already_on_npm != 'true'
-          && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+        if: >-
+          steps.plan.outputs.should_publish == 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
         working-directory: packages/mcp-server
-        # No NODE_AUTH_TOKEN — npm picks up the GitHub OIDC token
-        # automatically when Trusted Publishing is configured for this
-        # package.
-        #
         run: npm publish --access public --provenance
 
-# ─── One-time setup ──────────────────────────────────────────────────────
-#
-# 1. On npmjs.com, configure Trusted Publishing for the package:
-#      a. Go to https://www.npmjs.com/package/@typeroll/mcp-server/access
-#      b. Section "Trusted publishers" → "Add trusted publisher"
-#      c. Fill in:
-#           Publisher:           GitHub Actions
-#           Organization/User:   Typeroll
-#           Repository:          typeroll
-#           Workflow filename:   publish-mcp.yml
-#           Environment name:    (leave empty)
-#
-# 2. Keep "Require two-factor authentication for publishing" enabled
-#    on the package settings page. Do NOT tick "Bypass 2FA" — Trusted
-#    Publishing is the modern replacement for that option (npm flags
-#    it as a security risk).
-#
-# 3. Verify with a dry run: Actions → Publish MCP server →
-#    Run workflow → tick `dry_run` → Run. Should pass without
-#    publishing anything.
-#
-# ─── Normal release flow ─────────────────────────────────────────────────
-#
-# Bump `packages/mcp-server/package.json` version, commit, push to main.
-# The workflow auto-tags `mcp-vX.Y.Z` and publishes. No manual tagging.
-#
-# A drift warning fires in the Actions UI when MCP-relevant files
-# change without a version bump — that's the cue to bump on the next
-# commit. The portal/site deploy is unaffected.
+      - name: Verify npm release
+        if: >-
+          steps.plan.outputs.should_publish == 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+        env:
+          PACKAGE_VERSION: ${{ steps.plan.outputs.package_version }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            PUBLISHED=$(npm view "@typeroll/mcp-server@${PACKAGE_VERSION}" version 2>/dev/null || true)
+            if [ "$PUBLISHED" = "$PACKAGE_VERSION" ]; then
+              echo "Verified @typeroll/mcp-server@${PACKAGE_VERSION} on npm."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::npm did not return @typeroll/mcp-server@${PACKAGE_VERSION} after publication."
+          exit 1
+
+      - name: Create release tag
+        if: >-
+          steps.plan.outputs.should_tag == 'true' &&
+          (steps.plan.outputs.already_on_npm == 'true' ||
+           github.event_name != 'workflow_dispatch' ||
+           inputs.dry_run != true)
+        env:
+          RELEASE_TAG: ${{ steps.plan.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
+          git push origin "$RELEASE_TAG"
+
+      - name: Nothing to publish
+        if: steps.plan.outputs.should_publish != 'true'
+        run: echo '@typeroll/mcp-server@${{ steps.plan.outputs.package_version }} is already published.'
+
+# One-time npm setup:
+# Configure @typeroll/mcp-server Trusted Publishing for GitHub Actions,
+# organization Typeroll, repository typeroll, workflow publish-mcp.yml, with no
+# environment name. Keep npm's publishing 2FA requirement enabled.
