@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { renderPreviewBySlug } from '../../../lib/render-preview';
 import { verifyPreviewToken } from '../../../lib/preview-signing';
 import { rateLimit } from '../../../lib/rate-limit';
-import { isolatedPreviewHeaders } from '../../../lib/preview-headers';
+import { isolatedPreviewHeaders, publicRequestOrigin } from '../../../lib/preview-headers';
 import {
   buildExtensionPreviewShell,
   extensionPreviewShellHeaders,
@@ -90,7 +90,7 @@ export const GET: APIRoute = async ({ params, request }) => {
       // abuse. Keeping scripts on means an agent's preview matches the
       // deployed site.
       allowScripts: true,
-      extensionPreviewBridge: { id: bridgeId, parentOrigin: url.origin },
+      extensionPreviewBridge: { id: bridgeId, parentOrigin: publicRequestOrigin(request) },
     },
   );
   if (!html) {

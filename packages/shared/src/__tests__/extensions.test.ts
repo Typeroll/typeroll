@@ -297,6 +297,11 @@ describe('extension URL context', () => {
     expect(runtime).toContain('event.origin!==host.preview_bridge.parent_origin');
     expect(runtime).toContain('action:"storage.ready"');
     expect(runtime).toContain('action:"site.navigate"');
+    expect(runtime).toContain('Preview bridge handshake timed out');
+    expect(runtime).toContain('Extension preview bridge is unavailable; site navigation cannot be completed');
+    expect(runtime).toContain('Extension preview bridge is unavailable; preview storage cannot be accessed');
+    expect(runtime).toContain('previewBridgeReady=await initializePreviewBridge()');
+    expect(runtime).toContain('Promise.resolve(false)');
     expect(runtime).not.toContain('window.name');
     expect(() => new Function(runtime)).not.toThrow();
   });
@@ -315,7 +320,7 @@ describe('extension scopes', () => {
 describe('extension renderer capabilities', () => {
   it('advertises the executable runtime contract', () => {
     expect(SITE_TEMPLATE_CAPABILITIES).toMatchObject({
-      template_capabilities_version: '0.41.0',
+      template_capabilities_version: '0.41.1',
       supports_extension_blocks: true,
       supports_extension_html_directive: true,
       supports_extension_html_partial_directive: true,
@@ -324,7 +329,7 @@ describe('extension renderer capabilities', () => {
       supports_extension_storage: true,
       supports_extension_form_bindings: true,
       extension_protocol_version: 3,
-      extension_runtime_version: '0.39.0',
+      extension_runtime_version: '0.39.1',
       supports_extension_installation_config_api: true,
       extension_render_modes: ['bundled_component', 'embedded_app'],
     });

@@ -109,7 +109,7 @@ function navigation(){
   return {get current(){return current;},navigate:function(view){if(typeof view!=="string"||!view.trim()||view===current)return;current=view;listeners.forEach(function(fn){fn(current);});},subscribe:function(fn){listeners.add(fn);return function(){listeners.delete(fn);};}};
 }
 function siteRuntime(){
-  return {url:function(path){return resolveSiteUrl(location.origin,path,host.site_navigation);},navigate:function(path){var target=resolveSiteUrl(location.origin,path,host.site_navigation);if(host.preview_bridge&&previewBridgeReady){parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:host.preview_bridge.id,action:"site.navigate",path:String(path)},host.preview_bridge.parent_origin);return;}location.assign(target);}};
+  return {url:function(path){return resolveSiteUrl(location.origin,path,host.site_navigation);},navigate:function(path){var target=resolveSiteUrl(location.origin,path,host.site_navigation);if(host.preview_bridge){if(!previewBridgeReady)throw new Error("Extension preview bridge is unavailable; site navigation cannot be completed");parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:host.preview_bridge.id,action:"site.navigate",path:String(path)},host.preview_bridge.parent_origin);return;}location.assign(target);}};
 }
 function storageKey(value){var key=String(value||"");if(!key||key.length>128)throw new Error("Extension storage keys must contain 1-128 characters");return key;}
 function encodeStorage(value){var encoded=JSON.stringify(value);if(encoded===undefined)throw new Error("Extension storage values must be JSON-compatible");if(encoded.length>65536)throw new Error("Extension storage values may not exceed 64 KiB");return encoded;}
@@ -119,13 +119,14 @@ function nativeStorage(area,installationId){
 }
 function previewStorage(area,installationId){
   function bucket(){var areas=previewBridgeState[area]||(previewBridgeState[area]={});return areas[installationId]||(areas[installationId]={});}
-  function notify(action,key,value){if(!host.preview_bridge||!previewBridgeReady)return;parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:host.preview_bridge.id,action:action,area:area,installation_id:installationId,key:key,value:value},host.preview_bridge.parent_origin);}
-  return {get:function(key){var raw=bucket()[storageKey(key)];if(raw===undefined)return undefined;try{return JSON.parse(raw);}catch(_){return undefined;}},set:function(key,value){var normalized=storageKey(key),encoded=encodeStorage(value),values=bucket(),previous=values[normalized];values[normalized]=encoded;if(JSON.stringify(previewBridgeState).length>262144){if(previous===undefined)delete values[normalized];else values[normalized]=previous;throw new Error("Extension preview storage may not exceed 256 KiB");}notify("storage.set",normalized,encoded);},remove:function(key){var normalized=storageKey(key);delete bucket()[normalized];notify("storage.remove",normalized);}};
+  function requireBridge(){if(!host.preview_bridge||!previewBridgeReady)throw new Error("Extension preview bridge is unavailable; preview storage cannot be accessed");}
+  function notify(action,key,value){parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:host.preview_bridge.id,action:action,area:area,installation_id:installationId,key:key,value:value},host.preview_bridge.parent_origin);}
+  return {get:function(key){requireBridge();var raw=bucket()[storageKey(key)];if(raw===undefined)return undefined;try{return JSON.parse(raw);}catch(_){return undefined;}},set:function(key,value){requireBridge();var normalized=storageKey(key),encoded=encodeStorage(value),values=bucket(),previous=values[normalized];values[normalized]=encoded;if(JSON.stringify(previewBridgeState).length>262144){if(previous===undefined)delete values[normalized];else values[normalized]=previous;throw new Error("Extension preview storage may not exceed 256 KiB");}notify("storage.set",normalized,encoded);},remove:function(key){requireBridge();var normalized=storageKey(key);delete bucket()[normalized];notify("storage.remove",normalized);}};
 }
 function storageRuntime(entry){var preview=entry.descriptor.installation.preview===true;var installationId=entry.descriptor.installation.installation_id;return {session:preview?previewStorage("session",installationId):nativeStorage("session",installationId),local:preview?previewStorage("local",installationId):nativeStorage("local",installationId)};}
 function initializePreviewBridge(){
-  if(!host.preview_bridge)return Promise.resolve();
-  return new Promise(function(resolve){var done=false;function finish(){if(done)return;done=true;removeEventListener("message",receive);resolve();}function receive(event){var data=event.data;if(event.source!==parent||event.origin!==host.preview_bridge.parent_origin||!data||data.channel!=="typeroll.extension-preview"||data.version!==1||data.bridge_id!==host.preview_bridge.id||data.action!=="storage.init")return;if(data.storage&&typeof data.storage==="object")previewBridgeState=data.storage;previewBridgeReady=true;finish();}addEventListener("message",receive);parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:host.preview_bridge.id,action:"storage.ready"},host.preview_bridge.parent_origin);setTimeout(finish,2000);});
+  if(!host.preview_bridge)return Promise.resolve(false);
+  return new Promise(function(resolve){var done=false;var timer;function finish(ready){if(done)return;done=true;clearTimeout(timer);removeEventListener("message",receive);resolve(ready);}function receive(event){var data=event.data;if(event.source!==parent||event.origin!==host.preview_bridge.parent_origin||!data||data.channel!=="typeroll.extension-preview"||data.version!==1||data.bridge_id!==host.preview_bridge.id||data.action!=="storage.init")return;if(data.storage&&typeof data.storage==="object")previewBridgeState=data.storage;finish(true);}addEventListener("message",receive);timer=setTimeout(function(){console.warn("[Typeroll Extensions] Preview bridge handshake timed out; preview storage and navigation are unavailable.");finish(false);},2000);parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:host.preview_bridge.id,action:"storage.ready"},host.preview_bridge.parent_origin);});
 }
 function apiClient(installation){
   var declaration=installation.api;var tokenPromise=null;var tokenExpiresAt=0;
@@ -233,7 +234,7 @@ function mountFrame(entry,context){
   entry.el.replaceChildren(frame);
 }
 async function start(){
-  await initializePreviewBridge();
+  previewBridgeReady=await initializePreviewBridge();
   document.querySelectorAll("[data-tr-extension-installation][data-tr-extension-component]").forEach(function(el){
     var descriptor=findDescriptor(el);if(!descriptor)return;
     var props={};try{props=JSON.parse(el.getAttribute("data-block-data")||"{}");}catch(_){}

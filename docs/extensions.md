@@ -239,6 +239,13 @@ Typeroll previews are returned with `noindex, nofollow`, `no-store`, and an
 opaque-origin sandbox. `noindex` is crawler guidance, not access control; the
 sandbox and short-lived signed preview link are the security boundaries.
 
+Bundled Extension code in preview is requested from the portal preview page,
+not from the published site's domain. Browser-side third-party credentials
+restricted by HTTP referrer or page origin must therefore allow the portal's
+preview origin, or the provider will reject those preview requests. Prefer a
+separate, narrowly restricted preview credential instead of weakening the
+published credential's domain restrictions.
+
 ## Lifecycle events
 
 Events use `Idempotency-Key` and the headers:

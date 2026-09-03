@@ -34,6 +34,23 @@
 export const PREVIEW_SANDBOX = 'sandbox allow-scripts allow-forms allow-popups';
 
 /**
+ * Return the browser-visible origin for a request that may have crossed a
+ * TLS-terminating reverse proxy. Cloud Run forwards the public scheme in
+ * X-Forwarded-Proto while the framework-facing request URL can remain HTTP.
+ */
+export function publicRequestOrigin(request: Request): string {
+  const url = new URL(request.url);
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+    ?.split(',', 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (forwardedProto === 'http' || forwardedProto === 'https') {
+    url.protocol = `${forwardedProto}:`;
+  }
+  return url.origin;
+}
+
+/**
  * Headers for a preview response that renders customer HTML and does NOT need
  * same-origin access from the embedding page. Spread into a Response's
  * headers alongside Content-Type.

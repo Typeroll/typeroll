@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { requireSiteAccess } from '../../../../../../lib/access';
 import { renderPreviewBySlug } from '../../../../../../lib/render-preview';
 import { liveBaseFor } from '../../../../../../lib/site-urls';
-import { PREVIEW_SANDBOX } from '../../../../../../lib/preview-headers';
+import { PREVIEW_SANDBOX, publicRequestOrigin } from '../../../../../../lib/preview-headers';
 import { getStore } from '../../../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { SiteVersion } from '@typeroll/shared';
@@ -101,7 +101,9 @@ export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
     // would buy, and it isn't worth an escalation in the meantime.
     allowScripts: !embed,
     editorCanvasId: canvasId,
-    extensionPreviewBridge: bridgeId ? { id: bridgeId, parentOrigin: url.origin } : undefined,
+    extensionPreviewBridge: bridgeId
+      ? { id: bridgeId, parentOrigin: publicRequestOrigin(request) }
+      : undefined,
   });
   if (!html) {
     return new Response(

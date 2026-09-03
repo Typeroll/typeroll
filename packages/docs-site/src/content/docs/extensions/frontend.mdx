@@ -95,6 +95,13 @@ that preview; preview `local` intentionally has the same lifetime as preview
 `session`. Values are not added to the URL, referrer, generated HTML, or
 Typeroll request body.
 
+Preview changes the page that initiates browser requests: bundled code runs
+from the portal preview rather than the published site's domain. A third-party
+browser key restricted by HTTP referrer or page origin must allow the portal's
+preview origin to work there. Prefer a separate, narrowly restricted preview
+credential; do not loosen the production key just to make preview requests
+pass.
+
 ## Receive an opaque recipient token
 
 Declare only the URL inputs that the component needs:

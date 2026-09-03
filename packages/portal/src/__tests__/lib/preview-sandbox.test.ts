@@ -13,12 +13,30 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { paths } from '@typeroll/shared';
-import { PREVIEW_SANDBOX, isolatedPreviewHeaders } from '../../lib/preview-headers';
+import {
+  PREVIEW_SANDBOX,
+  isolatedPreviewHeaders,
+  publicRequestOrigin,
+} from '../../lib/preview-headers';
 
 const fakeCookies = { get: () => undefined } as never;
 const PREVIEW_FRAME = 'frame=1&bridge=12345678-1234-1234-1234-123456789abc';
 
 describe('PREVIEW_SANDBOX directive', () => {
+  it('uses the forwarded public scheme for preview bridge origin binding', () => {
+    expect(publicRequestOrigin(new Request('http://app.typeroll.com/preview/site', {
+      headers: { 'x-forwarded-proto': 'https' },
+    }))).toBe('https://app.typeroll.com');
+
+    expect(publicRequestOrigin(new Request('http://app.typeroll.com/preview/site', {
+      headers: { 'x-forwarded-proto': 'https, http' },
+    }))).toBe('https://app.typeroll.com');
+
+    expect(publicRequestOrigin(new Request('http://localhost/preview/site', {
+      headers: { 'x-forwarded-proto': 'javascript' },
+    }))).toBe('http://localhost');
+  });
+
   it('never grants allow-same-origin', () => {
     // The single mistake that turns this whole mitigation into a no-op:
     // `sandbox allow-scripts allow-same-origin` hands back exactly the

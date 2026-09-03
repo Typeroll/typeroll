@@ -1,7 +1,7 @@
 import type { FieldDefinition, SharePermission } from './types.js';
 
 export const EXTENSION_MANIFEST_SCHEMA_VERSION = 3 as const;
-export const EXTENSION_RUNTIME_VERSION = '0.39.0';
+export const EXTENSION_RUNTIME_VERSION = '0.39.1';
 export const EXTENSION_HOST_PROTOCOL_VERSION = 3 as const;
 
 export type ExtensionDistribution = 'private' | 'unlisted' | 'public';

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.41.1
+
+- Fixed preview bridge origin binding behind TLS-terminating proxies and made
+  bridge timeouts visible to Extension code instead of silently attempting a
+  blocked iframe navigation.
+- Documented that origin- or referrer-restricted third-party browser keys need
+  a separate preview-safe configuration for the portal preview origin.
+
 ## 0.41.0
 
 - Added `context.site.url()` and `context.site.navigate()` so Extension flows
