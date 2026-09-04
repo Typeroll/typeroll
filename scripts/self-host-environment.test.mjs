@@ -9,6 +9,7 @@ import {
   SELF_HOST_REQUIRED_KEYS,
   validateSelfHostEnvironment,
 } from './lib/self-host-environment.mjs';
+import { loadSelfHostEnvironment } from './lib/self-host-cli.mjs';
 
 function validEnvironment() {
   const digest = `sha256:${'a'.repeat(64)}`;
@@ -79,6 +80,33 @@ test('accepts keyless Google credentials for self-host operations', () => {
 
   assert.equal(result.ok, true);
   assert.deepEqual(result.errors, []);
+});
+
+test('loads a complete self-host contract directly from the process environment', () => {
+  const env = validEnvironment();
+  const missingPath = path.join(os.tmpdir(), `typeroll-missing-${process.pid}-${Date.now()}`);
+
+  const loaded = loadSelfHostEnvironment(missingPath, env);
+
+  assert.equal(loaded.envPath, null);
+  assert.equal(loaded.env.EXTENSION_SIGNING_PRIVATE_JWK, env.EXTENSION_SIGNING_PRIVATE_JWK);
+});
+
+test('process-injected secrets override values from the environment file', () => {
+  const fileEnvironment = validEnvironment();
+  fileEnvironment.TYPEROLL_BACKUP_KEY = 'invalid-file-value';
+  fileEnvironment.EXTENSION_SIGNING_PRIVATE_JWK = 'invalid-file-value';
+  const { directory, envPath } = writeEnvironmentFile(fileEnvironment, 0o600);
+  const injected = validEnvironment();
+
+  try {
+    const loaded = loadSelfHostEnvironment(envPath, injected);
+    assert.equal(loaded.envPath, envPath);
+    assert.equal(loaded.env.TYPEROLL_BACKUP_KEY, injected.TYPEROLL_BACKUP_KEY);
+    assert.equal(loaded.env.EXTENSION_SIGNING_PRIVATE_JWK, injected.EXTENSION_SIGNING_PRIVATE_JWK);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('requires one matching Firebase administration target', () => {

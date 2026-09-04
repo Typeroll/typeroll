@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseEnv } from 'node:util';
@@ -64,6 +65,19 @@ export function remotePersonaCredentials(manifest, env) {
   return credentials;
 }
 
+export function remoteApiKeyCredential(env) {
+  const token = env.TYPEROLL_E2E_API_KEY?.trim();
+  const match = /^typeroll_live_([0-9a-f]{12})_([0-9a-f]{48})$/.exec(token ?? '');
+  if (!match) {
+    throw new Error('TYPEROLL_E2E_API_KEY must be a valid site-scoped Typeroll API key');
+  }
+  return {
+    token,
+    prefix: match[1],
+    keyHash: crypto.createHash('sha256').update(match[2]).digest('hex'),
+  };
+}
+
 export function readSecurePersonaEnvFile(filePath, baseEnv = process.env) {
   const mode = fs.statSync(filePath).mode & 0o777;
   if (mode !== 0o600) throw new Error(`E2E credential file must have mode 0600, received ${mode.toString(8).padStart(4, '0')}`);
@@ -108,6 +122,29 @@ export function buildCoreIdentityDocuments(manifest, credentials, now = () => ne
   documents.set(`organizations/${fixture.owner_org_id}/sites/${fixture.site_id}/shares/e2e-viewer`, share);
   documents.set(`org_share_index/${fixture.viewer_org_id}/shares/e2e-viewer`, share);
   return documents;
+}
+
+export function buildRemoteApiKeyDocuments(manifest, env, now = () => new Date()) {
+  const fixture = manifest.core_fixture;
+  const credential = remoteApiKeyCredential(env);
+  const createdAt = now().toISOString();
+  return new Map([
+    [`organizations/${fixture.owner_org_id}/sites/${fixture.site_id}/api_keys/${credential.prefix}`, {
+      id: credential.prefix,
+      name: 'Typeroll permanent E2E',
+      key_hash: credential.keyHash,
+      created_at: createdAt,
+      created_by: 'typeroll-e2e-seed',
+      is_test_credential: true,
+    }],
+    [`api_key_lookup/${credential.prefix}`, {
+      id: credential.prefix,
+      org_id: fixture.owner_org_id,
+      site_id: fixture.site_id,
+      key_hash: credential.keyHash,
+      is_test_credential: true,
+    }],
+  ]);
 }
 
 function readJsonDocuments(root, relative, output) {
@@ -197,6 +234,7 @@ export async function seedRemotePersonas({ services, env, manifest = readPersona
   const documents = new Map([
     ...fixtureSiteDocuments(manifest),
     ...buildCoreIdentityDocuments(manifest, credentials, now),
+    ...buildRemoteApiKeyDocuments(manifest, env, now),
   ]);
   await services.firestore.setDocuments([...documents].map(([documentPath, data]) => ({ path: documentPath, data })));
   return verifyRemotePersonas({ services, env, manifest });
@@ -230,6 +268,17 @@ export async function verifyRemotePersonas({ services, env, manifest = readPerso
       continue;
     }
     for (const key of ['role', 'firebase_uid', 'permission', 'owner_org_id', 'shared_with_org_id', 'site_id', 'roles_enforced']) {
+      if (key in expected && actual[key] !== expected[key]) errors.push(`${documentPath}: ${key} differs`);
+    }
+  }
+  const apiKeyDocuments = buildRemoteApiKeyDocuments(manifest, env, () => new Date(0));
+  for (const [documentPath, expected] of apiKeyDocuments) {
+    const actual = await services.firestore.get(documentPath);
+    if (!actual) {
+      errors.push(`${documentPath}: missing`);
+      continue;
+    }
+    for (const key of ['id', 'org_id', 'site_id', 'key_hash', 'is_test_credential']) {
       if (key in expected && actual[key] !== expected[key]) errors.push(`${documentPath}: ${key} differs`);
     }
   }

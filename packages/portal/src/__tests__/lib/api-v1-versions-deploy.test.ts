@@ -121,6 +121,9 @@ describe('versions endpoints', () => {
       name: 'Feature', kind: 'branch', base_version_id: MAIN_VERSION_ID,
       created_at: new Date().toISOString(), robots_blocked: true,
     } satisfies Partial<SiteVersion>);
+    await getStore().setDoc(paths.page(ORG, SITE, 'home', 'feature'), {
+      title: 'Branch-only page override', slug: '', status: 'draft', content_mode: 'blocks', blocks: [],
+    });
 
     const res = await callRoute(
       import('../../pages/api/v1/sites/[siteId]/versions/[versionId]'),
@@ -131,6 +134,7 @@ describe('versions endpoints', () => {
     );
     expect(res.status).toBe(200);
     expect(await getStore().getDoc(paths.version(ORG, SITE, 'feature'))).toBeNull();
+    expect(await getStore().getDoc(paths.page(ORG, SITE, 'home', 'feature'))).toBeNull();
   });
 });
 

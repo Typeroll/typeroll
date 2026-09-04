@@ -42,6 +42,6 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   }
   const doc = await getStore().getDoc<SiteVersion>(paths.version(ctx.orgId, ctx.siteId, versionId));
   if (!doc) return apiError('Not found', 404);
-  await getStore().deleteDoc(paths.version(ctx.orgId, ctx.siteId, versionId));
+  await getStore().deleteTree(paths.version(ctx.orgId, ctx.siteId, versionId));
   return apiResponse(ctx, { ok: true });
 };

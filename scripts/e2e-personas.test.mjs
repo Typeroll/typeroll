@@ -5,10 +5,12 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+  buildRemoteApiKeyDocuments,
   corePersonas,
   readPersonaManifest,
   readSecurePersonaEnvFile,
   remotePersonaCredentials,
+  remoteApiKeyCredential,
   resolveFirebasePersonaTarget,
   seedLocalPersonas,
   seedRemotePersonas,
@@ -18,7 +20,9 @@ import {
 } from './lib/e2e-personas.mjs';
 
 function remoteEnvironment(manifest) {
-  const env = {};
+  const env = {
+    TYPEROLL_E2E_API_KEY: `typeroll_live_${'a'.repeat(12)}_${'b'.repeat(48)}`,
+  };
   for (const persona of corePersonas(manifest)) {
     env[persona.email_env] = `${persona.id}@self-host.e2e.example.test`;
     env[persona.password_env] = `${persona.id}-` + 'p'.repeat(40);
@@ -76,6 +80,10 @@ test('remote credential contract requires unique injected values of sufficient l
     ...env,
     TYPEROLL_E2E_EDITOR_PASSWORD: env.TYPEROLL_E2E_OWNER_PASSWORD,
   }), /passwords must be unique/);
+  assert.equal(remoteApiKeyCredential(env).prefix, 'a'.repeat(12));
+  assert.throws(() => remoteApiKeyCredential({ TYPEROLL_E2E_API_KEY: 'invalid' }), /valid site-scoped/);
+  const keyDocuments = buildRemoteApiKeyDocuments(manifest, env, () => new Date(0));
+  assert.equal(keyDocuments.get(`api_key_lookup/${'a'.repeat(12)}`).site_id, 'e2e-core-site');
 });
 
 test('credential files must be private before they are parsed', () => {
@@ -137,6 +145,7 @@ test('remote seeding upserts stable users, claims, documents, and verifies passw
   assert.equal(memory.state.users.get('typeroll-e2e-owner').customClaims.is_test_account, true);
   assert.equal(memory.state.documents.get('organizations/e2e-core').roles_enforced, true);
   assert.equal(memory.state.documents.get('organizations/e2e-core/sites/e2e-core-site/shares/e2e-viewer').permission, 'read');
+  assert.equal(memory.state.documents.get(`api_key_lookup/${'a'.repeat(12)}`).is_test_credential, true);
 
   memory.state.users.get('typeroll-e2e-editor').customClaims.org_id = 'wrong-org';
   await assert.rejects(verifyRemotePersonas({ services: memory.services, env, manifest }), /editor: org claim differs/);

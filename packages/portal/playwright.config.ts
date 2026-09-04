@@ -27,6 +27,7 @@ import { resolveE2ETarget } from '../../scripts/lib/e2e-target.mjs';
 const E2E_FIXTURES_DIR = path.join(os.tmpdir(), 'typeroll-e2e-fixtures');
 const LOCAL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
 const target = resolveE2ETarget(process.env);
+const fullRemoteBrowsers = process.env.TYPEROLL_E2E_FULL_BROWSERS === 'true';
 if (!target.isRemote && !process.env.TYPEROLL_E2E_AUTH_SECRET) {
   process.env.TYPEROLL_E2E_AUTH_SECRET = LOCAL_E2E_AUTH_SECRET;
 }
@@ -69,6 +70,10 @@ export default defineConfig({
     { name: 'chromium-desktop', use: { ...devices['Desktop Chrome'] } },
     { name: 'chromium-mobile-390', use: { ...devices['iPhone 13'], viewport: { width: 390, height: 844 } } },
     { name: 'chromium-mobile-320', use: { ...devices['iPhone SE'], viewport: { width: 320, height: 568 } } },
+    ...(fullRemoteBrowsers ? [
+      { name: 'firefox-desktop', use: { ...devices['Desktop Firefox'] } },
+      { name: 'webkit-desktop', use: { ...devices['Desktop Safari'] } },
+    ] : []),
   ] : [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],

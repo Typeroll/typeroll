@@ -4,12 +4,13 @@ import { parseEnv } from 'node:util';
 
 import { validateSelfHostEnvironment } from './self-host-environment.mjs';
 
-export function loadSelfHostEnvironment(envFile = '.env') {
+export function loadSelfHostEnvironment(envFile = '.env', processEnvironment = process.env) {
   const envPath = path.resolve(envFile);
-  if (!fs.existsSync(envPath)) throw new Error(`${envPath} does not exist`);
-  const env = parseEnv(fs.readFileSync(envPath, 'utf8'));
+  const fileExists = fs.existsSync(envPath);
+  const fileEnvironment = fileExists ? parseEnv(fs.readFileSync(envPath, 'utf8')) : {};
+  const env = { ...fileEnvironment, ...processEnvironment };
   const result = validateSelfHostEnvironment(env);
-  if (process.platform !== 'win32') {
+  if (fileExists && process.platform !== 'win32') {
     const permissions = fs.statSync(envPath).mode & 0o777;
     if ((permissions & 0o077) !== 0) {
       result.errors.push(`${path.basename(envPath)} permissions must be 0600`);
@@ -17,9 +18,10 @@ export function loadSelfHostEnvironment(envFile = '.env') {
     }
   }
   if (!result.ok) {
+    if (!fileExists) result.errors.unshift(`${envPath} does not exist and the process environment is incomplete`);
     throw new Error(`self-host environment is invalid:\n${result.errors.map((error) => `- ${error}`).join('\n')}`);
   }
-  return { env, envPath };
+  return { env, envPath: fileExists ? envPath : null };
 }
 
 export function requireExactConfirmation(actual, supplied, label) {

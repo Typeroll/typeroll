@@ -203,6 +203,13 @@ npm run self-host:check
 docker compose config --quiet
 ```
 
+All self-host operation commands also accept the complete contract through
+their process environment. Process-injected values override an `--env-file`,
+and a file is optional when the injected environment is complete. Prefer that
+mode with a secret-manager runner so JSON keys and recovery credentials do not
+need to be materialized on disk. The `0600` check still applies whenever an
+environment file is supplied.
+
 The check prints field names and validation failures only. It never prints
 secret values. Keep `TYPEROLL_BACKUP_KEY` in a second, off-host secret store;
 losing both the host and this key makes encrypted backups unrecoverable. The

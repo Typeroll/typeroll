@@ -1,6 +1,6 @@
 export const SELF_HOST_INSTALLATION_PATH = 'typeroll_system/installation';
 export const SELF_HOST_BACKUP_FORMAT_VERSION = 1;
-export const SELF_HOST_CORE_VERSION = '0.1.4';
+export const SELF_HOST_CORE_VERSION = '0.1.5';
 export const SELF_HOST_DATA_SCHEMA_VERSION = 1;
 export const SELF_HOST_DATA_SCHEMA_READABLE_MIN = 1;
 export const SELF_HOST_DATA_SCHEMA_READABLE_MAX = 1;

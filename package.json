@@ -1,6 +1,6 @@
 {
   "name": "typeroll",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Open-source CMS for building and operating static websites",
   "workspaces": [
@@ -28,6 +28,7 @@
     "self-host:gcp:doctor": "node scripts/self-host-gcp-doctor.mjs",
     "e2e:personas": "node scripts/e2e-personas.mjs",
     "e2e:target:check": "node scripts/e2e-target-check.mjs",
+    "e2e:agent": "node scripts/e2e-agent-journey.mjs",
     "test:infra": "node --test scripts/*.test.mjs",
     "test:e2e": "npm run test:e2e --workspace=@typeroll/portal",
     "smoke:mcp": "node scripts/smoke-mcp.mjs",
