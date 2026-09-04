@@ -43,12 +43,21 @@ npx --package @typeroll/mcp-server typeroll extension validate
 npx --package @typeroll/mcp-server typeroll extension push --draft
 npx --package @typeroll/mcp-server typeroll extension install --site your-site-id \
   --config extension-config.json
+npx --package @typeroll/mcp-server typeroll extension configure --site your-site-id \
+  --installation your-installation-id --config extension-config.json
 npx --package @typeroll/mcp-server typeroll extension promote 1.0.0
 ```
 
 Local validation is a fast shape check. The portal remains authoritative for
 schema compatibility, trusted origins, permissions, configuration, and asset
 hash verification.
+
+`extension configure` merges the schema-defined values in the JSON file into
+the current installation config and queues a production deploy by default.
+Omitted values, including masked secrets, are preserved. Use `--no-deploy`
+only when applying several changes, then trigger one deploy after the last
+update. The installation ID is returned by `extension install` and is also
+shown under **Settings → Extensions**.
 
 Manifest v3 replaces the old gateway transport with a direct `api` contract.
 Provider requests must go straight from the browser to the provider backend;

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.42.0
+
+- Added `typeroll extension configure` for API-key-authenticated installation
+  config changes from an Extension repository.
+- Extension config updates through the CLI and MCP now queue a production
+  deploy by default, with explicit opt-outs for batching changes.
+- Expanded the Extension documentation for installation config, labelled enum
+  fields, preview route allowlists, secret preservation, and redeploy behavior.
+
 ## 0.41.1
 
 - Fixed preview bridge origin binding behind TLS-terminating proxies and made

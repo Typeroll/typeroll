@@ -6,9 +6,10 @@ site through the same tool surface a human agency would use: read and
 write pages, partials, collections, media, redirects, versions; trigger
 deploys; mint preview links.
 
-The server is a **thin transport adapter** — every tool wraps one HTTP
-endpoint of the Typeroll REST API. Auth happens at the API layer with a
-site- or org-scoped key; the MCP just carries the bearer through.
+The server is a **thin transport adapter** — tools call the Typeroll REST API,
+with a few workflow tools composing consecutive API calls such as config plus
+deploy. Auth happens at the API layer with a site- or org-scoped key; the MCP
+just carries the bearer through.
 
 ## Two ways to connect
 
@@ -98,12 +99,16 @@ APIs as the portal:
 typeroll extension validate
 typeroll extension push --draft
 typeroll extension install --site test-site --config local-extension-config.json
+typeroll extension configure --site test-site --installation install-abc \
+  --config local-extension-config.json
 typeroll extension promote 1.0.0
 ```
 
 The manifest defaults to `typeroll-extension.json`; use `--manifest` to select
 another file. Local validation is a fast preflight. The portal always performs
 the complete schema, compatibility, origin and asset-hash validation.
+`extension configure` queues a production deploy by default; pass
+`--no-deploy` only when batching updates and deploy once afterwards.
 
 ## What the agent should read first
 
@@ -177,7 +182,8 @@ the full reference + concrete operation recipes.
   manifest-defined installation config through the API key with
   `update_extension_installation_config`; omitted and masked secrets are
   preserved. Use this for frontend config such as consent copy and policy
-  links, then redeploy.
+  links. It queues a production deploy by default; pass `deploy: false` only
+  when batching changes and deploy once afterwards.
 - **Settings** — read + patch, including `scripts_head` /
   `scripts_body_end` / `custom_css` (trusted because the caller holds an
   API key; the in-portal chat AI does NOT get these).

@@ -49,6 +49,38 @@ Binding IDs are local to the component and are the names passed to
 `context.forms.submit()`. A binding can target only the fixed form ID declared
 in the immutable manifest version.
 
+## Installation configuration
+
+`config_schema` is an object schema whose properties become installation
+settings. Mark a property `public: true` only when the browser component needs
+it; public values are embedded in preview and static build snapshots. A
+property with `format: "secret"` is encrypted at rest, never returned by read
+APIs, cannot be public, and cannot define a default.
+
+Use `enum` for a constrained value and a same-length `enum_labels` array for
+human-readable choices in the portal. Stored values remain stable identifiers:
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "audience": {
+      "type": "string",
+      "title": "Audience",
+      "enum": ["consumer", "business"],
+      "enum_labels": ["Consumers", "Businesses"],
+      "public": true
+    }
+  }
+}
+```
+
+Configuration updates merge declared keys into the existing installation.
+Omitted properties preserve their current values, including masked secrets.
+Because public config is build-time data, a config update requires a new site
+deploy. The developer CLI and MCP tool queue that deploy by default.
+
 ## Available scopes
 
 - `content:read`, `content:write`
@@ -74,6 +106,24 @@ pattern and allowed HTTP methods. Paths are relative to `api.base_url`.
 `authentication` is `signed_installation` by default or `none` when the
 provider uses only its own public authentication. These declarations constrain
 the Typeroll runtime but do not replace provider-side authorization or CORS.
+
+Routes are unavailable in editor preview unless they declare
+`preview_methods`. That array must be a non-empty subset of the route's
+ordinary `methods`. Expose only read-only or otherwise harmless operations:
+
+```json
+{
+  "path": "/quotes/*",
+  "methods": ["GET", "POST"],
+  "preview_methods": ["GET"]
+}
+```
+
+The runtime enforces this allowlist before sending a request. The signed
+preview token repeats the allowed routes, and the provider must enforce those
+claims server-side too. A preview token has `preview: true`; its `origin` claim
+and the opaque preview frame's browser `Origin` header are both `null`, so
+their equality alone does not establish a trusted site origin.
 
 Typeroll never proxies these routes. The direct runtime always omits browser
 credentials and rejects redirects. A signed installation token, when enabled,

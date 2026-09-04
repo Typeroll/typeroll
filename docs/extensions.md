@@ -46,18 +46,18 @@ See the runnable contract fixture in [`examples/quote-extension`](../examples/qu
 The npm package `@typeroll/mcp-server` also installs the `typeroll` developer
 CLI. It reads `TYPEROLL_API_URL` and an organization-scoped
 `TYPEROLL_API_KEY` and supports `extension validate`, `push --draft`,
-`install --site` and `promote`. The CLI calls the same APIs as the portal; the
-server remains authoritative for full validation.
+`install --site`, `configure --site --installation --config`, and `promote`.
+The CLI calls the same APIs as the portal; the server remains authoritative
+for full validation.
 
 Site automation can read and update an installed Extension through
 `GET/PATCH /api/v1/sites/{siteId}/extensions/{installationId}`. The matching
 MCP flow is `list_extension_installations` → `read_extension_installation` →
 `update_extension_installation_config`. A successful update returns
-`redeploy_required: true`; publishing remains a separate, explicit deploy.
-
-CLI convenience backlog: add `typeroll extension configure --site <site-id>
---installation <installation-id> --config <file>`. This should wrap the v1
-PATCH above and surface its redeploy flag; it must not deploy implicitly.
+`redeploy_required: true`. The CLI and MCP config commands queue a production
+deploy by default so the new build-time config becomes visible. Use
+`--no-deploy` in the CLI or `deploy: false` in MCP only when batching changes;
+then trigger one deploy after the final update.
 
 ## Frontend contract
 

@@ -63,7 +63,7 @@ Common requirements that are easy to misclassify:
 | Download CTA that disappears without a file | `template/show_if` around a context-bound `core/button`; a dedicated download block is only editor convenience |
 | Sticky/custom header and multi-column footer | Block-mode header/footer partials plus layout blocks, or one reusable custom block type |
 | Cookie notice | `settings.cookie_consent`, not a page block |
-| Consent copy owned by an installed Extension | `list_extension_installations` → `read_extension_installation` → `update_extension_installation_config`, using exact manifest schema keys |
+| Consent copy owned by an installed Extension | `list_extension_installations` → `read_extension_installation` → `update_extension_installation_config`, using exact manifest schema keys; the update queues a production deploy by default |
 | One-off HTML + JavaScript embed | `core/embed`; reusable widgets use a custom block type with `script` |
 | CTA/button variants | `core/cta` and `core/button`, styled from site tokens or a narrowly scoped class |
 | Two-column image/text | `core/media_card`, `core/feature_row`, or `core/columns` |

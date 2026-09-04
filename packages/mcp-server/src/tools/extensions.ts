@@ -24,17 +24,31 @@ export const extensionTools: ToolDef[] = [
   {
     name: 'update_extension_installation_config',
     description:
-      'Update schema-defined config for an installed Extension. Call read_extension_installation first and send only keys declared by manifest.config_schema. Omitted fields preserve their current values, including masked secrets. This can update public content such as consent text, policy-link text, and policy URLs. The response returns redeploy_required:true; call trigger_deploy separately after the change has been reviewed. Admin permission required.',
+      'Update schema-defined config for an installed Extension. Call read_extension_installation first and send only keys declared by manifest.config_schema. Omitted fields preserve their current values, including masked secrets. This can update public content such as consent text, policy-link text, and policy URLs. A production deploy is queued by default; pass deploy:false only when batching changes and deploy later. Admin permission required.',
     inputSchema: {
       installation_id: z.string().min(1).describe('Installation id returned by list_extension_installations.'),
       config: z.record(z.unknown()).describe('Config keys and values declared by the installation manifest config schema.'),
+      deploy: z.boolean().optional().describe('Queue a production deploy after saving. Defaults to true.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
-      return ok(await client.patch(
+      const updated = await client.patch<Record<string, unknown>>(
         siteId,
         `extensions/${encodeURIComponent(args.installation_id)}`,
         { config: args.config },
-      ));
+      );
+      if (args.deploy === false) return ok(updated);
+      try {
+        const deploy = await client.post<Record<string, unknown>>(
+          siteId,
+          'deploy',
+          { environment: 'production' },
+        );
+        return ok({ ...updated, deploy });
+      } catch (error) {
+        throw new Error(
+          `Extension configuration was saved, but the deploy could not be queued: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }),
   },
 ];

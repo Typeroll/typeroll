@@ -111,8 +111,9 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   API key. Read the installation before writing so you use the exact keys from
   `manifest.config_schema`. This is the supported automation path for public
   content such as consent copy, link text, and policy URLs; masked secrets are
-  preserved when omitted. A successful update returns
-  `redeploy_required: true`; review the result, then deploy explicitly.
+  preserved when omitted. The update queues a production deploy by default;
+  pass `deploy: false` only when batching several changes and deploy once after
+  the final update.
 
 - **Page templates.** A `PageTemplate` is a Block[] tree that wraps a
   page's body. The template contains exactly one block of type
@@ -994,7 +995,7 @@ preview.
 | **Forms** | `list_forms`, `read_form`, `create_form`, `update_form`, `delete_form`, `list_form_submissions`, `delete_form_submission` (removes one submission — e.g. cleaning up a test entry; `delete_form` with `delete_submissions` is the bulk path). **Steps (form/* block trees) are the ONLY stored model**: pass `steps` for funnels, or `fields` for simple forms — the server converts a flat field list to a single static step. Place with a `core/form` block on block-mode pages or `<x-form id="…" />` in HTML mode. Both expand server-side to the same complete signed shell and initial state. Email/webhook actions are admin-only in the portal and excluded from agent reads/writes. |
 | **Settings** | `update_site_settings` (whitelist) |
 | **Core modules** | `list_apps`, `read_app`, `update_app` (legacy API name; admin; schema-driven config, masked secrets, redeploy when `affects_build` is true) |
-| **Extension installations** | `list_extension_installations`, `read_extension_installation`, `update_extension_installation_config` (admin; schema-driven config, masked secrets preserved, redeploy after frontend-facing changes) |
+| **Extension installations** | `list_extension_installations`, `read_extension_installation`, `update_extension_installation_config` (admin; schema-driven config, masked secrets preserved, production deploy queued by default) |
 | **Analytics attribution** | `read_funnel_attribution`, `update_funnel_attribution` (specialized Analytics module tools; admin; redeploy after changes) |
 | **Search + bulk** | `search_pages`, `check_internal_links`, `bulk_replace_text`. The link check is database-driven. Bulk replace defaults to pages but can target partials, collection items or all resources, always dry-run first. |
 | **Branches** | `create_branch`, `read_version`, `delete_branch`, `merge_branch` |

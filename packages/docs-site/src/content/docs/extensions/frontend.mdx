@@ -15,6 +15,7 @@ Typeroll calls `mount` once per block instance. The runtime context is scoped
 to that mount and contains:
 
 - protocol, runtime, Extension, installation, and component identifiers;
+- `preview`, which is `true` only inside an isolated editor preview;
 - the installation's public configuration;
 - `url.get()`, `url.has()`, and one-time `url.consume()` accessors;
 - an in-memory `navigation` object;

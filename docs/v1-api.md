@@ -77,6 +77,36 @@ The API route source under `packages/portal/src/pages/api/v1` is exhaustive;
 the index above groups specialized subroutes rather than hiding them behind a
 second undocumented RPC surface.
 
+## Extension installation configuration
+
+Use an admin-capable API key to inspect or update an installed Extension:
+
+```http
+GET /sites/{siteId}/extensions/{installationId}
+PATCH /sites/{siteId}/extensions/{installationId}
+Content-Type: application/json
+
+{
+  "config": {
+    "policy_link_text": "Privacy policy",
+    "policy_url": "/privacy/"
+  }
+}
+```
+
+The PATCH route accepts manifest-declared `config` keys and can also update
+`version`, `granted_scopes`, or `status` (`enabled` or `disabled`). Config is
+merged: omitted fields preserve their current values, including secret fields.
+Reads and responses expose only masked config and never return encrypted or
+private secret material.
+
+Extension public config and provisioned component definitions are compiled
+into the static site. A successful update therefore returns
+`affects_build: true` and `redeploy_required: true`. Queue the deploy with
+`POST /sites/{siteId}/deploy`. The `typeroll extension configure` CLI command
+and `update_extension_installation_config` MCP tool perform that production
+deploy step by default; both provide an explicit opt-out for batching.
+
 ## Migration inventory
 
 ### Bulk decisions

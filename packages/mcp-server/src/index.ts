@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     console.error('  typeroll-mcp                              Start the MCP server (reads TYPEROLL_API_URL and TYPEROLL_API_KEY)');
     console.error('  typeroll-mcp init [dir] [-f]              Bootstrap a project: skills + .mcp.json + AGENTS.md + imagegen lab');
     console.error('  typeroll-mcp install-skills <dir> [-f]    Copy bundled skill files to <dir>');
-    console.error('  typeroll extension <command>              Validate, push, install or promote an Extension');
+    console.error('  typeroll extension <command>              Validate, push, install, configure or promote an Extension');
     console.error('  typeroll-mcp --help                       Show this help');
     process.exit(0);
   }

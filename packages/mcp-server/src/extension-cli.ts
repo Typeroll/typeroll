@@ -7,6 +7,10 @@ function option(args: string[], name: string): string | undefined {
   return index >= 0 ? args[index + 1] : undefined;
 }
 
+function hasFlag(args: string[], name: string): boolean {
+  return args.includes(name);
+}
+
 async function readJson(path: string): Promise<Json> {
   const parsed = JSON.parse(await readFile(path, 'utf8')) as unknown;
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${path} must contain a JSON object`);
@@ -92,14 +96,47 @@ function help(): void {
   console.error('  typeroll extension validate [manifest]');
   console.error('  typeroll extension push --draft [--manifest path]');
   console.error('  typeroll extension install --site <site-id> [--manifest path] [--config config.json]');
+  console.error('  typeroll extension configure --site <site-id> --installation <installation-id> --config config.json [--no-deploy]');
   console.error('  typeroll extension promote <version> [--manifest path]');
 }
 
 export async function runExtensionCli(args: string[]): Promise<number> {
   const command = args[0];
   if (!command || ['help', '--help', '-h'].includes(command)) { help(); return 0; }
-  const manifestPath = option(args, '--manifest') ?? (command === 'validate' && args[1] && !args[1].startsWith('-') ? args[1] : 'typeroll-extension.json');
   try {
+    if (command === 'configure') {
+      const siteId = option(args, '--site');
+      const installationId = option(args, '--installation');
+      const configPath = option(args, '--config');
+      if (!siteId) throw new Error('configure requires --site <site-id>');
+      if (!installationId) throw new Error('configure requires --installation <installation-id>');
+      if (!configPath) throw new Error('configure requires --config <config.json>');
+      const config = await readJson(configPath);
+      const updated = await api(
+        `/api/v1/sites/${encodeURIComponent(siteId)}/extensions/${encodeURIComponent(installationId)}`,
+        { method: 'PATCH', body: JSON.stringify({ config }) },
+      );
+      if (hasFlag(args, '--no-deploy')) {
+        console.log(`Configured ${installationId} on ${siteId}; redeploy still required`);
+        return 0;
+      }
+      try {
+        const deployed = await api(`/api/v1/sites/${encodeURIComponent(siteId)}/deploy`, {
+          method: 'POST', body: JSON.stringify({ environment: 'production' }),
+        });
+        console.log(
+          `Configured ${installationId} on ${siteId}; queued production deploy ${String(deployed.data.job_id ?? '')}`,
+        );
+      } catch (error) {
+        const redeployRequired = updated.data.redeploy_required === true
+          ? ' The saved configuration still requires a deploy.'
+          : '';
+        throw new Error(`configuration was saved, but the deploy could not be queued: ${error instanceof Error ? error.message : String(error)}.${redeployRequired}`.trim());
+      }
+      return 0;
+    }
+
+    const manifestPath = option(args, '--manifest') ?? (command === 'validate' && args[1] && !args[1].startsWith('-') ? args[1] : 'typeroll-extension.json');
     const manifest = await readJson(manifestPath);
     const errors = validateExtensionManifestShape(manifest);
     if (errors.length) {
