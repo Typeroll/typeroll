@@ -2,8 +2,8 @@
   "schema_version": 1,
   "project_id": "typeroll-selfhost-e2e",
   "region": "europe-west1",
-  "image": "ghcr.io/typeroll/typeroll@sha256:a504112e0b89d82f4f4f86c647d13e9d8ffb43405133b60a9e4b1232d26b8463",
-  "image_digest": "sha256:a504112e0b89d82f4f4f86c647d13e9d8ffb43405133b60a9e4b1232d26b8463",
+  "image": "ghcr.io/typeroll/typeroll@sha256:9ee7c4a7522983852a9c08aaaa7b7f12815fdda26f24cb3cf1bfa6936759e55c",
+  "image_digest": "sha256:9ee7c4a7522983852a9c08aaaa7b7f12815fdda26f24cb3cf1bfa6936759e55c",
   "firebase": {
     "api_key": "AIzaSyD3TdqqGoYyU1FbWMCS3nxJW0EkSLpbN8M",
     "auth_domain": "typeroll-selfhost-e2e.firebaseapp.com",
