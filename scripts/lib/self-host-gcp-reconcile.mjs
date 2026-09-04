@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
 const APPLY_PHASES = Object.freeze(['foundation', 'runtime', 'all']);
-const NOT_FOUND = /(?:NOT_FOUND|not (?:be )?found|does not exist|was not found)/i;
+const NOT_FOUND = /(?:NOT_FOUND|cannot find|not (?:be )?found|does not exist|was not found)/i;
 
 function commandLabel(command, args) {
   return [command, ...args]
@@ -582,21 +582,6 @@ export function doctorGcpSelfHostPlan(plan, options = {}) {
       `${account.purpose} identity exists`,
     );
   }
-  if (projectNumber) {
-    for (const agent of plan.service_agents) {
-      const email = serviceAgentEmail(agent.email, projectNumber);
-      doctorCheck(
-        checks,
-        `service-agent.${agent.purpose}`,
-        runner.run(
-          'gcloud',
-          gcloud(plan.project_id, 'iam', 'service-accounts', 'describe', email, '--format=value(email)'),
-        ),
-        `${agent.purpose} exists`,
-      );
-    }
-  }
-
   const projectExpectations = plan.service_accounts.flatMap((account) =>
     account.project_roles.map((role) => ({
       role,
@@ -614,12 +599,30 @@ export function doctorGcpSelfHostPlan(plan, options = {}) {
       }),
     );
   }
+  const projectPolicy = runner.run(
+    'gcloud',
+    gcloud(plan.project_id, 'projects', 'get-iam-policy', plan.project_id, '--format=json'),
+  );
   doctorPolicyCheck(
     checks,
     'iam.project',
-    runner.run('gcloud', gcloud(plan.project_id, 'projects', 'get-iam-policy', plan.project_id, '--format=json')),
+    projectPolicy,
     projectExpectations,
   );
+  if (projectNumber) {
+    for (const agent of plan.service_agents) {
+      const email = serviceAgentEmail(agent.email, projectNumber);
+      doctorPolicyCheck(
+        checks,
+        `service-agent.${agent.purpose}`,
+        projectPolicy,
+        agent.project_roles.map((role) => ({
+          role,
+          member: `serviceAccount:${email}`,
+        })),
+      );
+    }
+  }
 
   for (const binding of plan.service_account_bindings) {
     doctorPolicyCheck(

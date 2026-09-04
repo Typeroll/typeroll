@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "project_id": "typeroll-selfhost-e2e",
+  "region": "europe-west1",
+  "image": "ghcr.io/typeroll/typeroll@sha256:a504112e0b89d82f4f4f86c647d13e9d8ffb43405133b60a9e4b1232d26b8463",
+  "image_digest": "sha256:a504112e0b89d82f4f4f86c647d13e9d8ffb43405133b60a9e4b1232d26b8463",
+  "firebase": {
+    "api_key": "AIzaSyD3TdqqGoYyU1FbWMCS3nxJW0EkSLpbN8M",
+    "auth_domain": "typeroll-selfhost-e2e.firebaseapp.com",
+    "app_id": "1:243732976663:web:4f8281399b3743c42e7852"
+  },
+  "origins": {
+    "portal": "https://cms.selfhost-e2e.typeroll.com",
+    "forms": "https://forms.selfhost-e2e.typeroll.com",
+    "sites_base_domain": "sites.selfhost-e2e.typeroll.com"
+  },
+  "resources": {
+    "artifact_repository": "typeroll-core",
+    "portal_service": "typeroll-portal",
+    "forms_service": "typeroll-forms",
+    "deploy_queue": "typeroll-deploy",
+    "publish_scheduler": "typeroll-publish-sweep",
+    "portal_service_account": "typeroll-portal",
+    "forms_service_account": "typeroll-forms",
+    "internal_invoker_service_account": "typeroll-internal-invoker"
+  },
+  "secrets": {
+    "FORMS_HMAC_SECRET": "typeroll-forms-hmac",
+    "PREVIEW_HMAC_SECRET": "typeroll-preview-hmac",
+    "INTEGRATIONS_SECRET_KEY": "typeroll-integrations-key",
+    "MCP_OAUTH_SIGNING_KEY": "typeroll-mcp-oauth-signing-key",
+    "EXTENSION_SIGNING_PRIVATE_JWK": "typeroll-extension-signing-jwk",
+    "R2_ACCOUNT_ID": "typeroll-r2-account-id",
+    "R2_ACCESS_KEY_ID": "typeroll-r2-access-key-id",
+    "R2_SECRET_ACCESS_KEY": "typeroll-r2-secret-access-key",
+    "R2_BUCKET": "typeroll-r2-bucket",
+    "R2_PUBLIC_BASE_URL": "typeroll-r2-public-base-url",
+    "CLOUDFLARE_ACCOUNT_ID": "typeroll-cloudflare-account-id",
+    "CLOUDFLARE_API_TOKEN": "typeroll-cloudflare-api-token"
+  }
+}

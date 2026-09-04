@@ -6,6 +6,28 @@ function required(env, key) {
   return input;
 }
 
+export function resolveFirebaseAdminTarget(env) {
+  const rawServiceAccount = env.FIREBASE_SERVICE_ACCOUNT?.trim();
+  let credentials = null;
+  if (rawServiceAccount) {
+    try {
+      credentials = JSON.parse(rawServiceAccount);
+    } catch {
+      throw new Error('FIREBASE_SERVICE_ACCOUNT must contain valid JSON');
+    }
+    if (!credentials?.project_id) throw new Error('FIREBASE_SERVICE_ACCOUNT must contain a project_id');
+  }
+  const projectId = credentials?.project_id ?? env.GOOGLE_CLOUD_PROJECT?.trim();
+  if (!projectId) {
+    throw new Error('Set FIREBASE_SERVICE_ACCOUNT or GOOGLE_CLOUD_PROJECT with Application Default Credentials');
+  }
+  const publicProjectId = env.PUBLIC_FIREBASE_PROJECT_ID?.trim();
+  if (publicProjectId && publicProjectId !== projectId) {
+    throw new Error('PUBLIC_FIREBASE_PROJECT_ID must match the Firebase administration project');
+  }
+  return { projectId, credentials };
+}
+
 function chunk(values, size) {
   const result = [];
   for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
@@ -37,18 +59,17 @@ function importableUser(user) {
 }
 
 export async function createSelfHostServices(env) {
-  const credentials = JSON.parse(required(env, 'FIREBASE_SERVICE_ACCOUNT'));
-  const projectId = credentials.project_id;
+  const { projectId, credentials } = resolveFirebaseAdminTarget(env);
   const bucket = required(env, 'R2_BUCKET');
 
-  const [{ initializeApp, cert }, { getFirestore, FieldPath, Timestamp, GeoPoint }, { getAuth }, { GoogleAuth }] = await Promise.all([
+  const [{ initializeApp, cert, applicationDefault }, { getFirestore, FieldPath, Timestamp, GeoPoint }, { getAuth }, { GoogleAuth }] = await Promise.all([
     import('firebase-admin/app'),
     import('firebase-admin/firestore'),
     import('firebase-admin/auth'),
     import('google-auth-library'),
   ]);
   const app = initializeApp(
-    { credential: cert(credentials), projectId },
+    { credential: credentials ? cert(credentials) : applicationDefault(), projectId },
     `typeroll-self-host-ops-${randomUUID()}`,
   );
   const db = getFirestore(app);
@@ -164,7 +185,8 @@ export async function createSelfHostServices(env) {
 
   async function getAuthHashConfig() {
     const googleAuth = new GoogleAuth({
-      credentials,
+      ...(credentials ? { credentials } : {}),
+      projectId,
       scopes: ['https://www.googleapis.com/auth/cloud-platform'],
     });
     const client = await googleAuth.getClient();

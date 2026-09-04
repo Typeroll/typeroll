@@ -70,6 +70,28 @@ test('accepts a complete immutable self-host environment', () => {
   assert.deepEqual(result.errors, []);
 });
 
+test('accepts keyless Google credentials for self-host operations', () => {
+  const env = validEnvironment();
+  delete env.FIREBASE_SERVICE_ACCOUNT;
+  env.GOOGLE_CLOUD_PROJECT = env.PUBLIC_FIREBASE_PROJECT_ID;
+
+  const result = validateSelfHostEnvironment(env);
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.errors, []);
+});
+
+test('requires one matching Firebase administration target', () => {
+  const env = validEnvironment();
+  delete env.FIREBASE_SERVICE_ACCOUNT;
+  let result = validateSelfHostEnvironment(env);
+  assert.ok(result.errors.some((error) => error.includes('GOOGLE_CLOUD_PROJECT')));
+
+  env.GOOGLE_CLOUD_PROJECT = 'another-project';
+  result = validateSelfHostEnvironment(env);
+  assert.ok(result.errors.some((error) => error.includes('must match GOOGLE_CLOUD_PROJECT')));
+});
+
 test('rejects mutable images, mismatched Firebase projects, and short secrets', () => {
   const env = validEnvironment();
   env.TYPEROLL_IMAGE = 'ghcr.io/typeroll/typeroll:latest';

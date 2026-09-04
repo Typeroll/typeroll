@@ -9,6 +9,7 @@ import {
   readPersonaManifest,
   readSecurePersonaEnvFile,
   remotePersonaCredentials,
+  resolveFirebasePersonaTarget,
   seedLocalPersonas,
   seedRemotePersonas,
   validatePersonaManifest,
@@ -88,6 +89,23 @@ test('credential files must be private before they are parsed', () => {
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('remote persona administration supports service-account and keyless ADC targets', () => {
+  assert.deepEqual(
+    resolveFirebasePersonaTarget({ FIREBASE_SERVICE_ACCOUNT: JSON.stringify({ project_id: 'service-account-project' }) }),
+    {
+      projectId: 'service-account-project',
+      credentialKind: 'service_account',
+      credentials: { project_id: 'service-account-project' },
+    },
+  );
+  assert.deepEqual(
+    resolveFirebasePersonaTarget({ GOOGLE_CLOUD_PROJECT: 'adc-project' }),
+    { projectId: 'adc-project', credentialKind: 'application_default', credentials: null },
+  );
+  assert.throws(() => resolveFirebasePersonaTarget({ FIREBASE_SERVICE_ACCOUNT: '{' }), /valid JSON/);
+  assert.throws(() => resolveFirebasePersonaTarget({}), /Application Default Credentials/);
 });
 
 test('local seeding is idempotent and produces the role and sharing baseline', () => {

@@ -241,20 +241,44 @@ export async function verifyRemotePersonas({ services, env, manifest = readPerso
   return { projectId: services.projectId, personaCount: corePersonas(manifest).length };
 }
 
+export function resolveFirebasePersonaTarget(env) {
+  const rawServiceAccount = env.FIREBASE_SERVICE_ACCOUNT?.trim();
+  if (rawServiceAccount) {
+    let credentials;
+    try {
+      credentials = JSON.parse(rawServiceAccount);
+    } catch {
+      throw new Error('FIREBASE_SERVICE_ACCOUNT must contain valid JSON');
+    }
+    if (!credentials?.project_id) throw new Error('FIREBASE_SERVICE_ACCOUNT must contain a project_id');
+    return { projectId: credentials.project_id, credentialKind: 'service_account', credentials };
+  }
+
+  const projectId = env.GOOGLE_CLOUD_PROJECT?.trim() || env.FIREBASE_PROJECT_ID?.trim();
+  if (!projectId) {
+    throw new Error(
+      'Set FIREBASE_SERVICE_ACCOUNT or use Application Default Credentials with GOOGLE_CLOUD_PROJECT',
+    );
+  }
+  return { projectId, credentialKind: 'application_default', credentials: null };
+}
+
 export async function createFirebasePersonaServices(env) {
-  const credentials = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT ?? 'null');
-  if (!credentials?.project_id) throw new Error('FIREBASE_SERVICE_ACCOUNT must contain a project_id');
-  const [{ initializeApp, cert }, { getAuth }, { getFirestore }] = await Promise.all([
+  const target = resolveFirebasePersonaTarget(env);
+  const [{ initializeApp, cert, applicationDefault }, { getAuth }, { getFirestore }] = await Promise.all([
     import('firebase-admin/app'), import('firebase-admin/auth'), import('firebase-admin/firestore'),
   ]);
-  const app = initializeApp({ credential: cert(credentials), projectId: credentials.project_id }, `typeroll-e2e-personas-${Date.now()}`);
+  const credential = target.credentialKind === 'service_account'
+    ? cert(target.credentials)
+    : applicationDefault();
+  const app = initializeApp({ credential, projectId: target.projectId }, `typeroll-e2e-personas-${Date.now()}`);
   const auth = getAuth(app);
   const db = getFirestore(app);
   db.settings({ ignoreUndefinedProperties: true });
   const firebaseApiKey = env.TYPEROLL_E2E_FIREBASE_API_KEY?.trim();
   if (!firebaseApiKey) throw new Error('TYPEROLL_E2E_FIREBASE_API_KEY is required');
   return {
-    projectId: credentials.project_id,
+    projectId: target.projectId,
     auth: {
       upsert: async ({ uid, email, password, displayName, customClaims }) => {
         try {

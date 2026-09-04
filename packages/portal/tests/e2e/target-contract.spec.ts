@@ -66,10 +66,24 @@ test('remote password login and logout use the real browser flow', async ({ page
   test.skip(targetKind === 'local', 'Local runs exercise the signed isolated persona session');
   const credentials = personaCredentials('owner');
   await page.goto('/login');
-  await page.getByLabel('Email').fill(credentials.email);
-  await page.getByLabel('Password').fill(credentials.password);
+  await page.waitForFunction(() => {
+    const form = document.querySelector<HTMLFormElement>('form');
+    const email = document.querySelector<HTMLInputElement>('input[type="email"]');
+    return form?.dataset.loginReady === 'true' || Boolean(email && '_valueTracker' in email);
+  });
+  // Core 0.1.4 predates the explicit label association added after the first
+  // permanent-target qualification. Attribute selectors exercise the same
+  // login behavior across that pinned release and subsequent accessible markup.
+  await page.locator('input[type="email"]').fill(credentials.email);
+  await page.locator('input[type="password"]').fill(credentials.password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/app(?:\/|$)/);
-  await page.getByRole('button', { name: /sign out/i }).click();
+  const signOut = page.getByRole('button', { name: /sign out/i });
+  const navigationToggle = page.getByRole('button', { name: 'Open navigation' });
+  if ((page.viewportSize()?.width ?? 1024) < 1024) {
+    await navigationToggle.click();
+    await expect(signOut).toBeInViewport();
+  }
+  await signOut.click();
   await expect(page).not.toHaveURL(/\/app(?:\/|$)/);
 });

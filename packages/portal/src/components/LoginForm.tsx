@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   GoogleAuthProvider,
   signInWithEmailAndPassword,
@@ -15,6 +15,9 @@ export default function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => setHydrated(true), []);
 
   async function exchangeIdToken(idToken: string) {
     const res = await fetch('/api/auth/session', {
@@ -63,7 +66,7 @@ export default function LoginForm() {
 
   return (
     <div className="stack">
-      <button type="button" onClick={handleGoogle} disabled={busy} className="btn btn--secondary" style={{ width: '100%', justifyContent: 'center' }}>
+      <button type="button" onClick={handleGoogle} disabled={busy || !hydrated} className="btn btn--secondary" style={{ width: '100%', justifyContent: 'center' }}>
         Continue with Google
       </button>
 
@@ -73,22 +76,22 @@ export default function LoginForm() {
         <div style={{ flex: 1, height: 1, background: 'var(--color-border)' }} />
       </div>
 
-      <form onSubmit={handleEmail} className="stack">
+      <form onSubmit={handleEmail} className="stack" data-login-ready={hydrated ? 'true' : 'false'}>
         <div className="field">
-          <label>Email</label>
-          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+          <label htmlFor="login-email">Email</label>
+          <input id="login-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
         </div>
         <div className="field">
-          <label>Password</label>
-          <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />
+          <label htmlFor="login-password">Password</label>
+          <input id="login-password" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />
         </div>
         {error && <div style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</div>}
-        <button type="submit" disabled={busy} className="btn" style={{ width: '100%', justifyContent: 'center' }}>
+        <button type="submit" disabled={busy || !hydrated} className="btn" style={{ width: '100%', justifyContent: 'center' }}>
           {mode === 'signin' ? 'Sign in' : 'Create account'}
         </button>
       </form>
 
-      <button type="button" onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')} className="btn btn--ghost" style={{ width: '100%', justifyContent: 'center' }}>
+      <button type="button" disabled={!hydrated} onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')} className="btn btn--ghost" style={{ width: '100%', justifyContent: 'center' }}>
         {mode === 'signin' ? "Need an account? Sign up" : 'Already have an account? Sign in'}
       </button>
     </div>

@@ -239,6 +239,45 @@ test('runtime apply reuses a verified digest and converges both Cloud Run roles 
   assert.ok(scheduler.args.includes(`--oidc-token-audience=${portalUrl}/api/internal/deploy-worker`));
 });
 
+test('runtime apply bootstraps Cloud Run when gcloud reports Cannot find service', () => {
+  const portalUrl = 'https://typeroll-portal-bootstrap-ew.a.run.app';
+  let portalInspections = 0;
+  const runner = fakeRunner((call) => {
+    const project = activeProject(call);
+    if (project) return project;
+    if (call.command === 'gcloud' && hasArgs(call, 'secrets', 'versions', 'list')) {
+      return { exitCode: 0, stdout: 'projects/123/secrets/example/versions/1\n', stderr: '' };
+    }
+    if (call.command === 'crane' && call.args[0] === 'digest') {
+      return { exitCode: 0, stdout: `${digest}\n`, stderr: '' };
+    }
+    if (call.command === 'gcloud' && hasArgs(call, 'run', 'services', 'describe', 'typeroll-portal')) {
+      portalInspections += 1;
+      return portalInspections === 1
+        ? { exitCode: 1, stdout: '', stderr: 'ERROR: Cannot find service [typeroll-portal]' }
+        : { exitCode: 0, stdout: JSON.stringify({ status: { url: portalUrl } }), stderr: '' };
+    }
+    if (call.command === 'gcloud' && hasArgs(call, 'run', 'services', 'describe', 'typeroll-forms')) {
+      return { exitCode: 1, stdout: '', stderr: 'ERROR: Cannot find service [typeroll-forms]' };
+    }
+    if (call.command === 'gcloud' && hasArgs(call, 'scheduler', 'jobs', 'describe')) {
+      return { exitCode: 1, stdout: '', stderr: 'ERROR: NOT_FOUND: Job not found' };
+    }
+    return { exitCode: 0, stdout: '', stderr: '' };
+  });
+
+  const result = applyGcpSelfHostPlan(plan(), {
+    phase: 'runtime',
+    confirmProject: 'customer-typeroll',
+    runner,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(runner.calls.filter((call) => hasArgs(call, 'run', 'deploy', 'typeroll-portal')).length, 2);
+  assert.equal(runner.calls.filter((call) => hasArgs(call, 'run', 'deploy', 'typeroll-forms')).length, 1);
+  assert.ok(runner.calls.some((call) => hasArgs(call, 'scheduler', 'jobs', 'create', 'http')));
+});
+
 test('doctor remains read-only and reports missing tools and enabled secret versions without values', () => {
   const currentPlan = plan();
   const runner = fakeRunner((call) => {
@@ -250,6 +289,17 @@ test('doctor remains read-only and reports missing tools and enabled secret vers
         exitCode: 0,
         stdout: `${currentPlan.required_apis.join('\n')}\n`,
         stderr: '',
+      };
+    }
+    if (
+      call.command === 'gcloud' &&
+      hasArgs(call, 'iam', 'service-accounts', 'describe') &&
+      call.args.some((arg) => arg.includes('@gcp-sa-'))
+    ) {
+      return {
+        exitCode: 1,
+        stdout: '',
+        stderr: 'PERMISSION_DENIED: Permission iam.serviceAccounts.get denied',
       };
     }
     if (call.command === 'gcloud' && hasArgs(call, 'secrets', 'versions', 'list')) {
@@ -352,4 +402,14 @@ test('doctor verifies the complete IAM and control-plane contract', () => {
   assert.equal(result.checks.find((check) => check.id === 'iam.project').status, 'pass');
   assert.equal(result.checks.find((check) => check.id === 'iam.secret.R2_BUCKET').status, 'pass');
   assert.equal(result.checks.find((check) => check.id === 'iam.cloud-run.portal').status, 'pass');
+  assert.equal(result.checks.find((check) => check.id === 'service-agent.cloud-tasks-service-agent').status, 'pass');
+  assert.equal(result.checks.find((check) => check.id === 'service-agent.cloud-scheduler-service-agent').status, 'pass');
+  assert.equal(
+    runner.calls.some(
+      (call) =>
+        hasArgs(call, 'iam', 'service-accounts', 'describe') &&
+        call.args.some((arg) => arg.includes('@gcp-sa-')),
+    ),
+    false,
+  );
 });

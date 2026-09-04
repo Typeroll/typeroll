@@ -64,17 +64,20 @@ npm run e2e:personas -- verify --fixtures-dir /tmp/typeroll-e2e
 # Remote mutation requires the exact Firebase project ID as confirmation
 npm run e2e:personas -- seed --environment self_host \
   --env-file /private/path/self-host-e2e.env \
-  --confirm-project typeroll-self-host-e2e
+  --confirm-project typeroll-selfhost-e2e
 
 # Verification is read-only and does not require mutation confirmation
 npm run e2e:personas -- verify --environment self_host \
   --env-file /private/path/self-host-e2e.env
 ```
 
-Remote environments require `FIREBASE_SERVICE_ACCOUNT`,
-`TYPEROLL_E2E_FIREBASE_API_KEY`, and the email/password variables named by the
-manifest. Service accounts and passwords belong in the shared credential store;
-only the public Firebase API key may be stored as ordinary test configuration.
+Remote persona administration and the self-host operation commands accept
+either `FIREBASE_SERVICE_ACCOUNT`, or keyless Application Default Credentials
+plus `GOOGLE_CLOUD_PROJECT`. Remote E2E also requires
+`TYPEROLL_E2E_FIREBASE_API_KEY` and the email/password variables named by the
+manifest. Service-account JSON and passwords belong in the shared credential
+store; only the project ID and public Firebase API key may be stored as ordinary
+test configuration. Prefer keyless ADC for the supported GCP self-host profile.
 These identities are permanent sentinels, marked with `is_test_account` and a
 stable `e2e_persona` claim. Automated cleanup must not delete them. Retire only
 the exact manifest UIDs when the whole target environment is decommissioned,

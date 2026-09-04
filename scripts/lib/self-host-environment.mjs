@@ -4,7 +4,6 @@ export const SELF_HOST_REQUIRED_KEYS = [
   'TYPEROLL_PORTAL_HOST',
   'TYPEROLL_FORMS_HOST',
   'TYPEROLL_ACME_EMAIL',
-  'FIREBASE_SERVICE_ACCOUNT',
   'PUBLIC_FIREBASE_API_KEY',
   'PUBLIC_FIREBASE_AUTH_DOMAIN',
   'PUBLIC_FIREBASE_PROJECT_ID',
@@ -100,8 +99,13 @@ export function validateSelfHostEnvironment(env) {
   const cdn = value(env, 'R2_PUBLIC_BASE_URL');
   if (cdn && !validHttpsUrl(cdn)) errors.push('R2_PUBLIC_BASE_URL: must be an HTTPS URL without embedded credentials');
 
-  const firebase = parseJson(value(env, 'FIREBASE_SERVICE_ACCOUNT'));
-  if (value(env, 'FIREBASE_SERVICE_ACCOUNT')) {
+  const firebaseServiceAccount = value(env, 'FIREBASE_SERVICE_ACCOUNT');
+  const googleCloudProject = value(env, 'GOOGLE_CLOUD_PROJECT');
+  const firebase = parseJson(firebaseServiceAccount);
+  if (!firebaseServiceAccount && !googleCloudProject) {
+    errors.push('FIREBASE_SERVICE_ACCOUNT or GOOGLE_CLOUD_PROJECT: one Firebase administration target is required');
+  }
+  if (firebaseServiceAccount) {
     if (!firebase || typeof firebase !== 'object') errors.push('FIREBASE_SERVICE_ACCOUNT: must be valid single-line JSON');
     else {
       for (const field of ['project_id', 'client_email', 'private_key']) {
@@ -113,6 +117,13 @@ export function validateSelfHostEnvironment(env) {
         errors.push('PUBLIC_FIREBASE_PROJECT_ID: must match FIREBASE_SERVICE_ACCOUNT.project_id');
       }
     }
+  }
+  if (
+    googleCloudProject &&
+    value(env, 'PUBLIC_FIREBASE_PROJECT_ID') &&
+    googleCloudProject !== value(env, 'PUBLIC_FIREBASE_PROJECT_ID')
+  ) {
+    errors.push('PUBLIC_FIREBASE_PROJECT_ID: must match GOOGLE_CLOUD_PROJECT');
   }
 
   for (const key of ['FORMS_HMAC_SECRET', 'PREVIEW_HMAC_SECRET', 'INTEGRATIONS_SECRET_KEY', 'MCP_OAUTH_SIGNING_KEY']) {
