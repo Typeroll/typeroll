@@ -80,6 +80,23 @@ async function seedItem(collection: string, id: string, fields: Record<string, u
 describe('analyzeCoverage', () => {
   beforeEach(async () => { await resetDatastore(); });
 
+  it('merges slash-equivalent inventory keys while preserving every observed source path', async () => {
+    await setup();
+    const { addInventoryUrls, analyzeCoverage } = await import('../../lib/wp/url-inventory');
+    const { getStore } = await import('../../lib/datastore');
+    await addInventoryUrls(getStore(), ORG, SITE, [
+      { url: 'https://old.example.com/stadning-detaljer' },
+      { url: 'https://old.example.com/stadning-detaljer/' },
+    ], { sourceOrigin: 'https://old.example.com', defaultSource: 'sitemap' });
+    const { urls } = await analyzeCoverage(getStore(), ORG, SITE);
+    expect(urls).toHaveLength(1);
+    expect(urls[0].path).toBe('/stadning-detaljer');
+    expect(urls[0].observed_paths).toEqual([
+      '/stadning-detaljer',
+      '/stadning-detaljer/',
+    ]);
+  });
+
   it('classifies a URL covered by a published page as migrated', async () => {
     await setup();
     await seedInventory([{ path: '/about' }]);

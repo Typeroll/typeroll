@@ -29,6 +29,8 @@
 // query strings (`_redirects` matches on path only — a `/?p=123` style rule
 // cannot be expressed and must be handled as an exact path).
 
+import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
+
 /** True when `from_path` is a pattern rather than a literal path. */
 export function isRedirectPattern(fromPath: string): boolean {
   return fromPath.includes('*') || /(^|\/):[A-Za-z_][A-Za-z0-9_]*(\/|$)/.test(fromPath);
@@ -208,6 +210,53 @@ export function sortRedirectsForEmit<T extends { from_path: string }>(rules: T[]
 }
 
 /**
+ * Expand authored redirect rules to the source-path variants static hosting
+ * must recognise. Coverage deliberately treats `/old` and `/old/` as the same
+ * legacy route; emitted redirects therefore have to cover both spellings too.
+ * Explicit authored rules always win over generated aliases.
+ */
+export function expandRedirectsForTrailingSlashPolicy<
+  T extends { from_path: string; to_path: string },
+>(rules: T[], policy: TrailingSlashPolicy): T[] {
+  const explicitSources = new Set(rules.map((rule) => rule.from_path));
+  const emittedSources = new Set<string>();
+  const expanded: T[] = [];
+
+  const add = (rule: T, fromPath = rule.from_path, resolvedTarget = rule.to_path): void => {
+    if (emittedSources.has(fromPath)) return;
+    emittedSources.add(fromPath);
+    expanded.push({
+      ...rule,
+      from_path: fromPath,
+      to_path: canonicalRedirectTarget(resolvedTarget, policy),
+    });
+  };
+
+  // Register authored sources first so a generated slash alias can never
+  // erase a deliberately distinct rule for the other variant.
+  for (const rule of rules) add(rule);
+
+  for (const rule of rules) {
+    if (rule.from_path.endsWith('*')) {
+      const base = rule.from_path.slice(0, -1).replace(/\/+$/, '') || '/';
+      for (const alias of sourceSlashVariants(base)) {
+        if (explicitSources.has(alias) || emittedSources.has(alias)) continue;
+        const resolved = matchRedirect(rule.from_path, rule.to_path, alias);
+        if (resolved !== null) add(rule, alias, resolved);
+      }
+      continue;
+    }
+
+    for (const alias of sourceSlashVariants(rule.from_path)) {
+      if (alias === rule.from_path || explicitSources.has(alias) || emittedSources.has(alias)) continue;
+      add(rule, alias);
+    }
+  }
+
+  return sortRedirectsForEmit(expanded);
+}
+
+/**
  * Live page URLs a rule would capture. Cloudflare Pages evaluates
  * `_redirects` BEFORE serving static files, so a rule matching a real page's
  * URL hides that page completely — the failure mode redirect-hygiene exists
@@ -238,4 +287,21 @@ function normalize(p: string): string {
 
 function trimSlashes(p: string): string {
   return p.replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+function sourceSlashVariants(path: string): string[] {
+  if (path === '/' || isFileLikePath(path)) return [path];
+  const without = path.replace(/\/+$/, '') || '/';
+  return [without, `${without}/`];
+}
+
+function canonicalRedirectTarget(target: string, policy: TrailingSlashPolicy): string {
+  if (!target.startsWith('/') || target.startsWith('//') || isFileLikePath(target)) return target;
+  return applyTrailingSlash(target, policy);
+}
+
+function isFileLikePath(value: string): boolean {
+  const pathname = value.split(/[?#]/u, 1)[0].replace(/\/+$/, '');
+  const segment = pathname.slice(pathname.lastIndexOf('/') + 1);
+  return /^[^.][^/]*\.[^/]+$/u.test(segment);
 }

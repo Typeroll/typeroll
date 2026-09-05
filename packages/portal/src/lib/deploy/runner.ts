@@ -27,8 +27,13 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { paths, MAIN_VERSION_ID, sortRedirectsForEmit } from '@typeroll/shared';
-import type { ExtensionRuntimeSnapshot, Form, Page, Redirect, Site, SiteApps, SiteSettings, SiteVersion, Partial as PartialDoc } from '@typeroll/shared';
+import {
+  buildCollectionRoutes,
+  expandRedirectsForTrailingSlashPolicy,
+  paths,
+  MAIN_VERSION_ID,
+} from '@typeroll/shared';
+import type { CollectionItem, ExtensionRuntimeSnapshot, Form, Page, Redirect, Site, SiteApps, SiteSettings, SiteVersion, Partial as PartialDoc, TrailingSlashPolicy } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { pageUrlFromDoc } from '../page-paths';
 import { partitionShadowedRedirects } from '../redirect-hygiene';
@@ -237,18 +242,32 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   // 3. Write _redirects.
   await phase('writing redirects');
   const siteForRedirect = await getStore().getDoc<Site>(paths.site(args.orgId, args.siteId));
-  const redirects = await vstore.redirects(args.orgId, args.siteId, versionId);
+  const [redirects, pagesForRedirects, collectionsForRedirects, redirectSettings] = await Promise.all([
+    vstore.redirects(args.orgId, args.siteId, versionId),
+    vstore.pages(args.orgId, args.siteId, versionId),
+    vstore.collections(args.orgId, args.siteId, versionId),
+    vstore.settings(args.orgId, args.siteId, versionId),
+  ]);
   // Belt-and-braces: never emit a rule whose from_path a built page owns.
   // CF Pages serves redirects BEFORE static files, so such a rule shadows
   // the page entirely (a stale "/" auto-redirect once hid a site's brand-new
   // home page). The write surfaces retire these eagerly; this guard catches
   // anything that slipped through.
-  const pagesForRedirects = await vstore.pages(args.orgId, args.siteId, versionId);
   const liveUrls = new Set(
     pagesForRedirects
       .filter((p) => p.status === 'published' || p.status === 'unlisted')
       .map((p) => pageUrlFromDoc(p)),
   );
+  const collectionItems = new Map<string, CollectionItem[]>();
+  await Promise.all(collectionsForRedirects.map(async (collection) => {
+    collectionItems.set(
+      collection.name,
+      await vstore.collectionItems(args.orgId, args.siteId, versionId, collection.name),
+    );
+  }));
+  for (const route of buildCollectionRoutes(collectionsForRedirects, collectionItems)) {
+    liveUrls.add(route.path);
+  }
   const { kept: safeRedirects, shadowed, shadowedPages } = partitionShadowedRedirects(redirects, liveUrls);
   for (const r of shadowed) {
     const hits = shadowedPages.get(r) ?? [r.from_path];
@@ -258,7 +277,11 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
       `(the rule would shadow them on Cloudflare Pages)`,
     );
   }
-  const redirectFile = buildRedirectsFile(siteForRedirect, safeRedirects);
+  const redirectFile = buildRedirectsFile(
+    siteForRedirect,
+    safeRedirects,
+    redirectSettings?.trailing_slash ?? 'always',
+  );
   if (redirectFile) {
     await fs.promises.writeFile(path.join(buildDir, '_redirects'), redirectFile);
     if (siteForRedirect?.domain_alias) {
@@ -777,6 +800,7 @@ async function spawnAstroBuild(args: SpawnArgs): Promise<void> {
 export function buildRedirectsFile(
   site: Site | null | undefined,
   redirects: Array<Pick<Redirect, 'from_path' | 'to_path' | 'status_code'>>,
+  trailingSlashPolicy: TrailingSlashPolicy = 'ignore',
 ): string | null {
   const lines: string[] = [];
   if (site?.domain && site.domain_alias) {
@@ -788,7 +812,7 @@ export function buildRedirectsFile(
   // (rather than trusting the collection's iteration order, which differs
   // between the Firestore and fixtures backends) is what makes the emitted
   // file deterministic and matches what analyzeCoverage predicts.
-  for (const r of sortRedirectsForEmit(redirects)) {
+  for (const r of expandRedirectsForTrailingSlashPolicy(redirects, trailingSlashPolicy)) {
     lines.push(`${r.from_path} ${r.to_path} ${r.status_code}`);
   }
   if (lines.length === 0) return null;

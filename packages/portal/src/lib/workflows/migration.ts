@@ -61,6 +61,7 @@ import { extractInternalLinks, resolveSourceRedirectsInHtml } from '../wp/intern
 import { discoverSitemap } from '../wp/sitemap';
 import { addInventoryUrl, addWordPressBareSlugGuess, analyzeCoverage, pathFromUrl } from '../wp/url-inventory';
 import { WPHelperClient, type HelperItem } from '../wp/helper-client';
+import { normalizeWordPressPlainText } from '../wp/plain-text';
 import { reviewGate, type WorkflowDef } from './types';
 
 // REST `content.rendered` shorter than this triggers the public-page fallback —
@@ -179,8 +180,10 @@ export const migrationWorkflow: WorkflowDef = {
 
         const patch: Partial<SiteSettings> = {};
         if (looksUnconfigured) {
-          patch.site_name = String(ctx.state.site_name ?? 'My Site');
-          if (ctx.state.site_description) patch.tagline = String(ctx.state.site_description);
+          patch.site_name = normalizeWordPressPlainText(String(ctx.state.site_name ?? 'My Site'));
+          if (ctx.state.site_description) {
+            patch.tagline = normalizeWordPressPlainText(String(ctx.state.site_description));
+          }
           ctx.log(`Imported site name (${patch.site_name}) — target was unconfigured.`);
         } else {
           ctx.log('Target site already has name/tagline; leaving them alone.');
@@ -208,13 +211,22 @@ export const migrationWorkflow: WorkflowDef = {
                 const before = (existing as Record<string, unknown> | null)?.[key];
                 if (!before) (patch as Record<string, unknown>)[key] = value;
               };
-              setIfMissing('default_meta_description', seo.default_meta_description ?? undefined);
+              setIfMissing(
+                'default_meta_description',
+                seo.default_meta_description
+                  ? normalizeWordPressPlainText(seo.default_meta_description)
+                  : undefined,
+              );
               setIfMissing('default_og_image',         seo.default_og_image ?? undefined);
 
               if (seo.organization && (seo.organization.name || seo.organization.logo)) {
                 const existingOrg = existing?.organization ?? {};
                 patch.organization = {
-                  name: existingOrg.name ?? seo.organization.name ?? undefined,
+                  name: existingOrg.name ?? (
+                    seo.organization.name
+                      ? normalizeWordPressPlainText(seo.organization.name)
+                      : undefined
+                  ),
                   logo: existingOrg.logo ?? seo.organization.logo ?? undefined,
                   same_as: existingOrg.same_as && existingOrg.same_as.length
                     ? existingOrg.same_as
@@ -530,11 +542,11 @@ export const migrationWorkflow: WorkflowDef = {
           const featuredImage = featuredNewUrl
             ? { url: featuredNewUrl, alt: featuredAlt }
             : undefined;
-          const excerpt = item.excerpt?.rendered ? stripTags(item.excerpt.rendered) : undefined;
+          const excerpt = item.excerpt?.rendered ? normalizeWordPressPlainText(item.excerpt.rendered) : undefined;
           const extras = collectExtras(item);
 
           const result = await reconstructPage(design, {
-            title: stripTags(item.title.rendered),
+            title: normalizeWordPressPlainText(item.title.rendered),
             slug: item.slug,
             url: item.link,
             cleaned_html: cleaned,
@@ -546,7 +558,7 @@ export const migrationWorkflow: WorkflowDef = {
           else fallbackCount++;
           if (result.notes) ctx.log(`[${item.slug}] ${result.notes}`);
 
-          const rawSlug = item.slug || slugify(item.title.rendered) || `page-${item.id}`;
+          const rawSlug = item.slug || slugify(normalizeWordPressPlainText(item.title.rendered)) || `page-${item.id}`;
 
           // SEO: prefer the helper plugin's normalized `seo` field (works for
           // Yoast/RankMath/SEOPress/AIOSEO). Fall back to yoast_head_json from
@@ -554,8 +566,11 @@ export const migrationWorkflow: WorkflowDef = {
           // are empty so seo_title is never blank.
           const helperSEO = (item as unknown as { _seo?: HelperItem['seo'] })._seo;
           const yoast = item.yoast_head_json;
-          const seoTitle = helperSEO?.title ?? yoast?.title ?? stripTags(item.title.rendered);
-          const seoDesc  = helperSEO?.description ?? yoast?.description;
+          const seoTitle = normalizeWordPressPlainText(
+            helperSEO?.title ?? yoast?.title ?? item.title.rendered,
+          );
+          const rawSeoDesc = helperSEO?.description ?? yoast?.description;
+          const seoDesc = rawSeoDesc ? normalizeWordPressPlainText(rawSeoDesc) : undefined;
           const seoCanon = helperSEO?.canonical ?? yoast?.canonical;
           const noindex  = helperSEO?.noindex === true ? true : undefined;
           const rawOgImage = helperSEO?.og_image ?? yoast?.og_image?.[0]?.url;
@@ -573,7 +588,7 @@ export const migrationWorkflow: WorkflowDef = {
             const itemId = makeSafeDocId(rawSlug);
             const now = new Date().toISOString();
             const itemDoc = {
-              title: stripTags(item.title.rendered),
+              title: normalizeWordPressPlainText(item.title.rendered),
               slug: rawSlug,
               date: (item.date ?? now).slice(0, 10),
               updated_date: (item.modified ?? now).slice(0, 10),
@@ -618,7 +633,7 @@ export const migrationWorkflow: WorkflowDef = {
             const useBlocks = targetMode !== 'html';
             const blocks = useBlocks ? htmlToBlocks(result.html).blocks : undefined;
             const doc: Omit<Page, 'id'> = {
-              title: stripTags(item.title.rendered),
+              title: normalizeWordPressPlainText(item.title.rendered),
               slug,
               content_mode: useBlocks ? 'blocks' : 'html',
               html_content: result.html,
@@ -699,12 +714,14 @@ export const migrationWorkflow: WorkflowDef = {
           let bodyHtml = cleaned;
           if (coll.fields.some((f) => f.name === 'body')) {
             const result = await reconstructPage(design, {
-              title: stripTags(item.title?.rendered ?? ''),
+              title: normalizeWordPressPlainText(item.title?.rendered ?? ''),
               slug: item.slug ?? '',
               url: item.link ?? '',
               cleaned_html: cleaned,
               featured_image: featuredImage,
-              excerpt: item.excerpt?.rendered ? stripTags(item.excerpt.rendered) : undefined,
+              excerpt: item.excerpt?.rendered
+                ? normalizeWordPressPlainText(item.excerpt.rendered)
+                : undefined,
               extras: collectExtras(item),
             });
             bodyHtml = result.html;
@@ -931,10 +948,6 @@ function isLikelyHome(item: WPPage, baseUrl: string): boolean {
   } catch {
     return false;
   }
-}
-
-function stripTags(s: string): string {
-  return s.replace(/<[^>]+>/g, '').trim();
 }
 
 function makeSafeDocId(s: string): string {

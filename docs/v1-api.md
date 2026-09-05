@@ -145,7 +145,8 @@ POST /sites/{siteId}/migration-urls/import-sitemap
 
 Sitemap indexes are followed recursively, cycles and duplicates are collapsed,
 foreign-origin page URLs are rejected, and parse/fetch exceptions are returned
-in `sitemap_errors`.
+in `sitemap_errors`. Slash-equivalent paths share one normalized inventory
+entry, while its `observed_paths` retains every spelling found at the source.
 
 ### Search Console import
 
@@ -184,7 +185,16 @@ POST /sites/{siteId}/migration-urls/verify
 The default response contains the complete summary and only `missing`,
 `broken_redirect`, and `error` rows. Set `include_successes: true`, or pass an
 exact `verdicts` array. The site's trailing-slash policy is applied before a
-canonical slash redirect is classified.
+canonical slash redirect is classified. Verification requests every distinct
+`observed_paths` value, so `summary.checked` counts source URL variants and can
+be larger than the normalized inventory count.
+
+Static deploys expand each redirect to cover both slash spellings of its source
+path, except `/` and file/resource paths. Internal destinations are normalized
+to the site's `always`, `never`, or `ignore` policy without dropping query
+parameters. Explicit rules for both source spellings retain their individual
+destinations. Existing sites receive this behavior on their next build; stored
+redirect documents do not require migration.
 
 ## Database internal-link check
 

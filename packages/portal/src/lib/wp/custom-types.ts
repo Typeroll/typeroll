@@ -11,6 +11,7 @@
 
 import type { FieldDefinition, FieldType } from '@typeroll/shared';
 import type { WPItem, WPPostType } from './client';
+import { normalizeWordPressPlainText } from './plain-text';
 
 export interface InferredCollection {
   /** Machine name suitable for paths.collection(...) */
@@ -91,10 +92,10 @@ export function projectItemFields(
   bodyHtml: string
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {
-    title: item.title?.rendered ? stripTags(item.title.rendered) : '',
+    title: item.title?.rendered ? normalizeWordPressPlainText(item.title.rendered) : '',
     slug: item.slug,
     body: bodyHtml,
-    excerpt: item.excerpt?.rendered ? stripTags(item.excerpt.rendered) : '',
+    excerpt: item.excerpt?.rendered ? normalizeWordPressPlainText(item.excerpt.rendered) : '',
     featured_image: featuredImageUrl ?? '',
     published_at: item.date,
   };
@@ -197,8 +198,4 @@ function pickIcon(name: string): string {
   if (/property|listing|estate/.test(name)) return '🏠';
   if (/recipe|menu|dish|food/.test(name)) return '🍽';
   return '📋';
-}
-
-function stripTags(s: string): string {
-  return s.replace(/<[^>]+>/g, '').trim();
 }

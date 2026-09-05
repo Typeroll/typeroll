@@ -304,6 +304,12 @@ is possible at all. Verdicts:
 upstream shows up as noise in the inventory rather than as a migration
 failure — mark those `excluded`.
 
+Slash-equivalent source URLs are one inventory decision but remain separate
+verification requests through `observed_paths`. Therefore `checked` can exceed
+the normalized inventory size, and a missing slash variant remains a launch
+blocker. Redirect builds cover both source spellings and send internal targets
+to the site's configured trailing-slash style.
+
 Note what the check does NOT catch: it verifies that a URL *resolves*, not
 that the page at the other end is the right content. Spot-check the top
 `gsc_clicks` URLs by eye.

@@ -109,7 +109,7 @@ const DEFAULTS = {
  * ordered worst-first so the caller can act on the head of the list.
  */
 export async function checkUrlParity(
-  urls: Array<Pick<AnalyzedUrl, 'path' | 'excluded' | 'gsc_clicks'>>,
+  urls: Array<Pick<AnalyzedUrl, 'path' | 'excluded' | 'gsc_clicks'> & Partial<Pick<AnalyzedUrl, 'full_url' | 'observed_paths'>>>,
   opts: CheckParityOptions,
 ): Promise<{ results: ParityResult[]; summary: ParitySummary }> {
   const doFetch = opts.fetchImpl ?? fetch;
@@ -119,23 +119,27 @@ export async function checkUrlParity(
   const skipExcluded = opts.skipExcluded !== false;
   const targetOrigin = stripTrailingSlash(opts.targetOrigin);
 
-  const results: ParityResult[] = new Array(urls.length);
+  const checks = urls.flatMap((entry) => {
+    const paths = entry.observed_paths?.length ? entry.observed_paths : [entry.path];
+    return [...new Set(paths)].map((path) => ({ ...entry, path }));
+  });
+  const results: ParityResult[] = new Array(checks.length);
   let cursor = 0;
   let done = 0;
 
   const worker = async (): Promise<void> => {
     for (;;) {
       const i = cursor++;
-      if (i >= urls.length) return;
-      const entry = urls[i];
+      if (i >= checks.length) return;
+      const entry = checks[i];
       results[i] = entry.excluded && skipExcluded
         ? { path: entry.path, verdict: 'excluded', status: null, gsc_clicks: entry.gsc_clicks }
         : await checkOne(entry, { doFetch, targetOrigin, timeoutMs, maxHops, opts });
       done++;
-      opts.onProgress?.(done, urls.length);
+      opts.onProgress?.(done, checks.length);
     }
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, urls.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(concurrency, checks.length) }, worker));
 
   const summary: ParitySummary = {
     checked: results.length,
@@ -338,7 +342,11 @@ export async function recordRedirectVerification(
   results: ParityResult[],
 ): Promise<number> {
   const byPath = new Map<string, ParityResult>();
-  for (const r of results) byPath.set(r.path.replace(/\/+$/, '') || '/', r);
+  for (const r of results) {
+    const key = r.path.replace(/\/+$/, '') || '/';
+    const previous = byPath.get(key);
+    if (!previous || verdictRank(r.verdict) < verdictRank(previous.verdict)) byPath.set(key, r);
+  }
 
   const now = new Date().toISOString();
   let written = 0;

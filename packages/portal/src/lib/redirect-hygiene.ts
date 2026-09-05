@@ -13,7 +13,7 @@
 //      are kept: the user may intend them (e.g. a placeholder for a page
 //      that will come back).
 
-import { isRedirectPattern, pagesShadowedByRedirect } from '@typeroll/shared';
+import { pagesShadowedByRedirect } from '@typeroll/shared';
 import { vstore } from './version-store';
 import type { Page, Redirect } from '@typeroll/shared';
 
@@ -83,9 +83,7 @@ export function partitionShadowedRedirects<T extends Pick<Redirect, 'from_path' 
     // always beats a redirect), just discovered by matching instead of by
     // set lookup. The write surfaces refuse such a pattern; this catches
     // the case where the page was published AFTER the rule was created.
-    const hits = isRedirectPattern(r.from_path)
-      ? pagesShadowedByRedirect(r.from_path, r.to_path ?? '', livePageUrls)
-      : livePageUrls.has(r.from_path) ? [r.from_path] : [];
+    const hits = pagesShadowedByRedirect(r.from_path, r.to_path ?? '', livePageUrls);
     if (hits.length) {
       shadowed.push(r);
       shadowedPages.set(r, hits);

@@ -18,6 +18,7 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
 import type { Page, Redirect, Site, SiteVersion } from '@typeroll/shared';
+import { partitionShadowedRedirects } from '../../lib/redirect-hygiene';
 
 const ORG = 'orgone';
 const SITE = 'mysite';
@@ -176,6 +177,15 @@ describe('redirect hygiene — page writes retire shadowing redirects', () => {
 
     const remaining = (await listRedirects()).map((r) => r.from_path);
     expect(remaining).toEqual(['/utkast']);
+  });
+});
+
+describe('partitionShadowedRedirects — normalized route ownership', () => {
+  it('drops an exact no-slash rule when a collection-style slash route owns the URL', () => {
+    const rule = { from_path: '/blog/post', to_path: '/archive', status_code: 301 as const };
+    const { kept, shadowedPages } = partitionShadowedRedirects([rule], new Set(['/blog/post/']));
+    expect(kept).toEqual([]);
+    expect(shadowedPages.get(rule)).toEqual(['/blog/post/']);
   });
 });
 

@@ -189,11 +189,15 @@ describe('emitted _redirects', () => {
       { from_path: '/blogg/recept/*', to_path: '/mat/:splat', status_code: 301 },
       { from_path: '/blogg/recept/pannkakor', to_path: '/mat/pannkakor', status_code: 301 },
     ]);
-    expect(file).toBe(
-      '/blogg/recept/pannkakor /mat/pannkakor 301\n' +
-      '/blogg/recept/* /mat/:splat 301\n' +
-      '/blogg/* /nyheter/:splat 301\n',
-    );
+    const lines = file!.trim().split('\n');
+    expect(lines).toEqual(expect.arrayContaining([
+      '/blogg/recept/pannkakor/ /mat/pannkakor 301',
+      '/blogg/recept/pannkakor /mat/pannkakor 301',
+      '/blogg/recept/* /mat/:splat 301',
+      '/blogg/* /nyheter/:splat 301',
+    ]));
+    expect(lines.indexOf('/blogg/recept/* /mat/:splat 301'))
+      .toBeLessThan(lines.indexOf('/blogg/* /nyheter/:splat 301'));
   });
 
   it('keeps the host-level apex/www rule first', () => {

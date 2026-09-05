@@ -185,6 +185,11 @@ check_internal_links         # database preflight before deploy
 verify_migration_urls        # after trigger_deploy; compact exceptions by default
 ```
 
+The inventory merges slash-equivalent URLs into one work item but preserves
+their source spellings in `observed_paths`. Verification requests every one of
+those spellings; treat a failing variant as a real gap even when coverage is
+otherwise complete. Fresh builds expand redirect sources to both slash forms.
+
 ### 5. Preview + review with the user
 
 ```

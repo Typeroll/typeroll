@@ -58,14 +58,18 @@ export async function addInventoryUrl(
     excluded?: boolean;
   }
 ): Promise<void> {
-  const id = makeUrlId(args.path);
+  const normalizedPath = normalizePath(args.path);
+  const observedPath = observedPathFrom(args.full_url) ?? observedPathFrom(args.path) ?? normalizedPath;
+  const id = makeUrlId(normalizedPath);
   const docPath = paths.migrationUrl(orgId, siteId, id);
   const existing = await store.getDoc<MigrationUrl>(docPath);
 
   if (existing) {
     const sources = mergeSources(existing.sources, args.source);
+    const observedPaths = mergeObservedPaths(existing, observedPath);
     const patch: Partial<MigrationUrl> = {};
     if (sources.length !== existing.sources.length) patch.sources = sources;
+    if (!sameStrings(observedPaths, existing.observed_paths)) patch.observed_paths = observedPaths;
     if (args.gsc_clicks !== undefined && args.gsc_clicks !== existing.gsc_clicks) {
       patch.gsc_clicks = args.gsc_clicks;
     }
@@ -79,8 +83,9 @@ export async function addInventoryUrl(
   }
 
   const doc: Omit<MigrationUrl, 'id'> = {
-    path: args.path,
+    path: normalizedPath,
     full_url: args.full_url,
+    observed_paths: [observedPath],
     sources: [args.source],
     gsc_clicks: args.gsc_clicks,
     gsc_impressions: args.gsc_impressions,
@@ -306,6 +311,40 @@ function normalizePath(p: string): string {
   }
 }
 
+function observedPathFrom(value: string): string | null {
+  try {
+    let path: string;
+    if (value.startsWith('/')) {
+      path = value.split('#', 1)[0];
+    } else {
+      const url = new URL(value);
+      path = `${url.pathname}${url.search}`;
+    }
+    return decodePath(path);
+  } catch {
+    return null;
+  }
+}
+
+function decodePath(path: string): string {
+  try {
+    return decodeURI(path);
+  } catch {
+    return path;
+  }
+}
+
+function mergeObservedPaths(existing: MigrationUrl, add: string): string[] {
+  const inferred = existing.observed_paths?.length
+    ? existing.observed_paths
+    : [observedPathFrom(existing.full_url) ?? existing.path];
+  return inferred.includes(add) ? inferred : [...inferred, add];
+}
+
+function sameStrings(left: string[], right: string[] | undefined): boolean {
+  return Boolean(right) && left.length === right!.length && left.every((value, index) => value === right![index]);
+}
+
 export function makeUrlId(path: string): string {
   // Filesystem-safe id. The fixtures store needs this; Firestore tolerates
   // most chars but we keep the convention uniform.
@@ -452,7 +491,14 @@ export async function analyzeCoverage(
         status = 'unhandled';
       }
     }
-    return { ...entry, status, target };
+    return {
+      ...entry,
+      observed_paths: entry.observed_paths?.length
+        ? entry.observed_paths
+        : [observedPathFrom(entry.full_url) ?? entry.path],
+      status,
+      target,
+    };
   });
 
   // Sort: unhandled first (most actionable), then by GSC clicks desc.

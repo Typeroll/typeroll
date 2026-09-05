@@ -744,7 +744,9 @@ verify_migration_urls                      # what the SERVER actually answers
 
 `list_migration_urls` classifies every inventory URL against the site's
 current pages + redirects. It's recomputed on read, so creating a redirect
-flips the entry on your next call — no bookkeeping of your own.
+flips the entry on your next call — no bookkeeping of your own. Slash-equivalent
+source URLs share one inventory row, but `observed_paths` preserves the exact
+spellings that were discovered.
 
 `verify_migration_urls` requests each URL against the deployed site (its
 fallback subdomain by default, because the real domain still points at the
@@ -752,6 +754,9 @@ old host pre-cutover) and reports `ok` / `ok_redirect` / `missing` /
 `broken_redirect` / `error`. This is the one that catches a redirect
 pointing at an unpublished page, a typo'd `path`, and redirect loops — all
 of which read as "handled" in the coverage report and as a 404 to Googlebot.
+Every distinct `observed_paths` value is requested, so a slash variant can fail
+even when its normalized inventory row is green; `summary.checked` counts those
+requests rather than normalized rows.
 **Deploy first**: it tests saved, deployed content, not your drafts.
 
 Every unhandled URL gets exactly one of three outcomes — there is no fourth:
@@ -798,7 +803,10 @@ Constraints, all enforced at write time rather than discovered in production:
 Rules are emitted most-specific-first, so `/blogg/recept/*` and `/blogg/*`
 can coexist — the narrower one fires. `list_migration_urls` counts
 pattern-covered URLs as `redirected`, so the coverage report reflects what
-production will do.
+production will do. A build emits both slash spellings for redirect sources
+(except root and file/resource paths) and normalizes internal destinations to
+the site's trailing-slash policy. Changing this behavior requires a new build,
+not a migration of stored redirect records.
 
 ### "Link language versions together (hreflang)"
 

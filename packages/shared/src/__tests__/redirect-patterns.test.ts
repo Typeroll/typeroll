@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  expandRedirectsForTrailingSlashPolicy,
   isRedirectPattern,
   matchRedirect,
   pagesShadowedByRedirect,
@@ -126,6 +127,62 @@ describe('ordering', () => {
   it('is stable for equally specific rules', () => {
     const input = [{ from_path: '/a/*' }, { from_path: '/b/*' }, { from_path: '/c/*' }];
     expect(sortRedirectsForEmit(input).map((r) => r.from_path)).toEqual(['/a/*', '/b/*', '/c/*']);
+  });
+});
+
+describe('trailing-slash redirect expansion', () => {
+  const rule = { from_path: '/stadning-detaljer', to_path: '/offert_flyttstadning', status_code: 301 };
+
+  it.each([
+    ['always', '/offert_flyttstadning/'],
+    ['never', '/offert_flyttstadning'],
+    ['ignore', '/offert_flyttstadning'],
+  ] as const)('covers both exact source variants under the %s policy', (policy, target) => {
+    const expanded = expandRedirectsForTrailingSlashPolicy([rule], policy);
+    expect(expanded).toEqual(expect.arrayContaining([
+      { ...rule, from_path: '/stadning-detaljer', to_path: target },
+      { ...rule, from_path: '/stadning-detaljer/', to_path: target },
+    ]));
+  });
+
+  it('covers named patterns and the empty base of trailing splats', () => {
+    const expanded = expandRedirectsForTrailingSlashPolicy([
+      { from_path: '/blog/:slug', to_path: '/artiklar/:slug', status_code: 301 },
+      { from_path: '/category/*', to_path: '/blogg/:splat', status_code: 301 },
+    ], 'always');
+    expect(expanded.map((entry) => entry.from_path)).toEqual(expect.arrayContaining([
+      '/blog/:slug', '/blog/:slug/', '/category/*', '/category', '/category/',
+    ]));
+  });
+
+  it('lets explicitly-authored slash variants keep distinct destinations', () => {
+    const expanded = expandRedirectsForTrailingSlashPolicy([
+      { from_path: '/old', to_path: '/one', status_code: 301 },
+      { from_path: '/old/', to_path: '/two', status_code: 302 },
+    ], 'ignore');
+    expect(expanded).toHaveLength(2);
+    expect(expanded).toEqual(expect.arrayContaining([
+      { from_path: '/old', to_path: '/one', status_code: 301 },
+      { from_path: '/old/', to_path: '/two', status_code: 302 },
+    ]));
+  });
+
+  it('does not invent slash variants for root or file/resource paths', () => {
+    const expanded = expandRedirectsForTrailingSlashPolicy([
+      { from_path: '/', to_path: '/home', status_code: 301 },
+      { from_path: '/manual.pdf', to_path: '/files/manual.pdf?download=1', status_code: 301 },
+    ], 'always');
+    expect(expanded.map((entry) => entry.from_path)).toEqual(expect.arrayContaining(['/', '/manual.pdf']));
+    expect(expanded.map((entry) => entry.from_path)).not.toContain('/manual.pdf/');
+    expect(expanded.find((entry) => entry.from_path === '/manual.pdf')?.to_path)
+      .toBe('/files/manual.pdf?download=1');
+  });
+
+  it('preserves query parameters while canonicalizing an internal target', () => {
+    const expanded = expandRedirectsForTrailingSlashPolicy([
+      { from_path: '/old/nested', to_path: '/new/nested?campaign=legacy', status_code: 301 },
+    ], 'always');
+    expect(expanded.every((entry) => entry.to_path === '/new/nested/?campaign=legacy')).toBe(true);
   });
 });
 

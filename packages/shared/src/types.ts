@@ -718,6 +718,8 @@ export interface MigrationUrl {
   id: string;
   path: string;         // relative path on the old site, e.g. /old-services
   full_url: string;     // original absolute URL
+  /** Every source spelling merged into this normalized inventory key. */
+  observed_paths?: string[];
   sources: string[];    // sitemap | rest-page | rest-post | rest-{type} | internal-link | helper | gsc
   excluded?: boolean;   // user explicitly marked as "do not migrate / will 404"
   notes?: string;

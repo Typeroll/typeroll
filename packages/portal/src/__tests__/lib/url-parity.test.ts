@@ -25,6 +25,27 @@ function fakeFetch(routes: Record<string, { status: number; location?: string }>
 }
 
 describe('checkUrlParity', () => {
+  it('checks every observed source slash variant instead of trusting the normalized inventory key', async () => {
+    const { results, summary } = await checkUrlParity([{
+      path: '/stadning-detaljer',
+      full_url: 'https://old.example.com/stadning-detaljer/',
+      observed_paths: ['/stadning-detaljer', '/stadning-detaljer/'],
+    }], {
+      targetOrigin: TARGET,
+      fetchImpl: fakeFetch({
+        [`${TARGET}/stadning-detaljer`]: { status: 301, location: '/offert_flyttstadning/' },
+        [`${TARGET}/offert_flyttstadning/`]: { status: 200 },
+        [`${TARGET}/stadning-detaljer/`]: { status: 404 },
+      }),
+    });
+    expect(results.map((entry) => [entry.path, entry.verdict])).toEqual([
+      ['/stadning-detaljer/', 'missing'],
+      ['/stadning-detaljer', 'ok_redirect'],
+    ]);
+    expect(summary.checked).toBe(2);
+    expect(summary.missing).toBe(1);
+  });
+
   it('classifies a preserved path as ok', async () => {
     const { results, summary } = await checkUrlParity([{ path: '/om-oss' }], {
       targetOrigin: TARGET,
@@ -205,6 +226,31 @@ describe('recordRedirectVerification', () => {
     );
     const doc = await getStore().getDoc<Redirect>(
       `${paths.redirects(ORG, SITE, MAIN_VERSION_ID)}/trasig`,
+    );
+    expect(doc?.verified).toBe(false);
+  });
+
+  it('marks a rule unverified when any observed slash variant is missing', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    await seedRedirect('stadning', {
+      from_path: '/stadning-detaljer',
+      to_path: '/offert_flyttstadning/',
+    });
+    await recordRedirectVerification(
+      getStore(), ORG, SITE, MAIN_VERSION_ID,
+      [{
+        id: 'stadning',
+        from_path: '/stadning-detaljer',
+        to_path: '/offert_flyttstadning/',
+        status_code: 301,
+      }],
+      [
+        { path: '/stadning-detaljer', verdict: 'ok_redirect', status: 301 },
+        { path: '/stadning-detaljer/', verdict: 'missing', status: 404 },
+      ],
+    );
+    const doc = await getStore().getDoc<Redirect>(
+      `${paths.redirects(ORG, SITE, MAIN_VERSION_ID)}/stadning`,
     );
     expect(doc?.verified).toBe(false);
   });

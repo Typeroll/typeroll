@@ -18,7 +18,7 @@ describe('buildRedirectsFile', () => {
     const out = buildRedirectsFile(baseSite as Site, [
       { from_path: '/old', to_path: '/new', status_code: 301 },
     ]);
-    expect(out).toBe('/old /new 301\n');
+    expect(out).toBe('/old/ /new 301\n/old /new 301\n');
   });
 
   it('emits cross-host canonical line FIRST when an apex/www pair is set', () => {
@@ -32,7 +32,7 @@ describe('buildRedirectsFile', () => {
     ]);
     const lines = out!.trim().split('\n');
     expect(lines[0]).toBe('https://www.autopilot.se/* https://autopilot.se/:splat 301!');
-    expect(lines[1]).toBe('/old /new 301');
+    expect(lines.slice(1)).toEqual(['/old/ /new 301', '/old /new 301']);
   });
 
   it('the canonical line uses force (!) so user redirects cannot shadow it', () => {
@@ -65,7 +65,7 @@ describe('buildRedirectsFile', () => {
     const out = buildRedirectsFile(site, [
       { from_path: '/old', to_path: '/new', status_code: 301 },
     ]);
-    expect(out).toBe('/old /new 301\n');
+    expect(out).toBe('/old/ /new 301\n/old /new 301\n');
     expect(out).not.toContain('https://');
   });
 
@@ -105,6 +105,17 @@ describe('partitionShadowedRedirects', () => {
   it('shadowed rules never reach the _redirects body', () => {
     const { kept } = partitionShadowedRedirects(rules, new Set(['/']));
     const out = buildRedirectsFile(baseSite as Site, kept);
-    expect(out).toBe('/old /new 301\n');
+    expect(out).toBe('/old/ /new 301\n/old /new 301\n');
+  });
+
+  it('emits both observed Moveria source variants to the canonical target', () => {
+    const out = buildRedirectsFile(baseSite as Site, [
+      { from_path: '/stadning-detaljer', to_path: '/offert_flyttstadning', status_code: 301 },
+      { from_path: '/flyttfirma-detaljer', to_path: '/flyttfirmeoffert', status_code: 301 },
+    ], 'always');
+    expect(out).toContain('/stadning-detaljer /offert_flyttstadning/ 301\n');
+    expect(out).toContain('/stadning-detaljer/ /offert_flyttstadning/ 301\n');
+    expect(out).toContain('/flyttfirma-detaljer /flyttfirmeoffert/ 301\n');
+    expect(out).toContain('/flyttfirma-detaljer/ /flyttfirmeoffert/ 301\n');
   });
 });
