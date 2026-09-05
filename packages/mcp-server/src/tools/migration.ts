@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 const STATUS = z.enum(['migrated', 'redirected', 'excluded', 'unhandled']);
+const PLAIN_TEXT_REPAIR_FIELD = z.enum(['title', 'seo_title', 'seo_description', 'excerpt']);
 
 export const migrationTools: ToolDef[] = [
   {
@@ -145,6 +146,28 @@ export const migrationTools: ToolDef[] = [
     inputSchema: { url_id: z.string() },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.del(siteId, `migration-urls/${encodeURIComponent(args.url_id)}`);
+      return ok(res);
+    }),
+  },
+  {
+    name: 'repair_migration_plain_text',
+    description:
+      'Repair legacy WordPress entity encoding and HTML markup in fields whose contract is plain text. ONLY title, seo_title, seo_description and excerpt are eligible; rich content, slugs, paths and URLs are never changed. ALWAYS run the dry-run first (the default), show every returned before/after diff and conflict to the user, and obtain approval before calling again with dry_run:false. Existing working copies are skipped so another editor\'s draft cannot be overwritten or accidentally saved. save:false stages working copies for portal review; save:true commits through the normal revision and validation path.',
+    inputSchema: {
+      scope: z.enum(['pages', 'collection_items', 'all']).optional().describe('Defaults to all.'),
+      fields: z.array(PLAIN_TEXT_REPAIR_FIELD).min(1).max(4).optional().describe('Narrow the fixed plain-text allowlist.'),
+      page_ids: z.array(z.string().min(1)).min(1).max(2000).optional(),
+      collection: z.string().min(1).optional(),
+      item_ids: z.array(z.string().min(1)).min(1).max(2000).optional().describe('Requires collection.'),
+      dry_run: z.boolean().optional().describe('Defaults to true. Set false only after the user reviews the dry-run.'),
+      save: z.boolean().optional().describe('With dry_run:false, commit repaired working copies immediately. Defaults to false.'),
+      diff_limit: z.number().int().min(1).max(2000).optional().describe('Exact field diffs returned; default 500.'),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const res = await client.post(siteId, 'migration-urls/repair-plain-text', {
+        ...args,
+        dry_run: args.dry_run ?? true,
+      });
       return ok(res);
     }),
   },

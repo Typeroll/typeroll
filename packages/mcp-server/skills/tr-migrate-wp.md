@@ -190,6 +190,22 @@ their source spellings in `observed_paths`. Verification requests every one of
 those spellings; treat a failing variant as a real gap even when coverage is
 otherwise complete. Fresh builds expand redirect sources to both slash forms.
 
+For a site imported before Typeroll normalized WordPress plain-text fields,
+audit and repair the legacy records before visual review:
+
+```
+repair_migration_plain_text  # dry_run=true by default; returns exact field diffs
+```
+
+This operation is deliberately limited to `title`, `seo_title`,
+`seo_description`, and schema-defined plain-text `excerpt` fields. It cannot
+touch bodies, HTML, slugs, paths, or URLs. Show all returned diffs and
+conflicts to the user. Only after explicit approval, repeat the same scope and
+selectors with `dry_run=false save=true`. If `truncated=true`, narrow the
+selection or raise `diff_limit` and review the omitted diffs first. Never work
+around a `working_copy` conflict: that resource contains another edit which
+must be resolved separately.
+
 ### 5. Preview + review with the user
 
 ```

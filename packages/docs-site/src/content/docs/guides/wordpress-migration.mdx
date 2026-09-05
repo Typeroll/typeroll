@@ -94,6 +94,13 @@ Migration complete. Here's the coverage:
 
 For each unhandled URL, decide: add a redirect, create a page, or exclude it.
 
+Sites imported with an older Typeroll version may have WordPress entities or
+markup left in titles and SEO text. Ask Claude to run
+`repair_migration_plain_text` as a dry run and show every proposed change. The
+repair is restricted to plain-text fields and leaves bodies, slugs, paths, and
+URLs alone. Approve the write only after reviewing the returned diffs; records
+with existing working copies are skipped rather than overwritten.
+
 ## Publishing
 
 All imported pages start as `status: "review"`. When you're satisfied:

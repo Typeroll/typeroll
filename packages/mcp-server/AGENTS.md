@@ -759,6 +759,15 @@ even when its normalized inventory row is green; `summary.checked` counts those
 requests rather than normalized rows.
 **Deploy first**: it tests saved, deployed content, not your drafts.
 
+Imports created before plain-text normalization may still contain WordPress
+entities or markup in titles and SEO text. Use
+`repair_migration_plain_text` for those records. It accepts only `title`,
+`seo_title`, `seo_description`, and `excerpt`; it cannot touch rich content,
+slugs, paths, or URLs. The tool defaults to a dry run with exact field diffs.
+Show the full diff/conflict result to the user and obtain approval before
+calling it with `dry_run=false`. Existing working copies are conflicts and are
+never overwritten or committed by the repair.
+
 Every unhandled URL gets exactly one of three outcomes — there is no fourth:
 
 - it moved → `create_redirect`
@@ -999,7 +1008,7 @@ preview.
 | **Collections** | `create_collection`, `update_collection_schema`, `delete_collection`, `list_collections`, `read_collection`, `list_collection_items` (richtext hidden by default), `read_collection_item`, `batch_read_collection_items`, `create_collection_item`, `update_collection_item`, `delete_collection_item`, `regenerate_collection_listing` |
 | **Media** | `list_media`, `read_media`, `create_upload_url`, `upload_media_from_url`, `upload_media_inline`, `update_media`, `delete_media`, `finalize_media`, `finalize_all_media`, `generate_image_variants`, `suggest_alt_text_context` |
 | **Redirects** | `list_redirects`, `create_redirect`, `delete_redirect`. `from_path` may be a PATTERN: a trailing `*` (with `:splat` in the target) or `:name` for one segment — one rule retires a whole family of dead URLs (`/category/*` → `/blogg/:splat`). Mid-path splats and query strings are refused, as is any rule that would hide a live page. |
-| **Migration inventory** | `get_migration_readiness` (preflight — CALL FIRST), `list_migration_urls`, `add_migration_urls`, `update_migration_url`, `update_migration_urls`, `delete_migration_url`, `import_sitemap`, `import_gsc_performance`, `verify_migration_urls`. Sitemap indexes are recursive. GSC supports direct Search Console access or CSV and aggregates fragment variants. Verification is compact by default. |
+| **Migration inventory** | `get_migration_readiness` (preflight — CALL FIRST), `list_migration_urls`, `add_migration_urls`, `update_migration_url`, `update_migration_urls`, `delete_migration_url`, `import_sitemap`, `import_gsc_performance`, `repair_migration_plain_text`, `verify_migration_urls`. Sitemap indexes are recursive. GSC supports direct Search Console access or CSV and aggregates fragment variants. Plain-text repair is allowlisted and dry-run-first. Verification is compact by default. |
 | **Forms** | `list_forms`, `read_form`, `create_form`, `update_form`, `delete_form`, `list_form_submissions`, `delete_form_submission` (removes one submission — e.g. cleaning up a test entry; `delete_form` with `delete_submissions` is the bulk path). **Steps (form/* block trees) are the ONLY stored model**: pass `steps` for funnels, or `fields` for simple forms — the server converts a flat field list to a single static step. Place with a `core/form` block on block-mode pages or `<x-form id="…" />` in HTML mode. Both expand server-side to the same complete signed shell and initial state. Email/webhook actions are admin-only in the portal and excluded from agent reads/writes. |
 | **Settings** | `update_site_settings` (whitelist) |
 | **Core modules** | `list_apps`, `read_app`, `update_app` (legacy API name; admin; schema-driven config, masked secrets, redeploy when `affects_build` is true) |

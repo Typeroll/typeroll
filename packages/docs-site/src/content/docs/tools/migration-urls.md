@@ -63,6 +63,22 @@ Marks an entry `excluded` — the record that a URL is _meant_ to disappear. Thi
 
 > "The old campaign landing pages are gone on purpose — mark them excluded with a note."
 
+## `repair_migration_plain_text`
+
+Older WordPress imports can contain encoded entities or HTML tags in fields
+that should be plain text. This tool decodes exactly one entity layer and
+removes markup, but only from `title`, `seo_title`, `seo_description`, and
+schema-defined plain-text `excerpt` fields. It cannot change rich content,
+HTML, slugs, paths, or URLs.
+
+It defaults to a dry run and returns exact before/after diffs. Review all of
+them before running it again with `dry_run: false`. Use `save: false` to create
+working copies for portal review, or `save: true` to commit through the normal
+revision path. A resource with an existing working copy is reported as a
+conflict and left untouched.
+
+> "Audit legacy WordPress titles and SEO text, then show me every proposed change."
+
 ## `verify_migration_urls`
 
 The pre-cutover check. Requests every inventory URL against the deployed site and classifies the response:

@@ -199,7 +199,9 @@ the full reference + concrete operation recipes.
   block data and schema-defined collection-item fields.
 - **Migration inventory** — bulk add/update decisions, recursive
   `import_sitemap`, direct or CSV-fallback `import_gsc_performance`, and compact
-  `verify_migration_urls` (successful rows omitted unless requested).
+  `verify_migration_urls` (successful rows omitted unless requested), plus
+  `repair_migration_plain_text` for dry-run-first cleanup of legacy WordPress
+  entities and markup in allowlisted plain-text fields.
 - **Branches** — create, read, delete, merge. Branch deploys get their
   own URL at `{branch}.{project}.pages.dev`.
 - **Deploy** — trigger (with `dry_run` to build without publishing), list, get

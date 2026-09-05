@@ -325,6 +325,77 @@ describe('v1 migration-urls/verify', () => {
   });
 });
 
+describe('v1 migration-urls/repair-plain-text', () => {
+  let token: string;
+  const repairRoute = () => import('../../pages/api/v1/sites/[siteId]/migration-urls/repair-plain-text');
+
+  beforeEach(async () => {
+    ({ token } = await setup());
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`, {
+      title: '<strong>Home &amp; away</strong>',
+      seo_description: 'Safe &amp;amp; sound',
+      slug: 'home',
+      status: 'published',
+      content_mode: 'html',
+      html_content: '<h1>Body &amp; content</h1>',
+    } satisfies Partial<Page>);
+  });
+
+  it('requires authentication and defaults to a non-writing dry run', async () => {
+    const unauthenticated = await call(
+      repairRoute(), 'POST', `${BASE}/repair-plain-text`, { siteId: SITE }, { body: {} },
+    );
+    expect(unauthenticated.status).toBe(401);
+
+    const response = await call(
+      repairRoute(), 'POST', `${BASE}/repair-plain-text`, { siteId: SITE }, { token, body: {} },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      dry_run: true,
+      updated: 0,
+      resources_with_changes: 1,
+      fields_with_changes: 2,
+    });
+    const { vstore } = await import('../../lib/version-store');
+    expect((await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'home'))?.title).toContain('<strong>');
+  });
+
+  it('rejects rich-content fields and invalid option types', async () => {
+    const richContent = await call(
+      repairRoute(), 'POST', `${BASE}/repair-plain-text`, { siteId: SITE }, {
+        token, body: { fields: ['html_content'] },
+      },
+    );
+    expect(richContent.status).toBe(400);
+    expect((await richContent.json()).error).toContain('fields');
+
+    const invalidBoolean = await call(
+      repairRoute(), 'POST', `${BASE}/repair-plain-text`, { siteId: SITE }, {
+        token, body: { dry_run: 'false' },
+      },
+    );
+    expect(invalidBoolean.status).toBe(400);
+  });
+
+  it('can explicitly save a reviewed field subset', async () => {
+    const response = await call(
+      repairRoute(), 'POST', `${BASE}/repair-plain-text`, { siteId: SITE }, {
+        token,
+        body: { scope: 'pages', fields: ['title'], dry_run: false, save: true },
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ dry_run: false, updated: 1, saved: 1 });
+    const { vstore } = await import('../../lib/version-store');
+    const page = await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'home');
+    expect(page?.title).toBe('Home & away');
+    expect(page?.seo_description).toBe('Safe &amp;amp; sound');
+    expect(page?.html_content).toContain('&amp;');
+  });
+});
+
 describe('v1 migration URL imports', () => {
   let token: string;
   beforeEach(async () => { ({ token } = await setup()); });

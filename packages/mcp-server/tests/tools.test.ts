@@ -136,6 +136,18 @@ describe('migration tool contracts', () => {
     await tool.handler({ url: 'https://old.example.com/custom.xml' } as never, { client, siteId });
     expect(calls[0].url).toBe('https://example.test/api/v1/sites/mysite/migration-urls/import-sitemap');
   });
+
+  it('defaults the WordPress plain-text repair to dry-run', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ dry_run: true, diffs: [] }));
+    const tool = find(migrationTools, 'repair_migration_plain_text');
+    await tool.handler({ scope: 'pages', fields: ['title'] } as never, { client, siteId });
+    expect(calls[0]).toMatchObject({
+      method: 'POST',
+      url: 'https://example.test/api/v1/sites/mysite/migration-urls/repair-plain-text',
+      body: JSON.stringify({ scope: 'pages', fields: ['title'], dry_run: true }),
+    });
+    expect(tool.description).toContain('ALWAYS run the dry-run first');
+  });
 });
 
 describe('partials tools', () => {

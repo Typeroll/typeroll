@@ -196,6 +196,49 @@ parameters. Explicit rules for both source spellings retain their individual
 destinations. Existing sites receive this behavior on their next build; stored
 redirect documents do not require migration.
 
+### Repair legacy WordPress plain-text fields
+
+```http
+POST /sites/{siteId}/migration-urls/repair-plain-text
+```
+
+This repair is for content imported before WordPress plain-text normalization
+was added. It decodes exactly one entity layer and removes markup from the
+fixed allowlist `title`, `seo_title`, `seo_description`, and `excerpt`.
+Rich-text bodies, HTML, slugs, paths, and URL fields cannot be selected.
+
+The safe default is a dry run:
+
+```json
+{
+  "scope": "all",
+  "fields": ["title", "seo_title", "seo_description", "excerpt"],
+  "diff_limit": 500
+}
+```
+
+The response contains exact per-field `diffs`, aggregate counts, and
+`conflicts`. An existing working copy skips that resource, preventing the
+repair from overwriting or accidentally publishing another editor's draft.
+Collection fields must also be schema-defined `text` or `textarea` fields and
+permit agent writes; an authority conflict skips the whole item.
+
+After reviewing every diff, either create working copies for portal review:
+
+```json
+{ "scope": "all", "dry_run": false }
+```
+
+or commit through the normal revision and validation path:
+
+```json
+{ "scope": "all", "dry_run": false, "save": true }
+```
+
+Use `page_ids`, or `collection` plus optional `item_ids`, to split a large
+repair into reviewable batches. `diff_limit` defaults to 500 and is capped at
+2,000; `truncated` and `additional_diffs` make omitted diffs explicit.
+
 ## Database internal-link check
 
 ```http

@@ -1,5 +1,17 @@
 # Changelog
 
+## MCP 0.42.2 / Core 0.1.7
+
+- Preserve every discovered trailing-slash spelling during migration URL
+  verification, and emit slash-equivalent redirect variants in static builds
+  without changing stored redirect rules.
+- Normalize WordPress titles, excerpts, SEO text, and site metadata as plain
+  text during new imports by decoding exactly one entity layer and removing
+  markup.
+- Add an authenticated, dry-run-first repair operation for legacy WordPress
+  plain-text fields, with exact diffs, field and schema allowlists, working-copy
+  conflict protection, and matching MCP guidance.
+
 ## MCP 0.42.1 / Core 0.1.6
 
 - Replaced OAuth authorization JWTs with opaque, single-use codes and encrypted
