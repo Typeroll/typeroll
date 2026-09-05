@@ -392,7 +392,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
   if (state) {
     submissionId = state.submissionId;
     existing = await store.getDoc<Record<string, unknown>>(`${subsPath}/${submissionId}`);
-    if (!existing || existing.form_id !== formId) {
+    if (!existing || existing.form_id !== formId || existing.status !== 'partial' || existing.step !== state.step) {
       return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: 'Session expired — reload the page.' }] }, 409);
     }
   } else {
@@ -414,36 +414,42 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
     return protocolJson({ ok: false, errors: [{ field: null, code: 'action_rejected', message: gateReason }] }, 422);
   }
 
+  const next = nextStep(form, current);
+  const acceptedData = { ...((existing?.data as Record<string, unknown>) ?? {}), ...accepted };
   if (state) {
-    const previous = existing!;
-    await store.setDoc(`${subsPath}/${submissionId}`, {
-      ...previous,
-      data: { ...(previous.data as Record<string, unknown>), ...accepted },
-      step: current.id,
-      updated_at: now.toISOString(),
-    });
+    // Only one request may advance a continuation. In particular, completing
+    // the final step and claiming its actions must be one atomic transition.
+    const advanced = await store.compareAndUpdateDoc<Record<string, unknown>>(
+      `${subsPath}/${submissionId}`,
+      (saved) => saved.form_id === formId && saved.status === 'partial' && saved.step === state!.step,
+      {
+        data: acceptedData,
+        step: current.id,
+        status: next ? 'partial' : 'complete',
+        ...(!next ? { expires_at: null } : {}),
+        updated_at: now.toISOString(),
+      },
+    );
+    if (!advanced) {
+      return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: 'This step has already been submitted — reload the page.' }] }, 409);
+    }
   } else {
     submissionId = await store.addDoc(subsPath, {
       form_id: formId,
-      data: accepted,
-      status: 'partial',
+      data: acceptedData,
+      status: next ? 'partial' : 'complete',
       step: current.id,
       submitted_from_ip: ctx.ip,
       user_agent: ctx.request.headers.get('user-agent') ?? null,
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
-      expires_at: new Date(now.getTime() + ttlDays * 86_400_000).toISOString(),
+      expires_at: next ? new Date(now.getTime() + ttlDays * 86_400_000).toISOString() : null,
     });
   }
 
-  const next = nextStep(form, current);
   if (!next) {
-    const doc = await store.getDoc<Record<string, unknown>>(`${subsPath}/${submissionId}`);
-    await store.setDoc(`${subsPath}/${submissionId}`, {
-      ...doc, status: 'complete', expires_at: null, updated_at: now.toISOString(),
-    });
     try {
-      await runFormActions(orgId, siteId, form, (doc?.data as Record<string, unknown>) ?? accepted, submissionId);
+      await runFormActions(orgId, siteId, form, acceptedData, submissionId);
     } catch (e) {
       console.error('Form actions failed:', e);
     }

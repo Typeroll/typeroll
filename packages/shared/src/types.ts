@@ -1899,6 +1899,7 @@ export const paths = {
   // Doc id is the code's JWT `jti`; body carries `exp` so a future TTL
   // sweep can prune. Multi-tenant safe (root collection, no org leakage —
   // the jti is just a random 8-byte hex).
+  mcpAuthorizationCode: (id: string) => `mcp_authorization_codes/${id}`,
   mcpConsumedCode: (jti: string) => `mcp_consumed_codes/${jti}`,
 
   // Hosted catalog. Self-hosted instances read only this local collection;

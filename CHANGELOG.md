@@ -1,5 +1,20 @@
 # Changelog
 
+## MCP 0.42.1 / Core 0.1.6
+
+- Replaced OAuth authorization JWTs with opaque, single-use codes and encrypted
+  server-side grants. Codes issued before this update must be requested again;
+  existing access and refresh tokens remain compatible.
+- Restricted MCP media imports to public HTTP(S) destinations, with pinned DNS
+  resolution, redirect validation, and bounded downloads.
+- Reject sessions when Firebase revocation checks fail, including disabled or
+  deleted accounts.
+- Reserve unique site IDs atomically before provisioning to preserve existing
+  sites when names collide.
+- Reject replayed or concurrent form steps without changing completed submissions
+  or repeating their actions.
+- Repair organization claims when retrying an interrupted invitation acceptance.
+
 ## 0.42.0
 
 - Added `typeroll extension configure` for API-key-authenticated installation

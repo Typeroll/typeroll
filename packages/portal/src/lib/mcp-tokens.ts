@@ -1,22 +1,6 @@
-// JWT issuance + verification for the hosted-MCP OAuth shim.
-//
-// The access token Claude presents to /api/mcp is an HS256-signed JWT whose
-// payload carries the underlying Typeroll API key. The signing key
-// (MCP_OAUTH_SIGNING_KEY env var, mounted from Secret Manager) means
-// clients can't forge tokens; verifying the JWT then handing the embedded
-// api_key to verifyApiToken() picks up live revocation for free.
-//
-// Why embed the api_key in the JWT instead of a server-side mapping table:
-// the JWT moves the lookup off the request path (no extra read on every
-// MCP call). The api_key is sent only over TLS and Claude stores tokens
-// encrypted-at-rest; revoking the underlying key invalidates every JWT
-// minted against it because verifyApiToken consults the lookup index. The
-// JWT itself never leaves the wire to a third party.
-//
-// Authorization codes (used for the /authorize → /token exchange) are
-// separate, one-time, short-lived (10 min) JWTs carrying the same payload
-// plus a `code: true` claim. The /token endpoint refuses tokens that don't
-// have that claim, so an access token can't be replayed in code position.
+// Access and refresh tokens remain signed JWTs. Verification of the embedded
+// API key checks live revocation on every use. Authorization codes are opaque
+// one-time handles backed by encrypted, short-lived server-side grants.
 
 import crypto from 'node:crypto';
 import { paths } from '@typeroll/shared';
@@ -26,7 +10,7 @@ const ACCESS_TTL_SECONDS = 60 * 60; // 1 hour
 const REFRESH_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 const CODE_TTL_SECONDS = 10 * 60; // 10 minutes
 
-type TokenKind = 'access' | 'refresh' | 'code';
+type TokenKind = 'access' | 'refresh';
 
 interface TokenPayload {
   /** The underlying typeroll_live_... key. Embedded so the MCP route can
@@ -34,16 +18,8 @@ interface TokenPayload {
   api_key: string;
   /** Audience (this portal's MCP endpoint URL). RFC 8707. */
   aud: string;
-  /** Token kind discriminator — prevents an access token being replayed in
-   *  code position and vice versa. */
+  /** Distinguishes access credentials from refresh credentials. */
   kind: TokenKind;
-  /** PKCE code_challenge — present only on `kind: 'code'` so the /token
-   *  endpoint can verify the matching code_verifier. */
-  pkce?: string;
-  /** redirect_uri the auth code was issued for — present only on
-   *  `kind: 'code'`. /token re-verifies the redirect_uri matches the
-   *  one the client claims. */
-  redirect_uri?: string;
   /** Issued-at and expiry (seconds since epoch). */
   iat: number;
   exp: number;
@@ -72,23 +48,18 @@ function b64urlJSON(obj: unknown): string {
 
 function ttlFor(kind: TokenKind): number {
   if (kind === 'access') return ACCESS_TTL_SECONDS;
-  if (kind === 'refresh') return REFRESH_TTL_SECONDS;
-  return CODE_TTL_SECONDS;
+  return REFRESH_TTL_SECONDS;
 }
 
 export interface IssueArgs {
   apiKey: string;
   audience: string;
   kind: TokenKind;
-  /** Required when kind === 'code' — the PKCE code_challenge the client
-   *  sent on /authorize. Re-verified at /token against the code_verifier. */
-  pkce?: string;
-  /** Required when kind === 'code' — the redirect_uri the auth flow used. */
-  redirectUri?: string;
 }
 
 /** Sign and return a JWT. Audience is the portal's MCP endpoint URL. */
 export function issueToken(args: IssueArgs): { token: string; expiresIn: number } {
+  if (args.kind !== 'access' && args.kind !== 'refresh') throw new Error('Unsupported token kind');
   const now = Math.floor(Date.now() / 1000);
   const exp = now + ttlFor(args.kind);
   const header = { alg: 'HS256', typ: 'JWT' };
@@ -99,8 +70,6 @@ export function issueToken(args: IssueArgs): { token: string; expiresIn: number 
     iat: now,
     exp,
     jti: crypto.randomBytes(8).toString('hex'),
-    ...(args.pkce ? { pkce: args.pkce } : {}),
-    ...(args.redirectUri ? { redirect_uri: args.redirectUri } : {}),
   };
   const head = b64urlJSON(header);
   const body = b64urlJSON(payload);
@@ -115,13 +84,9 @@ export interface VerifiedToken {
   apiKey: string;
   audience: string;
   kind: TokenKind;
-  pkce?: string;
-  redirectUri?: string;
-  /** Token id — used by /token to enforce single-use semantics on auth
-   *  codes via the mcp_consumed_codes collection. */
+  /** Random token identifier. */
   jti: string;
-  /** Expiry (seconds since epoch). Forwarded into the consumption record
-   *  so a TTL sweep can prune it later. */
+  /** Expiry in seconds since the epoch. */
   exp: number;
 }
 
@@ -152,7 +117,8 @@ export function verifyToken(token: string, expectedAudience?: string): VerifiedT
     return null;
   }
   const now = Math.floor(Date.now() / 1000);
-  if (typeof payload.exp !== 'number' || payload.exp < now) return null;
+  if (typeof payload.exp !== 'number' || payload.exp <= now) return null;
+  if (payload.kind !== 'access' && payload.kind !== 'refresh') return null;
   if (typeof payload.api_key !== 'string' || !payload.api_key) return null;
   if (expectedAudience && payload.aud !== expectedAudience) return null;
   if (typeof payload.jti !== 'string' || !payload.jti) return null;
@@ -160,8 +126,6 @@ export function verifyToken(token: string, expectedAudience?: string): VerifiedT
     apiKey: payload.api_key,
     audience: payload.aud,
     kind: payload.kind,
-    pkce: payload.pkce,
-    redirectUri: payload.redirect_uri,
     jti: payload.jti,
     exp: payload.exp,
   };
@@ -260,31 +224,63 @@ export function parseClientId(clientId: string): { redirectUris: string[] } | nu
   return { redirectUris: ru };
 }
 
-/**
- * Mark an auth code's `jti` as consumed. Returns true if this caller is the
- * first to consume it (proceed); false if the code has already been used
- * (reject as replay). Backed by the datastore so the rule survives
- * across Cloud Run instances.
- *
- * Race-window note: this is a read-then-write, not a transactional
- * compare-and-set. On Firestore two near-simultaneous exchanges of the
- * same code could both find the doc absent and both succeed. PKCE +
- * audience binding already make a captured code unusable without the
- * verifier, so the single-use rule is defense-in-depth; the small race
- * window is acceptable in exchange for keeping the datastore interface
- * unchanged. If we ever want hard atomicity, add a `createDocIfMissing`
- * primitive that maps to Firestore's `create()` (fails-if-exists) and
- * to a lock+exists check on the fixtures backend.
- */
-export async function consumeAuthCode(jti: string, exp: number): Promise<boolean> {
-  const store = getStore();
-  const path = paths.mcpConsumedCode(jti);
-  const existing = await store.getDoc(path);
-  if (existing) return false;
-  await store.setDoc(path, {
-    jti,
-    exp,
-    used_at: new Date().toISOString(),
-  });
-  return true;
+interface AuthorizationGrant {
+  sealed_key: string | null;
+  audience: string;
+  pkce: string;
+  redirect_uri: string;
+  expires_at: number;
+  consumed: boolean;
+}
+
+function grantEncryptionKey(): Buffer {
+  return Buffer.from(crypto.hkdfSync('sha256', getSigningKey(), '', 'typeroll-oauth-code-v1', 32));
+}
+
+export async function issueAuthorizationCode(args: {
+  apiKey: string; audience: string; pkce: string; redirectUri: string;
+}): Promise<{ token: string; expiresIn: number }> {
+  const token = crypto.randomBytes(32).toString('base64url');
+  const id = crypto.createHash('sha256').update(token).digest('hex');
+  const nonce = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', grantEncryptionKey(), nonce);
+  cipher.setAAD(Buffer.from(id));
+  const encrypted = Buffer.concat([cipher.update(args.apiKey, 'utf8'), cipher.final()]);
+  const sealed = Buffer.concat([nonce, cipher.getAuthTag(), encrypted]).toString('base64url');
+  const created = await getStore().createDocIfMissing(paths.mcpAuthorizationCode(id), {
+    sealed_key: sealed,
+    audience: args.audience,
+    pkce: args.pkce,
+    redirect_uri: args.redirectUri,
+    expires_at: Date.now() + CODE_TTL_SECONDS * 1000,
+    consumed: false,
+  } satisfies AuthorizationGrant);
+  if (!created) throw new Error('Could not reserve authorization code');
+  return { token, expiresIn: CODE_TTL_SECONDS };
+}
+
+/** Validate all bindings and claim the grant in the same transaction. */
+export async function exchangeAuthorizationCode(args: {
+  code: string; audience: string; codeVerifier: string; redirectUri: string;
+}): Promise<string | null> {
+  if (typeof args.code !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(args.code)) return null;
+  if (typeof args.codeVerifier !== 'string' || typeof args.redirectUri !== 'string') return null;
+  const id = crypto.createHash('sha256').update(args.code).digest('hex');
+  const grant = await getStore().compareAndUpdateDoc<AuthorizationGrant>(
+    paths.mcpAuthorizationCode(id),
+    (current) => !current.consumed && current.expires_at > Date.now() &&
+      current.audience === args.audience && current.redirect_uri === args.redirectUri &&
+      verifyPkce(args.codeVerifier, current.pkce),
+    { consumed: true, sealed_key: null },
+  );
+  if (!grant?.sealed_key) return null;
+  try {
+    const sealed = Buffer.from(grant.sealed_key, 'base64url');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', grantEncryptionKey(), sealed.subarray(0, 12));
+    decipher.setAAD(Buffer.from(id));
+    decipher.setAuthTag(sealed.subarray(12, 28));
+    return Buffer.concat([decipher.update(sealed.subarray(28)), decipher.final()]).toString('utf8');
+  } catch {
+    return null;
+  }
 }

@@ -1,6 +1,7 @@
 // Media tools (list + signed upload URL + metadata patch).
 
 import { z } from 'zod';
+import { fetchPublicSource } from '../public-http.js';
 import { ok, withErrorBoundary, type ToolDef, type ToolDeps } from './helpers.js';
 
 interface UploadUrlResponse {
@@ -49,6 +50,7 @@ interface UrlUploadInput {
 async function readSourceBytes(response: Response): Promise<Uint8Array> {
   const declared = Number(response.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES) {
+    await response.body?.cancel();
     throw new Error(`Source file too large (max ${MAX_UPLOAD_BYTES} bytes)`);
   }
   if (!response.body) return new Uint8Array();
@@ -77,8 +79,11 @@ async function readSourceBytes(response: Response): Promise<Uint8Array> {
 
 async function uploadFromUrl(args: UrlUploadInput, deps: ToolDeps): Promise<Record<string, unknown>> {
   const filename = filenameFromUrl(args.source_url, args.filename);
-  const sourceRes = await fetch(args.source_url);
-  if (!sourceRes.ok) throw new Error(`Failed to fetch source URL: ${sourceRes.status} ${sourceRes.statusText}`);
+  const sourceRes = await fetchPublicSource(args.source_url);
+  if (!sourceRes.ok) {
+    await sourceRes.body?.cancel();
+    throw new Error(`Failed to fetch source URL: ${sourceRes.status} ${sourceRes.statusText}`);
+  }
   const buf = await readSourceBytes(sourceRes);
   const sourceCt = sourceRes.headers.get('content-type')?.split(';')[0]?.trim();
   const contentType = args.content_type ?? sourceCt ?? inferContentType(filename);
@@ -143,7 +148,7 @@ export const mediaTools: ToolDef[] = [
   {
     name: 'upload_media_from_url',
     description:
-      'Fetch an image (or PDF) from any public URL and push it to the site\'s media library in one call. The bytes pass through the agent\'s machine — they do NOT go through the Typeroll API — so this works whenever your agent can `fetch()` the source. Integrity-safe: the bytes are streamed, never transcribed as base64 through the model, so (unlike a large `upload_media_inline` payload) they can\'t be silently corrupted in transit. Returns { media_id, cdn_url, filename }.',
+      'Fetch an image (or PDF) from any public URL and push it to the site\'s media library in one call. The MCP server downloads the source from verified public HTTP(S) destinations; private addresses and unsafe redirects are refused. Integrity-safe: the bytes are streamed, never transcribed as base64 through the model, so (unlike a large `upload_media_inline` payload) they can\'t be silently corrupted in transit. Returns { media_id, cdn_url, filename }.',
     inputSchema: {
       source_url: z.string().url().describe('Public URL to download the image from.'),
       filename: z.string().optional().describe('Override the filename used on R2. Defaults to the last path segment of source_url.'),

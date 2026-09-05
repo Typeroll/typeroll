@@ -1,11 +1,11 @@
 // Receives the form POST from the consent page. Validates the pasted API
-// key, issues a one-time authorization code (signed JWT, ~10 min TTL),
+// key, issues an opaque one-time authorization code (~10 min TTL),
 // then 302-redirects back to the OAuth client's redirect_uri with the
 // code attached.
 
 import type { APIRoute } from 'astro';
 import { verifyApiToken } from '../../../../lib/api-keys';
-import { issueToken, parseClientId } from '../../../../lib/mcp-tokens';
+import { issueAuthorizationCode, parseClientId } from '../../../../lib/mcp-tokens';
 
 export const prerender = false;
 
@@ -76,10 +76,9 @@ export const POST: APIRoute = async ({ request, url }) => {
     );
   }
 
-  const { token: code } = issueToken({
+  const { token: code } = await issueAuthorizationCode({
     apiKey,
     audience: publicMcpUrl(request),
-    kind: 'code',
     pkce: codeChallenge,
     redirectUri,
   });
@@ -88,6 +87,6 @@ export const POST: APIRoute = async ({ request, url }) => {
   if (state) parsedRedirect.searchParams.set('state', state);
   return new Response(null, {
     status: 302,
-    headers: { Location: parsedRedirect.toString() },
+    headers: { Location: parsedRedirect.toString(), 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
   });
 };

@@ -52,14 +52,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return json({ error: 'The organization this invite belongs to no longer exists.' }, 404);
   }
 
-  // Idempotency: if the user is already a member, succeed silently.
-  const existingMember = await store.getDoc<Member>(`${paths.members(orgId)}/${session.userId}`);
-  if (existingMember) {
-    return json({ ok: true, orgId, requiresReauth: true });
-  }
-
+  // Preserve existing membership (including its role), but always repair
+  // claims and refresh the session after an interrupted onboarding attempt.
   const now = new Date().toISOString();
-  await store.setDoc(`${paths.members(orgId)}/${session.userId}`, {
+  await store.createDocIfMissing(`${paths.members(orgId)}/${session.userId}`, {
     email: session.email,
     role: 'editor',
     firebase_uid: session.userId,

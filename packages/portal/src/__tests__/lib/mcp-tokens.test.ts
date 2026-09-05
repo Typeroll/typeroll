@@ -57,20 +57,17 @@ describe('issueToken + verifyToken', () => {
     void s;
   });
 
-  it('carries pkce + redirect_uri on code tokens', async () => {
+  it('rejects legacy authorization JWTs as bearer credentials', async () => {
     const { issueToken, verifyToken } = await import('../../lib/mcp-tokens');
-    const { token } = issueToken({
-      apiKey: KEY,
-      audience: AUD,
-      kind: 'code',
-      pkce: 'challenge-abc',
-      redirectUri: 'https://claude.ai/api/mcp/auth_callback',
-    });
-    const verified = verifyToken(token, AUD);
-    expect(verified?.pkce).toBe('challenge-abc');
-    expect(verified?.redirectUri).toBe('https://claude.ai/api/mcp/auth_callback');
-    expect(verified?.kind).toBe('code');
+    const { token } = issueToken({ apiKey: KEY, audience: AUD, kind: 'access' });
+    const [head, body] = token.split('.');
+    const payload = JSON.parse(Buffer.from(body!, 'base64url').toString());
+    payload.kind = 'code';
+    const changed = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    const signature = crypto.createHmac('sha256', process.env.MCP_OAUTH_SIGNING_KEY!).update(`${head}.${changed}`).digest('base64url');
+    expect(verifyToken(`${head}.${changed}.${signature}`, AUD)).toBeNull();
   });
+
 });
 
 describe('signClientId + parseClientId', () => {

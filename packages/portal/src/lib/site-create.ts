@@ -8,6 +8,7 @@
 // (settings + home page + header/footer partials + hosting provisioning).
 // A new seed step belongs here, not duplicated in a route.
 
+import { randomBytes } from 'node:crypto';
 import { defaultSiteSettings, paths, slugify } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 import { getStore, generateDocId } from './datastore';
@@ -31,6 +32,23 @@ export interface CreateSiteResult {
   site: Site & { id: string };
 }
 
+/** Reserve the site document before provisioning or seeding any child data. */
+export async function reserveSite(orgId: string, name: string): Promise<{ siteId: string; site: Omit<Site, 'id'> }> {
+  const baseId = slugify(name) || generateDocId();
+  const site: Omit<Site, 'id'> = {
+    name,
+    media_id: randomMediaId(),
+    hosting_adapter: 'cloudflare',
+    created_at: new Date().toISOString(),
+  };
+  const store = getStore();
+  let siteId = baseId;
+  while (!await store.createDocIfMissing(paths.site(orgId, siteId), site)) {
+    siteId = `${baseId}-${randomBytes(6).toString('hex')}`;
+  }
+  return { siteId, site };
+}
+
 /**
  * Bootstrap a new site under `orgId`. Returns the new site id + the stored
  * doc (with `id` injected). Throws only on unexpected datastore failures —
@@ -43,11 +61,9 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
   const domain = input.domain?.trim() || undefined;
 
   const store = getStore();
-  const siteId = slugify(name) || generateDocId();
+  const { siteId, site: reservedSite } = await reserveSite(input.orgId, name);
 
-  // Provision hosting BEFORE writing the site doc so the pages_project +
-  // fallback_subdomain land in hosting_config from the start. No-op (stub
-  // adapter) when CF credentials aren't configured.
+  // Provision only after this request has atomically reserved a new site.
   let hostingConfig: Site['hosting_config'] | undefined;
   try {
     const result = await provisionSiteHosting(input.orgId, siteId);
@@ -65,10 +81,7 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
   // lifecycle fields renders as "Live — DNS verified" (legacy-compat). The
   // typed domain goes through declareDomainAtCreation below.
   const site: Omit<Site, 'id'> = {
-    name,
-    // Anonymous, portable public media-key prefix (see lib/media-keys.ts) —
-    // keeps org/site names out of public asset URLs and survives org moves.
-    media_id: randomMediaId(),
+    ...reservedSite,
     hosting_adapter: 'cloudflare',
     hosting_config: hostingConfig,
     staging_url: hostingConfig?.fallback_subdomain
@@ -76,7 +89,7 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
       : undefined,
     created_at: new Date().toISOString(),
   };
-  await store.setDoc(paths.site(input.orgId, siteId), site);
+  await store.updateDoc(paths.site(input.orgId, siteId), site);
   await store.setDoc(paths.settings(input.orgId, siteId), {
     ...defaultSiteSettings,
     site_name: name,

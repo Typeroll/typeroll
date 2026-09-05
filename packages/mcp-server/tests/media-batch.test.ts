@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TyperollClient } from '../src/client.js';
+import { fetchPublicSource } from '../src/public-http.js';
+vi.mock('../src/public-http.js', () => ({ fetchPublicSource: vi.fn() }));
 import { mediaTools } from '../src/tools/media.js';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
 
 describe('upload_media_batch_from_urls', () => {
   it('keeps input order, finalizes successes and reports per-item failures', async () => {
@@ -18,6 +20,7 @@ describe('upload_media_batch_from_urls', () => {
       if (url.includes('broken.jpg')) return new Response('no', { status: 404 });
       return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'image/jpeg' } });
     }));
+    vi.mocked(fetchPublicSource).mockImplementation((url) => fetch(url));
     const tool = mediaTools.find((candidate) => candidate.name === 'upload_media_batch_from_urls')!;
     const result = await tool.handler({ items: [
       { source_url: 'https://source.test/first.jpg' },
@@ -38,6 +41,7 @@ describe('upload_media_batch_from_urls', () => {
       status: 200,
       headers: { 'content-length': String(26 * 1024 * 1024), 'content-type': 'image/jpeg' },
     })));
+    vi.mocked(fetchPublicSource).mockImplementation((url) => fetch(url));
     const tool = mediaTools.find((candidate) => candidate.name === 'upload_media_batch_from_urls')!;
     const result = await tool.handler({ items: [
       { source_url: 'https://source.test/too-large.jpg' },

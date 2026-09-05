@@ -11,7 +11,7 @@
 
 import type { APIRoute } from 'astro';
 import { verifyApiToken } from '../../../../lib/api-keys';
-import { issueToken, verifyToken, verifyPkce, consumeAuthCode } from '../../../../lib/mcp-tokens';
+import { issueToken, verifyToken, exchangeAuthorizationCode } from '../../../../lib/mcp-tokens';
 
 export const prerender = false;
 
@@ -58,31 +58,16 @@ export const POST: APIRoute = async ({ request }) => {
     if (!code || !codeVerifier || !redirectUri) {
       return err('invalid_request', 'code, code_verifier, redirect_uri required');
     }
-    const verified = verifyToken(code, audience);
-    if (!verified || verified.kind !== 'code') {
-      return err('invalid_grant', 'Code is invalid or expired');
-    }
-    if (!verified.pkce || !verifyPkce(codeVerifier, verified.pkce)) {
-      return err('invalid_grant', 'PKCE verification failed');
-    }
-    if (verified.redirectUri !== redirectUri) {
-      return err('invalid_grant', 'redirect_uri mismatch');
-    }
-    // Enforce single-use semantics (OAuth 2.1 §4.1.3 / RFC 6749 §10.5).
-    // The jti is consumed BEFORE we mint anything — if a duplicate
-    // exchange wins the race the loser sees a clean invalid_grant.
-    const firstUse = await consumeAuthCode(verified.jti, verified.exp);
-    if (!firstUse) {
-      return err('invalid_grant', 'Code has already been used');
-    }
+    const apiKey = await exchangeAuthorizationCode({ code, audience, codeVerifier, redirectUri });
+    if (!apiKey) return err('invalid_grant', 'Code is invalid, expired, already used, or does not match the request');
     // Re-validate the api_key so a key revoked between consent and token
     // exchange can't slip through.
-    const live = await verifyApiToken(verified.apiKey);
+    const live = await verifyApiToken(apiKey);
     if (!live) {
       return err('invalid_grant', 'Underlying API key has been revoked');
     }
-    const access = issueToken({ apiKey: verified.apiKey, audience, kind: 'access' });
-    const refresh = issueToken({ apiKey: verified.apiKey, audience, kind: 'refresh' });
+    const access = issueToken({ apiKey, audience, kind: 'access' });
+    const refresh = issueToken({ apiKey, audience, kind: 'refresh' });
     return new Response(
       JSON.stringify({
         token_type: 'Bearer',

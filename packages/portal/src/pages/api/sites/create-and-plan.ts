@@ -1,7 +1,8 @@
 import type { APIRoute } from 'astro';
 import { requireFullSession } from '../../../lib/access';
-import { getStore, generateDocId } from '../../../lib/datastore';
-import { defaultSiteSettings, paths, slugify } from '@typeroll/shared';
+import { getStore } from '../../../lib/datastore';
+import { defaultSiteSettings, paths } from '@typeroll/shared';
+import { reserveSite } from '../../../lib/site-create';
 import type { Site } from '@typeroll/shared';
 import { WorkflowEngine } from '../../../lib/workflows/engine';
 import { sitePlanningWorkflow } from '../../../lib/workflows/site-planning';
@@ -17,7 +18,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   if (!name || !business_description) return new Response('name and business_description required', { status: 400 });
 
   const store = getStore();
-  const siteId = slugify(name) || generateDocId();
+  const { siteId, site: reservedSite } = await reserveSite(session.orgId, name);
 
   let hostingConfig: Site['hosting_config'] | undefined;
   try {
@@ -34,6 +35,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   }
 
   const site: Omit<Site, 'id'> = {
+    ...reservedSite,
     name,
     hosting_adapter: 'cloudflare',
     hosting_config: hostingConfig,
@@ -42,7 +44,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       : undefined,
     created_at: new Date().toISOString(),
   };
-  await store.setDoc(paths.site(session.orgId, siteId), site);
+  await store.updateDoc(paths.site(session.orgId, siteId), site);
   await store.setDoc(paths.settings(session.orgId, siteId), { ...defaultSiteSettings, site_name: name });
 
   const engine = new WorkflowEngine();

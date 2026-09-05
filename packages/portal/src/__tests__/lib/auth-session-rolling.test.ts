@@ -1,9 +1,7 @@
 // "Signed in until I log out": two halves.
 //
-//  1. Transient Firebase failures during the checkRevoked lookup must not
-//     log the user out — getSession falls back to local (cryptographic)
-//     verification. Definitive errors (revoked, expired) still end the
-//     session.
+//  1. Every session requires a successful revocation lookup. Network failures
+//     reject the request rather than granting access without checking state.
 //  2. sessionNeedsRefresh drives the middleware's rolling re-mint so an
 //     active user never hits the 14-day session-cookie cap.
 
@@ -35,7 +33,7 @@ describe('getSession resilience', () => {
     process.env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify({ project_id: 'test', type: 'service_account' });
   });
 
-  it('falls back to local verification when the revocation lookup fails transiently', async () => {
+  it('rejects the session when the revocation lookup fails transiently', async () => {
     const { getAuth } = await import('firebase-admin/auth');
     const verify = vi.fn()
       .mockRejectedValueOnce(Object.assign(new Error('network'), { code: 'auth/internal-error' }))
@@ -44,10 +42,8 @@ describe('getSession resilience', () => {
 
     const { getSession } = await import('../../lib/auth');
     const session = await getSession(cookiesWith('valid-cookie'));
-    expect(session?.userId).toBe('user-1');
-    // First call with checkRevoked=true, fallback without.
-    expect(verify).toHaveBeenNthCalledWith(1, 'valid-cookie', true);
-    expect(verify).toHaveBeenNthCalledWith(2, 'valid-cookie', false);
+    expect(session).toBeNull();
+    expect(verify).toHaveBeenCalledExactlyOnceWith('valid-cookie', true);
   });
 
   it('still logs out on an explicit revocation', async () => {
@@ -62,7 +58,7 @@ describe('getSession resilience', () => {
     expect(verify).toHaveBeenCalledTimes(1);
   });
 
-  it('logs out when the cookie fails local verification too (expired/forged)', async () => {
+  it('rejects an expired or forged cookie', async () => {
     const { getAuth } = await import('firebase-admin/auth');
     const verify = vi.fn().mockRejectedValue(
       Object.assign(new Error('expired'), { code: 'auth/session-cookie-expired' }),

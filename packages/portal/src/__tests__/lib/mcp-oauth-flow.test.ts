@@ -170,11 +170,10 @@ describe('OAuth shim — /token authorization_code grant', () => {
     const redirectUri = 'https://claude.ai/api/mcp/auth_callback';
 
     // Mint a code as if /complete had succeeded.
-    const { issueToken } = await import('../../lib/mcp-tokens');
-    const { token: code } = issueToken({
+    const { issueAuthorizationCode } = await import('../../lib/mcp-tokens');
+    const { token: code } = await issueAuthorizationCode({
       apiKey,
       audience: 'https://portal.test/api/mcp',
-      kind: 'code',
       pkce: challenge,
       redirectUri,
     });
@@ -203,11 +202,10 @@ describe('OAuth shim — /token authorization_code grant', () => {
     const { apiKey } = await setupSiteAndKey();
     const challenge = crypto.createHash('sha256').update('original').digest('base64url');
 
-    const { issueToken } = await import('../../lib/mcp-tokens');
-    const { token: code } = issueToken({
+    const { issueAuthorizationCode } = await import('../../lib/mcp-tokens');
+    const { token: code } = await issueAuthorizationCode({
       apiKey,
       audience: 'https://portal.test/api/mcp',
-      kind: 'code',
       pkce: challenge,
       redirectUri: 'https://claude.ai/api/mcp/auth_callback',
     });
@@ -314,11 +312,10 @@ describe('OAuth shim — authorization codes are single-use', () => {
     const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
     const redirectUri = 'https://claude.ai/api/mcp/auth_callback';
 
-    const { issueToken } = await import('../../lib/mcp-tokens');
-    const { token: code } = issueToken({
+    const { issueAuthorizationCode } = await import('../../lib/mcp-tokens');
+    const { token: code } = await issueAuthorizationCode({
       apiKey,
       audience: 'https://portal.test/api/mcp',
-      kind: 'code',
       pkce: challenge,
       redirectUri,
     });
@@ -343,7 +340,7 @@ describe('OAuth shim — authorization codes are single-use', () => {
     expect(second.status).toBe(400);
     const data = await second.json();
     expect(data.error).toBe('invalid_grant');
-    expect(data.error_description).toMatch(/already been used/i);
+    expect(data.error_description).toMatch(/already used/i);
   });
 });
 

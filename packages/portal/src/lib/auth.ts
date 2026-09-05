@@ -65,22 +65,9 @@ export async function getSession(cookies: AstroCookies): Promise<Session | null>
     const { getAuth } = await import('firebase-admin/auth');
     const app = await getFirebaseAdminApp();
 
-    // checkRevoked=true needs a network round-trip to Firebase. A transient
-    // failure there must NOT log the user out — fall back to the local
-    // verification (signature + expiry are still cryptographically checked;
-    // only the revocation lookup is skipped). Definitive auth errors
-    // (expired/revoked/invalid) never reach the fallback: the local check
-    // re-raises them, and `auth/session-cookie-revoked` is excluded
-    // explicitly. Revoked users are also caught at the next rolling refresh,
-    // which re-validates against Firebase.
-    let decoded;
-    try {
-      decoded = await getAuth(app).verifySessionCookie(raw, true);
-    } catch (err) {
-      const code = (err as { code?: string }).code ?? '';
-      if (code === 'auth/session-cookie-revoked') return null;
-      decoded = await getAuth(app).verifySessionCookie(raw, false);
-    }
+    // A failed revocation lookup must never restore access for disabled,
+    // deleted or revoked users. The outer catch rejects the session.
+    const decoded = await getAuth(app).verifySessionCookie(raw, true);
     const orgId = decoded.org_id as string | undefined;
     // Note: a missing org_id is a "pending session" — the user is authenticated
     // but hasn't joined an org yet. The middleware redirects such users to
