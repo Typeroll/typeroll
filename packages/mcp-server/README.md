@@ -145,18 +145,23 @@ the full reference + concrete operation recipes.
   template, or collection item-template), so one tool family edits
   every block container.
 - **Global blocks (partials)** — list (summary mode by default), read,
-  create free block, update, replace, delete, find-pages-using-block.
+  create free block, update, replace, delete, `set_partial_mode`,
+  find-pages-using-block. New header/footer work should use the native
+  `template/site_logo` + `core/navigation` recipe in `tr-header-footer`.
 - **Block types** — list, read, create, update, delete,
   find-pages-using-block-type, plus `.tcblocks` export/import. Custom
   client-side JS (`script`) is honoured only when the site has enabled
   "Allow AI to write block scripts" (a human-set portal setting) —
   otherwise it's stripped with a warning.
 - **Collections + items** — create/update/delete the collection schema
-  itself (incl. `route_template` for per-item URLs); list/read/batch-
+  itself (incl. `route_template` for per-item URLs and native `article` /
+  `checklist` template presets); list/read/batch-
   read/create/update/delete items. Existing-collection tools consistently
   use `collection` (the old `name` argument remains accepted as an alias).
   Collection repeaters support `group_by`, and item templates can place
-  `template/item_navigation` for deterministic previous/next links.
+  `template/item_navigation` for deterministic or explicitly field-bound
+  previous/next links. Typed context bindings, breadcrumbs, selected body
+  fields, and table-of-contents links render server-side.
 - **Media** — list, read, signed upload URLs, `upload_media_from_url`,
   `upload_media_batch_from_urls` (1–50 sources, max 25 MiB each, with
   partial-success results),
@@ -168,10 +173,12 @@ the full reference + concrete operation recipes.
   variant half of finalize, kept for surgical reruns),
   `suggest_alt_text_context` (returns a tuned prompt for your own
   vision model).
-- **Rendering controls** — `core/table_of_contents`, per-site
+- **Rendering controls** — semantic `core/navigation`, mapped
+  `core/post_card`, `core/table_of_contents`, per-site
   `trailing_slash`, exact `iframe_allowed_hosts`, `icon_192`, and per-page
   `append_seo_suffix=false`. The block editor supports labelled enums,
-  line-based lists, nested repeating arrays and an internal-page URL picker.
+  line-based lists, nested repeating arrays, responsive values in block
+  `data`, and an internal-page URL picker.
 - **Redirects** — list, create, delete. Plus automatic 301 on slug change.
 - **Forms** — list, read, create, update, delete, list submissions.
   Place forms with `core/form` blocks or an HTML-mode `<x-form id="…" />`
@@ -184,8 +191,8 @@ the full reference + concrete operation recipes.
   preserved. Use this for frontend config such as consent copy and policy
   links. It queues a production deploy by default; pass `deploy: false` only
   when batching changes and deploy once afterwards.
-- **Settings** — read + patch, including `scripts_head` /
-  `scripts_body_end` / `custom_css` (trusted because the caller holds an
+- **Settings** — read + patch, including shallow-merged `cookie_consent`,
+  `scripts_head` / `scripts_body_end` / `custom_css` (trusted because the caller holds an
   API key; the in-portal chat AI does NOT get these).
 - **Core modules** — list the legacy `apps` registry, read schema + masked
   state, and enable, configure, or disable any module with the same admin API key used for content

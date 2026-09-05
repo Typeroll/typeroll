@@ -8,4 +8,4 @@
 //
 // Keep it in lockstep with package.json: tests/version.test.ts asserts
 // VERSION === package.json.version, so a bump that forgets this line fails CI.
-export const VERSION = '0.42.2';
+export const VERSION = '0.43.0';

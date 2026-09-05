@@ -7,9 +7,46 @@ description: Use when building a rich per-item detail page for a Typeroll collec
 
 Prefer `item_template_blocks` when the design fits the block system. It can
 include `template/item_navigation`, whose previous/next URLs and titles are
-derived from the collection's `sort_field` and `sort_dir`; do not precompute
-four navigation fields per item. Use the HTML patterns below when the detail
-page genuinely needs richer loops or markup than the block schema provides.
+derived from the collection's `sort_field` and `sort_dir`. When imported
+navigation deliberately differs, bind its explicit URL/title fields instead.
+The native `article` and `checklist` `template_kind` presets already compose
+breadcrumbs, selected rich text, server-rendered outlines, optional PDF, and
+navigation. Start there.
+
+For an archive page, place `core/collection_list` and map its card contract
+through `item_overrides` instead of pre-rendering cards:
+
+```json
+{
+  "type": "core/collection_list",
+  "data": {
+    "collection": "checklists",
+    "layout": "grid",
+    "cols": { "mobile": 1, "tablet": 2, "desktop": 3 },
+    "item_overrides": {
+      "title_field": "title",
+      "excerpt_field": "excerpt",
+      "image_field": "image",
+      "image_alt_field": "image_alt",
+      "href_field": "url",
+      "heading_level": "h2",
+      "download_url_field": "pdf_url",
+      "download_label": "Download PDF"
+    }
+  }
+}
+```
+
+`core/post_card` omits its image when the mapped image field is empty and
+keeps the title and download as separate links. A missing PDF similarly emits
+no download action. Use `item_overrides.show_image: false` when the archive
+design has no media at all.
+
+Before using the HTML patterns below, submit the proposed composition through
+`get_migration_readiness compositions=[…]`. If it reports a generic platform
+gap, wait for native support rather than shipping a generic replacement block,
+raw page HTML, or tenant CSS. The patterns below are for genuinely
+business-specific structured behavior.
 
 `item_template_html` uses lightweight Mustache substitution:
 

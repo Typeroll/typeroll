@@ -158,6 +158,28 @@ describe('settings endpoints', () => {
     expect(s?.colors?.primary).toBe('#ff5500');
     expect(s?.colors?.secondary).toBe('#fff');
   });
+
+  it('PATCH configures native cookie consent and preserves omitted fields', async () => {
+    const { token } = await setup();
+    const { vstore } = await import('../../lib/version-store');
+    await vstore.writeSettings(ORG, SITE, MAIN_VERSION_ID, {
+      cookie_consent: { enabled: false, text: 'Existing copy', privacy_policy_url: '/privacy/' },
+    } as Partial<SiteSettings>);
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/settings'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SITE}/settings`,
+      { siteId: SITE },
+      { headers: bearer(token), body: { cookie_consent: { enabled: true } } },
+    );
+    expect(res.status).toBe(200);
+    const settings = await vstore.settings(ORG, SITE, MAIN_VERSION_ID);
+    expect(settings?.cookie_consent).toEqual({
+      enabled: true,
+      text: 'Existing copy',
+      privacy_policy_url: '/privacy/',
+    });
+  });
 });
 
 describe('media endpoints', () => {

@@ -39,6 +39,40 @@ describe('getCollectionStarter', () => {
     expect((body.data as { field?: string }).field).toBe('description');
   });
 
+  it('returns an article starter with breadcrumbs, body, and a server-rendered outline', () => {
+    const blocks = getCollectionStarter('article')!;
+    expect(blocks.map((block) => block.type)).toEqual([
+      'template/page_breadcrumbs',
+      'template/item_title',
+      'template/page_date',
+      'core/columns',
+    ]);
+    expect(blocks[3].slots?.[0]?.[0]).toMatchObject({
+      type: 'template/item_body',
+      data: { field: 'body' },
+    });
+    expect(blocks[3].slots?.[1]?.[0]).toMatchObject({
+      type: 'core/table_of_contents',
+      data: { source_field: 'body' },
+    });
+  });
+
+  it('returns a checklist starter with an optional PDF CTA and explicit navigation fields', () => {
+    const blocks = getCollectionStarter('checklist')!;
+    expect(blocks.map((block) => block.type)).toContain('template/show_if');
+    const conditional = blocks.find((block) => block.type === 'template/show_if')!;
+    expect(conditional.data).toMatchObject({ condition: 'item.pdf_url' });
+    expect(conditional.children?.[0]).toMatchObject({
+      type: 'core/button',
+      data: { href: '{{item.pdf_url}}' },
+    });
+    const navigation = blocks.find((block) => block.type === 'template/item_navigation')!;
+    expect(navigation.data).toMatchObject({
+      previous_url_field: 'prev_url',
+      next_url_field: 'next_url',
+    });
+  });
+
   it('returns a minimal custom starter (just item_title)', () => {
     const blocks = getCollectionStarter('custom');
     expect(blocks).toHaveLength(1);
@@ -62,6 +96,12 @@ describe('inferStarterKind', () => {
     expect(inferStarterKind([
       { name: 'title' }, { name: 'body' }, { name: 'published_at' },
     ])).toBe('blog');
+  });
+
+  it('detects a checklist shape from pdf_url before generic article fields', () => {
+    expect(inferStarterKind([
+      { name: 'title' }, { name: 'body' }, { name: 'published_at' }, { name: 'pdf_url' },
+    ])).toBe('checklist');
   });
 
   it('detects a team shape from role + photo', () => {

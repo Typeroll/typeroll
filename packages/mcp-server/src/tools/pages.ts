@@ -117,14 +117,13 @@ export const pageTools: ToolDef[] = [
   {
     name: 'update_page',
     description:
-      'Shallow-merge update on a page (only the fields you pass change). BUFFER MODEL: content fields land in the page\'s unsaved DRAFT (working copy) — invisible to deploys and default previews until saved; `status`/`date_published` apply immediately. Pass save:true to commit in the same call, or commit_working_copy later after the user approves. Returns the draft view of the page. For "replace this page entirely", use replace_page. To switch content_mode safely, prefer `set_page_mode`.',
+      'Shallow-merge update on a page (only the fields you pass change). BUFFER MODEL: content fields land in the page\'s unsaved DRAFT (working copy) — invisible to deploys and default previews until saved; `status`/`date_published` apply immediately. Pass save:true to commit in the same call, or commit_working_copy later after the user approves. Returns the draft view of the page. For "replace this page entirely", use replace_page. This tool does not accept content_mode; switch modes with `set_page_mode`.',
     inputSchema: {
       page_id: z.string(),
       patch: z
         .object({
           title: z.string().optional(),
           slug: z.string().optional(),
-          content_mode: z.enum(['blocks', 'html']).optional().describe('Changing this raw skips revision snapshotting — for safe switches use set_page_mode.'),
           html_content: z.string().optional(),
           blocks: z.array(z.any()).optional().describe('Block tree, only used when content_mode="blocks".'),
           status: z.enum(['draft', 'review', 'unlisted', 'published']).optional(),
@@ -207,7 +206,7 @@ export const pageTools: ToolDef[] = [
   {
     name: 'batch_update_pages',
     description:
-      'Apply per-page patches in one call (up to 200 entries). Each entry is { page_id, patch, save? }; failures are reported per-row, the rest still apply. BUFFER MODEL: content patches land in each page\'s unsaved draft; per-entry save:true (or the top-level save flag) commits — typical for a user-approved sweep.',
+      'Apply per-page patches in one call (up to 200 entries). Each entry is { page_id, patch, save? }; failures are reported per-row, the rest still apply. BUFFER MODEL: content patches land in each page\'s unsaved draft; per-entry save:true (or the top-level save flag) commits — typical for a user-approved sweep. content_mode is rejected per-row; switch each page with set_page_mode.',
     inputSchema: {
       updates: z
         .array(

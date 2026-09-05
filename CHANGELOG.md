@@ -1,5 +1,33 @@
 # Changelog
 
+## MCP 0.43.0 / Core 0.1.8
+
+- Added exact typed context bindings for native text, URL, image, file, and
+  email block fields, plus field-aware collection body, image, and date blocks.
+- Added server-rendered page/item breadcrumbs and heading outlines with stable
+  IDs, explicit item-navigation field overrides, and stronger responsive,
+  focus, overflow, and empty-state defaults.
+- Bundled nested `style_overrides.custom_css` consistently in previews and
+  static builds.
+- Added native article/checklist collection presets to the portal, v1 API, and
+  MCP, with blocks-first documentation.
+- Page PATCH and batch-write now reject `content_mode` with a pointer to the
+  revision-aware mode endpoint instead of silently ignoring it.
+- Migration readiness can review proposed compositions and report native block,
+  field, capability, business-specific, and workaround dependencies before any
+  content is written.
+- Added reusable native header, footer, and archive compositions with semantic
+  navigation, responsive disclosure, configurable post-card field mappings,
+  independent download actions, and omission of empty media markup.
+- Added revision-safe partial mode switching and API/MCP access to native
+  cookie-consent settings.
+- Versioned previews now inherit block types, page templates, collections, and
+  items from the base chain, show unresolved block dependencies visibly, and
+  static builds fail instead of silently dropping an unknown block.
+- Form shells now include transitive field-block styles, and responsive field
+  objects are verified end-to-end while unsupported top-level responsive data
+  is rejected explicitly.
+
 ## MCP 0.42.2 / Core 0.1.7
 
 - Preserve every discovered trailing-slash spelling during migration URL

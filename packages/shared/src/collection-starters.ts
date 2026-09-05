@@ -13,7 +13,14 @@
 
 import type { Block } from './types.js';
 
-export type CollectionStarterKind = 'blog' | 'team' | 'events' | 'products' | 'custom';
+export type CollectionStarterKind =
+  | 'blog'
+  | 'article'
+  | 'checklist'
+  | 'team'
+  | 'events'
+  | 'products'
+  | 'custom';
 
 /**
  * Stable block ids so re-running the starter on the same collection is
@@ -36,6 +43,50 @@ export function getCollectionStarter(kind: CollectionStarterKind | undefined): B
         blk('title', 'template/item_title', { level: 'h1', size: 'auto', align: 'left' }),
         blk('date',  'template/page_date',  { field: 'published_at' }),
         blk('body',  'template/item_body',  { field: 'body', max_width: 'normal' }),
+      ];
+
+    case 'article':
+      return [
+        blk('breadcrumbs', 'template/page_breadcrumbs', { home_label: 'Home', aria_label: 'Breadcrumbs' }),
+        blk('title', 'template/item_title', { level: 'h1', size: 'auto' }),
+        blk('date', 'template/page_date', { field: 'published_at' }),
+        {
+          ...blk('content', 'core/columns', { ratio: '3-1', gap: 'lg', align: 'start' }),
+          slots: [
+            [blk('body', 'template/item_body', { field: 'body', max_width: 'normal' })],
+            [blk('outline', 'core/table_of_contents', {
+              title: 'On this page',
+              levels: 'h2,h3',
+              source_field: 'body',
+            })],
+          ],
+        },
+      ];
+
+    case 'checklist':
+      return [
+        blk('breadcrumbs', 'template/page_breadcrumbs', { home_label: 'Home', aria_label: 'Breadcrumbs' }),
+        blk('title', 'template/item_title', { level: 'h1', size: 'auto' }),
+        {
+          ...blk('pdf-condition', 'template/show_if', { condition: 'item.pdf_url' }),
+          children: [blk('pdf', 'core/button', {
+            label: 'Download PDF',
+            href: '{{item.pdf_url}}',
+            variant: 'primary',
+            size: 'md',
+            new_tab: false,
+          })],
+        },
+        blk('body', 'template/item_body', { field: 'body', max_width: 'normal' }),
+        blk('navigation', 'template/item_navigation', {
+          previous_label: 'Previous',
+          next_label: 'Next',
+          aria_label: 'Checklist navigation',
+          previous_url_field: 'prev_url',
+          previous_title_field: 'prev_title',
+          next_url_field: 'next_url',
+          next_title_field: 'next_title',
+        }),
       ];
 
     case 'team':
@@ -90,6 +141,7 @@ export function inferStarterKind(
   fields: ReadonlyArray<{ name: string }>,
 ): CollectionStarterKind {
   const set = new Set(fields.map((f) => f.name.toLowerCase()));
+  if (set.has('pdf_url')) return 'checklist';
   if (set.has('body') && set.has('published_at')) return 'blog';
   if (set.has('role') && set.has('photo')) return 'team';
   if (set.has('start_at') || set.has('starts_at')) return 'events';

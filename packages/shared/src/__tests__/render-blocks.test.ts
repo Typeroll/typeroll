@@ -125,6 +125,177 @@ describe('renderBlock — substitution', () => {
     expect(html.indexOf('Left')).toBeLessThan(html.indexOf('Right'));
     expect(html).toContain('data-block="columns"');
   });
+
+  it('resolves exact typed context bindings stored in text, URL, and image fields', () => {
+    const button = renderBlock(
+      {
+        id: 'download',
+        type: 'core/button',
+        data: {
+          label: '{{item.download_label}}',
+          href: '{{item.pdf_url}}',
+          variant: 'primary',
+          size: 'md',
+        },
+      },
+      {
+        registry,
+        context: {
+          item: {
+            download_label: 'Download & read',
+            pdf_url: 'https://cdn.example.test/file.pdf?x=1&y=2',
+          },
+        },
+      },
+    );
+    expect(button).toContain('href="https://cdn.example.test/file.pdf?x=1&amp;y=2"');
+    expect(button).toContain('>Download &amp; read</a>');
+    expect(button).not.toContain('{{item.');
+
+    const image = renderBlock(
+      {
+        id: 'cover',
+        type: 'core/image',
+        data: { src: '{{item.cover}}', alt: '{{item.title}}', width: 'normal' },
+      },
+      { registry, context: { item: { cover: '/cover.webp', title: 'A & B' } } },
+    );
+    expect(image).toContain('src="/cover.webp"');
+    expect(image).toContain('alt="A &amp; B"');
+  });
+
+  it('renders the selected collection item rich-text and image fields', () => {
+    const context = {
+      item: {
+        title: 'Guide',
+        body: '<p>Wrong body</p>',
+        toc_html: '<h2 id="first">Selected body</h2><p>Copy</p>',
+        image: '/wrong.jpg',
+        hero: '/hero.jpg',
+        reviewed_at: '2026-09-05',
+      },
+    };
+    const body = renderBlock(
+      { id: 'body', type: 'template/item_body', data: { field: 'toc_html', max_width: 'normal' } },
+      { registry, context },
+    );
+    expect(body).toContain('Selected body');
+    expect(body).not.toContain('Wrong body');
+
+    const image = renderBlock(
+      { id: 'image', type: 'template/item_image', data: { field: 'hero', width: 'wide' } },
+      { registry, context },
+    );
+    expect(image).toContain('src="/hero.jpg"');
+    expect(image).not.toContain('/wrong.jpg');
+
+    const missing = renderBlock(
+      { id: 'missing', type: 'template/item_body', data: { field: 'missing_body', max_width: 'normal' } },
+      { registry, context },
+    );
+    expect(missing).toContain('data-block="prose"');
+    expect(missing).not.toContain('Wrong body');
+    expect(missing).not.toContain('Selected body');
+
+    const date = renderBlock(
+      { id: 'date', type: 'template/page_date', data: { field: 'reviewed_at' } },
+      { registry, context },
+    );
+    expect(date).toContain('datetime="2026-09-05"');
+    expect(date).toContain('>2026-09-05</time>');
+  });
+
+  it('materializes semantic breadcrumbs in the initial HTML', () => {
+    const html = renderBlock(
+      {
+        id: 'crumbs',
+        type: 'template/page_breadcrumbs',
+        data: { home_label: 'Start', aria_label: 'Brödsmulor', separator: 'slash' },
+      },
+      {
+        registry,
+        context: {
+          page: {
+            breadcrumbs: [
+              { label: 'Checklistor', href: '/flyttchecklistor/' },
+              { label: 'Energi & miljö', href: '/kategori/energi/' },
+              { label: 'Spara energi', href: '/flyttchecklistor/spara-energi/', current: true },
+            ],
+          },
+        },
+      },
+    );
+    expect(html).toContain('aria-label="Brödsmulor"');
+    expect(html).toContain('<ol>');
+    expect(html).toContain('<a href="/">Start</a>');
+    expect(html).toContain('<a href="/flyttchecklistor/">Checklistor</a>');
+    expect(html).toContain('aria-current="page">Spara energi</span>');
+    expect(html).not.toContain('data-trail=');
+  });
+
+  it('renders a table of contents from a selected rich-text field before JavaScript', () => {
+    const context = {
+      item: {
+        article_body: '<h2 id="packa">Packa &amp; skydda</h2><p>Text</p><h3>TV & skärm</h3><h3 id="packa">Dublett</h3>',
+      },
+    };
+    const toc = renderBlock(
+      {
+        id: 'toc',
+        type: 'core/table_of_contents',
+        data: { title: 'Innehåll', levels: 'h2-h3', source_field: 'article_body' },
+      },
+      { registry, context },
+    );
+    expect(toc).toContain('<a href="#packa">Packa &amp; skydda</a>');
+    expect(toc).toContain('<a href="#tv-skarm">TV &amp; skärm</a>');
+    expect(toc).toContain('<a href="#packa-2">Dublett</a>');
+    expect(toc).toContain('data-empty="false"');
+
+    const body = renderBlock(
+      { id: 'body', type: 'template/item_body', data: { field: 'article_body', max_width: 'normal' } },
+      { registry, context },
+    );
+    expect(body).toContain('<h3 id="tv-skarm">TV & skärm</h3>');
+    expect(body).toContain('<h3 id="packa-2">Dublett</h3>');
+  });
+
+  it('allows item navigation to override collection order with explicit fields', () => {
+    const html = renderBlock(
+      {
+        id: 'nav',
+        type: 'template/item_navigation',
+        data: {
+          previous_label: 'Föregående',
+          next_label: 'Nästa',
+          previous_url_field: 'prev_url',
+          previous_title_field: 'prev_title',
+          next_url_field: 'next_url',
+          next_title_field: 'next_title',
+        },
+      },
+      {
+        registry,
+        context: {
+          item: {
+            prev_url: '/forra/',
+            prev_title: 'Förra checklistan',
+            next_url: '',
+            next_title: 'Must not remain focusable',
+          },
+          collection: {
+            previous: { url: '/sorted-prev/', title: 'Sorted previous' },
+            next: { url: '/sorted-next/', title: 'Sorted next' },
+          },
+        },
+      },
+    );
+    expect(html).toContain('href="/forra/"');
+    expect(html).toContain('Förra checklistan');
+    expect(html).not.toContain('/sorted-prev/');
+    expect(html).toContain('item-navigation-next" data-empty="true"');
+    expect(html).not.toContain('href="/sorted-next/"');
+  });
 });
 
 describe('renderBlock — tag substitution {{=field}}', () => {
@@ -676,6 +847,30 @@ describe('collectBlockAssets', () => {
     expect(assets.used_ids.sort()).toEqual([
       'core/columns', 'core/heading', 'core/prose', 'core/section',
     ]);
+  });
+
+  it('includes per-instance custom CSS from nested block trees', () => {
+    const blocks: Block[] = [
+      {
+        id: 'root',
+        type: 'core/section',
+        data: {},
+        style_overrides: { custom_css: '.moveria-test { display: grid; }' },
+        children: [
+          {
+            id: 'child',
+            type: 'core/prose',
+            data: { html: '<p>Test</p>' },
+            style_overrides: { custom_css: '@media (max-width: 30rem) { .moveria-test { display: block; } }' },
+          },
+        ],
+      },
+    ];
+    const assets = collectBlockAssets(blocks, registry);
+    expect(assets.css).toContain('/* instance root */');
+    expect(assets.css).toContain('.moveria-test { display: grid; }');
+    expect(assets.css).toContain('/* instance child */');
+    expect(assets.css).toContain('@media (max-width: 30rem)');
   });
 });
 

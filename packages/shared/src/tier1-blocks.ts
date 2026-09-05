@@ -715,6 +715,16 @@ const postCard: BlockType = {
     { name: 'date', type: 'date', label: 'Date' },
     { name: 'href', type: 'url', label: 'Link' },
     { name: 'author', type: 'text', label: 'Author' },
+    { name: 'title_field', type: 'text', label: 'Title field', default: 'title' },
+    { name: 'excerpt_field', type: 'text', label: 'Excerpt field', default: 'excerpt' },
+    { name: 'image_field', type: 'text', label: 'Image field', default: 'image' },
+    { name: 'image_alt_field', type: 'text', label: 'Image alt field', default: 'image_alt' },
+    { name: 'date_field', type: 'text', label: 'Date field', default: 'published_at' },
+    { name: 'author_field', type: 'text', label: 'Author field', default: 'author' },
+    { name: 'href_field', type: 'text', label: 'Link field', default: 'url' },
+    { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3', 'h4'], default: 'h3' },
+    { name: 'download_url_field', type: 'text', label: 'Download URL field' },
+    { name: 'download_label', type: 'text', label: 'Download label', default: 'Download PDF' },
     { name: 'show_image', type: 'boolean', label: 'Show image', default: true },
     { name: 'show_excerpt', type: 'boolean', label: 'Show excerpt', default: true },
     { name: 'show_date', type: 'boolean', label: 'Show date', default: true },
@@ -722,33 +732,34 @@ const postCard: BlockType = {
     { name: 'image_aspect', type: 'select', label: 'Image aspect', options: ['landscape', 'square', 'portrait'], default: 'landscape' },
   ],
   template: `<article data-block="post_card" data-aspect="{{image_aspect}}" data-img="{{show_image}}" data-exc="{{show_excerpt}}" data-date="{{show_date}}" data-author="{{show_author}}">
-  <a href="{{href}}" class="block-postcard-link">
-    <img class="block-postcard-image" src="{{image}}" alt="" />
-    <div class="block-postcard-body">
-      <h3 class="block-postcard-title">{{title}}</h3>
+  {{{post_card_image_html}}}
+  <div class="block-postcard-body">
+      <{{=heading_level}} class="block-postcard-title">{{{post_card_title_html}}}</{{=heading_level}}>
       <p class="block-postcard-excerpt">{{excerpt}}</p>
       <div class="block-postcard-meta">
         <time class="block-postcard-date">{{date}}</time>
         <span class="block-postcard-author">{{author}}</span>
       </div>
-    </div>
-  </a>
+      {{{post_card_download_html}}}
+  </div>
 </article>`,
   styles: `
-[data-block="post_card"] { display: flex; flex-direction: column; }
-[data-block="post_card"] .block-postcard-link { color: inherit; text-decoration: none; display: flex; flex-direction: column; gap: 0.75rem; }
-[data-block="post_card"] .block-postcard-link[href=""] { pointer-events: none; }
+[data-block="post_card"] { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+[data-block="post_card"] .block-postcard-link { color: inherit; text-decoration: none; }
+[data-block="post_card"] .block-postcard-link:focus-visible,
+[data-block="post_card"] .block-postcard-download:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
 [data-block="post_card"] .block-postcard-image { width: 100%; object-fit: cover; border-radius: 0.5rem; background: var(--color-bg-subtle, #f3f4f6); }
 [data-block="post_card"][data-aspect="landscape"] .block-postcard-image { aspect-ratio: 16/9; }
 [data-block="post_card"][data-aspect="square"]    .block-postcard-image { aspect-ratio: 1; }
 [data-block="post_card"][data-aspect="portrait"]  .block-postcard-image { aspect-ratio: 3/4; }
-[data-block="post_card"][data-img="false"]    .block-postcard-image   { display: none; }
+[data-block="post_card"] .block-postcard-body { display: flex; flex-direction: column; gap: 0.65rem; min-width: 0; }
 [data-block="post_card"] .block-postcard-title { margin: 0; font-size: 1.25rem; font-weight: 600; line-height: 1.3; }
 [data-block="post_card"] .block-postcard-excerpt { margin: 0; opacity: 0.8; line-height: 1.5; }
 [data-block="post_card"][data-exc="false"]     .block-postcard-excerpt { display: none; }
 [data-block="post_card"] .block-postcard-meta  { font-size: 0.875rem; opacity: 0.6; display: flex; gap: 0.75rem; }
 [data-block="post_card"][data-date="false"]    .block-postcard-date    { display: none; }
 [data-block="post_card"][data-author="false"]  .block-postcard-author  { display: none; }
+[data-block="post_card"] .block-postcard-download { align-self: flex-start; overflow-wrap: anywhere; font-weight: 600; }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -829,6 +840,62 @@ const stepCard: BlockType = {
 };
 
 // ─── Interactive blocks ──────────────────────────────────────────────────
+
+/** Semantic site navigation with a progressively enhanced mobile disclosure. */
+const navigation: BlockType = {
+  id: 'core/navigation',
+  name: 'navigation',
+  label: 'Navigation',
+  icon: 'menu',
+  category: 'content',
+  container: false,
+  schema: [
+    { name: 'aria_label', type: 'text', label: 'Accessible label', default: 'Main navigation' },
+    { name: 'menu_label', type: 'text', label: 'Mobile menu label', default: 'Menu' },
+    { name: 'links', type: 'array', label: 'Links', fields: [
+      { name: 'label', type: 'text', label: 'Label', required: true },
+      { name: 'href', type: 'url', label: 'Link', required: true },
+    ] },
+  ],
+  template: `<nav data-block="navigation" aria-label="{{aria_label}}">
+  <button class="block-navigation-toggle" type="button" aria-expanded="false"><span>{{menu_label}}</span><span aria-hidden="true">☰</span></button>
+  <ul class="block-navigation-list">{{{navigation_links_html}}}</ul>
+</nav>`,
+  styles: `
+[data-block="navigation"] { min-width: 0; }
+[data-block="navigation"] .block-navigation-list { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 1.25rem; margin: 0; padding: 0; list-style: none; }
+[data-block="navigation"] a { display: inline-block; color: inherit; padding-block: 0.45rem; overflow-wrap: anywhere; text-underline-offset: 0.2em; }
+[data-block="navigation"] a[aria-current="page"] { font-weight: 700; text-decoration-thickness: 0.14em; }
+[data-block="navigation"] a:focus-visible,
+[data-block="navigation"] .block-navigation-toggle:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; border-radius: 0.2rem; }
+[data-block="navigation"] .block-navigation-toggle { display: none; align-items: center; justify-content: space-between; gap: 1rem; width: 100%; padding: 0.65rem 0.8rem; font: inherit; color: inherit; background: transparent; border: 1px solid color-mix(in srgb, currentColor 22%, transparent); border-radius: 0.4rem; }
+@media (max-width: 720px) {
+  [data-block="navigation"] .block-navigation-list { flex-direction: column; align-items: stretch; }
+  [data-block="navigation"][data-enhanced="true"] .block-navigation-toggle { display: flex; }
+  [data-block="navigation"][data-enhanced="true"] .block-navigation-list[hidden] { display: none; }
+}
+`.trim(),
+  script: `
+window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
+window.TyperollBlocks.register('core/navigation', (el) => {
+  const button = el.querySelector('.block-navigation-toggle');
+  const list = el.querySelector('.block-navigation-list');
+  if (!button || !list) return;
+  el.dataset.enhanced = 'true';
+  const mobile = window.matchMedia('(max-width: 720px)');
+  const close = (focus) => { button.setAttribute('aria-expanded', 'false'); list.hidden = mobile.matches; if (focus) button.focus(); };
+  close(false);
+  button.addEventListener('click', () => {
+    const open = button.getAttribute('aria-expanded') === 'true';
+    if (open) close(false); else { button.setAttribute('aria-expanded', 'true'); list.hidden = false; }
+  });
+  el.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !list.hidden) close(true); });
+  mobile.addEventListener('change', () => close(false));
+});
+`.trim(),
+  origin: 'core',
+  created_at: ISO_EPOCH,
+};
 
 /**
  * `accordion` — expandable / collapsible items. The most-used pattern for
@@ -1261,7 +1328,7 @@ window.TyperollBlocks.register('core/search', (el) => {
   created_at: ISO_EPOCH,
 };
 
-/** Client-populated heading index. It assigns stable ids only when missing. */
+/** Server-rendered heading index with a client fallback for standalone pages. */
 const tableOfContents: BlockType = {
   id: 'core/table_of_contents',
   name: 'table_of_contents',
@@ -1272,14 +1339,18 @@ const tableOfContents: BlockType = {
   schema: [
     { name: 'title', type: 'text', label: 'Title', default: 'On this page' },
     { name: 'levels', type: 'select', label: 'Heading levels', options: ['h2', 'h2-h3', 'h2-h4'], default: 'h2-h3' },
+    { name: 'source_field', type: 'text', label: 'Collection rich-text field', default: 'body' },
   ],
-  template: `<nav data-block="table_of_contents" data-levels="{{levels}}" aria-label="{{title}}"><strong>{{title}}</strong><ol></ol></nav>`,
+  template: `<nav data-block="table_of_contents" data-levels="{{levels}}" data-empty="{{toc_empty}}" aria-label="{{title}}"><strong>{{title}}</strong><ol>{{{toc_items_html}}}</ol></nav>`,
   styles: `
-[data-block="table_of_contents"] { padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0.5rem; }
+[data-block="table_of_contents"] { position: sticky; top: 1rem; min-width: 0; padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0.5rem; background: var(--color-background, Canvas); }
 [data-block="table_of_contents"] ol { margin: 0.65rem 0 0; padding-left: 1.25rem; }
 [data-block="table_of_contents"] li[data-level="3"] { margin-left: 1rem; }
 [data-block="table_of_contents"] li[data-level="4"] { margin-left: 2rem; }
 [data-block="table_of_contents"][data-empty="true"] { display: none; }
+[data-block="table_of_contents"] a { overflow-wrap: anywhere; text-underline-offset: 0.15em; }
+[data-block="table_of_contents"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
+@media (max-width: 720px) { [data-block="table_of_contents"] { position: static; } }
 `.trim(),
   script: `
 window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
@@ -1288,6 +1359,7 @@ window.TyperollBlocks.register('core/table_of_contents', (el) => {
   const levels = el.dataset.levels === 'h2' ? 'h2' : el.dataset.levels === 'h2-h4' ? 'h2,h3,h4' : 'h2,h3';
   const headings = Array.from(root.querySelectorAll(levels)).filter((heading) => !el.contains(heading));
   const list = el.querySelector('ol');
+  if (list && list.children.length) { el.dataset.empty = 'false'; return; }
   if (!list || !headings.length) { el.dataset.empty = 'true'; return; }
   const used = new Set(Array.from(document.querySelectorAll('[id]')).map((node) => node.id));
   headings.forEach((heading, index) => {
@@ -1393,6 +1465,7 @@ export const TIER1_BLOCK_TYPES: readonly BlockType[] = [
   spacer,
   divider,
   // Content
+  navigation,
   icon,
   iconBox,
   hero,

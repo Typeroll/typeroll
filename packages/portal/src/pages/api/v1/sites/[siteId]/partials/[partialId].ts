@@ -28,7 +28,9 @@ function project(p: PartialDoc, hasUnsaved: boolean): Record<string, unknown> {
     kind: p.kind,
     status: p.status,
     content_mode: p.content_mode,
-    html_content: p.html_content,
+    ...(p.content_mode === 'blocks'
+      ? { blocks: p.blocks ?? [] }
+      : { html_content: p.html_content ?? '' }),
     date_updated: p.date_updated,
     has_unsaved_changes: hasUnsaved,
   };
@@ -99,6 +101,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!existing) return apiError('Not found', 404);
   const body = (await request.json().catch(() => null)) as (Partial<PartialDoc> & { save?: boolean }) | null;
   if (!body) return apiError('Invalid JSON body');
+  if (body.content_mode !== undefined) {
+    return apiError('content_mode cannot be changed with PATCH; use POST /partials/{partialId}/mode', 400);
+  }
   const update = pickWritable(body);
   if (Object.keys(update).length === 0) return apiError('No writable fields in body');
   try {
@@ -124,6 +129,9 @@ export const PUT: APIRoute = async ({ request, params }) => {
   if (!partialId) return apiError('Missing partialId');
   const body = (await request.json().catch(() => null)) as (Partial<PartialDoc> & { save?: boolean }) | null;
   if (!body) return apiError('Invalid JSON body');
+  if (body.content_mode !== undefined) {
+    return apiError('content_mode cannot be changed with PUT; use POST /partials/{partialId}/mode', 400);
+  }
   if (typeof body.html_content !== 'string') return apiError('html_content required for PUT');
   const update = pickWritable(body);
   try {

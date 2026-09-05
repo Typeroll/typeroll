@@ -320,7 +320,7 @@ describe('extension scopes', () => {
 describe('extension renderer capabilities', () => {
   it('advertises the executable runtime contract', () => {
     expect(SITE_TEMPLATE_CAPABILITIES).toMatchObject({
-      template_capabilities_version: '0.41.1',
+      template_capabilities_version: '0.43.0',
       supports_extension_blocks: true,
       supports_extension_html_directive: true,
       supports_extension_html_partial_directive: true,

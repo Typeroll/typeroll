@@ -17,7 +17,7 @@ export const collectionTools: ToolDef[] = [
   {
     name: 'create_collection',
     description:
-      'Create a new content collection with a field schema and (optionally) per-item URLs. Pass `route_template` (e.g. "/restaurants/{slug}") to give each published item its own URL — omit to default to "/{name}/{slug}", set to "" to disable per-item URLs entirely.',
+      'Create a new content collection with a field schema and (optionally) per-item URLs. Pass `route_template` (e.g. "/restaurants/{slug}") to give each published item its own URL — omit to default to "/{name}/{slug}", set to "" to disable per-item URLs entirely. Pass template_kind for a polished native item template, or item_template_blocks for a custom block tree.',
     inputSchema: {
       name: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/),
       label_singular: z.string().min(1),
@@ -40,6 +40,11 @@ export const collectionTools: ToolDef[] = [
       sort_dir: z.enum(['asc', 'desc']).optional(),
       route_template: z.string().optional(),
       item_template_html: z.string().optional(),
+      template_kind: z
+        .enum(['blog', 'article', 'checklist', 'team', 'events', 'products', 'custom'])
+        .optional()
+        .describe('Native starter for item pages. article includes breadcrumbs + body outline; checklist includes optional PDF CTA + explicit previous/next fields.'),
+      item_template_blocks: z.array(z.any()).optional().describe('Explicit item-template block tree. Overrides template_kind.'),
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {

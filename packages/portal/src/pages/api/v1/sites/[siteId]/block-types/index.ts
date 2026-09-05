@@ -16,6 +16,7 @@
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
+import { vstore } from '../../../../../../lib/version-store';
 import { SCRIPT_WRITE_NOTICE } from '../../../../../../lib/block-script-gate';
 import {
   CORE_BLOCK_TYPES, paths,
@@ -67,9 +68,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const url = new URL(request.url);
   const includeCore = url.searchParams.get('include_core') !== 'false';
 
-  const custom = await getStore().listDocs<BlockType>(
-    paths.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId),
-  );
+  const custom = await vstore.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId);
   const merged: BlockType[] = includeCore
     ? [
         // template_content_slot is a marker block used inside
@@ -108,7 +107,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 
   const id = clean.name as string;
   const docPath = `${paths.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId)}/${id}`;
-  const existing = await getStore().getDoc<BlockType>(docPath);
+  const existing = await vstore.blockType(ctx.orgId, ctx.siteId, ctx.versionId, id);
   if (existing) return apiError(`Block type "${id}" already exists`, 409);
 
   const doc: BlockType = {

@@ -26,7 +26,7 @@ export const partialTools: ToolDef[] = [
   },
   {
     name: 'read_partial',
-    description: 'Fetch one global block including its full HTML content.',
+    description: 'Fetch one global block including its content_mode and the active HTML or block tree.',
     inputSchema: {
       partial_id: z.string(),
       version: versionParam,
@@ -43,13 +43,14 @@ export const partialTools: ToolDef[] = [
   {
     name: 'update_partial',
     description:
-      'Shallow-merge update on a global block. Use partial_id "header" or "footer" for the auto-injected layout blocks, or a kebab-case id for a free block. HTML is sanitized server-side. BUFFER MODEL: content lands in the partial\'s unsaved DRAFT (status applies immediately); pass save:true to commit in the same call, or commit_working_copy later.',
+      'Shallow-merge update on a global block. Use partial_id "header" or "footer" for the auto-injected layout blocks, or a kebab-case id for a free block. HTML is sanitized server-side. This tool does not accept content_mode; switch it with set_partial_mode. BUFFER MODEL: content lands in the partial\'s unsaved DRAFT (status applies immediately); pass save:true to commit in the same call, or commit_working_copy later.',
     inputSchema: {
       partial_id: z.string(),
       patch: z
         .object({
           name: z.string().optional(),
           html_content: z.string().optional(),
+          blocks: z.array(z.any()).optional().describe('Block tree to stage before switching the partial to blocks mode.'),
           status: z.enum(['draft', 'published']).optional(),
           kind: z.enum(['header', 'footer', 'free']).optional(),
         })
@@ -62,6 +63,26 @@ export const partialTools: ToolDef[] = [
         siteId,
         `partials/${encodeURIComponent(args.partial_id)}`,
         { ...args.patch, ...(args.save ? { save: true } : {}) },
+        v(args.version),
+      );
+      return ok(res);
+    }),
+  },
+  {
+    name: 'set_partial_mode',
+    description:
+      'Switch a header, footer, or free partial between HTML and native blocks through the revision-safe mode endpoint. To author a native partial deterministically: update_partial with blocks + save:true, then set_partial_mode to="blocks", then read_partial and verify the returned mode/tree. Set convert:true only for heuristic HTML-to-block conversion.',
+    inputSchema: {
+      partial_id: z.string(),
+      to: z.enum(['blocks', 'html']),
+      convert: z.boolean().optional(),
+      version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const res = await client.post(
+        siteId,
+        `partials/${encodeURIComponent(args.partial_id)}/mode`,
+        { to: args.to, convert: args.convert ?? false },
         v(args.version),
       );
       return ok(res);

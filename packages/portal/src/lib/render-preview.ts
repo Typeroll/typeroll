@@ -11,11 +11,9 @@
 // we'll either extend this or call into the site-template build.
 
 import type {
-  BlockType,
   CollectionDef,
   CollectionItem,
   Page,
-  Partial as PartialDoc,
   RenderContext,
   SiteSettings,
   SiteVersion,
@@ -23,6 +21,7 @@ import type {
 import { vstore } from './version-store';
 import {
   buildCollectionRoutes,
+  collectionItemBreadcrumbs,
   collectionRouteNavigation,
   collectionFieldMatches,
   buildCoreBlockRegistry,
@@ -35,6 +34,7 @@ import {
   MAIN_VERSION_ID,
   renderBlocks,
   renderItemTemplate,
+  pageBreadcrumbs,
   siteContext,
 } from '@typeroll/shared';
 import { getStore } from './datastore';
@@ -152,10 +152,10 @@ export async function renderPreview(
   // preview lives inside the editor and must produce visually identical
   // output to the static build — same context, same collection source.
   const blockRegistry = buildCoreBlockRegistry();
-  const customBlockTypes = await store.listDocs<BlockType>(
-    paths.blockTypes(orgId, siteId, versionId),
-  );
+  const customBlockTypes = await vstore.blockTypes(orgId, siteId, versionId);
   for (const bt of customBlockTypes) blockRegistry.set(bt.id, bt);
+  const onMissingType = (typeId: string) =>
+    `<div data-tr-missing-block="${escapeHtml(typeId)}" role="alert" style="padding:1rem;border:2px dashed #c53030;color:#742a2a;background:#fff5f5">Missing block type: ${escapeHtml(typeId)}</div>`;
   const extensionSource = (blockTypeId: string) => {
     const blockType = blockRegistry.get(blockTypeId);
     return blockType?.extension ? {
@@ -168,16 +168,13 @@ export async function renderPreview(
 
   // Pre-load collection items so collection-backed repeaters work in
   // preview the same way they do at build time.
-  const collectionsRaw = await store.listDocs<CollectionDef>(
-    paths.collections(orgId, siteId, versionId),
-  );
+  const collectionsRaw = await vstore.collections(orgId, siteId, versionId);
   const itemsByCollection = new Map<string, CollectionItem[]>();
   for (const c of collectionsRaw) {
-    const items = await store.listDocs<CollectionItem>(
-      paths.collectionItems(orgId, siteId, c.name, versionId),
-    );
+    const items = await vstore.collectionItems(orgId, siteId, versionId, c.name);
     itemsByCollection.set(c.name, items.filter((i) => i.status === 'published'));
   }
+  const previewPages = await vstore.pages(orgId, siteId, versionId);
   const collectionSource = (config: {
     collection: string;
     /** Exactly these items, in this order — the `related`/`backlinks` sources. */
@@ -220,7 +217,10 @@ export async function renderPreview(
   };
 
   const renderCtx: RenderContext = {
-    page: page as unknown as Record<string, unknown>,
+    page: {
+      ...(page as unknown as Record<string, unknown>),
+      breadcrumbs: pageBreadcrumbs(page, previewPages, settings.trailing_slash ?? 'always'),
+    },
     site: siteContext(settings as unknown as Record<string, unknown>),
     // Paginating listings render their first slice in the preview; the
     // pager appears but its /page/N/ links only exist on the deployed
@@ -268,7 +268,7 @@ export async function renderPreview(
     if (!p) return '';
     if (p.content_mode === 'blocks' && p.blocks?.length) {
       return sanitizeBody(
-        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, collectionSource }),
+        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, collectionSource, onMissingType }),
         settings.iframe_allowed_hosts,
       );
     }
@@ -298,8 +298,8 @@ export async function renderPreview(
     // static renderer so the preview matches a real build.
     let effectiveBlocks = page.blocks;
     if (page.template) {
-      const tpl = await store.getDoc(paths.pageTemplate(orgId, siteId, page.template, versionId));
-      const tplBlocks = (tpl as { blocks?: typeof page.blocks } | null)?.blocks;
+      const tpl = await vstore.pageTemplate(orgId, siteId, versionId, page.template);
+      const tplBlocks = tpl?.blocks;
       if (tplBlocks?.length) {
         effectiveBlocks = composePageWithTemplate(tplBlocks, page.blocks);
       }
@@ -309,6 +309,7 @@ export async function renderPreview(
       context: renderCtx,
       collectionSource,
       formSource,
+      onMissingType,
       annotate: opts.annotate,
       // Inline-edit spans ride with annotation, page body only — partial
       // blocks aren't reachable through the page's blocks route, so
@@ -517,10 +518,10 @@ async function renderPreviewCollectionItem(
   let blockJs = '';
   if (route.collection.item_template_blocks?.length) {
     const blockRegistry = buildCoreBlockRegistry();
-    const customBlockTypes = await getStore().listDocs<BlockType>(
-      paths.blockTypes(orgId, siteId, versionId),
-    );
+    const customBlockTypes = await vstore.blockTypes(orgId, siteId, versionId);
     for (const bt of customBlockTypes) blockRegistry.set(bt.id, bt);
+    const onMissingType = (typeId: string) =>
+      `<div data-tr-missing-block="${escapeHtml(typeId)}" role="alert" style="padding:1rem;border:2px dashed #c53030;color:#742a2a;background:#fff5f5">Missing block type: ${escapeHtml(typeId)}</div>`;
 
     // collection_list etc. inside an item template might still need a
     // resolver, even though the typical "related posts on the blog
@@ -530,7 +531,9 @@ async function renderPreviewCollectionItem(
     const collectionSource = (): Record<string, unknown>[] => [];
 
     const itemCtx: RenderContext = {
-      page: undefined,
+      page: {
+        breadcrumbs: collectionItemBreadcrumbs(route, siblingRoutes, settings.trailing_slash ?? 'always'),
+      },
       site: siteContext(settings as unknown as Record<string, unknown>),
       item: route.item as unknown as Record<string, unknown>,
       collection: {
@@ -544,6 +547,7 @@ async function renderPreviewCollectionItem(
       registry: blockRegistry,
       context: itemCtx,
       collectionSource,
+      onMissingType,
     }), settings.iframe_allowed_hosts);
     blocksBody = true;
     const assets = collectBlockAssets(route.collection.item_template_blocks, blockRegistry, {

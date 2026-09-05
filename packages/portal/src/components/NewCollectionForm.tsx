@@ -14,6 +14,41 @@ interface Template {
 
 const TEMPLATES: Template[] = [
   {
+    name: 'article',
+    label_singular: 'Article',
+    label_plural: 'Articles',
+    icon: '📰',
+    description: 'Long-form reading layout with breadcrumbs and an optional outline.',
+    slug_field: 'slug',
+    sort_field: 'published_at',
+    fields: [
+      { name: 'title', label: 'Title', type: 'text', required: true },
+      { name: 'slug', label: 'Slug', type: 'text', required: true },
+      { name: 'body', label: 'Body', type: 'richtext', required: true },
+      { name: 'published_at', label: 'Published at', type: 'date' },
+    ],
+  },
+  {
+    name: 'checklist',
+    label_singular: 'Checklist',
+    label_plural: 'Checklists',
+    icon: '✅',
+    description: 'Guide with optional PDF download and explicit previous/next links.',
+    slug_field: 'slug',
+    sort_field: 'sort_order',
+    fields: [
+      { name: 'title', label: 'Title', type: 'text', required: true },
+      { name: 'slug', label: 'Slug', type: 'text', required: true },
+      { name: 'body', label: 'Body', type: 'richtext', required: true },
+      { name: 'pdf_url', label: 'PDF URL', type: 'url' },
+      { name: 'prev_url', label: 'Previous URL', type: 'url' },
+      { name: 'prev_title', label: 'Previous title', type: 'text' },
+      { name: 'next_url', label: 'Next URL', type: 'url' },
+      { name: 'next_title', label: 'Next title', type: 'text' },
+      { name: 'sort_order', label: 'Sort order', type: 'number' },
+    ],
+  },
+  {
     name: 'blog',
     label_singular: 'Blog post',
     label_plural: 'Blog posts',

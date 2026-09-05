@@ -8,9 +8,9 @@
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
-import { getStore } from '../../../../../../lib/datastore';
+import { vstore } from '../../../../../../lib/version-store';
 import { SCRIPT_WRITE_NOTICE } from '../../../../../../lib/block-script-gate';
-import { CORE_BLOCK_TYPES, paths, type BlockType, type FieldDefinition } from '@typeroll/shared';
+import { CORE_BLOCK_TYPES, type BlockType } from '@typeroll/shared';
 
 const WRITABLE = new Set<keyof BlockType>([
   'name', 'label', 'icon', 'category', 'container', 'slot_count', 'slot_labels',
@@ -53,7 +53,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const fromCore = CORE_BLOCK_TYPES.find((b) => b.id === typeId);
   if (fromCore) return apiResponse(ctx, { block_type: fromCore });
 
-  const doc = await getStore().getDoc(`${paths.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId)}/${typeId}`);
+  const doc = await vstore.blockType(ctx.orgId, ctx.siteId, ctx.versionId, typeId);
   if (!doc) return apiError('Not found', 404);
   return apiResponse(ctx, { block_type: doc });
 };
@@ -74,8 +74,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const err = validate(clean);
   if (err) return apiError(err, 400);
 
-  const docPath = `${paths.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId)}/${typeId}`;
-  const existing = await getStore().getDoc<BlockType>(docPath);
+  const existing = await vstore.blockType(ctx.orgId, ctx.siteId, ctx.versionId, typeId);
   if (!existing) return apiError('Not found', 404);
 
   // `script` through an API key is allowed under the key holder's authority
@@ -87,7 +86,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // schema arrays would silently corrupt blocks. Same goes for template
   // / styles. Everything else is shallow-merged.
   const merged: BlockType = { ...existing, ...clean };
-  await getStore().setDoc(docPath, merged);
+  await vstore.writeBlockType(ctx.orgId, ctx.siteId, ctx.versionId, typeId, merged);
   return apiResponse(ctx, { ...merged, ...(warnings.length ? { warnings } : {}) });
 };
 
@@ -101,10 +100,9 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     return apiError('Core block types are managed in code, not removable via API', 403);
   }
 
-  const docPath = `${paths.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId)}/${typeId}`;
-  const existing = await getStore().getDoc(docPath);
+  const existing = await vstore.blockType(ctx.orgId, ctx.siteId, ctx.versionId, typeId);
   if (!existing) return apiError('Not found', 404);
 
-  await getStore().deleteDoc(docPath);
+  await vstore.deleteBlockType(ctx.orgId, ctx.siteId, ctx.versionId, typeId);
   return apiResponse(ctx, { ok: true });
 };

@@ -98,6 +98,34 @@ describe('vstore chain reads', () => {
     expect(titles).toEqual(['About (Branch)', 'Main Home']);
   });
 
+  it('inherits, forks, and tombstones block-type dependencies', async () => {
+    const { store, vstore } = await setup();
+    await store.setDoc(paths.blockType(ORG, SITE, 'lead-form', MAIN_VERSION_ID), {
+      id: 'lead-form', name: 'lead-form', label: 'Lead form', category: 'custom',
+      container: false, schema: [], template: '<div>main</div>', origin: 'third_party',
+      created_at: new Date().toISOString(),
+    });
+    expect((await vstore.blockTypes(ORG, SITE, BRANCH)).map((type) => type.id)).toContain('lead-form');
+    await vstore.writeBlockType(ORG, SITE, BRANCH, 'lead-form', { template: '<div>branch</div>' });
+    expect((await vstore.blockType(ORG, SITE, BRANCH, 'lead-form'))?.template).toContain('branch');
+    expect((await vstore.blockType(ORG, SITE, MAIN_VERSION_ID, 'lead-form'))?.template).toContain('main');
+    await vstore.deleteBlockType(ORG, SITE, BRANCH, 'lead-form');
+    expect(await vstore.blockType(ORG, SITE, BRANCH, 'lead-form')).toBeNull();
+    expect(await vstore.blockType(ORG, SITE, MAIN_VERSION_ID, 'lead-form')).not.toBeNull();
+  });
+
+  it('inherits page-template dependencies from the base version', async () => {
+    const { store, vstore } = await setup();
+    await store.setDoc(paths.pageTemplate(ORG, SITE, 'article', MAIN_VERSION_ID), {
+      id: 'article', name: 'article', label: 'Article', status: 'active',
+      blocks: [{ id: 'slot', type: 'template/content_slot', data: {} }],
+      created_at: new Date().toISOString(),
+    });
+    const template = await vstore.pageTemplate(ORG, SITE, BRANCH, 'article');
+    expect(template?.id).toBe('article');
+    expect(template?.blocks[0]?.type).toBe('template/content_slot');
+  });
+
   // Regression: Firestore rejects doc paths with an odd number of segments.
   // Tombstone paths previously used `_tombstones/{kind}/{id}` which produces
   // 9 segments under a version doc — 500-ing every chain read on prod.

@@ -5,6 +5,8 @@ import {
   buildCollectionRoutes,
   collectionFieldMatches,
   collectionRouteNavigation,
+  collectionItemBreadcrumbs,
+  pageBreadcrumbs,
 } from '../collection-routes.js';
 import type { CollectionDef, CollectionItem } from '../types.js';
 
@@ -165,6 +167,49 @@ describe('buildCollectionRoutes', () => {
       previous: { id: 'a', title: 'A', url: '/restaurants/a' },
       next: { id: 'c', title: 'C', url: '/restaurants/c' },
     });
+  });
+
+  it('builds collection, generated taxonomy, and current-item breadcrumbs', () => {
+    const collection = coll({
+      label_plural: 'Checklists',
+      route_template: '/checklists/{slug}',
+      facets: [{ field: 'category', base_path: '/category', label_singular: 'Category', min_items: 1 }],
+    });
+    const routes = buildCollectionRoutes(
+      [collection],
+      new Map([['restaurants', [
+        item({ id: 'energy', slug: 'energy', title: 'Save energy', category: 'Energy & climate' }),
+      ]]]),
+    );
+    expect(collectionItemBreadcrumbs(routes[0]!, routes, 'always')).toEqual([
+      { label: 'Checklists', href: '/checklists/' },
+      { label: 'Energy & climate', href: '/category/energy-climate/' },
+      { label: 'Save energy', href: '/checklists/energy/', current: true },
+    ]);
+  });
+
+  it('omits the optional taxonomy crumb when the collection has no matching facet route', () => {
+    const collection = coll({ label_plural: 'Articles', route_template: '/articles/{slug}' });
+    const routes = buildCollectionRoutes(
+      [collection],
+      new Map([['restaurants', [item({ id: 'one', slug: 'one', title: 'One' })]]]),
+    );
+    expect(collectionItemBreadcrumbs(routes[0]!, routes)).toEqual([
+      { label: 'Articles', href: '/articles' },
+      { label: 'One', href: '/articles/one', current: true },
+    ]);
+  });
+
+  it('builds parent-aware page breadcrumbs and stops safely on cycles', () => {
+    const pages = [
+      { id: 'home', title: 'Home', slug: '', content_mode: 'blocks', status: 'published' },
+      { id: 'guides', title: 'Guides', slug: 'guides', path: '/guides', parent: 'home', content_mode: 'blocks', status: 'published' },
+      { id: 'moving', title: 'Moving', slug: 'moving', path: '/guides/moving', parent: 'guides', content_mode: 'blocks', status: 'published' },
+    ] as never;
+    expect(pageBreadcrumbs(pages[2], pages, 'always')).toEqual([
+      { label: 'Guides', href: '/guides/' },
+      { label: 'Moving', href: '/guides/moving/', current: true },
+    ]);
   });
 });
 

@@ -377,3 +377,9 @@ export const FORM_BLOCK_TYPES: BlockType[] = [
   formConsent,
   formHidden,
 ];
+
+/** Complete transitive field stylesheet for forms referenced by core/form. */
+export const FORM_BLOCKS_CSS = FORM_BLOCK_TYPES
+  .filter((blockType) => !!blockType.styles)
+  .map((blockType) => `/* ${blockType.id} */\n${blockType.styles}`)
+  .join('\n\n');

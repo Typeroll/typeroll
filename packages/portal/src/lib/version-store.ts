@@ -232,9 +232,27 @@ export const vstore = {
   blockTypes: (orgId: string, siteId: string, versionId: string) =>
     listChain<BlockType>(orgId, siteId, versionId, 'block-types',
       (v) => paths.blockTypes(orgId, siteId, v)),
+  blockType: (orgId: string, siteId: string, versionId: string, typeId: string) =>
+    readChain<BlockType>(orgId, siteId, versionId, 'block-types', typeId,
+      (v) => paths.blockType(orgId, siteId, typeId, v)),
+  writeBlockType: async (
+    orgId: string, siteId: string, versionId: string, typeId: string,
+    update: Partial<BlockType>,
+  ): Promise<void> => {
+    const existing = await readChain<BlockType>(orgId, siteId, versionId, 'block-types', typeId,
+      (v) => paths.blockType(orgId, siteId, typeId, v));
+    const { id: _id, ...base } = (existing ?? {}) as BlockType;
+    await getStore().setDoc(paths.blockType(orgId, siteId, typeId, versionId), { ...base, ...update });
+  },
+  deleteBlockType: (orgId: string, siteId: string, versionId: string, typeId: string) =>
+    deleteChain(orgId, siteId, versionId, 'block-types', typeId,
+      paths.blockType(orgId, siteId, typeId, versionId)),
   pageTemplates: (orgId: string, siteId: string, versionId: string) =>
     listChain<PageTemplate>(orgId, siteId, versionId, 'page-templates',
       (v) => paths.pageTemplates(orgId, siteId, v)),
+  pageTemplate: (orgId: string, siteId: string, versionId: string, templateId: string) =>
+    readChain<PageTemplate>(orgId, siteId, versionId, 'page-templates', templateId,
+      (v) => paths.pageTemplate(orgId, siteId, templateId, v)),
 
   // Helpers exposed for advanced callers (deploy materializer, promote op)
   chain: versionChain,

@@ -33,6 +33,13 @@ older clients can continue reading `collection`, `collections`, `item`, or
 ## Writable payload conventions
 
 - Page and partial PATCH routes accept writable fields at the top level.
+- Page and partial PATCH/PUT routes reject `content_mode`; use the dedicated
+  `/mode` operation so the switch receives a revision snapshot. Stage the
+  destination `blocks` or `html_content` first, then switch modes.
+- A responsive block field is stored inside `block.data`, for example
+  `"cols": { "mobile": 1, "tablet": 2, "desktop": 3 }`. Block create and
+  update routes reject a top-level `responsive` object because the static
+  renderer cannot consume that shape.
 - Collection schema PATCH accepts either top-level fields or the MCP-shaped
   `{ "patch": { … } }` form.
 - Collection item PATCH accepts `{ "fields": { … } }` and the equivalent
@@ -55,10 +62,10 @@ All site routes below start with `/sites/{siteId}`.
 | Sites | `GET /sites`, `POST /sites`, `GET/PATCH /sites/{siteId}`, `GET /sites/{siteId}/capabilities` |
 | Settings | `GET/PATCH /settings` |
 | Pages | `GET/POST /pages`, `GET/PATCH/PUT/DELETE /pages/{pageId}`, `POST /pages/batch-read`, `PATCH /pages/batch`, clone, mode conversion, preview and block-container routes |
-| Partials | `GET/POST /partials`, `GET/PATCH/PUT/DELETE /partials/{partialId}`, usage and block-container routes |
+| Partials | `GET/POST /partials`, `GET/PATCH/PUT/DELETE /partials/{partialId}`, `POST /partials/{partialId}/mode`, usage and block-container routes |
 | Page templates | list/create/read/update/delete plus block-container routes under `/templates` |
 | Block types | list/create/read/update/delete, usage, import and export under `/block-types` |
-| Collections | `GET/POST /collections`, `GET/PATCH/DELETE /collections/{name}` |
+| Collections | `GET/POST /collections`, `GET/PATCH/DELETE /collections/{name}`; create accepts native `template_kind` presets and explicit `item_template_blocks` |
 | Collection items | `GET/POST /collections/{name}/items`, `POST …/batch-read`, `GET/PATCH/DELETE …/items/{itemId-or-slug}` |
 | Collection analysis | completeness and listing regeneration under `/collections/{name}` |
 | Working copies | `GET/PATCH/DELETE /working-copy/{page|partial|item}/…`, plus commit |
@@ -107,7 +114,61 @@ into the static site. A successful update therefore returns
 and `update_extension_installation_config` MCP tool perform that production
 deploy step by default; both provide an explicit opt-out for batching.
 
+## Partial modes and site consent
+
+Partial reads expose the active representation: `blocks` in block mode and
+`html_content` in HTML mode. To preserve the inactive representation and its
+revision history, do not change `content_mode` on the resource itself:
+
+```http
+PATCH /sites/{siteId}/partials/{partialId}
+Content-Type: application/json
+
+{ "blocks": [ ... ], "save": true }
+```
+
+```http
+POST /sites/{siteId}/partials/{partialId}/mode
+Content-Type: application/json
+
+{ "to": "blocks", "convert": false }
+```
+
+The MCP equivalent is `update_partial` followed by `set_partial_mode`.
+Setting `convert: true` is available only for the supported HTML-to-blocks
+conversion; inspect the returned tree before publishing.
+
+Native cookie consent is configured through `PATCH /settings` or
+`update_site_settings` under `cookie_consent`. The nested object is
+shallow-merged, so omitted keys remain unchanged. Supported keys are
+`enabled`, `text`, `privacy_policy_url`, `scripts_necessary`,
+`scripts_optional`, and `reload_after_consent`. Script fields execute in the
+visitor's browser and require an admin-capable API key.
+
+## Versioned rendering dependencies
+
+Pages, partials, collections, items, page templates, and custom or installed
+block types are resolved through the selected version's base chain in preview
+and during materialization. A branch therefore inherits dependencies that it
+has not overridden. Deleting an inherited block type creates a branch-local
+tombstone rather than deleting it from the base version.
+
+Preview renders a visible missing-block diagnostic if a referenced type still
+cannot be resolved. A static build treats the same condition as an error; it
+must not publish a page with silently missing content. `core/form` also bundles
+the styles for every built-in field type it may render transitively.
+
 ## Migration inventory
+
+### Infrastructure and composition preflight
+
+`GET /sites/{siteId}/migration-preflight` runs the infrastructure readiness
+check. `POST` the same route with a non-empty `compositions` array to review
+proposed block trees and field mappings before authoring. Generic custom
+replacement blocks, raw HTML, corrective instance CSS, missing block types,
+and missing declared fields return `waiting_for_native_support`; the check
+does not write content. See [Native collection compositions](./collection-compositions.md)
+for the payload and response contract.
 
 ### Bulk decisions
 

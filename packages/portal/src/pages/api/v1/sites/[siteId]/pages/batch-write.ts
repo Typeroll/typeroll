@@ -58,6 +58,13 @@ export const POST: APIRoute = async ({ request, params }) => {
         const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
         if (!existing) return { page_id: pageId, ok: false, error: 'not found' };
         const rawPatch = (item.patch ?? {}) as Partial<Page>;
+        if (rawPatch.content_mode !== undefined) {
+          return {
+            page_id: pageId,
+            ok: false,
+            error: 'content_mode cannot be changed in batch-write; use POST /api/v1/sites/{siteId}/pages/{pageId}/mode',
+          };
+        }
         // Per-entry, not whole-batch: one page's bad hreflang tag must not
         // abort the other 199 writes, but it must be reported as a failure
         // rather than written half-valid.

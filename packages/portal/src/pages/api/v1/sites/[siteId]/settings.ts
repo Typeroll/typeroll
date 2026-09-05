@@ -20,7 +20,11 @@ const TOP_LEVEL = new Set([
   // Scriptable surfaces. Trusted because the caller has an API key.
   'scripts_head', 'scripts_body_end', 'custom_css',
 ]);
-const NESTED = new Set(['colors', 'fonts', 'contact', 'social']);
+const NESTED = new Set(['colors', 'fonts', 'contact', 'social', 'cookie_consent']);
+const COOKIE_CONSENT_FIELDS = new Set([
+  'enabled', 'text', 'privacy_policy_url', 'scripts_necessary',
+  'scripts_optional', 'reload_after_consent',
+]);
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -45,6 +49,22 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const checked = normalizeIframeAllowedHosts(body.iframe_allowed_hosts);
     if (checked.invalid.length) return apiError(`Invalid iframe hostnames: ${checked.invalid.join(', ')}`, 400);
     body.iframe_allowed_hosts = checked.hosts;
+  }
+  if (body.cookie_consent !== undefined) {
+    if (!body.cookie_consent || typeof body.cookie_consent !== 'object' || Array.isArray(body.cookie_consent)) {
+      return apiError('cookie_consent must be an object', 400);
+    }
+    const consent = body.cookie_consent as Record<string, unknown>;
+    const unknownConsentFields = Object.keys(consent).filter((key) => !COOKIE_CONSENT_FIELDS.has(key));
+    if (unknownConsentFields.length) {
+      return apiError(`Unknown cookie_consent fields: ${unknownConsentFields.join(', ')}`, 400);
+    }
+    if (consent.enabled !== undefined && typeof consent.enabled !== 'boolean') {
+      return apiError('cookie_consent.enabled must be boolean', 400);
+    }
+    if (consent.reload_after_consent !== undefined && typeof consent.reload_after_consent !== 'boolean') {
+      return apiError('cookie_consent.reload_after_consent must be boolean', 400);
+    }
   }
 
   const existing = ((await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? {}) as Record<string, unknown>;

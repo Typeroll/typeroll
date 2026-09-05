@@ -92,6 +92,9 @@ export const POST: APIRoute = async ({ request, params }) => {
     working_copy?: boolean;
   } | null;
   if (!body?.block?.type) return apiError('block.type is required', 400);
+  if (body.block.responsive !== undefined) {
+    return apiError('block.responsive is not a rendered field. Put breakpoint values in block.data (for example data.cols={mobile:1,tablet:2,desktop:3}) or use the /responsive endpoint.', 400);
+  }
   const shapeError = bodyShapeError(body, ['block', 'parent_id', 'slot_index', 'position', 'working_copy']);
   if (shapeError) return apiError(shapeError, 400);
   try {
@@ -129,12 +132,14 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     block_id?: string;
     data?: Record<string, unknown>;
     style_overrides?: Block['style_overrides'];
-    responsive?: Block['responsive'];
     working_copy?: boolean;
   } | null;
   if (!body?.block_id) return apiError('block_id is required', 400);
-  const shapeError = bodyShapeError(body, ['block_id', 'data', 'style_overrides', 'responsive', 'working_copy'], {
-    requireOneOf: ['data', 'style_overrides', 'responsive'],
+  if (body && 'responsive' in body) {
+    return apiError('responsive is not writable here. Put breakpoint values in data or use the /responsive endpoint.', 400);
+  }
+  const shapeError = bodyShapeError(body, ['block_id', 'data', 'style_overrides', 'working_copy'], {
+    requireOneOf: ['data', 'style_overrides'],
   });
   if (shapeError) return apiError(shapeError, 400);
   try {
@@ -149,7 +154,6 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       block_id: body.block_id,
       data: body.data,
       style_overrides: body.style_overrides,
-      responsive: body.responsive,
     });
     await writeContainer(t.target, blocks, ctx, loaded.raw);
     return apiResponse(ctx, { blocks, ...(warnings.length ? { warnings } : {}) });

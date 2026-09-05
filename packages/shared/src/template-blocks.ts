@@ -86,7 +86,7 @@ const pageDate: BlockType = {
       options: ['published_at', 'updated_at', 'created_at'], default: 'published_at' },
     { name: 'format', type: 'text', label: 'Format', default: 'MMM D, YYYY' },
   ],
-  template: `<time data-block="page-date" datetime="{{page.published_at}}">{{page.published_at}}</time>`,
+  template: `<time data-block="page-date" datetime="{{selected_page_date}}">{{selected_page_date}}</time>`,
   styles: `
 [data-block="page-date"] { font-size: 0.875rem; opacity: 0.7; }
 `.trim(),
@@ -130,18 +130,19 @@ const pageBreadcrumbs: BlockType = {
   schema: [
     { name: 'separator', type: 'select', label: 'Separator', options: ['chevron', 'slash', 'arrow'], default: 'chevron' },
     { name: 'home_label', type: 'text', label: 'Home label', default: 'Home' },
+    { name: 'aria_label', type: 'text', label: 'Accessible navigation label', default: 'Breadcrumb' },
   ],
-  // The renderer's collection-route resolver fills in the breadcrumb
-  // trail when the page is loaded. For now, the template carries a
-  // placeholder; the trail is injected via context.page.breadcrumbs
-  // (an array of {label, href} which a small post-processor materialises).
-  template: `<nav data-block="breadcrumbs" data-sep="{{separator}}" aria-label="Breadcrumb" data-trail="{{page.breadcrumbs}}"></nav>`,
+  template: `<nav data-block="breadcrumbs" data-sep="{{separator}}" aria-label="{{aria_label}}">{{{breadcrumbs_html}}}</nav>`,
   styles: `
-[data-block="breadcrumbs"] { font-size: 0.875rem; opacity: 0.7; }
-[data-block="breadcrumbs"] ol { list-style: none; padding: 0; margin: 0; display: flex; gap: 0.25rem; flex-wrap: wrap; }
-[data-block="breadcrumbs"] li:not(:last-child)::after { content: " › "; margin: 0 0.25rem; opacity: 0.5; }
+[data-block="breadcrumbs"] { width: 100%; min-width: 0; font-size: 0.875rem; color: var(--color-text-light, currentColor); }
+[data-block="breadcrumbs"] ol { list-style: none; padding: 0; margin: 0; display: flex; align-items: baseline; gap: 0.35rem; flex-wrap: wrap; }
+[data-block="breadcrumbs"] li { min-width: 0; overflow-wrap: anywhere; }
+[data-block="breadcrumbs"] li:not(:last-child)::after { content: " › "; margin-inline: 0.35rem 0; opacity: 0.55; speak: never; }
 [data-block="breadcrumbs"][data-sep="slash"] li:not(:last-child)::after { content: " / "; }
 [data-block="breadcrumbs"][data-sep="arrow"] li:not(:last-child)::after { content: " → "; }
+[data-block="breadcrumbs"] a { color: var(--color-primary, currentColor); text-underline-offset: 0.15em; }
+[data-block="breadcrumbs"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; border-radius: 0.125rem; }
+[data-block="breadcrumbs"] [aria-current="page"] { color: var(--color-text, currentColor); font-weight: 600; }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -250,7 +251,17 @@ const itemBody: BlockType = {
     { name: 'field', type: 'text', label: 'Field name', default: 'body' },
     { name: 'max_width', type: 'select', label: 'Max width', options: ['narrow', 'normal', 'wide'], default: 'normal' },
   ],
-  template: `<div data-block="prose" data-w="{{max_width}}">{{{item.body}}}</div>`,
+  template: `<div data-block="prose" data-w="{{max_width}}">{{{selected_item_body}}}</div>`,
+  styles: `
+[data-block="prose"] { min-width: 0; max-width: 48rem; overflow-wrap: break-word; }
+[data-block="prose"][data-w="narrow"] { max-width: 40rem; }
+[data-block="prose"][data-w="wide"] { max-width: 64rem; }
+[data-block="prose"] :where(a) { overflow-wrap: anywhere; text-underline-offset: 0.15em; }
+[data-block="prose"] :where(a:focus-visible) { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
+[data-block="prose"] :where(img, video, iframe) { max-width: 100%; height: auto; }
+[data-block="prose"] :where(table) { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+[data-block="prose"] :where(th, td) { padding: 0.5rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
+`.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
 };
@@ -267,7 +278,7 @@ const itemImage: BlockType = {
     { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide', 'full'], default: 'wide' },
   ],
   template: `<figure data-block="image" data-w="{{width}}">
-  <img src="{{item.image}}" alt="{{item.title}}" loading="lazy" />
+  <img src="{{selected_item_image}}" alt="{{item.title}}" loading="lazy" />
 </figure>`,
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -283,13 +294,20 @@ const itemNavigation: BlockType = {
   schema: [
     { name: 'previous_label', type: 'text', label: 'Previous label', default: 'Previous' },
     { name: 'next_label', type: 'text', label: 'Next label', default: 'Next' },
+    { name: 'aria_label', type: 'text', label: 'Accessible navigation label', default: 'Item navigation' },
+    { name: 'previous_url_field', type: 'text', label: 'Previous URL field (optional)' },
+    { name: 'previous_title_field', type: 'text', label: 'Previous title field (optional)' },
+    { name: 'next_url_field', type: 'text', label: 'Next URL field (optional)' },
+    { name: 'next_title_field', type: 'text', label: 'Next title field (optional)' },
   ],
-  template: `<nav data-block="item_navigation" aria-label="Item navigation"><a class="item-navigation-previous" rel="prev" href="{{collection.previous.url}}"><small>{{previous_label}}</small><span>{{collection.previous.title}}</span></a><a class="item-navigation-next" rel="next" href="{{collection.next.url}}"><small>{{next_label}}</small><span>{{collection.next.title}}</span></a></nav>`,
+  template: `<nav data-block="item_navigation" aria-label="{{aria_label}}"><a class="item-navigation-previous" data-empty="{{previous_empty}}" rel="prev" href="{{previous_url}}"><small>{{previous_label}}</small><span>{{previous_title}}</span></a><a class="item-navigation-next" data-empty="{{next_empty}}" rel="next" href="{{next_url}}"><small>{{next_label}}</small><span>{{next_title}}</span></a></nav>`,
   styles: `
-[data-block="item_navigation"] { display: flex; justify-content: space-between; gap: 1rem; margin-block: 2rem; }
-[data-block="item_navigation"] a { display: flex; flex-direction: column; max-width: 48%; }
-[data-block="item_navigation"] a[href=""] { display: none; }
+[data-block="item_navigation"] { display: flex; justify-content: space-between; align-items: stretch; gap: 1rem; margin-block: 2rem; }
+[data-block="item_navigation"] a { display: flex; flex: 1 1 0; min-width: 0; flex-direction: column; padding: 0.85rem 1rem; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 0.5rem; overflow-wrap: anywhere; text-decoration: none; }
+[data-block="item_navigation"] a[data-empty="true"] { display: none; }
 [data-block="item_navigation"] .item-navigation-next { margin-left: auto; text-align: right; }
+[data-block="item_navigation"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
+@media (max-width: 540px) { [data-block="item_navigation"] { flex-direction: column; } [data-block="item_navigation"] .item-navigation-next { margin-left: 0; } }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,

@@ -29,6 +29,7 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
   buildPageSchema,
   collectBlockAssets,
   collectionRouteNavigation,
+  collectionItemBreadcrumbs,
   composePageWithTemplate,
   expandExtensionIncludes,
   expandFormIncludes,
@@ -37,18 +38,19 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
   findPaginatedListing,
   renderBlocks,
   renderItemTemplate,
+  pageBreadcrumbs,
   siteContext,
   transformBodyForSeo,
 } from '@typeroll/shared';
-import type { Block, BlockType, CollectionDef, CollectionItem, FacetRoute, Page, PageTemplate, RenderContext } from '@typeroll/shared';
+import type { Block, CollectionDef, CollectionItem, FacetRoute, Page, RenderContext } from '@typeroll/shared';
 import { getPageTemplate } from '../lib/content';
 
 // A taxonomy page IS a page — synthetic Page doc, optional PageTemplate,
 // same block pipeline. It only differs in carrying a facet scope that
 // listing blocks inherit, so it rides PageProps rather than forking the
 // renderer into a third branch.
-type PageProps = { kind: 'page'; page: Page; pageNum?: number; facet?: FacetRoute };
-type ItemProps = { kind: 'item'; collection: CollectionDef; item: CollectionItem; page: Page; navigation: ReturnType<typeof collectionRouteNavigation> };
+type PageProps = { kind: 'page'; page: Page; breadcrumbs: ReturnType<typeof pageBreadcrumbs>; pageNum?: number; facet?: FacetRoute };
+type ItemProps = { kind: 'item'; collection: CollectionDef; item: CollectionItem; page: Page; breadcrumbs: ReturnType<typeof collectionItemBreadcrumbs>; navigation: ReturnType<typeof collectionRouteNavigation> };
 type Props = PageProps | ItemProps;
 
 export async function getStaticPaths() {
@@ -59,7 +61,7 @@ export async function getStaticPaths() {
   // `[...slug]` rest-param.
   const pageRoutes = pages.map((page) => ({
     params: { slug: isHomePage(page) ? undefined : urlFor(page, routeSettings.trailing_slash).replace(/^\/+|\/+$/g, '') },
-    props: { kind: 'page' as const, page },
+    props: { kind: 'page' as const, page, breadcrumbs: pageBreadcrumbs(page, pages, routeSettings.trailing_slash ?? 'always') },
   }));
 
   // Archive pagination: a page whose block tree holds a collection listing
@@ -91,7 +93,7 @@ export async function getStaticPaths() {
     for (let n = 2; n <= totalPages; n++) {
       archiveRoutes.push({
         params: { slug: `${base}page/${n}` },
-        props: { kind: 'page' as const, page, pageNum: n },
+        props: { kind: 'page' as const, page, breadcrumbs: pageBreadcrumbs(page, pages, routeSettings.trailing_slash ?? 'always'), pageNum: n },
       });
     }
   }
@@ -107,16 +109,24 @@ export async function getStaticPaths() {
       ...route,
       navigation: collectionRouteNavigation(route, itemRoutes, routeSettings.trailing_slash ?? 'always'),
     }))
-    .map(({ path, collection, item, navigation }) => ({
-      params: { slug: path.replace(/^\/+/, '') },
-      props: {
-        kind: 'item' as const,
-        collection,
-        item,
-        page: pageForItem(collection, item, path),
-        navigation,
-      },
-    }));
+    .map(({ path, collection, item, navigation }) => {
+      const route = { path, collection, item };
+      return {
+        params: { slug: path.replace(/^\/+/, '') },
+        props: {
+          kind: 'item' as const,
+          collection,
+          item,
+          page: pageForItem(collection, item, path),
+          breadcrumbs: collectionItemBreadcrumbs(
+            route,
+            itemRoutes,
+            routeSettings.trailing_slash ?? 'always',
+          ),
+          navigation,
+        },
+      };
+    });
 
   // Taxonomy pages. Generated per collection from its declared facets; the
   // min_items guard inside facetRoutes is what keeps 500 records from
@@ -132,7 +142,12 @@ export async function getStaticPaths() {
       if (reservedSlugs.has(slug)) continue;
       facetEntries.push({
         params: { slug },
-        props: { kind: 'page', page: pageForFacet(coll, route), facet: route },
+        props: {
+          kind: 'page',
+          page: pageForFacet(coll, route),
+          breadcrumbs: [{ label: route.filters.map((filter) => filter.value).join(' / '), href: route.path, current: true }],
+          facet: route,
+        },
       });
     }
   }
@@ -160,6 +175,9 @@ const { header, footer, freeBlocks } = await getPartials();
 // Memoized for the build — see getBlockRegistry. Read-only from here: it is
 // the same Map on every route.
 const blockRegistry = await getBlockRegistry();
+const onMissingType = (typeId: string) => {
+  throw new Error(`Cannot build page with missing block type: ${typeId}`);
+};
 const extensionSource = (blockTypeId: string) => {
   const blockType = blockRegistry.get(blockTypeId);
   return blockType?.extension ? {
@@ -175,7 +193,7 @@ const extensionSource = (blockTypeId: string) => {
 // safer than failing the build on a missing field.
 const backlinks = await buildBacklinks();
 const renderCtx: RenderContext = {
-  page: props.page as unknown as Record<string, unknown>,
+  page: { ...(props.page as unknown as Record<string, unknown>), breadcrumbs: props.breadcrumbs },
   site: siteContext(settings as unknown as Record<string, unknown>),
   item: props.kind === 'item' ? (props.item as unknown as Record<string, unknown>) : undefined,
   collection: props.kind === 'item' ? { name: props.collection.name, ...props.navigation } : undefined,
@@ -244,6 +262,7 @@ if (props.kind === 'page') {
       context: renderCtx,
       collectionSource,
       formSource,
+      onMissingType,
     }), iframeAllowedHosts);
     bodyBlocks = effectiveBlocks;
     blocksBody = true;
@@ -267,6 +286,7 @@ if (props.kind === 'page') {
       registry: blockRegistry,
       context: itemCtx,
       collectionSource,
+      onMissingType,
     }), iframeAllowedHosts);
     bodyBlocks = props.collection.item_template_blocks;
     blocksBody = true;

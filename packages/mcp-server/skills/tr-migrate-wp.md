@@ -26,6 +26,14 @@ agency) reviews each step in their terminal.
 get_migration_readiness source_url="https://oldsite.com"
 ```
 
+When the migration includes reusable page/item layouts, include each proposed
+block composition and its collection fields in this same call. A
+`waiting_for_native_support` result means leave that template intact and do
+not replace the gap with generic custom blocks, raw HTML, or corrective site
+CSS. Independent content and SEO work may continue. Rerun the review after the
+required Core version is deployed, then verify preview and a fresh hosted
+build.
+
 Pass `source_url` — that adds the checks on the site you're migrating FROM.
 An old host that answers 403/429 to server-side requests is a **blocker**: the
 import would produce empty pages, or pages containing the host's block page,

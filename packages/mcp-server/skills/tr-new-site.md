@@ -57,9 +57,9 @@ Common requirements that are easy to misclassify:
 | Responsive icon/card grid | `core/grid` + `core/icon_box`, or `core/feature_grid`; set responsive fields with `set_block_responsive` |
 | Custom cards backed by a collection | `core/repeater` / `core/collection_list` with a site-authored `item_compatible` block type as `item_block` |
 | Grouped collection listing | `core/repeater` with `group_by`; array-valued fields place an item in every matching group |
-| Breadcrumbs in a page template | `template/page_breadcrumbs` (verify that the relevant route supplies a breadcrumb trail) |
-| Generated heading index | `core/table_of_contents`; choose `h2`, `h2-h3`, or `h2-h4` |
-| Previous/next collection item links | `template/item_navigation` in the collection's block template; ordering follows `sort_field` / `sort_dir` |
+| Breadcrumbs in a page template | `template/page_breadcrumbs`; page and item routes supply a server-rendered trail |
+| Generated heading index | `core/table_of_contents`; choose heading levels and set `source_field` for collection content |
+| Previous/next collection item links | `template/item_navigation`; defaults to collection order and can bind explicit neighbor fields |
 | Download CTA that disappears without a file | `template/show_if` around a context-bound `core/button`; a dedicated download block is only editor convenience |
 | Sticky/custom header and multi-column footer | Block-mode header/footer partials plus layout blocks, or one reusable custom block type |
 | Cookie notice | `settings.cookie_consent`, not a page block |
@@ -115,40 +115,22 @@ an iframe cannot be represented.
 
 ### 3. Header + footer partials
 
-**Start from a vetted preset — don't hand-roll the layout.** `read_skill
-tr-header-footer` has robust header + footer presets (centered logo, logo+nav
-with a no-JS mobile menu, centered + 3-column footers) that avoid the usual
-traps: clipped logos (no `overflow:hidden` near the logo), distorted logos
-(`height` + `width:auto`), and broken mobile menus. Fill the placeholders and
-restyle to the palette.
+**Start from the native preset — don't hand-roll navigation.** Read
+`tr-header-footer` and use its `template/site_logo` + `core/navigation`
+composition. The server-rendered landmark, current-page state, no-JS links,
+mobile disclosure, focus treatment, and responsive behavior are Core
+contracts rather than tenant CSS/JavaScript.
 
-Partials can use either mode. Use HTML for a compact hand-authored nav, or
-block mode when editors need per-field control or an installed Extension must
-be placed there. Partials receive the same `{{site.*}}` render context as page
-blocks, so literal brand data is optional rather than required:
+Stage the complete tree with `update_partial partial_id="header"
+patch={blocks:[...]} save=true`, then call `set_partial_mode partial_id="header"
+to="blocks"`. Repeat for the footer and read both partials back. The inactive
+HTML representation is retained for rollback; changing `content_mode` through
+ordinary PATCH/PUT is rejected intentionally.
 
-```html
-<header class="site-header">
-  <div class="header-inner">
-    <a class="header-logo" href="/"><img src="LOGO_MEDIA_URL" alt="Acme Studio" height="40" /></a>
-    <nav class="header-nav">
-      <a href="/om-oss">Om oss</a>
-      <a href="/kontakt">Kontakt</a>
-    </nav>
-  </div>
-</header>
-<style>
-.site-header{background:var(--color-background);padding:1rem 2rem}
-.header-inner{max-width:1080px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
-.header-nav{display:flex;gap:2rem}
-.header-nav a{color:var(--color-text);text-decoration:none}
-</style>
-```
-
-`replace_partial partial_id="header" html_content="..."` — same pattern
-for the footer. Design notes: **no border-bottom on the header if the
-first page section should meet it seamlessly** — let background color
-changes do the separating. Anchor links in nav (`/#section`) are fine.
+Use HTML mode only when preserving legacy authored markup that cannot yet be
+represented natively. Partials receive the same `{{site.*}}` render context as
+page blocks. Keep the first section and header backgrounds intentional; do not
+add a decorative border merely to compensate for mismatched spacing.
 
 ### 4. Homepage — block tree
 
@@ -181,7 +163,7 @@ on a block *inside* the section instead):
   ] },
   { "type": "core/section", "data": { "padding_y": "lg" }, "children": [
     { "type": "core/heading", "data": { "text": "Så funkar det", "level": "h2", "align": "center" } },
-    { "type": "core/grid", "data": { "cols": 3, "gap": "lg" }, "children": [
+    { "type": "core/grid", "data": { "cols": { "mobile": 1, "tablet": 2, "desktop": 3 }, "gap": "lg" }, "children": [
       { "type": "core/step_card", "data": { "number": "1", "title": "…", "text": "<p>…</p>" } },
       { "type": "core/step_card", "data": { "number": "2", "title": "…", "text": "<p>…</p>" } },
       { "type": "core/step_card", "data": { "number": "3", "title": "…", "text": "<p>…</p>" } }

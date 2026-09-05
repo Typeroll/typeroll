@@ -16,8 +16,9 @@
 // dumb — no loops, no conditionals, no helpers. Anything fancier belongs in
 // a page (HTML mode) or a future block-editor template.
 
-import type { CollectionDef, CollectionItem } from './types.js';
+import type { CollectionDef, CollectionItem, Page } from './types.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
+import { facetRoutes } from './taxonomy.js';
 
 const TOKEN_RE = /\{([^{}]+)\}/g;
 const HTML_TRIPLE_RE = /\{\{\{([^{}]+)\}\}\}/g;
@@ -161,6 +162,85 @@ export interface CollectionRouteLink {
 export interface CollectionRouteNavigation {
   previous?: CollectionRouteLink;
   next?: CollectionRouteLink;
+}
+
+export interface BreadcrumbItem {
+  label: string;
+  href: string;
+  current?: boolean;
+}
+
+function pagePath(page: Pick<Page, 'slug' | 'path'>, trailingSlash: TrailingSlashPolicy): string {
+  const raw = page.path || (page.slug === '' || page.slug === 'home' || page.slug === 'index' ? '/' : `/${page.slug}`);
+  return applyTrailingSlash(raw, trailingSlash);
+}
+
+/** Server-side breadcrumb trail for a standalone page, excluding Home. */
+export function pageBreadcrumbs(
+  page: Page,
+  pages: Page[],
+  trailingSlash: TrailingSlashPolicy = 'ignore',
+): BreadcrumbItem[] {
+  const byId = new Map(pages.map((candidate) => [candidate.id, candidate]));
+  const ancestors: Page[] = [];
+  const seen = new Set<string>([page.id]);
+  let parentId = page.parent ?? undefined;
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId);
+    const parent = byId.get(parentId);
+    if (!parent) break;
+    if (pagePath(parent, trailingSlash) !== '/') ancestors.unshift(parent);
+    parentId = parent.parent ?? undefined;
+  }
+  return [
+    ...ancestors.map((ancestor) => ({
+      label: ancestor.title,
+      href: pagePath(ancestor, trailingSlash),
+    })),
+    ...(pagePath(page, trailingSlash) === '/' ? [] : [{
+      label: page.title,
+      href: pagePath(page, trailingSlash),
+      current: true,
+    }]),
+  ];
+}
+
+function collectionRootPath(collection: CollectionDef, trailingSlash: TrailingSlashPolicy): string {
+  const template = effectiveRouteTemplate(collection);
+  const prefix = template.slice(0, Math.max(0, template.indexOf('{'))).replace(/\/+$/, '') || '/';
+  return applyTrailingSlash(prefix, trailingSlash);
+}
+
+/**
+ * Server-side collection item trail, excluding Home. Includes the first
+ * generated single-facet taxonomy route containing this item when available.
+ */
+export function collectionItemBreadcrumbs(
+  route: CollectionItemRoute,
+  siblingRoutes: CollectionItemRoute[],
+  trailingSlash: TrailingSlashPolicy = 'ignore',
+): BreadcrumbItem[] {
+  const root = collectionRootPath(route.collection, trailingSlash);
+  const title = String((route.item as Record<string, unknown>).title
+    ?? (route.item as Record<string, unknown>).name
+    ?? route.item.id);
+  const siblings = siblingRoutes
+    .filter((candidate) => candidate.collection.name === route.collection.name)
+    .map((candidate) => candidate.item);
+  const taxonomy = facetRoutes(route.collection, siblings)
+    .find((candidate) => candidate.filters.length === 1 && candidate.item_ids.includes(route.item.id));
+  return [
+    ...(root === '/' ? [] : [{ label: route.collection.label_plural, href: root }]),
+    ...(taxonomy ? [{
+      label: taxonomy.filters[0]!.value,
+      href: applyTrailingSlash(taxonomy.path, trailingSlash),
+    }] : []),
+    {
+      label: title,
+      href: applyTrailingSlash(route.path, trailingSlash),
+      current: true,
+    },
+  ];
 }
 
 /** Resolve deterministic neighbours using the collection's configured sort. */

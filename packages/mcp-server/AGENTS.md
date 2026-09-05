@@ -73,7 +73,9 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   products, restaurants for a directory site, etc.). Each has a schema
   (`fields[]`) and optional **per-item routing** via `route_template`
   (e.g. `/restaurants/{slug}`). When set, every published item gets its
-  own static URL rendered through `item_template_html`. Set
+  own static URL rendered through `item_template_blocks` (preferred) or
+  `item_template_html`. Native `article` and `checklist` presets are available
+  through `template_kind`. Set
   `route_template=""` to opt out and keep the collection listing-only.
 
 - **Settings.** Site name, tagline, logo, favicon, colors, fonts,
@@ -367,6 +369,9 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   Discard; `read_working_copy` shows the raw unsaved diff when you need to
   know whose edits are in it. Working copies are per-doc scratch; for
   multi-page efforts branch instead (`create_branch`).
+  `content_mode` is not a writable `update_page` or batch patch field. Save
+  the target HTML/block tree first, then call `set_page_mode`; the API rejects
+  direct PATCH attempts and points at the mode endpoint.
   **Before `trigger_deploy`: commit.** Deploys build saved content only —
   an uncommitted draft silently stays behind.
 - **Deploys / `{branch}.{project}.pages.dev` are the STATIC BUILD**, refreshed
@@ -582,7 +587,7 @@ create_collection
   label_singular="Restaurant" label_plural="Restaurants"
   fields=[ ...title, slug, address, phone, cuisine, body... ]
   route_template="/restaurants/{slug}"
-  item_template_html="<article><h1>{{title}}</h1>… {{{body}}}</article>"
+  template_kind="article"
 
 # For each row in your source data:
 create_collection_item collection="restaurants" fields={…} status="published"
@@ -595,6 +600,15 @@ get_preview_link collection_name="restaurants" item_id="<id>"
 list_collection_items collection="restaurants" limit=200
 update_page page_id=restaurants patch={ html_content: "<hand-written listing>" }
 ```
+
+For articles and checklists, prefer the native `article` / `checklist`
+`template_kind` presets or an explicit `item_template_blocks` tree. Exact
+bindings such as `core/button.href = "{{item.pdf_url}}"` are supported on
+typed text/URL/image fields. `template/item_body.field`,
+`template/page_date.field`, and `core/table_of_contents.source_field` select
+the named item field. Breadcrumbs and outlines exist in initial HTML. Use
+explicit neighbor fields on `template/item_navigation` only when imported
+navigation must differ from collection sort order.
 
 ### "Migrate a content type (e.g. WP custom post type)"
 
@@ -732,6 +746,13 @@ something is quietly wrong:
 `fix`. Don't start "and fix it after": the content work would have to be
 redone. The in-portal migration workflow enforces the same gate as its first
 step (`skip_preflight: true` overrides it, and logs that it did).
+
+Before converting a content family, pass its proposed `compositions` too.
+The read-only review lists required fields/block types/capabilities and marks
+generic custom blocks, raw HTML, or corrective instance CSS as
+`waiting_for_native_support`. Do not build around that result. Continue
+independent content/SEO work and wait for the required Core release, then
+verify the fixture in both preview and a fresh hosted static build.
 
 ### "Don't lose URLs in a migration"
 
@@ -1003,14 +1024,14 @@ preview.
 | **Pages — writes** | `create_page`, `update_page`, `replace_page`, `batch_update_pages`, `delete_page`, `clone_page` |
 | **Pages — blocks** | `get_page_blocks`, `add_block`, `update_block`, `move_block`, `remove_block`, `set_page_mode`, `convert_page_to_blocks` |
 | **Pages — meta** | `get_page_preview` |
-| **Global blocks (partials)** | `list_partials` (summary by default), `read_partial`, `create_free_block`, `update_partial`, `replace_partial`, `delete_partial`, `find_pages_using_block`, `list_blocks_with_usage` |
+| **Global blocks (partials)** | `list_partials` (summary by default), `read_partial`, `create_free_block`, `update_partial`, `replace_partial`, `set_partial_mode`, `delete_partial`, `find_pages_using_block`, `list_blocks_with_usage` |
 | **Block types** | `list_block_types`, `read_block_type`, `find_pages_using_block_type`, `export_block_types`, `import_block_types` |
 | **Collections** | `create_collection`, `update_collection_schema`, `delete_collection`, `list_collections`, `read_collection`, `list_collection_items` (richtext hidden by default), `read_collection_item`, `batch_read_collection_items`, `create_collection_item`, `update_collection_item`, `delete_collection_item`, `regenerate_collection_listing` |
 | **Media** | `list_media`, `read_media`, `create_upload_url`, `upload_media_from_url`, `upload_media_inline`, `update_media`, `delete_media`, `finalize_media`, `finalize_all_media`, `generate_image_variants`, `suggest_alt_text_context` |
 | **Redirects** | `list_redirects`, `create_redirect`, `delete_redirect`. `from_path` may be a PATTERN: a trailing `*` (with `:splat` in the target) or `:name` for one segment — one rule retires a whole family of dead URLs (`/category/*` → `/blogg/:splat`). Mid-path splats and query strings are refused, as is any rule that would hide a live page. |
 | **Migration inventory** | `get_migration_readiness` (preflight — CALL FIRST), `list_migration_urls`, `add_migration_urls`, `update_migration_url`, `update_migration_urls`, `delete_migration_url`, `import_sitemap`, `import_gsc_performance`, `repair_migration_plain_text`, `verify_migration_urls`. Sitemap indexes are recursive. GSC supports direct Search Console access or CSV and aggregates fragment variants. Plain-text repair is allowlisted and dry-run-first. Verification is compact by default. |
 | **Forms** | `list_forms`, `read_form`, `create_form`, `update_form`, `delete_form`, `list_form_submissions`, `delete_form_submission` (removes one submission — e.g. cleaning up a test entry; `delete_form` with `delete_submissions` is the bulk path). **Steps (form/* block trees) are the ONLY stored model**: pass `steps` for funnels, or `fields` for simple forms — the server converts a flat field list to a single static step. Place with a `core/form` block on block-mode pages or `<x-form id="…" />` in HTML mode. Both expand server-side to the same complete signed shell and initial state. Email/webhook actions are admin-only in the portal and excluded from agent reads/writes. |
-| **Settings** | `update_site_settings` (whitelist) |
+| **Settings** | `update_site_settings` (whitelist, including shallow-merged native `cookie_consent`) |
 | **Core modules** | `list_apps`, `read_app`, `update_app` (legacy API name; admin; schema-driven config, masked secrets, redeploy when `affects_build` is true) |
 | **Extension installations** | `list_extension_installations`, `read_extension_installation`, `update_extension_installation_config` (admin; schema-driven config, masked secrets preserved, production deploy queued by default) |
 | **Analytics attribution** | `read_funnel_attribution`, `update_funnel_attribution` (specialized Analytics module tools; admin; redeploy after changes) |

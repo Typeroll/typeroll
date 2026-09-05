@@ -37,19 +37,36 @@ export const migrationTools: ToolDef[] = [
   {
     name: 'get_migration_readiness',
     description:
-      "Preflight for an import: is this site actually ready to receive a migration? CALL THIS FIRST, before moving any content. Every check exists because its failure is INVISIBLE afterwards — the pages import, the previews render, the customer signs off, and something is quietly wrong. The blockers: media storage (without it every <img> keeps its original URL, so the shiny new site is still served images by the old host, and the day that hosting is cancelled every image breaks at once) and the hosting adapter (without credentials, deploys return a job id and publish nothing while reporting success). Warnings cover the pre-cutover verification URL, AI reconstruction, form notification email and whether the target has a design to rebuild INTO. Returns { ready, blockers[], warnings[], checks[] } — each with a `fix`. If `ready` is false, stop and report the blockers to the user rather than starting the import; the content work would have to be redone.",
+      "Preflight for an import: is this site actually ready to receive a migration? CALL THIS FIRST, before moving any content. Every check exists because its failure is INVISIBLE afterwards — the pages import, the previews render, the customer signs off, and something is quietly wrong. Pass proposed compositions to also inventory their block, field, and native-feature dependencies before implementation. A generic custom block, raw-HTML fallback, per-instance CSS workaround, missing block type, or missing declared field returns waiting_for_native_support and makes ready=false. Do not implement those workarounds; report the gap and wait for Core support. Business-specific custom blocks are allowed only when explicitly listed. Infrastructure warnings cover the pre-cutover verification URL, AI reconstruction, form notification email and whether the target has a design to rebuild INTO.",
     inputSchema: {
       source_url: z
         .string()
         .optional()
         .describe('The site you are migrating FROM, e.g. "https://oldsite.com". When given, the source is probed too: unreachable or bot-blocked (403/429) is a BLOCKER because an import from a host that refuses our requests produces empty pages, and whether /wp-json answers is reported as a warning (without it the importer must scrape HTML and loses ACF/custom fields).'),
+      compositions: z
+        .array(z.object({
+          id: z.string().optional(),
+          name: z.string().min(1),
+          fields: z.array(z.object({ name: z.string().min(1), type: z.string().optional() })).optional(),
+          blocks: z.array(z.any()),
+          business_specific_block_types: z.array(z.string()).optional(),
+        }))
+        .min(1)
+        .max(50)
+        .optional()
+        .describe('Proposed block compositions to review before build. Include fields when you want missing schema bindings detected. Explicitly list only genuinely business-specific custom block types.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
-      const res = await client.get(
-        siteId,
-        'migration-preflight',
-        args.source_url ? { source_url: args.source_url } : undefined,
-      );
+      const res = args.compositions
+        ? await client.post(siteId, 'migration-preflight', {
+            ...(args.source_url ? { source_url: args.source_url } : {}),
+            compositions: args.compositions,
+          })
+        : await client.get(
+            siteId,
+            'migration-preflight',
+            args.source_url ? { source_url: args.source_url } : undefined,
+          );
       return ok(res);
     }),
   },

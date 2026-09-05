@@ -146,6 +146,48 @@ describe('Repeater — collection source rendering', () => {
     expect(html).toContain('Bonjour');
   });
 
+  it('maps post-card fields, semantics, PDF action, and omits unused image markup', () => {
+    const block: Block = {
+      id: 'archive',
+      type: 'core/repeater',
+      data: {
+        source_type: 'collection', collection: 'checklists', item_block: 'core/post_card', layout: 'grid',
+        item_overrides: {
+          title_field: 'name', excerpt_field: 'summary', href_field: 'path',
+          image_field: 'hero', image_alt_field: 'hero_alt', heading_level: 'h2',
+          download_url_field: 'pdf_url', download_label: 'Download checklist', show_image: false,
+        },
+      },
+    };
+    const html = renderBlock(block, {
+      registry,
+      collectionSource: () => [{
+        name: 'Moving day', summary: 'Be ready', path: '/moving-day/',
+        hero: 'https://cdn.example/hero.jpg', hero_alt: 'Boxes', pdf_url: '/moving-day.pdf',
+      }],
+    });
+    expect(html).toContain('<h2 class="block-postcard-title"><a href="/moving-day/"');
+    expect(html).toContain('Be ready');
+    expect(html).toContain('href="/moving-day.pdf">Download checklist</a>');
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('src=""');
+  });
+
+  it('compiles responsive values on repeater aliases', () => {
+    const html = renderBlock({
+      id: 'archive',
+      type: 'core/collection_list',
+      data: {
+        collection: 'articles',
+        cols: { mobile: 1, tablet: 2, desktop: 3 },
+      },
+    }, { registry, collectionSource: () => [] });
+    expect(html).toContain('style="--cols:1;');
+    expect(html).toContain('@media (min-width: 640px) { [data-bid="archive"] { --cols: 2 !important; } }');
+    expect(html).toContain('@media (min-width: 1280px) { [data-bid="archive"] { --cols: 3 !important; } }');
+    expect(html).not.toContain('[object Object]');
+  });
+
   it('emits a comment when collectionSource is missing', () => {
     const block: Block = {
       id: 'r1',

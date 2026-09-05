@@ -11,6 +11,7 @@
 import type { APIRoute } from 'astro';
 import { json, requireSiteAccess, requirePermission } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
+import { vstore } from '../../../../../lib/version-store';
 import { paths, type BlockType, type FieldDefinition } from '@typeroll/shared';
 
 const WRITABLE = new Set<keyof BlockType>([
@@ -51,9 +52,7 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
   const { session, site, versionId, owner_org_id } = guard.value;
-  const docs = await getStore().listDocs<BlockType>(
-    paths.blockTypes(owner_org_id, site.id, versionId),
-  );
+  const docs = await vstore.blockTypes(owner_org_id, site.id, versionId);
   return json({ block_types: docs });
 };
 
@@ -75,6 +74,8 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   // `origin: 'user'` is what distinguishes user blocks from core (which
   // live in code and never hit the datastore).
   const id = clean.name as string;
+  const existing = await vstore.blockType(owner_org_id, site.id, versionId, id);
+  if (existing) return json({ error: `Block type "${id}" already exists` }, 409);
   const doc: BlockType = {
     id,
     name: clean.name as string,
@@ -110,11 +111,10 @@ export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
   const err = validate(clean);
   if (err) return json({ error: err }, 400);
 
-  const docPath = `${paths.blockTypes(owner_org_id, site.id, versionId)}/${id}`;
-  const existing = await getStore().getDoc<BlockType>(docPath);
+  const existing = await vstore.blockType(owner_org_id, site.id, versionId, id);
   if (!existing) return json({ error: 'Not found' }, 404);
   const merged: BlockType = { ...existing, ...clean };
-  await getStore().setDoc(docPath, merged);
+  await vstore.writeBlockType(owner_org_id, site.id, versionId, id, merged);
   return json(merged);
 };
 
@@ -127,6 +127,8 @@ export const DELETE: APIRoute = async ({ request, cookies, params, locals }) => 
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
   if (!id) return json({ error: 'id query param required' }, 400);
-  await getStore().deleteDoc(`${paths.blockTypes(owner_org_id, site.id, versionId)}/${id}`);
+  const existing = await vstore.blockType(owner_org_id, site.id, versionId, id);
+  if (!existing) return json({ error: 'Not found' }, 404);
+  await vstore.deleteBlockType(owner_org_id, site.id, versionId, id);
   return json({ ok: true });
 };

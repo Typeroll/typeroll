@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
-import type { Block, Form, Page, Site, SiteVersion } from '@typeroll/shared';
+import type { Block, CollectionDef, CollectionItem, Form, Page, Site, SiteVersion } from '@typeroll/shared';
 
 const ORG = 'orgone';
 const SITE = 'mysite';
@@ -58,6 +58,51 @@ describe('renderPreview — blocks mode', () => {
     // form may be decoded back; the key invariant is that no executable
     // script tag survives.
     expect(html!).not.toMatch(/<script\b[^>]*>x<\/script>/);
+  });
+
+  it('inherits main block-type dependencies into a child-version preview', async () => {
+    await seedSite();
+    const { getStore } = await import('../../lib/datastore');
+    const branch = 'preview-branch';
+    await getStore().setDoc(paths.version(ORG, SITE, branch), {
+      name: 'Preview branch', kind: 'branch', base_version_id: MAIN_VERSION_ID,
+      created_at: new Date().toISOString(), robots_blocked: true,
+    } satisfies Partial<SiteVersion>);
+    await getStore().setDoc(paths.blockType(ORG, SITE, 'installed-lead', MAIN_VERSION_ID), {
+      id: 'installed-lead', name: 'installed-lead', label: 'Installed lead', category: 'custom',
+      container: false, schema: [], template: '<div class="installed-lead">Lead</div>',
+      extension: { extension_id: 'se.example.lead', installation_id: 'inst_1', component_id: 'lead-form' },
+      origin: 'third_party', created_at: new Date().toISOString(),
+    });
+    await seedBlockPage([{ id: 'lead', type: 'installed-lead', data: {} }]);
+    const { renderPreview } = await import('../../lib/render-preview');
+    const html = await renderPreview(ORG, SITE, 'home', branch);
+    expect(html).toContain('class="installed-lead"');
+    expect(html).toContain('data-tr-extension="se.example.lead"');
+    expect(html).not.toContain('unknown block type');
+  });
+
+  it('renders an explicit diagnostic when a block-type dependency is missing', async () => {
+    await seedSite();
+    await seedBlockPage([{ id: 'missing', type: 'third-party/missing-card', data: {} }]);
+    const { renderPreview } = await import('../../lib/render-preview');
+    const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
+    expect(html).toContain('data-tr-missing-block="third-party/missing-card"');
+    expect(html).toContain('Missing block type: third-party/missing-card');
+  });
+
+  it('preserves responsive data-field CSS through preview sanitization', async () => {
+    await seedSite();
+    await seedBlockPage([{
+      id: 'responsive-grid', type: 'core/grid',
+      data: { cols: { mobile: 1, tablet: 2, desktop: 3 }, gap: 'md', align: 'stretch' },
+      children: [{ id: 'child', type: 'core/prose', data: { html: '<p>Item</p>' } }],
+    }]);
+    const { renderPreview } = await import('../../lib/render-preview');
+    const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
+    expect(html).toContain('--cols:1');
+    expect(html).toContain('@media (min-width: 640px) { [data-bid="responsive-grid"] { --cols: 2 !important; } }');
+    expect(html).toContain('@media (min-width: 1280px) { [data-bid="responsive-grid"] { --cols: 3 !important; } }');
   });
 
   it('renders nested children inside a section', async () => {
@@ -301,6 +346,79 @@ describe('renderPreview — blocks mode', () => {
     expect(pageCssAt).toBeGreaterThan(-1);
     expect(pageCssAt).toBeLessThan(headEnd);
     if (blockCssAt > -1) expect(pageCssAt).toBeGreaterThan(blockCssAt);
+  });
+
+  it('injects nested block-instance custom CSS into the preview asset bundle', async () => {
+    await seedSite();
+    await seedBlockPage([{
+      id: 'section',
+      type: 'core/section',
+      data: {},
+      children: [{
+        id: 'sidebar',
+        type: 'core/prose',
+        data: { html: '<p>Sidebar</p>' },
+        style_overrides: {
+          custom_css: '@media (max-width: 30rem) { .sidebar { display: none; } }',
+        },
+      }],
+    }]);
+    const { renderPreview } = await import('../../lib/render-preview');
+    const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
+    expect(html).toContain('/* instance sidebar */');
+    expect(html).toContain('.sidebar { display: none; }');
+    expect(html!.indexOf('/* instance sidebar */')).toBeLessThan(html!.indexOf('</head>'));
+  });
+
+  it('renders a native collection composition with typed bindings and SSR navigation', async () => {
+    await seedSite();
+    const { getStore } = await import('../../lib/datastore');
+    const collection: CollectionDef = {
+      id: 'guides',
+      name: 'guides',
+      label_singular: 'Guide',
+      label_plural: 'Guides',
+      fields: [
+        { name: 'title', label: 'Title', type: 'text' },
+        { name: 'slug', label: 'Slug', type: 'text' },
+        { name: 'article_body', label: 'Body', type: 'richtext' },
+        { name: 'pdf_url', label: 'PDF', type: 'url' },
+      ],
+      route_template: '/guides/{slug}',
+      item_template_blocks: [
+        { id: 'crumbs', type: 'template/page_breadcrumbs', data: { home_label: 'Home', aria_label: 'Breadcrumbs' } },
+        { id: 'body', type: 'template/item_body', data: { field: 'article_body', max_width: 'normal' } },
+        { id: 'toc', type: 'core/table_of_contents', data: { title: 'Contents', levels: 'h2-h3', source_field: 'article_body' } },
+        {
+          id: 'download-if', type: 'template/show_if', data: { condition: 'item.pdf_url' },
+          children: [{ id: 'download', type: 'core/button', data: { label: 'Download', href: '{{item.pdf_url}}', variant: 'primary', size: 'md' } }],
+        },
+      ],
+      created_at: '2026-09-05T00:00:00.000Z',
+    };
+    const item: CollectionItem = {
+      id: 'energy',
+      title: 'Energy',
+      slug: 'energy',
+      article_body: '<h2>Prepare well</h2><p>Body</p>',
+      pdf_url: 'https://cdn.example.test/energy.pdf?x=1&y=2',
+      status: 'published',
+      created_at: '2026-09-05T00:00:00.000Z',
+      updated_at: '2026-09-05T00:00:00.000Z',
+    };
+    await getStore().setDoc(paths.collection(ORG, SITE, 'guides', MAIN_VERSION_ID), collection);
+    await getStore().setDoc(paths.collectionItem(ORG, SITE, 'guides', 'energy', MAIN_VERSION_ID), item);
+
+    const { renderPreviewCollectionItemById } = await import('../../lib/render-preview');
+    const preview = await renderPreviewCollectionItemById(
+      ORG, SITE, MAIN_VERSION_ID, 'guides', 'energy',
+    );
+    expect(preview?.path).toBe('/guides/energy');
+    expect(preview?.html).toContain('<a href="/">Home</a>');
+    expect(preview?.html).toContain('<a href="#prepare-well">Prepare well</a>');
+    expect(preview?.html).toContain('<h2 id="prepare-well">Prepare well</h2>');
+    expect(preview?.html).toContain('href="https://cdn.example.test/energy.pdf?x=1&amp;y=2"');
+    expect(preview?.html).not.toContain('{{item.pdf_url}}');
   });
 
   it('omits the page-css <style> when a page has no custom_css', async () => {

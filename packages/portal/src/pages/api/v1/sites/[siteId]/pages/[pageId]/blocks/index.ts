@@ -81,6 +81,9 @@ export const POST: APIRoute = async ({ request, params }) => {
     position?: number;
   } | null;
   if (!body?.block?.type) return apiError('block.type is required');
+  if (body.block.responsive !== undefined) {
+    return apiError('block.responsive is not a rendered field. Put breakpoint values in block.data (for example data.cols={mobile:1,tablet:2,desktop:3}) or use the /responsive endpoint.', 400);
+  }
   const shapeError = bodyShapeError(body, ['block', 'parent_id', 'slot_index', 'position']);
   if (shapeError) return apiError(shapeError, 400);
 
@@ -120,11 +123,13 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     block_id?: string;
     data?: Record<string, unknown>;
     style_overrides?: Block['style_overrides'];
-    responsive?: Block['responsive'];
   } | null;
   if (!body?.block_id) return apiError('block_id is required');
-  const shapeError = bodyShapeError(body, ['block_id', 'data', 'style_overrides', 'responsive'], {
-    requireOneOf: ['data', 'style_overrides', 'responsive'],
+  if (body && 'responsive' in body) {
+    return apiError('responsive is not writable here. Put breakpoint values in data or use the /responsive endpoint.', 400);
+  }
+  const shapeError = bodyShapeError(body, ['block_id', 'data', 'style_overrides'], {
+    requireOneOf: ['data', 'style_overrides'],
   });
   if (shapeError) return apiError(shapeError, 400);
 
@@ -140,7 +145,6 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       block_id: body.block_id,
       data: body.data,
       style_overrides: body.style_overrides,
-      responsive: body.responsive,
     });
     await persistDraft(ctx, pageId, blocks);
     return apiResponse(ctx, { blocks, ...(warnings.length ? { warnings } : {}) });

@@ -9,6 +9,7 @@
 
 import { renderBlocks, escapeHtml, type RenderBlocksOptions } from './render-blocks.js';
 import type { Form } from './types.js';
+import { FORM_BLOCKS_CSS } from './form-blocks.js';
 
 export interface FormEmbed {
   submit_url: string;
@@ -72,6 +73,7 @@ ${stepHtml}
 
 /** Shell styles shipped once per bundle (rides with the runtime include). */
 export const FORM_SHELL_CSS = `
+${FORM_BLOCKS_CSS}
 [data-tr-form] .form-hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
 [data-tr-form] .form-step-title { margin: 0 0 1rem; }
 [data-tr-form] .form-submit {

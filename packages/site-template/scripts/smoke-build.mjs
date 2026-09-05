@@ -616,5 +616,171 @@ await (async function noTrailingSlashScenario() {
   });
 })();
 
+// Scenario 8 (native collection composition): exercise the complete M07
+// contract through a real Astro build, not only the shared renderer. The
+// fixture deliberately combines typed URL binding, SSR breadcrumbs/outline,
+// selected item fields, explicit navigation, and nested instance CSS.
+await (async function nativeCollectionCompositionScenario() {
+  const tmpFixtures = mkdtempSync(join(tmpdir(), 'tr-smoke-fx-composition-'));
+  const tmpOut = mkdtempSync(join(tmpdir(), 'tr-smoke-out-composition-'));
+  process.on('exit', () => {
+    try { rmSync(tmpFixtures, { recursive: true, force: true }); } catch { /* ignore */ }
+    try { rmSync(tmpOut, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+  cpSync(FIXTURES_DIR, tmpFixtures, { recursive: true });
+
+  const collectionDir = join(
+    tmpFixtures, 'organizations', 'default', 'sites', 'default',
+    'versions', 'main', 'collections',
+  );
+  const collection = {
+    id: 'guides',
+    name: 'guides',
+    label_singular: 'Guide',
+    label_plural: 'Guides',
+    slug_field: 'slug',
+    sort_field: 'sort_order',
+    sort_dir: 'asc',
+    route_template: '/guides/{slug}',
+    facets: [{ field: 'category', base_path: '/category', label_singular: 'Category', min_items: 1 }],
+    fields: [
+      { name: 'title', label: 'Title', type: 'text', required: true },
+      { name: 'slug', label: 'Slug', type: 'text', required: true },
+      { name: 'article_body', label: 'Body', type: 'richtext' },
+      { name: 'pdf_url', label: 'PDF', type: 'url' },
+      { name: 'prev_url', label: 'Previous URL', type: 'url' },
+      { name: 'prev_title', label: 'Previous title', type: 'text' },
+      { name: 'next_url', label: 'Next URL', type: 'url' },
+      { name: 'next_title', label: 'Next title', type: 'text' },
+      { name: 'category', label: 'Category', type: 'text' },
+      { name: 'sort_order', label: 'Sort order', type: 'number' },
+    ],
+    item_template_blocks: [
+      { id: 'crumbs', type: 'template/page_breadcrumbs', data: { home_label: 'Home', aria_label: 'Breadcrumbs' } },
+      { id: 'title', type: 'template/item_title', data: { level: 'h1', size: 'auto' } },
+      {
+        id: 'content',
+        type: 'core/columns',
+        data: { ratio: '3-1', gap: 'lg', align: 'start' },
+        style_overrides: { custom_css: '.smoke-instance-css { overflow-wrap: anywhere; }' },
+        slots: [
+          [{ id: 'body', type: 'template/item_body', data: { field: 'article_body', max_width: 'normal' } }],
+          [{ id: 'outline', type: 'core/table_of_contents', data: { title: 'Contents', levels: 'h2-h3', source_field: 'article_body' } }],
+        ],
+      },
+      {
+        id: 'download-if', type: 'template/show_if', data: { condition: 'item.pdf_url' },
+        children: [{ id: 'download', type: 'core/button', data: { label: 'Download', href: '{{item.pdf_url}}', variant: 'primary', size: 'md' } }],
+      },
+      {
+        id: 'navigation', type: 'template/item_navigation',
+        data: {
+          previous_label: 'Previous', next_label: 'Next', aria_label: 'Guide navigation',
+          previous_url_field: 'prev_url', previous_title_field: 'prev_title',
+          next_url_field: 'next_url', next_title_field: 'next_title',
+        },
+      },
+    ],
+    created_at: '2026-09-05T00:00:00.000Z',
+  };
+  writeFileSync(join(collectionDir, 'guides.json'), JSON.stringify(collection));
+  const itemDir = join(collectionDir, 'guides', 'items');
+  mkdirSync(itemDir, { recursive: true });
+  writeFileSync(join(itemDir, 'energy.json'), JSON.stringify({
+    id: 'energy',
+    title: 'A deliberately long energy guide title that must remain readable',
+    slug: 'energy',
+    article_body: '<h2 id="prepare">Prepare &amp; plan</h2><p>Body</p><h3>Pack safely</h3>',
+    pdf_url: 'https://cdn.example.test/energy.pdf?download=1&lang=en',
+    prev_url: '/guides/previous/',
+    prev_title: 'Previous guide',
+    next_url: '',
+    next_title: '',
+    category: 'Energy',
+    sort_order: 2,
+    status: 'published',
+    created_at: '2026-09-05T00:00:00.000Z',
+    updated_at: '2026-09-05T00:00:00.000Z',
+  }));
+  const pageDir = join(
+    tmpFixtures, 'organizations', 'default', 'sites', 'default',
+    'versions', 'main', 'pages',
+  );
+  writeFileSync(join(pageDir, 'responsive-archive.json'), JSON.stringify({
+    id: 'responsive-archive',
+    title: 'Responsive archive',
+    slug: 'responsive-archive',
+    path: '/responsive-archive/',
+    content_mode: 'blocks',
+    status: 'published',
+    blocks: [{
+      id: 'responsive-list',
+      type: 'core/collection_list',
+      data: {
+        collection: 'guides',
+        layout: 'grid',
+        cols: { mobile: 1, tablet: 2, desktop: 3 },
+        item_overrides: { show_image: false, title_field: 'title', href_field: 'url', heading_level: 'h2' },
+      },
+    }],
+  }));
+
+  log('[native-collection-composition] building typed, SSR collection template…');
+  await new Promise((res) => {
+    const child = spawn('npx', ['astro', 'build', '--outDir', tmpOut], {
+      cwd: TEMPLATE_DIR,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        TYPEROLL_ORG_ID: 'default',
+        TYPEROLL_SITE_ID: 'default',
+        TYPEROLL_VERSION_ID: 'main',
+        TYPEROLL_FIXTURES_DIR: tmpFixtures,
+        TYPEROLL_SITE_URL: 'https://smoke.test',
+        FIREBASE_SERVICE_ACCOUNT: '',
+      },
+    });
+    child.on('exit', (code) => {
+      if (code !== 0) fail(`[native-collection-composition] astro build exited with ${code}`);
+      const html = readFileSync(join(tmpOut, 'guides', 'energy', 'index.html'), 'utf8');
+      const assetText = existsSync(join(tmpOut, '_assets'))
+        ? readdirSync(join(tmpOut, '_assets'), { withFileTypes: true })
+            .filter((entry) => entry.isFile() && entry.name.endsWith('.css'))
+            .map((entry) => readFileSync(join(tmpOut, '_assets', entry.name), 'utf8'))
+            .join('\n')
+        : '';
+      if (!html.includes('href="/guides/"') || !html.includes('href="/category/energy/"')) {
+        fail('[native-collection-composition] server breadcrumb trail is incomplete');
+      }
+      if (!html.includes('href="#prepare"') || !html.includes('href="#pack-safely"') || !html.includes('id="pack-safely"')) {
+        fail('[native-collection-composition] outline links and heading ids do not agree in initial HTML');
+      }
+      if (!html.includes('https://cdn.example.test/energy.pdf?download=1&amp;lang=en') || html.includes('{{item.pdf_url}}')) {
+        fail('[native-collection-composition] typed PDF binding leaked or resolved incorrectly');
+      }
+      if (!html.includes('href="/guides/previous/"')
+          || !html.includes('class="item-navigation-next" data-empty="true"')) {
+        fail('[native-collection-composition] explicit neighbor fields or terminal empty state failed');
+      }
+      if (!(html + assetText).includes('.smoke-instance-css { overflow-wrap: anywhere; }')) {
+        fail('[native-collection-composition] nested instance CSS did not reach build assets');
+      }
+      const archive = readFileSync(join(tmpOut, 'responsive-archive', 'index.html'), 'utf8');
+      const archiveBundle = archive + assetText;
+      const compactArchiveBundle = archiveBundle.replace(/\s+/g, '');
+      if (!compactArchiveBundle.includes('--cols:1')
+          || !compactArchiveBundle.includes('@media(min-width:640px){[data-bid="responsive-list"]{--cols:2!important;}}')
+          || !compactArchiveBundle.includes('@media(min-width:1280px){[data-bid="responsive-list"]{--cols:3!important;}}')) {
+        fail('[native-collection-composition] responsive data fields did not survive the hosted build pipeline');
+      }
+      if (archive.includes('block-postcard-image') || archive.includes('src=""')) {
+        fail('[native-collection-composition] hidden or empty post-card media left unused markup');
+      }
+      log('[native-collection-composition] ✓ typed bindings, SSR navigation, responsive fields, selected fields, and instance CSS');
+      res();
+    });
+  });
+})();
+
 log('OK — all smoke scenarios passed');
 process.exit(0);

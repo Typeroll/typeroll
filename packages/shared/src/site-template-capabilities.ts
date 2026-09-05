@@ -38,6 +38,18 @@ export interface SiteTemplateCapabilities {
   supports_collection_listings: boolean;
   supports_grouped_collection_listings: boolean;
   supports_collection_item_navigation: boolean;
+  /** Typed exact bindings such as core/button.href = "{{item.pdf_url}}". */
+  supports_typed_context_bindings: boolean;
+  /** Collection template fields (body, image, date) honor their selected field. */
+  supports_selected_collection_item_fields: boolean;
+  /** Breadcrumb links are present in initial page and item HTML. */
+  supports_server_rendered_breadcrumbs: boolean;
+  /** Table-of-contents links and matching heading ids are present without JS. */
+  supports_server_rendered_table_of_contents: boolean;
+  /** Native article/checklist starters are accepted through template_kind. */
+  supports_collection_template_presets: boolean;
+  /** Item navigation can bind explicit previous/next URL and title fields. */
+  supports_explicit_collection_item_navigation: boolean;
   /**
    * Tri-state semantics for CollectionDef.route_template:
    *   null / undefined → backfilled to `/{name}/{slug_field}` at
@@ -96,6 +108,12 @@ export interface SiteTemplateCapabilities {
   supports_block_annotation: boolean;
   supports_table_of_contents_block: boolean;
   supports_structured_field_editor: boolean;
+  /** Semantic localized navigation with current-page state and mobile disclosure. */
+  supports_native_navigation: boolean;
+  /** Post cards support field mapping, heading semantics, alt text, and optional downloads. */
+  supports_post_card_field_mapping: boolean;
+  /** Empty or disabled post-card images emit no image element. */
+  supports_post_card_empty_media_omission: boolean;
 
   // Site settings
   supports_writable_scripts_head_body: boolean;
@@ -115,11 +133,27 @@ export interface SiteTemplateCapabilities {
   supports_icon_192: boolean;
   supports_iframe_host_allowlist: boolean;
   supports_media_batch_upload: boolean;
+  /** Native cookie-consent settings are readable/writable through v1 and MCP. */
+  supports_cookie_consent_config_api: boolean;
 
   // Build pipeline
   supports_dry_run_deploys: boolean;
   supports_block_asset_bundling: boolean;
+  /** Per-instance style_overrides.custom_css is included in preview/build assets. */
+  supports_block_instance_custom_css: boolean;
   supports_per_branch_preview_url: boolean;
+  /** Migration preflight can review proposed block compositions without writing. */
+  supports_migration_composition_review: boolean;
+  /** Header/footer/free partials have a revisioned v1 mode-switch operation. */
+  supports_partial_mode_switching: boolean;
+  /** Child versions inherit installed/custom block dependencies from their base chain. */
+  supports_versioned_block_type_inheritance: boolean;
+  /** core/form ships styles for referenced form field types. */
+  supports_transitive_form_assets: boolean;
+  /** Responsive schema fields accept breakpoint objects inside block.data. */
+  supports_responsive_data_fields: boolean;
+  /** Reusable native header, footer, and archive composition factories ship in Core. */
+  supports_site_composition_presets: boolean;
 
   // Core block types known to ship in the platform. Agents that want a
   // version-stable list of "blocks they can always use" check here.
@@ -222,7 +256,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.41.1',
+  template_capabilities_version: '0.43.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -253,6 +287,12 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_collection_listings: true,
   supports_grouped_collection_listings: true,
   supports_collection_item_navigation: true,
+  supports_typed_context_bindings: true,
+  supports_selected_collection_item_fields: true,
+  supports_server_rendered_breadcrumbs: true,
+  supports_server_rendered_table_of_contents: true,
+  supports_collection_template_presets: true,
+  supports_explicit_collection_item_navigation: true,
   collection_route_default_backfill: true,
   collection_route_empty_string_is_opt_out: true,
 
@@ -269,6 +309,9 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_block_annotation: true,
   supports_table_of_contents_block: true,
   supports_structured_field_editor: true,
+  supports_native_navigation: true,
+  supports_post_card_field_mapping: true,
+  supports_post_card_empty_media_omission: true,
 
   supports_writable_scripts_head_body: true,
   supports_writable_custom_css: true,
@@ -279,10 +322,18 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_icon_192: true,
   supports_iframe_host_allowlist: true,
   supports_media_batch_upload: true,
+  supports_cookie_consent_config_api: true,
 
   supports_dry_run_deploys: true,
   supports_block_asset_bundling: true,
+  supports_block_instance_custom_css: true,
   supports_per_branch_preview_url: true,
+  supports_migration_composition_review: true,
+  supports_partial_mode_switching: true,
+  supports_versioned_block_type_inheritance: true,
+  supports_transitive_form_assets: true,
+  supports_responsive_data_fields: true,
+  supports_site_composition_presets: true,
 
   core_block_type_ids: [
     'core/section',
@@ -291,6 +342,10 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
     'core/heading',
     'core/image',
     'core/button',
+    'core/navigation',
+    'core/post_card',
+    'core/collection_list',
+    'core/form',
     'core/html',
     'core/media_card',
     'core/table_of_contents',

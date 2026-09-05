@@ -156,6 +156,51 @@ describe('partials endpoints', () => {
     expect(body.partial.html_content).not.toContain('<script');
   });
 
+  it('switches a partial to blocks mode and returns the rendered tree', async () => {
+    const { token } = await setup();
+    await seedPartial('header', {
+      kind: 'header',
+      blocks: [{ id: 'logo', type: 'template/site_logo', data: { height: 'md' } }],
+    });
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/partials/[partialId]/mode'),
+      'POST',
+      `http://localhost/api/v1/sites/${SITE}/partials/header/mode`,
+      { siteId: SITE, partialId: 'header' },
+      { headers: bearer(token), body: { to: 'blocks', convert: false } },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json() as { content_mode: string; blocks: Array<{ type: string }> };
+    expect(body.content_mode).toBe('blocks');
+    expect(body.blocks[0]?.type).toBe('template/site_logo');
+
+    const read = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/partials/[partialId]'),
+      'GET',
+      `http://localhost/api/v1/sites/${SITE}/partials/header`,
+      { siteId: SITE, partialId: 'header' },
+      { headers: bearer(token) },
+    );
+    const readBody = await read.json() as { partial: { content_mode: string; blocks: unknown[]; html_content?: string } };
+    expect(readBody.partial).toMatchObject({ content_mode: 'blocks' });
+    expect(readBody.partial.blocks).toHaveLength(1);
+    expect(readBody.partial.html_content).toBeUndefined();
+  });
+
+  it('rejects content_mode on partial PATCH with mode endpoint guidance', async () => {
+    const { token } = await setup();
+    await seedPartial('header', { kind: 'header' });
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/partials/[partialId]'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SITE}/partials/header`,
+      { siteId: SITE, partialId: 'header' },
+      { headers: bearer(token), body: { content_mode: 'blocks' } },
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json() as { error: string }).error).toContain('/mode');
+  });
+
   it('DELETE /{id} works for free blocks but not header/footer', async () => {
     const { token } = await setup();
     await seedPartial('cta', {});

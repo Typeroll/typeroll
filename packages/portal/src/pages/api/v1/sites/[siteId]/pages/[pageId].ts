@@ -149,6 +149,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!existing) return apiError('Not found', 404);
   const body = (await request.json().catch(() => null)) as (Partial<Page> & { save?: boolean }) | null;
   if (!body) return apiError('Invalid JSON body');
+  if (body.content_mode !== undefined) {
+    return apiError(
+      'content_mode cannot be changed with PATCH; use POST /api/v1/sites/{siteId}/pages/{pageId}/mode',
+    );
+  }
   const alt = checkAlternates(body);
   if (!alt.ok) return apiError(alt.error);
   const update = pickWritable(body) as Record<string, unknown>;

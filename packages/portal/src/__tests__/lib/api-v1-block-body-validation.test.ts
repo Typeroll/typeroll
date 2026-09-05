@@ -105,7 +105,7 @@ describe('PATCH body validation — /pages/{pageId}/blocks', () => {
     expect(error).toContain('patch');
     expect(error).toContain('data');
     expect(error).toContain('style_overrides');
-    expect(error).toContain('responsive');
+    expect(error).not.toContain('responsive');
   });
 
   it('only block_id (nothing to update) → 400 listing the updatable fields', async () => {
@@ -119,7 +119,7 @@ describe('PATCH body validation — /pages/{pageId}/blocks', () => {
     const { error } = await res.json() as { error: string };
     expect(error).toContain('data');
     expect(error).toContain('style_overrides');
-    expect(error).toContain('responsive');
+    expect(error).not.toContain('responsive');
   });
 
   it('valid PATCH still works', async () => {

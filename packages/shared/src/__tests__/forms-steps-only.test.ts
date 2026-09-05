@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { fieldsToStepBlocks, fieldsToSteps } from '../form-fields.js';
-import { renderFormHtml } from '../render-form.js';
+import { FORM_SHELL_CSS, renderFormHtml } from '../render-form.js';
 import { buildCoreBlockRegistry } from '../core-blocks.js';
 import type { Form, FormField } from '../types.js';
 
@@ -72,6 +72,13 @@ describe('fieldsToStepBlocks — sugar conversion table', () => {
 });
 
 describe('renderFormHtml — steps-only contract', () => {
+  it('ships transitive field styles even when a form contains no form/text block', () => {
+    expect(FORM_SHELL_CSS).toContain('.form-field { display: flex; flex-direction: column');
+    expect(FORM_SHELL_CSS).toContain('[data-block="form_textarea"] textarea');
+    expect(FORM_SHELL_CSS).toContain('[data-block="form_radio_group"]');
+    expect(FORM_SHELL_CSS).toContain('.form-input:focus-visible');
+  });
+
   it('renders a converted simple form end-to-end (token, honeypot, fields)', () => {
     const html = renderFormHtml(
       form({

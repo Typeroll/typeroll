@@ -19,9 +19,9 @@
 // Portal-cookie surfaces (BlockTypeEditor with its consent toggle) are not
 // gated here — a human in the UI is the trusted author.
 
-import { buildCoreBlockRegistry, paths } from '@typeroll/shared';
+import { buildCoreBlockRegistry } from '@typeroll/shared';
 import type { BlockType, Site } from '@typeroll/shared';
-import { getStore } from './datastore';
+import { vstore } from './version-store';
 
 export const SCRIPT_GATE_WARNING =
   'script was ignored: the in-portal chat assistant cannot author block JS ' +
@@ -102,9 +102,7 @@ export async function resolveScriptFields(
   coreRegistry ??= buildCoreBlockRegistry();
   const core = coreRegistry.get(typeId);
   if (core) return core.script_fields ?? [];
-  const custom = await getStore().getDoc<BlockType>(
-    paths.blockType(orgId, siteId, typeId, versionId),
-  );
+  const custom = await vstore.blockType(orgId, siteId, versionId, typeId);
   return custom?.script_fields ?? [];
 }
 

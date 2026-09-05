@@ -484,6 +484,27 @@ describe('GET/PATCH/PUT/DELETE /api/v1/sites/{siteId}/pages/{pageId}', () => {
     expect(patched.page.title).toBe('Home'); // untouched
   });
 
+  it('rejects content_mode in PATCH and points callers to the safe mode endpoint', async () => {
+    const { token } = await setup();
+    await seedPage('home', { title: 'Home', content_mode: 'html' });
+
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/pages/[pageId]'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SITE}/pages/home`,
+      { siteId: SITE, pageId: 'home' },
+      { headers: bearer(token), body: { content_mode: 'blocks' } },
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toContain('/mode');
+
+    const { vstore } = await import('../../lib/version-store');
+    const page = await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'home');
+    expect(page?.content_mode).toBe('html');
+  });
+
   it('PUT preserves system fields but replaces writable ones', async () => {
     const { token } = await setup();
     await seedPage('home', {
@@ -596,6 +617,27 @@ describe('POST /api/v1/sites/{siteId}/pages/batch-write', () => {
     const { vstore } = await import('../../lib/version-store');
     const home = await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'home');
     expect(home?.html_content).toBe('<p>new home</p>');
+  });
+
+  it('reports content_mode as a per-row error instead of silently ignoring it', async () => {
+    const { token } = await setup();
+    await seedPage('home', { title: 'Home', content_mode: 'html' });
+
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/pages/batch-write'),
+      'POST',
+      `http://localhost/api/v1/sites/${SITE}/pages/batch-write`,
+      { siteId: SITE },
+      {
+        headers: bearer(token),
+        body: [{ page_id: 'home', patch: { content_mode: 'blocks' } }],
+      },
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { results: Array<{ ok: boolean; error?: string }> };
+    expect(body.results[0]).toMatchObject({ ok: false });
+    expect(body.results[0].error).toContain('/mode');
   });
 });
 

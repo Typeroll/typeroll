@@ -42,6 +42,7 @@ import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './item-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
+import { prepareHeadingOutline } from './heading-outline.js';
 
 /**
  * Render context — values exposed to templates via the dotted-path
@@ -220,7 +221,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   // (2) Repeater container. Diverge here — the regular template path
   // doesn't know how to loop over items.
   if (blockType.container === 'repeater') {
-    let html = renderRepeater(effectiveBlock, blockType, options);
+    const compiled = compileResponsiveData(effectiveBlock, blockType);
+    const responsiveBlock: Block = { ...effectiveBlock, data: compiled.flatData };
+    let html = renderRepeater(responsiveBlock, blockType, options);
     // Annotate the repeater's own root so the rendered element maps back to
     // the authored (alias) block — its looped items carry synthetic ids that
     // aren't in the tree, so without this a repeater would be an un-targetable
@@ -229,6 +232,14 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     if (options.annotate && block.id) {
       html = injectAttrsIntoFirstTag(html, { 'data-block-id': block.id, 'data-block-type': block.type });
     }
+    if (compiled.hasOverrides) {
+      html += renderResponsiveStyleBlock(
+        sanitizeCssId(effectiveBlock.id),
+        compiled.cssVars,
+        compiled.mappedCss,
+      );
+    }
+    html = applyStyleOverrides(html, effectiveBlock);
     return html;
   }
 
@@ -251,6 +262,72 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     template = stampEditableTextTokens(template, blockType, effectiveBlock, block.id);
   }
   const compiled = compileResponsiveData(effectiveBlock, blockType);
+
+  // A block field may bind exactly to typed render context, e.g.
+  // core/button.href = "{{item.pdf_url}}". Resolve only exact bindings and
+  // only on inert text/URL/image fields; rich HTML remains an explicit block
+  // concern and never gains recursive template evaluation.
+  for (const field of blockType.schema ?? []) {
+    if (!['text', 'textarea', 'url', 'image', 'file', 'email'].includes(field.type)) continue;
+    const value = compiled.flatData[field.name];
+    if (typeof value !== 'string') continue;
+    const match = value.match(/^\s*\{\{\s*((?:page|site|item|collection)\.[\w.-]+)\s*\}\}\s*$/);
+    if (match) compiled.flatData[field.name] = resolveDottedToken(match[1]!, compiled.flatData, options.context) ?? '';
+  }
+
+  if (effectiveBlock.type === 'template/item_body') {
+    const fieldName = String(compiled.flatData.field ?? 'body');
+    const raw = options.context?.item?.[fieldName];
+    compiled.flatData.selected_item_body = prepareHeadingOutline(typeof raw === 'string' ? raw : '').html;
+  }
+  if (effectiveBlock.type === 'template/item_image') {
+    const fieldName = String(compiled.flatData.field ?? 'image');
+    compiled.flatData.selected_item_image = options.context?.item?.[fieldName] ?? '';
+  }
+  if (effectiveBlock.type === 'template/page_date') {
+    const fieldName = String(compiled.flatData.field ?? 'published_at');
+    compiled.flatData.selected_page_date = options.context?.item?.[fieldName]
+      ?? options.context?.page?.[fieldName]
+      ?? '';
+  }
+  if (effectiveBlock.type === 'template/page_breadcrumbs') {
+    compiled.flatData.breadcrumbs_html = renderBreadcrumbs(
+      options.context?.page?.breadcrumbs,
+      String(compiled.flatData.home_label ?? 'Home'),
+    );
+  }
+  if (effectiveBlock.type === 'core/table_of_contents') {
+    const sourceField = String(compiled.flatData.source_field ?? 'body');
+    const raw = options.context?.item?.[sourceField] ?? options.context?.page?.[sourceField];
+    const prepared = prepareHeadingOutline(typeof raw === 'string' ? raw : '');
+    const maxLevel = compiled.flatData.levels === 'h2' ? 2 : compiled.flatData.levels === 'h2-h4' ? 4 : 3;
+    const headings = prepared.headings.filter((heading) => heading.level <= maxLevel);
+    compiled.flatData.toc_items_html = headings
+      .map((heading) => `<li data-level="${heading.level}"><a href="#${escapeHtml(heading.id)}">${escapeHtml(heading.text)}</a></li>`)
+      .join('');
+    compiled.flatData.toc_empty = headings.length === 0 ? 'true' : 'false';
+  }
+  if (effectiveBlock.type === 'template/item_navigation') {
+    const item = options.context?.item ?? {};
+    const collection = options.context?.collection ?? {};
+    const previous = navigationLinkData('previous', compiled.flatData, item, collection);
+    const next = navigationLinkData('next', compiled.flatData, item, collection);
+    compiled.flatData.previous_url = previous.url;
+    compiled.flatData.previous_title = previous.title;
+    compiled.flatData.previous_empty = previous.url ? 'false' : 'true';
+    compiled.flatData.next_url = next.url;
+    compiled.flatData.next_title = next.title;
+    compiled.flatData.next_empty = next.url ? 'false' : 'true';
+  }
+  if (effectiveBlock.type === 'core/navigation') {
+    compiled.flatData.navigation_links_html = renderNavigationLinks(
+      effectiveBlock.data?.links,
+      options.context?.page,
+    );
+  }
+  if (effectiveBlock.type === 'core/post_card') {
+    preparePostCardData(compiled.flatData, options.context?.item);
+  }
 
   // Derived fields — the template engine doesn't loop or branch, so
   // structured values become prebuilt HTML the template includes raw.
@@ -792,6 +869,124 @@ function substituteFields(
   return out;
 }
 
+function renderBreadcrumbs(raw: unknown, homeLabel: string): string {
+  const candidates = Array.isArray(raw) ? raw : [];
+  const crumbs: Array<{ label: string; href: string; current: boolean }> = [
+    { label: homeLabel, href: '/', current: false },
+  ];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const item = candidate as Record<string, unknown>;
+    const label = String(item.label ?? '').trim();
+    if (!label) continue;
+    crumbs.push({
+      label,
+      href: typeof item.href === 'string' ? item.href : '',
+      current: item.current === true,
+    });
+  }
+  return `<ol>${crumbs.map((crumb, index) => {
+    const current = crumb.current || index === crumbs.length - 1 || !crumb.href;
+    return current
+      ? `<li><span aria-current="page">${escapeHtml(crumb.label)}</span></li>`
+      : `<li><a href="${escapeHtml(crumb.href)}">${escapeHtml(crumb.label)}</a></li>`;
+  }).join('')}</ol>`;
+}
+
+function navigationLinkData(
+  direction: 'previous' | 'next',
+  data: Record<string, unknown>,
+  item: Record<string, unknown>,
+  collection: Record<string, unknown>,
+): { url: string; title: string } {
+  const explicitUrlField = String(data[`${direction}_url_field`] ?? '').trim();
+  const explicitTitleField = String(data[`${direction}_title_field`] ?? '').trim();
+  const sorted = collection[direction] && typeof collection[direction] === 'object'
+    ? collection[direction] as Record<string, unknown>
+    : {};
+  const url = explicitUrlField
+    ? String(item[explicitUrlField] ?? '')
+    : String(sorted.url ?? '');
+  const title = explicitTitleField
+    ? String(item[explicitTitleField] ?? '')
+    : String(sorted.title ?? '');
+  return { url, title };
+}
+
+function contextString(
+  data: Record<string, unknown>,
+  item: Record<string, unknown> | undefined,
+  valueKey: string,
+  fieldKey: string,
+  fallbackField: string,
+): string {
+  const selectedField = String(data[fieldKey] ?? fallbackField).trim();
+  const selected = item && selectedField ? item[selectedField] : undefined;
+  const value = selected ?? data[valueKey];
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+}
+
+function preparePostCardData(
+  data: Record<string, unknown>,
+  item: Record<string, unknown> | undefined,
+): void {
+  const title = contextString(data, item, 'title', 'title_field', 'title');
+  const excerpt = contextString(data, item, 'excerpt', 'excerpt_field', 'excerpt');
+  const image = contextString(data, item, 'image', 'image_field', 'image');
+  const imageAlt = contextString(data, item, 'image_alt', 'image_alt_field', 'image_alt');
+  const date = contextString(data, item, 'date', 'date_field', 'published_at');
+  const author = contextString(data, item, 'author', 'author_field', 'author');
+  const href = contextString(data, item, 'href', 'href_field', 'url');
+  const downloadField = String(data.download_url_field ?? '').trim();
+  const downloadUrl = item && downloadField ? String(item[downloadField] ?? '') : '';
+  const downloadLabel = String(data.download_label ?? 'Download PDF');
+  const headingLevel = ['h2', 'h3', 'h4'].includes(String(data.heading_level))
+    ? String(data.heading_level) : 'h3';
+
+  data.title = title;
+  data.excerpt = excerpt;
+  data.date = date;
+  data.author = author;
+  data.href = href;
+  data.heading_level = headingLevel;
+  data.post_card_title_html = href
+    ? `<a href="${escapeHtml(href)}" class="block-postcard-link">${escapeHtml(title)}</a>`
+    : escapeHtml(title);
+  data.post_card_image_html = data.show_image !== false && image
+    ? `${href ? `<a href="${escapeHtml(href)}" class="block-postcard-link">` : ''}<img class="block-postcard-image" src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" loading="lazy" decoding="async" />${href ? '</a>' : ''}`
+    : '';
+  data.post_card_download_html = downloadUrl
+    ? `<a class="block-postcard-download" href="${escapeHtml(downloadUrl)}">${escapeHtml(downloadLabel)}</a>`
+    : '';
+}
+
+function renderNavigationLinks(
+  raw: unknown,
+  page: Record<string, unknown> | undefined,
+): string {
+  if (!Array.isArray(raw)) return '';
+  const currentRaw = String(page?.path ?? page?.url ?? page?.slug ?? '/');
+  const normalize = (value: string) => {
+    try {
+      const path = new URL(value, 'https://typeroll.invalid').pathname;
+      return path === '/' ? '/' : path.replace(/\/+$/, '');
+    } catch {
+      return value === '/' ? '/' : value.replace(/[?#].*$/, '').replace(/\/+$/, '');
+    }
+  };
+  const current = normalize(currentRaw.startsWith('/') ? currentRaw : `/${currentRaw}`);
+  return raw
+    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+    .map((entry) => {
+      const label = String(entry.label ?? '').trim();
+      const href = String(entry.href ?? '').trim();
+      if (!label || !href) return '';
+      const ariaCurrent = normalize(href) === current ? ' aria-current="page"' : '';
+      return `<li><a href="${escapeHtml(href)}"${ariaCurrent}>${escapeHtml(label)}</a></li>`;
+    })
+    .join('');
+}
+
 function substituteChildren(
   html: string,
   block: Block,
@@ -1308,6 +1503,10 @@ export function collectBlockAssets(
     if (bt.script) js.push(`/* ${id} */\n${bt.script}`);
   }
 
+  for (const block of collectInstanceStyles(blocks)) {
+    css.push(`/* instance ${sanitizeCssId(block.id)} */\n${block.style_overrides!.custom_css}`);
+  }
+
   // Per-INSTANCE scripts, for block types that declare code fields
   // (BlockType.script_fields — core/embed is the first). These can't ride
   // in the block markup: everything the renderer emits into the body runs
@@ -1328,6 +1527,17 @@ export function collectBlockAssets(
   }
 
   return { css: css.join('\n\n'), js: js.join('\n\n'), used_ids: used };
+}
+
+function collectInstanceStyles(blocks: Block[], out: Block[] = []): Block[] {
+  for (const block of blocks) {
+    if (typeof block.style_overrides?.custom_css === 'string' && block.style_overrides.custom_css.trim()) {
+      out.push(block);
+    }
+    if (block.children) collectInstanceStyles(block.children, out);
+    if (block.slots) for (const slot of block.slots) collectInstanceStyles(slot, out);
+  }
+  return out;
 }
 
 /**

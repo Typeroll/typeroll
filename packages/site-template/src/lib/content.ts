@@ -496,6 +496,9 @@ export async function renderPartialHtml(
         registry: await getBlockRegistry(),
         context,
         collectionSource: await buildCollectionSource(),
+        onMissingType: (typeId) => {
+          throw new Error(`Cannot build partial with missing block type: ${typeId}`);
+        },
       }), directives?.iframeAllowedHosts);
     }
     if (expandedHtml) {

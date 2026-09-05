@@ -79,6 +79,14 @@ export const settingsTools: ToolDef[] = [
         .passthrough()
         .optional(),
       social: z.record(z.string()).optional(),
+      cookie_consent: z.object({
+        enabled: z.boolean().optional(),
+        text: z.string().optional().describe('Localized consent copy. May include a privacy-policy link.'),
+        privacy_policy_url: z.string().optional(),
+        scripts_necessary: z.string().optional().describe('Trusted script markup that runs before consent.'),
+        scripts_optional: z.string().optional().describe('Trusted script markup activated only after full consent.'),
+        reload_after_consent: z.boolean().optional(),
+      }).optional().describe('Native consent banner configuration. Partial updates preserve omitted fields. Script fields execute in visitor browsers and are accepted under the API key authority.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const { version, ...body } = args;

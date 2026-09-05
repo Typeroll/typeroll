@@ -119,6 +119,22 @@ describe('collection and media tool contracts', () => {
 });
 
 describe('migration tool contracts', () => {
+  it('POSTs proposed compositions to the readiness preflight', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ ready: true }));
+    const tool = find(migrationTools, 'get_migration_readiness');
+    const compositions = [{
+      name: 'Article',
+      fields: [{ name: 'body', type: 'richtext' }],
+      blocks: [{ id: 'body', type: 'template/item_body', data: { field: 'body' } }],
+    }];
+    await tool.handler({ source_url: 'https://old.example.com', compositions } as never, { client, siteId });
+    expect(calls[0]).toMatchObject({
+      method: 'POST',
+      url: 'https://example.test/api/v1/sites/mysite/migration-preflight',
+      body: JSON.stringify({ source_url: 'https://old.example.com', compositions }),
+    });
+  });
+
   it('bulk-updates URL decisions in one PATCH', async () => {
     const { client, siteId, calls } = setup(() => jsonResponse({ updated: 2 }));
     const tool = find(migrationTools, 'update_migration_urls');
@@ -168,6 +184,17 @@ describe('partials tools', () => {
     expect(calls[0].method).toBe('POST');
     expect(calls[0].url).toBe('https://example.test/api/v1/sites/mysite/partials');
     expect(calls[0].body).toContain('newsletter-cta');
+  });
+
+  it('set_partial_mode POSTs the revision-safe mode endpoint', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ content_mode: 'blocks' }));
+    const tool = find(partialTools, 'set_partial_mode');
+    await tool.handler({ partial_id: 'header', to: 'blocks' } as never, { client, siteId });
+    expect(calls[0]).toMatchObject({
+      method: 'POST',
+      url: 'https://example.test/api/v1/sites/mysite/partials/header/mode',
+      body: JSON.stringify({ to: 'blocks', convert: false }),
+    });
   });
 });
 

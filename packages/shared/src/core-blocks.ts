@@ -123,6 +123,11 @@ const columns: BlockType = {
 [data-block="columns"][data-gap="lg"] { gap: 3rem; }
 [data-block="columns"][data-align="center"] { align-items: center; }
 [data-block="columns"][data-align="end"] { align-items: end; }
+/* An optional server-rendered outline should not reserve an unexplained
+   sidebar when the selected body has no headings. */
+[data-block="columns"]:has(> .block-columns-col:last-child > [data-block="table_of_contents"][data-empty="true"]) {
+  grid-template-columns: minmax(0, 1fr);
+}
 /* Mobile: collapse to a single column. The ratio rules above carry an extra
    attribute selector (specificity 0,2,0); a media query adds no specificity,
    so a bare [data-block="columns"] (0,1,0) here would LOSE to them and only
@@ -160,7 +165,7 @@ const prose: BlockType = {
   // och desktop utan media queries. Behåller läsbarhet på små skärmar
   // utan att gå för stort på desktop.
   styles: `
-[data-block="prose"] { line-height: 1.65; font-size: clamp(1rem, 0.95rem + 0.25vw, 1.125rem); }
+[data-block="prose"] { min-width: 0; line-height: 1.65; font-size: clamp(1rem, 0.95rem + 0.25vw, 1.125rem); overflow-wrap: anywhere; }
 [data-block="prose"][data-w="narrow"] { max-width: 38rem; margin-inline: auto; }
 [data-block="prose"][data-w="wide"] { max-width: 60rem; margin-inline: auto; }
 [data-block="prose"] p { margin: 0 0 1em; }
@@ -169,7 +174,11 @@ const prose: BlockType = {
 [data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: clamp(1.25rem, 0.75rem + 2vw, 1.75rem); line-height: 1.25; }
 [data-block="prose"] h4 { margin: 1.5em 0 0.5em; font-size: clamp(1.125rem, 0.75rem + 1vw, 1.375rem); line-height: 1.3; }
 [data-block="prose"] ul, [data-block="prose"] ol { margin: 0 0 1em 1.5em; }
-[data-block="prose"] a { color: var(--color-primary, currentColor); }
+[data-block="prose"] a { color: var(--color-primary, currentColor); overflow-wrap: anywhere; }
+[data-block="prose"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
+[data-block="prose"] img { max-width: 100%; height: auto; }
+[data-block="prose"] table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+[data-block="prose"] th, [data-block="prose"] td { padding: 0.5rem; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -341,6 +350,8 @@ const button: BlockType = {
   border: 1px solid currentColor;
 }
 [data-block="button"] .block-button-link:hover { opacity: 0.85; }
+[data-block="button"] .block-button-link { max-width: 100%; overflow-wrap: anywhere; text-align: center; }
+[data-block="button"] .block-button-link:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
