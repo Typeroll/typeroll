@@ -21,6 +21,7 @@ export * from './funnel-attribution.js';
 export * from './item-refs.js';
 export * from './taxonomy.js';
 export * from './consent-scripts.js';
+export * from './cookie-consent.js';
 export * from './robots-sitemap.js';
 export * from './schema-generators.js';
 export * from './seo-transform.js';

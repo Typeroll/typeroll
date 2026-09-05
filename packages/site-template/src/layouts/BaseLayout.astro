@@ -1,6 +1,6 @@
 ---
 import type { ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { asFunnelAttributionConfig, buildExtensionRuntimeScript, buildFunnelAttributionRuntime, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import { asFunnelAttributionConfig, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, buildFunnelAttributionRuntime, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -221,7 +221,7 @@ const fontFallbackStyle = googleFontFamilies.length
        afterthought. Tiny inline script — no measurable perf cost; runs
        synchronously during HTML parse. */}
     {settings.cookie_consent?.enabled && (
-      <script is:inline set:html={`(function(){if(!document.cookie.match(/(?:^|;\\s*)tr_consent=/))document.documentElement.classList.add('tr-consent-needed');})();`} />
+      <script is:inline set:html={buildConsentEarlyPaintRuntime()} />
     )}
   </head>
   <body>

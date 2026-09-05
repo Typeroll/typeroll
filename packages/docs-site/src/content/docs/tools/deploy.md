@@ -93,7 +93,9 @@ Returns a signed preview URL for the current site state — without deploying. U
 Show me a preview of the site.
 ```
 
-The preview link is valid for 24 hours and reflects the current draft state, not the last deploy.
+The preview link is valid for 24 hours and renders saved database state, not
+the last deploy. Pass `include_working_copy: true` when the reviewer should also
+see unsaved drafts; that choice is signed into the link.
 
 ## How deploys work
 

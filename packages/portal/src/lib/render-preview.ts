@@ -24,6 +24,7 @@ import {
   collectionItemBreadcrumbs,
   collectionRouteNavigation,
   collectionFieldMatches,
+  buildConsentEarlyPaintRuntime,
   buildCoreBlockRegistry,
   collectBlockAssets,
   composePageWithTemplate,
@@ -33,7 +34,9 @@ import {
   expandIncludes,
   MAIN_VERSION_ID,
   renderBlocks,
+  renderCookieConsent,
   renderItemTemplate,
+  DEFAULT_COOKIE_CONSENT_TEXT,
   pageBreadcrumbs,
   siteContext,
 } from '@typeroll/shared';
@@ -351,6 +354,9 @@ export async function renderPreview(
       })
     : '';
   const previewNavigationBridge = buildPreviewNavigationBridgeScript(opts);
+  const cookieConsentHtml = opts.allowScripts === true
+    ? rewriteIf(renderPreviewCookieConsent(settings))
+    : '';
 
   return buildHtml({
     page,
@@ -368,6 +374,7 @@ export async function renderPreview(
     extensionRuntime,
     editorExtensionRuntime,
     previewNavigationBridge,
+    cookieConsentHtml,
     robotsBlocked,
     banner: opts.showBanner ? {
       versionId,
@@ -584,6 +591,9 @@ async function renderPreviewCollectionItem(
   const editorExtensionRuntime = opts.editorCanvasId && bodyHtml.includes('data-tr-extension-installation')
     ? await (await import('./extensions/editor-runtime')).buildExtensionEditorRuntimeScript(orgId, siteId, versionId, opts.editorCanvasId)
     : '';
+  const cookieConsentHtml = opts.allowScripts === true
+    ? rewriteIf(renderPreviewCookieConsent(settings))
+    : '';
   return buildHtml({
     page: synthetic,
     versionId,
@@ -599,6 +609,7 @@ async function renderPreviewCollectionItem(
     editorCanvasInteractive: opts.annotate === true,
     editorExtensionRuntime,
     previewNavigationBridge: buildPreviewNavigationBridgeScript(opts),
+    cookieConsentHtml,
     robotsBlocked,
     banner: opts.showBanner ? {
       versionId,
@@ -695,10 +706,11 @@ function buildHtml(args: {
   extensionRuntime?: string;
   editorExtensionRuntime?: string;
   previewNavigationBridge?: string;
+  cookieConsentHtml?: string;
   robotsBlocked: boolean;
   banner: BannerArgs | null;
 }): string {
-  const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, robotsBlocked, banner } = args;
+  const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, robotsBlocked, banner } = args;
   // Merge with hardcoded defaults so optional fields (surface, text_light,
   // size_base) never produce "undefined" / "undefinedpx" in CSS when a site's
   // settings object was created before those fields were added, or when only
@@ -824,6 +836,7 @@ ${settings.custom_css ?? ''}
 </style>
 ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
 ${page.custom_css ? `<style data-page-css="1">${page.custom_css}</style>` : ''}
+${cookieConsentHtml ? `<script data-cookie-consent-early="1">${buildConsentEarlyPaintRuntime()}</script>` : ''}
 </head>
 <body>
 ${banner ? renderBanner(banner) : ''}
@@ -835,8 +848,17 @@ ${extensionRuntime ? `<script data-extension-runtime="1">${extensionRuntime}</sc
 ${editorExtensionRuntime ? `<script data-editor-extension-runtime="1">${editorExtensionRuntime}</script>` : ''}
 ${previewNavigationBridge ? `<script data-preview-navigation-bridge="1">${previewNavigationBridge}</script>` : ''}
 ${editorCanvasId ? `<script data-editor-canvas-bridge="1">${editorCanvasBridgeScript(editorCanvasId, editorCanvasInteractive === true)}</script>` : ''}
+${cookieConsentHtml ?? ''}
 </body>
 </html>`;
+}
+
+function renderPreviewCookieConsent(settings: SiteSettings): string {
+  const text = settings.cookie_consent?.text;
+  const bodyHtml = text
+    ? sanitizeBody(text, settings.iframe_allowed_hosts)
+    : `<p>${DEFAULT_COOKIE_CONSENT_TEXT}</p>`;
+  return renderCookieConsent(settings.cookie_consent, bodyHtml);
 }
 
 function renderBanner(b: BannerArgs): string {

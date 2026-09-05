@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wrapConsentScripts, buildConsentRuntime } from '../consent-scripts';
+import { wrapConsentScripts, buildConsentEarlyPaintRuntime, buildConsentRuntime } from '../consent-scripts';
 
 // Regression guard for the consent-gating leak: the old implementation
 // wrapped the WHOLE scripts_optional field in one
@@ -117,5 +117,14 @@ describe('buildConsentRuntime', () => {
   it('never contains a literal </script (it is injected inside a script element)', () => {
     expect(buildConsentRuntime(false)).not.toMatch(/<\/script/i);
     expect(buildConsentRuntime(true)).not.toMatch(/<\/script/i);
+  });
+});
+
+describe('buildConsentEarlyPaintRuntime', () => {
+  it('handles cookie reads denied by an opaque preview origin', () => {
+    const runtime = buildConsentEarlyPaintRuntime();
+    expect(runtime).toContain('catch(_)');
+    expect(runtime).toContain("classList.add('tr-consent-needed')");
+    expect(runtime).not.toMatch(/<\/script/i);
   });
 });

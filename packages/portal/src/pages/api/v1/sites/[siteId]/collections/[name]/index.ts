@@ -7,6 +7,7 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../../lib/a
 import { vstore } from '../../../../../../../lib/version-store';
 import { getStore } from '../../../../../../../lib/datastore';
 import { sanitizeBody } from '../../../../../../../lib/sanitize';
+import { blockTreeInputError } from '../../../../../../../lib/block-tree-input';
 import { effectiveRouteTemplate, ensureBlockIds, paths } from '@typeroll/shared';
 import type { CollectionDef } from '@typeroll/shared';
 
@@ -81,6 +82,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     | null;
   if (!rawBody) return apiError('Invalid JSON body');
   const body = rawBody.patch && typeof rawBody.patch === 'object' ? rawBody.patch : rawBody;
+  const blockError = blockTreeInputError(body.item_template_blocks, 'item_template_blocks');
+  if (blockError) return apiError(blockError, 400);
   const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
   const update = pickWritable(body, settings?.iframe_allowed_hosts);
   if (Object.keys(update).length === 0) return apiError('No writable fields in body');

@@ -84,9 +84,9 @@ export function wrapConsentScripts(input: string): string {
  */
 export function buildConsentRuntime(reloadAfterConsent: boolean): string {
   return `(function(){
-      var COOKIE='tr_consent',DAYS=365,RELOAD=${reloadAfterConsent ? 'true' : 'false'};
-      function read(){var m=document.cookie.match(/(?:^|;\\s*)tr_consent=([^;]+)/);return m?decodeURIComponent(m[1]):null}
-      function write(v){var d=new Date();d.setTime(d.getTime()+DAYS*864e5);var sec=location.protocol==='https:'?'; Secure':'';document.cookie=COOKIE+'='+encodeURIComponent(v)+'; expires='+d.toUTCString()+'; path=/; SameSite=Lax'+sec}
+      var COOKIE='tr_consent',DAYS=365,RELOAD=${reloadAfterConsent ? 'true' : 'false'},memory=null;
+      function read(){try{var m=document.cookie.match(/(?:^|;\\s*)tr_consent=([^;]+)/);return m?decodeURIComponent(m[1]):memory}catch(_){return memory}}
+      function write(v){memory=v;try{var d=new Date();d.setTime(d.getTime()+DAYS*864e5);var sec=location.protocol==='https:'?'; Secure':'';document.cookie=COOKIE+'='+encodeURIComponent(v)+'; expires='+d.toUTCString()+'; path=/; SameSite=Lax'+sec}catch(_){}}
       function activate(){var ns=document.querySelectorAll('script[type="text/plain"][data-tr-consent="optional"],template[data-tr-consent="optional"]');for(var i=0;i<ns.length;i++){var n=ns[i];if(n.tagName==='TEMPLATE'){n.parentNode.replaceChild(n.content.cloneNode(true),n);continue}var s=document.createElement('script');for(var j=0;j<n.attributes.length;j++){var a=n.attributes[j];if(a.name==='type'||a.name==='data-tr-consent')continue;s.setAttribute(a.name,a.value)}s.text=n.textContent||'';n.parentNode.replaceChild(s,n)}}
       function set(choice){write(choice);document.documentElement.classList.remove('tr-consent-needed');document.dispatchEvent(new CustomEvent('typeroll:consent',{detail:{choice:choice}}));if(RELOAD){location.reload();return}if(choice==='all')activate()}
       var cur=read();
@@ -100,4 +100,14 @@ export function buildConsentRuntime(reloadAfterConsent: boolean): string {
       if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',attach);else attach();
       window.typerollConsent={open:open,close:function(){document.documentElement.classList.remove('tr-consent-needed')},set:set,get:read};
     })();`;
+}
+
+/**
+ * Add the first-paint class without assuming the document has an ordinary
+ * origin. Public previews intentionally run in an opaque sandbox where
+ * reading document.cookie throws SecurityError; there the banner should be
+ * visible and its runtime falls back to in-memory state for the current page.
+ */
+export function buildConsentEarlyPaintRuntime(): string {
+  return `(function(){try{if(!document.cookie.match(/(?:^|;\\s*)tr_consent=/))document.documentElement.classList.add('tr-consent-needed')}catch(_){document.documentElement.classList.add('tr-consent-needed')}})();`;
 }

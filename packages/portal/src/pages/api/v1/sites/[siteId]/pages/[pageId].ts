@@ -28,6 +28,7 @@ import {
 } from '../../../../../../lib/working-copy';
 import { ensureBlockIds } from '@typeroll/shared';
 import { checkAlternates } from '../../../../../../lib/page-alternates';
+import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 import type { Page } from '@typeroll/shared';
 
 const WRITABLE: Array<keyof Page> = [
@@ -149,6 +150,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!existing) return apiError('Not found', 404);
   const body = (await request.json().catch(() => null)) as (Partial<Page> & { save?: boolean }) | null;
   if (!body) return apiError('Invalid JSON body');
+  const blockError = blockTreeInputError(body.blocks);
+  if (blockError) return apiError(blockError, 400);
   if (body.content_mode !== undefined) {
     return apiError(
       'content_mode cannot be changed with PATCH; use POST /api/v1/sites/{siteId}/pages/{pageId}/mode',
@@ -181,6 +184,8 @@ export const PUT: APIRoute = async ({ request, params }) => {
   if (!existing) return apiError('Not found', 404);
   const body = (await request.json().catch(() => null)) as (Partial<Page> & { save?: boolean }) | null;
   if (!body) return apiError('Invalid JSON body');
+  const blockError = blockTreeInputError(body.blocks);
+  if (blockError) return apiError(blockError, 400);
   if (!String(body.title ?? '').trim()) return apiError('title required for PUT');
   const alt = checkAlternates(body);
   if (!alt.ok) return apiError(alt.error);

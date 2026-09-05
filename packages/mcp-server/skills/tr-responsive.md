@@ -23,6 +23,11 @@ Use `set_block_responsive` (or pass the object form directly in `add_block` /
 `update_block` data). `read_block_type <id>` tells you which fields are
 `responsive`.
 
+The breakpoint object belongs on the responsive field inside `block.data`,
+for example `data.cols`. Do not add a top-level `block.responsive` object: it
+is not a rendered field, and page, partial and collection-template writes
+reject it instead of silently storing an inert value.
+
 ```
 # 4 columns on desktop, 2 on tablet, 1 on mobile:
 set_block_responsive target={kind:page,id:home} block_id=<grid-id>
@@ -104,9 +109,7 @@ breakpoints needed.
   that didn't collapse) and fix THAT element's width / clip it with
   `overflow:hidden` on its own section. Verify with
   `document.documentElement.scrollWidth === clientWidth` at 360–390px.
-- **`core/grid` `stack_at` may not collapse on mobile** (a known platform bug):
-  the block writes `style="--cols:N"` inline, and an inline custom property beats
-  the media query that tries to set `--cols:1`, so the grid stays N-up and text
-  wraps a letter per line. Workaround until fixed: in page-scoped CSS override the
-  real property, e.g. `@media(max-width:640px){.my-section [data-block="grid"]{grid-template-columns:1fr!important}}`.
+- `core/grid` `stack_at` and responsive `data.cols` both compile overrides
+  that beat the inline mobile baseline. Verify the computed column count at
+  the actual breakpoint; no page CSS workaround should be necessary.
 - Background design reference: `docs/responsive-blocks.md` in the platform repo.

@@ -18,6 +18,7 @@ import {
 } from '../../../../../../lib/working-copy';
 import { ensureBlockIds } from '@typeroll/shared';
 import type { Partial as PartialDoc } from '@typeroll/shared';
+import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 
 const WRITABLE: Array<keyof PartialDoc> = ['name', 'kind', 'html_content', 'status', 'blocks'];
 
@@ -101,6 +102,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!existing) return apiError('Not found', 404);
   const body = (await request.json().catch(() => null)) as (Partial<PartialDoc> & { save?: boolean }) | null;
   if (!body) return apiError('Invalid JSON body');
+  const blockError = blockTreeInputError(body.blocks);
+  if (blockError) return apiError(blockError, 400);
   if (body.content_mode !== undefined) {
     return apiError('content_mode cannot be changed with PATCH; use POST /partials/{partialId}/mode', 400);
   }
@@ -129,6 +132,8 @@ export const PUT: APIRoute = async ({ request, params }) => {
   if (!partialId) return apiError('Missing partialId');
   const body = (await request.json().catch(() => null)) as (Partial<PartialDoc> & { save?: boolean }) | null;
   if (!body) return apiError('Invalid JSON body');
+  const blockError = blockTreeInputError(body.blocks);
+  if (blockError) return apiError(blockError, 400);
   if (body.content_mode !== undefined) {
     return apiError('content_mode cannot be changed with PUT; use POST /partials/{partialId}/mode', 400);
   }

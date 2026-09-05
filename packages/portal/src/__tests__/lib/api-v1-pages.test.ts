@@ -505,6 +505,33 @@ describe('GET/PATCH/PUT/DELETE /api/v1/sites/{siteId}/pages/{pageId}', () => {
     expect(page?.content_mode).toBe('html');
   });
 
+  it('rejects inert top-level responsive data in whole-tree PATCH writes', async () => {
+    const { token } = await setup();
+    await seedPage('home', { title: 'Home', content_mode: 'blocks', blocks: [] });
+
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/pages/[pageId]'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SITE}/pages/home`,
+      { siteId: SITE, pageId: 'home' },
+      {
+        headers: bearer(token),
+        body: {
+          blocks: [{
+            id: 'grid', type: 'core/grid', data: { cols: 3 },
+            responsive: { mobile: { data_overrides: { cols: 1 } } },
+          }],
+          save: true,
+        },
+      },
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toContain('blocks[0].responsive');
+    expect(body.error).toContain('data.cols');
+  });
+
   it('PUT preserves system fields but replaces writable ones', async () => {
     const { token } = await setup();
     await seedPage('home', {

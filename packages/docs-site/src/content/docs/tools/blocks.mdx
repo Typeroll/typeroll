@@ -131,6 +131,9 @@ through the same CSS variables as everything else.
 ## Responsive — 5 breakpoints, fluid type
 
 Headings and prose already shrink fluidly on small screens — no per-page tuning needed. Beyond that, any field marked `responsive` accepts a per-breakpoint object.
+Put that object on the field inside `block.data` (`data.cols`, for example).
+The unrelated historical top-level shape `block.responsive` is not rendered
+and is rejected by whole-tree writes as well as block-instance tools.
 
 The five breakpoints are Tailwind-compatible:
 

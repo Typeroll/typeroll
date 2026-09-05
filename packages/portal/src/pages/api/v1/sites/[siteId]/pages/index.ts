@@ -13,6 +13,7 @@ import { checkAlternates } from '../../../../../../lib/page-alternates';
 import { isLivePageStatus, retireRedirectsShadowingUrl } from '../../../../../../lib/redirect-hygiene';
 import { sanitizeBody } from '../../../../../../lib/sanitize';
 import { buildMediaLookup, transformBodyForSeo } from '../../../../../../lib/seo-transform';
+import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 import { paths, slugify, ensureBlockIds } from '@typeroll/shared';
 import type { Block, Media, Page } from '@typeroll/shared';
 
@@ -119,6 +120,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const body = (await request.json().catch(() => null)) as Partial<Page> | null;
   if (!body) return apiError('Invalid JSON body');
+  const blockError = blockTreeInputError(body.blocks);
+  if (blockError) return apiError(blockError, 400);
   const title = String(body.title ?? '').trim();
   if (!title) return apiError('title required');
 

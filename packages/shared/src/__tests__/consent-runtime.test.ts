@@ -120,4 +120,21 @@ describe('consent runtime activate()', () => {
     expect(scripts[0].getAttribute('type')).toBeNull();
     expect(scripts[0].text).toBe('window.__bare = 1;');
   });
+
+  it('uses in-memory consent when an opaque preview origin denies cookies', () => {
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      get: () => { throw new DOMException('opaque origin', 'SecurityError'); },
+      set: () => { throw new DOMException('opaque origin', 'SecurityError'); },
+    });
+    try {
+      document.body.innerHTML = wrapConsentScripts(SNIPPET);
+      expect(() => runRuntime()).not.toThrow();
+      expect(window.typerollConsent.get()).toBeNull();
+      expect(() => window.typerollConsent.set('necessary')).not.toThrow();
+      expect(window.typerollConsent.get()).toBe('necessary');
+    } finally {
+      delete (document as unknown as Record<string, unknown>).cookie;
+    }
+  });
 });

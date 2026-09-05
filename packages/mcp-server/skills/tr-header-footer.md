@@ -94,6 +94,11 @@ Use `update_site_settings`, then read settings back. `scripts_necessary` and
 `scripts_optional` execute in visitors' browsers and must be reviewed like
 other API-key-authorized script surfaces. Verify accept/necessary/reject,
 optional-script gating, and keyboard focus in preview and the actual build.
+The signed hosted preview runs at an opaque origin. Consent choices therefore
+use in-memory state for the current preview document; they are intentionally
+not persisted as portal cookies across a reload or page navigation. Accepting
+all must still activate optional scripts immediately, which is enough to test
+the gate without weakening the preview sandbox.
 
 ## Version and dependency rules
 

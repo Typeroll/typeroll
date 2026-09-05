@@ -10,6 +10,7 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { vstore } from '../../../../../../lib/version-store';
 import { getStore } from '../../../../../../lib/datastore';
 import { sanitizeBody } from '../../../../../../lib/sanitize';
+import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 import {
   effectiveRouteTemplate,
   getCollectionStarter,
@@ -64,6 +65,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const body = (await request.json().catch(() => null)) as Partial<CollectionDef> | null;
   if (!body) return apiError('Invalid JSON body');
+  const blockError = blockTreeInputError(body.item_template_blocks, 'item_template_blocks');
+  if (blockError) return apiError(blockError, 400);
 
   const name = String(body.name ?? '').trim();
   if (!name || !NAME_RE.test(name)) {

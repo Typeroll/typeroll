@@ -20,8 +20,17 @@ Updates site settings. Pass only the fields you want to change.
 | `language`           | string | BCP 47 language tag: `"sv"`, `"en"`, `"de"`, etc.        |
 | `logo`               | string | CDN URL for the site logo                                |
 | `favicon`            | string | CDN URL for the favicon                                  |
+| `apple_touch_icon`   | string | 180px Apple touch icon                                   |
+| `icon_192`           | string | 192px application icon                                   |
 | `default_seo_suffix` | string | Appended to page titles in `<title>`: `" — Acme Studio"` |
+| `default_meta_description` | string | Site-wide description fallback                    |
+| `trailing_slash`     | string | `always`, `never`, or `ignore`                           |
+| `iframe_allowed_hosts` | string[] | Exact hosts allowed in embedded content              |
+| `image_sizes_default` | string | Default responsive-image `sizes` hint                  |
 | `robots_txt`         | string | Full content of robots.txt                               |
+| `scripts_head`       | string | Trusted markup/scripts inserted in `<head>`              |
+| `scripts_body_end`   | string | Trusted markup/scripts inserted before `</body>`         |
+| `custom_css`         | string | Site-wide CSS                                             |
 
 ### `colors` object
 
@@ -61,17 +70,38 @@ Updates site settings. Pass only the fields you want to change.
 | `twitter`   | X/Twitter URL or handle |
 | `youtube`   | YouTube channel URL     |
 
-## What Claude cannot change via settings
+### `cookie_consent` object
 
-For security, these fields are not writable through the AI chat or the MCP server:
+The native consent banner is configured through the same bearer-authenticated
+settings route and MCP tool:
 
-| Field              | How to change                                 |
-| ------------------ | --------------------------------------------- |
-| `scripts_head`     | Portal UI: **Settings → Analytics / Scripts** |
-| `scripts_body_end` | Portal UI: **Settings → Analytics / Scripts** |
-| `custom_css`       | Portal UI: **Settings → Custom CSS**          |
+```json
+{
+  "cookie_consent": {
+    "enabled": true,
+    "text": "We use optional cookies.",
+    "privacy_policy_url": "/privacy/",
+    "scripts_necessary": "",
+    "scripts_optional": "<script>startAnalytics()</script>",
+    "reload_after_consent": false
+  }
+}
+```
 
-These fields accept arbitrary HTML/JS and are therefore restricted to the portal UI, where a human explicitly pastes the code.
+The object is shallow-merged, so omitted fields keep their saved values. In a
+signed hosted preview the banner and optional-script gate work, but the frame
+has an intentionally opaque origin: the choice is held in memory for the
+current preview document and resets on reload/navigation. A published build
+uses the normal `tr_consent` cookie.
+
+## Trusted scriptable fields
+
+`scripts_head`, `scripts_body_end`, `custom_css`, and the consent script fields
+are readable and writable through v1/MCP for a caller holding the site's API
+key. They are deliberately trusted, audit-logged surfaces. The chat assistant
+inside the portal does not expose them, so a normal editor conversation cannot
+inject JavaScript. Review these values like deployed code and redeploy after a
+change.
 
 ## `get_site` / `list_sites`
 
