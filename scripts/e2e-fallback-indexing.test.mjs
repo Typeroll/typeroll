@@ -22,9 +22,10 @@ test('publishes the bounded fixture and waits for the fallback response header',
     wait: async () => {},
     fetchImpl: async (url, init) => {
       if (url === 'https://e2e.sites.example.test') {
+        if (diagnostics === 1) throw new TypeError('fetch failed');
         return new Response('', {
           status: 200,
-          headers: diagnostics > 1 ? { 'X-Robots-Tag': 'noindex, nofollow' } : {},
+          headers: { 'X-Robots-Tag': 'noindex, nofollow' },
         });
       }
       const request = JSON.parse(init.body);
@@ -80,6 +81,7 @@ test('fails closed when the deployed fallback never receives noindex', async () 
     apiKey: 'secret',
     expectedFallbackOrigin: 'https://e2e-core-site.sites-staging.typeroll.com',
     wait: async () => {},
+    indexingAttempts: 12,
     fetchImpl: async (url, init) => {
       if (url === 'https://e2e.sites.example.test') return new Response('', { status: 200 });
       const request = JSON.parse(init.body);

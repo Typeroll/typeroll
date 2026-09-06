@@ -6,6 +6,7 @@ export async function runFallbackIndexingJourney({
   apiKey,
   expectedFallbackOrigin,
   wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  indexingAttempts = 120,
 }) {
   const call = (name, args) => callHostedMcp({ fetchImpl, portalUrl, apiKey, name, args });
   const site = await call('get_site');
@@ -32,23 +33,32 @@ export async function runFallbackIndexingJourney({
 
   let lastReport;
   let lastPublicResponses;
-  for (let attempt = 0; attempt < 12; attempt += 1) {
+  for (let attempt = 0; attempt < indexingAttempts; attempt += 1) {
     lastReport = await call('check_site_indexing');
     const fallback = lastReport?.targets?.find((target) => target?.kind === 'fallback');
     if (typeof fallback?.origin === 'string') {
       const [head, get] = await Promise.all(['HEAD', 'GET'].map(async (method) => {
-        const response = await fetchImpl(fallback.origin, {
-          method,
-          redirect: 'manual',
-          signal: AbortSignal.timeout(30_000),
-        });
-        return {
-          method,
-          status: response.status,
-          noindex: response.headers.get('x-robots-tag')
-            ?.split(',')
-            .some((directive) => directive.trim().toLowerCase() === 'noindex') === true,
-        };
+        try {
+          const response = await fetchImpl(fallback.origin, {
+            method,
+            redirect: 'manual',
+            signal: AbortSignal.timeout(30_000),
+          });
+          return {
+            method,
+            status: response.status,
+            noindex: response.headers.get('x-robots-tag')
+              ?.split(',')
+              .some((directive) => directive.trim().toLowerCase() === 'noindex') === true,
+          };
+        } catch (error) {
+          return {
+            method,
+            status: null,
+            noindex: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
       }));
       lastPublicResponses = { head, get };
     }
@@ -67,7 +77,7 @@ export async function runFallbackIndexingJourney({
         xRobotsTag: fallback.x_robots_tag,
       };
     }
-    if (attempt < 11) await wait(5_000);
+    if (attempt < indexingAttempts - 1) await wait(5_000);
   }
 
   const fallback = lastReport?.targets?.find((target) => target?.kind === 'fallback');
