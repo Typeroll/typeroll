@@ -1,15 +1,8 @@
-name: Publish MCP server
+name: Release OSS
 
-# Normal release flow:
-#
-#   1. Bump packages/mcp-server/package.json.
-#   2. Push main.
-#   3. This workflow waits for the complete Tests workflow to pass, builds and
-#      inspects the package, publishes it through npm Trusted Publishing, and
-#      creates mcp-vX.Y.Z only after npm confirms the release.
-#
-# A manual dry run remains available for validating the package artifact. The
-# workflow is serialized so adjacent main pushes cannot race each other.
+# One ordered release train for the public distribution:
+# successful main CI -> immutable Core -> npm MCP -> public docs -> manifest.
+# Keep this filename: npm Trusted Publishing is bound to publish-mcp.yml.
 
 on:
   workflow_run:
@@ -20,21 +13,27 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Build and inspect the package without publishing
+        description: Validate and build without publishing anything
         type: boolean
         default: true
+      confirm_release:
+        description: Type RELEASE_TYPEROLL_OSS for a manual real release
+        type: string
+        required: false
 
 permissions:
   contents: write
+  packages: write
   id-token: write
+  attestations: write
 
 concurrency:
-  group: publish-mcp
+  group: release-oss
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Build + publish to npm
+  plan:
+    name: Validate release plan
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
@@ -42,171 +41,317 @@ jobs:
        github.event.workflow_run.head_branch == 'main' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    outputs:
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      core_source_sha: ${{ steps.plan.outputs.core_source_sha }}
+      core_version: ${{ steps.plan.outputs.core_version }}
+      core_tag: ${{ steps.plan.outputs.core_tag }}
+      publish_core: ${{ steps.plan.outputs.publish_core }}
+      mcp_version: ${{ steps.plan.outputs.mcp_version }}
+      mcp_tag: ${{ steps.plan.outputs.mcp_tag }}
+      publish_mcp: ${{ steps.plan.outputs.publish_mcp }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Validate manual publication confirmation
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run != true
+        env:
+          CONFIRM_RELEASE: ${{ inputs.confirm_release }}
+        run: test "$CONFIRM_RELEASE" = 'RELEASE_TYPEROLL_OSS'
+      - name: Validate versions and changed scopes
+        id: plan
+        run: npm run release:plan -- --github-output
+      - name: Summarize release plan
+        env:
+          CORE_VERSION: ${{ steps.plan.outputs.core_version }}
+          PUBLISH_CORE: ${{ steps.plan.outputs.publish_core }}
+          MCP_VERSION: ${{ steps.plan.outputs.mcp_version }}
+          PUBLISH_MCP: ${{ steps.plan.outputs.publish_mcp }}
+          SOURCE_SHA: ${{ steps.plan.outputs.source_sha }}
+        run: |
+          {
+            echo '### OSS release plan'
+            echo
+            echo '| Artifact | Version | Publish |'
+            echo '| --- | --- | --- |'
+            printf '| Core | %s | %s |\n' "$CORE_VERSION" "$PUBLISH_CORE"
+            printf '| MCP | %s | %s |\n' "$MCP_VERSION" "$PUBLISH_MCP"
+            printf '| Source | %s | |\n' "$SOURCE_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
 
+  core:
+    name: Publish immutable Core
+    needs: plan
+    runs-on: ubuntu-latest
+    outputs:
+      image_digest: ${{ steps.digest.outputs.image_digest }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.source_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Verify Core release version
+        run: npm run core:release:verify -- "${{ needs.plan.outputs.core_tag }}"
+      - name: Verify Core source
+        if: needs.plan.outputs.publish_core == 'true'
+        run: |
+          npm run security:audit
+          npm run typecheck
+          npm test
+          npm run build
+      - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b
+        with:
+          version: v0.22.0
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Inspect existing Core release
+        id: registry
+        if: needs.plan.outputs.publish_core == 'true'
+        env:
+          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/typeroll/typeroll:$CORE_TAG"
+          set +e
+          RESULT=$(crane digest "$IMAGE" 2>&1)
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -eq 0 ]; then
+            REVISION=$(crane config "$IMAGE@$RESULT" | jq -r '.config.Labels["org.opencontainers.image.revision"] // empty')
+            if [ "$REVISION" != "$SOURCE_SHA" ]; then
+              echo "::error::$IMAGE already exists at $RESULT from ${REVISION:-an unknown commit}, not $SOURCE_SHA."
+              exit 1
+            fi
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+            echo "image_digest=$RESULT" >> "$GITHUB_OUTPUT"
+          elif grep -Eqi 'manifest unknown|manifest_unknown|name unknown|name_unknown|not found|404' <<<"$RESULT"; then
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Could not safely determine whether $IMAGE exists: $RESULT"
+            exit 1
+          fi
+      - uses: docker/setup-buildx-action@v4
+        if: needs.plan.outputs.publish_core == 'true' && steps.registry.outputs.exists != 'true'
+      - name: Build and publish immutable image
+        id: image
+        if: needs.plan.outputs.publish_core == 'true' && steps.registry.outputs.exists != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+          tags: |
+            ghcr.io/typeroll/typeroll:${{ needs.plan.outputs.core_tag }}
+            ghcr.io/typeroll/typeroll:sha-${{ needs.plan.outputs.source_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.plan.outputs.source_sha }}
+            org.opencontainers.image.version=${{ needs.plan.outputs.core_tag }}
+          build-args: |
+            TYPEROLL_SOURCE_SHA=${{ needs.plan.outputs.source_sha }}
+          platforms: linux/amd64
+          sbom: true
+          provenance: mode=max
+      - name: Resolve release digest
+        id: digest
+        env:
+          BUILT_DIGEST: ${{ steps.image.outputs.digest }}
+          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
+          PUBLISH_CORE: ${{ needs.plan.outputs.publish_core }}
+          EXISTING_DIGEST: ${{ steps.registry.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          if [ -n "$EXISTING_DIGEST" ]; then
+            DIGEST="$EXISTING_DIGEST"
+          elif [ "$PUBLISH_CORE" = 'true' ]; then
+            test -n "$BUILT_DIGEST"
+            DIGEST="$BUILT_DIGEST"
+          else
+            DIGEST=$(crane digest "ghcr.io/typeroll/typeroll:$CORE_TAG")
+          fi
+          test -n "$DIGEST"
+          echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
+      - name: Verify published image contract
+        if: >-
+          needs.plan.outputs.publish_core == 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+        env:
+          IMAGE: ghcr.io/typeroll/typeroll@${{ steps.digest.outputs.image_digest }}
+          IMAGE_DIGEST: ${{ steps.digest.outputs.image_digest }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+          CORE_VERSION: ${{ needs.plan.outputs.core_version }}
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE"
+          docker run --detach --name typeroll-core-contract \
+            --publish 127.0.0.1:8080:8080 \
+            --env TYPEROLL_IMAGE_DIGEST="$IMAGE_DIGEST" \
+            "$IMAGE"
+          trap 'docker rm --force typeroll-core-contract >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/api/healthz >/dev/null; then break; fi
+            if [ "$attempt" -eq 30 ]; then docker logs typeroll-core-contract; exit 1; fi
+            sleep 1
+          done
+          RELEASE=$(curl --fail --silent http://127.0.0.1:8080/api/version)
+          test "$(jq -r '.source_sha' <<<"$RELEASE")" = "$SOURCE_SHA"
+          test "$(jq -r '.image_digest' <<<"$RELEASE")" = "$IMAGE_DIGEST"
+          test "$(jq -r '.core_version' <<<"$RELEASE")" = "$CORE_VERSION"
+      - name: Create verified Core tag
+        if: >-
+          needs.plan.outputs.publish_core == 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+        env:
+          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$CORE_TAG" -m "Release $CORE_TAG"
+          git push origin "$CORE_TAG"
+
+  mcp:
+    name: Publish MCP package
+    needs: [plan, core]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.source_sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
           registry-url: https://registry.npmjs.org
           scope: '@typeroll'
           cache: npm
-
-      # npm 11.5+ supports Trusted Publishing. Pin the toolchain so a new npm
-      # release cannot silently change the artifact or authentication path.
       - name: Install Trusted Publishing client
         run: npm install --global npm@11.6.2
-
-      - name: Install workspace dependencies
-        run: npm ci
-
-      - name: Determine release plan
-        id: plan
-        shell: bash
+      - run: npm ci
+      - name: Inspect npm release state
+        id: npm
+        env:
+          MCP_VERSION: ${{ needs.plan.outputs.mcp_version }}
+          PUBLISH_MCP: ${{ needs.plan.outputs.publish_mcp }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
         run: |
-          set -euo pipefail
-
-          PACKAGE='@typeroll/mcp-server'
-          PACKAGE_VERSION=$(node -p "require('./packages/mcp-server/package.json').version")
-          RELEASE_SHA=$(git rev-parse HEAD)
-          RELEASE_TAG="mcp-v${PACKAGE_VERSION}"
-          NPM_LATEST=$(npm view "$PACKAGE" version 2>/dev/null || printf '0.0.0')
-          ALREADY_ON_NPM=false
-          TAG_EXISTS=false
-          SHOULD_TAG=false
-
-          if npm view "${PACKAGE}@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
-            ALREADY_ON_NPM=true
-          fi
-
-          if git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}" >/dev/null; then
-            TAG_EXISTS=true
-            TAG_SHA=$(git rev-list -n 1 "$RELEASE_TAG")
-            if [ "$TAG_SHA" != "$RELEASE_SHA" ] && [ "$ALREADY_ON_NPM" != 'true' ]; then
-              echo "::error::${RELEASE_TAG} points to ${TAG_SHA}, not release commit ${RELEASE_SHA}."
+          if npm view "@typeroll/mcp-server@$MCP_VERSION" version >/dev/null 2>&1; then
+            PUBLISHED_SHA=$(npm view "@typeroll/mcp-server@$MCP_VERSION" gitHead 2>/dev/null || true)
+            if [ "$PUBLISH_MCP" = 'true' ] && [ "$PUBLISHED_SHA" != "$SOURCE_SHA" ]; then
+              echo "::error::The untagged npm package was published from ${PUBLISHED_SHA:-an unknown commit}, not $SOURCE_SHA."
               exit 1
             fi
-          elif [ "$ALREADY_ON_NPM" != 'true' ]; then
-            SHOULD_TAG=true
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
           else
-            PUBLISHED_SHA=$(npm view "${PACKAGE}@${PACKAGE_VERSION}" gitHead 2>/dev/null || true)
-            if [ "$PUBLISHED_SHA" = "$RELEASE_SHA" ]; then
-              SHOULD_TAG=true
-            else
-              echo "::warning title=Missing release tag::${PACKAGE}@${PACKAGE_VERSION} exists on npm, but ${RELEASE_TAG} cannot be safely attached to ${RELEASE_SHA}. Published gitHead: ${PUBLISHED_SHA:-unavailable}."
-            fi
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
           fi
-
-          SHOULD_PUBLISH=true
-          if [ "$ALREADY_ON_NPM" = 'true' ]; then
-            SHOULD_PUBLISH=false
-          fi
-
-          echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "npm_latest=$NPM_LATEST" >> "$GITHUB_OUTPUT"
-          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
-          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "already_on_npm=$ALREADY_ON_NPM" >> "$GITHUB_OUTPUT"
-          echo "tag_exists=$TAG_EXISTS" >> "$GITHUB_OUTPUT"
-          echo "should_publish=$SHOULD_PUBLISH" >> "$GITHUB_OUTPUT"
-          echo "should_tag=$SHOULD_TAG" >> "$GITHUB_OUTPUT"
-
-          if [ "$ALREADY_ON_NPM" = 'true' ]; then
-            LAST_TAG="mcp-v${NPM_LATEST}"
-            LAST_TAG_SHA=$(git rev-list -n 1 "$LAST_TAG" 2>/dev/null || true)
-            if [ -n "$LAST_TAG_SHA" ]; then
-              CHANGED=$(git diff --name-only "$LAST_TAG_SHA" HEAD -- \
-                packages/mcp-server/src \
-                packages/mcp-server/AGENTS.md \
-                packages/mcp-server/skills \
-                packages/shared/src || true)
-              if [ -n "$CHANGED" ]; then
-                echo "::warning title=MCP version drift::MCP-relevant files changed since ${LAST_TAG}, but packages/mcp-server/package.json is still ${PACKAGE_VERSION}."
-                printf '%s\n' "$CHANGED" | sed 's/^/  - /'
-              fi
-            fi
-          fi
-
-      - name: Write release summary
-        run: |
-          {
-            echo '### MCP release plan'
-            echo
-            echo '| Field | Value |'
-            echo '| --- | --- |'
-            echo '| Commit | `${{ steps.plan.outputs.release_sha }}` |'
-            echo '| Package version | `${{ steps.plan.outputs.package_version }}` |'
-            echo '| npm latest before run | `${{ steps.plan.outputs.npm_latest }}` |'
-            echo '| Already on npm | `${{ steps.plan.outputs.already_on_npm }}` |'
-            echo '| Publish | `${{ steps.plan.outputs.should_publish }}` |'
-            echo '| Create tag | `${{ steps.plan.outputs.should_tag }}` |'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Typecheck and test MCP server
-        if: steps.plan.outputs.should_publish == 'true'
+      - name: Typecheck, test, build and inspect MCP
+        if: needs.plan.outputs.publish_mcp == 'true' && steps.npm.outputs.exists != 'true'
         run: |
           npm run typecheck --workspace=@typeroll/mcp-server
           npm test --workspace=@typeroll/mcp-server
-
-      - name: Build MCP server
-        if: steps.plan.outputs.should_publish == 'true'
-        run: npm run build --workspace=@typeroll/mcp-server
-
-      - name: Inspect package artifact
-        if: steps.plan.outputs.should_publish == 'true'
-        working-directory: packages/mcp-server
-        run: npm publish --dry-run
-
-      - name: Publish to npm
+          npm run build --workspace=@typeroll/mcp-server
+          npm publish --dry-run --workspace=@typeroll/mcp-server
+      - name: Publish MCP through npm OIDC
         if: >-
-          steps.plan.outputs.should_publish == 'true' &&
+          needs.plan.outputs.publish_mcp == 'true' &&
+          steps.npm.outputs.exists != 'true' &&
           (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
         working-directory: packages/mcp-server
         run: npm publish --access public --provenance
-
-      - name: Verify npm release
-        if: >-
-          steps.plan.outputs.should_publish == 'true' &&
-          (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+      - name: Verify MCP release
+        if: github.event_name != 'workflow_dispatch' || inputs.dry_run != true
         env:
-          PACKAGE_VERSION: ${{ steps.plan.outputs.package_version }}
+          MCP_VERSION: ${{ needs.plan.outputs.mcp_version }}
         run: |
-          set -euo pipefail
-          for attempt in {1..12}; do
-            PUBLISHED=$(npm view "@typeroll/mcp-server@${PACKAGE_VERSION}" version 2>/dev/null || true)
-            if [ "$PUBLISHED" = "$PACKAGE_VERSION" ]; then
-              echo "Verified @typeroll/mcp-server@${PACKAGE_VERSION} on npm."
-              exit 0
-            fi
+          for _attempt in {1..12}; do
+            if [ "$(npm view "@typeroll/mcp-server@$MCP_VERSION" version 2>/dev/null || true)" = "$MCP_VERSION" ]; then exit 0; fi
             sleep 5
           done
-          echo "::error::npm did not return @typeroll/mcp-server@${PACKAGE_VERSION} after publication."
+          echo "::error::npm did not return @typeroll/mcp-server@$MCP_VERSION."
           exit 1
-
-      - name: Create release tag
+      - name: Create verified MCP tag
         if: >-
-          steps.plan.outputs.should_tag == 'true' &&
-          (steps.plan.outputs.already_on_npm == 'true' ||
-           github.event_name != 'workflow_dispatch' ||
-           inputs.dry_run != true)
+          needs.plan.outputs.publish_mcp == 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
         env:
-          RELEASE_TAG: ${{ steps.plan.outputs.release_tag }}
+          MCP_TAG: ${{ needs.plan.outputs.mcp_tag }}
         run: |
-          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
-          git push origin "$RELEASE_TAG"
+          git tag -a "$MCP_TAG" -m "Release $MCP_TAG"
+          git push origin "$MCP_TAG"
 
-      - name: Nothing to publish
-        if: steps.plan.outputs.should_publish != 'true'
-        run: echo '@typeroll/mcp-server@${{ steps.plan.outputs.package_version }} is already published.'
+  docs:
+    name: Publish public documentation
+    if: github.event_name != 'workflow_dispatch' || inputs.dry_run != true
+    needs: [plan, core, mcp]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.source_sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --workspace=@typeroll/docs-site
+      - run: npx prettier --check "packages/docs-site/src/**/*.{md,mdx}"
+      - run: npm run build --workspace=@typeroll/docs-site
+      - name: Deploy exact-source docs to Cloudflare Pages
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_DOCS_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: npx wrangler pages deploy packages/docs-site/dist --project-name=typeroll-docs --branch=main --commit-dirty=false
 
-# One-time npm setup:
-# Configure @typeroll/mcp-server Trusted Publishing for GitHub Actions,
-# organization Typeroll, repository typeroll, workflow publish-mcp.yml, with no
-# environment name. Keep npm's publishing 2FA requirement enabled.
+  manifest:
+    name: Record release manifest
+    if: github.event_name != 'workflow_dispatch' || inputs.dry_run != true
+    needs: [plan, core, mcp, docs]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.source_sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Build Cloud-consumable release manifest
+        run: >-
+          node scripts/oss-release-plan.mjs
+          --manifest oss-upstream.lock.json
+          --source-sha "${{ needs.plan.outputs.core_source_sha }}"
+          --image-digest "${{ needs.core.outputs.image_digest }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: oss-release-${{ needs.plan.outputs.source_sha }}
+          path: oss-upstream.lock.json
+          retention-days: 90
+      - name: Summarize completed train
+        env:
+          CORE_VERSION: ${{ needs.plan.outputs.core_version }}
+          IMAGE_DIGEST: ${{ needs.core.outputs.image_digest }}
+          MCP_VERSION: ${{ needs.plan.outputs.mcp_version }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+          CORE_SOURCE_SHA: ${{ needs.plan.outputs.core_source_sha }}
+        run: |
+          {
+            echo '### Released OSS train'
+            echo
+            printf -- '- Core %s at %s\n' "$CORE_VERSION" "$IMAGE_DIGEST"
+            printf -- '- MCP %s\n' "$MCP_VERSION"
+            printf -- '- Docs from %s\n' "$SOURCE_SHA"
+            printf -- '- Core source %s\n' "$CORE_SOURCE_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"

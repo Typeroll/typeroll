@@ -15,3 +15,8 @@
   English.
 - Never commit credentials, tokens, cookies, personal data, or authenticated
   exports.
+- Public `main` is the release source. Keep each artifact's package version and
+  runtime version literals in lockstep; Core and standalone MCP are versioned
+  independently. Run `npm run release:plan` and never create release tags
+  manually. Successful main CI runs the ordered Core, MCP, docs, and
+  release-manifest workflow in `.github/workflows/publish-mcp.yml`.

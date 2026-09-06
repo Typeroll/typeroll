@@ -59,6 +59,10 @@ npm test
 npm run build
 ```
 
+Maintainer releases use one ordered train after successful CI on public
+`main`: immutable Core image and tag, MCP package and tag, public docs, then a
+Cloud-consumable release manifest. See [docs/releasing.md](docs/releasing.md).
+
 See the [self-hosting guide](https://docs.typeroll.com/guides/self-hosting/)
 for production configuration.
 
