@@ -299,6 +299,22 @@ function cloudRunDeployArgs(plan, service, workerUrl) {
   );
 }
 
+function serveLatestCloudRunRevision(runner, plan, service) {
+  checked(
+    runner,
+    'gcloud',
+    gcloud(
+      plan.project_id,
+      'run',
+      'services',
+      'update-traffic',
+      service.service,
+      `--region=${plan.region}`,
+      '--to-latest',
+    ),
+  );
+}
+
 function inspectCloudRun(runner, plan, serviceName) {
   return inspectResource(
     runner,
@@ -333,11 +349,15 @@ function deployCloudRun(runner, plan, log) {
     checked(runner, 'gcloud', cloudRunDeployArgs(plan, portal, desiredWorkerUrl));
     emit(log, 'converged', `cloud-run:${portal.service}:internal-url`);
   }
+  serveLatestCloudRunRevision(runner, plan, portal);
+  emit(log, 'served', `cloud-run:${portal.service}:latest`);
 
   const forms = plan.cloud_run.forms;
   const formsExisting = inspectCloudRun(runner, plan, forms.service);
   checked(runner, 'gcloud', cloudRunDeployArgs(plan, forms, desiredWorkerUrl));
   emit(log, formsExisting.exists ? 'converged' : 'created', `cloud-run:${forms.service}`);
+  serveLatestCloudRunRevision(runner, plan, forms);
+  emit(log, 'served', `cloud-run:${forms.service}:latest`);
   return { portalRunUrl, desiredWorkerUrl };
 }
 
@@ -384,7 +404,7 @@ export function buildGcpSelfHostApplyPreview(plan, phase = 'all') {
   const runtime = [
     'require one enabled version for every referenced secret without reading secret values',
     `copy ${plan.release.source_image} to Artifact Registry without rebuilding`,
-    `deploy Cloud Run services ${plan.cloud_run.portal.service} and ${plan.cloud_run.forms.service}`,
+    `deploy Cloud Run services ${plan.cloud_run.portal.service} and ${plan.cloud_run.forms.service}, then route all traffic to their latest revisions`,
     `create or converge Cloud Scheduler job ${plan.cloud_scheduler.job}`,
   ];
   return {

@@ -1,5 +1,22 @@
 # Changelog
 
+## MCP 0.43.2 / Core 0.1.10
+
+- Self-host runtime convergence now routes all traffic to each newly deployed
+  Cloud Run revision, including installations whose previous serving revision
+  retained a release tag.
+
+## MCP 0.43.1 / Core 0.1.9
+
+- Added site-wide noindex configuration and indexing diagnostics across the
+  settings UI, v1 API, MCP, previews, builds, and migration checks.
+- Added a fail-closed migration launch report with URL, SEO, extension, form,
+  provider, deployment, and indexing evidence.
+- Rejected inert top-level responsive block data recursively and restored the
+  native cookie-consent banner in hosted previews.
+- Serialized Core, MCP, public documentation, and immutable manifest
+  publication into one ordered OSS release train.
+
 ## MCP 0.43.0 / Core 0.1.8
 
 - Added exact typed context bindings for native text, URL, image, file, and
