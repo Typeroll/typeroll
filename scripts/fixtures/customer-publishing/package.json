@@ -1,0 +1,9 @@
+{
+  "name": "typeroll-static-publication-probe",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": { "build": "node scripts/build.mjs" },
+  "dependencies": { "astro": "7.2.10" }
+}

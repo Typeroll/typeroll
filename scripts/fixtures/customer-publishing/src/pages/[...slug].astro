@@ -1,0 +1,15 @@
+---
+import publication from '../../publication.json';
+
+export function getStaticPaths() {
+  return publication.pages.map((page) => ({ params: { slug: page.slug || undefined }, props: { page } }));
+}
+const { page } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="robots" content="noindex,nofollow" /><title>{page.title}</title></head>
+  <body data-probe-site={publication.site} data-probe-revision={publication.revision}>
+    <main><h1>{page.title}</h1><p>{page.text}</p></main>
+  </body>
+</html>

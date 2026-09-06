@@ -1,0 +1,135 @@
+# Connect customer-owned publishing accounts
+
+Status: pilot setup contract; the complete portal onboarding flow is not yet
+implemented. See [implementation status](customer-owned-publishing.md).
+
+The customer or agency owns the GitHub organization, publication repositories,
+Cloudflare account, and media storage. The publisher receives access through a
+GitHub App installation and scoped Cloudflare credentials. Customers do not
+invite the publisher's developers or share a personal GitHub token.
+
+One organization and account connection is reused for multiple sites. Each
+site receives a private generated repository and a Git-connected Pages project.
+The site remains static; Forms and Extensions use their separately documented
+runtime owners.
+
+## GitHub organization and publisher installation
+
+Use a customer-owned organization dedicated to generated site repositories.
+An organization owner installs the publisher's GitHub App once. The pilot
+requires **All repositories** so subsequent site creation does not need another
+customer approval. Organization policies must permit private repository creation
+by the App. Use `main` as the initial default branch.
+
+The publisher App requests these repository permissions:
+
+| Permission | Level | Purpose |
+| --- | --- | --- |
+| Administration | Read and write | Create and configure repositories |
+| Contents | Read and write | Publish source files, commits, and branches |
+| Metadata | Read | Identify repositories and verify access |
+
+GitHub supports organization repository creation with an installation token
+carrying **Administration: write**. This is broader repository administration
+access, not a create-only permission. A dedicated organization bounds which
+repositories the installation can administer.
+[Repository creation API](https://docs.github.com/en/rest/repos/repos#create-an-organization-repository).
+
+The publisher owns and securely stores the App's private key. It uses the
+customer's installation ID to mint installation tokens, which expire after one
+hour. Customers do not create an App or manually renew these tokens.
+[Installation tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app).
+
+The publisher must supply a verified installation URL before this step can be
+completed. Registering an externally installable App, connecting installation
+callbacks to authenticated organization owners, storing credentials, and wiring
+portal publication remain implementation work. The provider probe does not
+constitute that complete onboarding system.
+
+## Cloudflare Git integration
+
+In the customer's Cloudflare account, open **Workers & Pages** and the Pages
+flow for connecting Git. The customer authorizes Cloudflare's own GitHub App on
+the same organization, also covering **All repositories** for this pilot.
+
+Cloudflare needs its own repository access to clone and build the source.
+The publisher's installation does not grant Cloudflare that access. If the
+organization is empty, finish selecting the first repository after the
+publisher creates it. Verify that later repositories become accessible without
+reinstalling either App.
+[Cloudflare GitHub integration](https://developers.cloudflare.com/pages/configuration/git-integration/github-integration/).
+
+## Cloudflare API credentials
+
+Create a dedicated API token scoped to the customer's Cloudflare account:
+
+| Permission | Purpose |
+| --- | --- |
+| Account / Cloudflare Pages / Edit | Manage Pages projects and deployments |
+| Account / Account Settings / Read | Verify the connected account |
+| Account / Workers R2 Storage / Edit | Configure buckets and CORS when automated storage setup is enabled |
+
+The current first provider probe expects an existing bucket and does not need
+R2 administration solely to upload its probe object. Automated bucket/CORS
+configuration requires the R2 management permission. This account-level
+management access is broader than bucket-scoped object credentials.
+[Pages API](https://developers.cloudflare.com/pages/configuration/api/),
+[R2 bucket creation](https://developers.cloudflare.com/api/resources/r2/subresources/buckets/methods/create/).
+
+Domain cutover is a separate operation. Do not include DNS access merely to
+prove repository creation and Git builds. A production domain and media domain
+must be configured and verified before migrating a live site.
+
+## R2 media credentials
+
+The customer activates R2 and completes Cloudflare's billing activation. For
+the current probe, create a dedicated media bucket first. The intended setup
+can share a bucket across sites using isolated site prefixes; site authorization
+must be enforced by the publisher.
+
+In R2 **Manage API tokens**, create **Object Read & Write** credentials scoped
+to that bucket. Keep the Access Key ID and Secret Access Key, plus the bucket
+name, account ID, and S3 endpoint shown by Cloudflare. The ordinary Cloudflare
+API token is not a substitute for the S3 credential pair.
+[R2 authentication](https://developers.cloudflare.com/r2/api/tokens/).
+
+The S3 endpoint is not the public image URL. Real media publication also needs
+a public delivery address and CORS for browser uploads. A successful server-side
+upload/readback proves object access only, not browser CORS or tenant isolation.
+
+## Connection data and secret ownership
+
+| Value | Ownership and handling |
+| --- | --- |
+| GitHub organization and installation ID | Customer connection metadata |
+| GitHub App ID and private key | Publisher configuration; private key is a publisher secret |
+| GitHub installation token | Minted in memory for the customer's installation |
+| Cloudflare account ID | Customer connection metadata |
+| Cloudflare API token | Customer secret supplied through a secure connection flow |
+| R2 bucket and S3 endpoint | Customer connection metadata |
+| R2 Access Key ID and Secret Access Key | Customer credentials supplied through a secure connection flow |
+
+The complete product must provide authenticated account connection and encrypted
+credential storage. Until that exists, a pilot operator uses an approved secret
+manager. Never send credential values through chat, commit them, or put them in
+a generated site repository. Customers retain the ability to revoke the App
+installation and Cloudflare credentials.
+
+## Pilot acceptance
+
+Use the [provider probe](customer-owned-publishing.md) to create three private
+site repositories and Git-connected Pages projects. Repository creation and
+publication must use only the customer installation token. Personal GitHub
+sessions, developer membership, SSH keys, or the publisher's own Cloudflare
+account are not fallback paths and do not count as customer onboarding evidence.
+
+Verify Cloudflare cloned and built the intended commit, completed deployment,
+and reports no Functions. Verify a generated `version-*` branch gets its own
+preview while `main` remains unchanged. Test R2 upload and readback using the
+customer's bucket credentials. Browser upload, public media delivery, tenant
+authorization, full renderer compatibility, and portal integration are separate
+gates before migrating a real customer site.
+
+Typeroll remains the supported editor. Repositories contain generated source
+and content for independent builds; manual repository edits are not imported
+into the CMS.
