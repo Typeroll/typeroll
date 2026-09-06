@@ -40,16 +40,24 @@ test('MCP publication verifies npm before creating the release tag', () => {
   assert.match(workflow, /PUBLISHED_SHA.*!=.*SOURCE_SHA/);
 });
 
-test('the release train publishes Core, MCP, docs and the manifest in order', () => {
+test('the release train publishes Core, MCP and docs in parallel before the manifest', () => {
   const core = workflow.indexOf('\n  core:');
   const mcp = workflow.indexOf('\n  mcp:');
   const docs = workflow.indexOf('\n  docs:');
   const manifest = workflow.indexOf('\n  manifest:');
   assert.ok(core > 0 && mcp > core && docs > mcp && manifest > docs);
-  assert.match(workflow, /mcp:[\s\S]*needs: \[plan, core\]/);
-  assert.match(workflow, /docs:[\s\S]*needs: \[plan, core, mcp\]/);
+  assert.match(workflow, /mcp:[\s\S]*needs: plan/);
+  assert.match(workflow, /docs:[\s\S]*needs: plan/);
   assert.match(workflow, /manifest:[\s\S]*needs: \[plan, core, mcp, docs\]/);
   assert.match(workflow, /RELEASE_TYPEROLL_OSS/);
+});
+
+test('publication trusts the exact successful release-candidate source gate', () => {
+  assert.doesNotMatch(workflow, /- name: Verify Core source/);
+  assert.doesNotMatch(workflow, /npm run typecheck --workspace=@typeroll\/mcp-server/);
+  assert.doesNotMatch(workflow, /npm test --workspace=@typeroll\/mcp-server/);
+  assert.match(workflow, /Build and inspect MCP package[\s\S]*npm run build --workspace=@typeroll\/mcp-server/);
+  assert.match(workflow, /Verify published image contract/);
 });
 
 test('documentation is validated before any immutable artifact is published', () => {

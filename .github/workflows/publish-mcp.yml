@@ -1,7 +1,7 @@
 name: Release OSS
 
-# One ordered release train for the public distribution:
-# successful main CI -> immutable Core -> npm MCP -> public docs -> manifest.
+# One release train for the public distribution:
+# successful main CI -> Core, MCP and docs in parallel -> manifest.
 # Keep this filename: npm Trusted Publishing is bound to publish-mcp.yml.
 
 on:
@@ -107,13 +107,9 @@ jobs:
       - run: npm ci
       - name: Verify Core release version
         run: npm run core:release:verify -- "${{ needs.plan.outputs.core_tag }}"
-      - name: Verify Core source
-        if: needs.plan.outputs.publish_core == 'true'
-        run: |
-          npm run security:audit
-          npm run typecheck
-          npm test
-          npm run build
+      # The exact source SHA has already passed the complete release-candidate
+      # workflow. This job proves the release-specific image contract instead
+      # of repeating the same source gate.
       - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b
         with:
           version: v0.22.0
@@ -229,7 +225,7 @@ jobs:
 
   mcp:
     name: Publish MCP package
-    needs: [plan, core]
+    needs: plan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -262,11 +258,9 @@ jobs:
           else
             echo 'exists=false' >> "$GITHUB_OUTPUT"
           fi
-      - name: Typecheck, test, build and inspect MCP
+      - name: Build and inspect MCP package
         if: needs.plan.outputs.publish_mcp == 'true' && steps.npm.outputs.exists != 'true'
         run: |
-          npm run typecheck --workspace=@typeroll/mcp-server
-          npm test --workspace=@typeroll/mcp-server
           npm run build --workspace=@typeroll/mcp-server
           npm publish --dry-run --workspace=@typeroll/mcp-server
       - name: Publish MCP through npm OIDC
@@ -302,7 +296,7 @@ jobs:
   docs:
     name: Publish public documentation
     if: github.event_name != 'workflow_dispatch' || inputs.dry_run != true
-    needs: [plan, core, mcp]
+    needs: plan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

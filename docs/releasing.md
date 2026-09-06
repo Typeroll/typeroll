@@ -28,21 +28,28 @@ and all workspace builds. The release plan includes committed, staged,
 unstaged, and new files. It fails when product files changed after an existing
 tag without the corresponding version bump.
 
-## Ordered publication
+## Parallel publication
 
 After the exact `main` commit passes `Tests`, the release workflow runs these
-steps serially:
+steps:
 
 1. validate documentation formatting and its production build, then validate
    versions, tags, and changed product scopes;
-2. build the Core image once, publish it by immutable digest, verify
-   `/api/version`, then create `core-vX.Y.Z`;
-3. build and inspect MCP, publish with npm Trusted Publishing, verify npm, then
-   create `mcp-vX.Y.Z`;
-4. build and deploy public documentation from the same source commit;
-5. upload `oss-upstream.lock.json`, containing the exact Core source commit,
+2. in parallel, build the Core image once, publish it by immutable digest,
+   verify `/api/version`, then create `core-vX.Y.Z`;
+3. in the same parallel phase, build and inspect MCP, publish with npm Trusted
+   Publishing, verify npm, then create `mcp-vX.Y.Z`;
+4. in the same parallel phase, build and deploy public documentation from the
+   exact source commit;
+5. after all three outputs succeed, upload `oss-upstream.lock.json`, containing
+   the exact Core source commit,
    digest, Core/MCP versions, schema range, template capabilities, and Extension
    protocol/runtime versions.
+
+The publishing jobs do not repeat the complete audit, type, unit, integration,
+and workspace-build gate that the exact SHA already passed in `Tests`. They keep
+their artifact-specific proofs: Core version and container runtime checks, MCP
+package build and dry-run inspection, and the documentation production build.
 
 An already released unchanged Core or MCP version is verified and reused. If an
 image reached GHCR but the workflow stopped before creating its Core tag, a
