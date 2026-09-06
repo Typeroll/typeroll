@@ -1,8 +1,8 @@
 # Typeroll open-source development
 
 - Use Node.js 22 or later.
-- Run focused tests first, then `npm run typecheck`, `npm test`, and
-  `npm run build` for shared or release-facing changes.
+- Run focused tests first, then `node scripts/oss-release-check.mjs` for shared
+  or release-facing changes. This is the same fail-fast gate as main CI.
 - Forms, the Extension protocol, WordPress migration and helper plugin, the
   portal, the public API, MCP, and the static renderer are open-source core
   functionality.

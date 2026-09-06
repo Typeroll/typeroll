@@ -8,7 +8,13 @@ const OLD_SHA = 'b'.repeat(40);
 const DIGEST = `sha256:${'c'.repeat(64)}`;
 
 test('release scopes keep docs and release automation outside product version bumps', () => {
-  assert.deepEqual(releaseScopes(['docs/extensions.md', 'packages/docs-site/src/content/docs/index.mdx']), {
+  assert.deepEqual(releaseScopes([
+    'docs/extensions.md',
+    'packages/docs-site/src/content/docs/index.mdx',
+    'scripts/oss-release-check.mjs',
+    'scripts/mcp-publish-workflow.test.mjs',
+    '.github/workflows/test.yml',
+  ]), {
     core: false,
     mcp: false,
     docs: true,

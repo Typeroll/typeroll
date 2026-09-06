@@ -54,9 +54,7 @@ npm run dev:site
 Before contributing, run:
 
 ```sh
-npm run typecheck
-npm test
-npm run build
+node scripts/oss-release-check.mjs
 ```
 
 Maintainer releases use one ordered train after successful CI on public

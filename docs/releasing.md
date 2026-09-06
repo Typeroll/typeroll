@@ -14,26 +14,27 @@ train. Do not push `core-v*` or `mcp-v*` tags manually.
   standalone MCP package or its shared contract changes.
 - Documentation-only changes need no package version bump.
 
-Run before committing:
+Install dependencies once, then run the single release-candidate check before
+committing:
 
 ```bash
-npm run release:plan
-npm run security:audit
-npm run typecheck
-npm test
-npm run build
+npm ci
+node scripts/oss-release-check.mjs
 ```
 
-The release plan includes committed, staged, unstaged, and new files. It fails
-when product files changed after an existing tag without the corresponding
-version bump.
+This is the same fail-fast check run by `Tests`: release planning, dependency
+audit, documentation schema and Astro checks, formatting, type checking, tests,
+and all workspace builds. The release plan includes committed, staged,
+unstaged, and new files. It fails when product files changed after an existing
+tag without the corresponding version bump.
 
 ## Ordered publication
 
 After the exact `main` commit passes `Tests`, the release workflow runs these
 steps serially:
 
-1. validate versions, tags, and changed product scopes;
+1. validate documentation formatting and its production build, then validate
+   versions, tags, and changed product scopes;
 2. build the Core image once, publish it by immutable digest, verify
    `/api/version`, then create `core-vX.Y.Z`;
 3. build and inspect MCP, publish with npm Trusted Publishing, verify npm, then
@@ -52,3 +53,8 @@ must remain bound to `publish-mcp.yml`.
 
 Cloud must consume the manifest artifact from a successful completed train. It
 must never reconstruct a release from a mutable tag or rebuild the public image.
+
+The documentation preflight is deliberately repeated at the start of the
+release workflow before Core or MCP can run. The later documentation job uses
+the same command. A formatting or build error therefore cannot leave a
+partially completed release train.

@@ -58,6 +58,11 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
+          cache: npm
+      - name: Install documentation dependencies
+        run: npm ci --workspace=@typeroll/docs-site
+      - name: Validate documentation before publication
+        run: node scripts/oss-release-check.mjs --docs-only
       - name: Validate manual publication confirmation
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run != true
         env:
@@ -308,8 +313,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --workspace=@typeroll/docs-site
-      - run: npx prettier --check "packages/docs-site/src/**/*.{md,mdx}"
-      - run: npm run build --workspace=@typeroll/docs-site
+      - name: Rebuild the validated documentation
+        run: node scripts/oss-release-check.mjs --docs-only
       - name: Deploy exact-source docs to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_DOCS_API_TOKEN }}

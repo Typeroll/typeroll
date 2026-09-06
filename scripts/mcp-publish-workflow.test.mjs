@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const workflow = readFileSync(new URL('../.github/workflows/publish-mcp.yml', import.meta.url), 'utf8');
+const testWorkflow = readFileSync(new URL('../.github/workflows/test.yml', import.meta.url), 'utf8');
 
 test('MCP publication waits for successful main Tests', () => {
   assert.match(workflow, /workflow_run:\s*\n\s+workflows:\s*\n\s+- Tests/);
@@ -12,6 +13,11 @@ test('MCP publication waits for successful main Tests', () => {
   assert.match(workflow, /workflow_run\.head_branch == 'main'/);
   assert.match(workflow, /workflow_run\.head_repository\.full_name == github\.repository/);
   assert.match(workflow, /workflow_run\.head_sha/);
+});
+
+test('main Tests run the repository release-candidate check with complete history', () => {
+  assert.match(testWorkflow, /fetch-depth: 0/);
+  assert.match(testWorkflow, /name: Validate release candidate[\s\S]*node scripts\/oss-release-check\.mjs/);
 });
 
 test('the OSS release train is serialized and uses pinned Trusted Publishing tooling', () => {
@@ -44,6 +50,16 @@ test('the release train publishes Core, MCP, docs and the manifest in order', ()
   assert.match(workflow, /docs:[\s\S]*needs: \[plan, core, mcp\]/);
   assert.match(workflow, /manifest:[\s\S]*needs: \[plan, core, mcp, docs\]/);
   assert.match(workflow, /RELEASE_TYPEROLL_OSS/);
+});
+
+test('documentation is validated before any immutable artifact is published', () => {
+  const plan = workflow.indexOf('\n  plan:');
+  const preflight = workflow.indexOf('- name: Validate documentation before publication');
+  const core = workflow.indexOf('\n  core:');
+
+  assert.ok(plan > 0 && preflight > plan && preflight < core);
+  assert.match(workflow, /Validate documentation before publication[\s\S]*node scripts\/oss-release-check\.mjs --docs-only/);
+  assert.match(workflow, /Rebuild the validated documentation[\s\S]*node scripts\/oss-release-check\.mjs --docs-only/);
 });
 
 test('an interrupted Core publication can recover only from the same source commit', () => {

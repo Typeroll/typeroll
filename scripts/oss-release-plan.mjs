@@ -38,6 +38,9 @@ export function releaseScopes(files) {
     file.startsWith('.github/') ||
     file === 'scripts/oss-release-plan.mjs' ||
     file === 'scripts/oss-release-plan.test.mjs' ||
+    file === 'scripts/oss-release-check.mjs' ||
+    file === 'scripts/oss-release-check.test.mjs' ||
+    file === 'scripts/mcp-publish-workflow.test.mjs' ||
     file === 'docs/releasing.md';
   const docsOnly = (file) =>
     file.startsWith('docs/') ||

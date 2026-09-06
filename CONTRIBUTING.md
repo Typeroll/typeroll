@@ -4,10 +4,12 @@ Use Node.js 22 or later and work from a clean checkout.
 
 ```sh
 npm install
-npm run typecheck
-npm test
-npm run build
+node scripts/oss-release-check.mjs
 ```
+
+The check matches the main CI release gate, including documentation schema and
+formatting checks, type checking, tests, builds, dependency audit, and version
+planning.
 
 Keep code, identifiers, routes, API fields, test names, and technical logs in
 English. Never commit credentials, generated dotenv files, customer data, or
