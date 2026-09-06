@@ -1,5 +1,12 @@
 # Changelog
 
+## MCP 0.43.3 / Core 0.1.11
+
+- Hosted static site builds now add a host-scoped `X-Robots-Tag` rule for the
+  platform fallback namespace through Cloudflare Pages `_headers`. Customer
+  domains remain indexable, DNS-only fallback CNAMEs remain supported, and no
+  zone-wide Transform Rule or Pages Function is required.
+
 ## MCP 0.43.2 / Core 0.1.10
 
 - Self-host runtime convergence now routes all traffic to each newly deployed

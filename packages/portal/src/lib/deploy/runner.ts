@@ -40,6 +40,7 @@ import { partitionShadowedRedirects } from '../redirect-hygiene';
 import { getHostingAdapter } from '../hosting';
 import { isCanonicalReady } from '../site-public-urls';
 import type { DeployResult } from '../hosting';
+import { buildPagesHeaders } from './pages-headers';
 
 export interface RunDeployArgs {
   orgId: string;
@@ -153,14 +154,15 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   //      advertises the internal `*.sites` fallback as canonical (the
   //      autopilot.sites.typeroll.com → autopilot.se sitemap leak).
   //   2. The Cloudflare Pages fallback subdomain when no domain is declared
-  //      (the develop-on-the-subdomain phase). The hosting platform's single
-  //      zone-level response-header rule keeps that host out of search indexes.
+  //      (the develop-on-the-subdomain phase). The generated `_headers` file
+  //      keeps that host out of search indexes.
   //   3. Portal preview URL as a last resort. Works for any portal
   //      caller; not ideal for indexing but better than the old
   //      `example.com` placeholder.
   //
-  // The fallback noindex defense is intentionally outside this site build.
-  // Customer Pages projects remain static and receive no middleware Function.
+  // The fallback noindex defense is an absolute host pattern in the static
+  // Pages `_headers` file. It does not add a middleware Function or affect the
+  // same build when Cloudflare serves it on a customer domain.
   const portalOrigin = (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '');
   const previewFallback = portalOrigin ? `${portalOrigin}/preview/${args.siteId}` : '';
   // Canonical-ready = the custom domain is verified (or live) on Cloudflare,
@@ -291,7 +293,9 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
 
   // 3b. Write _headers — Cloudflare Pages reads this to set HTTP response
   //     headers per route. We set sensible caching + security defaults; the
-  //     customer's own robots/scripts still flow normally.
+  //     customer's own robots/scripts still flow normally. Hosted builds add
+  //     an absolute fallback-host pattern with X-Robots-Tag; the same build on
+  //     a customer domain does not match that pattern.
   //
   //       /static/*    long-lived, immutable (hashed asset filenames)
   //       /*           short HTML cache + must-revalidate so the next deploy
@@ -300,27 +304,7 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   //
   //     X-Content-Type-Options + Referrer-Policy + Permissions-Policy are
   //     baseline hardening; they apply to every response.
-  const headersFile = [
-    '/*',
-    '  X-Content-Type-Options: nosniff',
-    '  Referrer-Policy: strict-origin-when-cross-origin',
-    '  Permissions-Policy: camera=(), microphone=(), geolocation=()',
-    '  Cache-Control: public, max-age=300, must-revalidate',
-    '',
-    '/_astro/*',
-    '  Cache-Control: public, max-age=31536000, immutable',
-    '',
-    '/_assets/*',
-    '  Cache-Control: public, max-age=31536000, immutable',
-    '',
-    '/sitemap.xml',
-    '  Cache-Control: public, max-age=3600',
-    '/sitemap-images.xml',
-    '  Cache-Control: public, max-age=3600',
-    '/robots.txt',
-    '  Cache-Control: public, max-age=3600',
-    '',
-  ].join('\n');
+  const headersFile = buildPagesHeaders(process.env.SITES_BASE_DOMAIN);
   await fs.promises.writeFile(path.join(buildDir, '_headers'), headersFile);
 
   // 3c. Validate bound Forms before upload. Extension APIs, Forms and app

@@ -16,7 +16,7 @@ Every Typeroll site is reachable from at least two URLs:
 
 Both serve the same Cloudflare Pages build. Without deliberate effort, Google would treat them as duplicate content, split page rank between them, and possibly surface the wrong URL in SERPs.
 
-Typeroll's defense is layered: a strong canonical URL signal at the HTML layer, and a stricter `X-Robots-Tag` header at the Edge for crawlers that don't honour canonicals.
+Typeroll's defense is layered: a strong canonical URL signal at the HTML layer, and a stricter `X-Robots-Tag` response header for crawlers that don't honour canonicals.
 
 ## Canonical URL
 
@@ -64,45 +64,23 @@ The canonical URL alone is enough for Google and the major Western search engine
 - Bing and Yandex have historically been less consistent.
 - AI training crawlers (GPTBot, ClaudeBot, etc.) often skip canonical consolidation entirely.
 
-The hosted platform enforces this once at the fallback-zone edge. Customer
-site builds remain static and do not contain a `robots.txt` Function or
-middleware. A single Cloudflare Transform Rule on the `typeroll.com` zone
-adds `X-Robots-Tag: noindex, nofollow` whenever the request hostname matches
-`*.sites.typeroll.com`. The rule applies to every existing and future fallback
-host without adding Functions or invocations to customer Pages projects.
+The deploy runner writes an absolute host pattern to the static Cloudflare
+Pages `_headers` file whenever `SITES_BASE_DOMAIN` is configured:
 
-**Hosted typeroll.com**: a single Transform Rule on the `typeroll.com` zone (sites.typeroll.com is a subdomain within that zone, not its own zone). Dashboard path:
-
-```
-Cloudflare → typeroll.com → Rules → Transform Rules → "Modify Response Header"
-  Rule name:    Noindex Typeroll fallback subdomains
-  When:         ends_with(http.host, ".sites.typeroll.com")
-  Then:         Set static header  X-Robots-Tag = noindex, nofollow
-  Deploy:       enabled
+```text
+https://:site.sites.typeroll.com/*
+  X-Robots-Tag: noindex, nofollow
 ```
 
-The cloud platform repository contains an idempotent Rulesets API command. It
-preserves unrelated response-header rules and manages only the stable
-`typeroll_fallback_noindex` rule:
+Cloudflare Pages applies that header only when it serves the build on a matching
+platform fallback hostname. The same files remain indexable on the customer's
+custom domain. The placeholder also covers fallback aliases attached to the
+same Pages project. This works with DNS-only fallback CNAMEs and adds neither a
+Pages Function nor a per-request invocation.
 
-```bash
-# Credential-free effect check (requires both HEAD and GET to carry noindex):
-FALLBACK_NOINDEX_PROBE_URL=https://example.sites.typeroll.com \
-  npm run cloudflare:fallback-noindex:probe
-# Control-plane check:
-npm run cloudflare:fallback-noindex:check
-# Production change, only after explicit approval:
-npm run cloudflare:fallback-noindex:apply
-```
-
-The token needs zone read plus Transform Rules read for `--check`, and
-Transform Rules write for `--apply`. Applying the rule is a production change
-and belongs behind the platform release approval gate.
-
-**Self-hosted**: a normal installation with only customer production domains
-needs no fallback-zone rule. An operator who deliberately offers a shared
-fallback domain configures the equivalent rule on that zone. Typeroll does not
-generate a per-site fallback Function.
+Self-hosted installations that do not configure `SITES_BASE_DOMAIN` receive
+only the portable cache and security headers. An operator who offers a shared
+fallback namespace can set the variable and gets the same host-scoped policy.
 
 This staging/indexing rule is hosting infrastructure. It is unrelated to
 Typeroll Apps, Extensions, Forms or provider APIs.
@@ -123,9 +101,9 @@ in search results, set `sitewide_noindex: true`. Typeroll then emits
 deliberately separate from `robots.txt`: blocking the crawler there can prevent
 it from seeing the noindex directive at all.
 
-Generated as a static file by the renderer at `/robots.txt`. The zone-level
-fallback rule adds its header independently and never changes this file's
-customer-domain content. Default policy:
+Generated as a static file by the renderer at `/robots.txt`. The host-scoped
+`_headers` rule adds its response directive independently and never changes
+this file's customer-domain content. Default policy:
 
 ```
 User-agent: *
