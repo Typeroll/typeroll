@@ -57,9 +57,12 @@ const locale = ogLocale(language);
 // the shared validator rather than escaped into the attribute.
 const alternates = resolveAlternates(page.alternates, canonical, language);
 
-// Page-level noindex wins; otherwise the version (branches default to blocked).
+// Page-level and explicit site-wide noindex win; otherwise the version
+// (branches default to blocked).
 const versionBlocked = await isVersionRobotsBlocked();
-const robots = page.noindex || versionBlocked ? 'noindex,nofollow' : 'index,follow';
+const robots = page.noindex || settings.sitewide_noindex || versionBlocked
+  ? 'noindex,nofollow'
+  : 'index,follow';
 
 // Twitter site handle — used for both site and (in absence of an author
 // override) creator. Stored without the leading @.

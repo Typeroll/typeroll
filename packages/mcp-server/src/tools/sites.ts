@@ -52,6 +52,15 @@ export const siteTools: ToolDef[] = [
     }),
   },
   {
+    name: 'check_site_indexing',
+    description:
+      'Probe the site\'s recorded fallback and live production origins and report indexing safety. Keeps X-Robots-Tag, HTML robots meta, and robots.txt crawl policy separate; fallback URLs must expose the documented edge noindex header, while production follows sitewide_noindex. Use before launch and after changing domains or indexing settings.',
+    handler: withErrorBoundary(async (_args, { client, siteId }) => {
+      const res = await client.get(siteId, 'indexing-diagnostics');
+      return ok(res);
+    }),
+  },
+  {
     name: 'update_site',
     description:
       'Edit Site-level identity fields: name (display), slug (drives the {slug}.typeroll-fallback subdomain — kebab-case, 3-48 chars, unique across the org), domain (the customer\'s real hostname; pass "" to clear). For colors / fonts / contact info / tagline use update_site_settings instead.',

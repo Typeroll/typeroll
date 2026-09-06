@@ -222,4 +222,36 @@ export const migrationTools: ToolDef[] = [
       return ok(res);
     }),
   },
+  {
+    name: 'record_migration_seo_acceptance',
+    description:
+      'Record the reviewed SEO/content parity evidence used by the launch report. This does not run the audit. Supply the exact source/target origins, checked timestamp, dataset description, page count and difference counts. status=accepted requires unresolved=0. Re-run and record new evidence after every deploy.',
+    inputSchema: {
+      status: z.enum(['accepted', 'rejected']),
+      checked_at: z.string().datetime(),
+      dataset: z.string().min(1),
+      source_origin: z.string().url(),
+      target_origin: z.string().url(),
+      checked_pages: z.number().int().positive(),
+      differences: z.object({
+        total: z.number().int().nonnegative(),
+        intentional: z.number().int().nonnegative(),
+        unresolved: z.number().int().nonnegative(),
+      }),
+      notes: z.string().optional(),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const res = await client.put(siteId, 'migration-report/seo-acceptance', args);
+      return ok(res);
+    }),
+  },
+  {
+    name: 'get_migration_launch_report',
+    description:
+      'Return the launch decision report with separate inventory, exclusion-reason, internal-link, deployed URL parity, deploy freshness and reviewed SEO/content parity sections. launch_ready is false when any evidence is absent, incomplete, failed, targets an old origin, or predates the latest hosted deploy. Use this final gate instead of treating zero unhandled URLs as launch readiness.',
+    handler: withErrorBoundary(async (_args, { client, siteId }) => {
+      const res = await client.get(siteId, 'migration-report');
+      return ok(res);
+    }),
+  },
 ];

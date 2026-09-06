@@ -14,6 +14,7 @@ import { settingsTools } from '../src/tools/settings.js';
 import { collectionTools } from '../src/tools/collections.js';
 import { mediaTools } from '../src/tools/media.js';
 import { migrationTools } from '../src/tools/migration.js';
+import { domainTools } from '../src/tools/domain.js';
 
 interface Recorded {
   method: string;
@@ -164,6 +165,30 @@ describe('migration tool contracts', () => {
     });
     expect(tool.description).toContain('ALWAYS run the dry-run first');
   });
+
+  it('records SEO evidence and reads the fail-closed launch report', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ launch_ready: false }));
+    const record = find(migrationTools, 'record_migration_seo_acceptance');
+    await record.handler({
+      status: 'accepted',
+      checked_at: '2026-09-06T10:30:00.000Z',
+      dataset: 'Sitemap crawl',
+      source_origin: 'https://old.example.com',
+      target_origin: 'https://new.example.com',
+      checked_pages: 10,
+      differences: { total: 2, intentional: 2, unresolved: 0 },
+    } as never, { client, siteId });
+    const report = find(migrationTools, 'get_migration_launch_report');
+    await report.handler({} as never, { client, siteId });
+    expect(calls[0]).toMatchObject({
+      method: 'PUT',
+      url: 'https://example.test/api/v1/sites/mysite/migration-report/seo-acceptance',
+    });
+    expect(calls[1]).toMatchObject({
+      method: 'GET',
+      url: 'https://example.test/api/v1/sites/mysite/migration-report',
+    });
+  });
 });
 
 describe('partials tools', () => {
@@ -225,6 +250,34 @@ describe('sites tools', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('org-scoped');
     expect(result.content[0].text).toContain('"status": 403');
+  });
+
+  it('reads live indexing diagnostics through the dedicated endpoint', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ ready: true, targets: [] }));
+    const tool = find(siteTools, 'check_site_indexing');
+    await tool.handler({} as never, { client, siteId });
+    expect(calls[0]).toMatchObject({
+      method: 'GET',
+      url: 'https://example.test/api/v1/sites/mysite/indexing-diagnostics',
+    });
+  });
+});
+
+describe('domain tools', () => {
+  it('declares the canonical domain and republishes by default', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ domain: { status: 'pending' } }));
+    const tool = find(domainTools, 'add_domain');
+    await tool.handler({ hostname: 'www.example.com', prefer: 'www' } as never, { client, siteId });
+    expect(calls[0]).toMatchObject({
+      method: 'POST',
+      url: 'https://example.test/api/v1/sites/mysite/domain',
+      body: JSON.stringify({ hostname: 'www.example.com', prefer: 'www' }),
+    });
+    expect(tool.description).toContain('no separate activation step');
+  });
+
+  it('keeps activate_domain explicitly legacy-only', () => {
+    expect(find(domainTools, 'activate_domain').description).toContain('Legacy compatibility tool');
   });
 });
 

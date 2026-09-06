@@ -6,7 +6,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { Redirect } from '@typeroll/shared';
-import { checkUrlParity, recordRedirectVerification } from '../../lib/wp/url-parity';
+import { checkUrlParity, recordRedirectVerification, runSiteParityCheck } from '../../lib/wp/url-parity';
+import type { Site } from '@typeroll/shared';
 
 const ORG = 'orgone';
 const SITE = 'mysite';
@@ -275,5 +276,60 @@ describe('recordRedirectVerification', () => {
       );
       expect(doc?.verified).toBeUndefined();
     }
+  });
+});
+
+describe('runSiteParityCheck evidence', () => {
+  beforeEach(async () => {
+    makeTmpFixtures();
+    await resetDatastore();
+  });
+
+  it('persists compact evidence only for a complete unfiltered run', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    const site = {
+      id: SITE, name: 'Parity', hosting_adapter: 'cloudflare',
+      hosting_config: { fallback_subdomain: 'mysite.sites.example.com' },
+      created_at: '2026-09-06T00:00:00.000Z',
+    } satisfies Site;
+    await store.setDoc(paths.site(ORG, SITE), site);
+    await store.setDoc(paths.settings(ORG, SITE), { site_name: 'Parity', trailing_slash: 'ignore' });
+    await store.setDoc(paths.migrationUrl(ORG, SITE, 'old'), {
+      path: '/old', full_url: 'https://old.example.com/old', observed_paths: ['/old'],
+      sources: ['sitemap'], found_at: '2026-09-06T00:00:00.000Z',
+    });
+    await store.setDoc(paths.deploy(ORG, SITE, 'deploy-one'), {
+      version_id: MAIN_VERSION_ID,
+      environment: 'staging',
+      status: 'succeeded',
+      started_at: '2026-09-06T00:30:00.000Z',
+      finished_at: '2026-09-06T00:31:00.000Z',
+    });
+
+    await runSiteParityCheck({
+      store, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, site,
+      fetchImpl: fakeFetch({ [`${TARGET}/old`]: { status: 200 } }),
+    });
+    const evidence = await store.getDoc<Record<string, unknown>>(
+      paths.migrationVerification(ORG, SITE),
+    );
+    expect(evidence).toMatchObject({
+      complete: true,
+      checked: 1,
+      expected_checks: 1,
+      inventory_total: 1,
+      deployment_job_id: 'deploy-one',
+      deployment_finished_at: '2026-09-06T00:31:00.000Z',
+      results: [],
+    });
+
+    await store.deleteDoc(paths.migrationVerification(ORG, SITE));
+    await runSiteParityCheck({
+      store, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, site,
+      statuses: ['unhandled'],
+      fetchImpl: fakeFetch({ [`${TARGET}/old`]: { status: 200 } }),
+    });
+    expect(await store.getDoc(paths.migrationVerification(ORG, SITE))).toBeNull();
   });
 });

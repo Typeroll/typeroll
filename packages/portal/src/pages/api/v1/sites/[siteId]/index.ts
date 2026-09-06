@@ -36,9 +36,9 @@ export const GET: APIRoute = async ({ request, params }) => {
  * Edit Site-level fields (separate from per-version settings). v1 allows
  * the agent to set name, slug, and domain. slug is uniqueness-checked
  * across the org so two sites can't claim the same fallback URL. Changing
- * slug does NOT re-provision the auto-attached CF Pages domain — that's
- * an ops task (the customer's existing fallback URL keeps working under
- * its old name until reprovisioning).
+ * slug reprovisions the fallback DNS and Cloudflare Pages attachment. The
+ * response reports `dns_note` on success or `dns_warning` when the slug was
+ * saved but hosting reprovisioning needs operator attention.
  */
 export const PATCH: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);

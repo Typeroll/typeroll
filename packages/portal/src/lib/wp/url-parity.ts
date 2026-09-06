@@ -21,7 +21,7 @@
 // is testable without a network.
 
 import { applyTrailingSlash, paths } from '@typeroll/shared';
-import type { Redirect } from '@typeroll/shared';
+import type { DeployJob, Redirect } from '@typeroll/shared';
 import type { TrailingSlashPolicy } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
 import { analyzeCoverage, type AnalyzedUrl, type UrlStatus } from './url-inventory';
@@ -259,6 +259,8 @@ export interface SiteParityArgs {
 export interface SiteParityReport {
   target_origin: string;
   checked: number;
+  /** Number of requests in a complete run, including observed slash variants. */
+  expected_checks: number;
   /** Inventory size before filtering/limiting, so a capped run can't read
    *  as full coverage. */
   inventory_total: number;
@@ -266,6 +268,16 @@ export interface SiteParityReport {
   summary: ParitySummary;
   results: ParityResult[];
   redirects_verified: number;
+}
+
+export interface StoredSiteParityEvidence extends SiteParityReport {
+  version_id: string;
+  checked_at: string;
+  deployment_job_id: string | null;
+  deployment_finished_at: string | null;
+  complete: true;
+  /** Detailed rows are intentionally omitted from persistent evidence. */
+  results: [];
 }
 
 /**
@@ -290,6 +302,10 @@ export async function runSiteParityCheck(args: SiteParityArgs): Promise<SitePari
     : inventory;
   const limit = args.limit && args.limit > 0 ? args.limit : filtered.length;
   const slice = filtered.slice(0, limit);
+  const expectedChecks = inventory.reduce(
+    (total, entry) => total + new Set(entry.observed_paths?.length ? entry.observed_paths : [entry.path]).size,
+    0,
+  );
 
   const { results, summary } = await checkUrlParity(slice, {
     targetOrigin,
@@ -310,16 +326,36 @@ export async function runSiteParityCheck(args: SiteParityArgs): Promise<SitePari
   const redirects_verified = await recordRedirectVerification(
     args.store, args.orgId, args.siteId, args.versionId, redirects, results,
   );
-
-  return {
+  const report: SiteParityReport = {
     target_origin: targetOrigin,
     checked: results.length,
+    expected_checks: expectedChecks,
     inventory_total: inventory.length,
     truncated: slice.length < filtered.length,
     summary,
     results,
     redirects_verified,
   };
+  if (!args.statuses?.length && !report.truncated) {
+    const deploys = await args.store.listDocs<DeployJob>(paths.deploys(args.orgId, args.siteId));
+    const latestDeploy = deploys
+      .filter((job) => job.version_id === args.versionId && job.status === 'succeeded' && job.dry_run !== true)
+      .sort((a, b) => (b.finished_at ?? b.started_at).localeCompare(a.finished_at ?? a.started_at))[0];
+    const evidence: StoredSiteParityEvidence = {
+      ...report,
+      version_id: args.versionId,
+      checked_at: new Date().toISOString(),
+      deployment_job_id: latestDeploy?.id ?? null,
+      deployment_finished_at: latestDeploy?.finished_at ?? null,
+      complete: true,
+      results: [],
+    };
+    await args.store.setDoc(
+      paths.migrationVerification(args.orgId, args.siteId, args.versionId),
+      evidence as unknown as Record<string, unknown>,
+    );
+  }
+  return report;
 }
 
 /**

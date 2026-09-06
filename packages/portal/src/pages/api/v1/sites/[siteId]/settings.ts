@@ -17,6 +17,7 @@ import { normalizeIframeAllowedHosts, type SiteSettings } from '@typeroll/shared
 const TOP_LEVEL = new Set([
   'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
   'default_meta_description', 'language', 'robots_txt', 'image_sizes_default',
+  'sitewide_noindex',
   // Scriptable surfaces. Trusted because the caller has an API key.
   'scripts_head', 'scripts_body_end', 'custom_css',
 ]);
@@ -44,6 +45,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!body) return apiError('Invalid JSON body');
   if (body.trailing_slash !== undefined && !['always', 'never', 'ignore'].includes(String(body.trailing_slash))) {
     return apiError('trailing_slash must be one of: always, never, ignore', 400);
+  }
+  if (body.sitewide_noindex !== undefined && typeof body.sitewide_noindex !== 'boolean') {
+    return apiError('sitewide_noindex must be boolean', 400);
   }
   if (body.iframe_allowed_hosts !== undefined) {
     const checked = normalizeIframeAllowedHosts(body.iframe_allowed_hosts);

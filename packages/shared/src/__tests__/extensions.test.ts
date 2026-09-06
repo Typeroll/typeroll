@@ -331,6 +331,8 @@ describe('extension renderer capabilities', () => {
       extension_protocol_version: 3,
       extension_runtime_version: '0.39.1',
       supports_extension_installation_config_api: true,
+      supports_indexing_diagnostics: true,
+      supports_migration_launch_report: true,
       extension_render_modes: ['bundled_component', 'embedded_app'],
     });
   });

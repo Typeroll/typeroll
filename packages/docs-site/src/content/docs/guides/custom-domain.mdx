@@ -57,6 +57,17 @@ Every Typeroll site gets a free subdomain at `yoursite.sites.typeroll.com`. To u
 
 </Steps>
 
+## API and MCP automation
+
+The bearer-authenticated domain route and MCP `add_domain` tool follow the same
+domain-first workflow as the portal. They accept the hostname, optional
+`prefer: "apex" | "www"`, and `auto_deploy` (default `true`). The response
+includes the DNS target and, when publishing was requested, the deploy job id.
+
+After that deploy succeeds, point DNS and call `poll_domain` until the domain is
+verified. Do not call `activate_domain` in new automation; it remains only for
+compatibility with old records and clients.
+
 ## Subdomain vs root domain
 
 | Setup         | Example          | Notes                                    |

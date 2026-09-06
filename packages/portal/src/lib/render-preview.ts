@@ -728,7 +728,9 @@ function buildHtml(args: {
     size_base: settings.fonts?.size_base ?? 16,
   };
   const fontUrl = buildFontUrl(f.heading, f.body);
-  const robots = page.noindex || robotsBlocked ? 'noindex,nofollow' : 'index,follow';
+  const robots = page.noindex || settings.sitewide_noindex || robotsBlocked
+    ? 'noindex,nofollow'
+    : 'index,follow';
 
   return `<!doctype html>
 <html lang="${escapeAttr(page.language || settings.language || 'en')}">

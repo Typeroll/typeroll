@@ -154,6 +154,18 @@ describe('read_skill tool', () => {
   });
 });
 
+describe('migration recipes track current platform contracts', () => {
+  it('uses Page.path, the domain-first flow, and the deploy-bound launch gate', () => {
+    const wordpress = readBundledSkill('tr-migrate-wp');
+    const multisite = readBundledSkill('tr-migrate-multisite');
+    expect(wordpress).toContain('path: "/2024/01/foo-bar/"');
+    expect(wordpress).not.toContain('slug supports slashes');
+    expect(multisite).toContain('there is no separate activation step');
+    expect(multisite).not.toContain('verified → `activate_domain`');
+    expect(multisite).toContain('get_migration_launch_report');
+  });
+});
+
 // The guard that makes embedding safe: the committed bundled-content.ts must
 // match the physical source. If this fails, run `npm run gen`.
 describe('embedded content is in sync with source files', () => {

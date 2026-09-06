@@ -133,6 +133,18 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
       <h2 style="font-size: 1.125rem;">SEO defaults</h2>
       <p class="muted text-sm">Fallback values used when a page doesn't set its own SEO. Yoast/RankMath/SEOPress/AIOSEO equivalents.</p>
       <div class="field">
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+          <input
+            type="checkbox"
+            name="sitewide_noindex"
+            checked={settings.sitewide_noindex === true}
+            style="width: auto; margin: 0;"
+          />
+          <span>Hide every page from search engines (site-wide noindex)</span>
+        </label>
+        <p class="muted text-sm">Use for staging or review sites. This emits a noindex meta directive without changing robots.txt, so crawlers can still read the directive.</p>
+      </div>
+      <div class="field">
         <label>Language</label>
         <input name="language" value={settings.language ?? 'en'} placeholder="en" />
         <p class="muted text-sm">BCP 47 tag — e.g. <code>en</code>, <code>sv</code>, <code>en-GB</code>. Sets the <code>&lt;html lang&gt;</code> attribute and the OpenGraph locale.</p>

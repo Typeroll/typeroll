@@ -135,6 +135,8 @@ export interface SiteTemplateCapabilities {
   supports_media_batch_upload: boolean;
   /** Native cookie-consent settings are readable/writable through v1 and MCP. */
   supports_cookie_consent_config_api: boolean;
+  /** Site-wide HTML noindex and live fallback/production indexing probes. */
+  supports_indexing_diagnostics: boolean;
 
   // Build pipeline
   supports_dry_run_deploys: boolean;
@@ -212,6 +214,8 @@ export interface SiteTemplateCapabilities {
    * fetches every inventory URL against the new site before DNS cutover.
    */
   supports_migration_url_api: boolean;
+  /** Fail-closed launch report that binds URL and SEO evidence to one deploy. */
+  supports_migration_launch_report: boolean;
 
   /**
    * 0.32.0+: redirect rules accept wildcard patterns — a trailing `*` with
@@ -263,6 +267,7 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   forms_html_directive: true,
   supports_hreflang_alternates: true,
   supports_migration_url_api: true,
+  supports_migration_launch_report: true,
   supports_redirect_wildcards: true,
   supports_funnel_attribution: true,
   supports_extension_blocks: true,
@@ -323,6 +328,7 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_iframe_host_allowlist: true,
   supports_media_batch_upload: true,
   supports_cookie_consent_config_api: true,
+  supports_indexing_diagnostics: true,
 
   supports_dry_run_deploys: true,
   supports_block_asset_bundling: true,

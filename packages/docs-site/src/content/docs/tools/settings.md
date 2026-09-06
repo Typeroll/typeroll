@@ -28,6 +28,7 @@ Updates site settings. Pass only the fields you want to change.
 | `iframe_allowed_hosts` | string[] | Exact hosts allowed in embedded content              |
 | `image_sizes_default` | string | Default responsive-image `sizes` hint                  |
 | `robots_txt`         | string | Full content of robots.txt                               |
+| `sitewide_noindex`   | boolean | Emit `noindex,nofollow` on every HTML page              |
 | `scripts_head`       | string | Trusted markup/scripts inserted in `<head>`              |
 | `scripts_body_end`   | string | Trusted markup/scripts inserted before `</body>`         |
 | `custom_css`         | string | Site-wide CSS                                             |

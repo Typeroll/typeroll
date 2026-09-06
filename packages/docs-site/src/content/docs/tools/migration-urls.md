@@ -23,14 +23,16 @@ Warnings don't stop the job but are worth knowing: no verification URL for the p
 
 If it isn't ready, fix the blockers before starting. The content work is the expensive part of a migration, and every blocker above means doing it twice.
 
-## The two questions
+## The four independent questions
 
 They sound the same and they are not:
 
-| Question                                      | Tool                    |
-| --------------------------------------------- | ----------------------- |
-| "Is every old URL accounted for in our data?" | `list_migration_urls`   |
-| "Does the new site actually answer them?"     | `verify_migration_urls` |
+| Question                                            | Tool                              |
+| --------------------------------------------------- | --------------------------------- |
+| "Is every old URL accounted for in our data?"       | `list_migration_urls`             |
+| "Are saved internal links intact?"                  | `check_internal_links`            |
+| "Does this exact deployment answer every variant?" | `verify_migration_urls`           |
+| "Was content and SEO parity reviewed?"              | `record_migration_seo_acceptance` |
 
 The first classifies each inventory entry against the site's current pages and redirects. The second **requests every URL** against the deployed site and reports what came back. They disagree exactly when it matters — a redirect pointing at a page that was never published, a typo in a path, a redirect loop. All of those look handled in the data and return a 404 to a visitor.
 
@@ -98,6 +100,32 @@ It also stamps verification onto the redirect rules it exercised, so you can see
 > "Deploy, then check every old URL against the new site and tell me what would break."
 
 Deploy first — the check tests published, deployed content, not unsaved drafts.
+
+A complete, unfiltered run stores compact evidence for the launch report. It
+records the target origin, check time, expected request count (including slash
+variants), and the latest successful non-dry-run deploy job. Filtered or
+truncated runs never replace this evidence.
+
+## `record_migration_seo_acceptance`
+
+Records the result of a human- or tool-reviewed content/SEO comparison. It does
+not pretend to run that comparison. Supply the source and target origins,
+dataset description, checked page count, timestamp, and counts for intentional
+and unresolved differences. Accepted evidence requires zero unresolved
+differences and is bound server-side to the latest successful hosted deploy.
+
+## `get_migration_launch_report`
+
+This is the final, fail-closed launch gate. It reports inventory coverage,
+exclusions without reasons, saved-link integrity, the exact hosted deployment,
+deployed URL parity, untested URL variants, and reviewed content/SEO parity as
+separate sections.
+
+`launch_ready` remains false when any section is absent or failed. A new deploy
+also makes both URL and SEO evidence stale, even if the content appears
+unchanged; rerun the checks against that deployment. This prevents “zero
+unhandled URLs” from being mistaken for proof that a migration is safe to
+launch.
 
 ## Where this fits
 

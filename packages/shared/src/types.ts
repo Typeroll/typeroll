@@ -359,6 +359,12 @@ export interface SiteSettings {
     same_as?: string[];
   };
   robots_txt?: string;
+  /**
+   * Emit `noindex,nofollow` on every HTML document without conflating the
+   * indexing directive with robots.txt crawl policy. Useful for staging sites
+   * that intentionally use their main version but must never enter search.
+   */
+  sitewide_noindex?: boolean;
 }
 
 /**
@@ -1609,6 +1615,8 @@ export interface DeployJob {
   /** Non-blocking preflight findings. The deploy still succeeds, but these
    *  need editorial attention before launch. */
   warnings?: string[];
+  /** True when the build deliberately skipped its hosting upload. */
+  dry_run?: boolean;
   started_at: string;
   finished_at?: string;
   triggered_by?: string;
@@ -1885,6 +1893,10 @@ export const paths = {
     `organizations/${orgId}/sites/${siteId}/migration_urls`,
   migrationUrl: (orgId: string, siteId: string, urlId: string) =>
     `organizations/${orgId}/sites/${siteId}/migration_urls/${urlId}`,
+  migrationVerification: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/migration_evidence/url_parity`,
+  migrationSeoAcceptance: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/migration_evidence/seo_acceptance`,
 
   // ─── Root-level indexes ───────────────────────────────────────────────
   // Reverse lookup so the public-API auth handler can resolve a presented

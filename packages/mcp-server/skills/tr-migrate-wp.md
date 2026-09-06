@@ -118,26 +118,25 @@ c. Migrate referenced images:
      text (existing WP `alt` attribute or `aria-label`; fall back to
      filename only as a last resort).
 
-d. Reconstruct in the target's design. The cleaned HTML is rarely
-   ready to ship — typical fixes: replace WP `wp-block-*` classes
-   with the target's CSS variables; turn Elementor sections into
-   plain `<section>` with the target's spacing; fix headings so the
-   page has exactly one `<h1>`. If you're confident, batch these
-   through `bulk_replace_text` with `dry_run: true` first.
+d. Reconstruct in the target's design with native blocks first. Read the
+   available block types and map headings, prose, images, buttons and layout
+   into their typed fields. Use HTML mode only for source-specific markup that
+   has no native representation and has passed the composition preflight.
 
 e. Write the page as a draft:
 
    ```
-   create_page title="..." slug="<preserved-from-wp>"
-               html_content="<reconstructed>"
+   create_page title="..." slug="<last-path-segment>"
+               path="/<preserved-wordpress/path/>"
+               blocks=[<native block tree>]
                status="draft" kind="article" author="..."
                seo_title="..." seo_description="..."
    ```
 
    **Preserve the source URL.** WP post URLs like
-   `/2024/01/foo-bar/` go in as `slug: "2024/01/foo-bar"`. The
-   slug supports slashes; encode the WP permalink structure verbatim
-   when the customer wants existing links to keep working.
+   `/2024/01/foo-bar/` uses `slug: "foo-bar"` and
+   `path: "/2024/01/foo-bar/"`. Slug is one segment; `path` preserves the
+   complete nested URL.
 
 ### 4. Redirects
 
@@ -191,6 +190,8 @@ import_gsc_performance property="https://old.example.com/" months=6
 # Or paste a Search Console Pages CSV via csv="..." and source_origin.
 check_internal_links         # database preflight before deploy
 verify_migration_urls        # after trigger_deploy; compact exceptions by default
+record_migration_seo_acceptance  # after reviewing this exact deployment
+get_migration_launch_report      # final fail-closed launch gate
 ```
 
 The inventory merges slash-equivalent URLs into one work item but preserves

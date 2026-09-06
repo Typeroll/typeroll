@@ -86,8 +86,13 @@ preserves unrelated response-header rules and manages only the stable
 `typeroll_fallback_noindex` rule:
 
 ```bash
-Configure the equivalent response-header rule at your edge provider and verify
-it with a request to the fallback hostname before publishing customer sites.
+# Credential-free effect check (requires both HEAD and GET to carry noindex):
+FALLBACK_NOINDEX_PROBE_URL=https://example.sites.typeroll.com \
+  npm run cloudflare:fallback-noindex:probe
+# Control-plane check:
+npm run cloudflare:fallback-noindex:check
+# Production change, only after explicit approval:
+npm run cloudflare:fallback-noindex:apply
 ```
 
 The token needs zone read plus Transform Rules read for `--check`, and
@@ -102,7 +107,21 @@ generate a per-site fallback Function.
 This staging/indexing rule is hosting infrastructure. It is unrelated to
 Typeroll Apps, Extensions, Forms or provider APIs.
 
+Use `check_site_indexing` (or
+`GET /api/v1/sites/{siteId}/indexing-diagnostics`) before launch and after a
+domain or indexing-setting change. It requests the recorded fallback and live
+production roots plus each `robots.txt`, and reports edge headers, HTML robots
+meta, and crawl policy independently. A fallback is not considered protected
+unless the documented `X-Robots-Tag` header is present, even when its HTML also
+contains `noindex`.
+
 ## robots.txt
+
+For a staging or review site that should remain crawlable but must not appear
+in search results, set `sitewide_noindex: true`. Typeroll then emits
+`<meta name="robots" content="noindex,nofollow">` on every HTML page. This is
+deliberately separate from `robots.txt`: blocking the crawler there can prevent
+it from seeing the noindex directive at all.
 
 Generated as a static file by the renderer at `/robots.txt`. The zone-level
 fallback rule adds its header independently and never changes this file's

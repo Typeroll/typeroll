@@ -311,31 +311,36 @@ blocker. Redirect builds cover both source spellings and send internal targets
 to the site's configured trailing-slash style.
 
 Note what the check does NOT catch: it verifies that a URL *resolves*, not
-that the page at the other end is the right content. Spot-check the top
-`gsc_clicks` URLs by eye.
+that the page at the other end is the right content. Review content and SEO
+parity, then record the exact dataset and result with
+`record_migration_seo_acceptance`.
 
 Iterate until `missing` and `broken_redirect` are both zero **on every site**.
 Then, per site:
 
-1. `add_domain` / follow the DNS instructions the platform returns
-2. Point DNS
-3. `poll_domain` until verified → `activate_domain`
+1. `add_domain` with the intended apex/www canonical; leave `auto_deploy` on
+2. Wait for that canonical/sitemap deploy to succeed, then point DNS
+3. `poll_domain` until verified — there is no separate activation step
 4. Re-run `verify_migration_urls target_origin="https://example.de"` against
    the real domain, to confirm the cutover kept what the pre-check proved
 5. Submit the new sitemap in Search Console; keep the old property open for
    a few weeks and watch the 404 report
+6. Rerun the complete, unfiltered URL check and SEO review, then require
+   `get_migration_launch_report` to return `launch_ready: true`
 
 ## Definition of done (per site)
 
 - [ ] `get_migration_readiness source_url=<this market's old site>` → `ready: true`, warnings reviewed
 - [ ] `list_migration_urls status="unhandled"` → 0
-- [ ] `verify_migration_urls` → 0 `missing`, 0 `broken_redirect`
+- [ ] Complete `verify_migration_urls` → 0 `missing`, 0 `broken_redirect`, 0 `error`, 0 untested variants
+- [ ] `record_migration_seo_acceptance` is accepted for the latest deploy
+- [ ] `get_migration_launch_report` → `launch_ready: true`
 - [ ] hreflang cluster written on both/all sides, absolute, final domains
 - [ ] `language` set on the site; `<html lang>` correct in the deployed HTML
 - [ ] Internal links rewritten (no lingering absolute links to the old domain)
 - [ ] Forms rebuilt, recipient address correct for THIS market, test submission sent and received
 - [ ] Media uploaded to this site's own library (no cross-site `cdn_url`), alt text in this market's language
-- [ ] Domain verified + activated; sitemap submitted
+- [ ] Domain declared, canonical deploy succeeded, DNS verified; sitemap submitted
 
 ## Pitfalls specific to this job
 

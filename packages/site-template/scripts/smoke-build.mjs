@@ -41,7 +41,7 @@ const EXPECTED_HTML_ROUTES = [
 function log(msg) { console.log(`[smoke] ${msg}`); }
 function fail(msg) { console.error(`[smoke] ${msg}`); process.exit(1); }
 
-function build(label, extraEnv) {
+function build(label, extraEnv, verifyOutput) {
   const outDir = mkdtempSync(join(tmpdir(), 'tr-smoke-'));
   process.on('exit', () => { try { rmSync(outDir, { recursive: true, force: true }); } catch { /* ignore */ } });
 
@@ -80,6 +80,7 @@ function build(label, extraEnv) {
       if (missing.length > 0) {
         fail(`[${label}] ${missing.length} expected route(s) missing — see list above`);
       }
+      verifyOutput?.(outDir);
       log(`[${label}] OK — built ${EXPECTED_HTML_ROUTES.length} routes`);
       resolveBuild();
     });
@@ -102,7 +103,36 @@ await build('fixtures-win-over-sa', {
   FIREBASE_SERVICE_ACCOUNT: '{"project_id":"smoke-bogus","client_email":"x@x","private_key":"-----BEGIN PRIVATE KEY-----\\nnot-a-real-key\\n-----END PRIVATE KEY-----\\n"}',
 });
 
-// Scenario 3 (apps): the analytics app, when enabled for a site, injects a
+// Scenario 3: a site-wide noindex setting must affect every static HTML page,
+// not only the DB-live preview renderer.
+await (async function sitewideNoindexScenario() {
+  const tmpFixtures = mkdtempSync(join(tmpdir(), 'tr-smoke-fx-noindex-'));
+  process.on('exit', () => {
+    try { rmSync(tmpFixtures, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+  cpSync(FIXTURES_DIR, tmpFixtures, { recursive: true });
+  const settingsPath = join(
+    tmpFixtures, 'organizations', 'default', 'sites', 'default',
+    'versions', 'main', 'settings', 'default.json',
+  );
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  settings.sitewide_noindex = true;
+  writeFileSync(settingsPath, JSON.stringify(settings));
+  await build(
+    'sitewide-noindex',
+    { TYPEROLL_FIXTURES_DIR: tmpFixtures },
+    (outDir) => {
+      for (const route of ['index.html', 'about/index.html']) {
+        const html = readFileSync(join(outDir, route), 'utf8');
+        if (!/<meta name="robots" content="noindex,nofollow"\s*\/?\s*>/.test(html)) {
+          fail(`[sitewide-noindex] ${route} is missing the site-wide noindex meta directive`);
+        }
+      }
+    },
+  );
+})();
+
+// Scenario 4 (apps): the analytics app, when enabled for a site, injects a
 // Cloudflare Web Analytics beacon into every page. We DON'T enable it in the
 // committed fixtures (keeps the OSS sample clean) — instead copy the fixtures
 // to a temp tree, drop in an enabled apps doc, build, and assert the beacon +
@@ -154,7 +184,7 @@ await (async function analyticsBeaconScenario() {
   });
 })();
 
-// Scenario 4 (integrations app): tags are built from validated IDs and routed
+// Scenario 5 (integrations app): tags are built from validated IDs and routed
 // through the platform's existing consent gate. Asserts three things the
 // implementation could plausibly get wrong: a valid ID reaches the page; an
 // INVALID one is dropped rather than interpolated into a <script> body; and a
@@ -226,7 +256,7 @@ await (async function integrationsScenario() {
   });
 })();
 
-// Scenario 5 (Extension directives in HTML partials): preview and static
+// Scenario 6 (Extension directives in HTML partials): preview and static
 // generation must expand the same authoring reference. This deliberately
 // puts one instance in each HTML-mode partial and none in the page body, so a
 // body-only expansion cannot make the assertion pass accidentally.
@@ -304,7 +334,7 @@ await (async function extensionPartialScenario() {
   });
 })();
 
-// Scenario 6 (renderer additions): taxonomy routes, core/embed's per-instance
+// Scenario 7 (renderer additions): taxonomy routes, core/embed's per-instance
 // JS, and reference-backed listings have unit tests, but none of them had ever
 // been through a REAL astro build — where getStaticPaths, the asset bundler
 // and the sanitizer all actually run. Route generation in particular can only
@@ -558,7 +588,7 @@ await (async function directoryRendererScenario() {
   });
 })();
 
-// Scenario 7 (URL policy): Astro's output layout and generated discovery
+// Scenario 8 (URL policy): Astro's output layout and generated discovery
 // documents must switch together. A unit test can prove URL formatting, but
 // only a real build proves Astro read the materialized site setting before it
 // generated route canonicals. Astro's default directory build format still
@@ -616,7 +646,7 @@ await (async function noTrailingSlashScenario() {
   });
 })();
 
-// Scenario 8 (native collection composition): exercise the complete M07
+// Scenario 9 (native collection composition): exercise the complete M07
 // contract through a real Astro build, not only the shared renderer. The
 // fixture deliberately combines typed URL binding, SSR breadcrumbs/outline,
 // selected item fields, explicit navigation, and nested instance CSS.

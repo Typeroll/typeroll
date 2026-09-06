@@ -1,5 +1,5 @@
 // Custom-domain lifecycle tools. Wrap the four /api/v1/sites/{id}/domain/*
-// routes so an agent can read, attach, poll, activate, or remove a
+// routes so an agent can read, attach, poll, or remove a
 // custom domain through MCP. Admin-only on the server side; site-scoped
 // keys are implicitly admin, org-scoped keys forward the share's
 // permission.
@@ -8,7 +8,6 @@
 //
 //   no domain   ──add_domain──▶  pending
 //   pending     ──poll_domain──▶ pending | verified | failed
-//   verified    ──activate_domain──▶ live
 //   any state   ──remove_domain──▶ no domain
 //
 // `production_url` on the site response (list_sites / read_site) only
@@ -38,18 +37,26 @@ export const domainTools: ToolDef[] = [
     name: 'add_domain',
     description:
       "Attach a custom domain to this site. The site MUST NOT already have " +
-      "a domain set — remove the existing one first. Returns the new state, " +
-      "including the CNAME target the customer must point DNS at. Status " +
-      "starts as 'pending'; once DNS is correct + cert is issued, " +
-      "`poll_domain` will flip it to 'verified', then `activate_domain` " +
-      "makes it production.",
+      "a domain set — remove the existing one first. Declaring the domain " +
+      "makes it canonical immediately and queues a production deploy by " +
+      "default; point DNS only after that deploy. Returns the CNAME target. " +
+      "Use `poll_domain` to observe DNS/SSL verification. There is no separate " +
+      "activation step in the current domain-first workflow.",
     inputSchema: {
       hostname: z
         .string()
         .describe('Hostname to attach, e.g. "www.example.com". Leading https:// and trailing slashes are stripped.'),
+      prefer: z
+        .enum(['apex', 'www'])
+        .optional()
+        .describe('Canonical host for an apex/www pair. Defaults to apex.'),
+      auto_deploy: z
+        .boolean()
+        .optional()
+        .describe('Default true. Publish the canonical/sitemap change before DNS cutover.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
-      const res = await client.post(siteId, 'domain', { hostname: args.hostname });
+      const res = await client.post(siteId, 'domain', args);
       return ok(res);
     }),
   },
@@ -69,15 +76,13 @@ export const domainTools: ToolDef[] = [
   {
     name: 'activate_domain',
     description:
-      "Make the verified domain the production URL. Precondition: status " +
-      "must be 'verified' (or already 'live' — idempotent). After this " +
-      "call, the site's `production_url` switches from the fallback URL " +
-      "to https://<hostname>. " +
-      "By default also enqueues a production deploy so the canonical URL, " +
-      "sitemap, and JSON-LD update to reflect the new hostname — the " +
+      "Legacy compatibility tool; new workflows should not call it. A declared " +
+      "domain is already canonical and becomes visitable when DNS verifies. " +
+      "For legacy records only, this changes the stored verified state to live. " +
+      "Precondition: status must be 'verified' (or already 'live' — idempotent). " +
+      "By default it also enqueues a production deploy; the " +
       "response includes `deploy.job_id` you can poll. Pass " +
-      "`auto_deploy: false` to skip the deploy (the canonical stays at " +
-      "the previous URL until the customer deploys manually).",
+      "`auto_deploy: false` to skip that compatibility deploy.",
     inputSchema: {
       auto_deploy: z
         .boolean()
