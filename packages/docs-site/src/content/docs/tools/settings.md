@@ -13,25 +13,25 @@ Updates site settings. Pass only the fields you want to change.
 
 ### Top-level fields
 
-| Field                | Type   | Description                                              |
-| -------------------- | ------ | -------------------------------------------------------- |
-| `site_name`          | string | Display name of the site                                 |
-| `tagline`            | string | Short description, used in SEO and the footer            |
-| `language`           | string | BCP 47 language tag: `"sv"`, `"en"`, `"de"`, etc.        |
-| `logo`               | string | CDN URL for the site logo                                |
-| `favicon`            | string | CDN URL for the favicon                                  |
-| `apple_touch_icon`   | string | 180px Apple touch icon                                   |
-| `icon_192`           | string | 192px application icon                                   |
-| `default_seo_suffix` | string | Appended to page titles in `<title>`: `" — Acme Studio"` |
-| `default_meta_description` | string | Site-wide description fallback                    |
-| `trailing_slash`     | string | `always`, `never`, or `ignore`                           |
-| `iframe_allowed_hosts` | string[] | Exact hosts allowed in embedded content              |
-| `image_sizes_default` | string | Default responsive-image `sizes` hint                  |
-| `robots_txt`         | string | Full content of robots.txt                               |
-| `sitewide_noindex`   | boolean | Emit `noindex,nofollow` on every HTML page              |
-| `scripts_head`       | string | Trusted markup/scripts inserted in `<head>`              |
-| `scripts_body_end`   | string | Trusted markup/scripts inserted before `</body>`         |
-| `custom_css`         | string | Site-wide CSS                                             |
+| Field                      | Type     | Description                                              |
+| -------------------------- | -------- | -------------------------------------------------------- |
+| `site_name`                | string   | Display name of the site                                 |
+| `tagline`                  | string   | Short description, used in SEO and the footer            |
+| `language`                 | string   | BCP 47 language tag: `"sv"`, `"en"`, `"de"`, etc.        |
+| `logo`                     | string   | CDN URL for the site logo                                |
+| `favicon`                  | string   | CDN URL for the favicon                                  |
+| `apple_touch_icon`         | string   | 180px Apple touch icon                                   |
+| `icon_192`                 | string   | 192px application icon                                   |
+| `default_seo_suffix`       | string   | Appended to page titles in `<title>`: `" — Acme Studio"` |
+| `default_meta_description` | string   | Site-wide description fallback                           |
+| `trailing_slash`           | string   | `always`, `never`, or `ignore`                           |
+| `iframe_allowed_hosts`     | string[] | Exact hosts allowed in embedded content                  |
+| `image_sizes_default`      | string   | Default responsive-image `sizes` hint                    |
+| `robots_txt`               | string   | Full content of robots.txt                               |
+| `sitewide_noindex`         | boolean  | Emit `noindex,nofollow` on every HTML page               |
+| `scripts_head`             | string   | Trusted markup/scripts inserted in `<head>`              |
+| `scripts_body_end`         | string   | Trusted markup/scripts inserted before `</body>`         |
+| `custom_css`               | string   | Site-wide CSS                                            |
 
 ### `colors` object
 

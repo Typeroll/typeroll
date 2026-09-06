@@ -27,12 +27,12 @@ If it isn't ready, fix the blockers before starting. The content work is the exp
 
 They sound the same and they are not:
 
-| Question                                            | Tool                              |
-| --------------------------------------------------- | --------------------------------- |
-| "Is every old URL accounted for in our data?"       | `list_migration_urls`             |
-| "Are saved internal links intact?"                  | `check_internal_links`            |
+| Question                                           | Tool                              |
+| -------------------------------------------------- | --------------------------------- |
+| "Is every old URL accounted for in our data?"      | `list_migration_urls`             |
+| "Are saved internal links intact?"                 | `check_internal_links`            |
 | "Does this exact deployment answer every variant?" | `verify_migration_urls`           |
-| "Was content and SEO parity reviewed?"              | `record_migration_seo_acceptance` |
+| "Was content and SEO parity reviewed?"             | `record_migration_seo_acceptance` |
 
 The first classifies each inventory entry against the site's current pages and redirects. The second **requests every URL** against the deployed site and reports what came back. They disagree exactly when it matters — a redirect pointing at a page that was never published, a typo in a path, a redirect loop. All of those look handled in the data and return a 404 to a visitor.
 
