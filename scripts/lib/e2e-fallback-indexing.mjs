@@ -4,9 +4,19 @@ export async function runFallbackIndexingJourney({
   fetchImpl = fetch,
   portalUrl,
   apiKey,
+  expectedFallbackOrigin,
   wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
 }) {
   const call = (name, args) => callHostedMcp({ fetchImpl, portalUrl, apiKey, name, args });
+  const site = await call('get_site');
+  if (site?.id !== 'e2e-core-site') {
+    throw new Error(`fallback indexing journey is bound to e2e-core-site, received ${site?.id ?? 'unknown'}`);
+  }
+  const prepared = await call('update_site', { slug: 'e2e-core-site', domain: '' });
+  if (prepared?.dns_warning) throw new Error(prepared.dns_warning);
+  if (prepared?.urls?.fallback !== expectedFallbackOrigin) {
+    throw new Error(`unexpected fallback origin: ${prepared?.urls?.fallback ?? 'missing'}`);
+  }
   const deployment = await call('trigger_deploy', { environment: 'production' });
   const jobId = deployment?.job_id;
   if (!jobId) throw new Error('trigger_deploy returned no job id');

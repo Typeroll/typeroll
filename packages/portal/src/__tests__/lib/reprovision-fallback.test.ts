@@ -99,3 +99,25 @@ describe('reprovisionFallbackSubdomain', () => {
     expect(dnsCalls[0].content).toMatch(/\.pages\.dev$/);
   });
 });
+
+describe('needsFallbackProvisioning', () => {
+  it('repairs an unchanged slug when either hosting coordinate is missing', async () => {
+    const { needsFallbackProvisioning } = await import('../../lib/hosting/site-provisioning');
+    expect(needsFallbackProvisioning({ slug: 'acme' }, 'acme')).toBe(true);
+    expect(needsFallbackProvisioning({
+      slug: 'acme',
+      hosting_config: { fallback_subdomain: 'acme.sites.example.com' },
+    }, 'acme')).toBe(true);
+  });
+
+  it('is a no-op only when the slug and both hosting coordinates match', async () => {
+    const { needsFallbackProvisioning } = await import('../../lib/hosting/site-provisioning');
+    expect(needsFallbackProvisioning({
+      slug: 'acme',
+      hosting_config: {
+        fallback_subdomain: 'acme.sites.example.com',
+        pages_project: 'tr-org-site',
+      },
+    }, 'acme')).toBe(false);
+  });
+});

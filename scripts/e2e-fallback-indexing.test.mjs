@@ -18,6 +18,7 @@ test('publishes the bounded fixture and waits for the fallback response header',
   const result = await runFallbackIndexingJourney({
     portalUrl: 'https://cms.example.test',
     apiKey: 'secret',
+    expectedFallbackOrigin: 'https://e2e-core-site.sites-staging.typeroll.com',
     wait: async () => {},
     fetchImpl: async (url, init) => {
       if (url === 'https://e2e.sites.example.test') {
@@ -29,6 +30,10 @@ test('publishes the bounded fixture and waits for the fallback response header',
       const request = JSON.parse(init.body);
       const { name, arguments: args } = request.params;
       calls.push({ name, args });
+      if (name === 'get_site') return mcpResponse({ id: 'e2e-core-site' });
+      if (name === 'update_site') return mcpResponse({
+        urls: { fallback: 'https://e2e-core-site.sites-staging.typeroll.com' },
+      });
       if (name === 'trigger_deploy') return mcpResponse({ job_id: 'job-1' });
       if (name === 'get_deploy_status') {
         deployPolls += 1;
@@ -53,8 +58,11 @@ test('publishes the bounded fixture and waits for the fallback response header',
     },
   });
 
-  assert.equal(calls[0].name, 'trigger_deploy');
-  assert.deepEqual(calls[0].args, { environment: 'production' });
+  assert.deepEqual(calls.slice(0, 3), [
+    { name: 'get_site', args: {} },
+    { name: 'update_site', args: { slug: 'e2e-core-site', domain: '' } },
+    { name: 'trigger_deploy', args: { environment: 'production' } },
+  ]);
   assert.equal(calls.filter((call) => call.name === 'get_deploy_status').length, 2);
   assert.equal(calls.filter((call) => call.name === 'check_site_indexing').length, 2);
   assert.deepEqual(result, {
@@ -70,11 +78,16 @@ test('fails closed when the deployed fallback never receives noindex', async () 
   await assert.rejects(runFallbackIndexingJourney({
     portalUrl: 'https://cms.example.test',
     apiKey: 'secret',
+    expectedFallbackOrigin: 'https://e2e-core-site.sites-staging.typeroll.com',
     wait: async () => {},
     fetchImpl: async (url, init) => {
       if (url === 'https://e2e.sites.example.test') return new Response('', { status: 200 });
       const request = JSON.parse(init.body);
       const { name } = request.params;
+      if (name === 'get_site') return mcpResponse({ id: 'e2e-core-site' });
+      if (name === 'update_site') return mcpResponse({
+        urls: { fallback: 'https://e2e-core-site.sites-staging.typeroll.com' },
+      });
       if (name === 'trigger_deploy') return mcpResponse({ job_id: 'job-1' });
       if (name === 'get_deploy_status') return mcpResponse({ job: { status: 'succeeded' } });
       return mcpResponse({

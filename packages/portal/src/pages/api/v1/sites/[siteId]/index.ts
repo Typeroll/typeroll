@@ -7,7 +7,10 @@ import type { APIRoute } from 'astro';
 import { apiError, requireApiKey, apiResponse } from '../../../../../lib/api-auth';
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
 import { getStore } from '../../../../../lib/datastore';
-import { reprovisionFallbackSubdomain } from '../../../../../lib/hosting/site-provisioning';
+import {
+  needsFallbackProvisioning,
+  reprovisionFallbackSubdomain,
+} from '../../../../../lib/hosting/site-provisioning';
 import { paths } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 
@@ -90,7 +93,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // CF errors don't block the slug update — the agent can re-run if it
   // wants, or fall back to the portal-attached subdomain.
   const reprovisioning: { ok: boolean; fallback?: string; cname?: string; error?: string } = { ok: true };
-  if (update.slug && (ctx.site as { slug?: string }).slug !== update.slug) {
+  if (update.slug && needsFallbackProvisioning(ctx.site, String(update.slug))) {
     try {
       const result = await reprovisionFallbackSubdomain({
         orgId: ctx.orgId,

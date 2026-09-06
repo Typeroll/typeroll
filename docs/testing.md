@@ -59,6 +59,12 @@ two namespaced key documents and never prints the token.
 Never commit a credential file. If `--env-file` is used, the CLI refuses any
 mode other than `0600`.
 
+The seeded site is deliberately domain-neutral and uses the stable
+`e2e-core-site` slug. Remote reseeding preserves an already provisioned
+`hosting_config`. The Cloud fallback-indexing journey idempotently submits that
+same slug before deployment; this repairs a missing Pages project, custom-domain
+attachment, or DNS record through the portal's own hosting credentials.
+
 ```bash
 # Idempotent local seed and verification
 npm run e2e:personas -- seed --fixtures-dir /tmp/typeroll-e2e
@@ -99,6 +105,7 @@ Remote targets additionally require:
 | `TYPEROLL_E2E_FIREBASE_API_KEY` | Public Firebase Web API key |
 | `TYPEROLL_E2E_EXPECTED_DIGEST` | Exact `sha256:…` image digest |
 | `TYPEROLL_E2E_API_KEY` | Secret site-scoped key for the permanent E2E fixture |
+| `TYPEROLL_E2E_FALLBACK_ORIGIN` | Exact platform fallback origin expected by the Cloud-only indexing journey |
 
 Run `npm run e2e:target:check` before browser tests. It checks portal liveness,
 portal and Forms readiness, and rejects an image digest different from the

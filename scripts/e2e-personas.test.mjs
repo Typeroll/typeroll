@@ -128,6 +128,9 @@ test('local seeding is idempotent and produces the role and sharing baseline', (
     assert.equal(editor.role, 'editor');
     assert.equal(share.permission, 'read');
     assert.equal(fs.existsSync(path.join(fixtureRoot, 'organizations/e2e-core/sites/e2e-core-site/versions/main/pages/home.json')), true);
+    const site = JSON.parse(fs.readFileSync(path.join(fixtureRoot, 'organizations/e2e-core/sites/e2e-core-site.json'), 'utf8'));
+    assert.equal(site.slug, 'e2e-core-site');
+    assert.equal(site.domain, undefined);
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
@@ -138,6 +141,10 @@ test('remote seeding upserts stable users, claims, documents, and verifies passw
   const env = remoteEnvironment(manifest);
   const memory = memoryServices();
   const first = await seedRemotePersonas({ services: memory.services, env, manifest });
+  memory.state.documents.get('organizations/e2e-core/sites/e2e-core-site').hosting_config = {
+    pages_project: 'tr-e2e-core-e2e-core-site',
+    fallback_subdomain: 'e2e-core-site.sites-staging.typeroll.com',
+  };
   const second = await seedRemotePersonas({ services: memory.services, env, manifest });
   assert.equal(first.personaCount, 5);
   assert.deepEqual(second, first);
@@ -146,6 +153,13 @@ test('remote seeding upserts stable users, claims, documents, and verifies passw
   assert.equal(memory.state.documents.get('organizations/e2e-core').roles_enforced, true);
   assert.equal(memory.state.documents.get('organizations/e2e-core/sites/e2e-core-site/shares/e2e-viewer').permission, 'read');
   assert.equal(memory.state.documents.get(`api_key_lookup/${'a'.repeat(12)}`).is_test_credential, true);
+  assert.deepEqual(
+    memory.state.documents.get('organizations/e2e-core/sites/e2e-core-site').hosting_config,
+    {
+      pages_project: 'tr-e2e-core-e2e-core-site',
+      fallback_subdomain: 'e2e-core-site.sites-staging.typeroll.com',
+    },
+  );
 
   memory.state.users.get('typeroll-e2e-editor').customClaims.org_id = 'wrong-org';
   await assert.rejects(verifyRemotePersonas({ services: memory.services, env, manifest }), /editor: org claim differs/);

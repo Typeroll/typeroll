@@ -19,6 +19,15 @@ export interface ProvisionResult {
   fallbackSubdomain: string | null;
 }
 
+export function needsFallbackProvisioning(
+  site: { slug?: string; hosting_config?: { fallback_subdomain?: string; pages_project?: string } },
+  requestedSlug: string,
+): boolean {
+  return site.slug !== requestedSlug ||
+    !site.hosting_config?.fallback_subdomain ||
+    !site.hosting_config?.pages_project;
+}
+
 function cfFromEnv(): CloudflareApi | null {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const apiToken = process.env.CLOUDFLARE_API_TOKEN;

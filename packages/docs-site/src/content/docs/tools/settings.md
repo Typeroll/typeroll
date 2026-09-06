@@ -137,7 +137,9 @@ it was issued for, which is the point of the distinction — see
 ## `update_site`
 
 Changes a site's name, slug or domain. The slug is uniqueness-checked because it
-determines the fallback subdomain.
+determines the fallback subdomain. Resubmitting the current slug is idempotent
+and repairs missing fallback hosting coordinates, including the Pages project
+and DNS record, when the hosting provider is configured.
 
 ## Exporting your content
 

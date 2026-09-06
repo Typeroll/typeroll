@@ -19,10 +19,13 @@ try {
   requireExactConfirmation(siteId, values['confirm-site'], 'E2E site');
   const apiKey = process.env.TYPEROLL_E2E_API_KEY?.trim();
   if (!apiKey) throw new Error('TYPEROLL_E2E_API_KEY is required');
+  const expectedFallbackOrigin = process.env.TYPEROLL_E2E_FALLBACK_ORIGIN?.trim().replace(/\/$/, '');
+  if (!expectedFallbackOrigin) throw new Error('TYPEROLL_E2E_FALLBACK_ORIGIN is required');
   await checkE2ETarget(target);
   const result = await runFallbackIndexingJourney({
     portalUrl: target.portalUrl,
     apiKey,
+    expectedFallbackOrigin,
   });
   console.log(
     `Fallback indexing journey passed on ${result.origin}; ` +

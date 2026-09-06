@@ -167,10 +167,27 @@ export function fixtureSiteDocuments(manifest, fixtureRoot = DEFAULT_FIXTURE_ROO
   source.set(sourcePrefix, JSON.parse(fs.readFileSync(sourceSiteDoc, 'utf8')));
   readJsonDocuments(fixtureRoot, sourcePrefix, source);
   const targetPrefix = `organizations/${manifest.core_fixture.owner_org_id}/sites/${manifest.core_fixture.site_id}`;
-  return new Map([...source].map(([documentPath, data]) => [
-    `${targetPrefix}${documentPath.slice(sourcePrefix.length)}`,
-    documentPath === sourcePrefix ? { ...data, name: 'Typeroll E2E Core Site' } : data,
-  ]));
+  return new Map([...source].map(([documentPath, data]) => {
+    const targetPath = `${targetPrefix}${documentPath.slice(sourcePrefix.length)}`;
+    if (documentPath !== sourcePrefix) return [targetPath, data];
+
+    // The reusable content fixture intentionally carries a realistic custom
+    // domain. The permanent E2E site must never inherit that customer-facing
+    // identity: it is served only on its dedicated fallback hostname.
+    const site = {
+      ...data,
+      name: 'Typeroll E2E Core Site',
+      slug: manifest.core_fixture.site_id,
+      staging_url: null,
+    };
+    delete site.domain;
+    delete site.domain_alias;
+    delete site.domain_status;
+    delete site.domain_verified_at;
+    delete site.domain_failure_reason;
+    delete site.hosting_config;
+    return [targetPath, site];
+  }));
 }
 
 function fixtureDocumentPath(fixtureRoot, documentPath) {
@@ -236,6 +253,14 @@ export async function seedRemotePersonas({ services, env, manifest = readPersona
     ...buildCoreIdentityDocuments(manifest, credentials, now),
     ...buildRemoteApiKeyDocuments(manifest, env, now),
   ]);
+  const sitePath = `organizations/${manifest.core_fixture.owner_org_id}/sites/${manifest.core_fixture.site_id}`;
+  const existingSite = await services.firestore.get(sitePath);
+  if (existingSite?.hosting_config) {
+    documents.set(sitePath, {
+      ...documents.get(sitePath),
+      hosting_config: existingSite.hosting_config,
+    });
+  }
   await services.firestore.setDocuments([...documents].map(([documentPath, data]) => ({ path: documentPath, data })));
   return verifyRemotePersonas({ services, env, manifest });
 }
@@ -284,7 +309,12 @@ export async function verifyRemotePersonas({ services, env, manifest = readPerso
   }
   const sitePath = `organizations/${manifest.core_fixture.owner_org_id}/sites/${manifest.core_fixture.site_id}`;
   const pagePath = `${sitePath}/versions/main/pages/home`;
-  if (!await services.firestore.get(sitePath)) errors.push(`${sitePath}: missing`);
+  const site = await services.firestore.get(sitePath);
+  if (!site) errors.push(`${sitePath}: missing`);
+  else {
+    if (site.slug !== manifest.core_fixture.site_id) errors.push(`${sitePath}: slug differs`);
+    if (site.domain) errors.push(`${sitePath}: domain must be empty`);
+  }
   if (!await services.firestore.get(pagePath)) errors.push(`${pagePath}: missing`);
   if (errors.length) throw new Error(`Remote E2E persona verification failed:\n${errors.join('\n')}`);
   return { projectId: services.projectId, personaCount: corePersonas(manifest).length };

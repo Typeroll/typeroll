@@ -1,5 +1,13 @@
 # Changelog
 
+## MCP 0.43.4 / Core 0.1.12
+
+- Made fallback-host provisioning idempotently repairable by resubmitting the
+  current site slug when its Pages project or DNS coordinates are missing.
+- Made the permanent E2E site domain-neutral, preserved its provisioned hosting
+  across reseeds, and required the Cloud qualification journey to repair and
+  verify its exact fallback origin before publishing.
+
 ## MCP 0.43.3 / Core 0.1.11
 
 - Hosted static site builds now add a host-scoped `X-Robots-Tag` rule for the
