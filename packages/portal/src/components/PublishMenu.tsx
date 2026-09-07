@@ -15,26 +15,27 @@
  * deploy so the redeploy button is never a mystery).
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { isPendingDeploy } from './EditorStatus';
 
 export interface StatusOption {
   value: string;
   label: string;
+  description?: string;
 }
 
 /** Pages support the full status ladder. */
 export const PAGE_STATUS_OPTIONS: StatusOption[] = [
-  { value: 'draft', label: 'Draft — not on the live site' },
-  { value: 'review', label: 'In review — not on the live site' },
-  { value: 'unlisted', label: 'Unlisted — live URL, but no menus/sitemap' },
-  { value: 'published', label: 'Published — included in deploys' },
+  { value: 'draft', label: 'Draft', description: 'Excluded from deploys. Use Preview to view the saved draft.' },
+  { value: 'review', label: 'In review', description: 'Awaiting review. Excluded from deploys.' },
+  { value: 'unlisted', label: 'Unlisted', description: 'Included in deploys, but hidden from menus and the sitemap.' },
+  { value: 'published', label: 'Published', description: 'Included in the next deploy. Changing this status does not deploy the site.' },
 ];
 
 /** Partials and collection items are just draft/published. */
 export const SIMPLE_STATUS_OPTIONS: StatusOption[] = [
-  { value: 'draft', label: 'Draft — not on the live site' },
-  { value: 'published', label: 'Published — included in deploys' },
+  { value: 'draft', label: 'Draft', description: 'Excluded from deploys. Use Preview to view the saved draft.' },
+  { value: 'published', label: 'Published', description: 'Included in the next deploy. Changing this status does not deploy the site.' },
 ];
 
 interface ChangesResponse {
@@ -137,6 +138,7 @@ export default function PublishMenu({
   onSchedule,
   onReviewChanges,
 }: PublishMenuProps) {
+  const statusHintId = useId();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -321,6 +323,8 @@ export default function PublishMenu({
           <div className="pmenu__section">
             <div className="pmenu__label">Status</div>
             <select
+              aria-label="Publishing status"
+              aria-describedby={statusHintId}
               className="pmenu__select"
               value={pubStatus}
               disabled={saving}
@@ -330,8 +334,8 @@ export default function PublishMenu({
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
-            <p className="pmenu__hint">
-              Only published (and unlisted) content is included when the site deploys.
+            <p id={statusHintId} className="pmenu__hint">
+              {statusOptions.find((option) => option.value === pubStatus)?.description ?? 'Only published and unlisted content is included in deploys.'}
             </p>
 
             {onSchedule && pubStatus !== 'published' && (
@@ -403,20 +407,6 @@ export default function PublishMenu({
             {!changesLoading && changes && changes.total === 0 && !changes.never_deployed && (
               <p className="pmenu__hint">The live site is up to date with your saved content.</p>
             )}
-            {!changesLoading && changes && changes.total > 0 && (
-              <ul className="pmenu__changes">
-                {changes.changes.slice(0, 6).map((c) => (
-                  <li key={`${c.kind}:${c.collection ?? ''}:${c.id}`}>
-                    <span className="pmenu__kind">{KIND_LABEL[c.kind] ?? c.kind}</span>
-                    <span className="pmenu__title" title={c.title}>{c.title}</span>
-                    {!c.will_deploy && <span className="pmenu__skip">stays behind ({c.status})</span>}
-                  </li>
-                ))}
-                {changes.total > 6 && (
-                  <li className="pmenu__more">+{changes.total - 6} more</li>
-                )}
-              </ul>
-            )}
             {hasUnsaved && (
               <p className="pmenu__hint pmenu__hint--warn">
                 Your unsaved changes are NOT included in a deploy — Save first.
@@ -469,6 +459,35 @@ export default function PublishMenu({
               </button>
             </div>
             {deployErr && <p className="pmenu__hint pmenu__hint--error">{deployErr}</p>}
+            {!changesLoading && changes && changes.total > 0 && (
+              <details className="pmenu__change-details">
+                <summary>
+                  {changes.never_deployed ? 'Content for first deploy' : 'Changes since last deploy'} ({changes.total})
+                </summary>
+                <div className="pmenu__change-list">
+                  <p className="pmenu__hint">
+                    {changes.never_deployed
+                      ? 'Saved content before the first deploy.'
+                      : 'Saved content changed since the last deploy.'}
+                    {' '}Each item appears once, even after multiple edits. Deploy rebuilds the whole site.
+                  </p>
+                  <ul className="pmenu__changes">
+                    {changes.changes.map((c) => (
+                      <li key={`${c.kind}:${c.collection ?? ''}:${c.id}`}>
+                        <span className="pmenu__kind">{KIND_LABEL[c.kind] ?? c.kind}</span>
+                        <span className="pmenu__title">{c.title}</span>
+                        <span className={c.will_deploy ? 'pmenu__included' : 'pmenu__skip'}>
+                          {c.will_deploy ? 'Included in deploy' : `Not included: ${c.status ?? 'draft'}`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {changes.total > changes.changes.length && (
+                    <p className="pmenu__hint">Showing the latest {changes.changes.length} of {changes.total} changed items.</p>
+                  )}
+                </div>
+              </details>
+            )}
           </div>
         </div>
       )}
@@ -496,15 +515,15 @@ export default function PublishMenu({
         .pmenu__section { padding: 0.7rem 0.9rem; }
         .pmenu__section + .pmenu__section { border-top: 1px solid #2a2a30; }
         .pmenu__label {
-          font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em;
+          font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em;
           color: #a1a1aa; margin-bottom: 0.45rem; font-weight: 600;
         }
         .pmenu__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-        .pmenu__state { display: inline-flex; align-items: center; gap: 7px; font-size: 0.83rem; }
-        .pmenu__muted { color: #a1a1aa; font-size: 0.75rem; }
+        .pmenu__state { display: inline-flex; align-items: center; gap: 7px; font-size: 0.875rem; }
+        .pmenu__muted { color: #a1a1aa; font-size: 0.875rem; }
         .pmenu__actions { display: flex; gap: 6px; margin-top: 0.55rem; align-items: center; }
         .pmenu__btn {
-          padding: 0.32rem 0.7rem; font-size: 0.8rem; font-weight: 600;
+          padding: 0.32rem 0.7rem; font-size: 0.875rem; font-weight: 600;
           border-radius: 6px; cursor: pointer; border: 1px solid transparent;
         }
         .pmenu__btn:disabled { opacity: 0.55; cursor: default; }
@@ -513,26 +532,30 @@ export default function PublishMenu({
         .pmenu__linkbtn { text-decoration: none; display: inline-flex; align-items: center; }
         .pmenu__linkbtn:hover { color: #e4e4e7; border-color: #52525b; }
         .pmenu__select {
-          width: 100%; padding: 0.35rem 0.5rem; font-size: 0.83rem;
+          width: 100%; padding: 0.5rem 0.625rem; font-size: 1rem;
           background: #26262b; color: #fafafa;
           border: 1px solid #34343a; border-radius: 6px;
         }
+        select.pmenu__select {
+          appearance: none; padding-right: 2rem;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23d4d4d8' stroke-width='1.5'/%3E%3C/svg%3E");
+          background-repeat: no-repeat; background-position: right 0.65rem center;
+        }
         .pmenu__select--env { width: auto; flex: 1; }
-        .pmenu__hint { margin: 0.4rem 0 0; font-size: 0.73rem; color: #a1a1aa; line-height: 1.45; }
+        .pmenu__hint { margin: 0.4rem 0 0; font-size: 0.875rem; color: #a1a1aa; line-height: 1.45; }
         .pmenu__hint--warn { color: #f6c177; }
         .pmenu__hint--error { color: #f87171; }
-        .pmenu__changes { list-style: none; margin: 0.3rem 0 0; padding: 0; }
-        .pmenu__changes li {
-          display: flex; align-items: baseline; gap: 6px;
-          font-size: 0.78rem; padding: 2px 0; min-width: 0;
-        }
-        .pmenu__kind {
-          flex: none; font-size: 0.65rem; color: #a1a1aa;
-          border: 1px solid #34343a; border-radius: 4px; padding: 0 4px;
-        }
-        .pmenu__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .pmenu__skip { flex: none; font-size: 0.68rem; color: #f6c177; }
-        .pmenu__more { color: #a1a1aa; }
+        .pmenu__change-details { margin-top: 8px; border-top: 1px solid #34343a; }
+        .pmenu__change-details summary { padding: 10px 0; min-height: 44px; font-size: 0.875rem; line-height: 1.4; cursor: pointer; overflow-wrap: anywhere; }
+        .pmenu__change-details summary:focus-visible { outline: 2px solid #a5b4fc; outline-offset: 2px; }
+        .pmenu__change-list { max-height: min(16rem, 30dvh); overflow-y: auto; overscroll-behavior: contain; }
+        .pmenu__changes { list-style: none; margin: 8px 0 0; padding: 0; }
+        .pmenu__changes li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px; font-size: 0.875rem; line-height: 1.4; padding: 8px 0; min-width: 0; border-top: 1px solid #34343a; }
+        .pmenu__kind { align-self: start; font-size: 0.75rem; color: #a1a1aa; border: 1px solid #34343a; border-radius: 4px; padding: 1px 4px; }
+        .pmenu__title { overflow-wrap: anywhere; }
+        .pmenu__included, .pmenu__skip { grid-column: 2; font-size: 0.75rem; }
+        .pmenu__included { color: #a1a1aa; }
+        .pmenu__skip { color: #f6c177; }
         @media (max-width: 1000px) {
           .pmenu__trigger { min-height: 44px; white-space: nowrap; }
           .pmenu__panel { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; overflow: hidden; }
