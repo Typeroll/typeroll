@@ -1,0 +1,262 @@
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { generateKeyPairSync, createHash } from 'node:crypto';
+import type { APIRoute } from 'astro';
+import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
+import { getStore } from '../../lib/datastore';
+import { claimAccount, connectionPath, connectionSummary, disconnect, getConnection, openCredentials, sealCredentials } from '../../lib/publishing/connections';
+import { finishGithubConnection, githubSetup, startGithubConnection } from '../../lib/publishing/github-connection';
+import { connectCloudflare, verifyR2 } from '../../lib/publishing/cloudflare-connection';
+import { GET } from '../../pages/api/orgs/publishing/index';
+import { POST, DELETE } from '../../pages/api/orgs/publishing/[provider]';
+import { GET as CALLBACK } from '../../pages/api/orgs/publishing/github/callback';
+import { createE2ESessionCookie } from '../../lib/e2e-auth';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+
+const session = { userId: 'dev-user', email: 'dev@typeroll.local', orgId: 'default' };
+const accountId = 'a'.repeat(32);
+const credentials = { api_token: 'synthetic-cf-token', access_key_id: 'synthetic-r2-key', secret_access_key: 'synthetic-r2-secret' };
+const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+const installation = { id: 34, app_id: 12, account: { id: 56, login: 'synthetic-agency', type: 'Organization' }, repository_selection: 'all',
+  suspended_at: null, permissions: { contents: 'write', administration: 'write', members: 'read' } };
+
+beforeEach(async () => {
+  makeTmpFixtures(); await resetDatastore();
+  vi.stubEnv('INTEGRATIONS_SECRET_KEY', 'synthetic-encryption-key-for-tests-only-32chars');
+  vi.stubEnv('PORTAL_PUBLIC_URL', 'http://localhost');
+  vi.stubEnv('TYPEROLL_PUBLISH_GITHUB_APP_ID', '12');
+  vi.stubEnv('TYPEROLL_PUBLISH_GITHUB_CLIENT_ID', 'synthetic-client');
+  vi.stubEnv('TYPEROLL_PUBLISH_GITHUB_CLIENT_SECRET', 'synthetic-client-secret');
+  vi.stubEnv('TYPEROLL_PUBLISH_GITHUB_PRIVATE_KEY', privateKey);
+  vi.stubEnv('TYPEROLL_PUBLISH_GITHUB_APP_SLUG', 'synthetic-publisher');
+  await getStore().setDoc('organizations/default/members/dev-user', { role: 'owner' });
+});
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+function providerFetch(overrides: Record<string, unknown> = {}) {
+  return vi.fn<typeof fetch>(async (url, init) => {
+    const path = new URL(String(url)).pathname + new URL(String(url)).search;
+    const results: Record<string, unknown> = {
+      '/login/oauth/access_token': { access_token: 'synthetic-user-token' },
+      '/user': { id: 78, login: 'synthetic-owner' },
+      '/user/installations?per_page=100&page=1': { installations: [installation] },
+      '/orgs/synthetic-agency/memberships/synthetic-owner': { state: 'active', role: 'admin', user: { id: 78 }, organization: { id: 56 } },
+      '/app/installations/34': installation,
+      '/app/installations/34/access_tokens': { token: 'synthetic-installation-token' },
+      '/orgs/synthetic-agency': { id: 56 },
+      [`/client/v4/accounts/${accountId}`]: { success: true, result: { id: accountId, name: 'Synthetic agency' } },
+      [`/client/v4/accounts/${accountId}/pages/projects?per_page=1`]: { success: true, result: [] },
+      ...overrides,
+    };
+    expect(init?.redirect).toBe('error');
+    if (!(path in results)) throw new Error('Unexpected provider request');
+    const result = results[path];
+    return result instanceof Response ? result : Response.json(result);
+  });
+}
+
+async function authorization() {
+  const started = await startGithubConnection(session, 'synthetic-agency');
+  return { ...started, state: new URL(started.url).searchParams.get('state')!, code: 'synthetic-code' };
+}
+
+function routeContext(method = 'GET', provider = 'github', body?: unknown, origin = 'http://localhost') {
+  const url = new URL(`http://localhost/api/orgs/publishing/${provider}`);
+  return { url, params: { provider }, cookies: { get: vi.fn(() => undefined), set: vi.fn(), delete: vi.fn() },
+    request: new Request(url, { method, headers: { 'Content-Type': 'application/json', Origin: origin }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }) };
+}
+async function call(route: APIRoute, context: ReturnType<typeof routeContext>) {
+  return await route(context as unknown as Parameters<APIRoute>[0]) as Response;
+}
+
+describe('GitHub organization authorization', () => {
+  it('binds a verified organization owner and App installation, uses PKCE, and persists no token', async () => {
+    const input = await authorization();
+    const fetcher = providerFetch();
+    await finishGithubConnection(session, input, fetcher);
+    const connection = await getConnection('default', 'github');
+    expect(connection.github).toEqual({ app_id: '12', installation_id: '34', account_id: '56', owner: 'synthetic-agency' });
+    expect(connection.status).toBe('connected');
+    const exchange = JSON.parse(fetcher.mock.calls[0][1]!.body as string);
+    expect(new URL(input.url).searchParams.get('code_challenge')).toBe(createHash('sha256').update(exchange.code_verifier).digest('base64url'));
+    expect(exchange.redirect_uri).toBe('http://localhost/api/orgs/publishing/github/callback');
+    const stored = JSON.stringify([connection, await getStore().getDoc('organizations/default/publishing_authorizations/github')]);
+    for (const value of ['synthetic-user-token', 'synthetic-installation-token', exchange.code_verifier, 'synthetic-client-secret', input.state, input.browser]) expect(stored).not.toContain(value);
+    await expect(finishGithubConnection(session, input, fetcher)).rejects.toThrow('expired');
+    expect(fetcher).toHaveBeenCalledTimes(7);
+  });
+
+  it.each(['browser', 'state', 'user', 'organization', 'expired'])('rejects mismatched %s before contacting GitHub', async (kind) => {
+    const input = await authorization();
+    if (kind === 'browser' || kind === 'state') input[kind] = 'x'.repeat(43);
+    if (kind === 'expired') await getStore().updateDoc('organizations/default/publishing_authorizations/github', { expires_at: Date.now() - 1 });
+    const actor = { ...session, ...(kind === 'user' ? { userId: 'someone-else' } : {}), ...(kind === 'organization' ? { orgId: 'other' } : {}) };
+    const fetcher = providerFetch();
+    await expect(finishGithubConnection(actor, input, fetcher)).rejects.toThrow('expired');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { '/user/installations?per_page=100&page=1': { installations: [] } },
+    { '/user/installations?per_page=100&page=1': { installations: [{ ...installation, repository_selection: 'selected' }] } },
+    { '/user/installations?per_page=100&page=1': { installations: [{ ...installation, permissions: { contents: 'write', administration: 'write' } }] } },
+    { '/orgs/synthetic-agency/memberships/synthetic-owner': { state: 'active', role: 'member', user: { id: 78 }, organization: { id: 56 } } },
+    { '/orgs/synthetic-agency/memberships/synthetic-owner': { state: 'active', role: 'admin', user: { id: 999 }, organization: { id: 56 } } },
+    { '/app/installations/34': { ...installation, suspended_at: '2026-09-07' } },
+    { '/orgs/synthetic-agency': { id: 999 } },
+  ])('rejects unproven or changed installation authority', async (overrides) => {
+    await expect(finishGithubConnection(session, await authorization(), providerFetch(overrides))).rejects.toThrow();
+    expect((await getConnection('default', 'github')).status).toBe('disconnected');
+  });
+
+  it('paginates installations and allows only one callback to finish', async () => {
+    const input = await authorization();
+    const fetcher = providerFetch({ '/user/installations?per_page=100&page=1': { installations: Array(100).fill({ app_id: 999 }) },
+      '/user/installations?per_page=100&page=2': { installations: [installation] } });
+    const results = await Promise.allSettled([finishGithubConnection(session, input, fetcher), finishGithubConnection(session, input, fetcher)]);
+    expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected']);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('access_token'))).toHaveLength(2);
+  });
+
+  it('does not let an old authorization undo a disconnect or claim another tenant’s account', async () => {
+    const input = await authorization();
+    await disconnect('default', 'github', (await getConnection('default', 'github')).revision);
+    await expect(finishGithubConnection(session, input, providerFetch())).rejects.toThrow('changed');
+    expect((await getConnection('default', 'github')).status).toBe('disconnected');
+    await getStore().setDoc('publishing_account_claims/github-56', { org_id: 'another-agency' });
+    await expect(finishGithubConnection(session, await authorization(), providerFetch())).rejects.toThrow('another Typeroll organization');
+  });
+
+  it('requires publisher configuration without accepting request-controlled callbacks', async () => {
+    vi.stubEnv('PORTAL_PUBLIC_URL', 'https://trusted.test@untrusted.test/path');
+    expect(githubSetup().available).toBe(false);
+    await expect(authorization()).rejects.toThrow('configuration');
+    vi.stubEnv('PORTAL_PUBLIC_URL', 'http://localhost');
+    vi.stubEnv('TYPEROLL_PUBLISH_GITHUB_CLIENT_SECRET', '');
+    expect(githubSetup().available).toBe(false);
+  });
+});
+
+function fakeS3(fail?: 'put' | 'read' | 'delete') {
+  let stored = '';
+  return vi.spyOn(S3Client.prototype, 'send').mockImplementation((async (command: unknown) => {
+    if (command instanceof PutObjectCommand) { if (fail === 'put') throw new Error(credentials.secret_access_key); stored = command.input.Body as string; return {}; }
+    if (command instanceof GetObjectCommand) return { Body: { transformToString: async () => fail === 'read' ? 'wrong content' : stored } };
+    if (command instanceof DeleteObjectCommand) { if (fail === 'delete') throw new Error(credentials.api_token); return {}; }
+    throw new Error('Unexpected S3 operation');
+  }) as any);
+}
+
+describe('Cloudflare connection and encrypted credentials', () => {
+  it('verifies account, Pages access and R2 read/write/delete before saving encrypted credentials', async () => {
+    const s3 = fakeS3();
+    const revision = (await getConnection('default', 'cloudflare')).revision;
+    await connectCloudflare(session, { ...credentials, account_id: accountId, bucket: 'agency-media', revision }, providerFetch());
+    const connection = await getConnection('default', 'cloudflare');
+    expect(connection.status).toBe('connected');
+    expect(connection.cloudflare?.account_id).toBe(accountId);
+    expect(s3.mock.calls.map(([command]) => command.constructor.name)).toEqual(['PutObjectCommand', 'GetObjectCommand', 'DeleteObjectCommand']);
+    expect(openCredentials('default', 'cloudflare', connection.encrypted_credentials!)).toEqual(credentials);
+    for (const secret of Object.values(credentials)) expect(JSON.stringify(connection)).not.toContain(secret);
+    expect(JSON.stringify(connectionSummary(connection))).not.toContain('encrypted_credentials');
+    await disconnect('default', 'cloudflare', connection.revision);
+    const disconnected = await getConnection('default', 'cloudflare');
+    expect(disconnected.encrypted_credentials).toBeNull();
+    expect(connectionSummary(disconnected).credentials_saved).toBe(false);
+  });
+
+  it.each(['put', 'read', 'delete'] as const)('fails closed on R2 %s failure and attempts cleanup without reflecting credentials', async (failure) => {
+    const s3 = fakeS3(failure);
+    await expect(verifyR2(accountId, 'agency-media', credentials)).rejects.toThrow('R2 upload, readback, or cleanup failed');
+    expect(s3.mock.calls.at(-1)?.[0]).toBeInstanceOf(DeleteObjectCommand);
+  });
+
+  it('does not replace saved credentials after failed R2 verification or switch accounts during rotation', async () => {
+    fakeS3();
+    await connectCloudflare(session, { ...credentials, account_id: accountId, bucket: 'agency-media', revision: (await getConnection('default', 'cloudflare')).revision }, providerFetch());
+    const original = await getConnection('default', 'cloudflare');
+    fakeS3('read');
+    await expect(connectCloudflare(session, { ...credentials, secret_access_key: 'synthetic-new-key', account_id: accountId, bucket: 'agency-media', revision: original.revision }, providerFetch())).rejects.toThrow('R2');
+    expect((await getConnection('default', 'cloudflare')).encrypted_credentials).toBe(original.encrypted_credentials);
+    const fetcher = providerFetch();
+    await expect(connectCloudflare(session, { ...credentials, account_id: 'b'.repeat(32), bucket: 'agency-media', revision: original.revision }, fetcher)).rejects.toThrow('original Cloudflare account');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('binds ciphertext to its tenant and provider', () => {
+    const encrypted = sealCredentials('default', 'cloudflare', credentials);
+    expect(() => openCredentials('other', 'cloudflare', encrypted)).toThrow('could not be opened');
+    expect(() => openCredentials('default', 'github', encrypted)).toThrow('could not be opened');
+  });
+
+  it('uses atomic account ownership claims', async () => {
+    const results = await Promise.allSettled([claimAccount('one', 'github', '56'), claimAccount('two', 'github', '56')]);
+    expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected']);
+  });
+
+  it('rejects a wrong account and stale connection before persisting secrets', async () => {
+    const s3 = fakeS3();
+    const revision = (await getConnection('default', 'cloudflare')).revision;
+    await expect(connectCloudflare(session, { ...credentials, account_id: accountId, bucket: 'agency-media', revision },
+      providerFetch({ [`/client/v4/accounts/${accountId}`]: { success: true, result: { id: 'b'.repeat(32), name: 'Wrong account' } } }))).rejects.toThrow('verification failed');
+    await disconnect('default', 'cloudflare', revision);
+    await expect(connectCloudflare(session, { ...credentials, account_id: accountId, bucket: 'agency-media', revision }, providerFetch())).rejects.toThrow('changed');
+    expect(s3).not.toHaveBeenCalled();
+    expect((await getConnection('default', 'cloudflare')).encrypted_credentials).toBeNull();
+  });
+});
+
+describe('publishing account routes', () => {
+  it('rejects anonymous production callers', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    expect((await call(GET, routeContext())).status).toBe(401);
+  });
+  it.each(['editor', 'missing'])('denies %s even when legacy organization roles are not enforced', async (role) => {
+    if (role === 'missing') await getStore().deleteDoc('organizations/default/members/dev-user');
+    else await getStore().updateDoc('organizations/default/members/dev-user', { role });
+    for (const route of [GET, POST, DELETE, CALLBACK]) expect((await call(route, routeContext())).status).toBe(403);
+  });
+
+  it('rejects signed-in users without an organization', async () => {
+    vi.stubEnv('TYPEROLL_E2E_AUTH_SECRET', 'synthetic-e2e-test-key-with-at-least-32chars');
+    const context = routeContext();
+    context.cookies.get = vi.fn(() => ({ value: createE2ESessionCookie('pending') })) as any;
+    expect((await call(GET, context)).status).toBe(403);
+  });
+
+  it('requires same-origin JSON, sets a private OAuth cookie and returns only the authorization URL', async () => {
+    expect((await call(POST, routeContext('POST', 'github', { owner: 'synthetic-agency' }, 'https://elsewhere.test'))).status).toBe(403);
+    const context = routeContext('POST', 'github', { owner: 'synthetic-agency' });
+    const response = await call(POST, context);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(context.cookies.set.mock.calls[0]?.[2]).toMatchObject({ httpOnly: true, sameSite: 'lax', path: '/api/orgs/publishing/github' });
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['authorization_url']);
+    expect(body.authorization_url).not.toContain('synthetic-client-secret');
+  });
+
+  it('redacts provider errors and returns only the explicit public connection projection', async () => {
+    const revision = (await getConnection('default', 'cloudflare')).revision;
+    vi.stubGlobal('fetch', providerFetch({ [`/client/v4/accounts/${accountId}`]: new Response(credentials.api_token, { status: 403 }) }));
+    const response = await call(POST, routeContext('POST', 'cloudflare', { ...credentials, account_id: accountId, bucket: 'agency-media', revision }));
+    expect(response.status).toBe(502);
+    expect(await response.text()).not.toContain(credentials.api_token);
+    await getStore().updateDoc(connectionPath('default', 'cloudflare'), { status: 'connected', encrypted_credentials: 'synthetic-ciphertext', unexpected_future_secret: 'synthetic-secret',
+      cloudflare: { account_id: accountId, account_name: 'Synthetic account', bucket: 'agency-media', endpoint: 'https://example.test', unexpected_future_secret: 'synthetic-nested-secret' } });
+    const summary = await call(GET, routeContext());
+    const body = await summary.text();
+    expect(body).not.toContain('synthetic-secret'); expect(body).not.toContain('synthetic-ciphertext');
+    expect(body).not.toContain('synthetic-nested-secret');
+  });
+
+  it('rejects oversized requests and discards OAuth callback inputs from the redirect', async () => {
+    expect((await call(POST, routeContext('POST', 'cloudflare', { token: 'x'.repeat(9000) }))).status).toBe(413);
+    const context = routeContext();
+    context.url.search = '?code=synthetic-sensitive-code&state=untrusted&installation_id=34';
+    const result = await call(CALLBACK, context);
+    expect(result.status).toBe(303);
+    expect(result.headers.get('location')).toBe('/app/settings/publishing?github=failed');
+    expect(result.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(context.cookies.delete).toHaveBeenCalled();
+  });
+});

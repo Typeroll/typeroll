@@ -1,5 +1,17 @@
 # Changelog
 
+## MCP 0.43.7 / Core 0.1.15
+
+- Added organization publishing account settings with GitHub App OAuth and
+  PKCE, verified GitHub organization ownership, and reusable account claims.
+- Added Cloudflare account/Pages checks, R2 upload/readback/cleanup verification,
+  encrypted credentials, and revision-protected rotation and disconnect.
+- Publishing accounts require an explicit organization owner or admin role,
+  including organizations using legacy permissive role settings.
+- Site provisioning, editor publication through Git, public media delivery,
+  and full portable exports remain under development. MCP carries the updated
+  Core contract version; no new MCP tools are introduced in this release.
+
 ## MCP 0.43.6 / Core 0.1.14
 
 - Included transitive alias and repeater item CSS/JS in static builds and

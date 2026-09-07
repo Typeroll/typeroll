@@ -16,12 +16,32 @@ moving the published site. It also verifies one direct presigned R2 upload and
 readback in an existing bucket. It never attaches customer domains or imports
 customer content.
 
-This is the onboarding proof, not the CMS publishing feature. The existing
-portal does not yet use these adapters. The synthetic renderer does not prove
+This is the provider onboarding probe. The portal now shares the provider
+boundary for organization account connections, but its publish action is not
+yet connected to Git. The synthetic renderer does not prove
 parity with Typeroll's renderer, Forms, Extensions, media optimization, preview,
 or a complete snapshot export. Those remain subsequent implementation gates. A successful
 Node upload does not establish browser CORS or tenant authorization; both need
 their own application tests.
+
+### Organization account connections
+
+The Core 0.1.15 candidate adds `/app/settings/publishing` and the
+`/api/orgs/publishing` routes. Explicit organization owners/admins can verify a
+GitHub App installation using GitHub OAuth with PKCE and organization-owner
+verification, and connect encrypted Cloudflare/R2 credentials. Account ownership
+claims prevent cross-tenant reuse; connection revisions protect rotation and
+disconnect against stale requests. The shared provider implementation is in
+`packages/portal/src/lib/publishing/providers.mjs`; the CLI keeps its existing
+import through a re-export.
+
+Cloudflare connection verifies account/Pages read access and R2 object
+write/read/delete access. It does not create Pages projects, connect Cloudflare's
+GitHub App, configure public media domains/CORS, or migrate media. Standard
+global R2 buckets are supported in this first connection. GitHub App registration
+and a real customer account trial remain pending; local automated tests do not
+count as that evidence. See the [setup guide](customer-owned-publishing-setup.md)
+for App permissions, environment variables, and exact callback configuration.
 
 ### Portable HTML publication
 

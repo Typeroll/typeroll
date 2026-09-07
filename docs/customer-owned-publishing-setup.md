@@ -1,7 +1,9 @@
 # Connect customer-owned publishing accounts
 
-Status: pilot setup contract; the complete portal onboarding flow is not yet
-implemented. See [implementation status](customer-owned-publishing.md).
+Status: organization account connection is implemented in the Core 0.1.15
+candidate. Live App registration and customer acceptance remain pending.
+Automatic site provisioning and editor publication are still being implemented.
+See [implementation status](customer-owned-publishing.md).
 
 The customer or agency owns the GitHub organization, publication repositories,
 Cloudflare account, and media storage. The publisher receives access through a
@@ -29,6 +31,12 @@ The publisher App requests these repository permissions:
 | Contents | Read and write | Publish source files, commits, and branches |
 | Metadata | Read | Identify repositories and verify access |
 
+Also request **Organization permissions / Members / Read**. The connection
+verifies that the signed-in GitHub user is an active owner of the selected
+organization. A user who can see an installation is not necessarily allowed to
+delegate its full installation-token authority.
+[Organization membership API](https://docs.github.com/en/rest/orgs/members#get-organization-membership-for-a-user).
+
 GitHub supports organization repository creation with an installation token
 carrying **Administration: write**. This is broader repository administration
 access, not a create-only permission. A dedicated organization bounds which
@@ -40,11 +48,20 @@ customer's installation ID to mint installation tokens, which expire after one
 hour. Customers do not create an App or manually renew these tokens.
 [Installation tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app).
 
-The publisher must supply a verified installation URL before this step can be
-completed. Registering an externally installable App, connecting installation
-callbacks to authenticated organization owners, storing credentials, and wiring
-portal publication remain implementation work. The provider probe does not
-constitute that complete onboarding system.
+The publisher must register an externally installable App before customers can
+connect. In **Account → Publishing accounts**, an explicit Typeroll organization
+owner or admin first opens the installation link, then enters the GitHub
+organization name and chooses **Connect GitHub**. GitHub authorization uses
+PKCE and a ten-minute, single-use grant bound to the browser, Typeroll user, and
+organization. The server checks the user's installations and active owner role,
+then revalidates the installation through the App. It never trusts an
+`installation_id` supplied in a callback, and it does not store the user token.
+[GitHub setup URL security](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/about-the-setup-url).
+
+The first connection reserves that provider account for its Typeroll
+organization. Disconnecting preserves this ownership reservation and resource
+identities. Reconnecting can rotate credentials for the original account;
+moving to another account or Typeroll organization requires a separate migration.
 
 ## Cloudflare Git integration
 
@@ -109,11 +126,52 @@ upload/readback proves object access only, not browser CORS or tenant isolation.
 | R2 bucket and S3 endpoint | Customer connection metadata |
 | R2 Access Key ID and Secret Access Key | Customer credentials supplied through a secure connection flow |
 
-The complete product must provide authenticated account connection and encrypted
-credential storage. Until that exists, a pilot operator uses an approved secret
-manager. Never send credential values through chat, commit them, or put them in
-a generated site repository. Customers retain the ability to revoke the App
+The account page accepts Cloudflare and R2 credentials over the authenticated
+same-origin API. It verifies the account, lists Pages projects, and uploads,
+reads back, and deletes a random temporary object under
+`_typeroll/connection-checks/` in the selected bucket. The connection currently
+supports the standard global R2 endpoint derived from the Account ID; arbitrary
+S3 endpoints and jurisdiction-specific buckets are not accepted. Listing Pages
+projects proves read access, not project creation permission. The three-site
+pilot remains the write/build acceptance gate.
+
+Credentials are encrypted with AES-256-GCM, bound to the Typeroll organization
+and provider, and excluded from API responses. The page shows only whether
+credentials are saved. Rotation and disconnect use revision checks, and
+disconnect removes the saved Cloudflare/R2 credentials without deleting customer
+resources. An in-flight authorization cannot undo a disconnect.
+
+Never send credential values through chat, commit them, or put them in a
+generated site repository. Customers can independently revoke the GitHub App
 installation and Cloudflare credentials.
+
+## Publisher configuration
+
+Configure the following server-side variables per environment. The customer
+does not supply publisher App credentials. Use separate Apps and secret storage
+for production, staging, and local development; never copy live keys into tests.
+
+| Variable | Value |
+| --- | --- |
+| `PORTAL_PUBLIC_URL` | Canonical HTTPS portal origin, with no path or query |
+| `TYPEROLL_PUBLISH_GITHUB_APP_ID` | Numeric publisher App ID |
+| `TYPEROLL_PUBLISH_GITHUB_APP_SLUG` | App slug used for the installation link |
+| `TYPEROLL_PUBLISH_GITHUB_CLIENT_ID` | App OAuth client ID, distinct from App ID |
+| `TYPEROLL_PUBLISH_GITHUB_CLIENT_SECRET` | App OAuth client secret; secret-manager value |
+| `TYPEROLL_PUBLISH_GITHUB_PRIVATE_KEY` | App RSA private key in PEM form; secret-manager value |
+| `INTEGRATIONS_SECRET_KEY` | Existing encryption key, at least 32 characters; retain during normal redeploys |
+
+Register exactly `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback` as
+the App's OAuth callback. The implementation uses an explicit authorization
+step after installation; it does not need a setup URL or an installation webhook
+to trust the connection. Do not enable "Request user authorization (OAuth)
+during installation": install first, then start authorization from Typeroll.
+Keep expiring user tokens enabled. This first delivery does not consume
+webhooks; publication must revalidate installation access before each operation.
+
+Missing App configuration disables GitHub connection in the UI. Missing
+encryption configuration disables Cloudflare credential entry. No PAT, SSH,
+developer membership, or publisher-owned hosting fallback is used.
 
 ## Pilot acceptance
 
