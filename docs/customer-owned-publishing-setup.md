@@ -1,7 +1,7 @@
 # Connect customer-owned publishing accounts
 
-Status: organization account connection is implemented in the Core 0.1.15
-candidate. Live App registration and customer acceptance remain pending.
+Status: organization account connection is implemented. Core 0.1.20 simplifies
+GitHub organization discovery. Customer acceptance remains pending.
 Automatic site provisioning and editor publication are still being implemented.
 See [implementation status](customer-owned-publishing.md).
 
@@ -49,9 +49,14 @@ hour. Customers do not create an App or manually renew these tokens.
 [Installation tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app).
 
 The publisher must register an externally installable App before customers can
-connect. In **Account → Publishing accounts**, an explicit Typeroll organization
-owner or admin first opens the installation link, then enters the GitHub
-organization name and chooses **Connect GitHub**. GitHub authorization uses
+connect. Open **Account** in Typeroll's sidebar, then **connect publishing
+accounts**. An explicit Typeroll organization owner or admin chooses
+**Connect GitHub** and signs in. No typed organization name or ID is required.
+If the App is not installed, the page provides installation instructions.
+The server discovers eligible owner organizations with the App installed:
+one connects directly; multiple organizations require an explicit selection.
+That choice expires after ten minutes, is single-use and bound to the same
+Typeroll user and organization. The server rechecks ownership when it is selected. GitHub authorization uses
 PKCE and a ten-minute, single-use grant bound to the browser, Typeroll user, and
 organization. The server checks the user's installations and active owner role,
 then revalidates the installation through the App. It never trusts an
@@ -65,8 +70,9 @@ moving to another account or Typeroll organization requires a separate migration
 
 ## Cloudflare Git integration
 
-In the customer's Cloudflare account, open **Workers & Pages** and the Pages
-flow for connecting Git. The customer authorizes Cloudflare's own GitHub App on
+In the customer's Cloudflare account, open **Workers & Pages → Create application
+→ Pages → Connect to Git** (also labeled **Import an existing Git repository**).
+Select **+ Add account** if the organization is missing. The customer authorizes Cloudflare's own GitHub App on
 the same organization, also covering **All repositories** for this pilot.
 
 Cloudflare needs its own repository access to clone and build the source.
@@ -78,7 +84,17 @@ reinstalling either App.
 
 ## Cloudflare API credentials
 
-Create a dedicated API token scoped to the customer's Cloudflare account:
+Open [My Profile → API Tokens](https://dash.cloudflare.com/profile/api-tokens),
+then **Create Token → Create Custom Token → Get started**. Name the token, add
+the permissions below, and scope **Account Resources → Include → Specific
+account** to the customer. Finish with **Continue to summary → Create Token**.
+
+To find **Account ID**, select the customer's account in Cloudflare, open
+**Search**, and select **Copy account ID**. Alternatively, use **Workers & Pages
+→ Account Details → Account ID**. Copy the 32-character account ID, not a domain's
+Zone ID. [Cloudflare's account ID instructions](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/).
+
+Use these token permissions:
 
 | Permission | Purpose |
 | --- | --- |
@@ -104,7 +120,9 @@ the current probe, create a dedicated media bucket first. The intended setup
 can share a bucket across sites using isolated site prefixes; site authorization
 must be enforced by the publisher.
 
-In R2 **Manage API tokens**, create **Object Read & Write** credentials scoped
+In **Storage & databases → R2 object storage → Overview → Account Details**,
+select **Manage** next to **API Tokens**, then **Create Account API token**
+(requires Super Administrator). Create **Object Read & Write** credentials scoped
 to that bucket. Keep the Access Key ID and Secret Access Key, plus the bucket
 name, account ID, and S3 endpoint shown by Cloudflare. The ordinary Cloudflare
 API token is not a substitute for the S3 credential pair.

@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { ConnectionError, disconnect } from '../../../../lib/publishing/connections';
 import { connectCloudflare } from '../../../../lib/publishing/cloudflare-connection';
-import { GITHUB_COOKIE, startGithubConnection } from '../../../../lib/publishing/github-connection';
+import { GITHUB_COOKIE, startGithubConnection, selectGithubOrganization } from '../../../../lib/publishing/github-connection';
 import { connectionBody, connectionFailure, privateJson, publishingAdmin } from '../../../../lib/publishing/http';
 
 export const POST: APIRoute = async (context) => {
@@ -14,6 +14,10 @@ export const POST: APIRoute = async (context) => {
       return privateJson({ connected: true });
     }
     if (context.params.provider !== 'github') throw new ConnectionError('Unknown publishing provider', 404);
+    if (typeof body.installation_id === 'string') {
+      await selectGithubOrganization(guard.value, body.installation_id);
+      return privateJson({ connected: true });
+    }
     const result = await startGithubConnection(guard.value, typeof body?.owner === 'string' ? body.owner.trim() : '');
     context.cookies.set(GITHUB_COOKIE, result.browser, { path: '/api/orgs/publishing/github', httpOnly: true,
       secure: process.env.NODE_ENV === 'production' || context.url.protocol === 'https:', sameSite: 'lax', maxAge: result.maxAge });

@@ -5,7 +5,7 @@ type Connection = {
   github: { owner: string } | null;
   cloudflare: { account_id: string; account_name: string; bucket: string } | null;
 };
-type Connections = { github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
+type Connections = { github_choices: Array<{ owner: string; installation_id: string }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
 const API = '/api/orgs/publishing';
 
 async function request(path = '', method = 'GET', body?: unknown) {
@@ -26,6 +26,10 @@ export default function PublishingConnections() {
     void refresh().catch((error: Error) => setError(error.message));
     const result = new URLSearchParams(window.location.search).get('github');
     if (result === 'connected') setNotice('GitHub connected. This organization can be reused for your sites.');
+    if (result === 'select') setNotice('Choose the GitHub organization to connect below.');
+    if (result === 'install_required') setError('Install the Typeroll GitHub App in your organization using the link below, then select Connect GitHub again.');
+    if (result === 'permissions_required') setError('Open the App installation settings and approve the requested permissions with All repositories access, then connect again.');
+    if (result === 'owner_required') setError('Sign in to GitHub as an owner of the organization you want to connect, then try again.');
     if (result === 'failed') setError('GitHub was not connected. Install the publisher App with all-repository access and the requested permissions, then connect as an organization owner. If the request expired, start again.');
     if (result) window.history.replaceState(null, '', window.location.pathname);
   }, []);
@@ -37,10 +41,10 @@ export default function PublishingConnections() {
     setBusy(true); setError(''); setNotice('');
     try {
       const result = await request(`/${provider}`, 'POST', { ...values, revision: data?.[provider].revision });
-      if (provider === 'github') { window.location.assign(result.authorization_url); return; }
+      if (provider === 'github' && result.authorization_url) { window.location.assign(result.authorization_url); return; }
       form.reset();
       await refresh();
-      setNotice('Cloudflare and R2 connected. Credentials are encrypted and can be reused for your sites.');
+      setNotice(provider === 'github' ? 'GitHub connected. This organization can be reused for your sites.' : 'Cloudflare and R2 connected. Credentials are encrypted and can be reused for your sites.');
     } catch (error) { setError(error instanceof Error ? error.message : 'Connection failed'); }
     finally { setBusy(false); }
   }
@@ -65,12 +69,25 @@ export default function PublishingConnections() {
         <h2 id="github-title">GitHub organization</h2>
         <p>Status: <strong>{data.github.status}</strong>{data.github.github && <> · {data.github.github.owner}</>}</p>
         {!data.github_setup.available ? <p>The publisher needs to configure its GitHub App before you can connect.</p> : <>
-          <p>As a GitHub organization owner, <a href={data.github_setup.install_url!} target="_blank" rel="noreferrer">install the publisher GitHub App</a> with <strong>All repositories</strong>, then verify your account below. This includes repositories created for future sites.</p>
+          <p>Sign in to GitHub and approve access. Typeroll finds the organizations you own; if there is more than one, you can choose after signing in. You do not need to enter an organization name or ID.</p>
+          {(data.github_choices ?? []).length > 0 && <form className="stack" onSubmit={(event) => void submit('github', event)}>
+            <div className="field"><label htmlFor="github-organization">Choose a GitHub organization</label>
+              <select id="github-organization" name="installation_id" required defaultValue="">
+                <option value="" disabled>Select an organization</option>
+                {data.github_choices.map(choice => <option key={choice.installation_id} value={choice.installation_id}>{choice.owner} — github.com/{choice.owner}</option>)}
+              </select></div>
+            <button className="btn" disabled={busy} type="submit">Connect selected organization</button>
+          </form>}
           <form className="stack" onSubmit={(event) => void submit('github', event)}>
-            <div className="field"><label htmlFor="github-owner">GitHub organization name</label>
-              <input id="github-owner" name="owner" required maxLength={39} defaultValue={data.github.github?.owner ?? ''} readOnly={Boolean(data.github.github)} placeholder="your-agency-sites" /></div>
             <button className="btn" disabled={busy} type="submit">{data.github.github ? 'Verify GitHub connection' : 'Connect GitHub'}</button>
           </form>
+          <details><summary>First connection: install the Typeroll GitHub App</summary>
+            <ol>
+              <li><a href={data.github_setup.install_url!} target="_blank" rel="noreferrer">Open the App installation in GitHub</a> and select your organization.</li>
+              <li>Select <strong>All repositories</strong> and approve the requested permissions. This also includes repositories Typeroll creates for future sites.</li>
+              <li>Return here and select <strong>Connect GitHub</strong>. If you already installed the App, start with that button.</li>
+            </ol>
+          </details>
         </>}
         {data.github.status === 'connected' && <button className="btn btn--secondary" disabled={busy} onClick={() => void disconnect('github')}>Disconnect GitHub</button>}
       </section>
@@ -78,11 +95,21 @@ export default function PublishingConnections() {
         <h2 id="cloudflare-title">Cloudflare and R2 media</h2>
         <p>Status: <strong>{data.cloudflare.status}</strong>{data.cloudflare.cloudflare && <> · {data.cloudflare.cloudflare.account_name} · {data.cloudflare.cloudflare.bucket}</>}</p>
         {data.cloudflare.credentials_saved && <p>API and R2 credentials are saved and hidden. To rotate them, enter the new credentials below.</p>}
-        <p>Use a Cloudflare token scoped to your account with Pages Edit and Account Settings Read. Create an R2 bucket and Object Read &amp; Write credentials restricted to that bucket.</p>
+        <p>Use a Cloudflare token scoped to your account with Cloudflare Pages: Edit, Account Settings: Read, and Workers R2 Storage: Edit. Create an R2 bucket and Object Read &amp; Write credentials restricted to that bucket.</p>
+        <details><summary>Set up Cloudflare access</summary>
+          <ol>
+            <li>Open your account in <a href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">Cloudflare</a>. Go to <strong>Workers &amp; Pages → Create application → Pages → Connect to Git</strong> (also called <strong>Import an existing Git repository</strong>). Use <strong>+ Add account</strong> to authorize Cloudflare’s GitHub App for the same organization. Select <strong>All repositories</strong> so future sites are included. You can stop at the repository list.</li>
+            <li>Open <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noreferrer">My Profile → API Tokens</a>. Select <strong>Create Token → Create Custom Token → Get started</strong>. Add the three Account permissions listed above. Under <strong>Account Resources</strong>, choose <strong>Include → Specific account</strong> and your account. Select <strong>Continue to summary → Create Token</strong>, then copy the token into the form below.</li>
+            <li>Open <strong>Storage &amp; databases → R2 object storage → Overview</strong>. Activate R2 if prompted. Select <strong>Create bucket</strong> and keep the default jurisdiction. Copy the bucket name into the form.</li>
+            <li>Return to <strong>R2 → Overview → Account Details</strong>. Select <strong>Manage</strong> next to <strong>API Tokens</strong>, then <strong>Create Account API token</strong>. Choose <strong>Object Read &amp; Write</strong> for your bucket. Copy both <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> into the form. Account tokens require a Cloudflare Super Administrator.</li>
+            <li>Select <strong>Verify and save Cloudflare</strong>. The status changes to <strong>connected</strong> after the access checks pass.</li>
+          </ol>
+          <p>You set this up once per organization. Repositories, Pages projects, build settings, and public image delivery belong to Typeroll’s site setup; you should not need to configure them for each site. That automatic site setup is still being completed.</p>
+        </details>
         <p className="muted">Connect Cloudflare’s own GitHub App to the same organization with All repositories so Cloudflare can build your sites. The account check below verifies account access and Pages visibility, and uploads, reads, and deletes a small temporary R2 object. Project creation and public media delivery are verified separately.</p>
         {!data.encryption_available ? <p>The publisher needs to configure encrypted credential storage before you can connect.</p> :
           <form className="stack" onSubmit={(event) => void submit('cloudflare', event)} autoComplete="off">
-            <div className="field"><label htmlFor="cf-account">Cloudflare Account ID</label><input id="cf-account" name="account_id" required pattern="[a-f0-9]{32}" maxLength={32} defaultValue={data.cloudflare.cloudflare?.account_id ?? ''} readOnly={Boolean(data.cloudflare.cloudflare)} /></div>
+            <div className="field"><label htmlFor="cf-account">Cloudflare Account ID</label><p id="cf-account-help" className="muted">Open <a href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">Cloudflare</a> and select your account. Use Search → Copy account ID. You can also find it in Workers &amp; Pages → Account Details → Account ID. Copy the 32-character value, not a Zone ID.</p><input aria-describedby="cf-account-help" id="cf-account" name="account_id" required pattern="[a-f0-9]{32}" maxLength={32} defaultValue={data.cloudflare.cloudflare?.account_id ?? ''} readOnly={Boolean(data.cloudflare.cloudflare)} /></div>
             <div className="field"><label htmlFor="r2-bucket">R2 bucket name</label><input id="r2-bucket" name="bucket" required maxLength={63} defaultValue={data.cloudflare.cloudflare?.bucket ?? ''} readOnly={Boolean(data.cloudflare.cloudflare)} /></div>
             <div className="field"><label htmlFor="cf-token">Cloudflare API token</label><input id="cf-token" name="api_token" type="password" required maxLength={512} autoComplete="new-password" /></div>
             <div className="field"><label htmlFor="r2-access">R2 Access Key ID</label><input id="r2-access" name="access_key_id" type="password" required maxLength={512} autoComplete="new-password" /></div>

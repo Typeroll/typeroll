@@ -75,3 +75,44 @@ test('Cloudflare connection form clears credentials after success and retains th
   await expect(page.getByLabel('Cloudflare Account ID')).toHaveValue('a'.repeat(32));
   await expect(page.getByLabel('R2 bucket name')).toHaveValue('agency-media');
 });
+
+test('GitHub starts with sign-in and offers verified organizations instead of a text field', async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  let selecting = false;
+  let connected = false;
+  let submitted: Record<string, unknown> | undefined;
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/orgs/publishing', route => {
+    const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
+    return route.fulfill({ json: { github: connected ? { ...empty, status: 'connected', github: { owner: 'second-agency' } } : empty,
+      cloudflare: empty, encryption_available: true,
+      github_setup: { available: true, install_url: 'https://github.com/apps/synthetic-publisher/installations/new' },
+      github_choices: selecting && !connected ? [{ owner: 'first-agency', installation_id: '34' }, { owner: 'second-agency', installation_id: '35' }] : [] } });
+  });
+  await page.route('**/api/orgs/publishing/github', route => {
+    submitted = route.request().postDataJSON();
+    if (submitted?.installation_id) { connected = true; return route.fulfill({ json: { connected: true } }); }
+    selecting = true;
+    return route.fulfill({ json: { authorization_url: '/app/settings/publishing?github=select' } });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/app/settings/publishing');
+  await expect(page.getByLabel('GitHub organization name')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Connect GitHub', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Choose a GitHub organization' })).toBeVisible();
+  expect(submitted).not.toHaveProperty('owner');
+  await page.screenshot({ path: testInfo.outputPath('github-organization-choice-mobile.png') });
+  await page.getByRole('combobox', { name: 'Choose a GitHub organization' }).selectOption('35');
+  await page.getByRole('button', { name: 'Connect selected organization' }).click();
+  await expect(page.getByRole('status')).toContainText('GitHub connected');
+  expect(submitted).toMatchObject({ installation_id: '35' });
+  await expect(page.getByRole('combobox', { name: 'Choose a GitHub organization' })).toHaveCount(0);
+  await page.goto('/app/settings/publishing?github=owner_required');
+  await expect(page.getByRole('alert')).toContainText('Sign in to GitHub as an owner');
+  await page.getByLabel('Cloudflare Account ID').scrollIntoViewIfNeeded();
+  await expect(page.locator('#cf-account-help')).toContainText('Search → Copy account ID');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('cloudflare-account-help-mobile.png') });
+  expect(errors).toEqual([]);
+});

@@ -4,7 +4,7 @@ import type { APIRoute } from 'astro';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { claimAccount, connectionPath, connectionSummary, disconnect, getConnection, openCredentials, sealCredentials } from '../../lib/publishing/connections';
-import { finishGithubConnection, githubSetup, startGithubConnection } from '../../lib/publishing/github-connection';
+import { finishGithubConnection, githubSetup, startGithubConnection, githubChoices, selectGithubOrganization } from '../../lib/publishing/github-connection';
 import { connectCloudflare, verifyR2 } from '../../lib/publishing/cloudflare-connection';
 import { GET } from '../../pages/api/orgs/publishing/index';
 import { POST, DELETE } from '../../pages/api/orgs/publishing/[provider]';
@@ -124,6 +124,57 @@ describe('GitHub organization authorization', () => {
     expect((await getConnection('default', 'github')).status).toBe('disconnected');
     await getStore().setDoc('publishing_account_claims/github-56', { org_id: 'another-agency' });
     await expect(finishGithubConnection(session, await authorization(), providerFetch())).rejects.toThrow('another Typeroll organization');
+  });
+
+  it('discovers the organization after sign-in without a typed name or ID', async () => {
+    const started = await startGithubConnection(session);
+    const input = { ...started, state: new URL(started.url).searchParams.get('state')!, code: 'synthetic-code' };
+    expect(await finishGithubConnection(session, input, providerFetch())).toBe('connected');
+    expect((await getConnection('default', 'github')).github?.owner).toBe('synthetic-agency');
+  });
+
+  it('offers only proven owner organizations and requires an explicit selection when several exist', async () => {
+    const second = { ...installation, id: 35, account: { ...installation.account, id: 57, login: 'second-agency' } };
+    const fetcher = providerFetch({
+      '/user/installations?per_page=100&page=1': { installations: [installation, second] },
+      '/orgs/second-agency/memberships/synthetic-owner': { state: 'active', role: 'admin', user: { id: 78 }, organization: { id: 57 } },
+      '/app/installations/35': second,
+      '/app/installations/35/access_tokens': { token: 'synthetic-second-token' },
+      '/orgs/second-agency': { id: 57 },
+    });
+    const started = await startGithubConnection(session);
+    expect(await finishGithubConnection(session, { ...started, state: new URL(started.url).searchParams.get('state')!, code: 'synthetic-code' }, fetcher)).toBe('select');
+    expect((await getConnection('default', 'github')).status).toBe('disconnected');
+    expect(await githubChoices(session)).toHaveLength(2);
+    expect(await githubChoices({ ...session, userId: 'other-user' })).toEqual([]);
+    await expect(selectGithubOrganization({ ...session, userId: 'other-user' }, '35', fetcher)).rejects.toThrow('expired');
+    await expect(selectGithubOrganization(session, '999', fetcher)).rejects.toThrow('expired');
+    expect(JSON.stringify(await getStore().getDoc('organizations/default/publishing_authorizations/github_selection'))).not.toContain('synthetic-user-token');
+    await selectGithubOrganization(session, '35', fetcher);
+    expect((await getConnection('default', 'github')).github?.owner).toBe('second-agency');
+    expect(await githubChoices(session)).toEqual([]);
+    await expect(selectGithubOrganization(session, '35', fetcher)).rejects.toThrow('expired');
+  });
+
+  it.each(['expired', 'other-user', 'other-organization', 'revoked-owner', 'changed-connection'])('rejects a pending choice with %s authority', async (failure) => {
+    const revision = (await getConnection('default', 'github')).revision;
+    await getStore().setDoc('organizations/default/publishing_authorizations/github_selection', {
+      user_id: session.userId, github_user: { id: 78, login: 'synthetic-owner' }, revision,
+      expires_at: failure === 'expired' ? Date.now() - 1 : Date.now() + 60_000, consumed: false,
+      choices: [{ owner: 'synthetic-agency', installation_id: '34', account_id: '56' }],
+    });
+    if (failure === 'changed-connection') await disconnect('default', 'github', revision);
+    const fetcher = providerFetch(failure === 'revoked-owner' ? {
+      '/orgs/synthetic-agency/memberships/synthetic-owner': { state: 'active', role: 'member', user: { id: 78 }, organization: { id: 56 } },
+    } : {});
+    const actor = { ...session, ...(failure === 'other-user' ? { userId: 'other-user' } : {}), ...(failure === 'other-organization' ? { orgId: 'other-org' } : {}) };
+    await expect(selectGithubOrganization(actor, '34', fetcher)).rejects.toThrow();
+    expect((await getConnection('default', 'github')).status).toBe('disconnected');
+    if (['expired', 'other-user', 'other-organization'].includes(failure)) expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('gives a useful error for the legacy field with a display name containing spaces', async () => {
+    await expect(startGithubConnection(session, 'Synthetic Agency')).rejects.toThrow('without spaces');
   });
 
   it('requires publisher configuration without accepting request-controlled callbacks', async () => {
