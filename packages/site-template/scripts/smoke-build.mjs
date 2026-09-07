@@ -756,6 +756,18 @@ await (async function nativeCollectionCompositionScenario() {
   }));
 
   log('[native-collection-composition] building typed, SSR collection template…');
+  const formsDir = join(tmpFixtures, 'organizations/default/sites/default/forms');
+  mkdirSync(formsDir, { recursive: true });
+  writeFileSync(join(formsDir, 'asset-form.json'), JSON.stringify({
+    id: 'asset-form', name: 'Asset form', submit_url: 'https://forms.example.test/submit',
+    steps: [{ id: 'intro', blocks: [{ id: 'gallery', type: 'core/gallery', data: {
+      items: [{ src: '/example.svg', alt: 'Example' }],
+    } }] }],
+  }));
+  writeFileSync(join(pageDir, 'form-assets.json'), JSON.stringify({
+    id: 'form-assets', title: 'Form assets', slug: 'form-assets', status: 'published',
+    content_mode: 'html', html_content: '<h1>Form assets</h1><x-form id="asset-form" />',
+  }));
   await new Promise((res) => {
     const child = spawn('npx', ['astro', 'build', '--outDir', tmpOut], {
       cwd: TEMPLATE_DIR,
@@ -796,15 +808,27 @@ await (async function nativeCollectionCompositionScenario() {
         fail('[native-collection-composition] nested instance CSS did not reach build assets');
       }
       const archive = readFileSync(join(tmpOut, 'responsive-archive', 'index.html'), 'utf8');
-      const archiveBundle = archive + assetText;
+      // Only this page's inline assets count. Concatenating other routes'
+      // bundles can conceal a missing dependency in this listing.
+      const archiveBundle = archive;
+      if (!archiveBundle.includes('/* core/repeater */') || !archiveBundle.includes('/* core/post_card */')) {
+        fail('[native-collection-composition] listing alias omitted its repeater or item CSS');
+      }
       const compactArchiveBundle = archiveBundle.replace(/\s+/g, '');
       if (!compactArchiveBundle.includes('--cols:1')
           || !compactArchiveBundle.includes('@media(min-width:640px){[data-bid="responsive-list"]{--cols:2!important;}}')
           || !compactArchiveBundle.includes('@media(min-width:1280px){[data-bid="responsive-list"]{--cols:3!important;}}')) {
         fail('[native-collection-composition] responsive data fields did not survive the hosted build pipeline');
       }
-      if (archive.includes('block-postcard-image') || archive.includes('src=""')) {
+      if (/<img\b[^>]*class="[^"]*block-postcard-image/.test(archive) || archive.includes('src=""')) {
         fail('[native-collection-composition] hidden or empty post-card media left unused markup');
+      }
+      const formPage = readFileSync(join(tmpOut, 'form-assets/index.html'), 'utf8');
+      if (!formPage.includes('/example.svg') || !formPage.includes('/* core/repeater */') || !formPage.includes('/* core/image */')) {
+        fail('[native-collection-composition] embedded form omitted its step block dependencies');
+      }
+      if (archive.includes('/* core/image */')) {
+        fail('[native-collection-composition] an unreferenced form leaked block assets into the listing');
       }
       log('[native-collection-composition] ✓ typed bindings, SSR navigation, responsive fields, selected fields, and instance CSS');
       res();

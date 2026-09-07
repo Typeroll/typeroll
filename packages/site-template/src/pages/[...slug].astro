@@ -225,7 +225,8 @@ const renderCtx: RenderContext = {
 const collectionSource = await buildCollectionSource();
 // Forms 2.0: core/form blocks resolve through this (token + steps baked
 // into fixtures by the deploy's materialize step).
-const formSource = await buildFormSource(blockRegistry, settings.language);
+const formBlocks: Block[] = [];
+const formSource = await buildFormSource(blockRegistry, settings.language, (blocks) => formBlocks.push(...blocks));
 
 let bodyHtml: string | null = null;
 let blockCss = '';
@@ -313,7 +314,7 @@ if (props.kind === 'page') {
     ...(header?.content_mode === 'blocks' ? header.blocks ?? [] : []),
     ...(footer?.content_mode === 'blocks' ? footer.blocks ?? [] : []),
   ];
-  const assets = collectBlockAssets([...partialBlocks, ...(bodyBlocks ?? [])], blockRegistry);
+  const assets = collectBlockAssets([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks], blockRegistry);
   blockCss = assets.css;
   blockJs = assets.js;
 }

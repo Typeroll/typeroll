@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
+import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
 
 const STATUS = z.enum(['migrated', 'redirected', 'excluded', 'unhandled']);
 const PLAIN_TEXT_REPAIR_FIELD = z.enum(['title', 'seo_title', 'seo_description', 'excerpt']);
@@ -179,12 +179,14 @@ export const migrationTools: ToolDef[] = [
       dry_run: z.boolean().optional().describe('Defaults to true. Set false only after the user reviews the dry-run.'),
       save: z.boolean().optional().describe('With dry_run:false, commit repaired working copies immediately. Defaults to false.'),
       diff_limit: z.number().int().min(1).max(2000).optional().describe('Exact field diffs returned; default 500.'),
+      version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const { version, ...body } = args;
       const res = await client.post(siteId, 'migration-urls/repair-plain-text', {
-        ...args,
+        ...body,
         dry_run: args.dry_run ?? true,
-      });
+      }, version ? { version } : undefined);
       return ok(res);
     }),
   },

@@ -788,6 +788,8 @@ slugs, paths, or URLs. The tool defaults to a dry run with exact field diffs.
 Show the full diff/conflict result to the user and obtain approval before
 calling it with `dry_run=false`. Existing working copies are conflicts and are
 never overwritten or committed by the repair.
+Pass the same `version` on the dry run and the approved repair to keep both
+operations on the selected content branch. Omitting it targets `main`.
 
 Every unhandled URL gets exactly one of three outcomes — there is no fourth:
 

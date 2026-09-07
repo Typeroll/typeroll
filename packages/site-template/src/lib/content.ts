@@ -673,6 +673,7 @@ export async function getPageTemplate(templateId: string): Promise<PageTemplate 
 export async function buildFormSource(
   registry: Map<string, import('@typeroll/shared').BlockType>,
   lang?: string,
+  onRender?: (blocks: Block[]) => void,
 ): Promise<(formId: string) => string | undefined> {
   const { renderFormHtml } = await import('@typeroll/shared');
   type EnrichedForm = import('@typeroll/shared').Form & {
@@ -691,6 +692,7 @@ export async function buildFormSource(
   return (formId: string) => {
     const form = byId.get(formId);
     if (!form || (form.steps?.length ?? 0) === 0) return undefined;
+    onRender?.(form.steps!.flatMap((step) => step.blocks ?? []));
     return renderFormHtml(
       form,
       { submit_url: form.submit_url ?? '/api/forms/submit', submit_token: form.submit_token ?? null },

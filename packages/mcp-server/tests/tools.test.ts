@@ -3,6 +3,7 @@
 // the response through ok().
 
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import { TyperollClient } from '../src/client.js';
 import { pageTools } from '../src/tools/pages.js';
 import { partialTools } from '../src/tools/partials.js';
@@ -164,6 +165,17 @@ describe('migration tool contracts', () => {
       body: JSON.stringify({ scope: 'pages', fields: ['title'], dry_run: true }),
     });
     expect(tool.description).toContain('ALWAYS run the dry-run first');
+  });
+
+  it.each([undefined, false])('keeps a selected repair version in the query with dry_run=%s', async (dryRun) => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ diffs: [] }));
+    const tool = find(migrationTools, 'repair_migration_plain_text');
+    const args = z.object(tool.inputSchema).parse({
+      version: 'migration-review', scope: 'pages', fields: ['title'], dry_run: dryRun,
+    });
+    await tool.handler(args as never, { client, siteId });
+    expect(calls[0].url).toBe('https://example.test/api/v1/sites/mysite/migration-urls/repair-plain-text?version=migration-review');
+    expect(JSON.parse(calls[0].body!)).toEqual({ scope: 'pages', fields: ['title'], dry_run: dryRun ?? true });
   });
 
   it('records SEO evidence and reads the fail-closed launch report', async () => {

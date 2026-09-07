@@ -1,5 +1,16 @@
 # Changelog
 
+## MCP 0.43.6 / Core 0.1.14
+
+- Included transitive alias and repeater item CSS/JS in static builds and
+  previews, including dependencies in partials and referenced form steps.
+  Preview script restrictions still apply to the complete bundle.
+- Added content-branch selection to `repair_migration_plain_text`, preserving
+  dry-run defaults and forwarding the version to the REST query.
+- Added an initial customer-owned Git publishing pilot and an independently
+  buildable, frozen HTML-site export. CMS publishing integration, full block
+  and module exports, and customer media migration remain under development.
+
 ## MCP 0.43.4 / Core 0.1.12
 
 - Made fallback-host provisioning idempotently repairable by resubmitting the

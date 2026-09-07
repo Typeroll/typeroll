@@ -175,6 +175,30 @@ function getRegistryEntry(
   return registry[typeId];
 }
 
+function expandBlockAlias(
+  block: Block,
+  registry: RenderBlocksOptions['registry'],
+  used?: Set<string>,
+): { block: Block; blockType: BlockType } | undefined {
+  let blockType = getRegistryEntry(registry, block.type);
+  if (!blockType) return undefined;
+  used?.add(blockType.id);
+  let effectiveBlock: Block = block;
+  let safety = 5;
+  while (blockType.expand_to && safety-- > 0) {
+    const target = getRegistryEntry(registry, blockType.expand_to.target);
+    if (!target) break;
+    effectiveBlock = {
+      ...effectiveBlock,
+      type: target.id,
+      data: { ...blockType.expand_to.defaults, ...effectiveBlock.data },
+    };
+    blockType = target;
+    used?.add(target.id);
+  }
+  return { block: effectiveBlock, blockType };
+}
+
 /**
  * Render a single block to HTML using its BlockType template. Recurses into
  * children/slots. Does NOT sanitize — the caller is responsible.
@@ -189,26 +213,13 @@ function getRegistryEntry(
  *      each item with the configured `item_block`.
  */
 export function renderBlock(block: Block, options: RenderBlocksOptions): string {
-  let blockType = getRegistryEntry(options.registry, block.type);
-  if (!blockType) {
+  // Asset collection uses the same alias defaults and traversal limit.
+  const expanded = expandBlockAlias(block, options.registry);
+  if (!expanded) {
     const fallback = options.onMissingType ?? defaultMissingType;
     return fallback(block.type, block);
   }
-
-  // (1) Alias expansion. Follow `expand_to` until we hit a real block,
-  // merging defaults under the block's authored data each step.
-  let effectiveBlock: Block = block;
-  let safety = 5;
-  while (blockType.expand_to && safety-- > 0) {
-    const target = getRegistryEntry(options.registry, blockType.expand_to.target);
-    if (!target) break;
-    effectiveBlock = {
-      ...effectiveBlock,
-      type: target.id,
-      data: { ...blockType.expand_to.defaults, ...effectiveBlock.data },
-    };
-    blockType = target;
-  }
+  const { block: effectiveBlock, blockType } = expanded;
 
   // (1b) Forms 2.0: core/form delegates to the caller's formSource —
   // token minting and step prerendering live outside the pure renderer.
@@ -1452,6 +1463,42 @@ export function collectUsedBlockTypeIds(blocks: Block[], out: Set<string> = new 
   return out;
 }
 
+/** Include types instantiated by aliases and repeaters, as well as authored nodes. */
+function collectBlockAssetTypeIds(blocks: Block[], registry: RenderBlocksOptions['registry']): Set<string> {
+  const used = collectUsedBlockTypeIds(blocks);
+  const activeItems = new Set<object>();
+  function visit(block: Block, defaultPath = new Set<string>()): void {
+    const expanded = expandBlockAlias(block, registry, used);
+    if (expanded?.blockType.container === 'repeater') {
+      const data = compileResponsiveData(expanded.block, expanded.blockType).flatData;
+      const itemType = String(data.item_block ?? '');
+      const overrides = (data.item_overrides as Record<string, unknown> | undefined) ?? {};
+      if (itemType && data.source_type !== 'children_blocks') {
+        const items = (!data.source_type || data.source_type === 'static') && Array.isArray(data.items)
+          ? data.items.filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object')
+          : [];
+        // Static items can select further nested item types. Inspect each instance,
+        // even when a sibling already contributed the same repeater type.
+        for (const item of items) {
+          if (activeItems.has(item)) continue;
+          activeItems.add(item);
+          visit({ id: block.id, type: itemType, data: { ...item, ...overrides } });
+          activeItems.delete(item);
+        }
+        // Empty/collection listings still need the declared item's assets. A
+        // path-local guard handles cyclic defaults without dropping sibling overrides.
+        if (items.length === 0 && !defaultPath.has(itemType)) {
+          visit({ id: block.id, type: itemType, data: overrides }, new Set([...defaultPath, itemType]));
+        }
+      }
+    }
+    for (const child of block.children ?? []) visit(child);
+    for (const slot of block.slots ?? []) for (const child of slot) visit(child);
+  }
+  for (const block of blocks) visit(block);
+  return used;
+}
+
 export interface BlockAssetBundle {
   /** Concatenated CSS for every used block type. Stable order — sorted by id. */
   css: string;
@@ -1485,7 +1532,7 @@ export function collectBlockAssets(
   registry: RenderBlocksOptions['registry'],
   opts?: CollectAssetsOptions,
 ): BlockAssetBundle {
-  const ids = [...collectUsedBlockTypeIds(blocks)].sort();
+  const ids = [...collectBlockAssetTypeIds(blocks, registry)].sort();
   const css: string[] = [];
   const js: string[] = [];
   const used: string[] = [];

@@ -783,6 +783,57 @@ describe('collectUsedBlockTypeIds', () => {
 });
 
 describe('collectBlockAssets', () => {
+  it('includes alias and repeated item dependencies without unrelated block assets', () => {
+    const assets = collectBlockAssets([{ id: 'listing', type: 'core/collection_list', data: {} }], registry);
+    expect(assets.used_ids).toEqual(['core/collection_list', 'core/post_card', 'core/repeater']);
+    expect(assets.css).toContain(registry.get('core/repeater')!.styles);
+    expect(assets.css).toContain(registry.get('core/post_card')!.styles);
+    expect(assets.used_ids).not.toContain('core/image');
+  });
+
+  it('resolves each instance override and chained aliases, deduplicating shared assets', () => {
+    const custom = new Map(registry);
+    custom.set('custom/list', {
+      ...registry.get('core/collection_list')!, id: 'custom/list',
+      expand_to: { target: 'core/collection_list', defaults: { item_block: 'core/image' } },
+    });
+    const blocks: Block[] = [
+      { id: 'images', type: 'custom/list', data: {} },
+      { id: 'cards', type: 'custom/list', data: { item_block: 'core/post_card' } },
+    ];
+    const assets = collectBlockAssets(blocks, custom);
+    expect(assets.used_ids).toEqual(['core/collection_list', 'core/image', 'core/post_card', 'core/repeater', 'custom/list']);
+    expect(assets.css.split('/* core/repeater */')).toHaveLength(2);
+  });
+
+  it('includes nested static repeater dependencies and suppresses their scripts in untrusted previews', () => {
+    const custom = new Map(registry);
+    custom.set('custom/card', {
+      ...registry.get('core/post_card')!, id: 'custom/card', script: 'window.cardLoaded = true;',
+    });
+    const blocks: Block[] = [{ id: 'outer', type: 'core/repeater', data: {
+      item_block: 'core/repeater', items: [{ item_block: 'custom/card', items: [{ title: 'Nested' }] }],
+    } }];
+    expect(collectBlockAssets(blocks, custom).js).toContain('window.cardLoaded = true;');
+    expect(collectBlockAssets(blocks, custom, { includeScripts: false }).js).toBe('');
+  });
+
+  it('terminates cyclic alias and repeater defaults', () => {
+    const custom = new Map(registry);
+    custom.set('custom/cycle', {
+      ...registry.get('core/repeater')!, id: 'custom/cycle',
+      expand_to: { target: 'core/repeater', defaults: { item_block: 'custom/cycle' } },
+    });
+    custom.set('custom/alias-cycle', {
+      ...registry.get('core/image')!, id: 'custom/alias-cycle',
+      expand_to: { target: 'custom/alias-cycle', defaults: {} },
+    });
+    expect(collectBlockAssets([
+      { id: 'cycle', type: 'custom/cycle', data: {} },
+      { id: 'alias', type: 'custom/alias-cycle', data: {} },
+    ], custom).used_ids).toEqual(['core/repeater', 'custom/alias-cycle', 'custom/cycle']);
+  });
+
   it('returns CSS+JS for every BlockType used, in stable id order', () => {
     const registry: Record<string, BlockType> = {
       'a/two': {

@@ -254,6 +254,8 @@ describe('renderPreview — blocks mode', () => {
     // it doesn't whitelist, but the src URLs should survive.
     expect(html!).toContain('/a.jpg');
     expect(html!).toContain('/b.jpg');
+    expect(html!).toContain('/* core/repeater */');
+    expect(html!).toContain('/* core/image */');
   });
 
   it('substitutes {{page.title}} via render context', async () => {
@@ -298,6 +300,56 @@ describe('renderPreview — blocks mode', () => {
     // sanitizeBody strips <style> by default; confirm via data-bid
     // attribute presence which proves the renderer chose to emit one.
     expect(html!).toContain('data-bid="gr"');
+  });
+
+  it('ships repeater and card assets on an otherwise empty collection listing', async () => {
+    await seedSite();
+    await seedBlockPage([{ id: 'list', type: 'core/collection_list', data: {
+      collection: 'empty', cols: { mobile: 1, tablet: 2, desktop: 3 }, empty_state: 'Nothing published yet',
+    } }]);
+    const { renderPreview } = await import('../../lib/render-preview');
+    const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
+    expect(html).toContain('Nothing published yet');
+    expect(html).toContain('/* core/repeater */');
+    expect(html).toContain('/* core/post_card */');
+    expect(html).toContain('display:grid');
+    expect(html!.replace(/\s+/g, '')).toContain('--cols:2!important');
+    expect(html!.replace(/\s+/g, '')).toContain('--cols:3!important');
+  });
+
+  it('collects block header dependencies even on HTML pages', async () => {
+    await seedSite();
+    await seedBlockPage([], { content_mode: 'html', html_content: '<h1>HTML page</h1>' });
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.partial(ORG, SITE, 'header'), {
+      id: 'header', kind: 'header', status: 'published', content_mode: 'blocks',
+      blocks: [{ id: 'gallery', type: 'core/gallery', data: { items: [{ src: '/logo.svg', alt: 'Logo' }] } }],
+    });
+    const { renderPreview } = await import('../../lib/render-preview');
+    const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
+    expect(html).toContain('/logo.svg');
+    expect(html).toContain('/* core/repeater */');
+    expect(html).toContain('/* core/image */');
+  });
+
+  it('collects dependencies from an embedded form without unrelated forms', async () => {
+    await seedSite();
+    await seedBlockPage([], { content_mode: 'html', html_content: '<x-form id="contact" />' });
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.forms(ORG, SITE)}/contact`, {
+      id: 'contact', steps: [{ id: 'intro', blocks: [
+        { id: 'gallery', type: 'core/gallery', data: { items: [{ src: '/example.svg', alt: 'Example' }] } },
+      ] }],
+    });
+    await getStore().setDoc(`${paths.forms(ORG, SITE)}/unused`, {
+      id: 'unused', steps: [{ id: 'intro', blocks: [{ id: 'video', type: 'core/video', data: {} }] }],
+    });
+    const { renderPreview } = await import('../../lib/render-preview');
+    const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
+    expect(html).toContain('/example.svg');
+    expect(html).toContain('/* core/repeater */');
+    expect(html).toContain('/* core/image */');
+    expect(html).not.toContain('/* core/video */');
   });
 
   it('loads custom block_types from the per-site collection', async () => {
@@ -408,6 +460,10 @@ describe('renderPreview — blocks mode', () => {
     };
     await getStore().setDoc(paths.collection(ORG, SITE, 'guides', MAIN_VERSION_ID), collection);
     await getStore().setDoc(paths.collectionItem(ORG, SITE, 'guides', 'energy', MAIN_VERSION_ID), item);
+    await getStore().setDoc(paths.partial(ORG, SITE, 'header'), {
+      id: 'header', kind: 'header', status: 'published', content_mode: 'blocks',
+      blocks: [{ id: 'gallery', type: 'core/gallery', data: { items: [{ src: '/logo.svg', alt: 'Logo' }] } }],
+    });
 
     const { renderPreviewCollectionItemById } = await import('../../lib/render-preview');
     const preview = await renderPreviewCollectionItemById(
@@ -419,6 +475,9 @@ describe('renderPreview — blocks mode', () => {
     expect(preview?.html).toContain('<h2 id="prepare-well">Prepare well</h2>');
     expect(preview?.html).toContain('href="https://cdn.example.test/energy.pdf?x=1&amp;y=2"');
     expect(preview?.html).not.toContain('{{item.pdf_url}}');
+    expect(preview?.html).toContain('/logo.svg');
+    expect(preview?.html).toContain('/* core/repeater */');
+    expect(preview?.html).toContain('/* core/image */');
   });
 
   it('omits the page-css <style> when a page has no custom_css', async () => {

@@ -11,6 +11,7 @@
 // we'll either extend this or call into the site-template build.
 
 import type {
+  Block,
   CollectionDef,
   CollectionItem,
   Page,
@@ -241,6 +242,10 @@ export async function renderPreview(
 
   // Forms 2.0 — mirror of [...slug].astro's formSource, with the embed
   // minted live (the portal has the signing secret).
+  const assetBlocks: Block[] = [
+    ...(header?.content_mode === 'blocks' ? header.blocks ?? [] : []),
+    ...(footer?.content_mode === 'blocks' ? footer.blocks ?? [] : []),
+  ];
   const formSource = await (async () => {
     const { renderFormHtml } = await import('@typeroll/shared');
     const { formEmbedInfo, POW_BITS, isFormsSigningConfigured } = await import('./forms-signing');
@@ -252,6 +257,7 @@ export async function renderPreview(
     return (formId: string) => {
       const form = byId.get(formId);
       if (!form || (form.steps?.length ?? 0) === 0) return undefined;
+      assetBlocks.push(...form.steps!.flatMap((step) => step.blocks ?? []));
       // Same resolver the deploy runner uses — an app-backed form must
       // preview against the endpoint it will actually ship with.
       const appEndpoint = resolveAppFormEndpoint(form, {
@@ -319,11 +325,7 @@ export async function renderPreview(
       // stamping them would produce dead editing affordances.
       editable: opts.editable,
     }), settings.iframe_allowed_hosts));
-    const assets = collectBlockAssets(effectiveBlocks, blockRegistry, {
-      includeScripts: opts.allowScripts === true,
-    });
-    blockCss = assets.css;
-    blockJs = assets.js;
+    assetBlocks.push(...effectiveBlocks);
     blocksBody = true;
   }
 
@@ -333,6 +335,11 @@ export async function renderPreview(
   }
   const headerHtml = rewriteIf(renderPartial(header));
   const footerHtml = rewriteIf(renderPartial(footer));
+  const assets = collectBlockAssets(assetBlocks, blockRegistry, {
+    includeScripts: opts.allowScripts === true,
+  });
+  blockCss = assets.css;
+  blockJs = assets.js;
   const mountedHtml = `${headerHtml}${bodyHtml}${footerHtml}`;
   const editorExtensionRuntime = opts.editorCanvasId && mountedHtml.includes('data-tr-extension-installation')
     ? await (await import('./extensions/editor-runtime')).buildExtensionEditorRuntimeScript(orgId, siteId, versionId, opts.editorCanvasId)
@@ -523,33 +530,33 @@ async function renderPreviewCollectionItem(
   let blocksBody = false;
   let blockCss = '';
   let blockJs = '';
+  const blockRegistry = buildCoreBlockRegistry();
+  const customBlockTypes = await vstore.blockTypes(orgId, siteId, versionId);
+  for (const bt of customBlockTypes) blockRegistry.set(bt.id, bt);
+  const onMissingType = (typeId: string) =>
+    `<div data-tr-missing-block="${escapeHtml(typeId)}" role="alert" style="padding:1rem;border:2px dashed #c53030;color:#742a2a;background:#fff5f5">Missing block type: ${escapeHtml(typeId)}</div>`;
+
+  // collection_list etc. inside an item template might still need a
+  // resolver, even though the typical "related posts on the blog
+  // detail page" pattern is collection-source-driven. Reuse the
+  // empty stub here — wiring full multi-collection preview through
+  // the item path is heavier than needed for this code site.
+  const collectionSource = (): Record<string, unknown>[] => [];
+
+  const itemCtx: RenderContext = {
+    page: {
+      breadcrumbs: collectionItemBreadcrumbs(route, siblingRoutes, settings.trailing_slash ?? 'always'),
+    },
+    site: siteContext(settings as unknown as Record<string, unknown>),
+    item: route.item as unknown as Record<string, unknown>,
+    collection: {
+      name: route.collection.name,
+      label_singular: route.collection.label_singular,
+      label_plural: route.collection.label_plural,
+      ...navigation,
+    },
+  };
   if (route.collection.item_template_blocks?.length) {
-    const blockRegistry = buildCoreBlockRegistry();
-    const customBlockTypes = await vstore.blockTypes(orgId, siteId, versionId);
-    for (const bt of customBlockTypes) blockRegistry.set(bt.id, bt);
-    const onMissingType = (typeId: string) =>
-      `<div data-tr-missing-block="${escapeHtml(typeId)}" role="alert" style="padding:1rem;border:2px dashed #c53030;color:#742a2a;background:#fff5f5">Missing block type: ${escapeHtml(typeId)}</div>`;
-
-    // collection_list etc. inside an item template might still need a
-    // resolver, even though the typical "related posts on the blog
-    // detail page" pattern is collection-source-driven. Reuse the
-    // empty stub here — wiring full multi-collection preview through
-    // the item path is heavier than needed for this code site.
-    const collectionSource = (): Record<string, unknown>[] => [];
-
-    const itemCtx: RenderContext = {
-      page: {
-        breadcrumbs: collectionItemBreadcrumbs(route, siblingRoutes, settings.trailing_slash ?? 'always'),
-      },
-      site: siteContext(settings as unknown as Record<string, unknown>),
-      item: route.item as unknown as Record<string, unknown>,
-      collection: {
-        name: route.collection.name,
-        label_singular: route.collection.label_singular,
-        label_plural: route.collection.label_plural,
-        ...navigation,
-      },
-    };
     bodyHtml = sanitizeBody(renderBlocks(route.collection.item_template_blocks, {
       registry: blockRegistry,
       context: itemCtx,
@@ -557,11 +564,6 @@ async function renderPreviewCollectionItem(
       onMissingType,
     }), settings.iframe_allowed_hosts);
     blocksBody = true;
-    const assets = collectBlockAssets(route.collection.item_template_blocks, blockRegistry, {
-      includeScripts: opts.allowScripts === true,
-    });
-    blockCss = assets.css;
-    blockJs = assets.js;
   } else {
     const merged = renderItemTemplate(route.collection.item_template_html, route.item);
     bodyHtml = sanitizeBody(expandIncludes(merged, freeBlocks), settings.iframe_allowed_hosts);
@@ -587,7 +589,19 @@ async function renderPreviewCollectionItem(
 
   const rewriteIf = (html: string) =>
     opts.browseRoot ? rewriteInternalHrefs(html, opts.browseRoot, opts.embedSuffix ?? '') : html;
-  const safe = (s?: string) => (s ? sanitizeBody(s, settings.iframe_allowed_hosts) : '');
+  const renderPartial = (partial: typeof header): string => {
+    if (!partial) return '';
+    return sanitizeBody(partial.content_mode === 'blocks'
+      ? renderBlocks(partial.blocks ?? [], { registry: blockRegistry, context: itemCtx, collectionSource, onMissingType })
+      : expandIncludes(partial.html_content ?? '', freeBlocks), settings.iframe_allowed_hosts);
+  };
+  const assets = collectBlockAssets([
+    ...(header?.content_mode === 'blocks' ? header.blocks ?? [] : []),
+    ...(footer?.content_mode === 'blocks' ? footer.blocks ?? [] : []),
+    ...(route.collection.item_template_blocks ?? []),
+  ], blockRegistry, { includeScripts: opts.allowScripts === true });
+  blockCss = assets.css;
+  blockJs = assets.js;
   const editorExtensionRuntime = opts.editorCanvasId && bodyHtml.includes('data-tr-extension-installation')
     ? await (await import('./extensions/editor-runtime')).buildExtensionEditorRuntimeScript(orgId, siteId, versionId, opts.editorCanvasId)
     : '';
@@ -598,8 +612,8 @@ async function renderPreviewCollectionItem(
     page: synthetic,
     versionId,
     settings,
-    headerHtml: rewriteIf(safe(header?.html_content)),
-    footerHtml: rewriteIf(safe(footer?.html_content)),
+    headerHtml: rewriteIf(renderPartial(header)),
+    footerHtml: rewriteIf(renderPartial(footer)),
     bodyHtml: rewriteIf(bodyHtml),
     blocksBody,
     blockCss,
