@@ -7,6 +7,8 @@ const siteRoot = path.join(tmpdir(), 'typeroll-e2e-fixtures/organizations/defaul
 
 for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
   test(`live links wait for deployed content and mobile deploy stays visible at ${width}x${height}`, async ({ page }, testInfo) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
     const versionFile = path.join(siteRoot, 'versions/main.json');
     const siteFile = `${siteRoot}.json`;
     const pageFile = path.join(siteRoot, 'versions/main/pages/deploy-visibility.json');
@@ -26,6 +28,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       })));
       await page.setViewportSize({ width, height });
       await page.goto('/app/sites/default/pages/deploy-visibility', { waitUntil: 'networkidle' });
+      expect(pageErrors, 'The editor must hydrate without recovering from a rendering mismatch').toEqual([]);
       await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveCount(0);
       const deploy = page.getByRole('button', { name: 'Deploy site', exact: true });
@@ -87,6 +90,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveCount(0);
       await page.goto('/app/sites/default/pages/posts');
       await expect(page.getByRole('row').filter({ hasText: 'Deploy visibility' }).getByTitle('Open live URL')).toHaveCount(0);
+      expect(pageErrors).toEqual([]);
     } finally {
       writeFileSync(siteFile, originalSite);
       if (originalVersion) writeFileSync(versionFile, originalVersion); else rmSync(versionFile, { force: true });

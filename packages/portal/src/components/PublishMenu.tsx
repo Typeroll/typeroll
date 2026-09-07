@@ -538,7 +538,7 @@ export default function PublishMenu({
         }
         select.pmenu__select {
           appearance: none; padding-right: 2rem;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23d4d4d8' stroke-width='1.5'/%3E%3C/svg%3E");
+          background-image: url(data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2212%22%20height=%228%22%20viewBox=%220%200%2012%208%22%3E%3Cpath%20d=%22M1%201l5%205%205-5%22%20fill=%22none%22%20stroke=%22%23d4d4d8%22%20stroke-width=%221.5%22/%3E%3C/svg%3E);
           background-repeat: no-repeat; background-position: right 0.65rem center;
         }
         .pmenu__select--env { width: auto; flex: 1; }
