@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { OrganizationChoice } from '../lib/organization-session';
+import './OrganizationSwitcher.css';
 
 export default function OrganizationSwitcher({ organizations, currentOrgId }: {
   organizations: OrganizationChoice[]; currentOrgId?: string;
@@ -22,15 +23,21 @@ export default function OrganizationSwitcher({ organizations, currentOrgId }: {
       setBusy(false);
     }
   }
-  return <div className="stack" style={{ gap: '0.375rem', minWidth: 0 }}>
-    <label htmlFor="active-organization" style={{ fontSize: '0.75rem' }}>Organization</label>
-    <select id="active-organization" value={currentOrgId ?? ''} disabled={busy || !hydrated}
-      onChange={(event) => void switchTo(event.target.value)}
-      style={{ width: '100%', minWidth: 0, color: 'var(--color-text)', background: 'var(--color-bg)', padding: '0.5rem', borderRadius: '0.375rem' }}>
-      {!organizations.some((org) => org.id === currentOrgId) && <option value={currentOrgId ?? ''}>{currentOrgId ?? 'Choose organization'}</option>}
-      {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
-    </select>
-    <a href="/onboarding?add=1" style={{ fontSize: '0.75rem', color: 'inherit' }}>Create or join organization</a>
+  return <div className="organization-switcher">
+    <div className="organization-switcher__control">
+      <label htmlFor="active-organization" className="organization-switcher__label">Organization</label>
+      <div className="organization-switcher__current">
+        <select id="active-organization" value={currentOrgId ?? ''} disabled={busy || !hydrated}
+          onChange={(event) => void switchTo(event.target.value)}>
+          {!organizations.some((org) => org.id === currentOrgId) && <option value={currentOrgId ?? ''}>{currentOrgId ?? 'Choose organization'}</option>}
+          {organizations.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
+        </select>
+        <svg className="organization-switcher__chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+    </div>
+    <a href="/onboarding?add=1" className="organization-switcher__add">Create or join organization</a>
     {error && <p role="alert" style={{ fontSize: '0.75rem' }}>{error}</p>}
   </div>;
 }
