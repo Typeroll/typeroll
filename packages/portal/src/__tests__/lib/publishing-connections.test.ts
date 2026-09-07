@@ -5,10 +5,11 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { claimAccount, connectionPath, connectionSummary, disconnect, getConnection, openCredentials, sealCredentials } from '../../lib/publishing/connections';
 import { finishGithubConnection, githubSetup, startGithubConnection, githubChoices, selectGithubOrganization } from '../../lib/publishing/github-connection';
-import { connectCloudflare, verifyR2 } from '../../lib/publishing/cloudflare-connection';
+import { connectCloudflare, verifyR2, prepareCloudflareMedia, connectCloudflareMedia } from '../../lib/publishing/cloudflare-connection';
 import { GET } from '../../pages/api/orgs/publishing/index';
 import { POST, DELETE } from '../../pages/api/orgs/publishing/[provider]';
 import { GET as CALLBACK } from '../../pages/api/orgs/publishing/github/callback';
+import { GET as CLOUDFLARE_CALLBACK } from '../../pages/api/orgs/publishing/cloudflare/callback';
 import { createE2ESessionCookie } from '../../lib/e2e-auth';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
@@ -28,6 +29,8 @@ beforeEach(async () => {
   vi.stubEnv('TYPEROLL_PUBLISH_GITHUB_CLIENT_SECRET', 'synthetic-client-secret');
   vi.stubEnv('TYPEROLL_PUBLISH_GITHUB_PRIVATE_KEY', privateKey);
   vi.stubEnv('TYPEROLL_PUBLISH_GITHUB_APP_SLUG', 'synthetic-publisher');
+  vi.stubEnv('TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_ID', 'synthetic-cloudflare-client');
+  vi.stubEnv('TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET', 'synthetic-cloudflare-secret');
   await getStore().setDoc('organizations/default/members/dev-user', { role: 'owner' });
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -198,6 +201,49 @@ function fakeS3(fail?: 'put' | 'read' | 'delete') {
 }
 
 describe('Cloudflare connection and encrypted credentials', () => {
+  it('prepares one organization bucket, preserves other CORS rules, and reuses it on retry', async () => {
+    await getConnection('default', 'cloudflare');
+    await getStore().updateDoc(connectionPath('default', 'cloudflare'), { status: 'connected',
+      cloudflare: { account_id: accountId, account_name: 'Synthetic agency', bucket: '', endpoint: `https://${accountId}.r2.cloudflarestorage.com` },
+      encrypted_credentials: sealCredentials('default', 'cloudflare', { api_token: credentials.api_token }) });
+    let bucket: string | undefined;
+    let rules = [{ id: 'existing-reader', allowed: { origins: ['https://existing.example'], methods: ['GET'] } }];
+    const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+      const pathname = new URL(String(url)).pathname;
+      const body = init?.body ? JSON.parse(init.body as string) : undefined;
+      expect(init?.redirect).toBe('error');
+      if (pathname.endsWith('/cors')) {
+        if (init?.method === 'PUT') rules = body.rules;
+        return Response.json({ success: true, result: { rules } });
+      }
+      if (init?.method === 'POST') bucket = body.name;
+      if (!bucket) return new Response(null, { status: 404 });
+      return Response.json({ success: true, result: { name: bucket, jurisdiction: 'default' } });
+    });
+    for (let i = 0; i < 2; i++) await prepareCloudflareMedia(session, (await getConnection('default', 'cloudflare')).revision, fetcher);
+    expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    expect(bucket).toMatch(/^typeroll-media-[a-f0-9]{16}$/);
+    expect(rules).toHaveLength(2);
+    expect(rules[0]).toEqual({ id: 'existing-reader', allowed: { origins: ['https://existing.example'], methods: ['GET'] } });
+    expect(rules[1]).toMatchObject({ id: 'typeroll-direct-uploads', allowed: { origins: ['http://localhost'], methods: ['GET', 'HEAD', 'PUT'] } });
+    expect((await getConnection('default', 'cloudflare')).media_ready).not.toBe(true);
+  });
+
+  it('saves verified R2 keys without replacing OAuth authorization', async () => {
+    fakeS3();
+    await getConnection('default', 'cloudflare');
+    const oauth = { access_token: 'synthetic-access', refresh_token: 'synthetic-refresh', expires_at: Date.now() + 3600_000, scope: 'synthetic-scope' };
+    await getStore().updateDoc(connectionPath('default', 'cloudflare'), { status: 'connected', auth_method: 'oauth',
+      cloudflare: { account_id: accountId, bucket: 'agency-media' }, encrypted_credentials: sealCredentials('default', 'cloudflare', { oauth }) });
+    const current = await getConnection('default', 'cloudflare');
+    await connectCloudflareMedia(session, { revision: current.revision, access_key_id: credentials.access_key_id, secret_access_key: credentials.secret_access_key });
+    const saved = await getConnection('default', 'cloudflare');
+    expect(saved.media_ready).toBe(true);
+    expect(openCredentials('default', 'cloudflare', saved.encrypted_credentials!)).toEqual({ oauth, access_key_id: credentials.access_key_id, secret_access_key: credentials.secret_access_key });
+    expect(JSON.stringify(saved)).not.toContain('synthetic-refresh');
+    await expect(connectCloudflareMedia(session, { revision: current.revision, access_key_id: 'changed', secret_access_key: 'changed' })).rejects.toThrow('reload');
+  });
+
   it('verifies account, Pages access and R2 read/write/delete before saving encrypted credentials', async () => {
     const s3 = fakeS3();
     const revision = (await getConnection('default', 'cloudflare')).revision;
@@ -264,7 +310,8 @@ describe('publishing account routes', () => {
   it.each(['editor', 'missing'])('denies %s even when legacy organization roles are not enforced', async (role) => {
     if (role === 'missing') await getStore().deleteDoc('organizations/default/members/dev-user');
     else await getStore().updateDoc('organizations/default/members/dev-user', { role });
-    for (const route of [GET, POST, DELETE, CALLBACK]) expect((await call(route, routeContext())).status).toBe(403);
+    for (const route of [GET, POST, DELETE, CALLBACK, CLOUDFLARE_CALLBACK]) expect((await call(route, routeContext())).status).toBe(403);
+    for (const action of ['start', 'select', 'prepare_media', 'save_media']) expect((await call(POST, routeContext('POST', 'cloudflare', { action }))).status).toBe(403);
   });
 
   it('rejects signed-in users without an organization', async () => {
@@ -284,6 +331,38 @@ describe('publishing account routes', () => {
     const body = await response.json();
     expect(Object.keys(body)).toEqual(['authorization_url']);
     expect(body.authorization_url).not.toContain('synthetic-client-secret');
+  });
+
+  it('starts Cloudflare OAuth without account input and rejects cross-origin requests', async () => {
+    expect((await call(POST, routeContext('POST', 'cloudflare', { action: 'start' }, 'https://elsewhere.test'))).status).toBe(403);
+    const context = routeContext('POST', 'cloudflare', { action: 'start' });
+    const response = await call(POST, context);
+    expect(response.status).toBe(200);
+    expect(context.cookies.set.mock.calls[0]?.[2]).toMatchObject({ httpOnly: true, sameSite: 'lax', path: '/api/orgs/publishing/cloudflare' });
+    const body = await response.json();
+    expect(Object.keys(body)).toEqual(['authorization_url']);
+    expect(new URL(body.authorization_url).searchParams.get('code_challenge_method')).toBe('S256');
+    expect(body.authorization_url).not.toContain('synthetic-cloudflare-secret');
+    const callback = routeContext('GET', 'cloudflare');
+    callback.url.search = '?code=synthetic-secret-code&state=invalid';
+    const result = await call(CLOUDFLARE_CALLBACK, callback);
+    expect(result.headers.get('location')).toBe('/app/settings/publishing?cloudflare=failed');
+    expect(result.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(callback.cookies.delete).toHaveBeenCalled();
+  });
+
+  it.each([null, [], true, 'not-an-object'])('rejects non-object connection input', async body => {
+    expect((await call(POST, routeContext('POST', 'cloudflare', body))).status).toBe(400);
+  });
+
+  it('explains R2 activation without reflecting Cloudflare response text', async () => {
+    const revision = (await getConnection('default', 'cloudflare')).revision;
+    vi.stubGlobal('fetch', providerFetch({ [`/client/v4/accounts/${accountId}`]: Response.json({ errors: [{ code: 10042, message: 'synthetic-sensitive-reflection' }] }, { status: 403 }) }));
+    const response = await call(POST, routeContext('POST', 'cloudflare', { ...credentials, account_id: accountId, bucket: 'agency-media', revision }));
+    expect(response.status).toBe(409);
+    const text = await response.text();
+    expect(text).toContain('Activate R2');
+    expect(text).not.toContain('synthetic-sensitive');
   });
 
   it('redacts provider errors and returns only the explicit public connection projection', async () => {

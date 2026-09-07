@@ -82,7 +82,42 @@ publisher creates it. Verify that later repositories become accessible without
 reinstalling either App.
 [Cloudflare GitHub integration](https://developers.cloudflare.com/pages/configuration/git-integration/github-integration/).
 
-## Cloudflare API credentials
+## Connect Cloudflare with sign-in
+
+Open **Account → connect publishing accounts** in Typeroll and select
+**Connect Cloudflare**. Sign in to Cloudflare and approve access to your agency's
+account. Typeroll discovers authorized accounts; choose one if several are
+available. You do not need to type an account name or Account ID or create a
+general API token for this connection. Reuse the connection for all sites in
+the Typeroll organization.
+
+The publisher must configure a public Cloudflare OAuth client first. A private
+client only accepts members of the publisher's own Cloudflare account, which
+does not reproduce external customer onboarding.
+
+For image storage, select **Prepare media storage**. Typeroll prepares one R2
+bucket for the organization and configures direct browser upload access. If R2
+is inactive, open **Cloudflare → your account → Storage & databases → R2 object
+storage → Overview** and complete activation. Cloudflare may request billing
+details; account activation is the customer's action.
+
+Direct uploads require a separate S3 key pair. In **R2 object storage → Overview
+→ Account Details**, select **Manage** next to **API Tokens**. Create an R2
+token with **Object Read & Write** limited to the bucket shown in Typeroll.
+Copy its **Access Key ID** and **Secret Access Key** into Typeroll and select
+**Verify image uploads**. These credentials are added once per organization.
+Typeroll verifies write, read and delete access and stores the keys encrypted.
+
+Cloudflare's GitHub integration, described above, is still required for source
+builds. OAuth account connection does not itself prove Git publication, public
+media delivery or migration of existing sites.
+[Cloudflare OAuth](https://developers.cloudflare.com/fundamentals/oauth/),
+[R2 authentication](https://developers.cloudflare.com/r2/api/tokens/).
+
+## Advanced: existing Cloudflare API credentials
+
+Use **Advanced: connect with existing API and R2 keys** when connecting an
+existing token instead of using Cloudflare sign-in.
 
 Open [My Profile → API Tokens](https://dash.cloudflare.com/profile/api-tokens),
 then **Create Token → Create Custom Token → Get started**. Name the token, add
@@ -177,6 +212,8 @@ for production, staging, and local development; never copy live keys into tests.
 | `TYPEROLL_PUBLISH_GITHUB_CLIENT_ID` | App OAuth client ID, distinct from App ID |
 | `TYPEROLL_PUBLISH_GITHUB_CLIENT_SECRET` | App OAuth client secret; secret-manager value |
 | `TYPEROLL_PUBLISH_GITHUB_PRIVATE_KEY` | App RSA private key in PEM form; secret-manager value |
+| `TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_ID` | Public Cloudflare OAuth Client ID for this environment |
+| `TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET` | Cloudflare OAuth client secret; secret-manager value |
 | `INTEGRATIONS_SECRET_KEY` | Existing encryption key, at least 32 characters; retain during normal redeploys |
 
 Register exactly `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback` as
@@ -186,6 +223,15 @@ to trust the connection. Do not enable "Request user authorization (OAuth)
 during installation": install first, then start authorization from Typeroll.
 Keep expiring user tokens enabled. This first delivery does not consume
 webhooks; publication must revalidate installation access before each operation.
+
+Register `{PORTAL_PUBLIC_URL}/api/orgs/publishing/cloudflare/callback` for the
+Cloudflare client. Enable authorization-code and refresh-token grants with
+`client_secret_basic` authentication. Use the required scopes
+`account-settings.read`, `page.read`, `page.write`, `workers-r2.read`, and
+`workers-r2.write`; Cloudflare adds `offline_access` for the refresh grant.
+Verify the client URL domain and make the client public for external customers.
+The implementation adds S256 PKCE and encrypts account-bound access and refresh
+tokens. Tests use synthetic credentials, never staging or production grants.
 
 Missing App configuration disables GitHub connection in the UI. Missing
 encryption configuration disables Cloudflare credential entry. No PAT, SSH,

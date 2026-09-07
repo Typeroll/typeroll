@@ -27,7 +27,10 @@ export function privateJson(data: unknown, status = 200): Response {
 
 export function connectionFailure(error: unknown): Response {
   if (error instanceof ConnectionError) return privateJson({ error: error.message }, error.status);
-  if (error instanceof ProviderError) return privateJson({ error: error.message }, 502);
+  if (error instanceof ProviderError) {
+    if (error.codes.includes(10042)) return privateJson({ error: 'Activate R2 in your Cloudflare account: Storage & databases → R2 object storage → Overview. Complete the activation, then try again.' }, 409);
+    return privateJson({ error: error.message }, 502);
+  }
   return privateJson({ error: 'Publishing connection failed. Check the account setup and try again.' }, 502);
 }
 
@@ -49,6 +52,10 @@ export async function connectionBody(request: Request): Promise<unknown> {
     if (size > 8192) { await reader.cancel(); throw new ConnectionError('Connection data is too large', 413); }
     chunks.push(value);
   }
-  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  try {
+    const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
+    return value;
+  }
   catch { throw new ConnectionError('Invalid connection data'); }
 }

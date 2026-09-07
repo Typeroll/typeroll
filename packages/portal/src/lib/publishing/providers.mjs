@@ -9,10 +9,11 @@ export function digest(value) {
 }
 
 export class ProviderError extends Error {
-  constructor(provider, status) {
+  constructor(provider, status, codes = []) {
     // Provider bodies can contain credentials or reflected request payloads.
     super(`${provider} request failed (HTTP ${status}); inspect access and resource status in the provider dashboard`);
     this.status = status;
+    this.codes = codes.filter(code => Number.isSafeInteger(code));
   }
 }
 
@@ -41,7 +42,16 @@ export function createProviderClient(provider, token, fetchImpl = fetch) {
       throw new Error(`${provider} request did not complete; retry after checking resource status`);
     }
     if (missing && response.status === 404) return null;
-    if (!response.ok) throw new ProviderError(provider, response.status);
+    if (!response.ok) {
+      let codes = [];
+      if (provider === 'Cloudflare') {
+        try {
+          const error = await response.json();
+          if (Array.isArray(error.errors)) codes = error.errors.map(item => item?.code);
+        } catch { /* Never include response bodies in errors. */ }
+      }
+      throw new ProviderError(provider, response.status, codes);
+    }
     let data;
     try { data = await response.json(); } catch { throw new Error(`${provider} returned an invalid response`); }
     if (provider === 'Cloudflare') {

@@ -3,6 +3,7 @@ import { connectionSummary, getConnection } from '../../../../lib/publishing/con
 import { githubSetup, githubChoices } from '../../../../lib/publishing/github-connection';
 import { isSecretCryptoConfigured } from '../../../../lib/secret-crypto';
 import { connectionFailure, privateJson, publishingAdmin } from '../../../../lib/publishing/http';
+import { cloudflareChoices, cloudflareSetup } from '../../../../lib/publishing/cloudflare-oauth';
 
 export const GET: APIRoute = async (context) => {
   const guard = await publishingAdmin(context);
@@ -11,6 +12,7 @@ export const GET: APIRoute = async (context) => {
     const orgId = guard.value.orgId;
     return privateJson({ github: connectionSummary(await getConnection(orgId, 'github')),
       cloudflare: connectionSummary(await getConnection(orgId, 'cloudflare')),
+      cloudflare_choices: await cloudflareChoices(guard.value), cloudflare_setup: cloudflareSetup(),
       github_choices: await githubChoices(guard.value), github_setup: githubSetup(), encryption_available: isSecretCryptoConfigured() });
   } catch (error) { return connectionFailure(error); }
 };

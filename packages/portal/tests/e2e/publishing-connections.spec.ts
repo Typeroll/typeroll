@@ -62,6 +62,7 @@ test('Cloudflare connection form clears credentials after success and retains th
     await route.fulfill({ json: { connected: true } });
   });
   await page.goto('/app/settings/publishing');
+  await page.getByText('Advanced: connect with existing API and R2 keys', { exact: true }).click();
   await page.getByLabel('Cloudflare Account ID').fill('a'.repeat(32));
   await page.getByLabel('R2 bucket name').fill('agency-media');
   for (const [label, value] of [['Cloudflare API token', 'synthetic-token'], ['R2 Access Key ID', 'synthetic-access'], ['R2 Secret Access Key', 'synthetic-secret']]) {
@@ -69,7 +70,7 @@ test('Cloudflare connection form clears credentials after success and retains th
     await page.getByLabel(label).fill(value);
   }
   await page.getByRole('button', { name: 'Verify and save Cloudflare' }).click();
-  await expect(page.getByRole('status')).toContainText('Cloudflare and R2 connected');
+  await expect(page.getByRole('status')).toContainText('Cloudflare connection updated');
   expect(submitted).toMatchObject({ api_token: 'synthetic-token', access_key_id: 'synthetic-access', secret_access_key: 'synthetic-secret', revision: 'synthetic-revision' });
   for (const label of ['Cloudflare API token', 'R2 Access Key ID', 'R2 Secret Access Key']) await expect(page.getByLabel(label)).toHaveValue('');
   await expect(page.getByLabel('Cloudflare Account ID')).toHaveValue('a'.repeat(32));
@@ -110,9 +111,62 @@ test('GitHub starts with sign-in and offers verified organizations instead of a 
   await expect(page.getByRole('combobox', { name: 'Choose a GitHub organization' })).toHaveCount(0);
   await page.goto('/app/settings/publishing?github=owner_required');
   await expect(page.getByRole('alert')).toContainText('Sign in to GitHub as an owner');
+  await page.getByText('Advanced: connect with existing API and R2 keys', { exact: true }).click();
   await page.getByLabel('Cloudflare Account ID').scrollIntoViewIfNeeded();
   await expect(page.locator('#cf-account-help')).toContainText('Search → Copy account ID');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('cloudflare-account-help-mobile.png') });
+  expect(errors).toEqual([]);
+});
+
+test('Cloudflare sign-in discovers accounts and prepares reusable media access on mobile', async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  let phase: 'initial' | 'select' | 'connected' | 'bucket' | 'ready' = 'initial';
+  const submitted: Record<string, unknown>[] = [];
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/orgs/publishing', route => {
+    const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
+    const connected = ['connected', 'bucket', 'ready'].includes(phase);
+    return route.fulfill({ json: { github: empty, github_setup: { available: false, install_url: null }, github_choices: [],
+      encryption_available: true, cloudflare_setup: { available: true },
+      cloudflare_choices: phase === 'select' ? [{ id: 'a'.repeat(32), name: 'First agency' }, { id: 'b'.repeat(32), name: 'Selected agency with a longer account name' }] : [],
+      cloudflare: connected ? { ...empty, status: 'connected', credentials_saved: true, auth_method: 'oauth', media_ready: phase === 'ready',
+        cloudflare: { account_id: 'b'.repeat(32), account_name: 'Selected agency with a longer account name', bucket: phase === 'connected' ? '' : 'agency-media' } } : empty } });
+  });
+  await page.route('**/api/orgs/publishing/cloudflare', route => {
+    const body = route.request().postDataJSON(); submitted.push(body);
+    if (body.action === 'start') { phase = 'select'; return route.fulfill({ json: { authorization_url: '/app/settings/publishing?cloudflare=select' } }); }
+    if (body.action === 'select') phase = 'connected';
+    if (body.action === 'prepare_media') phase = 'bucket';
+    if (body.action === 'save_media') phase = 'ready';
+    return route.fulfill({ json: { connected: true } });
+  });
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto('/app/settings/publishing');
+  await expect(page.getByLabel('Cloudflare Account ID')).not.toBeVisible();
+  await page.getByRole('button', { name: 'Connect Cloudflare', exact: true }).click();
+  expect(submitted[0]).toMatchObject({ action: 'start' });
+  expect(submitted[0]).not.toHaveProperty('account_id');
+  const choice = page.getByRole('combobox', { name: 'Choose a Cloudflare account' });
+  await choice.selectOption('b'.repeat(32));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('cloudflare-account-choice-mobile.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Connect selected account' }).click();
+  await page.getByRole('button', { name: 'Prepare media storage' }).click();
+  await expect(page.getByRole('status')).toContainText('Media bucket prepared');
+  await expect(page.locator('#oauth-r2-access')).toHaveAttribute('type', 'password');
+  await page.locator('#oauth-r2-access').fill('synthetic-access');
+  await page.locator('#oauth-r2-secret').fill('synthetic-secret');
+  await page.getByRole('button', { name: 'Verify image uploads' }).click();
+  await expect(page.getByText('R2 upload access is saved.', { exact: false })).toBeVisible();
+  await expect(page.locator('#oauth-r2-access')).toHaveValue('');
+  await expect(page.locator('#oauth-r2-secret')).toHaveValue('');
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`cloudflare-media-ready-${width}.png`), fullPage: true });
+  }
+  expect(submitted.map(body => body.action)).toEqual(['start', 'select', 'prepare_media', 'save_media']);
   expect(errors).toEqual([]);
 });
