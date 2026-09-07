@@ -49,7 +49,7 @@ hour. Customers do not create an App or manually renew these tokens.
 [Installation tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app).
 
 The publisher must register an externally installable App before customers can
-connect. Open **GitHub & Cloudflare** in Typeroll's sidebar. An explicit Typeroll organization owner or admin chooses
+connect. Open **Publishing** in Typeroll's sidebar. An explicit Typeroll organization owner or admin chooses
 **Connect GitHub** and signs in. No typed organization name or ID is required.
 If the App is not installed, the page provides installation instructions.
 The server discovers eligible owner organizations with the App installed:
@@ -83,7 +83,7 @@ reinstalling either App.
 
 ## Connect Cloudflare with sign-in
 
-Open **GitHub & Cloudflare** in Typeroll's sidebar and select
+Open **Publishing** in Typeroll's sidebar and select
 **Connect Cloudflare**. Sign in to Cloudflare and approve access to your agency's
 account. Typeroll discovers authorized accounts; choose one if several are
 available. You do not need to type an account name or Account ID or create a

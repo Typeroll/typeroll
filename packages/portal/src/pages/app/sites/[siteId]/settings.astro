@@ -25,9 +25,9 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
   </div>
 
   <section class="card stack" style="max-width: 720px; margin-bottom: 1rem;">
-    <h2 style="font-size: 1.125rem;">GitHub &amp; Cloudflare</h2>
+    <h2 style="font-size: 1.125rem;">Publishing</h2>
     <p>Publishing accounts belong to the organization and can be reused across its sites.</p>
-    {canManagePublishing ? <div><a class="btn" href="/app/settings/publishing">Connect GitHub &amp; Cloudflare</a></div> :
+    {canManagePublishing ? <div><a class="btn" href="/app/settings/publishing">Open Publishing</a></div> :
       <p class="muted">An owner or admin of this site's organization manages its publishing accounts.</p>}
   </section>
 
