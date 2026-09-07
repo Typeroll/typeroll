@@ -2,12 +2,15 @@
 import AppLayout from '../../../layouts/AppLayout.astro';
 import { getSession } from '../../../lib/auth';
 import { releaseManifest } from '../../../lib/release';
+import { organizationMembership } from '../../../lib/organization-session';
 
 const session = await getSession(Astro.cookies);
 if (!session) return Astro.redirect('/login');
 const orgId = session.orgId;
 if (!orgId) return Astro.redirect('/onboarding');
 const typerollVersion = releaseManifest().core_version;
+const membership = await organizationMembership(session.userId, orgId);
+const canManagePublishing = membership?.role === 'owner' || membership?.role === 'admin';
 ---
 <AppLayout title="Account">
   <div class="app-header">
@@ -22,9 +25,12 @@ const typerollVersion = releaseManifest().core_version;
     </p>
   </div>
 
-  <p class="muted text-sm" style="margin-top: 1rem;">
-    Organization admins can <a href="/app/settings/publishing">connect publishing accounts</a> for GitHub, Cloudflare, and R2 media.
-  </p>
+  <section class="card stack" style="max-width: 720px; margin-top: 1rem;">
+    <h2>GitHub &amp; Cloudflare</h2>
+    <p>Connect accounts for <strong>{membership?.name ?? 'your organization'}</strong>. Reuse the connections for all its sites: GitHub for generated source, Cloudflare for static hosting and R2 image storage.</p>
+    {canManagePublishing ? <div><a class="btn" href="/app/settings/publishing">Connect GitHub &amp; Cloudflare</a></div> :
+      <p class="muted">Ask an organization owner or admin to connect these accounts.</p>}
+  </section>
 
   <p class="muted text-sm" style="margin-top: 1rem;">
     Looking for API keys? They have their own page in the sidebar now — <a href="/app/settings/api-keys">Account → API keys</a>.

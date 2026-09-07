@@ -35,6 +35,8 @@ const fullSession = session as FullSession;
 
 const store = getStore();
 const organizations = await listOrganizations(session);
+const organizationRole = organizations.find(org => org.id === fullSession.orgId)?.role;
+const canManagePublishing = organizationRole === 'owner' || organizationRole === 'admin';
 const ownedSites = await store.listDocs<Site>(paths.sites(fullSession.orgId));
 const sharedSites = await hydrateSharedSites(fullSession.orgId);
 // SiteSwitcher gets the union — owned first, then shared-in. The switcher
@@ -259,6 +261,10 @@ const initials = (session.displayName ?? session.email ?? 'U')
               <span class="app-sidebar__link-icon" aria-hidden><Icon name="User" /></span>
               <span>Account</span>
             </a>
+            {canManagePublishing && <a href="/app/settings/publishing" class:list={["app-sidebar__link", isActive('/app/settings/publishing', true) && "app-sidebar__link--active"]}>
+              <span class="app-sidebar__link-icon" aria-hidden><Icon name="PlugZap" /></span>
+              <span>GitHub &amp; Cloudflare</span>
+            </a>}
             {/* Direct shortcut to the hosted-MCP / agent-connector keys.
                Was previously a button on /app/settings reachable only after
                clicking the (unclear) "Preferences" link. The autopilot.se

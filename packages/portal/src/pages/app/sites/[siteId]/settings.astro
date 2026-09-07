@@ -6,6 +6,7 @@ import { getStore } from '../../../../lib/datastore';
 import { defaultSiteSettings, paths } from '@typeroll/shared';
 import type { Site, SiteSettings } from '@typeroll/shared';
 import DomainManager from '../../../../components/DomainManager.tsx';
+import { organizationMembership } from '../../../../lib/organization-session';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
@@ -13,6 +14,8 @@ const { session, site, versionId, owner_org_id: orgId } = ctx;
 const siteId = site.id;
 
 const store = getStore();
+const membership = session.orgId === orgId ? await organizationMembership(session.userId, orgId) : null;
+const canManagePublishing = membership?.role === 'owner' || membership?.role === 'admin';
 
 const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
 ---
@@ -20,6 +23,13 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
   <div class="app-header">
     <h1>Site settings</h1>
   </div>
+
+  <section class="card stack" style="max-width: 720px; margin-bottom: 1rem;">
+    <h2 style="font-size: 1.125rem;">GitHub &amp; Cloudflare</h2>
+    <p>Publishing accounts belong to the organization and can be reused across its sites.</p>
+    {canManagePublishing ? <div><a class="btn" href="/app/settings/publishing">Connect GitHub &amp; Cloudflare</a></div> :
+      <p class="muted">An owner or admin of this site's organization manages its publishing accounts.</p>}
+  </section>
 
   <!--
     Domain lifecycle component sits outside the settings form so adding

@@ -170,3 +170,30 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   expect(submitted.map(body => body.action)).toEqual(['start', 'select', 'prepare_media', 'save_media']);
   expect(errors).toEqual([]);
 });
+
+test('owners can find GitHub and Cloudflare directly from navigation and site settings', async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/app/sites/e2e-core-site/pages');
+    if (width < 768) await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+    const link = page.getByRole('link', { name: 'GitHub & Cloudflare', exact: true });
+    await link.scrollIntoViewIfNeeded();
+    await expect(link).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`publishing-navigation-${width}.png`) });
+    await link.click();
+    await expect(page.getByRole('heading', { name: 'Publishing accounts', exact: true })).toBeVisible();
+    await expect(page.getByText('GitHub and Cloudflare connections for', { exact: false })).toContainText('Typeroll E2E Core');
+  }
+  for (const route of ['/app/settings', '/app/sites/e2e-core-site/settings']) {
+    await page.goto(route);
+    await page.getByRole('link', { name: 'Connect GitHub & Cloudflare', exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/settings\/publishing$/);
+  }
+  await authenticatePersona(page, 'editor');
+  await page.goto('/app/settings');
+  await expect(page.getByRole('link', { name: 'GitHub & Cloudflare', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Connect GitHub & Cloudflare', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Ask an organization owner or admin to connect these accounts.')).toBeVisible();
+});

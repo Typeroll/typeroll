@@ -2,12 +2,15 @@
 import AppLayout from '../../../layouts/AppLayout.astro';
 import PublishingConnections from '../../../components/PublishingConnections';
 import { publishingAdmin } from '../../../lib/publishing/http';
+import { organizationMembership } from '../../../lib/organization-session';
 
 const guard = await publishingAdmin(Astro);
 if (!guard.ok) return guard.response;
 Astro.response.headers.set('Cache-Control', 'no-store');
+const organization = await organizationMembership(guard.value.userId, guard.value.orgId);
 ---
 <AppLayout title="Publishing accounts">
   <div class="app-header"><h1>Publishing accounts</h1></div>
+  <p>GitHub and Cloudflare connections for <strong>{organization?.name ?? 'your organization'}</strong>.</p>
   <PublishingConnections client:load />
 </AppLayout>
