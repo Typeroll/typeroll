@@ -2010,9 +2010,12 @@ const catHeading: React.CSSProperties = {
   margin: '0 0 .5rem', textTransform: 'uppercase', fontSize: '.65rem',
   letterSpacing: '0.05em', opacity: 0.55,
 };
-const libraryGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 };
+const libraryGrid: React.CSSProperties = {
+  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 5.25rem), 1fr))', gap: 6,
+};
 const libraryCard: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+  minWidth: 0, overflowWrap: 'anywhere', textAlign: 'center',
   padding: '.6rem .4rem', background: '#1a1a1f', border: '1px solid #2a2a30',
   borderRadius: 6, color: '#e4e4e7', cursor: 'pointer',
 };

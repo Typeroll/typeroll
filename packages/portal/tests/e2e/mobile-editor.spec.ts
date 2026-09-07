@@ -40,6 +40,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await expect(page.locator('.block-editor__status')).toContainText('Unsaved changes — save via Publish');
       await panels.getByRole('button', { name: 'Blocks', exact: true }).tap();
       await page.getByRole('button', { name: 'Add', exact: true }).tap();
+      await page.screenshot({ path: testInfo.outputPath(`mobile-library-${width}.png`) });
       await page.getByRole('button', { name: 'Text', exact: true }).tap();
       await page.getByLabel('Content', { exact: true }).fill('<p>Added with touch</p>');
       await expect(page.locator('.block-editor__status')).toContainText('Unsaved changes');
