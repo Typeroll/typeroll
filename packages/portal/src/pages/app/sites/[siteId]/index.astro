@@ -7,7 +7,7 @@ import { paths } from '@typeroll/shared';
 import type { Site, Page, SiteSettings, SiteVersion } from '@typeroll/shared';
 import DeployBanner from '../../../../components/DeployBanner.tsx';
 import DeployHistory from '../../../../components/DeployHistory.tsx';
-import { siteDisplayHost } from '../../../../lib/site-urls';
+import { siteDisplayHost, liveBaseFor } from '../../../../lib/site-urls';
 import { domainState, DOMAIN_STATE_LABEL } from '../../../../lib/site-public-urls';
 
 const ctx = await loadSiteContext(Astro);
@@ -55,7 +55,11 @@ const hostInfo = siteDisplayHost(site);
       <p class="muted">
         {hostInfo ? (
           <>
-            <a href={`https://${hostInfo.host}`} target="_blank" rel="noopener">{hostInfo.host}</a>
+            {liveBaseFor(site, versionDoc) ? (
+              <a data-live-site-link href={liveBaseFor(site, versionDoc)!} target="_blank" rel="noopener">{hostInfo.host}</a>
+            ) : (
+              <span>{hostInfo.host} — {versionDoc?.distributing_deploy_id ? 'Distributing… The link will appear automatically when ready.' : 'Not deployed yet'}</span>
+            )}
             {hostInfo.isFallback && (
               <span class="text-sm" style="margin-left: 0.5em;">— preview URL; set your real domain in Settings</span>
             )}
@@ -63,8 +67,7 @@ const hostInfo = siteDisplayHost(site);
         ) : (
           <>No domain</>
         )}
-        {' '}&middot;{' '}
-        {DOMAIN_STATE_LABEL[domainState(site)]}
+        {!versionDoc?.distributing_deploy_id && <span data-live-site-link>{' '}&middot;{' '}{DOMAIN_STATE_LABEL[domainState(site)]}</span>}
       </p>
     </div>
     <div class="row">
@@ -73,6 +76,11 @@ const hostInfo = siteDisplayHost(site);
     </div>
   </div>
 
+  <style is:global>
+    html[data-typeroll-deployment="distributing"] [data-live-site-link] { display: none; }
+    html[data-typeroll-deployment="distributing"] .deploy-banner__text { display: none; }
+  </style>
+
   <DeployBanner
     client:load
     siteId={siteId}
@@ -80,6 +88,7 @@ const hostInfo = siteDisplayHost(site);
     pendingPartials={pendingPartials}
     totalPending={totalPending}
     lastDeployedAt={lastDeployedAt}
+    distributing={Boolean(versionDoc?.distributing_deploy_id)}
   />
 
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">

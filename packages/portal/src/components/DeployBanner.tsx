@@ -14,6 +14,7 @@ interface Props {
   pendingPartials: number;
   totalPending: number;
   lastDeployedAt: string | null;
+  distributing?: boolean;
 }
 
 function relTime(iso: string | null): string {
@@ -35,12 +36,13 @@ export default function DeployBanner({
   pendingPartials,
   totalPending,
   lastDeployedAt,
+  distributing = false,
 }: Props) {
   const neverDeployed = !lastDeployedAt;
   const pending = totalPending > 0;
-  const accent = neverDeployed || pending;
+  const accent = neverDeployed || pending || distributing;
 
-  const headline = neverDeployed
+  const headline = distributing ? 'Distributing… The link will appear automatically when ready.' : neverDeployed
     ? 'This site has never been deployed.'
     : pending
       ? buildPendingLabel(pendingPages, pendingPartials)
@@ -72,7 +74,7 @@ export default function DeployBanner({
         }
         .deploy-banner--accent .deploy-banner__pip { background: #f6c177; }
         .deploy-banner__text { min-width: 0; flex: 1; font-size: 0.95rem; color: var(--color-text); }
-        .deploy-banner__actions { display: inline-flex; align-items: center; gap: 0.5rem; }
+        .deploy-banner__actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
         @media (max-width: 700px) {
           .deploy-banner { flex-wrap: wrap; }
           .deploy-banner__actions { width: 100%; flex-wrap: wrap; }

@@ -99,7 +99,7 @@ export default function DeployHistory({ siteId }: Props) {
               </div>
             ))}
           </div>
-          {j.deploy_url && (
+          {j.deploy_url && j.status === 'succeeded' && (
             <a href={j.deploy_url} target="_blank" rel="noopener noreferrer" className="text-sm">
               Open ↗
             </a>

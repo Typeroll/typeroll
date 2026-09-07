@@ -103,6 +103,8 @@ export interface SiteVersion {
   last_deployed_at?: string;
   /** Content cutoff captured before the last live build started. */
   last_deployed_content_at?: string;
+  /** A completed upload whose public distribution has not yet been verified. */
+  distributing_deploy_id?: string | null;
 }
 export type HostingAdapterName = 'cloudflare' | 'netlify' | 'vercel' | 'firebase' | 'custom';
 
@@ -1626,6 +1628,17 @@ export interface DeployJob {
    *  reaches a terminal state — failed builds cost money too, so they get
    *  a cost row as well. Absent on jobs that ran before cost accounting. */
   cost?: DeployCost;
+  /** Public, non-secret evidence used to verify the exact uploaded files. */
+  availability?: DeploymentAvailability;
+}
+
+export interface DeploymentAvailability {
+  id: string;
+  uploaded_at?: string;
+  content_cutoff: string;
+  origins: string[];
+  paths: string[];
+  checked: number;
 }
 
 // ─── Workflows ───────────────────────────────────────────────────────────

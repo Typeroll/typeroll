@@ -16,6 +16,7 @@ import { getStore } from '../../../../../../lib/datastore';
 import { publicUrlsFor } from '../../../../../../lib/site-public-urls';
 import { paths } from '@typeroll/shared';
 import type { DeployJob } from '@typeroll/shared';
+import { refreshDeploymentAvailability } from '../../../../../../lib/deploy/availability';
 
 // 5 minutes. Real deploys dispatch in seconds; 5 min in queued means
 // the Cloud Tasks worker isn't being invoked (auth, networking, or
@@ -33,6 +34,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const jobPath = paths.deploy(ctx.orgId, ctx.siteId, jobId);
   let doc = await store.getDoc<DeployJob>(jobPath);
   if (!doc) return apiError('Not found', 404);
+  doc = await refreshDeploymentAvailability(ctx.orgId, ctx.siteId, doc);
 
   // Compute waited-time + auto-fail if it's been queued too long.
   const queuedAt = doc.started_at ? new Date(doc.started_at).getTime() : null;

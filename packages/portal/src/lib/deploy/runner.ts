@@ -42,6 +42,8 @@ import { isCanonicalReady } from '../site-public-urls';
 import type { DeployResult } from '../hosting';
 import { buildPagesHeaders } from './pages-headers';
 import { liveDeploymentUpdate } from './live-state';
+import { stampPublication } from './availability';
+import type { DeploymentAvailability } from '@typeroll/shared';
 
 export interface RunDeployArgs {
   orgId: string;
@@ -66,6 +68,7 @@ export interface RunDeployResult {
   outputBytes?: number;
   outputFiles?: number;
   warnings?: string[];
+  availability?: DeploymentAvailability;
 }
 
 function repoRoot(): string {
@@ -333,6 +336,7 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
 
   await phase('uploading');
   const adapter = getHostingAdapter(site.hosting_adapter, site.hosting_config);
+  const publication = adapter.name === 'cloudflare' ? await stampPublication(buildDir) : null;
   // For non-main versions, pass the version id as the CF Pages branch name
   // so the deploy lands under a stable per-branch URL
   // ({branch}.{project}.pages.dev) the agent can share with the customer
@@ -355,6 +359,21 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   // missing name/kind.
   const versionPath = paths.version(args.orgId, args.siteId, versionId);
   const existingVersion = await store.getDoc<SiteVersion>(versionPath);
+  if (publication && deploy.url) {
+    const origin = isBranch || args.environment === 'staging'
+      ? new URL(deploy.url).origin
+      : site.domain ? `https://${site.domain}` : fallbackUrl;
+    const availability: DeploymentAvailability = { ...publication, uploaded_at: new Date().toISOString(), content_cutoff: contentCutoff,
+      origins: [...new Set([origin, new URL(deploy.url).origin])], checked: 0 };
+    if (isBranch || args.environment === 'production') {
+      await store.updateDoc(versionPath, {
+        ...(!existingVersion && !isBranch ? { name: 'Main', kind: 'main', created_at: site.created_at ?? new Date().toISOString(), robots_blocked: false } : {}),
+        distributing_deploy_id: publication.id,
+      });
+    }
+    await phase('distributing');
+    return { buildDir, fixturesDir, deploy, availability, ...output, warnings };
+  }
   const update: Record<string, unknown> | null = liveDeploymentUpdate({
     versionId, environment: args.environment, contentCutoff,
     completedAt: new Date().toISOString(), deployUrl: deploy?.url,

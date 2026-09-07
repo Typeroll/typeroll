@@ -17,6 +17,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { isPendingDeploy } from './EditorStatus';
+import { useDeployProgress } from './useDeployProgress';
 
 export interface StatusOption {
   value: string;
@@ -53,11 +54,6 @@ interface ChangesResponse {
   }>;
 }
 
-type DeployPhase = {
-  status: 'queued' | 'running' | 'succeeded' | 'failed';
-  phase?: string;
-  error?: string;
-};
 
 interface PublishMenuProps {
   siteId: string;
@@ -146,8 +142,8 @@ export default function PublishMenu({
   const [changesLoading, setChangesLoading] = useState(false);
 
   const [env, setEnv] = useState<'production' | 'staging'>('production');
-  const [job, setJob] = useState<DeployPhase | null>(null);
   const [deployErr, setDeployErr] = useState<string | null>(null);
+  const { job, setJob, watch } = useDeployProgress(siteId, setDeployErr, undefined, !hasUnsaved && !saving);
   const busy = job?.status === 'queued' || job?.status === 'running';
 
   const pending = isPendingDeploy(pubStatus, docUpdatedAt, lastDeployedAt);
@@ -193,44 +189,18 @@ export default function PublishMenu({
         body: JSON.stringify({ environment: env }),
       });
       const data = await res.json();
-      if (!res.ok || !data.jobId) throw new Error(data.error ?? 'Failed to start deploy');
-      pollJob(data.jobId as string);
+      if (!res.ok || !(data.jobId ?? data.job_id)) throw new Error(data.error ?? 'Failed to start deploy');
+      watch((data.jobId ?? data.job_id) as string);
     } catch (e) {
       setDeployErr(e instanceof Error ? e.message : 'Failed to start deploy');
       setJob(null);
     }
   }
 
-  function pollJob(jobId: string) {
-    let stopped = false;
-    const tick = async () => {
-      if (stopped) return;
-      try {
-        const res = await fetch(`/api/sites/${siteId}/deploys/${jobId}`);
-        const data = (await res.json()) as DeployPhase;
-        setJob(data);
-        if (data.status === 'succeeded') {
-          stopped = true;
-          // Reload so every status indicator reflects the new last_deployed_at.
-          window.setTimeout(() => window.location.reload(), 600);
-          return;
-        }
-        if (data.status === 'failed') {
-          stopped = true;
-          setDeployErr(data.error ?? 'Deploy failed');
-          return;
-        }
-      } catch {
-        // Transient — keep polling.
-      }
-      window.setTimeout(tick, 5000);
-    };
-    void tick();
-  }
-
   const deployLabel = (() => {
     if (!job) return (changes ? changes.never_deployed : !lastDeployedAt) ? 'Deploy site' : 'Redeploy full site';
     if (job.status === 'queued') return 'Queued…';
+    if (job.phase === 'distributing') return 'Distributing…';
     if (job.status === 'running') return job.phase ? `${job.phase}…` : 'Building…';
     if (job.status === 'succeeded') return 'Deployed ✓';
     return 'Failed';
@@ -403,8 +373,9 @@ export default function PublishMenu({
                     : ''}
             </p>
 
+            {job?.phase === 'distributing' && <p className="pmenu__hint" role="status">Distributing… Your site is being made publicly available. The link will appear automatically when ready.</p>}
             {changesLoading && <p className="pmenu__hint">Checking what changed…</p>}
-            {!changesLoading && changes && changes.total === 0 && !changes.never_deployed && (
+            {!busy && !changesLoading && changes && changes.total === 0 && !changes.never_deployed && (
               <p className="pmenu__hint">The live site is up to date with your saved content.</p>
             )}
             {hasUnsaved && (
@@ -413,10 +384,10 @@ export default function PublishMenu({
               </p>
             )}
 
-            {previewUrl && (!liveUrl || pending) && (pubStatus === 'published' || pubStatus === 'unlisted') && (
+            {!busy && previewUrl && (!liveUrl || pending) && (pubStatus === 'published' || pubStatus === 'unlisted') && (
               <p className="pmenu__hint">No live URL yet — deploy the saved page first. Preview is available above.</p>
             )}
-            {liveUrl && !pending && (
+            {liveUrl && !pending && !busy && (
               (pubStatus === 'published' || pubStatus === 'unlisted') ? (
                 <div className="pmenu__actions" style={{ marginTop: '0.35rem' }}>
                   <a

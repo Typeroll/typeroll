@@ -82,6 +82,19 @@ describe('executeDeployJob cost accounting', () => {
     );
   });
 
+  it('releases the build while public availability is still pending', async () => {
+    const availability = { id: 'new-upload', content_cutoff: '2026-09-07T10:00:00Z', origins: ['https://example.com'], paths: ['/'], checked: 0 };
+    runDeployMock.mockResolvedValue({ buildDir: '/tmp/x', fixturesDir: '/tmp/f', availability, deploy: { url: 'https://example.com' } });
+    const { executeDeployJob } = await import('../../lib/deploy/queue');
+    expect(await executeDeployJob(args)).toBe('ran');
+    const job = await readJob();
+    expect(job?.status).toBe('running');
+    expect(job?.phase).toBe('distributing');
+    expect(job?.finished_at).toBeUndefined();
+    expect(job?.availability).toEqual(availability);
+    expect(job?.cost).toBeDefined();
+  });
+
   it('still writes a cost row when the build fails', async () => {
     runDeployMock.mockImplementation(async (a: { onPhase?: (p: string) => unknown }) => {
       await a.onPhase?.('building');

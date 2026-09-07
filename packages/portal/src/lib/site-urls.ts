@@ -48,6 +48,7 @@ type SiteUrlInput = Pick<Site, 'domain' | 'hosting_config'>;
  * until a successful deployment is recorded, or when there is no live host.
  */
 export function liveBaseFor(site: SiteUrlInput, version: SiteVersion | null): string | null {
+  if (version?.distributing_deploy_id) return null;
   if (!version?.last_deployed_at || !Number.isFinite(Date.parse(version.last_deployed_at))) return null;
   if (!version || version.kind === 'main' || version.id === MAIN_VERSION_ID) {
     if (site.domain) return `https://${site.domain}`;
@@ -64,7 +65,7 @@ export function isContentDeployed(
   version: SiteVersion | null,
   content: { date_updated?: string; date_created?: string; date_published?: string },
 ): boolean {
-  if (!version?.last_deployed_at) return false;
+  if (!version?.last_deployed_at || version.distributing_deploy_id) return false;
   const deployed = Date.parse(version.last_deployed_at);
   const cutoff = Date.parse(version.last_deployed_content_at ?? version.last_deployed_at);
   const dates = [content.date_updated, content.date_created, content.date_published].filter((v): v is string => !!v).map(Date.parse);

@@ -14,6 +14,7 @@
  */
 
 import { useState } from 'react';
+import { useDeployProgress } from './useDeployProgress';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 export type PublishStatus = 'draft' | 'review' | 'unlisted' | 'published' | string;
@@ -85,17 +86,11 @@ interface DeployButtonProps {
   onDeployed?: () => void;
 }
 
-type DeployPhase = {
-  status: 'queued' | 'running' | 'succeeded' | 'failed';
-  phase?: string;
-  error?: string;
-  deploy_url?: string | null;
-};
 
 export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: DeployButtonProps) {
   const [env, setEnv] = useState<'production' | 'staging'>('production');
-  const [job, setJob] = useState<DeployPhase | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const { job, setJob, watch } = useDeployProgress(siteId, setErr, onDeployed);
 
   const busy = job?.status === 'queued' || job?.status === 'running';
 
@@ -113,47 +108,18 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
         body: JSON.stringify({ environment: env }),
       });
       const data = await res.json();
-      if (!res.ok || !data.jobId) throw new Error(data.error ?? 'Failed to start deploy');
-      pollJob(data.jobId as string);
+      if (!res.ok || !(data.jobId ?? data.job_id)) throw new Error(data.error ?? 'Failed to start deploy');
+      watch((data.jobId ?? data.job_id) as string);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed to start deploy');
       setJob(null);
     }
   }
 
-  function pollJob(jobId: string) {
-    let stopped = false;
-    const tick = async () => {
-      if (stopped) return;
-      try {
-        const res = await fetch(`/api/sites/${siteId}/deploys/${jobId}`);
-        const data = (await res.json()) as DeployPhase;
-        setJob(data);
-        if (data.status === 'succeeded') {
-          stopped = true;
-          onDeployed?.();
-          // Reload so every status indicator on the page reflects the new
-          // last_deployed_at. Tiny delay so the user sees "succeeded" first.
-          window.setTimeout(() => window.location.reload(), 600);
-          return;
-        }
-        if (data.status === 'failed') {
-          stopped = true;
-          setErr(data.error ?? 'Deploy failed');
-          return;
-        }
-      } catch (e) {
-        // Transient — keep polling, the next tick may recover.
-        void e;
-      }
-      window.setTimeout(tick, 5000);
-    };
-    void tick();
-  }
-
   const label = (() => {
     if (!job) return pendingDeploy ? 'Deploy →' : 'Redeploy';
     if (job.status === 'queued') return 'Queued…';
+    if (job.phase === 'distributing') return 'Distributing…';
     if (job.status === 'running') return job.phase ? `${job.phase}…` : 'Running…';
     if (job.status === 'succeeded') return 'Deployed ✓';
     return 'Failed';
@@ -180,6 +146,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
       >
         {label}
       </button>
+      {job?.phase === 'distributing' && <span role="status" className="text-sm">Distributing… The link will appear automatically when ready.</span>}
       {err && (
         <span className="text-sm" style={{ color: 'var(--color-danger)', marginLeft: 8 }}>
           {err}

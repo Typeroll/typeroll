@@ -21,6 +21,7 @@ import { getDeployQueue } from '../../../../lib/deploy/queue';
 import { findActiveDeploy } from '../../../../lib/deploy/in-flight';
 import { paths } from '@typeroll/shared';
 import type { DeployEnvironment, DeployJob } from '@typeroll/shared';
+import { refreshDeploymentAvailability } from '../../../../lib/deploy/availability';
 
 export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -89,12 +90,16 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
 export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const { session, site, owner_org_id } = guard.value;
+  const { site, owner_org_id, versionId } = guard.value;
 
   const store = getStore();
   const all = await store.listDocs<DeployJob>(paths.deploys(owner_org_id, site.id));
   const sorted = all
     .sort((a, b) => (b.started_at ?? '').localeCompare(a.started_at ?? ''))
     .slice(0, 20);
-  return json({ jobs: sorted });
+  const jobs = await Promise.all(sorted.map(job => refreshDeploymentAvailability(owner_org_id, site.id, job)));
+  // Return a job that completed during this request too: the already-rendered
+  // page may still have hidden links and must refresh once to show them.
+  const resumed = sorted.find(job => job.version_id === versionId && ['queued', 'running'].includes(job.status));
+  return json({ jobs, active_job: resumed ? jobs.find(job => job.id === resumed.id) ?? null : null });
 };

@@ -184,9 +184,9 @@ async function runDeployBody(args: EnqueueArgs): Promise<void> {
     outputBytes = result.outputBytes;
     outputFiles = result.outputFiles;
     await safeUpdate({
-      status: 'succeeded',
-      phase: args.dryRun ? 'done (dry-run, no upload)' : 'done',
-      finished_at: new Date().toISOString(),
+      status: result.availability ? 'running' : 'succeeded',
+      phase: result.availability ? 'distributing' : args.dryRun ? 'done (dry-run, no upload)' : 'done',
+      ...(!result.availability ? { finished_at: new Date().toISOString() } : { availability: result.availability }),
       deploy_url: args.dryRun ? null : (result.deploy?.url ?? null),
       dry_run: args.dryRun === true,
       warnings: result.warnings ?? [],

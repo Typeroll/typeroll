@@ -6,6 +6,7 @@ import { requireSiteAccess, json } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { DeployJob } from '@typeroll/shared';
+import { refreshDeploymentAvailability } from '../../../../../lib/deploy/availability';
 
 export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -16,5 +17,5 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
 
   const job = await getStore().getDoc<DeployJob>(paths.deploy(owner_org_id, site.id, deployId));
   if (!job) return json({ error: 'Not found' }, 404);
-  return json(job);
+  return json(await refreshDeploymentAvailability(owner_org_id, site.id, job));
 };
