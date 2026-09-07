@@ -51,7 +51,8 @@ export function connectionSummary(connection: Connection) {
     } : null,
     credentials_saved: connection.status === 'connected' && Boolean(connection.encrypted_credentials),
     auth_method: connection.auth_method ?? 'api_token',
-    media_ready: connection.status === 'connected' && (connection.media_ready ?? Boolean(connection.cloudflare?.bucket)),
+    media_ready: connection.status === 'connected' && Boolean(connection.encrypted_credentials && connection.cloudflare?.bucket) &&
+      (connection.media_ready ?? connection.auth_method !== 'oauth'),
   };
 }
 

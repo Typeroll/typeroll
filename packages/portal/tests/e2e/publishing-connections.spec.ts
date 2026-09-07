@@ -53,7 +53,7 @@ test('Cloudflare connection form clears credentials after success and retains th
   // and persistence are covered by the real route tests, not by this UI fixture.
   await page.route('**/api/orgs/publishing', async (route) => {
     const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
-    await route.fulfill({ json: { github: empty, cloudflare: connected ? { ...empty, status: 'connected', credentials_saved: true,
+    await route.fulfill({ json: { github: empty, cloudflare: connected ? { ...empty, status: 'connected', credentials_saved: true, media_ready: true,
       cloudflare: { account_id: 'a'.repeat(32), account_name: 'Synthetic agency', bucket: 'agency-media' } } : empty,
       github_setup: { available: false, install_url: null }, encryption_available: true } });
   });
@@ -122,6 +122,7 @@ test('GitHub starts with sign-in and offers verified organizations instead of a 
 test('Cloudflare sign-in discovers accounts and prepares reusable media access on mobile', async ({ page }, testInfo) => {
   await authenticatePersona(page, 'owner');
   let phase: 'initial' | 'select' | 'connected' | 'bucket' | 'ready' = 'initial';
+  let activationRequired = true;
   const submitted: Record<string, unknown>[] = [];
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -138,7 +139,13 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
     const body = route.request().postDataJSON(); submitted.push(body);
     if (body.action === 'start') { phase = 'select'; return route.fulfill({ json: { authorization_url: '/app/settings/publishing?cloudflare=select' } }); }
     if (body.action === 'select') phase = 'connected';
-    if (body.action === 'prepare_media') phase = 'bucket';
+    if (body.action === 'prepare_media') {
+      if (activationRequired) {
+        activationRequired = false;
+        return route.fulfill({ status: 409, json: { error: 'Activate R2 in your Cloudflare account, then try again.' } });
+      }
+      phase = 'bucket';
+    }
     if (body.action === 'save_media') phase = 'ready';
     return route.fulfill({ json: { connected: true } });
   });
@@ -154,12 +161,25 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   await page.screenshot({ path: testInfo.outputPath('cloudflare-account-choice-mobile.png'), fullPage: true });
   await page.getByRole('button', { name: 'Connect selected account' }).click();
   await page.getByRole('button', { name: 'Prepare media storage' }).click();
-  await expect(page.getByRole('status')).toContainText('Media bucket prepared');
+  await expect(page.getByRole('alert')).toContainText('Activate R2');
+  await expect(page.getByText('R2 setup not completed', { exact: true })).toBeVisible();
+  await expect(page.getByText('R2 storage prepared', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'your connected Cloudflare account' })).toHaveAttribute('href', `https://dash.cloudflare.com/${'b'.repeat(32)}/r2/overview`);
+  await page.getByRole('button', { name: 'Prepare media storage' }).click();
+  await expect(page.getByRole('status')).toContainText('R2 storage prepared');
+  await expect(page.getByRole('button', { name: 'Prepare media storage' })).toHaveCount(0);
+  await expect(page.getByText('One step left:', { exact: false })).toBeVisible();
+  await expect(page.getByText('R2 connected', { exact: true })).toHaveCount(0);
   await expect(page.locator('#oauth-r2-access')).toHaveAttribute('type', 'password');
   await page.locator('#oauth-r2-access').fill('synthetic-access');
   await page.locator('#oauth-r2-secret').fill('synthetic-secret');
   await page.getByRole('button', { name: 'Verify image uploads' }).click();
-  await expect(page.getByText('R2 upload access is saved.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'R2 media storage' }).getByText('R2 connected', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Prepare media storage' })).toHaveCount(0);
+  await expect(page.locator('#oauth-r2-access')).not.toBeVisible();
+  await expect(page.locator('#oauth-r2-secret')).not.toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('group', { name: 'R2 media storage' }).getByText('R2 connected', { exact: true })).toBeVisible();
   await expect(page.locator('#oauth-r2-access')).toHaveValue('');
   await expect(page.locator('#oauth-r2-secret')).toHaveValue('');
   for (const width of [320, 390, 1440]) {
@@ -167,7 +187,7 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`cloudflare-media-ready-${width}.png`), fullPage: true });
   }
-  expect(submitted.map(body => body.action)).toEqual(['start', 'select', 'prepare_media', 'save_media']);
+  expect(submitted.map(body => body.action)).toEqual(['start', 'select', 'prepare_media', 'prepare_media', 'save_media']);
   expect(errors).toEqual([]);
 });
 

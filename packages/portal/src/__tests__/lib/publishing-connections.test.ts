@@ -201,6 +201,18 @@ function fakeS3(fail?: 'put' | 'read' | 'delete') {
 }
 
 describe('Cloudflare connection and encrypted credentials', () => {
+  it('reports R2 ready only after upload verification, including legacy key connections', () => {
+    const connection = { revision: 'synthetic-revision', status: 'connected' as const, auth_method: 'oauth' as const,
+      encrypted_credentials: 'synthetic-ciphertext',
+      cloudflare: { account_id: accountId, account_name: 'Synthetic agency', bucket: 'agency-media', endpoint: 'https://example.test' } };
+    expect(connectionSummary(connection).media_ready).toBe(false);
+    expect(connectionSummary({ ...connection, media_ready: true }).media_ready).toBe(true);
+    expect(connectionSummary({ ...connection, media_ready: true, status: 'disconnected' }).media_ready).toBe(false);
+    expect(connectionSummary({ ...connection, media_ready: true, encrypted_credentials: null }).media_ready).toBe(false);
+    expect(connectionSummary({ ...connection, media_ready: true, cloudflare: { ...connection.cloudflare, bucket: '' } }).media_ready).toBe(false);
+    expect(connectionSummary({ ...connection, auth_method: 'api_token' }).media_ready).toBe(true);
+    expect(connectionSummary({ ...connection, auth_method: 'api_token', media_ready: false }).media_ready).toBe(false);
+  });
   it('prepares one organization bucket, preserves other CORS rules, and reuses it on retry', async () => {
     await getConnection('default', 'cloudflare');
     await getStore().updateDoc(connectionPath('default', 'cloudflare'), { status: 'connected',

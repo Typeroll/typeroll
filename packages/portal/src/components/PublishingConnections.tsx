@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { CircleCheck } from 'lucide-react';
 
 type Connection = {
   status: 'connected' | 'disconnected'; revision: string; credentials_saved: boolean;
@@ -51,7 +52,7 @@ export default function PublishingConnections() {
       if (result.authorization_url) { window.location.assign(result.authorization_url); return; }
       form.reset();
       await refresh();
-      setNotice(provider === 'github' ? 'GitHub connected. This organization can be reused for your sites.' : values.action === 'prepare_media' ? 'Media bucket prepared. Add its R2 access keys below to enable direct uploads.' : 'Cloudflare connection updated. Access is encrypted and reused for your sites.');
+      setNotice(provider === 'github' ? 'GitHub connected. This organization can be reused for your sites.' : values.action === 'prepare_media' ? 'R2 storage prepared. Add the access keys below to finish connecting image uploads.' : values.action === 'save_media' ? 'R2 connected. Upload, readback, and cleanup checks passed.' : 'Cloudflare connection updated. Access is encrypted and reused for your sites.');
     } catch (error) { setError(error instanceof Error ? error.message : 'Connection failed'); }
     finally { setBusy(false); }
   }
@@ -65,6 +66,18 @@ export default function PublishingConnections() {
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not disconnect'); }
     finally { setBusy(false); }
   }
+
+  const mediaBucket = data?.cloudflare.cloudflare?.bucket;
+  const mediaReady = Boolean(data?.cloudflare.media_ready && mediaBucket);
+  const mediaAccessForm = <div className="stack">
+    <p>In Cloudflare, open <strong>Storage &amp; databases → R2 object storage → Overview → Account Details → API Tokens → Manage</strong>. Create an R2 token with <strong>Object Read &amp; Write</strong> limited to <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong>. Copy its two S3 credentials below.</p>
+    <form className="stack" onSubmit={event => void submit('cloudflare', event)} autoComplete="off">
+      <input type="hidden" name="action" value="save_media" />
+      <div className="field"><label htmlFor="oauth-r2-access">R2 Access Key ID</label><input id="oauth-r2-access" name="access_key_id" type="password" required autoComplete="new-password" maxLength={512} /></div>
+      <div className="field"><label htmlFor="oauth-r2-secret">R2 Secret Access Key</label><input id="oauth-r2-secret" name="secret_access_key" type="password" required autoComplete="new-password" maxLength={512} /></div>
+      <button className="btn" disabled={busy}>{busy ? 'Verifying R2 access…' : 'Verify image uploads'}</button>
+    </form>
+  </div>;
 
   return <div className="stack" style={{ maxWidth: 760 }} aria-busy={busy}>
     <p>Connect your agency’s accounts once and reuse them for multiple sites. Each site will have its own private GitHub repository and static Cloudflare Pages project.</p>
@@ -100,7 +113,7 @@ export default function PublishingConnections() {
       </section>
       <section className="card stack" aria-labelledby="cloudflare-title">
         <h2 id="cloudflare-title">Cloudflare and R2 media</h2>
-        <p>Status: <strong>{data.cloudflare.status}</strong>{data.cloudflare.cloudflare && <> · {data.cloudflare.cloudflare.account_name} · {data.cloudflare.cloudflare.bucket}</>}</p>
+        <p>Status: <strong>{data.cloudflare.status}</strong>{data.cloudflare.cloudflare && <> · {data.cloudflare.cloudflare.account_name}</>}</p>
         <p>Sign in to Cloudflare, choose your account, and approve access. You do not need to enter an Account ID or create a Cloudflare API token for this connection.</p>
         {data.cloudflare_setup?.available ? <>
           {(data.cloudflare_choices ?? []).length > 0 && <form className="stack" onSubmit={event => void submit('cloudflare', event)}>
@@ -114,18 +127,24 @@ export default function PublishingConnections() {
             <button type="submit" className="btn" disabled={busy}>{data.cloudflare.status === 'connected' ? 'Reconnect Cloudflare' : 'Connect Cloudflare'}</button>
           </form>
         </> : <p className="muted">Cloudflare sign-in is not available until the publisher finishes configuring its Cloudflare app.</p>}
-        {data.cloudflare.auth_method === 'oauth' && data.cloudflare.status === 'connected' && <div className="stack">
-          <h3>Direct image uploads</h3>
-          <p>{data.cloudflare.media_ready ? 'R2 upload access is saved. You can replace the keys below when rotating access.' : 'Images upload directly from your browser to your R2 storage. Cloudflare requires a separate pair of R2 access keys for these uploads. Add them once for the whole organization.'}</p>
-          {!data.cloudflare.cloudflare?.bucket ? <form onSubmit={event => void submit('cloudflare', event)}>
-            <input type="hidden" name="action" value="prepare_media" /><button className="btn" disabled={busy}>Prepare media storage</button>
-          </form> : <>
-            <p>In Cloudflare, open <strong>Storage &amp; databases → R2 object storage → Overview → Account Details → API Tokens → Manage</strong>. Create an R2 token with <strong>Object Read &amp; Write</strong> limited to <strong>{data.cloudflare.cloudflare.bucket}</strong>. Copy its two S3 credentials below.</p>
-            <form className="stack" onSubmit={event => void submit('cloudflare', event)} autoComplete="off">
-              <input type="hidden" name="action" value="save_media" />
-              <div className="field"><label htmlFor="oauth-r2-access">R2 Access Key ID</label><input id="oauth-r2-access" name="access_key_id" type="password" required autoComplete="new-password" maxLength={512} /></div>
-              <div className="field"><label htmlFor="oauth-r2-secret">R2 Secret Access Key</label><input id="oauth-r2-secret" name="secret_access_key" type="password" required autoComplete="new-password" maxLength={512} /></div>
-              <button className="btn" disabled={busy}>Verify image uploads</button>
+        {data.cloudflare.status === 'connected' && <div className="stack" role="group" aria-labelledby="r2-status-title">
+          <h3 id="r2-status-title">R2 media storage</h3>
+          {mediaReady ? <>
+            <p style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CircleCheck size={20} aria-hidden="true" style={{ color: 'var(--color-success)', flexShrink: 0 }} /><strong>R2 connected</strong></p>
+            <p>Upload access verified. Your R2 credentials are saved securely and reused for this organization’s sites.</p>
+            <p>Bucket: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong></p>
+            {data.cloudflare.auth_method === 'oauth' && <details><summary>Replace R2 access keys</summary>{mediaAccessForm}</details>}
+          </> : mediaBucket ? <>
+            <p style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CircleCheck size={20} aria-hidden="true" style={{ color: 'var(--color-success)', flexShrink: 0 }} /><strong>R2 storage prepared</strong></p>
+            <p>Bucket: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong></p>
+            <p>One step left: add R2 access keys so Typeroll can verify image uploads.</p>
+            {mediaAccessForm}
+          </> : <>
+            <p><strong>R2 setup not completed</strong></p>
+            <p>Cloudflare is connected. Prepare a shared storage bucket, then add R2 access keys once for this organization.</p>
+            <p>First activate R2 in <a href={`https://dash.cloudflare.com/${data.cloudflare.cloudflare?.account_id}/r2/overview`} target="_blank" rel="noreferrer">your connected Cloudflare account</a> if prompted. Then return here to prepare the storage.</p>
+            <form onSubmit={event => void submit('cloudflare', event)}>
+              <input type="hidden" name="action" value="prepare_media" /><button className="btn" disabled={busy}>{busy ? 'Preparing R2 storage…' : 'Prepare media storage'}</button>
             </form>
           </>}
         </div>}
