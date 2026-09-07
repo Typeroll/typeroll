@@ -227,7 +227,7 @@ export default function PublishMenu({
   }
 
   const deployLabel = (() => {
-    if (!job) return changes?.never_deployed ? 'Deploy site' : 'Redeploy full site';
+    if (!job) return (changes ? changes.never_deployed : !lastDeployedAt) ? 'Deploy site' : 'Redeploy full site';
     if (job.status === 'queued') return 'Queued…';
     if (job.status === 'running') return job.phase ? `${job.phase}…` : 'Building…';
     if (job.status === 'succeeded') return 'Deployed ✓';
@@ -264,6 +264,7 @@ export default function PublishMenu({
             <strong>Publishing</strong>
             <button type="button" aria-label="Close publishing menu" onClick={() => setOpen(false)}>Close</button>
           </div>
+          <div className="pmenu__body">
           {/* ── Changes / deliberate save ─────────────────────────── */}
           <div className="pmenu__section">
             <div className="pmenu__label">Changes</div>
@@ -422,7 +423,10 @@ export default function PublishMenu({
               </p>
             )}
 
-            {liveUrl && (
+            {previewUrl && (!liveUrl || pending) && (pubStatus === 'published' || pubStatus === 'unlisted') && (
+              <p className="pmenu__hint">No live URL yet — deploy the saved page first. Preview is available above.</p>
+            )}
+            {liveUrl && !pending && (
               (pubStatus === 'published' || pubStatus === 'unlisted') ? (
                 <div className="pmenu__actions" style={{ marginTop: '0.35rem' }}>
                   <a
@@ -440,8 +444,12 @@ export default function PublishMenu({
               )
             )}
 
+          </div>
+          </div>
+          <div className="pmenu__section pmenu__deploy-footer">
             <div className="pmenu__actions">
               <select
+                aria-label="Deployment environment"
                 className="pmenu__select pmenu__select--env"
                 value={env}
                 disabled={busy}
@@ -484,6 +492,7 @@ export default function PublishMenu({
           box-shadow: 0 12px 32px rgba(0,0,0,0.4);
           text-align: left;
         }
+        .pmenu__deploy-footer { border-top: 1px solid #34343a; }
         .pmenu__section { padding: 0.7rem 0.9rem; }
         .pmenu__section + .pmenu__section { border-top: 1px solid #2a2a30; }
         .pmenu__label {
@@ -526,8 +535,12 @@ export default function PublishMenu({
         .pmenu__more { color: #a1a1aa; }
         @media (max-width: 1000px) {
           .pmenu__trigger { min-height: 44px; white-space: nowrap; }
-          .pmenu__panel { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
-          .pmenu__mobile-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: 0; padding: 4px 12px; background: #1f1f23; border-bottom: 1px solid #34343a; z-index: 1; }
+          .pmenu__panel { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; overflow: hidden; }
+          .pmenu__body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+          .pmenu__deploy-footer { flex-shrink: 0; background: #1f1f23; border-radius: 0 0 10px 10px; }
+          .pmenu__deploy-footer .pmenu__actions { flex-wrap: nowrap; margin-top: 0; }
+          .pmenu__deploy-footer .pmenu__btn { flex: 1; }
+          .pmenu__mobile-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: 0; padding: 4px 12px; background: #1f1f23; border-bottom: 1px solid #34343a; z-index: 1; }
           .pmenu__mobile-header button { min-height: 44px; padding: 6px 12px; color: #fafafa; background: #26262b; border: 1px solid #34343a; border-radius: 6px; cursor: pointer; }
           .pmenu__actions, .pmenu__row, .pmenu__state { flex-wrap: wrap; }
           .pmenu__btn, .pmenu__select { min-height: 44px; }

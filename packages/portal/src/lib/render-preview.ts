@@ -10,6 +10,7 @@
 // produces the same output for HTML-mode pages. When block rendering ships,
 // we'll either extend this or call into the site-template build.
 
+import { isContentDeployed, pagePathSegment } from './site-urls';
 import type {
   Block,
   CollectionDef,
@@ -67,6 +68,7 @@ export interface PreviewOptions {
   showBanner?: boolean;
   /** Live site URL (for the banner's "Open live" link). */
   liveBase?: string;
+  deployedVersion?: SiteVersion | null;
   /** Override the page document being rendered. Used by the revision-preview
    *  route so we can render a past snapshot without writing it back. */
   pageOverride?: Page;
@@ -387,7 +389,7 @@ export async function renderPreview(
       versionId,
       pageStatus: page.status,
       pageSlug: page.slug,
-      liveUrl: opts.liveBase && page.status === 'published' ? joinUrl(opts.liveBase, page.slug) : null,
+      liveUrl: opts.liveBase && (page.status === 'published' || page.status === 'unlisted') && isContentDeployed(opts.deployedVersion ?? null, page) ? joinUrl(opts.liveBase, pagePathSegment(page)) : null,
       editorUrl: `/app/sites/${siteId}/pages/${page.id}`,
     } : null,
   });
@@ -629,7 +631,7 @@ async function renderPreviewCollectionItem(
       versionId,
       pageStatus: 'published',
       pageSlug: synthetic.slug,
-      liveUrl: opts.liveBase ? `${opts.liveBase.replace(/\/$/, '')}${route.path}` : null,
+      liveUrl: opts.liveBase && isContentDeployed(opts.deployedVersion ?? null, { date_updated: route.item.updated_at, date_created: route.item.created_at }) ? `${opts.liveBase.replace(/\/$/, '')}${route.path}` : null,
       editorUrl: `/app/sites/${siteId}/collections/${route.collection.name}/items/${route.item.id}`,
     } : null,
   });

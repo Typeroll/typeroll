@@ -36,7 +36,8 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
     paths.version(orgId, site.id, versionId),
   );
   const last = version?.last_deployed_at ?? null;
-  const changedSince = (stamp?: string) => !!stamp && (!last || stamp > last);
+  const cutoff = version?.last_deployed_content_at ?? last;
+  const changedSince = (stamp?: string) => !!stamp && (!cutoff || stamp > cutoff);
 
   const changes: Change[] = [];
 

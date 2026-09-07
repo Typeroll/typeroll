@@ -34,7 +34,8 @@ const workingCopy = await readWorkingCopy(
   { kind: 'partial', id: partialId },
 );
 const versionDoc = await store.getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
-const lastDeployedAt = versionDoc?.last_deployed_at ?? null;
+// Compare edits with the build snapshot, not its later completion time.
+const lastDeployedAt = versionDoc?.last_deployed_content_at ?? versionDoc?.last_deployed_at ?? null;
 ---
 <AppLayout title={`${defaultDoc.name} — ${site.name}`} siteId={siteId}>
   <div class="app-header">

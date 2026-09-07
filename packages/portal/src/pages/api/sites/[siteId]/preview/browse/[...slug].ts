@@ -71,6 +71,7 @@ export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
     browseRoot,
     showBanner: !embed,
     liveBase: liveBase ?? undefined,
+    deployedVersion: activeVersion,
     embedSuffix: embed ? `?embed=1${saved ? '&saved=1' : ''}${canvasId ? `&canvas=${encodeURIComponent(canvasId)}` : ''}${interactive ? '&interactive=1' : ''}` : draft ? '?draft=1' : '',
     // Tag every block root with data-block-id inside the editor iframe so the
     // block editor can hit-test the rendered canvas (drag-onto-page + the drop

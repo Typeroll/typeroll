@@ -5,7 +5,7 @@ import CollectionItemEditor from '../../../../../../../components/CollectionItem
 import { loadSiteContext } from '../../../../../../../lib/access';
 import { getStore } from '../../../../../../../lib/datastore';
 import { readWorkingCopy } from '../../../../../../../lib/working-copy';
-import { liveBaseFor } from '../../../../../../../lib/site-urls';
+import { liveBaseFor, isContentDeployed } from '../../../../../../../lib/site-urls';
 import { paths, buildCollectionRoutes } from '@typeroll/shared';
 import type { CollectionDef, CollectionItem, Site, SiteVersion } from '@typeroll/shared';
 
@@ -29,14 +29,15 @@ const workingCopy = await readWorkingCopy(
   { kind: 'item', collection: name, id: itemId },
 );
 const versionDoc = await store.getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
-const lastDeployedAt = versionDoc?.last_deployed_at ?? null;
+// Compare edits with the build snapshot, not its later completion time.
+const lastDeployedAt = versionDoc?.last_deployed_content_at ?? versionDoc?.last_deployed_at ?? null;
 
 // The item's URL path per the collection's route template — feeds the
 // Preview + Live URL buttons in the Publish menu.
 const itemRoute = buildCollectionRoutes([coll], new Map([[coll.name, [item]]]))[0] ?? null;
 const previewUrl = itemRoute ? `/api/sites/${siteId}/preview/browse${itemRoute.path}` : null;
 const liveBase = liveBaseFor(site, versionDoc ?? null);
-const liveUrl = itemRoute && liveBase ? `${liveBase}${itemRoute.path}` : null;
+const liveUrl = itemRoute && liveBase && isContentDeployed(versionDoc ?? null, { date_updated: item.updated_at, date_created: item.created_at }) ? `${liveBase}${itemRoute.path}` : null;
 ---
 <AppLayout title={`${coll.label_singular} — ${site.name}`} siteId={siteId}>
   <div class="app-header">

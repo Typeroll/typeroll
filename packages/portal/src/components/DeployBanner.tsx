@@ -71,8 +71,14 @@ export default function DeployBanner({
           background: var(--color-success);
         }
         .deploy-banner--accent .deploy-banner__pip { background: #f6c177; }
-        .deploy-banner__text { flex: 1; font-size: 0.95rem; color: var(--color-text); }
+        .deploy-banner__text { min-width: 0; flex: 1; font-size: 0.95rem; color: var(--color-text); }
         .deploy-banner__actions { display: inline-flex; align-items: center; gap: 0.5rem; }
+        @media (max-width: 700px) {
+          .deploy-banner { flex-wrap: wrap; }
+          .deploy-banner__actions { width: 100%; flex-wrap: wrap; }
+          .deploy-banner__actions button, .deploy-banner__actions select { min-height: 44px; }
+          .deploy-banner__actions select { font-size: 16px; }
+        }
       `}</style>
     </div>
   );

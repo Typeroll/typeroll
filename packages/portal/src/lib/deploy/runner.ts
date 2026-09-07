@@ -41,6 +41,7 @@ import { getHostingAdapter } from '../hosting';
 import { isCanonicalReady } from '../site-public-urls';
 import type { DeployResult } from '../hosting';
 import { buildPagesHeaders } from './pages-headers';
+import { liveDeploymentUpdate } from './live-state';
 
 export interface RunDeployArgs {
   orgId: string;
@@ -87,6 +88,7 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   const store = getStore();
   const phase = async (p: string) => { await args.onPhase?.(p); };
 
+  const contentCutoff = new Date().toISOString();
   await phase('preparing');
   const site = await store.getDoc<Site>(paths.site(args.orgId, args.siteId));
   if (!site) throw new Error(`Site not found: ${args.siteId}`);
@@ -353,8 +355,11 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   // missing name/kind.
   const versionPath = paths.version(args.orgId, args.siteId, versionId);
   const existingVersion = await store.getDoc<SiteVersion>(versionPath);
-  const update: Record<string, unknown> = { last_deployed_at: new Date().toISOString() };
-  if (deploy?.url && versionId !== MAIN_VERSION_ID) update.deploy_url = deploy.url;
+  const update: Record<string, unknown> | null = liveDeploymentUpdate({
+    versionId, environment: args.environment, contentCutoff,
+    completedAt: new Date().toISOString(), deployUrl: deploy?.url,
+  });
+  if (!update) return { buildDir, fixturesDir, deploy, ...output, ...(warnings.length ? { warnings } : {}) };
   if (!existingVersion && versionId === MAIN_VERSION_ID) {
     update.name = 'Main';
     update.kind = 'main';

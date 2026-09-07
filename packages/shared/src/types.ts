@@ -98,9 +98,11 @@ export interface SiteVersion {
    * shown for content on the branch.
    */
   deploy_url?: string;
-  /** ISO timestamp of the last successful runDeploy call on this version.
-   *  Anything written more recently than this is "pending deploy". */
+  /** ISO timestamp of the last successful live deployment. Main staging
+   *  uploads do not advance this. Legacy fallback for the content cutoff. */
   last_deployed_at?: string;
+  /** Content cutoff captured before the last live build started. */
+  last_deployed_content_at?: string;
 }
 export type HostingAdapterName = 'cloudflare' | 'netlify' | 'vercel' | 'firebase' | 'custom';
 

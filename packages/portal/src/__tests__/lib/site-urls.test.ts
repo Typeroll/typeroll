@@ -8,6 +8,7 @@ const mainVersion: SiteVersion = {
   name: 'Main',
   kind: 'main',
   created_at: '',
+  last_deployed_at: '2026-09-07T12:00:00.000Z',
 };
 const branchVersion = (deploy_url?: string): SiteVersion => ({
   id: 'feat',
@@ -15,6 +16,7 @@ const branchVersion = (deploy_url?: string): SiteVersion => ({
   kind: 'branch',
   base_version_id: MAIN_VERSION_ID,
   created_at: '',
+  last_deployed_at: '2026-09-07T12:00:00.000Z',
   ...(deploy_url ? { deploy_url } : {}),
 });
 
@@ -67,11 +69,28 @@ describe('pageLiveUrl', () => {
   it('returns null for unpublished pages', () => {
     expect(pageLiveUrl(site, mainVersion, { slug: 'about', status: 'draft' })).toBeNull();
   });
+  it('hides configured live links before the first successful deploy', () => {
+    expect(pageLiveUrl(site, null, { slug: 'test-page', status: 'published', date_updated: '2026-09-06T12:00:00.000Z' })).toBeNull();
+    expect(liveBaseFor(site, { ...mainVersion, last_deployed_at: undefined })).toBeNull();
+  });
+  it('hides pages created, published or changed after the deployed snapshot', () => {
+    const version = { ...mainVersion, last_deployed_content_at: '2026-09-07T11:00:00.000Z' };
+    for (const date_updated of ['2026-09-07T11:30:00.000Z', '2026-09-07T13:00:00.000Z', 'invalid', undefined]) {
+      expect(pageLiveUrl(site, version, { slug: 'test-page', status: 'published', date_updated })).toBeNull();
+    }
+    expect(pageLiveUrl(site, version, { slug: 'test-page', status: 'published', date_updated: '2026-09-06T12:00:00.000Z', date_published: '2026-09-07T11:30:00.000Z' })).toBeNull();
+  });
+  it('shows deployed unlisted pages and honors their explicit path', () => {
+    expect(pageLiveUrl(site, mainVersion, { slug: 'internal', path: '/guides/internal/', status: 'unlisted', date_updated: '2026-09-06T12:00:00.000Z' })).toBe('https://example.com/guides/internal');
+  });
+  it('does not substitute the production domain for an undeployed branch', () => {
+    expect(pageLiveUrl(site, branchVersion(), { slug: 'test-page', status: 'published', date_updated: '2026-09-06T12:00:00.000Z' })).toBeNull();
+  });
   it('formats home page as base/', () => {
-    expect(pageLiveUrl(site, mainVersion, { slug: 'home', status: 'published' })).toBe('https://example.com/');
+    expect(pageLiveUrl(site, mainVersion, { slug: 'home', status: 'published', date_updated: '2026-09-06T12:00:00.000Z' })).toBe('https://example.com/');
   });
   it('formats other slugs as base/slug', () => {
-    expect(pageLiveUrl(site, mainVersion, { slug: 'about', status: 'published' })).toBe('https://example.com/about');
+    expect(pageLiveUrl(site, mainVersion, { slug: 'about', status: 'published', date_updated: '2026-09-06T12:00:00.000Z' })).toBe('https://example.com/about');
   });
 });
 

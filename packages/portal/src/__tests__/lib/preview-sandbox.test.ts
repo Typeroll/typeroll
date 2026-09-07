@@ -238,6 +238,20 @@ describe('browse preview route — per-mode isolation', () => {
     expect(await res.text()).toContain('"draft":"1"');
   });
 
+  it('only offers a live banner link after the saved page has been deployed', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    await store.updateDoc(paths.site('default', 'mysite'), { domain: 'example.com' });
+    await store.updateDoc(paths.page('default', 'mysite', 'home'), { date_updated: '2026-09-07T10:00:00Z' });
+    expect(await (await call(`?${PREVIEW_FRAME}`)).text()).not.toContain('Open live');
+    await store.setDoc(paths.version('default', 'mysite', 'main'), {
+      kind: 'main', name: 'Main', last_deployed_at: '2026-09-07T12:00:00Z', last_deployed_content_at: '2026-09-07T11:00:00Z',
+    });
+    expect(await (await call(`?${PREVIEW_FRAME}`)).text()).toContain('Open live');
+    await store.updateDoc(paths.page('default', 'mysite', 'home'), { date_updated: '2026-09-07T11:30:00Z' });
+    expect(await (await call(`?${PREVIEW_FRAME}`)).text()).not.toContain('Open live');
+  });
+
   it('sandboxes embed=1 now that the editor uses the postMessage bridge', async () => {
     const res = await call('?embed=1');
     expect(res.status).toBe(200);

@@ -29,7 +29,7 @@ function isPending(updatedAt: string | undefined, eligible: boolean): boolean {
   if (!eligible) return false;
   if (!lastDeployedAt) return true;
   if (!updatedAt) return false;
-  return updatedAt > lastDeployedAt;
+  return updatedAt > (versionDoc?.last_deployed_content_at ?? lastDeployedAt);
 }
 const pendingPages = pages.filter((p) =>
   isPending(p.date_updated, p.status === 'published' || p.status === 'unlisted'),

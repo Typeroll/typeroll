@@ -45,10 +45,10 @@ type SiteUrlInput = Pick<Site, 'domain' | 'hosting_config'>;
 
 /**
  * Resolve the live (deployed) base URL for a site/version pair. Returns null
- * if the version has nowhere to point at: main without a domain AND without
- * a fallback subdomain, or a branch that hasn't been deployed.
+ * until a successful deployment is recorded, or when there is no live host.
  */
 export function liveBaseFor(site: SiteUrlInput, version: SiteVersion | null): string | null {
+  if (!version?.last_deployed_at || !Number.isFinite(Date.parse(version.last_deployed_at))) return null;
   if (!version || version.kind === 'main' || version.id === MAIN_VERSION_ID) {
     if (site.domain) return `https://${site.domain}`;
     const fallback = site.hosting_config?.fallback_subdomain;
@@ -57,13 +57,29 @@ export function liveBaseFor(site: SiteUrlInput, version: SiteVersion | null): st
   return version.deploy_url ? trimRight(version.deploy_url) : null;
 }
 
-/** Live URL for a specific page, or null when there's no live URL to point at. */
+/** Only advertise saved content known to predate the deployed snapshot.
+ * Missing/invalid timestamps fail closed. An edited or newly published page
+ * uses Preview until the next deploy, including path/status changes. */
+export function isContentDeployed(
+  version: SiteVersion | null,
+  content: { date_updated?: string; date_created?: string; date_published?: string },
+): boolean {
+  if (!version?.last_deployed_at) return false;
+  const deployed = Date.parse(version.last_deployed_at);
+  const cutoff = Date.parse(version.last_deployed_content_at ?? version.last_deployed_at);
+  const dates = [content.date_updated, content.date_created, content.date_published].filter((v): v is string => !!v).map(Date.parse);
+  return Number.isFinite(deployed) && Number.isFinite(cutoff) && dates.length > 0
+    && dates.every((date) => Number.isFinite(date) && date <= cutoff);
+}
+
+/** Live URL for saved, deployed page content; Preview remains available before deploy. */
 export function pageLiveUrl(
   site: SiteUrlInput,
   version: SiteVersion | null,
-  page: Pick<Page, 'slug' | 'path' | 'status'>,
+  page: Pick<Page, 'slug' | 'path' | 'status' | 'date_updated' | 'date_published'>,
 ): string | null {
-  if (page.status !== 'published') return null;
+  if (page.status !== 'published' && page.status !== 'unlisted') return null;
+  if (!isContentDeployed(version, page)) return null;
   const base = liveBaseFor(site, version);
   if (!base) return null;
   const seg = pagePathSegment(page);

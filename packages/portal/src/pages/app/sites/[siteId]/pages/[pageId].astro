@@ -5,7 +5,7 @@ import HtmlPageEditor from '../../../../../components/HtmlPageEditor.tsx';
 import BlockPageEditor from '../../../../../components/BlockPageEditor.tsx';
 import { loadSiteContext } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
-import { pagePreviewUrl, liveBaseFor, pagePathSegment } from '../../../../../lib/site-urls';
+import { pagePreviewUrl, pageLiveUrl } from '../../../../../lib/site-urls';
 import { readWorkingCopy } from '../../../../../lib/working-copy';
 import { paths } from '@typeroll/shared';
 import type { Page, SiteVersion } from '@typeroll/shared';
@@ -35,13 +35,11 @@ const previewUrl = pagePreviewUrl(siteId, page);
 // The editor's status indicator compares each page's date_updated to the
 // version's last_deployed_at to surface "pending deploy" state.
 const versionDoc = await store.getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
-const lastDeployedAt = versionDoc?.last_deployed_at ?? null;
+// Compare edits with the build snapshot, not its later completion time.
+const lastDeployedAt = versionDoc?.last_deployed_content_at ?? versionDoc?.last_deployed_at ?? null;
 
-// Permalink on the deployed site. Computed status-agnostically — the
-// Publish menu decides whether to show it based on the CURRENT status.
-const liveBase = liveBaseFor(site, versionDoc ?? null);
-const seg = pagePathSegment(page);
-const liveUrl = liveBase ? (seg ? `${liveBase}/${seg}` : `${liveBase}/`) : null;
+// Only expose saved content known to be included in the last live deploy.
+const liveUrl = pageLiveUrl(site, versionDoc ?? null, page);
 ---
 <AppLayout title={`${page.title} — ${site.name}`} siteId={siteId} bare>
   {page.content_mode === 'blocks' ? (
