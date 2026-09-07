@@ -272,14 +272,16 @@ const initials = (session.displayName ?? session.email ?? 'U')
               <span class="app-sidebar__link-icon" aria-hidden><Icon name="CodeXml" /></span>
               <span>Developer</span>
             </a>
-            <form method="POST" action="/api/auth/logout" class="app-sidebar__signout-form">
-              <button type="submit" class="app-sidebar__link app-sidebar__link--button">
-                <span class="app-sidebar__link-icon" aria-hidden><Icon name="LogOut" /></span>
-                <span>Sign out</span>
-              </button>
-            </form>
+
           </div>
         </nav>
+
+        <form method="POST" action="/api/auth/logout" class="app-sidebar__signout-form">
+          <button type="submit" class="app-sidebar__link app-sidebar__link--button">
+            <span class="app-sidebar__link-icon" aria-hidden><Icon name="LogOut" /></span>
+            <span>Sign out</span>
+          </button>
+        </form>
 
         {/* Whole card is now a link to /app/settings so the visually-
            prominent "Account" area at the bottom of the sidebar actually
@@ -750,7 +752,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
         padding: 8px 8px 6px;
       }
 
-      .app-sidebar__signout-form { display: contents; }
+      .app-sidebar__signout-form { display: block; flex-shrink: 0; padding: 0 14px; }
 
       .app-sidebar__link {
         position: relative;
@@ -813,6 +815,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
 
       /* ─────────── User footer ─────────── */
       .app-sidebar__user {
+        flex-shrink: 0;
         margin: 8px 12px 0;
         padding: 10px 10px;
         display: flex;

@@ -75,3 +75,12 @@ screenshots were inspected. Temporarily bypassing membership validation caused
 five authorization assertions to fail; restoring it passed the release check.
 The local persona seed was run twice and verification passed. No customer account
 or deployed environment was changed by these local checks.
+
+The Core 0.1.17 follow-up keeps sign-out in the fixed sidebar footer on short
+mobile screens and disables organization inputs/actions until their client code
+is ready. New browser regressions reproduce both defects against 0.1.16. The
+corrected candidate passes the full release check and all 23 local browser tests
+(three hosted-only cases remain for remote qualification); the 320px and desktop
+screenshots were inspected. The minimum-viewport test verifies the real logout
+response and removal of the local persona cookie, since local development
+intentionally falls back to its dev user after logout.

@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { OrganizationChoice } from '../lib/organization-session';
 
 export default function OrganizationSwitcher({ organizations, currentOrgId }: {
   organizations: OrganizationChoice[]; currentOrgId?: string;
 }) {
   const [busy, setBusy] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
   const [error, setError] = useState('');
   async function switchTo(orgId: string) {
     setBusy(true);
@@ -22,7 +24,7 @@ export default function OrganizationSwitcher({ organizations, currentOrgId }: {
   }
   return <div className="stack" style={{ gap: '0.375rem', minWidth: 0 }}>
     <label htmlFor="active-organization" style={{ fontSize: '0.75rem' }}>Organization</label>
-    <select id="active-organization" value={currentOrgId ?? ''} disabled={busy}
+    <select id="active-organization" value={currentOrgId ?? ''} disabled={busy || !hydrated}
       onChange={(event) => void switchTo(event.target.value)}
       style={{ width: '100%', minWidth: 0, color: 'var(--color-text)', background: 'var(--color-bg)', padding: '0.5rem', borderRadius: '0.375rem' }}>
       {!organizations.some((org) => org.id === currentOrgId) && <option value={currentOrgId ?? ''}>{currentOrgId ?? 'Choose organization'}</option>}

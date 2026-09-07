@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type Tab = 'create' | 'join';
 
@@ -18,6 +18,8 @@ export default function OnboardingForm({ prefillToken }: Props) {
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +67,7 @@ export default function OnboardingForm({ prefillToken }: Props) {
       <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
         <button
           type="button"
+          disabled={!hydrated}
           onClick={() => { setTab('create'); setError(null); }}
           style={{
             background: 'none',
@@ -80,6 +83,7 @@ export default function OnboardingForm({ prefillToken }: Props) {
         </button>
         <button
           type="button"
+          disabled={!hydrated}
           onClick={() => { setTab('join'); setError(null); }}
           style={{
             background: 'none',
@@ -104,6 +108,7 @@ export default function OnboardingForm({ prefillToken }: Props) {
           <div className="field">
             <label htmlFor="org-name">Organization name</label>
             <input
+              disabled={busy || !hydrated}
               id="org-name"
               type="text"
               required
@@ -119,7 +124,7 @@ export default function OnboardingForm({ prefillToken }: Props) {
           )}
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || !hydrated}
             className="btn"
             style={{ width: '100%', justifyContent: 'center' }}
           >
@@ -137,6 +142,7 @@ export default function OnboardingForm({ prefillToken }: Props) {
           <div className="field">
             <label htmlFor="invite-input">Invite link or code</label>
             <input
+              disabled={busy || !hydrated}
               id="invite-input"
               type="text"
               required
@@ -151,7 +157,7 @@ export default function OnboardingForm({ prefillToken }: Props) {
           )}
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || !hydrated}
             className="btn"
             style={{ width: '100%', justifyContent: 'center' }}
           >

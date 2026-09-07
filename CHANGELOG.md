@@ -1,5 +1,12 @@
 # Changelog
 
+## MCP 0.43.9 / Core 0.1.17
+
+- Keep sign-out outside the scrolling navigation so it remains visible on
+  short mobile screens after adding organization switching.
+- Enable organization forms and the selector only after hydration, preventing
+  native form submission or lost changes while their JavaScript loads.
+
 ## MCP 0.43.8 / Core 0.1.16
 
 - Added browser-session organization switching and multiple memberships per user.

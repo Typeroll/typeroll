@@ -82,3 +82,37 @@ test('a new account recovers its organization after logout and a fresh login wit
     }
   }
 });
+
+test('sign out stays visible in the minimum mobile navigation viewport', async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto('/app', { waitUntil: 'networkidle' });
+  await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('organization-navigation-320.png'), animations: 'disabled' });
+  const [logout] = await Promise.all([
+    page.waitForResponse(response => response.url().endsWith('/api/auth/logout')),
+    page.getByRole('button', { name: 'Sign out', exact: true }).click(),
+  ]);
+  expect(logout.status()).toBe(302);
+  // The local server falls back to its dev user after logout; the E2E session
+  // must still be removed. Hosted tests verify the signed-out login screen.
+  expect((await page.context().cookies()).some(cookie => cookie.name === 'typeroll_session')).toBe(false);
+});
+
+test('organization onboarding waits for hydration before accepting input or submission', async ({ page }) => {
+  await authenticatePersona(page, 'owner');
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/OnboardingForm.*.js', async route => { await blocked; await route.continue(); });
+  try {
+    await page.goto('/onboarding?add=1', { waitUntil: 'commit' });
+    const input = page.getByLabel('Organization name', { exact: true });
+    await expect(input).toBeVisible();
+    await expect(input).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Create organization', exact: true }).last()).toBeDisabled();
+    release();
+    await expect(input).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Create organization', exact: true }).last()).toBeEnabled();
+  } finally { release(); }
+});
