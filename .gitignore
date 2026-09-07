@@ -78,3 +78,6 @@ packages/site-template/fixtures/organizations/*/sites/*/versions/*/_tombstones_*
 # so it always exists. See CLAUDE.md → "Scratch / temporary files".
 temp/*
 !temp/.gitkeep
+
+# Per-user organization discovery is runtime state.
+packages/site-template/fixtures/user_organizations/

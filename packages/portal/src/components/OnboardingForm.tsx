@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { getFirebaseAuth } from '../lib/firebase-client';
 
 type Tab = 'create' | 'join';
 
@@ -20,47 +19,6 @@ export default function OnboardingForm({ prefillToken }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  /**
-   * After creating/joining an org the server sets a Firebase custom claim.
-   * The existing session cookie doesn't carry the new claim yet — we need to
-   * refresh it before redirecting to /app.
-   *
-   * Primary path (no Firebase SDK required): POST to /api/auth/refresh-session.
-   * The server creates a custom token, exchanges it for a fresh ID token via
-   * the Firebase REST API, and sets a new session cookie. This works even when
-   * auth.currentUser is null (which happens in production when the login
-   * established only a server-side session cookie without client-side SDK state).
-   *
-   * Fallback: if the server refresh fails, try the client-side Firebase path.
-   */
-  async function reauth() {
-    // Primary: server-side refresh — doesn't need Firebase SDK auth state.
-    const serverRes = await fetch('/api/auth/refresh-session', { method: 'POST' });
-    if (serverRes.ok) {
-      window.location.href = '/app';
-      return;
-    }
-
-    // Fallback: client-side Firebase ID token refresh.
-    const auth = getFirebaseAuth();
-    if (auth?.currentUser) {
-      // force=true makes Firebase call its backend to pick up the new claim.
-      const idToken = await auth.currentUser.getIdToken(true);
-      const res = await fetch('/api/auth/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
-      });
-      if (!res.ok) throw new Error('Failed to refresh session after org setup.');
-    } else {
-      // Neither path worked — surface the error so the user knows to retry.
-      const errBody = await serverRes.json().catch(() => ({})) as { error?: string };
-      throw new Error(errBody.error ?? 'Session refresh failed. Please reload and try again.');
-    }
-
-    window.location.href = '/app';
-  }
-
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -71,10 +29,9 @@ export default function OnboardingForm({ prefillToken }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: orgName }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; requiresReauth?: boolean };
+      const data = (await res.json()) as { ok?: boolean; error?: string; };
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-      if (data.requiresReauth) await reauth();
-      else window.location.href = '/app';
+      window.location.href = '/app';
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -92,10 +49,9 @@ export default function OnboardingForm({ prefillToken }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: inviteInput }),
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string; requiresReauth?: boolean };
+      const data = (await res.json()) as { ok?: boolean; error?: string; };
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-      if (data.requiresReauth) await reauth();
-      else window.location.href = '/app';
+      window.location.href = '/app';
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

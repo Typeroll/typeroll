@@ -1,30 +1,17 @@
-// POST /api/orgs/create
-//
-// Creates a new organization and assigns the calling user as owner.
-// Accepts pending sessions (authenticated Firebase users without an org yet)
-// because this is exactly the endpoint new users call during onboarding.
-//
-// On success, this endpoint sets the org_id Firebase custom claim AND refreshes
-// the session cookie server-side so the client can redirect to /app immediately
-// without needing to call getIdToken(true). Returns requiresReauth: false when
-// the server-side refresh succeeded, or requiresReauth: true as a fallback for
-// the client to handle (via /api/auth/refresh-session or client-side Firebase).
-
 import type { APIRoute } from 'astro';
 import { json, requireSession } from '../../../lib/access';
 import { getStore } from '../../../lib/datastore';
 import { slugifyOrgName, resolveUniqueSlug } from '../../../lib/org-slug';
 import { paths } from '@typeroll/shared';
 import type { Organization, Member } from '@typeroll/shared';
-import { isFirebaseConfigured, refreshSessionForUser } from '../../../lib/auth';
-import { getFirebaseAdminApp } from '../../../lib/firebase-admin';
-import { firebaseApiKey } from '../../../lib/runtime-config-server';
+import { rememberOrganization, selectOrganization } from '../../../lib/organization-session';
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   // requireSession accepts pending sessions (orgId may be undefined).
   const guard = await requireSession(cookies);
   if (!guard.ok) return guard.response;
   const { userId, email, displayName } = guard.value;
+  if (guard.value.orgId) await rememberOrganization(userId, guard.value.orgId);
 
   let name: string;
   try {
@@ -62,13 +49,15 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const orgId = resolveUniqueSlug(baseSlug, takenSlugs);
   const now = new Date().toISOString();
 
-  // Write the org doc.
-  await store.setDoc(paths.org(orgId), {
+  // Reserve the slug atomically so concurrent creators cannot overwrite an organization.
+  const created = await store.createDocIfMissing(paths.org(orgId), {
     name,
     slug: orgId,
     plan: 'free',
+    roles_enforced: true,
     created_at: now,
   } satisfies Omit<Organization, 'id'>);
+  if (!created) return json({ error: 'Organization name was just taken. Please try again.' }, 409);
 
   // Write the member doc (owner).
   await store.setDoc(`${paths.members(orgId)}/${userId}`, {
@@ -79,41 +68,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     joined_at: now,
   } satisfies Omit<Member, 'id'>);
 
-  // Set the Firebase custom claim so future ID tokens carry org_id, then
-  // immediately refresh the session cookie server-side so the new claim
-  // takes effect without requiring the client to have an active Firebase SDK
-  // auth state (auth.currentUser is often null in production when the login
-  // established only a server-side session cookie).
-  if (isFirebaseConfigured()) {
-    try {
-      const { getAuth } = await import('firebase-admin/auth');
-      const app = await getFirebaseAdminApp();
-      await getAuth(app).setCustomUserClaims(userId, { org_id: orgId });
-    } catch (e) {
-      // Log but don't fail — the org + member docs are written; the user
-      // can retry the claim refresh. A failed claim won't cause data loss.
-      console.error('[orgs/create] setCustomUserClaims failed:', e);
-      return json({ ok: true, orgId, requiresReauth: true, claimWarning: true });
-    }
-
-    // Refresh the session cookie server-side so it carries the new org_id
-    // claim immediately. If this fails (e.g. missing API key, network error),
-    // fall back gracefully — the client's reauth() will handle it.
-    const apiKey = firebaseApiKey();
-    if (apiKey) {
-      try {
-        await refreshSessionForUser(cookies, userId, apiKey);
-        // Session cookie is now up-to-date; client can redirect to /app directly.
-        return json({ ok: true, orgId, requiresReauth: false });
-      } catch (e) {
-        console.error('[orgs/create] server-side session refresh failed, client will retry:', e);
-        // Fall through to requiresReauth: true so the client attempts its own refresh.
-      }
-    }
-  }
-  // In dev (no Firebase) the session already has orgId=undefined; the
-  // reauth flow is skipped since there's no real claim to refresh.
-  // Also falls through here if server-side refresh failed — client retries.
-
-  return json({ ok: true, orgId, requiresReauth: true });
+  await rememberOrganization(userId, orgId);
+  selectOrganization(cookies, userId, orgId);
+  return json({ ok: true, orgId, requiresReauth: false });
 };

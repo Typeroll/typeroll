@@ -1,3 +1,4 @@
+vi.mock('../../lib/datastore', () => ({ getStore: () => ({ getDoc: async () => null, listDocs: async () => [] }) }));
 import { beforeEach, expect, it, vi } from 'vitest';
 const verify = vi.hoisted(() => vi.fn());
 vi.mock('firebase-admin/auth', () => ({ getAuth: () => ({ verifySessionCookie: verify }) }));

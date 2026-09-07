@@ -38,6 +38,7 @@ const SOURCE = resolve(PORTAL_DIR, '..', 'site-template', 'fixtures');
  * against.
  */
 const RUNTIME_ONLY = new Set([
+  'user_organizations',
   'api_audit',
   'api_key_lookup',
   'api_keys',

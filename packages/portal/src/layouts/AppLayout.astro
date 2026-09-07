@@ -9,6 +9,8 @@ import type { SharePermission } from '@typeroll/shared';
 import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
 import type { ExtensionInstallation, ExtensionAdminPage, Site, SiteVersion } from '@typeroll/shared';
 import { resolveExtensionVersion } from '../lib/extensions/resolution';
+import OrganizationSwitcher from '../components/OrganizationSwitcher.tsx';
+import { listOrganizations } from '../lib/organization-session';
 import SiteSwitcher from '../components/SiteSwitcher.tsx';
 import VersionPicker from '../components/VersionPicker.tsx';
 import Icon from '../components/Icon.astro';
@@ -32,6 +34,7 @@ if (!session.orgId) return Astro.redirect('/onboarding');
 const fullSession = session as FullSession;
 
 const store = getStore();
+const organizations = await listOrganizations(session);
 const ownedSites = await store.listDocs<Site>(paths.sites(fullSession.orgId));
 const sharedSites = await hydrateSharedSites(fullSession.orgId);
 // SiteSwitcher gets the union — owned first, then shared-in. The switcher
@@ -149,6 +152,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
             <img src="/brand/typeroll-main-white.svg" alt="Typeroll" width="248" height="54" />
           </a>
 
+          <OrganizationSwitcher client:load organizations={organizations} currentOrgId={session.orgId} />
           <SiteSwitcher client:load sites={sites} currentSiteId={siteId} />
           {siteId && activePermission !== 'admin' && (
             <div class={`shared-badge shared-badge--${activePermission}`} title={`Shared with you (${activePermission}). The owning organization controls this site.`}>

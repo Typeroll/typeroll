@@ -1,5 +1,15 @@
 # Changelog
 
+## MCP 0.43.8 / Core 0.1.16
+
+- Added browser-session organization switching and multiple memberships per user.
+  Creating or joining another organization preserves previous memberships.
+- Revalidate selected memberships on every session read, preserve roles when
+  joining again, and enforce roles for newly created organizations.
+- Keep organization selection separate from Firebase identity claims and clear
+  site-version selection when switching or signing out.
+- MCP carries the updated Core version contract; no MCP tools have changed.
+
 ## MCP 0.43.7 / Core 0.1.15
 
 - Added organization publishing account settings with GitHub App OAuth and

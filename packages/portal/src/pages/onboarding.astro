@@ -1,9 +1,11 @@
 ---
 // /onboarding — Shown to authenticated users who have no org yet.
 // Redirect to /login if there's no session at all.
-// Redirect to /app if the session already has an org.
+// Existing members can add another organization or accept an invite.
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import OnboardingForm from '../components/OnboardingForm.tsx';
+import OrganizationSwitcher from '../components/OrganizationSwitcher.tsx';
+import { listOrganizations } from '../lib/organization-session';
 import { getSession } from '../lib/auth';
 
 const session = await getSession(Astro.cookies);
@@ -11,8 +13,8 @@ const session = await getSession(Astro.cookies);
 // No session at all → send to login.
 if (!session) return Astro.redirect('/login');
 
-// Already has an org → nothing to onboard; send to the app.
-if (session.orgId) return Astro.redirect('/app');
+if (session.orgId && !Astro.url.searchParams.has('add') && !Astro.url.searchParams.has('invite')) return Astro.redirect('/app');
+const organizations = await listOrganizations(session);
 
 // Pick up a pre-filled invite token from ?invite= so the Join tab is
 // activated automatically when someone follows an invite link.
@@ -24,9 +26,11 @@ const prefillToken = Astro.url.searchParams.get('invite') ?? undefined;
       <div>
         <h1 style="font-size: 1.5rem; margin-bottom: 0.25rem;">Welcome to Typeroll</h1>
         <p class="muted text-sm">
-          Your account is ready. To get started, create a new organization or join an existing one.
+          Create a new organization or join an existing one. Your current memberships will be kept.
         </p>
       </div>
+      {organizations.length > 0 && <OrganizationSwitcher client:load organizations={organizations} currentOrgId={session.orgId} />}
+      {session.orgId && <a href="/app">Back to dashboard</a>}
       <OnboardingForm client:load prefillToken={prefillToken} />
     </div>
   </section>

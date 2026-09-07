@@ -1,3 +1,4 @@
+vi.mock('../../lib/datastore', () => ({ getStore: () => ({ getDoc: async () => null, listDocs: async () => [] }) }));
 // "Signed in until I log out": two halves.
 //
 //  1. Every session requires a successful revocation lookup. Network failures

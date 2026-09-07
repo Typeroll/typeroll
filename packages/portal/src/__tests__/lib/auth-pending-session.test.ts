@@ -1,3 +1,4 @@
+vi.mock('../../lib/datastore', () => ({ getStore: () => ({ getDoc: async () => null, listDocs: async () => [] }) }));
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock firebase-admin modules so the test doesn't need real Firebase credentials.

@@ -13,6 +13,7 @@
 // redirects such users to /onboarding. Use isPendingSession() to check.
 
 import type { AstroCookies } from 'astro';
+import { resolveOrganizationSession, clearOrganization } from './organization-session';
 import { readE2ESessionCookie } from './e2e-auth';
 import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
 
@@ -52,14 +53,14 @@ export async function getSession(cookies: AstroCookies): Promise<Session | null>
 
   if (!raw) {
     // No Firebase in non-production → use the local development session.
-    if (isDevAuthEnabled()) return DEV_USER;
+    if (isDevAuthEnabled()) return resolveOrganizationSession(cookies, DEV_USER);
     return null;
   }
 
-  if (raw === 'dev' && isDevAuthEnabled()) return DEV_USER;
+  if (raw === 'dev' && isDevAuthEnabled()) return resolveOrganizationSession(cookies, DEV_USER);
 
   const e2eSession = readE2ESessionCookie(raw);
-  if (e2eSession) return e2eSession;
+  if (e2eSession) return resolveOrganizationSession(cookies, e2eSession);
 
   try {
     const { getAuth } = await import('firebase-admin/auth');
@@ -69,17 +70,15 @@ export async function getSession(cookies: AstroCookies): Promise<Session | null>
     // deleted or revoked users. The outer catch rejects the session.
     const decoded = await getAuth(app).verifySessionCookie(raw, true);
     const orgId = decoded.org_id as string | undefined;
-    // Note: a missing org_id is a "pending session" — the user is authenticated
-    // but hasn't joined an org yet. The middleware redirects such users to
-    // /onboarding. We do NOT reject here so the onboarding API routes can
-    // still read the session.
-    return {
+    // Resolve the browser selection or membership index before treating a
+    // missing legacy claim as pending. Identity verification remains mandatory.
+    return await resolveOrganizationSession(cookies, {
       userId: decoded.uid,
       email: decoded.email ?? '',
       orgId,
       displayName: decoded.name as string | undefined,
       expiresAtMs: typeof decoded.exp === 'number' ? decoded.exp * 1000 : undefined,
-    };
+    });
   } catch {
     return null;
   }
@@ -118,20 +117,19 @@ export async function setSessionFromIdToken(
   });
 
   const orgId = decoded.org_id as string | undefined;
-  // A missing org_id yields a "pending session". The user is redirected to
-  // /onboarding where they can create or join an org. After that, the client
-  // calls getIdToken(true) to force-refresh the claim and re-exchanges the
-  // session cookie.
-  return {
+  // The selected organization is resolved independently of identity claims.
+  // Only accounts without a valid membership continue to onboarding.
+  return resolveOrganizationSession(cookies, {
     userId: decoded.uid,
     email: decoded.email ?? '',
     orgId,
     displayName: decoded.name as string | undefined,
-  };
+  });
 }
 
 export function clearSession(cookies: AstroCookies): void {
   cookies.delete(SESSION_COOKIE, { path: '/' });
+  clearOrganization(cookies);
 }
 
 /**
