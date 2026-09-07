@@ -260,6 +260,10 @@ export default function PublishMenu({
 
       {open && (
         <div className="pmenu__panel" role="menu">
+          <div className="pmenu__mobile-header">
+            <strong>Publishing</strong>
+            <button type="button" aria-label="Close publishing menu" onClick={() => setOpen(false)}>Close</button>
+          </div>
           {/* ── Changes / deliberate save ─────────────────────────── */}
           <div className="pmenu__section">
             <div className="pmenu__label">Changes</div>
@@ -462,6 +466,7 @@ export default function PublishMenu({
       )}
 
       <style>{`
+        .pmenu__mobile-header { display: none; }
         .pmenu { position: relative; display: inline-block; }
         .pmenu__trigger {
           display: inline-flex; align-items: center; gap: 6px;
@@ -519,6 +524,15 @@ export default function PublishMenu({
         .pmenu__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .pmenu__skip { flex: none; font-size: 0.68rem; color: #f6c177; }
         .pmenu__more { color: #a1a1aa; }
+        @media (max-width: 1000px) {
+          .pmenu__trigger { min-height: 44px; white-space: nowrap; }
+          .pmenu__panel { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
+          .pmenu__mobile-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: 0; padding: 4px 12px; background: #1f1f23; border-bottom: 1px solid #34343a; z-index: 1; }
+          .pmenu__mobile-header button { min-height: 44px; padding: 6px 12px; color: #fafafa; background: #26262b; border: 1px solid #34343a; border-radius: 6px; cursor: pointer; }
+          .pmenu__actions, .pmenu__row, .pmenu__state { flex-wrap: wrap; }
+          .pmenu__btn, .pmenu__select { min-height: 44px; }
+          .pmenu__select { font-size: 16px; min-width: 0; max-width: 100%; }
+        }
       `}</style>
     </div>
   );

@@ -244,6 +244,28 @@ describe('browse preview route — per-mode isolation', () => {
     expect(res.headers.get('Content-Security-Policy')).toBe(PREVIEW_SANDBOX);
   });
 
+  it('renders the saved comparison separately from the working copy without relaxing isolation', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    await store.setDoc(paths.page('default', 'mysite', 'home'), {
+      title: 'Home', slug: 'home', status: 'draft', content_mode: 'html',
+      html_content: '<h1>Saved comparison</h1><a href="/home/">Home</a>',
+    });
+    await store.setDoc(paths.workingCopy('default', 'mysite', 'page--home'), {
+      kind: 'page', target_id: 'home', fields: { html_content: '<h1>Unsaved comparison</h1>' },
+    });
+    const saved = await call('?embed=1&saved=1&canvas=review-saved-comparison');
+    const html = await saved.text();
+    expect(saved.status).toBe(200);
+    expect(html).toContain('Saved comparison');
+    expect(html).not.toContain('Unsaved comparison');
+    expect(html).toContain('saved=1');
+    expect(saved.headers.get('Content-Security-Policy')).toBe(PREVIEW_SANDBOX);
+    const draft = await call('?embed=1&canvas=review-draft-comparison');
+    expect(await draft.text()).toContain('Unsaved comparison');
+    expect(draft.headers.get('Content-Security-Policy')).toBe(PREVIEW_SANDBOX);
+  });
+
   it('runs only inside an opaque origin in the editor canvas', async () => {
     const res = await call('?embed=1');
     const csp = res.headers.get('Content-Security-Policy');

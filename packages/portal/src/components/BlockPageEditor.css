@@ -1,0 +1,58 @@
+.block-editor { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-width: 0; background: #0f0f12; color: #e4e4e7; }
+.block-editor__topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; padding: 8px 16px; border-bottom: 1px solid #2a2a30; flex-shrink: 0; }
+.block-editor__identity { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; flex: 1; }
+.block-editor__exit { flex-shrink: 0; white-space: nowrap; }
+.block-editor__title { font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 24rem; }
+.block-editor__slug { font-size: .75rem; opacity: .6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 14rem; }
+.block-editor__status { min-width: 0; --color-text-muted: #a1a1aa; }
+.block-editor__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex-shrink: 0; }
+.block-editor__body { display: grid; grid-template-columns: 280px minmax(0, 1fr) 320px; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.block-editor__blocks { display: flex; flex-direction: column; border-right: 1px solid #2a2a30; overflow: hidden; min-width: 0; min-height: 0; }
+.block-editor__block-list { flex: 1; min-height: 0; overflow: auto; padding: 12px; overscroll-behavior: contain; }
+.block-editor__preview { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #0a0a0d; }
+.block-editor__canvas { flex: 1; min-height: 0; padding: 16px; overflow: hidden; }
+.block-editor__fields { border-left: 1px solid #2a2a30; padding: 16px; overflow: auto; min-width: 0; min-height: 0; overscroll-behavior: contain; overflow-wrap: anywhere; }
+.block-editor__block-name { all: unset; cursor: pointer; text-align: left; min-width: 0; }
+.block-editor__block-name:focus-visible { outline: 2px solid #a5b4fc; outline-offset: 2px; }
+.block-editor__mobile-nav, .block-editor__mobile-devices { display: none; }
+
+@media (max-width: 1200px) {
+  .block-editor__body { grid-template-columns: 230px minmax(0, 1fr) 280px; }
+}
+@media (max-width: 1000px) {
+  .block-editor__topbar { padding: 8px 12px; gap: 6px; }
+  .block-editor__identity { display: grid; grid-template-columns: auto minmax(0, 1fr); flex-basis: 100%; gap: 4px 10px; }
+  .block-editor__title { max-width: none; }
+  .block-editor__slug { display: none; }
+  .block-editor__status { grid-column: 1 / -1; line-height: 1.3; overflow-wrap: anywhere; }
+  .block-editor__actions { width: 100%; flex-wrap: wrap; }
+  .block-editor__actions .pmenu { margin-left: auto; }
+  .block-editor__desktop-devices { display: none; }
+  .block-editor__topbar button, .block-editor__exit { min-height: 44px; }
+  .block-editor__topbar button[title^="Undo"], .block-editor__topbar button[title^="Redo"] { min-width: 44px; }
+  .block-editor__mobile-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); flex-shrink: 0; border-bottom: 1px solid #2a2a30; }
+  .block-editor__mobile-nav button { min-height: 44px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #a1a1aa; font-size: .85rem; cursor: pointer; }
+  .block-editor__mobile-nav button[aria-pressed="true"] { color: #fafafa; border-bottom-color: #818cf8; background: #1f1f23; }
+  .block-editor__body { display: flex; flex-direction: column; }
+  .block-editor__body > * { display: none; flex: 1; border: 0; }
+  .block-editor[data-mobile-pane="blocks"] .block-editor__blocks,
+  .block-editor[data-mobile-pane="preview"] .block-editor__preview { display: flex; }
+  .block-editor[data-mobile-pane="fields"] .block-editor__fields { display: block; }
+  .block-editor__fields, .block-editor__block-list { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .block-editor__mobile-devices { display: flex; justify-content: center; padding: 4px 12px; border-bottom: 1px solid #2a2a30; flex-shrink: 0; }
+  .block-editor__mobile-devices button { min-width: 44px; min-height: 44px; justify-content: center; }
+  .block-editor input:not([type="checkbox"]), .block-editor textarea, .block-editor select { font-size: 16px !important; min-height: 44px; max-width: 100%; }
+  .block-editor textarea { min-height: 160px !important; }
+  .block-editor__tree-row { min-height: 48px; }
+  .block-editor__tree-row > button:not(.block-editor__block-name), .block-editor__tree-row > [title="Drag to move"] { min-width: 36px; min-height: 44px; justify-content: center; flex-shrink: 0; }
+  .block-editor__block-name { min-height: 44px; }
+  .block-editor__library-card { min-height: 64px; }
+  .block-editor fieldset { min-width: 0; }
+}
+
+/* Wide phones and small tablets have room for actions beside the title.
+   Keep more vertical space for the canvas, especially in landscape. */
+@media (min-width: 600px) and (max-width: 1000px) {
+  .block-editor__topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+  .block-editor__actions { width: auto; }
+}

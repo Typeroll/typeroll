@@ -412,6 +412,7 @@ export default function TemplateEditor({ siteId, template }: Props) {
               </div>
             ) : (
               <BlockFieldForm
+                key={selected.block.id}
                 siteId={siteId}
                 block={selected.block}
                 blockType={registry.get(selected.block.type) ?? null}

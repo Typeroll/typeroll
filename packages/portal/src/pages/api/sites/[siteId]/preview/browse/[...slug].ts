@@ -37,6 +37,8 @@ export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
   // popping in and out.
   const url = new URL(request.url);
   const embed = url.searchParams.get('embed') === '1';
+  // Review compares saved content with the working copy in two isolated canvases.
+  const saved = embed && url.searchParams.get('saved') === '1';
   const canvasId = embed && /^[A-Za-z0-9_-]{16,128}$/.test(url.searchParams.get('canvas') ?? '')
     ? url.searchParams.get('canvas')!
     : undefined;
@@ -69,7 +71,7 @@ export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
     browseRoot,
     showBanner: !embed,
     liveBase: liveBase ?? undefined,
-    embedSuffix: embed ? `?embed=1${canvasId ? `&canvas=${encodeURIComponent(canvasId)}` : ''}${interactive ? '&interactive=1' : ''}` : draft ? '?draft=1' : '',
+    embedSuffix: embed ? `?embed=1${saved ? '&saved=1' : ''}${canvasId ? `&canvas=${encodeURIComponent(canvasId)}` : ''}${interactive ? '&interactive=1' : ''}` : draft ? '?draft=1' : '',
     // Tag every block root with data-block-id inside the editor iframe so the
     // block editor can hit-test the rendered canvas (drag-onto-page + the drop
     // indicator map a spot on the preview back to a position in the tree).
@@ -78,11 +80,12 @@ export const GET: APIRoute = async ({ cookies, params, request, locals }) => {
     // Inline-edit markers (data-edit spans on text fields) — editor iframe only.
     editable: interactive,
     // The in-editor iframe (embed=1) and explicit draft links (draft=1)
-    // overlay unsaved working-copy edits. The plain URL — the Publish
+    // overlay unsaved working-copy edits unless saved=1 selects the review
+    // baseline. The plain URL — the Publish
     // menu's Preview button — shows SAVED content, matching the model:
     // edits are drafts, Save makes them visible on the preview address,
     // deploy makes them live.
-    includeWorkingCopies: embed || draft,
+    includeWorkingCopies: !saved && (embed || draft),
     // The editor canvas NEVER runs block JS. Everything else is served with
     // the opaque-origin sandbox below, so its scripts can't reach the portal
     // session and fidelity wins.

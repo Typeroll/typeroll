@@ -51,6 +51,10 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'content' | 'ai' | 'blocks' | 'seo' | 'settings' | 'history'>('content');
   const [device, setDevice] = useState<Device>('desktop');
+  const [mobilePane, setMobilePane] = useState<'edit' | 'preview'>('edit');
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 1000px)').matches) setDevice('mobile');
+  }, []);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const canvasId = useMemo(
     () => `html-${siteId}-${page.id}-editorbridge`.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 128),
@@ -259,12 +263,13 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
   };
 
   return (
-    <div className="editor">
+    <div className="editor" data-mobile-pane={mobilePane}>
       <header className="editor__topbar">
         <div className="editor__title-row">
           <a href={`/app/sites/${siteId}/pages`} className="editor__back" title="Exit editor">← Exit editor</a>
           <input
             className="editor__title-input"
+            aria-label="Page title"
             value={draft.title}
             placeholder="Untitled"
             onChange={(e) => update('title', e.target.value)}
@@ -297,8 +302,12 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
         </div>
       </header>
 
+      <nav className="editor__mobile-nav" aria-label="Editor panels">
+        <button type="button" aria-pressed={mobilePane === 'edit'} aria-controls="html-editor-edit" onClick={() => setMobilePane('edit')}>Edit</button>
+        <button type="button" aria-pressed={mobilePane === 'preview'} aria-controls="html-editor-preview" onClick={() => setMobilePane('preview')}>Preview</button>
+      </nav>
       <div className="editor__body">
-        <aside className="editor__sidebar">
+        <aside id="html-editor-edit" className="editor__sidebar">
           <nav className="editor__tabs">
             <button className={activeTab === 'content' ? 'is-active' : ''} onClick={() => setActiveTab('content')}>Content</button>
             <button className={activeTab === 'ai' ? 'is-active' : ''} onClick={() => setActiveTab('ai')}>AI</button>
@@ -533,7 +542,7 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
           )}
         </aside>
 
-        <section className="editor__preview-pane">
+        <section id="html-editor-preview" className="editor__preview-pane">
           <div className="editor__device-bar">
             <button onClick={() => setDevice('desktop')} className={device === 'desktop' ? 'is-active' : ''}>
               <Monitor size={15} /> Desktop
@@ -675,11 +684,11 @@ const styles = `
   padding: 0.75rem 1.5rem; background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
 }
-.editor__title-row { display: flex; align-items: center; gap: 0.75rem; flex: 1; }
+.editor__title-row { display: flex; align-items: center; gap: 0.75rem; flex: 1; min-width: 0; }
 .editor__back { font-size: 1.25rem; color: var(--color-text-muted); }
 .editor__title-input {
   font-size: 1.125rem; font-weight: 600;
-  border: 0; background: transparent; outline: none; flex: 1; max-width: 500px;
+  border: 0; background: transparent; outline: none; flex: 1; min-width: 0; max-width: 500px;
 }
 .editor__title-input:focus { background: var(--color-bg); }
 .editor__slug { color: var(--color-text-muted); font-size: 0.875rem; }
@@ -687,22 +696,8 @@ const styles = `
 .editor__status-select {
   padding: 0.375rem 0.625rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface);
 }
-.editor__body { display: grid; grid-template-columns: 380px minmax(0, 1fr); flex: 1; overflow: hidden; }
+.editor__body { display: grid; grid-template-columns: 380px minmax(0, 1fr); flex: 1; min-height: 0; overflow: hidden; }
 .editor__sidebar { padding: 1.25rem; overflow-y: auto; border-right: 1px solid var(--color-border); background: var(--color-surface); min-width: 0; }
-/* Phone portrait + small tablets: stack vertically so each pane has room. */
-@media (max-width: 900px) and (orientation: portrait) {
-  .editor__body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; overflow: auto; }
-  .editor__sidebar { border-right: 0; border-bottom: 1px solid var(--color-border); max-height: 60vh; }
-}
-/* Phone landscape: stacking would crush both panes (e.g. 844x390). Keep
-   side-by-side but shrink the sidebar so the preview has breathing room. */
-@media (max-width: 900px) and (orientation: landscape) {
-  .editor__body { grid-template-columns: 280px minmax(0, 1fr); }
-  .editor__sidebar { padding: 0.85rem; }
-  .editor__html, .editor__code { min-height: 200px; }
-}
-/* Very tall narrow viewports (e.g. iPhone portrait 390x844): no change
-   needed — portrait case already handled above. */
 .editor__tabs { display: flex; gap: 0.25rem; margin-bottom: 1.25rem; border-bottom: 1px solid var(--color-border); }
 .editor__tabs button {
   padding: 0.5rem 0.75rem; background: none; border: 0; cursor: pointer;
@@ -814,5 +809,32 @@ const styles = `
 .editor__preview-frame iframe {
   height: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md);
   background: white; box-shadow: var(--shadow-md); max-width: 100%;
+}
+
+.editor__mobile-nav { display: none; }
+@media (max-width: 1000px) {
+  .editor__topbar { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 12px; flex-shrink: 0; }
+  .editor__title-row { gap: 8px; }
+  .editor__back { font-size: .85rem; min-height: 44px; display: flex; align-items: center; white-space: nowrap; }
+  .editor__title-input { font-size: 16px; min-height: 44px; width: 0; }
+  .editor__slug { display: none; }
+  .editor__actions { justify-content: space-between; gap: 8px; min-width: 0; }
+  .editor__actions > span { min-width: 0; overflow-wrap: anywhere; line-height: 1.3; }
+  .editor__actions .pmenu { flex-shrink: 0; }
+  .editor__mobile-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); flex-shrink: 0; border-bottom: 1px solid var(--color-border); }
+  .editor__mobile-nav button { min-height: 44px; border: 0; border-bottom: 2px solid transparent; background: var(--color-surface); cursor: pointer; }
+  .editor__mobile-nav button[aria-pressed="true"] { border-bottom-color: var(--color-primary); font-weight: 600; }
+  .editor__body { display: flex; flex-direction: column; min-height: 0; }
+  .editor__body > * { display: none; flex: 1; min-height: 0; }
+  .editor[data-mobile-pane="edit"] .editor__sidebar { display: block; padding: 12px; padding-bottom: max(16px, env(safe-area-inset-bottom)); border: 0; }
+  .editor[data-mobile-pane="preview"] .editor__preview-pane { display: flex; }
+  .editor__tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; }
+  .editor__tabs button { min-height: 44px; padding: 6px; }
+  .editor__sidebar input:not([type="checkbox"]), .editor__sidebar select, .editor__sidebar textarea { font-size: 16px; min-height: 44px; max-width: 100%; }
+  .editor__device-bar { flex-wrap: wrap; gap: 4px; padding: 4px 8px; flex-shrink: 0; }
+  .editor__device-bar button, .editor__open-preview { min-height: 44px; }
+  .editor__preview-url { display: none; }
+  .editor__preview-frame { min-height: 0; padding: 8px; }
+  .editor__ai .chat { height: max(320px, calc(100dvh - 260px)); }
 }
 `;

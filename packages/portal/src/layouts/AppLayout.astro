@@ -876,17 +876,19 @@ const initials = (session.displayName ?? session.email ?? 'U')
       }
       /* Full-bleed editor mode — no sidebar, slot owns the viewport. The
          editor components render their own 100vh shell + "Exit editor". */
-      .app-main--bare {
+      .app-main.app-main--bare {
         padding: 0;
         max-width: none;
         overflow: hidden;
         height: 100vh;
-        min-height: 100vh;
+        height: 100dvh;
+        min-height: 0;
       }
       /* HtmlPageEditor's .editor uses negative margins to cancel the normal
          .app-main padding; in bare mode there is none, so reset it to fill. */
       .app-main--bare .editor {
         height: 100vh;
+        height: 100dvh;
         margin: 0;
       }
       .app-header {

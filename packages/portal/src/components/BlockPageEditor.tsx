@@ -13,7 +13,7 @@
 // cross-slot moves use a "Move into…" button on each tree node — drag
 // across containers is a Phase 2.5 polish.
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Block, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES, resolveResponsive, isResponsiveValue, BREAKPOINTS } from '@typeroll/shared';
 import {
@@ -35,6 +35,7 @@ import { DocStatus } from './EditorStatus';
 import PublishMenu, { PAGE_STATUS_OPTIONS } from './PublishMenu';
 import ContentModeSwitcher from './ContentModeSwitcher';
 import TemplatePicker from './TemplatePicker';
+import './BlockPageEditor.css';
 
 interface Props {
   siteId: string;
@@ -97,6 +98,15 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   const [draft, setDraft] = useState<Page>({ ...page, ...(workingCopy?.fields ?? {}) } as Page);
   const [hasWc, setHasWc] = useState<boolean>(!!workingCopy);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mobilePane, setMobilePane] = useState<'blocks' | 'preview' | 'fields'>('blocks');
+  function selectBlock(id: string | null) {
+    setSelectedId(id);
+    if (id) setMobilePane('fields');
+  }
+  function showPageSettings() {
+    setSelectedId(null);
+    setMobilePane('fields');
+  }
   // Mirrors for the iframe event handlers (installed once, must read latest).
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
@@ -104,6 +114,9 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [activeBp, setActiveBp] = useState<Breakpoint>(DEFAULT_BP);
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 1000px)').matches) setActiveBp('mobile');
+  }, []);
   // Undo/redo over the block tree. Snapshots record every successful block
   // mutation (server-authoritative state); applying a step PUTs the
   // snapshot back into the working copy — undo never touches the saved
@@ -144,7 +157,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   // Center-panel size, tracked so a fixed-width device preset wider than the
   // panel scales DOWN to fit (instead of being capped to the panel width,
   // which would silently show a smaller breakpoint than the one selected).
-  const centerRef = useRef<HTMLElement>(null);
+  const centerRef = useRef<HTMLDivElement>(null);
   const [panelSize, setPanelSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
     const el = centerRef.current;
@@ -276,7 +289,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
         position,
       },
     });
-    if (result?.added_id) setSelectedId(result.added_id);
+    if (result?.added_id) selectBlock(result.added_id);
   }
 
   async function handleRemove(blockId: string): Promise<void> {
@@ -287,13 +300,20 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
 
   async function handleDuplicate(blockId: string): Promise<void> {
     const result = await callMutation({ method: 'POST', body: { duplicate_of: blockId } });
-    if (result?.added_id) setSelectedId(result.added_id);
+    if (result?.added_id) selectBlock(result.added_id);
   }
 
-  async function handleUpdateData(blockId: string, data: Record<string, unknown>): Promise<void> {
-    // Coalesce debounced typing in the same block+field into one undo step.
+  const fieldFlush = useRef<(() => Promise<void>) | null>(null);
+  const blockWrite = useRef<Promise<void>>(Promise.resolve());
+  function handleUpdateData(blockId: string, data: Record<string, unknown>): Promise<void> {
+    // Serialize edits so a slower response cannot overwrite a newer block tree.
     const sig = `patch:${blockId}:${Object.keys(data).sort().join(',')}`;
-    await callMutation({ method: 'PATCH', body: { block_id: blockId, data }, histSig: sig });
+    const write = blockWrite.current.catch(() => {}).then(async () => {
+      const result = await callMutation({ method: 'PATCH', body: { block_id: blockId, data }, histSig: sig });
+      if (!result) throw new Error('Could not save the block draft. Retry the edit before saving.');
+    });
+    blockWrite.current = write;
+    return write;
   }
 
   // ─── Undo / redo ──────────────────────────────────────────────────────
@@ -438,7 +458,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
       if (data.type === 'geometry' && Array.isArray(data.blocks) && data.body && typeof data.body === 'object') {
         canvasGeometryRef.current = { blocks: data.blocks.slice(0, 5000), body: data.body } as CanvasGeometry;
       } else if (data.type === 'select') {
-        setSelectedId(firstExisting(data.ancestor_ids));
+        selectBlock(firstExisting(data.ancestor_ids));
       } else if (data.type === 'hover') {
         const id = firstExisting(data.ancestor_ids);
         if (id !== hoverIdRef.current) {
@@ -477,7 +497,14 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   const metaSaveTimer = useRef<number | null>(null);
   const pendingMeta = useRef<Record<string, unknown>>({});
 
-  async function flushMetaToWc(): Promise<void> {
+  const metaWrite = useRef<Promise<void>>(Promise.resolve());
+  function flushMetaToWc(): Promise<void> {
+    const write = metaWrite.current.catch(() => {}).then(writePendingMeta);
+    metaWrite.current = write;
+    return write;
+  }
+
+  async function writePendingMeta(): Promise<void> {
     const fields = pendingMeta.current;
     if (Object.keys(fields).length === 0) return;
     pendingMeta.current = {};
@@ -502,14 +529,33 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
       pendingMeta.current = { ...fields, ...pendingMeta.current };
       setError((e as Error).message);
       setStatus('error');
+      throw e;
     }
   }
 
   function updateMeta<K extends keyof Page>(key: K, value: Page[K]): void {
     setDraft((d) => ({ ...d, [key]: value }));
+    setHasWc(true);
     pendingMeta.current[key] = value;
     if (metaSaveTimer.current) window.clearTimeout(metaSaveTimer.current);
-    metaSaveTimer.current = window.setTimeout(() => { void flushMetaToWc(); }, 700);
+    metaSaveTimer.current = window.setTimeout(() => { void flushMetaToWc().catch(() => {}); }, 700);
+  }
+
+  async function flushPendingDraft(): Promise<void> {
+    if (metaSaveTimer.current) window.clearTimeout(metaSaveTimer.current);
+    await fieldFlush.current?.();
+    await blockWrite.current;
+    await flushMetaToWc();
+  }
+
+  async function reviewChanges(): Promise<void> {
+    try {
+      await flushPendingDraft();
+      setReviewOpen(true);
+    } catch (e) {
+      setError((e as Error).message);
+      setStatus('error');
+    }
   }
 
   // ─── Deliberate actions (Publish menu) ────────────────────────────────
@@ -523,20 +569,8 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     setStatus('saving');
     setError(null);
     const wcUrl = `/api/sites/${siteId}/working-copy/page/${page.id}`;
-    const fields = pendingMeta.current;
-    pendingMeta.current = {};
     try {
-      if (Object.keys(fields).length > 0) {
-        const flush = await fetch(wcUrl, {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ fields }),
-        });
-        if (!flush.ok) {
-          const j = await flush.json().catch(() => ({})) as { error?: string };
-          throw new Error(j.error ?? `Save failed (${flush.status})`);
-        }
-      }
+      await flushPendingDraft();
       const res = await fetch(wcUrl, { method: 'POST' });
       if (!res.ok) {
         const j = await res.json().catch(() => ({})) as { error?: string };
@@ -547,8 +581,6 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
       setStatus('saved');
       window.setTimeout(() => setStatus('idle'), 1200);
     } catch (e) {
-      // Keep unflushed fields pending so the next attempt retries them.
-      pendingMeta.current = { ...fields, ...pendingMeta.current };
       setError((e as Error).message);
       setStatus('error');
     }
@@ -644,24 +676,24 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   }
 
   return (
-    <div style={shell}>
-      <header style={topBar}>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <a href={`/app/sites/${siteId}/pages`} style={exitBtn} title="Exit editor">
+    <div className="block-editor" data-mobile-pane={mobilePane}>
+      <header className="block-editor__topbar">
+        <div className="block-editor__identity">
+          <a href={`/app/sites/${siteId}/pages`} style={exitBtn} className="block-editor__exit" title="Exit editor">
             <ArrowLeft size={14} /> Exit editor
           </a>
-          <strong style={{ fontSize: '0.9rem' }}>{draft.title}</strong>
-          <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>/{draft.slug}</span>
-          <DocStatus
+          <strong className="block-editor__title" title={draft.title}>{draft.title}</strong>
+          <span className="block-editor__slug">/{draft.slug}</span>
+          <div className="block-editor__status" role="status"><DocStatus
             save={status}
             dirty={hasWc}
             error={error}
             pubStatus={draft.status}
             docUpdatedAt={draft.date_updated ?? null}
             lastDeployedAt={lastDeployedAt}
-          />
+          /></div>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div className="block-editor__actions">
           <div style={{ display: 'flex', gap: '0.125rem' }}>
             <button
               type="button"
@@ -682,14 +714,15 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               <Redo2 size={14} />
             </button>
           </div>
-          <DeviceToggle activeBp={activeBp} onChange={setActiveBp} />
+          <div className="block-editor__desktop-devices"><DeviceToggle activeBp={activeBp} onChange={setActiveBp} /></div>
           {selectedBlockType?.extension && <button type="button" style={metaBtn(false)} onClick={configureExtensionPreview} title="Set URL values for the Extension preview without saving them">
             URL context
           </button>}
           <button
             type="button"
             style={metaBtn(!selectedId)}
-            onClick={() => setSelectedId(null)}
+            onClick={showPageSettings}
+            aria-label="Page settings"
             title="Page metadata — title & SEO"
           >
             <SlidersHorizontal size={14} /> Meta
@@ -710,7 +743,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
             scheduledPublishAt={draft.publish_at ?? null}
             scheduledUnpublishAt={draft.unpublish_at ?? null}
             onSchedule={changeSchedule}
-            onReviewChanges={() => setReviewOpen(true)}
+            onReviewChanges={() => { void reviewChanges(); }}
           />
           {reviewOpen && (
             <ReviewChanges
@@ -723,10 +756,18 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
         </div>
       </header>
 
+      <nav className="block-editor__mobile-nav" aria-label="Editor panels">
+        {(['blocks', 'preview', 'fields'] as const).map((pane) => (
+          <button type="button" key={pane} aria-pressed={mobilePane === pane}
+            aria-controls={`block-editor-${pane}`} onClick={() => setMobilePane(pane)}>
+            {pane === 'blocks' ? 'Blocks' : pane === 'preview' ? 'Preview' : selectedId ? 'Edit block' : 'Settings'}
+          </button>
+        ))}
+      </nav>
       <DndContext {...dnd.contextProps}>
-      <div style={threeCol}>
+      <div className="block-editor__body">
         {/* Left panel: tabs + content */}
-        <aside style={leftPanel}>
+        <aside id="block-editor-blocks" className="block-editor__blocks">
           <div style={tabBar}>
             <button
               type="button"
@@ -743,7 +784,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               <GripVertical size={14} /> Structure
             </button>
           </div>
-          <div style={leftBody}>
+          <div className="block-editor__block-list">
             {leftTab === 'add' && (
               <BlockLibrary
                 registry={registry}
@@ -761,7 +802,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               <BlockTree
                 blocks={draft.blocks ?? []}
                 selectedId={selectedId}
-                onSelect={setSelectedId}
+                onSelect={selectBlock}
                 onRemove={handleRemove}
                 onDuplicate={handleDuplicate}
                 onRename={handleRename}
@@ -773,7 +814,9 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
         </aside>
 
         {/* Center: preview */}
-        <main ref={centerRef} style={centerPanel}>
+        <section id="block-editor-preview" className="block-editor__preview">
+          <div className="block-editor__mobile-devices"><DeviceToggle activeBp={activeBp} onChange={setActiveBp} /></div>
+          <div ref={centerRef} className="block-editor__canvas">
           <div style={frameOuter}>
             <div style={{
               width: typeof frameW === 'number' ? `${frameW}px` : frameW,
@@ -791,12 +834,16 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               />
             </div>
           </div>
-        </main>
+          </div>
+        </section>
 
         {/* Right: field form */}
-        <aside style={rightPanel}>
+        <aside id="block-editor-fields" className="block-editor__fields">
           {selected ? (
             <BlockFieldForm
+              key={selected.block.id}
+              flushRef={fieldFlush}
+              onDirty={() => setHasWc(true)}
               siteId={siteId}
               block={selected.block}
               blockType={registry.get(selected.block.type) ?? null}
@@ -882,10 +929,16 @@ function LibraryCard({ bt, onAdd }: { bt: BlockType; onAdd: (typeId: string) => 
       ref={setNodeRef}
       type="button"
       onClick={() => onAdd(bt.id)}
-      style={{ ...libraryCard, opacity: isDragging ? 0.4 : 1, touchAction: 'none' }}
+      style={{ ...libraryCard, opacity: isDragging ? 0.4 : 1, touchAction: 'pan-y' }}
       title={`Add ${bt.label} — or drag it where you want it`}
       {...attributes}
       {...listeners}
+      className="block-editor__library-card"
+      onPointerDown={(event) => {
+        // Touch users tap to add and swipe to scroll the library. Tree handles
+        // still support dragging; desktop library cards remain draggable.
+        if (event.pointerType !== 'touch') listeners?.onPointerDown?.(event);
+      }}
     >
       <Icon size={20} />
       <span style={{ fontSize: '.8rem' }}>{bt.label}</span>
@@ -1083,10 +1136,11 @@ function BlockNodeInner({
   return (
     <>
       <div
+        className="block-editor__tree-row"
         style={treeRow(isSelected, depth)}
         onClick={() => onSelect(block.id)}
       >
-        <span {...dragHandleProps} style={dragHandle} title="Drag to move">
+        <span {...dragHandleProps} style={{ ...dragHandle, touchAction: 'none' }} title="Drag to move">
           <GripVertical size={12} />
         </span>
         {expandable ? (
@@ -1110,7 +1164,7 @@ function BlockNodeInner({
             style={renameInput}
           />
         ) : (
-          <span
+          <button type="button" className="block-editor__block-name" aria-label={`Edit ${rowLabel}`}
             title={`${rowLabel} — double-click to rename`}
             onDoubleClick={(e) => { e.stopPropagation(); startRename(); }}
             style={{
@@ -1119,7 +1173,7 @@ function BlockNodeInner({
             }}
           >
             {rowLabel}
-          </span>
+          </button>
         )}
         <button
           type="button"
@@ -1218,8 +1272,8 @@ function MetaPanel({
       </p>
 
       <div style={fieldGroup}>
-        <label style={fieldLabel}>Page title</label>
-        <input
+        <label htmlFor="block-page-title" style={fieldLabel}>Page title</label>
+        <input id="block-page-title"
           style={textInput}
           value={draft.title ?? ''}
           onChange={(e) => onChange('title', e.target.value)}
@@ -1228,8 +1282,8 @@ function MetaPanel({
       </div>
 
       <div style={fieldGroup}>
-        <label style={fieldLabel}>SEO title</label>
-        <input
+        <label htmlFor="block-seo-title" style={fieldLabel}>SEO title</label>
+        <input id="block-seo-title"
           style={textInput}
           value={draft.seo_title ?? ''}
           onChange={(e) => onChange('seo_title', e.target.value)}
@@ -1247,8 +1301,8 @@ function MetaPanel({
       </label>
 
       <div style={fieldGroup}>
-        <label style={fieldLabel}>Meta description</label>
-        <textarea
+        <label htmlFor="block-meta-description" style={fieldLabel}>Meta description</label>
+        <textarea id="block-meta-description"
           style={{ ...textareaInput, minHeight: '4.5rem' }}
           value={draft.seo_description ?? ''}
           onChange={(e) => onChange('seo_description', e.target.value)}
@@ -1257,8 +1311,8 @@ function MetaPanel({
       </div>
 
       <div style={fieldGroup}>
-        <label style={fieldLabel}>OG image (URL)</label>
-        <input
+        <label htmlFor="block-og-image" style={fieldLabel}>OG image (URL)</label>
+        <input id="block-og-image"
           style={textInput}
           value={draft.og_image ?? ''}
           onChange={(e) => onChange('og_image', e.target.value)}
@@ -1267,8 +1321,8 @@ function MetaPanel({
       </div>
 
       <div style={fieldGroup}>
-        <label style={fieldLabel}>OG image alt text</label>
-        <input
+        <label htmlFor="block-og-alt" style={fieldLabel}>OG image alt text</label>
+        <input id="block-og-alt"
           style={textInput}
           value={draft.seo_image_alt ?? ''}
           onChange={(e) => onChange('seo_image_alt', e.target.value)}
@@ -1277,8 +1331,8 @@ function MetaPanel({
       </div>
 
       <div style={fieldGroup}>
-        <label style={fieldLabel}>Canonical URL</label>
-        <input
+        <label htmlFor="block-canonical" style={fieldLabel}>Canonical URL</label>
+        <input id="block-canonical"
           style={textInput}
           value={draft.canonical_url ?? ''}
           onChange={(e) => onChange('canonical_url', e.target.value)}
@@ -1304,30 +1358,56 @@ function MetaPanel({
 }
 
 export function BlockFieldForm({
-  siteId, block, blockType, activeBp = DEFAULT_BP, onChange,
+  siteId, block, blockType, activeBp = DEFAULT_BP, onChange, flushRef, onDirty,
 }: {
   siteId?: string;
   block: Block;
   blockType: BlockType | null;
   activeBp?: Breakpoint;
-  onChange: (data: Record<string, unknown>) => void;
+  onChange: (data: Record<string, unknown>) => void | Promise<void>;
+  flushRef?: React.MutableRefObject<(() => Promise<void>) | null>;
+  onDirty?: () => void;
 }) {
   const [local, setLocal] = useState<Record<string, unknown>>(block.data ?? {});
   const saveTimer = useRef<number | null>(null);
+  const pending = useRef<Record<string, unknown>>({});
+  const changeRef = useRef(onChange);
+  changeRef.current = onChange;
+
+  async function flush(): Promise<void> {
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    const data = pending.current;
+    if (Object.keys(data).length === 0) return;
+    pending.current = {};
+    try {
+      await changeRef.current(data);
+    } catch (e) {
+      pending.current = { ...data, ...pending.current };
+      throw e;
+    }
+  }
+
+  useEffect(() => {
+    if (flushRef) flushRef.current = flush;
+    return () => {
+      if (flushRef) flushRef.current = null;
+      // Moving to metadata or another block must not leave a delayed edit
+      // behind the next review/save action.
+      void flush().catch(() => {});
+    };
+  }, [block.id, flushRef]);
 
   useEffect(() => {
     setLocal(block.data ?? {});
   }, [block.id]);
 
   function commit(field: string, storedValue: unknown) {
-    const next = { ...local, [field]: storedValue };
-    setLocal(next);
+    setLocal((current) => ({ ...current, [field]: storedValue }));
+    // Preserve every field edited within the debounce window.
+    pending.current[field] = storedValue === undefined ? null : storedValue;
+    onDirty?.();
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => {
-      // null clears the field server-side; the PATCH merges shallowly so a
-      // single-field body is enough.
-      onChange({ [field]: storedValue === undefined ? null : storedValue });
-    }, 600);
+    saveTimer.current = window.setTimeout(() => { void flush().catch(() => {}); }, 600);
   }
 
   function set(fieldName: string, value: unknown, responsive: boolean, fallback: unknown) {
@@ -1353,7 +1433,7 @@ export function BlockFieldForm({
   return (
     <div>
       <h3 style={{ marginTop: 0, fontSize: '0.95rem' }}>{blockType.label}</h3>
-      <p style={{ fontSize: '.75rem', opacity: 0.6, marginTop: '-0.5rem' }}>{blockType.id}</p>
+      <p style={{ fontSize: '.75rem', opacity: 0.6, marginTop: 0, marginBottom: '1rem' }}>{blockType.id}</p>
       <form onSubmit={(e) => e.preventDefault()}>
         {blockType.schema.map((f) => {
           const raw = local[f.name];
@@ -1393,8 +1473,9 @@ function FieldInput({
   activeBp?: Breakpoint;
   hasOwn?: boolean;
 }) {
+  const fieldId = useId();
   const label = (
-    <label style={fieldLabel}>
+    <label htmlFor={fieldId} style={fieldLabel}>
       {field.label}
       {responsive && activeBp && (
         <ResponsiveBadge activeBp={activeBp} hasOwn={!!hasOwn} onReset={() => onChange('')} />
@@ -1415,7 +1496,7 @@ function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <textarea
+          <textarea id={fieldId}
             rows={isCode ? 24 : field.type === 'richtext' ? 8 : 4}
             value={v}
             placeholder={field.placeholder}
@@ -1429,7 +1510,7 @@ function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <select value={v} onChange={(e) => onChange(e.target.value)} style={selectInput}>
+          <select id={fieldId} value={v} onChange={(e) => onChange(e.target.value)} style={selectInput}>
             {(field.options ?? []).map((opt, index) => (
               <option key={opt} value={opt}>{field.option_labels?.[index] ?? opt}</option>
             ))}
@@ -1440,7 +1521,7 @@ function FieldInput({
       return (
         <div style={fieldGroup}>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '.85rem' }}>
-            <input
+            <input id={fieldId}
               type="checkbox"
               checked={!!value}
               onChange={(e) => onChange(e.target.checked)}
@@ -1460,7 +1541,7 @@ function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <input
+          <input id={fieldId}
             type="number"
             value={(value as number) ?? ''}
             onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
@@ -1473,7 +1554,7 @@ function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <textarea
+          <textarea id={fieldId}
             rows={5}
             value={Array.isArray(value) ? value.map(String).join('\n') : ''}
             placeholder={field.placeholder ?? 'One value per line'}
@@ -1516,7 +1597,7 @@ function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <input
+          <input id={fieldId}
             type={field.type === 'email' ? 'email' : field.type === 'date' ? 'date' : field.type === 'datetime' ? 'datetime-local' : 'text'}
             value={v}
             placeholder={field.placeholder}
@@ -1713,7 +1794,7 @@ function ResponsiveBadge({
 }) {
   const label = BREAKPOINTS[activeBp].label;
   return (
-    <span style={respBadge} title={`Value for ${label}. Switch screen size in the header to set other breakpoints.`}>
+    <span style={respBadge} title={`Value for ${label}. Use the device controls to set other breakpoints.`}>
       <Monitor size={10} style={{ opacity: 0.7 }} />
       <span>{hasOwn ? label : `${label} · inherited`}</span>
       {hasOwn && (
@@ -1890,19 +1971,6 @@ function forEachBlock(blocks: Block[], cb: (b: Block) => void): void {
 
 // ─── Styles ─────────────────────────────────────────────────────────────
 
-const shell: React.CSSProperties = {
-  display: 'flex', flexDirection: 'column', height: '100vh', background: '#0f0f12', color: '#e4e4e7',
-};
-const topBar: React.CSSProperties = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  padding: '0.5rem 1rem', borderBottom: '1px solid #2a2a30',
-};
-const threeCol: React.CSSProperties = {
-  display: 'grid', gridTemplateColumns: '280px 1fr 320px', flex: 1, overflow: 'hidden',
-};
-const leftPanel: React.CSSProperties = {
-  display: 'flex', flexDirection: 'column', borderRight: '1px solid #2a2a30', overflow: 'hidden',
-};
 const tabBar: React.CSSProperties = {
   display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0, borderBottom: '1px solid #2a2a30',
 };
@@ -1916,14 +1984,9 @@ const tabBtn = (active: boolean): React.CSSProperties => ({
   cursor: 'pointer',
   fontSize: '.85rem',
 });
-const leftBody: React.CSSProperties = { flex: 1, overflow: 'auto', padding: '0.75rem' };
-const centerPanel: React.CSSProperties = { padding: '1rem', overflow: 'hidden', background: '#0a0a0d' };
 const frameOuter: React.CSSProperties = {
   width: '100%', height: '100%', display: 'flex', justifyContent: 'center',
   alignItems: 'flex-start', overflow: 'hidden',
-};
-const rightPanel: React.CSSProperties = {
-  borderLeft: '1px solid #2a2a30', padding: '1rem', overflow: 'auto',
 };
 const emptyHint: React.CSSProperties = { padding: '1rem', color: '#a1a1aa' };
 const metaBtn = (active: boolean): React.CSSProperties => ({

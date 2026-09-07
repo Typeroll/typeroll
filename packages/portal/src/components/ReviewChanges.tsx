@@ -1,8 +1,9 @@
 // "Review changes" overlay — the trust layer of the buffer model. Shows
 // the SAVED page and the DRAFT side by side (same preview renderer the
-// editor uses; the ?embed=1 view overlays working copies, the plain view
-// does not) plus the structured diff from /pages/{id}/changes. This is how
-// a human audits what an agent (or a colleague, or past-them) left in the
+// editor uses; ?embed=1 overlays working copies, ?embed=1&saved=1
+// renders the saved baseline) plus the structured diff from
+// /pages/{id}/changes. This is how a human audits what an agent
+// (or a colleague, or past-them) left in the
 // draft before hitting Save.
 
 import { useEffect, useRef, useState } from 'react';
@@ -80,13 +81,13 @@ export default function ReviewChanges({ siteId, pageId, previewUrl, onClose }: P
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const savedUrl = previewUrl + (previewUrl.includes('?') ? '&' : '?') + `canvas=${encodeURIComponent(leftCanvasId)}`;
+  const savedUrl = previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&saved=1&canvas=${encodeURIComponent(leftCanvasId)}`;
   const draftUrl = previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&canvas=${encodeURIComponent(rightCanvasId)}`;
   const changes = summary?.block_changes ?? [];
 
   return (
-    <div style={overlay} role="dialog" aria-label="Review changes">
-      <header style={header}>
+    <div className="review-changes" style={overlay} role="dialog" aria-label="Review changes">
+      <header className="review-changes__header" style={header}>
         <strong style={{ fontSize: '0.95rem' }}>Review changes</strong>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
           {error && <span style={{ color: '#f87171', fontSize: '.8rem' }}>{error}</span>}
@@ -107,7 +108,7 @@ export default function ReviewChanges({ siteId, pageId, previewUrl, onClose }: P
           <X size={16} />
         </button>
       </header>
-      <div style={panes}>
+      <div className="review-changes__panes" style={panes}>
         <div style={pane}>
           <div style={paneLabel}>Saved</div>
           <iframe ref={leftRef} src={savedUrl} title="Saved version" style={frame} />
@@ -117,6 +118,17 @@ export default function ReviewChanges({ siteId, pageId, previewUrl, onClose }: P
           <iframe ref={rightRef} src={draftUrl} title="Utkast" style={frame} />
         </div>
       </div>
+      <style>{`
+        .review-changes__header > strong, .review-changes__header > button { flex-shrink: 0; }
+        @media (max-width: 700px) {
+          .review-changes { height: 100dvh; }
+          .review-changes__header { flex-wrap: wrap; }
+          .review-changes__header > div { order: 3; flex-basis: 100% !important; max-height: 20dvh; overflow: auto; }
+          .review-changes__header > button { margin-left: auto; min-width: 44px; min-height: 44px; }
+          .review-changes__panes { flex-direction: column; }
+          .review-changes__panes > div { min-height: 0; }
+        }
+      `}</style>
     </div>
   );
 }
