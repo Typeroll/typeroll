@@ -1,82 +1,100 @@
 # Customer-owned publishing implementation
 
-The target architecture is one-way publication from Typeroll to customer-owned
-Git repositories, builds, media storage, and static hosting. Typeroll remains
-the supported editor. Each site version can publish to a generated
-`version-<id>` Git branch; `main` serves the production site. Merging content
-happens in Typeroll before generating the next complete publication tree.
+Typeroll publishes generated source in one direction to the customer's GitHub
+organization. The customer's Cloudflare account builds that source and serves
+static files. Typeroll remains the supported editor: manual repository changes
+are not imported and the next publication replaces the generated tree.
 
-## Current implementation boundary
+## Organization and Site
 
-The phase-zero provider probe is implemented in
-`scripts/customer-publishing-probe.mjs`. It generates three synthetic 50-page
-Astro source projects, creates or resumes dedicated private repositories and
-Git-connected Pages projects, and checks a separate version preview without
-moving the published site. It also verifies one direct presigned R2 upload and
-readback in an existing bucket. It never attaches customer domains or imports
-customer content.
+An Organization connects one GitHub App installation and one Cloudflare account
+under **Settings → Publishing**. The connection covers newly created site
+repositories, so it does not need repeating for every Site. Cloudflare's own
+GitHub integration must also have access to those repositories.
 
-This is the provider onboarding probe. The portal now shares the provider
-boundary for organization account connections, but its publish action is not
-yet connected to Git. The synthetic renderer does not prove
-parity with Typeroll's renderer, Forms, Extensions, media optimization, preview,
-or a complete snapshot export. Those remain subsequent implementation gates. A successful
-Node upload does not establish browser CORS or tenant authorization; both need
-their own application tests.
+Organization settings separate the optional site-address base from the shared
+media hostname. Each Site has its own generated private repository, Pages
+project, website hostname, media hostname and version branches. Root-domain
+hosting and unrelated subdomains are outside this configuration.
 
-### Organization account connections
+Editing, AI-agent access, saving, private uploads and temporary previews can be
+used before publishing accounts or domains are connected. Customer publication
+is gated by the readiness API and points to Publishing when setup is incomplete.
+See the [setup guide](customer-owned-publishing-setup.md) for navigation,
+permissions, DNS options and runtime configuration.
 
-The Core 0.1.15 candidate adds `/app/settings/publishing` and the
-`/api/orgs/publishing` routes. Explicit organization owners/admins can verify a
-GitHub App installation using GitHub OAuth with PKCE and organization-owner
-verification, and connect encrypted Cloudflare/R2 credentials. Account ownership
-claims prevent cross-tenant reuse; connection revisions protect rotation and
-disconnect against stale requests. The shared provider implementation is in
-`packages/portal/src/lib/publishing/providers.mjs`; the CLI keeps its existing
-import through a re-export.
+## Frozen source and version branches
 
-Cloudflare connection verifies account/Pages read access and R2 object
-write/read/delete access. It does not create Pages projects, connect Cloudflare's
-GitHub App, configure public media domains/CORS, or migrate media. Standard
-global R2 buckets are supported in this first connection. GitHub App registration
-and a real customer account trial remain pending; local automated tests do not
-count as that evidence. See the [setup guide](customer-owned-publishing-setup.md)
-for App permissions, environment variables, and exact callback configuration.
+The portal's customer publication queue freezes the selected version before
+calling GitHub. Pages, blocks, templates, collections, redirects and public
+runtime settings are projected into an independently buildable Astro project.
+Draft content and private configuration are excluded. Supported public content
+is rendered by the vendored Core renderer, rather than a second synthetic
+renderer. Unsupported content fails validation.
 
-### Portable HTML publication
+`main` is the site's production branch. A Typeroll version publishes to its own
+`version-<id>` branch and preview address. Content merges happen in Typeroll.
+Subsequent edits do not alter an in-flight publication snapshot. Complete Git
+trees remove obsolete generated files; ref updates preserve history and never
+force-push over a concurrent change.
 
-`scripts/lib/static-publication.mjs` adds an initial real-renderer source
-generator for HTML sites without Forms, active modules, Extensions, collections,
-custom blocks/templates, or custom redirects. Unsupported features fail closed.
-This bounded generator is separate from the synthetic three-site provider probe
-and is not wired to the portal's publish action.
+The generated repository includes a dependency lock, source integrity manifest
+and public publication manifest. `npm ci && npm run build` produces `dist/`.
+It is a static publication snapshot, not a complete CMS backup. Independent
+builds require access to the referenced customer media. Forms, Apps and
+Extensions may still depend on their declared runtime owners.
 
-`projectStaticPublication` allowlists public fields, excludes drafts and unused
-media, and records permanent media URLs plus precomputed variants. It does not
-publish a raw CMS export. `createStaticPublicationProject` vendors the Core
-renderer, shared source, and static postprocessing with a fixture-only data
-reader. A generated dependency lock and `sealPublicationProject` freeze the
-source files before publication. The resulting repository builds with
-`npm ci && npm run build` and outputs `dist/` without contacting the CMS.
+## Media and runtime dependencies
 
-The build invokes Astro through the current Node binary instead of the host's
-npm shim. A real generated-renderer regression test runs without HOME and with
-an unusable npm shim, covering the managed build environment failure observed
-during the first provider build.
+Before customer storage is ready, uploads use private draft storage. Once
+verified organization storage is active, new uploads go directly from the
+browser to that account's private R2 bucket. WordPress media imports follow the
+same storage policy. Original bytes are verified before media becomes ready.
+Organization migration verifies copies and reference changes while preserving
+media identities and concurrent edits.
 
-This first contract preserves existing media delivery URLs; it does not migrate
-storage or optimize images. Portable builds therefore still depend on retaining
-those media resources. Pilot publications default to noindex and preserve the
-original canonical site URL. This is source for an independently buildable
-static publication, not a complete CMS backup.
+Customer builds receive short-lived, object-specific media grants outside Git.
+Originals and responsive image variants are written to the customer's public
+media bucket. Image bytes, S3 keys and upload grants are never committed to the
+source repository. Organization and retained site-media aliases continue to
+refer to the same immutable objects after a hostname change.
 
-Run the focused public projection and real-renderer checks with:
+Forms and Extensions use their existing public runtime contracts. Only public
+endpoint/configuration data enters the snapshot; action credentials do not.
+Dynamic requests go directly to the runtime owner. The website itself must
+remain a static Pages deployment without Functions.
 
-```sh
-node --test scripts/static-publication.test.mjs
-```
+## Publication verification and domain changes
 
-## Account prerequisites
+A successful Git push is not a successful publication. The publisher matches
+Cloudflare's project, branch, commit and deployment environment, verifies static
+output and probes the immutable publication marker before reporting availability.
+Provider build status is available through the authenticated site API and MCP
+`get_deploy_status` with `include_provider: true`. It excludes provider secrets
+and environment-variable configuration.
+
+A domain change freezes future website/media origins into a candidate before
+traffic cutover. The preparation API reports certificate and DNS requirements;
+external agents can apply those requirements with their own DNS access.
+Automatic DNS changes use the connected account and compare the approved record
+fingerprint to prevent overwriting intervening edits. Typeroll independently
+verifies the candidate and public result. Existing-destination conflicts must be
+resolved explicitly; a saved hostname alone does not establish a safe cutover.
+
+Customer publishing cost records sum active publisher attempts. They exclude
+queue backoff and the customer's asynchronous build time. These are gross
+compute estimates, not invoice allocations: concurrent requests can share an
+instance, and CMS, preview, database and storage costs remain separate.
+
+## Evidence boundary
+
+Local source-generation, queue, provider, authorization and browser tests cover
+these contracts. Passing them does not prove a customer's actual GitHub,
+Cloudflare, media or DNS setup. Record live customer-account results separately,
+including create/edit/delete, publication status, branches, private uploads,
+public assets, indexing, domain transitions and independent repository builds.
+
+## Optional provider probe
 
 Follow the [customer account setup guide](customer-owned-publishing-setup.md)
 for the customer-facing permissions and credential contract. Personal developer
@@ -186,8 +204,8 @@ repository, change a Direct Upload project, or repair a customer's settings.
 the previous commit as parent, and advances the ref without force. It removes
 stale/generated/manual files, skips unchanged trees, and leaves `main` unchanged
 when publishing a version branch. Concurrent ref changes fail instead of
-force-overwriting history. Production integration still needs a durable queue
-per site/version and publication records; the probe is a single-operator tool.
+force-overwriting history. The portal uses a durable queue and per-version publication records; this separate
+probe remains a single-operator diagnostic tool.
 
 The observer matches project, branch, commit, environment and successful deploy
 stage. It rejects skipped builds and Functions, checks the immutable deployment

@@ -200,3 +200,11 @@ export function assertSuccessfulStaticDeployment(deployment, project) {
     throw new Error('Expected a completed static deployment without Functions');
   }
 }
+
+/** PATCH only the intended variable: round-tripping Pages config changes paired runtime settings. */
+export async function setPagesBuildMediaAccess(provider, projectRoot, environment, access) {
+  if (!['production', 'preview'].includes(environment)) throw new Error('Invalid Pages build environment');
+  return provider(projectRoot, { method: 'PATCH', body: { deployment_configs: {
+    [environment]: { env_vars: { TYPEROLL_BUILD_MEDIA_ACCESS: { type: 'secret_text', value: JSON.stringify(access) } } },
+  } } });
+}

@@ -4,7 +4,7 @@ import { getStore } from '../datastore';
 import { getConnection, ConnectionError } from './connections';
 import { githubConfiguration } from './github-connection';
 import { cloudflareClient } from './cloudflare-oauth';
-import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, assertSuccessfulStaticDeployment, digest, ProviderError } from './providers.mjs';
+import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment, digest, ProviderError } from './providers.mjs';
 import { getSiteDomains, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { resolvePublicationVersion } from './publication-version';
 import { assertPublishingReady } from './readiness';
@@ -179,12 +179,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         const accessSlot = await store.compareAndUpdateDoc<any>(buildSlot, value => !value.job_id || value.job_id === args.jobId, { job_id: args.jobId });
         if (!accessSlot) { await store.updateDoc(jobPath, { phase: 'waiting for the previous version build' }); return 'deferred'; }
         const access = await customerBuildMediaAccess(args.orgId, args.siteId, frozen.media_manifest, frozen.publication_id, frozen.retained_media_manifests);
-        await cloudflare(projectRoot, { method: 'PATCH', body: { deployment_configs: {
-          [environment]: { ...connectedProject.deployment_configs?.[environment], env_vars: {
-            ...connectedProject.deployment_configs?.[environment]?.env_vars,
-            TYPEROLL_BUILD_MEDIA_ACCESS: { type: 'secret_text', value: JSON.stringify(access) },
-          } },
-        } } });
+        await setPagesBuildMediaAccess(cloudflare, projectRoot, environment, access);
       }
       await store.updateDoc(jobPath, { phase: 'publishing to GitHub' });
       await assertLease();

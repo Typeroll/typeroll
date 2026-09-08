@@ -10,3 +10,4 @@ export function matchingDeployment(deployments: any[], target: { project: string
 export function assertSuccessfulStaticDeployment(deployment: any, project?: any): void;
 
 export function findPublicationDeployment(provider: ProviderClient, projectRoot: string, target: { project: string; commit: string; branch: string }): Promise<any>;
+export function setPagesBuildMediaAccess(provider: ProviderClient, projectRoot: string, environment: string, access: unknown): Promise<any>;

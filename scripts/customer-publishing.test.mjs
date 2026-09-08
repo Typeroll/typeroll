@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
   digest, createProviderClient, assertInstallation, publishTree, pagesProjectBody,
-  assertPagesProject, matchingDeployment, findPublicationDeployment, assertSuccessfulStaticDeployment,
+  assertPagesProject, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment,
 } from './lib/customer-publishing.mjs';
 import {
   buildPublishingProbePlan, probePublicationFiles, prepareProbeDirectory,
@@ -314,4 +314,24 @@ test('Pages lookup uses valid pagination and finds the exact commit beyond the f
   let count = 0;
   assert.equal(await findPublicationDeployment(async () => { count++; return []; }, '/projects/synthetic', target), null);
   assert.equal(count, 1);
+});
+
+
+test('Pages media access updates only the selected secret and leaves paired runtime configuration untouched', async () => {
+  const calls = [];
+  const provider = async (route, options) => {
+    // Actual Pages API rejects one-sided fail_open even when copied from its own GET response.
+    for (const config of Object.values(options.body.deployment_configs)) {
+      assert.equal(Object.hasOwn(config, 'fail_open'), false);
+      assert.deepEqual(Object.keys(config), ['env_vars']);
+      assert.deepEqual(Object.keys(config.env_vars), ['TYPEROLL_BUILD_MEDIA_ACCESS']);
+    }
+    calls.push(options);
+  };
+  for (const environment of ['production', 'preview']) {
+    await setPagesBuildMediaAccess(provider, '/projects/synthetic', environment, { synthetic: true });
+    assert.deepEqual(Object.keys(calls.at(-1).body.deployment_configs), [environment]);
+    assert.equal(calls.at(-1).body.deployment_configs[environment].env_vars.TYPEROLL_BUILD_MEDIA_ACCESS.type, 'secret_text');
+  }
+  await assert.rejects(setPagesBuildMediaAccess(provider, '/projects/synthetic', 'other', {}), /Invalid/);
 });
