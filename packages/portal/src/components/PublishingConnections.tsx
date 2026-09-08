@@ -210,7 +210,7 @@ export default function PublishingConnections() {
               <p>Open <strong>Storage &amp; databases → R2 object storage → Overview</strong> in the account below and complete the R2 subscription checkout. Enter billing details if Cloudflare asks for them.</p>
               <a href={r2Overview} target="_blank" rel="noreferrer">Open R2 activation in {cloudflareAccount?.account_name} ↗</a>
               <p>Return here and confirm below. Typeroll checks that activation is complete before continuing. You do not need to create a bucket or reconnect Cloudflare.</p>
-            </> : <p>{mediaError?.message || mediaNotice}</p>}
+            </> : <p style={{ overflowWrap: 'anywhere' }}>{mediaError?.message || mediaNotice}</p>}
           </div>}
           {mediaReady ? <>
             <p style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CircleCheck size={20} aria-hidden="true" style={{ color: 'var(--color-success)', flexShrink: 0 }} /><strong>R2 connected</strong></p>
