@@ -1,4 +1,4 @@
-import { getOrganizationDomains, publicationHostname } from './domain-config';
+import { canReplaceOrganizationMediaHost, getOrganizationDomains, publicationHostname } from './domain-config';
 import { getConnection, connectionSummary } from './connections';
 import { cloudflareClient } from './cloudflare-oauth';
 
@@ -32,7 +32,8 @@ export async function getOrganizationDomainStatus(orgId: string) {
     account_id: cf?.account_id ?? null, account_name: cf?.account_name ?? null, public_bucket: cf?.public_bucket ?? null,
     ownership: null, certificate: null, zone: null, zone_check: 'not_checked', steps: [],
   };
-  const result = () => ({ ...domains, domain_status: status });
+  const media_host_change_allowed = await canReplaceOrganizationMediaHost(orgId, domains);
+  const result = () => ({ ...domains, media_host_change_allowed, domain_status: status });
   if (!domains.media_host) return result();
   const host = publicationHostname(domains.media_host);
   if (!cf) {

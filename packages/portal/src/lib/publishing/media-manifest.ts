@@ -1,7 +1,7 @@
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getConnection, ConnectionError } from './connections';
-import { getSiteDomains, getOrganizationDomains, publicMediaPath } from './domain-config';
+import { getSiteDomains, getOrganizationDomains, markOrganizationMediaHostUsed, publicMediaPath } from './domain-config';
 import { siteMediaPrefix } from '../media-keys';
 
 export function replacePublicationReferences<T>(value: T, replacements: Map<string, string>): T {
@@ -74,6 +74,7 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
       cdn_url: url, variants: [], source_key: item.storage.key, sha256: item.sha256, size_bytes: item.size_bytes,
       public_key: publicKey, public_path: publicPath, aliases };
   });
+  await markOrganizationMediaHostUsed(orgId, organization);
   return { content: replacePublicationReferences(content, replacements), media: entries,
     manifest: { account_id: connection.cloudflare.account_id, original_bucket: connection.cloudflare.bucket, public_bucket: connection.cloudflare.public_bucket,
       media_host: host, website_host: websiteHost, dns_mode: domains.dns_mode, media_path_prefix: publicPrefix, site_prefix: prefix, entries } };

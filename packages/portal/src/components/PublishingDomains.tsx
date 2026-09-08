@@ -6,6 +6,7 @@ import type { OrganizationDomainStatus as DomainStatus } from '../lib/publishing
 
 type DomainData = {
   domain_status?: DomainStatus;
+  media_host_change_allowed?: boolean;
   sites_domain?: string | null; media_host?: string | null;
   revision: string; default_domain?: string | null; dns_mode: 'automatic' | 'external'; verified_at?: string | null;
   desired?: { website_host: string | null; media_host: string | null; media_path_prefix: string };

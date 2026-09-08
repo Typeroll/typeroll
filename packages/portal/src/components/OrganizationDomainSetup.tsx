@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { PublishingZone } from '../lib/publishing/organization-domain-setup';
 
-type Settings = { revision: string; media_host?: string | null; sites_domain?: string | null };
+type Settings = { media_host_change_allowed?: boolean; revision: string; media_host?: string | null; sites_domain?: string | null };
 export default function OrganizationDomainSetup({ data, busy, onSetup }: { data: Settings; busy: boolean; onSetup: (body: Record<string, string>) => Promise<void> }) {
   const [zones, setZones] = useState<PublishingZone[]>([]);
   const [zoneId, setZoneId] = useState('');
@@ -62,6 +62,7 @@ export default function OrganizationDomainSetup({ data, busy, onSetup }: { data:
     await onSetup({ revision: data.revision, zone_id: zoneId, media_subdomain: media, sites_subdomain: sites });
   }
   const differentMedia = Boolean(data.media_host && zone && `${media.trim().toLowerCase()}.${zone.name}` !== data.media_host);
+  const mediaChangeBlocked = differentMedia && data.media_host_change_allowed !== true;
   return <div className="stack">
     <p>Select a domain, then name the subdomains for media and sites.</p>
     {error && <p role="alert">{error}</p>}
@@ -85,10 +86,11 @@ export default function OrganizationDomainSetup({ data, busy, onSetup }: { data:
         <p className="muted">Site and version addresses: <strong>site-123.{sites.trim().toLowerCase() || 'sites'}.{zone.name}</strong>. Each site can later use its own domain.</p>
         {zone.status !== 'active' && <p>Cloudflare is still activating this domain. Complete its setup in Cloudflare → Domains, then refresh the list.</p>}
         {zone.type !== 'full' && <p>This domain uses external DNS. Open manual settings below for setup instructions.</p>}
-        {differentMedia && <p>Keep your existing media host, {data.media_host}, so published image links continue to work. Changing it requires a domain migration.</p>}
+        {differentMedia && !mediaChangeBlocked && <p>The saved media hostname has not been used. You can replace it with this address.</p>}
+        {mediaChangeBlocked && <p>Keep your existing media host, {data.media_host}, so published image links continue to work. Changing it requires a domain migration.</p>}
       </>}
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <button type="submit" className="btn" disabled={busy || loading || approvalRequired || !zone || zone.status !== 'active' || zone.type !== 'full' || differentMedia}>{busy ? 'Configuring domains…' : 'Configure domains'}</button>
+        <button type="submit" className="btn" disabled={busy || loading || approvalRequired || !zone || zone.status !== 'active' || zone.type !== 'full' || mediaChangeBlocked}>{busy ? 'Configuring domains…' : 'Configure domains'}</button>
         <button type="button" className="btn" disabled={busy || loading} onClick={() => void load(true)}>Refresh domain list</button>
       </div>
     </form>

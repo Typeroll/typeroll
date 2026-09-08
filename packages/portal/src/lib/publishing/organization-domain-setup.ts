@@ -61,7 +61,6 @@ export async function setupOrganizationDomains(orgId: string, input: Record<stri
   if (zone.status !== 'active') throw new ConnectionError('Cloudflare has not activated this domain yet. In Cloudflare → Domains, complete its setup and wait for Active, then refresh the domain list.', 409, 'domain_zone_pending');
   if (zone.type !== 'full') throw new ConnectionError('This domain uses external DNS. Use manual settings below to see the required records.', 409, 'domain_external_dns');
   const media_host = publicationHostname(`${mediaLabel}.${zone.name}`), sites_domain = publicationHostname(`${sitesLabel}.${zone.name}`);
-  if (current.media_host && current.media_host !== media_host) throw new ConnectionError('Keep the existing shared media host so published image links continue to work. Changing it requires a domain migration.', 409, 'domain_migration_required');
   const root = `/accounts/${cf.account_id}/r2/buckets/${cf.public_bucket}/domains/custom`;
   try {
     const attached = await provider(`${root}/${media_host}`, { missing: true });

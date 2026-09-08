@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import { describe, expect, it, vi } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { publicationHostname, publicMediaPath, parsePublicationHosts } from '../../lib/publishing/domain-config';
 
@@ -48,6 +49,8 @@ it('protects the organization default domain from an overwrite that would break 
   const initial = await getOrganizationDomains('org');
   const saved = await saveOrganizationDomains('org', { revision: initial.revision, default_domain: 'demos.example.com', dns_mode: 'external' });
   expect(saved.verified_at).toBeNull();
+  const { markOrganizationMediaHostUsed } = await import('../../lib/publishing/domain-config');
+  await markOrganizationMediaHostUsed('org', saved);
   await expect(saveOrganizationDomains('org', { revision: saved.revision, default_domain: 'other.example.com', dns_mode: 'external' })).rejects.toThrow('remain available');
   await expect(saveOrganizationDomains('org', { revision: saved.revision, default_domain: null, dns_mode: 'external' })).rejects.toThrow('remain available');
 });
@@ -79,4 +82,69 @@ it('separates organization site addresses from shared media and preserves legacy
   expect(saved).toMatchObject({ sites_domain: 'sites.example.com', media_host: 'media.example.com' });
   const next = await saveOrganizationDomains('org', { revision: saved.revision, sites_domain: 'demos.example.net', dns_mode: 'external' });
   expect(next).toMatchObject({ sites_domain: 'demos.example.net', media_host: 'media.example.com' });
+});
+
+it('corrects unused organization hosts, including sites with text-only Git publications', async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getStore } = await import('../../lib/datastore');
+  const { paths } = await import('@typeroll/shared');
+  const { getOrganizationDomains, saveOrganizationDomains, canReplaceOrganizationMediaHost } = await import('../../lib/publishing/domain-config');
+  const initial = await getOrganizationDomains('org');
+  const saved = await saveOrganizationDomains('org', { revision: initial.revision, default_domain: 'media.example.com', dns_mode: 'external' });
+  await getStore().setDoc(paths.site('org', 'site'), { name: 'Text only' });
+  const snapshot = JSON.stringify({ site_url: 'https://site.media.example.com', media_manifest: null, media: [] });
+  await getStore().setDoc(paths.deploy('org', 'site', 'text'), { git_publication: { snapshot_chunks: 1, snapshot_digest: createHash('sha256').update(snapshot).digest('hex') } });
+  await getStore().setDoc(`${paths.deploy('org', 'site', 'text')}/snapshot_chunks/0000`, { data: snapshot });
+  expect(await canReplaceOrganizationMediaHost('org', saved)).toBe(true);
+  const corrected = await saveOrganizationDomains('org', { revision: saved.revision, media_host: 'media-staging.example.com', sites_domain: 'sites-staging.example.com', dns_mode: 'automatic' });
+  expect(corrected).toMatchObject({ media_host: 'media-staging.example.com', sites_domain: 'sites-staging.example.com', verified_at: null });
+  await expect(saveOrganizationDomains('org', { revision: saved.revision, media_host: 'stale.example.com', dns_mode: 'external' })).rejects.toMatchObject({ code: 'domain_revision_conflict' });
+});
+
+it.each(['media record', 'verified host', 'frozen alias', 'incomplete history'])('protects a saved hostname with %s', async reason => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getStore } = await import('../../lib/datastore');
+  const { paths } = await import('@typeroll/shared');
+  const { getOrganizationDomains, saveOrganizationDomains, organizationDomainConfigPath, canReplaceOrganizationMediaHost } = await import('../../lib/publishing/domain-config');
+  const store = getStore();
+  const initial = await getOrganizationDomains('org');
+  await saveOrganizationDomains('org', { revision: initial.revision, media_host: 'old.example.com', dns_mode: 'external' });
+  await store.setDoc(paths.site('org', 'site'), { name: 'Site' });
+  if (reason === 'media record') await store.setDoc(`${paths.media('org', 'site')}/image`, { filename: 'image.png' });
+  if (reason === 'verified host') await store.updateDoc(organizationDomainConfigPath('org'), { verified_at: '2026-09-08T00:00:00Z' });
+  if (reason === 'frozen alias' || reason === 'incomplete history') {
+    const snapshot = JSON.stringify({ media_manifest: { media_host: 'images.client.com', entries: [{ aliases: [{ url: 'https://old.example.com/site/image.png' }] }] } });
+    await store.setDoc(paths.deploy('org', 'site', 'branch-job'), { version_id: 'other-branch', git_publication: { snapshot_chunks: 1, snapshot_digest: createHash('sha256').update(snapshot).digest('hex') } });
+    if (reason === 'frozen alias') await store.setDoc(`${paths.deploy('org', 'site', 'branch-job')}/snapshot_chunks/0000`, { data: snapshot });
+  }
+  const saved = await getOrganizationDomains('org');
+  expect(await canReplaceOrganizationMediaHost('org', saved)).toBe(false);
+  await expect(saveOrganizationDomains('org', { revision: saved.revision, media_host: 'new.example.com', dns_mode: 'external' })).rejects.toMatchObject({ code: 'domain_migration_required' });
+});
+
+it('rejects replacement when publishing reserves the old host during the empty-media scan', async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getStore } = await import('../../lib/datastore');
+  const { getOrganizationDomains, saveOrganizationDomains, markOrganizationMediaHostUsed, organizationDomainConfigPath } = await import('../../lib/publishing/domain-config');
+  const store = getStore();
+  const initial = await getOrganizationDomains('org');
+  const saved = await saveOrganizationDomains('org', { revision: initial.revision, media_host: 'old.example.com', dns_mode: 'external' });
+  const compare = store.compareAndUpdateDoc.bind(store);
+  const spy = vi.spyOn(store, 'compareAndUpdateDoc').mockImplementation(async (path, predicate, patch) => {
+    if (path === organizationDomainConfigPath('org') && patch.media_host === 'new.example.com') await markOrganizationMediaHostUsed('org', saved);
+    return compare(path, predicate, patch);
+  });
+  try {
+    await expect(saveOrganizationDomains('org', { revision: saved.revision, media_host: 'new.example.com', dns_mode: 'external' })).rejects.toMatchObject({ code: 'domain_revision_conflict' });
+    expect((await getOrganizationDomains('org')).media_host).toBe('old.example.com');
+  } finally { spy.mockRestore(); }
+});
+
+it('rejects a stale publication reservation after an unused hostname was replaced', async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getOrganizationDomains, saveOrganizationDomains, markOrganizationMediaHostUsed } = await import('../../lib/publishing/domain-config');
+  const initial = await getOrganizationDomains('org');
+  const saved = await saveOrganizationDomains('org', { revision: initial.revision, media_host: 'old.example.com', dns_mode: 'external' });
+  await saveOrganizationDomains('org', { revision: saved.revision, media_host: 'new.example.com', dns_mode: 'external' });
+  await expect(markOrganizationMediaHostUsed('org', saved)).rejects.toMatchObject({ code: 'domain_revision_conflict' });
 });

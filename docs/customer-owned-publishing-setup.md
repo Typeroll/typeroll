@@ -273,3 +273,16 @@ gates before migrating a real customer site.
 Typeroll remains the supported editor. Repositories contain generated source
 and content for independent builds; manual repository edits are not imported
 into the CMS.
+
+### Correcting an unused media hostname
+
+Publishing → Domains lets you replace a saved media hostname before it has
+been verified or used. Select the Cloudflare domain, enter the corrected media
+and sites subdomains, then select **Configure domains**. Typeroll checks the
+organization's media records and earlier Git publications before saving.
+Existing DNS destinations are never overwritten by this action.
+
+Once media uses the hostname, keep it available for existing image links.
+Replacing a used hostname requires a domain migration. The same check applies
+to manual settings and authenticated API/MCP requests, including publications
+on other version branches and media removed from the CMS.

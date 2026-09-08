@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { domainToASCII } from 'node:url';
 import { paths } from '@typeroll/shared';
 import { getStore } from '../datastore';
@@ -32,6 +32,8 @@ export interface OrganizationDomains {
   media_host: string | null;
   dns_mode: 'automatic' | 'external';
   verified_at: string | null;
+  /** Durable protection even after media records or deployment history are deleted. */
+  media_host_used_at?: string | null;
 }
 
 /** Accept a hostname, never a URL, IP address, path, wildcard or private name. */
@@ -109,6 +111,41 @@ export async function getOrganizationDomains(orgId: string): Promise<Organizatio
     media_host: Object.hasOwn(saved, 'media_host') ? saved.media_host : saved.default_domain };
 }
 
+/** Only unused, unverified hostnames can be corrected without an alias migration. */
+export async function canReplaceOrganizationMediaHost(orgId: string, current: OrganizationDomains): Promise<boolean> {
+  if (!current.media_host) return true;
+  if (current.verified_at || current.media_host_used_at) return false;
+  const store = getStore();
+  for (const site of await store.listDocs(paths.sites(orgId))) {
+    if ((await store.listDocs(paths.media(orgId, site.id), { limit: 1 })).length) return false;
+    // Older releases did not record host use. Include every version's frozen
+    // deployments: deleting a CMS media record does not unpublish its URLs.
+    for (const job of await store.listDocs<{ git_publication?: { snapshot_chunks: number; snapshot_digest: string } }>(paths.deploys(orgId, site.id))) {
+      if (!job.git_publication) continue;
+      const publication = job.git_publication;
+      if (!Number.isInteger(publication.snapshot_chunks) || publication.snapshot_chunks < 1 || publication.snapshot_chunks > 250) return false;
+      let snapshot = '';
+      for (let i = 0; i < publication.snapshot_chunks; i++) {
+        const chunk = await store.getDoc<{ data: string }>(`${paths.deploy(orgId, site.id, job.id)}/snapshot_chunks/${String(i).padStart(4, '0')}`);
+        if (typeof chunk?.data !== 'string') return false;
+        snapshot += chunk.data;
+      }
+      if (createHash('sha256').update(snapshot).digest('hex') !== publication.snapshot_digest) return false;
+      if (snapshot.includes(`https://${current.media_host}/`) || snapshot.includes(`http://${current.media_host}/`)) return false;
+    }
+  }
+  return true;
+}
+
+/** Reserve the origin before freezing URLs, atomically against a settings change. */
+export async function markOrganizationMediaHostUsed(orgId: string, current: OrganizationDomains) {
+  if (!current.media_host) return;
+  const saved = await getStore().compareAndUpdateDoc<OrganizationDomains>(organizationDomainConfigPath(orgId),
+    value => value.revision === current.revision,
+    { media_host_used_at: current.media_host_used_at ?? new Date().toISOString() });
+  if (!saved) throw new ConnectionError('Organization domains changed. Retry publishing with the current settings.', 409, 'domain_revision_conflict');
+}
+
 /** Saving intent cannot perform DNS writes, change live origins or publish content. */
 export async function saveSiteDomains(orgId: string, siteId: string, input: Record<string, unknown>) {
   const desired = parsePublicationHosts(input);
@@ -150,12 +187,12 @@ export async function saveOrganizationDomains(orgId: string, input: Record<strin
   const legacy = hostname('default_domain', current.default_domain);
   const sites_domain = hostname('sites_domain', Object.hasOwn(input, 'default_domain') ? legacy : current.sites_domain);
   const media_host = hostname('media_host', Object.hasOwn(input, 'default_domain') ? legacy : current.media_host);
-  if (current.media_host && current.media_host !== media_host) {
-    // Removing an origin requires a separate alias/dependency migration, never a plain settings overwrite.
+  const replacingMediaHost = Boolean(current.media_host && current.media_host !== media_host);
+  if (replacingMediaHost && !await canReplaceOrganizationMediaHost(orgId, current)) {
     throw new ConnectionError('The existing shared media host must remain available for published media. Prepare a domain migration before replacing it.', 409, 'domain_migration_required');
   }
   const changed = await getStore().compareAndUpdateDoc<OrganizationDomains>(organizationDomainConfigPath(orgId),
-    value => value.revision === input.revision,
+    value => value.revision === input.revision && (!replacingMediaHost || (!value.media_host_used_at && !value.verified_at)),
     { revision: randomUUID(), default_domain: legacy, sites_domain, media_host, dns_mode: input.dns_mode,
       verified_at: current.media_host === media_host ? current.verified_at : null });
   if (!changed) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');

@@ -171,3 +171,43 @@ test('refreshes newly added domains without account authorization and only asks 
   await expect(section.getByRole('alert')).toHaveText('Synthetic approval service unavailable');
   expect(authorizations).toBe(1);
 });
+
+for (const allowed of [true, false]) test(`saved media hostname replacement is ${allowed ? 'available when unused' : 'blocked when used'}`, async ({ page }) => {
+  const zone = { id: 'a'.repeat(32), name: 'example.com', status: 'active', type: 'full' };
+  await page.route('**/api/orgs/publishing/zones', route => route.fulfill({ json: { account_name: 'Example', domain_access: 'granted', zones: [zone] } }));
+  let submissions = 0;
+  await page.route('**/api/orgs/publishing/domains', async route => {
+    if (route.request().method() === 'POST') {
+      expect(route.request().postDataJSON()).toEqual({ revision: 'saved', zone_id: zone.id, media_subdomain: 'media-staging', sites_subdomain: 'sites-staging' });
+      submissions++;
+      return route.fulfill({ status: 409, json: { error: 'Domain settings changed. Reload before configuring domains.' } });
+    }
+    await route.fulfill({ json: { revision: 'saved', sites_domain: 'media.example.com', media_host: 'media.example.com', dns_mode: 'external', media_host_change_allowed: allowed } });
+  });
+  await authenticatePersona(page, 'owner');
+  await page.goto('/app/settings/publishing');
+  const section = page.getByRole('region', { name: 'Domains', exact: true });
+  await expect(section.getByLabel('Media subdomain')).toHaveValue('media');
+  await section.getByLabel('Media subdomain').fill('media-staging');
+  await section.getByLabel('Sites subdomain').fill('sites-staging');
+  const button = section.getByRole('button', { name: 'Configure domains', exact: true });
+  if (allowed) {
+    await expect(button).toBeEnabled();
+    await expect(section.getByText('The saved media hostname has not been used.', { exact: false })).toBeVisible();
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await section.screenshot({ path: `test-results/unused-domain-${width}.png`, animations: 'disabled' });
+    }
+    await button.click();
+    expect(submissions).toBe(1);
+    await expect(section.getByRole('alert')).toContainText('Domain settings changed.');
+    await expect(section.getByLabel('Media subdomain')).toHaveValue('media-staging');
+  } else {
+    await expect(button).toBeDisabled();
+    await expect(section.getByText('Keep your existing media host, media.example.com', { exact: false })).toBeVisible();
+    await section.getByLabel('Media subdomain').fill('media');
+    await expect(button).toBeEnabled();
+    expect(submissions).toBe(0);
+  }
+});

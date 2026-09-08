@@ -96,6 +96,8 @@ it('uses the exact organization media host and preserves frozen paths after CMS 
   await saveSiteDomains('org', 'site', { revision: config.revision, website_host: 'www.example.com',
     media_host: 'images.example.com', media_path_prefix: '', dns_mode: 'external' });
   await getStore().deleteDoc(mediaPath);
+  const { canReplaceOrganizationMediaHost } = await import('../../lib/publishing/domain-config');
+  expect(await canReplaceOrganizationMediaHost('org', await getOrganizationDomains('org'))).toBe(false);
   const next = await publicationMediaManifest('org', 'site', first.content, 'www.example.com',
     { site_url: 'https://site.demos.example.com', media_manifest: first.manifest });
   expect(next.content.html_content).toBe('<img src="https://images.example.com/archive/photo.png">');

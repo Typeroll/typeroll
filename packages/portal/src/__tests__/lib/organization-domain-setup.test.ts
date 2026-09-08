@@ -2,7 +2,7 @@ import { ProviderError } from '../../lib/publishing/providers.mjs';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { listOrganizationPublishingZones, setupOrganizationDomains } from '../../lib/publishing/organization-domain-setup';
 import { getOrganizationDomains, saveOrganizationDomains } from '../../lib/publishing/domain-config';
-import { getConnection, connectionSummary, openCredentials } from '../../lib/publishing/connections';
+import { ConnectionError, getConnection, connectionSummary, openCredentials } from '../../lib/publishing/connections';
 import { cloudflareClient } from '../../lib/publishing/cloudflare-oauth';
 import { preparePublicMediaDomains } from '../../lib/publishing/media-domain';
 import { requestMediaMigration } from '../../lib/publishing/media-migration';
@@ -61,10 +61,12 @@ it('rejects stale revisions and invalid labels before provider calls', async () 
   }
   expect(provider).not.toHaveBeenCalled();
 });
-it('preserves published media aliases by rejecting replacement of a saved media host', async () => {
+it('enforces the shared media-use guard before attaching a replacement host', async () => {
   vi.mocked(getOrganizationDomains).mockResolvedValue({ ...settings, media_host: 'old.example.com' });
+  vi.mocked(saveOrganizationDomains).mockRejectedValue(new ConnectionError('Existing media must remain available.', 409, 'domain_migration_required'));
   await expect(setupOrganizationDomains('org', input)).rejects.toMatchObject({ code: 'domain_migration_required' });
-  expect(saveOrganizationDomains).not.toHaveBeenCalled();
+  expect(preparePublicMediaDomains).not.toHaveBeenCalled();
+  expect(requestMediaMigration).not.toHaveBeenCalled();
 });
 it('returns the saved revision and a precise retry instruction after a denied write', async () => {
   vi.mocked(preparePublicMediaDomains).mockRejectedValue(new ProviderError('Cloudflare', 403));
@@ -96,4 +98,11 @@ it('requests additional approval only when the saved OAuth grant lacks domain pe
   provider.mockResolvedValue([]);
   expect(await listOrganizationPublishingZones('org')).toMatchObject({ zones: [], domain_access: 'granted' });
   expect(provider).toHaveBeenCalledOnce();
+});
+
+it('allows the shared guard to authorize replacement of an unused saved hostname', async () => {
+  vi.mocked(getOrganizationDomains).mockResolvedValue({ ...settings, media_host: 'old.example.com' });
+  await expect(setupOrganizationDomains('org', input)).resolves.toMatchObject({ setup_error: null });
+  expect(saveOrganizationDomains).toHaveBeenCalledWith('org', expect.objectContaining({ media_host: 'media.example.com' }), { queueMigration: false });
+  expect(preparePublicMediaDomains).toHaveBeenCalled();
 });
