@@ -62,3 +62,15 @@ describe('getDeployQueue', () => {
     })).rejects.toThrow('Site not found');
   });
 });
+
+
+it('uses a separate deterministic queue identity for a frozen publication continuation', async () => {
+  const { deployTaskIdentity, firestoreDeployQueueItemId } = await import('../../lib/deploy/queue');
+  const initial = { orgId: 'org', siteId: 'site', jobId: 'job' };
+  const continued = { ...initial, dispatchKey: 'a'.repeat(16) };
+  expect(deployTaskIdentity(initial)).toBe('job');
+  expect(deployTaskIdentity(continued)).toBe('job-' + 'a'.repeat(16));
+  expect(firestoreDeployQueueItemId(continued)).not.toBe(firestoreDeployQueueItemId(initial));
+  expect(firestoreDeployQueueItemId(continued)).toBe(firestoreDeployQueueItemId({ ...continued }));
+  expect(() => deployTaskIdentity({ ...initial, dispatchKey: '../other' })).toThrow('identity');
+});

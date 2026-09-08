@@ -109,10 +109,13 @@ it('prepares a future domain on a separate branch while the current website rema
   const candidateBranch = mocks.push.mock.calls[0][1].branch;
   expect(candidateBranch).toMatch(/^version-domain-/);
   complete(candidateBranch); mocks.probe.mockResolvedValue(true);
-  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await executeCustomerPublication(args)).toBe('ran');
   expect(mocks.push).toHaveBeenCalledTimes(1);
   expect((await getSiteDomains('org', 'site')).active).toEqual(active);
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ phase: 'awaiting domain cutover approval' });
+  await getStore().updateDoc(jobPath, { started_at: '2020-01-01T00:00:00Z' });
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'awaiting domain cutover approval' });
   expect(mocks.cloudflare.mock.calls.some(([, options]) => options?.method === 'PATCH' && options?.body?.type === 'CNAME')).toBe(false);
 });
 
@@ -154,4 +157,12 @@ it('a domain-only preparation reuses the public snapshot and does not publish la
   expect(source.pages[0].canonical_url).toBe('https://new.example.com/');
   expect(JSON.stringify(source)).not.toContain('Unpublished edit');
   expect((await getStore().getDoc<any>(paths.site('org', 'site'))).domain).toBe('www.example.com');
+});
+
+
+it('terminates expired provider observation instead of leaving a job running after queue exhaustion', async () => {
+  await getStore().updateDoc(jobPath, { started_at: new Date(Date.now() - 46 * 60_000).toISOString() });
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'publication_observation_timeout' } });
 });

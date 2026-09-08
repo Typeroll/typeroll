@@ -28,7 +28,7 @@ interface GitPublication {
   release_branch?: 'main'; snapshot_job_id?: string;
 }
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
-type GitJob = DeployJob & { git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
+type GitJob = DeployJob & { observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
 const snapshotPath = (args: EnqueueArgs) => `${paths.deploy(args.orgId, args.siteId, args.jobId)}/snapshot_chunks`;
 
 async function saveSnapshot(args: EnqueueArgs, value: unknown) {
@@ -57,6 +57,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   const jobPath = paths.deploy(args.orgId, args.siteId, args.jobId);
   const job = await store.getDoc<GitJob>(jobPath);
   if (!job || ['succeeded', 'failed'].includes(job.status)) return 'ran';
+  if (job.phase === 'awaiting domain cutover approval') {
+    const domains = await getSiteDomains(args.orgId, args.siteId);
+    if (domains.cutover_approved_revision !== job.git_publication?.domain_revision) return 'ran';
+  }
   const targetPath = `${paths.site(args.orgId, args.siteId)}/publishing_targets/${args.versionId}`;
   const lease = randomUUID();
   await store.createDocIfMissing(targetPath, { job_id: null, lease_id: null, lease_until: 0 });
@@ -78,6 +82,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     for (const environment of ['production', 'preview']) await store.compareAndUpdateDoc<any>(`${paths.site(args.orgId, args.siteId)}/publishing_build_slots/${environment}`, value => value.job_id === args.jobId, { job_id: null });
   };
   try {
+    const observationStart = Date.parse(job.observation_started_at ?? job.started_at);
+    if (Number.isFinite(observationStart) && Date.now() - observationStart > 45 * 60_000) throw new ConnectionError('Publication verification did not finish within 45 minutes. Check the Cloudflare build and domain status, then retry.', 409, 'publication_observation_timeout');
     if (args.environment === 'staging' && args.versionId === 'main') throw new ConnectionError('Select a site version to publish a test deployment. The main version publishes the live website.', 409, 'publication_version_required');
     await assertPublishingReady(args.orgId, args.siteId, args.versionId);
     const [gitConnection, cfConnection, domains, organization, site] = await Promise.all([
@@ -233,8 +239,13 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         deployment_id: deployment.id, verified_at: new Date().toISOString(), job_id: args.jobId } });
     if (publication.release_branch) {
       if (domains.cutover_approved_revision !== domains.revision) {
+        if (!preparation.certificate_ready && preparation.has_existing_traffic !== false) {
+          await store.updateDoc(jobPath, { phase: 'waiting for domain validation', dns_requirements: preparation.requirements });
+          return 'deferred';
+        }
         await store.updateDoc(jobPath, { phase: 'awaiting domain cutover approval', dns_requirements: preparation.requirements });
-        return 'deferred';
+        // Human approval can take days. Consume this observation task; approval queues a continuation.
+        return 'ran';
       }
       const { commit: _commit, deployment_id: _deployment, release_branch: _release, ...candidatePublication } = publication;
       publication = { ...candidatePublication, branch: 'main' };

@@ -47,6 +47,8 @@ export interface EnqueueArgs {
    * risking the live site.
    */
   dryRun?: boolean;
+  /** A separately deduplicated continuation of the same frozen publication. */
+  dispatchKey?: string;
 }
 
 export interface DeployQueue {
@@ -68,11 +70,17 @@ export interface FirestoreDeployQueueItem extends EnqueueArgs {
 
 export const FIRESTORE_DEPLOY_QUEUE_PATH = 'typeroll_system/deploy_queue/items';
 
-export function firestoreDeployQueueItemId(args: Pick<EnqueueArgs, 'jobId' | 'orgId' | 'siteId'>): string {
+export function firestoreDeployQueueItemId(args: Pick<EnqueueArgs, 'jobId' | 'orgId' | 'siteId' | 'dispatchKey'>): string {
   return createHash('sha256')
-    .update(`${args.orgId}\0${args.siteId}\0${args.jobId}`)
+    .update(`${args.orgId}\0${args.siteId}\0${deployTaskIdentity(args)}`)
     .digest('hex')
     .slice(0, 40);
+}
+
+/** Continuations must not collide with a consumed task's provider deduplication window. */
+export function deployTaskIdentity(args: Pick<EnqueueArgs, 'jobId' | 'dispatchKey'>): string {
+  if (args.dispatchKey && !/^[a-f0-9]{16}$/.test(args.dispatchKey)) throw new Error('Invalid deploy continuation identity');
+  return args.dispatchKey ? `${args.jobId}-${args.dispatchKey}` : args.jobId;
 }
 
 // ─── In-process (local dev) ─────────────────────────────────────────────
@@ -259,14 +267,14 @@ export class CloudTasksQueue implements DeployQueue {
     const { CloudTasksClient } = await import('@google-cloud/tasks');
     const client = new CloudTasksClient();
 
-    await client.createTask({
+    try { await client.createTask({
       parent: this.queue,
       task: {
         // Cloud Tasks dedup window is 1h on the task name; using jobId
         // means a retried POST /deploy that already enqueued doesn't
         // double-deploy. We accept the 1h limit — that's plenty for
         // deploy idempotency.
-        name: `${this.queue}/tasks/${args.jobId}`,
+        name: `${this.queue}/tasks/${deployTaskIdentity(args)}`,
         httpRequest: {
           httpMethod: 'POST',
           url: this.workerUrl,
@@ -278,7 +286,9 @@ export class CloudTasksQueue implements DeployQueue {
           },
         },
       },
-    });
+    }); }
+    catch (error) { if ((error as { code?: number }).code !== 6) throw error; }
+    finally { await client.close(); }
   }
 }
 

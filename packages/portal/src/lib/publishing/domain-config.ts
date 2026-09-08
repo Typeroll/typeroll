@@ -148,6 +148,7 @@ export async function markOrganizationMediaHostUsed(orgId: string, current: Orga
 
 /** Saving intent cannot perform DNS writes, change live origins or publish content. */
 export async function saveSiteDomains(orgId: string, siteId: string, input: Record<string, unknown>) {
+  const previous = await getSiteDomains(orgId, siteId);
   const desired = parsePublicationHosts(input);
   if (!['automatic', 'external'].includes(String(input.dns_mode))) throw new ConnectionError('Select automatic or external DNS management.', 400);
   const revision = randomUUID();
@@ -155,6 +156,9 @@ export async function saveSiteDomains(orgId: string, siteId: string, input: Reco
     current => current.revision === input.revision,
     { revision, desired, dns_mode: input.dns_mode, state: 'declared', candidate: null, preparation: null, cutover_approved_revision: null, approved_preparation: null });
   if (!changed) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
+  if (previous.candidate?.job_id) await getStore().compareAndUpdateDoc<any>(paths.deploy(orgId, siteId, previous.candidate.job_id),
+    job => job.status === 'running' && job.phase === 'awaiting domain cutover approval',
+    { status: 'failed', phase: 'superseded', finished_at: new Date().toISOString(), error: 'Domain settings changed. Prepare a new candidate with the saved hosts.' });
   return getSiteDomains(orgId, siteId);
 }
 
@@ -171,6 +175,18 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
     value => value.revision === current.revision && value.candidate?.id === current.candidate!.id && JSON.stringify(value.preparation) === JSON.stringify(preparation),
     { cutover_approved_revision: current.revision, approved_preparation: preparation, state: 'distributing' });
   if (!saved) throw new ConnectionError('Domain verification changed. Reload before switching traffic.', 409, 'domain_revision_conflict');
+  if (current.candidate.job_id) {
+    const { getDeployQueue } = await import('../deploy/queue');
+    const jobId = current.candidate.job_id;
+    const jobPath = paths.deploy(orgId, siteId, jobId);
+    const resumed = await getStore().compareAndUpdateDoc<any>(jobPath,
+      job => job.status === 'running' && job.git_publication?.publication_id === current.candidate!.id,
+      { observation_started_at: new Date().toISOString() });
+    if (!resumed) throw new ConnectionError('The prepared publication is no longer available. Prepare the domain change again.', 409, 'publication_unavailable');
+    try { await getDeployQueue().enqueue({ orgId, siteId, jobId, versionId: 'main', environment: 'production',
+      dispatchKey: createHash('sha256').update(`cutover:${current.revision}:${current.candidate.id}`).digest('hex').slice(0, 16) }); }
+    catch { throw new ConnectionError('The traffic switch was approved, but could not be queued. Retry the approval to resume the same verified publication.', 502, 'cutover_enqueue_failed'); }
+  }
   return getSiteDomains(orgId, siteId);
 }
 
