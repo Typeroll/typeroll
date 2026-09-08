@@ -175,3 +175,43 @@ it('publishes ordinary edits to main when datastore map ordering changes but hos
   expect(mocks.push.mock.calls[0][1].branch).toBe('main');
   expect((await getStore().getDoc<any>(jobPath)).git_publication.release_branch).toBeUndefined();
 });
+
+it('clears preview identity under Firestore nested-merge semantics before promoting frozen source', async () => {
+  const store = getStore();
+  const update = store.updateDoc.bind(store);
+  vi.spyOn(store, 'updateDoc').mockImplementation(async (path, patch) => {
+    if (path === jobPath && patch.git_publication) {
+      const previous = await store.getDoc<any>(path);
+      patch = { ...patch, git_publication: { ...previous?.git_publication, ...patch.git_publication } };
+    }
+    await update(path, patch);
+  });
+  await update(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  const domains = await getSiteDomains('org', 'site');
+  await update(siteDomainConfigPath('org', 'site'), { cutover_approved_revision: domains.revision, approved_preparation: domains.preparation });
+  await executeCustomerPublication(args);
+  expect((await store.getDoc<any>(jobPath)).git_publication).toMatchObject({ branch: 'main', commit: null, deployment_id: null, release_branch: null });
+  await executeCustomerPublication(args);
+  expect(mocks.push).toHaveBeenCalledTimes(2);
+  expect(mocks.push.mock.calls[1][1].branch).toBe('main');
+  expect(mocks.push.mock.calls[1][1].files).toEqual(mocks.push.mock.calls[0][1].files);
+});
+
+it('freezes the Hosting Group and hosting account independently from the organization connection', async () => {
+  const { saveHostingGroup } = await import('../../lib/publishing/hosting-groups');
+  const group = await saveHostingGroup('org', { name: 'Second account', sites_domain: 'sites2.example.com', dns_mode: 'automatic' });
+  await getStore().updateDoc(paths.site('org', 'site'), { hosting_group_id: group.id });
+  await getStore().setDoc(connectionPath('org', 'cloudflare', group.id), { status: 'connected', revision: 'group-cf', cloudflare: { account_id: 'e'.repeat(32), bucket: '' } });
+  await executeCustomerPublication(args);
+  const job = await getStore().getDoc<any>(jobPath);
+  expect(job.git_publication).toMatchObject({ hosting_group_id: group.id, hosting_group_revision: group.revision, account_id: 'e'.repeat(32), commit: 'b'.repeat(40) });
+  expect(mocks.cloudflare.mock.calls.some(([route]) => route.startsWith('/accounts/' + 'e'.repeat(32) + '/pages/'))).toBe(true);
+  await getStore().updateDoc(paths.site('org', 'site'), { hosting_group_id: 'default' });
+  mocks.push.mockClear();
+  await executeCustomerPublication(args);
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('settings changed') });
+});

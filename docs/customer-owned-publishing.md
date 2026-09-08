@@ -5,15 +5,18 @@ organization. The customer's Cloudflare account builds that source and serves
 static files. Typeroll remains the supported editor: manual repository changes
 are not imported and the next publication replaces the generated tree.
 
-## Organization and Site
+## Organization, Hosting Group and Site
 
-An Organization connects one GitHub App installation and one Cloudflare account
-under **Settings → Publishing**. The connection covers newly created site
-repositories, so it does not need repeating for every Site. Cloudflare's own
-GitHub integration must also have access to those repositories.
+An Organization connects GitHub and shared media/DNS access under **Settings →
+Publishing**. Hosting Groups connect the Cloudflare accounts used for site
+builds and hosting. Default automatically reuses the existing organization
+connection; additional groups can use other accounts. Each hosting account’s
+Cloudflare GitHub integration must have access to newly generated repositories.
 
-Organization settings separate the optional site-address base from the shared
-media hostname. Each Site has its own generated private repository, Pages
+Each Hosting Group has an optional site-address base. The organization retains
+one shared media hostname and original-media storage. DNS for sites2.example.com
+can remain in the account managing example.com while its Pages projects live
+in another group’s account. See [Hosting Groups](hosting-groups.md). Each Site has its own generated private repository, Pages
 project, website hostname, media hostname and version branches. Root-domain
 hosting and unrelated subdomains are outside this configuration.
 
@@ -54,7 +57,10 @@ Organization migration verifies copies and reference changes while preserving
 media identities and concurrent edits.
 
 Customer builds receive short-lived, object-specific media grants outside Git.
-Originals and responsive image variants are written to the customer's public
+Referenced public files and responsive image variants are included in the
+static website output by default. A separate site media hostname is registered
+on the same static Pages project for new configurations. Existing R2 media
+hosts keep their routing. Shared aliases remain in the organization's public
 media bucket. Image bytes, S3 keys and upload grants are never committed to the
 source repository. Organization and retained site-media aliases continue to
 refer to the same immutable objects after a hostname change.
@@ -76,7 +82,7 @@ and environment-variable configuration.
 A domain change freezes future website/media origins into a candidate before
 traffic cutover. The preparation API reports certificate and DNS requirements;
 external agents can apply those requirements with their own DNS access.
-Automatic DNS changes use the connected account and compare the approved record
+Automatic DNS changes use the account owning the selected DNS zone and compare the approved record
 fingerprint to prevent overwriting intervening edits. Typeroll independently
 verifies the candidate and public result. Existing-destination conflicts must be
 resolved explicitly; a saved hostname alone does not establish a safe cutover.
@@ -235,3 +241,7 @@ Provider contracts reviewed 2026-09-06:
 - [GitHub App installations](https://docs.github.com/en/rest/apps/apps#get-an-installation-for-the-authenticated-app)
 - [Cloudflare Pages project creation](https://developers.cloudflare.com/api/resources/pages/subresources/projects/methods/create/)
 - [Cloudflare GitHub integration](https://developers.cloudflare.com/pages/configuration/git-integration/github-integration/)
+
+Independent media builds should use the supported Linux build environment.
+Different image encoders across operating systems can generate different bytes;
+immutable asset verification deliberately rejects such collisions.

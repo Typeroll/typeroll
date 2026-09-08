@@ -113,6 +113,10 @@ export interface Site {
   name: string;
   /** Customer Git publishing is explicit; existing managed sites retain their adapter until migrated. */
   publishing_mode?: 'customer_git' | 'managed';
+  /** Omitted legacy values resolve to the organization's Default Hosting Group. */
+  hosting_group_id?: string;
+  /** First publication serializes assignment; moving hosting then requires migration. */
+  hosting_assignment_locked?: boolean;
   /**
    * Anonymous, random short id (10 chars, [0-9a-z]) used as the PUBLIC media
    * R2-key prefix: `media/{media_id}/{filename}`. Deliberately NOT the org or

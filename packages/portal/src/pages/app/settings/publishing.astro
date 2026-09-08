@@ -1,5 +1,6 @@
 ---
 import AppLayout from '../../../layouts/AppLayout.astro';
+import HostingGroups from '../../../components/HostingGroups';
 import PublishingConnections from '../../../components/PublishingConnections';
 import PublishingDomains from '../../../components/PublishingDomains';
 import { publishingAdmin } from '../../../lib/publishing/http';
@@ -15,5 +16,6 @@ const organization = await organizationMembership(guard.value.userId, guard.valu
   <p>GitHub and Cloudflare connections for <strong>{organization?.name ?? 'your organization'}</strong>.</p>
   <p class="muted" style="max-width: 760px; margin-bottom: 1.5rem;">Connect once for all sites in your organization. You can edit, save and share temporary previews before completing publishing setup.</p>
   <PublishingConnections client:load />
+  <HostingGroups client:load />
   <PublishingDomains client:load />
 </AppLayout>

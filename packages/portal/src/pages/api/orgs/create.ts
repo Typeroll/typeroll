@@ -1,3 +1,4 @@
+import { getHostingGroup } from '../../../lib/publishing/hosting-groups';
 import type { APIRoute } from 'astro';
 import { json, requireSession } from '../../../lib/access';
 import { getStore } from '../../../lib/datastore';
@@ -68,6 +69,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     joined_at: now,
   } satisfies Omit<Member, 'id'>);
 
+  await getHostingGroup(orgId);
   await rememberOrganization(userId, orgId);
   selectOrganization(cookies, userId, orgId);
   return json({ ok: true, orgId, requiresReauth: false });

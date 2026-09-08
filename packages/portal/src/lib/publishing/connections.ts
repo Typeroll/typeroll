@@ -25,12 +25,16 @@ function segment(value: string): string {
   return value;
 }
 
-export function connectionPath(orgId: string, provider: Provider): string {
+export function connectionPath(orgId: string, provider: Provider, groupId = 'default'): string {
+  if (groupId !== 'default') {
+    if (provider !== 'cloudflare') throw new ConnectionError('Only hosting connections belong to groups');
+    return `organizations/${segment(orgId)}/hosting_groups/${segment(groupId)}/publishing_connections/cloudflare`;
+  }
   return `organizations/${segment(orgId)}/publishing_connections/${provider}`;
 }
 
-export async function getConnection(orgId: string, provider: Provider): Promise<Connection> {
-  const path = connectionPath(orgId, provider);
+export async function getConnection(orgId: string, provider: Provider, groupId = 'default'): Promise<Connection> {
+  const path = connectionPath(orgId, provider, groupId);
   await getStore().createDocIfMissing(path, { status: 'disconnected', revision: randomUUID() });
   return (await getStore().getDoc<Connection>(path))!;
 }
@@ -56,14 +60,14 @@ export function connectionSummary(connection: Connection) {
   };
 }
 
-export function sealCredentials(orgId: string, provider: Provider, credentials: unknown): string {
-  return encryptSecret(JSON.stringify({ org_id: orgId, provider, credentials }));
+export function sealCredentials(orgId: string, provider: Provider, credentials: unknown, groupId = 'default'): string {
+  return encryptSecret(JSON.stringify({ org_id: orgId, provider, credentials, hosting_group_id: groupId }));
 }
 
-export function openCredentials<T>(orgId: string, provider: Provider, encrypted: string): T {
+export function openCredentials<T>(orgId: string, provider: Provider, encrypted: string, groupId = 'default'): T {
   try {
     const payload = JSON.parse(decryptSecret(encrypted));
-    if (payload.org_id !== orgId || payload.provider !== provider) throw new Error();
+    if (payload.org_id !== orgId || payload.provider !== provider || (payload.hosting_group_id ?? 'default') !== groupId) throw new Error();
     return payload.credentials as T;
   } catch { throw new ConnectionError('Stored publishing credentials could not be opened', 503); }
 }
@@ -76,8 +80,8 @@ export async function claimAccount(orgId: string, provider: Provider, accountId:
   if (claim?.org_id !== orgId) throw new ConnectionError('This account is already connected to another Typeroll organization', 409);
 }
 
-export async function saveConnection(orgId: string, provider: Provider, revision: string, data: Partial<Connection>): Promise<void> {
-  const changed = await getStore().compareAndUpdateDoc<Connection>(connectionPath(orgId, provider),
+export async function saveConnection(orgId: string, provider: Provider, revision: string, data: Partial<Connection>, groupId = 'default'): Promise<void> {
+  const changed = await getStore().compareAndUpdateDoc<Connection>(connectionPath(orgId, provider, groupId),
     // Metadata/media updates must not invalidate an in-flight rotating grant.
     // Disconnect and a fresh authorization explicitly replace that grant.
     (current) => current.revision === revision && (!current.refresh_lease || data.refresh_lease === null),
@@ -85,6 +89,6 @@ export async function saveConnection(orgId: string, provider: Provider, revision
   if (!changed) throw new ConnectionError('The connection changed. Reload the page and try again.', 409);
 }
 
-export async function disconnect(orgId: string, provider: Provider, revision: string): Promise<void> {
-  await saveConnection(orgId, provider, revision, { status: 'disconnected', encrypted_credentials: null, refresh_lease: null });
+export async function disconnect(orgId: string, provider: Provider, revision: string, groupId = 'default'): Promise<void> {
+  await saveConnection(orgId, provider, revision, { status: 'disconnected', encrypted_credentials: null, refresh_lease: null }, groupId);
 }

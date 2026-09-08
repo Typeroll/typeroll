@@ -25,6 +25,8 @@ export interface DomainConfiguration {
   state: 'unconfigured' | 'declared' | 'preparing' | 'ready_to_switch' | 'distributing' | 'live' | 'failed';
   candidate?: { id: string; revision: string; commit: string; deployment_id: string; verified_at: string; job_id?: string } | null;
   preparation?: import('./domain-provider').DomainPreparation | null;
+  media_preparation?: import('./domain-provider').DomainPreparation | null;
+  approved_media_preparation?: import('./domain-provider').DomainPreparation | null;
   cutover_approved_revision?: string | null;
   approved_preparation?: import('./domain-provider').DomainPreparation | null;
 }
@@ -159,7 +161,7 @@ export async function saveSiteDomains(orgId: string, siteId: string, input: Reco
   const revision = randomUUID();
   const changed = await getStore().compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
     current => current.revision === input.revision,
-    { revision, desired, dns_mode: input.dns_mode, state: 'declared', candidate: null, preparation: null, cutover_approved_revision: null, approved_preparation: null });
+    { revision, desired, dns_mode: input.dns_mode, state: 'declared', candidate: null, preparation: null, media_preparation: null, approved_media_preparation: null, cutover_approved_revision: null, approved_preparation: null });
   if (!changed) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
   if (previous.candidate?.job_id) await getStore().compareAndUpdateDoc<any>(paths.deploy(orgId, siteId, previous.candidate.job_id),
     job => job.status === 'running' && job.phase === 'awaiting domain cutover approval',
@@ -173,12 +175,14 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
     throw new ConnectionError('The prepared deployment changed. Verify the current candidate before switching traffic.', 409, 'domain_revision_conflict');
   }
   const preparation = current.preparation;
+  const mediaPreparation = current.media_preparation;
+  if (mediaPreparation && !mediaPreparation.certificate_ready && mediaPreparation.has_existing_traffic !== false) throw new ConnectionError('The media hostname is not ready for a safe traffic switch. Complete media domain validation first.', 409, 'media_domain_certificate_pending');
   if (!preparation || (!preparation.certificate_ready && preparation.has_existing_traffic !== false)) {
     throw new ConnectionError('Cloudflare has not confirmed a working certificate. Complete validation while keeping current DNS in place. Traffic cannot be switched safely yet.', 409, 'domain_certificate_pending');
   }
   const saved = await getStore().compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
-    value => value.revision === current.revision && value.candidate?.id === current.candidate!.id && JSON.stringify(value.preparation) === JSON.stringify(preparation),
-    { cutover_approved_revision: current.revision, approved_preparation: preparation, state: 'distributing' });
+    value => value.revision === current.revision && value.candidate?.id === current.candidate!.id && JSON.stringify(value.preparation) === JSON.stringify(preparation) && JSON.stringify(value.media_preparation) === JSON.stringify(mediaPreparation),
+    { cutover_approved_revision: current.revision, approved_preparation: preparation, approved_media_preparation: mediaPreparation ?? null, state: 'distributing' });
   if (!saved) throw new ConnectionError('Domain verification changed. Reload before switching traffic.', 409, 'domain_revision_conflict');
   if (current.candidate.job_id) {
     const { getDeployQueue } = await import('../deploy/queue');

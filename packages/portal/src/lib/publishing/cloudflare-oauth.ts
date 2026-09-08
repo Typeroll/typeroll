@@ -3,12 +3,14 @@ import type { FullSession } from '../access';
 import { getStore } from '../datastore';
 import { isSecretCryptoConfigured } from '../secret-crypto';
 import { claimAccount, ConnectionError, connectionPath, getConnection, openCredentials, saveConnection, sealCredentials, type Connection } from './connections';
+import { getHostingGroup } from './hosting-groups';
 import { createProviderClient } from './providers.mjs';
 
 export const CLOUDFLARE_COOKIE = 'typeroll_publishing_cloudflare';
 export const CLOUDFLARE_CALLBACK = '/api/orgs/publishing/cloudflare/callback';
 export const CLOUDFLARE_SCOPES = ['account-settings.read', 'page.read', 'page.write', 'workers-r2.read', 'workers-r2.write', 'offline_access'];
 export const CLOUDFLARE_OPTIONAL_DNS_SCOPES = ['zone.read', 'dns.read', 'dns.write', 'zone-transform-rules.read', 'zone-transform-rules.write'];
+const scopesForGroup = (groupId: string) => groupId === 'default' ? CLOUDFLARE_SCOPES : CLOUDFLARE_SCOPES.filter(scope => !scope.startsWith('workers-r2.'));
 const TTL = 10 * 60_000;
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const nonce = () => randomBytes(32).toString('base64url');
@@ -24,10 +26,12 @@ export interface CloudflareStoredCredentials {
 }
 interface AccountChoice { id: string; name: string }
 interface Grant {
+  hosting_group_id?: string;
   user_id: string; expires_at: number; consumed: boolean; revision: string;
   state_hash: string; browser_hash: string; encrypted_verifier: string | null;
 }
 interface Selection {
+  hosting_group_id?: string;
   user_id: string; expires_at: number; consumed: boolean; revision: string;
   choices: AccountChoice[]; encrypted_tokens: string | null;
 }
@@ -49,7 +53,7 @@ export function cloudflareSetup() {
   catch { return { available: false }; }
 }
 
-async function exchange(parameters: Record<string, string>, fetchImpl: typeof fetch, previous?: CloudflareOAuthTokens): Promise<CloudflareOAuthTokens> {
+async function exchange(parameters: Record<string, string>, fetchImpl: typeof fetch, previous?: CloudflareOAuthTokens, groupId = 'default'): Promise<CloudflareOAuthTokens> {
   const config = cloudflareOAuthConfiguration();
   try {
     const response = await fetchImpl('https://dash.cloudflare.com/oauth2/token', {
@@ -64,22 +68,23 @@ async function exchange(parameters: Record<string, string>, fetchImpl: typeof fe
     const refresh = data.refresh_token ?? previous?.refresh_token;
     if (data.token_type?.toLowerCase() !== 'bearer' || typeof data.access_token !== 'string' || !data.access_token || data.access_token.length > 16384 ||
       typeof refresh !== 'string' || !refresh || refresh.length > 16384 || !Number.isFinite(data.expires_in) || data.expires_in <= 0 || data.expires_in > 365 * 86400 ||
-      typeof scope !== 'string' || !CLOUDFLARE_SCOPES.every(required => scope.split(/\s+/).includes(required))) throw new Error();
+      typeof scope !== 'string' || !scopesForGroup(groupId).every(required => scope.split(/\s+/).includes(required))) throw new Error();
     return { access_token: data.access_token, refresh_token: refresh, expires_at: Date.now() + data.expires_in * 1000, scope };
   } catch { throw new ConnectionError('Cloudflare authorization could not be completed. Reconnect and approve all required permissions.', 502); }
 }
 
-export async function startCloudflareConnection(session: FullSession) {
+export async function startCloudflareConnection(session: FullSession, groupId = 'default') {
   const config = cloudflareOAuthConfiguration();
-  const connection = await getConnection(session.orgId, 'cloudflare');
+  await getHostingGroup(session.orgId, groupId);
+  const connection = await getConnection(session.orgId, 'cloudflare', groupId);
   await getStore().deleteDoc(choicePath(session.orgId));
   const state = nonce(), browser = nonce(), verifier = nonce();
   await getStore().setDoc(grantPath(session.orgId), { user_id: session.userId, expires_at: Date.now() + TTL,
-    consumed: false, revision: connection.revision, state_hash: hash(state), browser_hash: hash(browser),
-    encrypted_verifier: sealCredentials(session.orgId, 'cloudflare', { verifier }) } satisfies Grant);
+    consumed: false, hosting_group_id: groupId, revision: connection.revision, state_hash: hash(state), browser_hash: hash(browser),
+    encrypted_verifier: sealCredentials(session.orgId, 'cloudflare', { verifier }, groupId) } satisfies Grant);
   const url = new URL('https://dash.cloudflare.com/oauth2/auth');
   url.search = new URLSearchParams({ client_id: config.clientId, redirect_uri: config.callback,
-    response_type: 'code', scope: [...CLOUDFLARE_SCOPES, ...CLOUDFLARE_OPTIONAL_DNS_SCOPES].join(' '), state,
+    response_type: 'code', scope: [...scopesForGroup(groupId), ...CLOUDFLARE_OPTIONAL_DNS_SCOPES].join(' '), state,
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString();
   return { url: url.toString(), browser, maxAge: TTL / 1000 };
 }
@@ -92,10 +97,12 @@ export async function finishCloudflareConnection(session: FullSession, input: { 
   const grant = await getStore().compareAndUpdateDoc<Grant>(grantPath(session.orgId), value => !value.consumed && value.expires_at > Date.now() &&
     value.user_id === session.userId && value.state_hash === hash(input.state) && value.browser_hash === hash(input.browser), { consumed: true, encrypted_verifier: null });
   if (!grant?.encrypted_verifier) throw new ConnectionError('Cloudflare authorization expired or did not match this browser');
-  const { verifier } = openCredentials<{ verifier: string }>(session.orgId, 'cloudflare', grant.encrypted_verifier);
-  const tokens = await exchange({ grant_type: 'authorization_code', code: input.code, code_verifier: verifier, redirect_uri: config.callback }, fetchImpl);
+  const groupId = grant.hosting_group_id ?? 'default';
+  await getHostingGroup(session.orgId, groupId);
+  const { verifier } = openCredentials<{ verifier: string }>(session.orgId, 'cloudflare', grant.encrypted_verifier, groupId);
+  const tokens = await exchange({ grant_type: 'authorization_code', code: input.code, code_verifier: verifier, redirect_uri: config.callback }, fetchImpl, undefined, groupId);
   const provider = createProviderClient('Cloudflare', tokens.access_token, fetchImpl);
-  const current = await getConnection(session.orgId, 'cloudflare');
+  const current = await getConnection(session.orgId, 'cloudflare', groupId);
   if (current.revision !== grant.revision) throw new ConnectionError('The connection changed. Connect Cloudflare again.', 409);
   const choices: AccountChoice[] = [];
   for (let page = 1; page <= 20; page++) {
@@ -110,52 +117,52 @@ export async function finishCloudflareConnection(session: FullSession, input: { 
   }
   if (!choices.length) throw new ConnectionError('No eligible Cloudflare account was authorized. Reconnect the original account and approve access.');
   if (choices.length === 1) {
-    await saveAccount(session, choices[0].id, tokens, grant.revision, fetchImpl);
+    await saveAccount(session, choices[0].id, tokens, grant.revision, fetchImpl, groupId);
     return 'connected';
   }
-  await getStore().setDoc(choicePath(session.orgId), { user_id: session.userId, revision: grant.revision, consumed: false,
-    expires_at: Date.now() + TTL, choices, encrypted_tokens: sealCredentials(session.orgId, 'cloudflare', tokens) } satisfies Selection);
+  await getStore().setDoc(choicePath(session.orgId), { user_id: session.userId, hosting_group_id: groupId, revision: grant.revision, consumed: false,
+    expires_at: Date.now() + TTL, choices, encrypted_tokens: sealCredentials(session.orgId, 'cloudflare', tokens, groupId) } satisfies Selection);
   return 'select';
 }
 
-export async function cloudflareChoices(session: FullSession): Promise<AccountChoice[]> {
+export async function cloudflareChoices(session: FullSession, groupId = 'default'): Promise<AccountChoice[]> {
   const selection = await getStore().getDoc<Selection>(choicePath(session.orgId));
-  if (!selection || selection.consumed || selection.user_id !== session.userId || selection.expires_at <= Date.now() ||
-    (await getConnection(session.orgId, 'cloudflare')).revision !== selection.revision) return [];
+  if (!selection || (selection.hosting_group_id ?? 'default') !== groupId || selection.consumed || selection.user_id !== session.userId || selection.expires_at <= Date.now() ||
+    (await getConnection(session.orgId, 'cloudflare', groupId)).revision !== selection.revision) return [];
   return selection.choices;
 }
-export async function selectCloudflareAccount(session: FullSession, accountId: string, fetchImpl: typeof fetch = fetch) {
+export async function selectCloudflareAccount(session: FullSession, accountId: string, fetchImpl: typeof fetch = fetch, groupId = 'default') {
   const selection = await getStore().compareAndUpdateDoc<Selection>(choicePath(session.orgId), value => !value.consumed && value.expires_at > Date.now() &&
-    value.user_id === session.userId && value.choices.some(choice => choice.id === accountId), { consumed: true, encrypted_tokens: null });
+    value.user_id === session.userId && (value.hosting_group_id ?? 'default') === groupId && value.choices.some(choice => choice.id === accountId), { consumed: true, encrypted_tokens: null });
   if (!selection?.encrypted_tokens) throw new ConnectionError('Your Cloudflare selection expired. Connect Cloudflare again.');
-  await saveAccount(session, accountId, openCredentials<CloudflareOAuthTokens>(session.orgId, 'cloudflare', selection.encrypted_tokens), selection.revision, fetchImpl);
+  await saveAccount(session, accountId, openCredentials<CloudflareOAuthTokens>(session.orgId, 'cloudflare', selection.encrypted_tokens, groupId), selection.revision, fetchImpl, groupId);
 }
-async function saveAccount(session: FullSession, accountId: string, tokens: CloudflareOAuthTokens, revision: string, fetchImpl: typeof fetch) {
-  const current = await getConnection(session.orgId, 'cloudflare');
+async function saveAccount(session: FullSession, accountId: string, tokens: CloudflareOAuthTokens, revision: string, fetchImpl: typeof fetch, groupId = 'default') {
+  const current = await getConnection(session.orgId, 'cloudflare', groupId);
   if (current.revision !== revision) throw new ConnectionError('The connection changed. Connect Cloudflare again.', 409);
   if (current.cloudflare && current.cloudflare.account_id !== accountId) throw new ConnectionError('Reconnect the original Cloudflare account; moving media requires a separate migration.', 409);
   const provider = createProviderClient('Cloudflare', tokens.access_token, fetchImpl);
   const account = await provider(`/accounts/${accountId}`);
   if (account.id !== accountId || typeof account.name !== 'string') throw new ConnectionError('Cloudflare account verification failed', 502);
   await provider(`/accounts/${accountId}/pages/projects?per_page=1`);
-  const previous = current.encrypted_credentials ? openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', current.encrypted_credentials) : {};
+  const previous = current.encrypted_credentials ? openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', current.encrypted_credentials, groupId) : {};
   await claimAccount(session.orgId, 'cloudflare', accountId);
   await saveConnection(session.orgId, 'cloudflare', revision, { status: 'connected', auth_method: 'oauth', refresh_lease: null,
     media_ready: Boolean(current.media_ready && previous.access_key_id && previous.secret_access_key && current.cloudflare?.bucket && current.cloudflare.public_bucket),
     connected_at: new Date().toISOString(), connected_by: session.userId,
     cloudflare: { ...current.cloudflare, account_id: accountId, account_name: account.name.slice(0, 200), bucket: current.cloudflare?.bucket ?? '', endpoint: `https://${accountId}.r2.cloudflarestorage.com` },
     encrypted_credentials: sealCredentials(session.orgId, 'cloudflare', { oauth: tokens,
-      ...(previous.access_key_id && previous.secret_access_key ? { access_key_id: previous.access_key_id, secret_access_key: previous.secret_access_key } : {}) }) });
+      ...(previous.access_key_id && previous.secret_access_key ? { access_key_id: previous.access_key_id, secret_access_key: previous.secret_access_key } : {}) }, groupId) }, groupId);
 }
 
 /** Refresh leases serialize rotating tokens across instances, without delaying a build worker. */
-export async function cloudflareClient(orgId: string, fetchImpl: typeof fetch = fetch, expectedRevision?: string) {
-  const store = getStore(), path = connectionPath(orgId, 'cloudflare');
+export async function cloudflareClient(orgId: string, fetchImpl: typeof fetch = fetch, expectedRevision?: string, groupId = 'default') {
+  const store = getStore(), path = connectionPath(orgId, 'cloudflare', groupId);
   for (let attempt = 0; attempt < 20; attempt++) {
-    const connection = await getConnection(orgId, 'cloudflare');
+    const connection = await getConnection(orgId, 'cloudflare', groupId);
     if (expectedRevision && connection.revision !== expectedRevision) throw new ConnectionError('The connection changed. Reload and try again.', 409);
     if (connection.status !== 'connected' || !connection.encrypted_credentials) throw new ConnectionError('Connect Cloudflare before publishing.', 409);
-    const credentials = openCredentials<CloudflareStoredCredentials>(orgId, 'cloudflare', connection.encrypted_credentials);
+    const credentials = openCredentials<CloudflareStoredCredentials>(orgId, 'cloudflare', connection.encrypted_credentials, groupId);
     if (!credentials.oauth) return Object.assign(createProviderClient('Cloudflare', credentials.api_token!, fetchImpl), { connectionRevision: connection.revision });
     if (credentials.oauth.expires_at > Date.now() + 60_000) return Object.assign(createProviderClient('Cloudflare', credentials.oauth.access_token, fetchImpl), { connectionRevision: connection.revision });
     const lease = randomUUID();
@@ -164,10 +171,10 @@ export async function cloudflareClient(orgId: string, fetchImpl: typeof fetch = 
     { refresh_lease: { id: lease, expires_at: Date.now() + 45_000 } });
     if (!acquired) { await new Promise(resolve => setTimeout(resolve, 250)); continue; }
     try {
-      const tokens = await exchange({ grant_type: 'refresh_token', refresh_token: credentials.oauth.refresh_token }, fetchImpl, credentials.oauth);
+      const tokens = await exchange({ grant_type: 'refresh_token', refresh_token: credentials.oauth.refresh_token }, fetchImpl, credentials.oauth, groupId);
       const revision = randomUUID();
       const saved = await store.compareAndUpdateDoc<Connection>(path, value => value.status === 'connected' && value.revision === connection.revision && value.refresh_lease?.id === lease,
-        { encrypted_credentials: sealCredentials(orgId, 'cloudflare', { ...credentials, oauth: tokens }), refresh_lease: null, revision });
+        { encrypted_credentials: sealCredentials(orgId, 'cloudflare', { ...credentials, oauth: tokens }, groupId), refresh_lease: null, revision });
       if (!saved) throw new ConnectionError('Cloudflare connection changed while renewing authorization.', 409);
       return Object.assign(createProviderClient('Cloudflare', tokens.access_token, fetchImpl), { connectionRevision: revision });
     } finally {

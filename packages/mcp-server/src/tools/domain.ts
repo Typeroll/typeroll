@@ -19,6 +19,36 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const domainTools: ToolDef[] = [
   {
+    name: 'list_hosting_groups',
+    description: 'List organization Hosting Groups, site address bases and safe hosting connection status. Requires an organization API key. Media and GitHub remain shared.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/hosting-groups'))),
+  },
+  {
+    name: 'save_hosting_group',
+    description: 'Create a Hosting Group, or update its name, site address base and DNS mode using its current id and revision. Requires an organization API key. Does not move existing sites, media, or traffic. Connect the hosting account in Publishing.',
+    inputSchema: { id: z.string().optional(), revision: z.string().optional(), name: z.string(), sites_domain: z.string().nullable(), dns_mode: z.enum(['automatic', 'external']) },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/hosting-groups', args))),
+  },
+  {
+    name: 'connect_hosting_group',
+    description: 'Connect or disconnect an additional Hosting Group using a customer Cloudflare API token. Requires an organization API key and the current connection revision from list_hosting_groups. Default uses organization Publishing. No R2 access is required for the hosting token. Credentials are encrypted and never returned.',
+    inputSchema: { action: z.enum(['connect', 'disconnect']), hosting_group_id: z.string(), revision: z.string(), account_id: z.string().optional(), api_token: z.string().optional() },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/hosting-groups', args))),
+  },
+  {
+    name: 'read_site_hosting_group',
+    description: 'Read the selected site Hosting Group and eligible organization groups. Omitted legacy assignments resolve to Default.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'publishing/hosting-group'))),
+  },
+  {
+    name: 'set_site_hosting_group',
+    description: 'Select the Hosting Group for an unpublished site. Requires site admin permission and previous_group_id from read_site_hosting_group. Published sites or active builds require a hosting migration and are rejected.',
+    inputSchema: { hosting_group_id: z.string(), previous_group_id: z.string() },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.put(siteId, 'publishing/hosting-group', args))),
+  },
+  {
     name: 'list_organization_publishing_domains',
     description: 'List Cloudflare domains visible in the organization’s connected account, including activation, DNS hosting status and domain_access. Refresh this read to discover new domains; approval_required identifies missing OAuth consent without disconnecting the account. Requires an organization API key. Read only.',
     inputSchema: {},

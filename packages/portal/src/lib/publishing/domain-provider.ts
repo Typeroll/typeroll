@@ -38,7 +38,7 @@ function trafficRequirement(hostname: string, project: string, branch: string): 
 }
 
 /** Register the hostname after a verified build, without overwriting existing customer traffic. */
-export async function preparePagesDomain(provider: Provider, input: { accountId: string; project: string; branch: string; hostname: string; dnsMode: 'automatic' | 'external'; configureTraffic?: boolean }): Promise<DomainPreparation> {
+export async function preparePagesDomain(provider: Provider, input: { accountId: string; project: string; branch: string; hostname: string; dnsMode: 'automatic' | 'external'; configureTraffic?: boolean; dnsProvider?: Provider; dnsAccountId?: string }): Promise<DomainPreparation> {
   const hostname = publicationHostname(input.hostname);
   if (!/^[a-z0-9-]{1,58}$/.test(input.project) || !/^(main|version-[a-z0-9-]+)$/.test(input.branch)) throw new ConnectionError('Invalid publishing target');
   const root = `/accounts/${input.accountId}/pages/projects/${input.project}/domains`;
@@ -61,8 +61,9 @@ export async function preparePagesDomain(provider: Provider, input: { accountId:
     result.action = result.certificate_ready ? 'approve_cutover' : 'complete_validation';
     return result;
   }
-  const zone = await findPublishingZone(provider, input.accountId, hostname);
-  const records = await provider(`/zones/${zone.id}/dns_records?name=${encodeURIComponent(hostname)}&per_page=100`);
+  const dns = input.dnsProvider ?? provider;
+  const zone = await findPublishingZone(dns, input.dnsAccountId ?? input.accountId, hostname);
+  const records = await dns(`/zones/${zone.id}/dns_records?name=${encodeURIComponent(hostname)}&per_page=100`);
   const addressRecords = records.filter((record: any) => ['A', 'AAAA', 'CNAME'].includes(record.type));
   result.has_existing_traffic = addressRecords.length > 0;
   result.zone_id = zone.id;
@@ -77,7 +78,7 @@ export async function preparePagesDomain(provider: Provider, input: { accountId:
   }
   if (input.configureTraffic === false) return result;
   // A brand new hostname has no old website to interrupt. Never delete or replace records here.
-  await provider(`/zones/${zone.id}/dns_records`, { method: 'POST', body: {
+  await dns(`/zones/${zone.id}/dns_records`, { method: 'POST', body: {
     type: traffic.type, name: traffic.name, content: traffic.content, proxied: true, ttl: 1,
     comment: 'Typeroll static publication',
   } });

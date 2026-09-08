@@ -69,7 +69,7 @@ if (result.error || result.status !== 0) throw new Error('Static renderer build 
 await build({ entryPoints: [path.join(root, 'scripts/postprocess.ts')], outfile: path.join(work, 'postprocess.mjs'), bundle: true, platform: 'node', format: 'esm', packages: 'external', alias: { '@typeroll/shared': path.join(root, 'packages/shared/src/index.ts') } });
 const { postprocess } = await import(path.join(work, 'postprocess.mjs'));
 await postprocess(dist, publication);
-for (const file of sameHostMedia) {
+for (const file of new Map(sameHostMedia.map(file => [file.path, file])).values()) {
   const destination = path.resolve(dist, file.path.slice(1));
   if (!destination.startsWith(dist + path.sep)) throw new Error('Invalid public media path');
   try { await fs.access(destination); throw new Error('Media path collides with a generated page or asset'); }

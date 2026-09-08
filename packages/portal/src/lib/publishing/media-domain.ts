@@ -6,13 +6,13 @@ import { getOrganizationDomains } from './domain-config';
 import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
 
 /** R2 remains static; one native path rewrite maps a site host to its stable namespace. */
-export async function preparePublicMediaDomains(orgId: string, manifest: { account_id: string; public_bucket: string; media_host: string; website_host: string; dns_mode?: 'automatic' | 'external'; site_prefix: string; entries: Array<{ cdn_url: string; sha256: string; aliases: Array<{ url: string }> }> }) {
+export async function preparePublicMediaDomains(orgId: string, manifest: { delivery?: string; account_id: string; public_bucket: string; media_host: string; website_host: string; dns_mode?: 'automatic' | 'external'; site_prefix: string; entries: Array<{ cdn_url: string; sha256: string; aliases: Array<{ url: string }> }> }) {
   const connection = await getConnection(orgId, 'cloudflare');
   if (connection.cloudflare?.account_id !== manifest.account_id || connection.cloudflare.public_bucket !== manifest.public_bucket) throw new ConnectionError('The media storage connection changed.', 409);
   const provider = await cloudflareClient(orgId, fetch, connection.revision);
   const organization = await getOrganizationDomains(orgId);
   const organizationHost = organization.media_host;
-  const hosts = new Set([organizationHost, manifest.media_host === manifest.website_host ? null : manifest.media_host].filter((host): host is string => Boolean(host)));
+  const hosts = new Set([organizationHost, manifest.delivery === 'static' || manifest.media_host === manifest.website_host ? null : manifest.media_host].filter((host): host is string => Boolean(host)));
   const root = `/accounts/${manifest.account_id}/r2/buckets/${manifest.public_bucket}/domains/custom`;
   for (const host of hosts) {
     let current = await provider(`${root}/${host}`, { missing: true });
@@ -51,7 +51,7 @@ export async function preparePublicMediaDomains(orgId: string, manifest: { accou
   }
   // Verify real bytes on every retained public host, before making website traffic point at this publication.
   const checks = manifest.entries.flatMap(entry => [entry.cdn_url, ...entry.aliases.map(alias => alias.url)]
-    .filter(url => new URL(url).hostname !== manifest.website_host).map(url => ({ url, hash: entry.sha256 })));
+    .filter(url => new URL(url).hostname !== manifest.website_host && !(manifest.delivery === 'static' && new URL(url).hostname === manifest.media_host)).map(url => ({ url, hash: entry.sha256 })));
   for (const check of checks) {
     try {
       const url = parsePublicHttpsUrl(check.url); await assertPublicDestination(url);

@@ -11,11 +11,11 @@ export async function customerBuildStatus(orgId: string, siteId: string, jobId: 
   if (!job) throw new ConnectionError('Deployment not found.', 404);
   const publication = job.git_publication;
   if (!publication?.commit) throw new ConnectionError('This deployment has not published source to GitHub yet.', 409, 'git_commit_pending');
-  const connection = await getConnection(orgId, 'cloudflare');
+  const connection = await getConnection(orgId, 'cloudflare', publication.hosting_group_id ?? 'default');
   if (connection.cloudflare?.account_id !== publication.account_id || !/^typeroll-[a-f0-9]{16}$/.test(publication.project)) {
     throw new ConnectionError('The deployment belongs to a different publishing connection.', 409);
   }
-  const provider = await cloudflareClient(orgId);
+  const provider = await cloudflareClient(orgId, fetch, undefined, publication.hosting_group_id ?? 'default');
   const root = `/accounts/${publication.account_id}/pages/projects/${publication.project}`;
   const [project, match] = await Promise.all([provider(root), findPublicationDeployment(provider, root, publication)]);
   const deployment = match ? await provider(`${root}/deployments/${encodeURIComponent(match.id)}`) : null;

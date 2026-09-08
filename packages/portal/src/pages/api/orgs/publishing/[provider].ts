@@ -1,3 +1,4 @@
+import { getHostingGroup, hostingGroupId } from '../../../../lib/publishing/hosting-groups';
 import type { APIRoute } from 'astro';
 import { ConnectionError, disconnect } from '../../../../lib/publishing/connections';
 import { connectCloudflare, prepareCloudflareMedia, connectCloudflareMedia } from '../../../../lib/publishing/cloudflare-connection';
@@ -11,19 +12,22 @@ export const POST: APIRoute = async (context) => {
   try {
     const body = await connectionBody(context.request) as Record<string, unknown>;
     if (context.params.provider === 'cloudflare') {
+      const groupId = hostingGroupId(body.hosting_group_id ?? 'default');
+      await getHostingGroup(guard.value.orgId, groupId);
+      if (groupId !== 'default' && !['start', 'select'].includes(String(body.action))) throw new ConnectionError('Media storage belongs to the organization, not a Hosting Group.', 400);
       if (body.action === 'prepare_media' && typeof body.revision === 'string') return privateJson(await prepareCloudflareMedia(guard.value, body.revision));
       if (body.action === 'save_media') {
         await connectCloudflareMedia(guard.value, body);
         return privateJson({ media_ready: true });
       }
       if (body.action === 'start') {
-        const result = await startCloudflareConnection(guard.value);
+        const result = await startCloudflareConnection(guard.value, groupId);
         context.cookies.set(CLOUDFLARE_COOKIE, result.browser, { path: '/api/orgs/publishing/cloudflare', httpOnly: true,
           secure: process.env.NODE_ENV === 'production' || context.url.protocol === 'https:', sameSite: 'lax', maxAge: result.maxAge });
         return privateJson({ authorization_url: result.url });
       }
       if (body.action === 'select' && typeof body.account_id === 'string') {
-        await selectCloudflareAccount(guard.value, body.account_id);
+        await selectCloudflareAccount(guard.value, body.account_id, fetch, groupId);
         return privateJson({ connected: true });
       }
       await connectCloudflare(guard.value, body);
@@ -47,9 +51,11 @@ export const DELETE: APIRoute = async (context) => {
   try {
     const provider = context.params.provider;
     if (provider !== 'github' && provider !== 'cloudflare') throw new ConnectionError('Unknown publishing provider', 404);
-    const body = await connectionBody(context.request) as { revision?: unknown };
+    const body = await connectionBody(context.request) as { revision?: unknown; hosting_group_id?: unknown };
     if (typeof body?.revision !== 'string') throw new ConnectionError('Connection revision is required');
-    await disconnect(guard.value.orgId, provider, body.revision);
+    const groupId = hostingGroupId(body.hosting_group_id ?? 'default');
+    await getHostingGroup(guard.value.orgId, groupId);
+    await disconnect(guard.value.orgId, provider, body.revision, groupId);
     return privateJson({ disconnected: true });
   } catch (error) { return connectionFailure(error); }
 };

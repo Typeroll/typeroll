@@ -10,7 +10,7 @@ Cloudflare account, and media storage. The publisher receives access through a
 GitHub App installation and scoped Cloudflare credentials. Customers do not
 invite the publisher's developers or share a personal GitHub token.
 
-Each Typeroll organization connects one Cloudflare account, reused for all its
+Default reuses the organization Cloudflare account for its
 sites. Each site receives a private generated repository and a Git-connected Pages project.
 The site remains static; Forms and Extensions use their separately documented
 runtime owners.
@@ -297,3 +297,37 @@ Once media uses the hostname, keep it available for existing image links.
 Replacing a used hostname requires a domain migration. The same check applies
 to manual settings and authenticated API/MCP requests, including publications
 on other version branches and media removed from the CMS.
+
+
+## Additional Hosting Groups
+
+Open **Settings → Publishing → Hosting Groups → Add Hosting Group**. Enter a
+name and site address base such as `sites2.example.com`, create the group, and
+select **Connect Cloudflare** to authorize its hosting account. No R2 subscription
+or new media token is needed for additional hosting accounts. Media remains in
+the organization's verified storage. Cloudflare's own GitHub integration must
+also authorize the generated repositories in each hosting account.
+
+Use **Site settings → Publishing → Hosting Group** to select a group before the
+site's first publication. With only Default, no group selector is shown. Moving
+an already published site requires an explicit hosting migration; changing this
+selection never silently moves media or replaces a working deployment.
+
+Choose **Use organization DNS connection** when Typeroll may manage DNS. It
+looks for the hostname's zone in the organization connection, then the Hosting
+Group connection. A site's DNS and Pages account may differ. Choose **My DNS
+provider or agent** for externally managed records. Each hostname must be
+registered with Pages before adding its CNAME. Proxied Cloudflare DNS is required
+for custom branch addresses; confirm the returned publication identity before
+considering a branch live.
+
+API clients use `/api/v1/publishing/hosting-groups` to list, create, update and
+connect groups with an organization key. POST `action: "connect"` with
+`hosting_group_id`, the current connection `revision`, `account_id` and
+`api_token` to use existing provider access instead of OAuth. Use `action:
+"disconnect"` with the group ID and revision to disconnect hosting. Tokens never
+appear in responses. Default's media/DNS connection stays in organization
+Publishing. Site admins use `/api/v1/sites/{siteId}/publishing/hosting-group`
+with `hosting_group_id` and `previous_group_id` to select an unpublished site's
+group. Equivalent MCP tools are `list_hosting_groups`, `save_hosting_group`,
+`connect_hosting_group`, `read_site_hosting_group`, and `set_site_hosting_group`.

@@ -83,15 +83,17 @@ it('keeps a stable organization alias when a site gets its own media host and le
   expect(JSON.stringify(result.manifest)).not.toMatch(/synthetic-key|secret_access_key|X-Amz/);
 });
 
-it('uses the exact organization media host and preserves frozen paths after CMS metadata is removed', async () => {
+it('packages media on the website origin and preserves shared aliases and frozen paths after CMS metadata is removed', async () => {
   const mediaPath = `${paths.media('org', 'site')}/image`;
   await getStore().setDoc(mediaPath, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl,
     sha256: sha, public_path: '/archive/photo.png', storage: { provider: 'organization_r2',
       account_id: 'a'.repeat(32), bucket: 'customer-private', key: `private/media/abcdefghij/originals/${sha}/image.png`, state: 'ready' } });
   const first = await publicationMediaManifest('org', 'site', { html_content: `<img src="${oldUrl}">` }, 'site.demos.example.com');
   const organizationUrl = 'https://media.example.net/media/abcdefghij/archive/photo.png';
-  expect(first.manifest?.media_host).toBe('media.example.net');
-  expect(first.content.html_content).toBe(`<img src="${organizationUrl}">`);
+  expect(first.manifest?.media_host).toBe('site.demos.example.com');
+  expect(first.manifest?.media_path_prefix).toBe('/media');
+  expect(first.manifest?.entries[0].aliases).toContainEqual({ url: organizationUrl, key: 'media/abcdefghij/archive/photo.png' });
+  expect(first.content.html_content).toBe('<img src="https://site.demos.example.com/media/archive/photo.png">');
   const config = await getSiteDomains('org', 'site');
   await saveSiteDomains('org', 'site', { revision: config.revision, website_host: 'www.example.com',
     media_host: 'images.example.com', media_path_prefix: '', dns_mode: 'external' });

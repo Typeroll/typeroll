@@ -83,9 +83,11 @@ export async function prepareMedia(publication, root) {
           const verified = await read(manifest.public_bucket, key);
           if (!verified || hash(verified) !== digest) throw new Error('Published media failed byte verification');
         }
-        if (copyToWebsite && manifest.media_host === manifest.website_host) {
+        if (copyToWebsite && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host)) {
           const destination = path.resolve(root, '.publication-media', publicPath.slice(1));
           if (!destination.startsWith(path.resolve(root, '.publication-media') + path.sep)) throw new Error('Invalid media output path');
+          const retained = await fs.readFile(destination).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+          if (retained && hash(retained) !== hash(bytes)) throw new Error('Static media paths contain conflicting retained assets');
           await fs.mkdir(path.dirname(destination), { recursive: true });
           await fs.writeFile(destination, bytes);
           sameHostFiles.push({ source: destination, path: publicPath });

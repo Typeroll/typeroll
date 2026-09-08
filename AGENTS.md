@@ -34,3 +34,8 @@
   publication before traffic cutover. Storage migration must preserve media
   identities, concurrent edits and late uploads, verify copies before switching
   references, and route new uploads to the verified destination immediately.
+
+- Hosting Groups own hosting account connections and site address bases. The
+  Organization owns shared R2 media, its media hostname, DNS access and GitHub.
+  Default reuses the existing connection without duplicating OAuth grants.
+  See `docs/hosting-groups.md` for migration, static media and account boundaries.

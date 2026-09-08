@@ -40,6 +40,7 @@ export async function reserveSite(orgId: string, name: string): Promise<{ siteId
   const site: Omit<Site, 'id'> = {
     name,
     publishing_mode: newSitePublishingMode(),
+    hosting_group_id: 'default',
     media_id: randomMediaId(),
     hosting_adapter: 'cloudflare',
     created_at: new Date().toISOString(),

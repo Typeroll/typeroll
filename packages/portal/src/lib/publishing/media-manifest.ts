@@ -39,11 +39,12 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   const media = all.filter(item => [item.cdn_url, ...(item.source_aliases ?? []), ...(item.variants ?? []).map(variant => variant.cdn_url)].some(url => url && serialized.includes(url)));
   if (!media.length) return { content, media: [], manifest: null };
   if (!connection.cloudflare?.public_bucket || !connection.media_ready) throw new ConnectionError('Complete private and public R2 storage setup in Publishing.', 409, 'media_storage_required');
-  const host = domains.desired.media_host || organization.media_host;
+  const host = content.git_branch && content.git_branch !== 'main' ? websiteHost : domains.desired.media_host || websiteHost;
   if (!host) throw new ConnectionError('Set a media host in Publishing before deploying images.', 409, 'media_domain_required');
   const organizationHost = organization.media_host;
   const sharedHost = host === organizationHost;
-  const publicPrefix = sharedHost ? `/${prefix}` : domains.desired.media_path_prefix;
+  const delivery = sharedHost || (domains.active?.media_host === host && host !== websiteHost) ? 'r2' : 'static';
+  const publicPrefix = sharedHost ? `/${prefix}` : domains.desired.media_path_prefix || (host === websiteHost ? '/media' : '');
   const replacements = new Map<string, string>();
   const pathsSeen = new Set<string>();
   const entries = media.map(item => {
@@ -76,6 +77,6 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   });
   await markOrganizationMediaHostUsed(orgId, organization);
   return { content: replacePublicationReferences(content, replacements), media: entries,
-    manifest: { account_id: connection.cloudflare.account_id, original_bucket: connection.cloudflare.bucket, public_bucket: connection.cloudflare.public_bucket,
+    manifest: { delivery, account_id: connection.cloudflare.account_id, original_bucket: connection.cloudflare.bucket, public_bucket: connection.cloudflare.public_bucket,
       media_host: host, website_host: websiteHost, dns_mode: domains.dns_mode, media_path_prefix: publicPrefix, site_prefix: prefix, entries } };
 }

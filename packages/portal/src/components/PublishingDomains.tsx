@@ -5,6 +5,7 @@ import OrganizationDomainStatus from './OrganizationDomainStatus';
 import OrganizationDomainSetup from './OrganizationDomainSetup';
 import type { OrganizationDomainStatus as DomainStatus } from '../lib/publishing/organization-domain-status';
 
+type Preparation = { certificate_ready: boolean; has_existing_traffic?: boolean; requirements: Array<{ phase: string; type: string; name: string; content: string; status: string }> };
 type DomainData = {
   domain_status?: DomainStatus;
   media_host_change_allowed?: boolean;
@@ -13,7 +14,8 @@ type DomainData = {
   desired?: { website_host: string | null; media_host: string | null; media_path_prefix: string };
   active?: { website_host: string | null }; state?: string;
   candidate?: { id: string } | null;
-  preparation?: { certificate_ready: boolean; has_existing_traffic?: boolean; requirements: Array<{ phase: string; type: string; name: string; content: string; status: string }> } | null;
+  preparation?: Preparation | null;
+  media_preparation?: Preparation | null;
 };
 
 export default function PublishingDomains({ siteId }: { siteId?: string }) {
@@ -140,15 +142,16 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     {siteId && data?.active && data.state !== 'live' && <button type="button" className="btn" disabled={busy} onClick={() => void prepare()}>Prepare domain change from published content</button>}
     {data?.preparation && <div className="stack">
       <h3>Domain verification</h3>
+      {data.media_preparation && <p>{data.media_preparation.certificate_ready ? 'Media domain certificate confirmed.' : 'Media domain validation is still pending. Keep existing media DNS in place.'}</p>}
       <p>{data.preparation.certificate_ready ? 'Cloudflare has confirmed the certificate.' : 'Waiting for Cloudflare to confirm the certificate. Keep existing website DNS in place until validation is complete.'}</p>
       <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Purpose</th><th>Type</th><th>Name</th><th>Value</th></tr></thead><tbody>
-        {data.preparation.requirements.map(record => <tr key={record.phase + record.name}><td>{record.phase === 'traffic' ? 'Website traffic — after approval' : 'Certificate validation'}</td><td>{record.type}</td><td><code>{record.name}</code></td><td><code>{record.content}</code></td></tr>)}
+        {[...data.preparation.requirements, ...(data.media_preparation?.requirements ?? [])].map(record => <tr key={record.phase + record.name}><td>{record.phase === 'traffic' ? 'Website traffic — after approval' : 'Certificate validation'}</td><td>{record.type}</td><td><code>{record.name}</code></td><td><code>{record.content}</code></td></tr>)}
       </tbody></table></div>
       <p className="muted">In Cloudflare, select your domain → DNS → Records. Add validation records first. Apply the website CNAME only after the prepared deployment is ready. Version addresses require a proxied Cloudflare CNAME.</p>
       <button type="button" className="btn" disabled={busy} onClick={() => void refresh().catch(error => setError(error.message))}>Refresh verification</button>
       {data.candidate && data.state === 'ready_to_switch' && <>
         <p>The prepared build uses the future website and media addresses. Switching traffic makes this build public.</p>
-        <button type="button" className="btn" disabled={busy || (!data.preparation.certificate_ready && data.preparation.has_existing_traffic !== false)} onClick={() => void switchTraffic()}>Switch website traffic</button>
+        <button type="button" className="btn" disabled={busy || (!data.preparation.certificate_ready && data.preparation.has_existing_traffic !== false) || Boolean(data.media_preparation && !data.media_preparation.certificate_ready && data.media_preparation.has_existing_traffic !== false)} onClick={() => void switchTraffic()}>Switch website traffic</button>
       </>}
     </div>}
     {!siteId && data && <OrganizationDomainSetup data={data} busy={busy || checking} onSetup={setupOrganization} feedback={feedbackLocation === 'setup' ? organizationFeedback : undefined} />}
@@ -157,7 +160,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     <form className="stack" onSubmit={save} key={data.revision}>
       {siteId ? <>
         <label className="field">Website host<input name="website_host" defaultValue={data.desired?.website_host ?? ''} placeholder="www.example.com" autoCapitalize="none" spellCheck={false} /></label>
-        <label className="field">Media host<input name="media_host" defaultValue={data.desired?.media_host ?? ''} placeholder="media.example.com" autoCapitalize="none" spellCheck={false} /></label>
+        <label className="field">Media host<input name="media_host" defaultValue={data.desired?.media_host ?? ''} placeholder="Leave empty to serve images with the website" autoCapitalize="none" spellCheck={false} /></label>
         <label className="field">Media path prefix<input name="media_path_prefix" defaultValue={data.desired?.media_path_prefix ?? ''} placeholder="/media when using the website host" autoCapitalize="none" spellCheck={false} /></label>
         <p className="muted">Leave the media path prefix empty for a separate media host. Use /media when the website and media share a host. Existing media addresses remain available after the change.</p>
         {data.active?.website_host && <p>Current website host: {data.active.website_host}</p>}
