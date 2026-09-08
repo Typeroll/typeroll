@@ -1,5 +1,6 @@
 import { siteHostingGroup, lockSiteHostingGroup } from './hosting-groups';
 import { hostingDns } from './hosting-dns';
+import { purgePublicationHost } from './publication-cache';
 import { randomUUID } from 'node:crypto';
 import { paths, CORE_BLOCK_TYPES, type DeployJob, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
@@ -28,7 +29,7 @@ interface GitPublication {
   owner: string; repo: string; project: string; account_id: string; branch: string;
   publication_id: string; snapshot_chunks: number; snapshot_digest: string; content_cutoff: string;
   domain_revision: string; website_host: string; commit?: string | null; deployment_id?: string | null;
-  release_branch?: 'main' | null; snapshot_job_id?: string;
+  release_branch?: 'main' | null; snapshot_job_id?: string; cache_purged_deployment?: string; cache_purged_hosts?: string[];
 }
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
 type GitJob = DeployJob & { observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
@@ -278,6 +279,23 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     }
     if (domains.cutover_approved_revision === domains.revision && domains.approved_media_preparation && mediaDns) {
       await applyPreparedTraffic(mediaDns.provider, domains.approved_media_preparation);
+    }
+    {
+      const purgedHosts = publication.cache_purged_deployment === deployment.id ? publication.cache_purged_hosts ?? [] : [];
+      const targets = [
+        ...(dns && preparation.certificate_ready && preparation.zone_id ? [{ provider: dns.provider, zoneId: preparation.zone_id, host: publication.website_host }] : []),
+        ...(mediaDns && mediaPreparation?.certificate_ready && mediaPreparation.zone_id ? [{ provider: mediaDns.provider, zoneId: mediaPreparation.zone_id, host: mediaPreparation.hostname }] : []),
+      ];
+      for (const target of targets) {
+        if (purgedHosts.includes(target.host)) continue;
+        if (!await purgePublicationHost(target.provider, target.zoneId, target.host)) {
+          await store.updateDoc(jobPath, { phase: 'waiting for Cloudflare cache refresh' });
+          return 'deferred';
+        }
+        purgedHosts.push(target.host);
+        publication = { ...publication, cache_purged_deployment: deployment.id, cache_purged_hosts: purgedHosts };
+        await store.updateDoc(jobPath, { git_publication: publication });
+      }
     }
     if (mediaPreparation && !await probePublication(`https://${mediaPreparation.hostname}`, '/.well-known/typeroll/publication.json', publication.publication_id)) {
       await store.updateDoc(jobPath, { phase: 'distributing media', dns_requirements: mediaPreparation.requirements });

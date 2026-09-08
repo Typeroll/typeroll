@@ -9,7 +9,7 @@ import { createProviderClient } from './providers.mjs';
 export const CLOUDFLARE_COOKIE = 'typeroll_publishing_cloudflare';
 export const CLOUDFLARE_CALLBACK = '/api/orgs/publishing/cloudflare/callback';
 export const CLOUDFLARE_SCOPES = ['account-settings.read', 'page.read', 'page.write', 'workers-r2.read', 'workers-r2.write', 'offline_access'];
-export const CLOUDFLARE_OPTIONAL_DNS_SCOPES = ['zone.read', 'dns.read', 'dns.write', 'zone-transform-rules.read', 'zone-transform-rules.write'];
+export const CLOUDFLARE_OPTIONAL_DNS_SCOPES = ['zone.read', 'cache.purge', 'dns.read', 'dns.write', 'zone-transform-rules.read', 'zone-transform-rules.write'];
 const scopesForGroup = (groupId: string) => groupId === 'default' ? CLOUDFLARE_SCOPES : CLOUDFLARE_SCOPES.filter(scope => !scope.startsWith('workers-r2.'));
 const TTL = 10 * 60_000;
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');

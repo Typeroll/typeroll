@@ -223,7 +223,7 @@ export default function PublishingConnections() {
           </form>}
           <form onSubmit={event => void submit('cloudflare', event)}><input type="hidden" name="action" value="start" />
             {data.cloudflare.status === 'connected' ? <details><summary>Reconnect Cloudflare</summary>
-              <p>Use this if your account authorization needs to be renewed. Include the optional domain, DNS and URL rewrite permissions if you want Typeroll to configure your domains automatically.</p><button type="submit" className="btn" disabled={busy || checkingMedia}>Sign in to Cloudflare again</button>
+              <p>Use this if your account authorization needs to be renewed. Include the optional domain, DNS, Cache Purge and URL rewrite permissions if you want Typeroll to configure your domains automatically.</p><button type="submit" className="btn" disabled={busy || checkingMedia}>Sign in to Cloudflare again</button>
             </details> : <button type="submit" className="btn" disabled={busy || checkingMedia}>Connect Cloudflare</button>}
           </form>
         </> : <p className="muted">Cloudflare sign-in is not available until the publisher finishes configuring its Cloudflare app.</p>}

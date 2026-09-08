@@ -195,7 +195,8 @@ const options: IOptions = {
   // sanitize-html also strips <script>, <object>, <embed> by default.
   // <style> is opted into explicitly via allowVulnerableTags.
   allowVulnerableTags: true,
-  parser: { lowerCaseAttributeNames: true },
+  // Authoring references such as <x-form /> must not absorb following HTML.
+  parser: { lowerCaseAttributeNames: true, recognizeSelfClosing: true },
   transformTags: {
     input: (tagName, attribs) => {
       if (attribs.tabindex !== '-1') delete attribs.tabindex;

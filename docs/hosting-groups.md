@@ -70,8 +70,9 @@ stale revisions, unknown groups, and secrets in public responses.
 
 ## Delivery and proof
 
-Implementation and qualification are in progress; this document is a design
-decision, not a claim that the complete workflow is already deployed.
+Hosting Groups shipped in Core 0.1.45 and passed the Cloud staging browser
+journey on desktop and mobile. Real cross-account qualification is still
+pending a second customer account; the complete pilot is not yet qualified.
 
 1. Default migration, group CRUD, authorization and connection isolation.
 2. Publishing UI, site assignment, public API and MCP parity.
@@ -91,3 +92,21 @@ provider capacity.
 - https://developers.cloudflare.com/pages/how-to/custom-branch-aliases/
 - https://developers.cloudflare.com/r2/buckets/public-buckets/
 - https://developers.cloudflare.com/dns/zone-setups/subdomain-setup/
+
+## Public cache after deployment
+
+A successful Pages build can coexist with stale responses on its custom domain.
+After the exact static deployment and domain are ready, invalidate only the
+site hostname through the DNS-owning Cloudflare account, then verify the public
+publication. A separately hosted static media hostname receives its own purge.
+Never purge the whole zone or unrelated site hosts. Record successful purges per
+deployment and hostname; defer provider rate limits without marking the site live.
+
+New OAuth consent includes the optional `cache.purge` scope. Existing connections
+need renewed consent with Cache Purge enabled, or API tokens with Zone → Cache
+Purge permission. Missing access returns `publishing_cache_access_required` with
+UI instructions. External DNS/CDN operators remain responsible for invalidating
+any additional cache they place in front of Pages.
+
+Cloudflare documents hostname purges for every plan, including Free:
+https://developers.cloudflare.com/cache/how-to/purge-cache/#availability-and-limits

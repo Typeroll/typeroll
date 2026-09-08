@@ -72,6 +72,23 @@ it('freezes once, waits for the exact Git commit, and hides the live link until 
   expect(await executeCustomerPublication(args)).toBe('ran');
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', deploy_url: 'https://www.example.com' });
   expect(await getStore().getDoc<any>(paths.site('org', 'site'))).toMatchObject({ domain_status: 'live', domain: 'www.example.com' });
+  expect(mocks.cloudflare.mock.calls.filter(([route]) => route.endsWith('/purge_cache'))).toHaveLength(1);
+});
+
+it('keeps the public link hidden until this deployment has refreshed its own hostname cache', async () => {
+  await executeCustomerPublication(args); complete(); mocks.probe.mockResolvedValue(true);
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.endsWith('/purge_cache')) throw new ProviderError('Cloudflare', 429);
+    return provider(route, options);
+  });
+  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ phase: 'waiting for Cloudflare cache refresh' });
+  expect((await getStore().getDoc<any>(jobPath)).deploy_url).toBeUndefined();
+  mocks.cloudflare.mockImplementation(provider);
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', git_publication: { cache_purged_deployment: 'deployment' } });
+  expect(mocks.cloudflare).toHaveBeenCalledWith('/zones/zone/purge_cache', { method: 'POST', body: { hosts: ['www.example.com'] } });
 });
 
 it('never accepts a successful deployment of another commit or a failed customer build', async () => {

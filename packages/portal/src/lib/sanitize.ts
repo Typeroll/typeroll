@@ -209,7 +209,8 @@ const options: IOptions = {
   // <style> is allowed because we need authored CSS for multi-page sites;
   // sanitize-html flags it as a "vulnerable tag" which we explicitly opt into.
   allowVulnerableTags: true,
-  parser: { lowerCaseAttributeNames: true },
+  // Authoring references such as <x-form /> must not absorb following HTML.
+  parser: { lowerCaseAttributeNames: true, recognizeSelfClosing: true },
   transformTags: {
     input: (tagName, attribs) => {
       if (attribs.tabindex !== '-1') delete attribs.tabindex;
