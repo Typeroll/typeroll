@@ -29,3 +29,8 @@
   public API and MCP as well as the UI. Support external agents applying DNS
   changes through their own provider access; return structured requirements
   and independently verify results with the same authorization checks.
+
+- Support separate website and media hosts. Freeze future origins in a verified
+  publication before traffic cutover. Storage migration must preserve media
+  identities, concurrent edits and late uploads, verify copies before switching
+  references, and route new uploads to the verified destination immediately.
