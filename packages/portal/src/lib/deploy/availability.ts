@@ -34,13 +34,21 @@ export async function stampPublication(buildDir: string): Promise<{ id: string; 
   return { id, paths: routes.sort() };
 }
 
+export interface PublicationProbeResult {
+  checked_at: string; host: string; ready: boolean;
+  reason: 'ready' | 'http_status' | 'publication_mismatch' | 'redirect' | 'network_or_tls';
+  http_status?: number; observed_publication?: string | null; network_code?: string;
+}
+
 /** Reject stale HTTP 200 responses, redirects to other hosts, and private destinations. */
 export async function probePublication(
   origin: string, route: string, id: string,
-  opts: { fetchImpl?: typeof fetch; validate?: typeof assertPublicDestination } = {},
+  opts: { fetchImpl?: typeof fetch; validate?: typeof assertPublicDestination; observe?: (result: PublicationProbeResult) => Promise<void> } = {},
 ): Promise<boolean> {
+  let result: PublicationProbeResult = { checked_at: new Date().toISOString(), host: '', ready: false, reason: 'network_or_tls' };
   try {
     const base = parsePublicHttpsUrl(origin);
+    result.host = base.hostname;
     let url = parsePublicHttpsUrl(new URL(route, base).href);
     if (url.origin !== base.origin) return false;
     for (let redirects = 0; redirects < 4; redirects++) {
@@ -50,15 +58,25 @@ export async function probePublication(
         headers: { 'Cache-Control': 'no-cache', 'User-Agent': 'Typeroll-Publication-Check/1.0' },
       });
       if (response.status >= 300 && response.status < 400) {
+        result = { ...result, reason: 'redirect', http_status: response.status };
         const location = response.headers.get('location');
         if (!location) return false;
         url = parsePublicHttpsUrl(new URL(location, url).href);
         if (url.origin !== base.origin) return false;
         continue;
       }
-      return response.status === 200 && response.headers.get(PUBLICATION_HEADER) === id;
+      const observed = response.headers.get(PUBLICATION_HEADER);
+      const ready = response.status === 200 && observed === id;
+      result = { ...result, ready, reason: ready ? 'ready' : response.status !== 200 ? 'http_status' : 'publication_mismatch',
+        http_status: response.status, observed_publication: observed && /^[a-zA-Z0-9-]{1,128}$/.test(observed) ? observed : null };
+      return ready;
     }
-  } catch { /* DNS, TLS and edge propagation are pending, not a successful publication. */ }
+  } catch (error) {
+    const code = (error as { cause?: { code?: string }; code?: string }).cause?.code ?? (error as { code?: string }).code;
+    if (typeof code === 'string' && /^[A-Z_]{1,64}$/.test(code)) result.network_code = code;
+  } finally {
+    await opts.observe?.(result);
+  }
   return false;
 }
 

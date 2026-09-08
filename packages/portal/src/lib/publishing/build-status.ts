@@ -21,6 +21,7 @@ export async function customerBuildStatus(orgId: string, siteId: string, jobId: 
   const deployment = match ? await provider(`${root}/deployments/${encodeURIComponent(match.id)}`) : null;
   return {
     job_id: jobId, status: job.status, phase: job.phase,
+    public_probe: job.public_probe ?? null,
     source: { owner: publication.owner, repository: publication.repo, branch: publication.branch, commit: publication.commit },
     project: { name: publication.project, uses_functions: project.uses_functions ?? null,
       dashboard_url: `https://dash.cloudflare.com/${publication.account_id}/pages/view/${publication.project}` },

@@ -104,3 +104,16 @@ describe('public deployment readiness', () => {
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 });
+
+it('records publication mismatch and network failures without reflecting response or error secrets', async () => {
+  const observed: any[] = [];
+  const observe = async (value: any) => { observed.push(value); };
+  const validate = async () => {};
+  expect(await probePublication('https://example.com', '/', 'expected', { validate, observe,
+    fetchImpl: async () => new Response(null, { headers: { 'x-typeroll-publication': 'previous' } }) })).toBe(false);
+  expect(observed[0]).toMatchObject({ ready: false, reason: 'publication_mismatch', http_status: 200, observed_publication: 'previous' });
+  expect(await probePublication('https://example.com', '/', 'expected', { validate, observe,
+    fetchImpl: async () => { throw Object.assign(new Error('secret diagnostic payload'), { cause: { code: 'CERT_HAS_EXPIRED' } }); } })).toBe(false);
+  expect(observed[1]).toMatchObject({ ready: false, reason: 'network_or_tls', network_code: 'CERT_HAS_EXPIRED' });
+  expect(JSON.stringify(observed)).not.toContain('secret');
+});

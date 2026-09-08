@@ -256,7 +256,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await applyPreparedTraffic(cloudflare, domains.approved_preparation);
     }
     // A reachable pages.dev build is evidence, not the customer's public URL.
-    if (!await probePublication(`https://${publication.website_host}`, '/.well-known/typeroll/publication.json', publication.publication_id)) {
+    if (!await probePublication(`https://${publication.website_host}`, '/.well-known/typeroll/publication.json', publication.publication_id, { observe: async result => {
+      await store.updateDoc(jobPath, { public_probe: result });
+      if (!result.ready) console.info(JSON.stringify({ event: 'customer_publication_pending', site_id: args.siteId, job_id: args.jobId, ...result }));
+    } })) {
       await store.updateDoc(jobPath, { phase: preparation.action === 'verify' ? 'distributing' : 'awaiting domain setup', dns_requirements: preparation.requirements });
       return 'deferred';
     }
