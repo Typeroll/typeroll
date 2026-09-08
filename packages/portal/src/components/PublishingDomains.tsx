@@ -60,6 +60,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       if (data && result.revision !== data.revision) throw new Error('Domain settings changed in another session. Reload before saving; your entered values are still shown.');
       setData(current => current ? { ...current, domain_status: result.domain_status } : result);
     } else setData(result);
+    return result;
   }
   useEffect(() => {
     if (siteId) return;
@@ -69,8 +70,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
   }, [endpoint, siteId, data?.revision]);
   async function checkOrganizationDomain() {
     setChecking(true); setError('');
-    try { await refresh(); }
-    catch (error) { setError(error instanceof Error ? error.message : 'Could not check domain status.'); }
+    try { return (await refresh()).domain_status as DomainStatus | undefined; }
     finally { setChecking(false); }
   }
   async function setupOrganization(body: Record<string, string>) {
@@ -177,7 +177,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     {!siteId && feedbackLocation === 'manual' && organizationFeedback}
     </form></FormContainer>}
     {!siteId && data?.sites_domain && <p className="muted">Site address base: <strong>{data.sites_domain}</strong></p>}
-    {!siteId && data && <OrganizationDomainStatus status={data.domain_status} checking={checking || busy} onRefresh={() => void checkOrganizationDomain()} />}
+    {!siteId && data && <OrganizationDomainStatus key={data.revision} status={data.domain_status} checking={checking || busy} onRefresh={checkOrganizationDomain} />}
   </>;
   if (siteId) return <section className="card stack" style={{ maxWidth: 720, minWidth: 0, overflowWrap: 'anywhere', marginBottom: '1rem' }}><h2 style={{ fontSize: '1.125rem' }}>Website and media addresses</h2>{content}</section>;
   const waiting = busy || checking || (!data && !error) || data?.domain_status?.state === 'pending';

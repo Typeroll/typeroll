@@ -250,3 +250,54 @@ test('confirms a saved address separately from a Cloudflare setup error, and nev
   await expect(section.getByRole('alert')).toContainText('Domain settings changed');
   await expect(section.locator('.publishing-domain-confirmation')).toHaveCount(0);
 });
+
+
+test('answers each manual domain check beside the button, including unchanged status, waiting and failures', async ({ page }) => {
+  let outcome = 'active', requests = 0;
+  await page.route('**/api/orgs/publishing/domains', async route => {
+    requests++;
+    if (outcome === 'http_error') return route.fulfill({ status: 503, json: { error: 'The status service is temporarily unavailable. Try again.' } });
+    await route.fulfill({ json: { revision: 'saved', media_host: 'media.example.com', sites_domain: 'sites.example.com', dns_mode: 'automatic',
+      domain_status: { state: outcome, hostname: 'media.example.com', checked_at: new Date(Date.UTC(2026, 8, 8, 12, 0, requests)).toISOString(), steps: [],
+        message: outcome === 'active' ? 'Cloudflare has activated this media domain and its HTTPS certificate.' : outcome === 'pending' ? 'Cloudflare is still activating HTTPS. Check again shortly.' : 'Cloudflare denied access to domain status. Check the connection permissions, then try again.' } } });
+  });
+  await authenticatePersona(page, 'owner');
+  await page.goto('/app/settings/publishing');
+  const section = page.getByRole('region', { name: 'Domains', exact: true });
+  const button = section.getByRole('button', { name: 'Check domain status', exact: true });
+  const feedback = section.locator('.publishing-domain-check');
+  await expect(button).toBeEnabled();
+  await expect(feedback).toHaveCount(0);
+  await button.click();
+  await expect(feedback).toContainText('Domain verified');
+  await expect(feedback).toContainText('media.example.com');
+  const firstTime = await feedback.locator('time').getAttribute('datetime');
+  await button.click();
+  await expect(feedback.locator('time')).not.toHaveAttribute('datetime', firstTime!);
+  await expect(feedback).toHaveAttribute('data-state', 'ready');
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await button.click();
+    await expect(feedback).toContainText('Domain verified');
+    await expect(feedback).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/domain-check-active-${width}.png`, animations: 'disabled' });
+  }
+  outcome = 'pending';
+  await button.click();
+  await expect(feedback).toHaveAttribute('data-state', 'waiting');
+  await expect(feedback).toContainText('Still waiting for domain activation');
+  await expect(feedback).toContainText('Check again shortly.');
+  outcome = 'http_error';
+  await button.click();
+  await expect(feedback).toHaveAttribute('role', 'alert');
+  await expect(feedback).toContainText('Could not check domain status');
+  await expect(feedback).toContainText('The status service is temporarily unavailable. Try again.');
+  await expect(feedback).not.toContainText('Domain verified');
+  await expect(feedback).toBeInViewport();
+  outcome = 'check_failed';
+  await button.click();
+  await expect(feedback).toHaveAttribute('data-state', 'error');
+  await expect(feedback).toContainText('Cloudflare denied access');
+  await expect(feedback).not.toContainText('Domain verified');
+});

@@ -1,6 +1,6 @@
 {
   "name": "typeroll",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "private": true,
   "description": "Open-source CMS for building and operating static websites",
   "workspaces": [

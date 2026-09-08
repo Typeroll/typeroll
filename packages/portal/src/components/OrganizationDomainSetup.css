@@ -19,3 +19,4 @@
 .publishing-domain-confirmation__title svg { flex-shrink: 0; }
 .publishing-domain-confirmation p { margin: 10px 0 0; }
 .publishing-domain-confirmation--warning { color: #78350f; background: #fffbeb; border-color: #f4ce78; }
+.publishing-domain-confirmation--error { color: #991b1b; background: #fef2f2; border-color: #fca5a5; }
