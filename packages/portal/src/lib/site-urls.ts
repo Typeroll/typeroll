@@ -41,7 +41,7 @@ function trimRight(base: string): string {
   return base.replace(/\/$/, '');
 }
 
-type SiteUrlInput = Pick<Site, 'domain' | 'hosting_config'>;
+type SiteUrlInput = Pick<Site, 'domain' | 'hosting_config' | 'publishing_mode' | 'domain_status'>;
 
 /**
  * Resolve the live (deployed) base URL for a site/version pair. Returns null
@@ -51,6 +51,7 @@ export function liveBaseFor(site: SiteUrlInput, version: SiteVersion | null): st
   if (version?.distributing_deploy_id) return null;
   if (!version?.last_deployed_at || !Number.isFinite(Date.parse(version.last_deployed_at))) return null;
   if (!version || version.kind === 'main' || version.id === MAIN_VERSION_ID) {
+    if (site.publishing_mode === 'customer_git') return site.domain_status === 'live' && site.domain ? `https://${site.domain}` : null;
     if (site.domain) return `https://${site.domain}`;
     const fallback = site.hosting_config?.fallback_subdomain;
     return fallback ? `https://${fallback}` : null;

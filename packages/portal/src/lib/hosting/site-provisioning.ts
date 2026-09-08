@@ -10,6 +10,8 @@
  */
 
 import { CloudflareApi, pagesProjectNameForSite } from './cloudflare-api';
+import { paths, type Site } from '@typeroll/shared';
+import { getStore } from '../datastore';
 
 export interface ProvisionResult {
   /** The CF Pages project we created (or reused) for this site. */
@@ -47,6 +49,7 @@ function cfFromEnv(): CloudflareApi | null {
  *      their site before pointing their real domain at us.
  */
 export async function provisionSiteHosting(orgId: string, siteId: string): Promise<ProvisionResult | null> {
+  if ((await getStore().getDoc<Site>(paths.site(orgId, siteId)))?.publishing_mode === 'customer_git') return null;
   const cf = cfFromEnv();
   if (!cf) return null;
 

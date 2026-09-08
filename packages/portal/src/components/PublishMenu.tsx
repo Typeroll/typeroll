@@ -143,6 +143,7 @@ export default function PublishMenu({
 
   const [env, setEnv] = useState<'production' | 'staging'>('production');
   const [deployErr, setDeployErr] = useState<string | null>(null);
+  const [publishingSetup, setPublishingSetup] = useState<{ ready: boolean; mode: 'managed' | 'customer_git'; required: Array<{ code: string; message: string; settings_url: string }> } | null>(null);
   const { job, setJob, watch } = useDeployProgress(siteId, setDeployErr, undefined, !hasUnsaved && !saving);
   const busy = job?.status === 'queued' || job?.status === 'running';
 
@@ -168,6 +169,8 @@ export default function PublishMenu({
   useEffect(() => {
     if (!open) return;
     setChangesLoading(true);
+    fetch(`/api/sites/${siteId}/publishing`, { cache: 'no-store' })
+      .then(response => response.ok ? response.json() : null).then(setPublishingSetup).catch(() => setPublishingSetup(null));
     fetch(`/api/sites/${siteId}/changes-since-deploy`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setChanges(d))
@@ -186,7 +189,7 @@ export default function PublishMenu({
       const res = await fetch(`/api/sites/${siteId}/deploy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment: env }),
+        body: JSON.stringify({ environment: publishingSetup?.mode === 'customer_git' ? 'production' : env }),
       });
       const data = await res.json();
       if (!res.ok || !(data.jobId ?? data.job_id)) throw new Error(data.error ?? 'Failed to start deploy');
@@ -408,8 +411,13 @@ export default function PublishMenu({
           </div>
           </div>
           <div className="pmenu__section pmenu__deploy-footer">
+            {publishingSetup && !publishingSetup.ready && <div role="status">
+              <p className="pmenu__hint">You can keep editing and use Preview. Complete Publishing setup to deploy this site.</p>
+              <ul>{publishingSetup.required.map(item => <li key={item.code}>{item.message}</li>)}</ul>
+              <a className="pmenu__btn pmenu__linkbtn" href="/app/settings/publishing">Set up Publishing</a>
+            </div>}
             <div className="pmenu__actions">
-              <select
+              {publishingSetup?.mode !== 'customer_git' && <select
                 aria-label="Deployment environment"
                 className="pmenu__select pmenu__select--env"
                 value={env}
@@ -419,11 +427,11 @@ export default function PublishMenu({
               >
                 <option value="production">Production</option>
                 <option value="staging">Staging</option>
-              </select>
+              </select>}
               <button
                 type="button"
                 className="pmenu__btn pmenu__btn--primary"
-                disabled={busy}
+                disabled={busy || publishingSetup?.ready === false}
                 onClick={() => void deploy()}
               >
                 {deployLabel}

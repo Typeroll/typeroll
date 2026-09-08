@@ -97,6 +97,11 @@ export async function finalizeMedia(
   const store = getStore();
   const media = await store.getDoc<Media>(`${paths.media(orgId, siteId)}/${mediaId}`);
   if (!media) throw new Error(`Media ${mediaId} not found`);
+  if (media.storage) {
+    const { finalizeStoredMedia } = await import('./publishing/media-storage');
+    const finalized = await finalizeStoredMedia(orgId, siteId, mediaId, opts?.expectedSha256);
+    return { cache_headers_applied: false, ...finalized, size_bytes: finalized.size_bytes ?? 0 };
+  }
   if (!media.r2_key) throw new Error(`Media ${mediaId} has no r2_key — cannot finalize`);
 
   // Integrity first — never bless corrupted bytes with immutable cache

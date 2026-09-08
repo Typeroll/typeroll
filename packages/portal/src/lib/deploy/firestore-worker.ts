@@ -116,7 +116,7 @@ export class FirestoreDeployWorker {
           result.completed += 1;
           continue;
         }
-        if (job.status === 'running') {
+        if (job.status === 'running' && job.execution_backend !== 'customer_git') {
           await this.store.updateDoc(jobPath, {
             status: 'queued',
             phase: 'recovered_after_worker_lease_expiry',

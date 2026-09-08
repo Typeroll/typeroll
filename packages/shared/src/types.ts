@@ -111,6 +111,8 @@ export type HostingAdapterName = 'cloudflare' | 'netlify' | 'vercel' | 'firebase
 export interface Site {
   id: string;
   name: string;
+  /** Customer Git publishing is explicit; existing managed sites retain their adapter until migrated. */
+  publishing_mode?: 'customer_git' | 'managed';
   /**
    * Anonymous, random short id (10 chars, [0-9a-z]) used as the PUBLIC media
    * R2-key prefix: `media/{media_id}/{filename}`. Deliberately NOT the org or
@@ -689,6 +691,14 @@ export interface Media {
   cdn_url: string;
   /** Cloudflare R2 object key — needed to delete the underlying object. */
   r2_key?: string;
+  storage?: {
+    provider: 'organization_r2' | 'draft_r2'; account_id: string; bucket: string; key: string;
+    generation: string; state: 'uploading' | 'ready'; grant_expires_at: string;
+  };
+  sha256?: string;
+  public_path?: string;
+  source_aliases?: string[];
+  migration_source?: { provider: 'draft_r2' | 'legacy_r2'; account_id: string; bucket: string; key: string };
   alt_text?: string;
   title?: string;
   caption?: string;
@@ -1606,6 +1616,7 @@ export interface DeployCost {
 }
 
 export interface DeployJob {
+  execution_backend?: 'customer_git';
   id: string;
   version_id: string;
   environment: DeployEnvironment;

@@ -43,6 +43,8 @@ export interface SweepResult {
 const due = (v: unknown, nowIso: string): boolean => typeof v === 'string' && v !== '' && v <= nowIso;
 
 export async function runPublishSweep(now: Date = new Date()): Promise<SweepResult> {
+  const { runPendingMediaMigrations } = await import('./publishing/media-migration');
+  await runPendingMediaMigrations();
   const nowIso = now.toISOString();
   const store = getStore();
   const result: SweepResult = {
@@ -70,6 +72,15 @@ export async function runPublishSweep(now: Date = new Date()): Promise<SweepResu
     for (const site of sites) {
       const key = `${org.id}/${site.id}`;
       try {
+        // Reconcile durable external builds even if a Cloud Tasks delivery exhausted its retry window.
+        const publishingSite = await store.getDoc<Site>(paths.site(org.id, site.id));
+        if (publishingSite?.publishing_mode === 'customer_git') {
+          const pending = (await store.listDocs<DeployJob>(paths.deploys(org.id, site.id))).find(job => job.execution_backend === 'customer_git' && ['queued', 'running'].includes(job.status));
+          if (pending) {
+            const { executeCustomerPublication } = await import('./publishing/customer-runner');
+            await executeCustomerPublication({ orgId: org.id, siteId: site.id, jobId: pending.id, versionId: pending.version_id, environment: pending.environment, dryRun: pending.dry_run });
+          }
+        }
         // Pages (main version — schedules target the live site).
         const pages = await store.listDocs<Page>(paths.pages(org.id, site.id, MAIN_VERSION_ID));
         for (const p of pages) {

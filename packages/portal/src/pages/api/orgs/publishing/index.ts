@@ -4,13 +4,14 @@ import { githubSetup, githubChoices } from '../../../../lib/publishing/github-co
 import { isSecretCryptoConfigured } from '../../../../lib/secret-crypto';
 import { connectionFailure, privateJson, publishingAdmin } from '../../../../lib/publishing/http';
 import { cloudflareChoices, cloudflareSetup } from '../../../../lib/publishing/cloudflare-oauth';
+import { mediaMigrationStatus } from '../../../../lib/publishing/media-migration';
 
 export const GET: APIRoute = async (context) => {
   const guard = await publishingAdmin(context);
   if (!guard.ok) return guard.response;
   try {
     const orgId = guard.value.orgId;
-    return privateJson({ github: connectionSummary(await getConnection(orgId, 'github')),
+    return privateJson({ media_migration: await mediaMigrationStatus(orgId), github: connectionSummary(await getConnection(orgId, 'github')),
       cloudflare: connectionSummary(await getConnection(orgId, 'cloudflare')),
       cloudflare_choices: await cloudflareChoices(guard.value), cloudflare_setup: cloudflareSetup(),
       github_choices: await githubChoices(guard.value), github_setup: githubSetup(), encryption_available: isSecretCryptoConfigured() });

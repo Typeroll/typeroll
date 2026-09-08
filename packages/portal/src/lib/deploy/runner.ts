@@ -23,6 +23,7 @@
 
 import fs from 'node:fs';
 import { vstore } from '../version-store';
+import { resolvePublicationVersion } from '../publishing/publication-version';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
@@ -509,6 +510,7 @@ export async function materializeFixtures(
   // Site doc
   const site = await store.getDoc<Site>(paths.site(orgId, siteId));
   if (!site) throw new Error('Site disappeared');
+  const resolved = await resolvePublicationVersion(orgId, siteId, versionId);
   await writeDoc(outDir, paths.site(orgId, siteId), site);
 
   // Apps: write ONLY the public projection of enabled apps (enabled flag +
@@ -561,7 +563,7 @@ export async function materializeFixtures(
   }
 
   // Settings (singleton)
-  const settings = await vstore.settings(orgId, siteId, versionId);
+  const settings = resolved.settings;
   // Instrumentation kept after the branch-deploy-defaults fix: it pins what
   // ends up in the snapshot the build now reads. (The original bug — branch
   // deploys rendering with defaultSiteSettings while main + preview were
@@ -581,18 +583,18 @@ export async function materializeFixtures(
     );
 
   // Partials
-  const partials = await vstore.partials(orgId, siteId, versionId);
+  const partials = resolved.partials;
   for (const p of partials) await writeDoc(outDir, `${paths.partials(orgId, siteId, versionId)}/${p.id}`, p);
 
   // Pages — only published + unlisted are read at build time anyway
-  const pageDocs = await vstore.pages(orgId, siteId, versionId);
+  const pageDocs = resolved.pages;
   for (const p of pageDocs) {
     if (p.status === 'draft' || p.status === 'review') continue;
     await writeDoc(outDir, `${paths.pages(orgId, siteId, versionId)}/${p.id}`, p);
   }
 
   // Redirects
-  const redirects = await vstore.redirects(orgId, siteId, versionId);
+  const redirects = resolved.redirects;
   for (const r of redirects) {
     await writeDoc(outDir, `${paths.redirects(orgId, siteId, versionId)}/${r.id}`, r);
   }
@@ -605,12 +607,12 @@ export async function materializeFixtures(
   // templates it didn't override — raw store.listDocs would drop every
   // non-overridden block type / template, the same bug class as missing
   // settings on a branch deploy.
-  const blockTypeDocs = await vstore.blockTypes(orgId, siteId, versionId);
+  const blockTypeDocs = resolved.blockTypes;
   for (const bt of blockTypeDocs) {
     if (!bt.id) continue;
     await writeDoc(outDir, `${paths.blockTypes(orgId, siteId, versionId)}/${bt.id}`, bt as unknown as Record<string, unknown>);
   }
-  const templateDocs = await vstore.pageTemplates(orgId, siteId, versionId);
+  const templateDocs = resolved.pageTemplates;
   for (const t of templateDocs) {
     if (!t.id) continue;
     await writeDoc(outDir, `${paths.pageTemplates(orgId, siteId, versionId)}/${t.id}`, t as unknown as Record<string, unknown>);
@@ -625,8 +627,7 @@ export async function materializeFixtures(
   // block types. Items are keyed under the collection's machine `name`,
   // matching how the renderer reads them. Drafts are skipped (the renderer
   // never routes or lists them) — mirrors the page handling above.
-  const collectionDocs = await vstore.collections(orgId, siteId, versionId);
-  for (const c of collectionDocs) {
+  for (const { definition: c, items: itemDocs } of resolved.collections) {
     if (!c.name) continue;
     await writeDoc(outDir, paths.collection(orgId, siteId, c.name, versionId), c as unknown as Record<string, unknown>);
     // Strip what the published site never reads: per-field provenance, and
@@ -638,7 +639,6 @@ export async function materializeFixtures(
     const hiddenFields = (c.fields ?? [])
       .filter((f) => (f as { rendered?: boolean }).rendered === false)
       .map((f) => f.name);
-    const itemDocs = await vstore.collectionItems(orgId, siteId, versionId, c.name);
     for (const item of itemDocs) {
       if (!item.id || item.status === 'draft') continue;
       const doc = { ...(item as unknown as Record<string, unknown>) };

@@ -52,6 +52,8 @@ export function findActiveDeploy(
  * block the site's Deploy button permanently.
  */
 function isStale(job: DeployJob, now: number): boolean {
+  // External builds retain their target lock until the provider has been reconciled.
+  if (job.execution_backend === 'customer_git') return false;
   const started = Date.parse(job.started_at ?? '');
   if (Number.isNaN(started)) return true;
   return now - started >= DEPLOY_STALE_AFTER_MS;

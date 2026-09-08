@@ -13,6 +13,8 @@ import { requireSiteAccess, json, requirePermission } from '../../../../../lib/a
 import { getStore } from '../../../../../lib/datastore';
 import { siteMediaPrefix } from '../../../../../lib/media-keys';
 import { paths } from '@typeroll/shared';
+import { createMediaUpload } from '../../../../../lib/publishing/media-storage';
+import { connectionFailure } from '../../../../../lib/publishing/http';
 
 const MAX_SIZE = 25 * 1024 * 1024;
 
@@ -44,6 +46,12 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   }
 
   const accountId = process.env.R2_ACCOUNT_ID;
+  if (site.publishing_mode === 'customer_git') {
+    try {
+      const uploaded = await createMediaUpload(owner_org_id, site.id, { filename, contentType, size, actor: session.userId });
+      return json({ ...uploaded, finalizeUrl: `/api/sites/${site.id}/media/${uploaded.mediaId}/finalize` });
+    } catch (error) { return connectionFailure(error); }
+  }
   const bucket = process.env.R2_BUCKET;
   const publicBase = process.env.R2_PUBLIC_BASE_URL;
   if (!accountId || !bucket || !publicBase) {

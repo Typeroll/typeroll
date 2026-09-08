@@ -3,6 +3,7 @@ import {
   type ExtensionInstallation,
   type Site,
 } from '@typeroll/shared';
+import { publishingRuntimeOrigins } from '../publishing/runtime-origins';
 import { getStore } from '../datastore';
 import { clientIp, rateLimit } from '../rate-limit';
 import { signPublicExtensionToken } from './auth';
@@ -44,7 +45,8 @@ export async function publicExtensionCors(args: {
   const origin = args.request.headers.get('origin');
   if (!origin) throw new PublicExtensionTokenError('Origin is required', 403);
   const site = await getStore().getDoc<Site>(paths.site(args.orgId, args.siteId));
-  if (!site || !siteOrigins(site, args.siteId).has(origin)) throw new PublicExtensionTokenError('Origin is not allowed', 403);
+  const origins = site?.publishing_mode === 'customer_git' ? new Set(await publishingRuntimeOrigins(args.orgId, args.siteId)) : site ? siteOrigins(site, args.siteId) : new Set();
+  if (!site || !origins.has(origin)) throw new PublicExtensionTokenError('Origin is not allowed', 403);
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',

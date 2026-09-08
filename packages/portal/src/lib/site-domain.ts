@@ -136,6 +136,7 @@ function dnsTargetForProject(project: string): string {
 async function loadSite(orgId: string, siteId: string): Promise<Site & { id: string }> {
   const site = await getStore().getDoc<Site>(paths.site(orgId, siteId));
   if (!site) throw new DomainServiceError(`Site ${siteId} not found`, 404);
+  if (site.publishing_mode === 'customer_git') throw new DomainServiceError('Manage website and media hosts in Publishing using /api/v1/sites/{siteId}/publishing/domains. Save future hosts, verify the candidate, then approve the traffic switch.', 409);
   return { ...site, id: siteId };
 }
 
@@ -524,6 +525,13 @@ export async function declareDomainAtCreation(
   siteId: string,
   rawHostname: string,
 ): Promise<void> {
+  const site = await getStore().getDoc<Site>(paths.site(orgId, siteId));
+  if (site?.publishing_mode === 'customer_git') {
+    const { getSiteDomains, saveSiteDomains } = await import('./publishing/domain-config');
+    const config = await getSiteDomains(orgId, siteId);
+    await saveSiteDomains(orgId, siteId, { revision: config.revision, website_host: rawHostname, dns_mode: 'automatic' });
+    return;
+  }
   try {
     await requestDomain(orgId, siteId, rawHostname);
     return;

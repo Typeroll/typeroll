@@ -2,9 +2,11 @@ import type { APIRoute } from 'astro';
 import { requireSiteAccess, json, requirePermission } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
+import { publicMediaPath } from '../../../../../lib/publishing/domain-config';
+import { connectionFailure } from '../../../../../lib/publishing/http';
 import type { Media } from '@typeroll/shared';
 
-const EDITABLE: Array<keyof Media> = ['filename', 'alt_text', 'title', 'caption', 'width', 'height'];
+const EDITABLE: Array<keyof Media> = ['filename', 'alt_text', 'title', 'caption', 'width', 'height', 'public_path'];
 
 export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -35,6 +37,10 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
   const existing = await getStore().getDoc<Media>(docPath);
   if (!existing) return json({ error: 'Not found' }, 404);
 
+  if (update.public_path !== undefined) {
+    try { update.public_path = update.public_path === null ? null : publicMediaPath(update.public_path); }
+    catch (error) { return connectionFailure(error); }
+  }
   await getStore().updateDoc(docPath, update);
   return json({ ok: true });
 };
@@ -62,7 +68,7 @@ export const DELETE: APIRoute = async ({ cookies, params, locals }) => {
 
   // Best-effort R2 cleanup. Only attempts when R2 is configured AND we have
   // the object key stored on the doc (older uploads predate the r2_key field).
-  if (existing.r2_key && process.env.R2_ACCOUNT_ID && process.env.R2_BUCKET) {
+  if (!existing.storage && existing.r2_key && process.env.R2_ACCOUNT_ID && process.env.R2_BUCKET) {
     try {
       const { S3Client, DeleteObjectCommand } = await import('@aws-sdk/client-s3');
       const r2 = new S3Client({

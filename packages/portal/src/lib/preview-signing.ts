@@ -38,6 +38,7 @@ export interface PreviewTicket {
    * Absent = false (saved content only), which keeps old tokens valid.
    */
   wc?: boolean;
+  id?: string;
 }
 
 function getSecret(): string {
@@ -65,6 +66,7 @@ export function signPreviewTicket(args: {
 }): { token: string; expiresAt: string } {
   const ttl = Math.max(60, Math.min(MAX_TTL_SECONDS, args.ttlSeconds ?? DEFAULT_TTL_SECONDS));
   const ticket: PreviewTicket = {
+    id: crypto.randomUUID(),
     org_id: args.orgId,
     site_id: args.siteId,
     version_id: args.versionId,
@@ -110,4 +112,23 @@ export function verifyPreviewToken(token: string | undefined | null): PreviewTic
     return null;
   }
   return ticket;
+}
+
+/** Revocation is checked on every page/media request; signed URLs already issued live for at most 60 seconds. */
+export async function verifyActivePreviewToken(token: string | undefined | null): Promise<PreviewTicket | null> {
+  const ticket = verifyPreviewToken(token);
+  if (!ticket) return null;
+  const { getStore } = await import('./datastore');
+  const key = crypto.createHash('sha256').update(token!).digest('hex');
+  const revoked = await getStore().getDoc(`preview_revocations/${key}`);
+  return revoked ? null : ticket;
+}
+
+export async function revokePreviewToken(orgId: string, siteId: string, token: unknown) {
+  const ticket = typeof token === 'string' && token.length < 8192 ? verifyPreviewToken(token) : null;
+  if (!ticket || ticket.org_id !== orgId || ticket.site_id !== siteId) throw new Error('Preview link is expired or does not belong to this site.');
+  const { getStore } = await import('./datastore');
+  const key = crypto.createHash('sha256').update(token as string).digest('hex');
+  await getStore().setDoc(`preview_revocations/${key}`, { org_id: orgId, site_id: siteId, expires_at: new Date(ticket.exp * 1000).toISOString() });
+  return { revoked: true, media_grace_seconds: 60 };
 }

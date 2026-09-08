@@ -6,6 +6,7 @@ import { getStore } from '../../../../lib/datastore';
 import { defaultSiteSettings, paths } from '@typeroll/shared';
 import type { Site, SiteSettings } from '@typeroll/shared';
 import DomainManager from '../../../../components/DomainManager.tsx';
+import PublishingDomains from '../../../../components/PublishingDomains';
 import { organizationMembership } from '../../../../lib/organization-session';
 
 const ctx = await loadSiteContext(Astro);
@@ -37,14 +38,14 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
     must walk through pending → verified → live. See
     docs/domain-lifecycle-plan.md.
   -->
-  <div class="card stack" style="max-width: 720px; margin-bottom: 1rem;">
+  {site.publishing_mode === 'customer_git' ? <PublishingDomains siteId={siteId} client:load /> : <div class="card stack" style="max-width: 720px; margin-bottom: 1rem;">
     <h2 style="font-size: 1.125rem;">Custom domain</h2>
     <DomainManager
       client:load
       siteId={siteId}
       fallbackUrl={site.hosting_config?.fallback_subdomain ? `https://${site.hosting_config.fallback_subdomain}` : undefined}
     />
-  </div>
+  </div>}
 
   <form method="POST" action={`/api/sites/${siteId}/settings`} class="stack" style="max-width: 720px;">
     <div class="card stack">

@@ -122,7 +122,7 @@ it('keeps the original account and media keys when reconnecting OAuth', async ()
   await finishCloudflareConnection(session, await grant(), provider());
   const current = await getConnection('default', 'cloudflare');
   const credentials = openCredentials<CloudflareStoredCredentials>('default', 'cloudflare', current.encrypted_credentials!);
-  await getStore().updateDoc(connectionPath('default', 'cloudflare'), { cloudflare: { ...current.cloudflare, bucket: 'agency-media' },
+  await getStore().updateDoc(connectionPath('default', 'cloudflare'), { media_ready: true, cloudflare: { ...current.cloudflare, bucket: 'agency-media', public_bucket: 'public-media' },
     encrypted_credentials: sealCredentials('default', 'cloudflare', { ...credentials, access_key_id: 'synthetic-r2-key', secret_access_key: 'synthetic-r2-secret' }) });
   await finishCloudflareConnection(session, await grant(), provider([first, second]));
   const reconnected = await getConnection('default', 'cloudflare');

@@ -65,3 +65,18 @@ describe('preview-signing', () => {
     expect(verifyPreviewToken('any.thing')).toBeNull();
   });
 });
+
+it('revokes one preview without invalidating a different link to the same site', async () => {
+  const { makeTmpFixtures, resetDatastore } = await import('../helpers/tmp-fixtures');
+  makeTmpFixtures(); await resetDatastore();
+  process.env.PREVIEW_HMAC_SECRET = SECRET;
+  const { signPreviewTicket, verifyActivePreviewToken, revokePreviewToken } = await import('../../lib/preview-signing');
+  const one = signPreviewTicket({ orgId: 'org', siteId: 'site', versionId: 'main' });
+  const two = signPreviewTicket({ orgId: 'org', siteId: 'site', versionId: 'main' });
+  expect(one.token).not.toBe(two.token);
+  await expect(revokePreviewToken('other-org', 'site', one.token)).rejects.toThrow('does not belong');
+  expect(await verifyActivePreviewToken(one.token)).not.toBeNull();
+  await revokePreviewToken('org', 'site', one.token);
+  expect(await verifyActivePreviewToken(one.token)).toBeNull();
+  expect(await verifyActivePreviewToken(two.token)).not.toBeNull();
+});

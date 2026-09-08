@@ -110,6 +110,12 @@ async function uploadFromUrl(args: UrlUploadInput, deps: ToolDeps): Promise<Reco
 
 export const mediaTools: ToolDef[] = [
   {
+    name: 'read_private_media_url',
+    description: 'Get a 60-second read URL for a private media original. Use it for authorized image inspection; never store it in page content or generated source. Use the stable media URL or ID in content.',
+    inputSchema: { media_id: z.string() },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, `media/${encodeURIComponent(args.media_id)}/content`))),
+  },
+  {
     name: 'list_media',
     description: 'List uploaded media items (CDN URLs, alt text, mime). Newest first, cursor-paginated.',
     inputSchema: {
@@ -255,11 +261,12 @@ export const mediaTools: ToolDef[] = [
   },
   {
     name: 'update_media',
-    description: 'Patch a media item\'s alt_text or filename. Other fields are immutable.',
+    description: 'Patch a media item\'s alt text, filename or public path. A public path change is applied at the next publication.',
     inputSchema: {
       media_id: z.string(),
       alt_text: z.string().optional(),
       filename: z.string().optional(),
+      public_path: z.string().nullable().optional().describe('Optional stable path such as /wp-content/uploads/2023/photo.jpg. Applied at the next build; existing public image URLs stay available.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const { media_id, ...body } = args;

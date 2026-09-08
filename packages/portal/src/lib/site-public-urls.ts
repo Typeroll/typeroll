@@ -124,6 +124,12 @@ export const DOMAIN_STATE_LABEL: Record<DomainState, string> = {
 };
 
 export function publicUrlsFor(site: Site & { id: string }): PublicSiteUrls {
+  if (site.publishing_mode === 'customer_git') {
+    const portalOrigin = (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '');
+    return { production: site.domain_status === 'live' && site.domain ? `https://${site.domain}` : null,
+      pending_domain: site.domain_status !== 'live' ? site.domain ?? null : null, domain_status: site.domain_status ?? null,
+      fallback: null, staging: null, preview_base: portalOrigin ? `${portalOrigin}/preview/${site.id}` : null };
+  }
   const domain = (site as { domain?: string }).domain;
   const status = (site as { domain_status?: 'pending' | 'verified' | 'live' | 'failed' }).domain_status;
   const stagingUrl = (site as { staging_url?: string }).staging_url;

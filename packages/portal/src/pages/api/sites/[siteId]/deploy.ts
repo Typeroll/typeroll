@@ -22,6 +22,7 @@ import { findActiveDeploy } from '../../../../lib/deploy/in-flight';
 import { paths } from '@typeroll/shared';
 import type { DeployEnvironment, DeployJob } from '@typeroll/shared';
 import { refreshDeploymentAvailability } from '../../../../lib/deploy/availability';
+import { publishingReadiness } from '../../../../lib/publishing/readiness';
 
 export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -34,6 +35,8 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
   const environment: DeployEnvironment = body.environment === 'staging' ? 'staging' : 'production';
 
   const store = getStore();
+  const readiness = await publishingReadiness(owner_org_id, site.id, versionId);
+  if (!readiness.ready) return json({ error: 'Set up Publishing before deploying this site.', code: 'publishing_setup_required', required: readiness.required }, 409);
 
   // Already building? Hand back the running job instead of starting a second
   // one. Both builds would upload to the same Cloudflare Pages project, so the

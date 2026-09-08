@@ -16,6 +16,8 @@ import { randomMediaId } from './media-keys';
 import { defaultHeaderHtml, defaultFooterHtml } from './default-partials';
 import { provisionSiteHosting } from './hosting/site-provisioning';
 import { declareDomainAtCreation } from './site-domain';
+import { newSitePublishingMode } from './publishing/readiness';
+import { getSiteDomains, saveSiteDomains } from './publishing/domain-config';
 
 export interface CreateSiteInput {
   /** Org that will own the new site. */
@@ -37,6 +39,7 @@ export async function reserveSite(orgId: string, name: string): Promise<{ siteId
   const baseId = slugify(name) || generateDocId();
   const site: Omit<Site, 'id'> = {
     name,
+    publishing_mode: newSitePublishingMode(),
     media_id: randomMediaId(),
     hosting_adapter: 'cloudflare',
     created_at: new Date().toISOString(),
@@ -122,7 +125,10 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
   });
 
   if (domain) {
-    await declareDomainAtCreation(input.orgId, siteId, domain);
+    if (reservedSite.publishing_mode === 'customer_git') {
+      const config = await getSiteDomains(input.orgId, siteId);
+      await saveSiteDomains(input.orgId, siteId, { revision: config.revision, website_host: domain, dns_mode: 'automatic' });
+    } else await declareDomainAtCreation(input.orgId, siteId, domain);
   }
 
   return { siteId, site: { ...(site as Site), id: siteId } };

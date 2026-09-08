@@ -112,4 +112,7 @@ export class TyperollClient {
   rootPost<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('POST', this.rootUrl(path), body);
   }
+  rootPut<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>('PUT', this.rootUrl(path), body);
+  }
 }

@@ -55,6 +55,8 @@ import { editorCanvasBridgeScript } from './editor-canvas-bridge';
 // drift to be "fixed".
 
 export interface PreviewOptions {
+  /** Shared previews use revocable media routes instead of embedding short-lived read URLs. */
+  sharedMediaToken?: string;
   /**
    * When set, rewrite internal links (`href="/foo"`) to `{browseRoot}/foo`
    * so the preview iframe / new tab stays inside the preview surface as the
@@ -367,7 +369,7 @@ export async function renderPreview(
     ? rewriteIf(renderPreviewCookieConsent(settings))
     : '';
 
-  return buildHtml({
+  return resolvePreviewMedia(buildHtml({
     page,
     versionId,
     settings,
@@ -392,7 +394,7 @@ export async function renderPreview(
       liveUrl: opts.liveBase && (page.status === 'published' || page.status === 'unlisted') && isContentDeployed(opts.deployedVersion ?? null, page) ? joinUrl(opts.liveBase, pagePathSegment(page)) : null,
       editorUrl: `/app/sites/${siteId}/pages/${page.id}`,
     } : null,
-  });
+  }), orgId, siteId, opts);
 }
 
 /**
@@ -610,7 +612,7 @@ async function renderPreviewCollectionItem(
   const cookieConsentHtml = opts.allowScripts === true
     ? rewriteIf(renderPreviewCookieConsent(settings))
     : '';
-  return buildHtml({
+  return resolvePreviewMedia(buildHtml({
     page: synthetic,
     versionId,
     settings,
@@ -634,7 +636,7 @@ async function renderPreviewCollectionItem(
       liveUrl: opts.liveBase && isContentDeployed(opts.deployedVersion ?? null, { date_updated: route.item.updated_at, date_created: route.item.created_at }) ? `${opts.liveBase.replace(/\/$/, '')}${route.path}` : null,
       editorUrl: `/app/sites/${siteId}/collections/${route.collection.name}/items/${route.item.id}`,
     } : null,
-  });
+  }), orgId, siteId, opts);
 }
 
 /**
@@ -921,4 +923,10 @@ function escapeHtml(s: string): string {
 }
 function escapeAttr(s: string): string {
   return escapeHtml(s).replaceAll('"', '&quot;');
+}
+
+async function resolvePreviewMedia(html: string, orgId: string, siteId: string, opts: PreviewOptions) {
+  if (opts.sharedMediaToken) return html;
+  const { authorizePreviewMedia } = await import('./publishing/media-storage');
+  return authorizePreviewMedia(html, orgId, siteId);
 }

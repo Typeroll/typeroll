@@ -5,9 +5,9 @@ type Connection = {
   status: 'connected' | 'disconnected'; revision: string; credentials_saved: boolean;
   auth_method?: 'api_token' | 'oauth'; media_ready?: boolean;
   github: { owner: string } | null;
-  cloudflare: { account_id: string; account_name: string; bucket: string } | null;
+  cloudflare: { account_id: string; account_name: string; bucket: string; public_bucket?: string } | null;
 };
-type Connections = { cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
+type Connections = { media_migration?: { state: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
 const API = '/api/orgs/publishing';
 
 class PublishingRequestError extends Error {
@@ -39,6 +39,15 @@ export default function PublishingConnections() {
     }
   }, [mediaError, mediaNotice]);
   const refresh = async () => setData(await request());
+  useEffect(() => {
+    if (!['queued', 'running'].includes(data?.media_migration?.state ?? '')) return;
+    let cancelled = false;
+    const interval = setInterval(() => {
+      void request().then(result => { if (!cancelled) setData(result); })
+        .catch(error => { if (!cancelled) setError(error.message); });
+    }, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [data?.media_migration?.state]);
   async function checkMedia(revision: string) {
     checkedConnection.current = revision;
     setCheckingMedia(true); setMediaError(null); setMediaNotice('');
@@ -60,7 +69,7 @@ export default function PublishingConnections() {
   }
   useEffect(() => {
     const connection = data?.cloudflare;
-    if (connection?.status === 'connected' && !connection.cloudflare?.bucket && checkedConnection.current !== connection.revision) {
+    if (connection?.status === 'connected' && (!connection.cloudflare?.bucket || !connection.cloudflare?.public_bucket) && checkedConnection.current !== connection.revision) {
       void checkMedia(connection.revision);
     }
   }, [data?.cloudflare.revision, data?.cloudflare.status, data?.cloudflare.cloudflare?.bucket]);
@@ -118,14 +127,14 @@ export default function PublishingConnections() {
   const mediaBucket = data?.cloudflare.cloudflare?.bucket;
   const cloudflareAccount = data?.cloudflare.cloudflare;
   const r2Overview = cloudflareAccount ? `https://dash.cloudflare.com/${cloudflareAccount.account_id}/r2/overview` : 'https://dash.cloudflare.com/';
-  const mediaReady = Boolean(data?.cloudflare.media_ready && mediaBucket);
+  const mediaReady = Boolean(data?.cloudflare.media_ready && mediaBucket && cloudflareAccount?.public_bucket);
   const mediaAccessForm = <div className="stack">
     <p>Create one R2 upload token in Cloudflare and paste its two keys below. This allows direct uploads from your browser to R2. You only do this once for all sites in this organization.</p>
     <a className="btn btn--secondary" style={{ alignSelf: 'flex-start', whiteSpace: 'normal' }} href={r2Overview} target="_blank" rel="noreferrer">Open R2 in {cloudflareAccount?.account_name} ↗</a>
     <ol style={{ paddingInlineStart: 24 }}>
       <li>In <strong>R2 object storage → Overview</strong>, find <strong>Account Details → API Tokens</strong> and select <strong>Manage</strong>.</li>
       <li>Select <strong>Create Account API token</strong> and name it <strong>Typeroll media</strong>. If that option is unavailable, use <strong>Create User API token</strong>.</li>
-      <li>Choose <strong>Object Read &amp; Write</strong>, restrict access to this bucket only, and choose <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong>.</li>
+      <li>Choose <strong>Object Read &amp; Write</strong> and restrict access to these two Typeroll buckets: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong> (private originals) and <strong style={{ overflowWrap: 'anywhere' }}>{cloudflareAccount?.public_bucket ?? 'the public bucket shown after preparing storage'}</strong> (published images).</li>
       <li>Create the token. Copy <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> into the matching fields below. The secret is shown only once.</li>
     </ol>
     <p className="muted">Copy Access Key ID and Secret Access Key, not the value labelled API token.</p>
@@ -140,7 +149,7 @@ export default function PublishingConnections() {
 
   return <div className="stack" style={{ maxWidth: 760 }} aria-busy={busy || checkingMedia}>
     <p>Connect GitHub and one Cloudflare account for your organization, then reuse these connections across its sites. Each site will have its own private GitHub repository and static Cloudflare Pages project.</p>
-    <p className="muted">Account connections are available here. Creating site repositories and publishing from the editor are still being implemented.</p>
+    <p className="muted">You can edit, save and share temporary previews before connecting these accounts. To publish a new site, complete these connections and set an organization default domain or the site’s own website address.</p>
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {!data ? <p>Loading connections…</p> : <>
@@ -173,6 +182,11 @@ export default function PublishingConnections() {
       <section className="card stack" aria-labelledby="cloudflare-title">
         <h2 id="cloudflare-title">Cloudflare and R2 media</h2>
         <p>Status: <strong>{data.cloudflare.status}</strong>{data.cloudflare.cloudflare && <> · {data.cloudflare.cloudflare.account_name}</>}</p>
+        {data.cloudflare.status === 'connected' && <details><summary>Allow Cloudflare to build from GitHub — once per organization</summary><ol>
+          <li>Open Cloudflare → Workers &amp; Pages → Create application → Pages → Connect to Git.</li>
+          <li>Select + Add account, choose the same GitHub organization as above, and authorize Cloudflare’s GitHub App with All repositories.</li>
+          <li>Stop at the repository list and return here. Typeroll creates each site’s repository and Pages project.</li>
+        </ol><p>This authorization is separate from installing the Typeroll GitHub App. Future sites reuse it.</p></details>}
         {data.cloudflare.status !== 'connected' && <p>Sign in to Cloudflare and approve access. Typeroll then checks R2 automatically. If you need to activate an R2 subscription, the next step appears here.</p>}
         {data.cloudflare_setup?.available ? <>
           {(data.cloudflare_choices ?? []).length > 0 && <form className="stack" onSubmit={event => void submit('cloudflare', event)}>
@@ -184,7 +198,7 @@ export default function PublishingConnections() {
           </form>}
           <form onSubmit={event => void submit('cloudflare', event)}><input type="hidden" name="action" value="start" />
             {data.cloudflare.status === 'connected' ? <details><summary>Reconnect Cloudflare</summary>
-              <p>Use this if your account authorization needs to be renewed.</p><button type="submit" className="btn" disabled={busy || checkingMedia}>Sign in to Cloudflare again</button>
+              <p>Use this if your account authorization needs to be renewed. Include the optional domain, DNS and URL rewrite permissions if you want Typeroll to configure your domains automatically.</p><button type="submit" className="btn" disabled={busy || checkingMedia}>Sign in to Cloudflare again</button>
             </details> : <button type="submit" className="btn" disabled={busy || checkingMedia}>Connect Cloudflare</button>}
           </form>
         </> : <p className="muted">Cloudflare sign-in is not available until the publisher finishes configuring its Cloudflare app.</p>}
@@ -201,7 +215,18 @@ export default function PublishingConnections() {
           {mediaReady ? <>
             <p style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CircleCheck size={20} aria-hidden="true" style={{ color: 'var(--color-success)', flexShrink: 0 }} /><strong>R2 connected</strong></p>
             <p>Upload access verified. Your R2 credentials are saved securely and reused for this organization’s sites.</p>
-            <p>Bucket: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong></p>
+            <p>Private originals bucket: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong></p>
+            <p>Public images bucket: <strong style={{ overflowWrap: 'anywhere' }}>{cloudflareAccount?.public_bucket}</strong></p>
+            {data.media_migration && <div role="status">
+              <p>{data.media_migration.state === 'complete' ? 'Originals moved to your R2 storage. Existing published image URLs are retained.' : `Moving existing originals to R2: ${data.media_migration.copied_files} copied, ${data.media_migration.pending_files} remaining.`}</p>
+              {data.media_migration.error && <p>{data.media_migration.error}</p>}
+              <button type="button" className="btn" disabled={busy} onClick={async () => {
+                setBusy(true); setError('');
+                try { if (data.media_migration?.state === 'failed') await request('/media-migration', 'POST', {}); await refresh(); }
+                catch (error) { setError(error instanceof Error ? error.message : 'Could not check migration.'); }
+                finally { setBusy(false); }
+              }}>{data.media_migration.state === 'failed' ? 'Retry media migration' : 'Refresh migration status'}</button>
+            </div>}
             {data.cloudflare.auth_method === 'oauth' && <details><summary>Replace R2 access keys</summary>{mediaAccessForm}</details>}
           </> : mediaBucket ? <>
             <p style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CircleCheck size={20} aria-hidden="true" style={{ color: 'var(--color-success)', flexShrink: 0 }} /><strong>R2 storage prepared</strong></p>
@@ -226,7 +251,7 @@ export default function PublishingConnections() {
             <li>Return to <strong>R2 → Overview → Account Details</strong>. Select <strong>Manage</strong> next to <strong>API Tokens</strong>, then <strong>Create Account API token</strong>. Choose <strong>Object Read &amp; Write</strong> for your bucket. Copy both <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> into the form. Account tokens require a Cloudflare Super Administrator.</li>
             <li>Select <strong>Verify and save Cloudflare</strong>. The status changes to <strong>connected</strong> after the access checks pass.</li>
           </ol>
-          <p>You set this up once per organization. Repositories, Pages projects, build settings, and public image delivery belong to Typeroll’s site setup; you should not need to configure them for each site. That automatic site setup is still being completed.</p>
+          <p>You set this up once per organization. For sites using Git publishing, Typeroll creates the repository and Pages project at the first deployment. Finish R2 setup above for both the private originals bucket and the public images bucket.</p>
         </details>
         <p className="muted">Connect Cloudflare’s own GitHub App to the same organization with All repositories so Cloudflare can build your sites. The account check below verifies account access and Pages visibility, and uploads, reads, and deletes a small temporary R2 object. Project creation and public media delivery are verified separately.</p>
         {!data.encryption_available ? <p>The publisher needs to configure encrypted credential storage before you can connect.</p> :

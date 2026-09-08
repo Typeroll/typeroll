@@ -1,6 +1,7 @@
 ---
 import AppLayout from '../../../layouts/AppLayout.astro';
 import PublishingConnections from '../../../components/PublishingConnections';
+import PublishingDomains from '../../../components/PublishingDomains';
 import { publishingAdmin } from '../../../lib/publishing/http';
 import { organizationMembership } from '../../../lib/organization-session';
 
@@ -13,4 +14,5 @@ const organization = await organizationMembership(guard.value.userId, guard.valu
   <div class="app-header"><h1>Publishing</h1></div>
   <p>GitHub and Cloudflare connections for <strong>{organization?.name ?? 'your organization'}</strong>.</p>
   <PublishingConnections client:load />
+  <PublishingDomains client:load />
 </AppLayout>

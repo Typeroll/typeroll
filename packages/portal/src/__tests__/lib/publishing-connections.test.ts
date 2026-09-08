@@ -49,6 +49,8 @@ function providerFetch(overrides: Record<string, unknown> = {}) {
       '/orgs/synthetic-agency': { id: 56 },
       [`/client/v4/accounts/${accountId}`]: { success: true, result: { id: accountId, name: 'Synthetic agency' } },
       [`/client/v4/accounts/${accountId}/pages/projects?per_page=1`]: { success: true, result: [] },
+      [`/client/v4/accounts/${accountId}/r2/buckets/agency-media/domains/managed`]: { success: true, result: { enabled: false } },
+      [`/client/v4/accounts/${accountId}/r2/buckets/agency-media/domains/custom`]: { success: true, result: { domains: [] } },
       ...overrides,
     };
     expect(init?.redirect).toBe('error');
@@ -205,38 +207,46 @@ describe('Cloudflare connection and encrypted credentials', () => {
   it('reports R2 ready only after upload verification, including legacy key connections', () => {
     const connection = { revision: 'synthetic-revision', status: 'connected' as const, auth_method: 'oauth' as const,
       encrypted_credentials: 'synthetic-ciphertext',
-      cloudflare: { account_id: accountId, account_name: 'Synthetic agency', bucket: 'agency-media', endpoint: 'https://example.test' } };
+      cloudflare: { account_id: accountId, account_name: 'Synthetic agency', bucket: 'agency-media', public_bucket: 'public-media', endpoint: 'https://example.test' } };
     expect(connectionSummary(connection).media_ready).toBe(false);
     expect(connectionSummary({ ...connection, media_ready: true }).media_ready).toBe(true);
     expect(connectionSummary({ ...connection, media_ready: true, status: 'disconnected' }).media_ready).toBe(false);
     expect(connectionSummary({ ...connection, media_ready: true, encrypted_credentials: null }).media_ready).toBe(false);
     expect(connectionSummary({ ...connection, media_ready: true, cloudflare: { ...connection.cloudflare, bucket: '' } }).media_ready).toBe(false);
-    expect(connectionSummary({ ...connection, auth_method: 'api_token' }).media_ready).toBe(true);
+    expect(connectionSummary({ ...connection, auth_method: 'api_token' }).media_ready).toBe(false);
+    expect(connectionSummary({ ...connection, media_ready: true, cloudflare: { ...connection.cloudflare, public_bucket: undefined } }).media_ready).toBe(false);
     expect(connectionSummary({ ...connection, auth_method: 'api_token', media_ready: false }).media_ready).toBe(false);
   });
-  it.each([false, true])('prepares one organization bucket and reuses it when OAuth needs refresh: %s', async (refreshRequired) => {
+  it.each([false, true])('prepares separate private and public organization buckets and reuses it when OAuth needs refresh: %s', async (refreshRequired) => {
     await getConnection('default', 'cloudflare');
     await getStore().updateDoc(connectionPath('default', 'cloudflare'), { status: 'connected',
       cloudflare: { account_id: accountId, account_name: 'Synthetic agency', bucket: '', endpoint: `https://${accountId}.r2.cloudflarestorage.com` },
       encrypted_credentials: sealCredentials('default', 'cloudflare', refreshRequired ? { oauth: { access_token: 'expired-access', refresh_token: 'synthetic-refresh', expires_at: 0, scope: CLOUDFLARE_SCOPES.join(' ') } } : { api_token: credentials.api_token }) });
-    let bucket: string | undefined;
+    const buckets = new Set<string>();
     let rules = [{ id: 'existing-reader', allowed: { origins: ['https://existing.example'], methods: ['GET'] } }];
     const fetcher = vi.fn<typeof fetch>(async (url, init) => {
       const pathname = new URL(String(url)).pathname;
       if (pathname === '/oauth2/token') return Response.json({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer', scope: CLOUDFLARE_SCOPES.join(' ') });
       const body = init?.body ? JSON.parse(init.body as string) : undefined;
       expect(init?.redirect).toBe('error');
+      if (pathname.endsWith('/domains/managed')) return Response.json({ success: true, result: { enabled: false } });
+      if (pathname.endsWith('/domains/custom')) return Response.json({ success: true, result: { domains: [] } });
+      if (pathname.endsWith('/lifecycle')) {
+        if (init?.method === 'PUT') expect(body.rules.at(-1)).toMatchObject({ conditions: { prefix: 'build-grants/' }, deleteObjectsTransition: { condition: { maxAge: 86400 } } });
+        return Response.json({ success: true, result: { rules: [] } });
+      }
       if (pathname.endsWith('/cors')) {
         if (init?.method === 'PUT') rules = body.rules;
         return Response.json({ success: true, result: { rules } });
       }
-      if (init?.method === 'POST') bucket = body.name;
-      if (!bucket) return new Response(null, { status: 404 });
-      return Response.json({ success: true, result: { name: bucket, jurisdiction: 'default' } });
+      if (init?.method === 'POST') buckets.add(body.name);
+      const requested = pathname.split('/').at(-1)!;
+      if (!buckets.has(requested) && init?.method !== 'POST') return new Response(null, { status: 404 });
+      return Response.json({ success: true, result: { name: body?.name ?? requested, jurisdiction: 'default' } });
     });
     for (let i = 0; i < 2; i++) await prepareCloudflareMedia(session, (await getConnection('default', 'cloudflare')).revision, fetcher);
-    expect(fetcher.mock.calls.filter(([url, init]) => String(url).endsWith('/r2/buckets') && init?.method === 'POST')).toHaveLength(1);
-    expect(bucket).toMatch(/^typeroll-media-[a-f0-9]{16}$/);
+    expect(fetcher.mock.calls.filter(([url, init]) => String(url).endsWith('/r2/buckets') && init?.method === 'POST')).toHaveLength(2);
+    expect([...buckets].sort()).toEqual([expect.stringMatching(/^typeroll-media-[a-f0-9]{16}$/), expect.stringMatching(/^typeroll-public-[a-f0-9]{16}$/)]);
     expect(rules).toHaveLength(2);
     expect(rules[0]).toEqual({ id: 'existing-reader', allowed: { origins: ['https://existing.example'], methods: ['GET'] } });
     expect(rules[1]).toMatchObject({ id: 'typeroll-direct-uploads', allowed: { origins: ['http://localhost'], methods: ['GET', 'HEAD', 'PUT'] } });
@@ -248,9 +258,9 @@ describe('Cloudflare connection and encrypted credentials', () => {
     await getConnection('default', 'cloudflare');
     const oauth = { access_token: 'synthetic-access', refresh_token: 'synthetic-refresh', expires_at: refreshRequired ? 0 : Date.now() + 3600_000, scope: CLOUDFLARE_SCOPES.join(' ') };
     await getStore().updateDoc(connectionPath('default', 'cloudflare'), { status: 'connected', auth_method: 'oauth',
-      cloudflare: { account_id: accountId, bucket: 'agency-media' }, encrypted_credentials: sealCredentials('default', 'cloudflare', { oauth }) });
+      cloudflare: { account_id: accountId, bucket: 'agency-media', public_bucket: 'published-media' }, encrypted_credentials: sealCredentials('default', 'cloudflare', { oauth }) });
     const current = await getConnection('default', 'cloudflare');
-    await connectCloudflareMedia(session, { revision: current.revision, access_key_id: credentials.access_key_id, secret_access_key: credentials.secret_access_key }, async () => Response.json({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer', scope: CLOUDFLARE_SCOPES.join(' ') }));
+    await connectCloudflareMedia(session, { revision: current.revision, access_key_id: credentials.access_key_id, secret_access_key: credentials.secret_access_key }, providerFetch({ '/oauth2/token': { access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer', scope: CLOUDFLARE_SCOPES.join(' ') } }));
     const saved = await getConnection('default', 'cloudflare');
     expect(saved.media_ready).toBe(true);
     expect(openCredentials('default', 'cloudflare', saved.encrypted_credentials!)).toEqual({ oauth: refreshRequired ? expect.objectContaining({ access_token: 'rotated-access', refresh_token: 'rotated-refresh' }) : oauth, access_key_id: credentials.access_key_id, secret_access_key: credentials.secret_access_key });
@@ -296,7 +306,7 @@ describe('Cloudflare connection and encrypted credentials', () => {
   it('explains missing and rejected upload keys without exposing credential values', async () => {
     await getConnection('default', 'cloudflare');
     await getStore().updateDoc(connectionPath('default', 'cloudflare'), { status: 'connected', auth_method: 'oauth',
-      cloudflare: { account_id: accountId, bucket: 'agency-media' },
+      cloudflare: { account_id: accountId, bucket: 'agency-media', public_bucket: 'published-media' },
       encrypted_credentials: sealCredentials('default', 'cloudflare', { oauth: { access_token: 'synthetic-access', expires_at: Date.now() + 3600_000 } }) });
     const revision = (await getConnection('default', 'cloudflare')).revision;
     const s3 = fakeS3('put');
@@ -408,7 +418,7 @@ describe('publishing account routes', () => {
     expect(response.status).toBe(502);
     expect(await response.text()).not.toContain(credentials.api_token);
     await getStore().updateDoc(connectionPath('default', 'cloudflare'), { status: 'connected', encrypted_credentials: 'synthetic-ciphertext', unexpected_future_secret: 'synthetic-secret',
-      cloudflare: { account_id: accountId, account_name: 'Synthetic account', bucket: 'agency-media', endpoint: 'https://example.test', unexpected_future_secret: 'synthetic-nested-secret' } });
+      cloudflare: { account_id: accountId, account_name: 'Synthetic account', bucket: 'agency-media', public_bucket: 'public-media', endpoint: 'https://example.test', unexpected_future_secret: 'synthetic-nested-secret' } });
     const summary = await call(GET, routeContext());
     const body = await summary.text();
     expect(body).not.toContain('synthetic-secret'); expect(body).not.toContain('synthetic-ciphertext');

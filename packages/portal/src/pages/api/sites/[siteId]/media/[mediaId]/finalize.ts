@@ -10,6 +10,8 @@
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, requirePermission, json } from '../../../../../../lib/access';
 import { finalizeMedia } from '../../../../../../lib/media-finalize';
+import { finalizeStoredMedia } from '../../../../../../lib/publishing/media-storage';
+import { connectionFailure } from '../../../../../../lib/publishing/http';
 
 export const POST: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -19,6 +21,10 @@ export const POST: APIRoute = async ({ cookies, params, locals }) => {
   const { site, owner_org_id } = guard.value;
   const mediaId = params.mediaId;
   if (!mediaId) return json({ error: 'Missing mediaId' }, 400);
+  if (site.publishing_mode === 'customer_git') {
+    try { return json({ ok: true, result: await finalizeStoredMedia(owner_org_id, site.id, mediaId) }); }
+    catch (error) { return connectionFailure(error); }
+  }
 
   const accountId = process.env.R2_ACCOUNT_ID;
   const bucket = process.env.R2_BUCKET;

@@ -8,6 +8,7 @@ import { createProviderClient } from './providers.mjs';
 export const CLOUDFLARE_COOKIE = 'typeroll_publishing_cloudflare';
 export const CLOUDFLARE_CALLBACK = '/api/orgs/publishing/cloudflare/callback';
 export const CLOUDFLARE_SCOPES = ['account-settings.read', 'page.read', 'page.write', 'workers-r2.read', 'workers-r2.write', 'offline_access'];
+export const CLOUDFLARE_OPTIONAL_DNS_SCOPES = ['zone.read', 'dns.read', 'dns.write', 'zone-transform-rules.read', 'zone-transform-rules.write'];
 const TTL = 10 * 60_000;
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const nonce = () => randomBytes(32).toString('base64url');
@@ -78,7 +79,7 @@ export async function startCloudflareConnection(session: FullSession) {
     encrypted_verifier: sealCredentials(session.orgId, 'cloudflare', { verifier }) } satisfies Grant);
   const url = new URL('https://dash.cloudflare.com/oauth2/auth');
   url.search = new URLSearchParams({ client_id: config.clientId, redirect_uri: config.callback,
-    response_type: 'code', scope: CLOUDFLARE_SCOPES.join(' '), state,
+    response_type: 'code', scope: [...CLOUDFLARE_SCOPES, ...CLOUDFLARE_OPTIONAL_DNS_SCOPES].join(' '), state,
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString();
   return { url: url.toString(), browser, maxAge: TTL / 1000 };
 }
@@ -140,7 +141,7 @@ async function saveAccount(session: FullSession, accountId: string, tokens: Clou
   const previous = current.encrypted_credentials ? openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', current.encrypted_credentials) : {};
   await claimAccount(session.orgId, 'cloudflare', accountId);
   await saveConnection(session.orgId, 'cloudflare', revision, { status: 'connected', auth_method: 'oauth', refresh_lease: null,
-    media_ready: Boolean(previous.access_key_id && previous.secret_access_key && current.cloudflare?.bucket),
+    media_ready: Boolean(current.media_ready && previous.access_key_id && previous.secret_access_key && current.cloudflare?.bucket && current.cloudflare.public_bucket),
     connected_at: new Date().toISOString(), connected_by: session.userId,
     cloudflare: { ...current.cloudflare, account_id: accountId, account_name: account.name.slice(0, 200), bucket: current.cloudflare?.bucket ?? '', endpoint: `https://${accountId}.r2.cloudflarestorage.com` },
     encrypted_credentials: sealCredentials(session.orgId, 'cloudflare', { oauth: tokens,

@@ -1,0 +1,178 @@
+---
+title: Publishing with your own accounts
+description: Connect GitHub, Cloudflare, domains and media once per organization, then publish static sites from Typeroll.
+---
+
+## Start editing before connecting accounts
+
+You can create sites, connect an AI agent, edit pages, save drafts and share an
+expiring preview before setting up publishing. With customer publishing enabled,
+new uploads use the hosting operator's private draft storage until your R2 access
+is ready. Public deployment stays locked and links to **Publishing** with the
+missing setup steps. A public website address appears after the exact deployment
+has been verified at that address.
+
+Your hosting operator must enable customer publishing and configure private draft
+storage. Existing managed sites retain their existing publishing mode until they
+are explicitly migrated.
+
+## Organization setup
+
+Open the sidebar, select the correct **Organization**, then select **Publishing**
+under **Account**. On mobile, open the menu first. Organization owners and admins
+manage these connections.
+
+1. Select **Connect GitHub**, sign in as an owner of your GitHub organization,
+   and authorize Typeroll. If prompted, install the Typeroll publisher GitHub App
+   with **All repositories**, then return to connect. Choose an organization only
+   if more than one is available. No organization name or ID needs to be typed.
+2. Select **Connect Cloudflare**, sign in and approve the account. Optional DNS
+   and URL rewrite permissions let Typeroll configure domains automatically.
+   You can decline these and let your administrator or AI agent manage DNS.
+3. Typeroll checks R2 automatically. If activation is required, follow the
+   account link to **Storage & databases → R2 object storage → Overview** and
+   complete Cloudflare's subscription checkout. Return and select
+   **I’ve activated R2 — check again**. Typeroll creates separate private-original
+   and public-media buckets and configures browser uploads.
+4. In **R2 object storage → Overview → Account Details → API Tokens → Manage**,
+   create an **Account API token** with **Object Read & Write** for **both buckets
+   shown in Typeroll**. Enter its **Access Key ID** and **Secret Access Key**, then
+   select **Verify keys and finish setup**. These are different from the API token
+   value. A Super Administrator can create account tokens; a User API token is an
+   alternative whose access depends on that user's continued membership.
+5. Authorize Cloudflare's own GitHub App once: **Workers & Pages → Create
+   application → Pages → Connect to Git → + Add account**. Select the same GitHub
+   organization and **All repositories**. Stop at the repository list and return
+   to Typeroll. This is separate from the Typeroll App installation.
+6. Under **Default domain**, enter a hostname you control, such as
+   `demos.example.com`, and choose automatic or external DNS management.
+
+One Cloudflare account and one default domain belong to the Typeroll organization.
+Each site gets its own generated private repository and static Pages project.
+Adding a site or version reuses the organization connections.
+
+Account ID is only needed in advanced token setup. In Cloudflare, select the
+account and use **Search → Copy account ID**, or **Workers & Pages → Account
+Details → Account ID**. Copy the 32-character account value, not a Zone ID.
+
+### When DNS is hosted elsewhere
+
+R2 media domains must belong to a zone in the same Cloudflare account as the
+bucket. You can move the domain's DNS to Cloudflare, preserving and verifying
+all website and email records before changing nameservers. Alternatively,
+Cloudflare's partial CNAME setup keeps your existing DNS provider but requires
+Business or Enterprise. Selecting external DNS management in Typeroll means you
+or your agent manage the records; it does not bypass this provider requirement.
+A CNAME pointing to an `r2.dev` address is unsupported.
+See [R2 custom domains](https://developers.cloudflare.com/r2/buckets/public-buckets/)
+and [partial setup availability](https://developers.cloudflare.com/dns/zone-setups/partial-setup/).
+
+## Publish a site or version
+
+Choose the site and its **Version**, save changes and select **Deploy**. The
+`main` version publishes the live site. Other versions use `version-<version-id>`
+Git branches and separate public test addresses under the organization's default
+domain. Those versions and default-domain demos use `noindex`.
+
+Typeroll freezes the selected version, including inherited blocks, templates,
+collections and runtime settings, and pushes generated source to GitHub.
+Cloudflare installs the pinned dependencies, runs Astro and serves the static
+output. While the build or domain propagation is pending, the interface shows
+progress. The link appears automatically after verification.
+
+The repository is generated output. Edit through Typeroll's UI, API or MCP.
+Manual repository changes are unsupported and may be replaced by a publication.
+
+## Website and media hosts
+
+Open **Site settings → Publishing → Website and media addresses**. Set the
+website host and, optionally, a separate media host. For example:
+
+| Setting                     | Example                                                                 |
+| --------------------------- | ----------------------------------------------------------------------- |
+| Organization default domain | `demos.example.com`                                                     |
+| Site website host           | `www.customer.com`                                                      |
+| Site media host             | `images.customer.com`                                                   |
+| Media path prefix           | Empty for a separate media host; `/media` when sharing the website host |
+
+Before a site has its own media host, an image can use
+`https://demos.example.com/media/<site-media-id>/photo.png`. With a separate
+site media host it can use `https://images.customer.com/photo.png`. Native
+Cloudflare URL rewrite rules map the site host to its storage namespace. No
+Worker serves the website or the images.
+
+A media item's `public_path` can preserve a legacy path such as
+`/wp-content/uploads/2024/photo.jpg`. Public paths are immutable: a different file
+must use a new path. This protects older deployments and cached links.
+Organization media URLs and previously published aliases remain available after
+a site changes its preferred host. Builds use the new preferred addresses;
+images are not moved into GitHub.
+
+## Prepare a domain change before switching traffic
+
+1. Save the future website and media addresses. This records intent and keeps
+   the current website address active.
+2. Select **Prepare domain change from published content**. The candidate uses
+   the last successful public snapshot, including its renderer, rather than
+   newer saved CMS edits. Internal absolute links on the old website origin,
+   canonicals, sitemap addresses and media references are retargeted.
+3. Review **Domain verification**. Apply any validation records shown if you
+   manage DNS externally. For Cloudflare DNS, use **your domain → DNS → Records**.
+   Refresh verification or wait for its automatic update.
+4. When the candidate and certificate checks permit it, select **Switch website
+   traffic**. With external DNS management, apply the reviewed CNAME yourself.
+   Version custom domains require a **proxied** Cloudflare CNAME.
+5. Typeroll checks the public address before marking it live.
+
+Cloudflare Pages may require traffic DNS to validate a hostname. Typeroll does
+not overwrite an existing destination while its certificate is unverified. If
+validation cannot finish with current DNS, the change stays blocked and needs a
+provider-specific migration arrangement; it is not a promise of a zero-downtime
+cutover for every external DNS setup. Reviewed DNS changes also stop if another
+administrator changed the records in the meantime.
+
+## Media migration and independent builds
+
+After R2 and the organization default domain are connected, Typeroll copies old
+originals to your private bucket, verifies SHA-256 hashes, and changes storage
+references only after verification. Concurrent edits and uploads granted before
+connection are handled without switching them to an unverified destination.
+Progress and retry instructions appear in Publishing. Existing source files are
+retained while older publications may still need them.
+
+New browser uploads go directly to your R2 account after it is ready. Disconnecting
+that account does not silently move uploads back to the hosting operator.
+
+The generated repository includes public content, renderer source and a dependency
+lock. Run `npm ci` and `npm run build` with its pinned Node version to build it on
+your own infrastructure. R2 originals remain separate. Cloudflare builds receive
+short-lived grants for the exact original and output objects. For independent
+builds, provide your own R2 access as described in the generated README.
+
+Forms, Apps and Extensions can still depend on their runtime services; the
+repository lists these in `publication.json` under `runtime_dependencies`.
+A generated site repository is not a full CMS backup.
+
+## API and MCP
+
+Site API keys need admin permission for domain writes. Organization settings
+require an organization API key. An external agent can use its own Cloudflare
+access to configure DNS and R2 rules, then ask Typeroll to verify them.
+
+| Action                           | MCP tool                               | API route below `/api/v1`                 |
+| -------------------------------- | -------------------------------------- | ----------------------------------------- |
+| Check setup                      | `read_publishing_readiness`            | `GET /sites/{site}/publishing`            |
+| Read site hosts                  | `read_publishing_domains`              | `GET /sites/{site}/publishing/domains`    |
+| Save future hosts                | `set_publishing_domains`               | `PUT /sites/{site}/publishing/domains`    |
+| Prepare last public snapshot     | `prepare_publishing_domain_change`     | `POST /sites/{site}/publishing/prepare`   |
+| Approve verified traffic switch  | `approve_publishing_domain_cutover`    | `POST /sites/{site}/publishing/cutover`   |
+| Read organization domain         | `read_organization_publishing_domains` | `GET /publishing/domains`                 |
+| Save organization domain         | `set_organization_publishing_domains`  | `PUT /publishing/domains`                 |
+| Read media migration             | `read_organization_media_migration`    | `GET /publishing/media-migration`         |
+| Retry media migration            | `retry_organization_media_migration`   | `POST /publishing/media-migration`        |
+| Read a private image temporarily | `read_private_media_url`               | `GET /sites/{site}/media/{media}/content` |
+| Revoke a preview                 | `revoke_preview_link`                  | `POST /sites/{site}/preview-link/revoke`  |
+
+Domain writes include the current `revision`. Cutover also includes `candidate_id`.
+A stale revision returns 409. Use the normal deploy-status API to inspect build
+progress and `read_publishing_domains` for structured DNS requirements.

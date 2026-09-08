@@ -19,6 +19,64 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const domainTools: ToolDef[] = [
   {
+    name: 'prepare_publishing_domain_change',
+    description: 'Prepare future website and media hosts using only the last successfully published snapshot. Saved CMS changes stay unpublished. Requires the current domain revision. Poll read_publishing_domains for certificate and DNS requirements, then explicitly approve the verified cutover.',
+    inputSchema: { revision: z.string() },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/prepare', args))),
+  },
+  {
+    name: 'read_organization_media_migration',
+    description: 'Read progress and actionable failures while original media moves to the organization Cloudflare account. Requires an organization API key.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/media-migration'))),
+  },
+  {
+    name: 'retry_organization_media_migration',
+    description: 'Resume verified media migration after fixing account, R2 or domain setup. Source files remain readable; pointer changes require matching hashes. Requires an organization API key.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootPost('publishing/media-migration', {}))),
+  },
+  {
+    name: 'read_publishing_readiness',
+    description: 'Check required publishing connections and domains for the selected site. Returns actionable setup requirements. Editing and temporary previews remain available before publishing is configured.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'publishing'))),
+  },
+  {
+    name: 'approve_publishing_domain_cutover',
+    description: 'Approve switching website traffic to the verified frozen deployment. Read publishing domains first and review DNS requirements and certificate readiness. Existing traffic is preserved until validation succeeds. External DNS management remains the caller’s responsibility.',
+    inputSchema: { revision: z.string(), candidate_id: z.string() },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/cutover', args))),
+  },
+  {
+    name: 'read_publishing_domains',
+    description: 'Read the desired and active website and media hosts, retained media aliases, DNS management mode and domain configuration revision. Saving intent does not switch traffic.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'publishing/domains'))),
+  },
+  {
+    name: 'set_publishing_domains',
+    description: 'Save future website and media hosts before preparing a deployment. Requires the current revision from read_publishing_domains. This does not publish content or change traffic DNS. Choose external DNS when your agent manages Cloudflare independently.',
+    inputSchema: {
+      revision: z.string(), website_host: z.string().nullable(), media_host: z.string().nullable(),
+      media_path_prefix: z.string().optional().describe('Empty on a separate media host; /media when using the website host.'),
+      dns_mode: z.enum(['automatic', 'external']),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.put(siteId, 'publishing/domains', args))),
+  },
+  {
+    name: 'read_organization_publishing_domains',
+    description: 'Read the organization default domain. Requires an organization API key; site keys cannot access organization publishing settings.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/domains'))),
+  },
+  {
+    name: 'set_organization_publishing_domains',
+    description: 'Save the organization default domain used for demos and site versions. Requires an organization API key and the current settings revision. Does not modify DNS or replace an existing active domain.',
+    inputSchema: { revision: z.string(), default_domain: z.string().nullable(), dns_mode: z.enum(['automatic', 'external']) },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPut('publishing/domains', args))),
+  },
+  {
     name: 'read_domain',
     description:
       "Read the current state of the site's custom domain. Returns " +

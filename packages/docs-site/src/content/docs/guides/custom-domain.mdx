@@ -5,7 +5,9 @@ description: Connect your own domain to a Typeroll site on Cloudflare Pages.
 
 import { Steps, Aside } from "@astrojs/starlight/components";
 
-Every Typeroll site gets a free subdomain at `yoursite.sites.typeroll.com`. To use your own domain (e.g. `acme.se`), connect it in the portal and update your DNS.
+This page describes the legacy managed publishing mode. For customer-owned GitHub, Cloudflare and R2, use [Publishing with your own accounts](/guides/customer-publishing/). New customer-publishing sites do not receive a permanent Typeroll subdomain.
+
+Legacy managed sites may have a subdomain at `yoursite.sites.typeroll.com`. To use your own domain (e.g. `acme.se`), connect it in the portal and update your DNS.
 
 <Steps>
 
@@ -42,8 +44,8 @@ Every Typeroll site gets a free subdomain at `yoursite.sites.typeroll.com`. To u
    <Aside type="tip">
      If your domain is already on Cloudflare, you can add the Cloudflare Pages
      project directly in the Cloudflare dashboard under **Pages → your project →
-     Custom domains**. Set the DNS record to **DNS only** (grey cloud) — not
-     proxied. Cloudflare Pages handles its own SSL; proxying would break it.
+     Custom domains**. Use the proxy setting shown by your publishing setup. A
+     custom domain for a version branch requires a proxied Cloudflare CNAME.
    </Aside>
 
 4. **Wait for propagation**

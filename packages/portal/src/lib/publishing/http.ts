@@ -38,6 +38,11 @@ export async function connectionBody(request: Request): Promise<unknown> {
   // These endpoints use cookie sessions only, including if a caller also sends a Bearer header.
   const origin = new URL(process.env.PORTAL_PUBLIC_URL || request.url).origin;
   if (request.headers.get('origin') !== origin) throw new ConnectionError('Publishing connection requires a same-origin request', 403);
+  return publishingJsonBody(request);
+}
+
+/** Shared bounded JSON parser for authenticated API and same-origin cookie handlers. */
+export async function publishingJsonBody(request: Request): Promise<Record<string, unknown>> {
   if (!request.headers.get('content-type')?.startsWith('application/json')) throw new ConnectionError('Expected JSON connection data', 415);
   // Bound both declared and streamed bodies; tokens are never reflected in errors.
   if (Number(request.headers.get('content-length')) > 8192) throw new ConnectionError('Connection data is too large', 413);

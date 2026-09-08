@@ -40,7 +40,7 @@ describe('getDeployQueue', () => {
     expect(() => getDeployQueue()).toThrow(/Unsupported DEPLOY_QUEUE mode/);
   });
 
-  it('in-process queue marks the job failed when runDeploy throws', async () => {
+  it('rejects a missing site before accepting a deployment', async () => {
     makeTmpFixtures();
     await resetDatastore();
     const { getStore } = await import('../../lib/datastore');
@@ -53,21 +53,12 @@ describe('getDeployQueue', () => {
       started_at: new Date().toISOString(),
     });
     const q = new InProcessQueue();
-    await q.enqueue({
+    await expect(q.enqueue({
       jobId,
       orgId: 'o',
       siteId: 'no-such-site',
       versionId: 'main',
       environment: 'staging',
-    });
-    // The enqueue is fire-and-forget; poll the doc until it transitions.
-    let job: { status?: string; error?: string } | null = null;
-    for (let i = 0; i < 50; i++) {
-      job = await getStore().getDoc(paths.deploy('o', 'no-such-site', jobId));
-      if (job?.status === 'failed' || job?.status === 'succeeded') break;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    expect(job?.status).toBe('failed');
-    expect(job?.error ?? '').toMatch(/site/i);
+    })).rejects.toThrow('Site not found');
   });
 });

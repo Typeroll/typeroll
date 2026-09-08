@@ -14,11 +14,14 @@ import { getStore } from '../../../../../lib/datastore';
 import { getDeployQueue } from '../../../../../lib/deploy/queue';
 import { paths } from '@typeroll/shared';
 import type { DeployEnvironment } from '@typeroll/shared';
+import { publishingReadiness } from '../../../../../lib/publishing/readiness';
+import { privateJson } from '../../../../../lib/publishing/http';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  if (ctx.permission !== 'admin') return apiError('Publishing requires admin permission on the site.', 403);
 
   const body = (await request.json().catch(() => ({}))) as {
     environment?: DeployEnvironment;
@@ -26,6 +29,10 @@ export const POST: APIRoute = async ({ request, params }) => {
   };
   const environment: DeployEnvironment = body.environment === 'staging' ? 'staging' : 'production';
   const dryRun = body.dry_run === true;
+  if (!dryRun) {
+    const readiness = await publishingReadiness(ctx.orgId, ctx.siteId, ctx.versionId);
+    if (!readiness.ready) return privateJson({ error: 'Set up Publishing before deploying this site.', code: 'publishing_setup_required', required: readiness.required }, 409);
+  }
 
   const store = getStore();
   const jobId = await store.addDoc(paths.deploys(ctx.orgId, ctx.siteId), {

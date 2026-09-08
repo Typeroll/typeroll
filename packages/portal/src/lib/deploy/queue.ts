@@ -30,6 +30,7 @@ import { computeDeployCost, getRateCard, PhaseTimer } from './cost';
 import { acquireBuildSlot } from './concurrency';
 import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
 import { createHash } from 'node:crypto';
+import { assertPublishingReady } from '../publishing/readiness';
 
 export interface EnqueueArgs {
   jobId: string;
@@ -78,6 +79,7 @@ export function firestoreDeployQueueItemId(args: Pick<EnqueueArgs, 'jobId' | 'or
 
 export class InProcessQueue implements DeployQueue {
   async enqueue(args: EnqueueArgs): Promise<void> {
+    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId);
     // Fire-and-forget on the current event loop. The HTTP response from
     // the launcher returns immediately; this Promise resolves on its
     // own. The .catch is essential — without it, any failure (real
@@ -86,9 +88,15 @@ export class InProcessQueue implements DeployQueue {
     // the process / CI test runner. The error is already written to
     // the deploy job's status doc by runDeployInline when possible;
     // logging here covers the case where even the status write fails.
-    runDeployInline(args).catch((err) => {
-      console.error('[in-process deploy] background failure:', err);
-    });
+    const attempt = async () => {
+      try {
+        if (await runDeployInline(args) === 'deferred') {
+          const timer = setTimeout(() => { void attempt(); }, 10_000);
+          timer.unref();
+        }
+      } catch { console.error('[in-process deploy] background execution failed'); }
+    };
+    void attempt();
   }
 }
 
@@ -104,6 +112,7 @@ export class FirestoreDeployQueue implements DeployQueue {
   constructor(private store = getStore()) {}
 
   async enqueue(args: EnqueueArgs): Promise<void> {
+    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId);
     const now = new Date().toISOString();
     await this.store.createDocIfMissing(
       `${FIRESTORE_DEPLOY_QUEUE_PATH}/${firestoreDeployQueueItemId(args)}`,
@@ -130,6 +139,11 @@ async function runDeployInline(
   args: EnqueueArgs,
   opts: { slotWaitMs?: number } = {},
 ): Promise<DeployRunOutcome> {
+  const site = await getStore().getDoc<{ publishing_mode?: string }>(paths.site(args.orgId, args.siteId));
+  if (site?.publishing_mode === 'customer_git') {
+    const { executeCustomerPublication } = await import('../publishing/customer-runner');
+    return executeCustomerPublication(args);
+  }
   // One build per process at a time (DEPLOY_MAX_CONCURRENT, default 1). Taken
   // here rather than in either caller for the same reason cost accounting
   // lives here: this is the ONE execution path every queue backend shares, so
@@ -170,6 +184,7 @@ async function runDeployBody(args: EnqueueArgs): Promise<void> {
 
   await safeUpdate({ status: 'running', phase: 'starting' });
   try {
+    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId);
     const result = await runDeploy({
       orgId: args.orgId,
       siteId: args.siteId,
@@ -237,6 +252,7 @@ export class CloudTasksQueue implements DeployQueue {
   ) {}
 
   async enqueue(args: EnqueueArgs): Promise<void> {
+    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId);
     // Dynamic import so the @google-cloud/tasks SDK is only loaded in the
     // environment where it's actually used. Keeps `npm run dev:portal`
     // free of unnecessary GCP wiring.

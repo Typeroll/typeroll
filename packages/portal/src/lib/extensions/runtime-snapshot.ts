@@ -19,6 +19,7 @@ function assetBase(extensionId: string, version: string, componentId: string): s
 export async function buildExtensionRuntimeSnapshot(
   orgId: string,
   siteId: string,
+  options: { reconcileBlocks?: boolean; strict?: boolean } = {},
 ): Promise<ExtensionRuntimeSnapshot> {
   const store = getStore();
   const installations = await store.listDocs<ExtensionInstallation>(paths.extensionInstallations(orgId, siteId));
@@ -27,11 +28,12 @@ export async function buildExtensionRuntimeSnapshot(
     if (installation.status !== 'enabled') continue;
     const version = (await resolveExtensionVersion(installation)).version;
     if (!version) {
+      if (options.strict) throw new Error('An enabled Extension has no compatible published release');
       console.warn(`Skipping Extension ${installation.extension_id}: no compatible published release is available`);
       continue;
     }
     try {
-      await provisionExtensionBlocks(orgId, siteId, installation, version.manifest, true);
+      if (options.reconcileBlocks !== false) await provisionExtensionBlocks(orgId, siteId, installation, version.manifest, true);
     } catch {
       console.warn(`Could not reconcile editor blocks for Extension ${installation.extension_id}`);
     }

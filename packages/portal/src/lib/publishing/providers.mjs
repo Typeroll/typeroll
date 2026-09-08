@@ -2,7 +2,7 @@ import { createHash, createSign } from 'node:crypto';
 
 const GH = 'https://api.github.com';
 const CF = 'https://api.cloudflare.com/client/v4';
-export const PUBLICATION_BRANCH = /^main$|^version-[a-z0-9][a-z0-9-]{0,47}$/;
+export const PUBLICATION_BRANCH = /^main$|^version-[a-z0-9][a-z0-9-]{0,127}$/;
 
 export function digest(value) {
   return createHash('sha256').update(value).digest('hex');

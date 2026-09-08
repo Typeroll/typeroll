@@ -13,7 +13,7 @@ export interface Connection {
   connected_at?: string;
   connected_by?: string;
   github?: { app_id: string; installation_id: string; account_id: string; owner: string };
-  cloudflare?: { account_id: string; account_name: string; bucket: string; endpoint: string; public_base_url?: string };
+  cloudflare?: { account_id: string; account_name: string; bucket: string; endpoint: string; public_base_url?: string; public_bucket?: string };
   encrypted_credentials?: string | null;
   auth_method?: 'api_token' | 'oauth';
   media_ready?: boolean;
@@ -48,11 +48,11 @@ export function connectionSummary(connection: Connection) {
       account_id: connection.cloudflare.account_id, account_name: connection.cloudflare.account_name,
       bucket: connection.cloudflare.bucket, endpoint: connection.cloudflare.endpoint,
       public_base_url: connection.cloudflare.public_base_url ?? null,
+      public_bucket: connection.cloudflare.public_bucket ?? null,
     } : null,
     credentials_saved: connection.status === 'connected' && Boolean(connection.encrypted_credentials),
     auth_method: connection.auth_method ?? 'api_token',
-    media_ready: connection.status === 'connected' && Boolean(connection.encrypted_credentials && connection.cloudflare?.bucket) &&
-      (connection.media_ready ?? connection.auth_method !== 'oauth'),
+    media_ready: connection.status === 'connected' && Boolean(connection.encrypted_credentials && connection.cloudflare?.bucket && connection.cloudflare.public_bucket) && connection.media_ready === true,
   };
 }
 

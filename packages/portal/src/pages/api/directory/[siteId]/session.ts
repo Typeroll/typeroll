@@ -36,6 +36,8 @@ import {
 } from '../../../../lib/field-authority';
 import { markSiteDirty } from '../../../../lib/auto-deploy';
 
+import { publishingRuntimeOrigins } from '../../../../lib/publishing/runtime-origins';
+
 const COOKIE = 'tr_directory_edit';
 
 /**
@@ -196,10 +198,10 @@ export const GET: APIRoute = async ({ request, params, cookies }) => {
 
 /** CORS headers once the owning org is known. */
 async function cors(orgId: string, siteId: string, request: Request) {
-  const site = await getStore().getDoc<{ domain?: string; hosting_config?: { fallback_subdomain?: string } }>(
+  const site = await getStore().getDoc<{ publishing_mode?: string; domain?: string; hosting_config?: { fallback_subdomain?: string } }>(
     paths.site(orgId, siteId),
   );
-  return site ? corsHeaders(request, allowedOrigins(site)) : {};
+  return site ? corsHeaders(request, site.publishing_mode === 'customer_git' ? await publishingRuntimeOrigins(orgId, siteId) : allowedOrigins(site)) : {};
 }
 
 /**
@@ -212,10 +214,10 @@ async function corsAnon(siteId: string, request: Request) {
   if (!origin) return {};
   const store = getStore();
   for (const org of await store.listDocs<{ id: string }>('organizations')) {
-    const site = await store.getDoc<{ domain?: string; hosting_config?: { fallback_subdomain?: string } }>(
+    const site = await store.getDoc<{ publishing_mode?: string; domain?: string; hosting_config?: { fallback_subdomain?: string } }>(
       paths.site(org.id, siteId),
     );
-    if (site) return corsHeaders(request, allowedOrigins(site));
+    if (site) return corsHeaders(request, site.publishing_mode === 'customer_git' ? await publishingRuntimeOrigins(org.id, siteId) : allowedOrigins(site));
   }
   return {};
 }

@@ -17,6 +17,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  if (ctx.permission !== 'admin') return apiError('Bulk media changes require admin permission.', 403);
+  if (ctx.site.publishing_mode === 'customer_git') return apiResponse(ctx, { ok: true, variants_pending: true, message: 'Finalize each direct upload using its finalize_url. Responsive variants are generated during the next publication.' });
 
   const accountId = process.env.R2_ACCOUNT_ID;
   const bucket = process.env.R2_BUCKET;

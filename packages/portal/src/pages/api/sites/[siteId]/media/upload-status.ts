@@ -11,6 +11,11 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
 
+  if (guard.value.site.publishing_mode === 'customer_git') {
+    const { mediaUploadAvailability } = await import('../../../../../lib/publishing/media-storage');
+    try { return json(await mediaUploadAvailability(guard.value.owner_org_id)); }
+    catch (error) { return json({ enabled: false, reason: error instanceof Error ? error.message : 'Media storage is unavailable. Open Publishing to check the connection.', settings_url: '/app/settings/publishing' }); }
+  }
   const accountId = process.env.R2_ACCOUNT_ID;
   const bucket = process.env.R2_BUCKET;
   const publicBase = process.env.R2_PUBLIC_BASE_URL;

@@ -15,6 +15,8 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { getStore } from '../../../../../../lib/datastore';
 import { siteMediaPrefix } from '../../../../../../lib/media-keys';
 import { paths } from '@typeroll/shared';
+import { createMediaUpload } from '../../../../../../lib/publishing/media-storage';
+import { connectionFailure } from '../../../../../../lib/publishing/http';
 
 const MAX_SIZE = 25 * 1024 * 1024;
 
@@ -26,6 +28,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  if (ctx.permission === 'read') return apiError('Uploading media requires write permission.', 403);
 
   const body = (await request.json().catch(() => null)) as {
     filename?: string;
@@ -43,6 +46,14 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
 
   const accountId = process.env.R2_ACCOUNT_ID;
+  if (ctx.site.publishing_mode === 'customer_git') {
+    try {
+      const uploaded = await createMediaUpload(ctx.orgId, ctx.siteId, { filename, contentType, size, altText: alt_text, actor: `api-key:${ctx.keyPrefix}` });
+      return apiResponse(ctx, { upload_url: uploaded.uploadUrl, cdn_url: uploaded.cdnUrl, key: uploaded.key, media_id: uploaded.mediaId,
+        storage: uploaded.storage, expires_in: 300, finalize_url: `/api/v1/sites/${ctx.siteId}/media/${uploaded.mediaId}/finalize`,
+        next_step: 'Upload the binary file directly to upload_url, then POST to finalize_url to verify it. Responsive variants are generated during the customer build.' });
+    } catch (error) { return connectionFailure(error); }
+  }
   const bucket = process.env.R2_BUCKET;
   const publicBase = process.env.R2_PUBLIC_BASE_URL;
   if (!accountId || !bucket || !publicBase) {

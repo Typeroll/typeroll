@@ -9,6 +9,14 @@ import { cloudflareClient, type CloudflareStoredCredentials } from './cloudflare
 export interface CloudflareCredentials { api_token?: string; access_key_id: string; secret_access_key: string }
 interface CloudflareInput extends CloudflareCredentials { account_id: string; bucket: string; revision: string }
 
+async function assertPrivateOriginalBucket(provider: ReturnType<typeof createProviderClient>, accountId: string, bucket: string) {
+  const root = `/accounts/${accountId}/r2/buckets/${bucket}/domains`;
+  const [managed, custom] = await Promise.all([provider(`${root}/managed`), provider(`${root}/custom`)]);
+  if (managed.enabled !== false || !Array.isArray(custom.domains) || custom.domains.some((domain: { enabled?: boolean }) => domain.enabled !== false)) {
+    throw new ConnectionError('The originals bucket must be private. In Cloudflare → R2 object storage → your originals bucket → Settings, disable the Public Development URL and remove public Custom Domains. Use the separate public bucket for published images.', 409, 'private_original_storage_required');
+  }
+}
+
 function parseInput(input: unknown): CloudflareInput {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ConnectionError('Enter the Cloudflare account and bucket credentials');
   const data = input as Record<string, unknown>;
@@ -52,11 +60,12 @@ export async function connectCloudflare(session: FullSession, input: unknown, fe
   const account = await cloudflare(`/accounts/${data.account_id}`);
   if (account.id !== data.account_id || typeof account.name !== 'string') throw new ConnectionError('Cloudflare account verification failed', 502);
   await cloudflare(`/accounts/${data.account_id}/pages/projects?per_page=1`);
+  await assertPrivateOriginalBucket(cloudflare, data.account_id, data.bucket);
   const credentials = { api_token: data.api_token, access_key_id: data.access_key_id, secret_access_key: data.secret_access_key };
   await verifyR2(data.account_id, data.bucket, credentials);
   await claimAccount(session.orgId, 'cloudflare', data.account_id);
   await saveConnection(session.orgId, 'cloudflare', data.revision, {
-    status: 'connected', auth_method: 'api_token', media_ready: true, connected_at: new Date().toISOString(), connected_by: session.userId,
+    status: 'connected', auth_method: 'api_token', media_ready: false, connected_at: new Date().toISOString(), connected_by: session.userId,
     cloudflare: { account_id: data.account_id, account_name: account.name.slice(0, 200), bucket: data.bucket,
       endpoint: `https://${data.account_id}.r2.cloudflarestorage.com` },
     encrypted_credentials: sealCredentials(session.orgId, 'cloudflare', credentials),
@@ -86,25 +95,40 @@ export async function prepareCloudflareMedia(session: FullSession, revision: str
     existing = await provider(`${root}/${bucket}`);
   }
   if (existing.name !== bucket || (existing.jurisdiction && existing.jurisdiction !== 'default')) throw new ConnectionError('The R2 bucket does not match this connection.', 409);
+  await assertPrivateOriginalBucket(provider, current.cloudflare.account_id, bucket);
+  const publicBucket = current.cloudflare.public_bucket || `typeroll-public-${createHash('sha256').update(session.orgId).digest('hex').slice(0, 16)}`;
+  let publicStorage = await provider(`${root}/${publicBucket}`, { missing: true });
+  if (!publicStorage) {
+    await provider(root, { method: 'POST', body: { name: publicBucket } });
+    publicStorage = await provider(`${root}/${publicBucket}`);
+  }
+  if (publicStorage.name !== publicBucket || (publicStorage.jurisdiction && publicStorage.jurisdiction !== 'default')) throw new ConnectionError('The public R2 bucket does not match this connection.', 409);
   const cors = await provider(`${root}/${bucket}/cors`, { missing: true });
   const rule = { id: 'typeroll-direct-uploads', allowed: { origins: [origin], methods: ['GET', 'HEAD', 'PUT'], headers: ['content-type', 'cache-control', 'x-amz-*'] }, exposeHeaders: ['ETag'], maxAgeSeconds: 3600 };
   await provider(`${root}/${bucket}/cors`, { method: 'PUT', body: { rules: [...(cors?.rules ?? []).filter((item: { id?: string }) => item.id !== rule.id), rule] } });
-  await saveConnection(session.orgId, 'cloudflare', authorized.revision, { cloudflare: { ...current.cloudflare, bucket } });
-  return { bucket };
+  const lifecycle = await provider(`${root}/${bucket}/lifecycle`, { missing: true });
+  const expiry = { id: 'typeroll-expired-build-grants', enabled: true, conditions: { prefix: 'build-grants/' }, deleteObjectsTransition: { condition: { type: 'Age', maxAge: 86400 } } };
+  await provider(`${root}/${bucket}/lifecycle`, { method: 'PUT', body: { rules: [...(lifecycle?.rules ?? []).filter((item: { id: string }) => item.id !== expiry.id), expiry] } });
+  await saveConnection(session.orgId, 'cloudflare', authorized.revision, { cloudflare: { ...current.cloudflare, bucket, public_bucket: publicBucket } });
+  return { bucket, public_bucket: publicBucket };
 }
 
 export async function connectCloudflareMedia(session: FullSession, input: Record<string, unknown>, fetchImpl: typeof fetch = fetch) {
   const current = await getConnection(session.orgId, 'cloudflare');
-  if (current.status !== 'connected' || !current.cloudflare?.bucket || !current.encrypted_credentials || current.revision !== input.revision) throw new ConnectionError('Prepare the media bucket and reload the connection before saving media access.', 409);
+  if (current.status !== 'connected' || !current.cloudflare?.bucket || !current.cloudflare.public_bucket || !current.encrypted_credentials || current.revision !== input.revision) throw new ConnectionError('Prepare both media buckets and reload the connection before saving media access.', 409);
   const { access_key_id, secret_access_key } = input;
   if (typeof access_key_id !== 'string' || typeof secret_access_key !== 'string' || !access_key_id || !secret_access_key ||
     access_key_id.length > 512 || secret_access_key.length > 512 || /[\s\x00-\x1f]/.test(access_key_id + secret_access_key)) throw new ConnectionError('Enter both the Access Key ID and Secret Access Key from your Cloudflare R2 token. The Cloudflare API token value is not one of these two keys.', 400, 'r2_credentials_required');
   await verifyR2(current.cloudflare.account_id, current.cloudflare.bucket, { access_key_id, secret_access_key });
+  if (current.cloudflare.public_bucket) await verifyR2(current.cloudflare.account_id, current.cloudflare.public_bucket, { access_key_id, secret_access_key });
   // Refresh first, then reread credentials so saving media cannot restore a rotated token.
   const provider = await cloudflareClient(session.orgId, fetchImpl, current.revision);
+  await assertPrivateOriginalBucket(provider, current.cloudflare.account_id, current.cloudflare.bucket);
   const latest = await getConnection(session.orgId, 'cloudflare');
   if (latest.revision !== provider.connectionRevision || latest.cloudflare?.account_id !== current.cloudflare.account_id || latest.cloudflare?.bucket !== current.cloudflare.bucket || !latest.encrypted_credentials || latest.refresh_lease) throw new ConnectionError('The connection changed. Reload and try again.', 409);
   const credentials = openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', latest.encrypted_credentials);
   await saveConnection(session.orgId, 'cloudflare', latest.revision, {
     media_ready: true, encrypted_credentials: sealCredentials(session.orgId, 'cloudflare', { ...credentials, access_key_id, secret_access_key }) });
+  const { requestMediaMigration } = await import('./media-migration');
+  await requestMediaMigration(session.orgId);
 }

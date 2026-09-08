@@ -74,7 +74,7 @@ export const POST: APIRoute = async ({ request }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  if (job.status !== 'queued') {
+  if (job.status !== 'queued' && !(job.status === 'running' && job.execution_backend === 'customer_git')) {
     return new Response(JSON.stringify({ ok: true, skipped: `status_${job.status}` }), {
       headers: { 'Content-Type': 'application/json' },
     });

@@ -238,7 +238,7 @@ export async function getCollectionItemRoutes(): Promise<CollectionItemRoute[]> 
   const collections = await getAllCollections();
   const itemsByCollection = new Map<string, CollectionItem[]>();
   for (const c of collections) {
-    if (!c.route_template) continue;
+    if (c.route_template === '') continue;
     const items = await getCollectionItems(c.name);
     itemsByCollection.set(c.name, items);
   }

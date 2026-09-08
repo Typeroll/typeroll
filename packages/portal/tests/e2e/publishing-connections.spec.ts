@@ -10,7 +10,7 @@ test('organization owner sees masked account metadata and can disconnect without
   mkdirSync(connections, { recursive: true });
   const file = path.join(connections, 'cloudflare.json');
   writeFileSync(file, JSON.stringify({ revision: 'synthetic-connection-revision', status: 'connected',
-    cloudflare: { account_id: 'a'.repeat(32), account_name: 'Synthetic agency', bucket: 'agency-media', endpoint: `https://${'a'.repeat(32)}.r2.cloudflarestorage.com` },
+    cloudflare: { account_id: 'a'.repeat(32), account_name: 'Synthetic agency', bucket: 'agency-media', public_bucket: 'public-media', endpoint: `https://${'a'.repeat(32)}.r2.cloudflarestorage.com` },
     encrypted_credentials: 'synthetic-encrypted-secret-that-must-stay-on-server' }));
   try {
     await authenticatePersona(page, 'owner');
@@ -54,7 +54,7 @@ test('Cloudflare connection form clears credentials after success and retains th
   await page.route('**/api/orgs/publishing', async (route) => {
     const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
     await route.fulfill({ json: { github: empty, cloudflare: connected ? { ...empty, status: 'connected', credentials_saved: true, media_ready: true,
-      cloudflare: { account_id: 'a'.repeat(32), account_name: 'Synthetic agency', bucket: 'agency-media' } } : empty,
+      cloudflare: { account_id: 'a'.repeat(32), account_name: 'Synthetic agency', bucket: 'agency-media', public_bucket: 'public-media' } } : empty,
       github_setup: { available: false, install_url: null }, encryption_available: true } });
   });
   await page.route('**/api/orgs/publishing/cloudflare', async (route) => {
@@ -135,7 +135,7 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
       encryption_available: true, cloudflare_setup: { available: true },
       cloudflare_choices: phase === 'select' ? [{ id: 'a'.repeat(32), name: 'First agency' }, { id: 'b'.repeat(32), name: 'Selected agency with a longer account name' }] : [],
       cloudflare: connected ? { ...empty, status: 'connected', credentials_saved: true, auth_method: 'oauth', media_ready: phase === 'ready',
-        cloudflare: { account_id: 'b'.repeat(32), account_name: 'Selected agency with a longer account name', bucket: phase === 'connected' ? '' : 'agency-media' } } : empty } });
+        cloudflare: { account_id: 'b'.repeat(32), account_name: 'Selected agency with a longer account name', bucket: phase === 'connected' ? '' : 'agency-media', public_bucket: phase === 'connected' ? '' : 'public-media' } } : empty } });
   });
   await page.route('**/api/orgs/publishing/github', route => {
     githubConnected = false;
@@ -233,12 +233,12 @@ test('already active R2 is prepared automatically without activation instruction
     const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
     return route.fulfill({ json: { github: empty, github_setup: { available: false }, github_choices: [], encryption_available: true,
       cloudflare_setup: { available: true }, cloudflare: { ...empty, status: 'connected', auth_method: 'oauth', credentials_saved: true,
-        cloudflare: { account_id: 'b'.repeat(32), account_name: 'Active agency', bucket: prepared ? 'agency-media' : '' } } } });
+        cloudflare: { account_id: 'b'.repeat(32), account_name: 'Active organization', bucket: prepared ? 'organization-media' : '', public_bucket: prepared ? 'organization-public-media' : '' } } } });
   });
   await page.route('**/api/orgs/publishing/cloudflare', route => {
     expect(route.request().postDataJSON().action).toBe('prepare_media');
     checks++; prepared = true;
-    return route.fulfill({ json: { bucket: 'agency-media' } });
+    return route.fulfill({ json: { bucket: 'organization-media', public_bucket: 'organization-public-media' } });
   });
   await page.goto('/app/settings/publishing');
   await expect(page.getByRole('heading', { name: 'Finish R2 setup' })).toBeVisible();
@@ -276,4 +276,19 @@ test('owners can find GitHub and Cloudflare directly from navigation and site se
   await expect(page.getByRole('link', { name: 'Publishing', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Open Publishing', exact: true })).toHaveCount(0);
   await expect(page.getByText('Ask an organization owner or admin to connect these accounts.')).toBeVisible();
+});
+
+test('media migration progress updates automatically until completion', async ({ page }) => {
+  await authenticatePersona(page, 'owner');
+  let completed = false;
+  await page.route('**/api/orgs/publishing', route => {
+    const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
+    return route.fulfill({ json: { github: empty, github_setup: { available: false }, github_choices: [], encryption_available: true,
+      cloudflare: { ...empty, status: 'connected', media_ready: true, cloudflare: { account_id: 'b'.repeat(32), account_name: 'Test organization', bucket: 'private-media', public_bucket: 'public-media' } },
+      media_migration: { state: completed ? 'complete' : 'running', copied_files: completed ? 3 : 1, pending_files: completed ? 0 : 2, error: null } } });
+  });
+  await page.goto('/app/settings/publishing');
+  await expect(page.getByText('Moving existing originals to R2: 1 copied, 2 remaining.')).toBeVisible();
+  completed = true;
+  await expect(page.getByText('Originals moved to your R2 storage.', { exact: false })).toBeVisible({ timeout: 10000 });
 });

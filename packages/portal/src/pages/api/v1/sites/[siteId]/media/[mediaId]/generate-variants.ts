@@ -20,12 +20,14 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  if (ctx.permission === 'read') return apiError('Media changes require write permission.', 403);
   const mediaId = params.mediaId;
   if (!mediaId) return apiError('Missing mediaId');
 
   const store = getStore();
   const media = await store.getDoc<Media>(`${paths.media(ctx.orgId, ctx.siteId)}/${mediaId}`);
   if (!media) return apiError('Not found', 404);
+  if (media.storage) return apiResponse(ctx, { ok: true, variants_pending: true, message: 'Responsive image variants are generated on your build machine during the next publication.' });
 
   const accountId = process.env.R2_ACCOUNT_ID;
   const bucket = process.env.R2_BUCKET;

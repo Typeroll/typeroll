@@ -46,6 +46,12 @@ COPY packages/site-template/ packages/site-template/
 # route. The "./server" export points at src/server.ts so we need the
 # real source, not just the package.json stub.
 COPY packages/mcp-server/ packages/mcp-server/
+COPY scripts/ scripts/
+COPY LICENSE ./
+
+# Customer builds receive this frozen source and lockfile from the immutable
+# Core image. Publishing never resolves dependencies or runs Astro here.
+RUN node scripts/build-static-publication-template.mjs
 
 # Public Firebase web configuration is read at request time and embedded in
 # the HTML by the portal. Keeping it out of the build is what makes this image
