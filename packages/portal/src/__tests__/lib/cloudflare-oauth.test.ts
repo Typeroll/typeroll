@@ -129,3 +129,10 @@ it('keeps the original account and media keys when reconnecting OAuth', async ()
   expect(reconnected.media_ready).toBe(true);
   expect(reconnected.cloudflare?.account_id).toBe(first.id);
 });
+
+it('rejects a stale connection revision before using credentials', async () => {
+  await finishCloudflareConnection(session, await grant(), provider());
+  const fetcher = provider();
+  await expect(cloudflareClient('default', fetcher, 'stale-revision')).rejects.toThrow('changed');
+  expect(fetcher).not.toHaveBeenCalled();
+});

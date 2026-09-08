@@ -4,6 +4,7 @@ import type { APIRoute } from 'astro';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { claimAccount, connectionPath, connectionSummary, disconnect, getConnection, openCredentials, sealCredentials } from '../../lib/publishing/connections';
+import { CLOUDFLARE_SCOPES } from '../../lib/publishing/cloudflare-oauth';
 import { finishGithubConnection, githubSetup, startGithubConnection, githubChoices, selectGithubOrganization } from '../../lib/publishing/github-connection';
 import { connectCloudflare, verifyR2, prepareCloudflareMedia, connectCloudflareMedia } from '../../lib/publishing/cloudflare-connection';
 import { GET } from '../../pages/api/orgs/publishing/index';
@@ -213,15 +214,16 @@ describe('Cloudflare connection and encrypted credentials', () => {
     expect(connectionSummary({ ...connection, auth_method: 'api_token' }).media_ready).toBe(true);
     expect(connectionSummary({ ...connection, auth_method: 'api_token', media_ready: false }).media_ready).toBe(false);
   });
-  it('prepares one organization bucket, preserves other CORS rules, and reuses it on retry', async () => {
+  it.each([false, true])('prepares one organization bucket and reuses it when OAuth needs refresh: %s', async (refreshRequired) => {
     await getConnection('default', 'cloudflare');
     await getStore().updateDoc(connectionPath('default', 'cloudflare'), { status: 'connected',
       cloudflare: { account_id: accountId, account_name: 'Synthetic agency', bucket: '', endpoint: `https://${accountId}.r2.cloudflarestorage.com` },
-      encrypted_credentials: sealCredentials('default', 'cloudflare', { api_token: credentials.api_token }) });
+      encrypted_credentials: sealCredentials('default', 'cloudflare', refreshRequired ? { oauth: { access_token: 'expired-access', refresh_token: 'synthetic-refresh', expires_at: 0, scope: CLOUDFLARE_SCOPES.join(' ') } } : { api_token: credentials.api_token }) });
     let bucket: string | undefined;
     let rules = [{ id: 'existing-reader', allowed: { origins: ['https://existing.example'], methods: ['GET'] } }];
     const fetcher = vi.fn<typeof fetch>(async (url, init) => {
       const pathname = new URL(String(url)).pathname;
+      if (pathname === '/oauth2/token') return Response.json({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer', scope: CLOUDFLARE_SCOPES.join(' ') });
       const body = init?.body ? JSON.parse(init.body as string) : undefined;
       expect(init?.redirect).toBe('error');
       if (pathname.endsWith('/cors')) {
@@ -233,7 +235,7 @@ describe('Cloudflare connection and encrypted credentials', () => {
       return Response.json({ success: true, result: { name: bucket, jurisdiction: 'default' } });
     });
     for (let i = 0; i < 2; i++) await prepareCloudflareMedia(session, (await getConnection('default', 'cloudflare')).revision, fetcher);
-    expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    expect(fetcher.mock.calls.filter(([url, init]) => String(url).endsWith('/r2/buckets') && init?.method === 'POST')).toHaveLength(1);
     expect(bucket).toMatch(/^typeroll-media-[a-f0-9]{16}$/);
     expect(rules).toHaveLength(2);
     expect(rules[0]).toEqual({ id: 'existing-reader', allowed: { origins: ['https://existing.example'], methods: ['GET'] } });
@@ -241,17 +243,17 @@ describe('Cloudflare connection and encrypted credentials', () => {
     expect((await getConnection('default', 'cloudflare')).media_ready).not.toBe(true);
   });
 
-  it('saves verified R2 keys without replacing OAuth authorization', async () => {
+  it.each([false, true])('saves verified R2 keys when OAuth needs refresh: %s', async (refreshRequired) => {
     fakeS3();
     await getConnection('default', 'cloudflare');
-    const oauth = { access_token: 'synthetic-access', refresh_token: 'synthetic-refresh', expires_at: Date.now() + 3600_000, scope: 'synthetic-scope' };
+    const oauth = { access_token: 'synthetic-access', refresh_token: 'synthetic-refresh', expires_at: refreshRequired ? 0 : Date.now() + 3600_000, scope: CLOUDFLARE_SCOPES.join(' ') };
     await getStore().updateDoc(connectionPath('default', 'cloudflare'), { status: 'connected', auth_method: 'oauth',
       cloudflare: { account_id: accountId, bucket: 'agency-media' }, encrypted_credentials: sealCredentials('default', 'cloudflare', { oauth }) });
     const current = await getConnection('default', 'cloudflare');
-    await connectCloudflareMedia(session, { revision: current.revision, access_key_id: credentials.access_key_id, secret_access_key: credentials.secret_access_key });
+    await connectCloudflareMedia(session, { revision: current.revision, access_key_id: credentials.access_key_id, secret_access_key: credentials.secret_access_key }, async () => Response.json({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer', scope: CLOUDFLARE_SCOPES.join(' ') }));
     const saved = await getConnection('default', 'cloudflare');
     expect(saved.media_ready).toBe(true);
-    expect(openCredentials('default', 'cloudflare', saved.encrypted_credentials!)).toEqual({ oauth, access_key_id: credentials.access_key_id, secret_access_key: credentials.secret_access_key });
+    expect(openCredentials('default', 'cloudflare', saved.encrypted_credentials!)).toEqual({ oauth: refreshRequired ? expect.objectContaining({ access_token: 'rotated-access', refresh_token: 'rotated-refresh' }) : oauth, access_key_id: credentials.access_key_id, secret_access_key: credentials.secret_access_key });
     expect(JSON.stringify(saved)).not.toContain('synthetic-refresh');
     await expect(connectCloudflareMedia(session, { revision: current.revision, access_key_id: 'changed', secret_access_key: 'changed' })).rejects.toThrow('reload');
   });
@@ -275,7 +277,7 @@ describe('Cloudflare connection and encrypted credentials', () => {
 
   it.each(['put', 'read', 'delete'] as const)('fails closed on R2 %s failure and attempts cleanup without reflecting credentials', async (failure) => {
     const s3 = fakeS3(failure);
-    await expect(verifyR2(accountId, 'agency-media', credentials)).rejects.toThrow('R2 upload, readback, or cleanup failed');
+    await expect(verifyR2(accountId, 'agency-media', credentials)).rejects.toThrow('R2 upload access could not be verified');
     expect(s3.mock.calls.at(-1)?.[0]).toBeInstanceOf(DeleteObjectCommand);
   });
 
@@ -289,6 +291,25 @@ describe('Cloudflare connection and encrypted credentials', () => {
     const fetcher = providerFetch();
     await expect(connectCloudflare(session, { ...credentials, account_id: 'b'.repeat(32), bucket: 'agency-media', revision: original.revision }, fetcher)).rejects.toThrow('original Cloudflare account');
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('explains missing and rejected upload keys without exposing credential values', async () => {
+    await getConnection('default', 'cloudflare');
+    await getStore().updateDoc(connectionPath('default', 'cloudflare'), { status: 'connected', auth_method: 'oauth',
+      cloudflare: { account_id: accountId, bucket: 'agency-media' },
+      encrypted_credentials: sealCredentials('default', 'cloudflare', { oauth: { access_token: 'synthetic-access', expires_at: Date.now() + 3600_000 } }) });
+    const revision = (await getConnection('default', 'cloudflare')).revision;
+    const s3 = fakeS3('put');
+    const missing = await call(POST, routeContext('POST', 'cloudflare', { action: 'save_media', revision }));
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toMatchObject({ code: 'r2_credentials_required', error: expect.stringContaining('both the Access Key ID and Secret Access Key') });
+    expect(s3).not.toHaveBeenCalled();
+    const invalid = await call(POST, routeContext('POST', 'cloudflare', { action: 'save_media', revision, ...credentials }));
+    expect(invalid.status).toBe(502);
+    const body = await invalid.json();
+    expect(body).toMatchObject({ code: 'r2_verification_failed', error: expect.stringContaining('Object Read & Write access to the bucket agency-media') });
+    for (const secret of Object.values(credentials)) expect(JSON.stringify(body)).not.toContain(secret);
+    expect((await getConnection('default', 'cloudflare')).media_ready).not.toBe(true);
   });
 
   it('binds ciphertext to its tenant and provider', () => {
@@ -373,7 +394,10 @@ describe('publishing account routes', () => {
     const response = await call(POST, routeContext('POST', 'cloudflare', { ...credentials, account_id: accountId, bucket: 'agency-media', revision }));
     expect(response.status).toBe(409);
     const text = await response.text();
-    expect(text).toContain('Activate R2');
+    expect(JSON.parse(text).code).toBe('r2_activation_required');
+    expect(text).toContain('R2 subscription checkout');
+    expect(text).toContain('billing details');
+    expect(text).toContain('I’ve activated R2 — check again');
     expect(text).not.toContain('synthetic-sensitive');
   });
 

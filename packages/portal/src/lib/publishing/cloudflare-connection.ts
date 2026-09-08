@@ -36,7 +36,7 @@ export async function verifyR2(accountId: string, bucket: string, credentials: C
       // Also clean up an ambiguous upload that timed out after the object was stored.
       await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: AbortSignal.timeout(15_000) });
     }
-  } catch { throw new ConnectionError('R2 upload, readback, or cleanup failed. Check bucket credentials and try again.', 502); }
+  } catch { throw new ConnectionError(`R2 upload access could not be verified. In Cloudflare, create an R2 token with Object Read & Write access to the bucket ${bucket}. Copy both its Access Key ID and Secret Access Key into Typeroll, then try again. If the keys are correct, retry after checking Cloudflare availability.`, 502, 'r2_verification_failed'); }
   finally { client.destroy(); }
 }
 
@@ -73,7 +73,11 @@ export async function prepareCloudflareMedia(session: FullSession, revision: str
   } catch { throw new ConnectionError('The publisher must configure its public address before preparing media.', 503); }
   const current = await getConnection(session.orgId, 'cloudflare');
   if (current.status !== 'connected' || !current.cloudflare || current.revision !== revision) throw new ConnectionError('Reload the Cloudflare connection before preparing media.', 409);
-  const provider = await cloudflareClient(session.orgId, fetchImpl);
+  const provider = await cloudflareClient(session.orgId, fetchImpl, current.revision);
+  // OAuth refresh rotates the stored revision. Continue only against the
+  // connection that supplied this client, never a concurrent reconnect.
+  const authorized = await getConnection(session.orgId, 'cloudflare');
+  if (authorized.revision !== provider.connectionRevision || authorized.cloudflare?.account_id !== current.cloudflare.account_id) throw new ConnectionError('The connection changed. Reload and try again.', 409);
   const bucket = current.cloudflare.bucket || `typeroll-media-${createHash('sha256').update(session.orgId).digest('hex').slice(0, 16)}`;
   const root = `/accounts/${current.cloudflare.account_id}/r2/buckets`;
   let existing = await provider(`${root}/${bucket}`, { missing: true });
@@ -85,7 +89,7 @@ export async function prepareCloudflareMedia(session: FullSession, revision: str
   const cors = await provider(`${root}/${bucket}/cors`, { missing: true });
   const rule = { id: 'typeroll-direct-uploads', allowed: { origins: [origin], methods: ['GET', 'HEAD', 'PUT'], headers: ['content-type', 'cache-control', 'x-amz-*'] }, exposeHeaders: ['ETag'], maxAgeSeconds: 3600 };
   await provider(`${root}/${bucket}/cors`, { method: 'PUT', body: { rules: [...(cors?.rules ?? []).filter((item: { id?: string }) => item.id !== rule.id), rule] } });
-  await saveConnection(session.orgId, 'cloudflare', revision, { cloudflare: { ...current.cloudflare, bucket } });
+  await saveConnection(session.orgId, 'cloudflare', authorized.revision, { cloudflare: { ...current.cloudflare, bucket } });
   return { bucket };
 }
 
@@ -94,13 +98,13 @@ export async function connectCloudflareMedia(session: FullSession, input: Record
   if (current.status !== 'connected' || !current.cloudflare?.bucket || !current.encrypted_credentials || current.revision !== input.revision) throw new ConnectionError('Prepare the media bucket and reload the connection before saving media access.', 409);
   const { access_key_id, secret_access_key } = input;
   if (typeof access_key_id !== 'string' || typeof secret_access_key !== 'string' || !access_key_id || !secret_access_key ||
-    access_key_id.length > 512 || secret_access_key.length > 512 || /[\s\x00-\x1f]/.test(access_key_id + secret_access_key)) throw new ConnectionError('Enter both R2 Access Key ID and Secret Access Key.');
+    access_key_id.length > 512 || secret_access_key.length > 512 || /[\s\x00-\x1f]/.test(access_key_id + secret_access_key)) throw new ConnectionError('Enter both the Access Key ID and Secret Access Key from your Cloudflare R2 token. The Cloudflare API token value is not one of these two keys.', 400, 'r2_credentials_required');
   await verifyR2(current.cloudflare.account_id, current.cloudflare.bucket, { access_key_id, secret_access_key });
   // Refresh first, then reread credentials so saving media cannot restore a rotated token.
-  await cloudflareClient(session.orgId, fetchImpl);
+  const provider = await cloudflareClient(session.orgId, fetchImpl, current.revision);
   const latest = await getConnection(session.orgId, 'cloudflare');
-  if (latest.revision !== current.revision || !latest.encrypted_credentials || latest.refresh_lease) throw new ConnectionError('The connection changed. Reload and try again.', 409);
+  if (latest.revision !== provider.connectionRevision || latest.cloudflare?.account_id !== current.cloudflare.account_id || latest.cloudflare?.bucket !== current.cloudflare.bucket || !latest.encrypted_credentials || latest.refresh_lease) throw new ConnectionError('The connection changed. Reload and try again.', 409);
   const credentials = openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', latest.encrypted_credentials);
-  await saveConnection(session.orgId, 'cloudflare', current.revision, {
+  await saveConnection(session.orgId, 'cloudflare', latest.revision, {
     media_ready: true, encrypted_credentials: sealCredentials(session.orgId, 'cloudflare', { ...credentials, access_key_id, secret_access_key }) });
 }

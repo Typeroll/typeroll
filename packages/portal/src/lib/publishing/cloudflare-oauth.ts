@@ -148,14 +148,15 @@ async function saveAccount(session: FullSession, accountId: string, tokens: Clou
 }
 
 /** Refresh leases serialize rotating tokens across instances, without delaying a build worker. */
-export async function cloudflareClient(orgId: string, fetchImpl: typeof fetch = fetch) {
+export async function cloudflareClient(orgId: string, fetchImpl: typeof fetch = fetch, expectedRevision?: string) {
   const store = getStore(), path = connectionPath(orgId, 'cloudflare');
   for (let attempt = 0; attempt < 20; attempt++) {
     const connection = await getConnection(orgId, 'cloudflare');
+    if (expectedRevision && connection.revision !== expectedRevision) throw new ConnectionError('The connection changed. Reload and try again.', 409);
     if (connection.status !== 'connected' || !connection.encrypted_credentials) throw new ConnectionError('Connect Cloudflare before publishing.', 409);
     const credentials = openCredentials<CloudflareStoredCredentials>(orgId, 'cloudflare', connection.encrypted_credentials);
-    if (!credentials.oauth) return createProviderClient('Cloudflare', credentials.api_token!, fetchImpl);
-    if (credentials.oauth.expires_at > Date.now() + 60_000) return createProviderClient('Cloudflare', credentials.oauth.access_token, fetchImpl);
+    if (!credentials.oauth) return Object.assign(createProviderClient('Cloudflare', credentials.api_token!, fetchImpl), { connectionRevision: connection.revision });
+    if (credentials.oauth.expires_at > Date.now() + 60_000) return Object.assign(createProviderClient('Cloudflare', credentials.oauth.access_token, fetchImpl), { connectionRevision: connection.revision });
     const lease = randomUUID();
     const acquired = await store.compareAndUpdateDoc<Connection>(path, value => value.status === 'connected' && value.revision === connection.revision &&
       value.encrypted_credentials === connection.encrypted_credentials && (!value.refresh_lease || value.refresh_lease.expires_at <= Date.now()),
@@ -163,10 +164,11 @@ export async function cloudflareClient(orgId: string, fetchImpl: typeof fetch = 
     if (!acquired) { await new Promise(resolve => setTimeout(resolve, 250)); continue; }
     try {
       const tokens = await exchange({ grant_type: 'refresh_token', refresh_token: credentials.oauth.refresh_token }, fetchImpl, credentials.oauth);
+      const revision = randomUUID();
       const saved = await store.compareAndUpdateDoc<Connection>(path, value => value.status === 'connected' && value.revision === connection.revision && value.refresh_lease?.id === lease,
-        { encrypted_credentials: sealCredentials(orgId, 'cloudflare', { ...credentials, oauth: tokens }), refresh_lease: null, revision: randomUUID() });
+        { encrypted_credentials: sealCredentials(orgId, 'cloudflare', { ...credentials, oauth: tokens }), refresh_lease: null, revision });
       if (!saved) throw new ConnectionError('Cloudflare connection changed while renewing authorization.', 409);
-      return createProviderClient('Cloudflare', tokens.access_token, fetchImpl);
+      return Object.assign(createProviderClient('Cloudflare', tokens.access_token, fetchImpl), { connectionRevision: revision });
     } finally {
       await store.compareAndUpdateDoc<Connection>(path, value => value.refresh_lease?.id === lease, { refresh_lease: null });
     }

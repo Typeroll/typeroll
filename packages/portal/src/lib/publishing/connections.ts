@@ -3,7 +3,7 @@ import { getStore } from '../datastore';
 import { decryptSecret, encryptSecret } from '../secret-crypto';
 
 export class ConnectionError extends Error {
-  constructor(message: string, public status = 400) { super(message); }
+  constructor(message: string, public status = 400, public code?: string) { super(message); }
 }
 
 export type Provider = 'github' | 'cloudflare';

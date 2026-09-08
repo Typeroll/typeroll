@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CircleCheck } from 'lucide-react';
 
 type Connection = {
@@ -10,11 +10,15 @@ type Connection = {
 type Connections = { cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
 const API = '/api/orgs/publishing';
 
+class PublishingRequestError extends Error {
+  constructor(message: string, public code?: string) { super(message); }
+}
+
 async function request(path = '', method = 'GET', body?: unknown) {
   const response = await fetch(`${API}${path}`, { method, cache: 'no-store',
     headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Could not update the publishing connection');
+  if (!response.ok) throw new PublishingRequestError(data.error || 'Could not update the publishing connection', data.code);
   return data;
 }
 
@@ -23,7 +27,43 @@ export default function PublishingConnections() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [mediaError, setMediaError] = useState<{ message: string; code?: string } | null>(null);
+  const [mediaNotice, setMediaNotice] = useState('');
+  const mediaFeedback = useRef<HTMLDivElement>(null);
+  const checkedConnection = useRef<string | null>(null);
+  const [checkingMedia, setCheckingMedia] = useState(false);
+  useEffect(() => {
+    if (mediaError || mediaNotice) {
+      mediaFeedback.current?.focus({ preventScroll: true });
+      mediaFeedback.current?.scrollIntoView({ block: 'center', behavior: 'instant' });
+    }
+  }, [mediaError, mediaNotice]);
   const refresh = async () => setData(await request());
+  async function checkMedia(revision: string) {
+    checkedConnection.current = revision;
+    setCheckingMedia(true); setMediaError(null); setMediaNotice('');
+    try {
+      await request('/cloudflare', 'POST', { action: 'prepare_media', revision });
+      await refresh();
+      setMediaNotice('R2 is activated and your storage is prepared.');
+    } catch (error) {
+      // The provider check may have renewed OAuth before returning an R2 error.
+      // Keep the retry bound to that new revision without triggering a loop.
+      try {
+        const latest = await request();
+        checkedConnection.current = latest.cloudflare.revision;
+        setData(latest);
+      } catch { /* Keep the actionable setup error if metadata is unavailable. */ }
+      setMediaError({ message: error instanceof Error ? error.message : 'Could not check R2. Try again.',
+        code: error instanceof PublishingRequestError ? error.code : undefined });
+    } finally { setCheckingMedia(false); }
+  }
+  useEffect(() => {
+    const connection = data?.cloudflare;
+    if (connection?.status === 'connected' && !connection.cloudflare?.bucket && checkedConnection.current !== connection.revision) {
+      void checkMedia(connection.revision);
+    }
+  }, [data?.cloudflare.revision, data?.cloudflare.status, data?.cloudflare.cloudflare?.bucket]);
   useEffect(() => {
     void refresh().catch((error: Error) => setError(error.message));
     const parameters = new URLSearchParams(window.location.search);
@@ -46,19 +86,27 @@ export default function PublishingConnections() {
     event.preventDefault();
     const form = event.currentTarget;
     const values = Object.fromEntries(new FormData(form));
+    const mediaAction = provider === 'cloudflare' && values.action === 'save_media';
     setBusy(true); setError(''); setNotice('');
+    if (provider === 'cloudflare') { setMediaError(null); setMediaNotice(''); }
     try {
       const result = await request(`/${provider}`, 'POST', { ...values, revision: data?.[provider].revision });
       if (result.authorization_url) { window.location.assign(result.authorization_url); return; }
       form.reset();
       await refresh();
-      setNotice(provider === 'github' ? 'GitHub connected. This organization can be reused for your sites.' : values.action === 'prepare_media' ? 'R2 storage prepared. Add the access keys below to finish connecting image uploads.' : values.action === 'save_media' ? 'R2 connected. Upload, readback, and cleanup checks passed.' : 'Cloudflare connection updated. Access is encrypted and reused for your sites.');
-    } catch (error) { setError(error instanceof Error ? error.message : 'Connection failed'); }
+      if (mediaAction) setMediaNotice('R2 connected. Upload access verified. Setup is complete.');
+      else setNotice(provider === 'github' ? 'GitHub connected. This organization can be reused for your sites.' : 'Cloudflare connection updated. Access is encrypted and reused for your sites.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not complete setup. Check your connection and try again.';
+      if (mediaAction) setMediaError({ message, code: error instanceof PublishingRequestError ? error.code : undefined });
+      else setError(message);
+    }
     finally { setBusy(false); }
   }
 
   async function disconnect(provider: 'github' | 'cloudflare') {
     setBusy(true); setError(''); setNotice('');
+    if (provider === 'cloudflare') { setMediaError(null); setMediaNotice(''); }
     try {
       await request(`/${provider}`, 'DELETE', { revision: data?.[provider].revision });
       await refresh();
@@ -68,18 +116,29 @@ export default function PublishingConnections() {
   }
 
   const mediaBucket = data?.cloudflare.cloudflare?.bucket;
+  const cloudflareAccount = data?.cloudflare.cloudflare;
+  const r2Overview = cloudflareAccount ? `https://dash.cloudflare.com/${cloudflareAccount.account_id}/r2/overview` : 'https://dash.cloudflare.com/';
   const mediaReady = Boolean(data?.cloudflare.media_ready && mediaBucket);
   const mediaAccessForm = <div className="stack">
-    <p>In Cloudflare, open <strong>Storage &amp; databases → R2 object storage → Overview → Account Details → API Tokens → Manage</strong>. Create an R2 token with <strong>Object Read &amp; Write</strong> limited to <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong>. Copy its two S3 credentials below.</p>
+    <p>Create one R2 upload token in Cloudflare and paste its two keys below. This allows direct uploads from your browser to R2. You only do this once for all sites in this organization.</p>
+    <a className="btn btn--secondary" style={{ alignSelf: 'flex-start', whiteSpace: 'normal' }} href={r2Overview} target="_blank" rel="noreferrer">Open R2 in {cloudflareAccount?.account_name} ↗</a>
+    <ol style={{ paddingInlineStart: 24 }}>
+      <li>In <strong>R2 object storage → Overview</strong>, find <strong>Account Details → API Tokens</strong> and select <strong>Manage</strong>.</li>
+      <li>Select <strong>Create Account API token</strong> and name it <strong>Typeroll media</strong>. If that option is unavailable, use <strong>Create User API token</strong>.</li>
+      <li>Choose <strong>Object Read &amp; Write</strong>, restrict access to this bucket only, and choose <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong>.</li>
+      <li>Create the token. Copy <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> into the matching fields below. The secret is shown only once.</li>
+    </ol>
+    <p className="muted">Copy Access Key ID and Secret Access Key, not the value labelled API token.</p>
+    <details><summary>Cannot create an Account API token?</summary><p>Account tokens require a Cloudflare Super Administrator. A User API token also works, but becomes inactive if its owner is removed from the Cloudflare account.</p></details>
     <form className="stack" onSubmit={event => void submit('cloudflare', event)} autoComplete="off">
       <input type="hidden" name="action" value="save_media" />
       <div className="field"><label htmlFor="oauth-r2-access">R2 Access Key ID</label><input id="oauth-r2-access" name="access_key_id" type="password" required autoComplete="new-password" maxLength={512} /></div>
       <div className="field"><label htmlFor="oauth-r2-secret">R2 Secret Access Key</label><input id="oauth-r2-secret" name="secret_access_key" type="password" required autoComplete="new-password" maxLength={512} /></div>
-      <button className="btn" disabled={busy}>{busy ? 'Verifying R2 access…' : 'Verify image uploads'}</button>
+      <button className="btn" disabled={busy || checkingMedia}>{busy ? 'Verifying R2 access…' : 'Verify keys and finish setup'}</button>
     </form>
   </div>;
 
-  return <div className="stack" style={{ maxWidth: 760 }} aria-busy={busy}>
+  return <div className="stack" style={{ maxWidth: 760 }} aria-busy={busy || checkingMedia}>
     <p>Connect your agency’s accounts once and reuse them for multiple sites. Each site will have its own private GitHub repository and static Cloudflare Pages project.</p>
     <p className="muted">Account connections are available here. Creating site repositories and publishing from the editor are still being implemented.</p>
     {error && <p role="alert">{error}</p>}
@@ -96,10 +155,10 @@ export default function PublishingConnections() {
                 <option value="" disabled>Select an organization</option>
                 {data.github_choices.map(choice => <option key={choice.installation_id} value={choice.installation_id}>{choice.owner} — github.com/{choice.owner}</option>)}
               </select></div>
-            <button className="btn" disabled={busy} type="submit">Connect selected organization</button>
+            <button className="btn" disabled={busy || checkingMedia} type="submit">Connect selected organization</button>
           </form>}
           <form className="stack" onSubmit={(event) => void submit('github', event)}>
-            <button className="btn" disabled={busy} type="submit">{data.github.github ? 'Verify GitHub connection' : 'Connect GitHub'}</button>
+            <button className="btn" disabled={busy || checkingMedia} type="submit">{data.github.github ? 'Verify GitHub connection' : 'Connect GitHub'}</button>
           </form>
           <details><summary>First connection: install the Typeroll GitHub App</summary>
             <ol>
@@ -109,26 +168,36 @@ export default function PublishingConnections() {
             </ol>
           </details>
         </>}
-        {data.github.status === 'connected' && <button className="btn btn--secondary" disabled={busy} onClick={() => void disconnect('github')}>Disconnect GitHub</button>}
+        {data.github.status === 'connected' && <button className="btn btn--secondary" disabled={busy || checkingMedia} onClick={() => void disconnect('github')}>Disconnect GitHub</button>}
       </section>
       <section className="card stack" aria-labelledby="cloudflare-title">
         <h2 id="cloudflare-title">Cloudflare and R2 media</h2>
         <p>Status: <strong>{data.cloudflare.status}</strong>{data.cloudflare.cloudflare && <> · {data.cloudflare.cloudflare.account_name}</>}</p>
-        <p>Sign in to Cloudflare, choose your account, and approve access. You do not need to enter an Account ID or create a Cloudflare API token for this connection.</p>
+        {data.cloudflare.status !== 'connected' && <p>Sign in to Cloudflare and approve access. Typeroll then checks R2 automatically. If you need to activate an R2 subscription, the next step appears here.</p>}
         {data.cloudflare_setup?.available ? <>
           {(data.cloudflare_choices ?? []).length > 0 && <form className="stack" onSubmit={event => void submit('cloudflare', event)}>
             <input type="hidden" name="action" value="select" />
             <div className="field"><label htmlFor="cf-choice">Choose a Cloudflare account</label>
               <select id="cf-choice" name="account_id" required defaultValue=""><option value="" disabled>Select an account</option>
                 {data.cloudflare_choices!.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
-              </select></div><button type="submit" className="btn" disabled={busy}>Connect selected account</button>
+              </select></div><button type="submit" className="btn" disabled={busy || checkingMedia}>Connect selected account</button>
           </form>}
           <form onSubmit={event => void submit('cloudflare', event)}><input type="hidden" name="action" value="start" />
-            <button type="submit" className="btn" disabled={busy}>{data.cloudflare.status === 'connected' ? 'Reconnect Cloudflare' : 'Connect Cloudflare'}</button>
+            {data.cloudflare.status === 'connected' ? <details><summary>Reconnect Cloudflare</summary>
+              <p>Use this if your account authorization needs to be renewed.</p><button type="submit" className="btn" disabled={busy || checkingMedia}>Sign in to Cloudflare again</button>
+            </details> : <button type="submit" className="btn" disabled={busy || checkingMedia}>Connect Cloudflare</button>}
           </form>
         </> : <p className="muted">Cloudflare sign-in is not available until the publisher finishes configuring its Cloudflare app.</p>}
         {data.cloudflare.status === 'connected' && <div className="stack" role="group" aria-labelledby="r2-status-title">
           <h3 id="r2-status-title">R2 media storage</h3>
+          {(mediaError || mediaNotice) && <div ref={mediaFeedback} tabIndex={-1} role={mediaError ? 'alert' : 'status'} className="stack" style={{ padding: 16, border: `2px solid var(${mediaError ? '--color-danger' : '--color-success'})`, borderRadius: 8, scrollMarginTop: 72 }}>
+            {mediaError?.code === 'r2_activation_required' ? <>
+              <strong>R2 is not activated for {cloudflareAccount?.account_name}</strong>
+              <p>Open <strong>Storage &amp; databases → R2 object storage → Overview</strong> in the account below and complete the R2 subscription checkout. Enter billing details if Cloudflare asks for them.</p>
+              <a href={r2Overview} target="_blank" rel="noreferrer">Open R2 activation in {cloudflareAccount?.account_name} ↗</a>
+              <p>Return here and confirm below. Typeroll checks that activation is complete before continuing. You do not need to create a bucket or reconnect Cloudflare.</p>
+            </> : <p>{mediaError?.message || mediaNotice}</p>}
+          </div>}
           {mediaReady ? <>
             <p style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CircleCheck size={20} aria-hidden="true" style={{ color: 'var(--color-success)', flexShrink: 0 }} /><strong>R2 connected</strong></p>
             <p>Upload access verified. Your R2 credentials are saved securely and reused for this organization’s sites.</p>
@@ -137,15 +206,13 @@ export default function PublishingConnections() {
           </> : mediaBucket ? <>
             <p style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CircleCheck size={20} aria-hidden="true" style={{ color: 'var(--color-success)', flexShrink: 0 }} /><strong>R2 storage prepared</strong></p>
             <p>Bucket: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong></p>
-            <p>One step left: add R2 access keys so Typeroll can verify image uploads.</p>
+            <h4>Finish R2 setup</h4>
             {mediaAccessForm}
           </> : <>
-            <p><strong>R2 setup not completed</strong></p>
-            <p>Cloudflare is connected. Prepare a shared storage bucket, then add R2 access keys once for this organization.</p>
-            <p>First activate R2 in <a href={`https://dash.cloudflare.com/${data.cloudflare.cloudflare?.account_id}/r2/overview`} target="_blank" rel="noreferrer">your connected Cloudflare account</a> if prompted. Then return here to prepare the storage.</p>
-            <form onSubmit={event => void submit('cloudflare', event)}>
-              <input type="hidden" name="action" value="prepare_media" /><button className="btn" disabled={busy}>{busy ? 'Preparing R2 storage…' : 'Prepare media storage'}</button>
-            </form>
+            {checkingMedia && <p role="status">Checking R2 and preparing your storage…</p>}
+            {mediaError && <button className="btn" style={{ whiteSpace: 'normal' }} disabled={busy || checkingMedia} onClick={() => void checkMedia(data.cloudflare.revision)}>
+              {mediaError.code === 'r2_activation_required' ? 'I’ve activated R2 — check again' : 'Check R2 again'}
+            </button>}
           </>}
         </div>}
         {data.cloudflare.credentials_saved && data.cloudflare.auth_method !== 'oauth' && <p>API and R2 credentials are saved and hidden. To rotate them, open the advanced connection settings below.</p>}
@@ -169,10 +236,10 @@ export default function PublishingConnections() {
             <div className="field"><label htmlFor="cf-token">Cloudflare API token</label><input id="cf-token" name="api_token" type="password" required maxLength={512} autoComplete="new-password" /></div>
             <div className="field"><label htmlFor="r2-access">R2 Access Key ID</label><input id="r2-access" name="access_key_id" type="password" required maxLength={512} autoComplete="new-password" /></div>
             <div className="field"><label htmlFor="r2-secret">R2 Secret Access Key</label><input id="r2-secret" name="secret_access_key" type="password" required maxLength={512} autoComplete="new-password" /></div>
-            <button className="btn" disabled={busy} type="submit">{busy ? 'Checking connection…' : 'Verify and save Cloudflare'}</button>
+            <button className="btn" disabled={busy || checkingMedia} type="submit">{busy ? 'Checking connection…' : 'Verify and save Cloudflare'}</button>
           </form>}
         </div></details>
-        {data.cloudflare.status === 'connected' && <button className="btn btn--secondary" disabled={busy} onClick={() => void disconnect('cloudflare')}>Disconnect Cloudflare</button>}
+        {data.cloudflare.status === 'connected' && <button className="btn btn--secondary" disabled={busy || checkingMedia} onClick={() => void disconnect('cloudflare')}>Disconnect Cloudflare</button>}
         <p className="muted">This first connection supports standard R2 buckets on the account’s global S3 endpoint. Disconnecting removes saved Cloudflare credentials. It does not delete your resources.</p>
       </section>
     </>}

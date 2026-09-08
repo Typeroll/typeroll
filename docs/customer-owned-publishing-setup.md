@@ -94,18 +94,37 @@ The publisher must configure a public Cloudflare OAuth client first. A private
 client only accepts members of the publisher's own Cloudflare account, which
 does not reproduce external customer onboarding.
 
-For image storage, select **Prepare media storage**. Typeroll prepares one R2
-bucket for the organization and configures direct browser upload access. If R2
-is inactive, open **Cloudflare → your account → Storage & databases → R2 object
-storage → Overview** and complete activation. Cloudflare may request billing
-details; account activation is the customer's action.
+After sign-in, Typeroll checks R2 automatically. If R2 is active, Typeroll
+creates the organization's shared bucket and configures browser upload access.
+You do not need to create the bucket yourself.
 
-Direct uploads require a separate S3 key pair. In **R2 object storage → Overview
-→ Account Details**, select **Manage** next to **API Tokens**. Create an R2
-token with **Object Read & Write** limited to the bucket shown in Typeroll.
-Copy its **Access Key ID** and **Secret Access Key** into Typeroll and select
-**Verify image uploads**. These credentials are added once per organization.
+If the subscription is missing, the R2 section shows **R2 is not activated**
+and a link to the connected Cloudflare account. Open **Storage & databases →
+R2 object storage → Overview**, complete the subscription checkout, and enter
+billing details if requested. Return to Typeroll and select
+**I’ve activated R2 — check again**. The button checks Cloudflare's actual status;
+it does not mark storage ready just because it was clicked.
+
+Once **R2 storage prepared** appears, finish the one-time upload-key step:
+
+1. Follow the account's R2 link. In **R2 object storage → Overview → Account
+   Details → API Tokens**, select **Manage**.
+2. Select **Create Account API token**, name it **Typeroll media**, and choose
+   **Object Read & Write** restricted to the bucket shown in Typeroll.
+3. Copy **Access Key ID** and **Secret Access Key** into the matching fields.
+   Use these two values, not the field labelled **API token**. The secret is
+   only shown when created.
+4. Select **Verify keys and finish setup**.
+
+Account tokens require a Cloudflare Super Administrator. If that option is
+unavailable, a User API token works with the same permissions, but becomes
+inactive if its owner is removed from the Cloudflare account.
+
 Typeroll verifies write, read and delete access and stores the keys encrypted.
+Errors appear beside the form with the required permission and bucket. A
+successful check shows **R2 connected**, which persists after reload; the form
+collapses under **Replace R2 access keys**. The connection is reused across the
+organization's sites and branches.
 
 Cloudflare's GitHub integration, described above, is still required for source
 builds. OAuth account connection does not itself prove Git publication, public
@@ -147,7 +166,7 @@ Domain cutover is a separate operation. Do not include DNS access merely to
 prove repository creation and Git builds. A production domain and media domain
 must be configured and verified before migrating a live site.
 
-## R2 media credentials
+## R2 media credentials for the command-line probe
 
 The customer activates R2 and completes Cloudflare's billing activation. For
 the current probe, create a dedicated media bucket first. The intended setup
