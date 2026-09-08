@@ -138,3 +138,29 @@ test('rejects organization domain setup and discovery for a site editor and cros
   await authenticatePersona(page, 'owner');
   expect((await page.request.post('/api/orgs/publishing/domains', { headers: { Origin: 'https://other.example.com' }, data: {} })).status()).toBe(403);
 });
+
+test('refreshes newly added domains without account authorization and only asks for missing permissions', async ({ page }) => {
+  let available = false, approval = false, authorizations = 0;
+  await page.route('**/api/orgs/publishing/zones', route => route.fulfill({ json: {
+    account_name: 'Example', domain_access: approval ? 'approval_required' : 'granted',
+    zones: available ? [{ id: 'a'.repeat(32), name: 'example.com', status: 'active', type: 'full' }] : [],
+  } }));
+  await page.route('**/api/orgs/publishing/cloudflare', route => { authorizations++; return route.fulfill({ status: 503, json: { error: 'Synthetic approval service unavailable' } }); });
+  await authenticatePersona(page, 'owner');
+  await page.goto('/app/settings/publishing');
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Organization domains', exact: true }) });
+  await expect(section.getByText('No domains were returned', { exact: false })).toBeVisible();
+  await expect(section.getByRole('button', { name: 'Allow domain access' })).toHaveCount(0);
+  await expect(section.getByText('reconnect', { exact: false })).toHaveCount(0);
+  available = true;
+  await section.getByRole('button', { name: 'Refresh domain list' }).click();
+  await expect(section.getByRole('status')).toHaveText('Domain list updated.');
+  await expect(section.getByLabel('Cloudflare domain')).toHaveValue('a'.repeat(32));
+  expect(authorizations).toBe(0);
+  approval = true;
+  await section.getByRole('button', { name: 'Refresh domain list' }).click();
+  await expect(section.getByRole('button', { name: 'Allow domain access' })).toBeVisible();
+  await section.getByRole('button', { name: 'Allow domain access' }).click();
+  await expect(section.getByRole('alert')).toHaveText('Synthetic approval service unavailable');
+  expect(authorizations).toBe(1);
+});

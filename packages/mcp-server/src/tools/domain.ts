@@ -20,7 +20,7 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 export const domainTools: ToolDef[] = [
   {
     name: 'list_organization_publishing_domains',
-    description: 'List Cloudflare domains visible in the organization’s connected account, including activation and DNS hosting status. Requires an organization API key. Read only.',
+    description: 'List Cloudflare domains visible in the organization’s connected account, including activation, DNS hosting status and domain_access. Refresh this read to discover new domains; approval_required identifies missing OAuth consent without disconnecting the account. Requires an organization API key. Read only.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/zones'))),
   },

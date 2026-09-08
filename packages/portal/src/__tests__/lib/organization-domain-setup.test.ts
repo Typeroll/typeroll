@@ -2,13 +2,13 @@ import { ProviderError } from '../../lib/publishing/providers.mjs';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { listOrganizationPublishingZones, setupOrganizationDomains } from '../../lib/publishing/organization-domain-setup';
 import { getOrganizationDomains, saveOrganizationDomains } from '../../lib/publishing/domain-config';
-import { getConnection, connectionSummary } from '../../lib/publishing/connections';
+import { getConnection, connectionSummary, openCredentials } from '../../lib/publishing/connections';
 import { cloudflareClient } from '../../lib/publishing/cloudflare-oauth';
 import { preparePublicMediaDomains } from '../../lib/publishing/media-domain';
 import { requestMediaMigration } from '../../lib/publishing/media-migration';
 import { getOrganizationDomainStatus } from '../../lib/publishing/organization-domain-status';
 vi.mock('../../lib/publishing/domain-config', async original => ({ ...await original<any>(), getOrganizationDomains: vi.fn(), saveOrganizationDomains: vi.fn() }));
-vi.mock('../../lib/publishing/connections', async original => ({ ...await original<any>(), getConnection: vi.fn(), connectionSummary: vi.fn() }));
+vi.mock('../../lib/publishing/connections', async original => ({ ...await original<any>(), getConnection: vi.fn(), connectionSummary: vi.fn(), openCredentials: vi.fn() }));
 vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: vi.fn() }));
 vi.mock('../../lib/publishing/media-domain', () => ({ preparePublicMediaDomains: vi.fn() }));
 vi.mock('../../lib/publishing/media-migration', () => ({ requestMediaMigration: vi.fn() }));
@@ -70,7 +70,7 @@ it('returns the saved revision and a precise retry instruction after a denied wr
   vi.mocked(preparePublicMediaDomains).mockRejectedValue(new ProviderError('Cloudflare', 403));
   const result = await setupOrganizationDomains('org', input);
   expect(result.revision).toBe('saved');
-  expect(result.setup_error).toContain('DNS Edit');
+  expect(result.setup_error).toContain('Allow domain access');
   expect(result.setup_error).not.toContain('provider detail');
   expect(requestMediaMigration).not.toHaveBeenCalled();
 });
@@ -84,5 +84,16 @@ it('lists all pages but excludes domains belonging to other accounts', async () 
 });
 it('explains denied Zone Read permission without provider details', async () => {
   provider.mockRejectedValue(new ProviderError('Cloudflare', 403));
-  await expect(listOrganizationPublishingZones('org')).rejects.toMatchObject({ code: 'domain_access_required', message: expect.stringContaining('Zone Read') });
+  await expect(listOrganizationPublishingZones('org')).rejects.toMatchObject({ code: 'domain_access_required', message: expect.stringContaining('Allow domain access') });
+});
+
+it('requests additional approval only when the saved OAuth grant lacks domain permissions', async () => {
+  vi.mocked(getConnection).mockResolvedValue({ revision: 'connection', status: 'connected', auth_method: 'oauth', encrypted_credentials: 'synthetic-envelope', cloudflare: { account_id: 'account', account_name: 'Example' } } as any);
+  vi.mocked(openCredentials).mockReturnValue({ oauth: { scope: 'account-settings.read workers-r2.read' } });
+  expect(await listOrganizationPublishingZones('org')).toMatchObject({ zones: [], domain_access: 'approval_required' });
+  expect(provider).not.toHaveBeenCalled();
+  vi.mocked(openCredentials).mockReturnValue({ oauth: { scope: 'zone.read dns.read dns.write' } });
+  provider.mockResolvedValue([]);
+  expect(await listOrganizationPublishingZones('org')).toMatchObject({ zones: [], domain_access: 'granted' });
+  expect(provider).toHaveBeenCalledOnce();
 });

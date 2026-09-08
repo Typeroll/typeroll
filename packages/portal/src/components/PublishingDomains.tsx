@@ -55,6 +55,12 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       setData(current => current ? { ...current, domain_status: result.domain_status } : result);
     } else setData(result);
   }
+  useEffect(() => {
+    if (siteId) return;
+    const changed = () => { void refresh().catch(error => setError(error.message)); };
+    window.addEventListener('typeroll:publishing-connection-changed', changed);
+    return () => window.removeEventListener('typeroll:publishing-connection-changed', changed);
+  }, [endpoint, siteId, data?.revision]);
   async function checkOrganizationDomain() {
     setChecking(true); setError('');
     try { await refresh(); }

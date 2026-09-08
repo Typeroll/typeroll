@@ -51,10 +51,10 @@ manage these connections.
    migration. HTTPS activation is checked automatically. Each site and version
    gets its own website address when you publish.
 
-If the domain is missing, check that it is Active in the connected Cloudflare
-account and that the connection has access to it. Reconnect with Zone Read, DNS
-Edit and R2 access if needed, then select **Refresh domain list**. A Cloudflare
-browser login does not grant additional domain access to an existing connection.
+Use **Refresh domain list** to retrieve newly added domains. Refreshing keeps the
+existing account connection. An empty result does not mean you need to reconnect.
+If the saved OAuth grant lacks domain permissions, **Allow domain access** appears.
+It opens Cloudflare's approval screen and keeps the existing account and R2 setup.
 Typeroll will not replace an existing DNS destination or an existing shared media
 hostname through this setup action.
 

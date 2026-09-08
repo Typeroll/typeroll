@@ -80,7 +80,7 @@ export async function getOrganizationDomainStatus(orgId: string) {
     status.state = 'check_failed';
     const httpStatus = error && typeof error === 'object' && 'status' in error ? error.status : null;
     status.message = httpStatus === 401 || httpStatus === 403
-      ? 'Cloudflare denied access to the R2 domain settings. Reconnect Cloudflare in Publishing with permission to read R2 settings, then check again. Your saved domain has not been changed.'
+      ? 'Cloudflare denied access to the R2 domain settings. Check the R2 permissions granted to Typeroll, then check again. Your saved domain has not been changed.'
       : 'Could not read Cloudflare domain status. Check the Cloudflare connection and try again. This does not mean that the domain is disconnected.';
   }
   if (domains.dns_mode === 'automatic' && status.zone?.type === 'full' && status.zone.status === 'active') {
@@ -90,7 +90,7 @@ export async function getOrganizationDomainStatus(orgId: string) {
     status.steps = [{ title: 'Configure in Typeroll', description: 'Select this Cloudflare domain above, enter the media and sites subdomains, then select Configure domains. Typeroll connects media to R2 and checks activation automatically. Each site and version gets its own website address when you publish.' }];
     return result();
   }
-  if (status.zone_check === 'unavailable') status.steps.push({ title: 'Domain access could not be checked', description: 'Typeroll could not read Cloudflare zone settings. Check the domain in the connected account yourself, or reconnect Cloudflare with Zone Read access. R2 domain status is checked separately.' });
+  if (status.zone_check === 'unavailable') status.steps.push({ title: 'Domain access could not be checked', description: 'Typeroll could not read Cloudflare zone settings. Check the domain in the connected account yourself, or use Allow domain access in Publishing if additional approval is required. R2 domain status is checked separately.' });
   if (status.zone?.type !== 'partial') status.steps.push({ title: 'If DNS is hosted by Cloudflare',
     description: `In Cloudflare, select the connected account (${cf.account_name}) → Domains → your domain. It must be Active in this same account. Only the chosen hostnames are used for Typeroll. Your root domain, email and other subdomains can continue pointing to their existing services.`, url: fullGuide });
   if (status.zone?.type !== 'full') status.steps.push({ title: 'If DNS is hosted by another provider',

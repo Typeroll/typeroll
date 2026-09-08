@@ -1,4 +1,4 @@
-import { ConnectionError, connectionSummary, getConnection } from './connections';
+import { ConnectionError, connectionSummary, getConnection, openCredentials } from './connections';
 import { cloudflareClient } from './cloudflare-oauth';
 import { getOrganizationDomains, publicationHostname, saveOrganizationDomains } from './domain-config';
 import { getOrganizationDomainStatus } from './organization-domain-status';
@@ -15,13 +15,18 @@ async function connectedAccount(orgId: string) {
 }
 
 function domainAccessError(error: unknown): never {
-  if ((error instanceof ConnectionError || error instanceof ProviderError) && [401, 403].includes(error.status)) throw new ConnectionError('Cloudflare denied domain access. Reconnect Cloudflare in Publishing and grant Zone Read and DNS Edit access to the selected domain, plus R2 access to this account.', 403, 'domain_access_required');
+  if ((error instanceof ConnectionError || error instanceof ProviderError) && [401, 403].includes(error.status)) throw new ConnectionError('Cloudflare denied domain access. Allow domain access in Publishing to approve domain and DNS permissions. Your connected account and R2 settings are retained.', 403, 'domain_access_required');
   throw error;
 }
 
 /** Only expose domains from the organization's connected account, never other accounts on the token. */
 export async function listOrganizationPublishingZones(orgId: string) {
-  const { cf, provider } = await connectedAccount(orgId);
+  const { cf, connection, provider } = await connectedAccount(orgId);
+  const credentials = connection.auth_method === 'oauth' && connection.encrypted_credentials
+    ? openCredentials<{ oauth?: { scope: string } }>(orgId, 'cloudflare', connection.encrypted_credentials) : null;
+  const scopes = credentials?.oauth?.scope.split(/\s+/);
+  const domain_access = !scopes ? 'unknown' : ['zone.read', 'dns.read', 'dns.write'].every(scope => scopes.includes(scope)) ? 'granted' : 'approval_required';
+  if (scopes && !scopes.includes('zone.read')) return { account_name: cf.account_name, zones: [], domain_access };
   const zones: PublishingZone[] = [];
   try {
     for (let page = 1; page <= 100; page++) {
@@ -29,7 +34,7 @@ export async function listOrganizationPublishingZones(orgId: string) {
       for (const zone of batch) if (zone.account?.id === cf.account_id && ['full', 'partial'].includes(zone.type)) {
         zones.push({ id: zone.id, name: zone.name, status: zone.status, type: zone.type });
       }
-      if (batch.length < 50) return { account_name: cf.account_name, zones };
+      if (batch.length < 50) return { account_name: cf.account_name, zones, domain_access };
     }
     throw new ConnectionError('This account has too many domains to list here. Use the manual domain settings below.', 409, 'domain_list_limit');
   } catch (error) { return domainAccessError(error); }
@@ -73,7 +78,7 @@ export async function setupOrganizationDomains(orgId: string, input: Record<stri
     await requestMediaMigration(orgId);
   } catch (error) {
     setup_error = (error instanceof ConnectionError || error instanceof ProviderError) && [401, 403].includes(error.status)
-      ? 'Addresses saved, but Cloudflare denied setup. Reconnect Cloudflare with R2 and DNS Edit access, then select Configure domains again.'
+      ? 'Addresses saved, but Cloudflare denied setup. Allow domain access, then select Configure domains again. Your account and R2 settings are retained.'
       : error instanceof ConnectionError ? error.message : 'Addresses saved, but Cloudflare setup could not finish. Select Configure domains to retry.';
   }
   return { ...await getOrganizationDomainStatus(orgId), setup_error };

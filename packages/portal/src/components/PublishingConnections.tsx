@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CircleCheck } from 'lucide-react';
 
 type Connection = {
+  connected_at?: string | null;
   status: 'connected' | 'disconnected'; revision: string; credentials_saved: boolean;
   auth_method?: 'api_token' | 'oauth'; media_ready?: boolean;
   github: { owner: string } | null;
@@ -24,6 +25,13 @@ async function request(path = '', method = 'GET', body?: unknown) {
 
 export default function PublishingConnections() {
   const [data, setData] = useState<Connections | null>(null);
+  const [disconnecting, setDisconnecting] = useState<'github' | 'cloudflare' | null>(null);
+  const [connectionFeedback, setConnectionFeedback] = useState<{ provider: 'github' | 'cloudflare'; error: boolean; message: string } | null>(null);
+  const metadataGeneration = useRef(0);
+  const feedbackRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (connectionFeedback) { feedbackRef.current?.focus({ preventScroll: true }); feedbackRef.current?.scrollIntoView({ block: 'center', behavior: 'instant' }); }
+  }, [connectionFeedback]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -40,14 +48,15 @@ export default function PublishingConnections() {
   }, [mediaError, mediaNotice]);
   const refresh = async () => setData(await request());
   useEffect(() => {
-    if (!['queued', 'running'].includes(data?.media_migration?.state ?? '')) return;
+    if (data?.cloudflare.status !== 'connected' || !['queued', 'running'].includes(data?.media_migration?.state ?? '')) return;
     let cancelled = false;
     const interval = setInterval(() => {
-      void request().then(result => { if (!cancelled) setData(result); })
+      const generation = metadataGeneration.current;
+      void request().then(result => { if (!cancelled && generation === metadataGeneration.current) setData(result); })
         .catch(error => { if (!cancelled) setError(error.message); });
     }, 5000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [data?.media_migration?.state]);
+  }, [data?.media_migration?.state, data?.cloudflare.status]);
   async function checkMedia(revision: string) {
     checkedConnection.current = revision;
     setCheckingMedia(true); setMediaError(null); setMediaNotice('');
@@ -114,14 +123,29 @@ export default function PublishingConnections() {
   }
 
   async function disconnect(provider: 'github' | 'cloudflare') {
-    setBusy(true); setError(''); setNotice('');
+    const displayed = data?.[provider];
+    if (!displayed) return;
+    metadataGeneration.current++;
+    setBusy(true); setDisconnecting(provider); setConnectionFeedback(null); setError(''); setNotice('');
     if (provider === 'cloudflare') { setMediaError(null); setMediaNotice(''); }
     try {
-      await request(`/${provider}`, 'DELETE', { revision: data?.[provider].revision });
-      await refresh();
-      setNotice('Disconnected. Existing repositories, deployments, and media remain in your account.');
-    } catch (error) { setError(error instanceof Error ? error.message : 'Could not disconnect'); }
-    finally { setBusy(false); }
+      // Token renewal changes the storage revision. Read it immediately before
+      // disconnecting, while refusing to disconnect a newly selected account/grant.
+      const latest: Connections = await request();
+      const current = latest[provider];
+      const identity = (value: Connection) => JSON.stringify([value.connected_at ?? null, provider === 'cloudflare' ? value.cloudflare?.account_id : value.github?.owner]);
+      setData(latest);
+      if (current.status === 'connected') {
+        if (identity(current) !== identity(displayed)) throw new Error('The account connection changed in another session. Review the updated account before disconnecting.');
+        await request(`/${provider}`, 'DELETE', { revision: current.revision });
+      }
+      // Reflect a successful disconnect even if a subsequent metadata read fails.
+      setData({ ...latest, [provider]: { ...current, status: 'disconnected', credentials_saved: false, media_ready: false } });
+      setConnectionFeedback({ provider, error: false, message: 'Disconnected. Existing repositories, deployments, and media remain in your account.' });
+      if (provider === 'cloudflare') window.dispatchEvent(new Event('typeroll:publishing-connection-changed'));
+    } catch (error) {
+      setConnectionFeedback({ provider, error: true, message: error instanceof Error ? error.message : 'Could not disconnect. Try again.' });
+    } finally { metadataGeneration.current++; setBusy(false); setDisconnecting(null); }
   }
 
   const mediaBucket = data?.cloudflare.cloudflare?.bucket;
@@ -177,7 +201,8 @@ export default function PublishingConnections() {
             </ol>
           </details>
         </>}
-        {data.github.status === 'connected' && <button className="btn btn--secondary" disabled={busy || checkingMedia} onClick={() => void disconnect('github')}>Disconnect GitHub</button>}
+        {data.github.status === 'connected' && <button className="btn btn--secondary" disabled={busy || checkingMedia} onClick={() => void disconnect('github')}>{disconnecting === 'github' ? 'Disconnecting…' : 'Disconnect GitHub'}</button>}
+        {connectionFeedback?.provider === 'github' && <p ref={feedbackRef} tabIndex={-1} role={connectionFeedback.error ? 'alert' : 'status'}>{connectionFeedback.message}</p>}
       </section>
       <section className="card stack" aria-labelledby="cloudflare-title">
         <h2 id="cloudflare-title">Cloudflare and R2 media</h2>
@@ -264,7 +289,8 @@ export default function PublishingConnections() {
             <button className="btn" disabled={busy || checkingMedia} type="submit">{busy ? 'Checking connection…' : 'Verify and save Cloudflare'}</button>
           </form>}
         </div></details>
-        {data.cloudflare.status === 'connected' && <button className="btn btn--secondary" disabled={busy || checkingMedia} onClick={() => void disconnect('cloudflare')}>Disconnect Cloudflare</button>}
+        {data.cloudflare.status === 'connected' && <button className="btn btn--secondary" disabled={busy || checkingMedia} onClick={() => void disconnect('cloudflare')}>{disconnecting === 'cloudflare' ? 'Disconnecting…' : 'Disconnect Cloudflare'}</button>}
+        {connectionFeedback?.provider === 'cloudflare' && <p ref={feedbackRef} tabIndex={-1} role={connectionFeedback.error ? 'alert' : 'status'}>{connectionFeedback.message}</p>}
         <p className="muted">This first connection supports standard R2 buckets on the account’s global S3 endpoint. Disconnecting removes saved Cloudflare credentials. It does not delete your resources.</p>
       </section>
     </>}

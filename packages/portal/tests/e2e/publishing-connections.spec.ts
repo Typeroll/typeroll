@@ -35,7 +35,7 @@ test('organization owner sees masked account metadata and can disconnect without
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     }
     await page.getByRole('button', { name: 'Disconnect Cloudflare' }).click();
-    await expect(page.getByRole('status')).toContainText('Disconnected');
+    await expect(page.locator('section').filter({ has: page.getByRole('heading', { name: 'Cloudflare and R2 media', exact: true }) }).getByRole('status')).toContainText('Disconnected');
     await expect(page.getByRole('button', { name: 'Disconnect Cloudflare' })).toHaveCount(0);
     const stored = JSON.parse(readFileSync(file, 'utf8'));
     expect(stored.status).toBe('disconnected');
@@ -306,4 +306,68 @@ test('media migration progress updates automatically until completion', async ({
   await expect(page.getByText('Moving existing originals to R2: 1 copied, 2 remaining.')).toBeVisible();
   completed = true;
   await expect(page.getByText('Originals moved to your R2 storage.', { exact: false })).toBeVisible({ timeout: 10000 });
+});
+
+test('disconnect uses fresh metadata after token rotation and reports success or failure beside the button', async ({ page }, testInfo) => {
+  let revision = 'initial', connected = true, fail = true, connectedAt = '2026-09-08T00:00:00Z';
+  const deletes: string[] = [];
+  await page.route('**/api/orgs/publishing', route => {
+    const empty = { revision: 'github', status: 'disconnected', credentials_saved: false, github: null, cloudflare: null };
+    return route.fulfill({ json: { github: empty, github_setup: { available: false }, encryption_available: true,
+      cloudflare: { ...empty, status: connected ? 'connected' : 'disconnected', revision, connected_at: connectedAt, credentials_saved: connected, media_ready: true,
+        cloudflare: { account_id: 'a'.repeat(32), account_name: 'Example', bucket: 'private', public_bucket: 'public' } } } });
+  });
+  await page.route('**/api/orgs/publishing/cloudflare', route => {
+    expect(route.request().method()).toBe('DELETE');
+    deletes.push(route.request().postDataJSON().revision);
+    if (fail) return route.fulfill({ status: 503, json: { error: 'Could not disconnect. Please try again.' } });
+    connected = false;
+    return route.fulfill({ json: { disconnected: true } });
+  });
+  await authenticatePersona(page, 'owner');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/app/settings/publishing');
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Cloudflare and R2 media', exact: true }) });
+  await expect(section.getByRole('button', { name: 'Disconnect Cloudflare' })).toBeVisible();
+  revision = 'rotated';
+  await section.getByRole('button', { name: 'Disconnect Cloudflare' }).click();
+  await expect(section.getByRole('alert')).toHaveText('Could not disconnect. Please try again.');
+  await expect(section.getByRole('alert')).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('disconnect-error-mobile.png'), animations: 'disabled' });
+  expect(deletes).toEqual(['rotated']);
+  connectedAt = '2026-09-08T01:00:00Z';
+  await section.getByRole('button', { name: 'Disconnect Cloudflare' }).click();
+  await expect(section.getByRole('alert')).toContainText('changed in another session');
+  expect(deletes).toEqual(['rotated']);
+  fail = false;
+  await section.getByRole('button', { name: 'Disconnect Cloudflare' }).click();
+  await expect(section.getByRole('status')).toContainText('Disconnected.');
+  await expect(section.getByRole('status')).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('disconnect-success-mobile.png'), animations: 'disabled' });
+  await expect(section.getByRole('button', { name: 'Disconnect Cloudflare' })).toHaveCount(0);
+});
+
+test('a delayed migration poll cannot restore a disconnected account in the browser', async ({ page }) => {
+  let reads = 0, connected = true;
+  let releasePoll: (() => Promise<void>) | undefined;
+  await page.route('**/api/orgs/publishing', async route => {
+    reads++;
+    const empty = { revision: 'initial', status: 'disconnected', credentials_saved: false, github: null, cloudflare: null };
+    const snapshot = { github: empty, github_setup: { available: false }, encryption_available: true,
+      media_migration: { state: 'running', copied_files: 0, pending_files: 1, error: null },
+      cloudflare: { ...empty, status: connected ? 'connected' : 'disconnected', media_ready: connected,
+        cloudflare: { account_id: 'account', account_name: 'Example', bucket: 'private', public_bucket: 'public' } } };
+    if (reads === 2) return new Promise<void>(resolve => { releasePoll = async () => { await route.fulfill({ json: snapshot }); resolve(); }; });
+    await route.fulfill({ json: snapshot });
+  });
+  await page.route('**/api/orgs/publishing/cloudflare', route => { connected = false; return route.fulfill({ json: { disconnected: true } }); });
+  await authenticatePersona(page, 'owner');
+  await page.goto('/app/settings/publishing');
+  await expect.poll(() => Boolean(releasePoll), { timeout: 10000 }).toBe(true);
+  await page.getByRole('button', { name: 'Disconnect Cloudflare' }).click();
+  await expect(page.getByText('Disconnected.', { exact: false })).toBeVisible();
+  const response = page.waitForResponse(result => result.url().endsWith('/api/orgs/publishing'));
+  await releasePoll!(); await response;
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.getByRole('button', { name: 'Disconnect Cloudflare' })).toHaveCount(0);
 });

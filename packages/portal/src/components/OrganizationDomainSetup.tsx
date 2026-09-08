@@ -6,6 +6,10 @@ export default function OrganizationDomainSetup({ data, busy, onSetup }: { data:
   const [zones, setZones] = useState<PublishingZone[]>([]);
   const [zoneId, setZoneId] = useState('');
   const [account, setAccount] = useState('');
+  const [connectionRequired, setConnectionRequired] = useState(false);
+  const [approvalRequired, setApprovalRequired] = useState(false);
+  const [authorizing, setAuthorizing] = useState(false);
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [media, setMedia] = useState('media');
@@ -18,13 +22,17 @@ export default function OrganizationDomainSetup({ data, busy, onSetup }: { data:
     setMedia(label(data.media_host) ?? 'media');
     setSites(label(data.sites_domain) ?? 'sites');
   }
-  async function load() {
-    setLoading(true); setError('');
+  async function load(manual = false) {
+    setLoading(true); setError(''); setNotice('');
     try {
       const response = await fetch('/api/orgs/publishing/zones', { cache: 'no-store' });
       const result = await response.json();
+      if (result.code === 'cloudflare_required') { setZones([]); setZoneId(''); setConnectionRequired(true); setApprovalRequired(false); return; }
+      if (result.code === 'domain_access_required') setApprovalRequired(true);
       if (!response.ok) throw new Error(result.error || 'Could not load Cloudflare domains. Try refreshing the list.');
-      setZones(result.zones); setAccount(result.account_name);
+      setConnectionRequired(false); setZones(result.zones); setAccount(result.account_name);
+      setApprovalRequired(result.domain_access === 'approval_required');
+      if (manual) setNotice('Domain list updated.');
       // Refreshing provider status must not erase edits or silently select a different domain.
       if (!zoneId) {
         const preferred = result.zones.find((candidate: PublishingZone) => data.media_host?.endsWith(`.${candidate.name}`))
@@ -34,7 +42,21 @@ export default function OrganizationDomainSetup({ data, busy, onSetup }: { data:
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not load Cloudflare domains.'); }
     finally { setLoading(false); }
   }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+    const changed = () => { setZones([]); setZoneId(''); setApprovalRequired(false); void load(); };
+    window.addEventListener('typeroll:publishing-connection-changed', changed);
+    return () => window.removeEventListener('typeroll:publishing-connection-changed', changed);
+  }, []);
+  async function allowDomainAccess() {
+    setAuthorizing(true); setError('');
+    try {
+      const response = await fetch('/api/orgs/publishing/cloudflare', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start' }) });
+      const result = await response.json();
+      if (!response.ok || !result.authorization_url) throw new Error(result.error || 'Could not open Cloudflare approval. Try again.');
+      window.location.assign(result.authorization_url);
+    } catch (error) { setError(error instanceof Error ? error.message : 'Could not open Cloudflare approval.'); setAuthorizing(false); }
+  }
   async function submit(event: FormEvent) {
     event.preventDefault();
     await onSetup({ revision: data.revision, zone_id: zoneId, media_subdomain: media, sites_subdomain: sites });
@@ -44,7 +66,13 @@ export default function OrganizationDomainSetup({ data, busy, onSetup }: { data:
     <p>Choose a domain from your connected Cloudflare account and name the two subdomains. Typeroll connects media to R2 and configures site addresses when you publish.</p>
     {error && <p role="alert">{error}</p>}
     {loading && <p role="status">Loading Cloudflare domains…</p>}
-    {!loading && !error && !zones.length && <p>No domains are visible in {account || 'the connected account'}. In Cloudflare → Domains, check that your domain is Active in this account. If it is, reconnect Cloudflare in Publishing with access to that domain, then refresh this list.</p>}
+    {!loading && notice && <p role="status">{notice}</p>}
+    {approvalRequired && <div className="stack">
+      <p>Allow Typeroll to read domains and manage their DNS in {account || 'your connected account'}. Cloudflare will ask you to approve this access. Your account connection and R2 settings are kept.</p>
+      <div><button type="button" className="btn" disabled={busy || authorizing} onClick={() => void allowDomainAccess()}>{authorizing ? 'Opening Cloudflare…' : 'Allow domain access'}</button></div>
+    </div>}
+    {connectionRequired && <p>Connect Cloudflare to choose domains.</p>}
+    {!loading && !error && !connectionRequired && !approvalRequired && !zones.length && <p>No domains were returned for {account || 'the connected account'}. If you just added a domain in Cloudflare, refresh the list once it is available.</p>}
     <form className="stack" onSubmit={submit}>
       <label className="field">Cloudflare domain<select value={zoneId} onChange={event => selectZone(event.target.value)} disabled={busy || loading} style={{ minWidth: 0, width: '100%' }}>
         <option value="">Choose a domain</option>
@@ -60,8 +88,8 @@ export default function OrganizationDomainSetup({ data, busy, onSetup }: { data:
         {differentMedia && <p>Keep your existing media host, {data.media_host}, so published image links continue to work. Changing it requires a domain migration.</p>}
       </>}
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <button type="submit" className="btn" disabled={busy || loading || !zone || zone.status !== 'active' || zone.type !== 'full' || differentMedia}>{busy ? 'Configuring domains…' : 'Configure domains'}</button>
-        <button type="button" className="btn" disabled={busy || loading} onClick={() => void load()}>Refresh domain list</button>
+        <button type="submit" className="btn" disabled={busy || loading || approvalRequired || !zone || zone.status !== 'active' || zone.type !== 'full' || differentMedia}>{busy ? 'Configuring domains…' : 'Configure domains'}</button>
+        <button type="button" className="btn" disabled={busy || loading} onClick={() => void load(true)}>Refresh domain list</button>
       </div>
     </form>
   </div>;
