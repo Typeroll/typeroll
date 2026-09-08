@@ -12,15 +12,32 @@ const hash = (input: string | Uint8Array) => createHash('sha256').update(input).
 const migrationPath = (orgId: string) => `publishing_media_migrations/${hash(orgId)}`;
 interface Migration { org_id: string; state: 'queued' | 'running' | 'complete' | 'failed'; copied_files: number; copied_bytes: number; pending_files: number; lease_id: string | null; lease_until: number; error?: string | null; request_id?: string }
 
+/** Zero counters also describe an unscanned job. Check the records before declaring it empty. */
+async function completeEmptyMigration(orgId: string, current: Migration | null): Promise<Migration | null> {
+  if (!current || current.state === 'complete' || current.lease_until > Date.now()) return current;
+  const store = getStore();
+  for (const site of await store.listDocs(paths.sites(orgId))) {
+    if ((await store.listDocs<Media>(paths.media(orgId, site.id), { limit: 1 })).length) return current;
+  }
+  // A late upload queues a new request after finalization. Never overwrite that
+  // request or a worker that acquired the lease while this scan was running.
+  await store.compareAndUpdateDoc<Migration>(migrationPath(orgId),
+    value => value.request_id === current.request_id && value.state === current.state &&
+      value.lease_id === current.lease_id && value.lease_until <= Date.now(),
+    { state: 'complete', pending_files: 0, lease_id: null, lease_until: 0, error: null, updated_at: new Date().toISOString() });
+  return store.getDoc<Migration>(migrationPath(orgId));
+}
+
 export async function requestMediaMigration(orgId: string) {
   const [connection, domains] = await Promise.all([getConnection(orgId, 'cloudflare'), getOrganizationDomains(orgId)]);
   if (!connectionSummary(connection).media_ready || !domains.media_host) return;
   await getStore().createDocIfMissing(migrationPath(orgId), { org_id: orgId, state: 'queued', copied_files: 0, copied_bytes: 0, pending_files: 0, lease_id: null, lease_until: 0 });
   await getStore().compareAndUpdateDoc<Migration>(migrationPath(orgId), () => true, { state: 'queued', error: null, request_id: randomUUID() });
+  await completeEmptyMigration(orgId, await getStore().getDoc<Migration>(migrationPath(orgId)));
 }
 
 export async function mediaMigrationStatus(orgId: string) {
-  const current = await getStore().getDoc<Migration>(migrationPath(orgId));
+  const current = await completeEmptyMigration(orgId, await getStore().getDoc<Migration>(migrationPath(orgId)));
   return current ? { state: current.state, copied_files: current.copied_files, copied_bytes: current.copied_bytes, pending_files: current.pending_files, error: current.error ?? null } : null;
 }
 
@@ -66,6 +83,7 @@ export async function rewriteMediaReferences(orgId: string, siteId: string, repl
 /** A bounded, resumable batch. Originals stay readable at the source until the target copy is byte-verified. */
 export async function runMediaMigrationBatch(orgId: string, maxFiles = 3) {
   const store = getStore(); const path = migrationPath(orgId); const lease = randomUUID();
+  await completeEmptyMigration(orgId, await store.getDoc<Migration>(path));
   const acquired = await store.compareAndUpdateDoc<Migration>(path,
     current => ['queued', 'running'].includes(current.state) && current.lease_until < Date.now(),
     { state: 'running', lease_id: lease, lease_until: Date.now() + 120_000 });

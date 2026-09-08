@@ -272,14 +272,14 @@ export default function PublishingConnections() {
             <details><summary>Storage details</summary><p>Private originals bucket: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong></p>
             <p>Public images bucket: <strong style={{ overflowWrap: 'anywhere' }}>{cloudflareAccount?.public_bucket}</strong></p></details>
             {data.media_migration && <div role="status">
-              <p>{data.media_migration.state === 'complete' ? 'Originals moved to your R2 storage. Existing published image URLs are retained.' : `${data.media_migration.state === 'failed' ? 'Media migration paused' : 'Moving existing originals to R2'}: ${data.media_migration.copied_files} copied, ${data.media_migration.pending_files} remaining.`}</p>
+              <p>{data.media_migration.state === 'complete' ? data.media_migration.copied_files === 0 ? 'No existing media to move. New uploads go directly to R2.' : 'Originals moved to your R2 storage. Existing published image URLs are retained.' : `${data.media_migration.state === 'failed' ? 'Media migration paused' : 'Moving existing originals to R2'}: ${data.media_migration.copied_files} copied, ${data.media_migration.pending_files} remaining.`}</p>
               {data.media_migration.error && <><p>Media migration needs attention. Check Domains below, then retry.</p><details><summary>Migration error details</summary><p>{data.media_migration.error}</p></details></>}
-              <button type="button" className="btn" disabled={busy} onClick={async () => {
+              {data.media_migration.state !== 'complete' && <button type="button" className="btn" disabled={busy} onClick={async () => {
                 setBusy(true); setError('');
                 try { if (data.media_migration?.state === 'failed') await request('/media-migration', 'POST', {}); await refresh(); }
                 catch (error) { setError(error instanceof Error ? error.message : 'Could not check migration.'); }
                 finally { setBusy(false); }
-              }}>{data.media_migration.state === 'failed' ? 'Retry media migration' : 'Refresh migration status'}</button>
+              }}>{data.media_migration.state === 'failed' ? 'Retry media migration' : 'Refresh migration status'}</button>}
             </div>}
             {data.cloudflare.auth_method === 'oauth' && <details><summary>Replace R2 access keys</summary>{mediaAccessForm}</details>}
           </> : mediaBucket ? <>

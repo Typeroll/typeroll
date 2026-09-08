@@ -308,12 +308,12 @@ test('owners can find GitHub and Cloudflare directly from navigation and site se
 
 test('media migration progress updates automatically until completion', async ({ page }) => {
   await authenticatePersona(page, 'owner');
-  let completed = false;
+  let completed = false, emptyLibrary = false;
   await page.route('**/api/orgs/publishing', route => {
     const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
     return route.fulfill({ json: { github: empty, github_setup: { available: false }, github_choices: [], encryption_available: true,
       cloudflare: { ...empty, status: 'connected', media_ready: true, cloudflare: { account_id: 'b'.repeat(32), account_name: 'Test organization', bucket: 'private-media', public_bucket: 'public-media' } },
-      media_migration: { state: completed ? 'complete' : 'running', copied_files: completed ? 3 : 1, pending_files: completed ? 0 : 2, error: null } } });
+      media_migration: { state: completed ? 'complete' : 'running', copied_files: emptyLibrary ? 0 : completed ? 3 : 1, pending_files: completed ? 0 : 2, error: null } } });
   });
   await page.goto('/app/settings/publishing');
   await expect(page.getByText('Moving existing originals to R2: 1 copied, 2 remaining.')).toBeVisible();
@@ -321,6 +321,12 @@ test('media migration progress updates automatically until completion', async ({
   completed = true;
   await expect(page.getByText('Originals moved to your R2 storage.', { exact: false })).toBeVisible({ timeout: 10000 });
   await expect(page.getByRole('region', { name: 'Media storage' })).toHaveAttribute('data-state', 'ready');
+  emptyLibrary = true;
+  await page.reload();
+  await expect(page.getByText('No existing media to move. New uploads go directly to R2.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Media storage' })).toHaveAttribute('data-state', 'ready');
+  await expect(page.getByRole('button', { name: 'Refresh migration status' })).toHaveCount(0);
+  await expect(page.getByText('Moving media to R2…', { exact: true })).toHaveCount(0);
 });
 
 test('disconnect uses fresh metadata after token rotation and reports success or failure beside the button', async ({ page }, testInfo) => {

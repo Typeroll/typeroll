@@ -7,12 +7,14 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getSiteDomains, saveSiteDomains, getOrganizationDomains, saveOrganizationDomains } from '../../lib/publishing/domain-config';
 import { connectionPath, sealCredentials } from '../../lib/publishing/connections';
 import { requestMediaMigration, runMediaMigrationBatch, mediaMigrationStatus, rewriteMediaReferences } from '../../lib/publishing/media-migration';
+import { preparePublicMediaDomains } from '../../lib/publishing/media-domain';
 import { publicationMediaManifest } from '../../lib/publishing/media-manifest';
-vi.mock('../../lib/publishing/media-domain', () => ({ preparePublicMediaDomains: async () => true }));
+vi.mock('../../lib/publishing/media-domain', () => ({ preparePublicMediaDomains: vi.fn(async () => true) }));
 const sha = createHash('sha256').update('abc').digest('hex');
 const oldUrl = 'https://cms.example.com/api/sites/site/media/image/content';
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore();
+  vi.mocked(preparePublicMediaDomains).mockReset().mockResolvedValue(true);
   vi.stubEnv('PORTAL_PUBLIC_URL', 'https://cms.example.com');
   vi.stubEnv('INTEGRATIONS_SECRET_KEY', 'synthetic-encryption-key-for-tests-only-32chars');
   vi.stubEnv('R2_ACCOUNT_ID', 'b'.repeat(32)); vi.stubEnv('R2_PRIVATE_BUCKET', 'private-drafts');
@@ -48,7 +50,7 @@ it('does not switch an original whose destination fails byte verification', asyn
   await getStore().setDoc(mediaPath, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl, r2_key: 'original', sha256: sha,
     storage: { provider: 'draft_r2', account_id: 'b'.repeat(32), bucket: 'private-drafts', key: 'original', state: 'ready', generation: 'draft' } });
   vi.spyOn(S3Client.prototype, 'send').mockImplementation(async command => ({ Body: { transformToByteArray: async () => Buffer.from(command instanceof GetObjectCommand && command.input.Bucket === 'customer-private' ? 'bad' : 'abc') }, ContentLength: 3 }));
-  await runMediaMigrationBatch('org');
+  await requestMediaMigration('org'); await runMediaMigrationBatch('org');
   expect((await getStore().getDoc<any>(mediaPath)).storage.provider).toBe('draft_r2');
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'failed', copied_files: 0 });
 });
@@ -99,4 +101,57 @@ it('uses the exact organization media host and preserves frozen paths after CMS 
   expect(next.content.html_content).toBe('<img src="https://images.example.com/archive/photo.png">');
   expect(next.manifest?.entries[0].aliases).toContainEqual({ url: organizationUrl, key: 'media/abcdefghij/archive/photo.png' });
   expect(next.manifest?.entries[0].source_key).toBe(first.manifest?.entries[0].source_key);
+});
+
+
+it('completes empty organizations immediately without a worker, storage calls or media DNS', async () => {
+  const send = vi.spyOn(S3Client.prototype, 'send').mockRejectedValue(new Error('Storage must not be called'));
+  vi.mocked(preparePublicMediaDomains).mockRejectedValue(new Error('Domain is not configured'));
+  await requestMediaMigration('org');
+  const migration = (await getStore().listDocs<any>('publishing_media_migrations'))[0];
+  expect(migration).toMatchObject({ state: 'complete', pending_files: 0, copied_files: 0, error: null });
+  await runMediaMigrationBatch('org');
+  expect(send).not.toHaveBeenCalled();
+  expect(preparePublicMediaDomains).not.toHaveBeenCalled();
+});
+
+it.each(['queued', 'running', 'failed'])('recovers an empty %s migration on status refresh', async state => {
+  const store = getStore();
+  const migration = (await store.listDocs<any>('publishing_media_migrations'))[0];
+  await store.updateDoc(`publishing_media_migrations/${migration.id}`, {
+    state, lease_id: 'expired-worker', lease_until: 1, pending_files: 0, error: 'Old domain setup failure',
+  });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', pending_files: 0, copied_files: 0, error: null });
+});
+
+it('does not clear a live worker lease or mistake unscanned uploads for an empty library', async () => {
+  const store = getStore();
+  const migration = (await store.listDocs<any>('publishing_media_migrations'))[0];
+  const path = `publishing_media_migrations/${migration.id}`;
+  await store.updateDoc(path, { state: 'running', lease_id: 'active', lease_until: Date.now() + 120_000 });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'running' });
+  await store.updateDoc(path, { state: 'queued', lease_id: null, lease_until: 0 });
+  await store.setDoc(`${paths.media('org', 'site')}/late-upload`, { r2_key: 'upload', storage: { provider: 'draft_r2', state: 'uploading' } });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'queued', pending_files: 0 });
+});
+
+it('requeues a late source upload after an empty migration was completed', async () => {
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete' });
+  await getStore().setDoc(`${paths.media('org', 'site')}/late-upload`, { r2_key: 'upload', storage: { provider: 'draft_r2', state: 'ready' } });
+  await requestMediaMigration('org');
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'queued' });
+});
+
+it('preserves a new migration request made during the empty scan', async () => {
+  const store = getStore();
+  const migration = (await store.listDocs<any>('publishing_media_migrations'))[0];
+  const path = `publishing_media_migrations/${migration.id}`;
+  await store.updateDoc(path, { state: 'queued', request_id: 'old-request' });
+  const compare = store.compareAndUpdateDoc.bind(store);
+  vi.spyOn(store, 'compareAndUpdateDoc').mockImplementation(async (target, predicate, patch) => {
+    if (target === path) await store.updateDoc(path, { request_id: 'new-request' });
+    return compare(target, predicate, patch);
+  });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'queued' });
+  expect(await store.getDoc<any>(path)).toMatchObject({ request_id: 'new-request', state: 'queued' });
 });
