@@ -19,8 +19,13 @@ committing:
 
 ```bash
 npm ci
+git fetch origin --tags
 node scripts/oss-release-check.mjs
 ```
+
+Refresh release tags before the local check so it sees the same published
+versions as CI. Changes under `packages/shared/`, including the Core runtime
+version, also require a new MCP version.
 
 This is the same fail-fast check run by `Tests`: release planning, dependency
 audit, documentation schema and Astro checks, formatting, type checking, tests,
