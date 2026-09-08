@@ -232,3 +232,46 @@ it('freezes the Hosting Group and hosting account independently from the organiz
   expect(mocks.push).not.toHaveBeenCalled();
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('settings changed') });
 });
+
+it.each([400, 403, 429, 503])('preserves Cloudflare project creation diagnostics for HTTP %s without misclassifying every failure as Git access', async status => {
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.endsWith(`/pages/projects/${project}`) && !options?.method) return null;
+    if (route.endsWith('/pages/projects') && options?.method === 'POST') throw new ProviderError('Cloudflare', status, [8000001]);
+    return provider(route, options);
+  });
+  await executeCustomerPublication(args);
+  const failed = await getStore().getDoc<any>(jobPath);
+  expect(failed).toMatchObject({ status: 'failed', failure: {
+    provider: 'Cloudflare', http_status: status, provider_codes: [8000001],
+    hosting_group_id: 'default', hosting_account_id: 'a'.repeat(32), project,
+  } });
+  expect(failed.error).toContain(`HTTP ${status}`);
+  expect(failed.error).toContain('8000001');
+  if (status === 400) expect(failed.error).toContain('Connect to Git');
+  else expect(failed.error).not.toContain('Connect to Git');
+  if (status === 403) expect(failed.error).toContain('Pages Edit');
+  if (status === 429) expect(failed.error).toContain('rate limit');
+  expect(failed.deploy_url).toBeUndefined();
+  expect(mocks.push).not.toHaveBeenCalled();
+});
+
+it('identifies missing Git installation in an extra hosting account without asking to reconnect organization OAuth', async () => {
+  const { saveHostingGroup } = await import('../../lib/publishing/hosting-groups');
+  const group = await saveHostingGroup('org', { name: 'Second account', sites_domain: 'sites2.example.com', dns_mode: 'automatic' });
+  await getStore().updateDoc(paths.site('org', 'site'), { hosting_group_id: group.id });
+  await getStore().setDoc(connectionPath('org', 'cloudflare', group.id), { status: 'connected', revision: 'group-cf', cloudflare: { account_id: 'e'.repeat(32), bucket: '' } });
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.endsWith(`/pages/projects/${project}`) && !options?.method) return null;
+    if (route.endsWith('/pages/projects') && options?.method === 'POST') throw new ProviderError('Cloudflare', 401, [8000011]);
+    return provider(route, options);
+  });
+  await executeCustomerPublication(args);
+  const failed = await getStore().getDoc<any>(jobPath);
+  expect(failed).toMatchObject({ status: 'failed', failure: { hosting_group_id: group.id, hosting_account_id: 'e'.repeat(32), http_status: 401, provider_codes: [8000011] } });
+  expect(failed.error).toContain('Git installation is missing');
+  expect(failed.error).toContain('Connect to Git');
+  expect(failed.error).not.toContain('renew authorization');
+  expect(failed.deploy_url).toBeUndefined();
+});

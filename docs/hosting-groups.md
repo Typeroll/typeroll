@@ -72,7 +72,8 @@ stale revisions, unknown groups, and secrets in public responses.
 
 Hosting Groups shipped in Core 0.1.45 and passed the Cloud staging browser
 journey on desktop and mobile. Real cross-account qualification is still
-pending a second customer account; the complete pilot is not yet qualified.
+in progress; a second account is connected, but its Cloudflare Git installation
+has not yet been verified. The complete pilot is not yet qualified.
 
 1. Default migration, group CRUD, authorization and connection isolation.
 2. Publishing UI, site assignment, public API and MCP parity.
@@ -119,3 +120,35 @@ domains/media. Core 0.1.47 / MCP 0.44.20 corrects the transport schema, which
 previously required a site even for these organization operations. Organization
 API authorization remains enforced by the public routes. Reading or changing a
 site's group still requires access to that particular site.
+
+## Connect Git in an additional hosting account
+
+Typeroll's organization GitHub App and Cloudflare's GitHub integration are
+separate connections. Connecting a Hosting Group through Cloudflare OAuth does
+not install Cloudflare's GitHub integration in that account.
+
+In Cloudflare, select the new hosting account, then go to **Workers & Pages →
+Create application → Pages → Connect to Git → + Add account**. Select the same
+GitHub organization used by Typeroll and authorize access to all repositories so
+future generated site repositories are included. Return to Typeroll and retry
+publishing; Typeroll creates the site project. Keep the existing Cloudflare Git
+installation connected, since other sites can depend on it.
+
+Core 0.1.48 preserves the provider HTTP status, numeric error codes, hosting
+account and Hosting Group when project creation fails. Cloudflare code 8000011
+identifies the missing Git installation observed during qualification. Other
+permission errors, rate limits and service errors have separate instructions.
+Raw provider response bodies are never included in application errors or logs.
+
+See the [Cloudflare Git integration guide](https://developers.cloudflare.com/pages/configuration/git-integration/).
+
+## Remaining cache qualification
+
+The current publication marker proves that the new deployment is reachable; it
+does not prove that every removed URL is absent. Real lifecycle qualification
+found an old HTML response on a custom hostname even after both hostname and
+single-URL purges returned success. The corresponding Pages project URL and a
+fresh query returned 404. No custom cache rule explained the difference.
+This remains unresolved: do not treat a successful marker probe or purge API
+response as evidence that page removal has passed. Do not purge unrelated
+customer hosts or switch traffic to bypass this failure.

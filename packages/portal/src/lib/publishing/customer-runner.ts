@@ -31,6 +31,18 @@ interface GitPublication {
   domain_revision: string; website_host: string; commit?: string | null; deployment_id?: string | null;
   release_branch?: 'main' | null; snapshot_job_id?: string; cache_purged_deployment?: string; cache_purged_hosts?: string[];
 }
+function projectCreationMessage(error: ProviderError, publication?: GitPublication) {
+  const detail = `Cloudflare could not create the Pages project${publication ? ` in hosting account ${publication.account_id}` : ''}: HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''}.`;
+  const connection = publication?.hosting_group_id && publication.hosting_group_id !== 'default'
+    ? 'Publishing → Hosting Groups' : 'Publishing → Cloudflare account';
+  if (error.codes.includes(8000011)) return `${detail} Cloudflare's Git installation is missing for this hosting account. In Cloudflare, select the hosting account → Workers & Pages → Create application → Pages → Connect to Git → + Add account. Connect ${publication?.owner ?? 'the connected GitHub organization'} with access to all generated repositories, then retry publishing. Keep existing Git installations connected.`;
+  if (error.status === 401 || error.status === 403) return `${detail} Open ${connection} and renew authorization for the selected hosting account. API tokens need Account Read and Pages Edit permissions for that account.`;
+  if (error.status === 429) return `${detail} Cloudflare's rate limit was reached. Wait briefly and retry publishing.`;
+  if (error.status >= 500) return `${detail} Cloudflare is temporarily unable to create the project. Retry publishing after the service recovers.`;
+  if (error.status === 400 || error.status === 409) return `${detail} Check this account's GitHub connection and Pages project limits. In Cloudflare, select the hosting account → Workers & Pages → Create application → Pages → Connect to Git → + Add account. Authorize Cloudflare's GitHub App for ${publication?.owner ?? 'the connected GitHub organization'} and its generated repositories, then retry. Include the Cloudflare code above when contacting support.`;
+  return `${detail} Check the selected account in ${connection} and the Cloudflare project settings, then retry publishing.`;
+}
+
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
 type GitJob = DeployJob & { observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
 const snapshotPath = (args: EnqueueArgs) => `${paths.deploy(args.orgId, args.siteId, args.jobId)}/snapshot_chunks`;
@@ -178,8 +190,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       }
       let connectedProject = await cloudflare(projectRoot, { missing: true });
       if (!connectedProject) {
-        try { await cloudflare(`/accounts/${publication.account_id}/pages/projects`, { method: 'POST', body: pagesProjectBody({ owner: publication.owner, repo: publication.repo, repository, project: publication.project }) }); }
-        catch { throw new ConnectionError('Cloudflare could not connect the generated repository. In Cloudflare → Workers & Pages → Create application → Pages → Connect to Git → + Add account, authorize Cloudflare’s GitHub App for the same organization with All repositories. Then retry the deployment. Also check your Pages project limit.', 409, 'cloudflare_git_setup_required'); }
+        await store.updateDoc(jobPath, { phase: 'creating Cloudflare Pages project' });
+        await cloudflare(`/accounts/${publication.account_id}/pages/projects`, { method: 'POST', body: pagesProjectBody({ owner: publication.owner, repo: publication.repo, repository, project: publication.project }) });
         connectedProject = await cloudflare(projectRoot);
       }
       if (connectedProject.source?.type !== 'github' || String(connectedProject.source.config?.repo_id) !== String(repository.id)) throw new ConnectionError('Cloudflare is connected to a different repository.', 409);
@@ -208,8 +220,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     let project = await cloudflare(projectRoot, { missing: true });
     if (!project) {
       const repository = await github(`/repos/${publication.owner}/${publication.repo}`);
-      try { await cloudflare(`/accounts/${publication.account_id}/pages/projects`, { method: 'POST', body: pagesProjectBody({ owner: publication.owner, repo: publication.repo, repository, project: publication.project }) }); }
-        catch { throw new ConnectionError('Cloudflare could not connect the generated repository. In Cloudflare → Workers & Pages → Create application → Pages → Connect to Git → + Add account, authorize Cloudflare’s GitHub App for the same organization with All repositories. Then retry the deployment. Also check your Pages project limit.', 409, 'cloudflare_git_setup_required'); }
+      await store.updateDoc(jobPath, { phase: 'creating Cloudflare Pages project' });
+      await cloudflare(`/accounts/${publication.account_id}/pages/projects`, { method: 'POST', body: pagesProjectBody({ owner: publication.owner, repo: publication.repo, repository, project: publication.project }) });
       project = await cloudflare(projectRoot);
     }
     if (project.source?.type !== 'github' || project.source.config?.owner !== publication.owner || project.source.config?.repo_name !== publication.repo ||
@@ -338,9 +350,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const failedJob = await store.getDoc<GitJob>(jobPath);
     const failure = { stage: failedJob?.phase ?? 'connecting publishing accounts',
       code: error instanceof ConnectionError ? error.code : error instanceof ProviderError ? 'provider_request_failed' : 'publication_internal_error',
-      ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes } : {}) };
+      ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes } : {}),
+      ...(failedJob?.git_publication ? { hosting_group_id: failedJob.git_publication.hosting_group_id ?? 'default', hosting_account_id: failedJob.git_publication.account_id, project: failedJob.git_publication.project } : {}) };
     console.error(JSON.stringify({ event: 'customer_publication_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, ...failure }));
-    const message = error instanceof ConnectionError ? error.message : error instanceof ProviderError
+    const message = error instanceof ProviderError && error.provider === 'Cloudflare' && failure.stage === 'creating Cloudflare Pages project'
+      ? projectCreationMessage(error, failedJob?.git_publication)
+      : error instanceof ConnectionError ? error.message : error instanceof ProviderError
       ? `${error.provider} returned HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''} during ${failure.stage}. Open Publishing to check the connection and retry.`
       : `Publishing stopped during ${failure.stage}. Retry the deployment. If it fails again, contact support with deployment ${args.jobId}.`;
     await store.updateDoc(jobPath, { status: 'failed', phase: 'failed', finished_at: new Date().toISOString(),
