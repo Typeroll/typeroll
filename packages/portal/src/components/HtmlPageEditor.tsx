@@ -579,7 +579,8 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
         </section>
       </div>
 
-      <style>{styles}</style>
+      {/* This constant contains only application CSS; style raw text must not be HTML-escaped. */}
+      <style dangerouslySetInnerHTML={{ __html: styles }} />
     </div>
   );
 }
