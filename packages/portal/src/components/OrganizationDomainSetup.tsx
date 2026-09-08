@@ -63,7 +63,7 @@ export default function OrganizationDomainSetup({ data, busy, onSetup }: { data:
   }
   const differentMedia = Boolean(data.media_host && zone && `${media.trim().toLowerCase()}.${zone.name}` !== data.media_host);
   return <div className="stack">
-    <p>Choose a domain from your connected Cloudflare account and name the two subdomains. Typeroll connects media to R2 and configures site addresses when you publish.</p>
+    <p>Select a domain, then name the subdomains for media and sites.</p>
     {error && <p role="alert">{error}</p>}
     {loading && <p role="status">Loading Cloudflare domains…</p>}
     {!loading && notice && <p role="status">{notice}</p>}

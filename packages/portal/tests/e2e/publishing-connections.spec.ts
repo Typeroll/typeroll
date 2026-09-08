@@ -35,7 +35,7 @@ test('organization owner sees masked account metadata and can disconnect without
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     }
     await page.getByRole('button', { name: 'Disconnect Cloudflare' }).click();
-    await expect(page.locator('section').filter({ has: page.getByRole('heading', { name: 'Cloudflare and R2 media', exact: true }) }).getByRole('status')).toContainText('Disconnected');
+    await expect(page.locator('section').filter({ has: page.getByRole('heading', { name: 'Cloudflare account', exact: true }) }).getByRole('status')).toContainText('Disconnected');
     await expect(page.getByRole('button', { name: 'Disconnect Cloudflare' })).toHaveCount(0);
     const stored = JSON.parse(readFileSync(file, 'utf8'));
     expect(stored.status).toBe('disconnected');
@@ -170,6 +170,11 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   });
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/app/settings/publishing');
+  for (const name of ['GitHub account', 'Cloudflare account', 'Media storage', 'Domains']) await expect(page.getByRole('region', { name, exact: true })).toBeVisible();
+  await expect(page.locator('details[open]')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'GitHub account', exact: true })).toHaveAttribute('data-state', 'ready');
+  await expect(page.getByRole('region', { name: 'Cloudflare account', exact: true })).toHaveAttribute('data-state', 'error');
+  await expect(page.getByRole('region', { name: 'Media storage', exact: true })).toHaveAttribute('data-state', 'error');
   await expect(page.getByLabel('Cloudflare Account ID')).not.toBeVisible();
   await page.getByRole('button', { name: 'Connect Cloudflare', exact: true }).click();
   expect(submitted[0]).toMatchObject({ action: 'start' });
@@ -179,12 +184,15 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('cloudflare-account-choice-mobile.png'), fullPage: true });
   await page.getByRole('button', { name: 'Connect selected account' }).click();
-  const media = page.getByRole('group', { name: 'R2 media storage' });
+  const media = page.getByRole('region', { name: 'Media storage' });
   const alert = media.getByRole('alert');
+  await expect(page.getByRole('region', { name: 'Cloudflare account', exact: true })).toHaveAttribute('data-state', 'ready');
   await expect(alert).toContainText('R2 is not activated for Selected agency');
+  await expect(media).toHaveAttribute('data-state', 'error');
+  await expect(alert).toBeFocused();
+  await media.getByText('How to activate R2', { exact: true }).click();
   await expect(alert).toContainText('subscription checkout');
   await expect(alert).toContainText('billing details');
-  await expect(alert).toBeFocused();
   await expect(alert.getByText('R2 is not activated', { exact: false })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('r2-activation-error-mobile.png'), animations: 'disabled' });
@@ -200,6 +208,8 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   await page.getByRole('button', { name: 'I’ve activated R2 — check again' }).click();
   await expect(media.getByRole('status')).toContainText('R2 is activated and your storage is prepared');
   await expect(page.getByRole('button', { name: 'I’ve activated R2 — check again' })).toHaveCount(0);
+  await expect(page.getByText('Create one R2 upload token', { exact: false })).not.toBeVisible();
+  await media.getByText('How to create R2 upload keys', { exact: true }).click();
   await expect(page.getByText('Create one R2 upload token', { exact: false })).toBeVisible();
   await expect(page.getByText('R2 connected', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '1. Activate R2 in Cloudflare' })).toHaveCount(0);
@@ -223,18 +233,21 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   await expect(page.locator('#oauth-r2-access')).toHaveValue('synthetic-access');
   await expect(media.getByText('R2 connected', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Verify keys and finish setup' }).click();
-  await expect(page.getByRole('group', { name: 'R2 media storage' }).getByText('R2 connected', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Media storage' }).getByText('R2 connected', { exact: true })).toBeVisible();
+  await expect(media).toHaveAttribute('data-state', 'ready');
   await expect(page.getByRole('button', { name: 'I’ve activated R2 — check again' })).toHaveCount(0);
   await expect(page.locator('#oauth-r2-access')).not.toBeVisible();
   await expect(page.locator('#oauth-r2-secret')).not.toBeVisible();
   await page.reload();
-  await expect(page.getByRole('group', { name: 'R2 media storage' }).getByText('R2 connected', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Media storage' }).getByText('R2 connected', { exact: true })).toBeVisible();
+  await expect(media).toHaveAttribute('data-state', 'ready');
   await expect(page.locator('#oauth-r2-access')).toHaveValue('');
   await expect(page.locator('#oauth-r2-secret')).toHaveValue('');
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.screenshot({ path: testInfo.outputPath(`cloudflare-media-ready-${width}.png`), fullPage: true });
+    await page.evaluate(async () => { window.scrollTo(0, 0); await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))); });
+    await page.screenshot({ path: testInfo.outputPath(`cloudflare-media-ready-${width}.png`), fullPage: true, animations: 'disabled' });
   }
   expect(submitted.map(body => body.action)).toEqual(['start', 'select', 'prepare_media', 'prepare_media', 'prepare_media', 'save_media', 'save_media']);
   expect(errors).toEqual([]);
@@ -304,8 +317,10 @@ test('media migration progress updates automatically until completion', async ({
   });
   await page.goto('/app/settings/publishing');
   await expect(page.getByText('Moving existing originals to R2: 1 copied, 2 remaining.')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Media storage' })).toHaveAttribute('data-state', 'waiting');
   completed = true;
   await expect(page.getByText('Originals moved to your R2 storage.', { exact: false })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('region', { name: 'Media storage' })).toHaveAttribute('data-state', 'ready');
 });
 
 test('disconnect uses fresh metadata after token rotation and reports success or failure beside the button', async ({ page }, testInfo) => {
@@ -327,7 +342,7 @@ test('disconnect uses fresh metadata after token rotation and reports success or
   await authenticatePersona(page, 'owner');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/app/settings/publishing');
-  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Cloudflare and R2 media', exact: true }) });
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Cloudflare account', exact: true }) });
   await expect(section.getByRole('button', { name: 'Disconnect Cloudflare' })).toBeVisible();
   revision = 'rotated';
   await section.getByRole('button', { name: 'Disconnect Cloudflare' }).click();

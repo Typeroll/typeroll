@@ -19,7 +19,7 @@ test('organization domain form saves the exact hostname and remains usable on mo
   await authenticatePersona(page, 'owner');
   await page.goto('/app/settings/publishing');
   await page.getByText('Manual settings or external DNS', { exact: true }).click();
-  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Organization domains', exact: true }) });
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Domains', exact: true }) });
   await expect(section.getByLabel('Shared media host')).toBeVisible();
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
@@ -78,9 +78,14 @@ test('shows media status and external DNS instructions without discarding unsave
   await authenticatePersona(page, 'owner');
   await page.goto('/app/settings/publishing');
   await page.getByText('Manual settings or external DNS', { exact: true }).click();
-  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Organization domains', exact: true }) });
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Domains', exact: true }) });
   await expect(section.getByText('Waiting for domain activation', { exact: true })).toBeVisible();
+  await expect(section).toHaveAttribute('data-state', 'waiting');
+  await expect(section.locator('details[open]')).toHaveCount(1);
+  await section.getByText('Domain connection details', { exact: true }).click();
   await expect(section.getByText('External DNS with Cloudflare partial setup', { exact: false })).toBeVisible();
+  await expect(section.getByText('If DNS is hosted by another provider', { exact: true })).not.toBeVisible();
+  await section.getByText('Setup instructions', { exact: true }).click();
   await expect(section.getByText('If DNS is hosted by another provider', { exact: true })).toBeVisible();
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
@@ -92,6 +97,7 @@ test('shows media status and external DNS instructions without discarding unsave
   active = true;
   await section.getByRole('button', { name: 'Check domain status' }).click();
   await expect(section.getByText('Media domain active in Cloudflare', { exact: true })).toBeVisible();
+  await expect(section).toHaveAttribute('data-state', 'ready');
   await expect(section.getByLabel('Site address base')).toHaveValue('unsaved.example.com');
   await expect(section.getByLabel('Shared media host')).toHaveValue('media.example.net');
 });
@@ -111,7 +117,7 @@ test('configures short subdomains in one action and automatically checks activat
   });
   await authenticatePersona(page, 'owner');
   await page.goto('/app/settings/publishing');
-  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Organization domains', exact: true }) });
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Domains', exact: true }) });
   await expect(section.getByLabel('Cloudflare domain')).toHaveValue(zone.id);
   await expect(section.getByLabel('Media subdomain')).toHaveValue('media');
   await section.getByLabel('Sites subdomain').fill('demos');
@@ -122,6 +128,7 @@ test('configures short subdomains in one action and automatically checks activat
   }
   await section.getByRole('button', { name: 'Configure domains', exact: true }).click();
   await expect(section.getByText('Waiting for domain activation', { exact: true })).toBeVisible();
+  await expect(section).toHaveAttribute('data-state', 'waiting');
   await section.getByLabel('Sites subdomain').fill('unsaved');
   active = true;
   await expect(section.getByText('Media domain active in Cloudflare', { exact: true })).toBeVisible({ timeout: 12000 });
@@ -148,7 +155,7 @@ test('refreshes newly added domains without account authorization and only asks 
   await page.route('**/api/orgs/publishing/cloudflare', route => { authorizations++; return route.fulfill({ status: 503, json: { error: 'Synthetic approval service unavailable' } }); });
   await authenticatePersona(page, 'owner');
   await page.goto('/app/settings/publishing');
-  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Organization domains', exact: true }) });
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Domains', exact: true }) });
   await expect(section.getByText('No domains were returned', { exact: false })).toBeVisible();
   await expect(section.getByRole('button', { name: 'Allow domain access' })).toHaveCount(0);
   await expect(section.getByText('reconnect', { exact: false })).toHaveCount(0);

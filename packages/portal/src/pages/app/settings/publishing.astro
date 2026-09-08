@@ -13,6 +13,7 @@ const organization = await organizationMembership(guard.value.userId, guard.valu
 <AppLayout title="Publishing">
   <div class="app-header"><h1>Publishing</h1></div>
   <p>GitHub and Cloudflare connections for <strong>{organization?.name ?? 'your organization'}</strong>.</p>
+  <p class="muted" style="max-width: 760px; margin-bottom: 1.5rem;">Connect once for all sites in your organization. You can edit, save and share temporary previews before completing publishing setup.</p>
   <PublishingConnections client:load />
   <PublishingDomains client:load />
 </AppLayout>

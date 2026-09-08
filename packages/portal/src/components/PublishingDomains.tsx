@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import PublishingCard from './PublishingCard';
 import OrganizationDomainStatus from './OrganizationDomainStatus';
 import OrganizationDomainSetup from './OrganizationDomainSetup';
 import type { OrganizationDomainStatus as DomainStatus } from '../lib/publishing/organization-domain-status';
@@ -112,9 +113,8 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not switch website traffic.'); }
     finally { setBusy(false); }
   }
-  return <section className="card stack" style={{ maxWidth: 720, minWidth: 0, overflowWrap: 'anywhere', marginBottom: '1rem' }}>
-    <h2 style={{ fontSize: '1.125rem' }}>{siteId ? 'Website and media addresses' : 'Organization domains'}</h2>
-    <p>{siteId ? 'Choose the website host and the host used for images and other media. Saving these addresses prepares a future change; your current website stays live at its existing address.' : 'Use separate hostnames for sites and media. Your root domain, email and other subdomains stay with their existing services.'}</p>
+  const content = <>
+    <p>{siteId ? 'Choose the website host and the host used for images and other media. Saving these addresses prepares a future change; your current website stays live at its existing address.' : 'Choose addresses for your sites and media. Each site can also use its own domain.'}</p>
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {!data && !error && <p role="status">Loading domain settings…</p>}
@@ -156,7 +156,12 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       <p className="muted">External DNS for R2 media requires Cloudflare Business/Enterprise partial (CNAME) setup. Your nameservers and other DNS records stay where they are.</p>
       <div><button className="btn" type="submit" disabled={busy || checking}>{busy ? 'Saving…' : 'Save domain settings'}</button></div>
     </form></FormContainer>}
-    {!siteId && data?.sites_domain && <p className="muted">Site address base saved: <strong>{data.sites_domain}</strong>. Connection status and required DNS records are shown for each site and version when you deploy.</p>}
+    {!siteId && data?.sites_domain && <p className="muted">Site address base: <strong>{data.sites_domain}</strong></p>}
     {!siteId && data && <OrganizationDomainStatus status={data.domain_status} checking={checking || busy} onRefresh={() => void checkOrganizationDomain()} />}
-  </section>;
+  </>;
+  if (siteId) return <section className="card stack" style={{ maxWidth: 720, minWidth: 0, overflowWrap: 'anywhere', marginBottom: '1rem' }}><h2 style={{ fontSize: '1.125rem' }}>Website and media addresses</h2>{content}</section>;
+  const waiting = busy || checking || (!data && !error) || data?.domain_status?.state === 'pending';
+  const ready = !error && data?.domain_status?.state === 'active';
+  return <PublishingCard id="domains" title="Domains" state={waiting ? 'waiting' : ready ? 'ready' : 'error'}
+    status={busy ? 'Saving domains…' : checking ? 'Checking domains…' : !data && !error ? 'Loading…' : error ? 'Domains need attention' : data?.domain_status?.state === 'pending' ? 'Waiting for activation' : ready ? 'Media domain connected' : 'Setup required'}>{content}</PublishingCard>;
 }
