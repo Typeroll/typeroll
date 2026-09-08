@@ -15,6 +15,7 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { getStore } from '../../../../../../lib/datastore';
 import { siteMediaPrefix } from '../../../../../../lib/media-keys';
 import { paths } from '@typeroll/shared';
+import { usesPrivateMedia } from '../../../../../../lib/publishing/media-policy';
 import { createMediaUpload } from '../../../../../../lib/publishing/media-storage';
 import { connectionFailure } from '../../../../../../lib/publishing/http';
 
@@ -46,7 +47,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
 
   const accountId = process.env.R2_ACCOUNT_ID;
-  if (ctx.site.publishing_mode === 'customer_git') {
+  if (await usesPrivateMedia(ctx.orgId, ctx.site)) {
     try {
       const uploaded = await createMediaUpload(ctx.orgId, ctx.siteId, { filename, contentType, size, altText: alt_text, actor: `api-key:${ctx.keyPrefix}` });
       return apiResponse(ctx, { upload_url: uploaded.uploadUrl, cdn_url: uploaded.cdnUrl, key: uploaded.key, media_id: uploaded.mediaId,

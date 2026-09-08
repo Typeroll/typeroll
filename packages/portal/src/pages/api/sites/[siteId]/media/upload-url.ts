@@ -13,6 +13,7 @@ import { requireSiteAccess, json, requirePermission } from '../../../../../lib/a
 import { getStore } from '../../../../../lib/datastore';
 import { siteMediaPrefix } from '../../../../../lib/media-keys';
 import { paths } from '@typeroll/shared';
+import { usesPrivateMedia } from '../../../../../lib/publishing/media-policy';
 import { createMediaUpload } from '../../../../../lib/publishing/media-storage';
 import { connectionFailure } from '../../../../../lib/publishing/http';
 
@@ -46,7 +47,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   }
 
   const accountId = process.env.R2_ACCOUNT_ID;
-  if (site.publishing_mode === 'customer_git') {
+  if (await usesPrivateMedia(owner_org_id, site)) {
     try {
       const uploaded = await createMediaUpload(owner_org_id, site.id, { filename, contentType, size, actor: session.userId });
       return json({ ...uploaded, finalizeUrl: `/api/sites/${site.id}/media/${uploaded.mediaId}/finalize` });

@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { usesPrivateMedia } from '../../../../../lib/publishing/media-policy';
 import { requireSiteAccess, json } from '../../../../../lib/access';
 
 /**
@@ -11,7 +12,7 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
 
-  if (guard.value.site.publishing_mode === 'customer_git') {
+  if (await usesPrivateMedia(guard.value.owner_org_id, guard.value.site)) {
     const { mediaUploadAvailability } = await import('../../../../../lib/publishing/media-storage');
     try { return json(await mediaUploadAvailability(guard.value.owner_org_id)); }
     catch (error) { return json({ enabled: false, reason: error instanceof Error ? error.message : 'Media storage is unavailable. Open Publishing to check the connection.', settings_url: '/app/settings/publishing' }); }

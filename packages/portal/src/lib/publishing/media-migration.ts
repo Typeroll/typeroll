@@ -5,6 +5,7 @@ import { getStore } from '../datastore';
 import { siteMediaPrefix } from '../media-keys';
 import { connectionSummary, getConnection, ConnectionError } from './connections';
 import { getOrganizationDomains } from './domain-config';
+import { adoptCustomerPublishingForMedia } from './media-policy';
 import { storageClient } from './media-storage';
 import { replacePublicationReferences } from './media-manifest';
 
@@ -31,6 +32,7 @@ async function completeEmptyMigration(orgId: string, current: Migration | null):
 export async function requestMediaMigration(orgId: string) {
   const [connection, domains] = await Promise.all([getConnection(orgId, 'cloudflare'), getOrganizationDomains(orgId)]);
   if (!connectionSummary(connection).media_ready || !domains.media_host) return;
+  for (const site of await getStore().listDocs(paths.sites(orgId))) await adoptCustomerPublishingForMedia(orgId, site.id);
   await getStore().createDocIfMissing(migrationPath(orgId), { org_id: orgId, state: 'queued', copied_files: 0, copied_bytes: 0, pending_files: 0, lease_id: null, lease_until: 0 });
   await getStore().compareAndUpdateDoc<Migration>(migrationPath(orgId), () => true, { state: 'queued', error: null, request_id: randomUUID() });
   await completeEmptyMigration(orgId, await getStore().getDoc<Migration>(migrationPath(orgId)));

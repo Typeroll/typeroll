@@ -12,8 +12,11 @@
 // worrying about races or duplicate variant uploads.
 
 import type { APIRoute } from 'astro';
+import { paths, type Media } from '@typeroll/shared';
+import { getStore } from '../../../../../../../lib/datastore';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../lib/api-auth';
 import { finalizeMedia, MediaIntegrityError } from '../../../../../../../lib/media-finalize';
+import { requestMediaMigration } from '../../../../../../../lib/publishing/media-migration';
 import { finalizeStoredMedia } from '../../../../../../../lib/publishing/media-storage';
 import { connectionFailure } from '../../../../../../../lib/publishing/http';
 
@@ -24,7 +27,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const mediaId = params.mediaId;
   if (!mediaId) return apiError('Missing mediaId');
   if (ctx.permission === 'read') return apiError('Finalizing media requires write permission.', 403);
-  if (ctx.site.publishing_mode === 'customer_git') {
+  if ((await getStore().getDoc<Media>(`${paths.media(ctx.orgId, ctx.siteId)}/${mediaId}`))?.storage) {
     const body = await request.json().catch(() => ({}));
     try { return apiResponse(ctx, { ok: true, result: await finalizeStoredMedia(ctx.orgId, ctx.siteId, mediaId, typeof body?.expected_sha256 === 'string' ? body.expected_sha256 : undefined) }); }
     catch (error) { return connectionFailure(error); }
@@ -47,6 +50,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       { accountId, bucket, accessKeyId, secretAccessKey, publicBase },
       { expectedSha256: typeof body.expected_sha256 === 'string' ? body.expected_sha256 : undefined },
     );
+    await requestMediaMigration(ctx.orgId);
     return apiResponse(ctx, { ok: true, result }, 200);
   } catch (e) {
     // Corruption is the CALLER's signal to re-upload — 422, not a server error.

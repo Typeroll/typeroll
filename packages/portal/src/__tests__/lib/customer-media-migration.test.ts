@@ -157,3 +157,17 @@ it('preserves a new migration request made during the empty scan', async () => {
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'queued' });
   expect(await store.getDoc<any>(path)).toMatchObject({ request_id: 'new-request', state: 'queued' });
 });
+
+it('adopts existing sites when organization media migration is requested, including empty libraries', async () => {
+  await getStore().setDoc(paths.site('org', 'legacy'), {
+    name: 'Legacy site', publishing_mode: 'managed', domain: 'www.example.com',
+    hosting_config: { pages_project: 'existing-live-project' },
+  });
+  await requestMediaMigration('org');
+  expect(await getStore().getDoc(paths.site('org', 'legacy'))).toMatchObject({
+    publishing_mode: 'customer_git', domain: 'www.example.com',
+    hosting_config: { pages_project: 'existing-live-project' },
+  });
+  expect((await getSiteDomains('org', 'legacy')).desired.website_host).toBe('www.example.com');
+  expect((await mediaMigrationStatus('org'))?.state).toBe('complete');
+});

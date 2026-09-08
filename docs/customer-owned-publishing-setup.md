@@ -126,6 +126,17 @@ successful check shows **R2 connected**, which persists after reload; the form
 collapses under **Replace R2 access keys**. The connection is reused across the
 organization's sites and branches.
 
+Once organization media storage is verified, new uploads from existing sites
+also go directly to that account. Finishing organization media setup adopts
+existing sites into Git publishing; their current hosting and DNS stay intact
+until the next requested publication. Existing website hosts are carried into
+the site’s Publishing settings. Complete GitHub and domain setup before deploying.
+
+The editor uses an authenticated media URL to keep unpublished originals private.
+The static build replaces that URL with the configured public media hostname.
+Existing images are copied and verified before their editable references change;
+previously published files and URLs are retained.
+
 Cloudflare's GitHub integration, described above, is still required for source
 builds. OAuth account connection does not itself prove Git publication, public
 media delivery or migration of existing sites.

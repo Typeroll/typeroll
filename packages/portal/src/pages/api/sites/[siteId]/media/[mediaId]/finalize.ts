@@ -8,8 +8,11 @@
 // same — same `finalizeMedia` lib call, same R2 env vars.
 
 import type { APIRoute } from 'astro';
+import { paths, type Media } from '@typeroll/shared';
+import { getStore } from '../../../../../../lib/datastore';
 import { requireSiteAccess, requirePermission, json } from '../../../../../../lib/access';
 import { finalizeMedia } from '../../../../../../lib/media-finalize';
+import { requestMediaMigration } from '../../../../../../lib/publishing/media-migration';
 import { finalizeStoredMedia } from '../../../../../../lib/publishing/media-storage';
 import { connectionFailure } from '../../../../../../lib/publishing/http';
 
@@ -21,7 +24,7 @@ export const POST: APIRoute = async ({ cookies, params, locals }) => {
   const { site, owner_org_id } = guard.value;
   const mediaId = params.mediaId;
   if (!mediaId) return json({ error: 'Missing mediaId' }, 400);
-  if (site.publishing_mode === 'customer_git') {
+  if ((await getStore().getDoc<Media>(`${paths.media(owner_org_id, site.id)}/${mediaId}`))?.storage) {
     try { return json({ ok: true, result: await finalizeStoredMedia(owner_org_id, site.id, mediaId) }); }
     catch (error) { return connectionFailure(error); }
   }
@@ -39,6 +42,7 @@ export const POST: APIRoute = async ({ cookies, params, locals }) => {
     const result = await finalizeMedia(owner_org_id, site.id, mediaId, {
       accountId, bucket, accessKeyId, secretAccessKey, publicBase,
     });
+    await requestMediaMigration(owner_org_id);
     return json({ ok: true, result });
   } catch (e) {
     return json(
