@@ -5,7 +5,7 @@ import { getConnection, ConnectionError } from './connections';
 import { githubConfiguration } from './github-connection';
 import { cloudflareClient } from './cloudflare-oauth';
 import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment, digest, ProviderError } from './providers.mjs';
-import { getSiteDomains, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
+import { getSiteDomains, samePublicationHosts, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { resolvePublicationVersion } from './publication-version';
 import { assertPublishingReady } from './readiness';
 import { publicationSourceTree } from './source-tree';
@@ -140,7 +140,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       publication = { owner: identity.owner, repo: `typeroll-${prefix}`, project: `typeroll-${prefix}`, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domains.revision, website_host: host, snapshot_job_id: args.jobId, ...await saveSnapshot(args, frozen) };
-      if (args.versionId === 'main' && domains.active && JSON.stringify(domains.active) !== JSON.stringify({ ...domains.desired, website_host: host })) {
+      if (args.versionId === 'main' && domains.active && !samePublicationHosts(domains.active, { ...domains.desired, website_host: host })) {
         publication.branch = `version-domain-${domains.revision.replaceAll('-', '').slice(0, 16)}`;
         publication.release_branch = 'main';
       }
@@ -272,7 +272,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (args.versionId === 'main') {
       await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === publication!.domain_revision,
         { active: { ...domains.desired, website_host: publication.website_host }, state: 'live',
-          media_aliases: [...domains.media_aliases, ...(domains.active && !domains.media_aliases.some(alias => JSON.stringify(alias) === JSON.stringify(domains.active)) ? [domains.active] : [])] });
+          media_aliases: [...domains.media_aliases, ...(domains.active && !domains.media_aliases.some(alias => samePublicationHosts(alias, domains.active!)) ? [domains.active] : [])] });
       await store.updateDoc(paths.site(args.orgId, args.siteId), { domain: publication.website_host, domain_status: 'live', domain_verified_at: finished });
     }
     for (const entry of frozen.media_manifest?.entries ?? []) {

@@ -166,3 +166,12 @@ it('terminates expired provider observation instead of leaving a job running aft
   expect(mocks.push).not.toHaveBeenCalled();
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'publication_observation_timeout' } });
 });
+
+it('publishes ordinary edits to main when datastore map ordering changes but hosts do not', async () => {
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), {
+    active: { media_path_prefix: '', media_host: null, website_host: 'www.example.com' },
+  });
+  await executeCustomerPublication(args);
+  expect(mocks.push.mock.calls[0][1].branch).toBe('main');
+  expect((await getStore().getDoc<any>(jobPath)).git_publication.release_branch).toBeUndefined();
+});

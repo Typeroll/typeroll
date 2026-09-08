@@ -10,6 +10,11 @@ export interface PublicationHosts {
   media_path_prefix: string;
 }
 
+/** Datastores may reorder map fields; host identity must depend on values only. */
+export function samePublicationHosts(left: PublicationHosts, right: PublicationHosts): boolean {
+  return left.website_host === right.website_host && left.media_host === right.media_host && left.media_path_prefix === right.media_path_prefix;
+}
+
 export interface DomainConfiguration {
   revision: string;
   desired: PublicationHosts;
