@@ -315,6 +315,12 @@ describe('Cloudflare connection and encrypted credentials', () => {
     expect(JSON.stringify([caught, warning.mock.calls])).not.toContain(credentials.secret_access_key);
   });
 
+  it('explains HTTP authentication rejection even when R2 supplies no S3 error code', async () => {
+    vi.spyOn(S3Client.prototype, 'send').mockRejectedValue({ name: 'Error', $metadata: { httpStatusCode: 401 } });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(verifyR2(accountId, 'agency-media', credentials)).rejects.toThrow('Cloudflare rejected authentication');
+  });
+
   it('preserves the write failure when cleanup also fails and strips arbitrary provider data', async () => {
     vi.spyOn(S3Client.prototype, 'send').mockImplementation((async (command: unknown) => {
       if (command instanceof PutObjectCommand) throw { name: 'SignatureDoesNotMatch', message: credentials.secret_access_key, $metadata: { httpStatusCode: 403, requestId: credentials.api_token } };

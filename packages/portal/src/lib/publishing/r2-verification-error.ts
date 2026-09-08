@@ -2,6 +2,7 @@ import { ConnectionError } from './connections';
 
 export type R2VerificationStep = 'write' | 'read' | 'delete';
 const advice = {
+  Unauthorized: 'Cloudflare rejected authentication for this request. Check that both S3 keys come from the same active R2 token in the connected account. Existing saved keys have not been replaced.',
   AccessDenied: 'Cloudflare denied this operation. Check that the R2 token has Object Read & Write access to this bucket. The response does not identify which permission or token restriction caused the denial.',
   InvalidAccessKeyId: 'Cloudflare did not recognize the Access Key ID for the connected account. Check the Account ID and the Access Key ID from the R2 token.',
   SignatureDoesNotMatch: 'Cloudflare rejected the request signature. Check that the Access Key ID and Secret Access Key are the matching pair from the same R2 token. If they are, contact support to investigate request signing.',
@@ -42,7 +43,8 @@ export class R2VerificationError extends ConnectionError {
     const { step, bucket, account_id, provider_code, http_status, cleanup_failure } = diagnostic;
     const action = { write: 'write a test file to', read: 'read the test file from', delete: 'delete the test file from' }[step];
     const reason = provider_code === 'Unknown'
-      ? http_status === 403 ? advice.AccessDenied
+      ? http_status === 401 ? advice.Unauthorized
+        : http_status === 403 ? advice.AccessDenied
         : http_status === 429 ? advice.SlowDown
           : http_status && http_status >= 500 ? advice.ServiceUnavailable
             : 'The provider did not return a recognized error code. Retry with the same keys; if this continues, contact support.'
