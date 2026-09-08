@@ -1,8 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { RefreshCw } from 'lucide-react';
+import './OrganizationDomainSetup.css';
 import type { PublishingZone } from '../lib/publishing/organization-domain-setup';
 
 type Settings = { media_host_change_allowed?: boolean; revision: string; media_host?: string | null; sites_domain?: string | null };
-export default function OrganizationDomainSetup({ data, busy, onSetup }: { data: Settings; busy: boolean; onSetup: (body: Record<string, string>) => Promise<void> }) {
+export default function OrganizationDomainSetup({ data, busy, onSetup, feedback }: { feedback?: ReactNode; data: Settings; busy: boolean; onSetup: (body: Record<string, string>) => Promise<void> }) {
+  const selectId = useId();
   const [zones, setZones] = useState<PublishingZone[]>([]);
   const [zoneId, setZoneId] = useState('');
   const [account, setAccount] = useState('');
@@ -75,10 +78,14 @@ export default function OrganizationDomainSetup({ data, busy, onSetup }: { data:
     {connectionRequired && <p>Connect Cloudflare to choose domains.</p>}
     {!loading && !error && !connectionRequired && !approvalRequired && !zones.length && <p>No domains were returned for {account || 'the connected account'}. If you just added a domain in Cloudflare, refresh the list once it is available.</p>}
     <form className="stack" onSubmit={submit}>
-      <label className="field">Cloudflare domain<select value={zoneId} onChange={event => selectZone(event.target.value)} disabled={busy || loading} style={{ minWidth: 0, width: '100%' }}>
+      <div className="field"><label htmlFor={selectId}>Cloudflare domain</label>
+      <div className="publishing-domain-picker"><select id={selectId} value={zoneId} onChange={event => selectZone(event.target.value)} disabled={busy || loading} style={{ minWidth: 0, width: '100%' }}>
         <option value="">Choose a domain</option>
         {zones.map(value => <option key={value.id} value={value.id}>{value.name}{value.status !== 'active' ? ' — activation pending' : value.type !== 'full' ? ' — external DNS' : ''}</option>)}
-      </select></label>
+      </select>
+      <button type="button" className="publishing-domain-refresh" aria-label="Refresh domain list" title="Refresh domain list" disabled={busy || loading} onClick={() => void load(true)}>
+        <RefreshCw size={20} aria-hidden="true" className={loading ? 'publishing-domain-refresh__spinner' : undefined} />
+      </button></div></div>
       {zone && <>
         <label className="field">Media subdomain<input value={media} onChange={event => setMedia(event.target.value)} required maxLength={63} pattern={"[a-zA-Z0-9](?:[a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?"} autoCapitalize="none" spellCheck={false} disabled={busy} /></label>
         <p className="muted">Images and files: <strong>{media.trim().toLowerCase() || 'media'}.{zone.name}</strong></p>
@@ -91,8 +98,9 @@ export default function OrganizationDomainSetup({ data, busy, onSetup }: { data:
       </>}
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
         <button type="submit" className="btn" disabled={busy || loading || approvalRequired || !zone || zone.status !== 'active' || zone.type !== 'full' || mediaChangeBlocked}>{busy ? 'Configuring domains…' : 'Configure domains'}</button>
-        <button type="button" className="btn" disabled={busy || loading} onClick={() => void load(true)}>Refresh domain list</button>
+
       </div>
+      {feedback}
     </form>
   </div>;
 }

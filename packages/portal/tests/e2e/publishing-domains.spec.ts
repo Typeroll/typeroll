@@ -31,7 +31,9 @@ test('organization domain form saves the exact hostname and remains usable on mo
   await section.getByLabel('Site address base').fill('sites.example.com');
   await section.getByLabel('DNS management').selectOption('external');
   await section.getByRole('button', { name: 'Save domain settings' }).click();
-  await expect(section.getByRole('status')).toContainText('Organization domains saved');
+  await expect(section.getByRole('status')).toContainText('Domain settings saved');
+  await expect(section.getByRole('status')).toContainText('media.example.com');
+  await expect(section.getByRole('status')).toBeInViewport();
   await expect(section.getByLabel('Shared media host')).toHaveValue('media.example.com');
   await expect(section.getByLabel('Site address base')).toHaveValue('sites.example.com');
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -124,9 +126,25 @@ test('configures short subdomains in one action and automatically checks activat
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const select = await section.getByLabel('Cloudflare domain').boundingBox();
+    const refresh = section.getByRole('button', { name: 'Refresh domain list', exact: true });
+    const refreshBox = await refresh.boundingBox();
+    expect(refreshBox!.x).toBeGreaterThanOrEqual(select!.x + select!.width);
+    expect(Math.abs(refreshBox!.y - select!.y)).toBeLessThan(2);
+    await expect(refresh).toHaveAttribute('type', 'button');
+    await expect(refresh).toHaveText('');
     await section.screenshot({ path: `test-results/domain-setup-${width}.png`, animations: 'disabled' });
   }
   await section.getByRole('button', { name: 'Configure domains', exact: true }).click();
+  await expect(section.locator('.publishing-domain-confirmation')).toContainText('Domain settings saved');
+  await expect(section.locator('.publishing-domain-confirmation')).toContainText('demos.example.com');
+  await expect(section.locator('.publishing-domain-confirmation')).toContainText('Cloudflare activation is checked automatically');
+  await expect(section.locator('.publishing-domain-confirmation')).toBeInViewport();
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await section.locator('.publishing-domain-confirmation').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `test-results/domain-saved-${width}.png`, animations: 'disabled' });
+  }
   await expect(section.getByText('Waiting for domain activation', { exact: true })).toBeVisible();
   await expect(section).toHaveAttribute('data-state', 'waiting');
   await section.getByLabel('Sites subdomain').fill('unsaved');
@@ -210,4 +228,25 @@ for (const allowed of [true, false]) test(`saved media hostname replacement is $
     await expect(button).toBeEnabled();
     expect(submissions).toBe(0);
   }
+});
+
+test('confirms a saved address separately from a Cloudflare setup error, and never confirms a failed save', async ({ page }) => {
+  const zone = { id: 'a'.repeat(32), name: 'example.com', status: 'active', type: 'full' };
+  await page.route('**/api/orgs/publishing/zones', route => route.fulfill({ json: { account_name: 'Example', zones: [zone] } }));
+  let writes = 0;
+  await page.route('**/api/orgs/publishing/domains', async route => {
+    if (route.request().method() === 'POST' && ++writes === 2) return route.fulfill({ status: 409, json: { error: 'Domain settings changed. Reload before configuring domains.' } });
+    await route.fulfill({ json: { revision: writes ? 'saved' : 'initial', sites_domain: writes ? 'sites.example.com' : null, media_host: writes ? 'media.example.com' : null, dns_mode: 'automatic', ...(writes ? { setup_error: 'Addresses saved, but Cloudflare setup could not finish. Select Configure domains to retry.' } : {}) } });
+  });
+  await authenticatePersona(page, 'owner');
+  await page.goto('/app/settings/publishing');
+  const section = page.getByRole('region', { name: 'Domains', exact: true });
+  await section.getByRole('button', { name: 'Configure domains', exact: true }).click();
+  await expect(section.locator('.publishing-domain-confirmation')).toContainText('Domain settings saved');
+  await expect(section.locator('.publishing-domain-confirmation')).toContainText('Cloudflare setup still needs attention');
+  await expect(section.locator('.publishing-domain-confirmation')).toHaveClass(/--warning/);
+  await expect(section.getByRole('alert')).toContainText('Cloudflare setup could not finish');
+  await section.getByRole('button', { name: 'Configure domains', exact: true }).click();
+  await expect(section.getByRole('alert')).toContainText('Domain settings changed');
+  await expect(section.locator('.publishing-domain-confirmation')).toHaveCount(0);
 });
