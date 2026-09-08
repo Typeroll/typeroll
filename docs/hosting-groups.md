@@ -110,3 +110,12 @@ any additional cache they place in front of Pages.
 
 Cloudflare documents hostname purges for every plan, including Free:
 https://developers.cloudflare.com/cache/how-to/purge-cache/#availability-and-limits
+
+## Organization setup through MCP
+
+Organization publishing tools do not take `site_id`. An organization with no
+sites can list and save Hosting Groups, connect hosting, and configure shared
+domains/media. Core 0.1.47 / MCP 0.44.20 corrects the transport schema, which
+previously required a site even for these organization operations. Organization
+API authorization remains enforced by the public routes. Reading or changing a
+site's group still requires access to that particular site.
