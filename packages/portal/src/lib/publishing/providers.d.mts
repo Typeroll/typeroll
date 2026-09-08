@@ -8,3 +8,5 @@ export function publishTree(client: ProviderClient, options: { owner: string; re
 export function pagesProjectBody(options: { owner: string; repo: string; repository: any; project: string }): any;
 export function matchingDeployment(deployments: any[], target: { project: string; commit: string; branch: string }): any;
 export function assertSuccessfulStaticDeployment(deployment: any, project?: any): void;
+
+export function findPublicationDeployment(provider: ProviderClient, projectRoot: string, target: { project: string; commit: string; branch: string }): Promise<any>;

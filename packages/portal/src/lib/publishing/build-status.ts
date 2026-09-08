@@ -2,7 +2,7 @@ import { paths } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { cloudflareClient } from './cloudflare-oauth';
 import { ConnectionError, getConnection } from './connections';
-import { matchingDeployment } from './providers.mjs';
+import { findPublicationDeployment } from './providers.mjs';
 
 /** Only build identity and progress leave this boundary; Pages responses also contain secret environment variables. */
 export async function customerBuildStatus(orgId: string, siteId: string, jobId: string) {
@@ -17,8 +17,7 @@ export async function customerBuildStatus(orgId: string, siteId: string, jobId: 
   }
   const provider = await cloudflareClient(orgId);
   const root = `/accounts/${publication.account_id}/pages/projects/${publication.project}`;
-  const [project, deployments] = await Promise.all([provider(root), provider(`${root}/deployments?per_page=100`)]);
-  const match = matchingDeployment(deployments, publication);
+  const [project, match] = await Promise.all([provider(root), findPublicationDeployment(provider, root, publication)]);
   const deployment = match ? await provider(`${root}/deployments/${encodeURIComponent(match.id)}`) : null;
   return {
     job_id: jobId, status: job.status, phase: job.phase,

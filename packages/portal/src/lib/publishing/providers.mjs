@@ -175,6 +175,17 @@ export function matchingDeployment(deployments, { project, commit, branch }) {
     deployment.environment === (branch === 'main' ? 'production' : 'preview')) ?? null;
 }
 
+/** Pages rejects a 100-item page. Search the same bounded history in valid batches. */
+export async function findPublicationDeployment(provider, projectRoot, target) {
+  for (let page = 1; page <= 4; page++) {
+    const deployments = await provider(`${projectRoot}/deployments?per_page=25&page=${page}`);
+    const match = matchingDeployment(deployments, target);
+    if (match) return match;
+    if (deployments.length < 25) return null;
+  }
+  return null;
+}
+
 export function assertSuccessfulStaticDeployment(deployment, project) {
   // The deployment API documents uses_functions as optional. When omitted,
   // require the project's explicit static flag AND its matching deployment

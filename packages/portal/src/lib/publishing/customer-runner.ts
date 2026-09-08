@@ -4,7 +4,7 @@ import { getStore } from '../datastore';
 import { getConnection, ConnectionError } from './connections';
 import { githubConfiguration } from './github-connection';
 import { cloudflareClient } from './cloudflare-oauth';
-import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, assertSuccessfulStaticDeployment, digest, ProviderError } from './providers.mjs';
+import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, assertSuccessfulStaticDeployment, digest, ProviderError } from './providers.mjs';
 import { getSiteDomains, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { resolvePublicationVersion } from './publication-version';
 import { assertPublishingReady } from './readiness';
@@ -19,6 +19,7 @@ import { publicationRuntime } from './runtime-projection';
 import { preparePublicMediaDomains } from './media-domain';
 import { recordPublishingOrigin } from './runtime-origins';
 import { retargetWebsite } from './publication-retarget';
+import { recordCustomerCompute } from './compute-cost';
 
 interface GitPublication {
   owner: string; repo: string; project: string; account_id: string; branch: string;
@@ -51,6 +52,7 @@ async function readSnapshot(args: EnqueueArgs, publication: GitPublication) {
 
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
+  const attemptStarted = performance.now();
   const store = getStore();
   const jobPath = paths.deploy(args.orgId, args.siteId, args.jobId);
   const job = await store.getDoc<GitJob>(jobPath);
@@ -202,9 +204,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         project.production_branch !== 'main' || project.build_config?.build_command !== 'npm ci && npm run build') {
       throw new ConnectionError('Cloudflare must use the generated GitHub repository and static build configuration.', 409);
     }
-    const deployments = await cloudflare(`${projectRoot}/deployments?per_page=100`);
     if (!publication.commit) throw new Error('Frozen publication has no Git commit');
-    let deployment = matchingDeployment(deployments, { project: publication.project, commit: publication.commit, branch: publication.branch });
+    let deployment = await findPublicationDeployment(cloudflare, projectRoot, { project: publication.project, commit: publication.commit, branch: publication.branch });
     if (!deployment || deployment.latest_stage?.name !== 'deploy' || deployment.latest_stage?.status !== 'success') {
       if (deployment?.is_skipped || ['failure', 'canceled'].includes(deployment?.latest_stage?.status)) throw new ConnectionError('The Cloudflare build failed. Open the generated project in Cloudflare → Workers & Pages → Deployments for the build log.', 502, 'customer_build_failed');
       await store.updateDoc(jobPath, { status: 'running', phase: 'building on Cloudflare' });
@@ -292,6 +293,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     terminal = true;
     return 'ran';
   } finally {
+    try { await recordCustomerCompute(args.orgId, args.siteId, args.jobId, performance.now() - attemptStarted); }
+    catch { console.error(JSON.stringify({ event: 'customer_publication_cost_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId })); }
     if (terminal) await releaseBuildAccess();
     await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease,
       { lease_id: null, lease_until: 0, ...(terminal ? { job_id: null } : {}) });

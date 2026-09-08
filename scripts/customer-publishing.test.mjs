@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
   digest, createProviderClient, assertInstallation, publishTree, pagesProjectBody,
-  assertPagesProject, matchingDeployment, assertSuccessfulStaticDeployment,
+  assertPagesProject, matchingDeployment, findPublicationDeployment, assertSuccessfulStaticDeployment,
 } from './lib/customer-publishing.mjs';
 import {
   buildPublishingProbePlan, probePublicationFiles, prepareProbeDirectory,
@@ -296,4 +296,22 @@ test('three-site onboarding resumes pending builds and verifies a version withou
   assert.deepEqual(plan.repositories.map((name) => refs.get(`${name}/main`)), mainRefs);
   assert.equal((await runPublishingProbe(plan, clients)).state, 'verified');
   assert.equal(published, 7);
+});
+
+
+test('Pages lookup uses valid pagination and finds the exact commit beyond the first batch', async () => {
+  const target = { project: 'synthetic', commit: 'target', branch: 'main' };
+  const wanted = { id: 'wanted', project_name: target.project, environment: 'production', deployment_trigger: { metadata: { commit_hash: target.commit, branch: target.branch } } };
+  const calls = [];
+  const provider = async route => {
+    const url = new URL(route, 'https://example.test');
+    assert.equal(url.searchParams.get('per_page'), '25');
+    calls.push(Number(url.searchParams.get('page')));
+    return calls.length === 1 ? Array.from({ length: 25 }, () => ({ ...wanted, project_name: 'unrelated' })) : [wanted];
+  };
+  assert.equal((await findPublicationDeployment(provider, '/projects/synthetic', target)).id, 'wanted');
+  assert.deepEqual(calls, [1, 2]);
+  let count = 0;
+  assert.equal(await findPublicationDeployment(async () => { count++; return []; }, '/projects/synthetic', target), null);
+  assert.equal(count, 1);
 });

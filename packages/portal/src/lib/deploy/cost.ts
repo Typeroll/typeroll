@@ -1,7 +1,7 @@
 /**
  * Cost accounting for site builds.
  *
- * WHAT WE'RE MEASURING. A deploy runs synchronously inside one request —
+ * WHAT WE'RE MEASURING. A managed deploy runs synchronously inside one request —
  * Cloud Tasks POSTs the deploy-worker, and the whole build (materialize →
  * astro → bundle → upload) happens before that request returns. Cloud Run
  * bills request-based instances for the time they're handling a request, at
@@ -9,6 +9,11 @@
  * build is simply:
  *
  *     duration × (vcpu × cpu_rate + memory_gib × memory_rate) + request_fee
+ *
+ * Customer Git publications sum bounded active worker attempts using the same
+ * model. Waiting between queue attempts and builds on the customer's account
+ * are not publisher compute time. These remain gross estimates: concurrent
+ * requests may share one billed instance, and database/storage fees are separate.
  *
  * That's why wall-clock is the right clock here and not process CPU time:
  * the astro build is a CHILD process, so `process.cpuUsage()` wouldn't see
@@ -80,6 +85,8 @@ export interface ComputeCostArgs {
   phaseMs?: Record<string, number>;
   outputBytes?: number;
   outputFiles?: number;
+  /** Active worker attempts only; customer build waiting happens outside these requests. */
+  requestCount?: number;
 }
 
 /**
@@ -99,7 +106,8 @@ export function computeDeployCost(args: ComputeCostArgs): DeployCost {
 
   const cpu = round(durationS * rates.vcpu * rates.cpu_per_vcpu_second);
   const memory = round(durationS * rates.memory_gib * rates.memory_per_gib_second);
-  const request = round(rates.per_request);
+  const requestCount = Math.max(0, args.requestCount ?? 1);
+  const request = round(rates.per_request * requestCount);
 
   const phases = args.phaseMs
     ? Object.fromEntries(
@@ -113,6 +121,7 @@ export function computeDeployCost(args: ComputeCostArgs): DeployCost {
     cpu,
     memory,
     request,
+    ...(args.requestCount === undefined ? {} : { requests: requestCount }),
     duration_s: Math.round(durationS * 1000) / 1000,
     vcpu: rates.vcpu,
     memory_gib: rates.memory_gib,

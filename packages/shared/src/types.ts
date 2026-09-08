@@ -1571,9 +1571,10 @@ export type DeployEnvironment = 'staging' | 'production';
 /**
  * What one site build cost the platform to run.
  *
- * A deploy occupies a Cloud Run instance for its whole duration (the build
- * runs synchronously inside the deploy-worker request), so the marginal cost
- * of a build is wall-clock time × the resources allocated to that instance.
+ * Managed builds occupy a Cloud Run instance for their whole duration.
+ * Customer Git builds record only active publisher attempts; remote build
+ * time and queue backoff are excluded. The marginal estimate uses active
+ * wall-clock time × the resources allocated to that instance.
  * That's the model here: duration × (vCPU rate + memory rate), plus the
  * per-request fee.
  *
@@ -1595,6 +1596,8 @@ export interface DeployCost {
   cpu: number;
   memory: number;
   request: number;
+  /** Active worker requests for a customer Git publication. Queue backoff is excluded. */
+  requests?: number;
   /** Wall-clock seconds the build held the instance. */
   duration_s: number;
   /** Resources the instance had allocated while it ran. */
