@@ -26,11 +26,11 @@ export async function publishingReadiness(orgId: string, siteId: string, version
   };
   require(github.status === 'connected' && github.github, 'github_connection_required', 'Connect GitHub for your organization.');
   require(cloudflare.status === 'connected' && cloudflare.cloudflare, 'cloudflare_connection_required', 'Connect Cloudflare for your organization.');
-  require(versionId === 'main' && domains.desired.website_host || organization.default_domain,
-    'publishing_domain_required', versionId === 'main' ? 'Set an organization default domain or a website host in site settings.' : 'Set an organization default domain to publish this version.');
+  require(versionId === 'main' && domains.desired.website_host || organization.sites_domain,
+    'publishing_domain_required', versionId === 'main' ? 'Set a site address base for the organization or a website host in site settings.' : 'Set a site address base for the organization to publish this version.');
   if (media.length) {
     require(connectionSummary(cloudflare).media_ready, 'media_storage_required', 'Complete R2 media storage setup for your organization.');
-    require(domains.desired.media_host || organization.default_domain, 'media_domain_required', 'Set a media host or an organization default domain.');
+    require(domains.desired.media_host || organization.media_host, 'media_domain_required', 'Set a site media host or a shared media host for the organization.');
   }
   return { ready: required.length === 0, mode: 'customer_git' as const, required };
 }

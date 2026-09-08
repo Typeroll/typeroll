@@ -14,7 +14,7 @@ interface Migration { org_id: string; state: 'queued' | 'running' | 'complete' |
 
 export async function requestMediaMigration(orgId: string) {
   const [connection, domains] = await Promise.all([getConnection(orgId, 'cloudflare'), getOrganizationDomains(orgId)]);
-  if (!connectionSummary(connection).media_ready || !domains.default_domain) return;
+  if (!connectionSummary(connection).media_ready || !domains.media_host) return;
   await getStore().createDocIfMissing(migrationPath(orgId), { org_id: orgId, state: 'queued', copied_files: 0, copied_bytes: 0, pending_files: 0, lease_id: null, lease_until: 0 });
   await getStore().compareAndUpdateDoc<Migration>(migrationPath(orgId), () => true, { state: 'queued', error: null, request_id: randomUUID() });
 }
@@ -116,10 +116,10 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 3) {
       }
     } finally { target.destroy(); }
     const organization = await getOrganizationDomains(orgId);
-    if (organization.default_domain && connection.cloudflare.public_bucket) {
+    if (organization.media_host && connection.cloudflare.public_bucket) {
       const { preparePublicMediaDomains } = await import('./media-domain');
       await preparePublicMediaDomains(orgId, { account_id: connection.cloudflare.account_id, public_bucket: connection.cloudflare.public_bucket,
-        media_host: organization.default_domain, website_host: '', site_prefix: '', entries: [] });
+        media_host: organization.media_host, website_host: '', site_prefix: '', entries: [] });
     }
     const completed = await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease && current.request_id === acquired.request_id,
       { state: pending ? 'queued' : 'complete', pending_files: pending, copied_files: acquired.copied_files + copied, copied_bytes: acquired.copied_bytes + copiedBytes,

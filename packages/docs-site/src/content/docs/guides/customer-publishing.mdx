@@ -44,10 +44,15 @@ manage these connections.
    application → Pages → Connect to Git → + Add account**. Select the same GitHub
    organization and **All repositories**. Stop at the repository list and return
    to Typeroll. This is separate from the Typeroll App installation.
-6. Under **Default domain**, enter a hostname you control, such as
-   `demos.example.com`, and choose automatic or external DNS management.
+6. Under **Organization domains**, enter **Site address base**, such as
+   `sites.example.com`, and **Shared media host**, such as `media.example.com`.
+   These are independent hostnames. Choose who manages DNS: **Typeroll
+   (automatic)** or **Me or my AI agent**. Save, then read **Shared media domain
+   status** and its setup instructions. **Check domain status** reads Cloudflare
+   again without changing DNS or publishing content.
 
-One Cloudflare account and one default domain belong to the Typeroll organization.
+One Cloudflare account belongs to the Typeroll organization. Its site address base
+and shared media hostname are configured separately.
 Each site gets its own generated private repository and static Pages project.
 Adding a site or version reuses the organization connections.
 
@@ -58,21 +63,54 @@ Details → Account ID**. Copy the 32-character account value, not a Zone ID.
 ### When DNS is hosted elsewhere
 
 R2 media domains must belong to a zone in the same Cloudflare account as the
-bucket. You can move the domain's DNS to Cloudflare, preserving and verifying
-all website and email records before changing nameservers. Alternatively,
-Cloudflare's partial CNAME setup keeps your existing DNS provider but requires
+bucket. You do not need to move your root website, email or unrelated subdomains.
+Cloudflare's partial CNAME setup connects selected hostnames while keeping your
+existing authoritative DNS provider and nameservers. It requires
 Business or Enterprise. Selecting external DNS management in Typeroll means you
-or your agent manage the records; it does not bypass this provider requirement.
+or your agent manage the records, including records in Cloudflare; it does not
+bypass this provider requirement. If your domain already uses Cloudflare DNS,
+keep other records pointing at their existing services.
 A CNAME pointing to an `r2.dev` address is unsupported.
 See [R2 custom domains](https://developers.cloudflare.com/r2/buckets/public-buckets/)
 and [partial setup availability](https://developers.cloudflare.com/dns/zone-setups/partial-setup/).
+
+### Read status and complete setup
+
+**Shared media domain status** distinguishes missing Cloudflare access, unfinished
+R2 setup, an unattached or disabled media domain, pending ownership/certificate
+activation, and an active Cloudflare media domain. Provider errors are shown as
+an unknown status, not as proof that a working domain is disconnected. The panel
+names the connected account and public bucket and records when it was checked.
+
+For manual setup, open **Cloudflare → R2 object storage → the public bucket →
+Settings → Custom Domains → Add**. Enter the shared media hostname, select
+**Continue**, review the record and select **Connect Domain**. Use **Manage DNS**
+in the connected domain’s menu to view the record. With partial setup, also apply
+Cloudflare’s supplied verification and CNAME records at your DNS provider. The UI
+links to Cloudflare’s current instructions; do not guess a target or point the
+hostname at the S3 API endpoint.
+
+An active media-domain status does not verify every site address or publish a
+site. Website and version addresses have their own DNS requirements and public
+verification in the site's Publishing flow. The address base itself does not
+serve a website; generated addresses are below it. Deployment verifies actual
+published media files before exposing the live link.
+
+The organization API `GET /api/v1/publishing/domains` and MCP
+`read_organization_publishing_domains` return the same `domain_status`, including
+`state`, `checked_at`, `zone_check`, certificate/ownership state and structured
+`steps`. Set `sites_domain` and `media_host` independently using the corresponding
+PUT route or `set_organization_publishing_domains`. Legacy `default_domain`
+configurations retain their old addresses until explicitly updated. Changing the
+site address base affects subsequent deployments; an existing shared media host
+cannot be replaced by a plain settings overwrite.
 
 ## Publish a site or version
 
 Choose the site and its **Version**, save changes and select **Deploy**. The
 `main` version publishes the live site. Other versions use `version-<version-id>`
-Git branches and separate public test addresses under the organization's default
-domain. Those versions and default-domain demos use `noindex`.
+Git branches and separate public test addresses under the organization's site address
+base. Those versions and default-domain demos use `noindex`.
 
 Typeroll freezes the selected version, including inherited blocks, templates,
 collections and runtime settings, and pushes generated source to GitHub.
@@ -88,15 +126,15 @@ Manual repository changes are unsupported and may be replaced by a publication.
 Open **Site settings → Publishing → Website and media addresses**. Set the
 website host and, optionally, a separate media host. For example:
 
-| Setting                     | Example                                                                 |
-| --------------------------- | ----------------------------------------------------------------------- |
-| Organization default domain | `demos.example.com`                                                     |
-| Site website host           | `www.customer.com`                                                      |
-| Site media host             | `images.customer.com`                                                   |
-| Media path prefix           | Empty for a separate media host; `/media` when sharing the website host |
+| Setting                        | Example                                                                 |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| Organization shared media host | `media.example.com`                                                     |
+| Site website host              | `www.customer.com`                                                      |
+| Site media host                | `images.customer.com`                                                   |
+| Media path prefix              | Empty for a separate media host; `/media` when sharing the website host |
 
 Before a site has its own media host, an image can use
-`https://demos.example.com/media/<site-media-id>/photo.png`. With a separate
+`https://media.example.com/media/<site-media-id>/photo.png`. With a separate
 site media host it can use `https://images.customer.com/photo.png`. Native
 Cloudflare URL rewrite rules map the site host to its storage namespace. No
 Worker serves the website or the images.
@@ -133,7 +171,7 @@ administrator changed the records in the meantime.
 
 ## Media migration and independent builds
 
-After R2 and the organization default domain are connected, Typeroll copies old
+After R2 and the organization shared media host are connected, Typeroll copies old
 originals to your private bucket, verifies SHA-256 hashes, and changes storage
 references only after verification. Concurrent edits and uploads granted before
 connection are handled without switching them to an unverified destination.

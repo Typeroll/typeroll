@@ -22,7 +22,7 @@ beforeEach(async () => {
     cloudflare: { account_id: 'a'.repeat(32), bucket: 'customer-private', public_bucket: 'customer-public' },
     encrypted_credentials: sealCredentials('org', 'cloudflare', { access_key_id: 'synthetic-key', secret_access_key: 'synthetic-secret' }) });
   const config = await getOrganizationDomains('org');
-  await saveOrganizationDomains('org', { revision: config.revision, default_domain: 'demos.example.com', dns_mode: 'external' });
+  await saveOrganizationDomains('org', { revision: config.revision, sites_domain: 'demos.example.com', media_host: 'media.example.net', dns_mode: 'external' });
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
@@ -77,7 +77,7 @@ it('keeps a stable organization alias when a site gets its own media host and le
   await saveSiteDomains('org', 'site', { revision: config.revision, website_host: 'www.example.com', media_host: 'images.example.com', media_path_prefix: '', dns_mode: 'external' });
   const result = await publicationMediaManifest('org', 'site', { html_content: `<img src="${oldUrl}?size=large#image">` }, 'www.example.com');
   expect(result.content.html_content).toBe('<img src="https://images.example.com/wp-content/uploads/2023/photo.png?size=large#image">');
-  expect(result.manifest?.entries[0].aliases).toContainEqual({ url: 'https://demos.example.com/media/abcdefghij/wp-content/uploads/2023/photo.png', key: 'media/abcdefghij/wp-content/uploads/2023/photo.png' });
+  expect(result.manifest?.entries[0].aliases).toContainEqual({ url: 'https://media.example.net/media/abcdefghij/wp-content/uploads/2023/photo.png', key: 'media/abcdefghij/wp-content/uploads/2023/photo.png' });
   expect(JSON.stringify(result.manifest)).not.toMatch(/synthetic-key|secret_access_key|X-Amz/);
 });
 
@@ -87,8 +87,8 @@ it('uses the exact organization media host and preserves frozen paths after CMS 
     sha256: sha, public_path: '/archive/photo.png', storage: { provider: 'organization_r2',
       account_id: 'a'.repeat(32), bucket: 'customer-private', key: `private/media/abcdefghij/originals/${sha}/image.png`, state: 'ready' } });
   const first = await publicationMediaManifest('org', 'site', { html_content: `<img src="${oldUrl}">` }, 'site.demos.example.com');
-  const organizationUrl = 'https://demos.example.com/media/abcdefghij/archive/photo.png';
-  expect(first.manifest?.media_host).toBe('demos.example.com');
+  const organizationUrl = 'https://media.example.net/media/abcdefghij/archive/photo.png';
+  expect(first.manifest?.media_host).toBe('media.example.net');
   expect(first.content.html_content).toBe(`<img src="${organizationUrl}">`);
   const config = await getSiteDomains('org', 'site');
   await saveSiteDomains('org', 'site', { revision: config.revision, website_host: 'www.example.com',

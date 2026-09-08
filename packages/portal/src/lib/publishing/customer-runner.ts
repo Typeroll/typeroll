@@ -95,7 +95,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const contentCutoff = job.publication_intent === 'domain_prepare' ? priorPublication!.content_cutoff : new Date().toISOString();
       const prefix = digest(`${args.orgId}\0${args.siteId}`).slice(0, 16);
       const host = args.versionId === 'main' && domains.desired.website_host ||
-        `${args.versionId === 'main' ? '' : `v-${digest(args.versionId).slice(0, 8)}-`}site-${prefix}.${organization.default_domain}`;
+        `${args.versionId === 'main' ? '' : `v-${digest(args.versionId).slice(0, 8)}-`}site-${prefix}.${organization.sites_domain}`;
       let frozen: Record<string, any>;
       if (job.publication_intent === 'domain_prepare') {
         if (!prior) throw new ConnectionError('The last public snapshot is missing. Publish the site before preparing domains.', 409);

@@ -30,7 +30,7 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   ]);
   if (previousPublication?.media_manifest) {
     all.splice(0, all.length, ...previousPublication.media_manifest.entries.map((entry: any) => ({ ...entry,
-      public_path: entry.public_path.slice(previousPublication.media_manifest.media_host === organization.default_domain ? prefix.length + 1 : (previousPublication.media_manifest.media_path_prefix ?? '').length),
+      public_path: entry.public_path.slice(previousPublication.media_manifest.media_host === organization.media_host ? prefix.length + 1 : (previousPublication.media_manifest.media_path_prefix ?? '').length),
       storage: { provider: 'organization_r2', state: 'ready', account_id: previousPublication.media_manifest.account_id, bucket: previousPublication.media_manifest.original_bucket, key: entry.source_key },
       source_aliases: [entry.cdn_url.replace(previousPublication.site_url, `https://${websiteHost}`), entry.cdn_url, ...entry.aliases.map((alias: any) => alias.url)],
     })));
@@ -39,9 +39,9 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   const media = all.filter(item => [item.cdn_url, ...(item.source_aliases ?? []), ...(item.variants ?? []).map(variant => variant.cdn_url)].some(url => url && serialized.includes(url)));
   if (!media.length) return { content, media: [], manifest: null };
   if (!connection.cloudflare?.public_bucket || !connection.media_ready) throw new ConnectionError('Complete private and public R2 storage setup in Publishing.', 409, 'media_storage_required');
-  const host = domains.desired.media_host || organization.default_domain;
+  const host = domains.desired.media_host || organization.media_host;
   if (!host) throw new ConnectionError('Set a media host in Publishing before deploying images.', 409, 'media_domain_required');
-  const organizationHost = organization.default_domain;
+  const organizationHost = organization.media_host;
   const sharedHost = host === organizationHost;
   const publicPrefix = sharedHost ? `/${prefix}` : domains.desired.media_path_prefix;
   const replacements = new Map<string, string>();

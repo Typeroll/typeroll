@@ -68,3 +68,15 @@ it('requires a matching verified candidate and certificate before approving exis
   expect(approved.approved_preparation?.dns_fingerprint).toBe('fingerprint');
   expect(approved.active).toBeNull();
 });
+
+it('separates organization site addresses from shared media and preserves legacy configurations', async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getStore } = await import('../../lib/datastore');
+  const { getOrganizationDomains, saveOrganizationDomains, organizationDomainConfigPath } = await import('../../lib/publishing/domain-config');
+  await getStore().setDoc(organizationDomainConfigPath('org'), { revision: 'legacy', default_domain: 'media.example.com', dns_mode: 'external', verified_at: null });
+  expect(await getOrganizationDomains('org')).toMatchObject({ sites_domain: 'media.example.com', media_host: 'media.example.com' });
+  const saved = await saveOrganizationDomains('org', { revision: 'legacy', sites_domain: 'sites.example.com', media_host: 'media.example.com', dns_mode: 'external' });
+  expect(saved).toMatchObject({ sites_domain: 'sites.example.com', media_host: 'media.example.com' });
+  const next = await saveOrganizationDomains('org', { revision: saved.revision, sites_domain: 'demos.example.net', dns_mode: 'external' });
+  expect(next).toMatchObject({ sites_domain: 'demos.example.net', media_host: 'media.example.com' });
+});

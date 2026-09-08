@@ -26,7 +26,10 @@ export interface DomainConfiguration {
 
 export interface OrganizationDomains {
   revision: string;
+  /** Legacy input used for both hosts. New clients use sites_domain and media_host. */
   default_domain: string | null;
+  sites_domain: string | null;
+  media_host: string | null;
   dns_mode: 'automatic' | 'external';
   verified_at: string | null;
 }
@@ -99,9 +102,11 @@ export async function getSiteDomains(orgId: string, siteId: string): Promise<Dom
 export async function getOrganizationDomains(orgId: string): Promise<OrganizationDomains> {
   const path = organizationDomainConfigPath(orgId);
   await getStore().createDocIfMissing(path, {
-    revision: randomUUID(), default_domain: null, dns_mode: 'automatic', verified_at: null,
+    revision: randomUUID(), default_domain: null, sites_domain: null, media_host: null, dns_mode: 'automatic', verified_at: null,
   } satisfies OrganizationDomains);
-  return (await getStore().getDoc<OrganizationDomains>(path))!;
+  const saved = (await getStore().getDoc<OrganizationDomains>(path))!;
+  return { ...saved, sites_domain: Object.hasOwn(saved, 'sites_domain') ? saved.sites_domain : saved.default_domain,
+    media_host: Object.hasOwn(saved, 'media_host') ? saved.media_host : saved.default_domain };
 }
 
 /** Saving intent cannot perform DNS writes, change live origins or publish content. */
@@ -134,17 +139,25 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
 
 export async function saveOrganizationDomains(orgId: string, input: Record<string, unknown>) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ConnectionError('Enter domain settings.', 400);
-  const default_domain = input.default_domain ? publicationHostname(input.default_domain) : null;
   if (!['automatic', 'external'].includes(String(input.dns_mode))) throw new ConnectionError('Select automatic or external DNS management.', 400);
   const current = await getOrganizationDomains(orgId);
-  if (current.default_domain && current.default_domain !== default_domain) {
+  const hostname = (key: string, previous: string | null) => Object.hasOwn(input, key)
+    ? input[key] ? publicationHostname(input[key]) : null : previous;
+  if (Object.hasOwn(input, 'default_domain') && current.sites_domain !== current.media_host &&
+      (!Object.hasOwn(input, 'sites_domain') || !Object.hasOwn(input, 'media_host'))) {
+    throw new ConnectionError('This organization uses separate site and media hosts. Send sites_domain and media_host explicitly.', 400, 'separate_hosts_required');
+  }
+  const legacy = hostname('default_domain', current.default_domain);
+  const sites_domain = hostname('sites_domain', Object.hasOwn(input, 'default_domain') ? legacy : current.sites_domain);
+  const media_host = hostname('media_host', Object.hasOwn(input, 'default_domain') ? legacy : current.media_host);
+  if (current.media_host && current.media_host !== media_host) {
     // Removing an origin requires a separate alias/dependency migration, never a plain settings overwrite.
-    throw new ConnectionError('The existing default domain must remain available for published sites and media. Prepare a domain migration before replacing it.', 409, 'domain_migration_required');
+    throw new ConnectionError('The existing shared media host must remain available for published media. Prepare a domain migration before replacing it.', 409, 'domain_migration_required');
   }
   const changed = await getStore().compareAndUpdateDoc<OrganizationDomains>(organizationDomainConfigPath(orgId),
     value => value.revision === input.revision,
-    { revision: randomUUID(), default_domain, dns_mode: input.dns_mode,
-      verified_at: current.default_domain === default_domain ? current.verified_at : null });
+    { revision: randomUUID(), default_domain: legacy, sites_domain, media_host, dns_mode: input.dns_mode,
+      verified_at: current.media_host === media_host ? current.verified_at : null });
   if (!changed) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
   const { requestMediaMigration } = await import('./media-migration');
   await requestMediaMigration(orgId);

@@ -11,7 +11,7 @@ export async function preparePublicMediaDomains(orgId: string, manifest: { accou
   if (connection.cloudflare?.account_id !== manifest.account_id || connection.cloudflare.public_bucket !== manifest.public_bucket) throw new ConnectionError('The media storage connection changed.', 409);
   const provider = await cloudflareClient(orgId);
   const organization = await getOrganizationDomains(orgId);
-  const organizationHost = organization.default_domain;
+  const organizationHost = organization.media_host;
   const hosts = new Set([organizationHost, manifest.media_host === manifest.website_host ? null : manifest.media_host].filter((host): host is string => Boolean(host)));
   const root = `/accounts/${manifest.account_id}/r2/buckets/${manifest.public_bucket}/domains/custom`;
   for (const host of hosts) {

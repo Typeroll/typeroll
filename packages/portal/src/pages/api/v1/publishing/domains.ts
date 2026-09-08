@@ -1,7 +1,9 @@
 import type { APIRoute } from 'astro';
 import { requireAnyApiKey, apiResponse, apiError } from '../../../../lib/api-auth';
 import { connectionFailure, publishingJsonBody } from '../../../../lib/publishing/http';
-import { getOrganizationDomains, saveOrganizationDomains } from '../../../../lib/publishing/domain-config';
+import { saveOrganizationDomains } from '../../../../lib/publishing/domain-config';
+
+import { getOrganizationDomainStatus } from '../../../../lib/publishing/organization-domain-status';
 
 async function handle(request: Request, write: boolean) {
   const guard = await requireAnyApiKey(request);
@@ -9,8 +11,11 @@ async function handle(request: Request, write: boolean) {
   const ctx = guard.value;
   if (ctx.tokenSiteId !== null) return apiError('An organization API key is required to manage the organization default domain.', 403);
   try {
-    const data = write ? await saveOrganizationDomains(ctx.tokenOrgId, await publishingJsonBody(request)) : await getOrganizationDomains(ctx.tokenOrgId);
-    return apiResponse(ctx, data);
+    if (write) await saveOrganizationDomains(ctx.tokenOrgId, await publishingJsonBody(request));
+    const data = await getOrganizationDomainStatus(ctx.tokenOrgId);
+    const response = apiResponse(ctx, data);
+    response.headers.set('Cache-Control', 'no-store');
+    return response;
   } catch (error) { return connectionFailure(error); }
 }
 export const GET: APIRoute = ({ request }) => handle(request, false);

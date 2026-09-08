@@ -1,6 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import OrganizationDomainStatus from './OrganizationDomainStatus';
+import type { OrganizationDomainStatus as DomainStatus } from '../lib/publishing/organization-domain-status';
 
 type DomainData = {
+  domain_status?: DomainStatus;
+  sites_domain?: string | null; media_host?: string | null;
   revision: string; default_domain?: string | null; dns_mode: 'automatic' | 'external'; verified_at?: string | null;
   desired?: { website_host: string | null; media_host: string | null; media_path_prefix: string };
   active?: { website_host: string | null }; state?: string;
@@ -14,12 +18,14 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [dnsMode, setDnsMode] = useState<'automatic' | 'external'>('automatic');
   useEffect(() => {
     let cancelled = false;
     fetch(endpoint, { cache: 'no-store' }).then(async response => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not load domain settings.');
-      if (!cancelled) setData(result);
+      if (!cancelled) { setData(result); setDnsMode(result.dns_mode); }
     }).catch(error => { if (!cancelled) setError(error.message); });
     return () => { cancelled = true; };
   }, [endpoint]);
@@ -33,8 +39,8 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       const response = await fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not save domain settings.');
-      setData(result);
-      setNotice(siteId ? 'Future addresses saved. Prepare and verify a deployment before switching website traffic.' : 'Default domain saved. Domain verification is required before public use.');
+      setData(result); setDnsMode(result.dns_mode);
+      setNotice(siteId ? 'Future addresses saved. Prepare and verify a deployment before switching website traffic.' : 'Organization domains saved. Check the connection status and next steps below.');
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not save domain settings.'); }
     finally { setBusy(false); }
   }
@@ -42,7 +48,16 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     const response = await fetch(endpoint, { cache: 'no-store' });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Could not check publishing status.');
-    setData(result);
+    if (!siteId) {
+      if (data && result.revision !== data.revision) throw new Error('Domain settings changed in another session. Reload before saving; your entered values are still shown.');
+      setData(current => current ? { ...current, domain_status: result.domain_status } : result);
+    } else setData(result);
+  }
+  async function checkOrganizationDomain() {
+    setChecking(true); setError('');
+    try { await refresh(); }
+    catch (error) { setError(error instanceof Error ? error.message : 'Could not check domain status.'); }
+    finally { setChecking(false); }
   }
   async function prepare() {
     if (!data) return;
@@ -72,9 +87,9 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not switch website traffic.'); }
     finally { setBusy(false); }
   }
-  return <section className="card stack" style={{ maxWidth: 720, marginBottom: '1rem' }}>
-    <h2 style={{ fontSize: '1.125rem' }}>{siteId ? 'Website and media addresses' : 'Default domain'}</h2>
-    <p>{siteId ? 'Choose the website host and the host used for images and other media. Saving these addresses prepares a future change; your current website stays live at its existing address.' : 'Use this hostname for shared media, with site and version addresses under it. Each site can later use its own website and media hosts. You can edit, save and share a temporary preview before connecting a domain.'}</p>
+  return <section className="card stack" style={{ maxWidth: 720, minWidth: 0, overflowWrap: 'anywhere', marginBottom: '1rem' }}>
+    <h2 style={{ fontSize: '1.125rem' }}>{siteId ? 'Website and media addresses' : 'Organization domains'}</h2>
+    <p>{siteId ? 'Choose the website host and the host used for images and other media. Saving these addresses prepares a future change; your current website stays live at its existing address.' : 'Use separate hostnames for sites and media. Your root domain, email and other subdomains stay with their existing services.'}</p>
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {!data && !error && <p role="status">Loading domain settings…</p>}
@@ -99,14 +114,21 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
         <label className="field">Media path prefix<input name="media_path_prefix" defaultValue={data.desired?.media_path_prefix ?? ''} placeholder="/media when using the website host" autoCapitalize="none" spellCheck={false} /></label>
         <p className="muted">Leave the media path prefix empty for a separate media host. Use /media when the website and media share a host. Existing media addresses remain available after the change.</p>
         {data.active?.website_host && <p>Current website host: {data.active.website_host}</p>}
-      </> : <label className="field">Organization default domain<input name="default_domain" defaultValue={data.default_domain ?? ''} placeholder="demos.example.com" autoCapitalize="none" spellCheck={false} /></label>}
-      <label className="field">DNS management<select name="dns_mode" defaultValue={data.dns_mode} style={{ width: '100%', minWidth: 0 }}>
-        <option value="automatic">Typeroll manages DNS in Cloudflare</option>
-        <option value="external">I or my AI agent manage DNS</option>
+      </> : <>
+        <label className="field">Site address base<input name="sites_domain" defaultValue={(data.sites_domain === undefined ? data.default_domain : data.sites_domain) ?? ''} placeholder="sites.example.com" autoCapitalize="none" spellCheck={false} /></label>
+        <p className="muted">Used for addresses such as site-123.sites.example.com, including separate versions. Each site can later use its own domain.</p>
+        <label className="field">Shared media host<input name="media_host" defaultValue={(data.media_host === undefined ? data.default_domain : data.media_host) ?? ''} placeholder="media.example.com" autoCapitalize="none" spellCheck={false} /></label>
+        <p className="muted">Public images and other media use this host, with a separate path for each site.</p>
+      </>}
+      <label className="field">DNS management<select name="dns_mode" value={dnsMode} onChange={event => setDnsMode(event.target.value as 'automatic' | 'external')} style={{ width: '100%', minWidth: 0 }}>
+        <option value="automatic">Typeroll (automatic)</option>
+        <option value="external">Me or my AI agent</option>
       </select></label>
-      <p className="muted">Automatic setup needs access to this domain in the connected Cloudflare account. With external DNS management, you or your AI agent apply the required records and ask Typeroll to verify them.</p>
-      <p className="muted">R2 media hosts require the domain in the same Cloudflare account as your storage. If DNS is hosted elsewhere, move the domain’s DNS to Cloudflare or use Cloudflare’s Business/Enterprise partial setup. Choosing external DNS management does not remove this requirement.</p>
-      <div><button className="btn" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save domain settings'}</button></div>
+      <p className="muted">{siteId ? 'Saving sets future addresses. Prepare and verify a deployment before switching website traffic.' : dnsMode === 'automatic' ? 'Typeroll sets up the media hostname in the connected Cloudflare account after you save. The domain must already be active in that account. DNS at another provider still needs manual setup there.' : 'You or your AI agent set up the domain and DNS records, then Typeroll checks the result. This works with Cloudflare DNS or another DNS provider.'}</p>
+      <p className="muted">External DNS for R2 media requires Cloudflare Business/Enterprise partial (CNAME) setup. Your nameservers and other DNS records stay where they are.</p>
+      <div><button className="btn" type="submit" disabled={busy || checking}>{busy ? 'Saving…' : 'Save domain settings'}</button></div>
     </form>}
+    {!siteId && data?.sites_domain && <p className="muted">Site address base saved: <strong>{data.sites_domain}</strong>. Connection status and required DNS records are shown for each site and version when you deploy.</p>}
+    {!siteId && data && <OrganizationDomainStatus status={data.domain_status} checking={checking || busy} onRefresh={() => void checkOrganizationDomain()} />}
   </section>;
 }

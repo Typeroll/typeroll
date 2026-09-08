@@ -66,14 +66,15 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'read_organization_publishing_domains',
-    description: 'Read the organization default domain. Requires an organization API key; site keys cannot access organization publishing settings.',
+    description: 'Read the organization site address base, shared media host, live Cloudflare media-domain status and setup instructions. This read does not modify DNS. Requires an organization API key; site keys cannot access organization publishing settings.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/domains'))),
   },
   {
     name: 'set_organization_publishing_domains',
-    description: 'Save the organization default domain used for demos and site versions. Requires an organization API key and the current settings revision. Does not modify DNS or replace an existing active domain.',
-    inputSchema: { revision: z.string(), default_domain: z.string().nullable(), dns_mode: z.enum(['automatic', 'external']) },
+    description: 'Save separate organization hostnames: sites_domain for site and version addresses, media_host for shared media. Requires an organization API key and current settings revision. Automatic DNS mode queues media setup; external mode leaves DNS to you. Does not change nameservers or replace an existing media host.',
+    inputSchema: { revision: z.string(), sites_domain: z.string().nullable().optional(), media_host: z.string().nullable().optional(),
+      default_domain: z.string().nullable().optional().describe('Legacy shorthand for both hostnames; prefer sites_domain and media_host.'), dns_mode: z.enum(['automatic', 'external']) },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPut('publishing/domains', args))),
   },
   {

@@ -109,11 +109,13 @@ it('resolves the selected version without writing main and handles provider retr
   await getStore().setDoc(`${paths.pages('org', 'site', 'design')}/home`, { title: 'Design', slug: '', content_mode: 'html', html_content: '<h1>Design version</h1>', status: 'published' });
   const { getOrganizationDomains, saveOrganizationDomains } = await import('../../lib/publishing/domain-config');
   const organization = await getOrganizationDomains('org');
-  await saveOrganizationDomains('org', { revision: organization.revision, default_domain: 'demos.example.com', dns_mode: 'external' });
+  await saveOrganizationDomains('org', { revision: organization.revision, sites_domain: 'sites.example.com', media_host: 'media.example.net', dns_mode: 'external' });
   const branchArgs = { ...args, versionId: 'design' };
   expect(await executeCustomerPublication(branchArgs)).toBe('deferred');
   const request = mocks.push.mock.calls[0][1];
   expect(request.branch).toBe('version-design');
+  expect((await getStore().getDoc<any>(jobPath)).git_publication.website_host).toMatch(/\.sites\.example\.com$/);
+  expect((await getStore().getDoc<any>(jobPath)).git_publication.website_host).not.toContain('media.example.net');
   const frozen = JSON.parse(request.files['publication.json']);
   expect(frozen.pages[0].html_content).toContain('Design version');
   expect(frozen.settings.sitewide_noindex).toBe(true);

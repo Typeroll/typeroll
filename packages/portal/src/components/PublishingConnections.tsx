@@ -149,7 +149,7 @@ export default function PublishingConnections() {
 
   return <div className="stack" style={{ maxWidth: 760 }} aria-busy={busy || checkingMedia}>
     <p>Connect GitHub and one Cloudflare account for your organization, then reuse these connections across its sites. Each site will have its own private GitHub repository and static Cloudflare Pages project.</p>
-    <p className="muted">You can edit, save and share temporary previews before connecting these accounts. To publish a new site, complete these connections and set an organization default domain or the site’s own website address.</p>
+    <p className="muted">You can edit, save and share temporary previews before connecting these accounts. To publish a new site, complete these connections and set a site address base for the organization or the site’s own website address.</p>
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {!data ? <p>Loading connections…</p> : <>
