@@ -129,7 +129,7 @@ export default function PublishingConnections() {
   const r2Overview = cloudflareAccount ? `https://dash.cloudflare.com/${cloudflareAccount.account_id}/r2/overview` : 'https://dash.cloudflare.com/';
   const mediaReady = Boolean(data?.cloudflare.media_ready && mediaBucket && cloudflareAccount?.public_bucket);
   const mediaAccessForm = <div className="stack">
-    <p>Create one R2 upload token in Cloudflare and paste its two keys below. This allows direct uploads from your browser to R2. You only do this once for all sites in this organization.</p>
+    <p>Create one R2 upload token in Cloudflare and paste its two keys below. This allows direct uploads from your browser to R2. The keys are saved only after writing, reading and deleting a test file succeeds in both buckets. You only do this once for all sites in this organization.</p>
     <a className="btn btn--secondary" style={{ alignSelf: 'flex-start', whiteSpace: 'normal' }} href={r2Overview} target="_blank" rel="noreferrer">Open R2 in {cloudflareAccount?.account_name} ↗</a>
     <ol style={{ paddingInlineStart: 24 }}>
       <li>In <strong>R2 object storage → Overview</strong>, find <strong>Account Details → API Tokens</strong> and select <strong>Manage</strong>.</li>

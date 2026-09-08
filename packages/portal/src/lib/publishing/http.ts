@@ -1,5 +1,6 @@
 import type { APIContext } from 'astro';
 import { json, requireFullSession, requireOrgAdmin } from '../access';
+import { R2VerificationError } from './r2-verification-error';
 import { ConnectionError } from './connections';
 import { ProviderError } from './providers.mjs';
 import { getStore } from '../datastore';
@@ -26,6 +27,7 @@ export function privateJson(data: unknown, status = 200): Response {
 }
 
 export function connectionFailure(error: unknown): Response {
+  if (error instanceof R2VerificationError) return privateJson({ error: error.message, code: error.code, details: error.diagnostic }, error.status);
   if (error instanceof ConnectionError) return privateJson({ error: error.message, ...(error.code ? { code: error.code } : {}) }, error.status);
   if (error instanceof ProviderError) {
     if (error.codes.includes(10042)) return privateJson({ code: 'r2_activation_required', error: 'R2 is not activated in the connected Cloudflare account. Open Storage & databases → R2 object storage → Overview in Cloudflare and complete the R2 subscription checkout, including billing details if requested. Then return to Typeroll and select I’ve activated R2 — check again. Connecting Cloudflare to Typeroll does not activate R2.' }, 409);

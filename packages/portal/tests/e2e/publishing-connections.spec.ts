@@ -154,7 +154,7 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
     if (body.action === 'save_media') {
       if (keysRejected) {
         keysRejected = false;
-        return route.fulfill({ status: 502, json: { code: 'r2_verification_failed', error: 'R2 upload access could not be verified. Create an R2 token with Object Read & Write access to agency-media and copy both keys.' } });
+        return route.fulfill({ status: 502, json: { code: 'r2_verification_failed', error: 'R2 verification failed: could not read the test file from bucket typeroll-public-09b4b053a9a4768f (account bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb). AccessDenied, HTTP 403. Cloudflare denied this operation. Check that the R2 token has Object Read & Write access to this bucket. These submitted keys have not been saved.' } });
       }
       phase = 'ready';
     }
@@ -202,9 +202,14 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   await page.locator('#oauth-r2-access').fill('synthetic-access');
   await page.locator('#oauth-r2-secret').fill('synthetic-secret');
   await page.getByRole('button', { name: 'Verify keys and finish setup' }).click();
-  await expect(media.getByRole('alert')).toContainText('Object Read & Write access to agency-media');
+  await expect(media.getByRole('alert')).toContainText('could not read the test file from bucket typeroll-public-09b4b053a9a4768f');
   await expect(media.getByRole('alert')).toBeFocused();
   await expect(media.getByRole('alert')).not.toContainText('R2 is not activated');
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await media.getByRole('alert').screenshot({ path: testInfo.outputPath(`r2-verification-error-${width}.png`) });
+  }
   await expect(page.locator('#oauth-r2-access')).toHaveValue('synthetic-access');
   await expect(media.getByText('R2 connected', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Verify keys and finish setup' }).click();

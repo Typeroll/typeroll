@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { R2VerificationError, r2Diagnostic, type R2VerificationDiagnostic, type R2VerificationStep } from './r2-verification-error';
 import type { FullSession } from '../access';
 import { isSecretCryptoConfigured } from '../secret-crypto';
 import { claimAccount, ConnectionError, getConnection, saveConnection, sealCredentials, openCredentials } from './connections';
@@ -35,17 +36,30 @@ export async function verifyR2(accountId: string, bucket: string, credentials: C
     credentials: { accessKeyId: credentials.access_key_id, secretAccessKey: credentials.secret_access_key }, maxAttempts: 1 });
   const key = `_typeroll/connection-checks/${randomUUID()}`;
   const body = randomUUID();
+  let step: R2VerificationStep = 'write';
+  let failure: R2VerificationDiagnostic | undefined;
+  let cleanupFailure: R2VerificationDiagnostic | undefined;
   try {
     try {
       await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: 'text/plain' }), { abortSignal: AbortSignal.timeout(15_000) });
+      step = 'read';
       const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: AbortSignal.timeout(15_000) });
-      if (await response.Body?.transformToString() !== body) throw new Error();
-    } finally {
-      // Also clean up an ambiguous upload that timed out after the object was stored.
+      if (await response.Body?.transformToString() !== body) throw { name: 'ContentMismatch' };
+    } catch (error) { failure = r2Diagnostic(step, error); }
+    // Clean up even an ambiguous upload, but never overwrite the original failure.
+    try {
       await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }), { abortSignal: AbortSignal.timeout(15_000) });
+    } catch (error) {
+      const cleanup = r2Diagnostic('delete', error);
+      if (failure) cleanupFailure = cleanup;
+      else failure = cleanup;
     }
-  } catch { throw new ConnectionError(`R2 upload access could not be verified. In Cloudflare, create an R2 token with Object Read & Write access to the bucket ${bucket}. Copy both its Access Key ID and Secret Access Key into Typeroll, then try again. If the keys are correct, retry after checking Cloudflare availability.`, 502, 'r2_verification_failed'); }
-  finally { client.destroy(); }
+    if (failure) {
+      const diagnostic = { ...failure, account_id: accountId, bucket, ...(cleanupFailure ? { cleanup_failure: cleanupFailure } : {}) };
+      console.warn('R2 verification failed', diagnostic);
+      throw new R2VerificationError(diagnostic);
+    }
+  } finally { client.destroy(); }
 }
 
 export async function connectCloudflare(session: FullSession, input: unknown, fetchImpl: typeof fetch = fetch): Promise<void> {

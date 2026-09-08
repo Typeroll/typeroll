@@ -287,8 +287,46 @@ describe('Cloudflare connection and encrypted credentials', () => {
 
   it.each(['put', 'read', 'delete'] as const)('fails closed on R2 %s failure and attempts cleanup without reflecting credentials', async (failure) => {
     const s3 = fakeS3(failure);
-    await expect(verifyR2(accountId, 'agency-media', credentials)).rejects.toThrow('R2 upload access could not be verified');
+    await expect(verifyR2(accountId, 'agency-media', credentials)).rejects.toThrow('R2 verification failed');
     expect(s3.mock.calls.at(-1)?.[0]).toBeInstanceOf(DeleteObjectCommand);
+  });
+
+  it.each([
+    ['AccessDenied', 403, 'write', 'Object Read & Write'],
+    ['SignatureDoesNotMatch', 403, 'write', 'matching pair'],
+    ['InvalidAccessKeyId', 403, 'write', 'did not recognize'],
+    ['NoSuchBucket', 404, 'write', 'could not find'],
+    ['TimeoutError', undefined, 'read', 'same keys'],
+    ['ServiceUnavailable', 503, 'delete', 'temporarily unavailable'],
+  ] as const)('reports %s at the failing %s step without reflecting provider secrets', async (name, status, phase, explanation) => {
+    let stored = '';
+    vi.spyOn(S3Client.prototype, 'send').mockImplementation((async (command: unknown) => {
+      const step = command instanceof PutObjectCommand ? 'write' : command instanceof GetObjectCommand ? 'read' : 'delete';
+      if (step === phase) throw Object.assign(new Error(credentials.secret_access_key), { name, $metadata: { httpStatusCode: status } });
+      if (command instanceof PutObjectCommand) stored = command.input.Body as string;
+      return { Body: { transformToString: async () => stored } };
+    }) as any);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let caught: any;
+    try { await verifyR2(accountId, 'published-media', credentials); } catch (error) { caught = error; }
+    expect(caught?.diagnostic).toMatchObject({ step: phase, provider_code: name, http_status: status ?? null, bucket: 'published-media' });
+    expect(caught?.message).toContain(explanation);
+    expect(caught?.message).toContain('These submitted keys have not been saved');
+    expect(JSON.stringify([caught, warning.mock.calls])).not.toContain(credentials.secret_access_key);
+  });
+
+  it('preserves the write failure when cleanup also fails and strips arbitrary provider data', async () => {
+    vi.spyOn(S3Client.prototype, 'send').mockImplementation((async (command: unknown) => {
+      if (command instanceof PutObjectCommand) throw { name: 'SignatureDoesNotMatch', message: credentials.secret_access_key, $metadata: { httpStatusCode: 403, requestId: credentials.api_token } };
+      throw { name: credentials.secret_access_key, code: credentials.access_key_id, $metadata: { httpStatusCode: credentials.api_token } };
+    }) as any);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let caught: any;
+    try { await verifyR2(accountId, 'agency-media', credentials); } catch (error) { caught = error; }
+    expect(caught?.diagnostic).toEqual({ step: 'write', provider_code: 'SignatureDoesNotMatch', http_status: 403, bucket: 'agency-media', account_id: accountId,
+      cleanup_failure: { step: 'delete', provider_code: 'Unknown', http_status: null } });
+    expect(caught?.message).toContain('Cleanup also failed');
+    for (const secret of Object.values(credentials)) expect(JSON.stringify([caught, warning.mock.calls])).not.toContain(secret);
   });
 
   it('does not replace saved credentials after failed R2 verification or switch accounts during rotation', async () => {
@@ -317,7 +355,7 @@ describe('Cloudflare connection and encrypted credentials', () => {
     const invalid = await call(POST, routeContext('POST', 'cloudflare', { action: 'save_media', revision, ...credentials }));
     expect(invalid.status).toBe(502);
     const body = await invalid.json();
-    expect(body).toMatchObject({ code: 'r2_verification_failed', error: expect.stringContaining('Object Read & Write access to the bucket agency-media') });
+    expect(body).toMatchObject({ code: 'r2_verification_failed', error: expect.stringContaining('could not write a test file to bucket agency-media'), details: { step: 'write', provider_code: 'Unknown', http_status: null, account_id: accountId, bucket: 'agency-media' } });
     for (const secret of Object.values(credentials)) expect(JSON.stringify(body)).not.toContain(secret);
     expect((await getConnection('default', 'cloudflare')).media_ready).not.toBe(true);
   });
