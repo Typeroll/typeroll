@@ -44,12 +44,24 @@ manage these connections.
    application → Pages → Connect to Git → + Add account**. Select the same GitHub
    organization and **All repositories**. Stop at the repository list and return
    to Typeroll. This is separate from the Typeroll App installation.
-6. Under **Organization domains**, enter **Site address base**, such as
-   `sites.example.com`, and **Shared media host**, such as `media.example.com`.
-   These are independent hostnames. Choose who manages DNS: **Typeroll
-   (automatic)** or **Me or my AI agent**. Save, then read **Shared media domain
-   status** and its setup instructions. **Check domain status** reads Cloudflare
-   again without changing DNS or publishing content.
+6. Under **Organization domains**, choose a **Cloudflare domain** from the connected
+   account. Enter short labels in **Media subdomain** and **Sites subdomain**, such
+   as `media` and `sites`. The complete addresses appear below the fields. Select
+   **Configure domains** to connect the media hostname to R2 and queue media
+   migration. HTTPS activation is checked automatically. Each site and version
+   gets its own website address when you publish.
+
+If the domain is missing, check that it is Active in the connected Cloudflare
+account and that the connection has access to it. Reconnect with Zone Read, DNS
+Edit and R2 access if needed, then select **Refresh domain list**. A Cloudflare
+browser login does not grant additional domain access to an existing connection.
+Typeroll will not replace an existing DNS destination or an existing shared media
+hostname through this setup action.
+
+For external DNS or agent-managed settings, open **Manual settings or external
+DNS**. Enter the complete **Site address base** and **Shared media host**, choose
+**Me or my AI agent**, and save. Read **Setup instructions**, apply the records,
+then select **Check domain status**.
 
 One Cloudflare account belongs to the Typeroll organization. Its site address base
 and shared media hostname are configured separately.
@@ -104,6 +116,22 @@ PUT route or `set_organization_publishing_domains`. Legacy `default_domain`
 configurations retain their old addresses until explicitly updated. Changing the
 site address base affects subsequent deployments; an existing shared media host
 cannot be replaced by a plain settings overwrite.
+
+To use the same automatic setup from an agent:
+
+1. Call `GET /api/v1/publishing/zones` or MCP
+   `list_organization_publishing_domains` to list available domains.
+2. Read the current configuration revision from the domains endpoint.
+3. Call `POST /api/v1/publishing/domains` or
+   `configure_organization_publishing_domains` with `revision`, `zone_id`,
+   `media_subdomain` and `sites_subdomain`. The labels contain no dots or URL.
+4. Poll the domains endpoint while `domain_status.state` is `pending`. A
+   `setup_error` means settings were saved but provider setup needs attention;
+   use the returned revision when retrying.
+
+These endpoints require an organization API key. Site keys cannot discover or
+configure organization domains. Setup creates the selected R2 media connection;
+it does not publish a website or modify unrelated DNS records.
 
 ## Publish a site or version
 

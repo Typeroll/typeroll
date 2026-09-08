@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { GET } from '../../pages/api/v1/publishing/domains';
+import { GET, POST } from '../../pages/api/v1/publishing/domains';
 import { requireAnyApiKey } from '../../lib/api-auth';
 import { getOrganizationDomainStatus } from '../../lib/publishing/organization-domain-status';
 vi.mock('../../lib/api-auth', () => ({ requireAnyApiKey: vi.fn(), apiResponse: (_ctx: unknown, data: unknown) => Response.json(data), apiError: (error: string, status: number) => Response.json({ error }, { status }) }));
@@ -20,4 +20,10 @@ it('returns the shared status and instructions to the correct organization with 
   expect(response.headers.get('Cache-Control')).toBe('no-store');
   expect(await response.json()).toEqual(expected);
   expect(getOrganizationDomainStatus).toHaveBeenCalledExactlyOnceWith('org');
+});
+
+it('denies site-scoped keys before configuring organization domains', async () => {
+  vi.mocked(requireAnyApiKey).mockResolvedValue({ ok: true, value: { tokenSiteId: 'site', tokenOrgId: 'org' } } as any);
+  const response = await POST({ request: new Request(request.url, { method: 'POST', body: '{}' }) } as any);
+  expect(response.status).toBe(403);
 });

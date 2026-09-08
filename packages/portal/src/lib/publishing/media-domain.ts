@@ -9,7 +9,7 @@ import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/publ
 export async function preparePublicMediaDomains(orgId: string, manifest: { account_id: string; public_bucket: string; media_host: string; website_host: string; dns_mode?: 'automatic' | 'external'; site_prefix: string; entries: Array<{ cdn_url: string; sha256: string; aliases: Array<{ url: string }> }> }) {
   const connection = await getConnection(orgId, 'cloudflare');
   if (connection.cloudflare?.account_id !== manifest.account_id || connection.cloudflare.public_bucket !== manifest.public_bucket) throw new ConnectionError('The media storage connection changed.', 409);
-  const provider = await cloudflareClient(orgId);
+  const provider = await cloudflareClient(orgId, fetch, connection.revision);
   const organization = await getOrganizationDomains(orgId);
   const organizationHost = organization.media_host;
   const hosts = new Set([organizationHost, manifest.media_host === manifest.website_host ? null : manifest.media_host].filter((host): host is string => Boolean(host)));
@@ -19,7 +19,7 @@ export async function preparePublicMediaDomains(orgId: string, manifest: { accou
     const mode = host === organizationHost ? organization.dns_mode : manifest.dns_mode ?? organization.dns_mode;
     // External agents need no zone-read or ruleset grant in Typeroll. Actual public bytes below prove their setup.
     if (mode === 'external') {
-      if (!current || current.enabled !== true) throw new ConnectionError(`Connect ${host} to the public R2 bucket ${manifest.public_bucket} in Cloudflare → R2 object storage → ${manifest.public_bucket} → Settings → Custom Domains. For a site media host, add a URL Rewrite Rule that prepends /${manifest.site_prefix}. The domain must be added to the same Cloudflare account as the bucket. Keeping DNS at another provider requires Cloudflare Business/Enterprise partial setup. Then retry verification.`, 409, 'media_domain_setup_required');
+      if (!current || current.enabled !== true) throw new ConnectionError(`Connect ${host} to the public R2 bucket ${manifest.public_bucket} in Cloudflare → R2 object storage → ${manifest.public_bucket} → Settings → Custom Domains. ${host !== organizationHost && manifest.site_prefix ? `For this site media host, add a URL Rewrite Rule that prepends /${manifest.site_prefix}. ` : ''}The domain must be added to the same Cloudflare account as the bucket. Keeping DNS at another provider requires Cloudflare Business/Enterprise partial setup. Then retry verification.`, 409, 'media_domain_setup_required');
       continue;
     }
     const zone = await findPublishingZone(provider, manifest.account_id, host).catch(error => {
@@ -28,7 +28,7 @@ export async function preparePublicMediaDomains(orgId: string, manifest: { accou
     });
     if (!current) {
       const records = await provider(`/zones/${zone.id}/dns_records?name=${encodeURIComponent(host)}&per_page=100`);
-      if (records.some((record: { type: string }) => ['A', 'AAAA', 'CNAME'].includes(record.type))) throw new ConnectionError('The media hostname already serves another destination. Prepare an explicit domain cutover before replacing it.', 409, 'media_domain_cutover_required');
+      if (records.some((record: { type: string }) => ['A', 'AAAA', 'CNAME', 'NS'].includes(record.type))) throw new ConnectionError('The media hostname already serves another destination. Prepare an explicit domain cutover before replacing it.', 409, 'media_domain_cutover_required');
       await provider(root, { method: 'POST', body: { domain: host, enabled: true, zoneId: zone.id, minTLS: '1.2' } });
       current = await provider(`${root}/${host}`);
     }

@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { authenticatePersona } from './helpers/auth';
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/orgs/publishing/zones', route => route.fulfill({ json: { account_name: 'Example', zones: [] } }));
+});
+
 test('organization domain form saves the exact hostname and remains usable on mobile', async ({ page }) => {
   let domain = { revision: 'initial', sites_domain: null as string | null, media_host: null as string | null, dns_mode: 'automatic', verified_at: null };
   await page.route('**/api/orgs/publishing/domains', async route => {
@@ -14,6 +18,7 @@ test('organization domain form saves the exact hostname and remains usable on mo
   });
   await authenticatePersona(page, 'owner');
   await page.goto('/app/settings/publishing');
+  await page.getByText('Manual settings or external DNS', { exact: true }).click();
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Organization domains', exact: true }) });
   await expect(section.getByLabel('Shared media host')).toBeVisible();
   for (const width of [320, 390, 1440]) {
@@ -41,6 +46,7 @@ test('organization domain errors stay visible without losing the entered hostnam
   });
   await authenticatePersona(page, 'owner');
   await page.goto('/app/settings/publishing');
+  await page.getByText('Manual settings or external DNS', { exact: true }).click();
   await page.getByLabel('Shared media host').fill('https://media.example.com/path');
   await page.getByRole('button', { name: 'Save domain settings' }).click();
   await expect(page.getByRole('alert')).toContainText('without https:// or a path');
@@ -71,6 +77,7 @@ test('shows media status and external DNS instructions without discarding unsave
   });
   await authenticatePersona(page, 'owner');
   await page.goto('/app/settings/publishing');
+  await page.getByText('Manual settings or external DNS', { exact: true }).click();
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Organization domains', exact: true }) });
   await expect(section.getByText('Waiting for domain activation', { exact: true })).toBeVisible();
   await expect(section.getByText('External DNS with Cloudflare partial setup', { exact: false })).toBeVisible();
@@ -87,4 +94,47 @@ test('shows media status and external DNS instructions without discarding unsave
   await expect(section.getByText('Media domain active in Cloudflare', { exact: true })).toBeVisible();
   await expect(section.getByLabel('Site address base')).toHaveValue('unsaved.example.com');
   await expect(section.getByLabel('Shared media host')).toHaveValue('media.example.net');
+});
+
+test('configures short subdomains in one action and automatically checks activation without losing edits', async ({ page }) => {
+  const zone = { id: 'a'.repeat(32), name: 'example.com', status: 'active', type: 'full' };
+  await page.route('**/api/orgs/publishing/zones', route => route.fulfill({ json: { account_name: 'Example', zones: [zone] } }));
+  let configured = false, active = false;
+  await page.route('**/api/orgs/publishing/domains', async route => {
+    if (route.request().method() === 'POST') {
+      expect(route.request().postDataJSON()).toEqual({ revision: 'initial', zone_id: zone.id, media_subdomain: 'media', sites_subdomain: 'demos' });
+      configured = true;
+    }
+    await route.fulfill({ json: { revision: configured ? 'saved' : 'initial', sites_domain: configured ? 'demos.example.com' : null, media_host: configured ? 'media.example.com' : null, dns_mode: 'automatic',
+      domain_status: { state: configured ? active ? 'active' : 'pending' : 'not_configured', checked_at: new Date().toISOString(), hostname: configured ? 'media.example.com' : null,
+        message: active ? 'Cloudflare has activated the domain.' : 'Waiting for Cloudflare.', account_name: 'Example', steps: [] } } });
+  });
+  await authenticatePersona(page, 'owner');
+  await page.goto('/app/settings/publishing');
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Organization domains', exact: true }) });
+  await expect(section.getByLabel('Cloudflare domain')).toHaveValue(zone.id);
+  await expect(section.getByLabel('Media subdomain')).toHaveValue('media');
+  await section.getByLabel('Sites subdomain').fill('demos');
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await section.screenshot({ path: `test-results/domain-setup-${width}.png`, animations: 'disabled' });
+  }
+  await section.getByRole('button', { name: 'Configure domains', exact: true }).click();
+  await expect(section.getByText('Waiting for domain activation', { exact: true })).toBeVisible();
+  await section.getByLabel('Sites subdomain').fill('unsaved');
+  active = true;
+  await expect(section.getByText('Media domain active in Cloudflare', { exact: true })).toBeVisible({ timeout: 12000 });
+  await expect(section.getByLabel('Sites subdomain')).toHaveValue('unsaved');
+  await section.getByRole('button', { name: 'Refresh domain list' }).click();
+  await expect(section.getByLabel('Sites subdomain')).toHaveValue('unsaved');
+});
+
+test('rejects organization domain setup and discovery for a site editor and cross-origin writes', async ({ page }) => {
+  await page.unroute('**/api/orgs/publishing/zones');
+  await authenticatePersona(page, 'editor');
+  expect((await page.request.get('/api/orgs/publishing/zones')).status()).toBe(403);
+  expect((await page.request.post('/api/orgs/publishing/domains', { data: {} })).status()).toBe(403);
+  await authenticatePersona(page, 'owner');
+  expect((await page.request.post('/api/orgs/publishing/domains', { headers: { Origin: 'https://other.example.com' }, data: {} })).status()).toBe(403);
 });

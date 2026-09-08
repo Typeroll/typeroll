@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import OrganizationDomainStatus from './OrganizationDomainStatus';
+import OrganizationDomainSetup from './OrganizationDomainSetup';
 import type { OrganizationDomainStatus as DomainStatus } from '../lib/publishing/organization-domain-status';
 
 type DomainData = {
@@ -13,6 +14,7 @@ type DomainData = {
 };
 
 export default function PublishingDomains({ siteId }: { siteId?: string }) {
+  const FormContainer = siteId ? 'div' : 'details';
   const endpoint = siteId ? `/api/sites/${encodeURIComponent(siteId)}/publishing/domains` : '/api/orgs/publishing/domains';
   const [data, setData] = useState<DomainData | null>(null);
   const [error, setError] = useState('');
@@ -59,6 +61,23 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     catch (error) { setError(error instanceof Error ? error.message : 'Could not check domain status.'); }
     finally { setChecking(false); }
   }
+  async function setupOrganization(body: Record<string, string>) {
+    setBusy(true); setError(''); setNotice('');
+    try {
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not configure domains.');
+      setData(result); setDnsMode(result.dns_mode);
+      if (result.setup_error) setError(result.setup_error);
+      else setNotice('Domains configured. Cloudflare activation is checked automatically. Each site and version gets its own address when you publish.');
+    } catch (error) { setError(error instanceof Error ? error.message : 'Could not configure domains.'); }
+    finally { setBusy(false); }
+  }
+  useEffect(() => {
+    if (siteId || data?.domain_status?.state !== 'pending') return;
+    const interval = setInterval(() => { void refresh().catch(error => setError(error.message)); }, 5000);
+    return () => clearInterval(interval);
+  }, [endpoint, siteId, data?.revision, data?.domain_status?.state]);
   async function prepare() {
     if (!data) return;
     setBusy(true); setError('');
@@ -107,7 +126,10 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
         <button type="button" className="btn" disabled={busy || (!data.preparation.certificate_ready && data.preparation.has_existing_traffic !== false)} onClick={() => void switchTraffic()}>Switch website traffic</button>
       </>}
     </div>}
-    {data && <form className="stack" onSubmit={save} key={data.revision}>
+    {!siteId && data && <OrganizationDomainSetup data={data} busy={busy || checking} onSetup={setupOrganization} />}
+    {data && <FormContainer>
+    {!siteId && <summary>Manual settings or external DNS</summary>}
+    <form className="stack" onSubmit={save} key={data.revision}>
       {siteId ? <>
         <label className="field">Website host<input name="website_host" defaultValue={data.desired?.website_host ?? ''} placeholder="www.example.com" autoCapitalize="none" spellCheck={false} /></label>
         <label className="field">Media host<input name="media_host" defaultValue={data.desired?.media_host ?? ''} placeholder="media.example.com" autoCapitalize="none" spellCheck={false} /></label>
@@ -127,7 +149,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       <p className="muted">{siteId ? 'Saving sets future addresses. Prepare and verify a deployment before switching website traffic.' : dnsMode === 'automatic' ? 'Typeroll sets up the media hostname in the connected Cloudflare account after you save. The domain must already be active in that account. DNS at another provider still needs manual setup there.' : 'You or your AI agent set up the domain and DNS records, then Typeroll checks the result. This works with Cloudflare DNS or another DNS provider.'}</p>
       <p className="muted">External DNS for R2 media requires Cloudflare Business/Enterprise partial (CNAME) setup. Your nameservers and other DNS records stay where they are.</p>
       <div><button className="btn" type="submit" disabled={busy || checking}>{busy ? 'Saving…' : 'Save domain settings'}</button></div>
-    </form>}
+    </form></FormContainer>}
     {!siteId && data?.sites_domain && <p className="muted">Site address base saved: <strong>{data.sites_domain}</strong>. Connection status and required DNS records are shown for each site and version when you deploy.</p>}
     {!siteId && data && <OrganizationDomainStatus status={data.domain_status} checking={checking || busy} onRefresh={() => void checkOrganizationDomain()} />}
   </section>;

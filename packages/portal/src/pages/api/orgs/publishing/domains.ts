@@ -3,6 +3,14 @@ import { publishingAdmin, privateJson, connectionBody, connectionFailure } from 
 import { saveOrganizationDomains } from '../../../../lib/publishing/domain-config';
 
 import { getOrganizationDomainStatus } from '../../../../lib/publishing/organization-domain-status';
+import { setupOrganizationDomains } from '../../../../lib/publishing/organization-domain-setup';
+
+export const POST: APIRoute = async context => {
+  const guard = await publishingAdmin(context);
+  if (!guard.ok) return guard.response;
+  try { return privateJson(await setupOrganizationDomains(guard.value.orgId, await connectionBody(context.request) as Record<string, unknown>)); }
+  catch (error) { return connectionFailure(error); }
+};
 
 export const GET: APIRoute = async context => {
   const guard = await publishingAdmin(context);

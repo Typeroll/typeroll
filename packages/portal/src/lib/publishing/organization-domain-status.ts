@@ -83,6 +83,13 @@ export async function getOrganizationDomainStatus(orgId: string) {
       ? 'Cloudflare denied access to the R2 domain settings. Reconnect Cloudflare in Publishing with permission to read R2 settings, then check again. Your saved domain has not been changed.'
       : 'Could not read Cloudflare domain status. Check the Cloudflare connection and try again. This does not mean that the domain is disconnected.';
   }
+  if (domains.dns_mode === 'automatic' && status.zone?.type === 'full' && status.zone.status === 'active') {
+    if (status.state === 'pending' && !['error', 'blocked', 'deactivated'].includes(status.ownership ?? '') && !['error', 'deactivated'].includes(status.certificate ?? '')) {
+      status.message = 'The media domain is connected to R2. Cloudflare is activating HTTPS; Typeroll checks progress automatically.';
+    }
+    status.steps = [{ title: 'Configure in Typeroll', description: 'Select this Cloudflare domain above, enter the media and sites subdomains, then select Configure domains. Typeroll connects media to R2 and checks activation automatically. Each site and version gets its own website address when you publish.' }];
+    return result();
+  }
   if (status.zone_check === 'unavailable') status.steps.push({ title: 'Domain access could not be checked', description: 'Typeroll could not read Cloudflare zone settings. Check the domain in the connected account yourself, or reconnect Cloudflare with Zone Read access. R2 domain status is checked separately.' });
   if (status.zone?.type !== 'partial') status.steps.push({ title: 'If DNS is hosted by Cloudflare',
     description: `In Cloudflare, select the connected account (${cf.account_name}) → Domains → your domain. It must be Active in this same account. Only the chosen hostnames are used for Typeroll. Your root domain, email and other subdomains can continue pointing to their existing services.`, url: fullGuide });

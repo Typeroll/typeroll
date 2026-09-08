@@ -218,8 +218,8 @@ export default function PublishingConnections() {
             <p>Private originals bucket: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong></p>
             <p>Public images bucket: <strong style={{ overflowWrap: 'anywhere' }}>{cloudflareAccount?.public_bucket}</strong></p>
             {data.media_migration && <div role="status">
-              <p>{data.media_migration.state === 'complete' ? 'Originals moved to your R2 storage. Existing published image URLs are retained.' : `Moving existing originals to R2: ${data.media_migration.copied_files} copied, ${data.media_migration.pending_files} remaining.`}</p>
-              {data.media_migration.error && <p>{data.media_migration.error}</p>}
+              <p>{data.media_migration.state === 'complete' ? 'Originals moved to your R2 storage. Existing published image URLs are retained.' : `${data.media_migration.state === 'failed' ? 'Media migration paused' : 'Moving existing originals to R2'}: ${data.media_migration.copied_files} copied, ${data.media_migration.pending_files} remaining.`}</p>
+              {data.media_migration.error && <><p>Media migration needs attention. Check Organization domains below, then retry.</p><details><summary>Migration error details</summary><p>{data.media_migration.error}</p></details></>}
               <button type="button" className="btn" disabled={busy} onClick={async () => {
                 setBusy(true); setError('');
                 try { if (data.media_migration?.state === 'failed') await request('/media-migration', 'POST', {}); await refresh(); }

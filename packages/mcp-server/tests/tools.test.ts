@@ -276,6 +276,17 @@ describe('sites tools', () => {
 });
 
 describe('domain tools', () => {
+  it('discovers and configures organization domains without adding a site prefix', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ revision: 'saved' }));
+    await find(domainTools, 'list_organization_publishing_domains').handler({} as never, { client, siteId });
+    const body = { revision: 'current', zone_id: 'zone', media_subdomain: 'media', sites_subdomain: 'sites' };
+    await find(domainTools, 'configure_organization_publishing_domains').handler(body as never, { client, siteId });
+    expect(calls).toEqual([
+      { method: 'GET', url: 'https://example.test/api/v1/publishing/zones', body: null },
+      { method: 'POST', url: 'https://example.test/api/v1/publishing/domains', body: JSON.stringify(body) },
+    ]);
+  });
+
   it('declares the canonical domain and republishes by default', async () => {
     const { client, siteId, calls } = setup(() => jsonResponse({ domain: { status: 'pending' } }));
     const tool = find(domainTools, 'add_domain');

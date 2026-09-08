@@ -137,7 +137,7 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
   return getSiteDomains(orgId, siteId);
 }
 
-export async function saveOrganizationDomains(orgId: string, input: Record<string, unknown>) {
+export async function saveOrganizationDomains(orgId: string, input: Record<string, unknown>, options: { queueMigration?: boolean } = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ConnectionError('Enter domain settings.', 400);
   if (!['automatic', 'external'].includes(String(input.dns_mode))) throw new ConnectionError('Select automatic or external DNS management.', 400);
   const current = await getOrganizationDomains(orgId);
@@ -159,7 +159,9 @@ export async function saveOrganizationDomains(orgId: string, input: Record<strin
     { revision: randomUUID(), default_domain: legacy, sites_domain, media_host, dns_mode: input.dns_mode,
       verified_at: current.media_host === media_host ? current.verified_at : null });
   if (!changed) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
-  const { requestMediaMigration } = await import('./media-migration');
-  await requestMediaMigration(orgId);
+  if (options.queueMigration !== false) {
+    const { requestMediaMigration } = await import('./media-migration');
+    await requestMediaMigration(orgId);
+  }
   return getOrganizationDomains(orgId);
 }

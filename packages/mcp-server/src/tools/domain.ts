@@ -19,6 +19,18 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const domainTools: ToolDef[] = [
   {
+    name: 'list_organization_publishing_domains',
+    description: 'List Cloudflare domains visible in the organization’s connected account, including activation and DNS hosting status. Requires an organization API key. Read only.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/zones'))),
+  },
+  {
+    name: 'configure_organization_publishing_domains',
+    description: 'Configure organization media and site subdomains using an active domain in the connected Cloudflare account. Attaches the media host to R2, creates its DNS record and queues media migration. Site/version addresses are created at deployment. Requires an organization API key and the current revision. Does not replace existing DNS destinations or existing media hosts. Read organization publishing domains afterward to check HTTPS activation.',
+    inputSchema: { revision: z.string(), zone_id: z.string(), media_subdomain: z.string().describe('Short label, for example media.'), sites_subdomain: z.string().describe('Short label, for example sites.') },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/domains', args))),
+  },
+  {
     name: 'prepare_publishing_domain_change',
     description: 'Prepare future website and media hosts using only the last successfully published snapshot. Saved CMS changes stay unpublished. Requires the current domain revision. Poll read_publishing_domains for certificate and DNS requirements, then explicitly approve the verified cutover.',
     inputSchema: { revision: z.string() },
