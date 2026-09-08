@@ -208,7 +208,8 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    expect(await media.getByRole('alert').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    expect(await media.getByRole('alert').evaluate(node => node.scrollWidth <= node.clientWidth && node.scrollHeight <= node.clientHeight)).toBe(true);
+    await page.evaluate(() => document.fonts.ready);
     await media.getByRole('alert').screenshot({ path: testInfo.outputPath(`r2-verification-error-${width}.png`) });
   }
   await expect(page.locator('#oauth-r2-access')).toHaveValue('synthetic-access');
