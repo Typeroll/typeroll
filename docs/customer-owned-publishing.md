@@ -83,7 +83,7 @@ for the customer-facing permissions and credential contract. Personal developer
 membership and personal Git tokens are not substitutes for the customer App
 installation in the onboarding proof.
 
-Use the intended agency/customer organization and account, or explicitly
+Use the intended organization and account, or explicitly
 approved synthetic test accounts. The GitHub App belongs to the publisher;
 install it once on the organization's site repositories. An existing suitable
 account can be used. A different account per site is unnecessary.
@@ -127,7 +127,7 @@ account identifiers before a remote run:
 
 ```json
 {
-  "github_owner": "synthetic-agency",
+  "github_owner": "synthetic-organization",
   "cloudflare_account_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "github_app_id": "12",
   "github_installation_id": "34",

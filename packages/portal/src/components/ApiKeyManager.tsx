@@ -109,7 +109,7 @@ export default function ApiKeyManager({ siteId, initialKeys }: Props) {
           <div>
             <h2 style={{ fontSize: '1.125rem', margin: 0 }}>API keys</h2>
             <p className="muted text-sm" style={{ margin: '0.25rem 0 0' }}>
-              For agency / power-user access via the public REST API and the{' '}
+              For access via the public REST API and the{' '}
               <a href="https://www.npmjs.com/package/@typeroll/mcp-server" target="_blank" rel="noopener">
                 Typeroll MCP server
               </a>
@@ -129,7 +129,7 @@ export default function ApiKeyManager({ siteId, initialKeys }: Props) {
               ref={inputRef}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Key name (e.g. Acme agency)"
+              placeholder="Key name (e.g. Website assistant)"
               maxLength={80}
               style={{ flex: 1 }}
             />

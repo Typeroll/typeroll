@@ -327,7 +327,7 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
     <div class="card stack">
       <h2 style="font-size: 1.125rem; margin: 0;">External access</h2>
       <p class="muted text-sm" style="margin: 0;">
-        Generate API keys for agencies, Claude Code, and other external tools that need to manage this site through the public REST API.
+        Generate API keys for AI agents and other external tools that need to manage this site through the public REST API.
       </p>
       <div>
         <a href={`/app/sites/${siteId}/settings/api-keys`} class="btn">Manage API keys →</a>
@@ -364,7 +364,7 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
     <div class="card stack">
       <h2 style="font-size: 1.125rem; margin: 0;">Sharing</h2>
       <p class="muted text-sm" style="margin: 0;">
-        Grant another organization read, write, or admin access to this site — useful when an agency hosts a site for a customer, or a customer collaborates with an agency on their own.
+        Grant another organization read, write, or admin access to this site.
       </p>
       <div>
         <a href={`/app/sites/${siteId}/settings/sharing`} class="btn">Manage sharing →</a>

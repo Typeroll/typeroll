@@ -139,7 +139,7 @@ export default function PublishingConnections() {
   </div>;
 
   return <div className="stack" style={{ maxWidth: 760 }} aria-busy={busy || checkingMedia}>
-    <p>Connect your agency’s accounts once and reuse them for multiple sites. Each site will have its own private GitHub repository and static Cloudflare Pages project.</p>
+    <p>Connect GitHub and one Cloudflare account for your organization, then reuse these connections across its sites. Each site will have its own private GitHub repository and static Cloudflare Pages project.</p>
     <p className="muted">Account connections are available here. Creating site repositories and publishing from the editor are still being implemented.</p>
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}

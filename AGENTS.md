@@ -20,3 +20,7 @@
   independently. Run `npm run release:plan` and never create release tags
   manually. Successful main CI runs the ordered Core, MCP, docs, and
   release-manifest workflow in `.github/workflows/publish-mcp.yml`.
+
+- User-facing copy uses Organization and Site. Never label or address an
+  organization as an agency; it may manage only its own websites. Keep
+  organization-wide connections distinct from each site's domain and content.

@@ -5,13 +5,13 @@ GitHub organization discovery. Customer acceptance remains pending.
 Automatic site provisioning and editor publication are still being implemented.
 See [implementation status](customer-owned-publishing.md).
 
-The customer or agency owns the GitHub organization, publication repositories,
+Your organization owns the GitHub organization, publication repositories,
 Cloudflare account, and media storage. The publisher receives access through a
 GitHub App installation and scoped Cloudflare credentials. Customers do not
 invite the publisher's developers or share a personal GitHub token.
 
-One organization and account connection is reused for multiple sites. Each
-site receives a private generated repository and a Git-connected Pages project.
+Each Typeroll organization connects one Cloudflare account, reused for all its
+sites. Each site receives a private generated repository and a Git-connected Pages project.
 The site remains static; Forms and Extensions use their separately documented
 runtime owners.
 
@@ -84,8 +84,8 @@ reinstalling either App.
 ## Connect Cloudflare with sign-in
 
 Open **Publishing** in Typeroll's sidebar and select
-**Connect Cloudflare**. Sign in to Cloudflare and approve access to your agency's
-account. Typeroll discovers authorized accounts; choose one if several are
+**Connect Cloudflare**. Sign in to Cloudflare and approve access to your
+organization's account. Typeroll discovers authorized accounts; choose one if several are
 available. You do not need to type an account name or Account ID or create a
 general API token for this connection. Reuse the connection for all sites in
 the Typeroll organization.
