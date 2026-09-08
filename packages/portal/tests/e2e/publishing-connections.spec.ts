@@ -6,6 +6,14 @@ import { authenticatePersona } from './helpers/auth';
 
 const connections = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/e2e-core/publishing_connections');
 
+// These journeys exercise account connections against synthetic provider data.
+// Domain discovery has its own API and browser coverage, so keep that boundary
+// consistent with the synthetic account instead of calling Cloudflare here.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/orgs/publishing/zones', route => route.fulfill({ json: { account_name: 'Example', zones: [] } }));
+});
+
+
 test('organization owner sees masked account metadata and can disconnect without deleting provider resources', async ({ page }) => {
   mkdirSync(connections, { recursive: true });
   const file = path.join(connections, 'cloudflare.json');
