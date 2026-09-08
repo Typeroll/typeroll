@@ -179,6 +179,17 @@ test('deployment success requires the exact commit, project, branch and complete
   }
 });
 
+test('an omitted deployment static flag requires explicit project proof for the same deployment', () => {
+  const actual = deployment({ uses_functions: undefined });
+  assert.doesNotThrow(() => assertSuccessfulStaticDeployment(actual, { uses_functions: false, canonical_deployment: actual }));
+  for (const project of [undefined, { uses_functions: null, canonical_deployment: actual },
+    { uses_functions: true, canonical_deployment: actual }, { uses_functions: false, canonical_deployment: { ...actual, id: 'other' } },
+    { uses_functions: false, canonical_deployment: { ...actual, deployment_trigger: { metadata: { commit_hash: 'different', branch: 'main' } } } }]) {
+    assert.throws(() => assertSuccessfulStaticDeployment(actual, project), /completed static/);
+  }
+  assert.throws(() => assertSuccessfulStaticDeployment(deployment({ uses_functions: true }), { uses_functions: false, canonical_deployment: actual }), /completed static/);
+});
+
 test('observation checks the immutable artifact and live main rather than trusting build success', async () => {
   const fetched = [];
   const publication = { commit: 'commit-one', branch: 'main' };

@@ -47,7 +47,7 @@ import { WPClient, type WPItem, type WPPage } from '../wp/client';
 import { runMigrationPreflight, summarizePreflight } from '../migration-preflight';
 import { cleanWordPressHtml } from '../wp/clean-html';
 import { extractGlobals } from '../wp/globals';
-import { WPMediaTransfer, buildMediaMap, readMediaConfig } from '../wp/media';
+import { WPMediaTransfer, buildMediaMap, readMediaConfig, mediaTransferAvailability } from '../wp/media';
 import {
   reconstructPage,
   isAIReconstructAvailable,
@@ -384,8 +384,11 @@ export const migrationWorkflow: WorkflowDef = {
           ctx.store,
           readMediaConfig()
         );
-        if (!readMediaConfig()) {
+        const mediaAvailability = await mediaTransferAvailability(ctx.orgId, ctx.siteId);
+        if (!mediaAvailability.configured) {
           ctx.log('R2 not configured — image URLs will keep their original WordPress origin.');
+        } else {
+          ctx.log(`Imported media will be saved to ${mediaAvailability.destination}.`);
         }
 
         const design = await loadDesignContext(ctx.store, ctx.orgId, ctx.siteId);

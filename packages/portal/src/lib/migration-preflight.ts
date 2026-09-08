@@ -25,7 +25,9 @@ import { paths } from '@typeroll/shared';
 import type { Form, Partial as PartialDoc, Site, SiteIntegrations } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { vstore } from './version-store';
-import { readMediaConfig } from './wp/media';
+import { mediaTransferAvailability } from './wp/media';
+import { usesPrivateMedia } from './publishing/media-policy';
+import { ConnectionError } from './publishing/connections';
 import { getHostingAdapter } from './hosting';
 import { publicUrlsFor } from './site-public-urls';
 
@@ -73,46 +75,55 @@ export async function runMigrationPreflight(
 
   // ─── Blockers ──────────────────────────────────────────────────────────
 
-  const media = readMediaConfig();
-  checks.push(media
+  const customerMedia = Boolean(site && await usesPrivateMedia(orgId, site));
+  let media: Awaited<ReturnType<typeof mediaTransferAvailability>> | null = null;
+  let mediaError: string | undefined;
+  try { media = await mediaTransferAvailability(orgId, siteId); }
+  catch (error) { mediaError = error instanceof ConnectionError ? error.message : 'Media storage could not be verified.'; }
+  checks.push(media?.configured
     ? {
         id: 'media_storage',
         label: 'Media storage (R2)',
         status: 'ok',
         severity: 'blocker',
-        detail: `Configured — images transfer to ${media.publicBaseUrl}.`,
+        detail: `Configured — images transfer to ${media.destination}.`,
       }
     : {
         id: 'media_storage',
         label: 'Media storage (R2)',
         status: 'fail',
         severity: 'blocker',
-        detail:
+        detail: mediaError ??
           'Not configured. Imported pages would keep their original image URLs, so the new site ' +
           'would still be served images by the old host — invisible until that hosting is cancelled, ' +
           'at which point every image breaks at once.',
-        fix: 'Set R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_PUBLIC_BASE_URL on the portal, then re-run this check.',
+        fix: customerMedia ? 'Open Publishing → Media storage, resolve the reported connection issue, then retry. Imported files must be saved before the old hosting can be removed.' : 'Set R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_PUBLIC_BASE_URL on the portal, then re-run this check.',
       });
 
-  const adapter = getHostingAdapter(site?.hosting_adapter ?? 'cloudflare', site?.hosting_config);
-  checks.push(adapter.name !== 'stub'
-    ? {
-        id: 'hosting',
-        label: 'Hosting adapter',
-        status: 'ok',
-        severity: 'blocker',
-        detail: `Deploys go to ${adapter.name}.`,
-      }
-    : {
-        id: 'hosting',
-        label: 'Hosting adapter',
-        status: 'fail',
-        severity: 'blocker',
-        detail:
-          'No hosting credentials — deploys run against the stub adapter, which returns a job id and ' +
-          'publishes nothing. Builds would report success while the site never goes live.',
-        fix: 'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN, and make sure the site has a Pages project (hosting_config.pages_project).',
-      });
+  if (customerMedia) {
+    checks.push({ id: 'hosting', label: 'Publishing', status: 'ok', severity: 'blocker',
+      detail: 'Content can be imported and previewed before connecting publishing accounts or domains. Publishing verifies those requirements separately.' });
+  } else {
+    const adapter = getHostingAdapter(site?.hosting_adapter ?? 'cloudflare', site?.hosting_config);
+    checks.push(adapter.name !== 'stub'
+      ? {
+          id: 'hosting',
+          label: 'Hosting adapter',
+          status: 'ok',
+          severity: 'blocker',
+          detail: `Deploys go to ${adapter.name}.`,
+        }
+      : {
+          id: 'hosting',
+          label: 'Hosting adapter',
+          status: 'fail',
+          severity: 'blocker',
+          detail:
+            'No hosting credentials — deploys run against the stub adapter, which returns a job id and ' +
+            'publishes nothing. Builds would report success while the site never goes live.',
+          fix: 'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN, and make sure the site has a Pages project (hosting_config.pages_project).',
+        });
+  }
 
   // ─── Warnings ──────────────────────────────────────────────────────────
 

@@ -6,6 +6,7 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { connectionPath } from '../../lib/publishing/connections';
 import { getSiteDomains, saveSiteDomains, siteDomainConfigPath } from '../../lib/publishing/domain-config';
 import { executeCustomerPublication } from '../../lib/publishing/customer-runner';
+import { ProviderError } from '../../lib/publishing/providers.mjs';
 
 const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi.fn(), probe: vi.fn(), source: vi.fn(), deployment: null as any }));
 vi.mock('../../lib/publishing/github-connection', () => ({ githubConfiguration: () => ({ appId: '12', privateKey: 'synthetic-only' }) }));
@@ -82,6 +83,17 @@ it('never accepts a successful deployment of another commit or a failed customer
   mocks.deployment.latest_stage.status = 'failure';
   expect(await executeCustomerPublication(args)).toBe('ran');
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('Cloudflare build failed') });
+});
+
+it('reports the failing provider, stage and safe error codes without provider payloads', async () => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  await executeCustomerPublication(args);
+  mocks.cloudflare.mockRejectedValue(new ProviderError('Cloudflare', 403, [10000]));
+  await executeCustomerPublication(args);
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed',
+    error: expect.stringContaining('Cloudflare returned HTTP 403 (code 10000)'),
+    failure: { stage: 'building on Cloudflare', code: 'provider_request_failed', provider: 'Cloudflare', http_status: 403, provider_codes: [10000] } });
+  expect(log).toHaveBeenCalledWith(expect.stringContaining('customer_publication_failed'));
 });
 
 it('does not treat main plus staging as authorization to publish the live branch', async () => {

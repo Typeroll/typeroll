@@ -16,6 +16,7 @@ import { collectionTools } from '../src/tools/collections.js';
 import { mediaTools } from '../src/tools/media.js';
 import { migrationTools } from '../src/tools/migration.js';
 import { domainTools } from '../src/tools/domain.js';
+import { deployTools } from '../src/tools/deploy.js';
 
 interface Recorded {
   method: string;
@@ -54,6 +55,16 @@ function find<T>(tools: T[], name: string): T {
   if (!t) throw new Error(`Tool ${name} not found`);
   return t;
 }
+
+it('reads customer provider build status only when explicitly requested', async () => {
+  const { client, siteId, calls } = setup(req => jsonResponse(req.url.includes('publishing/build') ? { deployment: { id: 'exact' } } : { job: { status: 'failed' } }));
+  const tool = find(deployTools, 'get_deploy_status');
+  await tool.handler({ job_id: 'job', include_provider: true } as never, { client, siteId });
+  expect(calls.map(call => call.url)).toEqual([
+    'https://example.test/api/v1/sites/mysite/deploys/job',
+    'https://example.test/api/v1/sites/mysite/publishing/build?job_id=job',
+  ]);
+});
 
 describe('pages tools', () => {
   it('list_pages forwards filters as query params', async () => {

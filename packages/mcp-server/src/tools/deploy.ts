@@ -33,9 +33,10 @@ export const deployTools: ToolDef[] = [
     name: 'get_deploy_status',
     description:
       "Status of a single deploy job. Returns { job, queued_for_seconds, queue_timeout_seconds }. job.status is one of queued | running | succeeded | failed. Polling cadence: ~5s for queued/running. A job stuck in 'queued' for longer than queue_timeout_seconds (default 300s) auto-flips to failed with phase='queue_timeout' — so a single poll past that timestamp returns the terminal state and you can stop polling.",
-    inputSchema: { job_id: z.string() },
+    inputSchema: { job_id: z.string(), include_provider: z.boolean().optional().describe('Also read the exact Git commit and Cloudflare build stages for a customer Git publication. Does not return build secrets.') },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
-      const res = await client.get(siteId, `deploys/${encodeURIComponent(args.job_id)}`);
+      const res = await client.get<Record<string, unknown>>(siteId, `deploys/${encodeURIComponent(args.job_id)}`);
+      if (args.include_provider) return ok({ ...res, provider_build: await client.get(siteId, 'publishing/build', { job_id: args.job_id }) });
       return ok(res);
     }),
   },

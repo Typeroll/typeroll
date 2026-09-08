@@ -1,17 +1,14 @@
-// Move media from WordPress to Cloudflare R2.
-//
-// For each image we download the original (or the largest variant we can
-// reach), upload it to R2 via the S3-compatible API, and remember the
-// old-URL → new-CDN-URL mapping. The cleaner uses that map to rewrite
-// <img src> and srcset.
-//
-// We DON'T re-upload media that already lives at the new CDN base URL — re-
-// running migration on a partly-migrated site is idempotent.
+// Import WordPress originals through the site's media policy. Customer sites
+// use the same private upload and integrity verification as the editor;
+// legacy managed sites retain their configured public R2 destination.
 
 import crypto from 'node:crypto';
-import { paths } from '@typeroll/shared';
+import { paths, type Media, type Site } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
+import { getStore } from '../datastore';
 import { siteMediaPrefix } from '../media-keys';
+import { usesPrivateMedia } from '../publishing/media-policy';
+import { createMediaUpload, finalizeStoredMedia, mediaUploadAvailability } from '../publishing/media-storage';
 import type { WPMedia } from './client';
 
 export interface UploadedMedia {
@@ -40,6 +37,16 @@ export function readMediaConfig(): MediaTransferConfig | null {
   const publicBaseUrl = process.env.R2_PUBLIC_BASE_URL;
   if (!accountId || !bucket || !accessKeyId || !secretAccessKey || !publicBaseUrl) return null;
   return { accountId, bucket, accessKeyId, secretAccessKey, publicBaseUrl };
+}
+
+export async function mediaTransferAvailability(orgId: string, siteId: string) {
+  const site = await getStore().getDoc<Site>(paths.site(orgId, siteId));
+  if (site && await usesPrivateMedia(orgId, site)) {
+    const destination = await mediaUploadAvailability(orgId);
+    return { configured: true, private: true, destination: destination.storage === 'organization_r2' ? 'the organization’s private R2 storage' : 'private draft storage' };
+  }
+  const config = readMediaConfig();
+  return { configured: Boolean(config), private: false, destination: config?.publicBaseUrl ?? null };
 }
 
 export class WPMediaTransfer {
@@ -93,6 +100,8 @@ export class WPMediaTransfer {
     const cleanFilename = sanitizeFilename(filenameFromUrl(wpUrl));
     const contentType = guessMimeType(cleanFilename);
 
+    if (await this.privateStorage()) return this.transferPrivate(wpUrl, cleanFilename, contentType, altHint ?? '');
+
     // If R2 isn't configured, keep the original URL but still record the
     // media doc so the customer's library shows what's referenced.
     if (!this.cfg) {
@@ -133,6 +142,7 @@ export class WPMediaTransfer {
       altText: altHint ?? '',
       contentType,
       filename: cleanFilename,
+      r2Key: key,
     });
   }
 
@@ -142,6 +152,8 @@ export class WPMediaTransfer {
     const altText = item.alt_text ?? '';
     const width = item.media_details?.width;
     const height = item.media_details?.height;
+
+    if (await this.privateStorage()) return this.transferPrivate(item.source_url, cleanFilename, item.mime_type ?? guessMimeType(cleanFilename), altText, width, height);
 
     if (!this.cfg) {
       // No R2 — keep the original URL so the migrated site still renders
@@ -178,7 +190,57 @@ export class WPMediaTransfer {
       height,
       contentType: item.mime_type ?? 'application/octet-stream',
       filename: cleanFilename,
+      r2Key: key,
     });
+  }
+
+  private async privateStorage() {
+    const site = await this.store.getDoc<Site>(paths.site(this.orgId, this.siteId));
+    return Boolean(site && await usesPrivateMedia(this.orgId, site));
+  }
+
+  private async transferPrivate(oldUrl: string, filename: string, contentType: string, altText: string, width?: number, height?: number): Promise<UploadedMedia> {
+    // Readiness must be checked even when reusing an import. A disconnected
+    // customer account must never silently fall back to the old WordPress host.
+    await mediaUploadAvailability(this.orgId);
+    const existing = (await this.store.listDocs<Media & { source_url?: string }>(paths.media(this.orgId, this.siteId)))
+      .find(item => item.source_url === oldUrl && item.storage?.state === 'ready');
+    if (existing) return { oldUrl, cdnUrl: existing.cdn_url, altText: existing.alt_text ?? altText,
+      width: existing.width, height: existing.height, contentType: existing.mime_type ?? contentType, mediaId: existing.id };
+    const response = await fetch(oldUrl, { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`WordPress media download failed (HTTP ${response.status}). Retry the import while the source is available.`);
+    const limit = 25 * 1024 * 1024;
+    if (Number(response.headers.get('content-length')) > limit) { await response.body?.cancel(); throw new Error('WordPress media exceeds the 25 MB upload limit.'); }
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('WordPress media download returned no file.');
+    const chunks: Uint8Array[] = []; let size = 0;
+    try {
+      while (true) {
+        const chunk = await reader.read(); if (chunk.done) break;
+        size += chunk.value.length;
+        if (size > limit) throw new Error('WordPress media exceeds the 25 MB upload limit.');
+        chunks.push(chunk.value);
+      }
+    } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+    const bytes = Buffer.concat(chunks);
+    const detected = response.headers.get('content-type')?.split(';')[0]?.trim();
+    if (detected && detected !== 'application/octet-stream') contentType = detected;
+    const upload = await createMediaUpload(this.orgId, this.siteId, { filename, contentType, size, altText, actor: 'wordpress-import' });
+    const mediaPath = `${paths.media(this.orgId, this.siteId)}/${upload.mediaId}`;
+    try {
+      const sent = await fetch(upload.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: bytes, signal: AbortSignal.timeout(30_000) });
+      if (!sent.ok) throw new Error(`WordPress media upload failed (HTTP ${sent.status}). Check Media storage in Publishing and retry.`);
+      await finalizeStoredMedia(this.orgId, this.siteId, upload.mediaId, crypto.createHash('sha256').update(bytes).digest('hex'));
+      await this.store.updateDoc(mediaPath, {
+        source_url: oldUrl, source_aliases: [oldUrl], ...(width === undefined ? {} : { width }), ...(height === undefined ? {} : { height }),
+      });
+    } catch (error) {
+      // The importer has not returned this identity to any content writer.
+      // Remove its incomplete library entry; private R2 object retention is unchanged.
+      await this.store.deleteDoc(mediaPath);
+      throw error;
+    }
+    return { oldUrl, cdnUrl: upload.cdnUrl, altText, width, height, contentType, mediaId: upload.mediaId };
   }
 
   private async recordMedia(args: {
@@ -189,15 +251,19 @@ export class WPMediaTransfer {
     height?: number;
     contentType: string;
     filename: string;
+    r2Key?: string;
   }): Promise<UploadedMedia> {
     // De-dupe: if a media doc with this source_url already exists, return it
     // instead of creating a duplicate. Migration re-runs are common and we
     // don't want the media library doubling on every re-run.
-    const existing = await this.store.listDocs<{ id: string; source_url?: string; cdn_url: string; alt_text?: string; width?: number; height?: number; mime_type?: string }>(
+    const existing = await this.store.listDocs<{ id: string; source_url?: string; cdn_url: string; alt_text?: string; width?: number; height?: number; mime_type?: string; r2_key?: string }>(
       paths.media(this.orgId, this.siteId)
     );
     const match = existing.find((m) => m.source_url === args.oldUrl);
     if (match) {
+      if (args.r2Key && match.cdn_url === args.cdnUrl && !match.r2_key) {
+        await this.store.updateDoc(`${paths.media(this.orgId, this.siteId)}/${match.id}`, { r2_key: args.r2Key });
+      }
       return {
         oldUrl: args.oldUrl,
         cdnUrl: match.cdn_url,
@@ -217,6 +283,7 @@ export class WPMediaTransfer {
       height: args.height,
       mime_type: args.contentType,
       source_url: args.oldUrl,
+      ...(args.r2Key ? { r2_key: args.r2Key } : {}),
       created_at: new Date().toISOString(),
     });
     return {

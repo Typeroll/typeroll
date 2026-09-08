@@ -12,6 +12,7 @@ export class ProviderError extends Error {
   constructor(provider, status, codes = []) {
     // Provider bodies can contain credentials or reflected request payloads.
     super(`${provider} request failed (HTTP ${status}); inspect access and resource status in the provider dashboard`);
+    this.provider = provider;
     this.status = status;
     this.codes = codes.filter(code => Number.isSafeInteger(code));
   }
@@ -174,8 +175,16 @@ export function matchingDeployment(deployments, { project, commit, branch }) {
     deployment.environment === (branch === 'main' ? 'production' : 'preview')) ?? null;
 }
 
-export function assertSuccessfulStaticDeployment(deployment) {
-  if (deployment.is_skipped || deployment.uses_functions !== false ||
+export function assertSuccessfulStaticDeployment(deployment, project) {
+  // The deployment API documents uses_functions as optional. When omitted,
+  // require the project's explicit static flag AND its matching deployment
+  // identity; an unrelated successful production build proves nothing about a preview.
+  const projectMatches = Boolean(deployment.id && deployment.deployment_trigger?.metadata?.commit_hash && deployment.deployment_trigger?.metadata?.branch) && [project?.canonical_deployment, project?.latest_deployment].some(item =>
+    item?.id === deployment.id && item?.deployment_trigger?.metadata?.commit_hash === deployment.deployment_trigger?.metadata?.commit_hash &&
+    item?.deployment_trigger?.metadata?.branch === deployment.deployment_trigger?.metadata?.branch);
+  const staticConfirmed = deployment.uses_functions === false ||
+    (deployment.uses_functions == null && project?.uses_functions === false && projectMatches);
+  if (deployment.is_skipped || !staticConfirmed ||
       deployment.latest_stage?.name !== 'deploy' || deployment.latest_stage?.status !== 'success') {
     throw new Error('Expected a completed static deployment without Functions');
   }

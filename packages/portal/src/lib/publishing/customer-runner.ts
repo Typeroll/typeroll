@@ -4,7 +4,7 @@ import { getStore } from '../datastore';
 import { getConnection, ConnectionError } from './connections';
 import { githubConfiguration } from './github-connection';
 import { cloudflareClient } from './cloudflare-oauth';
-import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, assertSuccessfulStaticDeployment, digest } from './providers.mjs';
+import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, assertSuccessfulStaticDeployment, digest, ProviderError } from './providers.mjs';
 import { getSiteDomains, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { resolvePublicationVersion } from './publication-version';
 import { assertPublishingReady } from './readiness';
@@ -204,13 +204,16 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     }
     const deployments = await cloudflare(`${projectRoot}/deployments?per_page=100`);
     if (!publication.commit) throw new Error('Frozen publication has no Git commit');
-    const deployment = matchingDeployment(deployments, { project: publication.project, commit: publication.commit, branch: publication.branch });
+    let deployment = matchingDeployment(deployments, { project: publication.project, commit: publication.commit, branch: publication.branch });
     if (!deployment || deployment.latest_stage?.name !== 'deploy' || deployment.latest_stage?.status !== 'success') {
       if (deployment?.is_skipped || ['failure', 'canceled'].includes(deployment?.latest_stage?.status)) throw new ConnectionError('The Cloudflare build failed. Open the generated project in Cloudflare → Workers & Pages → Deployments for the build log.', 502, 'customer_build_failed');
       await store.updateDoc(jobPath, { status: 'running', phase: 'building on Cloudflare' });
       return 'deferred';
     }
-    assertSuccessfulStaticDeployment(deployment);
+    if (deployment.uses_functions == null) deployment = await cloudflare(`${projectRoot}/deployments/${encodeURIComponent(deployment.id)}`);
+    if (!matchingDeployment([deployment], { project: publication.project, commit: publication.commit, branch: publication.branch })) throw new ConnectionError('Cloudflare returned a different deployment. Retry verification of the generated Git commit.', 409, 'deployment_identity_mismatch');
+    try { assertSuccessfulStaticDeployment(deployment, project); }
+    catch { throw new ConnectionError('Cloudflare has not confirmed that this exact deployment uses static files only. Open the Cloudflare build status before retrying.', 409, 'static_build_verification_required'); }
     await releaseBuildAccess();
     const candidate = new URL(deployment.url);
     if (candidate.protocol !== 'https:' || !candidate.hostname.endsWith(`.${publication.project}.pages.dev`) || candidate.username || candidate.password || candidate.port) throw new Error('Unexpected Cloudflare deployment origin');
@@ -276,8 +279,16 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   } catch (error) {
     const target = await store.getDoc<Target>(targetPath);
     if (target?.lease_id !== lease) return 'deferred';
+    const failedJob = await store.getDoc<GitJob>(jobPath);
+    const failure = { stage: failedJob?.phase ?? 'connecting publishing accounts',
+      code: error instanceof ConnectionError ? error.code : error instanceof ProviderError ? 'provider_request_failed' : 'publication_internal_error',
+      ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes } : {}) };
+    console.error(JSON.stringify({ event: 'customer_publication_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, ...failure }));
+    const message = error instanceof ConnectionError ? error.message : error instanceof ProviderError
+      ? `${error.provider} returned HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''} during ${failure.stage}. Open Publishing to check the connection and retry.`
+      : `Publishing stopped during ${failure.stage}. Retry the deployment. If it fails again, contact support with deployment ${args.jobId}.`;
     await store.updateDoc(jobPath, { status: 'failed', phase: 'failed', finished_at: new Date().toISOString(),
-      error: error instanceof ConnectionError ? error.message : 'Customer publishing failed. Check the GitHub and Cloudflare connections in Publishing, then retry.' });
+      error: message, failure });
     terminal = true;
     return 'ran';
   } finally {
