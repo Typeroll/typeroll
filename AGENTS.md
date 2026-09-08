@@ -24,3 +24,8 @@
 - User-facing copy uses Organization and Site. Never label or address an
   organization as an agency; it may manage only its own websites. Keep
   organization-wide connections distinct from each site's domain and content.
+
+- Make publishing and domain workflows available through the authenticated
+  public API and MCP as well as the UI. Support external agents applying DNS
+  changes through their own provider access; return structured requirements
+  and independently verify results with the same authorization checks.
