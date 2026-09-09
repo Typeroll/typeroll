@@ -1,4 +1,4 @@
-import { Agent } from 'undici';
+import { Agent, fetch as pinnedFetch } from 'undici';
 import net from 'node:net';
 import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
 
@@ -50,7 +50,8 @@ export async function publicationResponse(url: URL, init: RequestInit, options: 
         if (lookupOptions.all) callback(null, addresses);
         else callback(null, addresses[0]!.address, 4);
       } } });
-      response = await fetch(url, { ...init, redirect: 'manual', dispatcher: agent } as RequestInit);
+      response = await pinnedFetch(url, { method: init.method, headers: Object.fromEntries(new Headers(init.headers)),
+        signal: init.signal, redirect: 'manual', dispatcher: agent }) as unknown as Response;
     }
     return { response: response!, close };
   } catch (error) { await close(); throw error; }

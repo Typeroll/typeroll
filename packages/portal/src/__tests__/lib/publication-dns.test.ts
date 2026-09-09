@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import dns from 'node:dns/promises';
 import { publicationResponse, publicIpv4Answers } from '../../lib/deploy/public-response';
 const mocked = vi.hoisted(() => ({ lookup: null as any, close: vi.fn(async () => {}) }));
-vi.mock('undici', () => ({ Agent: class { constructor(options: any) { mocked.lookup = options.connect.lookup; } close = mocked.close; } }));
+vi.mock('undici', () => ({ fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args), Agent: class { constructor(options: any) { mocked.lookup = options.connect.lookup; } close = mocked.close; } }));
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const url = new URL('https://new-site.example.com/page/');
