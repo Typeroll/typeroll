@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import executorSource from './executor.mjs?raw';
 import contractSource from './contract.mjs?raw';
+import assetsSource from './assets.mjs?raw';
 import { getStore } from '../datastore';
 import { encryptSecret } from '../secret-crypto';
 import { getConnection, ConnectionError } from '../publishing/connections';
@@ -80,7 +81,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
     const triggers = await client(`${base}/builds/workers/${config.worker_tag}/triggers`);
     for (const trigger of triggers) await client(`${base}/builds/triggers/${trigger.trigger_uuid}`, { method: 'PATCH', body: { path_excludes: ['*'] } });
     const runner = await publishTree(github, { owner: config.owner, repo: current.runner_repo,
-      files: { 'executor.mjs': executorSource, 'contract.mjs': contractSource, 'engine.json': JSON.stringify({ origin: origin.origin, org_id: org, revision }),
+      files: { 'assets.mjs': assetsSource, 'executor.mjs': executorSource, 'contract.mjs': contractSource, 'engine.json': JSON.stringify({ origin: origin.origin, org_id: org, revision }),
         '.node-version': BUILD_RUNTIME + '\n', 'package.json': JSON.stringify({ name, private: true, type: 'module', scripts: { build: 'node executor.mjs', 'qualify:artifact': 'node finalize.mjs' } }),
         'finalize.mjs': "console.log('Typeroll build attempt finished. Static hosting is handled by the publication coordinator.');\n",
         'README.md': '# Typeroll shared builds\n\nGenerated source only. One runner for this organization. Site repositories and version branches remain separate. Public Worker URLs are disabled. Builds are dispatched explicitly by Typeroll.\n' },

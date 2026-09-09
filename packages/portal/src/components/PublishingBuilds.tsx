@@ -77,7 +77,7 @@ export default function PublishingBuilds() {
   const needsToken = state === 'build_token_required';
   const projectUrl = engine?.worker_found && /^[a-f0-9]{32}$/.test(engine.account_id ?? '') && /^[a-z0-9-]+$/.test(engine.worker_name)
     ? `https://dash.cloudflare.com/${engine.account_id}/workers/services/view/${engine.worker_name}/production/settings` : null;
-  const status = busy ? 'Checking Cloudflare build setup…' : state === 'ready' ? 'Shared build engine ready' : state === 'approval_required' ? 'Build permissions required' : state === 'qualification_required' ? 'Build token found · Verification pending' : needsToken ? 'Action needed · Create a build token' : 'Shared build engine setup';
+  const status = busy ? 'Checking Cloudflare build setup…' : state === 'ready' ? 'Shared build engine ready' : state === 'approval_required' ? 'Build permissions required' : state === 'qualification_required' ? engine?.issue?.code === 'build_verification_running' ? 'Verifying shared build engine…' : 'Build token found · Verification pending' : needsToken ? 'Action needed · Create a build token' : 'Shared build engine setup';
   return <PublishingCard id="publishing-builds" title="Builds"
     state={state === 'ready' ? 'ready' : error || ['approval_required', 'error'].includes(state ?? '') ? 'error' : 'waiting'} status={status}>
     <p>One Cloudflare build engine for all sites and versions in this organization. Finished sites can be hosted in any Hosting Group.</p>

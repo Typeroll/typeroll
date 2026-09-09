@@ -58,10 +58,13 @@ export async function runnerRequest(request: Request, org: string, action: strin
     });
     if (action === 'fail') {
       const code = typeof input.code === 'string' && /^[a-z0-9_]{1,80}$/.test(input.code) ? input.code : 'shared_build_failed';
-      const stage = typeof input.stage === 'string' && /^[a-z]{1,30}$/.test(input.stage) ? input.stage : 'build';
+      const stage = typeof input.stage === 'string' && /^[a-z_]{1,30}$/.test(input.stage) ? input.stage : 'build';
       await store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${key}`, value => value.status === 'running' && value.lease_id === lease && value.token_hash === task.token_hash && value.lease_until > Date.now() && value.deadline > Date.now(),
         { status: 'failed', token_hash: null, error_code: `${stage}_${code}`, lease_until: 0 });
-      if (metadata.kind === 'qualification') await store.updateDoc(enginePath(org), { state: 'error', enabled: false, issue: { code: 'build_qualification_failed', message: `Build verification failed during ${stage} (${code}). Set up the shared engine again to retry.` } });
+      if (metadata.kind === 'qualification') {
+        const disabled = await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org), value => value.revision === engine.revision && value.status === 'qualifying', { status: 'disabled' });
+        if (disabled) await store.updateDoc(enginePath(org), { state: 'error', enabled: false, issue: { code: 'build_qualification_failed', message: `Build verification failed during ${stage} (${code}). Set up the shared engine again to retry.` } });
+      }
       return privateJson({ ok: true });
     }
     const artifactKey = `builds/${org}/tasks/${key}/${lease}/artifact.json`;

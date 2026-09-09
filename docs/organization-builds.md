@@ -108,10 +108,14 @@ obtain an upload grant. Upload grants are issued on demand after rendering.
 
 The Linux x64 supervisor pins Node and a SHA-256-verified Bubblewrap package.
 Source executes as an unprivileged user in separate user, mount, PID and network
-namespaces with a read-only root, cleared environment and no provider tokens or
+namespaces with a read-only root, a synthetic user/group database, cleared environment and no provider tokens or
 Docker socket. Dependency installation disables lifecycle scripts. The media
 preparation stage receives only publication-scoped object grants. Rendering has
-no network; a trusted adapter lets older frozen renderers reuse prepared media
+no network. Bundled Extension scripts and styles are fetched through the frozen
+renderer’s URL and SHA-256 guards in a separate credential-free preparation
+stage, then served from an exact-URL local cache during rendering. Recorded DNS
+answers let the frozen URL validator run offline without authorizing new
+destinations. A trusted adapter lets older frozen renderers reuse prepared media
 without altering files covered by their source manifest.
 
 The existing private originals bucket stores build packages separately from

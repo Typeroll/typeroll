@@ -8,6 +8,8 @@ import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, decodeSource, enco
 const BWRAP_URL = 'https://archive.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb';
 const BWRAP_SHA = '1b506492bd9c7fd0cdb4f02ac822f1d3e336b0aead5113c1239baf8db5db562a';
 export const RENDER_ADAPTER = `import { registerHooks } from 'node:module';
+import { installAssetCache } from './assets.mjs';
+await installAssetCache('/work');
 registerHooks({ load(url, context, next) {
   if (url !== 'file:///work/scripts/media.mjs') return next(url, context);
   return { format: 'module', shortCircuit: true, source: ${JSON.stringify("import fs from 'node:fs/promises'; import path from 'node:path'; export async function prepareMedia(publication) { const prepared=JSON.parse(await fs.readFile('/work/.typeroll-runner/prepared.json','utf8')); if(prepared.publication_id!==publication.publication_id || !Array.isArray(prepared.media) || !Array.isArray(prepared.files))throw Error('prepared_media_identity_mismatch'); for(const file of prepared.files)if(!path.resolve(file.source).startsWith('/work/.publication-media/'))throw Error('prepared_media_path_mismatch'); publication.media=prepared.media; return prepared.files; }")} };
@@ -63,13 +65,16 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
   async function command(binary, args, timeout = 720000) {
     if (abort.signal.aborted) throw Error('build_lease_lost');
     return new Promise((resolve, reject) => {
-      const child = spawn(binary, args, { cwd: work, env: { PATH: process.env.PATH, HOME: temp }, stdio: 'ignore', detached: true });
+      const child = spawn(binary, args, { cwd: work, env: { PATH: process.env.PATH, HOME: temp }, stdio: ['ignore', 'ignore', 'pipe'], detached: true });
+      let diagnostic = '';
+      child.stderr.on('data', chunk => { diagnostic = (diagnostic + chunk.toString('utf8')).slice(-16384); });
       const kill = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* Already exited. */ } };
       const timer = setTimeout(kill, Math.min(timeout, Math.max(1, job.deadline - Date.now())));
       abort.signal.addEventListener('abort', kill, { once: true });
       const clear = () => { clearTimeout(timer); abort.signal.removeEventListener('abort', kill); };
       child.once('error', () => { clear(); reject(Error('build_process_start_failed')); });
-      child.once('exit', code => { clear(); code === 0 && !abort.signal.aborted ? resolve() : reject(Error(`build_process_exit_${code ?? 'terminated'}`)); });
+      child.once('exit', code => { clear(); const known = diagnostic.match(/\b(ERR_SYSTEM_ERROR|ERR_MODULE_NOT_FOUND|ERR_DLOPEN_FAILED|EACCES|ENOENT|ENOMEM|ENOSPC)\b/);
+        code === 0 && !abort.signal.aborted ? resolve() : reject(Error(known ? `build_${known[1].toLowerCase()}` : `build_process_exit_${code ?? 'terminated'}`)); });
     });
   }
   const storageUrl = value => {
@@ -91,9 +96,11 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     await fs.writeFile(path.join(temp, 'sandbox.deb'), deb);
     await command('dpkg-deb', ['-x', path.join(temp, 'sandbox.deb'), path.join(temp, 'sandbox')], 30000);
     const binary = path.join(temp, 'sandbox/usr/bin/bwrap');
+    await fs.writeFile(path.join(temp, 'passwd'), 'builder:x:1000:1000:Build user:/tmp:/bin/false\n');
+    await fs.writeFile(path.join(temp, 'group'), 'builder:x:1000:\n');
     const runtime = path.dirname(path.dirname(await fs.realpath(process.execPath)));
     const base = ['--unshare-all', '--unshare-user', '--die-with-parent', '--new-session', '--uid', '1000', '--gid', '1000', '--cap-drop', 'ALL',
-      '--ro-bind', '/etc/resolv.conf', '/etc/resolv.conf', '--ro-bind', '/etc/hosts', '/etc/hosts', '--ro-bind', '/usr', '/usr', '--ro-bind', '/lib', '/lib', '--ro-bind', '/lib64', '/lib64', '--symlink', 'usr/bin', '/bin',
+      '--ro-bind', path.join(temp, 'passwd'), '/etc/passwd', '--ro-bind', path.join(temp, 'group'), '/etc/group', '--ro-bind', '/etc/resolv.conf', '/etc/resolv.conf', '--ro-bind', '/etc/hosts', '/etc/hosts', '--ro-bind', '/usr', '/usr', '--ro-bind', '/lib', '/lib', '--ro-bind', '/lib64', '/lib64', '--symlink', 'usr/bin', '/bin',
       '--ro-bind', runtime, '/runtime', '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--bind', work, '/work', '--chdir', '/work',
       '--remount-ro', '/', '--clearenv', '--setenv', 'PATH', '/runtime/bin:/usr/bin:/bin', '--setenv', 'HOME', '/tmp',
       '--setenv', 'ASTRO_TELEMETRY_DISABLED', '1', '--setenv', 'NODE_OPTIONS', '--max-old-space-size=768'];
@@ -111,6 +118,9 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       stage = 'media';
       // Only this trusted media stage receives exact publication-scoped object grants.
       await run(['.typeroll-runner/prepare.mjs'], true, job.media_access ? { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(job.media_access) } : {});
+      stage = 'extension_assets';
+      await fs.copyFile(new URL('./assets.mjs', import.meta.url), path.join(work, '.typeroll-runner/assets.mjs'));
+      await run(['--input-type=module', '-e', "import { prepareAssets } from './.typeroll-runner/assets.mjs'; await prepareAssets('/work');"], true);
       stage = 'rendering';
       await fs.writeFile(path.join(work, '.typeroll-runner/render.mjs'), RENDER_ADAPTER, { flag: 'wx' });
       await run(['.typeroll-runner/render.mjs'], false, { TYPEROLL_BUILD_MEDIA_PREPARED: '/work/.typeroll-runner/prepared.json' });
