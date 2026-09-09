@@ -19,7 +19,7 @@ Do not interpret successful access checks as an enabled or qualified build engin
 
 ## Setup and permissions
 
-Open **Publishing → Builds → Check build access**. This checks the existing
+Open **Publishing → Builds → Check build setup**. This checks the existing
 organization Cloudflare account for Workers Scripts and Workers Builds access.
 When permission is missing, select **Approve build permissions**, approve the
 requested access in Cloudflare, return to Publishing and check again. This uses
@@ -38,8 +38,38 @@ The application requests them only for organization build consent, not for
 ordinary Hosting Group connections. Later organization reconnections preserve
 previously granted build scopes. OAuth consent does not automatically create
 a Workers Builds deployment token. If no token exists, the access check reports
-that requirement separately. Runtime qualification must establish the complete
-setup flow before claiming that setup is automatic.
+that requirement separately.
+
+### First build token
+
+When the organization build project exists and the token is missing, Builds
+shows **One-time setup in Cloudflare**, an account-specific **Open Cloudflare
+setup** link and collapsed **Step-by-step instructions**. The instructions name
+the build account, Worker and generated repository. They describe **Settings →
+Builds → Connect**, branch `main`, build command `npm run build`, deploy command
+`npm run qualify:artifact`, and **API token → Create new token**. Both commands
+can be copied. These commands run the initial synthetic connection test, not a
+customer publication. An already connected project can use **Settings → Builds
+→ API token** directly.
+
+After saving in Cloudflare, returning to the Typeroll tab checks the setup.
+**I’ve finished — check again** also performs that check and displays a persistent
+text result. If no token is found, the instructions remain available. If one is
+found, the card confirms **Build token found · Verification pending**; it never
+marks the engine ready on that basis alone. The token value stays in Cloudflare.
+OAuth reconnection and tokens in individual Hosting Groups are not required.
+
+If the expected Worker is missing, the UI reports project preparation as pending
+instead of linking to a nonexistent project. Automatic project provisioning is
+not yet implemented; this guide supports the prepared qualification project.
+Runtime qualification must establish the complete setup flow before claiming
+that setup or publishing is automatic.
+
+Cloudflare currently does not expose `API Tokens Write` in its OAuth scope
+catalog. Its build-token creation endpoint registers an existing API token
+secret/ID. Do not substitute an expiring OAuth access token. See
+[Cloudflare build tokens](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#api-token)
+and [token creation via API](https://developers.cloudflare.com/fundamentals/api/how-to/create-via-api/).
 
 ## API and MCP
 

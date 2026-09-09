@@ -19,9 +19,12 @@ it('claims distinct sites and branches concurrently and keeps retries frozen', a
   const acquired = claims.filter(x => x !== null);
   expect(acquired).toHaveLength(3); expect(new Set(acquired.map(x => x!.key)).size).toBe(3);
   expect(await queue.claim('other-org', 'engine-1', 1)).toBeNull();
-  const first = acquired[0]!;
   now += 91000;
   const retry = await queue.claim('org', 'engine-1', 1);
+  // Concurrent callers need not finish in queue order. Compare the old lease
+  // for the task actually retried, not the first Promise in the callers array.
+  const first = acquired.find(claim => claim!.key === retry?.key)!;
+  expect(first).toBeDefined();
   expect(retry?.identity).toEqual(first.identity); expect(retry?.token).not.toBe(first.token);
   await expect(queue.heartbeat('org', first.key, first.lease_id, first.token)).rejects.toMatchObject({ code: 'build_lease_lost' });
   await expect(queue.complete('org', first.key, first.lease_id, first.token, { sha256: 'f'.repeat(64), key: `builds/org/${first.key}/${first.lease_id}/artifact.json` })).rejects.toMatchObject({ code: 'build_lease_lost' });
@@ -97,4 +100,18 @@ it('preserves previously granted build scopes when renewing the organization con
   await getStore().setDoc(connectionPath('org', 'cloudflare'), { revision: 'current', encrypted_credentials: sealCredentials('org', 'cloudflare', { oauth: { scope: 'page.read workers-ci.read workers-ci.write workers-scripts.read workers-scripts.write' } }) });
   const result = await startCloudflareConnection({ orgId: 'org', userId: 'user', email: 'test@example.invalid' });
   expect(new URL(result.url).searchParams.get('scope')).toContain('workers-ci.write');
+});
+
+it('finds only the organization build project and confirms token setup without enabling publishing', async () => {
+  await getStore().setDoc(connectionPath('org', 'cloudflare'), { status: 'connected', revision: 'connection', cloudflare: { account_id: 'a'.repeat(32), account_name: 'Build account' }, encrypted_credentials: sealCredentials('org', 'cloudflare', { api_token: 'synthetic-token' }) });
+  const initial = await readBuildEngine('org');
+  const provider = (worker: string, tokens: unknown[]) => vi.fn<typeof fetch>(async url => Response.json({ success: true, result: String(url).endsWith('/workers/scripts') ? [{ id: worker }] : tokens }));
+  const missing = await checkBuildEngine('org', { revision: initial.revision }, provider('another-organizations-builder', []));
+  expect(missing).toMatchObject({ state: 'build_token_required', worker_found: false, enabled: false });
+  const prepared = await checkBuildEngine('org', { revision: missing.revision }, provider(initial.worker_name, []));
+  expect(prepared).toMatchObject({ state: 'build_token_required', worker_found: true, enabled: false });
+  const complete = await checkBuildEngine('org', { revision: prepared.revision }, provider(initial.worker_name, [{ build_token_secret: 'never-expose-token' }]));
+  expect(complete).toMatchObject({ state: 'qualification_required', enabled: false, worker_found: true });
+  expect(complete.issue?.message).toContain('Build token found');
+  expect(JSON.stringify(complete)).not.toContain('never-expose-token');
 });

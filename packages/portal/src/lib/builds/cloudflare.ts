@@ -16,6 +16,7 @@ export interface BuildEngine {
   checked_at: string | null;
   issue: { code: string; message: string; http_status?: number; provider_codes?: number[] } | null;
   worker_name: string;
+  worker_found?: boolean;
   runner_repo: string;
   protocol: number;
   node_version: string;
@@ -30,7 +31,7 @@ export async function readBuildEngine(org: string): Promise<BuildEngine> {
 }
 
 /** Read provider capabilities without creating a Worker, Git repository or deployment. */
-export async function inspectCloudflareBuildAccess(client: ProviderClient, account: string) {
+export async function inspectCloudflareBuildAccess(client: ProviderClient, account: string, workerName?: string) {
   const issues: Array<{ resource: 'workers' | 'builds'; http_status: number; provider_codes: number[] }> = [];
   const results = await Promise.allSettled([
     client(`/accounts/${account}/workers/scripts`), client(`/accounts/${account}/builds/tokens`),
@@ -46,7 +47,9 @@ export async function inspectCloudflareBuildAccess(client: ProviderClient, accou
     } else throw result.reason;
   });
   // Never return build tokens or provider credential metadata through the API.
-  return { issues, workers: counts[0], build_tokens: counts[1] };
+  const workers = results[0];
+  const workerFound = workers.status === 'fulfilled' && workers.value.some((worker: { id?: string }) => workerName !== undefined && worker?.id === workerName);
+  return { issues, workers: counts[0], build_tokens: counts[1], worker_found: workerFound };
 }
 
 export async function checkBuildEngine(org: string, input: Record<string, unknown>, fetchImpl: typeof fetch = fetch) {
@@ -56,10 +59,11 @@ export async function checkBuildEngine(org: string, input: Record<string, unknow
   if (connection.status !== 'connected' || !connection.cloudflare) throw new ConnectionError('Connect the organization Cloudflare account in Publishing first.', 409, 'build_account_required');
   let next: BuildEngine = { ...previous, revision: randomUUID(), enabled: false,
     account_id: connection.cloudflare.account_id, account_name: connection.cloudflare.account_name,
-    checked_at: new Date().toISOString(), state: 'qualification_required', issue: null };
+    checked_at: new Date().toISOString(), worker_found: false, state: 'qualification_required', issue: null };
   try {
     const client = await cloudflareClient(org, fetchImpl);
-    const access = await inspectCloudflareBuildAccess(client, connection.cloudflare.account_id);
+    const access = await inspectCloudflareBuildAccess(client, connection.cloudflare.account_id, previous.worker_name);
+    next.worker_found = access.worker_found;
     if (access.issues.length) {
       const denied = access.issues.find(issue => [401, 403].includes(issue.http_status));
       const issue = denied ?? access.issues[0];
@@ -69,9 +73,9 @@ export async function checkBuildEngine(org: string, input: Record<string, unknow
           `Cloudflare could not check ${issue.resource} (HTTP ${issue.http_status}). Try checking again.`,
       } };
     } else if (!access.build_tokens) next = { ...next, state: 'build_token_required', issue: { code: 'build_token_required',
-      message: 'Cloudflare build access is available, but this account has no Workers Builds API token. A build token must be created in Cloudflare before the shared engine can be configured.' } };
+      message: 'Build permissions are approved. Cloudflare has not reported a build token for this account yet. Complete the one-time setup in Cloudflare, then check again. Reconnecting your account will not create the token.' } };
     else next = { ...next, state: 'qualification_required', issue: { code: 'build_qualification_required',
-      message: 'Cloudflare build access is available. The shared engine must pass its isolated execution and artifact delivery test before it can publish sites.' } };
+      message: 'Build token found. The shared build engine still needs to complete its setup and verification before it can publish sites. No further permission approval is needed.' } };
   } catch (error) {
     if (!(error instanceof ConnectionError)) throw error;
     next = { ...next, state: 'error', issue: { code: error.code ?? 'build_connection_failed', message: error.message } };
