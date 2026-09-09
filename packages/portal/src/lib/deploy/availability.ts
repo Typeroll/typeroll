@@ -7,6 +7,7 @@ import { getStore } from '../datastore';
 import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
 import { liveDeploymentUpdate } from './live-state';
 import { publicationResponse } from './public-response';
+import { withGlobalHeaders } from './pages-headers';
 
 export const PUBLICATION_HEADER = 'x-typeroll-publication';
 
@@ -31,7 +32,9 @@ export async function stampPublication(buildDir: string): Promise<{ id: string; 
     await fs.writeFile(path.join(buildDir, marker), id);
     routes.push(`/${marker}`);
   }
-  await fs.appendFile(path.join(buildDir, '_headers'), `\n/*\n  X-Typeroll-Publication: ${id}\n`);
+  const headersPath = path.join(buildDir, '_headers');
+  const headers = await fs.readFile(headersPath, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; });
+  await fs.writeFile(headersPath, withGlobalHeaders(headers, { 'X-Typeroll-Publication': id }));
   return { id, paths: routes.sort() };
 }
 

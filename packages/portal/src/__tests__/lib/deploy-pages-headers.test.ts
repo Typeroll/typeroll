@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { buildPagesHeaders } from '../../lib/deploy/pages-headers';
+import { buildPagesHeaders, withGlobalHeaders } from '../../lib/deploy/pages-headers';
 
 describe('buildPagesHeaders', () => {
+  it('keeps cache, security and marker headers together when updating global rules', () => {
+    const stamped = withGlobalHeaders(buildPagesHeaders() + '\n/*\n  X-Robots-Tag: noindex\n', { 'X-Typeroll-Publication': 'first' });
+    const updated = withGlobalHeaders(stamped, { 'X-Typeroll-Publication': 'second' });
+    expect(updated.split('\n').filter(line => line === '/*')).toHaveLength(1);
+    expect(updated).toContain('Cache-Control: public, max-age=300, must-revalidate, no-transform');
+    expect(updated).toContain('X-Robots-Tag: noindex');
+    expect(updated).toContain('X-Typeroll-Publication: second');
+    expect(updated).not.toContain('X-Typeroll-Publication: first');
+    expect(updated).toContain('X-Content-Type-Options: nosniff');
+  });
   it('preserves the portable cache and security defaults', () => {
     const headers = buildPagesHeaders();
 

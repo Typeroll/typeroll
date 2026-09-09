@@ -20,6 +20,25 @@ const BASE_HEADERS = [
   '',
 ];
 
+/** Pages indexes rules by pattern; repeated patterns discard earlier headers. */
+export function withGlobalHeaders(input: string, headers: Record<string, string>): string {
+  const rules = new Map<string, string[]>();
+  let pattern = '';
+  for (const line of input.split('\n')) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue;
+    if (!/^\s/.test(line)) { pattern = line.trim(); if (!rules.has(pattern)) rules.set(pattern, []); }
+    else if (pattern) rules.get(pattern)!.push(line);
+  }
+  const names = new Set(Object.keys(headers).map(name => name.toLowerCase()));
+  const global = (rules.get('/*') ?? []).filter(line => !names.has(line.trim().split(':', 1)[0]!.toLowerCase()));
+  for (const [name, value] of Object.entries(headers)) {
+    if (!/^[A-Za-z][A-Za-z0-9-]*$/.test(name) || !value || /[\r\n]/.test(value)) throw new Error('Invalid publication header');
+    global.push(`  ${name}: ${value}`);
+  }
+  rules.set('/*', global);
+  return [...rules].map(([path, values]) => [path, ...values, ''].join('\n')).join('\n');
+}
+
 function normalizeBaseDomain(value: string): string {
   const hostname = value.trim().toLowerCase().replace(/\.$/, '');
   if (

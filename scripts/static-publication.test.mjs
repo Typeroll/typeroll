@@ -161,6 +161,11 @@ test('real Core blocks build portable assets and last-page removal produces an e
     const marker = JSON.parse(await fs.readFile(path.join(destination, 'dist/.well-known/typeroll/publication.json'), 'utf8'));
     const headers = await fs.readFile(path.join(destination, 'dist/_headers'), 'utf8');
     assert.match(headers, /X-Robots-Tag: noindex, nofollow/);
+    const patterns = headers.split('\n').filter(line => line && !/^\s|#/.test(line));
+    assert.equal(patterns.filter(line => line === '/*').length, 1, 'Cloudflare keeps only the last rule for duplicate patterns');
+    assert.ok(patterns.every(line => (line.match(/\*/g) ?? []).length <= 1), 'Cloudflare permits only one wildcard per header rule');
+    assert.ok(patterns.includes('https://:project.pages.dev/*'));
+    assert.ok(patterns.includes('https://:version.:project.pages.dev/*'));
     assert.equal(marker.id, publication.publication_id);
     if (name !== 'empty') {
       const html = await fs.readFile(path.join(destination, 'dist/index.html'), 'utf8');

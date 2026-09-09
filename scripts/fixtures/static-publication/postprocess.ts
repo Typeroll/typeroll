@@ -4,7 +4,7 @@ import { bundleBlockAssets } from './source/bundle-blocks';
 import { buildSearchIndexIfUsed } from './source/search-index';
 import { expandRedirectsForTrailingSlashPolicy, pagesShadowedByRedirect } from '@typeroll/shared';
 import type { Redirect, TrailingSlashPolicy } from '@typeroll/shared';
-import { buildPagesHeaders } from './source/pages-headers';
+import { buildPagesHeaders, withGlobalHeaders } from './source/pages-headers';
 import { vendorExtensionAssets } from './source/extensions/assets';
 import type { ExtensionRuntimeSnapshot } from '@typeroll/shared';
 
@@ -12,11 +12,13 @@ export async function postprocess(dist: string, publication: { publication_id: s
   await bundleBlockAssets(dist);
   await buildSearchIndexIfUsed(dist);
   if (publication.extensions?.installations?.length) await vendorExtensionAssets(dist, publication.extensions);
-  let headers = buildPagesHeaders();
-  headers += '\nhttps://*.pages.dev/*\n  X-Robots-Tag: noindex, nofollow\n';
-  if (publication.settings.sitewide_noindex) headers += '\n/*\n  X-Robots-Tag: noindex, nofollow\n';
   if (!/^[a-f0-9]{64}$/.test(publication.publication_id)) throw new Error('Invalid publication identity');
-  headers += `\n/*\n  X-Typeroll-Publication: ${publication.publication_id}\n`;
+  let headers = withGlobalHeaders(buildPagesHeaders(), {
+    'X-Typeroll-Publication': publication.publication_id,
+    ...(publication.settings.sitewide_noindex ? { 'X-Robots-Tag': 'noindex, nofollow' } : {}),
+  });
+  headers += '\nhttps://:project.pages.dev/*\n  X-Robots-Tag: noindex, nofollow\n';
+  headers += '\nhttps://:version.:project.pages.dev/*\n  X-Robots-Tag: noindex, nofollow\n';
   await fs.writeFile(path.join(dist, '_headers'), headers);
   const routes: string[] = [];
   async function walk(directory: string, prefix = '') {

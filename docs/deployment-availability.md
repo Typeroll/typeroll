@@ -10,7 +10,11 @@ header cannot make an old body or deleted page pass. Work resumes in bounded
 batches through the durable queue, with a 45-minute observation deadline.
 
 Generated cache directives include `no-transform` so Cloudflare's optional
-HTML/image transformations do not change the verified output. When Cloudflare
+HTML/image transformations do not change the verified output. Cache, security,
+publication and optional noindex headers share one global rule: Cloudflare's
+uploader discards earlier rules when a pattern occurs more than once. Separate
+named-placeholder rules cover project and version `pages.dev` hosts without
+exceeding the provider's one-wildcard limit. When Cloudflare
 prepends its managed policy to `robots.txt`, the original file must still remain
 byte-identical after that marked prefix. This exception does not apply to HTML,
 assets or removed routes. It does not change the organization's zone settings.
