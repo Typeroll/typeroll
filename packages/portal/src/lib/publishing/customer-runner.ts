@@ -1,3 +1,6 @@
+import { capturePublicationImpact } from './impact-preview';
+import { compareImpact } from './impact';
+import { readSnapshot, saveSnapshot } from './publication-snapshot';
 import { siteHostingGroup, lockSiteHostingGroup } from './hosting-groups';
 import { hostingDns } from './hosting-dns';
 import { purgePublicationHost } from './publication-cache';
@@ -50,27 +53,6 @@ function projectCreationMessage(error: ProviderError, publication?: GitPublicati
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
 type GitJob = DeployJob & { observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
-const snapshotPath = (args: EnqueueArgs) => `${paths.deploy(args.orgId, args.siteId, args.jobId)}/snapshot_chunks`;
-
-async function saveSnapshot(args: EnqueueArgs, value: unknown) {
-  const serialized = JSON.stringify(value);
-  const chunks = Math.ceil(serialized.length / 120_000);
-  if (chunks > 250) throw new ConnectionError('The publication is too large. Reduce generated content before publishing.', 413);
-  for (let i = 0; i < chunks; i++) await getStore().setDoc(`${snapshotPath(args)}/${String(i).padStart(4, '0')}`, { data: serialized.slice(i * 120_000, (i + 1) * 120_000) });
-  return { snapshot_chunks: chunks, snapshot_digest: digest(serialized) };
-}
-
-async function readSnapshot(args: EnqueueArgs, publication: GitPublication) {
-  let serialized = '';
-  for (let i = 0; i < publication.snapshot_chunks; i++) {
-    const chunk = await getStore().getDoc<{ data: string }>(`${snapshotPath(args)}/${String(i).padStart(4, '0')}`);
-    if (!chunk) throw new Error('Frozen publication is incomplete');
-    serialized += chunk.data;
-  }
-  if (digest(serialized) !== publication.snapshot_digest) throw new Error('Frozen publication failed integrity verification');
-  return JSON.parse(serialized);
-}
-
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const attemptStarted = performance.now();
@@ -148,8 +130,16 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       }
       // Media originals and metadata for a domain-only build come from the public snapshot too.
       const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined);
+      // Compare the exact media records frozen into the manifest, without a second datastore read.
+      const impactSnapshot = job.publication_intent === 'domain_prepare' ? null : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
       frozen = retargetWebsite(mapped.content, [site?.domain ? `https://${site.domain}` : '', prior?.site_url ?? ''], `https://${host}`);
       frozen = { ...frozen, site_url: `https://${host}`, site: { ...frozen.site, domain: host }, media: mapped.media, media_manifest: mapped.manifest };
+      if (impactSnapshot) {
+        frozen.source_impact_snapshot = impactSnapshot;
+        await store.updateDoc(jobPath, { build_impact: compareImpact(prior?.source_impact_snapshot, impactSnapshot) });
+      } else {
+        delete frozen.source_impact_snapshot;
+      }
       const retained = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
       frozen.retained_media_manifests = retained.filter((entry, index) => retained.findIndex(other => JSON.stringify(other) === JSON.stringify(entry)) === index);
       // Content identity excludes wall-clock metadata so an unchanged publication can reuse the previous build.
@@ -408,7 +398,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       ? `${error.provider} returned HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''} during ${failure.stage}. Open Publishing to check the connection and retry.`
       : `Publishing stopped during ${failure.stage}. Retry the deployment. If it fails again, contact support with deployment ${args.jobId}.`;
     await store.updateDoc(jobPath, { status: 'failed', phase: 'failed', finished_at: new Date().toISOString(),
-      error: message, failure });
+      error: message, verification_message: failedJob?.verification_message ? message : null, failure });
     terminal = true;
     return 'ran';
   } finally {

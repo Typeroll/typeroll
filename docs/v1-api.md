@@ -300,6 +300,38 @@ Use `page_ids`, or `collection` plus optional `item_ids`, to split a large
 repair into reviewable batches. `diff_limit` defaults to 500 and is capped at
 2,000; `truncated` and `additional_diffs` make omitted diffs explicit.
 
+## Publication impact
+
+```http
+GET /sites/{siteId}/publishing/impact?version=main
+```
+
+The read-only `get_publication_impact` MCP tool exposes the same result. It
+compares saved, public-eligible source against that version's last verified
+customer Git publication. Working copies and new drafts are excluded. A page
+that was previously published and is now deleted or unpublished is a removal.
+Reverted content edits disappear from the net change list; changed publication
+timestamps remain separately reported as `metadata_only` because the renderer
+may use them in sitemap or page metadata.
+
+`comparison` is `verified_snapshot` or `baseline_unavailable`; historical,
+managed and domain-only publications without the source fingerprint snapshot
+cannot establish this baseline. A subsequent successful customer content
+publication records it. Failed and dry-run jobs never become the baseline.
+Explicitly requesting an unavailable version returns 404 instead of comparing
+main. The UI retains its labeled date-based list when a baseline is unavailable.
+
+`classification` describes source inputs (`none`, `page_content_only`,
+`site_wide`, `unknown`), not proven output dependencies. The response includes
+page addition/change/removal counts, `total`, up to 50 `changes`, and structured
+`reasons`. Collection membership, shared definitions, media fingerprints,
+runtime configuration, origins and Core changes conservatively widen scope.
+Preview responses have `provisional: true`; the job recomputes `build_impact`
+from its frozen input. `execution: full` and `reuse_verified: false` remain
+mandatory. This release does not enable partial builds, prove cache reuse or
+claim build-time savings. Dependency-graph observation and clean-artifact
+comparison remain prerequisites for those optimizations.
+
 ## Database internal-link check
 
 ```http

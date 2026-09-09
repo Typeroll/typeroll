@@ -37,7 +37,7 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   }
   const serialized = JSON.stringify(content);
   const media = all.filter(item => [item.cdn_url, ...(item.source_aliases ?? []), ...(item.variants ?? []).map(variant => variant.cdn_url)].some(url => url && serialized.includes(url)));
-  if (!media.length) return { content, media: [], manifest: null };
+  if (!media.length) return { content, media: [], sourceMedia: [], manifest: null };
   if (!connection.cloudflare?.public_bucket || !connection.media_ready) throw new ConnectionError('Complete private and public R2 storage setup in Publishing.', 409, 'media_storage_required');
   const host = content.git_branch && content.git_branch !== 'main' ? websiteHost : domains.desired.media_host || websiteHost;
   if (!host) throw new ConnectionError('Set a media host in Publishing before deploying images.', 409, 'media_domain_required');
@@ -76,7 +76,7 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
       public_key: publicKey, public_path: publicPath, aliases };
   });
   await markOrganizationMediaHostUsed(orgId, organization);
-  return { content: replacePublicationReferences(content, replacements), media: entries,
+  return { content: replacePublicationReferences(content, replacements), media: entries, sourceMedia: media,
     manifest: { delivery, account_id: connection.cloudflare.account_id, original_bucket: connection.cloudflare.bucket, public_bucket: connection.cloudflare.public_bucket,
       media_host: host, website_host: websiteHost, dns_mode: domains.dns_mode, media_path_prefix: publicPrefix, site_prefix: prefix, entries } };
 }

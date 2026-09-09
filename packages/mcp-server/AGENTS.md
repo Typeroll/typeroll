@@ -1039,7 +1039,7 @@ preview.
 | **Analytics attribution** | `read_funnel_attribution`, `update_funnel_attribution` (specialized Analytics module tools; admin; redeploy after changes) |
 | **Search + bulk** | `search_pages`, `check_internal_links`, `bulk_replace_text`. The link check is database-driven. Bulk replace defaults to pages but can target partials, collection items or all resources, always dry-run first. |
 | **Branches** | `create_branch`, `read_version`, `delete_branch`, `merge_branch` |
-| **Deploy** | `trigger_deploy`, `list_deploys`, `get_deploy_status` |
+| **Deploy** | `get_publication_impact`, `trigger_deploy`, `list_deploys`, `get_deploy_status` |
 | **Preview** | `get_preview_link`, `get_page_preview` |
 
 Every tool's input is validated server-side; the MCP server only does

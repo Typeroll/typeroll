@@ -2,10 +2,11 @@
 // menu's "Redeploy full site" section so the user sees exactly what a
 // redeploy would ship (and what it wouldn't — drafts stay behind).
 //
-// Computed at read time from date_updated/updated_at stamps vs the active
-// version's last_deployed_at; nothing is stored, so it can't go stale.
+// Prefer net public-source changes against the selected version's verified
+// snapshot. Legacy publications retain an explicitly labeled timestamp estimate.
 
 import type { APIRoute } from 'astro';
+import { previewPublicationImpact } from '../../../../lib/publishing/impact-preview';
 import { requireSiteAccess, json } from '../../../../lib/access';
 import { vstore } from '../../../../lib/version-store';
 import { getStore } from '../../../../lib/datastore';
@@ -37,6 +38,10 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   );
   const last = version?.last_deployed_at ?? null;
   const cutoff = version?.last_deployed_content_at ?? last;
+  let impact;
+  try { impact = await previewPublicationImpact(orgId, site.id, versionId); }
+  catch { return json({ error: 'Saved content could not be compared with the verified publication. Check content and template validity before deploying.' }, 409); }
+  if (impact.comparison === 'verified_snapshot') return json({ last_deployed_at: last, never_deployed: !last, total: impact.total, changes: impact.changes, impact });
   const changedSince = (stamp?: string) => !!stamp && (!cutoff || stamp > cutoff);
 
   const changes: Change[] = [];
@@ -108,6 +113,7 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   return json({
     last_deployed_at: last,
     never_deployed: !last,
+    impact,
     total: changes.length,
     changes: changes.slice(0, MAX_CHANGES),
   });

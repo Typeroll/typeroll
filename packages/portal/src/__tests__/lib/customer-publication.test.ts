@@ -6,6 +6,8 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { connectionPath } from '../../lib/publishing/connections';
 import { getSiteDomains, saveSiteDomains, siteDomainConfigPath } from '../../lib/publishing/domain-config';
 import { executeCustomerPublication } from '../../lib/publishing/customer-runner';
+import { captureImpact } from '../../lib/publishing/impact';
+import { previewPublicationImpact } from '../../lib/publishing/impact-preview';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
 
 const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi.fn(), probe: vi.fn(), source: vi.fn(), enqueue: vi.fn(), built: vi.fn(), upload: vi.fn(), verify: vi.fn(), deployment: null as any }));
@@ -76,6 +78,29 @@ it('freezes once, waits for the exact Git commit, and hides the live link until 
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', deploy_url: 'https://www.example.com' });
   expect(await getStore().getDoc<any>(paths.site('org', 'site'))).toMatchObject({ domain_status: 'live', domain: 'www.example.com' });
   expect(mocks.cloudflare.mock.calls.filter(([route]) => route.endsWith('/purge_cache'))).toHaveLength(1);
+  // The later save must be compared with the frozen, verified source, not
+  // whatever happened to be in the CMS when the build finally completed.
+  expect(await previewPublicationImpact('org', 'site', 'main')).toMatchObject({ comparison: 'verified_snapshot', provisional: true, total: 1, changed_pages: 1, classification: 'page_content_only' });
+});
+
+it('reports removal and excludes new drafts using the last verified source', async () => {
+  await executeCustomerPublication(args); complete(); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  const store = getStore();
+  await store.updateDoc(`${paths.pages('org', 'site')}/home`, { status: 'draft' });
+  await store.setDoc(`${paths.pages('org', 'site')}/unpublished`, { title: 'Draft only', slug: 'draft-only', status: 'draft', content_mode: 'html', html_content: '<p>Not public</p>' });
+  const impact = await previewPublicationImpact('org', 'site', 'main');
+  expect(impact).toMatchObject({ total: 1, removed_pages: 1, changes: [{ id: 'home', action: 'removed', will_deploy: true }] });
+  await store.updateDoc(`${paths.pages('org', 'site')}/home`, { status: 'published', date_updated: '2026-09-09T12:00:00.000Z' });
+  expect(await previewPublicationImpact('org', 'site', 'main')).toMatchObject({ total: 0, metadata_only: 1 });
+});
+
+it('does not treat a failed candidate as the verified comparison baseline', async () => {
+  await executeCustomerPublication(args);
+  const store = getStore(), job = await store.getDoc<any>(jobPath);
+  await store.setDoc(`${paths.site('org', 'site')}/publishing_targets/main`, { last_publication: job.git_publication });
+  await store.updateDoc(jobPath, { status: 'failed' });
+  expect(await previewPublicationImpact('org', 'site', 'main')).toMatchObject({ comparison: 'baseline_unavailable' });
 });
 
 it('keeps the public link hidden until this deployment has refreshed its own hostname cache', async () => {
@@ -157,6 +182,14 @@ it('resolves the selected version without writing main and handles provider retr
   expect(await executeCustomerPublication(branchArgs)).toBe('deferred');
   expect(mocks.push).toHaveBeenCalledTimes(1);
   expect((await getStore().getDoc<any>(paths.version('org', 'site', 'main'))).last_deployed_at).toBeUndefined();
+  await getStore().updateDoc(jobPath, { version_id: 'design' });
+  complete('version-design'); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(branchArgs);
+  expect(await previewPublicationImpact('org', 'site', 'design')).toMatchObject({ comparison: 'verified_snapshot', total: 0 });
+  await getStore().updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: '<p>Main change hidden by branch override</p>' });
+  expect(await previewPublicationImpact('org', 'site', 'design')).toMatchObject({ total: 0 });
+  await getStore().setDoc(paths.partial('org', 'site', 'header', 'main'), { name: 'header', kind: 'header', content_mode: 'html', html_content: '<nav>Inherited</nav>', status: 'published' });
+  expect(await previewPublicationImpact('org', 'site', 'design')).toMatchObject({ total: 1, classification: 'site_wide', changes: [{ kind: 'partial', id: 'header' }] });
 });
 
 it('a domain-only preparation reuses the public snapshot and does not publish later saved content', async () => {
@@ -336,6 +369,26 @@ it('explains the observed verification failure when the observation window expir
   const job = await getStore().getDoc<any>(jobPath);
   expect(job.error).toContain('HTTP 200 at /gone/');
   expect(job.error).not.toContain('retry automatically');
+  expect(job.verification_message).toBe(job.error);
   expect(job.status).toBe('failed');
   expect(job.deploy_url).toBeUndefined();
+});
+
+it('captures media impact from the same records used in the frozen media manifest', async () => {
+  const store = getStore();
+  await store.updateDoc(connectionPath('org', 'cloudflare'), { media_ready: true, encrypted_credentials: 'synthetic-reference', cloudflare: { account_id: 'a'.repeat(32), bucket: 'originals', public_bucket: 'public' } });
+  await store.updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: '<img src="https://media.example.com/photo.png">' });
+  const media = { id: 'photo', filename: 'photo.png', mime_type: 'image/png', cdn_url: 'https://media.example.com/photo.png', sha256: 'c'.repeat(64), size_bytes: 12, storage: { provider: 'organization_r2', state: 'ready', account_id: 'a'.repeat(32), bucket: 'originals', key: 'photo.png' } };
+  await store.setDoc(`${paths.media('org', 'site')}/photo`, media);
+  const domains = await getSiteDomains('org', 'site');
+  await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'www.example.com', media_host: 'media.example.com', dns_mode: 'automatic' });
+  const list = vi.spyOn(store, 'listDocs');
+  await executeCustomerPublication({ ...args, dryRun: true });
+  expect((await store.getDoc<any>(jobPath)).error).toBeFalsy();
+  const frozen = mocks.source.mock.calls[0][0];
+  const observed = frozen.source_impact_snapshot.entries.find((entry: any) => entry.kind === 'media');
+  const expected = captureImpact({ version_id: 'main', pages: [{ id: 'home', html_content: '<img src="https://media.example.com/photo.png">' }] }, 'org', 'site', [media]).entries.find(entry => entry.kind === 'media');
+  expect(observed.fields).toEqual(expected?.fields);
+  expect(frozen.media_manifest.entries[0].sha256).toBe(media.sha256);
+  expect(list.mock.calls.filter(([path]) => path === paths.media('org', 'site'))).toHaveLength(2);
 });

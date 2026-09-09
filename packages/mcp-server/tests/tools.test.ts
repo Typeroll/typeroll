@@ -66,6 +66,13 @@ it('reads customer provider build status only when explicitly requested', async 
   ]);
 });
 
+it('reads provisional publication impact on the requested version without deploying', async () => {
+  const { client, siteId, calls } = setup(() => jsonResponse({ execution: 'full', reuse_verified: false, provisional: true }));
+  const result = await find(deployTools, 'get_publication_impact').handler({ version: 'redesign' } as never, { client, siteId });
+  expect(result.isError).toBeFalsy();
+  expect(calls).toEqual([{ method: 'GET', url: 'https://example.test/api/v1/sites/mysite/publishing/impact?version=redesign', body: null }]);
+});
+
 describe('pages tools', () => {
   it('list_pages forwards filters as query params', async () => {
     const { client, siteId, calls } = setup(() => jsonResponse({ pages: [] }));

@@ -18,6 +18,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { isPendingDeploy } from './EditorStatus';
 import { useDeployProgress } from './useDeployProgress';
+import type { PublicationImpact } from '../lib/publishing/impact';
 
 export interface StatusOption {
   value: string;
@@ -40,6 +41,7 @@ export const SIMPLE_STATUS_OPTIONS: StatusOption[] = [
 ];
 
 interface ChangesResponse {
+  impact?: PublicationImpact;
   last_deployed_at: string | null;
   never_deployed: boolean;
   total: number;
@@ -51,6 +53,7 @@ interface ChangesResponse {
     status?: string;
     will_deploy: boolean;
     collection?: string;
+    action?: 'added' | 'changed' | 'removed';
   }>;
 }
 
@@ -140,6 +143,7 @@ export default function PublishMenu({
 
   const [changes, setChanges] = useState<ChangesResponse | null>(null);
   const [changesLoading, setChangesLoading] = useState(false);
+  const [changesError, setChangesError] = useState<string | null>(null);
 
   const [env, setEnv] = useState<'production' | 'staging'>('production');
   const [deployErr, setDeployErr] = useState<string | null>(null);
@@ -168,14 +172,17 @@ export default function PublishMenu({
 
   useEffect(() => {
     if (!open) return;
+    const controller = new AbortController();
     setChangesLoading(true);
-    fetch(`/api/sites/${siteId}/publishing`, { cache: 'no-store' })
-      .then(response => response.ok ? response.json() : null).then(setPublishingSetup).catch(() => setPublishingSetup(null));
-    fetch(`/api/sites/${siteId}/changes-since-deploy`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setChanges(d))
-      .catch(() => setChanges(null))
-      .finally(() => setChangesLoading(false));
+    setChangesError(null);
+    fetch(`/api/sites/${siteId}/publishing`, { cache: 'no-store', signal: controller.signal })
+      .then(response => response.ok ? response.json() : null).then(data => { if (!controller.signal.aborted) setPublishingSetup(data); }).catch(() => { if (!controller.signal.aborted) setPublishingSetup(null); });
+    fetch(`/api/sites/${siteId}/changes-since-deploy`, { cache: 'no-store', signal: controller.signal })
+      .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Content comparison is unavailable.'); return data; })
+      .then(data => { if (!controller.signal.aborted) setChanges(data); })
+      .catch(error => { if (!controller.signal.aborted) { setChanges(null); setChangesError(error instanceof Error ? error.message : 'Content comparison is unavailable.'); } })
+      .finally(() => { if (!controller.signal.aborted) setChangesLoading(false); });
+    return () => controller.abort();
   }, [open, siteId, docUpdatedAt, hasUnsaved]);
 
   async function deploy() {
@@ -379,8 +386,20 @@ export default function PublishMenu({
             {busy && job?.verification_message && <p role="status" className="pmenu__hint">{job.verification_message}</p>}
             {job?.phase === 'distributing' && <p className="pmenu__hint" role="status">Distributing… Your site is being made publicly available. The link will appear automatically when ready.</p>}
             {changesLoading && <p className="pmenu__hint">Checking what changed…</p>}
-            {!busy && !changesLoading && changes && changes.total === 0 && !changes.never_deployed && (
+            {changesError && <p role="alert" className="pmenu__hint pmenu__hint--error">{changesError}</p>}
+            {!busy && !changesLoading && changes && changes.total === 0 && !changes.never_deployed && !changes.impact && (
               <p className="pmenu__hint">The live site is up to date with your saved content.</p>
+            )}
+            {!changesLoading && changes?.impact && (
+              <div className="pmenu__hint" role="status">
+                {changes.impact.comparison === 'baseline_unavailable'
+                  ? 'A verified content comparison is not available yet. This list currently uses save dates.'
+                  : changes.total === 0 ? 'No saved public content changes.'
+                  : `Pages added or changed: ${changes.impact.changed_pages + changes.impact.added_pages}. Pages to remove: ${changes.impact.removed_pages}. Total changes: ${changes.total}.`}
+                {changes.impact.metadata_only > 0 && <p>Items with updated publication timestamps: {changes.impact.metadata_only}.</p>}
+                {changes.impact.reasons.includes('toolchain_changed') && <p>The build runtime has changed since the last publication.</p>}
+                <p>This is an estimate from saved content. Deploy still rebuilds the full site.</p>
+              </div>
             )}
             {hasUnsaved && (
               <p className="pmenu__hint pmenu__hint--warn">
@@ -446,7 +465,7 @@ export default function PublishMenu({
                 </summary>
                 <div className="pmenu__change-list">
                   <p className="pmenu__hint">
-                    {changes.never_deployed
+                    {changes.impact?.comparison === 'verified_snapshot' ? 'Net public content changes compared with this version’s last verified publication. Draft-only and reverted content edits are excluded.' : changes.never_deployed
                       ? 'Saved content before the first deploy.'
                       : 'Saved content changed since the last deploy.'}
                     {' '}Each item appears once, even after multiple edits. Deploy rebuilds the whole site.
@@ -457,13 +476,13 @@ export default function PublishMenu({
                         <span className="pmenu__kind">{KIND_LABEL[c.kind] ?? c.kind}</span>
                         <span className="pmenu__title">{c.title}</span>
                         <span className={c.will_deploy ? 'pmenu__included' : 'pmenu__skip'}>
-                          {c.will_deploy ? 'Included in deploy' : `Not included: ${c.status ?? 'draft'}`}
+                          {c.action === 'removed' ? 'Removed from next deploy' : c.will_deploy ? 'Included in deploy' : `Not included: ${c.status ?? 'draft'}`}
                         </span>
                       </li>
                     ))}
                   </ul>
                   {changes.total > changes.changes.length && (
-                    <p className="pmenu__hint">Showing the latest {changes.changes.length} of {changes.total} changed items.</p>
+                    <p className="pmenu__hint">Showing {changes.changes.length} of {changes.total} changed items.</p>
                   )}
                 </div>
               </details>

@@ -7,6 +7,12 @@ function v(version?: string): Record<string, string | undefined> | undefined {
 
 export const deployTools: ToolDef[] = [
   {
+    name: 'get_publication_impact',
+    description: 'Read provisional net saved public-source changes against the selected version’s last verified publication. Reports additions, removals, shared inputs, metadata-only changes and unavailable baselines. Does not build or deploy. execution remains full and reuse_verified is false; source-level classification does not prove output reuse or cost savings.',
+    inputSchema: { version: versionParam },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, 'publishing/impact', v(args.version)))),
+  },
+  {
     name: 'trigger_deploy',
     description:
       "Enqueue a deploy (static-page build → hosting) of the currently active version. Returns a job_id immediately; poll get_deploy_status until the status leaves queued/running. NOT for previewing iterative design/content edits — that's what get_preview_link is for (it renders live from the DB with no build). Reserve trigger_deploy for publishing, a stakeholder link to the compiled site, or pre-merge validation. Deploys build SAVED content only — unsaved drafts (working copies) are excluded, so commit_working_copy (or save:true on your writes) before deploying, or your changes won't ship. With `dry_run: true`, the deploy runs through every step EXCEPT the hosting-adapter upload — useful for validating a structural change (new collection routes, schema bump, mode switch) without risking the live site. A dry_run job that succeeds proves the build is clean; one that fails returns the same astro stack-trace in get_deploy_status.error as a real deploy would.",

@@ -4,6 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import DeploymentNotice from '../../components/DeploymentNotice';
 import PublishingDomains from '../../components/PublishingDomains';
+import PublishMenu, { PAGE_STATUS_OPTIONS } from '../../components/PublishMenu';
 let root: Root;
 afterEach(async () => { if (root) await act(async () => root.unmount()); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
 async function mount(component: ReturnType<typeof createElement>) {
@@ -42,4 +43,27 @@ it('retains the latest failed publication message after a fresh page load', asyn
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({ active_job: null, latest_job: { id: 'failed', status: 'failed', error } })));
   const container = await mount(createElement(DeploymentNotice, { siteId: 'synthetic' }));
   expect(container.querySelector('[role="alert"]')?.textContent).toBe(error);
+});
+
+it('labels removed content and does not present a net comparison as partial execution', async () => {
+  const change = { kind: 'page', id: 'removed', title: 'Retired page', action: 'removed', will_deploy: true };
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('changes-since-deploy')
+    ? { total: 1, changes: [change], impact: { comparison: 'verified_snapshot', changed_pages: 0, added_pages: 0, removed_pages: 1, metadata_only: 0, reasons: [] } }
+    : { active_job: null, ready: true })));
+  const container = await mount(createElement(PublishMenu, { siteId: 'synthetic', pubStatus: 'published', statusOptions: PAGE_STATUS_OPTIONS, hasUnsaved: false, onSave: vi.fn(), onDiscard: vi.fn(), onStatusChange: vi.fn() }));
+  await act(async () => (container.querySelector('.pmenu__trigger') as HTMLButtonElement).click());
+  expect(container.textContent).toContain('Removed from next deploy');
+  expect(container.textContent).toContain('Deploy still rebuilds the full site.');
+  expect(container.textContent).toContain('Draft-only and reverted content edits are excluded.');
+  expect(container.querySelector('details')?.open).toBe(false);
+});
+
+it('explains when a legacy publication lacks the verified comparison baseline', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('changes-since-deploy')
+    ? { total: 0, changes: [], impact: { comparison: 'baseline_unavailable', metadata_only: 0, reasons: [] } }
+    : { active_job: null, ready: true })));
+  const container = await mount(createElement(PublishMenu, { siteId: 'synthetic', pubStatus: 'published', statusOptions: PAGE_STATUS_OPTIONS, hasUnsaved: false, onSave: vi.fn(), onDiscard: vi.fn(), onStatusChange: vi.fn() }));
+  await act(async () => (container.querySelector('.pmenu__trigger') as HTMLButtonElement).click());
+  expect(container.textContent).toContain('This list currently uses save dates.');
+  expect(container.textContent).not.toContain('The live site is up to date');
 });

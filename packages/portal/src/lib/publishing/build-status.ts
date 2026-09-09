@@ -20,7 +20,7 @@ export async function customerBuildStatus(orgId: string, siteId: string, jobId: 
   const [project, match] = await Promise.all([provider(root), findPublicationDeployment(provider, root, publication)]);
   const deployment = match ? await provider(`${root}/deployments/${encodeURIComponent(match.id)}`) : null;
   return {
-    job_id: jobId, status: job.status, phase: job.phase,
+    job_id: jobId, status: job.status, phase: job.phase, build_impact: job.build_impact ?? null,
     public_probe: job.public_probe ?? null,
     static_probe: job.static_probe ?? null, verification_message: job.verification_message ?? null,
     source: { owner: publication.owner, repository: publication.repo, branch: publication.branch, commit: publication.commit },
