@@ -146,6 +146,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
       >
         {label}
       </button>
+      {busy && job?.verification_message && <span role="status" className="text-sm">{job.verification_message}</span>}
       {job?.phase === 'distributing' && <span role="status" className="text-sm">Distributing… The link will appear automatically when ready.</span>}
       {err && (
         <span className="text-sm" style={{ color: 'var(--color-danger)', marginLeft: 8 }}>

@@ -4,6 +4,7 @@ export interface DeployProgress {
   id?: string;
   status: 'queued' | 'running' | 'succeeded' | 'failed';
   phase?: string;
+  verification_message?: string | null;
   error?: string;
 }
 

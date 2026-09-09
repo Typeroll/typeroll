@@ -14,6 +14,7 @@ beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); vi.clearAllMocks();
   mocked.checks = Array.from({ length: 14 }, (_, i) => ({ route: `/page-${i}/`, status: 200, sha256: 'a'.repeat(64) }));
   mocked.verify.mockResolvedValue(true);
+  await getStore().setDoc(job, { status: 'running' });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -50,4 +51,17 @@ it('yields after the time budget while retaining verified progress', async () =>
   mocked.verify.mockResolvedValue(true);
   expect(await check()).toBe(true);
   expect(mocked.verify).toHaveBeenCalledTimes(14);
+});
+
+it('records the failed route and response status without any response body', async () => {
+  mocked.checks = [{ route: '/removed/', status: 404 }];
+  mocked.verify.mockImplementation(async (_origin, _check, options) => {
+    options.observe({ route: '/removed/', expected_status: 404, actual_status: 200, reason: 'status_mismatch', cf_ray: 'a38654d0f853c124-ARN' });
+    return false;
+  });
+  expect(await check()).toBe(false);
+  expect(await getStore().getDoc(job)).toMatchObject({ static_probe: { origin: 'https://site.example.com', route: '/removed/', actual_status: 200, expected_status: 404 }, verification_message: expect.stringContaining('HTTP 200 at /removed/') });
+  mocked.verify.mockResolvedValue(true);
+  expect(await check()).toBe(true);
+  expect(await getStore().getDoc(job)).toMatchObject({ static_probe: null, verification_message: null });
 });

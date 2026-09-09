@@ -5,7 +5,7 @@ import OrganizationDomainStatus from './OrganizationDomainStatus';
 import OrganizationDomainSetup from './OrganizationDomainSetup';
 import type { OrganizationDomainStatus as DomainStatus } from '../lib/publishing/organization-domain-status';
 
-type Preparation = { certificate_ready: boolean; has_existing_traffic?: boolean; requirements: Array<{ phase: string; type: string; name: string; content: string; status: string }> };
+type Preparation = { validation_blocker?: { code: string; message: string } | null; certificate_ready: boolean; has_existing_traffic?: boolean; requirements: Array<{ phase: string; type: string; name: string; content: string; status: string }> };
 type DomainData = {
   domain_status?: DomainStatus;
   media_host_change_allowed?: boolean;
@@ -110,6 +110,18 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     const interval = setInterval(() => { void refresh().catch(error => setError(error.message)); }, 5000);
     return () => clearInterval(interval);
   }, [endpoint, siteId, data?.state]);
+  async function checkSiteDomain() {
+    setChecking(true); setError(''); setNotice('');
+    try {
+      const current = await refresh();
+      const blocker = current.preparation?.validation_blocker ?? current.media_preparation?.validation_blocker;
+      setNotice(blocker ? 'Checked: the domain transition still needs assistance. See the explanation below.'
+        : current.preparation?.certificate_ready && (!current.media_preparation || current.media_preparation.certificate_ready)
+        ? 'Checked: Cloudflare has confirmed the website and media certificates.'
+        : 'Checked: domain validation is still pending. Keep existing traffic in place.');
+    } catch (error) { setError(error instanceof Error ? error.message : 'Could not check domain verification.'); }
+    finally { setChecking(false); }
+  }
   async function switchTraffic() {
     if (!data?.candidate) return;
     setBusy(true); setError('');
@@ -134,6 +146,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     </div>}
     {error && <p role="alert">{error}</p>}
   </div>;
+  const validationBlocker = data?.preparation?.validation_blocker ?? data?.media_preparation?.validation_blocker;
   const content = <>
     <p>{siteId ? 'Choose the website host and the host used for images and other media. Saving these addresses prepares a future change; your current website stays live at its existing address.' : 'Choose addresses for your sites and media. Each site can also use its own domain.'}</p>
     {error && (siteId || !feedbackLocation) && <p role="alert">{error}</p>}
@@ -142,13 +155,14 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     {siteId && data?.active && data.state !== 'live' && <button type="button" className="btn" disabled={busy} onClick={() => void prepare()}>Prepare domain change from published content</button>}
     {data?.preparation && <div className="stack">
       <h3>Domain verification</h3>
-      {data.media_preparation && <p>{data.media_preparation.certificate_ready ? 'Media domain certificate confirmed.' : 'Media domain validation is still pending. Keep existing media DNS in place.'}</p>}
-      <p>{data.preparation.certificate_ready ? 'Cloudflare has confirmed the certificate.' : 'Waiting for Cloudflare to confirm the certificate. Keep existing website DNS in place until validation is complete.'}</p>
+      {validationBlocker && <div role="alert"><strong>Domain transition needs assistance</strong><p>{validationBlocker.message}</p></div>}
+      {!validationBlocker && data.media_preparation && <p>{data.media_preparation.certificate_ready ? 'Media domain certificate confirmed.' : 'Media domain validation is still pending. Keep existing media DNS in place.'}</p>}
+      {!validationBlocker && <p>{data.preparation.certificate_ready ? 'Cloudflare has confirmed the certificate.' : 'Waiting for Cloudflare to confirm the certificate. Keep existing website DNS in place until validation is complete.'}</p>}
       <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Purpose</th><th>Type</th><th>Name</th><th>Value</th></tr></thead><tbody>
         {[...data.preparation.requirements, ...(data.media_preparation?.requirements ?? [])].map(record => <tr key={record.phase + record.name}><td>{record.phase === 'traffic' ? 'Website traffic — after approval' : 'Certificate validation'}</td><td>{record.type}</td><td><code>{record.name}</code></td><td><code>{record.content}</code></td></tr>)}
       </tbody></table></div>
-      <p className="muted">In Cloudflare, select your domain → DNS → Records. Add validation records first. Apply the website CNAME only after the prepared deployment is ready. Version addresses require a proxied Cloudflare CNAME.</p>
-      <button type="button" className="btn" disabled={busy} onClick={() => void refresh().catch(error => setError(error.message))}>Refresh verification</button>
+      {!validationBlocker && <p className="muted">In Cloudflare, select your domain → DNS → Records. Add validation records first. Apply the website CNAME only after the prepared deployment is ready. Version addresses require a proxied Cloudflare CNAME.</p>}
+      <button type="button" className="btn" disabled={busy || checking} onClick={() => void checkSiteDomain()}>{checking ? 'Checking…' : 'Refresh verification'}</button>
       {data.candidate && data.state === 'ready_to_switch' && <>
         <p>The prepared build uses the future website and media addresses. Switching traffic makes this build public.</p>
         <button type="button" className="btn" disabled={busy || (!data.preparation.certificate_ready && data.preparation.has_existing_traffic !== false) || Boolean(data.media_preparation && !data.media_preparation.certificate_ready && data.media_preparation.has_existing_traffic !== false)} onClick={() => void switchTraffic()}>Switch website traffic</button>

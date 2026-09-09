@@ -12,6 +12,7 @@ export interface DomainPreparation {
   requirements: DnsRequirement[]; dns_fingerprint: string | null;
   action: 'verify' | 'configure_dns' | 'approve_cutover' | 'complete_validation';
   has_existing_traffic?: boolean;
+  validation_blocker?: { code: 'domain_prevalidation_unavailable'; message: string } | null;
   zone_id?: string;
   previous_records?: Array<{ id: string; type: string; name: string; content: string; proxied?: boolean; ttl?: number }>;
 }
@@ -56,7 +57,7 @@ export async function preparePagesDomain(provider: Provider, input: { accountId:
   }
   requirements.push(traffic);
   const result: DomainPreparation = { hostname, provider_status: String(domain.status ?? 'pending'),
-    certificate_ready: domain.status === 'active', requirements, dns_fingerprint: null, action: 'configure_dns' };
+    certificate_ready: domain.status === 'active', validation_blocker: null, requirements, dns_fingerprint: null, action: 'configure_dns' };
   if (input.dnsMode === 'external') {
     result.action = result.certificate_ready ? 'approve_cutover' : 'complete_validation';
     return result;
@@ -73,6 +74,9 @@ export async function preparePagesDomain(provider: Provider, input: { accountId:
     traffic.status = 'configured'; result.action = 'verify'; return result;
   }
   if (addressRecords.length) {
+    if (!result.certificate_ready && validation?.method === 'http' && domain.verification_data?.error_message === 'CNAME record not set') {
+      result.validation_blocker = { code: 'domain_prevalidation_unavailable', message: 'Cloudflare requires the website CNAME to change before it can validate this hostname. It has not provided a way to validate it while the current website stays in place. Keep the existing DNS records and contact support to plan the domain transition. Retrying the build or reconnecting the account will not resolve this requirement.' };
+    }
     result.action = result.certificate_ready ? 'approve_cutover' : 'complete_validation';
     return result;
   }

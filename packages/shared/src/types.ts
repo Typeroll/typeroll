@@ -1630,6 +1630,7 @@ export interface DeployJob {
   status: DeployStatus;
   /** Free-text phase the runner is in — shown in the UI while running. */
   phase?: string;
+  verification_message?: string | null;
   /** Resulting public URL on success. */
   deploy_url?: string;
   /** Final error message on failure. */

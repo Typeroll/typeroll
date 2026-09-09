@@ -22,6 +22,7 @@ export async function customerBuildStatus(orgId: string, siteId: string, jobId: 
   return {
     job_id: jobId, status: job.status, phase: job.phase,
     public_probe: job.public_probe ?? null,
+    static_probe: job.static_probe ?? null, verification_message: job.verification_message ?? null,
     source: { owner: publication.owner, repository: publication.repo, branch: publication.branch, commit: publication.commit },
     project: { name: publication.project, uses_functions: project.uses_functions ?? null,
       dashboard_url: `https://dash.cloudflare.com/${publication.account_id}/pages/view/${publication.project}` },

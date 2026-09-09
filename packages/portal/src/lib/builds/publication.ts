@@ -3,7 +3,7 @@ import { ConnectionError } from '../publishing/connections';
 import { type ProviderClient } from '../publishing/providers.mjs';
 import { buildStorage } from './storage';
 import { sha256 } from './contract.mjs';
-import { staticChecks, verifyStaticResponse, type StaticCheck } from './verification';
+import { staticChecks, verifyStaticResponse, type StaticCheck, type StaticObservation } from './verification';
 
 export async function prepareStaticProject(client: ProviderClient, root: string, expected: { project: string; owner: string; repo: string; repository: any }) {
   let project = await client(root, { missing: true });
@@ -43,12 +43,25 @@ export async function verifyStaticBatch(org: string, jobPath: string, checksKey:
   // backoff for every eight files. Concurrency, work and elapsed time stay bounded.
   do {
     const batch = checks.slice(cursor, Math.min(cursor + 8, limit));
-    const results = await Promise.all(batch.map(check => verifyStaticResponse(origin, check)));
-    if (!results.every(Boolean)) { await store.setDoc(checkPath, { cursor: 0, complete: false }); return false; }
+    const observations: StaticObservation[] = [];
+    const results = await Promise.all(batch.map(check => verifyStaticResponse(origin, check, { observe: result => { observations.push(result); } })));
+    if (!results.every(Boolean)) {
+      const failure = observations.sort((a, b) => a.route.localeCompare(b.route))[0];
+      await store.setDoc(checkPath, { cursor: 0, complete: false, failure: failure ?? null });
+      if (failure) await store.updateDoc(jobPath, {
+        static_probe: { origin, ...failure, checked_at: new Date().toISOString() },
+        verification_message: failure.reason === 'status_mismatch'
+          ? `The hosting service still returns HTTP ${failure.actual_status} at ${failure.route}; this deployment requires HTTP ${failure.expected_status}. Public verification will retry automatically.`
+          : failure.reason === 'content_mismatch'
+          ? `The hosting service returns different content at ${failure.route}. Public verification will retry automatically.`
+          : `The hosting service could not be verified at ${failure.route}. Public verification will retry automatically.`,
+      });
+      return false;
+    }
     cursor += batch.length;
     const complete = cursor >= checks.length;
     await store.setDoc(checkPath, { cursor, complete });
-    if (complete) return true;
+    if (complete) { await store.updateDoc(jobPath, { verification_message: null, static_probe: null }); return true; }
   } while (cursor < limit && Date.now() < deadline);
   return false;
 }

@@ -51,3 +51,17 @@ it('changes one reviewed address atomically without deleting existing DNS', asyn
   });
   expect(provider).toHaveBeenLastCalledWith('/zones/zone/dns_records/old', expect.objectContaining({ method: 'PATCH', body: expect.objectContaining({ type: 'CNAME', content: 'project.pages.dev' }) }));
 });
+
+it('reports the observed CNAME prevalidation conflict without changing existing traffic', async () => {
+  let active = false;
+  const provider = vi.fn(async (route: string, _options?: { method?: string }) => {
+    if (route.startsWith('/zones?')) return [{ id: 'zone', name: 'example.com', account: { id: 'account' }, status: 'active' }];
+    if (route.includes('/dns_records')) return [{ id: 'existing', type: 'CNAME', content: 'old.example.net', proxied: true }];
+    return { status: active ? 'active' : 'pending', validation_data: { method: 'http' }, verification_data: { error_message: 'CNAME record not set' } };
+  });
+  const input = { accountId: 'account', project: 'project', branch: 'main', hostname: 'www.example.com', dnsMode: 'automatic' as const };
+  expect((await preparePagesDomain(provider, input)).validation_blocker).toMatchObject({ code: 'domain_prevalidation_unavailable' });
+  expect(provider.mock.calls.every(call => !call[1]?.method)).toBe(true);
+  active = true;
+  expect((await preparePagesDomain(provider, input)).validation_blocker).toBeNull();
+});

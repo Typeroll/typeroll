@@ -104,7 +104,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   };
   try {
     const observationStart = Date.parse(job.observation_started_at ?? job.started_at);
-    if (Number.isFinite(observationStart) && Date.now() - observationStart > 45 * 60_000) throw new ConnectionError('Publication verification did not finish within 45 minutes. Check the Cloudflare build and domain status, then retry.', 409, 'publication_observation_timeout');
+    if (Number.isFinite(observationStart) && Date.now() - observationStart > 45 * 60_000) throw new ConnectionError(job.verification_message ? `Publication verification stopped after 45 minutes. ${job.verification_message.replace('Public verification will retry automatically.', '').trim()} Contact support with deployment ${args.jobId}.` : 'Publication verification did not finish within 45 minutes. Check the Cloudflare build and domain status, then retry.', 409, 'publication_observation_timeout');
     if (args.environment === 'staging' && args.versionId === 'main') throw new ConnectionError('Select a site version to publish a test deployment. The main version publishes the live website.', 409, 'publication_version_required');
     await assertPublishingReady(args.orgId, args.siteId, args.versionId);
     const group = await (args.dryRun ? siteHostingGroup : lockSiteHostingGroup)(args.orgId, args.siteId);
@@ -312,6 +312,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         candidate: { id: publication.publication_id, revision: publication.domain_revision, commit: publication.commit,
         deployment_id: deployment.id, verified_at: new Date().toISOString(), job_id: args.jobId } });
     if (publication.release_branch) {
+      const blocker = preparation.validation_blocker ?? mediaPreparation?.validation_blocker;
+      if (blocker) throw new ConnectionError(blocker.message, 409, blocker.code);
       if (domains.cutover_approved_revision !== domains.revision) {
         if ((!preparation.certificate_ready && preparation.has_existing_traffic !== false) || (mediaPreparation && !mediaPreparation.certificate_ready && mediaPreparation.has_existing_traffic !== false)) {
           await store.updateDoc(jobPath, { phase: 'waiting for domain validation', dns_requirements: preparation.requirements });
@@ -372,7 +374,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const finished = new Date().toISOString();
     const stillOwned = await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease && target.lease_until > Date.now(), { lease_until: Date.now() + 60_000 });
     if (!stillOwned) return 'deferred';
-    await store.updateDoc(jobPath, { status: 'succeeded', phase: 'live', deploy_url: `https://${publication.website_host}`, finished_at: finished });
+    await store.updateDoc(jobPath, { status: 'succeeded', phase: 'live', deploy_url: `https://${publication.website_host}`, verification_message: null, static_probe: null, finished_at: finished });
     await store.updateDoc(paths.version(args.orgId, args.siteId, args.versionId), { last_deployed_at: finished, last_deployed_content_at: publication.content_cutoff, deploy_url: `https://${publication.website_host}` });
     if (args.versionId === 'main') {
       await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === publication!.domain_revision,

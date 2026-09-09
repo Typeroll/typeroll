@@ -312,3 +312,30 @@ it('does not fall back to per-site Git builds when shared engine setup is unfini
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('Finish shared build setup') });
   expect(mocks.push).not.toHaveBeenCalled();
 });
+
+it('keeps the candidate and existing traffic when the provider cannot prevalidate the domain', async () => {
+  const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.includes('/domains/')) return { status: 'pending', validation_data: { method: 'http' }, verification_data: { error_message: 'CNAME record not set' } };
+    if (route.includes('/dns_records')) return [{ id: 'existing', type: 'A', content: '192.0.2.10' }];
+    return provider(route, options);
+  });
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'domain_prevalidation_unavailable' }, error: expect.stringContaining('Keep the existing DNS records') });
+  expect(await getSiteDomains('org', 'site')).toMatchObject({ active, candidate: { commit: 'b'.repeat(40) }, preparation: { validation_blocker: { code: 'domain_prevalidation_unavailable' } } });
+  expect(mocks.cloudflare.mock.calls.some(([, options]) => options?.method === 'PATCH' && options?.body?.type === 'CNAME')).toBe(false);
+});
+
+it('explains the observed verification failure when the observation window expires', async () => {
+  await getStore().updateDoc(jobPath, { started_at: '2020-01-01T00:00:00Z', verification_message: 'The hosting service still returns HTTP 200 at /gone/; this deployment requires HTTP 404. Public verification will retry automatically.' });
+  await executeCustomerPublication(args);
+  const job = await getStore().getDoc<any>(jobPath);
+  expect(job.error).toContain('HTTP 200 at /gone/');
+  expect(job.error).not.toContain('retry automatically');
+  expect(job.status).toBe('failed');
+  expect(job.deploy_url).toBeUndefined();
+});

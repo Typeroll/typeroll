@@ -376,6 +376,7 @@ export default function PublishMenu({
                     : ''}
             </p>
 
+            {busy && job?.verification_message && <p role="status" className="pmenu__hint">{job.verification_message}</p>}
             {job?.phase === 'distributing' && <p className="pmenu__hint" role="status">Distributing… Your site is being made publicly available. The link will appear automatically when ready.</p>}
             {changesLoading && <p className="pmenu__hint">Checking what changed…</p>}
             {!busy && !changesLoading && changes && changes.total === 0 && !changes.never_deployed && (

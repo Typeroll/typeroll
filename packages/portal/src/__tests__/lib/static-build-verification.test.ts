@@ -53,3 +53,17 @@ it('rejects symbolic links and hard links before collecting output', async () =>
     await expect(outputFiles(root)).rejects.toThrow('unsafe');
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
+
+it('reports status, content and network failures with bounded non-secret evidence', async () => {
+  const observe = vi.fn();
+  const fetchImpl = vi.fn(async () => new Response('private response body', { headers: { 'cf-ray': 'a38654d0f853c124-ARN', 'set-cookie': 'never-export' } }));
+  const options = { fetchImpl, validate: async () => undefined, observe };
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/gone/', status: 404 }, options)).toBe(false);
+  expect(observe).toHaveBeenLastCalledWith({ route: '/gone/', expected_status: 404, actual_status: 200, reason: 'status_mismatch', cf_ray: 'a38654d0f853c124-ARN' });
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/', status: 200, sha256: sha256('new') }, options)).toBe(false);
+  expect(observe.mock.lastCall?.[0].reason).toBe('content_mismatch');
+  fetchImpl.mockRejectedValue(Error('secret provider payload'));
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/', status: 200 }, options)).toBe(false);
+  expect(observe.mock.lastCall?.[0]).toMatchObject({ actual_status: null, reason: 'request_failed' });
+  expect(JSON.stringify(observe.mock.calls)).not.toMatch(/private response|never-export|secret provider/);
+});
