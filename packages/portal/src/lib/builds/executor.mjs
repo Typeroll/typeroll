@@ -5,8 +5,26 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, decodeSource, encodeArtifact, sha256, assertFilePath } from './contract.mjs';
 
-const BWRAP_URL = 'https://archive.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb';
-const BWRAP_SHA = '1b506492bd9c7fd0cdb4f02ac822f1d3e336b0aead5113c1239baf8db5db562a';
+export const BWRAP_URL = 'https://archive.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb';
+export const BWRAP_SHA = '1b506492bd9c7fd0cdb4f02ac822f1d3e336b0aead5113c1239baf8db5db562a';
+
+/**
+ * Use an AppArmor-profiled system installation only when it is the pinned binary.
+ * @param {string} extracted
+ * @param {{lstat: (name: string) => Promise<{uid: number, mode: number, isSymbolicLink(): boolean, isFile(): boolean, isDirectory(): boolean}>, readFile: (name: string) => Promise<Uint8Array>}} disk
+ */
+export async function sandboxBinary(extracted, disk = fs) {
+  const installed = '/usr/bin/bwrap';
+  try {
+    for (const name of ['/usr', '/usr/bin', installed]) {
+      const stat = await disk.lstat(name);
+      if (stat.uid !== 0 || (stat.mode & 0o6022) !== 0 || stat.isSymbolicLink()) return extracted;
+      if (name === installed ? !stat.isFile() : !stat.isDirectory()) return extracted;
+    }
+    if (sha256(await disk.readFile(installed)) !== sha256(await disk.readFile(extracted))) return extracted;
+    return installed;
+  } catch { return extracted; }
+}
 export const RENDER_ADAPTER = `import { registerHooks } from 'node:module';
 import { installAssetCache } from './assets.mjs';
 await installAssetCache('/work');
@@ -95,7 +113,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     if (sha256(deb) !== BWRAP_SHA) throw Error('sandbox_integrity_failed');
     await fs.writeFile(path.join(temp, 'sandbox.deb'), deb);
     await command('dpkg-deb', ['-x', path.join(temp, 'sandbox.deb'), path.join(temp, 'sandbox')], 30000);
-    const binary = path.join(temp, 'sandbox/usr/bin/bwrap');
+    const binary = await sandboxBinary(path.join(temp, 'sandbox/usr/bin/bwrap'));
     await fs.writeFile(path.join(temp, 'passwd'), 'builder:x:1000:1000:Build user:/tmp:/bin/false\n');
     await fs.writeFile(path.join(temp, 'group'), 'builder:x:1000:\n');
     const runtime = path.dirname(path.dirname(await fs.realpath(process.execPath)));

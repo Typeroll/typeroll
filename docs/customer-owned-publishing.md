@@ -261,3 +261,27 @@ when its owner can approve, or `up_to_date` when both grants are effective.
 The UI checks again when the user returns from approval and displays an explicit
 confirmation. Checking does not reconnect, change the connection revision, mint
 an installation token, dispatch a workflow or switch build providers.
+
+
+## GitHub-hosted Linux sandbox support
+
+GitHub's Ubuntu 24.04 runner restricts unprivileged user namespaces. A sandbox
+binary extracted to a temporary directory has no matching AppArmor profile and
+cannot initialize the build namespace. Do not disable the kernel restriction.
+
+The `github-sandbox.mjs` bootstrap installs the exact checksum-pinned Bubblewrap
+binary and AppArmor's checksum-pinned stacked child profile on an ephemeral
+GitHub-hosted x64 Linux VM. Only this trusted host setup runs with root access;
+the executor and build source run as the ordinary runner user. Conflicting
+installations or local policy overrides are rejected. Self-hosted runners and
+local desktop hosts are not eligible for this bootstrap.
+
+The executor selects `/usr/bin/bwrap` only when the binary and its parent
+directories are root-owned and not writable by other users, the file is not a
+symlink or setuid/setgid, and its bytes match the verified archive exactly.
+Otherwise it retains the existing extracted sandbox. Namespace, network,
+capability, environment and output checks remain mandatory. Installing this
+support is not evidence of a qualified GitHub publishing adapter.
+
+Upstream policy source:
+https://gitlab.com/apparmor/apparmor/-/blob/v4.0.2/profiles/apparmor/profiles/extras/bwrap-userns-restrict
