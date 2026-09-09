@@ -37,7 +37,8 @@ function projectNumbers(value, fields) {
 function projectBooleans(value, fields) {
   const output = {};
   for (const field of fields) {
-    if (value?.[field] === undefined) continue;
+    // API replacement clears optional fields to null; omission uses the default.
+    if (value?.[field] === undefined || value[field] === null) continue;
     if (typeof value[field] !== 'boolean') throw new Error(`Invalid public flag: ${field}`);
     output[field] = value[field];
   }
@@ -122,7 +123,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   const pages = input.pages.filter((page) => ['published', 'unlisted'].includes(page.status)).map((page) => {
     if (!['html', 'blocks'].includes(page.content_mode)) throw new Error('Unsupported publication page configuration');
     const projected = assertIdentity({ ...projectStrings(page, stringFields.page), ...projectBooleans(page, ['append_seo_suffix', 'noindex']), ...projectNumbers(page, ['sort_order']) });
-    if (page.alternates !== undefined) {
+    if (page.alternates !== undefined && page.alternates !== null) {
       if (!Array.isArray(page.alternates)) throw new Error('Invalid publication language alternatives');
       projected.alternates = page.alternates.map(alternate => projectStrings(alternate, ['hreflang', 'href']));
     }

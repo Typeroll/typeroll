@@ -25,6 +25,19 @@ function input() {
 }
 const identity = { siteUrl: 'https://example.invalid', coreCommit: 'a'.repeat(40), publishedAt: '2026-09-06T12:00:00Z' };
 
+test('publishes optional page fields cleared by a full API replacement without accepting malformed values', () => {
+  const value = input();
+  Object.assign(value.pages[0], { noindex: null, alternates: null, blocks: null, template: null, seo_title: null });
+  const publication = projectStaticPublication(value, identity);
+  assert.equal(publication.pages[0].html_content, value.pages[0].html_content);
+  assert.ok(!Object.hasOwn(publication.pages[0], 'noindex'));
+  assert.ok(!Object.hasOwn(publication.pages[0], 'alternates'));
+  value.pages[0].noindex = 'false';
+  assert.throws(() => projectStaticPublication(value, identity), /Invalid public flag: noindex/);
+  value.pages[0].noindex = false; value.pages[0].alternates = 'invalid';
+  assert.throws(() => projectStaticPublication(value, identity), /Invalid publication language alternatives/);
+});
+
 const coreBlockTypes = [
   { id: 'core/section', schema: [{ name: 'background', type: 'color' }] },
   { id: 'core/heading', schema: [{ name: 'text', type: 'text' }, { name: 'level', type: 'select' }, { name: 'editor_note', type: 'text', rendered: false }] },
