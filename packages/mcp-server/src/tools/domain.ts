@@ -19,6 +19,12 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const domainTools: ToolDef[] = [
   {
+    name: 'check_organization_github_permissions', noSite: true,
+    description: 'Check live GitHub build permissions without disconnecting or reconnecting. Requires an organization API key. Distinguishes an update the organization owner can approve from permissions Typeroll has not requested yet. Returns the existing installation approval URL only when actionable; does not enable a build engine.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/github-permissions'))),
+  },
+  {
     name: 'setup_organization_build_engine', noSite: true,
     description: 'Prepare or update the organization Cloudflare build engine and start its isolated execution and artifact-transfer check. Requires an organization API key and current revision. Keeps site repositories, branches and Hosting Groups separate. Read the engine status until verification finishes.',
     inputSchema: { revision: z.string() },

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import PublishingCard from './PublishingCard';
+import PublishingGithubPermissions from './PublishingGithubPermissions';
 
 type Connection = {
   connected_at?: string | null;
@@ -190,9 +191,9 @@ export default function PublishingConnections() {
               </select></div>
             <button className="btn" disabled={busy || checkingMedia} type="submit">Connect selected organization</button>
           </form>}
-          <form className="stack" onSubmit={(event) => void submit('github', event)}>
-            <button className="btn" disabled={busy || checkingMedia} type="submit">{data.github.status === 'connected' ? 'Verify GitHub connection' : 'Connect GitHub'}</button>
-          </form>
+          {data.github.status === 'connected' ? <PublishingGithubPermissions revision={data.github.revision} /> : <form className="stack" onSubmit={(event) => void submit('github', event)}>
+            <button className="btn" disabled={busy || checkingMedia} type="submit">Connect GitHub</button>
+          </form>}
           <details><summary>GitHub setup instructions</summary>
             <p>Sign in and choose an organization you own. No organization name or ID needs to be entered.</p>
             <ol>

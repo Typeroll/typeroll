@@ -245,3 +245,19 @@ Provider contracts reviewed 2026-09-06:
 Independent media builds should use the supported Linux build environment.
 Different image encoders across operating systems can generate different bytes;
 immutable asset verification deliberately rejects such collisions.
+
+
+## Check existing GitHub permission updates
+
+`GET /api/v1/publishing/github-permissions` requires an organization API key.
+`check_organization_github_permissions` exposes the same check through MCP,
+without requiring a site. Browser organization admins use Publishing → GitHub
+account → Check GitHub permissions.
+
+The check reads the authenticated App registration and saved installation live.
+It returns `publisher_update_required` when the operator has not requested
+Actions/Workflows write, `approval_required` with the existing installation URL
+when its owner can approve, or `up_to_date` when both grants are effective.
+The UI checks again when the user returns from approval and displays an explicit
+confirmation. Checking does not reconnect, change the connection revision, mint
+an installation token, dispatch a workflow or switch build providers.

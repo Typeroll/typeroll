@@ -8,6 +8,8 @@ import { CLOUDFLARE_SCOPES } from '../../lib/publishing/cloudflare-oauth';
 import { finishGithubConnection, githubSetup, startGithubConnection, githubChoices, selectGithubOrganization } from '../../lib/publishing/github-connection';
 import { connectCloudflare, verifyR2, prepareCloudflareMedia, connectCloudflareMedia } from '../../lib/publishing/cloudflare-connection';
 import { GET } from '../../pages/api/orgs/publishing/index';
+import { checkGithubPermissions } from '../../lib/publishing/github-permissions';
+import { GET as GITHUB_PERMISSIONS } from '../../pages/api/orgs/publishing/github/permissions';
 import { POST, DELETE } from '../../pages/api/orgs/publishing/[provider]';
 import { GET as CALLBACK } from '../../pages/api/orgs/publishing/github/callback';
 import { GET as CLOUDFLARE_CALLBACK } from '../../pages/api/orgs/publishing/cloudflare/callback';
@@ -397,7 +399,7 @@ describe('publishing account routes', () => {
   it.each(['editor', 'missing'])('denies %s even when legacy organization roles are not enforced', async (role) => {
     if (role === 'missing') await getStore().deleteDoc('organizations/default/members/dev-user');
     else await getStore().updateDoc('organizations/default/members/dev-user', { role });
-    for (const route of [GET, POST, DELETE, CALLBACK, CLOUDFLARE_CALLBACK]) expect((await call(route, routeContext())).status).toBe(403);
+    for (const route of [GET, POST, DELETE, CALLBACK, CLOUDFLARE_CALLBACK, GITHUB_PERMISSIONS]) expect((await call(route, routeContext())).status).toBe(403);
     for (const action of ['start', 'select', 'prepare_media', 'save_media']) expect((await call(POST, routeContext('POST', 'cloudflare', { action }))).status).toBe(403);
   });
 
@@ -478,5 +480,47 @@ describe('publishing account routes', () => {
     expect(result.headers.get('location')).toBe('/app/settings/publishing?github=failed');
     expect(result.headers.get('referrer-policy')).toBe('no-referrer');
     expect(context.cookies.delete).toHaveBeenCalled();
+  });
+});
+
+
+describe('existing GitHub installation permission updates', () => {
+  it('distinguishes publisher setup from owner approval and confirms live grants without reconnecting', async () => {
+    await finishGithubConnection(session, await authorization(), providerFetch());
+    const before = await getConnection('default', 'github');
+    const fetcher = providerFetch({ '/app': { id: 12, permissions: installation.permissions } });
+    expect(await checkGithubPermissions('default', fetcher)).toMatchObject({
+      state: 'publisher_update_required', approval_url: null, missing_permissions: ['actions', 'workflows'],
+    });
+    expect(fetcher.mock.calls.map(([url]) => new URL(String(url)).pathname).sort()).toEqual(['/app', '/app/installations/34']);
+    const requested = { ...installation.permissions, actions: 'write', workflows: 'write' };
+    expect(await checkGithubPermissions('default', providerFetch({ '/app': { id: 12, permissions: requested } }))).toMatchObject({
+      state: 'approval_required', approval_url: 'https://github.com/organizations/synthetic-agency/settings/installations/34',
+    });
+    vi.stubGlobal('fetch', providerFetch({ '/app': { id: 12, permissions: requested }, '/app/installations/34': { ...installation, permissions: requested } }));
+    const response = await call(GITHUB_PERMISSIONS, routeContext());
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toMatchObject({ state: 'up_to_date', approval_url: null, missing_permissions: [], revision: before.revision });
+    expect(await getConnection('default', 'github')).toEqual(before);
+  });
+
+  it.each([
+    { '/app': { id: 999 } },
+    { '/app/installations/34': { ...installation, account: { ...installation.account, id: 999 } } },
+    { '/app/installations/34': { ...installation, suspended_at: '2026-09-09' } },
+  ])('rejects changed or suspended provider authority', async (overrides) => {
+    await finishGithubConnection(session, await authorization(), providerFetch());
+    await expect(checkGithubPermissions('default', providerFetch({ '/app': { id: 12 }, ...overrides }))).rejects.toThrow();
+  });
+
+  it('rejects a check completed after the connection was replaced', async () => {
+    await finishGithubConnection(session, await authorization(), providerFetch());
+    const fetcher = providerFetch({ '/app': { id: 12 } });
+    const replacement = vi.fn<typeof fetch>(async (url, init) => {
+      if (new URL(String(url)).pathname === '/app') await getStore().updateDoc(connectionPath('default', 'github'), { revision: 'replacement' });
+      return fetcher(url, init);
+    });
+    await expect(checkGithubPermissions('default', replacement)).rejects.toThrow('connection changed');
   });
 });

@@ -72,6 +72,21 @@ Account ID is only needed in advanced token setup. In Cloudflare, select the
 account and use **Search → Copy account ID**, or **Workers & Pages → Account
 Details → Account ID**. Copy the 32-character account value, not a Zone ID.
 
+### Approve a GitHub permission update
+
+An existing connection does not need to be disconnected or connected again.
+In **Publishing → GitHub account**, select **Approve GitHub update** when it
+appears. This opens the existing installation in your GitHub organization.
+Review and accept the requested permissions as a GitHub organization owner,
+then return to Typeroll. Typeroll checks automatically and confirms when the
+permissions are up to date. **Check GitHub permissions** repeats the check.
+
+If Typeroll says it needs to enable GitHub build access first, your hosting
+operator must update the publisher App registration before an approval is
+available. You do not need to edit an App, create a token or reconnect.
+Your existing connection remains active. Permission approval alone does not
+change the selected build provider.
+
 ### When DNS is hosted elsewhere
 
 R2 media domains must belong to a zone in the same Cloudflare account as the

@@ -5,6 +5,7 @@ import { TyperollClient } from '../src/client.js';
 import { buildServer } from '../src/server.js';
 
 const organizationTools = [
+  'check_organization_github_permissions',
   'read_organization_build_engine', 'check_organization_build_access',
   'list_hosting_groups', 'save_hosting_group', 'connect_hosting_group',
   'list_organization_publishing_domains', 'configure_organization_publishing_domains',
@@ -45,6 +46,14 @@ describe('organization publishing through the MCP transport', () => {
       } });
       expect(saved.isError).not.toBe(true);
       expect(s.requests).toEqual(Array(2).fill('https://example.test/api/v1/publishing/hosting-groups'));
+    } finally { await s.close(); }
+  });
+
+  it('checks GitHub permission updates without requiring a site', async () => {
+    const s = await session();
+    try {
+      expect((await s.client.callTool({ name: 'check_organization_github_permissions', arguments: {} })).isError).not.toBe(true);
+      expect(s.requests).toEqual(['https://example.test/api/v1/publishing/github-permissions']);
     } finally { await s.close(); }
   });
 

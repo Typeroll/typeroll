@@ -63,9 +63,9 @@ export function createProviderClient(provider, token, fetchImpl = fetch) {
   };
 }
 
-export async function githubInstallationClient({ appId, installationId, privateKey, owner }, fetchImpl = fetch) {
-  if (!/^\d+$/.test(String(appId)) || !/^\d+$/.test(String(installationId)) || !privateKey) {
-    throw new Error('GitHub App ID, installation ID and private key are required');
+export function githubAppClient({ appId, privateKey }, fetchImpl = fetch) {
+  if (!/^\d+$/.test(String(appId)) || !privateKey) {
+    throw new Error('GitHub App ID and private key are required');
   }
   const now = Math.floor(Date.now() / 1000);
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -73,7 +73,12 @@ export async function githubInstallationClient({ appId, installationId, privateK
   let signature;
   try { signature = createSign('RSA-SHA256').update(unsigned).sign(privateKey, 'base64url'); }
   catch { throw new Error('GitHub App private key is invalid'); }
-  const app = createProviderClient('GitHub', `${unsigned}.${signature}`, fetchImpl);
+  return createProviderClient('GitHub', `${unsigned}.${signature}`, fetchImpl);
+}
+
+export async function githubInstallationClient({ appId, installationId, privateKey, owner }, fetchImpl = fetch) {
+  if (!/^\d+$/.test(String(installationId))) throw new Error('GitHub installation ID is required');
+  const app = githubAppClient({ appId, privateKey }, fetchImpl);
   const installation = await app(`/app/installations/${installationId}`);
   assertInstallation(installation, { appId, installationId, owner });
   const access = await app(`/app/installations/${installationId}/access_tokens`, { method: 'POST', body: {} });
