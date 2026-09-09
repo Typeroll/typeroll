@@ -155,13 +155,21 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     {siteId && data?.active && data.state !== 'live' && <button type="button" className="btn" disabled={busy} onClick={() => void prepare()}>Prepare domain change from published content</button>}
     {data?.preparation && <div className="stack">
       <h3>Domain verification</h3>
-      {validationBlocker && <div role="alert"><strong>Domain transition needs assistance</strong><p>{validationBlocker.message}</p></div>}
+      {validationBlocker && <div role="alert" style={{ borderLeft: '4px solid var(--color-danger)', background: 'color-mix(in srgb, var(--color-danger) 6%, var(--color-surface))', padding: '1rem', borderRadius: 6 }}><strong>Domain transition needs assistance</strong><p>{validationBlocker.message}</p></div>}
       {!validationBlocker && data.media_preparation && <p>{data.media_preparation.certificate_ready ? 'Media domain certificate confirmed.' : 'Media domain validation is still pending. Keep existing media DNS in place.'}</p>}
       {!validationBlocker && <p>{data.preparation.certificate_ready ? 'Cloudflare has confirmed the certificate.' : 'Waiting for Cloudflare to confirm the certificate. Keep existing website DNS in place until validation is complete.'}</p>}
-      <div style={{ overflowX: 'auto' }}><table><thead><tr><th>Purpose</th><th>Type</th><th>Name</th><th>Value</th></tr></thead><tbody>
-        {[...data.preparation.requirements, ...(data.media_preparation?.requirements ?? [])].map(record => <tr key={record.phase + record.name}><td>{record.phase === 'traffic' ? 'Website traffic — after approval' : 'Certificate validation'}</td><td>{record.type}</td><td><code>{record.name}</code></td><td><code>{record.content}</code></td></tr>)}
-      </tbody></table></div>
-      {!validationBlocker && <p className="muted">In Cloudflare, select your domain → DNS → Records. Add validation records first. Apply the website CNAME only after the prepared deployment is ready. Version addresses require a proxied Cloudflare CNAME.</p>}
+      <details>
+        <summary>DNS records and instructions</summary>
+        {[...data.preparation.requirements, ...(data.media_preparation?.requirements ?? [])].map(record => <div key={record.phase + record.name} style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.75rem', marginTop: '0.75rem' }}>
+          <strong>{record.phase === 'traffic' ? 'Traffic — after approval' : 'Certificate validation'}</strong>
+          <dl style={{ display: 'grid', gridTemplateColumns: '4rem minmax(0, 1fr)', gap: '0.5rem', margin: '0.75rem 0 0' }}>
+            <dt>Type</dt><dd style={{ margin: 0 }}><code>{record.type}</code></dd>
+            <dt>Name</dt><dd style={{ margin: 0, overflowWrap: 'anywhere' }}><code>{record.name}</code></dd>
+            <dt>Value</dt><dd style={{ margin: 0, overflowWrap: 'anywhere' }}><code>{record.content}</code></dd>
+          </dl>
+        </div>)}
+        {!validationBlocker && <p className="muted">In Cloudflare, select your domain → DNS → Records. Add validation records first. Apply the website CNAME only after the prepared deployment is ready. Version addresses require a proxied Cloudflare CNAME.</p>}
+      </details>
       <button type="button" className="btn" disabled={busy || checking} onClick={() => void checkSiteDomain()}>{checking ? 'Checking…' : 'Refresh verification'}</button>
       {data.candidate && data.state === 'ready_to_switch' && <>
         <p>The prepared build uses the future website and media addresses. Switching traffic makes this build public.</p>
