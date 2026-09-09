@@ -95,6 +95,35 @@ it('serializes rotating refresh tokens and reuses the new token', async () => {
   expect(openCredentials<CloudflareStoredCredentials>('default', 'cloudflare', connection.encrypted_credentials!).oauth?.refresh_token).toBe('rotated-refresh');
   expect(connection.refresh_lease).toBeNull();
 });
+it('recovers an existing client after another operation rotates its OAuth token', async () => {
+  await finishCloudflareConnection(session, await grant(), provider());
+  const fetcher = vi.fn<typeof fetch>(async (_url, init) => new Headers(init?.headers).get('Authorization') === 'Bearer rotated-access'
+    ? Response.json({ success: true, result: { id: first.id } })
+    : Response.json({ success: false, errors: [{ code: 10000 }] }, { status: 401 }));
+  const client = await cloudflareClient('default', fetcher);
+  await expire();
+  await cloudflareClient('default', provider([first], { ...token, access_token: 'rotated-access' }));
+  expect(await Promise.all([client(`/accounts/${first.id}`), client(`/accounts/${first.id}`)])).toEqual([{ id: first.id }, { id: first.id }]);
+  expect(fetcher).toHaveBeenCalledTimes(4);
+});
+it.each([401, 403])('does not repeatedly retry an unchanged credential after HTTP %s', async status => {
+  await finishCloudflareConnection(session, await grant(), provider());
+  const fetcher = vi.fn<typeof fetch>(async () => Response.json({ success: false }, { status }));
+  const client = await cloudflareClient('default', fetcher);
+  await expect(client(`/accounts/${first.id}`)).rejects.toMatchObject({ status });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+it('does not reuse an existing client after its connected account is replaced', async () => {
+  await finishCloudflareConnection(session, await grant(), provider());
+  const fetcher = vi.fn<typeof fetch>(async () => Response.json({ success: false }, { status: 401 }));
+  const client = await cloudflareClient('default', fetcher);
+  const current = await getConnection('default', 'cloudflare');
+  const credentials = openCredentials<CloudflareStoredCredentials>('default', 'cloudflare', current.encrypted_credentials!);
+  credentials.oauth!.access_token = 'replacement-access';
+  await getStore().updateDoc(connectionPath('default', 'cloudflare'), { cloudflare: { ...current.cloudflare, account_id: second.id }, encrypted_credentials: sealCredentials('default', 'cloudflare', credentials) });
+  await expect(client(`/accounts/${first.id}`)).rejects.toThrow('changed');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
 it('never resurrects a connection disconnected during refresh', async () => {
   await finishCloudflareConnection(session, await grant(), provider()); await expire();
   const fetcher = vi.fn<typeof fetch>(async () => {

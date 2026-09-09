@@ -4,7 +4,7 @@ import { getStore } from '../datastore';
 import { isSecretCryptoConfigured } from '../secret-crypto';
 import { claimAccount, ConnectionError, connectionPath, getConnection, openCredentials, saveConnection, sealCredentials, type Connection } from './connections';
 import { getHostingGroup } from './hosting-groups';
-import { createProviderClient } from './providers.mjs';
+import { createProviderClient, ProviderError, type ProviderClient } from './providers.mjs';
 
 export const CLOUDFLARE_COOKIE = 'typeroll_publishing_cloudflare';
 export const CLOUDFLARE_CALLBACK = '/api/orgs/publishing/cloudflare/callback';
@@ -166,8 +166,9 @@ async function cloudflareAccess(orgId: string, fetchImpl: typeof fetch = fetch, 
     if (expectedRevision && connection.revision !== expectedRevision) throw new ConnectionError('The connection changed. Reload and try again.', 409);
     if (connection.status !== 'connected' || !connection.encrypted_credentials) throw new ConnectionError('Connect Cloudflare before publishing.', 409);
     const credentials = openCredentials<CloudflareStoredCredentials>(orgId, 'cloudflare', connection.encrypted_credentials, groupId);
-    if (!credentials.oauth) return { token: credentials.api_token!, revision: connection.revision };
-    if (credentials.oauth.expires_at > Date.now() + 60_000) return { token: credentials.oauth.access_token, revision: connection.revision };
+    const identity = JSON.stringify([connection.cloudflare?.account_id, connection.connected_at, connection.auth_method]);
+    if (!credentials.oauth) return { token: credentials.api_token!, revision: connection.revision, identity };
+    if (credentials.oauth.expires_at > Date.now() + 60_000) return { token: credentials.oauth.access_token, revision: connection.revision, identity };
     const lease = randomUUID();
     const acquired = await store.compareAndUpdateDoc<Connection>(path, value => value.status === 'connected' && value.revision === connection.revision &&
       value.encrypted_credentials === connection.encrypted_credentials && (!value.refresh_lease || value.refresh_lease.expires_at <= Date.now()),
@@ -179,7 +180,7 @@ async function cloudflareAccess(orgId: string, fetchImpl: typeof fetch = fetch, 
       const saved = await store.compareAndUpdateDoc<Connection>(path, value => value.status === 'connected' && value.revision === connection.revision && value.refresh_lease?.id === lease,
         { encrypted_credentials: sealCredentials(orgId, 'cloudflare', { ...credentials, oauth: tokens }, groupId), refresh_lease: null, revision });
       if (!saved) throw new ConnectionError('Cloudflare connection changed while renewing authorization.', 409);
-      return { token: tokens.access_token, revision };
+      return { token: tokens.access_token, revision, identity };
     } finally {
       await store.compareAndUpdateDoc<Connection>(path, value => value.refresh_lease?.id === lease, { refresh_lease: null });
     }
@@ -188,8 +189,24 @@ async function cloudflareAccess(orgId: string, fetchImpl: typeof fetch = fetch, 
 }
 
 export async function cloudflareClient(orgId: string, fetchImpl: typeof fetch = fetch, expectedRevision?: string, groupId = 'default') {
-  const access = await cloudflareAccess(orgId, fetchImpl, expectedRevision, groupId);
-  return Object.assign(createProviderClient('Cloudflare', access.token, fetchImpl), { connectionRevision: access.revision });
+  let access = await cloudflareAccess(orgId, fetchImpl, expectedRevision, groupId);
+  let provider = createProviderClient('Cloudflare', access.token, fetchImpl);
+  const client: ProviderClient = async (route, options) => {
+    const attempted = access;
+    try { return await provider(route, options); }
+    catch (error) {
+      if (!(error instanceof ProviderError) || error.status !== 401) throw error;
+      // An upload or concurrent request can renew the grant while this client
+      // is alive. Retry a definite authentication rejection once, only with a
+      // different token from the same saved account and connection session.
+      const renewed = await cloudflareAccess(orgId, fetchImpl, undefined, groupId);
+      if (renewed.identity !== attempted.identity) throw new ConnectionError('The Cloudflare connection changed. Reload and try again.', 409);
+      if (renewed.token === attempted.token) throw error;
+      access = renewed; provider = createProviderClient('Cloudflare', renewed.token, fetchImpl);
+      return provider(route, options);
+    }
+  };
+  return Object.assign(client, { connectionRevision: access.revision });
 }
 
 /** Coordinator-only bridge to the official static uploader. Never exposed to a build runner. */

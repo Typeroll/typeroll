@@ -1,5 +1,27 @@
 # Public deployment availability
 
+## Customer-owned shared builds
+
+The shared organization engine uploads only verified static output. The normal
+publication queue checks the immutable Pages deployment and the actual website
+and media hosts before showing live links. It checks response bodies against
+the artifact hashes and requires removed routes to return 404. A new publication
+header cannot make an old body or deleted page pass. Work resumes in bounded
+batches through the durable queue, with a 45-minute observation deadline.
+
+Generated cache directives include `no-transform` so Cloudflare's optional
+HTML/image transformations do not change the verified output. When Cloudflare
+prepends its managed policy to `robots.txt`, the original file must still remain
+byte-identical after that marked prefix. This exception does not apply to HTML,
+assets or removed routes. It does not change the organization's zone settings.
+
+If another operation renews the saved Cloudflare OAuth grant, an existing
+provider client retries a definite 401 once with the changed token from the same
+account and connection session. It never retries unchanged credentials or
+permission errors, and never moves the operation to a replacement account.
+
+## Earlier direct-upload adapter
+
 Cloudflare upload completion is followed by `running / distributing`. A
 successful upload alone does not advance the version's live content cutoff or
 reveal live links. The editor, overview and page list display **Distributing…**
@@ -33,7 +55,6 @@ edge or end-user network worldwide. Proxies that strip the publication header
 and domains redirecting to another origin need configuration correction before
 the check can pass.
 
-The marker applies to the current Cloudflare adapter. Dry runs and other
-adapters retain their existing completion behavior. The customer Git build
-pipeline must adopt the same readiness contract when integrated; this change
-does not itself move publishing to customer accounts.
+Dry runs and other adapters retain their existing completion behavior. The
+customer-owned pipeline above extends this readiness contract with frozen Git
+source, customer build execution and actual static body verification.

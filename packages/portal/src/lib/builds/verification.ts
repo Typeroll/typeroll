@@ -33,7 +33,18 @@ export async function verifyStaticResponse(origin: string, check: StaticCheck,
         for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
           size += chunk.length; if (size > 25 * 1024 * 1024) return false; chunks.push(Buffer.from(chunk));
         }
-        return sha256(Buffer.concat(chunks)) === check.sha256;
+        const bytes = Buffer.concat(chunks);
+        if (sha256(bytes) === check.sha256) return true;
+        // Cloudflare can prepend its managed policy to the organization's
+        // robots.txt. Still require the complete original file byte for byte;
+        // this exception never applies to HTML, assets or removed routes.
+        if (check.route === '/robots.txt') {
+          const begin = bytes.indexOf('\n# BEGIN Cloudflare Managed content\n');
+          const marker = '\n# END Cloudflare Managed Content\n\n';
+          const end = bytes.indexOf(marker, begin + 1);
+          if (bytes[0] === 35 && begin >= 0 && end > begin && sha256(bytes.subarray(end + marker.length)) === check.sha256) return true;
+        }
+        return false;
       } finally { await handle.close(); }
     }
   } catch { return false; }

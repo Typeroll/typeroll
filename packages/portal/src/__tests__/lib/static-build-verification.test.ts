@@ -25,6 +25,21 @@ it('does not follow redirects to another origin', async () => {
   expect(await verifyStaticResponse('https://site.example.invalid', { route: '/', status: 200, sha256: sha256('new') }, { fetchImpl, validate: async () => undefined })).toBe(false);
   expect(fetchImpl).toHaveBeenCalledTimes(1);
 });
+it('accepts a Cloudflare managed robots prefix only when the original file remains byte-identical', async () => {
+  const original = 'User-agent: *\nDisallow: /\n';
+  const prefix = '# As a condition of accessing this website\n# BEGIN Cloudflare Managed content\nUser-agent: *\nContent-Signal: search=yes,ai-train=no\n# END Cloudflare Managed Content\n\n';
+  const check = { route: '/robots.txt', status: 200 as const, sha256: sha256(original) };
+  const fetchImpl = vi.fn(async () => new Response(prefix + original));
+  const validate = async () => undefined;
+  expect(await verifyStaticResponse('https://site.example.invalid', check, { fetchImpl, validate })).toBe(true);
+  fetchImpl.mockImplementation(async () => new Response(prefix + 'User-agent: *\nAllow: /\n'));
+  expect(await verifyStaticResponse('https://site.example.invalid', check, { fetchImpl, validate })).toBe(false);
+  fetchImpl.mockImplementation(async () => new Response(prefix));
+  expect(await verifyStaticResponse('https://site.example.invalid', check, { fetchImpl, validate })).toBe(false);
+  fetchImpl.mockImplementation(async () => new Response(prefix + original));
+  expect(await verifyStaticResponse('https://site.example.invalid', { ...check, route: '/other.txt' }, { fetchImpl, validate })).toBe(false);
+  expect(await verifyStaticResponse('https://site.example.invalid', { ...check, status: 404 }, { fetchImpl, validate })).toBe(false);
+});
 it('bounds streamed transfers and rejects private output files', async () => {
   await expect(responseBytes(new Response('12345'), 4)).rejects.toThrow('limit');
   for (const name of ['.env', '.env.local', '.npmrc', 'functions/a.js', '_worker.js']) expect(() => assertFilePath(name, { artifact: true })).toThrow('private');

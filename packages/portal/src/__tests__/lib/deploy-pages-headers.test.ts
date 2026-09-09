@@ -8,6 +8,7 @@ describe('buildPagesHeaders', () => {
     expect(headers).toContain('/*\n  X-Content-Type-Options: nosniff');
     expect(headers).toContain('/_astro/*\n  Cache-Control: public, max-age=31536000, immutable');
     expect(headers).toContain('/robots.txt\n  Cache-Control: public, max-age=3600');
+    expect(headers.split('\n').filter(line => line.includes('Cache-Control:')).every(line => line.includes('no-transform'))).toBe(true);
   });
 
   it('adds noindex only for the hosted fallback namespace', () => {
