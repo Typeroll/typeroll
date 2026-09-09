@@ -64,6 +64,19 @@ it('generates only explicit, credential-free workflows with a separate trusted h
   expect(Object.keys(files)).not.toContain('publication.json');
   expect(JSON.parse(files['engine.json'])).toEqual({ origin: 'https://cms.example.invalid', org_id: 'org', revision: 'revision' });
 });
+it('waits for a queued run title without granting identity or ignoring other mismatches', async () => {
+  const input = { source_key: 'source', kind: 'publication' as const, storage_account_id: config.account_id, dispatch_nonce: nonce, dispatch_id: '271' };
+  const pending = { ...run(), status: 'queued', display_title: 'Initial workflow title' };
+  const client = vi.fn(async () => pending);
+  expect(await readGithubDispatch(client, config, input)).toBeNull();
+  expect(() => assertGithubRun(pending, config, nonce, '271')).toThrow('attempt');
+  client.mockResolvedValue({ ...pending, repository: { id: 99, owner: { id: 17 } } } as any);
+  await expect(readGithubDispatch(client, config, input)).rejects.toMatchObject({ code: 'github_build_run_mismatch' });
+  client.mockResolvedValue({ ...pending, status: 'in_progress' });
+  await expect(readGithubDispatch(client, config, input)).rejects.toMatchObject({ code: 'github_build_run_mismatch' });
+  client.mockResolvedValue({ ...pending, display_title: `Typeroll build ${nonce}` });
+  expect((await readGithubDispatch(client, config, input)).id).toBe(271);
+});
 it('reports definite provider rejection while preserving uncertainty after a transport failure', async () => {
   for (const status of [403, 422, 429, 500, 408]) {
     const client = vi.fn(async (route: string) => {

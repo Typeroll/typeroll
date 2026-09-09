@@ -30,12 +30,17 @@ export function githubBuildRoot(config: EngineConfiguration) {
 
 /** Provider metadata independently binds the run to the dispatch, App and immutable runner. */
 export function assertGithubRun(run: any, config: EngineConfiguration, nonce: string, expectedId?: string) {
+  assertGithubRunIdentity(run, config, nonce, expectedId);
+  if (run.display_title !== `Typeroll build ${nonce}`) throw new ConnectionError('The GitHub run does not match this build attempt.', 409, 'github_build_run_mismatch');
+}
+
+function assertGithubRunIdentity(run: any, config: EngineConfiguration, nonce: string, expectedId?: string) {
   const github = config.github;
   if (!github || !/^[a-f0-9-]{36}$/.test(nonce) || !Number.isSafeInteger(run?.id) || (expectedId && String(run.id) !== expectedId) ||
       String(run.repository?.id) !== github.repository_id || String(run.repository?.owner?.id) !== github.owner_id ||
       run.path !== '.github/workflows/build.yml' || run.event !== 'workflow_dispatch' || run.head_sha !== config.runner_commit ||
       run.head_branch !== 'main' || run.run_attempt !== 1 || run.actor?.login !== github.app_bot ||
-      run.triggering_actor?.id !== run.actor?.id || run.display_title !== `Typeroll build ${nonce}`) {
+      run.triggering_actor?.id !== run.actor?.id) {
     throw new ConnectionError('The GitHub run does not match this build attempt.', 409, 'github_build_run_mismatch');
   }
 }
@@ -70,6 +75,12 @@ export async function readGithubDispatch(client: ProviderClient, config: EngineC
   const root = githubBuildRoot(config);
   if (input.dispatch_id) {
     const run = await client(`${root}/actions/runs/${input.dispatch_id}`);
+    // GitHub initially returns the workflow's fallback title before evaluating
+    // run-name. This is only a pending observation, never a claim or cancel grant.
+    if (run.status === 'queued' && run.display_title !== `Typeroll build ${input.dispatch_nonce}`) {
+      assertGithubRunIdentity(run, config, input.dispatch_nonce!, input.dispatch_id);
+      return null;
+    }
     assertGithubRun(run, config, input.dispatch_nonce!, input.dispatch_id); return run;
   }
   const history = await client(`${root}/actions/workflows/${config.github!.workflow_id}/runs?event=workflow_dispatch&per_page=100`);
