@@ -146,9 +146,10 @@ describe('Firestore deploy queue worker', () => {
     const id = firestoreDeployQueueItemId(args);
     const execute = vi.fn(async (_args: EnqueueArgs) => {
       current = new Date(current.valueOf() + 25_000);
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      const item = await store.getDoc<FirestoreDeployQueueItem>(`${FIRESTORE_DEPLOY_QUEUE_PATH}/${id}`);
-      expect(item?.lease_expires_at).toBe(new Date(current.valueOf() + 60_000).toISOString());
+      await vi.waitFor(async () => {
+        const item = await store.getDoc<FirestoreDeployQueueItem>(`${FIRESTORE_DEPLOY_QUEUE_PATH}/${id}`);
+        expect(item?.lease_expires_at).toBe(new Date(current.valueOf() + 60_000).toISOString());
+      }, { timeout: 1000, interval: 10 });
       return 'ran' as const;
     });
     const worker = new FirestoreDeployWorker({
