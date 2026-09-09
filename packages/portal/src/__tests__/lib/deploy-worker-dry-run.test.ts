@@ -39,6 +39,19 @@ async function setup(): Promise<{ jobId: string }> {
 describe('deploy-worker forwards dryRun', () => {
   beforeEach(async () => { await resetDatastore(); });
 
+  it.each(['customer_git', 'organization_cloudflare'] as const)('continues a running %s job and preserves retries', async execution_backend => {
+    const { jobId } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().updateDoc(paths.deploy(ORG, SITE, jobId), { status: 'running', execution_backend });
+    const execute = vi.fn(async () => 'deferred');
+    vi.doMock('../../lib/deploy/queue', () => ({ executeDeployJob: execute }));
+    const { POST } = await import('../../pages/api/internal/deploy-worker');
+    const request = new Request('http://localhost/api/internal/deploy-worker', { method: 'POST', body: JSON.stringify({ jobId, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, environment: 'production' }) });
+    const response = await POST({ request } as never) as Response;
+    expect(response.status).toBe(503);
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
   it('passes payload.dryRun through to executeDeployJob', async () => {
     const { jobId } = await setup();
     const seen: { dryRun?: boolean } = {};

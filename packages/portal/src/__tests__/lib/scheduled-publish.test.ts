@@ -56,6 +56,18 @@ describe('runPublishSweep', () => {
     await seed();
   });
 
+  it.each(['customer_git', 'organization_cloudflare'] as const)('recovers a %s publication after its task was consumed', async execution_backend => {
+    const execute = vi.fn(async () => 'deferred');
+    vi.doMock('../../lib/publishing/customer-runner', () => ({ executeCustomerPublication: execute }));
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().updateDoc(paths.site(ORG, SITE), { publishing_mode: 'customer_git' });
+    await getStore().setDoc(paths.deploy(ORG, SITE, 'pending'), { status: 'running', execution_backend, version_id: 'main', environment: 'production', started_at: PAST });
+    const { runPublishSweep } = await import('../../lib/scheduled-publish');
+    await runPublishSweep(NOW);
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'pending', orgId: ORG, siteId: SITE }));
+    expect(enqueued).toEqual([]);
+  });
+
   it('flips due docs, stamps date_published, clears timers, deploys once per site', async () => {
     const { runPublishSweep } = await import('../../lib/scheduled-publish');
     const result = await runPublishSweep(NOW);

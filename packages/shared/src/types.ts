@@ -1623,7 +1623,7 @@ export interface DeployCost {
 }
 
 export interface DeployJob {
-  execution_backend?: 'customer_git';
+  execution_backend?: 'customer_git' | 'organization_cloudflare';
   id: string;
   version_id: string;
   environment: DeployEnvironment;

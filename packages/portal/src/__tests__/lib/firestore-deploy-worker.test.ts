@@ -126,6 +126,19 @@ describe('Firestore deploy queue worker', () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
+  it.each(['customer_git', 'organization_cloudflare'] as const)('continues %s without resetting the provider state', async execution_backend => {
+    const store = await setup();
+    await new FirestoreDeployQueue(store).enqueue(args);
+    await store.updateDoc(paths.deploy(args.orgId, args.siteId, args.jobId), { status: 'running', execution_backend, phase: 'building with the organization engine' });
+    const execute = vi.fn(async () => {
+      expect(await store.getDoc(paths.deploy(args.orgId, args.siteId, args.jobId))).toMatchObject({ status: 'running', phase: 'building with the organization engine' });
+      return 'deferred' as const;
+    });
+    const now = await queuedAt(store);
+    expect(await new FirestoreDeployWorker({ store, execute, now: () => now }).tick()).toMatchObject({ deferred: 1 });
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
   it('renews the lease while a long deploy is still executing', async () => {
     const store = await setup();
     await new FirestoreDeployQueue(store).enqueue(args);

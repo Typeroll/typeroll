@@ -24,6 +24,7 @@
 // "the credentials are wrong"; the user can hit Deploy again from the UI.
 
 import type { APIRoute } from 'astro';
+import { isExternalDeploy } from '../../../lib/deploy/in-flight';
 import { getStore } from '../../../lib/datastore';
 import { executeDeployJob } from '../../../lib/deploy/queue';
 import { slotWaitMs } from '../../../lib/deploy/concurrency';
@@ -74,7 +75,7 @@ export const POST: APIRoute = async ({ request }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-  if (job.status !== 'queued' && !(job.status === 'running' && job.execution_backend === 'customer_git')) {
+  if (job.status !== 'queued' && !(job.status === 'running' && isExternalDeploy(job))) {
     return new Response(JSON.stringify({ ok: true, skipped: `status_${job.status}` }), {
       headers: { 'Content-Type': 'application/json' },
     });

@@ -5,6 +5,7 @@ import { paths } from '@typeroll/shared';
 import { getStore, type ReadWriteStore } from '../datastore';
 import { runPublishSweep } from '../scheduled-publish';
 import { slotWaitMs } from './concurrency';
+import { isExternalDeploy } from './in-flight';
 import {
   executeDeployJob,
   FIRESTORE_DEPLOY_QUEUE_PATH,
@@ -116,7 +117,7 @@ export class FirestoreDeployWorker {
           result.completed += 1;
           continue;
         }
-        if (job.status === 'running' && job.execution_backend !== 'customer_git') {
+        if (job.status === 'running' && !isExternalDeploy(job)) {
           await this.store.updateDoc(jobPath, {
             status: 'queued',
             phase: 'recovered_after_worker_lease_expiry',

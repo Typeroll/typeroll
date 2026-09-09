@@ -27,6 +27,10 @@ import type { DeployJob } from '@typeroll/shared';
  */
 export const DEPLOY_STALE_AFTER_MS = 20 * 60 * 1000;
 
+export function isExternalDeploy(job: Pick<DeployJob, 'execution_backend'>): boolean {
+  return job.execution_backend === 'customer_git' || job.execution_backend === 'organization_cloudflare';
+}
+
 const ACTIVE_STATUSES: ReadonlySet<DeployJob['status']> = new Set(['queued', 'running']);
 
 /**
@@ -53,7 +57,7 @@ export function findActiveDeploy(
  */
 function isStale(job: DeployJob, now: number): boolean {
   // External builds retain their target lock until the provider has been reconciled.
-  if (job.execution_backend === 'customer_git') return false;
+  if (isExternalDeploy(job)) return false;
   const started = Date.parse(job.started_at ?? '');
   if (Number.isNaN(started)) return true;
   return now - started >= DEPLOY_STALE_AFTER_MS;

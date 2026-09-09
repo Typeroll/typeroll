@@ -18,7 +18,7 @@ import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { CollectionDef, CollectionItem, DeployJob, Page, Site } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { getDeployQueue } from './deploy/queue';
-import { findActiveDeploy } from './deploy/in-flight';
+import { findActiveDeploy, isExternalDeploy } from './deploy/in-flight';
 import { clearDirtyMarker, isDeployDue } from './auto-deploy';
 
 export interface SweepResult {
@@ -75,7 +75,7 @@ export async function runPublishSweep(now: Date = new Date()): Promise<SweepResu
         // Reconcile durable external builds even if a Cloud Tasks delivery exhausted its retry window.
         const publishingSite = await store.getDoc<Site>(paths.site(org.id, site.id));
         if (publishingSite?.publishing_mode === 'customer_git') {
-          const pending = (await store.listDocs<DeployJob>(paths.deploys(org.id, site.id))).find(job => job.execution_backend === 'customer_git' && ['queued', 'running'].includes(job.status));
+          const pending = (await store.listDocs<DeployJob>(paths.deploys(org.id, site.id))).find(job => isExternalDeploy(job) && ['queued', 'running'].includes(job.status));
           if (pending) {
             const { executeCustomerPublication } = await import('./publishing/customer-runner');
             await executeCustomerPublication({ orgId: org.id, siteId: site.id, jobId: pending.id, versionId: pending.version_id, environment: pending.environment, dryRun: pending.dry_run });
