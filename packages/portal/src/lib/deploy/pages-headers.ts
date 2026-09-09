@@ -1,22 +1,19 @@
+// Mutable URLs must revalidate after publication. Pages appends headers from
+// overlapping patterns, so immutable assets must first detach this policy.
 const BASE_HEADERS = [
   '/*',
   '  X-Content-Type-Options: nosniff',
   '  Referrer-Policy: strict-origin-when-cross-origin',
   '  Permissions-Policy: camera=(), microphone=(), geolocation=()',
-  '  Cache-Control: public, max-age=300, must-revalidate, no-transform',
+  '  Cache-Control: public, no-cache, max-age=0, must-revalidate, no-transform',
   '',
   '/_astro/*',
+  '  ! Cache-Control',
   '  Cache-Control: public, max-age=31536000, immutable, no-transform',
   '',
   '/_assets/*',
+  '  ! Cache-Control',
   '  Cache-Control: public, max-age=31536000, immutable, no-transform',
-  '',
-  '/sitemap.xml',
-  '  Cache-Control: public, max-age=3600, no-transform',
-  '/sitemap-images.xml',
-  '  Cache-Control: public, max-age=3600, no-transform',
-  '/robots.txt',
-  '  Cache-Control: public, max-age=3600, no-transform',
   '',
 ];
 

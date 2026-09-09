@@ -6,7 +6,7 @@ describe('buildPagesHeaders', () => {
     const stamped = withGlobalHeaders(buildPagesHeaders() + '\n/*\n  X-Robots-Tag: noindex\n', { 'X-Typeroll-Publication': 'first' });
     const updated = withGlobalHeaders(stamped, { 'X-Typeroll-Publication': 'second' });
     expect(updated.split('\n').filter(line => line === '/*')).toHaveLength(1);
-    expect(updated).toContain('Cache-Control: public, max-age=300, must-revalidate, no-transform');
+    expect(updated).toContain('Cache-Control: public, no-cache, max-age=0, must-revalidate, no-transform');
     expect(updated).toContain('X-Robots-Tag: noindex');
     expect(updated).toContain('X-Typeroll-Publication: second');
     expect(updated).not.toContain('X-Typeroll-Publication: first');
@@ -16,8 +16,13 @@ describe('buildPagesHeaders', () => {
     const headers = buildPagesHeaders();
 
     expect(headers).toContain('/*\n  X-Content-Type-Options: nosniff');
-    expect(headers).toContain('/_astro/*\n  Cache-Control: public, max-age=31536000, immutable');
-    expect(headers).toContain('/robots.txt\n  Cache-Control: public, max-age=3600');
+    expect(headers).toContain('/_astro/*\n  ! Cache-Control\n  Cache-Control: public, max-age=31536000, immutable');
+    expect(headers).toContain('/_assets/*\n  ! Cache-Control\n  Cache-Control: public, max-age=31536000, immutable');
+    // Mutable routes share revalidation; more-specific rules would append
+    // conflicting max-age directives instead of overriding the global rule.
+    expect(headers).not.toContain('/robots.txt\n');
+    expect(headers).not.toContain('/sitemap.xml\n');
+    expect(headers).not.toContain('/sitemap-images.xml\n');
     expect(headers.split('\n').filter(line => line.includes('Cache-Control:')).every(line => line.includes('no-transform'))).toBe(true);
   });
 
