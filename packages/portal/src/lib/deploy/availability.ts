@@ -6,6 +6,7 @@ import type { DeploymentAvailability, DeployJob, SiteVersion } from '@typeroll/s
 import { getStore } from '../datastore';
 import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
 import { liveDeploymentUpdate } from './live-state';
+import { publicationResponse } from './public-response';
 
 export const PUBLICATION_HEADER = 'x-typeroll-publication';
 
@@ -52,24 +53,26 @@ export async function probePublication(
     let url = parsePublicHttpsUrl(new URL(route, base).href);
     if (url.origin !== base.origin) return false;
     for (let redirects = 0; redirects < 4; redirects++) {
-      await (opts.validate ?? assertPublicDestination)(url);
-      const response = await (opts.fetchImpl ?? fetch)(url, {
+      const handle = await publicationResponse(url, {
         method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(5000),
         headers: { 'Cache-Control': 'no-cache', 'User-Agent': 'Typeroll-Publication-Check/1.0' },
-      });
-      if (response.status >= 300 && response.status < 400) {
-        result = { ...result, reason: 'redirect', http_status: response.status };
-        const location = response.headers.get('location');
-        if (!location) return false;
-        url = parsePublicHttpsUrl(new URL(location, url).href);
-        if (url.origin !== base.origin) return false;
-        continue;
-      }
-      const observed = response.headers.get(PUBLICATION_HEADER);
-      const ready = response.status === 200 && observed === id;
-      result = { ...result, ready, reason: ready ? 'ready' : response.status !== 200 ? 'http_status' : 'publication_mismatch',
-        http_status: response.status, observed_publication: observed && /^[a-zA-Z0-9-]{1,128}$/.test(observed) ? observed : null };
-      return ready;
+      }, opts);
+      try {
+        const response = handle.response;
+        if (response.status >= 300 && response.status < 400) {
+          result = { ...result, reason: 'redirect', http_status: response.status };
+          const location = response.headers.get('location');
+          if (!location) return false;
+          url = parsePublicHttpsUrl(new URL(location, url).href);
+          if (url.origin !== base.origin) return false;
+          continue;
+        }
+        const observed = response.headers.get(PUBLICATION_HEADER);
+        const ready = response.status === 200 && observed === id;
+        result = { ...result, ready, reason: ready ? 'ready' : response.status !== 200 ? 'http_status' : 'publication_mismatch',
+          http_status: response.status, observed_publication: observed && /^[a-zA-Z0-9-]{1,128}$/.test(observed) ? observed : null };
+        return ready;
+      } finally { await handle.close(); }
     }
   } catch (error) {
     const code = (error as { cause?: { code?: string }; code?: string }).cause?.code ?? (error as { code?: string }).code;

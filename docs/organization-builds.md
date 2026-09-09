@@ -135,3 +135,16 @@ stale content keeps the public link hidden while distribution is pending.
 Uncertain Cloudflare dispatch responses are reconciled against build history.
 They do not cause an immediate second billable dispatch. No engine is enabled
 solely because permission checks or the first token setup succeeded.
+
+## Public availability checks
+
+Publishing verifies actual static response bytes and deleted routes before exposing
+the new live URL. Small publications are checked in bounded concurrent batches
+within one observation; larger publications resume persisted progress. A skipped
+Pages Git trigger is not an uploaded deployment when migrating an existing project.
+
+When a process still reports a newly created hostname as missing, the availability
+check can resolve public IPv4 records through Cloudflare DNS over HTTPS and pin
+its HTTPS connection to those validated addresses. Private addresses, certificate
+failures and redirects to other origins remain rejected. This does not replace
+customer DNS configuration or weaken the output checks.

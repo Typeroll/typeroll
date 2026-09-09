@@ -1,4 +1,5 @@
 import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
+import { publicationResponse } from '../deploy/public-response';
 import { assertFilePath, sha256 } from './contract.mjs';
 export interface StaticCheck { route: string; status: 200 | 404; sha256?: string }
 export function staticChecks(files: Record<string, Buffer>, previous: StaticCheck[] = []): StaticCheck[] {
@@ -22,16 +23,18 @@ export async function verifyStaticResponse(origin: string, check: StaticCheck,
     const base = parsePublicHttpsUrl(origin); let url = new URL(check.route, base);
     for (let count = 0; count < 4; count++) {
       if (url.origin !== base.origin) return false;
-      await (options.validate ?? assertPublicDestination)(url);
-      const response = await (options.fetchImpl ?? fetch)(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(10000), headers: { 'Cache-Control': 'no-cache' } });
-      if (response.status >= 300 && response.status < 400) { const location = response.headers.get('location'); await response.body?.cancel(); if (!location) return false; url = new URL(location, url); continue; }
-      if (check.status === 404) { await response.body?.cancel(); return response.status === 404; }
-      if (response.status !== 200 || !response.body) { await response.body?.cancel(); return false; }
-      let size = 0; const chunks: Buffer[] = [];
-      for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
-        size += chunk.length; if (size > 25 * 1024 * 1024) return false; chunks.push(Buffer.from(chunk));
-      }
-      return sha256(Buffer.concat(chunks)) === check.sha256;
+      const handle = await publicationResponse(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(10000), headers: { 'Cache-Control': 'no-cache' } }, options);
+      try {
+        const response = handle.response;
+        if (response.status >= 300 && response.status < 400) { const location = response.headers.get('location'); await response.body?.cancel(); if (!location) return false; url = new URL(location, url); continue; }
+        if (check.status === 404) { await response.body?.cancel(); return response.status === 404; }
+        if (response.status !== 200 || !response.body) { await response.body?.cancel(); return false; }
+        let size = 0; const chunks: Buffer[] = [];
+        for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+          size += chunk.length; if (size > 25 * 1024 * 1024) return false; chunks.push(Buffer.from(chunk));
+        }
+        return sha256(Buffer.concat(chunks)) === check.sha256;
+      } finally { await handle.close(); }
     }
   } catch { return false; }
   return false;
