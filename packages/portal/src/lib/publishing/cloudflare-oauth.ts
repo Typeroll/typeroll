@@ -8,6 +8,7 @@ import { createProviderClient } from './providers.mjs';
 
 export const CLOUDFLARE_COOKIE = 'typeroll_publishing_cloudflare';
 export const CLOUDFLARE_CALLBACK = '/api/orgs/publishing/cloudflare/callback';
+export const CLOUDFLARE_BUILD_SCOPES = ['workers-scripts.read', 'workers-scripts.write', 'workers-ci.read', 'workers-ci.write'];
 export const CLOUDFLARE_SCOPES = ['account-settings.read', 'page.read', 'page.write', 'workers-r2.read', 'workers-r2.write', 'offline_access'];
 export const CLOUDFLARE_OPTIONAL_DNS_SCOPES = ['zone.read', 'cache.purge', 'dns.read', 'dns.write', 'zone-transform-rules.read', 'zone-transform-rules.write'];
 const scopesForGroup = (groupId: string) => groupId === 'default' ? CLOUDFLARE_SCOPES : CLOUDFLARE_SCOPES.filter(scope => !scope.startsWith('workers-r2.'));
@@ -73,18 +74,20 @@ async function exchange(parameters: Record<string, string>, fetchImpl: typeof fe
   } catch { throw new ConnectionError('Cloudflare authorization could not be completed. Reconnect and approve all required permissions.', 502); }
 }
 
-export async function startCloudflareConnection(session: FullSession, groupId = 'default') {
+export async function startCloudflareConnection(session: FullSession, groupId = 'default', buildAccess = false) {
   const config = cloudflareOAuthConfiguration();
   await getHostingGroup(session.orgId, groupId);
   const connection = await getConnection(session.orgId, 'cloudflare', groupId);
   await getStore().deleteDoc(choicePath(session.orgId));
+  const previousScopes = connection.encrypted_credentials ? openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', connection.encrypted_credentials, groupId).oauth?.scope.split(/\s+/) ?? [] : [];
+  const buildScopes = groupId === 'default' ? CLOUDFLARE_BUILD_SCOPES.filter(scope => buildAccess || previousScopes.includes(scope)) : [];
   const state = nonce(), browser = nonce(), verifier = nonce();
   await getStore().setDoc(grantPath(session.orgId), { user_id: session.userId, expires_at: Date.now() + TTL,
     consumed: false, hosting_group_id: groupId, revision: connection.revision, state_hash: hash(state), browser_hash: hash(browser),
     encrypted_verifier: sealCredentials(session.orgId, 'cloudflare', { verifier }, groupId) } satisfies Grant);
   const url = new URL('https://dash.cloudflare.com/oauth2/auth');
   url.search = new URLSearchParams({ client_id: config.clientId, redirect_uri: config.callback,
-    response_type: 'code', scope: [...scopesForGroup(groupId), ...CLOUDFLARE_OPTIONAL_DNS_SCOPES].join(' '), state,
+    response_type: 'code', scope: [...scopesForGroup(groupId), ...CLOUDFLARE_OPTIONAL_DNS_SCOPES, ...buildScopes].join(' '), state,
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString();
   return { url: url.toString(), browser, maxAge: TTL / 1000 };
 }

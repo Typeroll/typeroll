@@ -21,7 +21,7 @@ export const POST: APIRoute = async (context) => {
         return privateJson({ media_ready: true });
       }
       if (body.action === 'start') {
-        const result = await startCloudflareConnection(guard.value, groupId);
+        const result = await startCloudflareConnection(guard.value, groupId, body.build_access === true);
         context.cookies.set(CLOUDFLARE_COOKIE, result.browser, { path: '/api/orgs/publishing/cloudflare', httpOnly: true,
           secure: process.env.NODE_ENV === 'production' || context.url.protocol === 'https:', sameSite: 'lax', maxAge: result.maxAge });
         return privateJson({ authorization_url: result.url });

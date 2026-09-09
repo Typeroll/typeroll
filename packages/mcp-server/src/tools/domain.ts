@@ -19,6 +19,18 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const domainTools: ToolDef[] = [
   {
+    name: 'read_organization_build_engine', noSite: true,
+    description: 'Read the organization shared Cloudflare build engine status. Requires an organization API key. No provider credentials are returned.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/builds'))),
+  },
+  {
+    name: 'check_organization_build_access', noSite: true,
+    description: 'Check Workers Scripts and Workers Builds access using the existing organization Cloudflare connection. Requires the current revision and an organization API key. Returns precise permission or qualification requirements; does not enable builds or change hosting.',
+    inputSchema: { revision: z.string() },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/builds', args))),
+  },
+  {
     name: 'list_hosting_groups',
     noSite: true,
     description: 'List organization Hosting Groups, site address bases and safe hosting connection status. Requires an organization API key. Media and GitHub remain shared.',

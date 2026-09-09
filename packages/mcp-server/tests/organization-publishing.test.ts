@@ -5,6 +5,7 @@ import { TyperollClient } from '../src/client.js';
 import { buildServer } from '../src/server.js';
 
 const organizationTools = [
+  'read_organization_build_engine', 'check_organization_build_access',
   'list_hosting_groups', 'save_hosting_group', 'connect_hosting_group',
   'list_organization_publishing_domains', 'configure_organization_publishing_domains',
   'read_organization_media_migration', 'retry_organization_media_migration',
@@ -44,6 +45,15 @@ describe('organization publishing through the MCP transport', () => {
       } });
       expect(saved.isError).not.toBe(true);
       expect(s.requests).toEqual(Array(2).fill('https://example.test/api/v1/publishing/hosting-groups'));
+    } finally { await s.close(); }
+  });
+
+  it('checks organization build access without a site and forwards the revision', async () => {
+    const s = await session();
+    try {
+      expect((await s.client.callTool({ name: 'read_organization_build_engine', arguments: {} })).isError).not.toBe(true);
+      expect((await s.client.callTool({ name: 'check_organization_build_access', arguments: { revision: 'revision' } })).isError).not.toBe(true);
+      expect(s.requests).toEqual(Array(2).fill('https://example.test/api/v1/publishing/builds'));
     } finally { await s.close(); }
   });
 
