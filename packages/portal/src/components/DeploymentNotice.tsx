@@ -5,5 +5,6 @@ import { useDeployProgress } from './useDeployProgress';
 export default function DeploymentNotice({ siteId }: { siteId: string }) {
   const [error, setError] = useState<string | null>(null);
   const { job } = useDeployProgress(siteId, setError);
-  return <p role="status" className="muted">{error ?? job?.verification_message ?? 'Distributing… The link will appear automatically when ready.'}</p>;
+  if (!job && !error) return null;
+  return <p role={error ? 'alert' : 'status'} className="muted">{error ?? job?.verification_message ?? 'Distributing… The link will appear automatically when ready.'}</p>;
 }

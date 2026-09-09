@@ -38,7 +38,7 @@ const activeVersion = await store.getDoc<SiteVersion>(paths.version(orgId, siteI
     </form>
   </div>
 
-  {activeVersion?.distributing_deploy_id && <DeploymentNotice client:load siteId={siteId} />}
+  <DeploymentNotice client:load siteId={siteId} />
 
   <CollectionTabs base={base} active="posts" itemCount={pages.length} fieldCount={PAGES_SYSTEM_SCHEMA.length} system />
 

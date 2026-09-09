@@ -31,3 +31,15 @@ it('keeps DNS instructions collapsed and confirms the observed domain blocker on
   expect(container.querySelector('[role="status"]')?.textContent).toContain('Checked: the domain transition still needs assistance.');
   expect(request.mock.calls).toHaveLength(2);
 });
+
+it('does not show a distributing notice when there is no publication in progress', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ active_job: null, latest_job: null })));
+  const container = await mount(createElement(DeploymentNotice, { siteId: 'synthetic' }));
+  expect(container.textContent).toBe('');
+});
+it('retains the latest failed publication message after a fresh page load', async () => {
+  const error = 'Publication verification stopped after 45 minutes. HTTP 200 at /removed/; expected HTTP 404.';
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ active_job: null, latest_job: { id: 'failed', status: 'failed', error } })));
+  const container = await mount(createElement(DeploymentNotice, { siteId: 'synthetic' }));
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(error);
+});

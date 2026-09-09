@@ -21,9 +21,13 @@ export function useDeployProgress(siteId: string, onFailure: (message: string) =
     void fetch(`/api/sites/${siteId}/deploy`, { signal: controller.signal })
       .then(response => response.ok ? response.json() : null)
       .then(data => {
-        if (!controller.signal.aborted && !selectedJob.current && data?.active_job?.id) {
+        if (controller.signal.aborted || selectedJob.current) return;
+        if (data?.active_job?.id) {
           setJob(data.active_job);
           selectJob(data.active_job.id);
+        } else if (data?.latest_job?.status === 'failed') {
+          setJob(data.latest_job);
+          callbacks.current.onFailure(data.latest_job.error ?? 'Deploy failed');
         }
       }).catch(() => {});
     return () => controller.abort();

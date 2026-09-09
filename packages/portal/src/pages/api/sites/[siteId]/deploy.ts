@@ -103,6 +103,9 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const jobs = await Promise.all(sorted.map(job => refreshDeploymentAvailability(owner_org_id, site.id, job)));
   // Return a job that completed during this request too: the already-rendered
   // page may still have hidden links and must refresh once to show them.
-  const resumed = sorted.find(job => job.version_id === versionId && ['queued', 'running'].includes(job.status));
-  return json({ jobs, active_job: resumed ? jobs.find(job => job.id === resumed.id) ?? null : null });
+  const resumed = all.find(job => job.version_id === versionId && ['queued', 'running'].includes(job.status));
+  const latest = all.find(job => job.version_id === versionId);
+  const latestJob = latest ? jobs.find(job => job.id === latest.id) ?? await refreshDeploymentAvailability(owner_org_id, site.id, latest) : null;
+  const activeJob = resumed ? jobs.find(job => job.id === resumed.id) ?? (resumed.id === latestJob?.id ? latestJob : await refreshDeploymentAvailability(owner_org_id, site.id, resumed)) : null;
+  return json({ jobs, active_job: activeJob, latest_job: latestJob });
 };
