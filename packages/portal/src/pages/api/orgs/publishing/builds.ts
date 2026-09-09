@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { publishingAdmin, privateJson, connectionBody, connectionFailure } from '../../../../lib/publishing/http';
-import { checkBuildEngine, readBuildEngine } from '../../../../lib/builds/cloudflare';
+import { readBuildEngine } from '../../../../lib/builds/cloudflare';
+import { configureBuildEngine } from '../../../../lib/builds/setup';
 export const GET: APIRoute = async context => {
   const guard = await publishingAdmin(context);
   if (!guard.ok) return guard.response;
@@ -10,6 +11,6 @@ export const GET: APIRoute = async context => {
 export const POST: APIRoute = async context => {
   const guard = await publishingAdmin(context);
   if (!guard.ok) return guard.response;
-  try { return privateJson(await checkBuildEngine(guard.value.orgId, await connectionBody(context.request) as Record<string, unknown>)); }
+  try { return privateJson(await configureBuildEngine(guard.value.orgId, await connectionBody(context.request) as Record<string, unknown>)); }
   catch (error) { return connectionFailure(error); }
 };

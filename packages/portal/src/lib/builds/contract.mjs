@@ -11,7 +11,7 @@ const identity = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-
 export function assertFilePath(name, { artifact = false } = {}) {
   if (typeof name !== 'string' || name.length > 1024 || /[\\\x00-\x1f\x7f?#%:]/.test(name) ||
       name.split('/').some(part => !part || part === '.' || part === '..' || ['.git', 'node_modules'].includes(part))) throw Error('Invalid build file path');
-  if (artifact && name.split('/').some(part => ['_worker.js', '_worker.js.map', 'functions', '.env'].includes(part))) throw Error('Dynamic or private files are not static output');
+  if (artifact && name.split('/').some(part => (['_worker.js', '_worker.js.map', 'functions', '.npmrc'].includes(part) || part === '.env' || part.startsWith('.env.')))) throw Error('Dynamic or private files are not static output');
 }
 
 export function assertBuildIdentity(value) {

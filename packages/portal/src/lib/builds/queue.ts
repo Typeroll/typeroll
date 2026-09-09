@@ -74,7 +74,7 @@ export class OrganizationBuildQueue {
     if (!won) throw rejected();
   }
   async complete(org: string, key: string, lease: string, token: string, artifact: { sha256: string; key: string }) {
-    if (!/^[a-f0-9]{64}$/.test(artifact.sha256) || artifact.key !== `builds/${pathPart(org)}/${pathPart(key)}/${lease}/artifact.json`) throw new ConnectionError('Invalid build artifact scope', 400);
+    if (!/^[a-f0-9]{64}$/.test(artifact.sha256) || artifact.key !== `builds/${pathPart(org)}/tasks/${pathPart(key)}/${lease}/artifact.json`) throw new ConnectionError('Invalid build artifact scope', 400);
     const won = await this.store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(key)}`, current =>
       current.status === 'running' && current.identity.org_id === org && current.lease_id === lease && current.deadline > this.clock() &&
       current.lease_until > this.clock() && equalToken(token, current.token_hash),

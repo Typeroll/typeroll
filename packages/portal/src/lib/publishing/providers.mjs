@@ -34,10 +34,10 @@ export function createProviderClient(provider, token, fetchImpl = fetch) {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
-          'Content-Type': 'application/json',
+          ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
           ...(provider === 'GitHub' ? { 'X-GitHub-Api-Version': '2026-03-10' } : {}),
         },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        ...(body === undefined ? {} : { body: body instanceof FormData ? body : JSON.stringify(body) }),
       });
     } catch {
       throw new Error(`${provider} request did not complete; retry after checking resource status`);

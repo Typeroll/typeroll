@@ -20,6 +20,11 @@ export default function PublishingBuilds() {
   }
   useEffect(() => { void load(); }, []);
   useEffect(() => {
+    if (engine?.issue?.code !== 'build_verification_running') return;
+    const timer = window.setInterval(() => { if (!inFlight.current && document.visibilityState === 'visible') void check(); }, 15000);
+    return () => window.clearInterval(timer);
+  }, [engine]);
+  useEffect(() => {
     const returned = () => {
       if (awaitingReturn.current && document.visibilityState === 'visible' && !inFlight.current && engine) {
         awaitingReturn.current = false;
@@ -53,6 +58,17 @@ export default function PublishingBuilds() {
       window.location.assign(url.href);
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not start permission approval.'); inFlight.current = false; setBusy(false); }
   }
+  async function setup() {
+    if (!engine || inFlight.current) return;
+    inFlight.current = true; setBusy(true); setError(''); setNotice('Preparing the shared build engine…');
+    try {
+      const response = await fetch('/api/orgs/publishing/builds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'setup', revision: engine.revision }) });
+      const value = await response.json();
+      if (!response.ok) throw Error(value.error || 'Could not set up shared builds.');
+      setEngine(value); setNotice(value.issue?.message || 'Shared build engine ready.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not set up shared builds.'); }
+    finally { inFlight.current = false; setBusy(false); }
+  }
   async function copy(value: string, label: string) {
     try { await navigator.clipboard.writeText(value); setNotice(`${label} copied.`); }
     catch { setError(`Could not copy ${label.toLowerCase()}. Select the text and copy it manually.`); }
@@ -66,7 +82,8 @@ export default function PublishingBuilds() {
     state={state === 'ready' ? 'ready' : error || ['approval_required', 'error'].includes(state ?? '') ? 'error' : 'waiting'} status={status}>
     <p>One Cloudflare build engine for all sites and versions in this organization. Finished sites can be hosted in any Hosting Group.</p>
     {engine?.account_name && <p>Build account: <strong>{engine.account_name}</strong></p>}
-    {state !== 'ready' && <p className="muted">The shared engine is not active yet. Existing publishing settings continue to apply.</p>}
+    {state !== 'ready' && <p className="muted">Complete setup and verification before publishing with the shared engine.</p>}
+    {state === 'ready' && <p>Shared builds are active. New publications build in this account and upload static files to the site’s Hosting Group.</p>}
     {needsToken && <div className="publishing-builds__setup">
       <h3>One-time setup in Cloudflare</h3>
       <p>Your build permissions are approved. Cloudflare needs a build token before it can run builds. Create it in <strong>{engine?.account_name}</strong>, the organization’s build account.</p>
@@ -94,6 +111,7 @@ export default function PublishingBuilds() {
       <p className="muted">The token stays in Cloudflare. You do not need to paste it into Typeroll or reconnect your Cloudflare account.</p>
     </div>}
     <button className="btn btn--secondary" disabled={busy || !engine} onClick={() => void check()}>{busy ? 'Checking…' : needsToken && projectUrl ? 'I’ve finished — check again' : 'Check build setup'}</button>
+    {engine && state !== 'approval_required' && engine.issue?.code !== 'build_verification_running' && <button className="btn" disabled={busy} onClick={() => void setup()}>{state === 'ready' ? 'Update build engine' : 'Set up shared builds'}</button>}
     {state === 'approval_required' && <button className="btn" disabled={busy} onClick={() => void approve()}>Approve build permissions</button>}
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status" className="publishing-builds__notice">{notice}</p>}

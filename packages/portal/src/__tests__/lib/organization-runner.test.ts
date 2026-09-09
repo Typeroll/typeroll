@@ -1,0 +1,81 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+import { paths } from '@typeroll/shared';
+import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
+import { getStore } from '../../lib/datastore';
+import { connectionPath } from '../../lib/publishing/connections';
+import { OrganizationBuildQueue, buildTasksPath } from '../../lib/builds/queue';
+import { engineConfigurationPath, buildInputPath } from '../../lib/builds/state';
+import { enginePath } from '../../lib/builds/cloudflare';
+import { runnerRequest } from '../../lib/builds/runner-http';
+import { encodeSource, encodeArtifact, sha256, BUILD_PROTOCOL, BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
+import { qualificationFiles } from '../../lib/builds/qualification';
+const storage = vi.hoisted(() => ({ objects: new Map<string, Buffer>(), grants: vi.fn(async (key: string, write = false) => `https://storage.invalid/${key}?write=${write}`) }));
+vi.mock('../../lib/builds/storage', () => ({ buildStorage: async (_org: string, fn: any) => fn({ account: 'a'.repeat(32), read: async (key: string) => { const bytes = storage.objects.get(key); if (!bytes) throw Error('missing'); return bytes; }, grant: storage.grants }) }));
+vi.mock('../../lib/publishing/r2-build-credentials', () => ({ customerBuildMediaAccess: vi.fn() }));
+const runnerToken = 'r'.repeat(43), org = 'org', revision = 'engine-1';
+const identity = { org_id: org, site_id: 'site', version_id: 'main', job_id: 'job', publication_id: 'b'.repeat(64), commit: 'c'.repeat(40), branch: 'main', protocol: BUILD_PROTOCOL, node_version: BUILD_RUNTIME, source_sha256: '' };
+const request = (action: string, token = runnerToken, data = {}, organization = org) => runnerRequest(new Request('https://app.example.invalid/api/builds/runner/org/' + action, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ revision, ...data }) }), organization, action);
+async function prepare(kind = 'publication') {
+  const source = encodeSource({ 'publication.json': JSON.stringify({ publication_id: identity.publication_id }) });
+  const frozen = { ...identity, source_sha256: sha256(source) };
+  const queued = await new OrganizationBuildQueue().enqueue(frozen, revision);
+  storage.objects.set('builds/org/sources/source.json', source);
+  await getStore().setDoc(buildInputPath(org, queued.key), { source_key: 'builds/org/sources/source.json', kind, storage_account_id: 'a'.repeat(32) });
+  await getStore().setDoc(engineConfigurationPath(org), { revision, status: kind === 'qualification' ? 'qualifying' : 'ready', account_id: 'a'.repeat(32), installation_id: 'installation', token_hash: sha256(runnerToken), qualification_key: queued.key });
+  await getStore().setDoc(paths.deploy(org, 'site', 'job'), { status: 'running', version_id: 'main' });
+  return { frozen, key: queued.key };
+}
+beforeEach(async () => {
+  makeTmpFixtures(); await resetDatastore(); storage.objects.clear(); storage.grants.mockClear();
+  await getStore().setDoc(connectionPath(org, 'cloudflare'), { status: 'connected', cloudflare: { account_id: 'a'.repeat(32) } });
+  await getStore().setDoc(connectionPath(org, 'github'), { status: 'connected', github: { installation_id: 'installation' } });
+  await getStore().setDoc(enginePath(org), { revision: 'public-revision', enabled: false, state: 'qualification_required' });
+});
+it('issues upload access only to an active attempt on demand', async () => {
+  const { frozen, key } = await prepare();
+  expect((await request('claim', 'x'.repeat(43), { protocol: 1 })).status).toBe(401);
+  expect((await request('claim', runnerToken, { protocol: 1 }, 'other')).status).toBe(401);
+  const response = await request('claim', runnerToken, { protocol: 1 });
+  expect(response.status).toBe(200); expect(response.headers.get('cache-control')).toBe('no-store');
+  const claim = await response.json(); expect(claim.identity).toEqual(frozen); expect(claim.artifact_url).toBeUndefined();
+  expect(storage.grants).toHaveBeenCalledTimes(1);
+  const attempt = { key, lease_id: claim.lease_id };
+  expect((await request('upload', runnerToken, attempt)).status).toBe(409);
+  expect((await request('upload', claim.token, attempt)).status).toBe(200);
+  expect(storage.grants).toHaveBeenLastCalledWith(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, true);
+  await new OrganizationBuildQueue().cancel(org, key);
+  expect((await request('upload', claim.token, attempt)).status).toBe(409);
+});
+it('rejects another version and accepts the verified exact artifact only once', async () => {
+  const { frozen, key } = await prepare();
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  const artifactKey = `builds/org/tasks/${key}/${claim.lease_id}/artifact.json`;
+  const files = Object.fromEntries(Object.entries(qualificationFiles(identity.publication_id)).map(([key, value]) => [key, Buffer.from(value)]));
+  let artifact = encodeArtifact({ ...frozen, version_id: 'redesign', branch: 'version-redesign' }, files);
+  storage.objects.set(artifactKey, artifact);
+  const attempt = { key, lease_id: claim.lease_id };
+  expect((await request('complete', claim.token, { ...attempt, sha256: sha256(artifact) })).status).toBe(502);
+  artifact = encodeArtifact(frozen, files); storage.objects.set(artifactKey, artifact);
+  expect((await request('complete', claim.token, { ...attempt, sha256: sha256(artifact) })).status).toBe(200);
+  expect((await request('complete', claim.token, { ...attempt, sha256: sha256(artifact) })).status).toBe(409);
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'completed', token_hash: null, artifact_sha256: sha256(artifact) });
+});
+it('revokes attempts immediately when publication is cancelled', async () => {
+  await prepare(); const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  await getStore().updateDoc(paths.deploy(org, 'site', 'job'), { status: 'failed' });
+  expect((await request('heartbeat', claim.token, { key: claim.key, lease_id: claim.lease_id })).status).toBe(409);
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${claim.key}`)).toMatchObject({ status: 'cancelled' });
+});
+it('activates only after the complete qualification artifact matches', async () => {
+  const { frozen, key } = await prepare('qualification');
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  const artifactKey = `builds/org/tasks/${key}/${claim.lease_id}/artifact.json`;
+  const files = Object.fromEntries(Object.entries(qualificationFiles(identity.publication_id)).map(([key, value]) => [key, Buffer.from(value)]));
+  let artifact = encodeArtifact(frozen, { ...files, 'index.html': Buffer.from('wrong') }); storage.objects.set(artifactKey, artifact);
+  const attempt = { key, lease_id: claim.lease_id };
+  expect((await request('complete', claim.token, { ...attempt, sha256: sha256(artifact) })).status).toBe(409);
+  expect(await getStore().getDoc(enginePath(org))).toMatchObject({ enabled: false });
+  artifact = encodeArtifact(frozen, files); storage.objects.set(artifactKey, artifact);
+  expect((await request('complete', claim.token, { ...attempt, sha256: sha256(artifact) })).status).toBe(200);
+  expect(await getStore().getDoc(enginePath(org))).toMatchObject({ enabled: true, state: 'ready' });
+});

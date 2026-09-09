@@ -76,6 +76,10 @@ export async function checkBuildEngine(org: string, input: Record<string, unknow
       message: 'Build permissions are approved. Cloudflare has not reported a build token for this account yet. Complete the one-time setup in Cloudflare, then check again. Reconnecting your account will not create the token.' } };
     else next = { ...next, state: 'qualification_required', issue: { code: 'build_qualification_required',
       message: 'Build token found. The shared build engine still needs to complete its setup and verification before it can publish sites. No further permission approval is needed.' } };
+    if (!access.issues.length && access.worker_found && access.build_tokens) {
+      const installed = await getStore().getDoc<{ status: string; account_id: string }>(`organizations/${org}/publishing_private/build_engine`);
+      if (installed?.status === 'ready' && installed.account_id === connection.cloudflare.account_id) next = { ...next, state: 'ready', enabled: true, issue: null };
+    }
   } catch (error) {
     if (!(error instanceof ConnectionError)) throw error;
     next = { ...next, state: 'error', issue: { code: error.code ?? 'build_connection_failed', message: error.message } };

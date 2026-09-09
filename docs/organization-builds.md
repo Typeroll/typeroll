@@ -8,18 +8,21 @@ the organization's GitHub installation.
 
 ## Current implementation status
 
-The organization Builds card, cookie and public API access checks, optional
-Cloudflare build permission consent and MCP access checks are implemented.
-The frozen source/artifact contract and transactional organization queue are
-implemented and tested as foundations. They are not connected to the customer
-publication runner yet. The shared Cloudflare executor, provider provisioning,
-artifact transfer, Direct Upload integration and cross-account qualification
-remain pending. Existing customer Git publications still use native Pages builds.
-Do not interpret successful access checks as an enabled or qualified build engine.
+The shared executor is connected to the existing frozen customer publication
+pipeline. Setup provisions the organization repository, disables automatic Git
+build triggers, installs the pinned executor and checks isolated execution plus
+private artifact transfer before enabling new shared publications. Existing
+in-flight native Pages jobs retain their original backend.
+
+Release qualification must additionally exercise real Astro publications,
+media and version branches in the selected Hosting Groups. The initial setup
+check verifies the executor and transport; it does not measure a 50-page build
+or claim that every customer extension has been exercised.
 
 ## Setup and permissions
 
-Open **Publishing → Builds → Check build setup**. This checks the existing
+Open **Publishing → Builds → Set up shared builds** to prepare the engine.
+**Check build setup** reads the current permission and verification status. This checks the existing
 organization Cloudflare account for Workers Scripts and Workers Builds access.
 When permission is missing, select **Approve build permissions**, approve the
 requested access in Cloudflare, return to Publishing and check again. This uses
@@ -48,8 +51,8 @@ setup** link and collapsed **Step-by-step instructions**. The instructions name
 the build account, Worker and generated repository. They describe **Settings →
 Builds → Connect**, branch `main`, build command `npm run build`, deploy command
 `npm run qualify:artifact`, and **API token → Create new token**. Both commands
-can be copied. These commands run the initial synthetic connection test, not a
-customer publication. An already connected project can use **Settings → Builds
+can be copied. Before Typeroll installs runner authentication, these commands finish with a
+setup-pending notice. They do not publish a customer site. An already connected project can use **Settings → Builds
 → API token** directly.
 
 After saving in Cloudflare, returning to the Typeroll tab checks the setup.
@@ -59,11 +62,12 @@ found, the card confirms **Build token found · Verification pending**; it never
 marks the engine ready on that basis alone. The token value stays in Cloudflare.
 OAuth reconnection and tokens in individual Hosting Groups are not required.
 
-If the expected Worker is missing, the UI reports project preparation as pending
-instead of linking to a nonexistent project. Automatic project provisioning is
-not yet implemented; this guide supports the prepared qualification project.
-Runtime qualification must establish the complete setup flow before claiming
-that setup or publishing is automatic.
+If the expected Worker is missing, **Set up shared builds** creates the generated
+private repository and a Worker anchor with public URLs disabled. After the first
+build token exists, select the same button to complete setup. Typeroll configures
+the trigger and secret, dispatches a verification build and updates the card
+automatically. **Update build engine** installs the current pinned executor;
+updates wait until current queued or running builds finish.
 
 Cloudflare currently does not expose `API Tokens Write` in its OAuth scope
 catalog. Its build-token creation endpoint registers an existing API token
@@ -75,12 +79,13 @@ and [token creation via API](https://developers.cloudflare.com/fundamentals/api/
 
 Organization API keys can read `GET /api/v1/publishing/builds` and check access
 with `POST /api/v1/publishing/builds`, JSON body `{ "revision": "<current revision>" }`.
-Site keys are rejected. Requests cannot select another organization through their
+Pass `"action": "setup"` with the current revision to provision or update the
+engine. Site keys are rejected. Requests cannot select another organization through their
 body. Responses contain safe status and numeric provider diagnostics, never
 provider tokens. Reads and writes disable response caching.
 
 MCP exposes `read_organization_build_engine` and
-`check_organization_build_access`. Neither requires an existing site.
+`check_organization_build_access` and `setup_organization_build_engine`. None requires an existing site.
 
 ## Frozen build and lease contracts
 
@@ -95,6 +100,34 @@ Each organization queue uses the existing datastore's atomic conditional writes.
 Concurrent claims acquire distinct jobs, expire after 90 seconds without a
 heartbeat, and stop retrying after three attempts or the 45-minute job deadline.
 Each attempt gets its own token and artifact path. Completion revokes the token;
-cancellation and reassignment reject stale completion. These internal queue
-methods must only be exposed after runner authentication, artifact storage and
-publication-authorization integration are qualified.
+cancellation and reassignment reject stale completion. Runner endpoints use separate organization and attempt tokens, never browser
+cookies or public API keys. A cancelled publication cannot renew its attempt or
+obtain an upload grant. Upload grants are issued on demand after rendering.
+
+## Isolation, storage and static hosting
+
+The Linux x64 supervisor pins Node and a SHA-256-verified Bubblewrap package.
+Source executes as an unprivileged user in separate user, mount, PID and network
+namespaces with a read-only root, cleared environment and no provider tokens or
+Docker socket. Dependency installation disables lifecycle scripts. The media
+preparation stage receives only publication-scoped object grants. Rendering has
+no network; a trusted adapter lets older frozen renderers reuse prepared media
+without altering files covered by their source manifest.
+
+The existing private originals bucket stores build packages separately from
+published media. Public bucket domains are rechecked before granting access.
+Inputs and attempt artifacts expire after seven days; previous output manifests
+remain available to verify removed URLs in later publications. Retention setup
+preserves unrelated lifecycle rules.
+
+Only the Typeroll coordinator uses the selected Hosting Group credential for the
+official static Pages uploader. The executor receives no hosting token. Existing
+matching Git-connected Pages projects have automatic builds disabled before
+source pushes. Each publication retains its exact Git commit and version branch.
+The immutable deployment and public hosts must pass publication-marker and
+actual-file byte checks; removed routes must return 404. A fresh marker with
+stale content keeps the public link hidden while distribution is pending.
+
+Uncertain Cloudflare dispatch responses are reconciled against build history.
+They do not cause an immediate second billable dispatch. No engine is enabled
+solely because permission checks or the first token setup succeeded.

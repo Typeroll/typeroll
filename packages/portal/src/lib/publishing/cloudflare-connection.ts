@@ -10,7 +10,7 @@ import { cloudflareClient, type CloudflareStoredCredentials } from './cloudflare
 export interface CloudflareCredentials { api_token?: string; access_key_id: string; secret_access_key: string }
 interface CloudflareInput extends CloudflareCredentials { account_id: string; bucket: string; revision: string }
 
-async function assertPrivateOriginalBucket(provider: ReturnType<typeof createProviderClient>, accountId: string, bucket: string) {
+export async function assertPrivateOriginalBucket(provider: ReturnType<typeof createProviderClient>, accountId: string, bucket: string) {
   const root = `/accounts/${accountId}/r2/buckets/${bucket}/domains`;
   const [managed, custom] = await Promise.all([provider(`${root}/managed`), provider(`${root}/custom`)]);
   if (managed.enabled !== false || !Array.isArray(custom.domains) || custom.domains.some((domain: { enabled?: boolean }) => domain.enabled !== false)) {

@@ -19,7 +19,16 @@ for (const [relative, expected] of Object.entries(manifest.files)) {
 }
 const publication = JSON.parse(await fs.readFile(path.join(root, 'publication.json'), 'utf8'));
 if (publication.format !== 'typeroll-static-publication' || publication.format_version !== 1) throw new Error('Unsupported publication format');
-const sameHostMedia = await prepareMedia(publication, root);
+let sameHostMedia;
+if (process.env.TYPEROLL_BUILD_MEDIA_PREPARED) {
+  const preparedPath = path.resolve(process.env.TYPEROLL_BUILD_MEDIA_PREPARED);
+  if (!preparedPath.startsWith(root) || !(await fs.lstat(preparedPath)).isFile()) throw new Error('Invalid prepared media path');
+  const prepared = JSON.parse(await fs.readFile(preparedPath, 'utf8'));
+  if (prepared.publication_id !== publication.publication_id || !Array.isArray(prepared.media) || !Array.isArray(prepared.files)) throw new Error('Prepared media belongs to another publication');
+  for (const file of prepared.files) if (!path.resolve(file.source).startsWith(path.join(root, '.publication-media') + path.sep)) throw new Error('Prepared media escaped its publication');
+  publication.media = prepared.media;
+  sameHostMedia = prepared.files;
+} else sameHostMedia = await prepareMedia(publication, root);
 const versionId = publication.version_id ?? 'main';
 if (!/^[a-z0-9][a-z0-9-]{0,127}$/.test(versionId)) throw new Error('Invalid frozen publication version');
 const work = path.join(root, '.publication-work');

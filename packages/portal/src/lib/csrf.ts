@@ -40,6 +40,8 @@ const CSRF_EXEMPT_PATHS = new Set([
 // portal, so it would pass the host allowlist on its own — we exempt the
 // whole prefix here for clarity.
 const CSRF_EXEMPT_PREFIXES = [
+  // Build runner endpoints exclusively validate revocable runner/attempt tokens.
+  '/api/builds/runner/',
   '/api/mcp/',
   // Browser-facing Extension token minting performs its own exact site-origin
   // validation before issuing a short-lived installation assertion. The

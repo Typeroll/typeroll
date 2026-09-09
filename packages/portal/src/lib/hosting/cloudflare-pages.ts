@@ -104,7 +104,7 @@ export class CloudflarePagesAdapter implements HostingAdapter {
 
 /** Find the wrangler CLI inside the container — workspace-hoisted first,
  *  then the portal package's own node_modules as a fallback. */
-function findWranglerBin(): string {
+export function findWranglerBin(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
   // packages/portal/src/lib/hosting → repo root: 5 levels up; or 4 levels
   // up in a flatter layout.

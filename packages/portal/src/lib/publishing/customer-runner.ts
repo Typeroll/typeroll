@@ -23,8 +23,13 @@ import { preparePublicMediaDomains } from './media-domain';
 import { recordPublishingOrigin } from './runtime-origins';
 import { retargetWebsite } from './publication-retarget';
 import { recordCustomerCompute } from './compute-cost';
+import { readEngineConfiguration } from '../builds/state';
+import { enqueueBuild, completedBuild } from '../builds/jobs';
+import { uploadStaticBuild } from '../builds/upload';
+import { prepareStaticProject, saveStaticChecks, verifyStaticBatch } from '../builds/publication';
 
 interface GitPublication {
+  build_engine_revision?: string; build_task_key?: string | null; static_checks_key?: string | null;
   hosting_group_id?: string; hosting_group_revision?: string;
   owner: string; repo: string; project: string; account_id: string; branch: string;
   publication_id: string; snapshot_chunks: number; snapshot_digest: string; content_cutoff: string;
@@ -115,7 +120,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     // Older Firestore updates merged omitted nested fields, retaining the preview commit.
     // Resume that frozen candidate instead of waiting for a main build that was never pushed.
     if (publication?.branch === 'main' && publication.release_branch === 'main') {
-      publication = { ...publication, commit: null, deployment_id: null, release_branch: null };
+      publication = { ...publication, commit: null, deployment_id: null, release_branch: null, build_task_key: null, static_checks_key: null };
       await store.updateDoc(jobPath, { git_publication: publication, phase: 'promoting verified source' });
     }
     if (!publication) {
@@ -163,6 +168,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: `typeroll-${prefix}`, project: `typeroll-${prefix}`, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domains.revision, website_host: host, snapshot_job_id: args.jobId, ...await saveSnapshot(args, frozen) };
+      const engine = await readEngineConfiguration(args.orgId);
+      if (engine && engine.status !== 'ready') throw new ConnectionError('Finish shared build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
+      if (engine?.status === 'ready') publication.build_engine_revision = engine.revision;
       if (args.versionId === 'main' && domains.active && !samePublicationHosts(domains.active, { ...domains.desired, website_host: host })) {
         publication.branch = `version-domain-${domains.revision.replaceAll('-', '').slice(0, 16)}`;
         publication.release_branch = 'main';
@@ -188,14 +196,16 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       if (repository.private !== true || String(repository.owner?.id) !== identity.account_id || repository.default_branch !== 'main' || repository.archived || repository.description !== `Generated Typeroll site ${digest(`${args.orgId}\0${args.siteId}`).slice(0, 16)}`) {
         throw new ConnectionError('The generated repository does not match this organization. Check GitHub publishing access.', 409);
       }
-      let connectedProject = await cloudflare(projectRoot, { missing: true });
+      let connectedProject = publication.build_engine_revision
+        ? await prepareStaticProject(cloudflare, projectRoot, { project: publication.project, owner: publication.owner, repo: publication.repo, repository })
+        : await cloudflare(projectRoot, { missing: true });
       if (!connectedProject) {
         await store.updateDoc(jobPath, { phase: 'creating Cloudflare Pages project' });
         await cloudflare(`/accounts/${publication.account_id}/pages/projects`, { method: 'POST', body: pagesProjectBody({ owner: publication.owner, repo: publication.repo, repository, project: publication.project }) });
         connectedProject = await cloudflare(projectRoot);
       }
-      if (connectedProject.source?.type !== 'github' || String(connectedProject.source.config?.repo_id) !== String(repository.id)) throw new ConnectionError('Cloudflare is connected to a different repository.', 409);
-      if (frozen.media_manifest?.entries?.length || frozen.retained_media_manifests?.length) {
+      if (!publication.build_engine_revision && (connectedProject.source?.type !== 'github' || String(connectedProject.source.config?.repo_id) !== String(repository.id))) throw new ConnectionError('Cloudflare is connected to a different repository.', 409);
+      if (!publication.build_engine_revision && (frozen.media_manifest?.entries?.length || frozen.retained_media_manifests?.length)) {
         const environment = publication.branch === 'main' ? 'production' : 'preview';
         // Pages shares preview environment variables across version branches. Keep the grant stable until this build finishes.
         const buildSlot = `${paths.site(args.orgId, args.siteId)}/publishing_build_slots/${environment}`;
@@ -218,31 +228,61 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await store.updateDoc(jobPath, { git_publication: publication, phase: 'connecting Cloudflare build' });
     }
     let project = await cloudflare(projectRoot, { missing: true });
+    if (publication.build_engine_revision) {
+      const repository = await github(`/repos/${publication.owner}/${publication.repo}`);
+      project = await prepareStaticProject(cloudflare, projectRoot, { project: publication.project, owner: publication.owner, repo: publication.repo, repository });
+    }
     if (!project) {
       const repository = await github(`/repos/${publication.owner}/${publication.repo}`);
       await store.updateDoc(jobPath, { phase: 'creating Cloudflare Pages project' });
       await cloudflare(`/accounts/${publication.account_id}/pages/projects`, { method: 'POST', body: pagesProjectBody({ owner: publication.owner, repo: publication.repo, repository, project: publication.project }) });
       project = await cloudflare(projectRoot);
     }
-    if (project.source?.type !== 'github' || project.source.config?.owner !== publication.owner || project.source.config?.repo_name !== publication.repo ||
-        project.production_branch !== 'main' || project.build_config?.build_command !== 'npm ci && npm run build') {
+    if (!publication.build_engine_revision && (project.source?.type !== 'github' || project.source.config?.owner !== publication.owner || project.source.config?.repo_name !== publication.repo ||
+        project.production_branch !== 'main' || project.build_config?.build_command !== 'npm ci && npm run build')) {
       throw new ConnectionError('Cloudflare must use the generated GitHub repository and static build configuration.', 409);
     }
     if (!publication.commit) throw new Error('Frozen publication has no Git commit');
     let deployment = await findPublicationDeployment(cloudflare, projectRoot, { project: publication.project, commit: publication.commit, branch: publication.branch });
+    if (publication.build_engine_revision) {
+      const engine = await readEngineConfiguration(args.orgId);
+      if (!engine || engine.status !== 'ready' || engine.revision !== publication.build_engine_revision) throw new ConnectionError('The shared build engine changed. Retry this publication.', 409);
+      if (!publication.build_task_key) {
+        const source = await publicationSourceTree(await readSnapshot(args, publication));
+        const queued = await enqueueBuild(engine, { org_id: args.orgId, site_id: args.siteId, version_id: args.versionId, job_id: args.jobId,
+          publication_id: publication.publication_id, commit: publication.commit, branch: publication.branch }, source);
+        publication = { ...publication, build_task_key: queued.key };
+        await store.updateDoc(jobPath, { git_publication: publication, execution_backend: 'organization_cloudflare', phase: 'building with the organization engine' });
+      }
+      if (!deployment || !publication.static_checks_key) {
+        const result = await completedBuild(args.orgId, publication.build_task_key!);
+        if (!result) return 'deferred';
+        const staticChecks = await saveStaticChecks(args.orgId, result.files, acquired.last_publication?.static_checks_key ?? undefined);
+        publication = { ...publication, static_checks_key: staticChecks };
+        await store.updateDoc(jobPath, { git_publication: publication, phase: 'uploading static files to the Hosting Group' });
+        if (!deployment) {
+          await assertLease();
+          deployment = await uploadStaticBuild(cloudflare, { org: args.orgId, group: group.id, account: publication.account_id,
+            project: publication.project, branch: publication.branch, commit: publication.commit! }, result.files);
+        }
+      }
+    }
     if (!deployment || deployment.latest_stage?.name !== 'deploy' || deployment.latest_stage?.status !== 'success') {
       if (deployment?.is_skipped || ['failure', 'canceled'].includes(deployment?.latest_stage?.status)) throw new ConnectionError('The Cloudflare build failed. Open the generated project in Cloudflare → Workers & Pages → Deployments for the build log.', 502, 'customer_build_failed');
       await store.updateDoc(jobPath, { status: 'running', phase: 'building on Cloudflare' });
       return 'deferred';
     }
     if (deployment.uses_functions == null) deployment = await cloudflare(`${projectRoot}/deployments/${encodeURIComponent(deployment.id)}`);
-    if (!matchingDeployment([deployment], { project: publication.project, commit: publication.commit, branch: publication.branch })) throw new ConnectionError('Cloudflare returned a different deployment. Retry verification of the generated Git commit.', 409, 'deployment_identity_mismatch');
+    if (!matchingDeployment([deployment], { project: publication.project, commit: publication.commit!, branch: publication.branch })) throw new ConnectionError('Cloudflare returned a different deployment. Retry verification of the generated Git commit.', 409, 'deployment_identity_mismatch');
     try { assertSuccessfulStaticDeployment(deployment, project); }
     catch { throw new ConnectionError('Cloudflare has not confirmed that this exact deployment uses static files only. Open the Cloudflare build status before retrying.', 409, 'static_build_verification_required'); }
     await releaseBuildAccess();
     const candidate = new URL(deployment.url);
     if (candidate.protocol !== 'https:' || !candidate.hostname.endsWith(`.${publication.project}.pages.dev`) || candidate.username || candidate.password || candidate.port) throw new Error('Unexpected Cloudflare deployment origin');
     if (!await probePublication(candidate.origin, '/.well-known/typeroll/publication.json', publication.publication_id)) return 'deferred';
+    if (publication.static_checks_key && !await verifyStaticBatch(args.orgId, jobPath, publication.static_checks_key, candidate.origin)) {
+      await store.updateDoc(jobPath, { phase: 'verifying static output' }); return 'deferred';
+    }
     await recordPublishingOrigin(args.orgId, args.siteId, candidate.origin, true);
     const frozen = await readSnapshot(args, publication);
     if (frozen.media_manifest?.entries?.length && !await preparePublicMediaDomains(args.orgId, frozen.media_manifest)) {
@@ -282,7 +322,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         return 'ran';
       }
       // Explicit nulls replace nested Firestore fields; omission leaves old values merged in.
-      publication = { ...publication, branch: 'main', commit: null, deployment_id: null, release_branch: null };
+      publication = { ...publication, branch: 'main', commit: null, deployment_id: null, release_branch: null, build_task_key: null, static_checks_key: null };
       await store.updateDoc(jobPath, { git_publication: publication, phase: 'promoting verified source' });
       return 'deferred';
     }
@@ -320,6 +360,13 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     } })) {
       await store.updateDoc(jobPath, { phase: preparation.action === 'verify' ? 'distributing' : 'awaiting domain setup', dns_requirements: preparation.requirements });
       return 'deferred';
+    }
+    if (publication.static_checks_key) {
+      for (const origin of [...new Set([`https://${publication.website_host}`, ...(mediaPreparation ? [`https://${mediaPreparation.hostname}`] : [])])]) {
+        if (!await verifyStaticBatch(args.orgId, jobPath, publication.static_checks_key, origin)) {
+          await store.updateDoc(jobPath, { phase: 'waiting for updated static files' }); return 'deferred';
+        }
+      }
     }
     await recordPublishingOrigin(args.orgId, args.siteId, `https://${publication.website_host}`);
     const finished = new Date().toISOString();

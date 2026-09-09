@@ -19,6 +19,12 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const domainTools: ToolDef[] = [
   {
+    name: 'setup_organization_build_engine', noSite: true,
+    description: 'Prepare or update the organization Cloudflare build engine and start its isolated execution and artifact-transfer check. Requires an organization API key and current revision. Keeps site repositories, branches and Hosting Groups separate. Read the engine status until verification finishes.',
+    inputSchema: { revision: z.string() },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/builds', { ...args, action: 'setup' }))),
+  },
+  {
     name: 'read_organization_build_engine', noSite: true,
     description: 'Read the organization shared Cloudflare build engine status. Requires an organization API key. No provider credentials are returned.',
     inputSchema: {},

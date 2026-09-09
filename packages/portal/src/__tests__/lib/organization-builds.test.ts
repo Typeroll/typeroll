@@ -27,7 +27,7 @@ it('claims distinct sites and branches concurrently and keeps retries frozen', a
   expect(first).toBeDefined();
   expect(retry?.identity).toEqual(first.identity); expect(retry?.token).not.toBe(first.token);
   await expect(queue.heartbeat('org', first.key, first.lease_id, first.token)).rejects.toMatchObject({ code: 'build_lease_lost' });
-  await expect(queue.complete('org', first.key, first.lease_id, first.token, { sha256: 'f'.repeat(64), key: `builds/org/${first.key}/${first.lease_id}/artifact.json` })).rejects.toMatchObject({ code: 'build_lease_lost' });
+  await expect(queue.complete('org', first.key, first.lease_id, first.token, { sha256: 'f'.repeat(64), key: `builds/org/tasks/${first.key}/${first.lease_id}/artifact.json` })).rejects.toMatchObject({ code: 'build_lease_lost' });
 });
 it('rejects incompatible workers, swapped attempt tokens, cancellation and expired jobs', async () => {
   const queue = new OrganizationBuildQueue(getStore(), () => now);
@@ -47,7 +47,7 @@ it('completes once and accepts only artifact keys scoped to the leased attempt',
   const queue = new OrganizationBuildQueue(getStore(), () => now);
   await queue.enqueue(identity(), 'engine-1'); const claim = (await queue.claim('org', 'engine-1', 1))!;
   await expect(queue.complete('org', claim.key, claim.lease_id, claim.token, { sha256: 'f'.repeat(64), key: 'builds/other/artifact.json' })).rejects.toMatchObject({ status: 400 });
-  const artifact = { sha256: 'f'.repeat(64), key: `builds/org/${claim.key}/${claim.lease_id}/artifact.json` };
+  const artifact = { sha256: 'f'.repeat(64), key: `builds/org/tasks/${claim.key}/${claim.lease_id}/artifact.json` };
   await queue.complete('org', claim.key, claim.lease_id, claim.token, artifact);
   await expect(queue.complete('org', claim.key, claim.lease_id, claim.token, artifact)).rejects.toMatchObject({ code: 'build_lease_lost' });
 });
