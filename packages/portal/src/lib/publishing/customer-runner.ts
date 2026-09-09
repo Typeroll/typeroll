@@ -243,7 +243,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       throw new ConnectionError('Cloudflare must use the generated GitHub repository and static build configuration.', 409);
     }
     if (!publication.commit) throw new Error('Frozen publication has no Git commit');
-    let deployment = await findPublicationDeployment(cloudflare, projectRoot, { project: publication.project, commit: publication.commit, branch: publication.branch });
+    let deployment = await findPublicationDeployment(cloudflare, projectRoot, { project: publication.project, commit: publication.commit, branch: publication.branch, ignoreSkipped: Boolean(publication.build_engine_revision) });
     if (publication.build_engine_revision) {
       const engine = await readEngineConfiguration(args.orgId);
       if (!engine || engine.status !== 'ready' || engine.revision !== publication.build_engine_revision) throw new ConnectionError('The shared build engine changed. Retry this publication.', 409);

@@ -37,9 +37,18 @@ export async function verifyStaticBatch(org: string, jobPath: string, checksKey:
   if (state?.complete) return true;
   const checks = await buildStorage(org, async storage => JSON.parse((await storage.read(checksKey, 32 * 1024 * 1024)).toString('utf8')) as StaticCheck[]);
   if (!Array.isArray(checks) || !checks.length) throw new ConnectionError('Static verification data is missing.', 409);
-  const cursor = state?.cursor ?? 0, batch = checks.slice(cursor, cursor + 8);
-  const results = await Promise.all(batch.map(check => verifyStaticResponse(origin, check)));
-  if (!results.every(Boolean)) { await store.setDoc(checkPath, { cursor: 0, complete: false }); return false; }
-  const next = cursor + batch.length, complete = next >= checks.length;
-  await store.setDoc(checkPath, { cursor: next, complete }); return complete;
+  let cursor = state?.cursor ?? 0;
+  const limit = Math.min(checks.length, cursor + 64), deadline = Date.now() + 20000;
+  // Healthy small sites finish in one observation instead of waiting a queue
+  // backoff for every eight files. Concurrency, work and elapsed time stay bounded.
+  do {
+    const batch = checks.slice(cursor, Math.min(cursor + 8, limit));
+    const results = await Promise.all(batch.map(check => verifyStaticResponse(origin, check)));
+    if (!results.every(Boolean)) { await store.setDoc(checkPath, { cursor: 0, complete: false }); return false; }
+    cursor += batch.length;
+    const complete = cursor >= checks.length;
+    await store.setDoc(checkPath, { cursor, complete });
+    if (complete) return true;
+  } while (cursor < limit && Date.now() < deadline);
+  return false;
 }

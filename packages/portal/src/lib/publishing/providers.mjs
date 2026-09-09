@@ -168,8 +168,8 @@ export function assertPagesProject(actual, expected) {
   }
 }
 
-export function matchingDeployment(deployments, { project, commit, branch }) {
-  return deployments.find((deployment) => deployment.project_name === project &&
+export function matchingDeployment(deployments, { project, commit, branch, ignoreSkipped = false }) {
+  return deployments.find((deployment) => (!ignoreSkipped || !deployment.is_skipped) && deployment.project_name === project &&
     deployment.deployment_trigger?.metadata?.commit_hash === commit &&
     deployment.deployment_trigger?.metadata?.branch === branch &&
     deployment.environment === (branch === 'main' ? 'production' : 'preview')) ?? null;

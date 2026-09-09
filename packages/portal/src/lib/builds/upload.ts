@@ -27,7 +27,7 @@ export async function uploadStaticBuild(client: ProviderClient, target: { org: s
       child.once('error', () => { clearTimeout(timer); reject(new ConnectionError('The static uploader could not start.', 502, 'static_upload_start_failed')); });
       child.once('exit', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new ConnectionError('Cloudflare could not accept the static upload. Retry the publication.', 502, 'static_upload_failed')); });
     }));
-    const deployment = await findPublicationDeployment(client, `/accounts/${target.account}/pages/projects/${target.project}`, target);
+    const deployment = await findPublicationDeployment(client, `/accounts/${target.account}/pages/projects/${target.project}`, { ...target, ignoreSkipped: true });
     if (!deployment || deployment.latest_stage?.status !== 'success') throw new ConnectionError('The upload finished without a confirmed deployment identity. Check Cloudflare before retrying.', 502, 'static_upload_uncertain');
     return deployment;
   } finally { await fs.rm(temp, { recursive: true, force: true }); }

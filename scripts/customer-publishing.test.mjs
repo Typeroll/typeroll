@@ -173,6 +173,10 @@ test('deployment success requires the exact commit, project, branch and complete
   const expected = { project: plan.repositories[0], commit: 'commit-one', branch: 'main' };
   assert.equal(matchingDeployment([deployment({ project_name: 'wrong' }), deployment()], expected).id, 'deployment-one');
   assert.equal(matchingDeployment([deployment({ environment: 'preview' })], expected), null);
+  const skipped = deployment({ id: 'skipped-git-trigger', is_skipped: true });
+  assert.equal(matchingDeployment([skipped, deployment()], { ...expected, ignoreSkipped: true }).id, 'deployment-one');
+  assert.equal(matchingDeployment([skipped], { ...expected, ignoreSkipped: true }), null);
+  assert.equal(matchingDeployment([skipped], expected).id, 'skipped-git-trigger');
   assert.doesNotThrow(() => assertSuccessfulStaticDeployment(deployment()));
   for (const variant of [{ uses_functions: true }, { uses_functions: undefined }, { is_skipped: true }, { latest_stage: { name: 'build', status: 'success' } }]) {
     assert.throws(() => assertSuccessfulStaticDeployment(deployment(variant)), /completed static/);

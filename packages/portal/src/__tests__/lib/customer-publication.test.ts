@@ -292,7 +292,9 @@ it('uses the shared engine and blocks the live link until actual static files ar
   expect(mocks.upload).not.toHaveBeenCalled();
   await getStore().updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: 'New unsaved-to-Git version' });
   mocks.built.mockResolvedValue({ files: { 'index.html': Buffer.from('frozen') } });
-  complete(); const finished = mocks.deployment; mocks.deployment = null;
+  complete(); const finished = mocks.deployment;
+  // Disabled Pages Git integrations still emit a skipped deployment for this commit.
+  mocks.deployment = { ...finished, id: 'skipped-git-build', is_skipped: true, latest_stage: { name: 'queued', status: 'idle' } };
   mocks.upload.mockImplementation(async () => { mocks.deployment = finished; return finished; });
   mocks.probe.mockResolvedValue(true); mocks.verify.mockResolvedValue(false);
   expect(await executeCustomerPublication(args)).toBe('deferred');
