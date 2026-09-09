@@ -6,6 +6,7 @@ import { buildServer } from '../src/server.js';
 
 const organizationTools = [
   'check_organization_github_permissions',
+  'setup_organization_build_engine', 'select_organization_build_provider', 'cancel_organization_build',
   'read_organization_build_engine', 'check_organization_build_access',
   'list_hosting_groups', 'save_hosting_group', 'connect_hosting_group',
   'list_organization_publishing_domains', 'configure_organization_publishing_domains',
@@ -15,8 +16,10 @@ const organizationTools = [
 
 async function session(status = 200) {
   const requests: string[] = [];
+  const bodies: unknown[] = [];
   const api = new TyperollClient({ baseUrl: 'https://example.test', apiKey: 'synthetic-org-key',
-    fetchImpl: async (url) => {
+    fetchImpl: async (url, init) => {
+      if (init?.body) bodies.push(JSON.parse(String(init.body)));
       requests.push(String(url));
       return Response.json(status === 200 ? { groups: [] } : { error: 'Organization API key required' }, { status });
     },
@@ -26,7 +29,7 @@ async function session(status = 200) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   await client.connect(clientTransport);
-  return { client, requests, close: async () => { await client.close(); await server.close(); } };
+  return { client, requests, bodies, close: async () => { await client.close(); await server.close(); } };
 }
 
 describe('organization publishing through the MCP transport', () => {
@@ -63,6 +66,16 @@ describe('organization publishing through the MCP transport', () => {
       expect((await s.client.callTool({ name: 'read_organization_build_engine', arguments: {} })).isError).not.toBe(true);
       expect((await s.client.callTool({ name: 'check_organization_build_access', arguments: { revision: 'revision' } })).isError).not.toBe(true);
       expect(s.requests).toEqual(Array(2).fill('https://example.test/api/v1/publishing/builds'));
+    } finally { await s.close(); }
+  });
+
+  it('sets up, selects and cancels GitHub builds with organization scope and exact payloads', async () => {
+    const s = await session();
+    try {
+      expect((await s.client.callTool({ name: 'setup_organization_build_engine', arguments: { provider: 'github', revision: 'engine-revision' } })).isError).not.toBe(true);
+      expect((await s.client.callTool({ name: 'select_organization_build_provider', arguments: { provider: 'github', revision: 'selection-revision' } })).isError).not.toBe(true);
+      expect((await s.client.callTool({ name: 'cancel_organization_build', arguments: { key: 'a'.repeat(64) } })).isError).not.toBe(true);
+      expect(s.bodies).toEqual([{ provider: 'github', revision: 'engine-revision', action: 'setup' }, { provider: 'github', revision: 'selection-revision', action: 'select' }, { key: 'a'.repeat(64), action: 'cancel' }]);
     } finally { await s.close(); }
   });
 

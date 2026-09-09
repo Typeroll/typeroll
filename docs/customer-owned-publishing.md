@@ -285,3 +285,52 @@ support is not evidence of a qualified GitHub publishing adapter.
 
 Upstream policy source:
 https://gitlab.com/apparmor/apparmor/-/blob/v4.0.2/profiles/apparmor/profiles/extras/bwrap-userns-restrict
+
+
+## Organization build provider
+
+In **Publishing → Builds**, choose **Cloudflare** or **GitHub Actions** to view
+that provider's saved setup. This choice of view does not change publishing.
+After setup passes its verification, **Use GitHub Actions for new builds** or
+**Use Cloudflare for new builds** saves the organization default with explicit
+confirmation. Each pending publication retains its frozen provider, source
+commit and site version. Updating one provider does not reconnect the other.
+
+For GitHub, connect the organization's existing Publisher App and approve
+Actions and Workflows write access in the **GitHub account** card if requested.
+Prepare the organization's R2 media storage, then select **Set up GitHub builds**.
+Typeroll creates one private generated runner repository and verifies GitHub
+identity, isolated execution and real R2 source/artifact transfer. Site source
+repositories and version branches remain separate. A failed check cannot make
+GitHub selectable for publishing. Setup uses the organization's GitHub Actions
+allowance; the hosting account does not need a GitHub integration for this path.
+
+The trusted GitHub workflow runs only on an explicit Typeroll dispatch. It uses
+OIDC rather than a saved runner secret. Typeroll checks signature, audience,
+immutable repository and owner IDs, exact workflow/source commit, App actor,
+run and attempt before granting one frozen job. Each retry has a new dispatch
+identity. Cancelled or superseded attempts cannot return a usable publication.
+The existing qualified executor and static artifact/hosting verification remain
+shared with Cloudflare. No image binaries or hosting credentials enter Git.
+
+**Active builds** shows the site, version, provider and queued/building status.
+An organization administrator can cancel a GitHub build there while it is
+queued or building. Cancellation revokes its attempt before requesting GitHub
+to stop the run; if GitHub is unavailable, the revoked attempt still cannot
+publish. Once building finishes, this control cannot undo a publication.
+
+Organization API keys have the same controls at `GET/POST /api/v1/publishing/builds`:
+GET returns the selected engine at the top level for compatibility, plus
+`selection`, `engines.cloudflare`, `engines.github` and `active_jobs`. POST
+`action: "setup"` or `"check"` accepts `provider` and that engine's `revision`.
+POST `action: "select"` accepts `provider` and `selection.revision`. POST
+`action: "cancel"` accepts an active GitHub task's `key`. Omitted `provider`
+continues to mean Cloudflare for existing setup/check clients. Site API keys
+cannot manage organization builds.
+
+The matching MCP tools are `read_organization_build_engine`,
+`check_organization_build_access`, `setup_organization_build_engine`,
+`select_organization_build_provider` and `cancel_organization_build`.
+These tools work before a site exists. Self-hosted servers use their configured
+public HTTPS URL as the OIDC audience and the same organization-owned storage;
+this workflow does not require Typeroll Cloud authentication or hosting.

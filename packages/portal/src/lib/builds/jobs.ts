@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { paths, type DeployJob } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { ConnectionError } from '../publishing/connections';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { dispatchCloudflareBuild } from './cloudflare';
+import { dispatchGithubBuild, githubBuildClient, readGithubDispatch } from './github';
 import { BUILD_PROTOCOL, BUILD_RUNTIME, encodeSource, sha256, decodeArtifact, type BuildIdentity } from './contract.mjs';
 import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from './queue';
 import { readEngineConfiguration, buildInputPath, type BuildInput, type EngineConfiguration } from './state';
@@ -17,8 +19,9 @@ export async function enqueueBuild(config: EngineConfiguration, identity: Omit<B
     await storage.put(sourceKey, source);
   });
   const queued = await new OrganizationBuildQueue().enqueue(frozen, config.revision);
-  await getStore().createDocIfMissing(buildInputPath(identity.org_id, queued.key), { source_key: sourceKey, kind, storage_account_id: config.account_id } satisfies BuildInput);
-  await dispatchPendingBuild(identity.org_id, queued.key, config);
+  await getStore().createDocIfMissing(buildInputPath(identity.org_id, queued.key), { source_key: sourceKey, kind, storage_account_id: config.account_id, provider: config.provider ?? 'cloudflare' } satisfies BuildInput);
+  try { await dispatchPendingBuild(identity.org_id, queued.key, config); }
+  catch (error) { await new OrganizationBuildQueue().cancel(identity.org_id, queued.key); throw error; }
   return queued;
 }
 
@@ -29,6 +32,7 @@ export async function dispatchPendingBuild(org: string, key: string, config: Eng
   const input = await store.getDoc<BuildInput>(inputPath);
   if (!task || !input || !['queued', 'running'].includes(task.status) || task.lease_until > Date.now()) return;
   if (task.deadline <= Date.now() || task.attempt >= 3) throw new ConnectionError('The shared build timed out. Retry the publication.', 409, 'shared_build_timeout');
+  if (config.provider === 'github') return dispatchPendingGithubBuild(org, key, config, task, input);
   const client = await cloudflareClient(org);
   if (input.dispatch_uncertain) {
     // A timeout can occur after Cloudflare accepted the request. Recover its identity
@@ -66,7 +70,8 @@ export async function completedBuild(org: string, key: string) {
   if (!task) throw new ConnectionError('The frozen build was not found.', 409);
   if (['failed', 'cancelled'].includes(task.status)) throw new ConnectionError(`The shared build stopped (${task.error_code ?? task.status}). Retry the publication.`, 502, task.error_code ?? 'shared_build_failed');
   if (task.status !== 'completed') {
-    const config = await readEngineConfiguration(org);
+    const metadata = await getStore().getDoc<BuildInput>(buildInputPath(org, key));
+    const config = await readEngineConfiguration(org, metadata?.provider ?? 'cloudflare');
     if (!config || config.revision !== task.engine_revision || !['ready', 'qualifying'].includes(config.status)) throw new ConnectionError('The shared build engine changed. Retry the publication.', 409);
     await dispatchPendingBuild(org, key, config); return null;
   }
@@ -77,4 +82,34 @@ export async function completedBuild(org: string, key: string) {
 export async function publicationStillRunning(task: BuildTask) {
   const job = await getStore().getDoc<DeployJob>(paths.deploy(task.identity.org_id, task.identity.site_id, task.identity.job_id));
   return !!job && ['queued', 'running'].includes(job.status) && job.version_id === task.identity.version_id;
+}
+
+/** One explicit GitHub run per attempt. An uncertain dispatch is never blindly repeated. */
+async function dispatchPendingGithubBuild(org: string, key: string, config: EngineConfiguration, task: BuildTask, input: BuildInput) {
+  const client = await githubBuildClient(config), store = getStore(), path = buildInputPath(org, key);
+  if (input.dispatch_uncertain || input.dispatch_id) {
+    const run = await readGithubDispatch(client, config, input);
+    if (!run) return;
+    if (!input.dispatch_id) {
+      await store.compareAndUpdateDoc<BuildInput>(path, value => value.dispatch_nonce === input.dispatch_nonce && value.dispatch_uncertain === true,
+        { dispatch_id: String(run.id), dispatch_uncertain: false });
+      return;
+    }
+    if (run.status !== 'completed') return;
+    if (task.provider_dispatch_id === String(run.id) && task.lease_until > Date.now()) return;
+  }
+  const now = Date.now(), nonce = randomUUID();
+  if ((input.dispatch_attempt ?? 0) >= 3) throw new ConnectionError('GitHub could not finish this build after three attempts. Check Publishing → Builds and retry the publication.', 502, 'github_build_attempts_exhausted');
+  const won = await store.compareAndUpdateDoc<BuildInput>(path, value => (value.dispatch_lease_until ?? 0) <= now && value.dispatch_id === input.dispatch_id && !value.dispatch_uncertain,
+    { dispatch_id: '', dispatch_nonce: nonce, dispatch_uncertain: true, dispatch_started_at: now, dispatch_lease_until: now + 120000, dispatch_attempt: (input.dispatch_attempt ?? 0) + 1 });
+  if (!won) return;
+  try {
+    const id = await dispatchGithubBuild(client, config, key, nonce);
+    await store.compareAndUpdateDoc<BuildInput>(path, value => value.dispatch_nonce === nonce && (!value.dispatch_id || value.dispatch_id === id),
+      { dispatch_id: id, dispatch_uncertain: false });
+  } catch (error) {
+    // Known pre-dispatch failures can be shown immediately; transport failures
+    // preserve the nonce so history or the OIDC claim can recover the accepted run.
+    if (error instanceof ConnectionError && ['github_runner_changed', 'github_workflow_disabled', 'github_runner_unavailable', 'github_dispatch_rejected'].includes(error.code ?? '')) throw error;
+  }
 }

@@ -5,10 +5,10 @@ import { getConnection, ConnectionError } from '../publishing/connections';
 import { ProviderError, digest, type ProviderClient } from '../publishing/providers.mjs';
 import { BUILD_PROTOCOL, BUILD_RUNTIME } from './contract.mjs';
 
-export const enginePath = (org: string) => `organizations/${org}/publishing/build_engine`;
+export const enginePath = (org: string, provider: 'cloudflare' | 'github' = 'cloudflare') => `organizations/${org}/publishing/${provider === 'github' ? 'github_build_engine' : 'build_engine'}`;
 export interface BuildEngine {
   revision: string;
-  provider: 'cloudflare';
+  provider: 'cloudflare' | 'github';
   enabled: boolean;
   account_id: string | null;
   account_name: string | null;

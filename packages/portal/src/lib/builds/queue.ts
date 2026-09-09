@@ -6,6 +6,7 @@ import { ConnectionError } from '../publishing/connections';
 export interface BuildTask {
   identity: BuildIdentity;
   engine_revision: string;
+  provider_dispatch_id?: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   created_at: number;
   deadline: number;
@@ -40,12 +41,13 @@ export class OrganizationBuildQueue {
     if (!existing || Object.keys(identity).some(key => existing.identity[key as keyof BuildIdentity] !== identity[key as keyof BuildIdentity])) throw new ConnectionError('The frozen build identity changed.', 409);
     return { key, task: existing };
   }
-  async claim(org: string, engineRevision: string, protocol: number) {
+  async claim(org: string, engineRevision: string, protocol: number, expected?: { key: string; dispatch_id: string }) {
     if (protocol !== BUILD_PROTOCOL) throw new ConnectionError('Update the build engine before claiming work.', 409, 'build_protocol_unsupported');
     // One equality filter avoids requiring a provider-specific composite index.
-    const pending = await this.store.listDocs<BuildTask>(buildTasksPath(org), { filters: [{ field: 'status', op: 'in', value: ['queued', 'running'] }], limit: 100 });
+    const exact = expected ? await this.store.getDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(expected.key)}`) : null;
+    const pending = expected ? (exact ? [{ ...exact, id: expected.key }] : []) : await this.store.listDocs<BuildTask>(buildTasksPath(org), { filters: [{ field: 'status', op: 'in', value: ['queued', 'running'] }], limit: 100 });
     for (const task of pending.sort((a, b) => a.created_at - b.created_at)) {
-      if (task.engine_revision !== engineRevision || task.lease_until > this.clock()) continue;
+      if (!['queued', 'running'].includes(task.status) || task.engine_revision !== engineRevision || task.lease_until > this.clock() || (expected && task.provider_dispatch_id === expected.dispatch_id)) continue;
       const path = `${buildTasksPath(org)}/${task.id}`;
       if (task.deadline <= this.clock() || task.attempt >= MAX_ATTEMPTS) {
         await this.store.compareAndUpdateDoc<BuildTask>(path, current => ['queued', 'running'].includes(current.status) && current.lease_until <= this.clock(),
@@ -54,8 +56,8 @@ export class OrganizationBuildQueue {
       }
       const token = randomBytes(32).toString('base64url'), lease = randomUUID(), now = this.clock();
       const won = await this.store.compareAndUpdateDoc<BuildTask>(path, current => current.engine_revision === engineRevision &&
-        ['queued', 'running'].includes(current.status) && current.lease_until <= now && current.deadline > now && current.attempt === task.attempt,
-        { status: 'running', lease_id: lease, token_hash: sha256(token), lease_until: now + LEASE_MS, attempt: task.attempt + 1 });
+        ['queued', 'running'].includes(current.status) && current.lease_until <= now && current.deadline > now && current.attempt === task.attempt && (!expected || current.provider_dispatch_id !== expected.dispatch_id),
+        { status: 'running', lease_id: lease, token_hash: sha256(token), lease_until: now + LEASE_MS, attempt: task.attempt + 1, ...(expected ? { provider_dispatch_id: expected.dispatch_id } : {}) });
       if (won) return { key: task.id, identity: task.identity, lease_id: lease, token, expires_at: now + LEASE_MS, deadline: task.deadline };
     }
     return null;
@@ -82,7 +84,7 @@ export class OrganizationBuildQueue {
     if (!won) throw rejected();
   }
   async cancel(org: string, key: string) {
-    await this.store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(key)}`, task => ['queued', 'running'].includes(task.status),
+    return this.store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(key)}`, task => ['queued', 'running'].includes(task.status),
       { status: 'cancelled', token_hash: null, lease_until: 0 });
   }
 }

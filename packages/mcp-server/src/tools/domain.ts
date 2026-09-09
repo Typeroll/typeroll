@@ -26,21 +26,33 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'setup_organization_build_engine', noSite: true,
-    description: 'Prepare or update the organization Cloudflare build engine and start its isolated execution and artifact-transfer check. Requires an organization API key and current revision. Keeps site repositories, branches and Hosting Groups separate. Read the engine status until verification finishes.',
-    inputSchema: { revision: z.string() },
+    description: 'Prepare or update the organization Cloudflare or GitHub build engine and start its isolated execution and artifact-transfer check. Use the selected provider’s engine revision. Setup does not change the organization’s default provider. Requires an organization API key and current revision. Keeps site repositories, branches and Hosting Groups separate. Read the engine status until verification finishes.',
+    inputSchema: { revision: z.string(), provider: z.enum(['cloudflare', 'github']).optional() },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/builds', { ...args, action: 'setup' }))),
   },
   {
     name: 'read_organization_build_engine', noSite: true,
-    description: 'Read the organization shared Cloudflare build engine status. Requires an organization API key. No provider credentials are returned.',
+    description: 'Read the selected provider, saved Cloudflare and GitHub build engines, and active jobs for the organization. Requires an organization API key. No provider credentials are returned.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/builds'))),
   },
   {
     name: 'check_organization_build_access', noSite: true,
-    description: 'Check Workers Scripts and Workers Builds access using the existing organization Cloudflare connection. Requires the current revision and an organization API key. Returns precise permission or qualification requirements; does not enable builds or change hosting.',
-    inputSchema: { revision: z.string() },
+    description: 'Check setup and qualification using the existing organization connection for the chosen provider. Omit provider for Cloudflare compatibility. Requires the current revision and an organization API key. Returns precise permission or qualification requirements; does not enable builds or change hosting.',
+    inputSchema: { revision: z.string(), provider: z.enum(['cloudflare', 'github']).optional() },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/builds', args))),
+  },
+  {
+    name: 'select_organization_build_provider', noSite: true,
+    description: 'Select a verified Cloudflare or GitHub engine for new publications. Requires an organization API key and selection.revision from read_organization_build_engine. Existing builds retain their provider, source and version.',
+    inputSchema: { provider: z.enum(['cloudflare', 'github']), revision: z.string() },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/builds', { ...args, action: 'select' }))),
+  },
+  {
+    name: 'cancel_organization_build', noSite: true,
+    description: 'Cancel an active GitHub build using its key from active_jobs. Requires an organization API key. Revokes the attempt before requesting provider cancellation; it cannot publish afterward. Completed builds cannot be cancelled here.',
+    inputSchema: { key: z.string() },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/builds', { ...args, action: 'cancel' }))),
   },
   {
     name: 'list_hosting_groups',

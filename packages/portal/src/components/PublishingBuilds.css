@@ -13,3 +13,10 @@
   .publishing-builds__setup ol { padding-inline-start: 20px; }
   .publishing-builds__setup .btn { min-height: 44px; }
 }
+
+.publishing-builds__activity h3 { font-size: 1rem; }
+.publishing-builds__activity ul { list-style: none; padding: 0; margin: 0; }
+.publishing-builds__activity li { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; padding-block: 12px; border-bottom: 1px solid var(--color-border, #ddd); }
+.publishing-builds__activity li > div { min-width: 0; overflow-wrap: anywhere; }
+.publishing-builds__activity span { display: block; font-size: .875rem; margin-top: 4px; }
+#build-provider { width: 100%; min-height: 44px; font: inherit; }

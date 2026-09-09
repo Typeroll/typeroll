@@ -1,0 +1,55 @@
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
+import { getStore } from '../../lib/datastore';
+import { OrganizationBuildQueue, buildTasksPath } from '../../lib/builds/queue';
+import { configureBuildSettings, readBuildSelection } from '../../lib/builds/selection';
+import { engineConfigurationPath, buildInputPath, type EngineConfiguration } from '../../lib/builds/state';
+import { enginePath } from '../../lib/builds/cloudflare';
+import { connectionPath } from '../../lib/publishing/connections';
+import { BUILD_RUNTIME, type BuildIdentity } from '../../lib/builds/contract.mjs';
+
+const identity = (site: string): BuildIdentity => ({ protocol: 1, node_version: BUILD_RUNTIME, org_id: 'org', site_id: site, version_id: site === 'one' ? 'main' : 'redesign', job_id: 'job', publication_id: 'a'.repeat(64), source_sha256: 'b'.repeat(64), commit: 'c'.repeat(40), branch: site === 'one' ? 'main' : 'version-redesign' });
+beforeEach(async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const store = getStore();
+  await store.setDoc(connectionPath('org', 'cloudflare'), { status: 'connected', revision: 'cf', cloudflare: { account_id: 'a'.repeat(32), account_name: 'Storage' } });
+  await store.setDoc(connectionPath('org', 'github'), { status: 'connected', revision: 'git', github: { owner: 'Example-Org', installation_id: '91', account_id: '17' } });
+});
+afterEach(() => vi.restoreAllMocks());
+it('preserves in-flight Cloudflare tasks and saved engines when selecting GitHub for new publications', async () => {
+  const store = getStore();
+  const base: EngineConfiguration = { revision: 'cf-engine', owner: 'Example-Org', installation_id: '91', account_id: 'a'.repeat(32), worker_tag: '', trigger_uuid: '', runner_commit: 'c'.repeat(40), token_hash: 'cf-token-hash', encrypted_token: 'cf-encrypted', status: 'ready', setup_lease_until: 0 };
+  await store.setDoc(engineConfigurationPath('org'), base);
+  await store.setDoc(engineConfigurationPath('org', 'github'), { ...base, provider: 'github', github: { owner_id: '17' }, revision: 'gh-engine', token_hash: '', encrypted_token: '' });
+  await store.setDoc(enginePath('org'), { provider: 'cloudflare', revision: 'cf-view', state: 'ready', enabled: true });
+  await store.setDoc(enginePath('org', 'github'), { provider: 'github', revision: 'gh-view', state: 'ready', enabled: true });
+  const queue = new OrganizationBuildQueue();
+  const queued = await queue.enqueue(identity('one'), 'cf-engine');
+  await store.setDoc(buildInputPath('org', queued.key), { provider: 'cloudflare', kind: 'publication', source_key: 'source', storage_account_id: base.account_id });
+  expect(await readBuildSelection('org')).toEqual({ provider: 'cloudflare', revision: 'initial' });
+  const selected = await configureBuildSettings('org', { action: 'select', provider: 'github', revision: 'initial' });
+  expect(selected.selection.provider).toBe('github');
+  expect(await store.getDoc(engineConfigurationPath('org'))).toEqual({ ...base, id: 'build_engine' });
+  expect(await store.getDoc(`${buildTasksPath('org')}/${queued.key}`)).toMatchObject({ engine_revision: 'cf-engine' });
+  expect(await queue.claim('org', 'cf-engine', 1)).toMatchObject({ key: queued.key });
+  expect(await queue.claim('org', 'gh-engine', 1)).toBeNull();
+  await expect(configureBuildSettings('org', { action: 'select', provider: 'cloudflare', revision: 'initial' })).rejects.toMatchObject({ status: 409 });
+  await store.updateDoc(engineConfigurationPath('org', 'github'), { status: 'qualifying' });
+  await expect(configureBuildSettings('org', { action: 'select', provider: 'github', revision: selected.selection.revision })).rejects.toMatchObject({ code: 'build_provider_not_ready' });
+});
+it('claims only the dispatched site/version and prevents an old run from taking over its expired lease', async () => {
+  let now = Date.now();
+  const queue = new OrganizationBuildQueue(getStore(), () => now);
+  const a = await queue.enqueue(identity('one'), 'engine'), b = await queue.enqueue(identity('two'), 'engine');
+  const claim = await queue.claim('org', 'engine', 1, { key: b.key, dispatch_id: '271' });
+  expect(claim?.identity.version_id).toBe('redesign');
+  expect(await getStore().getDoc(`${buildTasksPath('org')}/${a.key}`)).toMatchObject({ status: 'queued', attempt: 0 });
+  expect(await queue.claim('other', 'engine', 1, { key: b.key, dispatch_id: '272' })).toBeNull();
+  now += 91000;
+  expect(await queue.claim('org', 'engine', 1, { key: b.key, dispatch_id: '271' })).toBeNull();
+  const retry = await queue.claim('org', 'engine', 1, { key: b.key, dispatch_id: '272' });
+  expect(retry?.identity).toEqual(claim?.identity);
+  await expect(queue.heartbeat('org', b.key, claim!.lease_id, claim!.token)).rejects.toMatchObject({ code: 'build_lease_lost' });
+  await queue.cancel('org', b.key);
+  expect(await queue.claim('org', 'engine', 1, { key: b.key, dispatch_id: '273' })).toBeNull();
+});

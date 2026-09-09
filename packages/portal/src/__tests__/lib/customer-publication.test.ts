@@ -312,8 +312,9 @@ it('identifies missing Git installation in an extra hosting account without aski
   expect(failed.deploy_url).toBeUndefined();
 });
 
-it('uses the shared engine and blocks the live link until actual static files are verified', async () => {
-  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', revision: 'engine-1', account_id: 'a'.repeat(32) });
+it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the live link until actual static files are verified', async providerName => {
+  await getStore().setDoc('organizations/org/publishing/build_selection', { provider: providerName, revision: 'selection' });
+  await getStore().setDoc(`organizations/org/publishing_private/${providerName === 'github' ? 'github_build_engine' : 'build_engine'}`, { status: 'ready', provider: providerName, revision: 'engine-1', account_id: 'a'.repeat(32) });
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => {
     if (route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}`) return { name: project, production_branch: 'main' };
@@ -324,6 +325,7 @@ it('uses the shared engine and blocks the live link until actual static files ar
   expect(mocks.enqueue).toHaveBeenCalledWith(expect.objectContaining({ revision: 'engine-1' }), expect.objectContaining({ org_id: 'org', site_id: 'site', version_id: 'main', branch: 'main', commit: 'b'.repeat(40) }), expect.any(Object));
   expect(mocks.upload).not.toHaveBeenCalled();
   await getStore().updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: 'New unsaved-to-Git version' });
+  await getStore().updateDoc('organizations/org/publishing/build_selection', { provider: providerName === 'github' ? 'cloudflare' : 'github' });
   mocks.built.mockResolvedValue({ files: { 'index.html': Buffer.from('frozen') } });
   complete(); const finished = mocks.deployment;
   // Disabled Pages Git integrations still emit a skipped deployment for this commit.
@@ -335,7 +337,7 @@ it('uses the shared engine and blocks the live link until actual static files ar
   expect((await getStore().getDoc<any>(jobPath)).deploy_url).toBeUndefined();
   mocks.verify.mockResolvedValue(true);
   expect(await executeCustomerPublication(args)).toBe('ran');
-  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', execution_backend: 'organization_cloudflare' });
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', execution_backend: providerName === 'github' ? 'organization_github' : 'organization_cloudflare' });
   expect(mocks.push).toHaveBeenCalledTimes(1); expect(mocks.enqueue).toHaveBeenCalledTimes(1); expect(mocks.upload).toHaveBeenCalledTimes(1);
   expect(mocks.push.mock.calls[0][1].files['publication.json']).not.toContain('New unsaved');
 });

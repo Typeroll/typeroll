@@ -126,7 +126,7 @@ describe('Firestore deploy queue worker', () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
-  it.each(['customer_git', 'organization_cloudflare'] as const)('continues %s without resetting the provider state', async execution_backend => {
+  it.each(['customer_git', 'organization_cloudflare', 'organization_github'] as const)('continues %s without resetting the provider state', async execution_backend => {
     const store = await setup();
     await new FirestoreDeployQueue(store).enqueue(args);
     await store.updateDoc(paths.deploy(args.orgId, args.siteId, args.jobId), { status: 'running', execution_backend, phase: 'building with the organization engine' });

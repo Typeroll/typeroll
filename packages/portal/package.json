@@ -36,6 +36,7 @@
     "firebase-admin": "^14.3.0",
     "google-auth-library": "^10.6.2",
     "htmlparser2": "^12.0.0",
+    "jose": "6.2.10",
     "jszip": "^3.10.1",
     "lucide-react": "^1.16.0",
     "lucide-static": "^1.16.0",

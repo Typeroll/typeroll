@@ -26,7 +26,7 @@ function job(over: Partial<DeployJob> & { id: string }): DeployJob {
 }
 
 describe('findActiveDeploy', () => {
-  it.each(['customer_git', 'organization_cloudflare'] as const)('keeps %s locked until provider reconciliation', execution_backend => {
+  it.each(['customer_git', 'organization_cloudflare', 'organization_github'] as const)('keeps %s locked until provider reconciliation', execution_backend => {
     const pending = job({ id: 'external', execution_backend, started_at: new Date(NOW - DEPLOY_STALE_AFTER_MS - 1).toISOString() });
     expect(findActiveDeploy([pending], NOW)?.id).toBe('external');
   });

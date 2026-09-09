@@ -39,7 +39,7 @@ async function setup(): Promise<{ jobId: string }> {
 describe('deploy-worker forwards dryRun', () => {
   beforeEach(async () => { await resetDatastore(); });
 
-  it.each(['customer_git', 'organization_cloudflare'] as const)('continues a running %s job and preserves retries', async execution_backend => {
+  it.each(['customer_git', 'organization_cloudflare', 'organization_github'] as const)('continues a running %s job and preserves retries', async execution_backend => {
     const { jobId } = await setup();
     const { getStore } = await import('../../lib/datastore');
     await getStore().updateDoc(paths.deploy(ORG, SITE, jobId), { status: 'running', execution_backend });

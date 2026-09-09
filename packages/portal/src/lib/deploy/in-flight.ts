@@ -28,7 +28,7 @@ import type { DeployJob } from '@typeroll/shared';
 export const DEPLOY_STALE_AFTER_MS = 20 * 60 * 1000;
 
 export function isExternalDeploy(job: Pick<DeployJob, 'execution_backend'>): boolean {
-  return job.execution_backend === 'customer_git' || job.execution_backend === 'organization_cloudflare';
+  return job.execution_backend === 'customer_git' || job.execution_backend === 'organization_cloudflare' || job.execution_backend === 'organization_github';
 }
 
 const ACTIVE_STATUSES: ReadonlySet<DeployJob['status']> = new Set(['queued', 'running']);

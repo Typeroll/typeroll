@@ -26,13 +26,15 @@ import { preparePublicMediaDomains } from './media-domain';
 import { recordPublishingOrigin } from './runtime-origins';
 import { retargetWebsite } from './publication-retarget';
 import { recordCustomerCompute } from './compute-cost';
-import { readEngineConfiguration } from '../builds/state';
+import { readEngineConfiguration, type BuildProvider } from '../builds/state';
+import { selectedBuildProvider } from '../builds/selection';
 import { enqueueBuild, completedBuild } from '../builds/jobs';
+import { OrganizationBuildQueue } from '../builds/queue';
 import { uploadStaticBuild } from '../builds/upload';
 import { prepareStaticProject, saveStaticChecks, verifyStaticBatch } from '../builds/publication';
 
 interface GitPublication {
-  build_engine_revision?: string; build_task_key?: string | null; static_checks_key?: string | null;
+  build_provider?: BuildProvider; build_engine_revision?: string; build_task_key?: string | null; static_checks_key?: string | null;
   hosting_group_id?: string; hosting_group_revision?: string;
   owner: string; repo: string; project: string; account_id: string; branch: string;
   publication_id: string; snapshot_chunks: number; snapshot_digest: string; content_cutoff: string;
@@ -158,9 +160,11 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: `typeroll-${prefix}`, project: `typeroll-${prefix}`, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domains.revision, website_host: host, snapshot_job_id: args.jobId, ...await saveSnapshot(args, frozen) };
-      const engine = await readEngineConfiguration(args.orgId);
+      const selectedProvider = await selectedBuildProvider(args.orgId);
+      const engine = await readEngineConfiguration(args.orgId, selectedProvider);
+      if (selectedProvider === 'github' && !engine) throw new ConnectionError('Set up GitHub builds in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
       if (engine && engine.status !== 'ready') throw new ConnectionError('Finish shared build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
-      if (engine?.status === 'ready') publication.build_engine_revision = engine.revision;
+      if (engine?.status === 'ready') { publication.build_engine_revision = engine.revision; publication.build_provider = engine.provider ?? 'cloudflare'; }
       if (args.versionId === 'main' && domains.active && !samePublicationHosts(domains.active, { ...domains.desired, website_host: host })) {
         publication.branch = `version-domain-${domains.revision.replaceAll('-', '').slice(0, 16)}`;
         publication.release_branch = 'main';
@@ -215,7 +219,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const pushed = await publishTree(github, { owner: publication.owner, repo: publication.repo, branch: publication.branch, files, message: `Publish ${args.versionId} ${publication.publication_id.slice(0, 12)}` });
       publication = { ...publication, commit: pushed.commit };
       // Record the Git commit before Pages setup: recovery must never capture newer CMS edits.
-      await store.updateDoc(jobPath, { git_publication: publication, phase: 'connecting Cloudflare build' });
+      await store.updateDoc(jobPath, { git_publication: publication, phase: publication.build_engine_revision ? 'preparing static build' : 'connecting Cloudflare build' });
     }
     let project = await cloudflare(projectRoot, { missing: true });
     if (publication.build_engine_revision) {
@@ -235,14 +239,14 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (!publication.commit) throw new Error('Frozen publication has no Git commit');
     let deployment = await findPublicationDeployment(cloudflare, projectRoot, { project: publication.project, commit: publication.commit, branch: publication.branch, ignoreSkipped: Boolean(publication.build_engine_revision) });
     if (publication.build_engine_revision) {
-      const engine = await readEngineConfiguration(args.orgId);
+      const engine = await readEngineConfiguration(args.orgId, publication.build_provider ?? 'cloudflare');
       if (!engine || engine.status !== 'ready' || engine.revision !== publication.build_engine_revision) throw new ConnectionError('The shared build engine changed. Retry this publication.', 409);
       if (!publication.build_task_key) {
         const source = await publicationSourceTree(await readSnapshot(args, publication));
         const queued = await enqueueBuild(engine, { org_id: args.orgId, site_id: args.siteId, version_id: args.versionId, job_id: args.jobId,
           publication_id: publication.publication_id, commit: publication.commit, branch: publication.branch }, source);
         publication = { ...publication, build_task_key: queued.key };
-        await store.updateDoc(jobPath, { git_publication: publication, execution_backend: 'organization_cloudflare', phase: 'building with the organization engine' });
+        await store.updateDoc(jobPath, { git_publication: publication, execution_backend: publication.build_provider === 'github' ? 'organization_github' : 'organization_cloudflare', phase: publication.build_provider === 'github' ? 'building on GitHub Actions' : 'building on Cloudflare' });
       }
       if (!deployment || !publication.static_checks_key) {
         const result = await completedBuild(args.orgId, publication.build_task_key!);
@@ -397,6 +401,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       : error instanceof ConnectionError ? error.message : error instanceof ProviderError
       ? `${error.provider} returned HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''} during ${failure.stage}. Open Publishing to check the connection and retry.`
       : `Publishing stopped during ${failure.stage}. Retry the deployment. If it fails again, contact support with deployment ${args.jobId}.`;
+    const failedBuild = (await store.getDoc<GitJob>(jobPath))?.git_publication?.build_task_key;
+    if (failedBuild) await new OrganizationBuildQueue().cancel(args.orgId, failedBuild);
     await store.updateDoc(jobPath, { status: 'failed', phase: 'failed', finished_at: new Date().toISOString(),
       error: message, verification_message: failedJob?.verification_message ? message : null, failure });
     terminal = true;

@@ -56,7 +56,7 @@ describe('runPublishSweep', () => {
     await seed();
   });
 
-  it.each(['customer_git', 'organization_cloudflare'] as const)('recovers a %s publication after its task was consumed', async execution_backend => {
+  it.each(['customer_git', 'organization_cloudflare', 'organization_github'] as const)('recovers a %s publication after its task was consumed', async execution_backend => {
     const execute = vi.fn(async () => 'deferred');
     vi.doMock('../../lib/publishing/customer-runner', () => ({ executeCustomerPublication: execute }));
     const { getStore } = await import('../../lib/datastore');
