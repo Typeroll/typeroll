@@ -18,8 +18,8 @@ export async function checkGithubPermissions(org: string, fetchImpl: typeof fetc
   if (saved.app_id !== config.appId) throw new ConnectionError('The GitHub publisher configuration changed.', 409);
   const client = githubAppClient(config, fetchImpl);
   const [app, installation] = await Promise.all([client('/app'), client(`/app/installations/${saved.installation_id}`)]);
-  assertInstallation(installation, { appId: config.appId, installationId: saved.installation_id, owner: saved.owner });
-  if (String(app.id) !== config.appId || String(installation.account.id) !== saved.account_id) throw new ConnectionError('The GitHub organization identity changed.', 409);
+  assertInstallation(installation, { appId: config.appId, installationId: saved.installation_id, owner: saved.owner, accountId: saved.account_id, accountType: saved.account_type ?? 'Organization' });
+  if (String(app.id) !== config.appId || String(installation.account.id) !== saved.account_id) throw new ConnectionError('The GitHub account identity changed.', 409);
   if ((await getConnection(org, 'github')).revision !== connection.revision) throw new ConnectionError('The GitHub connection changed. Check again.', 409);
   const missing = ['actions', 'workflows'].filter(name => installation.permissions?.[name] !== 'write');
   const unavailable = missing.some(name => app.permissions?.[name] !== 'write');
@@ -28,7 +28,7 @@ export async function checkGithubPermissions(org: string, fetchImpl: typeof fetc
   if (!/^[a-z0-9][a-z0-9-]{0,38}$/i.test(saved.owner) || !/^\d+$/.test(saved.installation_id)) throw new ConnectionError('Invalid GitHub installation.', 409);
   return {
     revision: connection.revision, state, missing_permissions: missing,
-    approval_url: state === 'approval_required' ? `https://github.com/organizations/${saved.owner}/settings/installations/${saved.installation_id}` : null,
+    approval_url: state === 'approval_required' ? (saved.account_type === 'User' ? `https://github.com/settings/installations/${saved.installation_id}` : `https://github.com/organizations/${saved.owner}/settings/installations/${saved.installation_id}`) : null,
     message: state === 'up_to_date' ? 'GitHub permissions are up to date. Your existing connection is active.'
       : state === 'approval_required' ? 'Approve the requested update in GitHub. Typeroll will check automatically when you return. You do not need to disconnect or reconnect.'
       : 'Typeroll needs to enable GitHub build access before you can approve it. No action is needed from you yet. Your existing connection remains active.',

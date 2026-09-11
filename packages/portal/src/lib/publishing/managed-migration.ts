@@ -50,7 +50,7 @@ export async function managedMigrationPlan(orgId: string, siteId: string) {
   if (!project.canonical_deployment?.id) throw new ConnectionError('The existing live deployment could not be identified. Publish or restore it before migration.', 409, 'managed_deployment_missing');
   return { state: 'ready' as const, revision: sourceRevision(site, connection.cloudflare.account_id, group.id),
     binding: { ...binding, previous_deployment_id: project.canonical_deployment.id as string },
-    message: 'This site will use the connected GitHub organization and shared build engine. Its Pages project, live website, DNS and existing media URLs stay in place. Publish afterward to deploy the new build.' };
+    message: 'This site will use the connected GitHub account and shared build engine. Its Pages project, live website, DNS and existing media URLs stay in place. Publish afterward to deploy the new build.' };
 }
 
 /** Explicit per-site opt-in. Connecting organization storage never migrates another managed site. */

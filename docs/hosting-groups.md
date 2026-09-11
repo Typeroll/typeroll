@@ -129,7 +129,7 @@ not install Cloudflare's GitHub integration in that account.
 
 In Cloudflare, select the new hosting account, then go to **Workers & Pages →
 Create application → Pages → Connect to Git → + Add account**. Select the same
-GitHub organization used by Typeroll and authorize access to all repositories so
+GitHub account used by Typeroll and authorize access to all repositories so
 future generated site repositories are included. Return to Typeroll and retry
 publishing; Typeroll creates the site project. Keep the existing Cloudflare Git
 installation connected, since other sites can depend on it.

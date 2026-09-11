@@ -1,11 +1,11 @@
 # Connect customer-owned publishing accounts
 
 Status: organization account connection is implemented. Core 0.1.20 simplifies
-GitHub organization discovery. Customer acceptance remains pending.
+GitHub account discovery, including personal accounts.
 Automatic site provisioning and editor publication are still being implemented.
 See [implementation status](customer-owned-publishing.md).
 
-Your organization owns the GitHub organization, publication repositories,
+Your Typeroll organization connects a GitHub account and owns publication repositories,
 Cloudflare account, and media storage. The publisher receives access through a
 GitHub App installation and scoped Cloudflare credentials. Customers do not
 invite the publisher's developers or share a personal GitHub token.
@@ -15,13 +15,14 @@ sites. Each site receives a private generated repository and a Git-connected Pag
 The site remains static; Forms and Extensions use their separately documented
 runtime owners.
 
-## GitHub organization and publisher installation
+## GitHub account and publisher installation
 
-Use a customer-owned organization dedicated to generated site repositories.
-An organization owner installs the publisher's GitHub App once. The pilot
+Use a personal GitHub account or a customer-owned GitHub organization.
+The personal account holder or an organization owner installs the publisher's GitHub App once. The pilot
 requires **All repositories** so subsequent site creation does not need another
 customer approval. Organization policies must permit private repository creation
-by the App. Use `main` as the initial default branch.
+by the App. Typeroll prepares `main` in its generated repositories even if the
+GitHub account uses another initial default branch.
 
 The publisher App requests these repository permissions:
 
@@ -50,16 +51,23 @@ hour. Customers do not create an App or manually renew these tokens.
 
 The publisher must register an externally installable App before customers can
 connect. Open **Publishing** in Typeroll's sidebar. An explicit Typeroll organization owner or admin chooses
-**Connect GitHub** and signs in. No typed organization name or ID is required.
+**Connect GitHub** and signs in. No typed account name or ID is required.
 If the App is not installed, the page provides installation instructions.
-The server discovers eligible owner organizations with the App installed:
-one connects directly; multiple organizations require an explicit selection.
+The server discovers the signed-in personal account and organizations they own with the App installed:
+one connects directly; multiple accounts require an explicit selection.
 That choice expires after ten minutes, is single-use and bound to the same
 Typeroll user and organization. The server rechecks ownership when it is selected. GitHub authorization uses
 PKCE and a ten-minute, single-use grant bound to the browser, Typeroll user, and
-organization. The server checks the user's installations and active owner role,
+organization. The server checks the user's installations and personal account identity or active organization owner role,
 then revalidates the installation through the App. It never trusts an
-`installation_id` supplied in a callback, and it does not store the user token.
+`installation_id` supplied in a callback. Organization connections do not retain a user token.
+Personal connections retain an encrypted, account-bound user grant only to create repositories.
+Publishing, branches and build dispatch still use installation tokens. Access is renewed on demand
+with a cross-instance lease and compare-and-update; disconnecting during renewal cannot restore access.
+A revoked grant or six months without refresh requires **Reconnect GitHub** in Publishing.
+Existing repositories are kept. Expiring user-to-server authorization must be enabled on the App.
+[Personal repository creation](https://docs.github.com/en/rest/repos/repos#create-a-repository-for-the-authenticated-user)
+and [token refresh](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens).
 [GitHub setup URL security](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/about-the-setup-url).
 
 The first connection reserves that provider account for its Typeroll

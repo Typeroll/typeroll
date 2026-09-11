@@ -1,3 +1,5 @@
+import { ensureGithubMainBranch } from '../publishing/providers.mjs';
+import { createGithubRepository } from '../publishing/github-user';
 import { randomBytes, randomUUID } from 'node:crypto';
 import executorSource from './executor.mjs?raw';
 import contractSource from './contract.mjs?raw';
@@ -74,9 +76,10 @@ export async function configureBuildEngine(org: string, input: Record<string, un
     const repoPath = `/repos/${config.owner}/${current.runner_repo}`;
     const description = `Generated Typeroll organization build engine ${sha256(org).slice(0, 16)}`;
     let repo = await github(repoPath, { missing: true });
-    if (!repo) repo = await github(`/orgs/${config.owner}/repos`, { method: 'POST', body: { name: current.runner_repo, private: true, auto_init: true, description, has_issues: false, has_projects: false, has_wiki: false } });
+    if (!repo) repo = await createGithubRepository(org, github, git.github, { name: current.runner_repo, private: true, auto_init: true, description, has_issues: false, has_projects: false, has_wiki: false });
     const pilot = repo.description === 'Typeroll staging organization build qualification. Generated source only; not an active site publisher.' && worker.tags?.includes('typeroll-staging-build-qualification');
     if (!repo.private || repo.owner?.login !== config.owner || repo.archived || (repo.description !== description && !pilot)) throw new ConnectionError('The generated build repository belongs to another integration.', 409);
+    repo = await ensureGithubMainBranch(github, { owner: config.owner, repo: current.runner_repo, repository: repo });
     if (pilot) await github(repoPath, { method: 'PATCH', body: { description } });
     const triggers = await client(`${base}/builds/workers/${config.worker_tag}/triggers`);
     for (const trigger of triggers) await client(`${base}/builds/triggers/${trigger.trigger_uuid}`, { method: 'PATCH', body: { path_excludes: ['*'] } });

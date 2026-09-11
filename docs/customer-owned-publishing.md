@@ -112,11 +112,12 @@ approved synthetic test accounts. The GitHub App belongs to the publisher;
 install it once on the organization's site repositories. An existing suitable
 account can be used. A different account per site is unnecessary.
 
-- GitHub organization with a publisher App installation covering **all
-  repositories** in that organization, with repository Administration and
+- Personal GitHub account or organization with a publisher App installation covering **all
+  repositories** in that account, with repository Administration and
   Contents write permissions. Prefer a dedicated site organization to scope
-  this access. The probe rejects user/PAT substitution because that would not
-  prove installation access to newly created repositories.
+  this access. A personal account also uses an encrypted, renewable GitHub App user grant to
+  create repositories. Publication and build dispatch must still prove installation
+  access; a manually supplied PAT does not replace that proof.
 - Cloudflare's own GitHub App must also be installed once and cover newly
   created repositories. The probe deliberately cannot substitute Typeroll's
   installation for Cloudflare's. Successful creation and builds of all three

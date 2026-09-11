@@ -110,7 +110,7 @@ export default function PublishingBuilds() {
         const provider = event.target.value as BuildProvider; viewing.current = provider; setEngine(settings.engines[provider]); setError(''); setNotice('');
       }}><option value="cloudflare">Cloudflare</option><option value="github">GitHub Actions</option></select></div>
     </>}
-    {github && <p>Build minutes count toward this GitHub organization’s Actions allowance. Media stays in the organization’s R2 storage.</p>}
+    {github && <p>Build minutes count toward this GitHub account’s Actions allowance. Media stays in the organization’s R2 storage.</p>}
     {engine?.account_name && <p>Build account: <strong>{engine.account_name}</strong></p>}
     {state !== 'ready' && <p className="muted">Complete setup and verification before publishing with the shared engine.</p>}
     {state === 'ready' && <p>{active ? 'Shared builds are active. New publications build in this account and upload static files to the site’s Hosting Group.' : 'This engine is ready. Select it below to use it for new publications.'}</p>}
@@ -124,7 +124,7 @@ export default function PublishingBuilds() {
           <summary>Step-by-step instructions</summary>
           <ol>
             <li>Open the link above. Confirm that the Cloudflare account is <strong>{engine?.account_name}</strong> and the Worker project is <code>{engine?.worker_name}</code>.</li>
-            <li>In <strong>Settings → Builds</strong>, select <strong>Connect</strong>. Choose GitHub and the repository <code>{engine?.runner_repo}</code> from your connected GitHub organization. Use branch <code>main</code>.</li>
+            <li>In <strong>Settings → Builds</strong>, select <strong>Connect</strong>. Choose GitHub and the repository <code>{engine?.runner_repo}</code> from your connected GitHub account. Use branch <code>main</code>.</li>
             <li>Use these commands for the initial connection test:
               <div className="publishing-builds__commands">
                 {([['Build command', 'npm run build'], ['Deploy command', 'npm run qualify:artifact']] as const).map(([label, command]) => <div key={label}>
@@ -136,7 +136,7 @@ export default function PublishingBuilds() {
             <li>Return here. Typeroll checks when you return from the Cloudflare tab. You can also select <strong>I’ve finished — check again</strong> below.</li>
           </ol>
           <p>The connection test creates a small test artifact. It does not publish a customer site. You do not need to configure each site or Hosting Group separately.</p>
-          <p>If the repository is missing, check the GitHub organization selected in Cloudflare. If the controls differ, use <a href="https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#api-token" target="_blank" rel="noopener noreferrer">Cloudflare’s build token instructions</a>.</p>
+          <p>If the repository is missing, check the GitHub account selected in Cloudflare. If the controls differ, use <a href="https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#api-token" target="_blank" rel="noopener noreferrer">Cloudflare’s build token instructions</a>.</p>
         </details>
       </> : <p>The build project has not been found in this account yet. Its preparation must finish before you can create the token here. Check the setup again after the project has been prepared.</p>}
       <p className="muted">The token stays in Cloudflare. You do not need to paste it into Typeroll or reconnect your Cloudflare account.</p>

@@ -6,10 +6,10 @@ type Connection = {
   connected_at?: string | null;
   status: 'connected' | 'disconnected'; revision: string; credentials_saved: boolean;
   auth_method?: 'api_token' | 'oauth'; media_ready?: boolean;
-  github: { owner: string } | null;
+  github: { owner: string; account_type?: 'Organization' | 'User'; repository_creation_state?: 'ready' | 'reconnect_required' } | null;
   cloudflare: { account_id: string; account_name: string; bucket: string; public_bucket?: string } | null;
 };
-type Connections = { media_migration?: { state: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
+type Connections = { media_migration?: { state: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string; account_type?: 'Organization' | 'User' }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
 const API = '/api/orgs/publishing';
 
 class PublishingRequestError extends Error {
@@ -87,12 +87,13 @@ export default function PublishingConnections() {
     void refresh().catch((error: Error) => setError(error.message));
     const parameters = new URLSearchParams(window.location.search);
     const result = parameters.get('github');
-    if (result === 'connected') setNotice('GitHub connected. This organization can be reused for your sites.');
-    if (result === 'select') setNotice('Choose the GitHub organization to connect below.');
-    if (result === 'install_required') setError('Install the Typeroll GitHub App in your organization using the link below, then select Connect GitHub again.');
+    if (result === 'connected') setNotice('GitHub connected. This account can be reused for your sites.');
+    if (result === 'select') setNotice('Choose the GitHub account to connect below.');
+    if (result === 'install_required') setError('Install the Typeroll GitHub App in your personal account or organization using the link below, then select Connect GitHub again.');
     if (result === 'permissions_required') setError('Open the App installation settings and approve the requested permissions with All repositories access, then connect again.');
-    if (result === 'owner_required') setError('Sign in to GitHub as an owner of the organization you want to connect, then try again.');
-    if (result === 'failed') setError('GitHub was not connected. Install the publisher App with all-repository access and the requested permissions, then connect as an organization owner. If the request expired, start again.');
+    if (result === 'github_expiring_authorization_required') setError('The publisher must enable expiring GitHub user authorization before personal accounts can connect.');
+    if (result === 'owner_required') setError('Sign in to your personal GitHub account or as an owner of the GitHub organization you want to connect, then try again.');
+    if (result === 'failed') setError('GitHub was not connected. Install the publisher App with all-repository access and the requested permissions, then sign in to your personal account or as an organization owner. If the request expired, start again.');
     if (result) window.history.replaceState(null, '', window.location.pathname);
     const cloudflare = parameters.get('cloudflare');
     if (cloudflare === 'connected') setNotice('Cloudflare connected. Your account will be reused for this organization’s sites.');
@@ -114,7 +115,7 @@ export default function PublishingConnections() {
       form.reset();
       await refresh();
       if (mediaAction) setMediaNotice('R2 connected. Upload access verified. Setup is complete.');
-      else setNotice(provider === 'github' ? 'GitHub connected. This organization can be reused for your sites.' : 'Cloudflare connection updated. Access is encrypted and reused for your sites.');
+      else setNotice(provider === 'github' ? 'GitHub connected. This account can be reused for your sites.' : 'Cloudflare connection updated. Access is encrypted and reused for your sites.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not complete setup. Check your connection and try again.';
       if (mediaAction) setMediaError({ message, code: error instanceof PublishingRequestError ? error.code : undefined });
@@ -179,28 +180,35 @@ export default function PublishingConnections() {
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {!data ? <>{['GitHub account', 'Cloudflare account', 'Media storage'].map((title, index) => <PublishingCard key={title} id={`loading-${index}`} title={title} state={error ? 'error' : 'waiting'} status={error ? 'Could not load settings' : 'Loading…'}><p className="muted">{error ? 'Reload the page to try again.' : 'Checking your organization’s settings.'}</p></PublishingCard>)}</> : <>
-      <PublishingCard id="github" title="GitHub account" state={disconnecting === 'github' ? 'waiting' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'error' : data.github.status === 'connected' ? 'ready' : 'error'} status={disconnecting === 'github' ? 'Disconnecting…' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'Connection needs attention' : data.github.status === 'connected' ? `Connected · ${data.github.github?.owner ?? 'GitHub'}` : 'Not connected'}>
+      <PublishingCard id="github" title="GitHub account" state={disconnecting === 'github' ? 'waiting' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'error' : data.github.status === 'connected' ? data.github.github?.repository_creation_state === 'reconnect_required' ? 'waiting' : 'ready' : 'error'} status={disconnecting === 'github' ? 'Disconnecting…' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'Connection needs attention' : data.github.status === 'connected' ? `Connected · ${data.github.github?.owner ?? 'GitHub'}` : 'Not connected'}>
         <p>Stores a private repository for each site and its version branches.</p>
         {!data.github_setup.available ? <p>The publisher needs to configure its GitHub App before you can connect.</p> : <>
 
           {(data.github_choices ?? []).length > 0 && <form className="stack" onSubmit={(event) => void submit('github', event)}>
-            <div className="field"><label htmlFor="github-organization">Choose a GitHub organization</label>
+            <div className="field"><label htmlFor="github-organization">Choose a GitHub account</label>
               <select id="github-organization" name="installation_id" required defaultValue="">
-                <option value="" disabled>Select an organization</option>
-                {data.github_choices.map(choice => <option key={choice.installation_id} value={choice.installation_id}>{choice.owner} — github.com/{choice.owner}</option>)}
+                <option value="" disabled>Select an account</option>
+                {data.github_choices.map(choice => <option key={choice.installation_id} value={choice.installation_id}>{choice.owner} — {choice.account_type === 'User' ? 'Personal account' : 'Organization'}</option>)}
               </select></div>
-            <button className="btn" disabled={busy || checkingMedia} type="submit">Connect selected organization</button>
+            <button className="btn" disabled={busy || checkingMedia} type="submit">Connect selected account</button>
           </form>}
           {data.github.status === 'connected' ? <PublishingGithubPermissions revision={data.github.revision} /> : <form className="stack" onSubmit={(event) => void submit('github', event)}>
             <button className="btn" disabled={busy || checkingMedia} type="submit">Connect GitHub</button>
           </form>}
           <details><summary>GitHub setup instructions</summary>
-            <p>Sign in and choose an organization you own. No organization name or ID needs to be entered.</p>
+            <p>Sign in and choose your personal account or an organization you own. No account name or ID needs to be entered.</p>
             <ol>
-              <li><a href={data.github_setup.install_url!} target="_blank" rel="noreferrer">Open the App installation in GitHub</a> and select your organization.</li>
+              <li><a href={data.github_setup.install_url!} target="_blank" rel="noreferrer">Open the App installation in GitHub</a> and select your personal account or organization.</li>
               <li>Select <strong>All repositories</strong> and approve the requested permissions. This also includes repositories Typeroll creates for future sites.</li>
               <li>Return here and select <strong>Connect GitHub</strong>. If you already installed the App, start with that button.</li>
             </ol>
+          </details>
+        </>}
+        {data.github.status === 'connected' && data.github.github?.account_type === 'User' && <>
+          {data.github.github.repository_creation_state === 'reconnect_required' && <p role="alert">Reconnect GitHub to create new repositories. Your existing repositories are kept.</p>}
+          <details open={data.github.github.repository_creation_state === 'reconnect_required'}><summary>Personal account authorization</summary>
+            <p>Typeroll securely stores and renews your authorization when creating repositories. If you revoke access or leave it unused for six months, reconnect here.</p>
+            <form onSubmit={event => void submit('github', event)}><button className="btn btn--secondary" disabled={busy || checkingMedia}>Reconnect GitHub</button></form>
           </details>
         </>}
         {data.github.status === 'connected' && <button className="btn btn--secondary" disabled={busy || checkingMedia} onClick={() => void disconnect('github')}>{disconnecting === 'github' ? 'Disconnecting…' : 'Disconnect GitHub'}</button>}
@@ -210,7 +218,7 @@ export default function PublishingConnections() {
         <p>Builds and hosts your sites. One account is shared by this organization’s sites.</p>
         {data.cloudflare.status === 'connected' && <details><summary>Allow Cloudflare to build from GitHub — once per organization</summary><ol>
           <li>Open Cloudflare → Workers &amp; Pages → Create application → Pages → Connect to Git.</li>
-          <li>Select + Add account, choose the same GitHub organization as above, and authorize Cloudflare’s GitHub App with All repositories.</li>
+          <li>Select + Add account, choose the same GitHub account as above, and authorize Cloudflare’s GitHub App with All repositories.</li>
           <li>Stop at the repository list and return here. Typeroll creates each site’s repository and Pages project.</li>
         </ol><p>This authorization is separate from installing the Typeroll GitHub App. Future sites reuse it.</p></details>}
 
@@ -233,7 +241,7 @@ export default function PublishingConnections() {
         <p>Use a Cloudflare token scoped to your account with Cloudflare Pages: Edit, Account Settings: Read, and Workers R2 Storage: Edit. Create an R2 bucket and Object Read &amp; Write credentials restricted to that bucket.</p>
         <details><summary>Set up Cloudflare access</summary>
           <ol>
-            <li>Open your account in <a href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">Cloudflare</a>. Go to <strong>Workers &amp; Pages → Create application → Pages → Connect to Git</strong> (also called <strong>Import an existing Git repository</strong>). Use <strong>+ Add account</strong> to authorize Cloudflare’s GitHub App for the same organization. Select <strong>All repositories</strong> so future sites are included. You can stop at the repository list.</li>
+            <li>Open your account in <a href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">Cloudflare</a>. Go to <strong>Workers &amp; Pages → Create application → Pages → Connect to Git</strong> (also called <strong>Import an existing Git repository</strong>). Use <strong>+ Add account</strong> to authorize Cloudflare’s GitHub App for the same GitHub account. Select <strong>All repositories</strong> so future sites are included. You can stop at the repository list.</li>
             <li>Open <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noreferrer">My Profile → API Tokens</a>. Select <strong>Create Token → Create Custom Token → Get started</strong>. Add the three Account permissions listed above. Under <strong>Account Resources</strong>, choose <strong>Include → Specific account</strong> and your account. Select <strong>Continue to summary → Create Token</strong>, then copy the token into the form below.</li>
             <li>Open <strong>Storage &amp; databases → R2 object storage → Overview</strong>. Activate R2 if prompted. Select <strong>Create bucket</strong> and keep the default jurisdiction. Copy the bucket name into the form.</li>
             <li>Return to <strong>R2 → Overview → Account Details</strong>. Select <strong>Manage</strong> next to <strong>API Tokens</strong>, then <strong>Create Account API token</strong>. Choose <strong>Object Read &amp; Write</strong> for your bucket. Copy both <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> into the form. Account tokens require a Cloudflare Super Administrator.</li>
@@ -241,7 +249,7 @@ export default function PublishingConnections() {
           </ol>
           <p>You set this up once per organization. For sites using Git publishing, Typeroll creates the repository and Pages project at the first deployment. Finish R2 setup in Media storage below for both the private originals bucket and the public images bucket.</p>
         </details>
-        <p className="muted">Connect Cloudflare’s own GitHub App to the same organization with All repositories so Cloudflare can build your sites. The account check below verifies account access and Pages visibility, and uploads, reads, and deletes a small temporary R2 object. Project creation and public media delivery are verified separately.</p>
+        <p className="muted">Connect Cloudflare’s own GitHub App to the same GitHub account with All repositories so Cloudflare can build your sites. The account check below verifies account access and Pages visibility, and uploads, reads, and deletes a small temporary R2 object. Project creation and public media delivery are verified separately.</p>
         {!data.encryption_available ? <p>The publisher needs to configure encrypted credential storage before you can connect.</p> :
           <form className="stack" onSubmit={(event) => void submit('cloudflare', event)} autoComplete="off">
             <div className="field"><label htmlFor="cf-account">Cloudflare Account ID</label><p id="cf-account-help" className="muted">Open <a href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">Cloudflare</a> and select your account. Use Search → Copy account ID. You can also find it in Workers &amp; Pages → Account Details → Account ID. Copy the 32-character value, not a Zone ID.</p><input aria-describedby="cf-account-help" id="cf-account" name="account_id" required pattern="[a-f0-9]{32}" maxLength={32} defaultValue={data.cloudflare.cloudflare?.account_id ?? ''} readOnly={Boolean(data.cloudflare.cloudflare)} /></div>

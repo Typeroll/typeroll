@@ -22,10 +22,10 @@ Open the sidebar, select the correct **Organization**, then select **Publishing*
 under **Account**. On mobile, open the menu first. Organization owners and admins
 manage these connections.
 
-1. Select **Connect GitHub**, sign in as an owner of your GitHub organization,
+1. Select **Connect GitHub**, sign in to your personal account or as an owner of your GitHub organization,
    and authorize Typeroll. If prompted, install the Typeroll publisher GitHub App
-   with **All repositories**, then return to connect. Choose an organization only
-   if more than one is available. No organization name or ID needs to be typed.
+   with **All repositories**, then return to connect. Choose an account only
+   if more than one is available. No account name or ID needs to be typed.
 2. Select **Connect Cloudflare**, sign in and approve the account. Optional DNS
    and URL rewrite permissions let Typeroll configure domains automatically.
    You can decline these and let your administrator or AI agent manage DNS.
@@ -73,12 +73,25 @@ Account ID is only needed in advanced token setup. In Cloudflare, select the
 account and use **Search → Copy account ID**, or **Workers & Pages → Account
 Details → Account ID**. Copy the 32-character account value, not a Zone ID.
 
+### Personal GitHub accounts
+
+You can use your personal account for both site repositories and the shared build
+repository. It does not need to become a GitHub organization. Typeroll still
+manages these connections once per Typeroll Organization.
+
+Typeroll securely stores your authorization to create new repositories and renews
+it when needed. Publishing to existing repositories and version branches uses
+the App installation. If you revoke authorization or leave it unused for six
+months, open **Publishing → GitHub account → Personal account authorization**
+and select **Reconnect GitHub**. Existing repositories are kept. No personal
+access token needs to be copied into Typeroll.
+
 ### Approve a GitHub permission update
 
 An existing connection does not need to be disconnected or connected again.
 In **Publishing → GitHub account**, select **Approve GitHub update** when it
-appears. This opens the existing installation in your GitHub organization.
-Review and accept the requested permissions as a GitHub organization owner,
+appears. This opens the existing installation in your personal account or GitHub organization.
+Review and accept the requested permissions as the personal account holder or a GitHub organization owner,
 then return to Typeroll. Typeroll checks automatically and confirms when the
 permissions are up to date. **Check GitHub permissions** repeats the check.
 

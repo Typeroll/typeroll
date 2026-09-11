@@ -1,3 +1,5 @@
+import { ensureGithubMainBranch } from '../publishing/providers.mjs';
+import { createGithubRepository } from '../publishing/github-user';
 import { randomUUID } from 'node:crypto';
 import { getStore } from '../datastore';
 import { ConnectionError, getConnection } from '../publishing/connections';
@@ -145,8 +147,9 @@ export async function configureGithubEngine(org: string, input: Record<string, u
     const client = await githubBuildClient(config), root = `/repos/${config.owner}/${current.runner_repo}`;
     const description = `Generated Typeroll GitHub build engine ${digest(org).slice(0, 16)}`;
     let repo = await client(root, { missing: true });
-    if (!repo) repo = await client(`/orgs/${config.owner}/repos`, { method: 'POST', body: { name: current.runner_repo, private: true, auto_init: true, description, has_issues: false, has_projects: false, has_wiki: false } });
-    if (!repo.private || repo.archived || repo.default_branch !== 'main' || String(repo.owner?.id) !== connection.github.account_id || repo.description !== description) throw new ConnectionError('The generated GitHub build repository belongs to another integration.', 409);
+    if (!repo) repo = await createGithubRepository(org, client, connection.github, { name: current.runner_repo, private: true, auto_init: true, description, has_issues: false, has_projects: false, has_wiki: false });
+    if (!repo.private || repo.archived || String(repo.owner?.id) !== connection.github.account_id || repo.description !== description) throw new ConnectionError('The generated GitHub build repository belongs to another integration.', 409);
+    repo = await ensureGithubMainBranch(client, { owner: config.owner, repo: current.runner_repo, repository: repo });
     const published = await publishTree(client, { owner: config.owner, repo: current.runner_repo, files: githubBuildFiles(origin.origin, org, revision), message: 'Update the organization GitHub build executor' });
     let workflow;
     for (let attempt = 0; attempt < 6; attempt++) {

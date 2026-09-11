@@ -1,5 +1,18 @@
 # Changelog
 
+## MCP 0.44.47 / Core 0.1.74
+
+- Connect personal GitHub accounts alongside organizations through the same
+  publisher App, with verified ownership and explicit account selection.
+- Create personal site and shared-build repositories using encrypted, renewable
+  user authorization. Existing publication, version branches and build dispatch
+  continue using installation tokens.
+- Serialize token renewal across instances, preserve disconnects, and provide
+  an explicit reconnect action when repository authorization expires or is revoked.
+- Prepare the generated main branch independently of the account's initial
+  default branch, and retain organization publishing compatibility.
+- Update Publishing instructions, account labels and public setup documentation.
+
 ## MCP 0.43.9 / Core 0.1.17
 
 - Keep sign-out outside the scrolling navigation so it remains visible on

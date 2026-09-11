@@ -76,22 +76,24 @@ export function githubAppClient({ appId, privateKey }, fetchImpl = fetch) {
   return createProviderClient('GitHub', `${unsigned}.${signature}`, fetchImpl);
 }
 
-export async function githubInstallationClient({ appId, installationId, privateKey, owner }, fetchImpl = fetch) {
+export async function githubInstallationClient({ appId, installationId, privateKey, owner, accountId, accountType }, fetchImpl = fetch) {
   if (!/^\d+$/.test(String(installationId))) throw new Error('GitHub installation ID is required');
   const app = githubAppClient({ appId, privateKey }, fetchImpl);
   const installation = await app(`/app/installations/${installationId}`);
-  assertInstallation(installation, { appId, installationId, owner });
+  assertInstallation(installation, { appId, installationId, owner, accountId, accountType });
   const access = await app(`/app/installations/${installationId}/access_tokens`, { method: 'POST', body: {} });
   return createProviderClient('GitHub', access.token, fetchImpl);
 }
 
-export function assertInstallation(installation, { appId, installationId, owner }) {
+export function assertInstallation(installation, { appId, installationId, owner, accountId, accountType }) {
   if (String(installation.id) !== String(installationId) || String(installation.app_id) !== String(appId) ||
       installation.account?.login?.toLowerCase() !== owner.toLowerCase() ||
-      installation.account?.type !== 'Organization' || installation.suspended_at ||
+      (accountId !== undefined && String(installation.account?.id) !== String(accountId)) ||
+      (accountType !== undefined && installation.account?.type !== accountType) ||
+      !['Organization', 'User'].includes(installation.account?.type) || installation.suspended_at ||
       installation.repository_selection !== 'all' ||
       installation.permissions?.administration !== 'write' || installation.permissions?.contents !== 'write') {
-    throw new Error('GitHub App must be active on the selected organization with all-repository access and Administration/Contents write permissions');
+    throw new Error('GitHub App must be active on the selected account with all-repository access and Administration/Contents write permissions');
   }
 }
 
@@ -100,6 +102,21 @@ function repoRoute(owner, repo) {
     throw new Error('Invalid repository identity');
   }
   return `/repos/${owner}/${repo}`;
+}
+
+/** Call only after verifying this is the integration's generated repository. */
+export async function ensureGithubMainBranch(github, { owner, repo, repository }) {
+  if (repository.default_branch === 'main') return repository;
+  if (typeof repository.default_branch !== 'string' || !repository.default_branch) throw new Error('Generated repository has no default branch');
+  const root = repoRoute(owner, repo);
+  await github(`${root}/branches/${encodeURIComponent(repository.default_branch)}/rename`, { method: 'POST', body: { new_name: 'main' } });
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const current = await github(root);
+    if (current.id !== repository.id || String(current.owner?.id) !== String(repository.owner?.id) || current.private !== true) throw new Error('Generated repository identity changed');
+    if (current.default_branch === 'main') return current;
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  throw new Error('GitHub is still preparing the main branch. Retry setup or publishing shortly.');
 }
 
 /** Replace the entire generated tree while preserving history. Never force-push. */

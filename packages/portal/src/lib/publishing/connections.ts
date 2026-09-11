@@ -12,9 +12,10 @@ export interface Connection {
   status: 'connected' | 'disconnected';
   connected_at?: string;
   connected_by?: string;
-  github?: { app_id: string; installation_id: string; account_id: string; owner: string };
+  github?: { app_id: string; installation_id: string; account_id: string; owner: string; account_type?: 'Organization' | 'User' };
   cloudflare?: { account_id: string; account_name: string; bucket: string; endpoint: string; public_base_url?: string; public_bucket?: string };
   encrypted_credentials?: string | null;
+  github_authorization_required?: boolean;
   auth_method?: 'api_token' | 'oauth';
   media_ready?: boolean;
   refresh_lease?: { id: string; expires_at: number } | null;
@@ -47,6 +48,8 @@ export function connectionSummary(connection: Connection) {
     github: connection.github ? {
       app_id: connection.github.app_id, installation_id: connection.github.installation_id,
       account_id: connection.github.account_id, owner: connection.github.owner,
+      account_type: connection.github.account_type ?? 'Organization',
+      repository_creation_state: connection.github.account_type === 'User' && (!connection.encrypted_credentials || connection.github_authorization_required) ? 'reconnect_required' : 'ready',
     } : null,
     cloudflare: connection.cloudflare ? {
       account_id: connection.cloudflare.account_id, account_name: connection.cloudflare.account_name,

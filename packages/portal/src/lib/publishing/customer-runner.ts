@@ -1,3 +1,5 @@
+import { ensureGithubMainBranch } from './providers.mjs';
+import { createGithubRepository } from './github-user';
 import { verifyManagedProject } from './managed-migration';
 import { capturePublicationImpact } from './impact-preview';
 import { compareImpact } from './impact';
@@ -46,11 +48,11 @@ function projectCreationMessage(error: ProviderError, publication?: GitPublicati
   const detail = `Cloudflare could not create the Pages project${publication ? ` in hosting account ${publication.account_id}` : ''}: HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''}.`;
   const connection = publication?.hosting_group_id && publication.hosting_group_id !== 'default'
     ? 'Publishing → Hosting Groups' : 'Publishing → Cloudflare account';
-  if (error.codes.includes(8000011)) return `${detail} Cloudflare's Git installation is missing for this hosting account. In Cloudflare, select the hosting account → Workers & Pages → Create application → Pages → Connect to Git → + Add account. Connect ${publication?.owner ?? 'the connected GitHub organization'} with access to all generated repositories, then retry publishing. Keep existing Git installations connected.`;
+  if (error.codes.includes(8000011)) return `${detail} Cloudflare's Git installation is missing for this hosting account. In Cloudflare, select the hosting account → Workers & Pages → Create application → Pages → Connect to Git → + Add account. Connect ${publication?.owner ?? 'the connected GitHub account'} with access to all generated repositories, then retry publishing. Keep existing Git installations connected.`;
   if (error.status === 401 || error.status === 403) return `${detail} Open ${connection} and renew authorization for the selected hosting account. API tokens need Account Read and Pages Edit permissions for that account.`;
   if (error.status === 429) return `${detail} Cloudflare's rate limit was reached. Wait briefly and retry publishing.`;
   if (error.status >= 500) return `${detail} Cloudflare is temporarily unable to create the project. Retry publishing after the service recovers.`;
-  if (error.status === 400 || error.status === 409) return `${detail} Check this account's GitHub connection and Pages project limits. In Cloudflare, select the hosting account → Workers & Pages → Create application → Pages → Connect to Git → + Add account. Authorize Cloudflare's GitHub App for ${publication?.owner ?? 'the connected GitHub organization'} and its generated repositories, then retry. Include the Cloudflare code above when contacting support.`;
+  if (error.status === 400 || error.status === 409) return `${detail} Check this account's GitHub connection and Pages project limits. In Cloudflare, select the hosting account → Workers & Pages → Create application → Pages → Connect to Git → + Add account. Authorize Cloudflare's GitHub App for ${publication?.owner ?? 'the connected GitHub account'} and its generated repositories, then retry. Include the Cloudflare code above when contacting support.`;
   return `${detail} Check the selected account in ${connection} and the Cloudflare project settings, then retry publishing.`;
 }
 
@@ -187,15 +189,16 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const repoRoot = `/repos/${publication.owner}/${publication.repo}`;
       let repository = await github(repoRoot, { missing: true });
       if (!repository) {
-        await github(`/orgs/${publication.owner}/repos`, { method: 'POST', body: {
+        await createGithubRepository(args.orgId, github, identity, {
           name: publication.repo, private: true, auto_init: true, has_issues: false, has_projects: false, has_wiki: false,
           description: `Generated Typeroll site ${digest(`${args.orgId}\0${args.siteId}`).slice(0, 16)}`,
-        } });
+        });
         repository = await github(repoRoot);
       }
-      if (repository.private !== true || String(repository.owner?.id) !== identity.account_id || repository.default_branch !== 'main' || repository.archived || repository.description !== `Generated Typeroll site ${digest(`${args.orgId}\0${args.siteId}`).slice(0, 16)}`) {
+      if (repository.private !== true || String(repository.owner?.id) !== identity.account_id || repository.archived || repository.description !== `Generated Typeroll site ${digest(`${args.orgId}\0${args.siteId}`).slice(0, 16)}`) {
         throw new ConnectionError('The generated repository does not match this organization. Check GitHub publishing access.', 409);
       }
+      repository = await ensureGithubMainBranch(github, { owner: publication.owner, repo: publication.repo, repository });
       let connectedProject = publication.build_engine_revision
         ? await prepareStaticProject(cloudflare, projectRoot, { project: publication.project, owner: publication.owner, repo: publication.repo, repository, requireExisting: Boolean(site?.publishing_migration) })
         : await cloudflare(projectRoot, { missing: true });

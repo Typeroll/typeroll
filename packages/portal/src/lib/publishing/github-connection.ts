@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { githubUserGrant, type GithubUserGrant } from './github-user';
 import type { FullSession } from '../access';
 import { getStore } from '../datastore';
 import { isSecretCryptoConfigured } from '../secret-crypto';
@@ -86,6 +87,7 @@ export async function finishGithubConnection(session: FullSession, input: { stat
   if (!grant?.encrypted_verifier) throw new ConnectionError('GitHub authorization expired or did not match this browser');
   const { verifier } = openCredentials<{ verifier: string }>(session.orgId, 'github', grant.encrypted_verifier);
   let token: string;
+  let tokenResponse: any;
   try {
     const response = await fetchImpl('https://github.com/login/oauth/access_token', {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
@@ -96,8 +98,9 @@ export async function finishGithubConnection(session: FullSession, input: { stat
     const body = await response.json();
     if (!response.ok || body.error || typeof body.access_token !== 'string' || !body.access_token) throw new Error();
     token = body.access_token;
+    tokenResponse = body;
   } catch { throw new ConnectionError('GitHub authorization could not be completed. Start again.', 502); }
-  // User tokens are used only to prove authority and are never persisted.
+  // Organization tokens prove owner authority only. Personal tokens also authorize repository creation and are encrypted after verification.
   const userClient = createProviderClient('GitHub', token, fetchImpl);
   const user = await userClient('/user');
   if (!Number.isSafeInteger(user.id) || !/^[a-z0-9-]+$/i.test(user.login)) throw new ConnectionError('GitHub returned an invalid user', 502);
@@ -106,11 +109,11 @@ export async function finishGithubConnection(session: FullSession, input: { stat
     const result = await userClient(`/user/installations?per_page=100&page=${page}`);
     if (!Array.isArray(result.installations)) throw new ConnectionError('GitHub returned invalid installations', 502);
     installations.push(...result.installations.filter((item: any) => String(item.app_id) === config.appId
-      && item.account?.type === 'Organization'
+      && ['Organization', 'User'].includes(item.account?.type)
       && (!grant.owner || item.account.login?.toLowerCase() === grant.owner.toLowerCase())));
     if (result.installations.length < 100) break;
   }
-  if (!installations.length) throw new GithubFlowError('install_required', 'Install the Typeroll GitHub App in your organization, then connect again.');
+  if (!installations.length) throw new GithubFlowError('install_required', 'Install the Typeroll GitHub App in your personal account or organization, then connect again.');
   const current = await getConnection(session.orgId, 'github');
   const choices: GithubChoice[] = [];
   let invalidPermissions = false;
@@ -119,33 +122,38 @@ export async function finishGithubConnection(session: FullSession, input: { stat
     const installationId = String(installation.id);
     try {
       assertInstallation(installation, { appId: config.appId, installationId, owner });
-      if (!Number.isSafeInteger(installation.account.id) || installation.permissions?.members !== 'read') throw new Error();
+      if (!Number.isSafeInteger(installation.account.id) || (installation.account.type === 'Organization' && installation.permissions?.members !== 'read')) throw new Error();
     } catch { invalidPermissions = true; continue; }
     if (current.github && current.github.account_id !== String(installation.account.id)) continue;
-    const membership = await userClient(`/orgs/${encodeURIComponent(owner)}/memberships/${encodeURIComponent(user.login)}`, { missing: true });
-    if (membership?.state !== 'active' || membership.role !== 'admin' || membership.user?.id !== user.id || membership.organization?.id !== installation.account.id) continue;
-    choices.push({ owner, installation_id: installationId, account_id: String(installation.account.id) });
+    if (installation.account.type === 'User') {
+      if (installation.account.id !== user.id || owner.toLowerCase() !== user.login.toLowerCase()) continue;
+    } else {
+      const membership = await userClient(`/orgs/${encodeURIComponent(owner)}/memberships/${encodeURIComponent(user.login)}`, { missing: true });
+      if (membership?.state !== 'active' || membership.role !== 'admin' || membership.user?.id !== user.id || membership.organization?.id !== installation.account.id) continue;
+    }
+    choices.push({ owner, installation_id: installationId, account_id: String(installation.account.id), account_type: installation.account.type });
   }
   if (!choices.length) throw new GithubFlowError(invalidPermissions ? 'permissions_required' : 'owner_required',
-    invalidPermissions ? 'Approve the requested App permissions and All repositories access, then connect again.' : 'Sign in as an owner of the GitHub organization you want to connect.');
+    invalidPermissions ? 'Approve the requested App permissions and All repositories access, then connect again.' : 'Sign in to your own GitHub account or as an owner of the GitHub organization you want to connect.');
   if (choices.length === 1) {
-    await saveGithubChoice(session, choices[0], grant.revision, fetchImpl);
+    await saveGithubChoice(session, choices[0], grant.revision, fetchImpl, choices[0].account_type === 'User' ? githubUserGrant(tokenResponse, String(user.id)) : undefined);
     return 'connected' as const;
   }
-  // Store only proven choices, never the GitHub user token. The final selection
-  // is bound to this Typeroll user, organization, revision and short expiry.
+  // Store proven choices and an encrypted grant only when a personal account is offered.
+  // Selection is bound to this Typeroll user, organization, revision and short expiry.
   await getStore().setDoc(choicePath(session.orgId), { user_id: session.userId, github_user: { id: user.id, login: user.login },
-    revision: grant.revision, expires_at: Date.now() + TTL_MS, consumed: false, choices });
+    revision: grant.revision, expires_at: Date.now() + TTL_MS, consumed: false, choices,
+    encrypted_tokens: choices.some(choice => choice.account_type === 'User') ? sealCredentials(session.orgId, 'github', githubUserGrant(tokenResponse, String(user.id))) : null });
   return 'select' as const;
 }
 
 export class GithubFlowError extends ConnectionError {
   constructor(public code: 'install_required' | 'permissions_required' | 'owner_required', message: string) { super(message); }
 }
-interface GithubChoice { owner: string; installation_id: string; account_id: string; }
+interface GithubChoice { owner: string; installation_id: string; account_id: string; account_type?: 'Organization' | 'User'; }
 interface GithubSelection {
   user_id: string; github_user: { id: number; login: string }; revision: string;
-  expires_at: number; consumed: boolean; choices: GithubChoice[];
+  expires_at: number; consumed: boolean; choices: GithubChoice[]; encrypted_tokens?: string | null;
 }
 const choicePath = (orgId: string) => `organizations/${orgId}/publishing_authorizations/github_selection`;
 export async function githubChoices(session: FullSession): Promise<GithubChoice[]> {
@@ -157,31 +165,41 @@ export async function githubChoices(session: FullSession): Promise<GithubChoice[
 export async function selectGithubOrganization(session: FullSession, installationId: string, fetchImpl: typeof fetch = fetch) {
   const selection = await getStore().compareAndUpdateDoc<GithubSelection>(choicePath(session.orgId),
     value => !value.consumed && value.user_id === session.userId && value.expires_at > Date.now()
-      && value.choices.some(choice => choice.installation_id === installationId), { consumed: true });
+      && value.choices.some(choice => choice.installation_id === installationId), { consumed: true, encrypted_tokens: null });
   if (!selection) throw new ConnectionError('Your GitHub selection expired. Connect GitHub again.');
   const choice = selection.choices.find(value => value.installation_id === installationId)!;
   const config = githubConfiguration();
-  const github = await githubInstallationClient({ appId: config.appId, installationId, privateKey: config.privateKey, owner: choice.owner }, fetchImpl);
-  const membership = await github(`/orgs/${encodeURIComponent(choice.owner)}/memberships/${encodeURIComponent(selection.github_user.login)}`);
-  if (membership?.state !== 'active' || membership.role !== 'admin' || membership.user?.id !== selection.github_user.id || String(membership.organization?.id) !== choice.account_id) {
-    throw new ConnectionError('A GitHub organization owner must connect the publishing account', 403);
+  const github = await githubInstallationClient({ appId: config.appId, installationId, privateKey: config.privateKey, owner: choice.owner, accountId: choice.account_id, accountType: choice.account_type ?? 'Organization' }, fetchImpl);
+  let tokens: GithubUserGrant | undefined;
+  if (choice.account_type === 'User') {
+    if (choice.account_id !== String(selection.github_user.id) || !selection.encrypted_tokens) throw new ConnectionError('The GitHub account owner must connect the publishing account.', 403);
+    tokens = openCredentials<GithubUserGrant>(session.orgId, 'github', selection.encrypted_tokens);
+    if (tokens.expires_at <= Date.now() || tokens.user_id !== choice.account_id) throw new ConnectionError('Your GitHub selection expired. Connect GitHub again.');
+    const user = await createProviderClient('GitHub', tokens.access_token, fetchImpl)('/user');
+    if (String(user.id) !== choice.account_id || user.login?.toLowerCase() !== choice.owner.toLowerCase()) throw new ConnectionError('The GitHub account owner must connect the publishing account.', 403);
+  } else {
+    const membership = await github(`/orgs/${encodeURIComponent(choice.owner)}/memberships/${encodeURIComponent(selection.github_user.login)}`);
+    if (membership?.state !== 'active' || membership.role !== 'admin' || membership.user?.id !== selection.github_user.id || String(membership.organization?.id) !== choice.account_id) {
+      throw new ConnectionError('A GitHub organization owner must connect the publishing account', 403);
+    }
   }
-  await saveGithubChoice(session, choice, selection.revision, fetchImpl);
+  await saveGithubChoice(session, choice, selection.revision, fetchImpl, tokens);
 }
-async function saveGithubChoice(session: FullSession, choice: GithubChoice, revision: string, fetchImpl: typeof fetch) {
+async function saveGithubChoice(session: FullSession, choice: GithubChoice, revision: string, fetchImpl: typeof fetch, tokens?: GithubUserGrant) {
   const config = githubConfiguration();
   const { owner, installation_id: installationId, account_id: accountId } = choice;
   // Revalidate with app authority before accepting the installation for publishing.
   const github = await githubInstallationClient({ appId: config.appId, installationId,
-    privateKey: config.privateKey, owner }, fetchImpl);
-  const organization = await github(`/orgs/${encodeURIComponent(owner)}`);
-  if (String(organization.id) !== accountId) throw new ConnectionError('GitHub organization identity changed', 409);
+    privateKey: config.privateKey, owner, accountId, accountType: choice.account_type ?? 'Organization' }, fetchImpl);
+  const account = await github(`/${choice.account_type === 'User' ? 'users' : 'orgs'}/${encodeURIComponent(owner)}`);
+  if (String(account.id) !== accountId || (choice.account_type === 'User' && (account.type !== 'User' || tokens?.user_id !== accountId))) throw new ConnectionError('GitHub account identity changed', 409);
   const current = await getConnection(session.orgId, 'github');
-  if (current.github && current.github.account_id !== accountId) throw new ConnectionError('Reconnect the original GitHub organization; account migration is a separate operation', 409);
+  if (current.github && current.github.account_id !== accountId) throw new ConnectionError('Reconnect the original GitHub account; account migration is a separate operation', 409);
   if (current.revision !== revision) throw new ConnectionError('The connection changed. Reload the page and try again.', 409);
   await claimAccount(session.orgId, 'github', accountId);
   await saveConnection(session.orgId, 'github', revision, {
     status: 'connected', connected_at: new Date().toISOString(), connected_by: session.userId,
-    github: { app_id: config.appId, installation_id: installationId, account_id: accountId, owner },
+    github: { app_id: config.appId, installation_id: installationId, account_id: accountId, owner, ...(choice.account_type === 'User' ? { account_type: 'User' as const } : {}) },
+    encrypted_credentials: tokens ? sealCredentials(session.orgId, 'github', tokens) : null, refresh_lease: null, github_authorization_required: false,
   });
 }
