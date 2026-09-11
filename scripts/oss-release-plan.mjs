@@ -41,6 +41,7 @@ export function releaseScopes(files) {
     file === 'scripts/oss-release-check.mjs' ||
     file === 'scripts/oss-release-check.test.mjs' ||
     file === 'scripts/mcp-publish-workflow.test.mjs' ||
+    file === 'scripts/oss-boundary.test.mjs' ||
     file === 'docs/releasing.md';
   const docsOnly = (file) =>
     file.startsWith('docs/') ||

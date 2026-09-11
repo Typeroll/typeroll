@@ -13,6 +13,7 @@ test('release scopes keep docs and release automation outside product version bu
     'packages/docs-site/src/content/docs/index.mdx',
     'scripts/oss-release-check.mjs',
     'scripts/mcp-publish-workflow.test.mjs',
+    'scripts/oss-boundary.test.mjs',
     '.github/workflows/test.yml',
   ]), {
     core: false,
