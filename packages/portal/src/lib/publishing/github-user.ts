@@ -77,7 +77,9 @@ export async function createGithubRepository(org: string, github: ProviderClient
       if (String(user.id) !== expected.account_id || user.login?.toLowerCase() !== expected.owner.toLowerCase()) throw reconnect();
       // Verify this installation directly with App authority too; callers must not supply arbitrary account identities.
       const app = githubAppClient(githubConfiguration(), fetchImpl);
-      const installed = await app(`/app/installations/${expected.installation_id}`);
+      let installed: any;
+      try { installed = await app(`/app/installations/${expected.installation_id}`); }
+      catch { throw new ConnectionError('The publisher GitHub App could not verify installation access. Try again shortly; reconnecting your personal account will not resolve an App authentication error.', 502, 'github_app_verification_unavailable'); }
       assertInstallation(installed, { appId: expected.app_id, installationId: expected.installation_id, owner: expected.owner });
       if (installed.account.type !== 'User' || String(installed.account.id) !== user.id.toString()) throw reconnect();
       const current = await getConnection(org, 'github');

@@ -166,3 +166,13 @@ it('prepares main using installation authority when the account defaults new rep
   expect((await ensureGithubMainBranch(github, { owner: user.login, repo: 'typeroll-site', repository })).default_branch).toBe('main');
   expect(github).toHaveBeenCalledWith('/repos/synthetic-person/typeroll-site/branches/custom-default/rename', { method: 'POST', body: { new_name: 'main' } });
 });
+
+it('does not treat publisher App authentication failures as revoked personal authorization', async () => {
+  await connect(); const saved = await getConnection(session.orgId, 'github');
+  const fetcher = provider({ '/app/installations/34': new Response(null, { status: 401 }) });
+  await expect(createGithubRepository(session.orgId, vi.fn(), saved.github!, createBody, fetcher)).rejects.toMatchObject({ code: 'github_app_verification_unavailable', status: 502 });
+  expect(fetcher.mock.calls.some(([url]) => String(url).includes('/login/oauth/access_token'))).toBe(false);
+  const current = await getConnection(session.orgId, 'github');
+  expect(current.encrypted_credentials).toBe(saved.encrypted_credentials);
+  expect(current.github_authorization_required).toBe(false);
+});

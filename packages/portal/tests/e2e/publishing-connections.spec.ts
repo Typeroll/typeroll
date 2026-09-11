@@ -85,7 +85,7 @@ test('Cloudflare connection form clears credentials after success and retains th
   await expect(page.getByLabel('R2 bucket name')).toHaveValue('agency-media');
 });
 
-test('GitHub starts with sign-in and offers verified organizations instead of a text field', async ({ page }, testInfo) => {
+for (const accountType of ['Organization', 'User'] as const) test(`GitHub starts with sign-in and connects a verified ${accountType} account without a text field`, async ({ page }, testInfo) => {
   await authenticatePersona(page, 'owner');
   let selecting = false;
   let connected = false;
@@ -94,10 +94,10 @@ test('GitHub starts with sign-in and offers verified organizations instead of a 
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/orgs/publishing', route => {
     const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
-    return route.fulfill({ json: { github: connected ? { ...empty, status: 'connected', github: { owner: 'second-agency' } } : empty,
+    return route.fulfill({ json: { github: connected ? { ...empty, status: 'connected', github: { owner: 'synthetic-selected', account_type: accountType, repository_creation_state: 'ready' } } : empty,
       cloudflare: empty, encryption_available: true,
       github_setup: { available: true, install_url: 'https://github.com/apps/synthetic-publisher/installations/new' },
-      github_choices: selecting && !connected ? [{ owner: 'first-agency', installation_id: '34' }, { owner: 'second-agency', installation_id: '35' }] : [] } });
+      github_choices: selecting && !connected ? [{ owner: 'synthetic-company', installation_id: '34', account_type: 'Organization' }, { owner: 'synthetic-selected', installation_id: '35', account_type: accountType }] : [] } });
   });
   await page.route('**/api/orgs/publishing/github', route => {
     submitted = route.request().postDataJSON();
@@ -109,16 +109,18 @@ test('GitHub starts with sign-in and offers verified organizations instead of a 
   await page.goto('/app/settings/publishing');
   await expect(page.getByLabel('GitHub organization name')).toHaveCount(0);
   await page.getByRole('button', { name: 'Connect GitHub', exact: true }).click();
-  await expect(page.getByRole('combobox', { name: 'Choose a GitHub organization' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Choose a GitHub account' })).toBeVisible();
   expect(submitted).not.toHaveProperty('owner');
-  await page.screenshot({ path: testInfo.outputPath('github-organization-choice-mobile.png') });
-  await page.getByRole('combobox', { name: 'Choose a GitHub organization' }).selectOption('35');
-  await page.getByRole('button', { name: 'Connect selected organization' }).click();
+  await page.screenshot({ path: testInfo.outputPath('github-account-choice-mobile.png') });
+  await page.getByRole('combobox', { name: 'Choose a GitHub account' }).selectOption('35');
+  await page.getByRole('button', { name: 'Connect selected account' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'GitHub connected' })).toBeVisible();
   expect(submitted).toMatchObject({ installation_id: '35' });
-  await expect(page.getByRole('combobox', { name: 'Choose a GitHub organization' })).toHaveCount(0);
+  if (accountType === 'User') await expect(page.getByText('Personal account authorization', { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('github-account-connected-mobile.png') });
+  await expect(page.getByRole('combobox', { name: 'Choose a GitHub account' })).toHaveCount(0);
   await page.goto('/app/settings/publishing?github=owner_required');
-  await expect(page.getByRole('alert').filter({ hasText: 'Sign in to GitHub as an owner' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Sign in to your personal GitHub account' })).toBeVisible();
   await page.getByText('Advanced: connect with existing API and R2 keys', { exact: true }).click();
   await page.getByLabel('Cloudflare Account ID').scrollIntoViewIfNeeded();
   await expect(page.locator('#cf-account-help')).toContainText('Search → Copy account ID');

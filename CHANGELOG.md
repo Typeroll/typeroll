@@ -1,5 +1,11 @@
 # Changelog
 
+## MCP 0.44.48 / Core 0.1.75
+
+- Keep publisher App authentication failures separate from personal user grant
+  renewal. A publisher-side failure does not revoke the stored user grant or
+  incorrectly ask the account holder to reconnect.
+
 ## MCP 0.44.47 / Core 0.1.74
 
 - Connect personal GitHub accounts alongside organizations through the same
