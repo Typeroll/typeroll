@@ -12,13 +12,16 @@ just carries the bearer through.
 
 ## Two ways to connect
 
-- **Hosted (Claude Desktop / claude.ai) — paste a URL.** No CLI, no
-  Node.js install. In Claude open **Settings → Connectors → Add custom
-  connector** and paste `https://app.typeroll.com/api/mcp`
-  (or `https://<your-self-hosted-portal>/mcp`). Claude opens a consent
-  page; paste your Typeroll API key there.
-- **Stdio (Claude Code) — one `claude mcp add` command.** Best for local
-  dev / agency staff already in a terminal. Instructions below.
+- **Remote MCP — enter a URL.** Use a client with Streamable HTTP support
+  and OAuth or bearer-header authentication. The Cloud endpoint is
+  `https://app.typeroll.com/api/mcp`; self-hosted portals use
+  `https://<your-portal-host>/api/mcp`.
+- **Local stdio — launch the npm package.** Use a client that can run a local
+  command with environment variables. Instructions below.
+
+See [client compatibility and verification status](https://docs.typeroll.com/getting-started/client-compatibility/)
+for Claude Desktop, Claude Code, Cursor, VS Code, ChatGPT, Cline and Zed.
+MCP support alone is not proof of a tested Typeroll integration.
 
 This npm package is the stdio transport. The hosted endpoint ships as
 part of the Typeroll portal itself — same tool surface, same package
@@ -28,7 +31,7 @@ under the hood.
 
 - **Org-scoped key** (created at `/app/settings/api-keys`) — one
   credential covers every site in your org *and* every site shared into
-  your org. The default for the hosted Claude connector. Stdio works too
+  your org. Suitable for hosted multi-site connections. Stdio works too
   if you set `TYPEROLL_SITE_ID` so the install binds to one site.
 - **Site-scoped key** (created at `/app/sites/{siteId}/settings/api-keys`) —
   tighter blast radius for a single-site credential, e.g. one you'd
@@ -37,13 +40,13 @@ under the hood.
 Both look like `typeroll_live_…`; revoke either from the portal and any
 client using it stops working immediately.
 
-## Stdio quick start (Claude Code)
+## Stdio quick start
 
 1. **Create an API key** in your Typeroll portal — see the two scope
    options above. Org-scoped is the right default.
 
-2. **Add the server to Claude Code.** Drop this into `~/.claude.json`
-   (or your local `.claude/config.json`):
+2. **Add a local MCP server in your agent client.** This example uses the
+   `mcpServers` schema; adapt it to your client’s documented configuration:
 
    ```json
    {
@@ -63,7 +66,7 @@ client using it stops working immediately.
    For a self-hosted portal, point `TYPEROLL_API_URL` at it (e.g.
    `https://cms.example.com`).
 
-   Prefer a scaffold? Run `npx @typeroll/mcp-server init` in your project
+   For the optional Claude Code scaffold, run `npx @typeroll/mcp-server init` in your project
    folder — it writes/merges this `.mcp.json`, copies the skills into
    `.claude/skills/`, and adds an `AGENTS.md` pointer + imagegen-lab
    files. Idempotent; `--force` to overwrite. (Skills only:
@@ -75,7 +78,7 @@ client using it stops working immediately.
    > number of pages, what global blocks exist, what collections are
    > defined. Then I'll give you a task."
 
-   Claude will call `get_site`, `get_site_capabilities`, `list_pages`,
+   The agent can call `get_site`, `get_site_capabilities`, `list_pages`,
    `list_partials`, `list_collections`, and `list_block_types` in sequence and
    report back. The capabilities + block palette are mandatory before it
    chooses HTML mode or reports a missing site-building feature.
@@ -86,7 +89,7 @@ client using it stops working immediately.
 |-----------------|----------|-------------|
 | `TYPEROLL_API_URL`  | yes      | Base URL of your Typeroll portal. |
 | `TYPEROLL_API_KEY`  | yes      | A `typeroll_live_…` bearer token. |
-| `TYPEROLL_SITE_ID`  | sometimes | Pin to a specific site. Required when using an org-scoped key over stdio (the install can only target one site at a time); auto-detected for site-scoped keys. |
+| `TYPEROLL_SITE_ID`  | sometimes | Pin to a specific site. Required when the key can access multiple sites; each stdio process targets one site. A single accessible site is auto-detected. |
 
 ## Extension developer CLI
 
@@ -113,9 +116,8 @@ the complete schema, compatibility, origin and asset-hash validation.
 
 The package ships [AGENTS.md](./AGENTS.md), a self-contained briefing
 that explains Typeroll conventions, common operations, and the safety
-boundaries an agent needs to respect. Point Claude at it (or include it
-in your project's `CLAUDE.md` / `AGENTS.md`) so it knows when to use
-which tool.
+boundaries an agent needs to respect. Point your agent at it or use the
+`read_guide` tool. Follow the client’s own instructions for loading local recipes.
 
 ## Tool surface
 

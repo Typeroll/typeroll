@@ -30,7 +30,8 @@ export default defineConfig({
           label: 'Getting Started',
           items: [
             { label: 'Introduction', slug: 'getting-started/introduction' },
-            { label: 'Install the MCP Server', slug: 'getting-started/mcp-server' },
+            { label: 'Connect your AI agent', slug: 'getting-started/mcp-server' },
+            { label: 'Client compatibility', slug: 'getting-started/client-compatibility' },
             { label: 'Your First Site', slug: 'getting-started/first-site' },
           ],
         },

@@ -12,6 +12,10 @@ Extension runtime, static renderer, and self-hosting adapters as open-source
 software. Most code is MIT-licensed; the WordPress helper plugin is
 GPL-2.0-or-later for WordPress compatibility.
 
+AI agents can connect through MCP using a supported HTTP or stdio client, or
+call the REST API directly. See [client compatibility and verification status](packages/docs-site/src/content/docs/getting-started/client-compatibility.mdx)
+and the [connection guide](packages/docs-site/src/content/docs/getting-started/mcp-server.mdx).
+
 ## What is included
 
 - block and HTML page editing with live preview;

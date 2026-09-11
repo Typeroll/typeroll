@@ -5,7 +5,7 @@ description: Connect an MCP-compatible AI agent to Typeroll CMS through the host
 
 Typeroll CMS exposes the same site-management tools through hosted MCP and a
 local MCP process. Use an AI agent that supports one of these transports, or
-integrate directly with the REST API. The visual editor also works without an agent.
+integrate directly with the REST API. The visual editor also works without an agent. See [Client compatibility](../client-compatibility/) for connection options and recorded test status.
 
 ## Let your agent read the documentation
 
@@ -68,6 +68,10 @@ Configure these values in the client:
 | Environment: `TYPEROLL_API_URL` | `https://app.typeroll.com`, or your portal origin |
 | Environment: `TYPEROLL_API_KEY` | Your private API key                              |
 
+A stdio process targets one Site. If the key can access several Sites, set
+`TYPEROLL_SITE_ID` to the intended Site ID; a site-scoped key can discover its
+one Site automatically. Hosted multi-site connections select a Site per call.
+
 A JSON-style client configuration can look like this. The exact configuration
 file and schema depend on the client; the placeholder is not a working key.
 
@@ -98,8 +102,9 @@ Ask your agent:
 List the Typeroll sites available to this connection. Do not change anything.
 ```
 
-It should call `list_sites`. Select a Site and Version explicitly before asking
-for edits, especially when an organization key can access multiple sites.
+A hosted multi-site connection can call `list_sites`. A stdio connection should
+read its bound Site with `get_site`. Confirm the Site and Version before asking
+for edits.
 
 Edits normally create working copies. Ask the agent to show the changes, save
 approved content and publish only when requested. See

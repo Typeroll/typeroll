@@ -1,0 +1,115 @@
+---
+title: AI agent and MCP client compatibility
+description: Connection options and Typeroll verification status for Claude Desktop, Claude Code, Cursor, VS Code, ChatGPT, Cline and Zed.
+---
+
+Typeroll CMS connects to AI agents through MCP and the REST API. It does not
+require a particular AI model or client. An MCP client must support the transport,
+authentication and tool calls used by the connection you choose.
+
+## Connection options
+
+- **Remote:** MCP Streamable HTTP at `https://app.typeroll.com/api/mcp`, or
+  `https://<your-portal-host>/api/mcp` for self-hosting. Use OAuth consent or an
+  explicit bearer header where the client supports it.
+- **Local:** launch `npx -y @typeroll/mcp-server` over stdio with the environment
+  variables in [Connect your AI agent](../mcp-server/#local-mcp-process-stdio).
+  A stdio process targets one Site; set `TYPEROLL_SITE_ID` when the key can
+  access multiple sites.
+- **Direct API:** an agent can call the authenticated REST API without MCP.
+  Reading the [public documentation](../../llms.txt) requires neither a key nor MCP.
+
+A client that only supports older HTTP+SSE connections is not automatically
+compatible with the Streamable HTTP endpoint. Configuration schemas, available
+features and workspace permissions also differ between clients.
+
+## Client status
+
+Provider documentation reviewed on **September 11, 2026**. The connection options
+below are based on those providers' documentation. **A version-specific Typeroll
+end-to-end test has not yet been recorded for these named clients.** They are
+connection candidates, not a list of certified integrations.
+
+| Client                            | Connection to configure                            | Typeroll client test |
+| --------------------------------- | -------------------------------------------------- | -------------------- |
+| [Claude Desktop](#claude-desktop) | Remote custom connector                            | Not yet recorded     |
+| [Claude Code](#claude-code)       | Remote HTTP or local stdio                         | Not yet recorded     |
+| [Cursor](#cursor)                 | Remote HTTP or local stdio                         | Not yet recorded     |
+| [VS Code](#vs-code)               | Remote HTTP or local stdio in its agent tools      | Not yet recorded     |
+| [ChatGPT](#chatgpt)               | Remote custom MCP app, subject to workspace access | Not yet recorded     |
+| [Cline](#cline)                   | Remote Streamable HTTP or local stdio              | Not yet recorded     |
+| [Zed](#zed)                       | Remote or local context server                     | Not yet recorded     |
+
+Typeroll's automated checks exercise its server tools and OAuth implementation.
+Those checks do not substitute for completing authentication and tool calls in
+a particular third-party application.
+
+### Claude Desktop
+
+Use a remote custom connector with the hosted endpoint. The remote connection
+is made from the provider's infrastructure, so the portal must be reachable
+there; your computer's `localhost` is not a public server address. Follow
+[Claude's custom connector instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
+
+### Claude Code
+
+Claude Code documents both HTTP and stdio MCP connections. Use its MCP setup
+command for the selected transport and its authentication flow for a remote
+server. Follow [Claude Code's MCP guide](https://code.claude.com/docs/en/mcp).
+
+Typeroll's optional `init` command currently creates `.mcp.json` and
+`.claude/skills/` files. That scaffold is client-specific; other agents can use
+the MCP connection and `read_guide`, `list_skills` and `read_skill` without it.
+
+### Cursor
+
+Use Cursor's MCP settings and its own `mcp.json` schema. Its documentation covers
+stdio commands, remote connections and OAuth. Follow
+[Cursor's MCP guide](https://prod.cursor.com/docs/mcp); do not assume a different
+editor's configuration file can be copied unchanged.
+
+### VS Code
+
+Use VS Code's MCP server management for agent tools. Its configuration uses a
+`servers` map, which differs from clients using `mcpServers`. Follow
+[VS Code's MCP setup guide](https://code.visualstudio.com/docs/agent-customization/mcp-servers)
+for adding a server and approving access.
+
+### ChatGPT
+
+Use a custom remote MCP app where your account and workspace permit it. Check
+read and write tool availability separately: access to a connector does not
+establish that editing and deployment tools are enabled. Developer-mode and
+administrator requirements vary by plan. Follow
+[ChatGPT's MCP app instructions](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt-beta).
+The stdio npm command is not a remote app URL.
+
+### Cline
+
+Cline documents both stdio and remote connections. For the hosted Typeroll
+endpoint, explicitly select **Streamable HTTP**; do not leave it on the legacy
+SSE transport. Its remote configuration supports bearer headers. Follow
+[Cline's MCP guide](https://docs.cline.bot/mcp/mcp-overview).
+
+### Zed
+
+Zed calls these connections context servers and configures them under
+`context_servers`. It documents local commands, remote URLs, bearer headers and
+OAuth when no Authorization header is configured. Follow
+[Zed's MCP guide](https://zed.dev/docs/ai/mcp).
+
+## Verify your connection
+
+Start with a read-only request: identify the accessible Site and Version, read
+the site capabilities and read a page. For remote multi-site connections, use
+`list_sites` to choose the Site; a stdio connection is bound at startup.
+
+If you want to verify editing, use a disposable test Site. Create a draft, read
+it back, make a small change and inspect its preview. Test saving, deletion and
+publishing only when you intend those actions. A successful read alone does not
+prove that writes, authentication renewal or deployment work in that client.
+
+When recording a verified client, include the client version, OS, Typeroll
+version and environment, transport, authentication method, test date and actual
+operations exercised. Record known restrictions alongside the result. Never
+include keys, tokens or private customer content in a compatibility report.
