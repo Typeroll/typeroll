@@ -23,3 +23,24 @@ it('distinguishes personal choices and exposes reconnect when repository authori
   await act(async () => button.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   expect(request.mock.calls.some(([url]) => url === '/api/orgs/publishing/github')).toBe(true);
 });
+
+it('reports verified media progress and automatically shows completion without a manual refresh', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.useFakeTimers();
+  const data = { github: { status: 'disconnected' }, github_choices: [], github_setup: { available: false },
+    cloudflare: { status: 'connected', revision: 'one', media_ready: true,
+      cloudflare: { account_id: 'a'.repeat(32), account_name: 'Test account', bucket: 'private', public_bucket: 'public' } },
+    media_migration: { state: 'running', phase: 'copying', copied_files: 1000, pending_files: 0, error: null } };
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(data)));
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(PublishingConnections)));
+    expect(container.textContent).toContain('files copied and verified');
+    expect(container.textContent).toContain('You can close this page');
+    expect(container.textContent).not.toContain('0 remaining');
+    data.media_migration = { ...data.media_migration, state: 'complete', copied_files: 1001 };
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(container.textContent).toContain('Originals moved to your R2 storage');
+    expect(container.textContent).not.toContain('Refresh migration status');
+  } finally { vi.useRealTimers(); }
+});

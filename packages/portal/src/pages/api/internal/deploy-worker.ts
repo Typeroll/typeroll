@@ -32,6 +32,7 @@ import { paths } from '@typeroll/shared';
 import type { DeployEnvironment, DeployJob } from '@typeroll/shared';
 
 interface Payload {
+  kind?: 'media_migration';
   jobId: string;
   orgId: string;
   siteId: string;
@@ -58,6 +59,20 @@ export const POST: APIRoute = async ({ request }) => {
     payload = (await request.json()) as Payload;
   } catch {
     return new Response('Bad JSON', { status: 400 });
+  }
+  if (payload?.kind === 'media_migration') {
+    if (typeof payload.orgId !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(payload.orgId)) return new Response('Invalid organization', { status: 400 });
+    try {
+      const { executeMediaMigration } = await import('../../../lib/publishing/media-migration');
+      const delay = await executeMediaMigration(payload.orgId);
+      if (delay !== null) {
+        const { enqueueMediaMigration } = await import('../../../lib/publishing/media-migration-queue');
+        // Only acknowledge after the continuation is accepted. A queue outage
+        // returns 503, so the current task is redelivered with its saved cursor.
+        await enqueueMediaMigration(payload.orgId, delay);
+      }
+      return Response.json({ ok: true });
+    } catch { return Response.json({ ok: false, retry: true }, { status: 503 }); }
   }
   if (!payload?.jobId || !payload?.orgId || !payload?.siteId) {
     return new Response('Missing required fields', { status: 400 });

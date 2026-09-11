@@ -230,7 +230,10 @@ administrator changed the records in the meantime.
 
 After R2 and the organization shared media host are connected, Typeroll copies old
 originals to your private bucket, verifies SHA-256 hashes, and changes storage
-references only after verification. Concurrent edits and uploads granted before
+references only after verification. The transfer starts automatically and continues
+in the background, including libraries with thousands of images. You can close
+the browser. **Publishing → Media storage** shows verified copies and updates
+automatically; temporary interruptions are retried without starting over. Concurrent edits and uploads granted before
 connection are handled without switching them to an unverified destination.
 Progress and retry instructions appear in Publishing. Existing source files are
 retained while older publications may still need them.

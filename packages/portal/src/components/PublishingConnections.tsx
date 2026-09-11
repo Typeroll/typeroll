@@ -9,7 +9,7 @@ type Connection = {
   github: { owner: string; account_type?: 'Organization' | 'User'; repository_creation_state?: 'ready' | 'reconnect_required' } | null;
   cloudflare: { account_id: string; account_name: string; bucket: string; public_bucket?: string } | null;
 };
-type Connections = { media_migration?: { state: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string; account_type?: 'Organization' | 'User' }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
+type Connections = { media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string; account_type?: 'Organization' | 'User' }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
 const API = '/api/orgs/publishing';
 
 class PublishingRequestError extends Error {
@@ -281,8 +281,9 @@ export default function PublishingConnections() {
             <details><summary>Storage details</summary><p>Private originals bucket: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong></p>
             <p>Public images bucket: <strong style={{ overflowWrap: 'anywhere' }}>{cloudflareAccount?.public_bucket}</strong></p></details>
             {data.media_migration && <div role="status">
-              <p>{data.media_migration.state === 'complete' ? data.media_migration.copied_files === 0 ? 'No existing media to move. New uploads go directly to R2.' : 'Originals moved to your R2 storage. Existing published image URLs are retained.' : `${data.media_migration.state === 'failed' ? 'Media migration paused' : 'Moving existing originals to R2'}: ${data.media_migration.copied_files} copied, ${data.media_migration.pending_files} remaining.`}</p>
-              {data.media_migration.error && <><p>Media migration needs attention. Check Domains below, then retry.</p><details><summary>Migration error details</summary><p>{data.media_migration.error}</p></details></>}
+              <p>{data.media_migration.state === 'complete' ? data.media_migration.copied_files === 0 ? 'No existing media to move. New uploads go directly to R2.' : 'Originals moved to your R2 storage. Existing published image URLs are retained.' : `${data.media_migration.state === 'failed' ? 'Media migration paused' : data.media_migration.phase === 'updating_references' ? 'Updating image references' : 'Moving existing originals to R2'}: ${data.media_migration.copied_files.toLocaleString()} files copied and verified.`}</p>
+              {['queued', 'running'].includes(data.media_migration.state) && <p>The transfer continues automatically. You can close this page. New uploads go directly to R2; existing images remain available.</p>}
+              {data.media_migration.error && <><p>{data.media_migration.state === 'failed' ? 'Media migration needs attention. Review the details below, then retry.' : 'Retrying the transfer automatically.'}</p><details><summary>Migration error details</summary><p>{data.media_migration.error}</p></details></>}
               {data.media_migration.state !== 'complete' && <button type="button" className="btn" disabled={busy} onClick={async () => {
                 setBusy(true); setError('');
                 try { if (data.media_migration?.state === 'failed') await request('/media-migration', 'POST', {}); await refresh(); }

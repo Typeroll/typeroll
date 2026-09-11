@@ -28,9 +28,10 @@ export interface ReadWriteStore {
    * tombstones, revisions, and chat history don't leak as orphans.
    */
   deleteTree(path: string): Promise<void>;
+  /** startAfterId opts into document-ID ordering; an empty string starts the first page. */
   listDocs<T = unknown>(
     collectionPath: string,
-    opts?: { filters?: Filter[]; limit?: number }
+    opts?: { filters?: Filter[]; limit?: number; startAfterId?: string }
   ): Promise<Array<T & { id: string }>>;
   addDoc(collectionPath: string, data: Record<string, any>): Promise<string>;
   /**
@@ -154,7 +155,7 @@ class FixtureStore implements ReadWriteStore {
 
   async listDocs<T>(
     p: string,
-    opts: { filters?: Filter[]; limit?: number } = {}
+    opts: { filters?: Filter[]; limit?: number; startAfterId?: string } = {}
   ): Promise<Array<T & { id: string }>> {
     const { dirPath } = this.resolve(p);
     if (!fs.existsSync(dirPath)) return [];
@@ -170,6 +171,10 @@ class FixtureStore implements ReadWriteStore {
       results = results.filter((doc) =>
         opts.filters!.every((f) => matchesFilter(doc as Record<string, unknown>, f))
       );
+    }
+    if (opts.startAfterId !== undefined) {
+      results.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+      results = results.filter(doc => doc.id > opts.startAfterId!);
     }
     if (opts.limit) results = results.slice(0, opts.limit);
     return results;
@@ -304,12 +309,16 @@ class FirestoreStore implements ReadWriteStore {
 
   async listDocs<T>(
     p: string,
-    opts: { filters?: Filter[]; limit?: number } = {}
+    opts: { filters?: Filter[]; limit?: number; startAfterId?: string } = {}
   ): Promise<Array<T & { id: string }>> {
     const db = await this.dbPromise;
     let q: FirebaseFirestore.Query = db.collection(p);
     for (const f of opts.filters ?? []) {
       q = q.where(f.field, f.op as FirebaseFirestore.WhereFilterOp, f.value);
+    }
+    if (opts.startAfterId !== undefined) {
+      q = q.orderBy('__name__');
+      if (opts.startAfterId) q = q.startAfter(opts.startAfterId);
     }
     if (opts.limit) q = q.limit(opts.limit);
     const snap = await q.get();

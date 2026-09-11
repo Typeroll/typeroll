@@ -27,9 +27,10 @@ publishing**. Select **Check migration**, inspect the host and existing project,
 then select **Migrate this site**. The result confirms that settings were saved.
 This action does not deploy or change traffic DNS.
 
-Media copying verifies original bytes before updating references. Original
-URLs remain available. Wait for the organization media migration to complete,
-then publish the site. Typeroll freezes the source into the site's generated
+Media copying starts immediately and continues automatically in the background,
+including large libraries. You can close the browser; **Publishing → Media storage**
+shows verified copies and any retry that needs attention. Original URLs remain
+available. Once the transfer finishes, publish the site. Typeroll freezes the source into the site's generated
 GitHub repository, builds through the selected organization engine, and uploads
 static output to the original Pages project. Version branches keep using that
 project. A missing adopted project is an error, never an instruction to create
@@ -61,3 +62,28 @@ rolled back, restore the recorded deployment through Cloudflare and verify its
 public response. Reverting CMS or publication ownership after media migration
 requires the pre-migration backup and a deliberate recovery operation; do not
 flip the publishing mode back while references point to private media.
+
+## Media worker and recovery
+
+A migration request persists its work and dispatches the configured worker
+immediately. Cloud Tasks uses the existing authenticated deploy-worker endpoint
+with a media-only task; it does not start a site build or change DNS traffic.
+Each task handles up to 100 records or 45 seconds before accepting its next
+continuation. Slow individual transfers have separate timeouts. There is no
+five-minute wait between successful batches. The scheduled sweep only recovers
+work whose initial dispatch or worker was interrupted.
+
+Portable Firestore workers poll persisted media jobs independently of builds.
+The in-process development backend continues locally but is not durable across
+process exits without the recovery sweep.
+
+A saved site/media cursor avoids rereading a large library from its beginning
+after every batch. References across versions are rewritten after a site's
+copies; reference cursors and optimistic writes preserve concurrent edits.
+Late uploads request another pass, including when they sort before the cursor.
+Copy counters survive a crash between saving the verified copy and saving its
+cursor. Integrity failures pause immediately; interrupted transfers retry up to
+three times before showing an actionable error. Retry resumes verified progress.
+The UI reports verified copies, not an estimated remaining count before the
+library has been scanned. Neither a successful transfer nor retry deletes the
+source files or publishes a site.

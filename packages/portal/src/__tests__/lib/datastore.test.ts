@@ -78,3 +78,13 @@ describe('FixtureStore', () => {
     expect(back?.a).toBe(1);
   });
 });
+
+it('paginates deterministically by document identity even after the previous document was removed', async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getStore } = await import('../../lib/datastore');
+  const store = getStore();
+  for (const id of ['z', 'a', 'A0', 'b']) await store.setDoc(`items/${id}`, { active: true });
+  expect((await store.listDocs('items', { startAfterId: '', limit: 2 })).map(doc => doc.id)).toEqual(['A0', 'a']);
+  await store.deleteDoc('items/a');
+  expect((await store.listDocs('items', { startAfterId: 'a', limit: 2 })).map(doc => doc.id)).toEqual(['b', 'z']);
+});

@@ -4,6 +4,7 @@ import type { DeployEnvironment, DeployJob } from '@typeroll/shared';
 import { paths } from '@typeroll/shared';
 import { getStore, type ReadWriteStore } from '../datastore';
 import { runPublishSweep } from '../scheduled-publish';
+import { runPendingMediaMigrations } from '../publishing/media-migration';
 import { slotWaitMs } from './concurrency';
 import { isExternalDeploy } from './in-flight';
 import {
@@ -205,6 +206,16 @@ export function ensureFirestoreWorkerLoop(): void {
     leaseMs: numberFromEnv(process.env.DEPLOY_WORKER_LEASE_MS, DEFAULT_LEASE_MS, 60_000),
     maxAttempts: numberFromEnv(process.env.DEPLOY_WORKER_MAX_ATTEMPTS, DEFAULT_MAX_ATTEMPTS, 1),
   });
+
+  // Media has its own loop so a large library does not occupy a build slot
+  // or wait for the scheduled publication sweep. Persisted leases recover crashes.
+  void (async () => {
+    for (;;) {
+      try { await runPendingMediaMigrations(); }
+      catch { console.error('[media-migration] worker poll failed'); }
+      await delay(pollMs);
+    }
+  })();
 
   void (async () => {
     let nextSweep = 0;

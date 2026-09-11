@@ -1,5 +1,14 @@
 # Changelog
 
+## MCP 0.44.49 / Core 0.1.76
+
+- Start media migrations immediately and continue bounded tasks without waiting
+  for the scheduled publish sweep. Resume large libraries from durable cursors,
+  preserve late uploads and edits, and retry interrupted transfers automatically.
+- Show verified copy progress and automatic continuation in Publishing.
+- Explain the next shared-build setup action and distinguish choosing an
+  existing Cloudflare build token from creating one.
+
 ## MCP 0.44.48 / Core 0.1.75
 
 - Keep publisher App authentication failures separate from personal user grant
