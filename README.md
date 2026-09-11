@@ -1,6 +1,12 @@
 # Typeroll CMS
 
-Typeroll CMS is an open-source CMS for building and operating fast static websites.
+Typeroll CMS is an open-source CMS for static websites, with AI-agent workflows
+and a client-friendly visual editor for managing multiple client sites.
+
+Freelancers and web agencies can build and manage client websites with their own
+AI agents, then give clients access to edit content in the browser. Organizations
+can also use Typeroll CMS to manage their own websites. Self-host or use Typeroll Cloud.
+
 The repository contains the editor, public API, MCP server, Forms backend,
 Extension runtime, static renderer, and self-hosting adapters as open-source
 software. Most code is MIT-licensed; the WordPress helper plugin is

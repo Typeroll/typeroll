@@ -5,6 +5,8 @@ description: What Typeroll CMS is, how it works, and what you need to get starte
 
 Typeroll CMS is an open-source CMS for static websites. Edit content in the browser or connect an AI agent through the REST API and MCP server to create, edit and publish sites. You can self-host Typeroll CMS or use the managed Typeroll Cloud service.
 
+Freelancers and web agencies can manage multiple client sites while clients edit their content in the browser. Organizations can also manage their own websites.
+
 Under the hood, Typeroll CMS is:
 
 - **A portal** (Astro SSR + React) where sites and their content live.

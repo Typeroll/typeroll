@@ -2,7 +2,7 @@
   "name": "typeroll",
   "version": "0.1.70",
   "private": true,
-  "description": "Typeroll CMS – an open-source CMS for static websites with a visual editor, REST API, MCP server and self-hosting.",
+  "description": "Typeroll CMS – an open-source CMS for static websites, with AI-agent workflows and a client-friendly visual editor for managing multiple client sites.",
   "workspaces": [
     "packages/*"
   ],
