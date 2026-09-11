@@ -71,7 +71,7 @@ Maintainer releases use one ordered train after successful CI on public
 `main`: immutable Core image and tag, MCP package and tag, public docs, then a
 Cloud-consumable release manifest. See [docs/releasing.md](docs/releasing.md).
 
-See the [self-hosting guide](https://docs.typeroll.com/guides/self-hosting/)
+See the [self-hosting guide](https://typeroll.com/docs/guides/self-hosting/)
 for production configuration.
 
 The supported production reference profile is fully serverless in a

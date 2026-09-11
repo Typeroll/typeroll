@@ -5,8 +5,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const routes = JSON.parse(readFileSync(path.resolve(root, '../../temp/docs-migration/redirect-checklist.json'), 'utf8'));
-const redirects = process.argv.includes('--redirects');
+const routes = JSON.parse(readFileSync(path.resolve(root, '../../temp/docs-migration/routes.json'), 'utf8'));
 const shaIndex = process.argv.indexOf('--source-sha');
 const expectedSha = shaIndex >= 0 ? process.argv[shaIndex + 1] : null;
 async function request(url, options = {}) {
@@ -30,6 +29,15 @@ await Promise.all(Array.from({ length: 4 }, async () => {
     const response = await request(route.destination);
     assert.equal(response.status, 200, route.destination);
     const html = await response.text();
+    assert.ok(!html.includes('docs.typeroll.com'), 'Retired hostname in ' + route.destination);
+    const structured = [...html.matchAll(/<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)].map(([, json]) => JSON.parse(json));
+    assert.ok(structured.length > 0, 'Missing JSON-LD at ' + route.destination);
+    if (route.destination === 'https://typeroll.com/docs/') {
+      assert.ok(structured.some(data => data['@type'] === 'SoftwareApplication' && data.url === 'https://typeroll.com/'));
+    } else {
+      const breadcrumbs = structured.find(data => data['@type'] === 'BreadcrumbList');
+      assert.equal(breadcrumbs?.itemListElement.at(-1).item, route.destination);
+    }
     const canonical = [...html.matchAll(/<link\b[^>]+>/g)].map(([tag]) => Object.fromEntries([...tag.matchAll(/([\w-]+)="([^"]*)"/g)].map(([, name, value]) => [name, value]))).find(tag => tag.rel === 'canonical');
     assert.equal(canonical?.href, route.destination);
     assert.doesNotMatch(response.headers.get('x-robots-tag') ?? '', /noindex/i);
@@ -38,11 +46,7 @@ await Promise.all(Array.from({ length: 4 }, async () => {
     assert.equal(text.status, 200);
     assert.match(text.headers.get('content-type'), /text\/plain/);
     assert.ok((await text.text()).includes(`](${route.destination})`));
-    if (redirects) {
-      const old = await request(route.source);
-      assert.equal(old.status, 301, route.source);
-      assert.equal(old.headers.get('location'), route.destination);
-    }
+
   }
 }));
 for (const name of ['llms.txt', 'llms-full.txt', 'llms-small.txt']) {
@@ -54,9 +58,31 @@ for (const name of ['llms.txt', 'llms-full.txt', 'llms-small.txt']) {
 const missing = await request('https://typeroll.com/docs/__missing_documentation_check__/');
 assert.equal(missing.status, 404);
 assert.match(await missing.text(), /noindex/);
-for (const source of ['https://typeroll.com/docs?via=check', ...(redirects ? ['https://docs.typeroll.com/guides/the-editor/?via=check'] : [])]) {
-  const response = await request(source);
-  assert.equal(response.status, 301);
-  assert.equal(response.headers.get('location'), source.includes('docs.typeroll.com') ? 'https://typeroll.com/docs/guides/the-editor/?via=check' : 'https://typeroll.com/docs/?via=check');
-}
-console.log(`Verified ${routes.length} live HTML pages and text alternatives, agent indexes, canonical URLs, 404 and query preservation${redirects ? ', including all old-domain redirects' : ''}.`);
+const entry = await request('https://typeroll.com/docs?via=check');
+assert.equal(entry.status, 301);
+assert.equal(entry.headers.get('location'), 'https://typeroll.com/docs/?via=check');
+const readText = async (url) => {
+  const response = await request(url);
+  assert.equal(response.status, 200, url);
+  const body = await response.text();
+  assert.ok(!body.includes('docs.typeroll.com'), 'Retired hostname in ' + url);
+  return body;
+};
+const rootRobots = await readText('https://typeroll.com/robots.txt');
+assert.match(rootRobots, /User-agent: \*/);
+assert.match(rootRobots, /Allow: \//);
+assert.doesNotMatch(rootRobots, /Disallow: \/\s*(?:\n|$)/);
+assert.ok(rootRobots.includes('Sitemap: https://typeroll.com/docs/sitemap-index.xml'));
+assert.ok(rootRobots.includes('Sitemap: https://typeroll.com/sitemap.xml'));
+const locs = xml => [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(([, url]) => url);
+const rootUrls = locs(await readText('https://typeroll.com/sitemap.xml'));
+assert.ok(rootUrls.includes('https://typeroll.com/'));
+assert.ok(rootUrls.every(url => new URL(url).origin === 'https://typeroll.com'));
+assert.deepEqual(locs(await readText('https://typeroll.com/docs/sitemap-index.xml')), ['https://typeroll.com/docs/sitemap-0.xml']);
+assert.deepEqual(locs(await readText('https://typeroll.com/docs/sitemap-0.xml')).sort(), routes.map(route => route.destination).sort());
+const rootHtml = await readText('https://typeroll.com/');
+const rootData = [...rootHtml.matchAll(/<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)].map(([, json]) => JSON.parse(json));
+assert.ok(rootData.some(data => data['@type'] === 'WebSite' && data.url === 'https://typeroll.com/'));
+const schemaUrl = 'https://typeroll.com/docs/specs/typeroll-extension-manifest-v3.schema.json';
+assert.equal(JSON.parse(await readText(schemaUrl)).$id, schemaUrl);
+console.log(`Verified ${routes.length} live HTML pages and text alternatives, agent indexes, canonical URLs, robots, sitemaps, JSON-LD, schema URL, 404 and query preservation.`);

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { docsTarget } from './docs-target.mjs';
 import { agentDocuments } from './agent-docs.mjs';
 
 const pages = [
@@ -46,9 +47,9 @@ test('combined and individual exports resolve links using each original page, pr
   assert.doesNotMatch(editor.content, /<SYSTEM>/);
 });
 
-test('exports support the existing subdomain before the coordinated move', () => {
-  const [editor] = agentDocuments(source, pages.map(page => ({ ...page, url: page.url.replace('https://typeroll.com/docs/', 'https://docs.typeroll.com/') })));
-  assert.ok(editor.content.includes('https://docs.typeroll.com/publishing/cloudflare/?version=main#builds'));
+test('exports resolve links against the supplied canonical source', () => {
+  const [editor] = agentDocuments(source, pages.map(page => ({ ...page, url: page.url.replace('https://typeroll.com/docs/', 'https://docs.example.test/') })));
+  assert.ok(editor.content.includes('https://docs.example.test/publishing/cloudflare/?version=main#builds'));
   assert.doesNotMatch(editor.content, /https:\/\/typeroll.com\/docs\//);
 });
 
@@ -57,4 +58,10 @@ test('missing, repeated and ambiguous pages fail instead of producing partial or
   assert.throws(() => agentDocuments('# Editor\n\n# Editor', pages), /repeats a page/);
   assert.throws(() => agentDocuments('# Unknown', pages), /Unknown top-level heading/);
   assert.throws(() => agentDocuments(source, [pages[0], { ...pages[1], title: 'Editor' }]), /unique page titles/);
+});
+
+test('documentation builds only use the canonical subdirectory', () => {
+  assert.equal(docsTarget({}).publicUrl, 'https://typeroll.com/docs/');
+  assert.equal(docsTarget({}).base, '/docs/');
+  assert.throws(() => docsTarget({ TYPEROLL_DOCS_TARGET: 'subdomain' }), /only published/);
 });

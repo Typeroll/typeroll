@@ -428,7 +428,7 @@ Costs are **estimates** computed from a configurable rate card, not billing
 records, and they are gross: free-tier allowances and committed-use discounts
 are not deducted. Self-hosters can retune or zero out the rates with the
 `DEPLOY_COST_*` environment variables — see
-[Self-Hosting](https://docs.typeroll.com/guides/self-hosting/).
+[Self-Hosting](https://typeroll.com/docs/guides/self-hosting/).
 
 ### Added — the directory app
 

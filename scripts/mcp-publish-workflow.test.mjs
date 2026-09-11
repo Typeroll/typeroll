@@ -84,12 +84,10 @@ test('an interrupted Core publication can recover only from the same source comm
   assert.match(workflow, /EXISTING_DIGEST: \$\{\{ steps\.registry\.outputs\.image_digest \}\}/);
 });
 
-test('old documentation redirects are enabled only after the new source is verified live', () => {
+test('documentation publication verifies its source without redeploying the retired host', () => {
   const deploy = workflow.indexOf('- name: Publish static documentation at typeroll.com/docs');
-  const verify = workflow.indexOf('- name: Verify destination before enabling redirects');
-  const redirect = workflow.indexOf('- name: Redirect the previous documentation domain');
-  const finalCheck = workflow.indexOf('- name: Verify all documentation redirects');
-  assert.ok(deploy > 0 && verify > deploy && redirect > verify && finalCheck > redirect);
-  assert.match(workflow.slice(verify, redirect), /verify-live-docs\.mjs --source-sha/);
-  assert.match(workflow.slice(finalCheck), /verify-live-docs\.mjs --redirects --source-sha/);
+  const verify = workflow.indexOf('- name: Verify published documentation');
+  assert.ok(deploy > 0 && verify > deploy);
+  assert.match(workflow.slice(verify), /verify-live-docs\.mjs --source-sha/);
+  assert.doesNotMatch(workflow, /pages deploy|old-docs-host|--redirects/);
 });

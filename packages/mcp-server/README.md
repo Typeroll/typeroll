@@ -19,7 +19,7 @@ just carries the bearer through.
 - **Local stdio — launch the npm package.** Use a client that can run a local
   command with environment variables. Instructions below.
 
-See [client compatibility and verification status](https://docs.typeroll.com/getting-started/client-compatibility/)
+See [client compatibility and verification status](https://typeroll.com/docs/getting-started/client-compatibility/)
 for Claude Desktop, Claude Code, Cursor, VS Code, ChatGPT, Cline and Zed.
 MCP support alone is not proof of a tested Typeroll integration.
 

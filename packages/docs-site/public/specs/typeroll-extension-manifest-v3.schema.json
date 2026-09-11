@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docs.typeroll.com/specs/typeroll-extension-manifest-v3.schema.json",
+  "$id": "https://typeroll.com/docs/specs/typeroll-extension-manifest-v3.schema.json",
   "title": "Typeroll Extension Manifest v3",
   "type": "object",
   "required": ["schema_version", "id", "name", "version", "runtime_compatibility", "distribution", "developer", "permissions"],

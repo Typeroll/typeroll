@@ -1,12 +1,12 @@
 export function docsTarget(env = process.env) {
-  const mode = env.TYPEROLL_DOCS_TARGET ?? 'subdomain';
-  if (!['subdomain', 'subdirectory'].includes(mode)) throw new Error('Unknown documentation target');
-  const subdirectory = mode === 'subdirectory';
+  if (env.TYPEROLL_DOCS_TARGET && env.TYPEROLL_DOCS_TARGET !== 'subdirectory') {
+    throw new Error('Documentation is only published at https://typeroll.com/docs/');
+  }
   return {
-    mode,
-    site: subdirectory ? 'https://typeroll.com' : 'https://docs.typeroll.com',
-    base: subdirectory ? '/docs/' : '/',
-    publicUrl: subdirectory ? 'https://typeroll.com/docs/' : 'https://docs.typeroll.com/',
-    output: subdirectory ? '../../temp/docs-subdirectory' : './dist',
+    mode: 'subdirectory',
+    site: 'https://typeroll.com',
+    base: '/docs/',
+    publicUrl: 'https://typeroll.com/docs/',
+    output: '../../temp/docs-subdirectory',
   };
 }
