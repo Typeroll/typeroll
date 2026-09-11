@@ -5,11 +5,7 @@ export default defineConfig({
   site: 'https://docs.typeroll.com',
   integrations: [
     starlight({
-      title: 'Typeroll',
-      logo: {
-        light: './src/assets/logo-light.svg',
-        dark: './src/assets/logo-dark.svg',
-      },
+      title: 'Typeroll CMS',
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/typeroll/typeroll' },
       ],

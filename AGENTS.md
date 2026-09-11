@@ -39,3 +39,9 @@
   Organization owns shared R2 media, its media hostname, DNS access and GitHub.
   Default reuses the existing connection without duplicating OAuth grants.
   See `docs/hosting-groups.md` for migration, static media and account boundaries.
+
+- Use **Typeroll CMS** as the public product name in README headings, page titles,
+  introductory documentation copy and package descriptions. Keep **Typeroll Cloud**
+  and **Typeroll Apps** as separate product names. Preserve established technical
+  package identifiers, commands, URLs and API names; display-name changes must not
+  break existing integrations.

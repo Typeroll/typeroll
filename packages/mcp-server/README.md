@@ -1,8 +1,7 @@
-# @typeroll/mcp-server
+# Typeroll CMS MCP server
 
-Model Context Protocol server for the [Typeroll](https://typeroll.com)
-public API. Lets Claude (Desktop / claude.ai / Code) manage a Typeroll
-site through the same tool surface a human agency would use: read and
+The `@typeroll/mcp-server` package connects MCP-compatible AI clients to the
+[Typeroll CMS](https://typeroll.com) public API. Manage sites through tools to read and
 write pages, partials, collections, media, redirects, versions; trigger
 deploys; mint preview links.
 

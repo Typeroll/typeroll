@@ -1,7 +1,7 @@
 {
   "name": "@typeroll/mcp-server",
-  "version": "0.44.42",
-  "description": "Model Context Protocol server for the Typeroll public API. Use with Claude Code or any MCP-compatible client to manage a Typeroll site.",
+  "version": "0.44.43",
+  "description": "Typeroll CMS MCP server – connect AI agents to the REST API to manage content and publish static websites.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -55,6 +55,13 @@
     "mcp",
     "typeroll",
     "claude",
-    "model-context-protocol"
+    "model-context-protocol",
+    "cms",
+    "open-source-cms",
+    "static-site-generator",
+    "typescript",
+    "ai-cms",
+    "ai-agents",
+    "self-hosted"
   ]
 }

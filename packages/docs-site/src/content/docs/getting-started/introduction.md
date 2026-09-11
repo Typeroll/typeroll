@@ -1,11 +1,11 @@
 ---
 title: Introduction
-description: What Typeroll is, how it works, and what you need to get started.
+description: What Typeroll CMS is, how it works, and what you need to get started.
 ---
 
-Typeroll is an AI-native site builder. You describe what you want — in plain language, to Claude — and Claude creates, edits and deploys your site using a set of purpose-built tools.
+Typeroll CMS is an open-source CMS for static websites. Edit content in the browser or connect an AI agent through the REST API and MCP server to create, edit and publish sites. You can self-host Typeroll CMS or use the managed Typeroll Cloud service.
 
-Under the hood, Typeroll is:
+Under the hood, Typeroll CMS is:
 
 - **A portal** (Astro SSR + React) where sites and their content live.
 - **A static site generator** (Astro SSG) that builds one fast, secure HTML site per customer.

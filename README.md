@@ -1,6 +1,6 @@
-# Typeroll
+# Typeroll CMS
 
-Typeroll is an open-source CMS for building and operating fast static websites.
+Typeroll CMS is an open-source CMS for building and operating fast static websites.
 The repository contains the editor, public API, MCP server, Forms backend,
 Extension runtime, static renderer, and self-hosting adapters as open-source
 software. Most code is MIT-licensed; the WordPress helper plugin is
