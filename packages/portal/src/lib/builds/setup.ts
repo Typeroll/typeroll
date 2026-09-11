@@ -95,7 +95,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
     const tokenId = trigger?.build_token_uuid ?? (tokens.length === 1 ? tokens[0].build_token_uuid : null);
     if (!tokenId) {
       await store.updateDoc(enginePath(org), { revision: randomUUID(), state: 'build_token_required', worker_found: true, account_id: config.account_id, account_name: cf.cloudflare.account_name, enabled: false,
-        issue: { code: 'build_token_required', message: 'The build project is prepared. Open Cloudflare setup, connect the generated repository and create or select its build token. Then return and select Set up shared builds.' } });
+        issue: { code: tokens.length > 1 ? 'build_token_selection_required' : 'build_token_required', message: 'The build project is prepared. Open Cloudflare setup, connect the generated GitHub repository on branch main and create or select its API token. Then return and finish build setup.' } });
       await store.updateDoc(path, { ...config, status: 'disabled', setup_lease_until: 0 });
       return readBuildEngine(org);
     }

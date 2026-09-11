@@ -30,7 +30,7 @@ export async function cancelGithubTask(org: string, key: string) {
     { status: 'failed', phase: 'cancelled', error: 'The build was cancelled by an organization administrator.', finished_at: new Date().toISOString() });
   else if (config?.revision === task.engine_revision) {
     await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, 'github'), value => value.revision === task.engine_revision, { status: 'disabled' });
-    await store.updateDoc(enginePath(org, 'github'), { revision: randomUUID(), enabled: false, state: 'setup_required', issue: { code: 'github_qualification_cancelled', message: 'Verification was cancelled. Set up GitHub builds to try again.' } });
+    await store.updateDoc(enginePath(org, 'github'), { revision: randomUUID(), enabled: false, state: 'setup_required', issue: { code: 'github_qualification_cancelled', message: 'Verification was cancelled. Finish build setup to try again.' } });
   }
   if (config?.revision !== task.engine_revision || !input.dispatch_nonce) return;
   try {

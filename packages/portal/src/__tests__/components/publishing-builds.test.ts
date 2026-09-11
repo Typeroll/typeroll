@@ -58,3 +58,21 @@ it('previews a saved GitHub engine without switching providers until the explici
   expect(container.querySelector('[role="status"]')?.textContent).toContain('Saved. New publications will build on GitHub Actions');
   expect(container.textContent).not.toContain('Use GitHub Actions for new builds');
 });
+it('offers setup as the next action and switches to automatic test progress after starting', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const initial = { provider: 'cloudflare', state: 'qualification_required', revision: 'one', enabled: false, worker_name: 'builder', issue: { code: 'build_qualification_required', message: 'Build token found.' } };
+  const request = vi.fn(async (_url: unknown, init?: RequestInit) => Response.json(init?.method === 'POST'
+    ? { ...initial, issue: { code: 'build_verification_running', message: 'Verifying execution.' } } : initial));
+  vi.stubGlobal('fetch', request);
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(createElement(PublishingBuilds)));
+  const buttons = [...container.querySelectorAll('button')];
+  expect(buttons[0].textContent).toBe('Finish build setup');
+  expect(container.textContent).toContain('run a test build automatically');
+  expect(container.textContent).not.toContain('Build token found');
+  await act(async () => { buttons[0].click(); });
+  expect(request).toHaveBeenLastCalledWith('/api/orgs/publishing/builds', expect.objectContaining({ body: JSON.stringify({ action: 'setup', revision: 'one' }) }));
+  expect(container.textContent).toContain('You can leave this page');
+  expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Finish build setup')).toBe(false);
+  expect(container.querySelector('section')?.dataset.state).toBe('waiting');
+});

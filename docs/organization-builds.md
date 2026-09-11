@@ -21,7 +21,7 @@ or claim that every customer extension has been exercised.
 
 ## Setup and permissions
 
-Open **Publishing → Builds → Set up shared builds** to prepare the engine.
+Open **Publishing → Builds → Finish build setup** to prepare the engine.
 **Check build setup** reads the current permission and verification status. This checks the existing
 organization Cloudflare account for Workers Scripts and Workers Builds access.
 When permission is missing, select **Approve build permissions**, approve the
@@ -62,7 +62,7 @@ found, the card confirms **Build token found · Verification pending**; it never
 marks the engine ready on that basis alone. The token value stays in Cloudflare.
 OAuth reconnection and tokens in individual Hosting Groups are not required.
 
-If the expected Worker is missing, **Set up shared builds** creates the generated
+If the expected Worker is missing, **Finish build setup** creates the generated
 private repository and a Worker anchor with public URLs disabled. After the first
 build token exists, select the same button to complete setup. Typeroll configures
 the trigger and secret, dispatches a verification build and updates the card

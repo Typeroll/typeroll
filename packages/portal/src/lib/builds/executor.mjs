@@ -159,7 +159,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { if (!process.env.TYPEROLL_RUNNER_TOKEN) console.log('Typeroll setup pending. Return to Publishing and select Set up shared builds.');
+  try { if (!process.env.TYPEROLL_RUNNER_TOKEN) console.log('Typeroll setup pending. Return to Publishing and select Finish build setup.');
     else await executeBuild(JSON.parse(await fs.readFile(new URL('./engine.json', import.meta.url), 'utf8')), process.env.TYPEROLL_RUNNER_TOKEN); }
   catch (error) { console.error('TYPEROLL_BUILD_FAILED ' + (/^[a-z0-9_]{1,120}$/.test(error.message) ? error.message : 'build_failed')); process.exitCode = 1; }
 }

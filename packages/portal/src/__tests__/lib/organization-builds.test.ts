@@ -112,6 +112,20 @@ it('finds only the organization build project and confirms token setup without e
   expect(prepared).toMatchObject({ state: 'build_token_required', worker_found: true, enabled: false });
   const complete = await checkBuildEngine('org', { revision: prepared.revision }, provider(initial.worker_name, [{ build_token_secret: 'never-expose-token' }]));
   expect(complete).toMatchObject({ state: 'qualification_required', enabled: false, worker_found: true });
-  expect(complete.issue?.message).toContain('Build token found');
+  expect(complete.issue?.message).toContain('Start build setup');
   expect(JSON.stringify(complete)).not.toContain('never-expose-token');
+});
+
+it('keeps a project awaiting token selection when other projects have build tokens', async () => {
+  await getStore().setDoc(connectionPath('org', 'cloudflare'), { status: 'connected', revision: 'connection', cloudflare: { account_id: 'a'.repeat(32), account_name: 'Build account' }, encrypted_credentials: sealCredentials('org', 'cloudflare', { api_token: 'synthetic-token' }) });
+  const initial = await readBuildEngine('org');
+  let selected = false;
+  const provider = vi.fn<typeof fetch>(async url => Response.json({ success: true, result: String(url).endsWith('/workers/scripts')
+    ? [{ id: initial.worker_name, tag: 'synthetic-worker-tag' }] : String(url).endsWith('/triggers')
+    ? selected ? [{ branch_includes: ['main'], build_token_uuid: 'selected-token' }] : [] : [{ build_token_uuid: 'first' }, { build_token_uuid: 'second' }] }));
+  const pending = await checkBuildEngine('org', { revision: initial.revision }, provider);
+  expect(pending).toMatchObject({ state: 'build_token_required', enabled: false, issue: { code: 'build_token_selection_required' } });
+  selected = true;
+  const connected = await checkBuildEngine('org', { revision: pending.revision }, provider);
+  expect(connected).toMatchObject({ state: 'qualification_required', enabled: false });
 });

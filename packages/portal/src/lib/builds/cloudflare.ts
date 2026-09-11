@@ -49,7 +49,8 @@ export async function inspectCloudflareBuildAccess(client: ProviderClient, accou
   // Never return build tokens or provider credential metadata through the API.
   const workers = results[0];
   const workerFound = workers.status === 'fulfilled' && workers.value.some((worker: { id?: string }) => workerName !== undefined && worker?.id === workerName);
-  return { issues, workers: counts[0], build_tokens: counts[1], worker_found: workerFound };
+  const worker = workers.status === 'fulfilled' ? workers.value.find((entry: { id?: string }) => entry.id === workerName) : null;
+  return { issues, workers: counts[0], build_tokens: counts[1], worker_found: workerFound, worker_tag: typeof worker?.tag === 'string' ? worker.tag : null };
 }
 
 export async function checkBuildEngine(org: string, input: Record<string, unknown>, fetchImpl: typeof fetch = fetch) {
@@ -75,7 +76,13 @@ export async function checkBuildEngine(org: string, input: Record<string, unknow
     } else if (!access.build_tokens) next = { ...next, state: 'build_token_required', issue: { code: 'build_token_required',
       message: 'Build permissions are approved. Cloudflare has not reported a build token for this account yet. Complete the one-time setup in Cloudflare, then check again. Reconnecting your account will not create the token.' } };
     else next = { ...next, state: 'qualification_required', issue: { code: 'build_qualification_required',
-      message: 'Build token found. The shared build engine still needs to complete its setup and verification before it can publish sites. No further permission approval is needed.' } };
+      message: 'Build access is approved. Start build setup to prepare the environment and run a test build. No live site will be published.' } };
+    if (!access.issues.length && access.build_tokens > 1 && access.worker_tag) {
+      const triggers = await client(`/accounts/${connection.cloudflare.account_id}/builds/workers/${access.worker_tag}/triggers`);
+      const selected = triggers.some((trigger: any) => trigger.branch_includes?.includes('main') && !trigger.branch_excludes?.includes('main') && trigger.build_token_uuid);
+      if (!selected) next = { ...next, state: 'build_token_required', issue: { code: 'build_token_selection_required',
+        message: 'Choose a build token for this project in Cloudflare. Open Cloudflare setup, connect the generated GitHub repository on branch main and select its API token. Then return and finish build setup.' } };
+    }
     if (!access.issues.length && access.worker_found && access.build_tokens) {
       const installed = await getStore().getDoc<{ status: string; account_id: string }>(`organizations/${org}/publishing_private/build_engine`);
       if (installed?.status === 'ready' && installed.account_id === connection.cloudflare.account_id) next = { ...next, state: 'ready', enabled: true, issue: null };

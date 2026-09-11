@@ -299,7 +299,7 @@ commit and site version. Updating one provider does not reconnect the other.
 
 For GitHub, connect the organization's existing Publisher App and approve
 Actions and Workflows write access in the **GitHub account** card if requested.
-Prepare the organization's R2 media storage, then select **Set up GitHub builds**.
+Prepare the organization's R2 media storage, then select **Finish build setup**.
 Typeroll creates one private generated runner repository and verifies GitHub
 identity, isolated execution and real R2 source/artifact transfer. Site source
 repositories and version branches remain separate. A failed check cannot make

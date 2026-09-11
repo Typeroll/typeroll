@@ -98,9 +98,13 @@ export default function PublishingBuilds() {
   const github = engine?.provider === 'github';
   const active = !settings || settings.selection.provider === engine?.provider;
   const needsToken = !github && state === 'build_token_required';
+  const chooseToken = needsToken && engine?.issue?.code === 'build_token_selection_required';
+  const verifying = engine?.issue?.code === 'build_verification_running';
+  const readyToSetUp = state === 'qualification_required' && !verifying;
+  const setupLabel = state === 'ready' ? 'Update build engine' : needsToken && !engine?.worker_found ? 'Prepare build project' : 'Finish build setup';
   const projectUrl = engine?.worker_found && /^[a-f0-9]{32}$/.test(engine.account_id ?? '') && /^[a-z0-9-]+$/.test(engine.worker_name)
     ? `https://dash.cloudflare.com/${engine.account_id}/workers/services/view/${engine.worker_name}/production/settings` : null;
-  const status = busy ? 'Updating build settings…' : state === 'ready' ? 'Shared build engine ready' : state === 'approval_required' ? 'Build permissions required' : state === 'qualification_required' ? engine?.issue?.code === 'build_verification_running' ? 'Verifying shared build engine…' : github ? 'GitHub verification pending' : 'Build token found · Verification pending' : needsToken ? 'Action needed · Create a build token' : 'Shared build engine setup';
+  const status = busy ? 'Updating build settings…' : state === 'ready' ? 'Shared build engine ready' : state === 'approval_required' ? 'Build permissions required' : state === 'qualification_required' ? verifying ? 'Running a test build…' : 'Ready to finish setup' : needsToken ? chooseToken ? 'Action needed · Choose a build token' : 'Action needed · Create a build token' : 'Shared build engine setup';
   return <PublishingCard id="publishing-builds" title="Builds"
     state={state === 'ready' ? 'ready' : error || ['approval_required', 'error'].includes(state ?? '') ? 'error' : 'waiting'} status={status}>
     <p>Choose where this organization builds its sites and versions. Finished static files go to each site’s Hosting Group.</p>
@@ -112,16 +116,17 @@ export default function PublishingBuilds() {
     </>}
     {github && <p>Build minutes count toward this GitHub account’s Actions allowance. Media stays in the organization’s R2 storage.</p>}
     {engine?.account_name && <p>Build account: <strong>{engine.account_name}</strong></p>}
-    {state !== 'ready' && <p className="muted">Complete setup and verification before publishing with the shared engine.</p>}
+    {readyToSetUp && <div className="publishing-builds__setup"><h3>Next: finish build setup</h3><p>Click <strong>Finish build setup</strong> below. Typeroll will prepare the build environment and run a test build automatically. The status here will update when it finishes.</p><p>This sets up builds for your organization. It does not publish or change any live site.</p></div>}
+    {verifying && <p>Typeroll is running a test build. You can leave this page; setup continues in the background. The status updates automatically.</p>}
     {state === 'ready' && <p>{active ? 'Shared builds are active. New publications build in this account and upload static files to the site’s Hosting Group.' : 'This engine is ready. Select it below to use it for new publications.'}</p>}
     {github && state !== 'ready' && <p>Set up once for this organization. Typeroll creates a private build repository and runs a verification build through the existing GitHub connection.</p>}
     {needsToken && <div className="publishing-builds__setup">
       <h3>One-time setup in Cloudflare</h3>
-      <p>Your build permissions are approved. Cloudflare needs a build token before it can run builds. Create it in <strong>{engine?.account_name}</strong>, the organization’s build account.</p>
+      <p>{chooseToken ? 'Cloudflare has several build tokens. Choose one for this project in' : 'Create a build token for this project in'} <strong>{engine?.account_name}</strong>. Open Cloudflare setup below and follow these steps.</p>
       {projectUrl ? <>
         <a className="btn" href={projectUrl} target="_blank" rel="noopener noreferrer" onClick={() => { awaitingReturn.current = true; }}>Open Cloudflare setup <ExternalLink size={16} aria-hidden="true" /></a>
-        <details>
-          <summary>Step-by-step instructions</summary>
+        <div>
+          <h3>In Cloudflare</h3>
           <ol>
             <li>Open the link above. Confirm that the Cloudflare account is <strong>{engine?.account_name}</strong> and the Worker project is <code>{engine?.worker_name}</code>.</li>
             <li>In <strong>Settings → Builds</strong>, select <strong>Connect</strong>. Choose GitHub and the repository <code>{engine?.runner_repo}</code> from your connected GitHub account. Use branch <code>main</code>.</li>
@@ -137,12 +142,12 @@ export default function PublishingBuilds() {
           </ol>
           <p>The connection test creates a small test artifact. It does not publish a customer site. You do not need to configure each site or Hosting Group separately.</p>
           <p>If the repository is missing, check the GitHub account selected in Cloudflare. If the controls differ, use <a href="https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#api-token" target="_blank" rel="noopener noreferrer">Cloudflare’s build token instructions</a>.</p>
-        </details>
-      </> : <p>The build project has not been found in this account yet. Its preparation must finish before you can create the token here. Check the setup again after the project has been prepared.</p>}
+        </div>
+      </> : <p>The build project has not been found in this account yet. Its preparation must finish before you can create the token here. Click Prepare build project below. Typeroll will create the project and repository, then show the Cloudflare setup link here.</p>}
       <p className="muted">The token stays in Cloudflare. You do not need to paste it into Typeroll or reconnect your Cloudflare account.</p>
     </div>}
-    <button className="btn btn--secondary" disabled={busy || !engine} onClick={() => void check()}>{busy ? 'Checking…' : needsToken && projectUrl ? 'I’ve finished — check again' : 'Check build setup'}</button>
-    {engine && state !== 'approval_required' && engine.issue?.code !== 'build_verification_running' && <button className="btn" disabled={busy} onClick={() => void setup()}>{state === 'ready' ? 'Update build engine' : github ? 'Set up GitHub builds' : 'Set up shared builds'}</button>}
+    {engine && state !== 'approval_required' && !verifying && <button className="btn" disabled={busy} onClick={() => void setup()}>{setupLabel}</button>}
+    <button className="btn btn--secondary" disabled={busy || !engine} onClick={() => void check()}>{busy ? 'Checking…' : needsToken && projectUrl ? 'I’ve finished — check again' : 'Refresh status'}</button>
     {github && state === 'approval_required' && <a className="btn" href="#github">Review GitHub permissions</a>}
     {!github && state === 'approval_required' && <button className="btn" disabled={busy} onClick={() => void approve()}>Approve build permissions</button>}
     {settings && !active && state === 'ready' && <button className="btn" disabled={busy} onClick={() => void manage('select')}>Use {github ? 'GitHub Actions' : 'Cloudflare'} for new builds</button>}
@@ -152,8 +157,8 @@ export default function PublishingBuilds() {
     </li>)}</ul></section>}
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status" className="publishing-builds__notice">{notice}</p>}
-    {!notice && engine?.issue && !needsToken && <p>{engine.issue.message}</p>}
-    {!github && <details><summary>Why is this step needed?</summary>
+    {!notice && engine?.issue && !needsToken && !readyToSetUp && !verifying && <p>{engine.issue.message}</p>}
+    {needsToken && <details><summary>Why is this step needed?</summary>
       <p>Cloudflare’s sign-in approval allows Typeroll to manage build settings, but cannot create the first build token. Cloudflare creates that token in its own dashboard. Once it exists, Typeroll can detect it through the existing connection.</p>
       <p>Finding a token confirms this setup step. The shared engine must still finish its setup and verification before it can publish sites.</p>
     </details>}
