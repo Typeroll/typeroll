@@ -1,0 +1,79 @@
+---
+title: Website and media domains
+description: Configure organization media, Hosting Group site addresses and site-specific domains, then prepare and verify domain changes before traffic cutover.
+---
+
+Different settings own different addresses. You can use only the selected
+subdomains for Typeroll while keeping the root website, email and unrelated
+subdomains on other services.
+
+| Scope         | Setting             | Example                                     |
+| ------------- | ------------------- | ------------------------------------------- |
+| Organization  | Shared media host   | `media.example.com`                         |
+| Hosting Group | Site address base   | `sites.example.com` or `sites2.example.com` |
+| Site          | Website host        | `www.customer.example`                      |
+| Site          | Optional media host | `images.customer.example`                   |
+
+A site address base is a parent for generated site and version addresses. It does
+not itself serve a website. Default's base is configured in organization setup;
+additional groups have their own settings.
+
+## Set organization domains
+
+Open **Account → Publishing → Organization domains**. With Cloudflare DNS access,
+choose a domain and enter the short **Media subdomain** and **Sites subdomain**
+labels. Review the complete addresses and select **Configure domains**.
+The refresh icon next to the domain list retrieves newly available zones.
+
+For external or agent-managed DNS, expand **Manual settings or external DNS**,
+supply the full hostnames and follow the returned records. **Check domain status**
+reports the current result. Media migration and certificate checks can complete
+after settings have been saved; read each status before publishing.
+
+R2's shared media custom domain must belong to a Cloudflare zone in the same
+account as its bucket. Keeping authoritative DNS elsewhere requires a supported
+Cloudflare partial setup; selecting manual DNS does not remove that provider
+requirement. See [external DNS requirements](../../guides/customer-publishing/#when-dns-is-hosted-elsewhere).
+
+## Add a Site's website and media hosts
+
+Open **Site settings → Publishing → Website and media addresses**. Enter the
+website host and optional media host. Choose the media path prefix: a separate
+media hostname can use an empty prefix, while sharing the website host can use
+`/media`.
+
+A media item's `public_path` can retain an old path such as
+`/wp-content/uploads/2024/photo.jpg`. The next publication uses the selected
+preferred host and paths. Existing organization media links and previously
+published aliases remain usable; changing a preferred host does not invalidate
+them. Referenced media is included in static output, not committed as images to GitHub.
+
+## Prepare before switching traffic
+
+1. Save the future hosts. This records the intended addresses while the current
+   public website remains active.
+2. Select **Prepare domain change from published content**. The candidate uses
+   the last successful publication, not newer saved CMS edits. The build updates
+   internal absolute links, canonicals, sitemap URLs and media references.
+3. Follow **Domain verification**, applying the returned validation records if
+   DNS is managed externally. Wait for the required artifact and certificate checks.
+4. When allowed, select **Switch website traffic**, or apply the reviewed DNS
+   change through your provider or AI agent.
+5. Wait for Typeroll to verify the actual public address.
+
+Some Pages hostname validations require traffic DNS to point at Cloudflare
+before a certificate can be issued. Typeroll keeps the change blocked when it
+cannot verify a safe candidate. The workflow does not guarantee a seamless
+cutover for every provider configuration. See the
+[full domain-change procedure](../../guides/customer-publishing/#prepare-a-domain-change-before-switching-traffic).
+
+## Use your own AI agent
+
+The API and MCP return the same domain requirements as the UI. An agent with
+its own DNS-provider access can apply them, then request verification in
+Typeroll. Domain writes use a configuration revision to reject stale changes.
+Organization connections require an organization key; site domain writes require
+site admin permission. See the [API and MCP mapping](../../guides/customer-publishing/#api-and-mcp).
+
+For sites still using the older managed publishing mode, use the separately
+labelled [legacy managed-domain guide](../../guides/custom-domain/).

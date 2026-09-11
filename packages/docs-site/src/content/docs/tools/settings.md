@@ -109,7 +109,7 @@ change.
 `get_site` returns site metadata (ID, name, domain, creation date) plus a `urls`
 object. `list_sites` returns all sites in your account.
 
-Claude uses these to confirm which site it's working on before making changes.
+The AI agent uses these to confirm which site it's working on before making changes.
 
 ### Is my site live?
 
@@ -132,7 +132,7 @@ Create a new site called "Lakeside Cafe" for lakesidecafe.se.
 
 Requires an **org-scoped** API key. A site-scoped key can only reach the one site
 it was issued for, which is the point of the distinction — see
-[Install the MCP Server](/getting-started/mcp-server/).
+[Install the MCP Server](../../getting-started/mcp-server/).
 
 ## `update_site`
 

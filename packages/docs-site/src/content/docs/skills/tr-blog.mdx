@@ -18,15 +18,15 @@ import { Aside } from "@astrojs/starlight/components";
 
 ## Important: static site means manual sync
 
-Typeroll generates a static site — there is no template engine that auto-renders collection items. Instead, Claude writes the listing HTML directly from the current items. This means:
+Typeroll generates a static site — there is no template engine that auto-renders collection items. Instead, the AI agent writes the listing HTML directly from the current items. This means:
 
 - **Adding a new article** requires updating the listing page HTML too
-- Claude handles this automatically when you say "add a new article to the blog"
-- There is no magic sync — ask Claude explicitly after adding articles
+- the AI agent handles this automatically when you say "add a new article to the blog"
+- There is no magic sync — ask the AI agent explicitly after adding articles
 
 <Aside type="caution">
-  If you add articles directly in the portal's Collections UI (not through
-  Claude), the listing page won't update automatically. Ask Claude to
+  If you add articles directly in the portal's Collections UI (not through the
+  AI agent), the listing page won't update automatically. Ask the AI agent to
   "regenerate the blog listing" afterwards.
 </Aside>
 

@@ -9,7 +9,7 @@ import { Aside } from "@astrojs/starlight/components";
 
 ## What it does
 
-Claude runs through a complete site setup in one session:
+The AI agent runs through a complete site setup in one session:
 
 1. Reads the current site state
 2. Updates site settings (name, language, fonts, colour palette)
@@ -29,7 +29,7 @@ clean sans-serif body (Inter). Pages: Start, Om oss, Tjänster, Kontakt.
 Swedish. The contact page should have a form.
 ```
 
-## Design conventions Claude follows
+## Design conventions the AI agent follows
 
 - **One `<h1>` per page** — the page title. Sections use `<h2>`.
 - **CSS variables for all colours and fonts** — `var(--color-primary)`, `var(--font-heading)`, etc. Never hardcoded hex values in content HTML.
@@ -52,18 +52,19 @@ Swedish. The contact page should have a form.
 ## Tips
 
 <Aside type="tip">
-  Give Claude a reference site or describe the "mood" (Nordic minimal, warm
-  artisan, modern tech) and it will pick a coherent palette. You can always say
-  "make it warmer" or "change the accent to terracotta" afterwards.
+  Give the AI agent a reference site or describe the "mood" (Nordic minimal,
+  warm artisan, modern tech) and it will pick a coherent palette. You can always
+  say "make it warmer" or "change the accent to terracotta" afterwards.
 </Aside>
 
 <Aside type="tip">
-  Mention the target language upfront (Swedish, English, etc.) — Claude sets
-  `language` on the site and writes all copy in that language from the start.
+  Mention the target language upfront (Swedish, English, etc.) — the AI agent
+  sets `language` on the site and writes all copy in that language from the
+  start.
 </Aside>
 
 ## Related skills
 
-- [tr-brand](/skills/tr-brand/) — refine the colour palette and typography after initial setup
-- [tr-blog](/skills/tr-blog/) — add a blog section
-- [tr-forms](/skills/tr-forms/) — add a contact or booking form
+- [tr-brand](../tr-brand/) — refine the colour palette and typography after initial setup
+- [tr-blog](../tr-blog/) — add a blog section
+- [tr-forms](../tr-forms/) — add a contact or booking form

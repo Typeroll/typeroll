@@ -5,7 +5,7 @@ description: Compose pages, partials, page templates, and collection item templa
 
 import { Aside } from "@astrojs/starlight/components";
 
-Pages, partials, page templates, and collection item templates all share one editing surface: a tree of **blocks**. Claude reaches for blocks instead of writing raw HTML — it's faster, more consistent, and the same edits Claude makes are what you see in the editor's drag-and-drop panel.
+Pages, partials, page templates, and collection item templates all share one editing surface: a tree of **blocks**. The AI agent reaches for blocks instead of writing raw HTML — it's faster, more consistent, and the same edits the AI agent makes are what you see in the editor's drag-and-drop panel.
 
 ## The two verb families
 
@@ -52,7 +52,7 @@ For pages, `page_id: "<id>"` is a shorthand for `target: { kind: "page", id: "<i
 
 ## The block library
 
-Claude calls `list_block_types` first to see what's available on the current site (core + custom + third-party in one list). Don't memorise ids — they're per-site. The library covers ~40 blocks across these groups:
+The AI agent calls `list_block_types` first to see what's available on the current site (core + custom + third-party in one list). Don't memorise ids — they're per-site. The library covers ~40 blocks across these groups:
 
 ### Layout primitives
 
@@ -88,7 +88,7 @@ The repeater abstraction collapses what used to be a dozen specialised widgets i
 - `core/team_grid` — team_member grid
 - `core/collection_list` — blog/news/any collection, items become post_cards
 
-Each alias accepts `items: [{...}]` directly — Claude passes the per-item field values and the renderer expands the alias to a repeater with the right item-block type.
+Each alias accepts `items: [{...}]` directly — the AI agent passes the per-item field values and the renderer expands the alias to a repeater with the right item-block type.
 
 ```
 "Add a feature grid with our three differentiators."
@@ -157,7 +157,7 @@ Mobile-first inheritance: missing breakpoints inherit upward from the previous d
 
 ## Authoring custom block types
 
-When the library doesn't fit, Claude creates a custom type with `create_block_type`. The block ships immediately to the editor + the renderer's registry — no deploy needed.
+When the library doesn't fit, the AI agent creates a custom type with `create_block_type`. The block ships immediately to the editor + the renderer's registry — no deploy needed.
 
 ```
 "Make a 'quote with avatar' block: square photo on the left, quote + name on the right."
@@ -177,10 +177,10 @@ When the library doesn't fit, Claude creates a custom type with `create_block_ty
 ```
 
 <Aside type="caution">
-  **Custom JavaScript is not available through Claude.** Block-level JS runs in
-  every visitor's browser with full DOM access — that's a trust decision a human
-  takes. To add a script to a custom block, open it in the portal's block-type
-  editor, toggle "Activate JS", and accept the warning.
+  **Custom JavaScript is not available through the AI agent.** Block-level JS
+  runs in every visitor's browser with full DOM access — that's a trust decision
+  a human takes. To add a script to a custom block, open it in the portal's
+  block-type editor, toggle "Activate JS", and accept the warning.
 </Aside>
 
 Origin is auto-stamped `'ai'` so the portal UI can visually flag AI-authored blocks for audit.
@@ -194,7 +194,7 @@ Origin is auto-stamped `'ai'` so the portal UI can visually flag AI-authored blo
   → update_block_type id="<custom-testimonial-id>" schema=[…updated schema…]
 ```
 
-`delete_block_type` removes a custom type. Pages currently using it render `<!-- unknown block type -->` comments instead, so Claude calls `find_pages_using_block_type` first and asks before deleting when there's usage.
+`delete_block_type` removes a custom type. Pages currently using it render `<!-- unknown block type -->` comments instead, so the AI agent calls `find_pages_using_block_type` first and asks before deleting when there's usage.
 
 ## Reorganising blocks
 

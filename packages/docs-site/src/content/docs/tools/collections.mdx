@@ -64,7 +64,7 @@ published 2025-05-15, author Anna Lindström, excerpt "Vi tror på enkelhet..."
 
 ## `list_collection_items`
 
-Returns all items in a collection. Claude uses this to regenerate listing HTML when new items are added.
+Returns all items in a collection. The AI agent uses this to regenerate listing HTML when new items are added.
 
 ## `update_collection_item`
 
@@ -108,10 +108,10 @@ home page", `paginate` for a real archive.
 
 A collection's per-item layout is either:
 
-- **`item_template_blocks`** — `Block[]` tree using `template/item_*` family bindings (preferred for new collections). Bound to the current item's fields via `{{item.title}}`, `{{item.body}}`, etc. — Claude doesn't have to type these tokens by hand; the `template/item_title`, `template/item_body`, `template/item_image` blocks read from context.
+- **`item_template_blocks`** — `Block[]` tree using `template/item_*` family bindings (preferred for new collections). Bound to the current item's fields via `{{item.title}}`, `{{item.body}}`, etc. — the AI agent doesn't have to type these tokens by hand; the `template/item_title`, `template/item_body`, `template/item_image` blocks read from context.
 - **`item_template_html`** — legacy HTML string template with `{{field}}` substitution. Still supported; the block tree wins when both are set.
 
-Use [block instance tools](/tools/blocks/) with `target: { kind: "item_template", id: "<collection_name>" }` to edit the layout:
+Use [block instance tools](../blocks/) with `target: { kind: "item_template", id: "<collection_name>" }` to edit the layout:
 
 ```
 "Make blog posts show the featured image at the top, then the title, then the body."

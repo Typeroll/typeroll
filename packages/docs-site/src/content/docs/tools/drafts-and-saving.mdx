@@ -5,7 +5,7 @@ description: Every content change lands in a draft first. Nothing reaches your v
 
 import { Aside, Steps } from "@astrojs/starlight/components";
 
-Content edits don't apply straight to your site. Every write — from Claude, from
+Content edits don't apply straight to your site. Every write — from the AI agent, from
 the portal editor, from the REST API — lands in a **working copy**: a per-document
 draft layer that sits on top of the saved content.
 
@@ -22,14 +22,14 @@ document is the file on disk, and deploying is publishing that file.
 
 <Steps>
 
-1. **Claude edits.** Changes go into the working copy. Your live site is
+1. **The AI agent edits.** Changes go into the working copy. Your live site is
    untouched. So is the saved version.
 
 2. **You review.** Ask for a preview link that includes drafts, or open the page
    in the portal editor — it shows the same draft layer with an "Unsaved
    changes" marker.
 
-3. **You save.** Say "save it" (Claude calls `commit_working_copy`), or click
+3. **You save.** Say "save it" (the AI agent calls `commit_working_copy`), or click
    **Save** in the portal's Publish menu. The draft is written into the real
    document and a revision snapshot is taken.
 
@@ -42,7 +42,7 @@ makes it public.
 
 ## What this means in practice
 
-**Chained edits compose.** When Claude reads a page it gets the draft view, not
+**Chained edits compose.** When the AI agent reads a page it gets the draft view, not
 the saved one, along with a `has_unsaved_changes` flag. So "add a section" then
 "now make its heading shorter" works exactly as you'd expect — the second edit
 sees the first.
@@ -53,13 +53,13 @@ deliberate: an unreviewed edit can never ride along with an unrelated publish.
 
 **Plain preview links show saved content too.** To see your drafts you need a
 preview that explicitly includes them — just ask ("show me a preview with the
-unsaved changes"), and Claude will request one.
+unsaved changes"), and the AI agent will request one.
 
 <Aside type="caution" title="Don't end a session on an uncommitted draft">
-  If you're happy with what Claude built, say so — "save it". Otherwise the work
-  sits in the working copy indefinitely, invisible to your visitors and easy to
-  forget. Asking Claude to deploy without saving first is the most common way
-  people end up wondering why the site didn't change.
+  If you're happy with what the AI agent built, say so — "save it". Otherwise
+  the work sits in the working copy indefinitely, invisible to your visitors and
+  easy to forget. Asking the AI agent to deploy without saving first is the most
+  common way people end up wondering why the site didn't change.
 </Aside>
 
 ## Discarding

@@ -5,13 +5,13 @@ description: Build and deploy your static site to Cloudflare Pages.
 
 ## `trigger_deploy`
 
-Starts a new deploy. Returns a `job_id` that Claude uses to track progress.
+Starts a new deploy. Returns a `job_id` that the AI agent uses to track progress.
 
 ```
 Deploy the site.
 ```
 
-Claude calls this automatically at the end of most tasks. You can also say "deploy" at any time.
+Ask the agent to deploy explicitly after you have reviewed and saved the intended changes.
 
 ### Dry runs
 
@@ -29,14 +29,14 @@ reported as `succeeded` with `dry_run: true` and no `deploy_url`.
 
 ## `get_deploy_status`
 
-Polls the deploy job for status. Claude calls this in a loop until the deploy completes or fails.
+Polls the deploy job for status. The AI agent calls this in a loop until the deploy completes or fails.
 
 Possible statuses:
 
 - `queued` — waiting to start
-- `running` — build in progress (~30–90 seconds for most sites)
+- `running` — build or distribution in progress
 - `succeeded` — deployed successfully
-- `failed` — build error (Claude will report what went wrong)
+- `failed` — build error (the AI agent will report what went wrong)
 
 ### Build cost
 
@@ -83,7 +83,7 @@ Two caveats worth stating plainly:
 
 Self-hosters can retune the rates — or set them to zero, if you run on hardware
 you already pay for — with the `DEPLOY_COST_*` environment variables. See
-[Self-Hosting](/guides/self-hosting/).
+[Self-Hosting](../../guides/self-hosting/).
 
 ## `get_preview_link`
 
@@ -97,20 +97,32 @@ The preview link is valid for 24 hours and renders saved database state, not
 the last deploy. Pass `include_working_copy: true` when the reviewer should also
 see unsaved drafts; that choice is signed into the link.
 
-## How deploys work
+## How customer publishing works
 
-1. The portal materialises all site content into a temporary directory
-2. Astro builds the static site from that content (~30–90s)
-3. The output is uploaded to Cloudflare Pages
-4. The Cloudflare CDN serves the new version globally within seconds
+1. Typeroll freezes the selected Site Version and its saved content.
+2. Generated source is committed to the Site's GitHub repository and version branch.
+3. The Organization's selected shared build engine (Cloudflare or GitHub Actions)
+   builds with pinned dependencies and the publication's media grants.
+4. Finished static files, including referenced public media, go to Cloudflare
+   Pages in the Site's Hosting Group account.
+5. Typeroll verifies the public deployment before exposing its link.
 
-Only `status: "published"` pages are included in the build. Draft and review pages are excluded.
+Published and unlisted pages can be deployed. Draft and review pages are
+excluded. Unlisted pages use `noindex`; non-main versions and default-domain
+demos also remain out of search indexes. Build times depend on the content,
+provider queue, dependencies and media work.
+
+Legacy managed and self-hosted publishing can execute builds in the portal's
+configured runtime. Reported server-cost estimates describe that runtime; they
+are not the customer's Cloudflare or GitHub invoice.
 
 ## Deploy URLs
 
-After a successful deploy, Claude reports the site URL:
+New customer-publishing sites use the assigned Hosting Group's site address base
+or their configured custom domain. They do not receive a permanent Typeroll
+subdomain. The `main` version uses the live branch; other versions use
+`version-<version-id>` branches and separate addresses.
 
-- Typeroll subdomain: `https://your-site.sites.typeroll.com`
-- Custom domain (if configured): `https://yourdomain.com`
-
-Both URLs update with every deploy.
+A saved **Published** status is not a live-link guarantee. Wait for the job's
+public availability verification. Use [Publishing](../../guides/customer-publishing/)
+for setup and [Website and media domains](../../publishing/domains/) for domain changes.

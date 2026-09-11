@@ -1,90 +1,70 @@
 ---
-title: Your First Site
-description: A complete walkthrough — from a blank portal to a deployed site — using Claude and the Typeroll MCP server.
+title: Your first site
+description: Create a site, edit or generate content, review a preview, and publish the saved version from Typeroll CMS.
 ---
 
-import { Steps, Aside } from "@astrojs/starlight/components";
+## 1. Create a site
 
-This guide walks you through creating a complete site from scratch. By the end you'll have a deployed site with a homepage, inner pages, and a working deploy pipeline.
+In the portal, choose the **Organization** and select **New site**. You can also
+ask an [authenticated AI agent](../mcp-server/) to create one using
+an organization-scoped key. A site-scoped key cannot create other sites.
 
-## Before you start
+You do not need GitHub, Cloudflare or a custom domain to start editing.
 
-- MCP server installed and connected (see [Install the MCP Server](/getting-started/mcp-server/))
-- Skills installed in `.claude/skills/` or `~/.claude/skills/`
-- A site created in the portal (or ask Claude to create one)
+## 2. Add content
 
-## The conversation
+Choose the Site, open **Pages** and create a page. Open it in the
+[visual editor](../../guides/the-editor/) to add blocks and edit their fields.
 
-Open Claude Code and start chatting. Claude picks up the `tr-new-site` skill automatically when you describe a new site.
+With an AI agent, describe the site and the work you want it to do. For example:
 
-```
-Create a new site for Bergström Arkitektur — a Stockholm architecture firm.
-Minimal Scandinavian aesthetic: lots of white space, dark charcoal text,
-one accent colour (terracotta). They have a portfolio of projects, an about page
-and a contact form. The site should be in Swedish.
-```
-
-Claude will:
-
-1. **Read the existing site** (or ask you for a site ID if there's more than one)
-2. **Update settings** — site name, language (`sv`), fonts, colour palette
-3. **Create the header partial** — logo, navigation with links to all planned pages
-4. **Create the footer partial** — contact info, social links
-5. **Create the homepage** — hero, featured projects section, about teaser, CTA
-6. **Create inner pages** — Portfolio, Om oss, Kontakt (with a form)
-7. **Get a preview link** — so you can review before deploying
-8. **Deploy** — when you say "looks good, deploy it"
-
-<Aside type="tip">
-  You don't need to give Claude all the details upfront. Start with the basics;
-  you can always say "now add a Services section to the homepage" or "change the
-  accent colour to indigo" later.
-</Aside>
-
-## Review and iterate
-
-After Claude finishes the initial setup, ask for a preview:
-
-```
-Show me the preview link
+```text
+Create a small website for a landscape design studio: Home, Projects and Contact.
+Use our existing site settings, header and footer. Build editable blocks.
+Keep the pages as drafts and show me a preview before publishing.
 ```
 
-Open the link and look at:
+The agent uses your site's settings, blocks, templates and API tools. If it works
+with multiple sites, have it confirm the selected Site and Version before changes.
+The bundled `tr-new-site` recipe is optional; clients load recipe files differently.
 
-- Does the navigation include all pages?
-- Does the colour palette match what you described?
-- Are fonts loading correctly?
-- Does the homepage tell the right story?
+## 3. Review and save
 
-Give feedback naturally:
+Open the editor's **Publish** menu and use **Review changes** to compare the
+working copy with saved content. Select **Save** when the changes are ready.
 
-```
-The hero text is too long — trim it to one punchy line.
-The navigation should also include "Projekt" not just "Portfolio".
-Add a footer link to their Instagram: @bergstromarkitektur
-```
+For an agent-created preview, request `include_working_copy: true` to include
+unsaved changes. A normal preview shows saved CMS content, which can differ from
+the last public deployment. Expiring previews do not publish a permanent site.
 
-Claude reads the current state of the site and makes targeted changes. You never touch the HTML directly.
+Check navigation, text, image alt text and the mobile layout. Use the editor to
+correct content or ask the agent to make a specific change, then save it.
 
-## Deploy
+## 4. Set up publishing
 
-When you're happy:
+Open **Account → Publishing**. An organization owner or admin completes the
+[account and domain setup](../../guides/customer-publishing/) and selects the build
+provider. The Site uses its assigned Hosting Group for static hosting.
 
-```
-Deploy it
-```
+The site's default address is under that group's configured site address base.
+New customer-publishing sites do not get a permanent `typeroll.com` subdomain.
 
-Claude calls `trigger_deploy`, waits for the build to finish, and gives you the live URL. The site is on Cloudflare Pages — globally fast, no servers to manage.
+## 5. Publish the saved version
 
-```
-Site deployed! Live at: https://bergstromarkitektur.sites.typeroll.com
+Select the intended **Version**. In **Publish**, set ready pages to **Published**,
+then select **Deploy**. Review the changes listed beneath the deploy control.
+The agent equivalent is to save content, set its status and call `trigger_deploy`.
 
-You can connect a custom domain in the portal under Settings → Domain.
-```
+Wait while the build and distribution are verified. The public link appears
+automatically when the deployed artifact is available. A saved **Published**
+status alone does not mean the page is live.
 
-## What's next
+The `main` version is the live branch; other versions use separate branch
+addresses with `noindex`. See [Deploy tools](../../tools/deploy/).
 
-- **Custom domain** — [connect your own domain](/guides/custom-domain/)
-- **Add a blog** — tell Claude "set up a blog with three seed articles"
-- **Contact form** — tell Claude "add a contact form that sends to hej@bergstrom.se"
-- **SEO** — tell Claude "audit and fix the SEO for all pages"
+## Next steps
+
+- [Prepare your website and media domains](../../publishing/domains/).
+- [Add Forms](../../apps/forms/) and verify a submission before sharing the site.
+- [Check SEO and indexing](../../technical/seo-and-indexing/).
+- [Run the CMS yourself](../../guides/self-hosting/).

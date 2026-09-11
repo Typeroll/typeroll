@@ -1,0 +1,56 @@
+---
+title: Migrate from Squarespace
+description: Move accessible Squarespace content into Typeroll CMS with an AI agent, then verify images, links and redirects before publishing.
+---
+
+Use the [Import from URL recipe](../../skills/tr-import-url/) with your connected AI
+agent. This is a content migration workflow, not a Squarespace account connector
+or an automatic conversion of a Squarespace template.
+
+## What can move
+
+The agent can read accessible public pages, extract text and semantic HTML,
+transfer reachable images through Typeroll's media API, and create pages or
+collection content. Preserve existing paths where possible and record redirects
+for paths that change.
+
+Layouts, galleries and repeated sections need to be rebuilt using the target
+site's blocks, templates and styles. Forms, commerce, member areas, scheduling,
+analytics scripts and other hosted behavior need separate replacements or
+integrations. They are not transferred by copying page HTML.
+
+## Before you start
+
+Create the target Site and set up its design, header and footer. Give your agent
+an API or MCP connection, the source address and the pages that matter. Keep the
+Squarespace site available until content and media have been verified.
+
+Squarespace's XML export covers selected content and is primarily intended for
+WordPress. It is not a complete site backup or a dedicated Typeroll import
+format. See [Squarespace's export guide](https://support.squarespace.com/hc/en-us/articles/206566687-Exporting-your-site)
+for its current exclusions.
+
+## Migration steps
+
+1. Ask the agent to inventory the homepage, sitemap and internal links. Compare
+   the result with your own page list, including blog posts and image-heavy pages.
+2. Import one representative page as a draft. Have the agent extract content,
+   transfer the images and adapt it to the target design.
+3. Review it in the [visual editor](../the-editor/). Imported HTML is not
+   automatically a fully editable block tree; request blocks for sections your
+   editors need to maintain visually.
+4. Import the remaining pages. Rebuild galleries, Forms and navigation, and
+   record redirects for changed URLs.
+5. Review text, headings, image alt text, canonicals and mobile layout. Ask for
+   a report of inaccessible or skipped URLs rather than assuming full coverage.
+6. Save approved content and complete [publishing setup](../customer-publishing/).
+   Verify a test deployment before [moving the live domain](../../publishing/domains/).
+
+```text
+Import the public content from https://source.example into this Typeroll Site.
+Use our existing design. Start with one gallery page as a draft, report anything
+unavailable, and keep a list of old and new URLs. Do not publish yet.
+```
+
+If a page blocks fetching or needs authentication, supply the text, images or
+source files you can legitimately access. Do not treat missing HTML as an empty page.

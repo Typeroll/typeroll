@@ -1,0 +1,53 @@
+---
+title: Migrate from Webflow
+description: Import Webflow page content or export files into Typeroll CMS with an AI agent, and map collections, images and old URLs explicitly.
+---
+
+Use an [AI agent](../../getting-started/mcp-server/) and the
+[Import from URL recipe](../../skills/tr-import-url/) to adapt accessible Webflow
+content to a Typeroll Site. There is no dedicated Webflow account connector.
+
+## Choose your source
+
+Publicly accessible HTML can supply rendered page content. If your Webflow plan
+provides code export, those files can also serve as input for the agent.
+Webflow's code export does not include the CMS and ecommerce databases or all
+hosted functionality. Collection CSV exports are separate; plan their field
+mapping explicitly. See [Webflow's code export documentation](https://help.webflow.com/hc/en-us/articles/33961386739347-How-do-I-export-my-Webflow-site-code).
+
+## What can move
+
+The agent can extract page text, semantic structure and reachable images. For
+collection data, define the target Typeroll schema, map exported fields and
+references, then create items through the collection tools.
+
+Webflow classes, layout rules and interactions are not a guaranteed editable
+Typeroll block structure. Rebuild shared headers, footers and page templates in
+Typeroll. Forms, ecommerce, account features, search and external scripts require
+separate decisions and testing.
+
+## Migration steps
+
+1. Create the target Site, design settings and shared layout. Inventory static
+   pages and collection detail pages as separate groups.
+2. Provide public URLs or source files to the agent. If using CSV, agree the
+   collection schema and URL mapping before importing records.
+3. Import one static page and one collection item as drafts. Transfer media and
+   replace source-specific styling with the target design.
+4. Review the result in the [editor](../the-editor/). Request blocks for
+   sections that clients need to edit; HTML import alone does not create them.
+5. Import remaining content, check relationships, rebuild dynamic functions and
+   create redirects for changed paths. Report missing records and media.
+6. Save approved content and verify a deployment with your
+   [publishing accounts](../customer-publishing/) before preparing the
+   [production-domain switch](../../publishing/domains/).
+
+```text
+Import these Webflow pages and the supplied collection CSV into this Typeroll Site.
+Propose the collection schema and URL mapping first. Rebuild shared layouts as
+Typeroll templates, preserve image alt text, and keep the content as drafts.
+```
+
+Verify forms, filtering, navigation, media paths and metadata independently.
+A successful content import does not prove the old site's interactive features
+have been recreated.

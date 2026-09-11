@@ -425,15 +425,15 @@ durable jobs and is not the production installation profile.
 
 ## Hosted MCP connector
 
-A self-hosted portal serves the MCP Streamable HTTP transport at `/api/mcp` automatically — no extra deployment step. Your users add `https://<your-portal-host>/api/mcp` to Claude Desktop / claude.ai under **Settings → Connectors → Add custom connector**, follow the consent screen, and paste a Typeroll API key (org-scoped from `/app/settings/api-keys` is the right default).
+A self-hosted portal serves the MCP Streamable HTTP transport at `/api/mcp` automatically — no extra deployment step. Your users add `https://<your-portal-host>/api/mcp` as a remote server in their MCP-compatible client, follow the consent screen, and enter a Typeroll API key (org-scoped from `/app/settings/api-keys` is the right default).
 
 Requirements specific to this endpoint:
 
 - `MCP_OAUTH_SIGNING_KEY` set (see above). Without it the `/api/mcp/oauth/token` endpoint refuses to issue JWTs.
 - `PORTAL_PUBLIC_URL` set to the public origin (`https://<your-portal-host>`). The OAuth `aud` claim and the well-known metadata endpoints use this to bind issued tokens to your domain per RFC 8707.
-- TLS — Claude Desktop refuses non-HTTPS connectors.
+- TLS for remotely hosted MCP clients.
 
-Claude Code users with terminal access can keep using the stdio install (`npx -y @typeroll/mcp-server` with `TYPEROLL_API_URL` pointed at your portal). Same tool surface, same API keys.
+Agent clients with local process support can keep using the stdio install (`npx -y @typeroll/mcp-server` with `TYPEROLL_API_URL` pointed at your portal). Same tool surface, same API keys.
 
 ## Extensions
 
@@ -455,7 +455,7 @@ instead of assuming the hosted Typeroll domain. During key rotation, set
 window, issue all new tokens with the new private key, then remove the old keys
 after the longest token and pairing lifetime has passed.
 
-See [Extensions](/extensions/overview/) for the manifest, runtime, provider,
+See [Extensions](../../extensions/overview/) for the manifest, runtime, provider,
 and recipient-link contracts.
 
 The Extension protocol does not bundle premium Typeroll Apps. Those apps are

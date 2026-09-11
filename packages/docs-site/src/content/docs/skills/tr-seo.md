@@ -19,7 +19,7 @@ You don't need to configure these — they work out of the box:
 | `<link rel="canonical">`    | From `page.canonical_url` (defaults to page URL)                       |
 | Article JSON-LD             | Automatic for `kind: "article"` pages with `author` + `date_published` |
 
-## What Claude audits and fixes
+## What the AI agent audits and fixes
 
 ### Meta descriptions
 
@@ -67,8 +67,8 @@ Set a default title suffix and write meta descriptions for all pages.
 
 **"Acme Studio — Acme Studio"** — happens when `title` and `default_seo_suffix` are the same text. Fix: set an explicit `seo_title` for the homepage.
 
-**JSON-LD is a string** — the `json_ld` field takes the entire schema as a JSON-encoded string, not a nested object. Claude handles this correctly when using the `update_page` tool.
+**JSON-LD is a string** — the `json_ld` field takes the entire schema as a JSON-encoded string, not a nested object. The AI agent handles this correctly when using the `update_page` tool.
 
-**OG images need absolute URLs** — CDN URLs (`cdn.typeroll.com`) are always absolute. Don't use relative paths.
+**OG images need absolute URLs** — Use the absolute URL returned by the media API for the configured media host. Don't use relative paths.
 
 **`canonical_url` + `noindex` together** — noindexed pages don't pass equity, so a canonical on a noindexed page is redundant. Use one or the other.

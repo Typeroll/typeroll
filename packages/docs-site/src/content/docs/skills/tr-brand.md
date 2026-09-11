@@ -7,7 +7,7 @@ description: Palette recipes by mood, typography pairings, and CSS variable setu
 
 ## What it does
 
-Claude picks a coherent colour palette and typography pairing based on the brand's mood, then applies it via `update_site_settings` and shows a preview.
+The AI agent picks a coherent colour palette and typography pairing based on the brand's mood, then applies it via `update_site_settings` and shows a preview.
 
 ## Mood presets
 
@@ -94,7 +94,7 @@ size_base: 16   (1rem = 16px — the default)
 
 Headings scale from this base using Typeroll's built-in fluid type scale.
 
-## How Claude applies it
+## How the AI agent applies it
 
 1. Asks (or infers from context) which mood fits the brand
 2. Calls `update_site_settings` with the full `colors` and `fonts` objects

@@ -5,24 +5,51 @@ description: The visual block editor — adding blocks, editing on the canvas, r
 
 import { Aside, Steps } from "@astrojs/starlight/components";
 
-Most people let Claude build pages and only open the editor to adjust things by
-hand. That's the intended split: the agent does the heavy lifting, the editor is
-where you nudge, review and publish.
+Use the visual editor to create pages, maintain content and review changes made
+by an AI agent. Browser editing does not require an AI connection or publishing
+accounts.
 
-Open it by clicking a page in **Pages**.
+Choose the **Organization**, select the **Site** and **Version**, then open
+**Pages** and select a page. On a phone, open the sidebar menu first.
 
-## Layout
+## Desktop layout
 
-The editor is three columns:
+<img
+  src="../../images/editor-desktop.png"
+  alt="The real Typeroll CMS block editor with sample content: structure on the left, preview in the middle and heading fields on the right."
+  width="1440"
+  height="900"
+  loading="lazy"
+/>
 
-| Column     | What it holds                                                                                         |
-| ---------- | ----------------------------------------------------------------------------------------------------- |
-| **Left**   | Two tabs — **Add** (the block library) and **Structure** (the block tree)                             |
-| **Centre** | A live preview of the page. This is the real renderer, not an approximation                           |
-| **Right**  | Fields for whatever is selected — a block's own fields, or **Page metadata** when nothing is selected |
+The editor displays three panels when the screen is wide enough:
 
-The header carries undo/redo, the device switcher, **Meta**, and the
-**Publish ▾** menu.
+| Panel  | What it holds                                                              |
+| ------ | -------------------------------------------------------------------------- |
+| Left   | **Add** for the block library and **Structure** for the page's block tree. |
+| Center | A live preview rendered from the page content.                             |
+| Right  | Fields for the selected block, or page metadata when no block is selected. |
+
+The header provides undo/redo, preview devices, **Meta** for page settings and
+**Publish** for saving, status and deployment.
+
+## On a phone
+
+Narrow screens show one panel at a time. Use **Blocks**, **Preview** and
+**Edit block** or **Settings** to switch panels. Select a block from **Structure**
+to open its fields. **Publish** stays in the header, including the deploy control
+when publishing setup and your permissions allow it.
+
+<img
+  src="../../images/editor-mobile.png"
+  alt="Mobile editor showing the selected heading's editable fields and the Blocks, Preview and Edit block panel controls."
+  width="390"
+  height="844"
+  loading="lazy"
+/>
+
+The mobile layout changes how you navigate the editor. The preview device
+selector separately controls which responsive breakpoint you are editing.
 
 ## Adding blocks
 
@@ -73,7 +100,7 @@ to before you started typing, not one character at a time.
 
 <Aside type="tip">
   Undo is cheap and safe here: it only ever rewrites your draft, never the saved
-  page. See [Drafts & Saving](/tools/drafts-and-saving/).
+  page. See [Drafts & Saving](../../tools/drafts-and-saving/).
 </Aside>
 
 ## Responsive editing
@@ -122,30 +149,32 @@ The same panel holds the **Template** picker and the **Content mode** switch
 
 ## Saving and publishing
 
-Everything you do autosaves — into a **draft**, not onto the live page. The
-header shows the save state, and the **Publish ▾** menu is where work actually
-goes out:
+Content edits are kept in a **working copy**. They do not change the saved
+publication input or the live site until you save and deploy. Read the save state
+in the header, then open **Publish**:
 
 <Steps>
 
 1. **Changes** — Save (commits the draft) or Discard (throws it away).
 
 2. **Status** — Draft, In review, Unlisted, or Published. Status changes apply
-   immediately; they aren't drafted, because the status _is_ the publish
-   decision.
+   to the saved page. They control inclusion in the next deployment; changing
+   status does not by itself deploy the site.
 
 3. **Deploy** — rebuilds the static site from saved, published content. The panel
-   lists exactly what changed since the last deploy, so the button is never a
-   mystery.
+   summarizes pending changes below the deploy control. Open the change list
+   for details. Build and distribution progress appear here; a public link is
+   shown only after the deployment has been verified.
 
 </Steps>
 
-This is the only place to save, change status or deploy — deliberately, so there
-aren't competing buttons that mean subtly different things.
+The Pages list also provides a site publishing control. If deployment is locked,
+follow the link to [Publishing setup](../customer-publishing/). You can keep
+editing and use expiring previews while setup is incomplete.
 
 ### Reviewing before you save
 
-If Claude built something substantial, use **Review changes**. It shows the saved
+If the AI agent built something substantial, use **Review changes**. It shows the saved
 page and your draft side by side in the same renderer, plus a structured list of
 what changed block by block.
 

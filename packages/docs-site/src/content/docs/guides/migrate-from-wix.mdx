@@ -1,0 +1,54 @@
+---
+title: Migrate from Wix
+description: Rebuild Wix content in Typeroll CMS with your AI agent, preserving URLs and images while replacing Wix-specific functionality.
+---
+
+A Wix migration recreates your content in Typeroll CMS. It does not move the Wix
+application itself. Wix documents that its site technology depends on Wix hosting;
+do not plan around a complete HTML export that can run unchanged elsewhere.
+See [Wix's hosting and export explanation](https://support.wix.com/en/article/exporting-or-embedding-your-wix-site-elsewhere).
+
+## What can move
+
+Use public page content that your agent can retrieve, or provide text, original
+images and authorized source material yourself. The agent can create Typeroll
+pages and collections through the API or MCP and upload the required media.
+
+Wix layouts, animations, forms, bookings, stores, memberships and app behavior do
+not become Typeroll features just by copying visible content. Plan replacements
+for the functionality you still need. Screenshots can guide layout, but they do
+not contain editable text, original images or application data.
+
+## Before you start
+
+Create a target Site and define its design. List the current public paths and
+collect source image files. Identify business functions such as forms and
+bookings separately from page content. Keep Wix live during review.
+
+A page may rely on JavaScript or block automated fetching. Have your agent check
+what it actually receives; do not assume every Wix page is either fully readable
+or an empty shell.
+
+## Migration steps
+
+1. Connect your [AI agent](../../getting-started/mcp-server/) and provide the source
+   address, page list and any text or image files needed to fill gaps.
+2. Ask it to use the [Import from URL recipe](../../skills/tr-import-url/) and report
+   inaccessible pages before creating replacements.
+3. Rebuild a representative page as a draft using blocks where you want visual
+   editing. Review it on desktop and mobile before importing the rest.
+4. Transfer images through Typeroll media tools. Recreate Forms and other
+   integrations separately, including their success and error states.
+5. Keep paths where practical and create redirects for changed URLs. Check
+   each source URL against the [migration inventory](../../tools/migration-urls/).
+6. Save reviewed content, [set up publishing](../customer-publishing/) and
+   test the site before changing the [live domain](../../publishing/domains/).
+
+```text
+Rebuild these Wix pages in this Typeroll Site using editable blocks.
+Use the supplied text and original images where public fetching is incomplete.
+List functionality that needs a replacement. Keep everything as drafts.
+```
+
+Typeroll does not currently provide a dedicated one-click Wix account importer.
+The amount of manual preparation depends on the source content and integrations.

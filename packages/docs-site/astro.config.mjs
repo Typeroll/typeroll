@@ -1,16 +1,27 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import starlightLlmsTxt from 'starlight-llms-txt';
+import { docsTarget } from './scripts/docs-target.mjs';
+
+const target = docsTarget();
 
 export default defineConfig({
-  site: 'https://docs.typeroll.com',
+  site: target.site,
+  base: target.base,
+  outDir: target.output,
   integrations: [
     starlight({
       title: 'Typeroll CMS',
+      components: { Head: './src/components/DocsHead.astro', PageTitle: './src/components/DocsPageTitle.astro' },
+      plugins: [starlightLlmsTxt({
+        projectName: 'Typeroll CMS',
+        description: 'Documentation for the open-source CMS: visual editing, AI agents, static publishing and self-hosting.',
+      })],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/typeroll/typeroll' },
       ],
       editLink: {
-        baseUrl: 'https://github.com/typeroll/typeroll/edit/main/packages/docs-site/src/content/docs/',
+        baseUrl: 'https://github.com/typeroll/typeroll/edit/main/packages/docs-site/',
       },
       customCss: ['./src/styles/custom.css'],
       sidebar: [
@@ -20,6 +31,32 @@ export default defineConfig({
             { label: 'Introduction', slug: 'getting-started/introduction' },
             { label: 'Install the MCP Server', slug: 'getting-started/mcp-server' },
             { label: 'Your First Site', slug: 'getting-started/first-site' },
+          ],
+        },
+        {
+          label: 'Visual editor',
+          items: [
+            { label: 'Edit pages', slug: 'guides/the-editor' },
+            { label: 'Drafts, saving and review', slug: 'tools/drafts-and-saving' },
+            { label: 'Blocks and templates', slug: 'tools/blocks' },
+          ],
+        },
+        {
+          label: 'Publishing',
+          items: [
+            { label: 'Connect your accounts', slug: 'guides/customer-publishing' },
+            { label: 'Cloudflare hosting and builds', slug: 'publishing/cloudflare' },
+            { label: 'Website and media domains', slug: 'publishing/domains' },
+            { label: 'Deploy and preview tools', slug: 'tools/deploy' },
+          ],
+        },
+        {
+          label: 'Migration',
+          items: [
+            { label: 'From WordPress', slug: 'guides/wordpress-migration' },
+            { label: 'From Squarespace', slug: 'guides/migrate-from-squarespace' },
+            { label: 'From Wix', slug: 'guides/migrate-from-wix' },
+            { label: 'From Webflow', slug: 'guides/migrate-from-webflow' },
           ],
         },
         {
@@ -90,9 +127,7 @@ export default defineConfig({
         {
           label: 'Guides',
           items: [
-            { label: 'The Editor', slug: 'guides/the-editor' },
-            { label: 'Custom Domain', slug: 'guides/custom-domain' },
-            { label: 'WordPress Migration', slug: 'guides/wordpress-migration' },
+            { label: 'Legacy managed domains', slug: 'guides/custom-domain' },
             { label: 'Self-Hosting', slug: 'guides/self-hosting' },
           ],
         },

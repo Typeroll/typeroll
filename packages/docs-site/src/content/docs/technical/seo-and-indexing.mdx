@@ -9,10 +9,12 @@ This page documents what Typeroll emits at build time, what the runtime layer do
 
 ## The two-URL problem
 
-Every Typeroll site is reachable from at least two URLs:
+The fallback-domain and activation details below describe legacy managed hosting. For current customer-owned publishing, use [Website and media domains](../../publishing/domains/): the organization or Hosting Group supplies the address base, and a domain change prepares a candidate before traffic is moved. Creating a site alone does not give it a public Typeroll subdomain.
+
+In legacy managed hosting, a site can be reachable from two URLs:
 
 1. **The fallback subdomain** — `<slug>.sites.typeroll.com` (or your self-hosted equivalent). Auto-provisioned when the site is created. Never goes away.
-2. **The custom domain** — `www.example.com`. Optional. Declared through the [domain lifecycle](/guides/custom-domain/) (domain-first: it becomes canonical the moment you declare it, before DNS).
+2. **The custom domain** — `www.example.com`. Optional. Declared through the [domain lifecycle](../../guides/custom-domain/) (domain-first: it becomes canonical the moment you declare it, before DNS).
 
 Both serve the same Cloudflare Pages build. Without deliberate effort, Google would treat them as duplicate content, split page rank between them, and possibly surface the wrong URL in SERPs.
 
@@ -149,7 +151,7 @@ Every build emits **`/llms.txt`**: a plain-text, machine-readable map of the sit
 — what it is, and what's on it, with titles, URLs and descriptions.
 
 It's the emerging convention for the same job `robots.txt` and `sitemap.xml` do
-for crawlers, aimed at assistants like ChatGPT, Claude and Perplexity. Where a
+for crawlers, aimed at AI assistants. Where a
 sitemap says _which URLs exist_, `llms.txt` says _what this site is about_ in a
 form a model can consume without rendering pages or guessing from markup.
 
@@ -159,7 +161,7 @@ so it can't drift from the site the way a hand-maintained file would.
 This matters more than it looks. Assistants increasingly answer "who should I
 hire for X in Y" directly, and a site they can parse confidently is a site
 they're more likely to cite. If you've enabled the
-[Analytics app](/guides/apps-and-analytics/), the Insights page shows how many
+[Analytics app](../../guides/apps-and-analytics/), the Insights page shows how many
 visits actually arrive from those assistants.
 
 ## Structured data (JSON-LD)
@@ -214,7 +216,7 @@ The full set, plus per-page overrides, lives in [packages/site-template/src/comp
 
 A Typeroll site serves one domain, so a family of language sites (`example.se`, `example.de`, `example.co.uk`) is a family of sites. Nothing can derive which page corresponds to which, so each page declares its equivalents:
 
-- Set them per page via `alternates` (Claude does this with `update_page`, or `batch_update_pages` for a whole cluster at once).
+- Set them per page via `alternates` (the AI agent does this with `update_page`, or `batch_update_pages` for a whole cluster at once).
 - The renderer adds the page's **self-reference** automatically — Google ignores a cluster whose members don't list themselves.
 - Clusters must be **reciprocal**: every page lists every other one. Write all sides.
 - Use `x-default` for the language selector or fallback market.
@@ -230,6 +232,6 @@ The order of operations when bringing a new domain live:
 1. **Declare the domain** in Settings → Custom domain. With "Publish now" on (default) a build is immediately enqueued that bakes the custom domain into canonical / sitemap / OG. The platform's zone-level rule independently keeps the fallback subdomain `noindex, nofollow`. No DNS required yet. Status starts `pending`.
 2. **Point DNS** at the registrar — CNAME (or A/AAAA for an apex) to the target the dialog shows. This is the **last** step: your published site already claims the domain as canonical, so doing DNS last means visitors and Google never see the fallback.
 3. **Cloudflare verifies + issues the SSL cert.** Click "Check DNS status" to refresh. Status: `verified` — the site is now reachable on the domain, and the agent-facing `live_url` switches to it.
-4. **Wait for Google to recrawl.** Search Console will surface the new canonical within 1–2 weeks for established sites. To accelerate, request indexing of the homepage manually in Search Console and submit the new sitemap if needed.
+4. **Wait for Google to recrawl.** Recrawl and canonical selection times vary; verify the result in Search Console. To accelerate, request indexing of the homepage manually in Search Console and submit the new sitemap if needed.
 
-Changing the domain without re-deploying leaves the canonical pointing at the previous URL until the next build, so declaring a domain republishes by default. See [Custom Domain guide](/guides/custom-domain/) for the user-facing walkthrough.
+Changing the domain without re-deploying leaves the canonical pointing at the previous URL until the next build, so declaring a domain republishes by default. See [Custom Domain guide](../../guides/custom-domain/) for the user-facing walkthrough.

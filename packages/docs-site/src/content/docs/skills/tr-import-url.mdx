@@ -7,7 +7,7 @@ import { Aside } from "@astrojs/starlight/components";
 
 **Triggers on:** "import from Squarespace/Wix/Webflow", "copy content from", "rebuild this site", any non-WordPress URL the user points at
 
-For WordPress sources, use [tr-migrate-wp](/skills/tr-migrate-wp/) instead.
+For WordPress sources, use [tr-migrate-wp](../tr-migrate-wp/) instead.
 
 ## What it does
 
@@ -26,13 +26,13 @@ For WordPress sources, use [tr-migrate-wp](/skills/tr-migrate-wp/) instead.
 - Content is inside `.content-wrapper` or `[data-section-theme]` blocks
 - Images are usually high-res originals — they transfer well
 - Strip all Squarespace JSON-LD (it's their own schema)
-- Gallery blocks → Claude converts to CSS grid with `<img>` tags
+- Gallery blocks → the AI agent converts to CSS grid with `<img>` tags
 
 ### Wix
 
-- Wix sites are React SPAs — fetching returns an empty shell
-- Claude will ask you for an HTML export or take screenshots as reference
-- Best path: provide the text content and image files directly
+- Check what each public page returns; JavaScript and access restrictions can limit direct fetching
+- the AI agent will ask you for an HTML export or take screenshots as reference
+- Screenshots are layout references, not a substitute for text and original media
 
 ### Webflow
 
@@ -44,6 +44,10 @@ For WordPress sources, use [tr-migrate-wp](/skills/tr-migrate-wp/) instead.
 
 - Often the cleanest import — fetch, strip nav/footer, keep body
 - Table-based layouts (pre-2010 sites) get converted to CSS grid
+
+See the separate guides for [Squarespace](../../guides/migrate-from-squarespace/),
+[Wix](../../guides/migrate-from-wix/) and [Webflow](../../guides/migrate-from-webflow/)
+for migration scope, exclusions and review steps.
 
 ## Example prompts
 
@@ -68,14 +72,14 @@ Here are the screenshots I exported.
 
 - All semantic HTML: `<h1>`–`<h6>`, `<p>`, `<ul>`, `<ol>`, `<img>`, `<a>`, `<table>`, `<blockquote>`, `<figure>`
 - YouTube and Vimeo `<iframe>` embeds
-- Images (transferred to the Typeroll CDN)
+- Images (transferred through Typeroll’s media storage)
 - Text content and structure
 
 <Aside type="caution">
-  Forms from Squarespace/Wix are vendor-locked and won't work after import.
-  Claude will create new Typeroll forms in their place.
+  Forms from Squarespace/Wix are vendor-locked and won't work after import. the
+  AI agent will create new Typeroll forms in their place.
 </Aside>
 
 ## Drafts first, always
 
-All imported pages start as `status: "draft"`. Claude shows you a preview and asks for approval before publishing. This gives you a chance to review the content before it goes live.
+All imported pages start as `status: "draft"`. The AI agent shows you a preview and asks for approval before publishing. This gives you a chance to review the content before it goes live.

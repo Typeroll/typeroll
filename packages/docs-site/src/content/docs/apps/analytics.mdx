@@ -13,11 +13,11 @@ Analytics is the product surface for understanding traffic and outcomes. Its
 modules remain technically independent: campaign forwarding must still work
 if traffic reporting or an external analytics provider is unavailable.
 
-| Module                 | Purpose                                                                               | Reference                                |
-| ---------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------- |
-| Traffic                | Cookieless visits, page views, referrers, Core Web Vitals, and AI-assistant referrals | This page                                |
-| Attribution            | Preserve approved campaign context and forward it to exact destinations               | [Attribution](/apps/funnel-attribution/) |
-| Events and conversions | Record validated first-party funnel events and report their sources                   | [Events and conversions](/apps/events/)  |
+| Module                 | Purpose                                                                               | Reference                             |
+| ---------------------- | ------------------------------------------------------------------------------------- | ------------------------------------- |
+| Traffic                | Cookieless visits, page views, referrers, Core Web Vitals, and AI-assistant referrals | This page                             |
+| Attribution            | Preserve approved campaign context and forward it to exact destinations               | [Attribution](../funnel-attribution/) |
+| Events and conversions | Record validated first-party funnel events and report their sources                   | [Events and conversions](../events/)  |
 
 ## Configuration
 
@@ -36,14 +36,13 @@ attribution continue to work.
 ## Traffic insights
 
 The Traffic module reports visits and page views over 7, 30, or 90 days, top
-referrers, Core Web Vitals, and visits referred by AI assistants such as
-ChatGPT, Claude, and Perplexity. AI referrals are ordinary referral traffic at
+referrers, Core Web Vitals, and visits referred by AI assistants. AI referrals are ordinary referral traffic at
 the collection layer; Insights classifies their referring hosts so each
 assistant can be reported separately.
 
 This complements the `llms.txt`, semantic HTML, and structured data Typeroll
 publishes to help search engines and assistants understand the site. See
-[SEO and indexing](/technical/seo-and-indexing/).
+[SEO and indexing](../../technical/seo-and-indexing/).
 
 ## Runtime and privacy
 

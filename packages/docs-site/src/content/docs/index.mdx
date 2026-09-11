@@ -1,45 +1,91 @@
 ---
-title: Typeroll CMS documentation
-description: Typeroll CMS – an open-source CMS for static websites, with AI-agent workflows and a client-friendly visual editor for managing multiple client sites.
+title: Documentation
+description: Typeroll CMS documentation — edit static websites visually, connect your AI agent, publish with Cloudflare and self-host the open-source CMS.
 template: splash
+head:
+  - tag: title
+    content: Typeroll CMS documentation — editing, AI agents and publishing
 hero:
   title: Typeroll CMS
-  tagline: An open-source CMS for static websites, with AI-agent workflows and a client-friendly visual editor for managing multiple client sites. Self-host or use Typeroll Cloud.
+  tagline: Documentation for editing content, connecting your AI agent and publishing static websites.
   actions:
-    - text: Get started
-      link: /getting-started/introduction/
+    - text: Edit your first page
+      link: guides/the-editor/
       icon: right-arrow
       variant: primary
-    - text: View on GitHub
-      link: https://github.com/typeroll/typeroll
-      icon: external
+    - text: Connect your AI agent
+      link: getting-started/mcp-server/
+      icon: add-document
       variant: minimal
 ---
 
-import { Card, CardGrid } from "@astrojs/starlight/components";
+import { LinkCard, CardGrid } from "@astrojs/starlight/components";
 
-## What you can do
+Typeroll CMS is an open-source CMS with a visual editor, a REST API and an MCP
+server. Use the browser editor for content changes, or connect your own AI agent
+to build and manage sites. You can start editing and reviewing previews before
+connecting publishing accounts.
+
+## Choose a guide
 
 <CardGrid>
-  <Card title="Create full sites" icon="rocket">
-    Settings, header/footer, all pages, and deploy — Claude handles the entire
-    setup from a single prompt.
-  </Card>
-  <Card title="Compose with blocks" icon="puzzle">
-    ~40 reusable blocks cover the 95% case — hero, feature grids, pricing,
-    testimonials, galleries, forms. Custom blocks ship through Claude too, and
-    headings shrink fluidly on mobile by default.
-  </Card>
-  <Card title="Import existing content" icon="document">
-    Migrate from WordPress, Squarespace, Wix, Webflow or any URL. Content is
-    cleaned and adapted to your design automatically.
-  </Card>
-  <Card title="Blogs, forms, directories" icon="list-format">
-    Collection schemas, listing pages, contact forms with HMAC protection — all
-    wired up by the AI in minutes.
-  </Card>
-  <Card title="SEO built in" icon="magnifier">
-    Meta descriptions, Open Graph images, JSON-LD structured data, robots.txt —
-    one audit pass, everything fixed.
-  </Card>
+  <LinkCard
+    title="Visual editor"
+    href="guides/the-editor/"
+    description="Add blocks, edit text and images, review drafts and work on mobile."
+  />
+  <LinkCard
+    title="AI agents and MCP"
+    href="getting-started/mcp-server/"
+    description="Connect an MCP-compatible agent using the hosted endpoint or a local MCP process."
+  />
+  <LinkCard
+    title="Publishing and Cloudflare"
+    href="publishing/cloudflare/"
+    description="Set up GitHub source, shared cloud builds, static Pages hosting and R2 media."
+  />
+  <LinkCard
+    title="Website and media domains"
+    href="publishing/domains/"
+    description="Configure Hosting Groups, shared media and site domains. Prepare a domain change before switching traffic."
+  />
+  <LinkCard
+    title="Migrate an existing website"
+    href="guides/wordpress-migration/"
+    description="Start with WordPress, or follow the separate Squarespace, Wix and Webflow guides in Migration."
+  />
+  <LinkCard
+    title="Self-host Typeroll CMS"
+    href="guides/self-hosting/"
+    description="Run the CMS, API, Forms and Extension runtime on your own infrastructure."
+  />
 </CardGrid>
+
+## See the editor
+
+<img
+  src="images/editor-desktop.png"
+  alt="Typeroll CMS editor showing the block structure, live page preview and heading fields for a sample website."
+  width="1440"
+  height="900"
+  loading="lazy"
+/>
+
+[Open the editor guide](guides/the-editor/) for the desktop and mobile workflows.
+
+## Software, hosting and connected services
+
+The open-source edition is free to self-host. Infrastructure and connected
+services have their own costs. [Typeroll Cloud](https://typeroll.com/) is the
+managed service; these docs describe the CMS and its supported workflows.
+
+Published sites are static files. Forms, Apps and Extensions can call separate
+runtime services. See [Cloudflare hosting and builds](publishing/cloudflare/)
+for the boundary between source code, build execution and hosting.
+
+## Documentation for your agent
+
+Use [llms.txt](llms.txt) as the documentation index, or
+[llms-full.txt](llms-full.txt) for the complete text. These files describe the
+product; they do not grant access to your sites. API and MCP requests still need
+your credentials and the appropriate permissions.

@@ -1,0 +1,25 @@
+---
+import DefaultPageTitle from "@astrojs/starlight/components/PageTitle.astro";
+const docsHome = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/`;
+const title = Astro.locals.starlightRoute.entry.data.title;
+---
+
+{
+  Astro.url.pathname !== docsHome && title !== "404" && (
+    <nav aria-label="Breadcrumb">
+      <>
+        <a href={docsHome}>Documentation</a>
+        <span aria-hidden="true"> / </span>
+        <span aria-current="page">{title}</span>
+      </>
+    </nav>
+  )
+}
+<DefaultPageTitle />
+
+<style>
+  nav {
+    font-size: var(--sl-text-sm);
+    margin-bottom: 0.5rem;
+  }
+</style>

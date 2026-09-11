@@ -14,7 +14,7 @@ create_redirect from_path="/about" to_path="/om-oss"
 create_redirect from_path="/services.html" to_path="/tjanster"
 ```
 
-Claude uses redirects automatically after:
+The AI agent uses redirects automatically after:
 
 - WordPress or URL migrations (old paths → new slugs)
 - Page slug changes (the old path needs to redirect to the new one)
@@ -62,8 +62,8 @@ If you rename a page's slug, always create a redirect:
 Rename the "services" page to "what-we-do" and set up a redirect from /services.
 ```
 
-Claude handles both steps automatically when you phrase it this way.
+The AI agent handles both steps automatically when you phrase it this way.
 
 ## Redirect limits
 
-Cloudflare Pages supports up to 2,100 redirects per site. For large migrations, Claude prioritises the most-trafficked URLs first.
+Cloudflare Pages supports up to 2,100 redirects per site. For large migrations, the AI agent prioritises the most-trafficked URLs first.

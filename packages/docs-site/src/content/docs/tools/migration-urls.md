@@ -5,13 +5,13 @@ description: Track every URL the old site had, and prove the new one answers bef
 
 When you move an existing site to Typeroll, the risk isn't the content — it's the URLs. Every address that Google, a bookmark or another site's link points at has to keep working, or you lose the traffic that was already yours.
 
-Typeroll keeps a **URL inventory** per site for exactly this, and Claude can read and write it.
+Typeroll keeps a **URL inventory** per site for exactly this, and the AI agent can read and write it.
 
 ## Before anything else: readiness
 
 > "Is this site ready to receive the migration?"
 
-Claude calls `get_migration_readiness` first. It checks the things whose absence you would otherwise discover months later:
+The AI agent calls `get_migration_readiness` first. It checks the things whose absence you would otherwise discover months later:
 
 | Check             | Why it blocks                                                                                                                                                                                                        |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -129,6 +129,6 @@ launch.
 
 ## Where this fits
 
-For a single WordPress site, the portal's migration workflow builds the inventory for you. For anything else — a Squarespace site, a static export, or a whole family of sites moving together — Claude populates it with `add_migration_urls` and works the list down to zero.
+For a single WordPress site, the portal's migration workflow builds the inventory for you. For anything else — a Squarespace site, a static export, or a whole family of sites moving together — the AI agent populates it with `add_migration_urls` and works the list down to zero.
 
-For a multi-site or multi-domain move, ask Claude to read the `tr-migrate-multisite` skill first.
+For a multi-site or multi-domain move, ask the AI agent to read the `tr-migrate-multisite` skill first.

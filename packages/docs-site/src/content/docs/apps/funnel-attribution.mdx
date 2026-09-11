@@ -56,7 +56,7 @@ admin permission. They should read the current state first and deploy after a
 successful update. The same validation applies to the bearer API and portal
 configuration.
 
-See [Booking-link attribution](/recipes/booking-link-attribution/) for a
+See [Booking-link attribution](../../recipes/booking-link-attribution/) for a
 neutral implementation pattern.
 
 ## Relationship to Analytics events
@@ -69,4 +69,4 @@ When both Analytics and a target's `click_event` are configured, the runtime
 also sends a non-blocking first-party event. It contains the event name, funnel,
 destination, page path, and only the resolved allowlisted attribution fields.
 The signed event endpoint verifies the active funnel rule before storage. See
-[Events and conversions](/apps/events/) for retention and reporting.
+[Events and conversions](../events/) for retention and reporting.

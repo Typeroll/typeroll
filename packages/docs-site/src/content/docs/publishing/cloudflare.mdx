@@ -1,0 +1,101 @@
+---
+title: Cloudflare hosting and builds
+description: Understand how Typeroll CMS separates GitHub source, shared build execution, Cloudflare Pages hosting and R2 media.
+---
+
+Typeroll publishes static files to Cloudflare Pages. Source storage, building and
+hosting are separate choices: GitHub stores generated source, the organization's
+selected build provider runs the build, and each Site's Hosting Group receives
+the finished files.
+
+## What each service does
+
+| Service                      | Role in customer publishing                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| GitHub                       | A generated private repository for each Site, with version branches.                         |
+| Cloudflare Workers Builds    | One shared build engine for the Organization, when Cloudflare is selected as build provider. |
+| GitHub Actions               | The alternative shared build engine, selected for the Organization.                          |
+| Cloudflare Pages             | Static website and referenced-media output, in the Site's Hosting Group account.             |
+| R2                           | Shared original and public media storage owned by the Organization.                          |
+| Cloudflare DNS and URL rules | Domain setup and media aliases where the connected account has the required permissions.     |
+
+The shared builder uses a Worker project for build execution. A dynamic Worker
+does not serve each customer page. This publishing setup does not require a D1
+database or KV namespace per website.
+
+The CMS, Forms and Extension runtime run separately from the static website.
+A form submission or an Extension can still call its runtime owner. See
+[Self-hosting](../../guides/self-hosting/) for CMS infrastructure requirements.
+
+## Set up once per Organization
+
+Open **Account → Publishing**. Follow [Connect your accounts](../../guides/customer-publishing/)
+to connect GitHub, the Default Cloudflare account, R2 and the organization domains.
+Then find **Builds** and select **Build provider**.
+
+### Cloudflare builds
+
+1. Select **Cloudflare**. Approve build permissions if requested, then select
+   **Set up shared builds**.
+2. If Typeroll requests a build token, select **Open Cloudflare setup**. Confirm
+   the account and Worker project shown in Typeroll.
+3. Under the Worker's **Settings → Builds**, connect the generated builder
+   repository and branch `main`. The setup card shows the build and verification
+   commands to use. Create or select the build API token in Cloudflare and save.
+4. Return to Typeroll and select **I’ve finished — check again** if the automatic
+   check has not completed. Wait for **Shared build engine ready**.
+
+This one-time Cloudflare step authorizes its build service. The token stays in
+Cloudflare. Site repositories and Hosting Groups reuse the shared build engine;
+you do not connect each site's repository to Pages' built-in Git builder.
+If Cloudflare changes its interface, use the linked
+[build token documentation](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/#api-token).
+
+### GitHub Actions builds
+
+1. Select **GitHub Actions** in **Build provider**.
+2. If needed, follow **Approve GitHub update** in **GitHub account** and return
+   after approving the existing App installation's permission update.
+3. Select **Set up GitHub builds**. Typeroll creates the shared private build
+   repository and runs a verification build.
+4. Once ready, select **Use GitHub Actions for new builds**.
+
+The choice applies to new publications. Already queued or running jobs retain
+their selected provider. Build usage belongs to the selected provider's customer
+account; check its current allowance and billing separately.
+
+## Hosting Groups
+
+Default is created with the Organization and reuses its existing Cloudflare
+connection. Additional Hosting Groups connect other Cloudflare accounts and
+site address bases, such as `sites2.example.com`. Shared media and GitHub remain
+owned by the Organization.
+
+With **Use organization DNS connection**, a group's site address base can be
+under a domain managed by the Organization's DNS account while its Pages projects
+live in the group's different hosting account. The group does not need its own
+root domain just because the hosting account differs.
+
+## Media and generated repositories
+
+Original images are not committed to GitHub. During a build, the engine receives
+access to the media required for that frozen publication and includes referenced
+public media in the static output. This also works across Hosting Group accounts.
+
+Shared organization media URLs remain available. Optional site media hosts and
+legacy media paths are handled by [domain settings](../domains/).
+Once organization storage is verified, new browser uploads go directly to R2.
+
+Generated repositories include source, a dependency lock and instructions for
+independent builds. They are not a complete CMS backup. Manual edits in them are
+unsupported; make changes through Typeroll's UI, API or MCP.
+
+## Versions and public availability
+
+Select the Site's **Version** before deployment. `main` is the live version;
+other versions map to `version-<version-id>` Git branches and separate test
+addresses. Non-main versions and default-domain demos use `noindex`.
+
+The Publish menu shows queued, building and distribution progress. It exposes
+the public link after the actual deployment is verified at that address.
+[Deploy tools](../../tools/deploy/) provide the same workflow to AI agents.

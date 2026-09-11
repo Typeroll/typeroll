@@ -1,51 +1,47 @@
 ---
 title: Introduction
-description: What Typeroll CMS is, how it works, and what you need to get started.
+description: Learn how Typeroll CMS combines visual editing, AI-agent access and static publishing, and choose where to start.
 ---
 
-Typeroll CMS is an open-source CMS for static websites. Edit content in the browser or connect an AI agent through the REST API and MCP server to create, edit and publish sites. You can self-host Typeroll CMS or use the managed Typeroll Cloud service.
+Typeroll CMS is an open-source CMS for static websites. Edit content in your
+browser or connect your own AI agent through the REST API and MCP server.
+Self-host the CMS or use Typeroll Cloud.
 
-Freelancers and web agencies can manage multiple client sites while clients edit their content in the browser. Organizations can also manage their own websites.
+Freelancers and web agencies can manage multiple client sites while clients edit
+content in the browser. Organizations can also use it for their own websites.
 
-Under the hood, Typeroll CMS is:
+## The three parts
 
-- **A portal** (Astro SSR + React) where sites and their content live.
-- **A static site generator** (Astro SSG) that builds one fast, secure HTML site per customer.
-- **An MCP server** that exposes the portal's capabilities as tools Claude can call.
+| Part                  | What it does                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| CMS and visual editor | Store pages, blocks, templates, media and settings. Review changes and save content.                         |
+| API and MCP           | Let your AI agent read and change the same content, within its credentials' scope.                           |
+| Static publishing     | Freeze a version, generate source in GitHub, build it and upload static files to the site's hosting account. |
 
-## The mental model
+The CMS is the editing source of truth. Generated site repositories are portable
+build inputs, but manual changes in them are unsupported and may be overwritten.
 
-Content lives in the portal (pages, settings, partials, collections, forms). When you deploy, the portal builds a fresh static site and pushes it to Cloudflare Pages. The MCP server is the bridge between Claude and the portal.
+## Start without publishing accounts
 
-```
-You ──chat──▶ Claude ──tools──▶ MCP server ──API──▶ Portal ──build──▶ Cloudflare Pages
-```
+Create a site, edit pages and use expiring previews before connecting GitHub,
+Cloudflare or a domain. Public deployment stays locked until the required
+publishing setup is ready. Saving a page and changing its status do not by
+themselves update a public website.
 
-## What Claude can do
+- [Use the visual editor](../../guides/the-editor/) to work in your browser.
+- [Connect an AI agent](../mcp-server/) for API or MCP workflows.
+- [Build your first site](../first-site/) for an end-to-end example.
 
-| Category                 | Example prompts                                                           |
-| ------------------------ | ------------------------------------------------------------------------- |
-| Sites                    | "Create a site for Acme Design Studio with a Nordic minimal look"         |
-| Pages                    | "Add a Services page with our three main offerings"                       |
-| [Blocks](/tools/blocks/) | "Add a feature grid with our three differentiators on the home page"      |
-| Block authoring          | "Make me a custom 'quote with avatar' block I can reuse"                  |
-| Navigation               | "Update the header to add a link to the blog"                             |
-| Page templates           | "Build a blog-post template — featured image, title, body, related posts" |
-| Blogs                    | "Set up a blog with three seed articles"                                  |
-| Forms                    | "Add a contact form that emails hello@acme.se"                            |
-| SEO                      | "Fix the meta descriptions across all pages"                              |
-| Responsive               | "Make the feature grid 1 column on mobile, 3 on desktop"                  |
-| Import                   | "Import the content from squarespace-export.html"                         |
-| Migration                | "Migrate my WordPress site at acme.se"                                    |
-| Deploy                   | "Deploy the site and give me the URL"                                     |
+## When you are ready to publish
 
-## Prerequisites
+An Organization owns the GitHub connection, shared media and build-provider
+selection. Each Hosting Group supplies a Cloudflare hosting account and site
+address base. A Site has its own generated repository, static Pages project,
+version branches and optional website and media domains.
 
-- **Claude Code** (the CLI) — [install instructions](https://docs.anthropic.com/en/docs/claude-code)
-- **Node.js 20+**
-- **A Typeroll account** — [app.typeroll.com](https://app.typeroll.com)
+Build execution and static hosting are separate. A shared Cloudflare build engine
+or GitHub Actions builds sites for the organization; finished files go to each
+site's Hosting Group. See [Publishing](../../guides/customer-publishing/).
 
-## Next steps
-
-1. [Install the MCP server](/getting-started/mcp-server/) — one command, one config change.
-2. [Build your first site](/getting-started/first-site/) — a complete walkthrough.
+Forms, Apps and Extensions may depend on runtime services after deployment.
+[Self-hosting](../../guides/self-hosting/) covers running the CMS and core runtime yourself.

@@ -40,10 +40,10 @@ manage these connections.
    select **Verify keys and finish setup**. These are different from the API token
    value. A Super Administrator can create account tokens; a User API token is an
    alternative whose access depends on that user's continued membership.
-5. Authorize Cloudflare's own GitHub App once: **Workers & Pages → Create
-   application → Pages → Connect to Git → + Add account**. Select the same GitHub
-   organization and **All repositories**. Stop at the repository list and return
-   to Typeroll. This is separate from the Typeroll App installation.
+5. In **Builds**, select the organization's build provider and complete its
+   shared-engine setup. Cloudflare builds need a one-time builder repository
+   connection and build token; GitHub Actions uses the existing Typeroll App
+   connection. See [Cloudflare hosting and builds](../../publishing/cloudflare/).
 6. Under **Organization domains**, choose a **Cloudflare domain** from the connected
    account. Enter short labels in **Media subdomain** and **Sites subdomain**, such
    as `media` and `sites`. The complete addresses appear below the fields. Select
@@ -51,7 +51,7 @@ manage these connections.
    migration. HTTPS activation is checked automatically. Each site and version
    gets its own website address when you publish.
 
-Use **Refresh domain list** to retrieve newly added domains. Refreshing keeps the
+Use the refresh icon beside **Cloudflare domain** to retrieve newly added domains. Refreshing keeps the
 existing account connection. An empty result does not mean you need to reconnect.
 If the saved OAuth grant lacks domain permissions, **Allow domain access** appears.
 It opens Cloudflare's approval screen and keeps the existing account and R2 setup.
@@ -63,8 +63,9 @@ DNS**. Enter the complete **Site address base** and **Shared media host**, choos
 **Me or my AI agent**, and save. Read **Setup instructions**, apply the records,
 then select **Check domain status**.
 
-One Cloudflare account belongs to the Typeroll organization. Its site address base
-and shared media hostname are configured separately.
+Each Hosting Group owns a Cloudflare hosting account and a site address base.
+Default reuses the organization connection. The Organization owns shared media,
+DNS access, GitHub and the build-provider selection.
 Each site gets its own generated private repository and static Pages project.
 Adding a site or version reuses the organization connections.
 
@@ -157,8 +158,8 @@ base. Those versions and default-domain demos use `noindex`.
 
 Typeroll freezes the selected version, including inherited blocks, templates,
 collections and runtime settings, and pushes generated source to GitHub.
-Cloudflare installs the pinned dependencies, runs Astro and serves the static
-output. While the build or domain propagation is pending, the interface shows
+The selected shared build engine installs the pinned dependencies and runs Astro.
+The resulting static files go to the Site’s Hosting Group on Cloudflare Pages. While the build or domain propagation is pending, the interface shows
 progress. The link appears automatically after verification.
 
 The repository is generated output. Edit through Typeroll's UI, API or MCP.
@@ -178,9 +179,9 @@ website host and, optionally, a separate media host. For example:
 
 Before a site has its own media host, an image can use
 `https://media.example.com/media/<site-media-id>/photo.png`. With a separate
-site media host it can use `https://images.customer.com/photo.png`. Native
-Cloudflare URL rewrite rules map the site host to its storage namespace. No
-Worker serves the website or the images.
+site media host it can use `https://images.customer.com/photo.png`. Referenced public media is included in the static site output; shared media
+aliases remain available through organization storage and configured URL rules.
+No dynamic Worker serves the website or the images.
 
 A media item's `public_path` can preserve a legacy path such as
 `/wp-content/uploads/2024/photo.jpg`. Public paths are immutable: a different file
