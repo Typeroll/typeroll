@@ -14,7 +14,7 @@ const organizationTools = [
   'read_organization_publishing_domains', 'set_organization_publishing_domains',
 ];
 
-async function session(status = 200) {
+async function session(status = 200, withSite = false) {
   const requests: string[] = [];
   const bodies: unknown[] = [];
   const api = new TyperollClient({ baseUrl: 'https://example.test', apiKey: 'synthetic-org-key',
@@ -24,7 +24,7 @@ async function session(status = 200) {
       return Response.json(status === 200 ? { groups: [] } : { error: 'Organization API key required' }, { status });
     },
   });
-  const server = buildServer({ client: api, allowedSites: [] });
+  const server = buildServer({ client: api, allowedSites: withSite ? [{ siteId: 'site', permission: 'admin' }] : [] });
   const client = new Client({ name: 'organization-qualification', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -97,4 +97,16 @@ describe('organization publishing through the MCP transport', () => {
       expect(JSON.stringify(result.content)).toContain('Organization API key required');
     } finally { await s.close(); }
   });
+});
+
+it('checks and migrates only an accessible site through the authenticated publishing API', async () => {
+  const s = await session(200, true);
+  try {
+    expect((await s.client.callTool({ name: 'check_managed_site_migration', arguments: { site_id: 'site' } })).isError).not.toBe(true);
+    expect((await s.client.callTool({ name: 'migrate_managed_site_publishing', arguments: { site_id: 'site', revision: 'checked-plan' } })).isError).not.toBe(true);
+    expect(s.requests).toEqual(Array(2).fill('https://example.test/api/v1/sites/site/publishing/managed-migration'));
+    expect(s.bodies).toEqual([{ revision: 'checked-plan' }]);
+    expect((await s.client.callTool({ name: 'migrate_managed_site_publishing', arguments: { site_id: 'other', revision: 'checked-plan' } })).isError).toBe(true);
+    expect(s.requests).toHaveLength(2);
+  } finally { await s.close(); }
 });

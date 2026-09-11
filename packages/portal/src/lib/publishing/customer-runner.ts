@@ -1,3 +1,4 @@
+import { verifyManagedProject } from './managed-migration';
 import { capturePublicationImpact } from './impact-preview';
 import { compareImpact } from './impact';
 import { readSnapshot, saveSnapshot } from './publication-snapshot';
@@ -100,6 +101,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const config = githubConfiguration();
     const github = await githubInstallationClient({ appId: config.appId, installationId: identity.installation_id, owner: identity.owner, privateKey: config.privateKey });
     const cloudflare = await cloudflareClient(args.orgId, fetch, undefined, group.id);
+    if (site?.publishing_migration) {
+      if (site.publishing_migration.account_id !== cfConnection.cloudflare?.account_id || site.publishing_migration.hosting_group_id !== group.id) throw new ConnectionError('The migrated Pages project belongs to a different hosting account. Restore its original Hosting Group connection.', 409, 'managed_account_mismatch');
+      await verifyManagedProject(cloudflare, site.publishing_migration);
+    }
     let publication = job.git_publication;
     // Older Firestore updates merged omitted nested fields, retaining the preview commit.
     // Resume that frozen candidate instead of waiting for a main build that was never pushed.
@@ -157,11 +162,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${host}` });
         terminal = true; return 'ran';
       }
-      publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: `typeroll-${prefix}`, project: `typeroll-${prefix}`, account_id: cfConnection.cloudflare!.account_id,
+      publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: `typeroll-${prefix}`, project: site?.publishing_migration?.project ?? `typeroll-${prefix}`, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domains.revision, website_host: host, snapshot_job_id: args.jobId, ...await saveSnapshot(args, frozen) };
       const selectedProvider = await selectedBuildProvider(args.orgId);
       const engine = await readEngineConfiguration(args.orgId, selectedProvider);
+      if (site?.publishing_migration && engine?.status !== 'ready') throw new ConnectionError('Restore the shared build engine before publishing this migrated site.', 409, 'shared_build_setup_required');
       if (selectedProvider === 'github' && !engine) throw new ConnectionError('Set up GitHub builds in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
       if (engine && engine.status !== 'ready') throw new ConnectionError('Finish shared build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
       if (engine?.status === 'ready') { publication.build_engine_revision = engine.revision; publication.build_provider = engine.provider ?? 'cloudflare'; }
@@ -191,7 +197,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         throw new ConnectionError('The generated repository does not match this organization. Check GitHub publishing access.', 409);
       }
       let connectedProject = publication.build_engine_revision
-        ? await prepareStaticProject(cloudflare, projectRoot, { project: publication.project, owner: publication.owner, repo: publication.repo, repository })
+        ? await prepareStaticProject(cloudflare, projectRoot, { project: publication.project, owner: publication.owner, repo: publication.repo, repository, requireExisting: Boolean(site?.publishing_migration) })
         : await cloudflare(projectRoot, { missing: true });
       if (!connectedProject) {
         await store.updateDoc(jobPath, { phase: 'creating Cloudflare Pages project' });
@@ -224,7 +230,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     let project = await cloudflare(projectRoot, { missing: true });
     if (publication.build_engine_revision) {
       const repository = await github(`/repos/${publication.owner}/${publication.repo}`);
-      project = await prepareStaticProject(cloudflare, projectRoot, { project: publication.project, owner: publication.owner, repo: publication.repo, repository });
+      project = await prepareStaticProject(cloudflare, projectRoot, { project: publication.project, owner: publication.owner, repo: publication.repo, repository, requireExisting: Boolean(site?.publishing_migration) });
     }
     if (!project) {
       const repository = await github(`/repos/${publication.owner}/${publication.repo}`);

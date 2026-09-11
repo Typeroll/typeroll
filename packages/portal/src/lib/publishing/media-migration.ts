@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { paths, type Media } from '@typeroll/shared';
+import { paths, type Media, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { siteMediaPrefix } from '../media-keys';
 import { connectionSummary, getConnection, ConnectionError } from './connections';
 import { getOrganizationDomains } from './domain-config';
-import { adoptCustomerPublishingForMedia } from './media-policy';
+import { adoptCustomerPublishingForMedia, retainsManagedMedia } from './media-policy';
 import { storageClient } from './media-storage';
 import { replacePublicationReferences } from './media-manifest';
 
@@ -17,7 +17,8 @@ interface Migration { org_id: string; state: 'queued' | 'running' | 'complete' |
 async function completeEmptyMigration(orgId: string, current: Migration | null): Promise<Migration | null> {
   if (!current || current.state === 'complete' || current.lease_until > Date.now()) return current;
   const store = getStore();
-  for (const site of await store.listDocs(paths.sites(orgId))) {
+  for (const site of await store.listDocs<Site>(paths.sites(orgId))) {
+    if (retainsManagedMedia(site)) continue;
     if ((await store.listDocs<Media>(paths.media(orgId, site.id), { limit: 1 })).length) return current;
   }
   // A late upload queues a new request after finalization. Never overwrite that
@@ -97,7 +98,8 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 3) {
     const destination = { provider: 'organization_r2' as const, account_id: connection.cloudflare.account_id, bucket: connection.cloudflare.bucket };
     const target = await storageClient(orgId, destination);
     try {
-      for (const site of await store.listDocs(paths.sites(orgId))) {
+      for (const site of await store.listDocs<Site>(paths.sites(orgId))) {
+        if (retainsManagedMedia(site)) continue;
         const replacements = new Map<string, string>();
         for (const media of await store.listDocs<Media>(paths.media(orgId, site.id))) {
           for (const alias of media.source_aliases ?? []) replacements.set(alias, media.cdn_url);

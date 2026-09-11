@@ -113,6 +113,8 @@ export interface Site {
   name: string;
   /** Customer Git publishing is explicit; existing managed sites retain their adapter until migrated. */
   publishing_mode?: 'customer_git' | 'managed';
+  /** Verified reuse of the original static Pages project; server-managed migration receipt. */
+  publishing_migration?: { account_id: string; project: string; website_host: string; previous_deployment_id: string; hosting_group_id: string; migrated_at: string };
   /** Omitted legacy values resolve to the organization's Default Hosting Group. */
   hosting_group_id?: string;
   /** First publication serializes assignment; moving hosting then requires migration. */

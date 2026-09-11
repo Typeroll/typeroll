@@ -45,8 +45,8 @@ async function upload(surface: 'cookie' | 'api') {
   }), params: { siteId: 'site' }, cookies: {}, locals: {} } as unknown as Parameters<APIRoute>[0]) as Response;
 }
 
-it.each(['cookie', 'api'] as const)('routes legacy %s uploads to the owner organization and changes the next builder', async surface => {
-  await getStore().setDoc(paths.site('owner', 'site'), { name: 'Legacy', media_id: 'abcdefghij', publishing_mode: 'managed', domain: 'www.example.com', domain_status: 'live', hosting_config: { pages_project: 'existing-live-project' } });
+it.each(['cookie', 'api'] as const)('routes unpublished %s uploads to the owner organization and changes the next builder', async surface => {
+  await getStore().setDoc(paths.site('owner', 'site'), { name: 'Legacy', media_id: 'abcdefghij', publishing_mode: 'managed', domain: 'www.example.com', domain_status: 'live' });
   const response = await upload(surface);
   expect(response.status).toBe(200);
   const body = await response.json();
@@ -56,7 +56,7 @@ it.each(['cookie', 'api'] as const)('routes legacy %s uploads to the owner organ
   expect(body.storage).toBe('organization_r2');
   expect(new URL(body.cdn_url ?? body.cdnUrl).hostname).toBe('cms.example.com');
   const site = await getStore().getDoc<Site>(paths.site('owner', 'site'));
-  expect(site).toMatchObject({ publishing_mode: 'customer_git', domain: 'www.example.com', domain_status: 'live', hosting_config: { pages_project: 'existing-live-project' } });
+  expect(site).toMatchObject({ publishing_mode: 'customer_git', domain: 'www.example.com', domain_status: 'live' });
   expect((await getSiteDomains('owner', 'site')).desired.website_host).toBe('www.example.com');
   const saved = await getStore().listDocs<Media>(paths.media('owner', 'site'));
   expect(saved).toHaveLength(1);
@@ -101,4 +101,16 @@ it.each(['cookie', 'api'] as const)('finalizes a legacy grant after the site ado
   expect(response.status).toBe(200);
   expect((await response.json()).result.sha256).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
   expect((sends.find(command => command instanceof GetObjectCommand) as GetObjectCommand).input.Bucket).toBe('legacy-public');
+});
+
+it.each(['cookie', 'api'] as const)('keeps existing managed hosting and media during %s uploads until explicit migration', async surface => {
+  await getStore().setDoc(paths.site('owner', 'site'), { name: 'Existing', media_id: 'abcdefghij', publishing_mode: 'managed', hosting_config: { pages_project: 'existing-live-project' } });
+  const response = await upload(surface);
+  expect(response.status).toBe(200);
+  const body = await response.json();
+  expect(new URL(body.cdn_url ?? body.cdnUrl).hostname).toBe('legacy.example.com');
+  expect((await getStore().getDoc<Site>(paths.site('owner', 'site')))?.publishing_mode).toBe('managed');
+  const media = await getStore().listDocs<Media>(paths.media('owner', 'site'));
+  expect(media).toHaveLength(1); expect(media[0].storage).toBeUndefined();
+  expect(await getStore().listDocs(paths.media('guest', 'site'))).toHaveLength(0);
 });

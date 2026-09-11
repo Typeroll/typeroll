@@ -160,16 +160,21 @@ it('preserves a new migration request made during the empty scan', async () => {
   expect(await store.getDoc<any>(path)).toMatchObject({ request_id: 'new-request', state: 'queued' });
 });
 
-it('adopts existing sites when organization media migration is requested, including empty libraries', async () => {
+it('keeps existing managed sites and their media unchanged until explicitly migrated', async () => {
   await getStore().setDoc(paths.site('org', 'legacy'), {
     name: 'Legacy site', publishing_mode: 'managed', domain: 'www.example.com',
     hosting_config: { pages_project: 'existing-live-project' },
   });
-  await requestMediaMigration('org');
+  await getStore().setDoc(`${paths.media('org', 'legacy')}/image`, { filename: 'old.png', r2_key: 'old', cdn_url: 'https://cdn.example.com/old.png' });
+  const send = vi.spyOn(S3Client.prototype, 'send').mockRejectedValue(new Error('Legacy media must remain untouched'));
+  await requestMediaMigration('org'); await runMediaMigrationBatch('org');
+  expect(send).not.toHaveBeenCalled();
   expect(await getStore().getDoc(paths.site('org', 'legacy'))).toMatchObject({
-    publishing_mode: 'customer_git', domain: 'www.example.com',
+    publishing_mode: 'managed', domain: 'www.example.com',
     hosting_config: { pages_project: 'existing-live-project' },
   });
-  expect((await getSiteDomains('org', 'legacy')).desired.website_host).toBe('www.example.com');
+  expect((await getSiteDomains('org', 'legacy')).desired.website_host).toBeNull();
+  const { usesPrivateMedia } = await import('../../lib/publishing/media-policy');
+  expect(await usesPrivateMedia('org', (await getStore().getDoc<any>(paths.site('org', 'legacy'))))).toBe(false);
   expect((await mediaMigrationStatus('org'))?.state).toBe('complete');
 });

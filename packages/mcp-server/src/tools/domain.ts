@@ -19,6 +19,18 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const domainTools: ToolDef[] = [
   {
+    name: 'check_managed_site_migration',
+    description: 'Verify migration of an existing static managed Pages site to connected Git publishing. Checks the original hosting account, project, domain and shared build engine. Returns a revision and previous live deployment; does not migrate or deploy.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'publishing/managed-migration'))),
+  },
+  {
+    name: 'migrate_managed_site_publishing',
+    description: 'Explicitly migrate one managed Pages site to the connected GitHub organization and shared build engine using the revision from check_managed_site_migration. Requires site admin permission. Preserves the original hosting project, live domain and old media URLs, then queues verified media copying for eligible sites. Does not deploy; publish after media migration finishes.',
+    inputSchema: { revision: z.string() },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/managed-migration', args))),
+  },
+  {
     name: 'check_organization_github_permissions', noSite: true,
     description: 'Check live GitHub build permissions without disconnecting or reconnecting. Requires an organization API key. Distinguishes an update the organization owner can approve from permissions Typeroll has not requested yet. Returns the existing installation approval URL only when actionable; does not enable a build engine.',
     inputSchema: {},

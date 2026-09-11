@@ -5,8 +5,9 @@ import { buildStorage } from './storage';
 import { sha256 } from './contract.mjs';
 import { staticChecks, verifyStaticResponse, type StaticCheck, type StaticObservation } from './verification';
 
-export async function prepareStaticProject(client: ProviderClient, root: string, expected: { project: string; owner: string; repo: string; repository: any }) {
+export async function prepareStaticProject(client: ProviderClient, root: string, expected: { project: string; owner: string; repo: string; repository: any; requireExisting?: boolean }) {
   let project = await client(root, { missing: true });
+  if (!project && expected.requireExisting) throw new ConnectionError('The migrated Pages project is unavailable. Restore access to the existing project before publishing.', 409, 'managed_project_missing');
   if (!project) { await client(root.slice(0, root.lastIndexOf('/')), { method: 'POST', body: { name: expected.project, production_branch: 'main' } }); project = await client(root); }
   if (project.name !== expected.project || project.production_branch !== 'main') throw new ConnectionError('The static hosting project does not match this site.', 409);
   if (project.source) {

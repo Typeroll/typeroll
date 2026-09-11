@@ -7,6 +7,7 @@ import { defaultSiteSettings, paths } from '@typeroll/shared';
 import type { Site, SiteSettings } from '@typeroll/shared';
 import DomainManager from '../../../../components/DomainManager.tsx';
 import { SiteHostingGroup } from '../../../../components/HostingGroups';
+import ManagedPublishingMigration from '../../../../components/ManagedPublishingMigration';
 import PublishingDomains from '../../../../components/PublishingDomains';
 import { organizationMembership } from '../../../../lib/organization-session';
 
@@ -30,6 +31,7 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
     <h2 style="font-size: 1.125rem;">Publishing</h2>
     <p>GitHub and media are shared by the organization. Hosting Groups connect the accounts that build and host its sites.</p>
     {site.publishing_mode === 'customer_git' && <SiteHostingGroup siteId={siteId} client:load />}
+    {site.publishing_mode !== 'customer_git' && site.hosting_adapter === 'cloudflare' && site.hosting_config?.pages_project && canManagePublishing && <ManagedPublishingMigration siteId={siteId} client:load />}
     {canManagePublishing ? <div><a class="btn" href="/app/settings/publishing">Open Publishing</a></div> :
       <p class="muted">An owner or admin of this site's organization manages its publishing accounts.</p>}
   </section>
