@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -15,6 +15,7 @@ mkdirSync(path.join(output, 'old-docs-host'), { recursive: true });
 cpSync(path.resolve(root, '../../temp/docs-subdirectory'), path.join(output, 'main-host/docs'), { recursive: true });
 writeFileSync(path.join(output, 'old-docs-host/_redirects'), '/* https://typeroll.com/docs/:splat 301\n');
 writeFileSync(path.join(output, 'old-docs-host/index.html'), '<!doctype html><html lang="en"><title>Typeroll CMS documentation has moved</title><a href="https://typeroll.com/docs/">Open the documentation</a></html>\n');
+writeFileSync(path.join(output, 'main-host/docs/release.json'), JSON.stringify({ source_commit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim() }) + '\n');
 const sitemap = readFileSync(path.join(output, 'main-host/docs/sitemap-0.xml'), 'utf8');
 const routes = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(([, destination]) => ({
   source: destination.replace('https://typeroll.com/docs/', 'https://docs.typeroll.com/'),
@@ -39,9 +40,9 @@ Cloudflare Pages project. Its _redirects rule permanently redirects each old
 path to the same path below /docs/. Verify query strings and all routes in
 redirect-checklist.json against real responses. Keep the old project and TLS.
 
-Before cutover, change the docs release workflow to deploy the new artifact to
-the chosen main host; otherwise the next release restores the old site. The
-current workflow is intentionally unchanged. Save the previous deployments
-for rollback. Never publish this whole directory as a website.
+The release workflow deploys main-host/ as Cloudflare static assets, verifies
+the live /docs destination, then deploys old-docs-host/ to the previous Pages
+project. Preserve that order. Save previous deployments for rollback. Never
+publish this whole migration directory as a website.
 `);
 console.log(`Prepared ${routes.length} page redirects and static /docs overlay at ${output}`);

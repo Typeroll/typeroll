@@ -16,8 +16,8 @@ npm run prepare:migration --workspace=@typeroll/docs-site
 
 The default target remains `https://docs.typeroll.com/` in `dist/`. The explicit
 subdirectory target is `https://typeroll.com/docs/`, written to the ignored
-repository `temp/docs-subdirectory/` directory. Do not change the release target
-until the destination host and coordinated redirect deployment are ready.
+repository `temp/docs-subdirectory/` directory. The release workflow publishes the subdirectory artifact as Cloudflare Workers
+Static Assets, then redirects the previous Pages domain after verifying it.
 
 Every build runs an artifact check covering titles, canonical URLs, indexing,
 sitemap, edit links, structured data, internal links, images and generated agent
@@ -30,8 +30,8 @@ static `main-host/docs/` overlay, a separate redirect-only artifact for the old
 Cloudflare Pages project, a complete page redirect checklist and additions for
 the destination host's root robots/llms files. It does not deploy anything.
 Never replace the main website with this overlay or publish the whole migration
-directory. The current release workflow intentionally continues to publish the
-subdomain artifact until a coordinated cutover is approved.
+directory. The release workflow preserves the order: publish static assets, verify the
+new destination, publish old-domain redirects, verify redirects.
 
 The main host must serve `/docs/` directory indexes, redirect `/docs` to `/docs/`,
 and return the docs 404 page with HTTP 404 for missing documentation. A robots
@@ -65,3 +65,17 @@ type and without login, cookie consent or an interactive bot challenge. Check
 ordinary unauthenticated HTTP requests in addition to browser navigation. Root
 robots and security rules must permit the intended documentation fetches; a
 training-crawler preference is separate from user-requested agent access.
+
+## Production route
+
+`wrangler.jsonc` deploys static files without an application Worker script.
+The existing Cloudflare route for `typeroll.com/docs/*` selects this asset
+service. A separate, narrowly scoped redirect rule canonicalizes `/docs` to
+`/docs/` and preserves query strings. The apex is proxied while retaining its
+original upstream address for other paths. The deployment token needs Workers
+Scripts Write and Pages Write for the documentation account. Route and DNS
+changes are separate operations; ordinary content releases do not alter them.
+
+`verify-live-docs.mjs` checks the published source identity, every HTML and text
+page, canonical URLs, agent indexes, real 404 responses and query preservation.
+Pass `--redirects` after publishing the old-domain redirect artifact.

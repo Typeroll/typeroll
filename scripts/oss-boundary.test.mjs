@@ -44,7 +44,8 @@ test('the public workspace does not expose Cloud-only scripts', () => {
 test('the public repository owns documentation publication', () => {
   const workflow = readFileSync(path.join(root, '.github/workflows/publish-mcp.yml'), 'utf8');
   assert.match(workflow, /name: Publish public documentation/);
-  assert.match(workflow, /wrangler pages deploy packages\/docs-site\/dist/);
+  assert.match(workflow, /wrangler@[^ ]+ deploy --config packages\/docs-site\/wrangler\.jsonc/);
+  assert.match(workflow, /pages deploy temp\/docs-migration\/old-docs-host --project-name=typeroll-docs/);
   assert.doesNotMatch(workflow, /packages\/(?:operator|marketing)/);
 });
 

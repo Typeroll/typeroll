@@ -1,0 +1,11 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "typeroll-public-docs",
+  "compatibility_date": "2026-09-11",
+  "workers_dev": true,
+  "assets": {
+    "directory": "../../temp/docs-migration/main-host",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  }
+}
