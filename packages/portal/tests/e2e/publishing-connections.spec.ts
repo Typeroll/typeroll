@@ -114,11 +114,11 @@ test('GitHub starts with sign-in and offers verified organizations instead of a 
   await page.screenshot({ path: testInfo.outputPath('github-organization-choice-mobile.png') });
   await page.getByRole('combobox', { name: 'Choose a GitHub organization' }).selectOption('35');
   await page.getByRole('button', { name: 'Connect selected organization' }).click();
-  await expect(page.getByRole('status')).toContainText('GitHub connected');
+  await expect(page.getByRole('status').filter({ hasText: 'GitHub connected' })).toBeVisible();
   expect(submitted).toMatchObject({ installation_id: '35' });
   await expect(page.getByRole('combobox', { name: 'Choose a GitHub organization' })).toHaveCount(0);
   await page.goto('/app/settings/publishing?github=owner_required');
-  await expect(page.getByRole('alert')).toContainText('Sign in to GitHub as an owner');
+  await expect(page.getByRole('alert').filter({ hasText: 'Sign in to GitHub as an owner' })).toBeVisible();
   await page.getByText('Advanced: connect with existing API and R2 keys', { exact: true }).click();
   await page.getByLabel('Cloudflare Account ID').scrollIntoViewIfNeeded();
   await expect(page.locator('#cf-account-help')).toContainText('Search → Copy account ID');
