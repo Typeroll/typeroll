@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { waitForDocsRelease } from './wait-for-docs-release.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const routes = JSON.parse(readFileSync(path.resolve(root, '../../temp/docs-migration/routes.json'), 'utf8'));
@@ -18,9 +19,11 @@ async function request(url, options = {}) {
   }
 }
 if (expectedSha) {
-  const result = await request('https://typeroll.com/docs/release.json');
-  assert.equal(result.status, 200);
-  assert.equal((await result.json()).source_commit, expectedSha, 'Live docs do not match the deployed source');
+  await waitForDocsRelease(expectedSha, async () => {
+    const result = await request('https://typeroll.com/docs/release.json');
+    assert.equal(result.status, 200);
+    return (await result.json()).source_commit;
+  });
 }
 let next = 0;
 await Promise.all(Array.from({ length: 4 }, async () => {

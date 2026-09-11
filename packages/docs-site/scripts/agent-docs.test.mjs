@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { docsTarget } from './docs-target.mjs';
 import { agentDocuments } from './agent-docs.mjs';
+import { waitForDocsRelease } from './wait-for-docs-release.mjs';
 
 const pages = [
   { title: 'Editor', url: 'https://typeroll.com/docs/guides/editor/' },
@@ -64,4 +65,18 @@ test('documentation builds only use the canonical subdirectory', () => {
   assert.equal(docsTarget({}).publicUrl, 'https://typeroll.com/docs/');
   assert.equal(docsTarget({}).base, '/docs/');
   assert.throws(() => docsTarget({ TYPEROLL_DOCS_TARGET: 'subdomain' }), /only published/);
+});
+
+test('live verification waits for the deployed source and fails if it never arrives', async () => {
+  const versions = ['previous', 'previous', 'deployed'];
+  let waits = 0;
+  await waitForDocsRelease('deployed', async () => versions.shift(), {
+    attempts: 3,
+    delay: async () => { waits++; },
+  });
+  assert.equal(waits, 2);
+  await assert.rejects(waitForDocsRelease('deployed', async () => 'previous', {
+    attempts: 3,
+    delay: async () => {},
+  }), /do not match the deployed source/);
 });
