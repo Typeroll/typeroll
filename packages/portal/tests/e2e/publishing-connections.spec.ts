@@ -318,7 +318,9 @@ test('media migration progress updates automatically until completion', async ({
       media_migration: { state: completed ? 'complete' : 'running', copied_files: emptyLibrary ? 0 : completed ? 3 : 1, pending_files: completed ? 0 : 2, error: null } } });
   });
   await page.goto('/app/settings/publishing');
-  await expect(page.getByText('Moving existing originals to R2: 1 copied, 2 remaining.')).toBeVisible();
+  await expect(page.getByText('Moving existing originals to R2: 1 file copied and verified.')).toBeVisible();
+  await expect(page.getByText('The transfer continues automatically. You can close this page.', { exact: false })).toBeVisible();
+  await expect(page.getByText('2 remaining.', { exact: false })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Media storage' })).toHaveAttribute('data-state', 'waiting');
   completed = true;
   await expect(page.getByText('Originals moved to your R2 storage.', { exact: false })).toBeVisible({ timeout: 10000 });
