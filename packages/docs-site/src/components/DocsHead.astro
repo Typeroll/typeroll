@@ -46,6 +46,22 @@ const data = home
 ---
 
 <DefaultHead />
+<link
+  rel="alternate"
+  type="text/plain"
+  title="Documentation index for AI agents"
+  href={new URL("llms.txt", homeUrl).href}
+/>
+{
+  !notFound && (
+    <link
+      rel="alternate"
+      type="text/plain"
+      title="Read this page as text"
+      href={new URL("index.txt", url).href}
+    />
+  )
+}
 {
   notFound ? (
     <meta name="robots" content="noindex" />

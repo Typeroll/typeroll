@@ -45,3 +45,23 @@ Search Console separately after cutover.
 The editor screenshots use synthetic sample content in the real block editor,
 captured at 1440×900 and 390×844. Refresh them when documented controls change;
 do not use customer content, authenticated exports or secrets in public images.
+
+## Agent-readable documentation
+
+Every build emits `llms.txt` as an index, `llms-full.txt` as complete Markdown,
+`llms-small.txt` as the shorter set, and an `index.txt` beside every page's
+`index.html`. The HTML head advertises the index and per-page text with
+`rel="alternate" type="text/plain"`. These are public static files: no API key,
+JavaScript, login or MCP connection is needed to read them.
+
+The post-build step resolves Markdown links against each original page's URL,
+adds its canonical source address, and preserves code examples and tables. Page
+titles must be unique so the plugin's combined output can be matched to the
+rendered pages; missing or ambiguous entries fail the build. Tests cover both
+host layouts and the artifact check follows every local link in every export.
+
+At deployment, verify that the host serves these text files with a text content
+type and without login, cookie consent or an interactive bot challenge. Check
+ordinary unauthenticated HTTP requests in addition to browser navigation. Root
+robots and security rules must permit the intended documentation fetches; a
+training-crawler preference is separate from user-requested agent access.

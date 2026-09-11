@@ -12,19 +12,24 @@
     "check:extension-schema": "node scripts/sync-extension-schema.mjs --check",
     "format": "prettier --write \"src/**/*.{md,mdx,astro}\"",
     "format:check": "prettier --check \"src/**/*.{md,mdx,astro}\"",
-    "postbuild": "node scripts/check-built-docs.mjs",
+    "postbuild": "node scripts/write-agent-docs.mjs && node scripts/check-built-docs.mjs",
     "build:subdirectory": "node scripts/build-subdirectory.mjs",
-    "prepare:migration": "node scripts/prepare-migration.mjs"
+    "prepare:migration": "node scripts/prepare-migration.mjs",
+    "test": "node --test scripts/agent-docs.test.mjs"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.41.10",
     "astro": "^7.2.10",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "remark-stringify": "11.0.0",
     "sharp": "^0.35.4",
-    "starlight-llms-txt": "0.11.0"
+    "starlight-llms-txt": "0.11.0",
+    "unified": "11.0.5"
   },
   "devDependencies": {
     "prettier": "^3.5.0",
     "prettier-plugin-astro": "^0.14.0"
   },
-  "description": "Typeroll CMS documentation \u2013 guides for editing, publishing, integrations and self-hosting."
+  "description": "Typeroll CMS documentation – guides for editing, publishing, integrations and self-hosting."
 }

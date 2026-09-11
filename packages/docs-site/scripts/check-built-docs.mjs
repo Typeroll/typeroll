@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkGfm from 'remark-gfm';
 import { docsTarget } from './docs-target.mjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -46,6 +49,12 @@ for (const file of htmlFiles) {
     const canonicals = [...html.matchAll(/<link\b[^>]*>/g)].map(([tag]) => attrs(tag)).filter(tag => tag.rel === 'canonical');
     assert.deepEqual(canonicals.map(tag => tag.href), [pageUrl(route)], 'Expected a self-referencing canonical');
     assert.ok(sitemap.includes(`<loc>${pageUrl(route)}</loc>`), 'Page is missing from sitemap');
+    const textUrl = new URL('index.txt', pageUrl(route)).href;
+    assert.ok(html.includes(`href="${textUrl}"`), 'Missing discoverable page text alternative');
+    assert.ok(read(path.join(dist, 'llms.txt')).includes(`](${textUrl})`), 'Agent index is missing this page');
+    const pageText = read(localFile(new URL(textUrl)));
+    assert.ok(pageText.includes(`](${pageUrl(route)})`), 'Page text is missing its source address');
+    assert.ok(pageText.length > 100, 'Page text is empty');
     const edit = html.match(/https:\/\/github\.com\/typeroll\/typeroll\/edit\/main\/([^"<>]+)/)?.[1];
     assert.ok(edit && existsSync(path.join(repository, edit)), `Edit link must resolve to a real source file: ${edit}`);
     assert.equal((edit.match(/src\/content\/docs/g) ?? []).length, 1, 'Edit path is duplicated');
@@ -81,11 +90,24 @@ assert.ok(robots.includes(`Sitemap: ${target.publicUrl}sitemap-index.xml`));
 assert.doesNotMatch(robots, /Disallow:\s*\/\s*$/m);
 assert.ok(read(path.join(dist, 'sitemap-index.xml')).includes(`${target.publicUrl}sitemap-0.xml`));
 assert.doesNotMatch(sitemap, /<loc>[^<]*\/404\/?<\/loc>/);
-for (const name of ['llms.txt', 'llms-full.txt']) {
+const markdown = unified().use(remarkParse).use(remarkGfm);
+for (const name of ['llms.txt', 'llms-full.txt', 'llms-small.txt', ...htmlFiles.filter(file => file.endsWith('index.html')).map(file => path.relative(dist, file).replace(/\.html$/, '.txt'))]) {
   const content = read(path.join(dist, name));
   assert.ok(content.length > 200, `${name} is empty`);
-  assert.match(content, /Typeroll CMS/);
+  if (name.startsWith('llms')) assert.match(content, /Typeroll CMS/);
   assert.doesNotMatch(content, /Build sites with Claude/);
+  assert.doesNotMatch(content, /<SYSTEM>/);
+  function checkLinks(node) {
+    if (['link', 'image', 'definition'].includes(node.type)) {
+      assert.match(node.url, /^[a-z][a-z\d+.-]*:/i, `${name}: agent link must be absolute: ${node.url}`);
+      const url = new URL(node.url);
+      if (url.origin === origin && url.pathname.startsWith(target.base)) {
+        if (!(target.base !== '/' && url.pathname === '/')) assert.ok(existsSync(localFile(url)), `${name}: broken agent link: ${node.url}`);
+      }
+    }
+    for (const child of node.children ?? []) checkLinks(child);
+  }
+  checkLinks(markdown.parse(content));
 }
 assert.match(read(path.join(dist, 'llms-full.txt')), /Migrate from Wix/);
 assert.equal(failures.length, 0, failures.join('\n'));

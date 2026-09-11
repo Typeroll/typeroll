@@ -15,6 +15,7 @@ export default defineConfig({
       components: { Head: './src/components/DocsHead.astro', PageTitle: './src/components/DocsPageTitle.astro' },
       plugins: [starlightLlmsTxt({
         projectName: 'Typeroll CMS',
+        minify: { whitespace: false },
         description: 'Documentation for the open-source CMS: visual editing, AI agents, static publishing and self-hosting.',
       })],
       social: [
