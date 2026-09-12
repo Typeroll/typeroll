@@ -60,6 +60,12 @@ Saving a page or selecting **Published** does not deploy it. Select the intended
 [build guide](../../publishing/cloudflare/) explains branches and progress;
 [domain settings](../../publishing/domains/) explain preparing an address change.
 Existing managed sites retain their publishing mode until explicitly migrated.
+Migration prepares the Git publishing connection and copies media before the
+first new deployment. The existing public deployment stays available while this
+happens. Existing redirects, including old file URLs such as `/about.html`, are
+included in the generated source and static output. If preparation or a build
+fails, its error must be resolved before the new deployment can replace the live
+site; do not remove redirects to work around a failed migration.
 
 ## Forms, Apps and Extensions
 

@@ -155,7 +155,12 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   if (pageTemplates.length !== referencedTemplates.size) throw new Error('Publication page template is missing');
   if (!Array.isArray(input.redirects)) throw new Error('Invalid publication redirects');
   const redirects = input.redirects.map(redirect => {
-    const result = assertIdentity(projectStrings(redirect, ['id', 'from_path', 'to_path']));
+    const result = projectStrings(redirect, ['id', 'from_path', 'to_path']);
+    // Redirect write paths preserve filename dots and generate leading underscores
+    // for wildcard routes. Keep those identities without permitting path traversal.
+    if (!/^[a-zA-Z0-9._-]{1,128}$/.test(result.id ?? '') || ['.', '..'].includes(result.id)) {
+      throw new Error('Invalid publication redirect ID');
+    }
     if (!result.from_path?.startsWith('/') || result.from_path.startsWith('//') || !result.to_path ||
       /[\s\x00-\x1f]/.test(result.from_path + result.to_path) || ![301, 302].includes(redirect.status_code)) throw new Error('Invalid publication redirect');
     return { ...result, status_code: redirect.status_code };

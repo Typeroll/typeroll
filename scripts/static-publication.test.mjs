@@ -25,6 +25,28 @@ function input() {
 }
 const identity = { siteUrl: 'https://example.invalid', coreCommit: 'a'.repeat(40), publishedAt: '2026-09-06T12:00:00Z' };
 
+test('publication preserves redirect IDs derived from file paths and wildcard routes', () => {
+  const value = input();
+  value.redirects = [
+    { id: 'legacy.html', from_path: '/legacy.html', to_path: '/new', status_code: 301 },
+    { id: '__splat', from_path: '/*', to_path: '/archive/:splat', status_code: 302 },
+    { id: '_hidden', from_path: '/_hidden', to_path: '/new', status_code: 301 },
+  ];
+  assert.deepEqual(projectStaticPublication(value, identity).redirects,
+    [...value.redirects].sort((a, b) => a.id < b.id ? -1 : 1));
+});
+
+test('redirect identities reject unsafe paths, empty IDs and duplicates', () => {
+  const value = input();
+  const redirect = { id: 'legacy.html', from_path: '/legacy.html', to_path: '/new', status_code: 301 };
+  for (const id of ['', '.', '..', '../outside', 'nested/path', 'nested\\\\path', 'id\n', 'a'.repeat(129)]) {
+    value.redirects = [{ ...redirect, id }];
+    assert.throws(() => projectStaticPublication(value, identity), /Invalid publication redirect ID/);
+  }
+  value.redirects = [redirect, { ...redirect, from_path: '/other' }];
+  assert.throws(() => projectStaticPublication(value, identity), /Duplicate public document ID/);
+});
+
 test('publishes optional page fields cleared by a full API replacement without accepting malformed values', () => {
   const value = input();
   Object.assign(value.pages[0], { noindex: null, alternates: null, blocks: null, template: null, seo_title: null });
@@ -226,7 +248,12 @@ test('frozen main and branch projects render their own custom blocks and inherit
   for (const versionId of ['main', 'design']) {
     const value = input();
     value.versionId = versionId;
-    value.redirects = [{ id: 'old', from_path: '/old', to_path: `/${versionId}`, status_code: 301, internal: 'private-value' }, { id: 'shadow', from_path: '/', to_path: '/missing', status_code: 302 }];
+    value.redirects = [
+      { id: 'old', from_path: '/old', to_path: `/${versionId}`, status_code: 301, internal: 'private-value' },
+      { id: 'legacy.html', from_path: '/legacy.html', to_path: `/${versionId}`, status_code: 301 },
+      { id: '_archive___splat', from_path: '/_archive/*', to_path: '/news/:splat', status_code: 302 },
+      { id: 'shadow', from_path: '/', to_path: '/missing', status_code: 302 },
+    ];
     value.pages = [{ id: 'home', slug: '', title: 'Home', status: 'published', template: 'layout', content_mode: 'blocks', blocks: [
       { id: 'heading-one', type: 'custom-heading', data: { text: versionId + ' content', private_note: 'private-value' } },
     ] }];
@@ -257,6 +284,8 @@ test('frozen main and branch projects render their own custom blocks and inherit
     const redirects = await fs.readFile(path.join(destination, 'dist/_redirects'), 'utf8');
     assert.ok(redirects.includes(`/old /${versionId}/ 301`));
     assert.ok(redirects.includes(`/old/ /${versionId}/ 301`));
+    assert.ok(redirects.includes(`/legacy.html /${versionId}/ 301`));
+    assert.ok(redirects.includes('/_archive/* /news/:splat/ 302'), redirects);
     assert.ok(!redirects.includes('/missing'));
   }
 });
