@@ -16,7 +16,7 @@ export default defineConfig({
       plugins: [starlightLlmsTxt({
         projectName: 'Typeroll CMS',
         minify: { whitespace: false },
-        description: 'Documentation for the open-source CMS: visual editing, AI agents, static publishing and self-hosting.',
+        description: 'Documentation for Typeroll Cloud and self-hosted Typeroll CMS: visual editing, AI agents and static publishing.',
       })],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/typeroll/typeroll' },
@@ -30,6 +30,8 @@ export default defineConfig({
           label: 'Getting Started',
           items: [
             { label: 'Introduction', slug: 'getting-started/introduction' },
+            { label: 'Cloud and self-hosting', slug: 'getting-started/cloud-and-self-hosting' },
+            { label: 'Using Typeroll Cloud', slug: 'guides/typeroll-cloud' },
             { label: 'Connect your AI agent', slug: 'getting-started/mcp-server' },
             { label: 'Client compatibility', slug: 'getting-started/client-compatibility' },
             { label: 'Your First Site', slug: 'getting-started/first-site' },
@@ -49,6 +51,7 @@ export default defineConfig({
             { label: 'Connect your accounts', slug: 'guides/customer-publishing' },
             { label: 'Cloudflare hosting and builds', slug: 'publishing/cloudflare' },
             { label: 'Website and media domains', slug: 'publishing/domains' },
+            { label: 'Different generators on one website', slug: 'publishing/multiple-generators' },
             { label: 'Deploy and preview tools', slug: 'tools/deploy' },
           ],
         },

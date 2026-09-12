@@ -1,0 +1,75 @@
+---
+title: Using Typeroll Cloud
+description: Use Typeroll Cloud to edit sites, connect AI agents and publish with your own accounts, without installing the CMS infrastructure.
+---
+
+Typeroll Cloud is the managed service for Typeroll CMS. You use the browser
+editor and API while Typeroll operates the CMS infrastructure. The shared
+[Cloud and self-hosting guide](../../getting-started/cloud-and-self-hosting/)
+explains which instructions apply to each option.
+
+Typeroll Cloud is under development. This guide describes the workflows for
+accounts with access; it does not announce general availability or plan limits.
+
+## Open your Organization
+
+Sign in at [app.typeroll.com](https://app.typeroll.com). Open the sidebar and
+select the **Organization**, then the **Site** you want to work on. On mobile,
+open the menu first. Your access can differ between Organizations and Sites;
+changing the selection does not grant additional permissions.
+
+An Organization holds shared connections, media and build settings. A Site holds
+its content, versions and website settings. Hosting Groups let an Organization
+use additional Cloudflare hosting accounts without creating more Organizations.
+
+## Edit before you connect publishing
+
+Follow [Your first site](../../getting-started/first-site/) to create a Site and
+edit its pages. You can save content and use expiring previews before connecting
+GitHub, Cloudflare or domains. Publishing remains locked until setup is ready.
+
+Content editors can use the [visual editor](../the-editor/) and
+[save/review workflow](../../tools/drafts-and-saving/). Organization owners or
+admins handle the shared publishing connections. Public deployment and domain
+changes require the relevant admin permission.
+
+## Connect your AI agent
+
+Use `https://app.typeroll.com/api/mcp` with an MCP-compatible client. Follow
+[Connect your AI agent](../../getting-started/mcp-server/) for OAuth or API-key
+setup and verification. A site-scoped key limits the agent to that site; creating
+sites and configuring shared publishing requires organization scope.
+
+Reading public documentation does not authenticate an agent. Keep credentials
+in your client's secret storage and confirm the Organization, Site and Version
+before requesting changes.
+
+## Publish with your own accounts
+
+Open **Account → Publishing** and follow [Connect your accounts](../customer-publishing/).
+This covers personal or organization GitHub accounts, Cloudflare, R2, shared
+builds and domains. Connections are reused across Sites; additional Hosting
+Groups provide their own hosting accounts and site address bases.
+
+Cloud operates the CMS. Your connected accounts supply generated source storage,
+build execution and static hosting. GitHub and Cloudflare usage is subject to
+those providers' terms and allowances, separately from the Cloud service.
+
+Saving a page or selecting **Published** does not deploy it. Select the intended
+**Version**, deploy and wait until the verified public link appears. The
+[build guide](../../publishing/cloudflare/) explains branches and progress;
+[domain settings](../../publishing/domains/) explain preparing an address change.
+Existing managed sites retain their publishing mode until explicitly migrated.
+
+## Forms, Apps and Extensions
+
+Use the shared [Forms](../../apps/forms/), [core module](../../apps/overview/)
+and [Extension](../../extensions/overview/) guides. A static website can call
+separate runtime services. Cloud operates its core endpoints; external providers
+operate their own services. Accounts, subscriptions and permissions for connected
+services remain separate from having a Cloud login.
+
+You do not need to deploy the self-hosted CMS container, configure Cloud's internal
+queues or manage its infrastructure credentials. If a setup message requires an
+operator action, retain its error text and contact the service operator. Repeatedly
+disconnecting working accounts is not a substitute for that missing setup.

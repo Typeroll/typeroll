@@ -5,7 +5,9 @@ description: Learn how Typeroll CMS combines visual editing, AI-agent access and
 
 Typeroll CMS is an open-source CMS for static websites. Edit content in your
 browser or connect your own AI agent through the REST API and MCP server.
-Self-host the CMS or use Typeroll Cloud.
+Self-host the CMS or use Typeroll Cloud. These docs cover both: see the
+[Cloud and self-hosting comparison](../cloud-and-self-hosting/) for the right
+starting point and differences in setup.
 
 Freelancers and web agencies can manage multiple client sites while clients edit
 content in the browser. Organizations can also use it for their own websites.

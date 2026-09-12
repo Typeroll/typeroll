@@ -1,0 +1,65 @@
+---
+title: Cloud and self-hosting
+description: Find the right Typeroll CMS guides for Cloud or self-hosting, with shared workflows and explicit differences in setup and responsibility.
+---
+
+This documentation covers **both Typeroll Cloud and self-hosted Typeroll CMS**.
+They use the same open-source Core. Editing, content models, the public API,
+MCP and static rendering share their documentation. Installation and service
+operation depend on how you run the CMS.
+
+- **Typeroll Cloud:** start with [Using Typeroll Cloud](../../guides/typeroll-cloud/).
+  Typeroll operates the CMS infrastructure.
+- **Self-hosting:** start with [Self-hosting](../../guides/self-hosting/).
+  You install and operate the CMS and its core runtime services.
+
+Choosing Cloud does not mean your generated websites must be hosted by Typeroll.
+With customer publishing, both options use your connected GitHub, build and
+Cloudflare hosting accounts. Running a generated site's Astro build yourself
+is also different from self-hosting the CMS: it does not provide an editor,
+content database, accounts or Forms service.
+
+## Find the guide for your task
+
+| Task                                          | Shared guide                                                                                                                                                                                | Cloud                                                 | Self-hosting                                                                                          |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Create sites and edit content                 | [First site](../first-site/), [editor](../../guides/the-editor/)                                                                                                                            | Use the managed portal                                | Use your installation's portal                                                                        |
+| Save, review and preview                      | [Drafts and saving](../../tools/drafts-and-saving/)                                                                                                                                         | Preview services are operated by Typeroll             | Configure and operate the preview services                                                            |
+| Connect an AI agent                           | [MCP setup](../mcp-server/), [tool reference](../../tools/overview/)                                                                                                                        | Use `https://app.typeroll.com/api/mcp`                | Use your portal's `/api/mcp` endpoint                                                                 |
+| Pages, reusable content and media             | [Pages](../../tools/pages/), [blocks](../../tools/blocks/), [partials](../../tools/partials/), [collections](../../tools/collections/), [media](../../tools/media/)                         | Same Core content model                               | Same Core content model                                                                               |
+| Connect publishing accounts                   | [Account setup](../../guides/customer-publishing/)                                                                                                                                          | Typeroll operates the publisher authorization service | The operator configures publisher Apps, OAuth and private draft storage before users connect accounts |
+| Build, deploy and switch versions             | [Builds and Hosting Groups](../../publishing/cloudflare/), [deploy tools](../../tools/deploy/)                                                                                              | Use your Organization's selected build provider       | Same workflow when enabled by your operator                                                           |
+| Configure website and media domains           | [Domains](../../publishing/domains/)                                                                                                                                                        | Your Organization authorizes its provider access      | Your Organization authorizes its provider access                                                      |
+| Forms and core modules                        | [Forms](../../apps/forms/), [module overview](../../apps/overview/)                                                                                                                         | Typeroll operates the core service endpoints          | Your operator runs and configures them, including email delivery                                      |
+| External services and Extensions              | [Integrations](../../apps/integrations/), [Extensions](../../extensions/overview/)                                                                                                          | Provider accounts and permissions still apply         | Provider accounts and permissions still apply                                                         |
+| Import an existing website                    | [WordPress](../../guides/wordpress-migration/), [Wix](../../guides/migrate-from-wix/), [Squarespace](../../guides/migrate-from-squarespace/), [Webflow](../../guides/migrate-from-webflow/) | Use the shared migration workflows                    | Use the same Core workflows with your operator's runtime configuration                                |
+| Indexing and independent sections             | [SEO](../../technical/seo-and-indexing/), [multiple generators](../../publishing/multiple-generators/)                                                                                      | Configure the public hosting layer                    | Configure the public hosting layer                                                                    |
+| Install, upgrade, back up and restore the CMS | [Self-hosting](../../guides/self-hosting/)                                                                                                                                                  | Typeroll's operational responsibility                 | Your operator's responsibility                                                                        |
+
+## Availability and versions
+
+These guides describe product behavior, not a subscription entitlement. Cloud
+access, service limits and separately sold Typeroll Apps have their own
+availability. An external Extension may also require its own account or contract.
+Core module documentation does not mean a premium App backend is included in a
+self-hosted installation. See the [module and App distinction](../../apps/overview/).
+
+The docs follow the current documented release. A self-hosted installation can
+run an older version, and a Cloud rollout can happen after documentation is
+published. Check your portal's `/api/version` before relying on a recently added
+feature; use the matching release's source documentation when necessary.
+A missing connection or disabled operator capability is not necessarily a
+missing feature in Core.
+
+## One documentation site
+
+All public user documentation lives at `typeroll.com/docs/`, including
+Cloud-specific guides. Its source is in the public `Typeroll/typeroll` repository.
+This keeps links, search, examples and the [agent documentation index](../../llms.txt)
+together. Documenting a Cloud workflow here does not make private Cloud services
+part of the open-source distribution.
+
+Shared behavior is documented once. A guide calls out Cloud or self-hosting when
+setup, availability, permissions or runtime ownership differs. Report an unclear
+or missing workflow using the page's GitHub edit link, without including tokens
+or private site data.

@@ -3,9 +3,11 @@ title: Technical Reference
 description: Implementation details for Typeroll-powered sites — what the renderer emits, what the deploy pipeline writes, and how the platform optimises for the web.
 ---
 
-This section documents the technical contract Typeroll honours when it builds and serves a site. It's a reference for self-hosters, agency engineers, and anyone curious about what's actually under the hood — most customers never need it.
+This section documents the technical contract Typeroll CMS follows when it builds and serves a site in Cloud or a self-hosted installation. It is for developers and operators who need to understand the generated output. See [Cloud and self-hosting](../../getting-started/cloud-and-self-hosting/) for differences in service ownership.
 
 Topics covered:
+
+- **[Different generators on one website](../../publishing/multiple-generators/)** — separate repositories and static deployments sharing a hostname, including docs, indexing and agent text exports.
 
 - **[SEO & indexing](../seo-and-indexing/)** — canonical URLs, robots, sitemap, structured data, fallback-subdomain de-duplication, and how custom-domain activation affects all of the above.
 - **Image optimisation** _(coming)_ — how images move from upload through Cloudflare's CDN into the page, what formats are served, caching behaviour.

@@ -1,0 +1,125 @@
+---
+title: Different generators on one website
+description: Serve a Typeroll CMS website and independently generated documentation under one domain, with separate repositories and static deployments.
+---
+
+You can publish the main website through Typeroll CMS while generating a section
+such as `/docs/` from another repository. Visitors see one domain; the hosting
+layer chooses which static deployment answers each path.
+
+This pattern works with Typeroll Cloud or a self-hosted CMS. It is an externally
+configured hosting arrangement, not a Typeroll setting for mounting repositories
+under paths. Typeroll's current domain UI, API and MCP do not create this routing
+for you. An administrator or AI agent with separate hosting access manages it.
+
+## Give every path an owner
+
+| Public path                      | Content source                                    | Publisher                                         |
+| -------------------------------- | ------------------------------------------------- | ------------------------------------------------- |
+| `/` and normal website pages     | Typeroll editor, API or MCP                       | Typeroll publication to the Site's static hosting |
+| `/docs/` and everything below it | Markdown or another generator's source repository | That repository's build and release workflow      |
+| `/robots.txt`                    | Whole-domain indexing policy                      | The root site's configuration                     |
+| `/sitemap.xml`                   | Root-site pages                                   | Typeroll's renderer                               |
+| `/docs/sitemap-index.xml`        | Documentation pages                               | The documentation generator                       |
+
+Use a precise prefix. Do not create competing CMS pages, redirects or media paths
+under `/docs/`. Keep documentation assets there too, for example
+`/docs/_astro/`, `/docs/images/` and `/docs/pagefind/`. Otherwise two generators
+can overwrite each other's asset names or send requests to the wrong deployment.
+
+DNS selects a hostname's destination; it cannot select `/docs/`. Path selection
+belongs to the CDN, reverse proxy or another HTTP routing layer. Separate
+repositories alone do not provide it.
+
+## Example: Cloudflare Pages and Static Assets
+
+The live Typeroll website uses this arrangement:
+
+```text
+Request to typeroll.com
+  /docs/*  -> independently deployed documentation assets
+  all other paths -> the Typeroll Site's Cloudflare Pages project
+```
+
+The documentation uses Cloudflare Workers Static Assets without an application
+Worker script. The CMS site also serves static files. A prefix route does not
+require rendering the pages dynamically. See Cloudflare's
+[Static Assets documentation](https://developers.cloudflare.com/workers/static-assets/)
+and [route configuration](https://developers.cloudflare.com/workers/configuration/routing/routes/).
+
+To prepare an equivalent setup for `example.com`:
+
+1. Publish the main Site and configure its website host in Typeroll. Verify it
+   before adding the independently generated section.
+2. Configure the documentation generator with canonical origin
+   `https://example.com` and base path `/docs/`. Verify links, CSS, images, search
+   and text exports all work with that prefix.
+3. Package the output so the static hosting directory contains `docs/index.html`
+   and the complete `docs/` tree. Merely setting a CDN route does not move files
+   or strip the `/docs` prefix from incoming requests.
+4. Deploy that artifact as its own Static Assets service. For this pattern, use
+   static 404 handling rather than a single-page-app fallback.
+5. At the Cloudflare zone, configure a route for **`example.com/docs/*`** to the
+   documentation service. Cloudflare Routes require a proxied DNS record for
+   the hostname. Keep the existing root-site origin. This example assumes the
+   required account and zone access; Typeroll's publishing connection does not
+   automatically create or authorize this separate service.
+6. Add an exact redirect from `/docs` to `/docs/` at the hosting layer, preserving
+   the query string. The `/docs/*` route does not match `/docs`. Do not broaden
+   it to `/docs*`, which could capture unrelated paths such as `/docstore`.
+7. Verify the public hostname, including a missing documentation page returning 404. Confirm root pages still come from the Site and documentation paths come
+   from the separate artifact. Keep a release marker in each deployment to make
+   this distinction observable.
+
+A route's account permissions and provider requirements are independent of
+whether you run the CMS in Cloud or self-host it. An external agent can configure
+these resources using its own provider credentials. Typeroll's domain tools still
+manage and verify the Site's website and media hosts; they do not discover or
+coordinate the other repository's releases.
+
+## Keep releases independent
+
+Publish CMS content through Typeroll. Edit documentation in its own repository
+and use that repository's release workflow. Never add the documentation sources
+by editing Typeroll's generated repository: those changes are unsupported and
+can be overwritten.
+
+Each publisher replaces only its own deployment. Do not upload a partial combined
+directory to one shared deployment expecting unrelated files to remain: static
+deployments commonly represent the entire artifact. If you need one artifact,
+you need a separate build composition process; this recipe uses two deployments.
+
+New CMS content is not automatically included in the documentation search index,
+and docs are not editable in the CMS. Headers, navigation, search and styles must
+be coordinated deliberately if you want them to appear consistent.
+
+## Indexing and AI-agent access
+
+Keep one authoritative `/robots.txt` at the domain root. List both the root
+sitemap and the documentation sitemap there, and preserve those entries when
+publishing the root Site. A `/docs/robots.txt` file does not replace the root
+policy. Each sitemap should list only its own canonical public URLs.
+
+Use the public domain and `/docs/` prefix in docs canonicals, structured data,
+internal links and agent exports. In the Typeroll example, `/docs/llms.txt` links
+to individual text alternatives and `/docs/llms-full.txt` contains the full guide.
+These remain public static files without browser execution or authentication.
+
+A CMS preview or version address does not automatically get the production
+hostname's docs route. Configure a separate docs preview if needed; do not assume
+that following `/docs/` from a version preview tests the production integration.
+
+## Verify and recover
+
+After a release from either source, check a root page, a docs page, a missing
+docs page, assets, redirects, both sitemaps and agent text files. Review mobile
+navigation and search as well as HTTP status codes. The CMS link checker may
+report `/docs/` missing from its own route manifest; verify that external route
+at the public hostname rather than adding a duplicate CMS page.
+
+Retain previous artifacts for each publisher. Restore the affected artifact
+while keeping the path ownership and canonical hostname intact. Removing the
+docs route sends those requests back to the root origin and can turn them into
+404s; it is not a substitute for restoring a working docs release. Coordinate
+route changes, caching policy and domain cutovers with every publisher sharing
+the hostname. A Typeroll domain change does not move the external section for you.

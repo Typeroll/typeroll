@@ -30,3 +30,29 @@ Typeroll Cloud.
 Do not create release tags manually. A manual dry run is available through
 **Release OSS** when artifacts need inspection without publication. The full
 maintainer procedure is in `docs/releasing.md`.
+
+## Public documentation for Cloud and self-hosting
+
+`packages/docs-site/` owns all public user documentation at
+`https://typeroll.com/docs/`, including Cloud-specific user workflows. Private
+Cloud implementation, credentials and operational runbooks stay in the Cloud
+repository. Public documentation does not change a feature's license or service
+availability.
+
+For every user-visible change, check the affected editor, UI setup, API/MCP,
+publishing, media, domains, versions, Forms, modules, Extensions and migration
+guides. Use the public Cloud/self-hosting comparison as the navigation map.
+Document shared behavior once; state Cloud and self-hosting differences in
+availability, permissions, setup and runtime ownership beside the instructions.
+Do not describe planned capabilities as available or promise undeclared Cloud
+plans, quotas or service guarantees.
+
+A Cloud-only change still needs its public guide updated here when its user
+workflow changes. Coordinate publication with the Cloud rollout and clearly mark
+any version or availability boundary. Add a new topic to navigation and the
+comparison where relevant. The build generates HTML, individual text alternatives
+and agent indexes from the same source; do not maintain separate copies.
+
+For documentation-only changes, run `node scripts/oss-release-check.mjs --docs-only` and the documentation export tests. Run `npm run release:plan` to
+confirm artifact scope. Documentation can be published without inventing new
+Core or MCP versions; follow the normal release workflow and approval rules.

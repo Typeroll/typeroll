@@ -45,3 +45,10 @@
   and **Typeroll Apps** as separate product names. Preserve established technical
   package identifiers, commands, URLs and API names; display-name changes must not
   break existing integrations.
+
+- All public user documentation, including Cloud-specific workflows, belongs
+  in `packages/docs-site/` at `typeroll.com/docs/`. This does not authorize private
+  Cloud source or operational secrets here. Document shared behavior once and
+  identify Cloud/self-hosting differences in setup, permissions, availability
+  and runtime ownership. Keep new topics in navigation and agent text exports;
+  follow the documentation checklist in `CONTRIBUTING.md`.
