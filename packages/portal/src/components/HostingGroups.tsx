@@ -33,14 +33,15 @@ export default function HostingGroups() {
   }
   return <section className="stack" style={{ maxWidth: 760, marginBottom: '1.5rem' }} aria-label="Hosting Groups">
     <h2>Hosting Groups</h2>
+    <p>Default is all you need to get started. Add more groups only when you need another Cloudflare hosting account.</p>
     <p>Each group connects a hosting account and a site address base. All groups share your organization’s GitHub connection and media library.</p>
     {feedback && <p role={feedback.error ? 'alert' : 'status'}>{feedback.text}</p>}
     {groups.map(group => {
       const connected = group.connection.status === 'connected';
       return <PublishingCard key={group.id} id={`hosting-${group.id}`} title={group.name}
-        state={!connected ? 'error' : group.sites_domain ? 'ready' : 'waiting'}
-        status={!connected ? 'Connect a hosting account' : `${group.connection.cloudflare?.account_name ?? 'Cloudflare connected'}${group.sites_domain ? ` · ${group.sites_domain}` : ' · Site address base not set'}`}>
-        {group.id === 'default' ? <p>Uses the organization’s Cloudflare connection and the Default site address base in Domains below.</p> : <>
+        state={group.id === 'default' ? 'neutral' : !connected ? 'error' : group.sites_domain ? 'ready' : 'waiting'}
+        status={group.id === 'default' ? 'Uses organization settings' : !connected ? 'Connect a hosting account' : `${group.connection.cloudflare?.account_name ?? 'Cloudflare connected'}${group.sites_domain ? ` · ${group.sites_domain}` : ' · Site address base not set'}`}>
+        {group.id === 'default' ? <p>Created automatically. Uses the Cloudflare account and site address base configured for your organization in Publishing. No separate setup is needed here.</p> : <>
           <form onSubmit={event => save(event, group)} className="stack">
             <label className="field">Group name<input name="name" defaultValue={group.name} maxLength={80} required /></label>
             <label className="field">Site address base<input name="sites_domain" defaultValue={group.sites_domain ?? ''} placeholder="sites2.example.com" autoCapitalize="none" spellCheck={false} /></label>

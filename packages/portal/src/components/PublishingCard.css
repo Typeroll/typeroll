@@ -27,6 +27,7 @@
 }
 .publishing-card__symbol--error { color: #b91c1c; background: #fee2e2; }
 .publishing-card__symbol--waiting { color: #b45309; background: #ffedd5; }
+.publishing-card__symbol--neutral { color: #52525b; background: #f4f4f5; }
 .publishing-card__symbol--ready { color: #15803d; background: #dcfce7; }
 .publishing-card__body { min-width: 0; gap: 14px; }
 .publishing-card__body .btn { align-self: flex-start; white-space: normal; max-width: 100%; }
