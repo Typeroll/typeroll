@@ -69,6 +69,17 @@ install the other. The required installation step survives reloading Publishing.
 If your GitHub organization requires an owner's approval, return after approval
 and select **Already installed? Check connection** to verify access.
 
+Starting with Core 0.1.79, **Finish build setup** checks Cloudflare build access
+before creating the build project or changing build storage. A connected
+Cloudflare account can still need separate permission for **Workers Scripts**
+and **Workers Builds**. If the Builds card says **Build permissions required**,
+select **Approve build permissions**, approve in Cloudflare, then return and
+select **Finish build setup**. Hosting and media remain connected.
+
+On older versions, if setup shows HTTP 403, select **Refresh status** first to
+show the permission action. If setup fails, it has stopped: the card should show
+the failed step and next action, rather than a continuing preparation message.
+
 Starting with Core 0.1.79, the GitHub card always shows two separate steps:
 **1. Sign in to GitHub** and **2. Install the GitHub App**. Each has its own status
 symbol and text. Approving sign-in makes the first step green; the second stays

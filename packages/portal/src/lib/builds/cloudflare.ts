@@ -70,7 +70,7 @@ export async function checkBuildEngine(org: string, input: Record<string, unknow
       const issue = denied ?? access.issues[0];
       next = { ...next, state: denied ? 'approval_required' : 'error', issue: {
         code: denied ? 'build_permission_required' : 'build_provider_unavailable', http_status: issue.http_status, provider_codes: issue.provider_codes,
-        message: denied ? `Cloudflare denied access to ${issue.resource === 'workers' ? 'Workers Scripts' : 'Workers Builds'} in ${connection.cloudflare.account_name} (HTTP ${issue.http_status}${issue.provider_codes.length ? `, code ${issue.provider_codes.join(', ')}` : ''}). Approve build permissions for the existing organization connection. Your hosting accounts and media stay connected.` :
+        message: denied ? `Cloudflare denied access to ${issue.resource === 'workers' ? 'Workers Scripts' : 'Workers Builds'} in ${connection.cloudflare.account_name} (HTTP ${issue.http_status}${issue.provider_codes.length ? `, code ${issue.provider_codes.join(', ')}` : ''}). Click Approve build permissions, approve access in Cloudflare, then return and finish build setup. Your hosting accounts and media stay connected.` :
           `Cloudflare could not check ${issue.resource} (HTTP ${issue.http_status}). Try checking again.`,
       } };
     } else if (!access.build_tokens) next = { ...next, state: 'build_token_required', issue: { code: 'build_token_required',

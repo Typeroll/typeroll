@@ -75,7 +75,16 @@ export default function PublishingBuilds() {
       const value = await response.json();
       if (!response.ok) throw Error(value.error || 'Could not set up shared builds.');
       adopt(value, engine.provider); setNotice(value.engines?.[engine.provider]?.issue?.message || value.issue?.message || 'Build engine checked.');
-    } catch (e) { setError(e instanceof Error ? e.message : 'Could not set up shared builds.'); }
+    } catch (e) {
+      setNotice('');
+      setError(e instanceof Error ? e.message : 'Could not set up shared builds.');
+      // Setup can persist a new failure state and revision before returning an error.
+      // Read it without starting another permission check or setup attempt.
+      try {
+        const response = await fetch('/api/orgs/publishing/builds');
+        if (response.ok) adopt(await response.json(), engine.provider);
+      } catch { /* Keep the original actionable error when the status read also fails. */ }
+    }
     finally { inFlight.current = false; setBusy(false); }
   }
   async function manage(action: 'select' | 'cancel', key?: string) {
@@ -106,7 +115,7 @@ export default function PublishingBuilds() {
     ? `https://dash.cloudflare.com/${engine.account_id}/workers/services/view/${engine.worker_name}/production/settings` : null;
   const status = busy ? 'Updating build settings…' : state === 'ready' ? 'Shared build engine ready' : state === 'approval_required' ? 'Build permissions required' : state === 'qualification_required' ? verifying ? 'Running a test build…' : 'Ready to finish setup' : needsToken ? chooseToken ? 'Action needed · Choose a build token' : 'Action needed · Create a build token' : 'Shared build engine setup';
   return <PublishingCard id="publishing-builds" title="Builds"
-    state={state === 'ready' ? 'ready' : error || ['approval_required', 'error'].includes(state ?? '') ? 'error' : 'waiting'} status={status}>
+    state={error || ['approval_required', 'error'].includes(state ?? '') ? 'error' : state === 'ready' ? 'ready' : 'waiting'} status={status}>
     <p>Choose where this organization builds its sites and versions. Finished static files go to each site’s Hosting Group.</p>
     {settings && <>
       <p>New publications use <strong>{settings.selection.provider === 'github' ? 'GitHub Actions' : 'Cloudflare'}</strong>.</p>
@@ -157,7 +166,7 @@ export default function PublishingBuilds() {
     </li>)}</ul></section>}
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status" className="publishing-builds__notice">{notice}</p>}
-    {!notice && engine?.issue && !needsToken && !readyToSetUp && !verifying && <p>{engine.issue.message}</p>}
+    {!notice && !error && engine?.issue && !needsToken && !readyToSetUp && !verifying && <p>{engine.issue.message}</p>}
     {needsToken && <details><summary>Why is this step needed?</summary>
       <p>Cloudflare’s sign-in approval allows Typeroll to manage build settings, but cannot create the first build token. Cloudflare creates that token in its own dashboard. Once it exists, Typeroll can detect it through the existing connection.</p>
       <p>Finding a token confirms this setup step. The shared engine must still finish its setup and verification before it can publish sites.</p>

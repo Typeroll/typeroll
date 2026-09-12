@@ -9,7 +9,7 @@ import { encryptSecret } from '../secret-crypto';
 import { getConnection, ConnectionError } from '../publishing/connections';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { githubConfiguration } from '../publishing/github-connection';
-import { githubInstallationClient, publishTree } from '../publishing/providers.mjs';
+import { githubInstallationClient, publishTree, ProviderError } from '../publishing/providers.mjs';
 import { readBuildEngine, checkBuildEngine, enginePath } from './cloudflare';
 import { engineConfigurationPath, readEngineConfiguration, type EngineConfiguration } from './state';
 import { OrganizationBuildQueue, buildTasksPath, buildTaskKey, type BuildTask } from './queue';
@@ -33,7 +33,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
     return checkBuildEngine(org, input);
   }
   if (input.action !== 'setup') throw new ConnectionError('Unknown build setup action.', 400);
-  const current = await readBuildEngine(org);
+  let current = await readBuildEngine(org);
   if (input.revision !== current.revision) throw new ConnectionError('Build settings changed. Check again.', 409);
   const store = getStore(), path = engineConfigurationPath(org);
   const previous = await readEngineConfiguration(org);
@@ -43,6 +43,9 @@ export async function configureBuildEngine(org: string, input: Record<string, un
   if (pending.length) throw new ConnectionError('Wait for current builds to finish before updating the engine.', 409);
   const [cf, git] = await Promise.all([getConnection(org, 'cloudflare'), getConnection(org, 'github')]);
   if (cf.status !== 'connected' || !cf.cloudflare || git.status !== 'connected' || !git.github) throw new ConnectionError('Connect GitHub and the organization Cloudflare account first.', 409);
+  // Check the customer grant before creating resources or changing storage retention.
+  current = await checkBuildEngine(org, { revision: current.revision });
+  if (current.state === 'approval_required' || current.state === 'error') return current;
   const origin = new URL(process.env.PORTAL_PUBLIC_URL ?? '');
   if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new ConnectionError('Shared builds require the public HTTPS address of this Typeroll server.', 409);
   const revision = randomUUID(), token = randomBytes(32).toString('base64url');
@@ -52,10 +55,12 @@ export async function configureBuildEngine(org: string, input: Record<string, un
   if (previous) {
     if (!await store.compareAndUpdateDoc<EngineConfiguration>(path, value => value.revision === previous.revision && value.setup_lease_until <= Date.now(), config)) throw new ConnectionError('Build settings changed. Try again.', 409);
   } else if (!await store.createDocIfMissing(path, config)) throw new ConnectionError('Build setup has already started.', 409);
+  let phase: 'R2 build storage' | 'Workers Scripts' | 'GitHub repository' | 'Workers Builds' = 'R2 build storage';
   try {
     await store.createDocIfMissing(enginePath(org), current);
     await store.updateDoc(enginePath(org), { enabled: false, state: 'setup_required', issue: { code: 'build_preparing', message: 'Preparing the shared build engine…' } });
     await prepareBuildRetention(org);
+    phase = 'Workers Scripts';
     const client = await cloudflareClient(org), base = `/accounts/${config.account_id}`;
     const name = current.worker_name, tag = `typeroll-build-${sha256(org).slice(0, 16)}`;
     let worker = (await client(`${base}/workers/scripts`)).find((entry: any) => entry.id === name);
@@ -71,6 +76,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
     const exposure = await client(`${base}/workers/scripts/${name}/subdomain`);
     if (exposure.enabled || exposure.previews_enabled) throw new ConnectionError('Cloudflare did not disable the build project’s public URLs.', 502);
     config.worker_tag = worker.tag;
+    phase = 'GitHub repository';
     const ghConfig = githubConfiguration();
     const github = await githubInstallationClient({ ...ghConfig, installationId: config.installation_id, owner: config.owner });
     const repoPath = `/repos/${config.owner}/${current.runner_repo}`;
@@ -81,8 +87,10 @@ export async function configureBuildEngine(org: string, input: Record<string, un
     if (!repo.private || repo.owner?.login !== config.owner || repo.archived || (repo.description !== description && !pilot)) throw new ConnectionError('The generated build repository belongs to another integration.', 409);
     repo = await ensureGithubMainBranch(github, { owner: config.owner, repo: current.runner_repo, repository: repo });
     if (pilot) await github(repoPath, { method: 'PATCH', body: { description } });
+    phase = 'Workers Builds';
     const triggers = await client(`${base}/builds/workers/${config.worker_tag}/triggers`);
     for (const trigger of triggers) await client(`${base}/builds/triggers/${trigger.trigger_uuid}`, { method: 'PATCH', body: { path_excludes: ['*'] } });
+    phase = 'GitHub repository';
     const runner = await publishTree(github, { owner: config.owner, repo: current.runner_repo,
       files: { 'assets.mjs': assetsSource, 'executor.mjs': executorSource, 'contract.mjs': contractSource, 'engine.json': JSON.stringify({ origin: origin.origin, org_id: org, revision }),
         '.node-version': BUILD_RUNTIME + '\n', 'package.json': JSON.stringify({ name, private: true, type: 'module', scripts: { build: 'node executor.mjs', 'qualify:artifact': 'node finalize.mjs' } }),
@@ -90,6 +98,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
         'README.md': '# Typeroll shared builds\n\nGenerated source only. One runner for this organization. Site repositories and version branches remain separate. Public Worker URLs are disabled. Builds are dispatched explicitly by Typeroll.\n' },
       message: 'Update the organization static build executor' });
     config.runner_commit = runner.commit;
+    phase = 'Workers Builds';
     const tokens = await client(`${base}/builds/tokens`);
     let trigger = triggers.find((entry: any) => entry.branch_includes?.includes('main') && !entry.branch_excludes?.includes('main'));
     const tokenId = trigger?.build_token_uuid ?? (tokens.length === 1 ? tokens[0].build_token_uuid : null);
@@ -118,6 +127,16 @@ export async function configureBuildEngine(org: string, input: Record<string, un
   } catch (error) {
     if (config.qualification_key) await new OrganizationBuildQueue().cancel(org, config.qualification_key);
     await store.compareAndUpdateDoc<EngineConfiguration>(path, value => value.revision === config.revision, { status: 'disabled', setup_lease_until: 0 });
+    if (error instanceof ProviderError) {
+      const buildPermission = error.provider === 'Cloudflare' && ['Workers Scripts', 'Workers Builds'].includes(phase) && [401, 403].includes(error.status);
+      const detail = `HTTP ${error.status}${error.codes.length ? `, code ${error.codes.join(', ')}` : ''}`;
+      await store.updateDoc(enginePath(org), { revision: randomUUID(), state: buildPermission ? 'approval_required' : 'error', enabled: false,
+        issue: { code: buildPermission ? 'build_permission_required' : 'build_setup_failed', http_status: error.status, provider_codes: error.codes,
+          message: buildPermission
+            ? `Cloudflare denied changes to ${phase} in ${cf.cloudflare.account_name} (${detail}). Click Approve build permissions, approve access in Cloudflare, then return and finish build setup. Your hosting and media connections stay connected.`
+            : `Build setup stopped at ${phase} (${detail}). Check ${phase === 'R2 build storage' ? 'Media storage and the organization Cloudflare connection' : phase === 'GitHub repository' ? 'the GitHub connection and repository permissions' : 'the organization Cloudflare connection'}, then retry setup.` } });
+      return readBuildEngine(org);
+    }
     await store.updateDoc(enginePath(org), { revision: randomUUID(), state: 'error', enabled: false, issue: { code: 'build_setup_failed', message: error instanceof ConnectionError ? error.message : 'Shared build setup could not finish. Retry setup after checking the organization connections.' } });
     throw error;
   }

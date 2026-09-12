@@ -76,3 +76,36 @@ it('offers setup as the next action and switches to automatic test progress afte
   expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Finish build setup')).toBe(false);
   expect(container.querySelector('section')?.dataset.state).toBe('waiting');
 });
+it('replaces setup progress with the permission action returned by preflight', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const initial = { provider: 'cloudflare', state: 'not_configured', revision: 'initial', enabled: false, worker_name: 'builder' };
+  vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init?: RequestInit) => Response.json(init?.method === 'POST'
+    ? { ...initial, revision: 'denied', state: 'approval_required', issue: { code: 'build_permission_required', message: 'Click Approve build permissions to allow Workers Builds.' } } : initial)));
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(createElement(PublishingBuilds)));
+  await act(async () => { [...container.querySelectorAll('button')].find(b => b.textContent === 'Finish build setup')!.click(); });
+  expect(container.textContent).not.toContain('Preparing the shared build engine');
+  expect(container.querySelector('[role="status"]')?.textContent).toContain('Click Approve build permissions');
+  expect([...container.querySelectorAll('button')].some(b => b.textContent === 'Approve build permissions' && !b.disabled)).toBe(true);
+  expect(container.querySelector('section')?.dataset.state).toBe('error');
+});
+it('clears failed setup progress and reloads the saved revision before retrying', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const initial = { provider: 'cloudflare', state: 'ready', revision: 'one', enabled: true, worker_name: 'builder' };
+  let failed = false;
+  const request = vi.fn(async (_url: unknown, init?: RequestInit) => {
+    if (init?.method === 'POST') { failed = true; return Response.json({ error: 'Build storage could not be prepared.' }, { status: 502 }); }
+    return Response.json(failed ? { ...initial, state: 'error', enabled: false, revision: 'two', issue: { message: 'Build storage could not be prepared.' } } : initial);
+  });
+  vi.stubGlobal('fetch', request);
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(createElement(PublishingBuilds)));
+  await act(async () => { [...container.querySelectorAll('button')].find(b => b.textContent === 'Update build engine')!.click(); });
+  expect(container.textContent).not.toContain('Preparing the shared build engine');
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe('Build storage could not be prepared.');
+  expect(container.querySelector('[role="status"]')).toBeNull();
+  expect(container.querySelector('section')?.dataset.state).toBe('error');
+  expect(request).toHaveBeenCalledTimes(3);
+  await act(async () => { [...container.querySelectorAll('button')].find(b => b.textContent === 'Finish build setup')!.click(); });
+  expect(JSON.parse(request.mock.calls.filter(([, init]) => init?.method === 'POST')[1][1]!.body as string).revision).toBe('two');
+});

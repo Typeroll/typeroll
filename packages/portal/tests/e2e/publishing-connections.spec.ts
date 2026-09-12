@@ -460,3 +460,38 @@ for (const width of [320, 390, 1440]) test(`GitHub sign-in and installation keep
   await expect(installation).toHaveAttribute('data-state', 'ready');
   expect(actions).toEqual(['start', 'install']);
 });
+
+for (const width of [320, 1440]) test(`build setup explains missing permissions and clears failed progress at ${width}px`, async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  await page.setViewportSize({ width, height: 900 });
+  const initial = { provider: 'cloudflare', state: 'not_configured', revision: 'initial', enabled: false, worker_name: 'builder', account_name: 'Build account' };
+  const denied = { ...initial, revision: 'denied', state: 'approval_required', issue: { code: 'build_permission_required', message: 'Cloudflare denied access to Workers Scripts in Build account (HTTP 403, code 10000). Click Approve build permissions, approve access in Cloudflare, then return and finish build setup. Your hosting accounts and media stay connected.' } };
+  let current = initial, fail = false;
+  await page.route('**/api/orgs/publishing/builds', async route => {
+    if (route.request().method() === 'POST') {
+      if (fail) {
+        current = { ...initial, state: 'error', revision: 'failed' };
+        return route.fulfill({ status: 502, json: { error: 'Build storage could not be prepared. Check Media storage.' } });
+      }
+      current = denied;
+    }
+    await route.fulfill({ json: current });
+  });
+  await page.goto('/app/settings/publishing');
+  const card = page.getByRole('region', { name: 'Builds', exact: true });
+  await card.getByRole('button', { name: 'Finish build setup', exact: true }).click();
+  await expect(card.getByRole('button', { name: 'Approve build permissions', exact: true })).toBeEnabled();
+  await expect(card.getByRole('status')).toContainText('Click Approve build permissions');
+  await expect(card).not.toContainText('Preparing the shared build engine');
+  await expect(card).toHaveAttribute('data-state', 'error');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await card.screenshot({ path: testInfo.outputPath(`build-permission-${width}.png`) });
+  current = initial; fail = true;
+  await page.reload();
+  await card.getByRole('button', { name: 'Finish build setup', exact: true }).click();
+  await expect(card.getByRole('alert')).toContainText('Check Media storage');
+  await expect(card.getByRole('status')).toHaveCount(0);
+  await expect(card).not.toContainText('Preparing the shared build engine');
+  await expect(card.getByRole('button', { name: 'Finish build setup', exact: true })).toBeEnabled();
+  await card.screenshot({ path: testInfo.outputPath(`build-failure-${width}.png`) });
+});
