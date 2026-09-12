@@ -7,7 +7,9 @@ import type { readBuildSettings } from '../lib/builds/selection';
 type BuildSettings = Awaited<ReturnType<typeof readBuildSettings>>;
 import './PublishingBuilds.css';
 
-export default function PublishingBuilds() {
+export default function PublishingBuilds({ refreshAfterCloudflareReturn = false }: { refreshAfterCloudflareReturn?: boolean }) {
+  // The server captures the callback result before another island clears the URL.
+  const pendingConnectionCheck = useRef(refreshAfterCloudflareReturn);
   const [engine, setEngine] = useState<BuildEngine | null>(null);
   const [settings, setSettings] = useState<BuildSettings | null>(null);
   const viewing = useRef<BuildProvider | null>(null);
@@ -24,7 +26,10 @@ export default function PublishingBuilds() {
       if (!response.ok) throw Error(value.error || 'Could not read build settings.');
       adopt(value);
       // Refresh older setup records and permissions after the OAuth return.
-      if ((value.state === 'build_token_required' && value.worker_found === undefined) || new URLSearchParams(window.location.search).get('cloudflare') === 'connected') await check(value);
+      if ((value.state === 'build_token_required' && value.worker_found === undefined) || pendingConnectionCheck.current) {
+        pendingConnectionCheck.current = false;
+        await check(value);
+      }
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not read build settings.'); }
   }
   useEffect(() => { void load(); }, []);

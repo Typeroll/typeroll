@@ -109,3 +109,19 @@ it('clears failed setup progress and reloads the saved revision before retrying'
   await act(async () => { [...container.querySelectorAll('button')].find(b => b.textContent === 'Finish build setup')!.click(); });
   expect(JSON.parse(request.mock.calls.filter(([, init]) => init?.method === 'POST')[1][1]!.body as string).revision).toBe('two');
 });
+it('rechecks the server-captured OAuth return after another island clears the callback URL', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const stale = { provider: 'cloudflare', state: 'approval_required', revision: 'old-check', enabled: false, worker_name: 'builder', issue: { message: 'Old denied access message' } };
+  const request = vi.fn(async (_url: unknown, init?: RequestInit) => Response.json(init?.method === 'POST'
+    ? { ...stale, revision: 'fresh-check', state: 'qualification_required', issue: { message: 'Permissions verified.' } } : stale));
+  vi.stubGlobal('fetch', request);
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  // The connection island may remove query parameters before this island hydrates.
+  expect(window.location.search).toBe('');
+  await act(async () => root.render(createElement(PublishingBuilds, { refreshAfterCloudflareReturn: true })));
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(request).toHaveBeenLastCalledWith('/api/orgs/publishing/builds', expect.objectContaining({ method: 'POST', body: JSON.stringify({ revision: 'old-check' }) }));
+  expect(container.textContent).not.toContain('Old denied access message');
+  expect(container.querySelector('[role="status"]')?.textContent).toBe('Permissions verified.');
+  expect(container.querySelector('section')?.dataset.state).toBe('waiting');
+});

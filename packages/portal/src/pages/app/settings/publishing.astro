@@ -17,7 +17,7 @@ const organization = await organizationMembership(guard.value.userId, guard.valu
   <p>GitHub and Cloudflare connections for <strong>{organization?.name ?? 'your organization'}</strong>.</p>
   <p class="muted" style="max-width: 760px; margin-bottom: 1.5rem;">Connect once for all sites in your organization. You can edit, save and share temporary previews before completing publishing setup.</p>
   <PublishingConnections client:load />
-  <PublishingBuilds client:load />
+  <PublishingBuilds refreshAfterCloudflareReturn={Astro.url.searchParams.get('cloudflare') === 'connected'} client:load />
   <HostingGroups client:load />
   <PublishingDomains client:load />
 </AppLayout>

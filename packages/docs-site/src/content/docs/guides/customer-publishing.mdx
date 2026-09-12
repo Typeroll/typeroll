@@ -76,6 +76,11 @@ and **Workers Builds**. If the Builds card says **Build permissions required**,
 select **Approve build permissions**, approve in Cloudflare, then return and
 select **Finish build setup**. Hosting and media remain connected.
 
+Starting with Core 0.1.80, returning from Cloudflare approval automatically
+rechecks the Builds card even after the connection card clears the callback
+address. If an older error remains on an earlier version, select **Refresh
+status**. A stale message does not mean that you need to approve access again.
+
 On older versions, if setup shows HTTP 403, select **Refresh status** first to
 show the permission action. If setup fails, it has stopped: the card should show
 the failed step and next action, rather than a continuing preparation message.

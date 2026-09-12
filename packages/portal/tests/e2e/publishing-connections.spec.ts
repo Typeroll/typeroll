@@ -495,3 +495,27 @@ for (const width of [320, 1440]) test(`build setup explains missing permissions 
   await expect(card.getByRole('button', { name: 'Finish build setup', exact: true })).toBeEnabled();
   await card.screenshot({ path: testInfo.outputPath(`build-failure-${width}.png`) });
 });
+
+test('Cloudflare callback refreshes stale build permissions after connection UI cleans the URL', async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  let checks = 0;
+  const stale = { provider: 'cloudflare', state: 'approval_required', revision: 'before-consent', enabled: false, worker_name: 'builder', issue: { message: 'Stale Cloudflare HTTP 403' } };
+  await page.route('**/api/orgs/publishing/builds', async route => {
+    if (route.request().method() === 'POST') {
+      checks++;
+      expect(route.request().postDataJSON()).toEqual({ revision: 'before-consent' });
+      return route.fulfill({ json: { ...stale, revision: 'after-consent', state: 'qualification_required', issue: { message: 'Build permissions verified.' } } });
+    }
+    // Reproduce the actual race: connection UI clears the query while Builds awaits its GET.
+    await page.waitForURL(url => !url.searchParams.has('cloudflare'));
+    await route.fulfill({ json: stale });
+  });
+  await page.goto('/app/settings/publishing?cloudflare=connected');
+  const card = page.getByRole('region', { name: 'Builds', exact: true });
+  await expect(card.getByRole('status')).toHaveText('Build permissions verified.');
+  await expect(card).not.toContainText('Stale Cloudflare HTTP 403');
+  await expect(card.getByRole('button', { name: 'Approve build permissions', exact: true })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Finish build setup', exact: true })).toBeEnabled();
+  expect(checks).toBe(1);
+  await card.screenshot({ path: testInfo.outputPath('cloudflare-return-build-status.png') });
+});
