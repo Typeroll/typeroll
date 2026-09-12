@@ -5,7 +5,7 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { claimAccount, connectionPath, connectionSummary, disconnect, getConnection, openCredentials, sealCredentials } from '../../lib/publishing/connections';
 import { CLOUDFLARE_SCOPES } from '../../lib/publishing/cloudflare-oauth';
-import { finishGithubConnection, githubSetup, startGithubConnection, githubChoices, selectGithubOrganization } from '../../lib/publishing/github-connection';
+import { finishGithubConnection, githubNextStep, startGithubInstallation, resumeGithubInstallation, githubSetup, startGithubConnection, githubChoices, selectGithubOrganization } from '../../lib/publishing/github-connection';
 import { connectCloudflare, verifyR2, prepareCloudflareMedia, connectCloudflareMedia } from '../../lib/publishing/cloudflare-connection';
 import { GET } from '../../pages/api/orgs/publishing/index';
 import { checkGithubPermissions } from '../../lib/publishing/github-permissions';
@@ -192,6 +192,101 @@ describe('GitHub organization authorization', () => {
     vi.stubEnv('PORTAL_PUBLIC_URL', 'http://localhost');
     vi.stubEnv('TYPEROLL_PUBLISH_GITHUB_CLIENT_SECRET', '');
     expect(githubSetup().available).toBe(false);
+  });
+});
+
+describe('GitHub installation continuation', () => {
+  const grantPath = 'organizations/default/publishing_authorizations/github';
+  async function requireInstallation() {
+    const input = await authorization();
+    await expect(finishGithubConnection(session, input, providerFetch({
+      '/user/installations?per_page=100&page=1': { installations: [] },
+    }))).rejects.toMatchObject({ code: 'install_required' });
+    return input;
+  }
+  it('persists the required step across page reloads without persisting the user token', async () => {
+    await requireInstallation();
+    expect(await githubNextStep(session)).toBe('install');
+    const response = await call(GET, routeContext());
+    expect(await response.json()).toMatchObject({ github_next_step: 'install', github: { status: 'disconnected' } });
+    const stored = await getStore().getDoc<any>(grantPath);
+    expect(JSON.stringify(stored)).not.toContain('synthetic-user-token');
+    expect(stored.encrypted_verifier).toBeNull();
+    await getStore().updateDoc(grantPath, { expires_at: Date.now() - 1 });
+    // An expired browser visit does not hide the missing installation; the CTA renews it.
+    expect(await githubNextStep(session)).toBe('install');
+    expect(await githubNextStep({ ...session, userId: 'other' })).toBeNull();
+    await disconnect('default', 'github', (await getConnection('default', 'github')).revision);
+    expect(await githubNextStep(session)).toBeNull();
+  });
+  it('returns from installation through fresh PKCE, then verifies owner and permissions before connecting', async () => {
+    const original = await requireInstallation();
+    const post = routeContext('POST', 'github', { action: 'install' });
+    const installed = await call(POST, post);
+    const url = new URL((await installed.json()).authorization_url);
+    expect(url.origin + url.pathname).toBe('https://github.com/apps/synthetic-publisher/installations/new');
+    const browser = post.cookies.set.mock.calls[0][1];
+    const context = routeContext();
+    context.url = new URL('http://localhost/api/orgs/publishing/github/callback');
+    context.url.searchParams.set('state', url.searchParams.get('state')!);
+    context.url.searchParams.set('installation_id', '999999');
+    context.url.searchParams.set('code', 'untrusted-installation-code');
+    context.cookies.get.mockImplementation(((name: string) => name === 'typeroll_publishing_github' ? { value: browser } : undefined) as any);
+    const fetcher = providerFetch(); vi.stubGlobal('fetch', fetcher);
+    const resumed = await call(CALLBACK, context);
+    expect(resumed.status).toBe(303);
+    expect(resumed.headers.get('referrer-policy')).toBe('no-referrer');
+    const next = new URL(resumed.headers.get('location')!);
+    expect(next.origin + next.pathname).toBe('https://github.com/login/oauth/authorize');
+    expect(next.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(next.searchParams.get('state')).not.toBe(original.state);
+    expect(context.cookies.delete).not.toHaveBeenCalled();
+    expect(context.cookies.set).toHaveBeenCalledWith('typeroll_publishing_github', expect.any(String), expect.objectContaining({ httpOnly: true, sameSite: 'lax' }));
+    expect(fetcher).not.toHaveBeenCalled();
+    expect((await getConnection('default', 'github')).status).toBe('disconnected');
+    const input = { state: next.searchParams.get('state')!, browser: context.cookies.set.mock.calls[0][1], code: 'fresh-pkce-code' };
+    expect(await finishGithubConnection(session, input, fetcher)).toBe('connected');
+    expect(await githubNextStep(session)).toBeNull();
+    expect((await getConnection('default', 'github')).github?.installation_id).toBe('34');
+    const exchange = JSON.parse(fetcher.mock.calls[0][1]!.body as string);
+    expect(exchange.code).toBe('fresh-pkce-code');
+    expect(next.searchParams.get('code_challenge')).toBe(createHash('sha256').update(exchange.code_verifier).digest('base64url'));
+  });
+  it.each(['browser', 'state', 'expired', 'user', 'organization', 'connection'])('rejects installation return with changed %s', async kind => {
+    await requireInstallation(); const started = await startGithubInstallation(session);
+    const input = { state: new URL(started.url).searchParams.get('state')!, browser: started.browser };
+    if (kind === 'browser') input.browser = 'x'.repeat(43);
+    if (kind === 'state') input.state = 'install_' + 'x'.repeat(43);
+    if (kind === 'expired') await getStore().updateDoc(grantPath, { expires_at: Date.now() - 1 });
+    if (kind === 'connection') await disconnect('default', 'github', (await getConnection('default', 'github')).revision);
+    const actor = { ...session, ...(kind === 'user' ? { userId: 'other' } : {}), ...(kind === 'organization' ? { orgId: 'other' } : {}) };
+    await expect(resumeGithubInstallation(actor, input)).rejects.toThrow('expired');
+    expect((await getConnection('default', 'github')).status).toBe('disconnected');
+  });
+  it('consumes the installation return once and never exchanges its unbound code', async () => {
+    await requireInstallation(); const started = await startGithubInstallation(session);
+    const input = { state: new URL(started.url).searchParams.get('state')!, browser: started.browser };
+    const fetcher = providerFetch();
+    await expect(finishGithubConnection(session, { ...input, code: 'installation-code' }, fetcher)).rejects.toThrow('expired');
+    expect(fetcher).not.toHaveBeenCalled();
+    const results = await Promise.allSettled([resumeGithubInstallation(session, input), resumeGithubInstallation(session, input)]);
+    expect(results.map(x => x.status).sort()).toEqual(['fulfilled', 'rejected']);
+  });
+  it('does not infer installation success after cancellation or an owner approval request', async () => {
+    await requireInstallation(); const started = await startGithubInstallation(session);
+    await resumeGithubInstallation(session, { state: new URL(started.url).searchParams.get('state')!, browser: started.browser });
+    await requireInstallation();
+    expect(await githubNextStep(session)).toBe('install');
+    expect((await getConnection('default', 'github')).status).toBe('disconnected');
+  });
+  it('does not overwrite a newer connection attempt with the old callback result', async () => {
+    const input = await authorization(), fallback = providerFetch({ '/user/installations?per_page=100&page=1': { installations: [] } });
+    const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+      if (String(url).includes('/user/installations')) await startGithubConnection(session);
+      return fallback(url, init);
+    });
+    await expect(finishGithubConnection(session, input, fetcher)).rejects.toMatchObject({ code: 'install_required' });
+    expect(await githubNextStep(session)).toBeNull();
   });
 });
 

@@ -43,6 +43,8 @@ export function githubSetup() {
 }
 
 interface Authorization {
+  kind?: 'authorize' | 'install';
+  next_step?: 'install';
   state_hash: string;
   browser_hash: string;
   user_id: string;
@@ -53,6 +55,44 @@ interface Authorization {
   encrypted_verifier: string | null;
 }
 const grantPath = (orgId: string) => `organizations/${orgId}/publishing_authorizations/github`;
+
+/** A required installation is durable UI state, not a transient redirect error. */
+export async function githubNextStep(session: FullSession): Promise<'install' | null> {
+  const grant = await getStore().getDoc<Authorization>(grantPath(session.orgId));
+  if (!grant || grant.user_id !== session.userId || grant.next_step !== 'install') return null;
+  return (await getConnection(session.orgId, 'github')).revision === grant.revision ? 'install' : null;
+}
+
+export async function startGithubInstallation(session: FullSession) {
+  const config = githubConfiguration();
+  const previous = await getStore().getDoc<Authorization>(grantPath(session.orgId));
+  if (await githubNextStep(session) !== 'install' || !previous) throw new ConnectionError('Start the GitHub connection before installing the App.');
+  const state = `install_${nonce()}`;
+  const browser = nonce();
+  const changed = await getStore().compareAndUpdateDoc<Authorization>(grantPath(session.orgId),
+    current => current.state_hash === previous.state_hash && current.user_id === session.userId && current.revision === previous.revision,
+    { kind: 'install', next_step: 'install', state_hash: hash(state), browser_hash: hash(browser),
+      expires_at: Date.now() + TTL_MS, consumed: false, encrypted_verifier: null });
+  if (!changed) throw new ConnectionError('The GitHub connection changed. Reload the page and continue.', 409);
+  const url = new URL(`https://github.com/apps/${config.slug}/installations/new`);
+  url.searchParams.set('state', state);
+  return { url: url.toString(), browser, maxAge: TTL_MS / 1000 };
+}
+
+/** Installation callbacks are navigation only. A fresh PKCE exchange proves authority. */
+export async function resumeGithubInstallation(session: FullSession, input: { state: string; browser: string }) {
+  if (!/^install_[\w-]{43}$/.test(input.state) || !/^[\w-]{43}$/.test(input.browser)) {
+    throw new ConnectionError('GitHub installation expired or did not match this browser');
+  }
+  const revision = (await getConnection(session.orgId, 'github')).revision;
+  const grant = await getStore().compareAndUpdateDoc<Authorization>(grantPath(session.orgId),
+    current => current.kind === 'install' && !current.consumed && current.expires_at > Date.now()
+      && current.user_id === session.userId && current.revision === revision
+      && current.state_hash === hash(input.state) && current.browser_hash === hash(input.browser),
+    { consumed: true });
+  if (!grant) throw new ConnectionError('GitHub installation expired or did not match this browser');
+  return grant.owner;
+}
 
 export async function startGithubConnection(session: FullSession, owner = '') {
   const config = githubConfiguration();
@@ -113,7 +153,12 @@ export async function finishGithubConnection(session: FullSession, input: { stat
       && (!grant.owner || item.account.login?.toLowerCase() === grant.owner.toLowerCase())));
     if (result.installations.length < 100) break;
   }
-  if (!installations.length) throw new GithubFlowError('install_required', 'Install the Typeroll GitHub App in your personal account or organization, then connect again.');
+  if (!installations.length) {
+    await getStore().compareAndUpdateDoc<Authorization>(grantPath(session.orgId),
+      current => current.state_hash === grant.state_hash && current.user_id === session.userId && current.consumed,
+      { next_step: 'install' });
+    throw new GithubFlowError('install_required', 'Continue setup by installing the Typeroll GitHub App.');
+  }
   const current = await getConnection(session.orgId, 'github');
   const choices: GithubChoice[] = [];
   let invalidPermissions = false;

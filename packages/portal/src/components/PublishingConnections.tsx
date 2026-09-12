@@ -9,7 +9,7 @@ type Connection = {
   github: { owner: string; account_type?: 'Organization' | 'User'; repository_creation_state?: 'ready' | 'reconnect_required' } | null;
   cloudflare: { account_id: string; account_name: string; bucket: string; public_bucket?: string } | null;
 };
-type Connections = { media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string; account_type?: 'Organization' | 'User' }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
+type Connections = { github_next_step?: 'install' | null; media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string; account_type?: 'Organization' | 'User' }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
 const API = '/api/orgs/publishing';
 
 class PublishingRequestError extends Error {
@@ -87,9 +87,9 @@ export default function PublishingConnections() {
     void refresh().catch((error: Error) => setError(error.message));
     const parameters = new URLSearchParams(window.location.search);
     const result = parameters.get('github');
-    if (result === 'connected') setNotice('GitHub connected. This account can be reused for your sites.');
+    if (result === 'connected') setConnectionFeedback({ provider: 'github', error: false, message: 'GitHub connected. Setup is complete. This account can be reused for your sites.' });
     if (result === 'select') setNotice('Choose the GitHub account to connect below.');
-    if (result === 'install_required') setError('Install the Typeroll GitHub App in your personal account or organization using the link below, then select Connect GitHub again.');
+    if (result === 'install_required') setConnectionFeedback({ provider: 'github', error: false, message: 'Sign-in approved. Complete the installation step above to connect your repositories.' });
     if (result === 'permissions_required') setError('Open the App installation settings and approve the requested permissions with All repositories access, then connect again.');
     if (result === 'github_expiring_authorization_required') setError('The publisher must enable expiring GitHub user authorization before personal accounts can connect.');
     if (result === 'owner_required') setError('Sign in to your personal GitHub account or as an owner of the GitHub organization you want to connect, then try again.');
@@ -108,6 +108,7 @@ export default function PublishingConnections() {
     const values = Object.fromEntries(new FormData(form));
     const mediaAction = provider === 'cloudflare' && values.action === 'save_media';
     setBusy(true); setError(''); setNotice('');
+    setConnectionFeedback(null);
     if (provider === 'cloudflare') { setMediaError(null); setMediaNotice(''); }
     try {
       const result = await request(`/${provider}`, 'POST', { ...values, revision: data?.[provider].revision });
@@ -115,10 +116,12 @@ export default function PublishingConnections() {
       form.reset();
       await refresh();
       if (mediaAction) setMediaNotice('R2 connected. Upload access verified. Setup is complete.');
-      else setNotice(provider === 'github' ? 'GitHub connected. This account can be reused for your sites.' : 'Cloudflare connection updated. Access is encrypted and reused for your sites.');
+      else if (provider === 'github') setConnectionFeedback({ provider: 'github', error: false, message: 'GitHub connected. Setup is complete. This account can be reused for your sites.' });
+      else setNotice('Cloudflare connection updated. Access is encrypted and reused for your sites.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not complete setup. Check your connection and try again.';
       if (mediaAction) setMediaError({ message, code: error instanceof PublishingRequestError ? error.code : undefined });
+      else if (provider === 'github') setConnectionFeedback({ provider, error: true, message });
       else setError(message);
     }
     finally { setBusy(false); }
@@ -150,6 +153,8 @@ export default function PublishingConnections() {
     } finally { metadataGeneration.current++; setBusy(false); setDisconnecting(null); }
   }
 
+  const githubNeedsInstall = data?.github_next_step === 'install';
+  const githubNeedsChoice = (data?.github_choices?.length ?? 0) > 0;
   const mediaBucket = data?.cloudflare.cloudflare?.bucket;
   const cloudflareAccount = data?.cloudflare.cloudflare;
   const r2Overview = cloudflareAccount ? `https://dash.cloudflare.com/${cloudflareAccount.account_id}/r2/overview` : 'https://dash.cloudflare.com/';
@@ -180,7 +185,7 @@ export default function PublishingConnections() {
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {!data ? <>{['GitHub account', 'Cloudflare account', 'Media storage'].map((title, index) => <PublishingCard key={title} id={`loading-${index}`} title={title} state={error ? 'error' : 'waiting'} status={error ? 'Could not load settings' : 'Loading…'}><p className="muted">{error ? 'Reload the page to try again.' : 'Checking your organization’s settings.'}</p></PublishingCard>)}</> : <>
-      <PublishingCard id="github" title="GitHub account" state={disconnecting === 'github' ? 'waiting' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'error' : data.github.status === 'connected' ? data.github.github?.repository_creation_state === 'reconnect_required' ? 'waiting' : 'ready' : 'error'} status={disconnecting === 'github' ? 'Disconnecting…' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'Connection needs attention' : data.github.status === 'connected' ? `Connected · ${data.github.github?.owner ?? 'GitHub'}` : 'Not connected'}>
+      <PublishingCard id="github" title="GitHub account" state={disconnecting === 'github' || githubNeedsInstall || githubNeedsChoice ? 'waiting' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'error' : data.github.status === 'connected' ? data.github.github?.repository_creation_state === 'reconnect_required' ? 'waiting' : 'ready' : 'error'} status={disconnecting === 'github' ? 'Disconnecting…' : githubNeedsInstall ? 'Setup incomplete · Install the GitHub App' : githubNeedsChoice ? 'Setup incomplete · Choose an account' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'Connection needs attention' : data.github.status === 'connected' ? `Connected · ${data.github.github?.owner ?? 'GitHub'}` : 'Not connected'}>
         <p>Stores a private repository for each site and its version branches.</p>
         {!data.github_setup.available ? <p>The publisher needs to configure its GitHub App before you can connect.</p> : <>
 
@@ -192,15 +197,30 @@ export default function PublishingConnections() {
               </select></div>
             <button className="btn" disabled={busy || checkingMedia} type="submit">Connect selected account</button>
           </form>}
-          {data.github.status === 'connected' ? <PublishingGithubPermissions revision={data.github.revision} /> : <form className="stack" onSubmit={(event) => void submit('github', event)}>
+          {githubNeedsInstall ? <div className="stack" aria-label="GitHub installation required">
+            <ol style={{ paddingInlineStart: 24 }}>
+              <li>Sign in to GitHub — complete.</li>
+              <li><strong>Install the Typeroll App — required.</strong></li>
+              <li>Typeroll verifies access and confirms the connection.</li>
+            </ol>
+            <p>On GitHub, choose the personal account or organization that will own your site repositories. Select <strong>All repositories</strong>, then <strong>Install</strong>. You will return here automatically to finish connecting.</p>
+            <form onSubmit={event => void submit('github', event)}>
+              <input type="hidden" name="action" value="install" />
+              <button className="btn" disabled={busy || checkingMedia}>{busy ? 'Opening GitHub…' : 'Install and connect GitHub'}</button>
+            </form>
+            <p className="muted">If GitHub requires an organization owner’s approval, setup remains incomplete until the owner installs the App. Resume here when it has been approved.</p>
+            <form onSubmit={event => void submit('github', event)}>
+              <button className="btn btn--secondary" disabled={busy || checkingMedia}>Already installed? Check connection</button>
+            </form>
+          </div> : data.github.status === 'connected' ? <PublishingGithubPermissions revision={data.github.revision} /> : !githubNeedsChoice && <form className="stack" onSubmit={(event) => void submit('github', event)}>
             <button className="btn" disabled={busy || checkingMedia} type="submit">Connect GitHub</button>
           </form>}
           <details><summary>GitHub setup instructions</summary>
             <p>Sign in and choose your personal account or an organization you own. No account name or ID needs to be entered.</p>
             <ol>
-              <li><a href={data.github_setup.install_url!} target="_blank" rel="noreferrer">Open the App installation in GitHub</a> and select your personal account or organization.</li>
-              <li>Select <strong>All repositories</strong> and approve the requested permissions. This also includes repositories Typeroll creates for future sites.</li>
-              <li>Return here and select <strong>Connect GitHub</strong>. If you already installed the App, start with that button.</li>
+              <li>Select <strong>Connect GitHub</strong> and sign in.</li>
+              <li>If installation is needed, select <strong>Install and connect GitHub</strong>. Choose your personal account or organization, select <strong>All repositories</strong>, and install the App.</li>
+              <li>Typeroll continues automatically and verifies access. If several accounts are available, choose one. Setup is complete when this card shows <strong>Connected</strong>.</li>
             </ol>
           </details>
         </>}

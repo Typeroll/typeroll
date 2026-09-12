@@ -29,9 +29,13 @@ under **Account**. On mobile, open the menu first. Organization owners and admin
 manage these connections.
 
 1. Select **Connect GitHub**, sign in to your personal account or as an owner of your GitHub organization,
-   and authorize Typeroll. If prompted, install the Typeroll publisher GitHub App
-   with **All repositories**, then return to connect. Choose an account only
-   if more than one is available. No account name or ID needs to be typed.
+   and authorize Typeroll. If the App is missing, the GitHub card shows the orange
+   **Setup incomplete · Install the GitHub App** step. Select **Install and connect
+   GitHub**, choose the account that will own your repositories, select **All
+   repositories**, and approve the installation. Typeroll returns automatically
+   to verify access. Choose an account if more than one is available. The card
+   confirms **Connected** when all checks pass; signing in alone is not completion.
+   No account name or ID needs to be typed.
 2. Select **Connect Cloudflare**, sign in and approve the account. Optional DNS
    and URL rewrite permissions let Typeroll configure domains automatically.
    You can decline these and let your administrator or AI agent manage DNS.
@@ -56,6 +60,14 @@ manage these connections.
    **Configure domains** to connect the media hostname to R2 and queue media
    migration. HTTPS activation is checked automatically. Each site and version
    gets its own website address when you publish.
+
+The guided GitHub installation continuation is available in Core 0.1.78 and
+later, once your hosting operator deploys that release. Earlier versions require
+you to install the publisher App and then select **Connect GitHub** again.
+Cloud production and staging use separate publisher Apps: approving one does not
+install the other. The required installation step survives reloading Publishing.
+If your GitHub organization requires an owner's approval, return after approval
+and select **Already installed? Check connection** to verify access.
 
 Use the refresh icon beside **Cloudflare domain** to retrieve newly added domains. Refreshing keeps the
 existing account connection. An empty result does not mean you need to reconnect.

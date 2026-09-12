@@ -396,3 +396,42 @@ test('a delayed migration poll cannot restore a disconnected account in the brow
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await expect(page.getByRole('button', { name: 'Disconnect Cloudflare' })).toHaveCount(0);
 });
+
+for (const width of [390, 1440]) test(`GitHub installation is a required visible step that survives reload at ${width}px`, async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  await page.setViewportSize({ width, height: 900 });
+  let phase: 'sign-in' | 'install' | 'connected' = 'sign-in';
+  const actions: unknown[] = [];
+  await page.route('**/api/orgs/publishing', route => {
+    const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
+    return route.fulfill({ json: {
+      github: phase === 'connected' ? { ...empty, status: 'connected', github: { owner: 'Example', account_type: 'Organization' } } : empty,
+      cloudflare: empty, github_next_step: phase === 'install' ? 'install' : null, github_choices: [],
+      github_setup: { available: true, install_url: 'https://github.com/apps/synthetic-publisher/installations/new' },
+      cloudflare_setup: { available: false }, encryption_available: true,
+    } });
+  });
+  await page.route('**/api/orgs/publishing/github', async route => {
+    const body = route.request().postDataJSON(); actions.push(body.action ?? 'start');
+    phase = body.action === 'install' ? 'connected' : 'install';
+    await route.fulfill({ json: { authorization_url: `/app/settings/publishing?github=${phase === 'connected' ? 'connected' : 'install_required'}` } });
+  });
+  await page.route('**/api/orgs/publishing/github/permissions', route => route.fulfill({ json: { state: 'ready', approval_url: null, permissions: [] } }));
+  await page.goto('/app/settings/publishing');
+  await page.getByRole('button', { name: 'Connect GitHub', exact: true }).click();
+  const required = page.getByRole('button', { name: 'Install and connect GitHub', exact: true });
+  await expect(required).toBeVisible();
+  await expect(page.getByText('Setup incomplete · Install the GitHub App', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Connect GitHub', exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(required).toBeVisible();
+  await expect(page.getByLabel('GitHub installation required')).toContainText('All repositories');
+  await expect(page.getByLabel('GitHub installation required')).toContainText('return here automatically');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath(`github-installation-${width}.png`), fullPage: true });
+  await required.click();
+  await expect(page.getByText('Connected · Example', { exact: true })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'GitHub connected. Setup is complete.' })).toBeVisible();
+  await expect(required).toHaveCount(0);
+  expect(actions).toEqual(['start', 'install']);
+});

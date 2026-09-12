@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { connectionSummary, getConnection } from '../../../../lib/publishing/connections';
-import { githubSetup, githubChoices } from '../../../../lib/publishing/github-connection';
+import { githubSetup, githubChoices, githubNextStep } from '../../../../lib/publishing/github-connection';
 import { isSecretCryptoConfigured } from '../../../../lib/secret-crypto';
 import { connectionFailure, privateJson, publishingAdmin } from '../../../../lib/publishing/http';
 import { cloudflareChoices, cloudflareSetup } from '../../../../lib/publishing/cloudflare-oauth';
@@ -14,6 +14,6 @@ export const GET: APIRoute = async (context) => {
     return privateJson({ media_migration: await mediaMigrationStatus(orgId), github: connectionSummary(await getConnection(orgId, 'github')),
       cloudflare: connectionSummary(await getConnection(orgId, 'cloudflare')),
       cloudflare_choices: await cloudflareChoices(guard.value), cloudflare_setup: cloudflareSetup(),
-      github_choices: await githubChoices(guard.value), github_setup: githubSetup(), encryption_available: isSecretCryptoConfigured() });
+      github_next_step: await githubNextStep(guard.value), github_choices: await githubChoices(guard.value), github_setup: githubSetup(), encryption_available: isSecretCryptoConfigured() });
   } catch (error) { return connectionFailure(error); }
 };
