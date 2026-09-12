@@ -35,3 +35,11 @@
 .publishing-card__body details > :not(summary) { margin-top: 12px; }
 .publishing-card__body ol { padding-inline-start: 24px; }
 .publishing-card__body details details { padding-inline-start: 12px; }
+.publishing-card__body .publishing-setup-steps { display: grid; gap: 16px; list-style: none; margin: 0; padding: 0; }
+.publishing-setup-step { min-width: 0; padding: 16px; border: 1px solid var(--color-border); border-radius: 10px; }
+.publishing-setup-step__header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.publishing-setup-step__header:last-child { margin-bottom: 0; }
+.publishing-setup-step__header > div { min-width: 0; }
+.publishing-setup-step__header h3 { margin: 0; font-size: 1rem; line-height: 1.4; }
+.publishing-setup-step__header p { margin: 5px 0 0; font-size: 0.9375rem; line-height: 1.4; }
+.publishing-setup-step__header .publishing-card__symbol { width: 44px; height: 44px; }

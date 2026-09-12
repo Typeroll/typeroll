@@ -217,7 +217,7 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   await expect(page.getByRole('heading', { name: '1. Activate R2 in Cloudflare' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Finish R2 setup' })).toBeVisible();
   await expect(media).toContainText('Object Read & Write');
-  await expect(media).toContainText('Account Details → API Tokens');
+  await expect(media).toContainText('Manage API Tokens');
   await expect(page.locator('#oauth-r2-access')).toHaveAttribute('type', 'password');
   await page.locator('#oauth-r2-access').fill('synthetic-access');
   await page.locator('#oauth-r2-secret').fill('synthetic-secret');
@@ -397,15 +397,15 @@ test('a delayed migration poll cannot restore a disconnected account in the brow
   await expect(page.getByRole('button', { name: 'Disconnect Cloudflare' })).toHaveCount(0);
 });
 
-for (const width of [390, 1440]) test(`GitHub installation is a required visible step that survives reload at ${width}px`, async ({ page }, testInfo) => {
+for (const width of [320, 390, 1440]) test(`GitHub sign-in and installation keep separate status across reload at ${width}px`, async ({ page }, testInfo) => {
   await authenticatePersona(page, 'owner');
   await page.setViewportSize({ width, height: 900 });
-  let phase: 'sign-in' | 'install' | 'connected' = 'sign-in';
+  let phase: 'sign-in' | 'install' | 'connected' | 'renew' = 'sign-in';
   const actions: unknown[] = [];
   await page.route('**/api/orgs/publishing', route => {
     const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
     return route.fulfill({ json: {
-      github: phase === 'connected' ? { ...empty, status: 'connected', github: { owner: 'Example', account_type: 'Organization' } } : empty,
+      github: phase === 'connected' || phase === 'renew' ? { ...empty, status: 'connected', github: { owner: 'Example', account_type: 'User', repository_creation_state: phase === 'renew' ? 'reconnect_required' : 'ready' } } : empty,
       cloudflare: empty, github_next_step: phase === 'install' ? 'install' : null, github_choices: [],
       github_setup: { available: true, install_url: 'https://github.com/apps/synthetic-publisher/installations/new' },
       cloudflare_setup: { available: false }, encryption_available: true,
@@ -416,15 +416,25 @@ for (const width of [390, 1440]) test(`GitHub installation is a required visible
     phase = body.action === 'install' ? 'connected' : 'install';
     await route.fulfill({ json: { authorization_url: `/app/settings/publishing?github=${phase === 'connected' ? 'connected' : 'install_required'}` } });
   });
-  await page.route('**/api/orgs/publishing/github/permissions', route => route.fulfill({ json: { state: 'ready', approval_url: null, permissions: [] } }));
+  await page.route('**/api/orgs/publishing/github/permissions', route => route.fulfill({ json: { state: 'ready', revision: 'synthetic-revision', message: 'GitHub permissions are up to date.', approval_url: null, permissions: [] } }));
   await page.goto('/app/settings/publishing');
+  const steps = page.getByRole('list', { name: 'GitHub connection steps', exact: true });
+  const signIn = steps.locator('[data-github-step="sign-in"]');
+  const installation = steps.locator('[data-github-step="installation"]');
+  await expect(steps.getByRole('listitem')).toHaveCount(2);
+  await expect(signIn).toHaveAttribute('data-state', 'error');
+  await expect(installation).toHaveAttribute('data-state', 'waiting');
   await page.getByRole('button', { name: 'Connect GitHub', exact: true }).click();
   const required = page.getByRole('button', { name: 'Install and connect GitHub', exact: true });
   await expect(required).toBeVisible();
+  await expect(signIn).toHaveAttribute('data-state', 'ready');
+  await expect(installation).toHaveAttribute('data-state', 'waiting');
   await expect(page.getByText('Setup incomplete · Install the GitHub App', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Connect GitHub', exact: true })).toHaveCount(0);
   await page.reload();
   await expect(required).toBeVisible();
+  await expect(signIn).toContainText('Sign-in approved');
+  await expect(installation).toContainText('Required · Install the App');
   await expect(page.getByLabel('GitHub installation required')).toContainText('All repositories');
   await expect(page.getByLabel('GitHub installation required')).toContainText('return here automatically');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -433,5 +443,20 @@ for (const width of [390, 1440]) test(`GitHub installation is a required visible
   await expect(page.getByText('Connected · Example', { exact: true })).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: 'GitHub connected. Setup is complete.' })).toBeVisible();
   await expect(required).toHaveCount(0);
+  await expect(signIn).toHaveAttribute('data-state', 'ready');
+  await expect(installation).toHaveAttribute('data-state', 'ready');
+  await expect(installation).toContainText('Repository access verified for Example');
+  await expect(page.getByText('GitHub permissions are up to date.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.reload();
+  await expect(signIn).toHaveAttribute('data-state', 'ready');
+  await expect(installation).toHaveAttribute('data-state', 'ready');
+  await page.screenshot({ path: testInfo.outputPath(`github-connected-${width}.png`), fullPage: true });
+  phase = 'renew';
+  await page.reload();
+  await expect(signIn).toHaveAttribute('data-state', 'error');
+  await expect(signIn).toContainText('Renew authorization');
+  await expect(signIn.getByRole('button', { name: 'Reconnect GitHub', exact: true })).toBeVisible();
+  await expect(installation).toHaveAttribute('data-state', 'ready');
   expect(actions).toEqual(['start', 'install']);
 });

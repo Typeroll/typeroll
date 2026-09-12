@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import PublishingCard from './PublishingCard';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { CircleCheck, CircleX, Clock3 } from 'lucide-react';
+import PublishingCard, { type PublishingState } from './PublishingCard';
 import PublishingGithubPermissions from './PublishingGithubPermissions';
 
 type Connection = {
@@ -11,6 +12,19 @@ type Connection = {
 };
 type Connections = { github_next_step?: 'install' | null; media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string; account_type?: 'Organization' | 'User' }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
 const API = '/api/orgs/publishing';
+
+function GithubSetupStep({ id, title, state, status, children }: {
+  id: string; title: string; state: PublishingState; status: string; children?: ReactNode;
+}) {
+  const Icon = state === 'ready' ? CircleCheck : state === 'error' ? CircleX : Clock3;
+  return <li className="publishing-setup-step" data-github-step={id} data-state={state} aria-labelledby={`github-step-${id}`}>
+    <header className="publishing-setup-step__header">
+      <span className={`publishing-card__symbol publishing-card__symbol--${state}`} aria-hidden="true"><Icon size={28} /></span>
+      <div><h3 id={`github-step-${id}`}>{title}</h3><p role="status">{status}</p></div>
+    </header>
+    {children}
+  </li>;
+}
 
 class PublishingRequestError extends Error {
   constructor(message: string, public code?: string) { super(message); }
@@ -155,6 +169,10 @@ export default function PublishingConnections() {
 
   const githubNeedsInstall = data?.github_next_step === 'install';
   const githubNeedsChoice = (data?.github_choices?.length ?? 0) > 0;
+  const githubConnected = data?.github.status === 'connected';
+  const githubNeedsSignIn = githubConnected && data?.github.github?.repository_creation_state === 'reconnect_required';
+  const githubSignedIn = githubNeedsInstall || githubNeedsChoice || (githubConnected && !githubNeedsSignIn);
+  const githubInstallationReady = githubConnected && !githubNeedsInstall && !githubNeedsChoice;
   const mediaBucket = data?.cloudflare.cloudflare?.bucket;
   const cloudflareAccount = data?.cloudflare.cloudflare;
   const r2Overview = cloudflareAccount ? `https://dash.cloudflare.com/${cloudflareAccount.account_id}/r2/overview` : 'https://dash.cloudflare.com/';
@@ -165,7 +183,7 @@ export default function PublishingConnections() {
     <p>Create one R2 upload token in Cloudflare and paste its two keys below. This allows direct uploads from your browser to R2. The keys are saved only after writing, reading and deleting a test file succeeds in both buckets. You only do this once for all sites in this organization.</p>
     <a className="btn btn--secondary" style={{ alignSelf: 'flex-start', whiteSpace: 'normal' }} href={r2Overview} target="_blank" rel="noreferrer">Open R2 in {cloudflareAccount?.account_name} ↗</a>
     <ol style={{ paddingInlineStart: 24 }}>
-      <li>In <strong>R2 object storage → Overview</strong>, find <strong>Account Details → API Tokens</strong> and select <strong>Manage</strong>.</li>
+      <li>In <strong>R2 object storage → Overview → Account Details</strong>, select <strong>Manage API Tokens</strong>.</li>
       <li>Select <strong>Create Account API token</strong> and name it <strong>Typeroll media</strong>. If that option is unavailable, use <strong>Create User API token</strong>.</li>
       <li>Choose <strong>Object Read &amp; Write</strong> and restrict access to these two Typeroll buckets: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong> (private originals) and <strong style={{ overflowWrap: 'anywhere' }}>{cloudflareAccount?.public_bucket ?? 'the public bucket shown after preparing storage'}</strong> (published images).</li>
       <li>Create the token. Copy <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> into the matching fields below. The secret is shown only once.</li>
@@ -188,7 +206,20 @@ export default function PublishingConnections() {
       <PublishingCard id="github" title="GitHub account" state={disconnecting === 'github' || githubNeedsInstall || githubNeedsChoice ? 'waiting' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'error' : data.github.status === 'connected' ? data.github.github?.repository_creation_state === 'reconnect_required' ? 'waiting' : 'ready' : 'error'} status={disconnecting === 'github' ? 'Disconnecting…' : githubNeedsInstall ? 'Setup incomplete · Install the GitHub App' : githubNeedsChoice ? 'Setup incomplete · Choose an account' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'Connection needs attention' : data.github.status === 'connected' ? `Connected · ${data.github.github?.owner ?? 'GitHub'}` : 'Not connected'}>
         <p>Stores a private repository for each site and its version branches.</p>
         {!data.github_setup.available ? <p>The publisher needs to configure its GitHub App before you can connect.</p> : <>
-
+          <ol className="publishing-setup-steps" aria-label="GitHub connection steps">
+            <GithubSetupStep id="sign-in" title="1. Sign in to GitHub" state={disconnecting === 'github' ? 'waiting' : githubSignedIn ? 'ready' : 'error'}
+              status={disconnecting === 'github' ? 'Disconnecting…' : githubSignedIn ? 'Complete · Sign-in approved' : githubNeedsSignIn ? 'Action required · Renew authorization' : 'Required · Sign in and approve access'}>
+              {!githubSignedIn && !githubConnected && <form onSubmit={event => void submit('github', event)}>
+                <button className="btn" disabled={busy || checkingMedia}>Connect GitHub</button>
+              </form>}
+              {githubConnected && data.github.github?.account_type === 'User' && <details open={githubNeedsSignIn}><summary>Personal account authorization</summary>
+                <p>Typeroll securely stores and renews your authorization when creating repositories. If you revoke access or leave it unused for six months, reconnect here.</p>
+                {githubNeedsSignIn && <p role="alert">Reconnect GitHub to create new repositories. Your existing repositories are kept.</p>}
+                <form onSubmit={event => void submit('github', event)}><button className="btn btn--secondary" disabled={busy || checkingMedia}>Reconnect GitHub</button></form>
+              </details>}
+            </GithubSetupStep>
+            <GithubSetupStep id="installation" title="2. Install the GitHub App" state={disconnecting === 'github' ? 'waiting' : githubInstallationReady ? 'ready' : 'waiting'}
+              status={disconnecting === 'github' ? 'Disconnecting…' : githubInstallationReady ? `Complete · Repository access verified for ${data.github.github?.owner ?? 'GitHub'}` : githubNeedsInstall ? 'Required · Install the App to connect repositories' : githubNeedsChoice ? 'Action required · Choose the repository account' : 'Waiting for sign-in'}>
           {(data.github_choices ?? []).length > 0 && <form className="stack" onSubmit={(event) => void submit('github', event)}>
             <div className="field"><label htmlFor="github-organization">Choose a GitHub account</label>
               <select id="github-organization" name="installation_id" required defaultValue="">
@@ -198,11 +229,6 @@ export default function PublishingConnections() {
             <button className="btn" disabled={busy || checkingMedia} type="submit">Connect selected account</button>
           </form>}
           {githubNeedsInstall ? <div className="stack" aria-label="GitHub installation required">
-            <ol style={{ paddingInlineStart: 24 }}>
-              <li>Sign in to GitHub — complete.</li>
-              <li><strong>Install the Typeroll App — required.</strong></li>
-              <li>Typeroll verifies access and confirms the connection.</li>
-            </ol>
             <p>On GitHub, choose the personal account or organization that will own your site repositories. Select <strong>All repositories</strong>, then <strong>Install</strong>. You will return here automatically to finish connecting.</p>
             <form onSubmit={event => void submit('github', event)}>
               <input type="hidden" name="action" value="install" />
@@ -212,9 +238,9 @@ export default function PublishingConnections() {
             <form onSubmit={event => void submit('github', event)}>
               <button className="btn btn--secondary" disabled={busy || checkingMedia}>Already installed? Check connection</button>
             </form>
-          </div> : data.github.status === 'connected' ? <PublishingGithubPermissions revision={data.github.revision} /> : !githubNeedsChoice && <form className="stack" onSubmit={(event) => void submit('github', event)}>
-            <button className="btn" disabled={busy || checkingMedia} type="submit">Connect GitHub</button>
-          </form>}
+          </div> : githubConnected && <PublishingGithubPermissions revision={data.github.revision} />}
+            </GithubSetupStep>
+          </ol>
           <details><summary>GitHub setup instructions</summary>
             <p>Sign in and choose your personal account or an organization you own. No account name or ID needs to be entered.</p>
             <ol>
@@ -222,13 +248,6 @@ export default function PublishingConnections() {
               <li>If installation is needed, select <strong>Install and connect GitHub</strong>. Choose your personal account or organization, select <strong>All repositories</strong>, and install the App.</li>
               <li>Typeroll continues automatically and verifies access. If several accounts are available, choose one. Setup is complete when this card shows <strong>Connected</strong>.</li>
             </ol>
-          </details>
-        </>}
-        {data.github.status === 'connected' && data.github.github?.account_type === 'User' && <>
-          {data.github.github.repository_creation_state === 'reconnect_required' && <p role="alert">Reconnect GitHub to create new repositories. Your existing repositories are kept.</p>}
-          <details open={data.github.github.repository_creation_state === 'reconnect_required'}><summary>Personal account authorization</summary>
-            <p>Typeroll securely stores and renews your authorization when creating repositories. If you revoke access or leave it unused for six months, reconnect here.</p>
-            <form onSubmit={event => void submit('github', event)}><button className="btn btn--secondary" disabled={busy || checkingMedia}>Reconnect GitHub</button></form>
           </details>
         </>}
         {data.github.status === 'connected' && <button className="btn btn--secondary" disabled={busy || checkingMedia} onClick={() => void disconnect('github')}>{disconnecting === 'github' ? 'Disconnecting…' : 'Disconnect GitHub'}</button>}
@@ -264,7 +283,7 @@ export default function PublishingConnections() {
             <li>Open your account in <a href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">Cloudflare</a>. Go to <strong>Workers &amp; Pages → Create application → Pages → Connect to Git</strong> (also called <strong>Import an existing Git repository</strong>). Use <strong>+ Add account</strong> to authorize Cloudflare’s GitHub App for the same GitHub account. Select <strong>All repositories</strong> so future sites are included. You can stop at the repository list.</li>
             <li>Open <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noreferrer">My Profile → API Tokens</a>. Select <strong>Create Token → Create Custom Token → Get started</strong>. Add the three Account permissions listed above. Under <strong>Account Resources</strong>, choose <strong>Include → Specific account</strong> and your account. Select <strong>Continue to summary → Create Token</strong>, then copy the token into the form below.</li>
             <li>Open <strong>Storage &amp; databases → R2 object storage → Overview</strong>. Activate R2 if prompted. Select <strong>Create bucket</strong> and keep the default jurisdiction. Copy the bucket name into the form.</li>
-            <li>Return to <strong>R2 → Overview → Account Details</strong>. Select <strong>Manage</strong> next to <strong>API Tokens</strong>, then <strong>Create Account API token</strong>. Choose <strong>Object Read &amp; Write</strong> for your bucket. Copy both <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> into the form. Account tokens require a Cloudflare Super Administrator.</li>
+            <li>Return to <strong>R2 → Overview → Account Details</strong>. Select <strong>Manage API Tokens</strong>, then <strong>Create Account API token</strong>. Choose <strong>Object Read &amp; Write</strong> for your bucket. Copy both <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> into the form. Account tokens require a Cloudflare Super Administrator.</li>
             <li>Select <strong>Verify and save Cloudflare</strong>. The status changes to <strong>connected</strong> after the access checks pass.</li>
           </ol>
           <p>You set this up once per organization. For sites using Git publishing, Typeroll creates the repository and Pages project at the first deployment. Finish R2 setup in Media storage below for both the private originals bucket and the public images bucket.</p>

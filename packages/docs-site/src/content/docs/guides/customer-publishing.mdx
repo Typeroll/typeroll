@@ -44,7 +44,7 @@ manage these connections.
    complete Cloudflare's subscription checkout. Return and select
    **I’ve activated R2 — check again**. Typeroll creates separate private-original
    and public-media buckets and configures browser uploads.
-4. In **R2 object storage → Overview → Account Details → API Tokens → Manage**,
+4. In **R2 object storage → Overview → Account Details → Manage API Tokens**,
    create an **Account API token** with **Object Read & Write** for **both buckets
    shown in Typeroll**. Enter its **Access Key ID** and **Secret Access Key**, then
    select **Verify keys and finish setup**. These are different from the API token
@@ -68,6 +68,19 @@ Cloud production and staging use separate publisher Apps: approving one does not
 install the other. The required installation step survives reloading Publishing.
 If your GitHub organization requires an owner's approval, return after approval
 and select **Already installed? Check connection** to verify access.
+
+Starting with Core 0.1.79, the GitHub card always shows two separate steps:
+**1. Sign in to GitHub** and **2. Install the GitHub App**. Each has its own status
+symbol and text. Approving sign-in makes the first step green; the second stays
+orange until the App's repository access is verified. Both stay visible and
+green after connection. If a personal account needs renewed authorization,
+the first step identifies it without asking you to reinstall the App.
+
+Cloudflare sign-in and R2 upload access are separate. The current OAuth connection
+can prepare storage but cannot create the S3 upload key pair. Create the keys
+once using **Manage API Tokens** and save them in **Media storage**. After the
+upload check succeeds, reuse those keys for the organization's sites; you do
+not need to create new keys for each site or reconnect a working account.
 
 Use the refresh icon beside **Cloudflare domain** to retrieve newly added domains. Refreshing keeps the
 existing account connection. An empty result does not mean you need to reconnect.
