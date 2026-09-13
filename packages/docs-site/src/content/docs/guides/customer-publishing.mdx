@@ -301,12 +301,14 @@ site's publication status show how many files are ready. You can close the page;
 Typeroll continues automatically. The existing website stays live until the full
 new publication passes verification.
 
-Core 0.1.82 prepares up to four files at once so independent storage requests can
+Core 0.1.83 prepares up to four files at once so independent storage requests can
 overlap. Progress advances only after the whole group is verified. If one file
 fails, the other files already started finish before the batch stops; their
 verified copies are reused on retry. Older frozen publications keep their original
 renderer. Publish again after upgrading Core to use the improved preparation;
 a shared engine already updated for 0.1.81 supports it without another setup.
+This release also verifies larger groups of static files between queue waits,
+while keeping the same concurrency and time limits for each verification step.
 
 Finished image variants have checksums and receipts tied to the original and the
 encoding recipe. Subsequent batches and builds verify and reuse those variants

@@ -39,9 +39,9 @@ export async function verifyStaticBatch(org: string, jobPath: string, checksKey:
   const checks = await buildStorage(org, async storage => JSON.parse((await storage.read(checksKey, 32 * 1024 * 1024)).toString('utf8')) as StaticCheck[]);
   if (!Array.isArray(checks) || !checks.length) throw new ConnectionError('Static verification data is missing.', 409);
   let cursor = state?.cursor ?? 0;
-  const limit = Math.min(checks.length, cursor + 64), deadline = Date.now() + 20000;
-  // Healthy small sites finish in one observation instead of waiting a queue
-  // backoff for every eight files. Concurrency, work and elapsed time stay bounded.
+  const limit = Math.min(checks.length, cursor + 1024), deadline = Date.now() + 20000;
+  // Image libraries produce thousands of static files. Drain healthy checks
+  // within the same time budget instead of paying queue backoff every 64 files.
   do {
     const batch = checks.slice(cursor, Math.min(cursor + 8, limit));
     const observations: StaticObservation[] = [];

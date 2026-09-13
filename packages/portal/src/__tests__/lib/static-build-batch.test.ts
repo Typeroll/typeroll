@@ -34,13 +34,27 @@ it('resets progress when later response bytes or a deleted route disagree', asyn
 });
 
 it('bounds large publications and resumes the persisted cursor', async () => {
-  mocked.checks = Array.from({ length: 130 }, (_, i) => ({ route: `/page-${i}/`, status: 200 }));
+  mocked.checks = Array.from({ length: 2135 }, (_, i) => ({ route: `/media/image-${i}.avif`, status: 200 }));
   expect(await check()).toBe(false);
-  expect(await inspect()).toMatchObject({ cursor: 64, complete: false });
+  expect(await inspect()).toMatchObject({ cursor: 1024, complete: false });
   expect(await check()).toBe(false);
-  expect(await inspect()).toMatchObject({ cursor: 128, complete: false });
+  expect(await inspect()).toMatchObject({ cursor: 2048, complete: false });
   expect(await check()).toBe(true);
-  expect(mocked.verify).toHaveBeenCalledTimes(130);
+  expect(mocked.verify).toHaveBeenCalledTimes(2135);
+});
+
+it('keeps verification concurrency bounded while draining a large healthy batch', async () => {
+  mocked.checks = Array.from({ length: 1001 }, (_, i) => ({ route: `/media/${i}.webp`, status: 200 }));
+  let active = 0, peak = 0;
+  mocked.verify.mockImplementation(async () => {
+    active++; peak = Math.max(peak, active);
+    await new Promise(resolve => setTimeout(resolve, 1));
+    active--; return true;
+  });
+  expect(await check()).toBe(true);
+  expect(await inspect()).toMatchObject({ cursor: 1001, complete: true });
+  expect(peak).toBe(8);
+  expect(active).toBe(0);
 });
 
 it('yields after the time budget while retaining verified progress', async () => {
