@@ -10,6 +10,7 @@ import { getStore } from '../datastore';
 import { formEmbedInfo, POW_BITS } from '../forms-signing';
 import { extensionBlockTypeId, provisionExtensionBlocks } from './provision';
 import { resolveExtensionVersion } from './resolution';
+import { buildExtensionConfig } from './config';
 
 function assetBase(extensionId: string, version: string, componentId: string): string {
   const safe = (value: string) => value.replace(/[^A-Za-z0-9_.-]+/g, '-');
@@ -37,6 +38,8 @@ export async function buildExtensionRuntimeSnapshot(
     } catch {
       console.warn(`Could not reconcile editor blocks for Extension ${installation.extension_id}`);
     }
+    const config = buildExtensionConfig(version.manifest.config_schema, {}, installation);
+    if (typeof config === 'string') throw new Error('An enabled Extension has invalid configuration for its published release');
     const components: PublicExtensionComponent[] = (version.manifest.frontend?.components ?? []).map((component) => {
       const base = assetBase(installation.extension_id, version.version, component.id);
       const resolvedFormBindings = Object.fromEntries(
@@ -68,7 +71,7 @@ export async function buildExtensionRuntimeSnapshot(
       installation_id: installation.id,
       extension_id: installation.extension_id,
       version: version.version,
-      public_config: installation.public_config,
+      public_config: config.public_config,
       ...(version.manifest.api
         ? {
             api: {

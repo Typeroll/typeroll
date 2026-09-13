@@ -192,8 +192,14 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     extensions: input.publicRuntime?.extensions ?? { installations: [] },
     runtime_dependencies: input.publicRuntime?.dependencies ?? [],
   };
-  // This is an additional tripwire; field projection, not regex, is the privacy boundary.
-  if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_-]{30,}/.test(JSON.stringify(publication))) {
+  // Runtime configuration is projected from explicitly public Extension schema fields.
+  // Google browser keys can be public there; private keys and GitHub tokens never are.
+  const outsidePublicConfig = {
+    ...publication,
+    extensions: { ...publication.extensions, installations: (publication.extensions.installations ?? []).map(({ public_config, ...installation }) => installation) },
+  };
+  if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}/.test(JSON.stringify(publication)) ||
+      /AIza[A-Za-z0-9_-]{30,}/.test(JSON.stringify(outsidePublicConfig))) {
     throw new Error('Credential-like value found in public content; review before publication');
   }
   return publication;

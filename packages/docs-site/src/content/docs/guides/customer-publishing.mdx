@@ -300,6 +300,14 @@ builds, provide your own R2 access as described in the generated README.
 
 Forms, Apps and Extensions can still depend on their runtime services; the
 repository lists these in `publication.json` under `runtime_dependencies`.
+Starting with Core 0.1.81, generated source preserves browser API keys in
+Extension configuration fields explicitly declared public by the published
+Extension schema. These values are visible in the website and its repository.
+Use browser credentials restricted to the intended websites and APIs; keep
+server credentials in secret configuration fields. Private keys and GitHub
+tokens are rejected even in public configuration. Fields that are private,
+secret or absent from the published schema are excluded from the runtime.
+
 A generated site repository is not a full CMS backup.
 
 ## API and MCP

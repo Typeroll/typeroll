@@ -25,6 +25,27 @@ function input() {
 }
 const identity = { siteUrl: 'https://example.invalid', coreCommit: 'a'.repeat(40), publishedAt: '2026-09-06T12:00:00Z' };
 
+test('publication preserves browser keys in projected Extension public configuration', () => {
+  const browserKey = 'AIza' + 'syntheticBrowserKey'.repeat(3);
+  const value = input();
+  value.publicRuntime = { extensions: { installations: [{ installation_id: 'installed-one', public_config: { places_browser_key: browserKey } }] } };
+  assert.equal(projectStaticPublication(value, identity).extensions.installations[0].public_config.places_browser_key, browserKey);
+});
+
+test('credential protection still rejects browser keys in content and private keys in public configuration', () => {
+  const browserKey = 'AIza' + 'syntheticBrowserKey'.repeat(3);
+  const value = input(); value.pages[0].html_content = '<p>' + browserKey + '</p>';
+  assert.throws(() => projectStaticPublication(value, identity), /Credential-like/);
+  for (const secret of ['ghp_' + 'a'.repeat(36), '-----BEGIN PRIVATE KEY-----']) {
+    const configured = input();
+    configured.publicRuntime = { extensions: { installations: [{ public_config: { browser_key: secret } }] } };
+    assert.throws(() => projectStaticPublication(configured, identity), /Credential-like/);
+  }
+  const misplaced = input();
+  misplaced.publicRuntime = { extensions: { installations: [{ components: [{ public_config: { key: browserKey } }] }] } };
+  assert.throws(() => projectStaticPublication(misplaced, identity), /Credential-like/);
+});
+
 test('publication preserves redirect IDs derived from file paths and wildcard routes', () => {
   const value = input();
   value.redirects = [

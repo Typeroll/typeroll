@@ -120,6 +120,18 @@ describe('Extension control plane', () => {
     delete process.env.EXTENSION_SIGNING_PRIVATE_JWK;
   });
 
+  it('projects runtime configuration from the published schema instead of stale public fields', async () => {
+    const { installation } = await registeredInstallation();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().updateDoc(paths.extensionInstallation(OWNER_ORG, SITE, installation.id), {
+      public_config: { price_list_id: 'prices-eu', internal_queue: 'private-queue', api_secret: 'private-secret', removed_field: 'stale-value' },
+    });
+    const snapshot = await buildExtensionRuntimeSnapshot(OWNER_ORG, SITE, { reconcileBlocks: false, strict: true });
+    expect(snapshot.installations[0]?.public_config).toEqual({ price_list_id: 'prices-eu' });
+    expect(JSON.stringify(snapshot)).not.toContain('private-');
+    expect(JSON.stringify(snapshot)).not.toContain('stale-value');
+  });
+
   it('registers, publishes, installs and provisions a private component', async () => {
     const { installation } = await registeredInstallation();
     const { getStore } = await import('../../lib/datastore');
