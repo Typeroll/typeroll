@@ -33,7 +33,7 @@ export async function prepareMedia(publication, root, options = {}) {
     if (location.protocol !== 'https:' || location.hostname !== `${manifest.account_id}.r2.cloudflarestorage.com`) throw new Error('Unexpected media grant origin');
     const response = await fetch(location, { redirect: 'error', signal: AbortSignal.timeout(30000) }).catch(() => { throw new Error('media_transfer_interrupted'); });
     if (response.status === 429 || response.status >= 500) { await response.body?.cancel(); throw new Error('media_transfer_interrupted'); }
-    if (!response.ok) throw new Error('Media build access expired. Redeploy from Typeroll.');
+    if (!response.ok) { await response.body?.cancel(); throw new Error('Media build access expired. Redeploy from Typeroll.'); }
     const bytes = await boundedBytes(response.body, 32 * 1024 * 1024).catch(error => {
       if (error.message === 'Media response is too large') throw error;
       throw new Error('media_transfer_interrupted');
@@ -46,6 +46,7 @@ export async function prepareMedia(publication, root, options = {}) {
   }
   if (grants && (grants.publication_id !== publication.publication_id || grants.expires_at <= Date.now())) throw new Error('Media grants do not match this publication or have expired');
   if (credentials.account_id !== manifest.account_id || credentials.original_bucket !== manifest.original_bucket || credentials.public_bucket !== manifest.public_bucket) throw new Error('Media build access belongs to another publication target');
+  options.access.credentials = credentials;
   const client = access => new S3Client({ region: 'auto', endpoint: `https://${manifest.account_id}.r2.cloudflarestorage.com`, credentials: access,
     forcePathStyle: true, requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED' });
   const source = grants ? null : client(credentials.original);
@@ -69,8 +70,8 @@ export async function prepareMedia(publication, root, options = {}) {
     if (grants) {
       for (let attempt = 0; attempt < 3; attempt++) {
         const response = await request(original ? grants.originals[key] : grants.objects[key]?.get);
-        if (response.status === 404) return null;
-        if (!response.ok) throw new Error('Could not read media. Check or renew publication access.');
+        if (response.status === 404) { await response.body?.cancel(); return null; }
+        if (!response.ok) { await response.body?.cancel(); throw new Error('Could not read media. Check or renew publication access.'); }
         try { return await boundedBytes(response.body); }
         catch (error) {
           if (error.message === 'Media response is too large') throw error;
@@ -86,6 +87,7 @@ export async function prepareMedia(publication, root, options = {}) {
     if (grants) {
       const grant = grants.objects[key];
       const response = await request(grant?.put, { method: 'PUT', headers: grant?.headers, body: bytes });
+      await response.body?.cancel();
       if (!response.ok && response.status !== 412) throw new Error('Could not upload a publication asset');
     } else {
       try { await target.send(new PutObjectCommand({ Bucket: manifest.public_bucket, Key: key, Body: bytes, ContentType: contentType, CacheControl: cache, IfNoneMatch: '*' })); }
@@ -174,9 +176,15 @@ export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntr
   if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor > entries.length || !Number.isSafeInteger(maxEntries) || maxEntries < 1 || !Number.isFinite(budgetMs) || budgetMs <= 0) throw new Error('Invalid media preparation cursor');
   const started = clock(), access = {}; let next = cursor;
   while (next < entries.length && next - cursor < maxEntries && (next === cursor || clock() - started < budgetMs)) {
-    const { manifest, entry } = entries[next];
-    await prepareMedia({ ...publication, retained_media_manifests: [], media_manifest: { ...manifest, entries: [entry] }, media: [{ ...entry }] }, root, { prepareOnly: true, access });
-    next++;
+    // Prime the shared grant once, then overlap independent files. Only a fully
+    // verified contiguous group advances the cursor; drain siblings on failure.
+    const size = next === cursor ? 1 : Math.min(4, maxEntries - (next - cursor));
+    const group = entries.slice(next, next + size);
+    const results = await Promise.allSettled(group.map(({ manifest, entry }) =>
+      prepareMedia({ ...publication, retained_media_manifests: [], media_manifest: { ...manifest, entries: [entry] }, media: [{ ...entry }] }, root, { prepareOnly: true, access })));
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure) throw failure.reason;
+    next += group.length;
   }
   return { cursor: next, total: entries.length };
 }

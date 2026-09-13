@@ -119,9 +119,10 @@ test('retries an interrupted response body and does not retry denied access', as
   assert.equal(reads, 1);
 }));
 
-test('materializes cached files with bounded parallel reads while preparation remains sequential', async () => withMediaFixture(async ({ publication, root }) => {
-  const originalFetch = globalThis.fetch; let active = 0, peak = 0;
+test('overlaps preparation and cached materialization with at most four files and one grant download', async () => withMediaFixture(async ({ publication, root }) => {
+  const originalFetch = globalThis.fetch; let active = 0, peak = 0, grants = 0;
   globalThis.fetch = async (url, options) => {
+    if (new URL(url).pathname === '/grant') grants++;
     if (new URL(url).pathname.startsWith('/private/')) {
       active++; peak = Math.max(peak, active);
       await new Promise(resolve => setTimeout(resolve, 2));
@@ -130,9 +131,50 @@ test('materializes cached files with bounded parallel reads while preparation re
     return originalFetch(url, options);
   };
   await prepareMediaBatch(publication, root);
-  assert.equal(peak, 1);
+  assert.ok(peak > 1 && peak <= 4);
+  assert.equal(grants, 1);
   peak = 0;
   assert.equal((await prepareMedia(publication, root)).length, 8);
   assert.ok(peak > 1 && peak <= 4);
   assert.equal(active, 0);
+}, 8));
+
+test('drains an interrupted parallel group and safely reuses its completed copies on retry', async () => withMediaFixture(async ({ publication, root, entries, stored, writes }) => {
+  const originalFetch = globalThis.fetch; let active = 0;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).endsWith(entries[2].source_key)) return new Response(null, { status: 403 });
+    if (new URL(url).pathname.startsWith('/private/')) {
+      active++;
+      await new Promise(resolve => setTimeout(resolve, 20));
+      active--;
+    }
+    return originalFetch(url, options);
+  };
+  await assert.rejects(() => prepareMediaBatch(publication, root), /publication access/);
+  assert.equal(active, 0, 'a failed batch must not leave sibling transfers running');
+  assert.ok(stored.has(entries[4].aliases[0].key), 'the rest of the admitted group finished and verified its copies');
+  assert.equal(stored.has(entries[5].public_key), false, 'a failure must not admit another group');
+  globalThis.fetch = originalFetch;
+  assert.deepEqual(await prepareMediaBatch(publication, root), { cursor: 8, total: 8 });
+  assert.ok([...writes.values()].every(count => count === 1), 'a fresh process reuses verified partial work');
+}, 8));
+
+test('releases missing and denied response bodies instead of exhausting storage connections', async () => withMediaFixture(async ({ publication, root, entries }) => {
+  const originalFetch = globalThis.fetch; let open = 0, closed = 0;
+  const errorResponse = status => {
+    open++;
+    return new Response(new ReadableStream({ cancel() { open--; closed++; } }), { status });
+  };
+  globalThis.fetch = async (url, options) => {
+    if (open >= 5) throw Error('simulated exhausted storage connection pool');
+    const response = await originalFetch(url, options);
+    return response.status === 404 ? errorResponse(404) : response;
+  };
+  await prepareMediaBatch(publication, root);
+  assert.equal(open, 0);
+  assert.equal(closed, 16);
+  globalThis.fetch = async (url, options) => String(url).endsWith(entries[0].source_key) ? errorResponse(403) : originalFetch(url, options);
+  await assert.rejects(() => prepareMediaBatch(publication, root), /publication access/);
+  assert.equal(open, 0);
+  assert.equal(closed, 17);
 }, 8));
