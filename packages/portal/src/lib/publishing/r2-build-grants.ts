@@ -13,11 +13,15 @@ export async function createBuildMediaGrants(client: S3Client, manifest: any, pu
     originals[entry.source_key] = await read(manifest.original_bucket, entry.source_key);
     const suffixes = [{ suffix: '', mime: entry.mime_type }];
     if (['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif'].includes(entry.mime_type)) {
-      for (const width of [320, 640, 1024, 1920]) for (const format of ['webp', 'avif']) suffixes.push({ suffix: `.v1.w${width}.${entry.sha256.slice(0, 16)}.${format}`, mime: `image/${format}` });
+      for (const width of [320, 640, 1024, 1920]) for (const format of ['webp', 'avif']) {
+        const suffix = `.v1.w${width}.${entry.sha256.slice(0, 16)}.${format}`;
+        suffixes.push({ suffix, mime: `image/${format}` }, { suffix: suffix + '.receipt.json', mime: 'application/json' });
+      }
     }
     for (const base of [entry.public_key, ...(entry.aliases ?? []).map((alias: any) => alias.key)]) {
       if (!base.startsWith(`${manifest.site_prefix}/`) || base.split('/').some((part: string) => part === '..' || part === '.')) throw new Error('Public object escaped publication scope');
       for (const { suffix, mime } of suffixes) {
+        if (suffix.endsWith('.receipt.json') && base !== entry.public_key) continue;
         const key = base + suffix;
         if (objects[key]) continue;
         const headers = { 'content-type': mime, 'cache-control': 'public, max-age=31536000, immutable', 'if-none-match': '*' };

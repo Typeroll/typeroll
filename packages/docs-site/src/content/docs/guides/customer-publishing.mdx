@@ -289,6 +289,37 @@ connection are handled without switching them to an unverified destination.
 Progress and retry instructions appear in Publishing. Existing source files are
 retained while older publications may still need them.
 
+### Large libraries and first publication
+
+Original transfer and publication preparation are separate steps. The background
+transfer moves the library into private R2 storage. A publication prepares only
+media referenced by its frozen content and any retained published versions.
+
+Starting with Core 0.1.81 and an updated shared build engine, Cloudflare and GitHub
+builds prepare images in small, resumable batches. **Publishing → Builds** and the
+site's publication status show how many files are ready. You can close the page;
+Typeroll continues automatically. The existing website stays live until the full
+new publication passes verification.
+
+Finished image variants have checksums and receipts tied to the original and the
+encoding recipe. Subsequent batches and builds verify and reuse those variants
+instead of encoding them again. A temporary transfer interruption is retried;
+corrupted files, conflicting immutable paths and access errors stop publication.
+Retry after fixing the reported problem. Verified variants remain available for
+the next attempt, including after the overall preparation time limit is reached.
+
+Preparation has a six-hour overall limit, and public verification has its own
+45-minute window after the build completes. Static output size and file-count
+limits still apply: a large media library does not mean every original can be
+included in one deployment. Images and generated variants remain outside Git.
+
+For an existing organization, after upgrading Core, go to **Publishing → Builds**
+and select **Update build engine** when no build is running. Wait for verification
+before publishing again. Updating the engine does not require reconnecting GitHub
+or Cloudflare when the existing connections still have the required permissions.
+Independent `npm run build` runs reuse the same verified media; their process
+scheduling and time limits belong to your own build environment.
+
 New browser uploads go directly to your R2 account after it is ready. Disconnecting
 that account does not silently move uploads back to the hosting operator.
 

@@ -324,6 +324,12 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
   expect(await executeCustomerPublication(args)).toBe('deferred');
   expect(mocks.enqueue).toHaveBeenCalledWith(expect.objectContaining({ revision: 'engine-1' }), expect.objectContaining({ org_id: 'org', site_id: 'site', version_id: 'main', branch: 'main', commit: 'b'.repeat(40) }), expect.any(Object));
   expect(mocks.upload).not.toHaveBeenCalled();
+  await getStore().updateDoc(jobPath, { started_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString() });
+  await getStore().setDoc('organizations/org/build_tasks/task', { status: 'queued', deadline: Date.now() + 60_000, media_total: 1001, media_cursor: 750 });
+  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'preparing media: 750 of 1001 files ready; continuing automatically' });
+  expect(mocks.upload).not.toHaveBeenCalled();
+  await getStore().updateDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now(), media_cursor: 1001 });
   await getStore().updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: 'New unsaved-to-Git version' });
   await getStore().updateDoc('organizations/org/publishing/build_selection', { provider: providerName === 'github' ? 'cloudflare' : 'github' });
   mocks.built.mockResolvedValue({ files: { 'index.html': Buffer.from('frozen') } });

@@ -4,7 +4,7 @@ import { ConnectionError } from '../publishing/connections';
 import { privateJson, publishingJsonBody, connectionFailure } from '../publishing/http';
 import { customerBuildMediaAccess } from '../publishing/r2-build-credentials';
 import { rateLimit } from '../rate-limit';
-import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from './queue';
+import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, type BuildTask } from './queue';
 import { authorizeEngine, assertEngineConnections, readEngineConfiguration, buildInputPath, engineConfigurationPath, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
 import { decodeSource, decodeArtifact, MAX_SOURCE_BYTES, sha256 } from './contract.mjs';
@@ -16,7 +16,7 @@ import { authorizeGithubClaim } from './github-claim';
 /** These endpoints never use browser cookies or organization API keys. */
 export async function runnerRequest(request: Request, org: string, action: string) {
   try {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(org) || !['claim', 'heartbeat', 'upload', 'complete', 'fail'].includes(action)) return privateJson({ error: 'Not found' }, 404);
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(org) || !['claim', 'heartbeat', 'upload', 'complete', 'fail', 'media-checkpoint'].includes(action)) return privateJson({ error: 'Not found' }, 404);
     const token = request.headers.get('authorization')?.match(/^Bearer ([a-zA-Z0-9_.-]{1,16384})$/)?.[1];
     if (!token) return privateJson({ error: 'Build authentication required.' }, 401);
     const input = await publishingJsonBody(request);
@@ -56,6 +56,11 @@ export async function runnerRequest(request: Request, org: string, action: strin
     await assertEngineConnections(org, engine);
     if (!metadata || (metadata.kind === 'publication' && !await publicationStillRunning(task))) { await queue.cancel(org, key); throw new ConnectionError('Publication cancelled.', 409); }
     if (action === 'heartbeat') { await queue.heartbeat(org, key, lease, token); return privateJson({ ok: true }); }
+    if (action === 'media-checkpoint') {
+      if (metadata.kind !== 'publication') throw new ConnectionError('This build has no media preparation phase.', 409);
+      await queue.checkpointMedia(org, key, lease, token, Number(input.cursor), input.continue_build === true);
+      return privateJson({ ok: true });
+    }
     if (action === 'upload') return buildStorage(org, async storage => {
       if (storage.account !== metadata.storage_account_id) throw new ConnectionError('Build storage changed.', 409);
       await queue.heartbeat(org, key, lease, token);
@@ -64,8 +69,9 @@ export async function runnerRequest(request: Request, org: string, action: strin
     if (action === 'fail') {
       const code = typeof input.code === 'string' && /^[a-z0-9_]{1,80}$/.test(input.code) ? input.code : 'shared_build_failed';
       const stage = typeof input.stage === 'string' && /^[a-z_]{1,30}$/.test(input.stage) ? input.stage : 'build';
+      const retryMedia = metadata.kind === 'publication' && stage === 'media' && ['build_process_timeout', 'media_transfer_interrupted'].includes(code) && task.attempt < buildAttemptLimit(task);
       await store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${key}`, value => value.status === 'running' && value.lease_id === lease && value.token_hash === task.token_hash && value.lease_until > Date.now() && value.deadline > Date.now(),
-        { status: 'failed', token_hash: null, error_code: `${stage}_${code}`, lease_until: 0 });
+        { status: retryMedia ? 'queued' : 'failed', token_hash: null, error_code: `${stage}_${code}`, lease_until: 0 });
       if (metadata.kind === 'qualification') {
         const disabled = await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, provider), value => value.revision === engine.revision && value.status === 'qualifying', { status: 'disabled' });
         if (disabled) await store.updateDoc(enginePath(org, provider), { state: 'error', enabled: false, issue: { code: 'build_qualification_failed', message: `Build verification failed during ${stage} (${code}). Set up the shared engine again to retry.` } });

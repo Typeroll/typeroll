@@ -15,10 +15,10 @@ vi.mock('../../lib/publishing/r2-build-credentials', () => ({ customerBuildMedia
 const runnerToken = 'r'.repeat(43), org = 'org', revision = 'engine-1';
 const identity = { org_id: org, site_id: 'site', version_id: 'main', job_id: 'job', publication_id: 'b'.repeat(64), commit: 'c'.repeat(40), branch: 'main', protocol: BUILD_PROTOCOL, node_version: BUILD_RUNTIME, source_sha256: '' };
 const request = (action: string, token = runnerToken, data = {}, organization = org) => runnerRequest(new Request('https://app.example.invalid/api/builds/runner/org/' + action, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ revision, ...data }) }), organization, action);
-async function prepare(kind = 'publication') {
+async function prepare(kind = 'publication', mediaTotal = 0) {
   const source = encodeSource({ 'publication.json': JSON.stringify({ publication_id: identity.publication_id }) });
   const frozen = { ...identity, source_sha256: sha256(source) };
-  const queued = await new OrganizationBuildQueue().enqueue(frozen, revision);
+  const queued = await new OrganizationBuildQueue().enqueue(frozen, revision, mediaTotal);
   storage.objects.set('builds/org/sources/source.json', source);
   await getStore().setDoc(buildInputPath(org, queued.key), { source_key: 'builds/org/sources/source.json', kind, storage_account_id: 'a'.repeat(32) });
   await getStore().setDoc(engineConfigurationPath(org), { revision, status: kind === 'qualification' ? 'qualifying' : 'ready', account_id: 'a'.repeat(32), installation_id: 'installation', token_hash: sha256(runnerToken), qualification_key: queued.key });
@@ -78,4 +78,43 @@ it('activates only after the complete qualification artifact matches', async () 
   artifact = encodeArtifact(frozen, files); storage.objects.set(artifactKey, artifact);
   expect((await request('complete', claim.token, { ...attempt, sha256: sha256(artifact) })).status).toBe(200);
   expect(await getStore().getDoc(enginePath(org))).toMatchObject({ enabled: true, state: 'ready' });
+});
+
+it('checkpoints media through the authenticated endpoint and denies old leases', async () => {
+  const { key } = await prepare('publication', 100);
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  const attempt = { key, lease_id: claim.lease_id, cursor: 25 };
+  expect((await request('media-checkpoint', runnerToken, attempt)).status).toBe(409);
+  expect((await request('media-checkpoint', claim.token, attempt)).status).toBe(200);
+  expect((await request('upload', claim.token, attempt)).status).toBe(409);
+  expect((await request('media-checkpoint', claim.token, attempt)).status).toBe(409);
+  const next = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  expect(next).toMatchObject({ key, media_cursor: 25, media_total: 100, identity: claim.identity });
+  expect(next.token).not.toBe(claim.token);
+});
+
+it.each(['media_transfer_interrupted', 'build_process_timeout'])('retries %s in media only three times without losing the frozen task', async code => {
+  const { key } = await prepare('publication', 100);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+    expect((await request('fail', claim.token, { key, lease_id: claim.lease_id, stage: 'media', code })).status).toBe(200);
+    expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: attempt < 3 ? 'queued' : 'failed', media_cursor: 0 });
+  }
+});
+
+it('does not retry integrity or rendering errors as media interruptions', async () => {
+  const { key } = await prepare('publication', 100);
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  expect((await request('fail', claim.token, { key, lease_id: claim.lease_id, stage: 'rendering', code: 'build_process_timeout' })).status).toBe(200);
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'failed' });
+});
+
+it('finishes a small media library in the same build without an extra provider run', async () => {
+  const { key } = await prepare('publication', 20);
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  const attempt = { key, lease_id: claim.lease_id, cursor: 20, continue_build: true };
+  expect((await request('media-checkpoint', claim.token, { ...attempt, cursor: 10 })).status).toBe(400);
+  expect((await request('media-checkpoint', claim.token, attempt)).status).toBe(200);
+  expect((await request('upload', claim.token, attempt)).status).toBe(200);
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'running', media_cursor: 20, media_batches: 0, attempt: 1 });
 });

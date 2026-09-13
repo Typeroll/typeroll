@@ -32,7 +32,7 @@ import { recordCustomerCompute } from './compute-cost';
 import { readEngineConfiguration, type BuildProvider } from '../builds/state';
 import { selectedBuildProvider } from '../builds/selection';
 import { enqueueBuild, completedBuild } from '../builds/jobs';
-import { OrganizationBuildQueue } from '../builds/queue';
+import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from '../builds/queue';
 import { uploadStaticBuild } from '../builds/upload';
 import { prepareStaticProject, saveStaticChecks, verifyStaticBatch } from '../builds/publication';
 
@@ -90,8 +90,11 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     for (const environment of ['production', 'preview']) await store.compareAndUpdateDoc<any>(`${paths.site(args.orgId, args.siteId)}/publishing_build_slots/${environment}`, value => value.job_id === args.jobId, { job_id: null });
   };
   try {
-    const observationStart = Date.parse(job.observation_started_at ?? job.started_at);
-    if (Number.isFinite(observationStart) && Date.now() - observationStart > 45 * 60_000) throw new ConnectionError(job.verification_message ? `Publication verification stopped after 45 minutes. ${job.verification_message.replace('Public verification will retry automatically.', '').trim()} Contact support with deployment ${args.jobId}.` : 'Publication verification did not finish within 45 minutes. Check the Cloudflare build and domain status, then retry.', 409, 'publication_observation_timeout');
+    const buildTask = job.git_publication?.build_task_key
+      ? await store.getDoc<BuildTask>(`${buildTasksPath(args.orgId)}/${job.git_publication.build_task_key}`) : null;
+    const observationStart = Math.max(Date.parse(job.observation_started_at ?? job.started_at), buildTask?.completed_at ?? 0);
+    const preparingBuild = buildTask && ['queued', 'running'].includes(buildTask.status) && buildTask.deadline > Date.now();
+    if (!preparingBuild && Number.isFinite(observationStart) && Date.now() - observationStart > 45 * 60_000) throw new ConnectionError(job.verification_message ? `Publication verification stopped after 45 minutes. ${job.verification_message.replace('Public verification will retry automatically.', '').trim()} Contact support with deployment ${args.jobId}.` : 'Publication verification did not finish within 45 minutes. Check the Cloudflare build and domain status, then retry.', 409, 'publication_observation_timeout');
     if (args.environment === 'staging' && args.versionId === 'main') throw new ConnectionError('Select a site version to publish a test deployment. The main version publishes the live website.', 409, 'publication_version_required');
     await assertPublishingReady(args.orgId, args.siteId, args.versionId);
     const group = await (args.dryRun ? siteHostingGroup : lockSiteHostingGroup)(args.orgId, args.siteId);
@@ -259,7 +262,14 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       }
       if (!deployment || !publication.static_checks_key) {
         const result = await completedBuild(args.orgId, publication.build_task_key!);
-        if (!result) return 'deferred';
+        if (!result) {
+          const task = await store.getDoc<BuildTask>(`${buildTasksPath(args.orgId)}/${publication.build_task_key}`);
+          const remaining = task?.media_total && (task.media_cursor ?? 0) < task.media_total;
+          await store.updateDoc(jobPath, { phase: remaining
+            ? `preparing media: ${task.media_cursor ?? 0} of ${task.media_total} files ready; continuing automatically`
+            : publication.build_provider === 'github' ? 'building on GitHub Actions' : 'building on Cloudflare' });
+          return 'deferred';
+        }
         const staticChecks = await saveStaticChecks(args.orgId, result.files, acquired.last_publication?.static_checks_key ?? undefined);
         publication = { ...publication, static_checks_key: staticChecks };
         await store.updateDoc(jobPath, { git_publication: publication, phase: 'uploading static files to the Hosting Group' });

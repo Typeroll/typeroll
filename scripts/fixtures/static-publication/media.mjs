@@ -11,31 +11,40 @@ async function boundedBytes(response, limit = 25 * 1024 * 1024) {
   for await (const chunk of response) { size += chunk.length; if (size > limit) throw new Error('Media response is too large'); chunks.push(Buffer.from(chunk)); }
   return Buffer.concat(chunks);
 }
+const recipe = { version: 1, encoder: sharp.versions, widths: [320, 640, 1024, 1920], quality: { webp: 80, avif: 60 } };
+const recipeHash = hash(JSON.stringify(recipe));
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
 
 /** Runs on the customer's build machine. No original or generated image is committed to Git. */
-export async function prepareMedia(publication, root) {
+export async function prepareMedia(publication, root, options = {}) {
+  options.access ??= {};
   const retainedFiles = [];
   for (const previous of publication.retained_media_manifests ?? []) {
-    retainedFiles.push(...await prepareMedia({ ...publication, media_manifest: previous, media: previous.entries.map(entry => ({ ...entry })), retained_media_manifests: [] }, root));
+    retainedFiles.push(...await prepareMedia({ ...publication, media_manifest: previous, media: previous.entries.map(entry => ({ ...entry })), retained_media_manifests: [] }, root, options));
   }
   const manifest = publication.media_manifest;
   if (!manifest?.entries?.length) return retainedFiles;
   let credentials;
-  try { credentials = JSON.parse(process.env.TYPEROLL_BUILD_MEDIA_ACCESS ?? ''); }
+  try { credentials = options.access.credentials ?? JSON.parse(process.env.TYPEROLL_BUILD_MEDIA_ACCESS ?? ''); }
   catch { throw new Error('Media build access is missing or expired. Redeploy from Typeroll, or provide scoped R2 build credentials when building independently.'); }
-  let grants;
+  let grants = credentials.objects && credentials.originals ? credentials : null;
   if (credentials.grant_url) {
     const location = new URL(credentials.grant_url);
     if (location.protocol !== 'https:' || location.hostname !== `${manifest.account_id}.r2.cloudflarestorage.com`) throw new Error('Unexpected media grant origin');
-    const response = await fetch(location, { redirect: 'error', signal: AbortSignal.timeout(30000) });
+    const response = await fetch(location, { redirect: 'error', signal: AbortSignal.timeout(30000) }).catch(() => { throw new Error('media_transfer_interrupted'); });
+    if (response.status === 429 || response.status >= 500) { await response.body?.cancel(); throw new Error('media_transfer_interrupted'); }
     if (!response.ok) throw new Error('Media build access expired. Redeploy from Typeroll.');
-    const bytes = await boundedBytes(response.body, 32 * 1024 * 1024);
+    const bytes = await boundedBytes(response.body, 32 * 1024 * 1024).catch(error => {
+      if (error.message === 'Media response is too large') throw error;
+      throw new Error('media_transfer_interrupted');
+    });
     if (hash(bytes) !== credentials.sha256) throw new Error('Media grants failed integrity verification');
     grants = JSON.parse(bytes.toString());
     if (grants.publication_id !== publication.publication_id || grants.expires_at <= Date.now()) throw new Error('Media grants do not match this publication or have expired');
     credentials = grants;
+    options.access.credentials = grants;
   }
+  if (grants && (grants.publication_id !== publication.publication_id || grants.expires_at <= Date.now())) throw new Error('Media grants do not match this publication or have expired');
   if (credentials.account_id !== manifest.account_id || credentials.original_bucket !== manifest.original_bucket || credentials.public_bucket !== manifest.public_bucket) throw new Error('Media build access belongs to another publication target');
   const client = access => new S3Client({ region: 'auto', endpoint: `https://${manifest.account_id}.r2.cloudflarestorage.com`, credentials: access,
     forcePathStyle: true, requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED' });
@@ -45,14 +54,30 @@ export async function prepareMedia(publication, root) {
     if (!url) throw new Error('This object is outside the publication grant');
     const location = new URL(url);
     if (location.protocol !== 'https:' || location.hostname !== `${manifest.account_id}.r2.cloudflarestorage.com`) throw new Error('Unexpected media storage origin');
-    return fetch(location, { ...options, redirect: 'error', signal: AbortSignal.timeout(60000) });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await fetch(location, { ...options, redirect: 'error', signal: AbortSignal.timeout(30000) });
+        if (response.status === 429 || response.status >= 500) { await response.body?.cancel(); throw new Error('media_transfer_interrupted'); }
+        return response;
+      } catch {
+        if (attempt === 2) throw new Error('media_transfer_interrupted');
+        await new Promise(resolve => setTimeout(resolve, 250 * 2 ** attempt));
+      }
+    }
   }
   async function read(bucket, key, original = false) {
     if (grants) {
-      const response = await request(original ? grants.originals[key] : grants.objects[key]?.get);
-      if (response.status === 404) return null;
-      if (!response.ok) throw new Error('Could not read media. Check or renew publication access.');
-      return boundedBytes(response.body);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const response = await request(original ? grants.originals[key] : grants.objects[key]?.get);
+        if (response.status === 404) return null;
+        if (!response.ok) throw new Error('Could not read media. Check or renew publication access.');
+        try { return await boundedBytes(response.body); }
+        catch (error) {
+          if (error.message === 'Media response is too large') throw error;
+          if (attempt === 2) throw new Error('media_transfer_interrupted');
+          await new Promise(resolve => setTimeout(resolve, 250 * 2 ** attempt));
+        }
+      }
     }
     try { const result = await (original ? source : target).send(new GetObjectCommand({ Bucket: bucket, Key: key })); return await boundedBytes(result.Body); }
     catch (error) { if (error?.$metadata?.httpStatusCode === 404) return null; throw new Error('Could not read media. Check or renew publication access.'); }
@@ -83,7 +108,7 @@ export async function prepareMedia(publication, root) {
           const verified = await read(manifest.public_bucket, key);
           if (!verified || hash(verified) !== digest) throw new Error('Published media failed byte verification');
         }
-        if (copyToWebsite && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host)) {
+        if (copyToWebsite && !options.prepareOnly && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host)) {
           const destination = path.resolve(root, '.publication-media', publicPath.slice(1));
           if (!destination.startsWith(path.resolve(root, '.publication-media') + path.sep)) throw new Error('Invalid media output path');
           const retained = await fs.readFile(destination).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
@@ -102,12 +127,27 @@ export async function prepareMedia(publication, root) {
         for (const width of [320, 640, 1024, 1920]) {
           if (width >= metadata.width) continue;
           for (const format of ['webp', 'avif']) {
-            const variant = await sharp(bytes).resize({ width, withoutEnlargement: true })[format]({ quality: format === 'avif' ? 60 : 80 }).toBuffer();
-            // Version the transformation recipe; immutable conditional writes detect any encoder mismatch.
+            // A receipt is written only after reading back the immutable variant.
+            // It binds reuse to the original, exact encoder and transformation recipe.
             const suffix = `.v1.w${width}.${entry.sha256.slice(0, 16)}.${format}`;
             const key = entry.public_key + suffix;
+            const receiptKey = key + '.receipt.json';
             const publicPath = entry.public_path + suffix;
+            const hasReceiptAccess = !grants || Boolean(grants.objects[receiptKey]);
+            const receiptBytes = hasReceiptAccess ? await read(manifest.public_bucket, receiptKey) : null;
+            let variant;
+            if (receiptBytes) {
+              let receipt;
+              try { receipt = JSON.parse(receiptBytes.toString()); } catch { throw new Error('Invalid media preparation receipt'); }
+              if (receipt.source_sha256 !== entry.sha256 || receipt.recipe_sha256 !== recipeHash || receipt.width !== width || receipt.format !== format ||
+                  !/^[a-f0-9]{64}$/.test(receipt.sha256) || !Number.isSafeInteger(receipt.size_bytes) || receipt.size_bytes < 1) throw new Error('Media preparation recipe changed. Prepare a new versioned media path.');
+              variant = await read(manifest.public_bucket, key);
+              if (variant && (hash(variant) !== receipt.sha256 || variant.length !== receipt.size_bytes)) throw new Error('Prepared media failed byte verification');
+            }
+            if (!variant) variant = await sharp(bytes).resize({ width, withoutEnlargement: true })[format]({ quality: recipe.quality[format] }).toBuffer();
             await store(variant, key, `image/${format}`, publicPath);
+            const receipt = Buffer.from(JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: recipeHash, width, format, sha256: hash(variant), size_bytes: variant.length }));
+            if (hasReceiptAccess) await store(receipt, receiptKey, 'application/json', '', false);
             for (const alias of entry.aliases ?? []) if (alias.key !== entry.public_key) await store(variant, alias.key + suffix, `image/${format}`, new URL(alias.url).pathname + suffix, false);
             media.variants.push({ width, format, size_bytes: variant.length, cdn_url: entry.cdn_url + suffix });
           }
@@ -116,4 +156,18 @@ export async function prepareMedia(publication, root) {
     }
   } finally { source?.destroy(); target?.destroy(); }
   return [...retainedFiles, ...sameHostFiles];
+}
+
+/** Prepare a bounded slice of the frozen library; the coordinator owns the cursor. */
+export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntries = 100, budgetMs = 120000, clock = Date.now } = {}) {
+  const manifests = [...(publication.retained_media_manifests ?? []), ...(publication.media_manifest ? [publication.media_manifest] : [])];
+  const entries = manifests.flatMap(manifest => manifest.entries.map(entry => ({ manifest, entry })));
+  if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor > entries.length || !Number.isSafeInteger(maxEntries) || maxEntries < 1 || !Number.isFinite(budgetMs) || budgetMs <= 0) throw new Error('Invalid media preparation cursor');
+  const started = clock(), access = {}; let next = cursor;
+  while (next < entries.length && next - cursor < maxEntries && (next === cursor || clock() - started < budgetMs)) {
+    const { manifest, entry } = entries[next];
+    await prepareMedia({ ...publication, retained_media_manifests: [], media_manifest: { ...manifest, entries: [entry] }, media: [{ ...entry }] }, root, { prepareOnly: true, access });
+    next++;
+  }
+  return { cursor: next, total: entries.length };
 }

@@ -125,3 +125,15 @@ it('rechecks the server-captured OAuth return after another island clears the ca
   expect(container.querySelector('[role="status"]')?.textContent).toBe('Permissions verified.');
   expect(container.querySelector('section')?.dataset.state).toBe('waiting');
 });
+
+it('shows durable media progress with a clear explanation that the browser can be closed', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const engine = { provider: 'cloudflare', state: 'ready', enabled: true, revision: 'cf-engine', account_name: 'CF account', worker_name: 'builder' };
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ ...engine, engines: { cloudflare: engine, github: engine }, selection: { provider: 'cloudflare', revision: 'selection' },
+    active_jobs: [{ key: 'job', site_name: 'Example site', version_id: 'redesign', provider: 'cloudflare', status: 'queued', media_preparation: { completed: 750, total: 1001 } }] })));
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(createElement(PublishingBuilds)));
+  expect(container.querySelector('[aria-label="Active builds"] [role="status"]')?.textContent).toContain('Preparing media: 750 of 1001 files ready');
+  expect(container.textContent).toContain('Continues automatically; you can close this page.');
+  expect(container.textContent).toContain('redesign');
+});

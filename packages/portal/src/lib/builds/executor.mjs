@@ -84,15 +84,15 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     if (abort.signal.aborted) throw Error('build_lease_lost');
     return new Promise((resolve, reject) => {
       const child = spawn(binary, args, { cwd: work, env: { PATH: process.env.PATH, HOME: temp }, stdio: ['ignore', 'ignore', 'pipe'], detached: true });
-      let diagnostic = '';
+      let diagnostic = '', timedOut = false;
       child.stderr.on('data', chunk => { diagnostic = (diagnostic + chunk.toString('utf8')).slice(-16384); });
       const kill = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* Already exited. */ } };
-      const timer = setTimeout(kill, Math.min(timeout, Math.max(1, job.deadline - Date.now())));
+      const timer = setTimeout(() => { timedOut = true; kill(); }, Math.min(timeout, Math.max(1, job.deadline - Date.now())));
       abort.signal.addEventListener('abort', kill, { once: true });
       const clear = () => { clearTimeout(timer); abort.signal.removeEventListener('abort', kill); };
       child.once('error', () => { clear(); reject(Error('build_process_start_failed')); });
-      child.once('exit', code => { clear(); const known = diagnostic.match(/\b(ERR_SYSTEM_ERROR|ERR_MODULE_NOT_FOUND|ERR_DLOPEN_FAILED|EACCES|ENOENT|ENOMEM|ENOSPC)\b/);
-        code === 0 && !abort.signal.aborted ? resolve() : reject(Error(known ? `build_${known[1].toLowerCase()}` : `build_process_exit_${code ?? 'terminated'}`)); });
+      child.once('exit', code => { clear(); const known = diagnostic.match(/\b(ERR_SYSTEM_ERROR|ERR_MODULE_NOT_FOUND|ERR_DLOPEN_FAILED|EACCES|ENOENT|ENOMEM|ENOSPC|media_transfer_interrupted)\b/);
+        code === 0 && !abort.signal.aborted ? resolve() : reject(Error(timedOut ? 'build_process_timeout' : known ? (known[1] === 'media_transfer_interrupted' ? known[1] : `build_${known[1].toLowerCase()}`) : `build_process_exit_${code ?? 'terminated'}`)); });
     });
   }
   const storageUrl = value => {
@@ -134,6 +134,19 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       await fs.writeFile(path.join(work, '.typeroll-runner/prepare.mjs'),
         "import fs from 'node:fs/promises'; import { prepareMedia } from '../scripts/media.mjs'; const publication=JSON.parse(await fs.readFile('/work/publication.json','utf8')); const files=await prepareMedia(publication,'/work'); await fs.writeFile('/work/.typeroll-runner/prepared.json',JSON.stringify({publication_id:publication.publication_id,media:publication.media,files}));\n", { flag: 'wx' });
       stage = 'media';
+      if (job.media_total > (job.media_cursor ?? 0)) {
+        await fs.writeFile(path.join(work, '.typeroll-runner/media-batch.mjs'),
+          "import fs from 'node:fs/promises'; import { prepareMediaBatch } from '../scripts/media.mjs'; const publication=JSON.parse(await fs.readFile('/work/publication.json','utf8')); const progress=await prepareMediaBatch(publication,'/work'," + JSON.stringify(job.media_cursor ?? 0) + "); await fs.writeFile('/work/.typeroll-runner/media-progress.json',JSON.stringify(progress));\n", { flag: 'wx' });
+        await run(['.typeroll-runner/media-batch.mjs'], true, job.media_access ? { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(job.media_access) } : {});
+        const progress = JSON.parse(await fs.readFile(path.join(work, '.typeroll-runner/media-progress.json'), 'utf8'));
+        if (progress.total !== job.media_total) throw Error('media_preparation_scope_mismatch');
+        const continueBuild = progress.cursor === progress.total;
+        await request('media-checkpoint', job.token, { ...attempt, cursor: progress.cursor, continue_build: continueBuild });
+        if (!continueBuild) {
+          console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'preparing_media', completed: progress.cursor, total: progress.total, job: job.identity.job_id, branch: job.identity.branch }));
+          return;
+        }
+      }
       // Only this trusted media stage receives exact publication-scoped object grants.
       await run(['.typeroll-runner/prepare.mjs'], true, job.media_access ? { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(job.media_access) } : {});
       stage = 'extension_assets';

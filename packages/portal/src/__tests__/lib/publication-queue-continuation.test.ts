@@ -12,7 +12,8 @@ beforeEach(async () => {
 it('Cloud Tasks accepts an idempotent continuation without colliding with the original task', async () => {
   const queue = new CloudTasksQueue('projects/synthetic/locations/test/queues/deploy', 'https://cms.example.com/api/internal/deploy-worker', 'synthetic@example.com');
   await queue.enqueue(args);
-  await queue.enqueue({ ...args, dispatchKey: 'a'.repeat(16) });
+  await queue.enqueue({ ...args, dispatchKey: 'a'.repeat(16), delayMs: 60000 });
+  expect(mocks.createTask.mock.calls[1][0].task.scheduleTime.seconds).toBeGreaterThanOrEqual(Math.floor(Date.now() / 1000) + 59);
   expect(mocks.createTask.mock.calls[0][0].task.name).not.toBe(mocks.createTask.mock.calls[1][0].task.name);
   mocks.createTask.mockRejectedValueOnce({ code: 6 });
   await expect(queue.enqueue({ ...args, dispatchKey: 'a'.repeat(16) })).resolves.toBeUndefined();

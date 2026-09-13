@@ -43,13 +43,23 @@ describe('deploy-worker forwards dryRun', () => {
     const { jobId } = await setup();
     const { getStore } = await import('../../lib/datastore');
     await getStore().updateDoc(paths.deploy(ORG, SITE, jobId), { status: 'running', execution_backend });
-    const execute = vi.fn(async () => 'deferred');
-    vi.doMock('../../lib/deploy/queue', () => ({ executeDeployJob: execute }));
+    const execute = vi.fn(async () => 'deferred'), enqueue = vi.fn(async (_args: any) => {});
+    vi.doMock('../../lib/deploy/queue', () => ({ executeDeployJob: execute, getDeployQueue: () => ({ enqueue }) }));
     const { POST } = await import('../../pages/api/internal/deploy-worker');
     const request = new Request('http://localhost/api/internal/deploy-worker', { method: 'POST', body: JSON.stringify({ jobId, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, environment: 'production' }) });
     const response = await POST({ request } as never) as Response;
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     expect(execute).toHaveBeenCalledOnce();
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ jobId, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, delayMs: 60000 }));
+    const first = enqueue.mock.calls[0][0];
+    const duplicate = new Request('http://localhost/api/internal/deploy-worker', { method: 'POST', body: JSON.stringify({ jobId, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, environment: 'production' }) });
+    expect((await POST({ request: duplicate } as never) as Response).status).toBe(200);
+    expect(enqueue.mock.calls[1][0].dispatchKey).toBe(first.dispatchKey);
+    enqueue.mockRejectedValueOnce(new Error('queue unavailable'));
+    const unavailable = new Request('http://localhost/api/internal/deploy-worker', { method: 'POST', body: JSON.stringify({ ...first, dryRun: true }) });
+    expect((await POST({ request: unavailable } as never) as Response).status).toBe(503);
+    expect(enqueue.mock.calls[2][0]).toMatchObject({ dryRun: true });
+    expect(enqueue.mock.calls[2][0].dispatchKey).not.toBe(first.dispatchKey);
   });
 
   it('passes payload.dryRun through to executeDeployJob', async () => {

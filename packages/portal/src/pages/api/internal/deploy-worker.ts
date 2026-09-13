@@ -23,10 +23,11 @@
 // want Cloud Tasks to retry a deploy that failed for "the build broke" or
 // "the credentials are wrong"; the user can hit Deploy again from the UI.
 
+import { createHash } from 'node:crypto';
 import type { APIRoute } from 'astro';
 import { isExternalDeploy } from '../../../lib/deploy/in-flight';
 import { getStore } from '../../../lib/datastore';
-import { executeDeployJob } from '../../../lib/deploy/queue';
+import { executeDeployJob, getDeployQueue } from '../../../lib/deploy/queue';
 import { slotWaitMs } from '../../../lib/deploy/concurrency';
 import { paths } from '@typeroll/shared';
 import type { DeployEnvironment, DeployJob } from '@typeroll/shared';
@@ -34,6 +35,7 @@ import type { DeployEnvironment, DeployJob } from '@typeroll/shared';
 interface Payload {
   kind?: 'media_migration';
   jobId: string;
+  dispatchKey?: string;
   orgId: string;
   siteId: string;
   versionId: string;
@@ -119,6 +121,19 @@ export const POST: APIRoute = async ({ request }) => {
   //    job doc is still `queued`, so the idempotency check above lets the
   //    redelivered task run.
   if (outcome === 'deferred') {
+    const pending = await getStore().getDoc<DeployJob>(paths.deploy(payload.orgId, payload.siteId, payload.jobId));
+    if (pending && isExternalDeploy(pending) && ['queued', 'running'].includes(pending.status)) {
+      // Each observation has a deterministic successor. A duplicate delivery
+      // cannot fork the chain, and ordinary build waiting consumes no retry budget.
+      const dispatchKey = createHash('sha256').update(`${payload.dispatchKey ?? payload.jobId}:observe`).digest('hex').slice(0, 16);
+      try {
+        await getDeployQueue().enqueue({ orgId: payload.orgId, siteId: payload.siteId, versionId: payload.versionId,
+          jobId: payload.jobId, environment: payload.environment, dryRun: payload.dryRun === true, dispatchKey, delayMs: 60000 });
+        return new Response(JSON.stringify({ ok: true, continued: 'external_publication' }), { headers: { 'Content-Type': 'application/json' } });
+      } catch {
+        return new Response(JSON.stringify({ ok: false, deferred: 'observation_queue_unavailable' }), { status: 503, headers: { 'Retry-After': '60' } });
+      }
+    }
     return new Response(JSON.stringify({ ok: false, deferred: 'no_build_slot' }), {
       status: 503,
       headers: { 'Content-Type': 'application/json', 'Retry-After': '60' },

@@ -14,7 +14,7 @@ export async function activeBuilds(org: string) {
     const input = await store.getDoc<BuildInput>(buildInputPath(org, task.id));
     const site = input?.kind === 'publication' ? await store.getDoc<{ name: string }>(paths.site(org, task.identity.site_id)) : null;
     return { key: task.id, site_id: task.identity.site_id, site_name: input?.kind === 'qualification' ? 'Build verification' : site?.name ?? task.identity.site_id,
-      version_id: task.identity.version_id, status: task.status, provider: input?.provider ?? 'cloudflare', attempt: task.attempt };
+      version_id: task.identity.version_id, status: task.status, provider: input?.provider ?? 'cloudflare', attempt: task.attempt, media_preparation: task.media_total ? { completed: task.media_cursor ?? 0, total: task.media_total } : null };
   }));
 }
 

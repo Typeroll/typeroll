@@ -49,6 +49,8 @@ export interface EnqueueArgs {
   dryRun?: boolean;
   /** A separately deduplicated continuation of the same frozen publication. */
   dispatchKey?: string;
+  /** Internal durable observation delay; never delays the accepted site publication itself. */
+  delayMs?: number;
 }
 
 export interface DeployQueue {
@@ -275,6 +277,7 @@ export class CloudTasksQueue implements DeployQueue {
         // double-deploy. We accept the 1h limit — that's plenty for
         // deploy idempotency.
         name: `${this.queue}/tasks/${deployTaskIdentity(args)}`,
+        ...(args.delayMs ? { scheduleTime: { seconds: Math.ceil((Date.now() + Math.min(60000, Math.max(0, args.delayMs))) / 1000) } } : {}),
         httpRequest: {
           httpMethod: 'POST',
           url: this.workerUrl,

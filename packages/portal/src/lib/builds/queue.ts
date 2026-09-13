@@ -9,8 +9,13 @@ export interface BuildTask {
   provider_dispatch_id?: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   created_at: number;
+  completed_at?: number;
   deadline: number;
   attempt: number;
+  media_total?: number;
+  media_cursor?: number;
+  media_batches?: number;
+  media_checkpoint_attempt?: number;
   lease_id: string | null;
   lease_until: number;
   token_hash: string | null;
@@ -25,16 +30,20 @@ export function equalToken(token: string, expected: string | null) {
   return typeof token === 'string' && token.length <= 512 && expected !== null && /^[a-f0-9]{64}$/.test(expected) && timingSafeEqual(Buffer.from(sha256(token), 'hex'), Buffer.from(expected, 'hex'));
 }
 const LEASE_MS = 90_000;
-const MAX_ATTEMPTS = 3;
+export const MAX_ATTEMPTS = 3;
+export const MEDIA_BUILD_DEADLINE_MS = 6 * 60 * 60_000;
+export const buildAttemptLimit = (task: BuildTask) => MAX_ATTEMPTS + (task.media_checkpoint_attempt ?? task.media_batches ?? 0);
 const rejected = () => new ConnectionError('This build attempt has expired or was cancelled.', 409, 'build_lease_lost');
 
 /** Organization-scoped queue, backed by the existing transactional datastore. */
 export class OrganizationBuildQueue {
   constructor(private store: ReadWriteStore = getStore(), private clock = Date.now) {}
-  async enqueue(identity: BuildIdentity, engineRevision: string) {
+  async enqueue(identity: BuildIdentity, engineRevision: string, mediaTotal = 0) {
+    if (!Number.isSafeInteger(mediaTotal) || mediaTotal < 0 || mediaTotal > 20000) throw new ConnectionError('Invalid media preparation size.', 400);
     assertBuildIdentity(identity);
     const key = buildTaskKey(identity), path = `${buildTasksPath(identity.org_id)}/${key}`;
-    const task: BuildTask = { identity, engine_revision: engineRevision, status: 'queued', created_at: this.clock(), deadline: this.clock() + 45 * 60_000,
+    const task: BuildTask = { identity, engine_revision: engineRevision, status: 'queued', created_at: this.clock(), deadline: this.clock() + (mediaTotal ? MEDIA_BUILD_DEADLINE_MS : 45 * 60_000),
+      media_total: mediaTotal, media_cursor: 0, media_batches: 0,
       attempt: 0, lease_id: null, lease_until: 0, token_hash: null, artifact_sha256: null, artifact_key: null, error_code: null };
     await this.store.createDocIfMissing(path, task);
     const existing = await this.store.getDoc<BuildTask>(path);
@@ -49,7 +58,7 @@ export class OrganizationBuildQueue {
     for (const task of pending.sort((a, b) => a.created_at - b.created_at)) {
       if (!['queued', 'running'].includes(task.status) || task.engine_revision !== engineRevision || task.lease_until > this.clock() || (expected && task.provider_dispatch_id === expected.dispatch_id)) continue;
       const path = `${buildTasksPath(org)}/${task.id}`;
-      if (task.deadline <= this.clock() || task.attempt >= MAX_ATTEMPTS) {
+      if (task.deadline <= this.clock() || task.attempt >= buildAttemptLimit(task)) {
         await this.store.compareAndUpdateDoc<BuildTask>(path, current => ['queued', 'running'].includes(current.status) && current.lease_until <= this.clock(),
           { status: 'failed', token_hash: null, error_code: 'build_timeout' });
         continue;
@@ -58,7 +67,7 @@ export class OrganizationBuildQueue {
       const won = await this.store.compareAndUpdateDoc<BuildTask>(path, current => current.engine_revision === engineRevision &&
         ['queued', 'running'].includes(current.status) && current.lease_until <= now && current.deadline > now && current.attempt === task.attempt && (!expected || current.provider_dispatch_id !== expected.dispatch_id),
         { status: 'running', lease_id: lease, token_hash: sha256(token), lease_until: now + LEASE_MS, attempt: task.attempt + 1, ...(expected ? { provider_dispatch_id: expected.dispatch_id } : {}) });
-      if (won) return { key: task.id, identity: task.identity, lease_id: lease, token, expires_at: now + LEASE_MS, deadline: task.deadline };
+      if (won) return { key: task.id, identity: task.identity, lease_id: lease, token, expires_at: now + LEASE_MS, deadline: task.deadline, media_cursor: task.media_cursor ?? 0, media_total: task.media_total ?? 0 };
     }
     return null;
   }
@@ -75,12 +84,24 @@ export class OrganizationBuildQueue {
       { lease_until: this.clock() + LEASE_MS });
     if (!won) throw rejected();
   }
+  /** Continuations revoke the old lease and preserve the exact publication identity. */
+  async checkpointMedia(org: string, key: string, lease: string, token: string, cursor: number, continueBuild = false) {
+    const task = await this.authorize(org, key, lease, token);
+    if (!Number.isSafeInteger(cursor) || cursor <= (task.media_cursor ?? 0) || cursor > (task.media_total ?? 0) || cursor - (task.media_cursor ?? 0) > 100 || (continueBuild && cursor !== task.media_total))
+      throw new ConnectionError('Invalid media preparation checkpoint.', 400);
+    const won = await this.store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(key)}`, current =>
+      current.status === 'running' && current.identity.org_id === org && current.lease_id === lease && current.deadline > this.clock() &&
+      current.lease_until > this.clock() && equalToken(token, current.token_hash) && current.media_cursor === task.media_cursor,
+      { ...(continueBuild ? {} : { status: 'queued' as const, token_hash: null, lease_id: null, lease_until: 0 }),
+        media_cursor: cursor, media_checkpoint_attempt: task.attempt - (continueBuild ? 1 : 0), media_batches: (task.media_batches ?? 0) + (continueBuild ? 0 : 1), error_code: null });
+    if (!won) throw rejected();
+  }
   async complete(org: string, key: string, lease: string, token: string, artifact: { sha256: string; key: string }) {
     if (!/^[a-f0-9]{64}$/.test(artifact.sha256) || artifact.key !== `builds/${pathPart(org)}/tasks/${pathPart(key)}/${lease}/artifact.json`) throw new ConnectionError('Invalid build artifact scope', 400);
     const won = await this.store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(key)}`, current =>
       current.status === 'running' && current.identity.org_id === org && current.lease_id === lease && current.deadline > this.clock() &&
       current.lease_until > this.clock() && equalToken(token, current.token_hash),
-      { status: 'completed', token_hash: null, lease_until: 0, artifact_sha256: artifact.sha256, artifact_key: artifact.key });
+      { status: 'completed', completed_at: this.clock(), token_hash: null, lease_until: 0, artifact_sha256: artifact.sha256, artifact_key: artifact.key });
     if (!won) throw rejected();
   }
   async cancel(org: string, key: string) {

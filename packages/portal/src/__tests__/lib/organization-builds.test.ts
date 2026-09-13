@@ -129,3 +129,49 @@ it('keeps a project awaiting token selection when other projects have build toke
   const connected = await checkBuildEngine('org', { revision: pending.revision }, provider);
   expect(connected).toMatchObject({ state: 'qualification_required', enabled: false });
 });
+
+it('continues a 1001-file frozen build beyond three batches and rejects stale or oversized checkpoints', async () => {
+  const queue = new OrganizationBuildQueue(getStore(), () => now);
+  const frozen = identity('large-site', 'redesign');
+  await queue.enqueue(frozen, 'engine-1', 1001);
+  let cursor = 0;
+  while (cursor < 1001) {
+    const claim = (await queue.claim('org', 'engine-1', 1))!;
+    expect(claim.identity).toEqual(frozen);
+    expect(claim.media_cursor).toBe(cursor);
+    await expect(queue.checkpointMedia('org', claim.key, claim.lease_id, claim.token, cursor)).rejects.toMatchObject({ status: 400 });
+    await expect(queue.checkpointMedia('org', claim.key, claim.lease_id, claim.token, cursor + 101)).rejects.toMatchObject({ status: 400 });
+    cursor = Math.min(1001, cursor + 100);
+    await queue.checkpointMedia('org', claim.key, claim.lease_id, claim.token, cursor);
+    await expect(queue.heartbeat('org', claim.key, claim.lease_id, claim.token)).rejects.toMatchObject({ code: 'build_lease_lost' });
+    now += 120000;
+  }
+  const final = (await queue.claim('org', 'engine-1', 1))!;
+  expect(final.media_cursor).toBe(1001);
+  expect(final.identity).toEqual(frozen);
+  await queue.complete('org', final.key, final.lease_id, final.token, { sha256: 'f'.repeat(64), key: `builds/org/tasks/${final.key}/${final.lease_id}/artifact.json` });
+  expect(await getStore().getDoc(`${buildTasksPath('org')}/${final.key}`)).toMatchObject({ status: 'completed', media_batches: 11, completed_at: now });
+});
+
+it('bounds interrupted media attempts and never extends the absolute preparation deadline', async () => {
+  const queue = new OrganizationBuildQueue(getStore(), () => now);
+  await queue.enqueue(identity(), 'engine-1', 1000);
+  for (let i = 0; i < 3; i++) { expect(await queue.claim('org', 'engine-1', 1)).not.toBeNull(); now += 91000; }
+  expect(await queue.claim('org', 'engine-1', 1)).toBeNull();
+  await queue.enqueue(identity('other'), 'engine-1', 1000);
+  now += 6 * 60 * 60_000 + 1;
+  expect(await queue.claim('org', 'engine-1', 1)).toBeNull();
+});
+
+it('restores the retry allowance after verified progress in a long library', async () => {
+  const queue = new OrganizationBuildQueue(getStore(), () => now);
+  await queue.enqueue(identity(), 'engine-1', 500);
+  for (let i = 0; i < 2; i++) { expect(await queue.claim('org', 'engine-1', 1)).not.toBeNull(); now += 91000; }
+  const successful = (await queue.claim('org', 'engine-1', 1))!;
+  await queue.checkpointMedia('org', successful.key, successful.lease_id, successful.token, 100);
+  for (let i = 0; i < 3; i++) {
+    expect(await queue.claim('org', 'engine-1', 1)).toMatchObject({ media_cursor: 100 });
+    now += 91000;
+  }
+  expect(await queue.claim('org', 'engine-1', 1)).toBeNull();
+});
