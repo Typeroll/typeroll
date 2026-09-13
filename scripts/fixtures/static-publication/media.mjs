@@ -94,14 +94,14 @@ export async function prepareMedia(publication, root, options = {}) {
   }
   const sameHostFiles = [];
   try {
-    for (const entry of manifest.entries) {
+    const prepareEntry = async entry => {
       if (!entry.source_key.startsWith(`private/${manifest.site_prefix}/originals/`) || !entry.public_key.startsWith(`${manifest.site_prefix}/`)) throw new Error('Media entry escaped its site namespace');
       const bytes = await read(manifest.original_bucket, entry.source_key, true);
       if (!bytes || hash(bytes) !== entry.sha256 || (entry.size_bytes && bytes.length !== entry.size_bytes)) throw new Error('Original image failed SHA-256 verification');
-      async function store(bytes, key, contentType, publicPath, copyToWebsite = true) {
+      async function store(bytes, key, contentType, publicPath, copyToWebsite = true, verifiedExisting = undefined) {
         if (!key.startsWith(`${manifest.site_prefix}/`)) throw new Error('Media alias escaped its site namespace');
         const digest = hash(bytes);
-        const existing = await read(manifest.public_bucket, key);
+        const existing = verifiedExisting === undefined ? await read(manifest.public_bucket, key) : verifiedExisting;
         if (existing && hash(existing) !== digest) throw new Error('A public media path already contains different bytes. Choose a new path to preserve published versions.');
         if (!existing) {
           await write(key, bytes, contentType);
@@ -135,7 +135,7 @@ export async function prepareMedia(publication, root, options = {}) {
             const publicPath = entry.public_path + suffix;
             const hasReceiptAccess = !grants || Boolean(grants.objects[receiptKey]);
             const receiptBytes = hasReceiptAccess ? await read(manifest.public_bucket, receiptKey) : null;
-            let variant;
+            let variant, verifiedVariant;
             if (receiptBytes) {
               let receipt;
               try { receipt = JSON.parse(receiptBytes.toString()); } catch { throw new Error('Invalid media preparation receipt'); }
@@ -143,16 +143,25 @@ export async function prepareMedia(publication, root, options = {}) {
                   !/^[a-f0-9]{64}$/.test(receipt.sha256) || !Number.isSafeInteger(receipt.size_bytes) || receipt.size_bytes < 1) throw new Error('Media preparation recipe changed. Prepare a new versioned media path.');
               variant = await read(manifest.public_bucket, key);
               if (variant && (hash(variant) !== receipt.sha256 || variant.length !== receipt.size_bytes)) throw new Error('Prepared media failed byte verification');
+              verifiedVariant = variant;
             }
             if (!variant) variant = await sharp(bytes).resize({ width, withoutEnlargement: true })[format]({ quality: recipe.quality[format] }).toBuffer();
-            await store(variant, key, `image/${format}`, publicPath);
+            await store(variant, key, `image/${format}`, publicPath, true, verifiedVariant);
             const receipt = Buffer.from(JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: recipeHash, width, format, sha256: hash(variant), size_bytes: variant.length }));
-            if (hasReceiptAccess) await store(receipt, receiptKey, 'application/json', '', false);
+            if (hasReceiptAccess) await store(receipt, receiptKey, 'application/json', '', false, receiptBytes);
             for (const alias of entry.aliases ?? []) if (alias.key !== entry.public_key) await store(variant, alias.key + suffix, `image/${format}`, new URL(alias.url).pathname + suffix, false);
             media.variants.push({ width, format, size_bytes: variant.length, cdn_url: entry.cdn_url + suffix });
           }
         }
       }
+    };
+    // Bounded parallel reads keep final materialization from becoming another
+    // library-wide timeout. Drain the group before closing clients on failure.
+    const concurrency = options.prepareOnly ? 1 : 4;
+    for (let offset = 0; offset < manifest.entries.length; offset += concurrency) {
+      const results = await Promise.allSettled(manifest.entries.slice(offset, offset + concurrency).map(prepareEntry));
+      const failure = results.find(result => result.status === 'rejected');
+      if (failure) throw failure.reason;
     }
   } finally { source?.destroy(); target?.destroy(); }
   return [...retainedFiles, ...sameHostFiles];

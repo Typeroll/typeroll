@@ -118,3 +118,21 @@ test('retries an interrupted response body and does not retry denied access', as
   await assert.rejects(() => prepareMedia(publication, root), /publication access/);
   assert.equal(reads, 1);
 }));
+
+test('materializes cached files with bounded parallel reads while preparation remains sequential', async () => withMediaFixture(async ({ publication, root }) => {
+  const originalFetch = globalThis.fetch; let active = 0, peak = 0;
+  globalThis.fetch = async (url, options) => {
+    if (new URL(url).pathname.startsWith('/private/')) {
+      active++; peak = Math.max(peak, active);
+      await new Promise(resolve => setTimeout(resolve, 2));
+      active--;
+    }
+    return originalFetch(url, options);
+  };
+  await prepareMediaBatch(publication, root);
+  assert.equal(peak, 1);
+  peak = 0;
+  assert.equal((await prepareMedia(publication, root)).length, 8);
+  assert.ok(peak > 1 && peak <= 4);
+  assert.equal(active, 0);
+}, 8));

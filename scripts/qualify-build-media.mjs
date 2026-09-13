@@ -28,11 +28,11 @@ try {
   assert.equal(publication.media[0].variants.length, 4);
   await prepareMedia(publication, root);
   console.log(JSON.stringify({ check: 'real original read, responsive variants, public write, hash verification, idempotent rebuild', passed: true }));
-  const grants = await (await fetch(access.grant_url)).json();
+  const grants = await (await fetch(access.grant_url, { redirect: 'error', signal: AbortSignal.timeout(20000) })).json();
   const changed = new URL(grants.objects[targetKey].put); changed.pathname += '/other-site';
-  const denied = await fetch(changed, { method: 'PUT', headers: grants.objects[targetKey].headers, body: 'forbidden' });
+  const denied = await fetch(changed, { method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(20000), headers: grants.objects[targetKey].headers, body: 'forbidden' });
   assert.equal(denied.status, 403);
-  const overwrite = await fetch(grants.objects[targetKey].put, { method: 'PUT', headers: grants.objects[targetKey].headers, body: 'forbidden' });
+  const overwrite = await fetch(grants.objects[targetKey].put, { method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(20000), headers: grants.objects[targetKey].headers, body: 'forbidden' });
   assert.equal(overwrite.status, 412);
   const original = await client.send(new GetObjectCommand({ Bucket: bucket, Key: targetKey }));
   assert.equal(createHash('sha256').update(await original.Body.transformToByteArray()).digest('hex'), sha256);
