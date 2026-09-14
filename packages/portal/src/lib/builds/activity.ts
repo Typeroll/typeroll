@@ -14,7 +14,7 @@ export async function activeBuilds(org: string) {
     const input = await store.getDoc<BuildInput>(buildInputPath(org, task.id));
     const site = input?.kind !== 'qualification' ? await store.getDoc<{ name: string }>(paths.site(org, task.identity.site_id)) : null;
     return { key: task.id, site_id: task.identity.site_id, site_name: input?.kind === 'qualification' ? 'Build verification' : site?.name ?? task.identity.site_id,
-      kind: input?.kind, version_id: task.identity.version_id, status: task.status, provider: input?.provider ?? 'cloudflare', attempt: task.attempt, media_preparation: task.media_total ? { completed: task.media_cursor ?? 0, total: task.media_total } : null };
+      kind: input?.kind, version_id: task.identity.version_id, status: task.status, provider: input?.provider ?? 'cloudflare', attempt: task.attempt, static_verification: input?.kind === 'static_verification' ? { completed: task.media_cursor ?? 0, total: task.media_total ?? 0 } : null, media_preparation: input?.kind !== 'static_verification' && task.media_total ? { completed: task.media_cursor ?? 0, total: task.media_total } : null };
   }));
 }
 
@@ -26,7 +26,7 @@ export async function cancelGithubTask(org: string, key: string) {
   const config = await readEngineConfiguration(org, 'github');
   const cancelled = await new OrganizationBuildQueue().cancel(org, key);
   if (!cancelled) throw new ConnectionError('This build has already finished. Its publication cannot be cancelled here.', 409);
-  if (input.kind === 'publication') await store.compareAndUpdateDoc<DeployJob>(paths.deploy(org, task.identity.site_id, task.identity.job_id), value => ['queued', 'running'].includes(value.status),
+  if (['publication', 'static_verification'].includes(input.kind)) await store.compareAndUpdateDoc<DeployJob>(paths.deploy(org, task.identity.site_id, task.identity.job_id), value => ['queued', 'running'].includes(value.status),
     { status: 'failed', phase: 'cancelled', error: 'The build was cancelled by an organization administrator.', finished_at: new Date().toISOString() });
   else if (input.kind === 'qualification' && config?.revision === task.engine_revision) {
     await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, 'github'), value => value.revision === task.engine_revision, { status: 'disabled' });

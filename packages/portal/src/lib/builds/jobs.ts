@@ -19,12 +19,12 @@ export async function enqueueBuild(config: EngineConfiguration, identity: Omit<B
     if (storage.account !== config.account_id) throw new ConnectionError('Build storage changed. Set up the shared engine again.', 409);
     await storage.put(sourceKey, source);
   });
-  const publication = kind !== 'qualification' ? JSON.parse(files['publication.json']) : null;
+  const publication = ['publication', 'media_preparation'].includes(kind) ? JSON.parse(files['publication.json']) : null;
   // Domain-only publications can retain an older immutable renderer. Do not
   // send batch commands to a source template that predates that protocol.
   const supportsMediaBatches = files['scripts/media.mjs']?.includes('export async function prepareMediaBatch(');
-  const mediaTotal = supportsMediaBatches ? (publication?.media_manifest?.entries?.length ?? 0) + (publication?.retained_media_manifests ?? []).reduce((sum: number, manifest: any) => sum + manifest.entries.length, 0) : 0;
-  const queued = await new OrganizationBuildQueue().enqueue(frozen, config.revision, mediaTotal);
+  const mediaTotal = kind === 'static_verification' ? JSON.parse(files['verification.json']).checks.length : supportsMediaBatches ? (publication?.media_manifest?.entries?.length ?? 0) + (publication?.retained_media_manifests ?? []).reduce((sum: number, manifest: any) => sum + manifest.entries.length, 0) : 0;
+  const queued = await new OrganizationBuildQueue().enqueue(frozen, config.revision, mediaTotal, kind === 'static_verification' ? kind : undefined);
   await getStore().createDocIfMissing(buildInputPath(identity.org_id, queued.key), { source_key: sourceKey, kind, storage_account_id: config.account_id, provider: config.provider ?? 'cloudflare' } satisfies BuildInput);
   try { await dispatchPendingBuild(identity.org_id, queued.key, config); }
   catch (error) { await new OrganizationBuildQueue().cancel(identity.org_id, queued.key); throw error; }

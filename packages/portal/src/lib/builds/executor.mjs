@@ -1,3 +1,4 @@
+import { verifyCandidateBatch } from './static-verifier.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -77,7 +78,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     if (!response.ok) throw Error(`coordinator_${response.status}`);
     return response.json();
   };
-  const job = await request('claim', runnerToken, { protocol: 1, media_batch_access: true });
+  const job = await request('claim', runnerToken, { protocol: 1, media_batch_access: true, static_verification: true });
   if (!job) { console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'idle' })); return; }
   if (job.identity.org_id !== config.org_id) throw Error('build_scope_mismatch');
   const startedAt = Date.now();
@@ -114,6 +115,29 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     await fs.mkdir(work);
     const bytes = await responseBytes(await fetchImpl(storageUrl(job.source_url), { redirect: 'error', signal: AbortSignal.timeout(60000) }), MAX_SOURCE_BYTES);
     const files = decodeSource(bytes, job.identity.source_sha256);
+    if (job.kind === 'static_verification') {
+      stage = 'verification';
+      const plan = JSON.parse(files['verification.json']);
+      if (plan.publication_id !== job.identity.publication_id || plan.checks.length !== job.media_total) throw Error('verification_scope_mismatch');
+      let cursor = job.media_cursor, downloaded = 0;
+      while (cursor < job.media_total) {
+        const progress = await verifyCandidateBatch(plan, cursor, { fetchImpl, signal: abort.signal, observe: bytes => { downloaded += bytes; } });
+        cursor = progress.cursor;
+        const finished = cursor === job.media_total, keepLease = finished || Date.now() < Math.min(startedAt + 12 * 60_000, job.deadline - 120000);
+        await request('verification-checkpoint', job.token, { ...attempt, cursor, continue_build: finished, keep_lease: keepLease });
+        if (!keepLease) { console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'verification_continuation', job: job.identity.job_id, completed: cursor, total: job.media_total, downloaded_bytes: downloaded })); return; }
+      }
+      const artifact = encodeArtifact(job.identity, {
+        '.well-known/typeroll/publication.json': Buffer.from(JSON.stringify({ id: job.identity.publication_id })),
+        'verification.json': Buffer.from(JSON.stringify({ publication_id: job.identity.publication_id, source_sha256: job.identity.source_sha256, completed: job.media_total })),
+      });
+      const upload = await request('upload', job.token, { ...attempt, artifact_format: 2 });
+      const response = await fetchImpl(storageUrl(upload.artifact_url), { method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(60000), headers: { 'Content-Type': upload.content_type }, body: artifact });
+      if (!response.ok) throw Error('artifact_upload_failed');
+      await request('complete', job.token, { ...attempt, sha256: sha256(artifact) });
+      console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'verified', job: job.identity.job_id, completed: cursor, total: job.media_total, downloaded_bytes: downloaded, peak_rss_kib: process.resourceUsage().maxRSS }));
+      return;
+    }
     for (const [name, content] of Object.entries(files)) {
       if (name.startsWith('.typeroll-runner/')) throw Error('reserved_build_source');
       const target = path.join(work, name); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, content, { flag: 'wx' });

@@ -295,7 +295,7 @@ Original transfer and publication preparation are separate steps. The background
 transfer moves the library into private R2 storage. A publication prepares only
 media referenced by its frozen content and any retained published versions.
 
-Core 0.1.93 adds background preparation after uploads and imports, using the
+Core 0.1.94 includes background preparation after uploads and imports, using the
 Organization's selected Cloudflare or GitHub build engine. **Media** shows the
 progress and offers **Retry preparation** if a job stops. Setup can happen later:
 you can upload, import and edit before connecting a build provider. Preparation
@@ -333,8 +333,23 @@ preparation run, it continues in a fresh build with time to finish and upload.
 Finished static files are uploaded directly from the trusted customer build
 supervisor to Cloudflare Pages with a temporary asset-upload grant. Typeroll
 receives a bounded manifest and checksums, finalizes the deployment for the frozen
-Site and branch, and verifies its public files. Hosting credentials are never
-passed to the site's renderer. Older engines can still return binary artifacts.
+Site and branch, and checks that the correct publication is reachable on its domain.
+Hosting credentials are never passed to the site's renderer.
+
+From Core 0.1.94, the organization’s build engine also verifies new and changed
+static files on the deployment candidate. This is a separate job with saved
+progress, so an interrupted verification resumes without rebuilding the site.
+**Publishing → Builds** shows **Verifying static files** and the checked count.
+Previously verified files can be reused when their checksums, hosting account,
+project, domains and control files are unchanged. A text edit does not require
+re-downloading every unchanged image for verification.
+
+Typeroll performs bounded checks of publication identity and relevant public
+responses, including small page, asset and removed-route samples. These checks
+are not an exhaustive second download of the site. The existing site remains
+available until verification completes. Existing engines must be updated before
+starting new shared publications; already frozen older jobs retain their original
+artifact and verification path.
 
 Preparation has a six-hour overall limit, and public verification has its own
 45-minute window after the build completes. Direct static output is limited to 512 MiB,

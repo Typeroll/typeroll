@@ -34,6 +34,33 @@ beforeEach(async () => {
   await getStore().setDoc(connectionPath(org, 'github'), { status: 'connected', github: { installation_id: 'installation' } });
   await getStore().setDoc(enginePath(org), { revision: 'public-revision', enabled: false, state: 'qualification_required' });
 });
+it('requires completed verification checkpoints and a receipt bound to the frozen source', async () => {
+  const { frozen, key } = await prepare('static_verification', 2);
+  let claim = await (await request('claim', runnerToken, { protocol: 1, static_verification: true })).json();
+  const receipt = () => encodeArtifact(frozen, {
+    '.well-known/typeroll/publication.json': Buffer.from(JSON.stringify({ id: frozen.publication_id })),
+    'verification.json': Buffer.from(JSON.stringify({ publication_id: frozen.publication_id, source_sha256: frozen.source_sha256, completed: 2 })),
+  });
+  let artifact = receipt();
+  storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
+  expect((await request('complete', claim.token, { key, lease_id: claim.lease_id, sha256: sha256(artifact) })).status).toBe(409);
+  expect((await request('media-access', claim.token, { key, lease_id: claim.lease_id, cursor: 0 })).status).toBe(409);
+  expect((await request('direct-upload', claim.token, { key, lease_id: claim.lease_id })).status).toBe(409);
+  expect((await request('verification-checkpoint', claim.token, { key, lease_id: claim.lease_id, cursor: 1 })).status).toBe(200);
+  expect((await request('heartbeat', claim.token, { key, lease_id: claim.lease_id })).status).toBe(409);
+  claim = await (await request('claim', runnerToken, { protocol: 1, static_verification: true })).json();
+  expect(claim).toMatchObject({ kind: 'static_verification', media_cursor: 1 });
+  expect((await request('verification-checkpoint', claim.token, { key, lease_id: claim.lease_id, cursor: 2, continue_build: true })).status).toBe(200);
+  artifact = receipt(); storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
+  expect((await request('complete', claim.token, { key, lease_id: claim.lease_id, sha256: sha256(artifact) })).status).toBe(200);
+});
+
+it('revokes verification work when its parent publication is cancelled', async () => {
+  await prepare('static_verification', 1);
+  const claim = await (await request('claim', runnerToken, { protocol: 1, static_verification: true })).json();
+  await getStore().updateDoc(paths.deploy(org, 'site', 'job'), { status: 'failed' });
+  expect((await request('verification-checkpoint', claim.token, { key: claim.key, lease_id: claim.lease_id, cursor: 1, continue_build: true })).status).toBe(409);
+});
 it('issues upload access only to an active attempt on demand', async () => {
   const { frozen, key } = await prepare();
   expect((await request('claim', 'x'.repeat(43), { protocol: 1 })).status).toBe(401);

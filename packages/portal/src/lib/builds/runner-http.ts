@@ -22,7 +22,7 @@ import { authorizeGithubClaim } from './github-claim';
 /** These endpoints never use browser cookies or organization API keys. */
 export async function runnerRequest(request: Request, org: string, action: string) {
   try {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(org) || !['claim', 'heartbeat', 'upload', 'complete', 'fail', 'media-checkpoint', 'direct-upload', 'media-access'].includes(action)) return privateJson({ error: 'Not found' }, 404);
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(org) || !['claim', 'heartbeat', 'upload', 'complete', 'fail', 'media-checkpoint', 'direct-upload', 'media-access', 'verification-checkpoint'].includes(action)) return privateJson({ error: 'Not found' }, 404);
     const token = request.headers.get('authorization')?.match(/^Bearer ([a-zA-Z0-9_.-]{1,16384})$/)?.[1];
     if (!token) return privateJson({ error: 'Build authentication required.' }, 401);
     const input = await publishingJsonBody(request);
@@ -37,13 +37,13 @@ export async function runnerRequest(request: Request, org: string, action: strin
       const task = await queue.authorize(org, claim.key, claim.lease_id, claim.token);
       const metadata = await store.getDoc<BuildInput>(buildInputPath(org, claim.key));
       if (metadata?.kind === 'media_preparation' && (engine.status !== 'ready' || !await preparationStillRunning(task))) { await queue.cancel(org, claim.key); throw new ConnectionError('Media preparation cancelled.', 409); }
-      if (!metadata || metadata.storage_account_id !== engine.account_id || (metadata.kind === 'publication' && (engine.status !== 'ready' || !await publicationStillRunning(task)))) {
+      if (!metadata || metadata.storage_account_id !== engine.account_id || (['publication', 'static_verification'].includes(metadata.kind) && (engine.status !== 'ready' || !await publicationStillRunning(task)))) {
         await queue.cancel(org, claim.key); throw new ConnectionError('This publication is no longer eligible to build.', 409);
       }
       return await buildStorage(org, async storage => {
         if (storage.account !== metadata.storage_account_id) throw new ConnectionError('Build storage changed.', 409);
         let mediaAccess, batchedAccess = false;
-        if (metadata.kind !== 'qualification') {
+        if (['publication', 'media_preparation'].includes(metadata.kind)) {
           const source = decodeSource(await storage.read(metadata.source_key, MAX_SOURCE_BYTES), claim.identity.source_sha256);
           const publication = JSON.parse(source['publication.json']);
           batchedAccess = input.media_batch_access === true && source['scripts/media.mjs']?.includes('materialize = false');
@@ -62,16 +62,21 @@ export async function runnerRequest(request: Request, org: string, action: strin
     const engine = await readEngineConfiguration(org, provider);
     if (!engine || engine.revision !== task.engine_revision || input.revision !== engine.revision || !['ready', 'qualifying'].includes(engine.status)) throw new ConnectionError('The build engine was revoked.', 409);
     await assertEngineConnections(org, engine);
-    if (!metadata || (metadata.kind === 'publication' && !await publicationStillRunning(task))) { await queue.cancel(org, key); throw new ConnectionError('Publication cancelled.', 409); }
+    if (!metadata || (['publication', 'static_verification'].includes(metadata.kind) && !await publicationStillRunning(task))) { await queue.cancel(org, key); throw new ConnectionError('Publication cancelled.', 409); }
     if (metadata.kind === 'media_preparation' && !await preparationStillRunning(task)) { await queue.cancel(org, key); throw new ConnectionError('Media preparation cancelled.', 409); }
     if (action === 'heartbeat') { await queue.heartbeat(org, key, lease, token); return privateJson({ ok: true }); }
+    if (action === 'verification-checkpoint') {
+      if (metadata.kind !== 'static_verification') throw new ConnectionError('This task has no static verification phase.', 409);
+      await queue.checkpointMedia(org, key, lease, token, Number(input.cursor), input.continue_build === true, input.keep_lease === true);
+      return privateJson({ ok: true });
+    }
     if (action === 'media-checkpoint') {
-      if (metadata.kind === 'qualification') throw new ConnectionError('This build has no media preparation phase.', 409);
+      if (!['publication', 'media_preparation'].includes(metadata.kind)) throw new ConnectionError('This build has no media preparation phase.', 409);
       await queue.checkpointMedia(org, key, lease, token, Number(input.cursor), input.continue_build === true, input.keep_lease === true);
       return privateJson({ ok: true });
     }
     if (action === 'media-access') {
-      if (metadata.kind === 'qualification') throw new ConnectionError('This task has no media.', 409);
+      if (!['publication', 'media_preparation'].includes(metadata.kind)) throw new ConnectionError('This task has no media.', 409);
       const cursor = Number(input.cursor);
       if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor >= (task.media_total ?? 0)) throw new ConnectionError('Invalid media access cursor.', 400);
       return buildStorage(org, async storage => {
@@ -112,7 +117,8 @@ export async function runnerRequest(request: Request, org: string, action: strin
     if (action === 'fail') {
       const code = typeof input.code === 'string' && /^[a-z0-9_]{1,80}$/.test(input.code) ? input.code : 'shared_build_failed';
       const stage = typeof input.stage === 'string' && /^[a-z_]{1,30}$/.test(input.stage) ? input.stage : 'build';
-      const retryMedia = metadata.kind !== 'qualification' && stage === 'media' && ['build_process_timeout', 'media_transfer_interrupted'].includes(code) && task.attempt < buildAttemptLimit(task);
+      const retryMedia = ((metadata.kind !== 'qualification' && stage === 'media' && ['build_process_timeout', 'media_transfer_interrupted'].includes(code)) ||
+        (metadata.kind === 'static_verification' && stage === 'verification' && code === 'static_verification_pending')) && task.attempt < buildAttemptLimit(task);
       await store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${key}`, value => value.status === 'running' && value.lease_id === lease && value.token_hash === task.token_hash && value.lease_until > Date.now() && value.deadline > Date.now(),
         { status: retryMedia ? 'queued' : 'failed', token_hash: null, error_code: `${stage}_${code}`, lease_until: 0 });
       if (metadata.kind === 'qualification') {
@@ -125,12 +131,17 @@ export async function runnerRequest(request: Request, org: string, action: strin
     await buildStorage(org, async storage => {
       if (storage.account !== metadata.storage_account_id) throw new ConnectionError('Build storage changed.', 409);
       const files = decodeArtifact(await storage.read(artifactKey), task.identity, String(input.sha256));
+      if (metadata.kind === 'static_verification') {
+        const expected = JSON.stringify({ publication_id: task.identity.publication_id, source_sha256: task.identity.source_sha256, completed: task.media_total });
+        if (task.media_cursor !== task.media_total || Object.keys(files).length !== 2 || files['verification.json']?.toString('utf8') !== expected)
+          throw new ConnectionError('Static verification returned an incomplete receipt.', 409);
+      }
       if (metadata.kind === 'media_preparation') {
         const expected = JSON.stringify({ publication_id: task.identity.publication_id, completed: task.media_total });
         if (task.media_cursor !== task.media_total || Object.keys(files).length !== 2 || files['preparation.json']?.toString('utf8') !== expected)
           throw new ConnectionError('Media preparation returned an incomplete receipt.', 409);
       }
-      if (metadata.kind === 'publication' && files[DIRECT_RECEIPT]) {
+      if (['publication', 'static_verification'].includes(metadata.kind) && files[DIRECT_RECEIPT]) {
         if (Object.keys(files).length !== 2) throw new ConnectionError('Invalid static upload receipt.', 409);
         const receipt = validateDirectReceipt(JSON.parse(files[DIRECT_RECEIPT].toString('utf8')));
         if (receipt.files['.well-known/typeroll/publication.json']?.sha256 !== sha256(files['.well-known/typeroll/publication.json']))

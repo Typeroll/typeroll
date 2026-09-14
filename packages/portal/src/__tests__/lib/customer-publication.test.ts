@@ -10,15 +10,15 @@ import { captureImpact } from '../../lib/publishing/impact';
 import { previewPublicationImpact } from '../../lib/publishing/impact-preview';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
 
-const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi.fn(), probe: vi.fn(), source: vi.fn(), enqueue: vi.fn(), built: vi.fn(), upload: vi.fn(), verify: vi.fn(), deployment: null as any }));
+const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi.fn(), probe: vi.fn(), source: vi.fn(), enqueue: vi.fn(), built: vi.fn(), upload: vi.fn(), verify: vi.fn(), candidateVerification: vi.fn(), verificationPlan: vi.fn(), direct: vi.fn(), deployment: null as any }));
 vi.mock('../../lib/publishing/github-connection', () => ({ githubConfiguration: () => ({ appId: '12', privateKey: 'synthetic-only' }) }));
 vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: async () => mocks.cloudflare }));
 vi.mock('../../lib/publishing/providers.mjs', async importOriginal => ({ ...await importOriginal<object>(), githubInstallationClient: async () => mocks.github, publishTree: mocks.push }));
 vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source }));
 vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: async () => ({ forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] }) }));
 vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completedBuild: mocks.built }));
-vi.mock('../../lib/builds/upload', () => ({ uploadStaticBuild: mocks.upload }));
-vi.mock('../../lib/builds/publication', async original => ({ ...await original<object>(), saveStaticChecks: async () => 'builds/org/checks/verified.json', verifyStaticBatch: mocks.verify }));
+vi.mock('../../lib/builds/upload', () => ({ uploadStaticBuild: mocks.upload, finalizeDirectUpload: mocks.direct }));
+vi.mock('../../lib/builds/publication', async original => ({ ...await original<object>(), saveStaticChecks: async () => 'builds/org/checks/verified.json', verifyStaticBatch: mocks.verify, verifyCustomerCandidate: mocks.candidateVerification, saveCustomerVerification: mocks.verificationPlan }));
 vi.mock('../../lib/deploy/availability', () => ({ probePublication: mocks.probe }));
 const prefix = createHash('sha256').update('org\0site').digest('hex').slice(0, 16);
 const project = `typeroll-${prefix}`;
@@ -325,7 +325,7 @@ it('identifies missing Git installation in an extra hosting account without aski
 
 it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the live link until actual static files are verified', async providerName => {
   await getStore().setDoc('organizations/org/publishing/build_selection', { provider: providerName, revision: 'selection' });
-  await getStore().setDoc(`organizations/org/publishing_private/${providerName === 'github' ? 'github_build_engine' : 'build_engine'}`, { status: 'ready', provider: providerName, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await getStore().setDoc(`organizations/org/publishing_private/${providerName === 'github' ? 'github_build_engine' : 'build_engine'}`, { status: 'ready', static_verification: true, provider: providerName, revision: 'engine-1', account_id: 'a'.repeat(32) });
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => {
     if (route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}`) return { name: project, production_branch: 'main' };
@@ -410,4 +410,36 @@ it('captures media impact from the same records used in the frozen media manifes
   expect(observed.fields).toEqual(expected?.fields);
   expect(frozen.media_manifest.entries[0].sha256).toBe(media.sha256);
   expect(list.mock.calls.filter(([path]) => path === paths.media('org', 'site'))).toHaveLength(2);
+});
+
+
+it('keeps direct publication waiting for customer verification, then runs only bounded coordinator probes', async () => {
+  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
+  mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
+  expect(await executeCustomerPublication(args)).toBe('deferred');
+  await getStore().setDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now() });
+  mocks.built.mockResolvedValue({ files: {}, direct: { format: 1 } });
+  mocks.verificationPlan.mockResolvedValue({ verification_checks_key: 'customer-checks', probe_checks_key: 'bounded-probes', static_controls_sha256: 'controls' });
+  mocks.direct.mockImplementation(async () => { complete(); return mocks.deployment; });
+  mocks.probe.mockResolvedValue(true); mocks.candidateVerification.mockResolvedValue(false);
+  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'verifying static output on the organization build engine' });
+  expect((await getStore().getDoc<any>(jobPath)).deploy_url).toBeUndefined();
+  expect(mocks.verify).not.toHaveBeenCalled();
+  mocks.candidateVerification.mockResolvedValue(true); mocks.verify.mockResolvedValue(true);
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(mocks.verify.mock.calls.length).toBeGreaterThanOrEqual(2);
+  expect(mocks.verify.mock.calls.every(call => call[2] === 'bounded-probes' && call[4] === true)).toBe(true);
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', deploy_url: 'https://www.example.com' });
+});
+
+it('requires an engine update before queuing a new shared publication on the legacy supervisor', async () => {
+  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', revision: 'old-engine', account_id: 'a'.repeat(32) });
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
+  await executeCustomerPublication(args);
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('Update the build engine') });
 });

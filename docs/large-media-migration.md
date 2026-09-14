@@ -1,6 +1,6 @@
 # Large media migration and static delivery
 
-Core 0.1.93 separates durable source transfer, private variant preparation and
+Core 0.1.94 separates durable source transfer, private variant preparation and
 static hosting delivery. WordPress source identities are indexed by a SHA-256
 key scoped to the site; a leased transfer record stores attempts and completion.
 Organization storage migration retains its cursor and per-file outcomes, verifies
@@ -84,3 +84,39 @@ preparation and has a full provider run for materialization, rendering and uploa
 Small publications keep their existing lease. Completed private preparation can
 return its small receipt immediately. Update existing shared engines for the
 new final-checkpoint policy; frozen older renderers keep their own media behavior.
+
+
+## Customer-owned static verification
+
+The trusted supervisor runs a separate `static_verification` task after the
+coordinator finalizes a static Pages candidate. Its frozen source includes the
+candidate origin, publication identity and expected checksums. The task key is
+namespaced from the original build key and verification source hash; it cannot
+replace the build task or reuse a receipt for another candidate. Only an active
+lease can checkpoint or complete, and cancelling the parent publication revokes
+verification. No renderer or hosting API credential is needed by this task.
+
+Each group drains up to eight HTTP responses with incremental SHA-256 hashing.
+Checkpoints cover at most 100 responses; the runner yields at twelve minutes and
+resumes through the normal Cloudflare/GitHub dispatch path. Its completion receipt
+binds the publication, frozen verification source and completed count. Missing,
+corrupt or stale response bytes prevent completion. Only robots.txt keeps a small
+buffer to account for Cloudflare's existing managed-prefix exception.
+
+Verification plans reuse identical successful checks only when the previous
+completed publication used the same account, project, website host, domain
+revision and control-file hash. Only the generated `X-Typeroll-Publication`
+header is normalized; the publication marker is independently checked each time. New/changed files and removed routes are checked;
+a missing previous proof forces a full first verification. The publication marker
+is always checked. Reuse relies on the complete direct-upload manifest and
+Cloudflare's immutable content-addressed asset storage; it is not a per-run
+exhaustive availability audit of unchanged files.
+
+The coordinator independently probes at most sixteen relevant responses, planning
+at most 1 MiB in total and rejecting any response over 256 KiB or a batch over
+1 MiB. It checks publication identity separately before enabling the public link.
+It never downloads an entire new image library just to verify a shared publication.
+Large page/media bodies are verified by the customer engine; coordinator probes
+are explicitly a bounded sample. Existing legacy frozen jobs keep their original
+path, with streaming public-response hashing to avoid full-file buffer copies.
+Update shared engines before starting new publications on this release.

@@ -34,9 +34,9 @@ import { selectedBuildProvider } from '../builds/selection';
 import { enqueueBuild, completedBuild } from '../builds/jobs';
 import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from '../builds/queue';
 import { uploadStaticBuild, finalizeDirectUpload } from '../builds/upload';
-import { prepareStaticProject, saveStaticChecks, verifyStaticBatch } from '../builds/publication';
+import { prepareStaticProject, saveStaticChecks, verifyStaticBatch, saveCustomerVerification, verifyCustomerCandidate, type CustomerVerification } from '../builds/publication';
 
-interface GitPublication {
+interface GitPublication extends CustomerVerification {
   build_provider?: BuildProvider; build_engine_revision?: string; build_task_key?: string | null; static_checks_key?: string | null;
   hosting_group_id?: string; hosting_group_revision?: string;
   owner: string; repo: string; project: string; account_id: string; branch: string;
@@ -117,7 +117,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     // Older Firestore updates merged omitted nested fields, retaining the preview commit.
     // Resume that frozen candidate instead of waiting for a main build that was never pushed.
     if (publication?.branch === 'main' && publication.release_branch === 'main') {
-      publication = { ...publication, commit: null, deployment_id: null, release_branch: null, build_task_key: null, static_checks_key: null };
+      publication = { ...publication, commit: null, deployment_id: null, release_branch: null, build_task_key: null, static_checks_key: null, verification_task_key: null, verification_checks_key: null, probe_checks_key: null, static_controls_sha256: null };
       await store.updateDoc(jobPath, { git_publication: publication, phase: 'promoting verified source' });
     }
     if (!publication) {
@@ -257,6 +257,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const engine = await readEngineConfiguration(args.orgId, publication.build_provider ?? 'cloudflare');
       if (!engine || engine.status !== 'ready' || engine.revision !== publication.build_engine_revision) throw new ConnectionError('The shared build engine changed. Retry this publication.', 409);
       if (!publication.build_task_key) {
+        if (!engine.static_verification) throw new ConnectionError('Update the build engine in Publishing → Builds before publishing.', 409, 'build_engine_update_required');
         const source = await publicationSourceTree(await readSnapshot(args, publication));
         const queued = await enqueueBuild(engine, { org_id: args.orgId, site_id: args.siteId, version_id: args.versionId, job_id: args.jobId,
           publication_id: publication.publication_id, commit: publication.commit, branch: publication.branch }, source);
@@ -275,6 +276,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         }
         const staticChecks = await saveStaticChecks(args.orgId, result.files, acquired.last_publication?.static_checks_key ?? undefined, result.direct);
         publication = { ...publication, static_checks_key: staticChecks };
+        if (result.direct && engine.static_verification) publication = { ...publication, ...await saveCustomerVerification(args.orgId, publication, result.direct, acquired.last_publication) };
         await store.updateDoc(jobPath, { git_publication: publication, phase: 'uploading static files to the Hosting Group' });
         if (!deployment) {
           await assertLease();
@@ -296,7 +298,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const candidate = new URL(deployment.url);
     if (candidate.protocol !== 'https:' || !candidate.hostname.endsWith(`.${publication.project}.pages.dev`) || candidate.username || candidate.password || candidate.port) throw new Error('Unexpected Cloudflare deployment origin');
     if (!await probePublication(candidate.origin, '/.well-known/typeroll/publication.json', publication.publication_id)) return 'deferred';
-    if (publication.static_checks_key && !await verifyStaticBatch(args.orgId, jobPath, publication.static_checks_key, candidate.origin)) {
+    if (publication.verification_checks_key && !await verifyCustomerCandidate(args.orgId, jobPath, publication, candidate.origin)) {
+      await store.updateDoc(jobPath, { phase: 'verifying static output on the organization build engine' }); return 'deferred';
+    }
+    if (publication.static_checks_key && !await verifyStaticBatch(args.orgId, jobPath, publication.probe_checks_key ?? publication.static_checks_key, candidate.origin, !!publication.probe_checks_key)) {
       await store.updateDoc(jobPath, { phase: 'verifying static output' }); return 'deferred';
     }
     await recordPublishingOrigin(args.orgId, args.siteId, candidate.origin, true);
@@ -340,7 +345,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         return 'ran';
       }
       // Explicit nulls replace nested Firestore fields; omission leaves old values merged in.
-      publication = { ...publication, branch: 'main', commit: null, deployment_id: null, release_branch: null, build_task_key: null, static_checks_key: null };
+      publication = { ...publication, branch: 'main', commit: null, deployment_id: null, release_branch: null, build_task_key: null, static_checks_key: null, verification_task_key: null, verification_checks_key: null, probe_checks_key: null, static_controls_sha256: null };
       await store.updateDoc(jobPath, { git_publication: publication, phase: 'promoting verified source' });
       return 'deferred';
     }
@@ -381,7 +386,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     }
     if (publication.static_checks_key) {
       for (const origin of [...new Set([`https://${publication.website_host}`, ...(mediaPreparation ? [`https://${mediaPreparation.hostname}`] : [])])]) {
-        if (!await verifyStaticBatch(args.orgId, jobPath, publication.static_checks_key, origin)) {
+        if (!await verifyStaticBatch(args.orgId, jobPath, publication.probe_checks_key ?? publication.static_checks_key, origin, !!publication.probe_checks_key)) {
           await store.updateDoc(jobPath, { phase: 'waiting for updated static files' }); return 'deferred';
         }
       }

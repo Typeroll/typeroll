@@ -5,6 +5,50 @@ import { buildStorage } from './storage';
 import { sha256 } from './contract.mjs';
 import type { DirectReceipt } from './direct-upload.mjs';
 import { staticManifestChecks, staticChecks, verifyStaticResponse, type StaticCheck, type StaticObservation } from './verification';
+import { staticControlsHash, changedStaticChecks, selectStaticProbes, PROBE_FILE_BYTES, PROBE_BYTES, PROBE_FILES } from './static-verifier.mjs';
+import { enqueueBuild, completedBuild } from './jobs';
+import { readEngineConfiguration, type BuildProvider } from './state';
+import { buildTasksPath, type BuildTask } from './queue';
+
+export interface CustomerVerification {
+  account_id: string; project: string; website_host: string; domain_revision: string;
+  static_checks_key?: string | null; static_controls_sha256?: string | null;
+  verification_checks_key?: string | null; probe_checks_key?: string | null;
+  verification_task_key?: string | null; build_task_key?: string | null; build_provider?: BuildProvider;
+}
+
+export async function saveCustomerVerification(org: string, current: CustomerVerification, direct: DirectReceipt, previous?: CustomerVerification) {
+  const controls = staticControlsHash(direct.controls);
+  return buildStorage(org, async storage => {
+    const checks = JSON.parse((await storage.read(current.static_checks_key!, 32 * 1024 * 1024)).toString('utf8')) as StaticCheck[];
+    const old = previous?.static_checks_key ? JSON.parse((await storage.read(previous.static_checks_key, 32 * 1024 * 1024)).toString('utf8')) as StaticCheck[] : [];
+    const reuse = !!previous && previous.static_controls_sha256 === controls &&
+      ['account_id', 'project', 'website_host', 'domain_revision'].every(key => current[key as keyof CustomerVerification] === previous[key as keyof CustomerVerification]);
+    const changed = changedStaticChecks(checks, old, reuse);
+    const probes = selectStaticProbes(checks, changed);
+    if (!probes.some(check => check.route === '/.well-known/typeroll/publication.json')) throw new ConnectionError('The publication marker exceeds the coordinator probe budget.', 409);
+    const save = async (value: StaticCheck[]) => {
+      const bytes = Buffer.from(JSON.stringify(value)), key = `builds/${org}/checks/${sha256(bytes)}.json`;
+      await storage.put(key, bytes); return key;
+    };
+    return { static_controls_sha256: controls, verification_checks_key: await save(changed), probe_checks_key: await save(probes) };
+  });
+}
+
+/** The customer engine owns exhaustive candidate checks; the coordinator consumes only its receipt. */
+export async function verifyCustomerCandidate(org: string, jobPath: string, current: CustomerVerification, origin: string) {
+  const store = getStore(), task = await store.getDoc<BuildTask>(`${buildTasksPath(org)}/${current.build_task_key}`);
+  const config = await readEngineConfiguration(org, current.build_provider);
+  if (!task || !config || config.revision !== task.engine_revision || !config.static_verification) throw new ConnectionError('Update the build engine in Publishing → Builds before publishing.', 409, 'build_engine_update_required');
+  let key = current.verification_task_key;
+  if (!key) {
+    const checks = await buildStorage(org, async storage => JSON.parse((await storage.read(current.verification_checks_key!, 32 * 1024 * 1024)).toString('utf8')));
+    const queued = await enqueueBuild(config, task.identity, { 'verification.json': JSON.stringify({ publication_id: task.identity.publication_id, origin, checks }) }, 'static_verification');
+    key = queued.key; current.verification_task_key = key;
+    await store.updateDoc(jobPath, { git_publication: current });
+  }
+  return !!await completedBuild(org, key);
+}
 
 export async function prepareStaticProject(client: ProviderClient, root: string, expected: { project: string; owner: string; repo: string; repository: any; requireExisting?: boolean }) {
   let project = await client(root, { missing: true });
@@ -33,12 +77,15 @@ export async function saveStaticChecks(org: string, files: Record<string, Buffer
 }
 
 /** Durable, bounded checks let the normal publication queue wait for public distribution. */
-export async function verifyStaticBatch(org: string, jobPath: string, checksKey: string, origin: string) {
+export async function verifyStaticBatch(org: string, jobPath: string, checksKey: string, origin: string, bounded = false) {
   const store = getStore(), checkPath = `${jobPath}/build_verifications/${sha256(`${checksKey}\0${origin}`)}`;
   const state = await store.getDoc<{ cursor: number; complete: boolean }>(checkPath);
   if (state?.complete) return true;
   const checks = await buildStorage(org, async storage => JSON.parse((await storage.read(checksKey, 32 * 1024 * 1024)).toString('utf8')) as StaticCheck[]);
   if (!Array.isArray(checks) || !checks.length) throw new ConnectionError('Static verification data is missing.', 409);
+  if (bounded && checks.length > PROBE_FILES) throw new ConnectionError('Coordinator probe count exceeds its limit.', 409);
+  let downloaded = 0;
+  const observeBytes = bounded ? (bytes: number) => { downloaded += bytes; if (downloaded > PROBE_BYTES) throw Error('coordinator_probe_byte_limit'); } : undefined;
   let cursor = state?.cursor ?? 0;
   const limit = Math.min(checks.length, cursor + 1024), deadline = Date.now() + 20000;
   // Image libraries produce thousands of static files. Drain healthy checks
@@ -46,7 +93,7 @@ export async function verifyStaticBatch(org: string, jobPath: string, checksKey:
   do {
     const batch = checks.slice(cursor, Math.min(cursor + 8, limit));
     const observations: StaticObservation[] = [];
-    const results = await Promise.all(batch.map(check => verifyStaticResponse(origin, check, { observe: result => { observations.push(result); } })));
+    const results = await Promise.all(batch.map(check => verifyStaticResponse(origin, check, { maxBytes: bounded ? PROBE_FILE_BYTES : undefined, observeBytes, observe: result => { observations.push(result); } })));
     if (!results.every(Boolean)) {
       const failure = observations.sort((a, b) => a.route.localeCompare(b.route))[0];
       await store.setDoc(checkPath, { cursor: 0, complete: false, failure: failure ?? null });
@@ -63,7 +110,7 @@ export async function verifyStaticBatch(org: string, jobPath: string, checksKey:
     cursor += batch.length;
     const complete = cursor >= checks.length;
     await store.setDoc(checkPath, { cursor, complete });
-    if (complete) { await store.updateDoc(jobPath, { verification_message: null, static_probe: null }); return true; }
+    if (complete) { if (bounded) console.info(JSON.stringify({ event: 'coordinator_static_probes', files: checks.length, downloaded_bytes: downloaded })); await store.updateDoc(jobPath, { verification_message: null, static_probe: null }); return true; }
   } while (cursor < limit && Date.now() < deadline);
   return false;
 }

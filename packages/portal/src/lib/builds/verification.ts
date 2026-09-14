@@ -1,18 +1,19 @@
+import { verifyResponseBody } from './static-verifier.mjs';
 import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
 import { publicationResponse } from '../deploy/public-response';
 import { assertFilePath, sha256 } from './contract.mjs';
 export interface StaticObservation { route: string; expected_status: number; actual_status: number | null; reason: 'status_mismatch' | 'content_mismatch' | 'request_failed'; cf_ray: string | null }
-export interface StaticCheck { route: string; status: 200 | 404; sha256?: string }
+export interface StaticCheck { route: string; status: 200 | 404; sha256?: string; size?: number }
 export function staticChecks(files: Record<string, Buffer>, previous: StaticCheck[] = []): StaticCheck[] {
   return staticManifestChecks(Object.fromEntries(Object.entries(files).map(([name, bytes]) => [name, { sha256: sha256(bytes) }])), files._redirects?.toString('utf8') ?? '', previous);
 }
-export function staticManifestChecks(files: Record<string, { sha256: string }>, redirectsText = '', previous: StaticCheck[] = []): StaticCheck[] {
+export function staticManifestChecks(files: Record<string, { sha256: string; size?: number }>, redirectsText = '', previous: StaticCheck[] = []): StaticCheck[] {
   const checks: StaticCheck[] = [];
   for (const [name, bytes] of Object.entries(files)) {
     assertFilePath(name, { artifact: true });
     if (['_headers', '_redirects', '404.html'].includes(name)) continue;
     const route = '/' + (name.endsWith('.html') ? name.replace(/index\.html$/, '').replace(/\.html$/, '') : name);
-    checks.push({ route, status: 200, sha256: bytes.sha256 });
+    checks.push({ route, status: 200, sha256: bytes.sha256, ...(bytes.size === undefined ? {} : { size: bytes.size }) });
   }
   const redirects = redirectsText.split('\n').map(line => line.trim().split(/\s+/)[0]);
   const current = new Set(checks.map(check => check.route.replace(/\/$/, '')));
@@ -22,7 +23,7 @@ export function staticManifestChecks(files: Record<string, { sha256: string }>, 
 
 /** Compare actual response bytes; fresh headers cannot conceal old or deleted pages. */
 export async function verifyStaticResponse(origin: string, check: StaticCheck,
-  options: { fetchImpl?: typeof fetch; validate?: typeof assertPublicDestination; observe?: (result: StaticObservation) => void } = {}): Promise<boolean> {
+  options: { fetchImpl?: typeof fetch; validate?: typeof assertPublicDestination; observe?: (result: StaticObservation) => void; maxBytes?: number; observeBytes?: (bytes: number) => void } = {}): Promise<boolean> {
   let actualStatus: number | null = null, ray: string | null = null;
   const failed = (reason: StaticObservation['reason']) => { options.observe?.({ route: check.route, expected_status: check.status, actual_status: actualStatus, reason, cf_ray: ray }); return false; };
   try {
@@ -39,21 +40,7 @@ export async function verifyStaticResponse(origin: string, check: StaticCheck,
         if (check.status === 404) { await response.body?.cancel(); return response.status === 404 || failed('status_mismatch'); }
         if (response.status !== 200) { await response.body?.cancel(); return failed('status_mismatch'); }
         if (!response.body) return failed('request_failed');
-        let size = 0; const chunks: Buffer[] = [];
-        for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
-          size += chunk.length; if (size > 25 * 1024 * 1024) return failed('content_mismatch'); chunks.push(Buffer.from(chunk));
-        }
-        const bytes = Buffer.concat(chunks);
-        if (sha256(bytes) === check.sha256) return true;
-        // Cloudflare can prepend its managed policy to the organization's
-        // robots.txt. Still require the complete original file byte for byte;
-        // this exception never applies to HTML, assets or removed routes.
-        if (check.route === '/robots.txt') {
-          const begin = bytes.indexOf('\n# BEGIN Cloudflare Managed content\n');
-          const marker = '\n# END Cloudflare Managed Content\n\n';
-          const end = bytes.indexOf(marker, begin + 1);
-          if (bytes[0] === 35 && begin >= 0 && end > begin && sha256(bytes.subarray(end + marker.length)) === check.sha256) return true;
-        }
+        if (await verifyResponseBody(response, check, options.maxBytes, options.observeBytes)) return true;
         return failed('content_mismatch');
       } finally { await handle.close(); }
     }
