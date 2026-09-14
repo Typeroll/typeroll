@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
-import { prepareMedia, prepareMediaBatch } from './fixtures/static-publication/media.mjs';
+import { prepareMedia, prepareMediaBatch, mediaTransferGroupSize } from './fixtures/static-publication/media.mjs';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 async function withMediaFixture(run, count = 1) {
@@ -123,7 +123,7 @@ test('retries an interrupted response body and does not retry denied access', as
   assert.equal(reads, 1);
 }));
 
-test('overlaps preparation and cached materialization with at most four files and one grant download', async () => withMediaFixture(async ({ publication, root }) => {
+test('overlaps preparation and cached materialization with at most sixteen small files and one grant download', async () => withMediaFixture(async ({ publication, root }) => {
   const originalFetch = globalThis.fetch; let active = 0, peak = 0, grants = 0;
   globalThis.fetch = async (url, options) => {
     if (new URL(url).pathname === '/grant') grants++;
@@ -135,13 +135,13 @@ test('overlaps preparation and cached materialization with at most four files an
     return originalFetch(url, options);
   };
   await prepareMediaBatch(publication, root);
-  assert.ok(peak > 1 && peak <= 4);
+  assert.ok(peak > 8 && peak <= 16);
   assert.equal(grants, 1);
   peak = 0;
-  assert.equal((await prepareMedia(publication, root)).length, 8);
-  assert.ok(peak > 1 && peak <= 4);
+  assert.equal((await prepareMedia(publication, root)).length, 32);
+  assert.ok(peak > 8 && peak <= 16);
   assert.equal(active, 0);
-}, 8));
+}, 32));
 
 test('drains an interrupted parallel group and safely reuses its completed copies on retry', async () => withMediaFixture(async ({ publication, root, entries, stored, writes }) => {
   const originalFetch = globalThis.fetch; let active = 0;
@@ -157,11 +157,11 @@ test('drains an interrupted parallel group and safely reuses its completed copie
   await assert.rejects(() => prepareMediaBatch(publication, root), /publication access/);
   assert.equal(active, 0, 'a failed batch must not leave sibling transfers running');
   assert.ok(stored.has(entries[4].aliases[0].key), 'the rest of the admitted group finished and verified its copies');
-  assert.equal(stored.has(entries[5].public_key), false, 'a failure must not admit another group');
+  assert.equal(stored.has(entries[17].public_key), false, 'a failure must not admit another group');
   globalThis.fetch = originalFetch;
-  assert.deepEqual(await prepareMediaBatch(publication, root), { cursor: 8, total: 8 });
+  assert.deepEqual(await prepareMediaBatch(publication, root), { cursor: 24, total: 24 });
   assert.ok([...writes.values()].every(count => count === 1), 'a fresh process reuses verified partial work');
-}, 8));
+}, 24));
 
 test('releases missing and denied response bodies instead of exhausting storage connections', async () => withMediaFixture(async ({ publication, root, entries }) => {
   const originalFetch = globalThis.fetch; let open = 0, closed = 0;
@@ -204,3 +204,37 @@ test('materializes bounded slices without losing current or retained media metad
   const second = await prepareMediaBatch(publication, root, 1, { maxEntries: 1, materialize: true });
   assert.equal(second.cursor, 2); assert.equal(second.files.length, 3); assert.equal(second.media.length, 1); assert.equal(second.media[0].variants.length, 2);
 }));
+
+
+test('storage groups overlap small files and reserve bounded memory for large or unknown files', () => {
+  const small = Array.from({ length: 1000 }, () => ({ size_bytes: 150000 }));
+  assert.equal(mediaTransferGroupSize(small, 0, 8), 8);
+  assert.equal(mediaTransferGroupSize(small, 998, 8), 2);
+  assert.equal(mediaTransferGroupSize(Array.from({ length: 8 }, () => ({ size_bytes: 25 * 1024 * 1024 })), 0, 8), 2);
+  assert.equal(mediaTransferGroupSize(Array.from({ length: 8 }, () => ({})), 0, 8), 2);
+  assert.equal(mediaTransferGroupSize(small.map(entry => ({ entry })), 0, 3), 3);
+});
+
+
+test('storage throttling reduces subsequent groups and healthy transfers restore capacity', async () => {
+  const adaptive = await import('./fixtures/static-publication/media.mjs?adaptive-test');
+  await withMediaFixture(async ({ publication, root }) => {
+    const fetchBefore = globalThis.fetch; let throttled = false, active = 0, peak = 0;
+    globalThis.fetch = async (url, options) => {
+      if (new URL(url).pathname.startsWith('/private/')) {
+        if (!throttled) { throttled = true; return new Response(null, { status: 429, headers: { 'Retry-After': '0' } }); }
+        active++; peak = Math.max(peak, active);
+        await new Promise(resolve => setTimeout(resolve, 2)); active--;
+      }
+      return fetchBefore(url, options);
+    };
+    assert.deepEqual(await adaptive.prepareMediaBatch(publication, root), { cursor: 12, total: 12 });
+    assert.equal(peak, 8);
+    assert.equal(adaptive.mediaTransferGroupSize(publication.media_manifest.entries, 0), 8);
+  }, 12);
+  await withMediaFixture(async ({ publication, root }) => {
+    const first = await adaptive.prepareMediaBatch(publication, root);
+    await adaptive.prepareMediaBatch(publication, root, first.cursor);
+    assert.equal(adaptive.mediaTransferGroupSize(publication.media_manifest.entries, 0), 16);
+  }, 160);
+});

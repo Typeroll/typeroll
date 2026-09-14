@@ -22,7 +22,7 @@ import { projectStaticPublication } from '../../../../../scripts/lib/static-publ
 import { probePublication } from '../deploy/availability';
 import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
 import { preparePagesDomain, applyPreparedTraffic } from './domain-provider';
-import { publicationMediaManifest } from './media-manifest';
+import { retainDistinctMediaManifests, publicationMediaManifest } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { publicationRuntime } from './runtime-projection';
 import { preparePublicMediaDomains } from './media-domain';
@@ -156,7 +156,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         delete frozen.source_impact_snapshot;
       }
       const retained = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
-      frozen.retained_media_manifests = retained.filter((entry, index) => retained.findIndex(other => JSON.stringify(other) === JSON.stringify(entry)) === index);
+      frozen.retained_media_manifests = retainDistinctMediaManifests(retained, frozen.media_manifest);
       // Content identity excludes wall-clock metadata so an unchanged publication can reuse the previous build.
       const stable = { ...frozen, published_at: undefined, publication_id: undefined };
       frozen.publication_id = digest(JSON.stringify(stable));

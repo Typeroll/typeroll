@@ -80,3 +80,28 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     manifest: { delivery, account_id: connection.cloudflare.account_id, original_bucket: connection.cloudflare.bucket, public_bucket: connection.cloudflare.public_bucket,
       media_host: host, website_host: websiteHost, dns_mode: domains.dns_mode, media_path_prefix: publicPrefix, site_prefix: prefix, entries } };
 }
+
+/** Keep old public routes without preparing identical current files a second time. */
+export function retainDistinctMediaManifests(previous: any[], current: any): any[] {
+  const namespace = (manifest: any) => JSON.stringify(['account_id', 'original_bucket', 'public_bucket', 'site_prefix', 'delivery', 'media_host', 'website_host', 'media_path_prefix'].map(field => manifest[field] ?? null));
+  const identity = (entry: any) => JSON.stringify([entry.id, entry.source_key, entry.sha256, entry.public_key, entry.public_path]);
+  const known = new Map<string, Map<string, Set<string>>>();
+  const add = (manifest: any, entry: any) => {
+    const target = namespace(manifest), files = known.get(target) ?? new Map<string, Set<string>>();
+    const key = identity(entry), aliases = files.get(key) ?? new Set<string>();
+    for (const alias of entry.aliases ?? []) aliases.add(JSON.stringify([alias.url, alias.key]));
+    files.set(key, aliases); known.set(target, files);
+  };
+  for (const entry of current?.entries ?? []) add(current, entry);
+  const retained = [];
+  for (const manifest of previous) {
+    const entries = manifest.entries.filter((entry: any) => {
+      const aliases = known.get(namespace(manifest))?.get(identity(entry));
+      const covered = aliases && (entry.aliases ?? []).every((alias: any) => aliases.has(JSON.stringify([alias.url, alias.key])));
+      add(manifest, entry);
+      return !covered;
+    });
+    if (entries.length) retained.push({ ...manifest, entries });
+  }
+  return retained;
+}

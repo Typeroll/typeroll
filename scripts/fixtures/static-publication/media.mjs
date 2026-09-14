@@ -20,6 +20,24 @@ async function encode(operation) {
   try { return await operation(); }
   finally { const next = encoders.shift(); if (next) next(); else encoding = false; }
 }
+// Reserve original, comparison and verification buffers plus variant overhead.
+// Small files can overlap; large or unknown files reduce the group automatically.
+let transferConcurrency = 16, healthyTransfers = 0;
+export function mediaTransferGroupSize(entries, cursor, maximum = transferConcurrency) {
+  let bytes = 0, count = 0;
+  while (cursor + count < entries.length && count < maximum) {
+    const entry = entries[cursor + count].entry ?? entries[cursor + count];
+    const size = Number.isSafeInteger(entry.size_bytes) && entry.size_bytes > 0 && entry.size_bytes <= 25 * 1024 * 1024 ? entry.size_bytes : 25 * 1024 * 1024;
+    const reserved = size * 3 + 8 * 1024 * 1024;
+    if (bytes + reserved > 200 * 1024 * 1024) break;
+    bytes += reserved; count++;
+  }
+  return count;
+}
+function recoveredTransfers(count) {
+  healthyTransfers += count;
+  if (healthyTransfers >= 16) { transferConcurrency = Math.min(16, transferConcurrency + 1); healthyTransfers = 0; }
+}
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
 
 /** Runs on the customer's build machine. No original or generated image is committed to Git. */
@@ -74,6 +92,7 @@ export async function prepareMedia(publication, root, options = {}) {
         }
         return response;
       } catch {
+        transferConcurrency = Math.max(1, Math.floor(transferConcurrency / 2)); healthyTransfers = 0;
         if (attempt === 2) throw new Error('media_transfer_interrupted');
         await new Promise(resolve => setTimeout(resolve, 250 * 2 ** attempt));
       }
@@ -200,11 +219,12 @@ export async function prepareMedia(publication, root, options = {}) {
     };
     // Bounded parallel reads keep final materialization from becoming another
     // library-wide timeout. Drain the group before closing clients on failure.
-    const concurrency = options.prepareOnly ? 1 : 4;
-    for (let offset = 0; offset < manifest.entries.length; offset += concurrency) {
-      const results = await Promise.allSettled(manifest.entries.slice(offset, offset + concurrency).map(prepareEntry));
+    for (let offset = 0; offset < manifest.entries.length;) {
+      const count = options.prepareOnly ? 1 : mediaTransferGroupSize(manifest.entries, offset);
+      const results = await Promise.allSettled(manifest.entries.slice(offset, offset + count).map(prepareEntry));
       const failure = results.find(result => result.status === 'rejected');
       if (failure) throw failure.reason;
+      offset += count; recoveredTransfers(count);
     }
   } finally { source?.destroy(); target?.destroy(); }
   return [...retainedFiles, ...sameHostFiles];
@@ -219,7 +239,7 @@ export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntr
   while (next < entries.length && next - cursor < maxEntries && (next === cursor || clock() - started < budgetMs)) {
     // Prime the shared grant once, then overlap independent files. Only a fully
     // verified contiguous group advances the cursor; drain siblings on failure.
-    const size = next === cursor ? 1 : Math.min(4, maxEntries - (next - cursor));
+    const size = next === cursor ? 1 : mediaTransferGroupSize(entries, next, Math.min(transferConcurrency, maxEntries - (next - cursor)));
     const group = entries.slice(next, next + size);
     const results = await Promise.allSettled(group.map(async ({ manifest, entry }) => {
       const prepared = { ...publication, retained_media_manifests: [], media_manifest: { ...manifest, entries: [entry] }, media: [{ ...entry }] };

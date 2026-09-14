@@ -295,7 +295,7 @@ Original transfer and publication preparation are separate steps. The background
 transfer moves the library into private R2 storage. A publication prepares only
 media referenced by its frozen content and any retained published versions.
 
-Core 0.1.90 adds background preparation after uploads and imports, using the
+Core 0.1.91 adds background preparation after uploads and imports, using the
 Organization's selected Cloudflare or GitHub build engine. **Media** shows the
 progress and offers **Retry preparation** if a job stops. Setup can happen later:
 you can upload, import and edit before connecting a build provider. Preparation
@@ -307,6 +307,8 @@ an import finishes. A publication copies only the required original files and
 variants into its public output. Preparation uses image checksums and a versioned
 encoding recipe so compatible builds and branches reuse verified variants.
 Changing a website or media hostname does not require encoding the same image again.
+Republishing does not add a second preparation entry for an unchanged current file.
+Older media paths and aliases remain available when they are still needed.
 
 Transfers have per-file progress and bounded concurrency. A failed copy does not
 discard successful copies. WordPress imports reuse a persistent source-address

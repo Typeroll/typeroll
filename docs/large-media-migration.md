@@ -1,6 +1,6 @@
 # Large media migration and static delivery
 
-Core 0.1.90 separates durable source transfer, private variant preparation and
+Core 0.1.91 separates durable source transfer, private variant preparation and
 static hosting delivery. WordPress source identities are indexed by a SHA-256
 key scoped to the site; a leased transfer record stores attempts and completion.
 Organization storage migration retains its cursor and per-file outcomes, verifies
@@ -55,3 +55,14 @@ The Cloudflare supervisor explicitly installs its locked trusted dependencies be
 claiming work, even when automatic provider dependency installation is disabled.
 Engine qualification verifies that the pinned uploader can start. Version listing
 also normalizes Main when earlier publications stored only deployment metadata.
+
+Retained media manifests contain only files or aliases not already covered by the
+current output or an earlier retained snapshot. Caption edits do not duplicate
+preparation work. Removed files, older paths, changed bytes and different storage
+or domain scopes remain retained; immutable conflict checks still apply.
+
+Build-side storage groups now admit up to sixteen small files, with a 200 MiB
+reservation budget for original, comparison and verification buffers plus variant
+overhead. Large/unknown files reduce the group automatically. Storage throttling
+halves the next group capacity; healthy transfers restore it. Encoding keeps its
+independent single-operation gate. This changes I/O scheduling, not image recipes.
