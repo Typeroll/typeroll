@@ -8,12 +8,13 @@ import { ProviderError } from '../publishing/providers.mjs';
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const sourceHash = hash(workerSource);
 const path = (org: string) => `organizations/${org}/publishing_private/media_transfer`;
-interface Configuration { state: 'preparing' | 'ready' | 'error'; account_id: string; origin: string; name: string; url: string; source_hash: string; encrypted_credentials: string; lease: string | null; lease_until: number; error?: string | null; error_code?: string | null }
+interface Configuration { connection_revision?: string; state: 'preparing' | 'ready' | 'error'; account_id: string; origin: string; name: string; url: string; source_hash: string; encrypted_credentials: string; lease: string | null; lease_until: number; error?: string | null; error_code?: string | null }
 export interface TransferService { url: string; secret: string }
 export async function transferServiceStatus(org: string) {
   const [config, connection] = await Promise.all([getStore().getDoc<Configuration>(path(org)), getConnection(org, 'cloudflare')]);
   if (!connection.media_ready || connection.status !== 'connected') return { state: 'storage_required', message: 'Connect R2 to copy and verify files in your Cloudflare account.' };
   if (!config || config.account_id !== connection.cloudflare?.account_id) return { state: 'automatic', message: 'Media transfers are set up automatically in your Cloudflare account when needed.' };
+  if (config.state === 'error' && config.connection_revision !== connection.revision) return { state: 'automatic', message: 'Cloudflare access was updated. Setting up media transfers automatically.' };
   if (config.state === 'error') return { state: 'error', code: config.error_code, message: config.error };
   return { state: config.state === 'ready' && config.source_hash === sourceHash ? 'ready' : 'automatic', message: 'Files are copied and verified in your Cloudflare account. No GitHub connection is needed.' };
 }
@@ -43,7 +44,7 @@ export async function customerTransferService(org: string, force = false): Promi
     }
     const lease = randomUUID();
     const secret = current?.account_id === connection.cloudflare.account_id && current.origin === origin ? unlock(current).secret : randomBytes(32).toString('base64url');
-    const config: Configuration = { state: 'preparing', account_id: connection.cloudflare.account_id, origin, name, url: '', source_hash: sourceHash,
+    const config: Configuration = { connection_revision: connection.revision, state: 'preparing', account_id: connection.cloudflare.account_id, origin, name, url: '', source_hash: sourceHash,
       encrypted_credentials: sealCredentials(org, 'cloudflare', { origin, account_id: connection.cloudflare.account_id, secret }), lease, lease_until: Date.now() + 120000, error: null, error_code: null };
     const claimed = current ? await store.compareAndUpdateDoc<Configuration>(path(org), value => value.lease_until <= Date.now(), config) : await store.createDocIfMissing(path(org), config);
     if (!claimed) continue;

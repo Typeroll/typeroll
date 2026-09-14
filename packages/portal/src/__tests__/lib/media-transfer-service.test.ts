@@ -59,3 +59,13 @@ it('rejects a disconnected organization without creating a Worker', async () => 
   await expect(customerTransferService('org')).rejects.toMatchObject({ code: 'media_storage_unavailable' });
   expect(api).not.toHaveBeenCalled();
 });
+
+it('automatically retries setup after the user updates Cloudflare approval', async () => {
+  await connect({ oauth: { scope: 'r2.write' } });
+  await expect(customerTransferService('org')).rejects.toMatchObject({ code: 'media_transfer_approval_required' });
+  await connect({ oauth: { scope: 'workers-scripts.read workers-scripts.write' } });
+  await getStore().updateDoc(connectionPath('org', 'cloudflare'), { revision: 'new-approval' });
+  expect(await transferServiceStatus('org')).toMatchObject({ state: 'automatic' });
+  await customerTransferService('org');
+  expect(await transferServiceStatus('org')).toMatchObject({ state: 'ready' });
+});
