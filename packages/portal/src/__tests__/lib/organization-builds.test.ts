@@ -7,11 +7,34 @@ import { inspectCloudflareBuildAccess, checkBuildEngine, readBuildEngine, dispat
 import { ProviderError } from '../../lib/publishing/providers.mjs';
 import { connectionPath, sealCredentials } from '../../lib/publishing/connections';
 import { startCloudflareConnection, CLOUDFLARE_BUILD_SCOPES } from '../../lib/publishing/cloudflare-oauth';
+import { mediaCheckpointPolicy } from '../../lib/builds/executor.mjs';
 let now = 1000;
 const identity = (site = 'site-a', version = 'main'): BuildIdentity => ({ protocol: BUILD_PROTOCOL, org_id: 'org', site_id: site, version_id: version,
   job_id: 'job-a', publication_id: 'a'.repeat(64), source_sha256: 'b'.repeat(64), commit: 'c'.repeat(40), branch: version === 'main' ? 'main' : `version-${version}`, node_version: BUILD_RUNTIME });
 beforeEach(async () => { makeTmpFixtures(); await resetDatastore(); now = 1000; vi.stubEnv('INTEGRATIONS_SECRET_KEY', 'synthetic-encryption-key-for-tests-only-32chars'); });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+it('reserves a fresh provider run for final rendering after a long preparation', async () => {
+  const queue = new OrganizationBuildQueue(getStore(), () => now);
+  const started = now;
+  await queue.enqueue(identity(), 'engine-1', 100);
+  const claim = (await queue.claim('org', 'engine-1', 1))!;
+  for (let minute = 0; minute < 12; minute++) { now += 60_000; await queue.heartbeat('org', claim.key, claim.lease_id, claim.token); }
+  const policy = mediaCheckpointPolicy('publication', { cursor: 100, total: 100 }, started, claim.deadline, now);
+  expect(policy).toEqual({ continueBuild: false, keepLease: false });
+  await queue.checkpointMedia('org', claim.key, claim.lease_id, claim.token, 100, policy.continueBuild, policy.keepLease);
+  await expect(queue.authorize('org', claim.key, claim.lease_id, claim.token)).rejects.toMatchObject({ code: 'build_lease_lost' });
+  const resumed = (await queue.claim('org', 'engine-1', 1))!;
+  expect(resumed.media_cursor).toBe(100); expect(resumed.identity).toEqual(claim.identity);
+  await queue.complete('org', resumed.key, resumed.lease_id, resumed.token, { sha256: 'f'.repeat(64), key: `builds/org/tasks/${resumed.key}/${resumed.lease_id}/artifact.json` });
+  expect(await getStore().getDoc(`${buildTasksPath('org')}/${resumed.key}`)).toMatchObject({ status: 'completed', media_cursor: 100 });
+});
+it('keeps small publications and completed private preparation in the current run', () => {
+  const progress = { cursor: 100, total: 100 }, deadline = 6 * 3600_000;
+  expect(mediaCheckpointPolicy('publication', progress, 0, deadline, 60_000)).toEqual({ continueBuild: true, keepLease: true });
+  expect(mediaCheckpointPolicy('media_preparation', progress, 0, deadline, 13 * 60_000)).toEqual({ continueBuild: true, keepLease: true });
+  expect(mediaCheckpointPolicy('media_preparation', { cursor: 99, total: 100 }, 0, deadline, 13 * 60_000)).toEqual({ continueBuild: false, keepLease: false });
+  expect(mediaCheckpointPolicy('publication', progress, 0, 120_000, 1)).toEqual({ continueBuild: false, keepLease: false });
+});
 it('claims distinct sites and branches concurrently and keeps retries frozen', async () => {
   const queue = new OrganizationBuildQueue(getStore(), () => now);
   for (const value of [identity(), identity('site-b'), identity('site-a', 'redesign')]) await queue.enqueue(value, 'engine-1');

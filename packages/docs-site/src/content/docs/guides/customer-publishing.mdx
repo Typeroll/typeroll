@@ -295,7 +295,7 @@ Original transfer and publication preparation are separate steps. The background
 transfer moves the library into private R2 storage. A publication prepares only
 media referenced by its frozen content and any retained published versions.
 
-Core 0.1.92 adds background preparation after uploads and imports, using the
+Core 0.1.93 adds background preparation after uploads and imports, using the
 Organization's selected Cloudflare or GitHub build engine. **Media** shows the
 progress and offers **Retry preparation** if a job stops. Setup can happen later:
 you can upload, import and edit before connecting a build provider. Preparation
@@ -325,6 +325,10 @@ publication passes verification.
 Waiting publications take priority over background image preparation when a
 Cloudflare build slot becomes available. An active preparation run finishes its
 bounded work first; your Cloudflare account's concurrency limit still applies.
+
+Once preparation is complete, the final build reads the required original and
+variant files without repeating storage migration or encoding. After a long
+preparation run, it continues in a fresh build with time to finish and upload.
 
 Finished static files are uploaded directly from the trusted customer build
 supervisor to Cloudflare Pages with a temporary asset-upload grant. Typeroll

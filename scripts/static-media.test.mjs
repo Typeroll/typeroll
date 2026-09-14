@@ -230,6 +230,33 @@ test('materializes bounded slices without losing current or retained media metad
   assert.equal(second.cursor, 2); assert.equal(second.files.length, 3); assert.equal(second.media.length, 1); assert.equal(second.media[0].variants.length, 2);
 }));
 
+test('final materialization reads only source originals and verified public variants', async t => withMediaFixture(async ({ publication, root, entries: [entry] }) => {
+  await prepareMediaBatch(publication, root);
+  const originalFetch = globalThis.fetch; const reads = [];
+  globalThis.fetch = async (url, options) => {
+    const key = new URL(url).pathname.slice(1);
+    assert.notEqual(options?.method, 'PUT', 'materialization must not write to storage');
+    assert.equal(key.includes('/prepared/') || key.startsWith(entry.aliases[0].key) || key === entry.public_key, false, 'do not repeat private-cache or alias preparation');
+    reads.push(key); return originalFetch(url, options);
+  };
+  t.mock.method(sharp.prototype, 'toBuffer', () => { throw Error('materialization must not encode'); });
+  const result = await prepareMediaBatch(publication, root, 0, { materialize: true });
+  assert.equal(result.files.length, 3); assert.equal(result.media[0].variants.length, 2);
+  assert.equal(reads.length, 6, 'one grant, one original, two receipts and two variants');
+  for (const file of result.files) assert.ok((await fs.stat(file.source)).size > 0);
+}));
+
+test('final materialization rejects a missing or corrupt prepared variant without repairing storage', async () => withMediaFixture(async ({ publication, root, stored, entries: [entry] }) => {
+  await prepareMediaBatch(publication, root);
+  const key = entry.public_key + `.v1.w320.${entry.sha256.slice(0, 16)}.webp`;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (url, options) => { assert.notEqual(options?.method, 'PUT'); return originalFetch(url, options); };
+  stored.set(key, Buffer.from('corrupt variant'));
+  await assert.rejects(() => prepareMediaBatch(publication, root, 0, { materialize: true }), /byte verification/);
+  stored.delete(key);
+  await assert.rejects(() => prepareMediaBatch(publication, root, 0, { materialize: true }), /Prepared media is unavailable/);
+}));
+
 
 test('storage groups overlap small files and reserve bounded memory for large or unknown files', () => {
   const small = Array.from({ length: 1000 }, () => ({ size_bytes: 150000 }));

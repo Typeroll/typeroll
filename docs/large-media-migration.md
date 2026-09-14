@@ -1,6 +1,6 @@
 # Large media migration and static delivery
 
-Core 0.1.92 separates durable source transfer, private variant preparation and
+Core 0.1.93 separates durable source transfer, private variant preparation and
 static hosting delivery. WordPress source identities are indexed by a SHA-256
 key scoped to the site; a leased transfer record stores attempts and completion.
 Organization storage migration retains its cursor and per-file outcomes, verifies
@@ -71,3 +71,16 @@ Warm publication verifies the private receipt even when the public variant is
 already available. Existing verified caches need no conditional write attempts.
 A missing private cache is backfilled once from verified public bytes without
 encoding again; cache bytes are verified when consumed.
+
+After durable preparation completes, batched materialization is read-only: it
+reads each source original and the required public variant/receipt pairs, checks
+their hashes and writes local static output. It does not repeat alias checks,
+private-cache reads, encoding or storage writes. Missing or corrupt prepared
+variants fail instead of silently repeating preparation.
+
+The supervisor releases its lease when the final preparation checkpoint reaches
+the twelve-minute budget, even if all entries are ready. A fresh claim skips
+preparation and has a full provider run for materialization, rendering and upload.
+Small publications keep their existing lease. Completed private preparation can
+return its small receipt immediately. Update existing shared engines for the
+new final-checkpoint policy; frozen older renderers keep their own media behavior.

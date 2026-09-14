@@ -9,6 +9,14 @@ import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, decodeSource, enco
 export const BWRAP_URL = 'https://archive.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb';
 export const BWRAP_SHA = '1b506492bd9c7fd0cdb4f02ac822f1d3e336b0aead5113c1239baf8db5db562a';
 
+export function mediaCheckpointPolicy(kind, progress, startedAt, deadline, now = Date.now()) {
+  const finished = progress.cursor === progress.total;
+  // A publication needs time for materialization, rendering and upload after
+  // preparation. A completed private preparation only returns a small receipt.
+  const keepLease = (kind === 'media_preparation' && finished) || now < Math.min(startedAt + 12 * 60_000, deadline - 120_000);
+  return { continueBuild: finished && keepLease, keepLease };
+}
+
 /**
  * Use an AppArmor-profiled system installation only when it is the pinned binary.
  * @param {string} extracted
@@ -147,10 +155,9 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         await run(['.typeroll-runner/media-batch.mjs'], true, access ? { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(access) } : {});
         const progress = JSON.parse(await fs.readFile(path.join(work, '.typeroll-runner/media-progress.json'), 'utf8'));
         if (progress.total !== job.media_total) throw Error('media_preparation_scope_mismatch');
-        const continueBuild = progress.cursor === progress.total;
         // Leave two minutes for shutdown and coordinator retries. Every batch
         // is durable even when the provider kills this process between batches.
-        const keepLease = continueBuild || Date.now() < Math.min(startedAt + 12 * 60_000, job.deadline - 120_000);
+        const { continueBuild, keepLease } = mediaCheckpointPolicy(job.kind, progress, startedAt, job.deadline);
         await request('media-checkpoint', job.token, { ...attempt, cursor: progress.cursor, continue_build: continueBuild, keep_lease: keepLease });
         mediaCursor = progress.cursor;
         if (!keepLease) {

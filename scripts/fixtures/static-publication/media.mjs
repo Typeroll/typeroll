@@ -135,12 +135,14 @@ export async function prepareMedia(publication, root, options = {}) {
       async function store(bytes, key, contentType, publicPath, copyToWebsite = true, verifiedExisting = undefined) {
         if (!key.startsWith(`${manifest.site_prefix}/`)) throw new Error('Media alias escaped its site namespace');
         const digest = hash(bytes);
-        const existing = verifiedExisting === undefined ? await read(manifest.public_bucket, key) : verifiedExisting;
-        if (existing && hash(existing) !== digest) throw new Error('A public media path already contains different bytes. Choose a new path to preserve published versions.');
-        if (!existing) {
-          await write(key, bytes, contentType);
-          const verified = await read(manifest.public_bucket, key);
-          if (!verified || hash(verified) !== digest) throw new Error('Published media failed byte verification');
+        if (!options.materializeOnly) {
+          const existing = verifiedExisting === undefined ? await read(manifest.public_bucket, key) : verifiedExisting;
+          if (existing && hash(existing) !== digest) throw new Error('A public media path already contains different bytes. Choose a new path to preserve published versions.');
+          if (!existing) {
+            await write(key, bytes, contentType);
+            const verified = await read(manifest.public_bucket, key);
+            if (!verified || hash(verified) !== digest) throw new Error('Published media failed byte verification');
+          }
         }
         if (copyToWebsite && !options.prepareOnly && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host)) {
           const destination = path.resolve(root, '.publication-media', publicPath.slice(1));
@@ -153,7 +155,7 @@ export async function prepareMedia(publication, root, options = {}) {
         }
       }
       if (!options.cacheOnly) await store(bytes, entry.public_key, entry.mime_type, entry.public_path);
-      for (const alias of options.cacheOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(bytes, alias.key, entry.mime_type, new URL(alias.url).pathname, false);
+      for (const alias of options.cacheOnly || options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(bytes, alias.key, entry.mime_type, new URL(alias.url).pathname, false);
       const media = publication.media.find(item => item.id === entry.id);
       if (imageTypes.has(entry.mime_type)) {
         const metadata = await sharp(bytes).metadata();
@@ -182,7 +184,7 @@ export async function prepareMedia(publication, root, options = {}) {
             const preparedKey = `private/${manifest.site_prefix}/prepared/v1/${entry.sha256}/${width}.${format}`;
             const cachedGrant = grants?.prepared?.[preparedKey], cachedReceiptGrant = grants?.prepared?.[preparedKey + '.receipt.json'];
             let cachedReceipt;
-            if (cachedReceiptGrant) {
+            if (!options.materializeOnly && cachedReceiptGrant) {
               const response = await request(cachedReceiptGrant.get);
               if (response.ok) {
                 cachedReceipt = JSON.parse((await boundedBytes(response.body, 8192)).toString());
@@ -198,8 +200,9 @@ export async function prepareMedia(publication, root, options = {}) {
                 }
               } else { await response.body?.cancel(); if (response.status !== 404) throw new Error('media_transfer_interrupted'); }
             }
+            if (!variant && options.materializeOnly) throw new Error('Prepared media is unavailable. Redeploy to prepare the missing variant.');
             if (!variant) variant = await encode(() => sharp(bytes).resize({ width, withoutEnlargement: true })[format]({ quality: recipe.quality[format] }).toBuffer());
-            if (!cachedReceipt && cachedGrant && cachedReceiptGrant) {
+            if (!options.materializeOnly && !cachedReceipt && cachedGrant && cachedReceiptGrant) {
               const saved = await request(cachedGrant.put, { method: 'PUT', headers: cachedGrant.headers, body: variant });
               await saved.body?.cancel();
               if (!saved.ok && saved.status !== 412) throw new Error('media_transfer_interrupted');
@@ -213,8 +216,8 @@ export async function prepareMedia(publication, root, options = {}) {
             if (options.cacheOnly) continue;
             await store(variant, key, `image/${format}`, publicPath, true, verifiedVariant);
             const receipt = Buffer.from(JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: recipeHash, width, format, sha256: hash(variant), size_bytes: variant.length }));
-            if (hasReceiptAccess) await store(receipt, receiptKey, 'application/json', '', false, receiptBytes);
-            for (const alias of entry.aliases ?? []) if (alias.key !== entry.public_key) await store(variant, alias.key + suffix, `image/${format}`, new URL(alias.url).pathname + suffix, false);
+            if (hasReceiptAccess && !options.materializeOnly) await store(receipt, receiptKey, 'application/json', '', false, receiptBytes);
+            for (const alias of options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(variant, alias.key + suffix, `image/${format}`, new URL(alias.url).pathname + suffix, false);
             media.variants.push({ width, format, size_bytes: variant.length, cdn_url: entry.cdn_url + suffix });
           }
         }
@@ -246,7 +249,7 @@ export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntr
     const group = entries.slice(next, next + size);
     const results = await Promise.allSettled(group.map(async ({ manifest, entry }) => {
       const prepared = { ...publication, retained_media_manifests: [], media_manifest: { ...manifest, entries: [entry] }, media: [{ ...entry }] };
-      const output = await prepareMedia(prepared, root, { prepareOnly: !materialize, cacheOnly, access });
+      const output = await prepareMedia(prepared, root, { prepareOnly: !materialize, materializeOnly: materialize, cacheOnly, access });
       if (materialize) { files.push(...output); if (manifest === publication.media_manifest) media.push(...prepared.media); }
     }));
     const failure = results.find(result => result.status === 'rejected');
