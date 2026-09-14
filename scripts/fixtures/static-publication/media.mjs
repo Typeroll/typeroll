@@ -182,16 +182,19 @@ export async function prepareMedia(publication, root, options = {}) {
             const preparedKey = `private/${manifest.site_prefix}/prepared/v1/${entry.sha256}/${width}.${format}`;
             const cachedGrant = grants?.prepared?.[preparedKey], cachedReceiptGrant = grants?.prepared?.[preparedKey + '.receipt.json'];
             let cachedReceipt;
-            if (!variant && cachedReceiptGrant) {
+            if (cachedReceiptGrant) {
               const response = await request(cachedReceiptGrant.get);
               if (response.ok) {
                 cachedReceipt = JSON.parse((await boundedBytes(response.body, 8192)).toString());
                 if (cachedReceipt.source_sha256 === entry.sha256 && cachedReceipt.recipe_sha256 === recipeHash && cachedReceipt.width === width && cachedReceipt.format === format) {
-                  const cached = await request(cachedGrant.get);
-                  if (cached.ok) {
-                    variant = await boundedBytes(cached.body);
-                    if (hash(variant) !== cachedReceipt.sha256 || variant.length !== cachedReceipt.size_bytes) throw new Error('Prepared media failed byte verification');
-                  } else { await cached.body?.cancel(); if (cached.status !== 404) throw new Error('media_transfer_interrupted'); }
+                  // A public variant may already be verified. Read its private
+                  // receipt too, so warm builds do not repeat conditional PUTs.
+                  if (!variant) {
+                    const cached = await request(cachedGrant.get);
+                    if (cached.ok) variant = await boundedBytes(cached.body);
+                    else { await cached.body?.cancel(); if (cached.status !== 404) throw new Error('media_transfer_interrupted'); }
+                  }
+                  if (variant && (hash(variant) !== cachedReceipt.sha256 || variant.length !== cachedReceipt.size_bytes)) throw new Error('Prepared media failed byte verification');
                 }
               } else { await response.body?.cancel(); if (response.status !== 404) throw new Error('media_transfer_interrupted'); }
             }

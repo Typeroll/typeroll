@@ -196,6 +196,31 @@ test('background preparation writes only private variants and a later publicatio
   assert.equal(stored.has(entry.public_key), true);
 }));
 
+test('warm publication makes no write attempts and backfills a missing private cache only once', async t => withMediaFixture(async ({ publication, root, stored }) => {
+  await prepareMediaBatch(publication, root, 0, { cacheOnly: true });
+  await prepareMedia(publication, root);
+  const originalFetch = globalThis.fetch; const puts = [];
+  globalThis.fetch = async (url, options) => {
+    if (options?.method === 'PUT') puts.push(new URL(url).pathname);
+    return originalFetch(url, options);
+  };
+  const toBuffer = sharp.prototype.toBuffer; let encodings = 0;
+  t.mock.method(sharp.prototype, 'toBuffer', function (...args) { encodings++; return toBuffer.apply(this, args); });
+  await prepareMediaBatch(publication, root);
+  assert.equal((await prepareMediaBatch(publication, root, 0, { materialize: true })).files.length, 3);
+  assert.deepEqual(puts, [], 'verified private and public variants need no conditional write attempts');
+  assert.equal(encodings, 0);
+
+  for (const key of stored.keys()) if (key.includes('/prepared/')) stored.delete(key);
+  await prepareMedia(publication, root);
+  assert.equal(puts.length, 4, 'backfill the two variants and receipts from verified public bytes');
+  assert.ok(puts.every(key => key.startsWith('/private/')));
+  assert.equal(encodings, 0);
+  puts.length = 0;
+  await prepareMedia(publication, root);
+  assert.deepEqual(puts, [], 'the next publication reuses the backfilled cache');
+}));
+
 test('materializes bounded slices without losing current or retained media metadata', async () => withMediaFixture(async ({ publication, root }) => {
   await prepareMediaBatch(publication, root);
   publication.retained_media_manifests = [structuredClone(publication.media_manifest)];

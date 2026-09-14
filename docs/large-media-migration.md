@@ -1,6 +1,6 @@
 # Large media migration and static delivery
 
-Core 0.1.91 separates durable source transfer, private variant preparation and
+Core 0.1.92 separates durable source transfer, private variant preparation and
 static hosting delivery. WordPress source identities are indexed by a SHA-256
 key scoped to the site; a leased transfer record stores attempts and completion.
 Organization storage migration retains its cursor and per-file outcomes, verifies
@@ -66,3 +66,8 @@ reservation budget for original, comparison and verification buffers plus varian
 overhead. Large/unknown files reduce the group automatically. Storage throttling
 halves the next group capacity; healthy transfers restore it. Encoding keeps its
 independent single-operation gate. This changes I/O scheduling, not image recipes.
+
+Warm publication verifies the private receipt even when the public variant is
+already available. Existing verified caches need no conditional write attempts.
+A missing private cache is backfilled once from verified public bytes without
+encoding again; cache bytes are verified when consumed.
