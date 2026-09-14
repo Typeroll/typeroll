@@ -198,9 +198,10 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       const logPath = path.join(temp, 'wrangler.log'); await fs.symlink('/dev/null', logPath);
       // The official uploader runs outside the untrusted source sandbox. It has
       // an asset-only JWT, never the organization's Cloudflare API credential.
+      // Wrangler also requires its generic token variable at the authentication gate.
       await command(process.execPath, [fileURLToPath(new URL('./node_modules/wrangler/bin/wrangler.js', import.meta.url)),
-        'pages', 'upload', dist, '--output-manifest-path', manifestPath], 300000,
-        { CF_PAGES_UPLOAD_JWT: grant.jwt, CI: 'true', WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: logPath }, temp);
+        'pages', 'project', 'upload', dist, '--output-manifest-path', manifestPath], 300000,
+        { CF_PAGES_UPLOAD_JWT: grant.jwt, CLOUDFLARE_API_TOKEN: grant.jwt, CI: 'true', WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: logPath }, temp);
       const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
       const receipt = validateDirectReceipt({ format: 1, ...description, manifest });
       artifactFiles = { [DIRECT_RECEIPT]: Buffer.from(JSON.stringify(receipt)),

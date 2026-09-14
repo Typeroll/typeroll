@@ -40,3 +40,11 @@ test('direct receipts accept bounded sites above the legacy artifact ceiling', (
   files.extra = { sha256: 'a'.repeat(64), size: 25 * 1024 * 1024 }; manifest['/extra'] = 'b'.repeat(32);
   assert.throws(() => validateDirectReceipt({ format: 1, files, manifest, controls: {} }), /build_output_limit/);
 });
+
+test('the trusted supervisor invokes the official project uploader with only the asset JWT', async () => {
+  const source = await fs.readFile(new URL('../packages/portal/src/lib/builds/executor.mjs', import.meta.url), 'utf8');
+  assert.match(source, /'pages', 'project', 'upload', dist/);
+  // Wrangler's generic authentication gate needs its token variable as well;
+  // both receive the same restricted asset JWT, never the customer's OAuth token.
+  assert.match(source, /CF_PAGES_UPLOAD_JWT: grant\.jwt, CLOUDFLARE_API_TOKEN: grant\.jwt/);
+});

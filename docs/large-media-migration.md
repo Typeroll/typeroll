@@ -1,6 +1,6 @@
 # Large media migration and static delivery
 
-Core 0.1.87 separates durable source transfer, private variant preparation and
+Core 0.1.88 separates durable source transfer, private variant preparation and
 static hosting delivery. WordPress source identities are indexed by a SHA-256
 key scoped to the site; a leased transfer record stores attempts and completion.
 Organization storage migration retains its cursor and per-file outcomes, verifies
