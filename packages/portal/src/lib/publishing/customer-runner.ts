@@ -33,7 +33,7 @@ import { readEngineConfiguration, type BuildProvider } from '../builds/state';
 import { selectedBuildProvider } from '../builds/selection';
 import { enqueueBuild, completedBuild } from '../builds/jobs';
 import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from '../builds/queue';
-import { uploadStaticBuild } from '../builds/upload';
+import { uploadStaticBuild, finalizeDirectUpload } from '../builds/upload';
 import { prepareStaticProject, saveStaticChecks, verifyStaticBatch } from '../builds/publication';
 
 interface GitPublication {
@@ -273,12 +273,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
             : publication.build_provider === 'github' ? 'building on GitHub Actions' : 'building on Cloudflare' });
           return 'deferred';
         }
-        const staticChecks = await saveStaticChecks(args.orgId, result.files, acquired.last_publication?.static_checks_key ?? undefined);
+        const staticChecks = await saveStaticChecks(args.orgId, result.files, acquired.last_publication?.static_checks_key ?? undefined, result.direct);
         publication = { ...publication, static_checks_key: staticChecks };
         await store.updateDoc(jobPath, { git_publication: publication, phase: 'uploading static files to the Hosting Group' });
         if (!deployment) {
           await assertLease();
-          deployment = await uploadStaticBuild(cloudflare, { org: args.orgId, group: group.id, account: publication.account_id,
+          deployment = result.direct ? await finalizeDirectUpload(cloudflare, { account: publication.account_id, project: publication.project, branch: publication.branch, commit: publication.commit! }, result.direct) : await uploadStaticBuild(cloudflare, { org: args.orgId, group: group.id, account: publication.account_id,
             project: publication.project, branch: publication.branch, commit: publication.commit! }, result.files);
         }
       }

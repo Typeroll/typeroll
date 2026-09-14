@@ -7,12 +7,13 @@ import { connectionSummary, getConnection, ConnectionError } from './connections
 import { getOrganizationDomains } from './domain-config';
 import { adoptCustomerPublishingForMedia, retainsManagedMedia } from './media-policy';
 import { storageClient } from './media-storage';
+import { mediaTransfers, transferReservation, transferPath } from '../media/transfer';
 import { replacePublicationReferences } from './media-manifest';
 
 const hash = (input: string | Uint8Array) => createHash('sha256').update(input).digest('hex');
 const migrationPath = (orgId: string) => `publishing_media_migrations/${hash(orgId)}`;
 interface Cursor { site: string; media: string; phase: 'copying' | 'references' | 'next_site'; reference?: string }
-interface Migration { pass_request_id?: string; cursor?: Cursor | null; pass_copied?: number; pass_bytes?: number; pass_pending?: number; retry_at?: number; failures?: number; org_id: string; state: 'queued' | 'running' | 'complete' | 'failed'; copied_files: number; copied_bytes: number; pending_files: number; lease_id: string | null; lease_until: number; error?: string | null; request_id?: string }
+interface Migration { pass_file_failed?: boolean; pass_request_id?: string; cursor?: Cursor | null; pass_copied?: number; pass_bytes?: number; pass_pending?: number; retry_at?: number; failures?: number; org_id: string; state: 'queued' | 'running' | 'complete' | 'failed'; copied_files: number; copied_bytes: number; pending_files: number; lease_id: string | null; lease_until: number; error?: string | null; request_id?: string }
 
 /** Zero counters also describe an unscanned job. Check the records before declaring it empty. */
 async function completeEmptyMigration(orgId: string, current: Migration | null): Promise<Migration | null> {
@@ -106,7 +107,8 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
   let copiedBytes = cursor ? acquired.pass_bytes ?? 0 : 0;
   let pending = cursor ? acquired.pass_pending ?? 0 : 0;
   let processed = 0;
-  const counters = () => ({ pass_copied: copied, pass_bytes: copiedBytes, pass_pending: pending,
+  let fileFailure: unknown = acquired.cursor && acquired.pass_file_failed ? new Error('media_transfer_interrupted') : undefined;
+  const counters = () => ({ pass_copied: copied, pass_bytes: copiedBytes, pass_pending: pending, pass_file_failed: Boolean(fileFailure),
     copied_files: Math.max(acquired.copied_files, copied), copied_bytes: Math.max(acquired.copied_bytes, copiedBytes) });
   const checkpoint = async (next: Cursor) => {
     if (!await store.compareAndUpdateDoc<Migration>(path, value => value.lease_id === lease && value.lease_until > Date.now(),
@@ -115,7 +117,7 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
   };
   const yieldBatch = async () => {
     await store.compareAndUpdateDoc<Migration>(path, value => value.lease_id === lease,
-      { state: 'queued', lease_id: null, lease_until: 0, ...counters(), failures: 0, retry_at: 0 });
+      { state: 'queued', lease_id: null, lease_until: 0, ...counters(), error: fileFailure ? 'Some files need another transfer attempt.' : null, retry_at: 0 });
   };
   try {
     const connection = await getConnection(orgId, 'cloudflare');
@@ -132,9 +134,17 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
             if (processed >= Math.max(1, maxFiles) || Date.now() >= deadline) { await yieldBatch(); return; }
             const page = await store.listDocs<Media>(paths.media(orgId, site.id), { startAfterId: cursor!.media, limit: Math.max(1, Math.min(100, maxFiles - processed)) });
             if (!page.length) break;
-            for (let media of page) {
-              if (processed >= Math.max(1, maxFiles) || Date.now() >= deadline) { await yieldBatch(); return; }
+            for (let offset = 0; offset < page.length; offset += 4) {
+              if (Date.now() >= deadline) { await yieldBatch(); return; }
               await checkpoint(cursor!);
+              const group = page.slice(offset, offset + 4);
+              const results = await Promise.allSettled(group.map(originalMedia => mediaTransfers.run(destination.account_id, transferReservation, async () => {
+                let media = originalMedia;
+                const recordPath = transferPath(paths.site(orgId, site.id), `storage:${destination.account_id}:${destination.bucket}:${media.id}`);
+                await store.createDocIfMissing(recordPath, { state: 'queued', attempts: 0, lease_until: 0 });
+                const record = await store.getDoc<{ attempts: number }>(recordPath);
+                await store.updateDoc(recordPath, { state: 'running', attempts: (record?.attempts ?? 0) + 1, lease_until: Date.now() + 120_000 });
+                try {
               if (media.storage?.provider !== 'organization_r2' && media.r2_key) {
                 if (media.storage?.state === 'uploading') pending++;
                 else {
@@ -167,13 +177,26 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
                   } finally { source.destroy(); }
                 }
               }
-              // Derive counters from durable records. If a process died between the
-              // media CAS and this checkpoint, retry counts the copy without repeating it.
-              if (media.storage?.provider === 'organization_r2' && media.migration_source) {
-                copied++; copiedBytes += media.size_bytes ?? 0;
+
+                  await store.updateDoc(recordPath, { state: media.storage?.provider === 'organization_r2' ? 'complete' : 'queued', lease_until: 0, error_code: null });
+                  return media;
+                } catch (error) {
+                  await store.updateDoc(recordPath, { state: 'failed', lease_until: 0,
+                    error_code: error instanceof MediaIntegrityError ? 'integrity_verification_failed' : 'transfer_interrupted' });
+                  throw error;
+                }
+              })));
+              for (let index = 0; index < results.length; index++) {
+                const result = results[index];
+                if (result.status === 'rejected') { pending++; fileFailure ??= result.reason; }
+                else if (result.value.storage?.provider === 'organization_r2' && result.value.migration_source) {
+                  copied++; copiedBytes += result.value.size_bytes ?? 0;
+                }
+                processed++;
               }
-              processed++;
-              await checkpoint({ site: site.id, media: media.id, phase: 'copying' });
+              // Failed files are retried on the next pass. Healthy siblings are
+              // durable and never need copying again, even after process loss.
+              await checkpoint({ site: site.id, media: group.at(-1)!.id, phase: 'copying' });
             }
           }
           await checkpoint({ site: site.id, media: cursor!.media, phase: 'references' });
@@ -198,9 +221,15 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
           }
           await checkpoint({ ...cursor!, reference: referencePath });
         }
+        const { requestMediaPreparation } = await import('../media/preparation');
+        await requestMediaPreparation(orgId, site.id);
         await checkpoint({ site: site.id, media: '', phase: 'next_site' });
       }
     } finally { target.destroy(); }
+    if (fileFailure) {
+      await store.compareAndUpdateDoc<Migration>(path, value => value.lease_id === lease, { cursor: null, ...counters(), pending_files: pending });
+      throw fileFailure;
+    }
     const organization = await getOrganizationDomains(orgId);
     if (organization.media_host && connection.cloudflare.public_bucket) {
       const { preparePublicMediaDomains } = await import('./media-domain');
@@ -234,13 +263,17 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
 /** Called only by trusted workers. Returns a delay for continued work, or null when finished. */
 export async function executeMediaMigration(orgId: string): Promise<number | null> {
   await runMediaMigrationBatch(orgId);
+  const { runPendingMediaPreparation } = await import('../media/preparation');
+  const preparing = await runPendingMediaPreparation(orgId);
   const current = await getStore().getDoc<Migration>(migrationPath(orgId));
-  if (!current || !['queued', 'running'].includes(current.state)) return null;
+  if (!current || !['queued', 'running'].includes(current.state)) return preparing ? 10000 : null;
   return Math.max(0, (current.retry_at ?? 0) - Date.now(), current.lease_until - Date.now());
 }
 
 /** Cron is recovery only on Cloud Tasks; portable workers call this on each poll. */
 export async function runPendingMediaMigrations() {
+  const { runPendingMediaPreparation } = await import('../media/preparation');
+  await runPendingMediaPreparation();
   for (const migration of await getStore().listDocs<Migration>('publishing_media_migrations', {
     filters: [{ field: 'state', op: 'in', value: ['queued', 'running'] }],
   })) {

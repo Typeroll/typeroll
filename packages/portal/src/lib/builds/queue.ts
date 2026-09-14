@@ -85,15 +85,16 @@ export class OrganizationBuildQueue {
     if (!won) throw rejected();
   }
   /** Continuations revoke the old lease and preserve the exact publication identity. */
-  async checkpointMedia(org: string, key: string, lease: string, token: string, cursor: number, continueBuild = false) {
+  async checkpointMedia(org: string, key: string, lease: string, token: string, cursor: number, continueBuild = false, keepLease = false) {
     const task = await this.authorize(org, key, lease, token);
-    if (!Number.isSafeInteger(cursor) || cursor <= (task.media_cursor ?? 0) || cursor > (task.media_total ?? 0) || cursor - (task.media_cursor ?? 0) > 100 || (continueBuild && cursor !== task.media_total))
+    if (!Number.isSafeInteger(cursor) || cursor <= (task.media_cursor ?? 0) || cursor > (task.media_total ?? 0) || cursor - (task.media_cursor ?? 0) > 100 || (continueBuild && cursor !== task.media_total && !keepLease))
       throw new ConnectionError('Invalid media preparation checkpoint.', 400);
+    const retainLease = continueBuild || keepLease;
     const won = await this.store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(key)}`, current =>
       current.status === 'running' && current.identity.org_id === org && current.lease_id === lease && current.deadline > this.clock() &&
       current.lease_until > this.clock() && equalToken(token, current.token_hash) && current.media_cursor === task.media_cursor,
-      { ...(continueBuild ? {} : { status: 'queued' as const, token_hash: null, lease_id: null, lease_until: 0 }),
-        media_cursor: cursor, media_checkpoint_attempt: task.attempt - (continueBuild ? 1 : 0), media_batches: (task.media_batches ?? 0) + (continueBuild ? 0 : 1), error_code: null });
+      { ...(retainLease ? { lease_until: this.clock() + LEASE_MS } : { status: 'queued' as const, token_hash: null, lease_id: null, lease_until: 0 }),
+        media_cursor: cursor, media_checkpoint_attempt: task.attempt - (retainLease ? 1 : 0), media_batches: (task.media_batches ?? 0) + (retainLease ? 0 : 1), error_code: null });
     if (!won) throw rejected();
   }
   async complete(org: string, key: string, lease: string, token: string, artifact: { sha256: string; key: string }) {

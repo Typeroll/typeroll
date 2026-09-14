@@ -295,41 +295,41 @@ Original transfer and publication preparation are separate steps. The background
 transfer moves the library into private R2 storage. A publication prepares only
 media referenced by its frozen content and any retained published versions.
 
-Starting with Core 0.1.81 and an updated shared build engine, Cloudflare and GitHub
-builds prepare images in small, resumable batches. **Publishing → Builds** and the
-site's publication status show how many files are ready. You can close the page;
-Typeroll continues automatically. The existing website stays live until the full
-new publication passes verification.
+Core 0.1.85 adds background preparation after uploads and imports, using the
+Organization's selected Cloudflare or GitHub build engine. **Media** shows the
+progress and offers **Retry preparation** if a job stops. Setup can happen later:
+you can upload, import and edit before connecting a build provider. Preparation
+waits until **Publishing → Media storage** and **Publishing → Builds** are ready.
+Update an existing shared engine after upgrading Core to enable this feature.
 
-Core 0.1.83 prepares up to four files at once so independent storage requests can
-overlap. Progress advances only after the whole group is verified. If one file
-fails, the other files already started finish before the batch stops; their
-verified copies are reused on retry. Older frozen publications keep their original
-renderer. Publish again after upgrading Core to use the improved preparation;
-a shared engine already updated for 0.1.81 supports it without another setup.
-This release also verifies larger groups of static files between queue waits,
-while keeping the same concurrency and time limits for each verification step.
+Prepared drafts stay in the private R2 bucket. They are not published just because
+an import finishes. A publication copies only the required original files and
+variants into its public output. Preparation uses image checksums and a versioned
+encoding recipe so compatible builds and branches reuse verified variants.
+Changing a website or media hostname does not require encoding the same image again.
 
-Finished image variants have checksums and receipts tied to the original and the
-encoding recipe. Subsequent batches and builds verify and reuse those variants
-instead of encoding them again. A temporary transfer interruption is retried;
-corrupted files, conflicting immutable paths and access errors stop publication.
-Retry after fixing the reported problem. Verified variants remain available for
-the next attempt, including after the overall preparation time limit is reached.
+Transfers have per-file progress and bounded concurrency. A failed copy does not
+discard successful copies. WordPress imports reuse a persistent source-address
+lookup; requests slow down when the source responds with rate-limit or temporary
+server errors. Original URLs and existing media aliases are preserved.
+
+A shared build can prepare several batches in one provider run, saving a durable
+checkpoint after each batch. It yields before the provider runtime deadline;
+another run resumes unfinished work. Image encoding has a separate concurrency
+limit from file transfers. The existing website stays live until the new
+publication passes verification.
+
+Finished static files are uploaded directly from the trusted customer build
+supervisor to Cloudflare Pages with a temporary asset-upload grant. Typeroll
+receives a bounded manifest and checksums, finalizes the deployment for the frozen
+Site and branch, and verifies its public files. Hosting credentials are never
+passed to the site's renderer. Older engines can still return binary artifacts.
 
 Preparation has a six-hour overall limit, and public verification has its own
-45-minute window after the build completes. Static output size and file-count
-limits still apply: a large media library does not mean every original can be
-included in one deployment. Images and generated variants remain outside Git.
-
-Core 0.1.84 and its updated shared build engine transfer finished sites as binary
-files instead of expanding every file into base64 text. The publication package
-is still limited to 128 MiB, including its manifest, with at most 20,000 files and
-25 MiB per file. A site that fits these limits no longer fails just because of
-base64 overhead. Build failures also keep their actual cause after a long image
-preparation; they are not replaced by a public-verification timeout message.
-Update Core before updating the shared engine. Existing older runners and their
-already-issued JSON artifacts remain supported by the new Core version.
+45-minute window after the build completes. Static output is limited to 128 MiB,
+20,000 files and 25 MiB per file. Images and generated variants remain outside
+Git. Corruption, conflicting immutable paths and access errors stop publication;
+retry after fixing the reported problem. Verified preparation is retained.
 
 For an existing organization, after upgrading Core, go to **Publishing → Builds**
 and select **Update build engine** when no build is running. Wait for verification

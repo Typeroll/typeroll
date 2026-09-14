@@ -24,6 +24,8 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ enabled: boolean; reason?: string } | null>(null);
+  const [preparation, setPreparation] = useState<{ state: string; completed: number; total: number; error: string | null } | null>(null);
+  const [preparationError, setPreparationError] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -45,6 +47,29 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
       cancelled = true;
     };
   }, [siteId]);
+
+  useEffect(() => {
+    let stopped = false;
+    const refresh = async () => {
+      try {
+        const response = await fetch(`/api/sites/${encodeURIComponent(siteId)}/media/preparation`);
+        if (!response.ok) return;
+        const value = await response.json(); if (!stopped) setPreparation(value);
+      } catch { /* A later poll resumes progress after connectivity returns. */ }
+    };
+    void refresh(); const timer = setInterval(refresh, 10000);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [siteId]);
+
+  async function retryPreparation() {
+    setPreparationError('');
+    try {
+      const response = await fetch(`/api/sites/${encodeURIComponent(siteId)}/media/preparation`, { method: 'POST' });
+      const value = await response.json();
+      if (!response.ok) throw Error(value.error || 'Could not restart image preparation.');
+      setPreparation(value);
+    } catch (error) { setPreparationError(error instanceof Error ? error.message : 'Could not restart image preparation.'); }
+  }
 
   // Drag/drop listener on the whole page so the user can drop anywhere.
   useEffect(() => {
@@ -115,6 +140,18 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
 
   return (
     <div className="media">
+      {preparation && (
+        <div className="media__alert" role="status" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+            <strong>{preparation.state === 'complete' ? 'Images prepared' : preparation.state === 'failed' ? 'Image preparation needs attention' : preparation.state === 'waiting' ? 'Image preparation is waiting for setup' : 'Preparing images in the background'}</strong>
+            <div className="text-sm">{preparation.error || (preparation.state === 'complete' ? 'Prepared variants will be reused when you publish.' : `${preparation.completed} of ${preparation.total} files ready. You can keep editing or close this page.`)}</div>
+            <div className="text-sm muted">Originals and prepared drafts remain private until publication.</div>
+          </div>
+          {preparation.state === 'failed' && <button type="button" className="btn btn--secondary" onClick={retryPreparation}>Retry preparation</button>}
+          {preparation.state === 'waiting' && <a href="/app/settings/publishing">Open Publishing</a>}
+          {preparationError && <div role="alert">{preparationError}</div>}
+        </div>
+      )}
       {uploadStatus && !uploadStatus.enabled && (
         <div className="media__alert" role="alert">
           <div className="media__alert-icon" aria-hidden>⚠</div>

@@ -4,14 +4,17 @@ import { assertFilePath, sha256 } from './contract.mjs';
 export interface StaticObservation { route: string; expected_status: number; actual_status: number | null; reason: 'status_mismatch' | 'content_mismatch' | 'request_failed'; cf_ray: string | null }
 export interface StaticCheck { route: string; status: 200 | 404; sha256?: string }
 export function staticChecks(files: Record<string, Buffer>, previous: StaticCheck[] = []): StaticCheck[] {
+  return staticManifestChecks(Object.fromEntries(Object.entries(files).map(([name, bytes]) => [name, { sha256: sha256(bytes) }])), files._redirects?.toString('utf8') ?? '', previous);
+}
+export function staticManifestChecks(files: Record<string, { sha256: string }>, redirectsText = '', previous: StaticCheck[] = []): StaticCheck[] {
   const checks: StaticCheck[] = [];
   for (const [name, bytes] of Object.entries(files)) {
     assertFilePath(name, { artifact: true });
     if (['_headers', '_redirects', '404.html'].includes(name)) continue;
     const route = '/' + (name.endsWith('.html') ? name.replace(/index\.html$/, '').replace(/\.html$/, '') : name);
-    checks.push({ route, status: 200, sha256: sha256(bytes) });
+    checks.push({ route, status: 200, sha256: bytes.sha256 });
   }
-  const redirects = (files._redirects?.toString('utf8') ?? '').split('\n').map(line => line.trim().split(/\s+/)[0]);
+  const redirects = redirectsText.split('\n').map(line => line.trim().split(/\s+/)[0]);
   const current = new Set(checks.map(check => check.route.replace(/\/$/, '')));
   for (const check of previous) if (check.status === 200 && !current.has(check.route.replace(/\/$/, '')) && !redirects.includes(check.route)) checks.push({ route: check.route, status: 404 });
   return checks.sort((a, b) => a.route.localeCompare(b.route));

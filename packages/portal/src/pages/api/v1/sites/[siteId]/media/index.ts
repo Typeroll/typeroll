@@ -3,6 +3,7 @@
 // Lists uploaded media items (CDN URLs + metadata). Pagination via ?limit=
 // + ?cursor=. Cap 200.
 
+import { mediaPreparationStatus } from '../../../../../../lib/media/preparation';
 import type { APIRoute } from 'astro';
 import { apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
@@ -43,5 +44,5 @@ export const GET: APIRoute = async ({ request, params }) => {
   }
   const slice = items.slice(0, limit);
   const nextCursor = items.length > limit ? encodeCursor({ after_id: slice[slice.length - 1]!.id }) : null;
-  return apiResponse(ctx, { media: slice, next_cursor: nextCursor });
+  return apiResponse(ctx, { media: slice, next_cursor: nextCursor, preparation: await mediaPreparationStatus(ctx.orgId, ctx.siteId) });
 };

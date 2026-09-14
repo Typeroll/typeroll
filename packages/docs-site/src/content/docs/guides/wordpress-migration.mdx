@@ -133,3 +133,17 @@ The Typeroll Helper Plugin gives the migration workflow access to:
   The helper plugin is read-only — it never modifies your WordPress database or
   files.
 </Aside>
+
+## Large image libraries
+
+Image transfers use a persistent lookup for each source URL, so repeated imports
+reuse verified media. Transfers overlap within limits for memory and each source
+host; temporary throttling slows requests down. A failed file does not remove
+healthy files already transferred. Keep the WordPress source available until all
+required media and references are verified.
+
+With Core 0.1.85 and an updated shared build engine, imported originals also queue
+private background image preparation. **Media** shows progress. The Organization's
+selected build provider performs encoding; the CMS does not publish draft images.
+See [large libraries and first publication](../customer-publishing/#large-libraries-and-first-publication)
+for setup, limits and recovery.

@@ -1,3 +1,4 @@
+import { mapTransfers } from '../media/transfer';
 // MIGRATION workflow — bring a WordPress site to Typeroll.
 //
 // Strategy:
@@ -458,8 +459,7 @@ export const migrationWorkflow: WorkflowDef = {
           featuredAlt: string
         ): Promise<{ mediaMap: Map<string, string>; featuredNewUrl: string | null }> => {
           const urls = extractImageUrls(rawHtml, { sourceOrigin });
-          const records = await Promise.all(
-            urls.map(async (u) => {
+          const records = await mapTransfers(urls, async (u) => {
               try {
                 const r = await transfer.ensureUrl(u.url, u.alt);
                 imagesMoved++;
@@ -468,8 +468,7 @@ export const migrationWorkflow: WorkflowDef = {
                 ctx.log(`Image transfer failed for ${u.url}: ${e instanceof Error ? e.message : e}`);
                 return null;
               }
-            })
-          );
+            });
           let featuredNewUrl: string | null = null;
           if (featuredOldUrl) {
             try {

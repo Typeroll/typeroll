@@ -128,6 +128,18 @@ export const mediaTools: ToolDef[] = [
     }),
   },
   {
+    name: 'get_media_preparation',
+    description: 'Read background image preparation progress. Originals and prepared draft variants remain private. Requires site access.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'media/preparation'))),
+  },
+  {
+    name: 'prepare_media',
+    description: 'Queue or retry background image preparation on the organization’s selected build provider. Requires site admin permission; does not publish the site.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.post(siteId, 'media/preparation'))),
+  },
+  {
     name: 'read_media',
     description: 'Read one media item\'s metadata by id.',
     inputSchema: { media_id: z.string() },

@@ -1,3 +1,6 @@
+import uploaderPackage from './uploader-package.json?raw';
+import uploaderLock from './uploader-lock.json?raw';
+import directUpload from './direct-upload.mjs?raw';
 import executor from './executor.mjs?raw';
 import contract from './contract.mjs?raw';
 import assets from './assets.mjs?raw';
@@ -6,7 +9,7 @@ import runner from './github-runner.mjs?raw';
 import { BUILD_RUNTIME } from './contract.mjs';
 
 export function githubBuildFiles(origin: string, org: string, revision: string) {
-  return { 'executor.mjs': executor, 'contract.mjs': contract, 'assets.mjs': assets, 'github-sandbox.mjs': sandbox, 'github-runner.mjs': runner,
+  return { 'package.json': uploaderPackage, 'package-lock.json': uploaderLock, 'direct-upload.mjs': directUpload, 'executor.mjs': executor, 'contract.mjs': contract, 'assets.mjs': assets, 'github-sandbox.mjs': sandbox, 'github-runner.mjs': runner,
     'engine.json': JSON.stringify({ origin, org_id: org, revision }),
     'README.md': '# Typeroll GitHub builds\n\nGenerated organization runner. Typeroll dispatches frozen site/version publications explicitly. Source commits do not trigger builds. Images and hosting credentials are never stored in Git. Edit content in Typeroll.\n',
     '.github/workflows/build.yml': `name: Typeroll static build
@@ -34,6 +37,8 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '${BUILD_RUNTIME}'
+      - name: Install trusted static uploader
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Prepare qualified Linux sandbox
         run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT "$(command -v node)" github-sandbox.mjs
       - name: Build frozen publication

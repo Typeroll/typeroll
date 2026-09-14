@@ -3,7 +3,8 @@ import { ConnectionError } from '../publishing/connections';
 import { type ProviderClient } from '../publishing/providers.mjs';
 import { buildStorage } from './storage';
 import { sha256 } from './contract.mjs';
-import { staticChecks, verifyStaticResponse, type StaticCheck, type StaticObservation } from './verification';
+import type { DirectReceipt } from './direct-upload.mjs';
+import { staticManifestChecks, staticChecks, verifyStaticResponse, type StaticCheck, type StaticObservation } from './verification';
 
 export async function prepareStaticProject(client: ProviderClient, root: string, expected: { project: string; owner: string; repo: string; repository: any; requireExisting?: boolean }) {
   let project = await client(root, { missing: true });
@@ -22,10 +23,10 @@ export async function prepareStaticProject(client: ProviderClient, root: string,
   return project;
 }
 
-export async function saveStaticChecks(org: string, files: Record<string, Buffer>, previousKey?: string) {
+export async function saveStaticChecks(org: string, files: Record<string, Buffer>, previousKey?: string, direct?: DirectReceipt | null) {
   return buildStorage(org, async storage => {
     const previous = previousKey ? JSON.parse((await storage.read(previousKey, 32 * 1024 * 1024)).toString('utf8')) as StaticCheck[] : [];
-    const bytes = Buffer.from(JSON.stringify(staticChecks(files, previous)));
+    const bytes = Buffer.from(JSON.stringify(direct ? staticManifestChecks(direct.files, Buffer.from(direct.controls._redirects ?? '', 'base64').toString('utf8'), previous) : staticChecks(files, previous)));
     const key = `builds/${org}/checks/${sha256(bytes)}.json`;
     await storage.put(key, bytes); return key;
   });

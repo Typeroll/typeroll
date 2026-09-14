@@ -44,3 +44,13 @@ Do not leave imported content dependent on the original source host. Transfer it
 | Favicon             | 32×32px PNG or ICO                            |
 
 Typeroll doesn't resize images at serve time. Use appropriately-sized source images.
+
+## Background preparation
+
+With Core 0.1.85, `get_media_preparation` reports private image preparation status,
+completed files, total files and any issue requiring attention. `prepare_media`
+queues or retries preparation and requires Site admin permission. This does not
+publish a site. REST clients use `GET` and `POST` on
+`/api/v1/sites/{site}/media/preparation`; `list_media` also includes preparation
+status. The Organization's selected, updated shared build engine performs this
+work. Original files and prepared draft variants remain private until publication.

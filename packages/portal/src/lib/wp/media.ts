@@ -9,6 +9,7 @@ import { getStore } from '../datastore';
 import { siteMediaPrefix } from '../media-keys';
 import { usesPrivateMedia } from '../publishing/media-policy';
 import { createMediaUpload, finalizeStoredMedia, mediaUploadAvailability } from '../publishing/media-storage';
+import { durableTransfer, fetchMedia, mediaTransfers, transferReservation } from '../media/transfer';
 import type { WPMedia } from './client';
 
 export interface UploadedMedia {
@@ -203,11 +204,17 @@ export class WPMediaTransfer {
     // Readiness must be checked even when reusing an import. A disconnected
     // customer account must never silently fall back to the old WordPress host.
     await mediaUploadAvailability(this.orgId);
-    const existing = (await this.store.listDocs<Media & { source_url?: string }>(paths.media(this.orgId, this.siteId)))
-      .find(item => item.source_url === oldUrl && item.storage?.state === 'ready');
+    return durableTransfer(this.store, paths.site(this.orgId, this.siteId), oldUrl, () =>
+      mediaTransfers.run(new URL(oldUrl).host, transferReservation, () => this.copyPrivate(oldUrl, filename, contentType, altText, width, height)),
+      async result => (await this.store.getDoc<Media>(`${paths.media(this.orgId, this.siteId)}/${result.mediaId}`))?.storage?.state === 'ready');
+  }
+
+  private async copyPrivate(oldUrl: string, filename: string, contentType: string, altText: string, width?: number, height?: number): Promise<UploadedMedia> {
+    const existing = (await this.store.listDocs<Media & { source_url?: string }>(paths.media(this.orgId, this.siteId),
+      { filters: [{ field: 'source_url', op: '==', value: oldUrl }], limit: 1 })).find(item => item.storage?.state === 'ready');
     if (existing) return { oldUrl, cdnUrl: existing.cdn_url, altText: existing.alt_text ?? altText,
       width: existing.width, height: existing.height, contentType: existing.mime_type ?? contentType, mediaId: existing.id };
-    const response = await fetch(oldUrl, { signal: AbortSignal.timeout(30_000) });
+    const response = await fetchMedia(oldUrl);
     if (!response.ok) throw new Error(`WordPress media download failed (HTTP ${response.status}). Retry the import while the source is available.`);
     const limit = 25 * 1024 * 1024;
     if (Number(response.headers.get('content-length')) > limit) { await response.body?.cancel(); throw new Error('WordPress media exceeds the 25 MB upload limit.'); }
@@ -227,8 +234,9 @@ export class WPMediaTransfer {
     if (detected && detected !== 'application/octet-stream') contentType = detected;
     const upload = await createMediaUpload(this.orgId, this.siteId, { filename, contentType, size, altText, actor: 'wordpress-import' });
     const mediaPath = `${paths.media(this.orgId, this.siteId)}/${upload.mediaId}`;
+    await this.store.updateDoc(mediaPath, { source_url: oldUrl, source_aliases: [oldUrl] });
     try {
-      const sent = await fetch(upload.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: bytes, signal: AbortSignal.timeout(30_000) });
+      const sent = await fetchMedia(upload.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: bytes, signal: AbortSignal.timeout(30_000) });
       if (!sent.ok) throw new Error(`WordPress media upload failed (HTTP ${sent.status}). Check Media storage in Publishing and retry.`);
       await finalizeStoredMedia(this.orgId, this.siteId, upload.mediaId, crypto.createHash('sha256').update(bytes).digest('hex'));
       await this.store.updateDoc(mediaPath, {
@@ -237,7 +245,8 @@ export class WPMediaTransfer {
     } catch (error) {
       // The importer has not returned this identity to any content writer.
       // Remove its incomplete library entry; private R2 object retention is unchanged.
-      await this.store.deleteDoc(mediaPath);
+      const current = await this.store.getDoc<Media>(mediaPath);
+      if (current?.storage?.state !== 'ready') await this.store.deleteDoc(mediaPath);
       throw error;
     }
     return { oldUrl, cdnUrl: upload.cdnUrl, altText, width, height, contentType, mediaId: upload.mediaId };
@@ -257,7 +266,7 @@ export class WPMediaTransfer {
     // instead of creating a duplicate. Migration re-runs are common and we
     // don't want the media library doubling on every re-run.
     const existing = await this.store.listDocs<{ id: string; source_url?: string; cdn_url: string; alt_text?: string; width?: number; height?: number; mime_type?: string; r2_key?: string }>(
-      paths.media(this.orgId, this.siteId)
+      paths.media(this.orgId, this.siteId), { filters: [{ field: 'source_url', op: '==', value: args.oldUrl }], limit: 1 }
     );
     const match = existing.find((m) => m.source_url === args.oldUrl);
     if (match) {

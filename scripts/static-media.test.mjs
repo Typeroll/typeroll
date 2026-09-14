@@ -13,18 +13,22 @@ async function withMediaFixture(run, count = 1) {
   const fetchBefore = globalThis.fetch, envBefore = process.env.TYPEROLL_BUILD_MEDIA_ACCESS;
   const original = count === 1 ? await sharp({ create: { width: 640, height: 480, channels: 3, background: '#1374aa' } }).png().toBuffer() : Buffer.from('synthetic document');
   const account = 'a'.repeat(32), prefix = 'media/abcdefghij', origin = `https://${account}.r2.cloudflarestorage.com`;
-  const stored = new Map(), objects = {}, originals = {}, entries = [], writes = new Map();
+  const stored = new Map(), objects = {}, prepared = {}, originals = {}, entries = [], writes = new Map();
   for (let i = 0; i < count; i++) {
     const publicKey = `${prefix}/image-${i}.png`, sourceKey = `private/${prefix}/originals/image-${i}.png`, aliasKey = `${prefix}/shared-${i}.png`;
     stored.set(sourceKey, original); originals[sourceKey] = `${origin}/${sourceKey}`;
     const entry = { id: `image-${i}`, source_key: sourceKey, public_key: publicKey, public_path: `/image-${i}.png`, mime_type: count === 1 ? 'image/png' : 'application/octet-stream',
       cdn_url: `https://images.example.com/image-${i}.png`, sha256: sha(original), size_bytes: original.length, aliases: [{ url: `https://media.example.com/shared-${i}.png`, key: aliasKey }] };
     entries.push(entry);
+    if (count === 1) for (const format of ['webp', 'avif']) for (const tail of ['', '.receipt.json']) {
+      const key = `private/${prefix}/prepared/v1/${entry.sha256}/320.${format}${tail}`;
+      prepared[key] = { get: `${origin}/${key}`, put: `${origin}/${key}`, headers: {} };
+    }
     const suffixes = [''];
     if (count === 1) for (const format of ['webp', 'avif']) { const suffix = `.v1.w320.${entry.sha256.slice(0, 16)}.${format}`; suffixes.push(suffix, suffix + '.receipt.json'); }
     for (const key of [publicKey, aliasKey]) for (const suffix of suffixes) objects[key + suffix] = { get: `${origin}/${key + suffix}`, put: `${origin}/${key + suffix}`, headers: {} };
   }
-  const grants = Buffer.from(JSON.stringify({ publication_id: 'frozen', expires_at: Date.now() + 60_000, account_id: account, original_bucket: 'private', public_bucket: 'public', originals, objects }));
+  const grants = Buffer.from(JSON.stringify({ publication_id: 'frozen', expires_at: Date.now() + 60_000, account_id: account, original_bucket: 'private', public_bucket: 'public', originals, objects, prepared }));
   const publication = { publication_id: 'frozen', media: entries.map(entry => ({ id: entry.id })), media_manifest: { delivery: 'static', account_id: account, original_bucket: 'private', public_bucket: 'public', site_prefix: prefix, website_host: 'www.example.com', media_host: 'images.example.com', entries } };
   process.env.TYPEROLL_BUILD_MEDIA_ACCESS = JSON.stringify({ grant_url: `${origin}/grant`, sha256: sha(grants) });
   globalThis.fetch = async (address, options = {}) => {
@@ -178,3 +182,16 @@ test('releases missing and denied response bodies instead of exhausting storage 
   assert.equal(open, 0);
   assert.equal(closed, 17);
 }, 8));
+
+test('background preparation writes only private variants and a later publication reuses them', async () => withMediaFixture(async ({ publication, root, stored, writes, entries: [entry] }) => {
+  const progress = await prepareMediaBatch(publication, root, 0, { cacheOnly: true });
+  assert.equal(progress.cursor, 1);
+  assert.equal(stored.has(entry.public_key), false);
+  assert.equal(stored.has(entry.aliases[0].key), false);
+  assert.equal([...writes.keys()].every(key => key.startsWith('private/')), true);
+  const privateWrites = [...writes.entries()];
+  await prepareMedia(publication, root);
+  assert.equal(publication.media[0].variants.length, 2);
+  for (const [key, count] of privateWrites) assert.equal(writes.get(key), count);
+  assert.equal(stored.has(entry.public_key), true);
+}));

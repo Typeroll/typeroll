@@ -13,6 +13,13 @@ async function boundedBytes(response, limit = 25 * 1024 * 1024) {
 }
 const recipe = { version: 1, encoder: sharp.versions, widths: [320, 640, 1024, 1920], quality: { webp: 80, avif: 60 } };
 const recipeHash = hash(JSON.stringify(recipe));
+// Encoding has its own CPU gate, separate from overlapping storage transfers.
+let encoding = false; const encoders = [];
+async function encode(operation) {
+  await new Promise(resolve => { if (!encoding) { encoding = true; resolve(); } else encoders.push(resolve); });
+  try { return await operation(); }
+  finally { const next = encoders.shift(); if (next) next(); else encoding = false; }
+}
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
 
 /** Runs on the customer's build machine. No original or generated image is committed to Git. */
@@ -58,7 +65,13 @@ export async function prepareMedia(publication, root, options = {}) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const response = await fetch(location, { ...options, redirect: 'error', signal: AbortSignal.timeout(30000) });
-        if (response.status === 429 || response.status >= 500) { await response.body?.cancel(); throw new Error('media_transfer_interrupted'); }
+        if (response.status === 429 || response.status >= 500) {
+          const value = response.headers.get('retry-after');
+          const delay = value ? (Number.isFinite(Number(value)) ? Number(value) * 1000 : Date.parse(value) - Date.now()) : 0;
+          await response.body?.cancel();
+          if (delay > 0) await new Promise(resolve => setTimeout(resolve, Math.min(delay, 30000)));
+          throw new Error('media_transfer_interrupted');
+        }
         return response;
       } catch {
         if (attempt === 2) throw new Error('media_transfer_interrupted');
@@ -120,8 +133,8 @@ export async function prepareMedia(publication, root, options = {}) {
           sameHostFiles.push({ source: destination, path: publicPath });
         }
       }
-      await store(bytes, entry.public_key, entry.mime_type, entry.public_path);
-      for (const alias of entry.aliases ?? []) if (alias.key !== entry.public_key) await store(bytes, alias.key, entry.mime_type, new URL(alias.url).pathname, false);
+      if (!options.cacheOnly) await store(bytes, entry.public_key, entry.mime_type, entry.public_path);
+      for (const alias of options.cacheOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(bytes, alias.key, entry.mime_type, new URL(alias.url).pathname, false);
       const media = publication.media.find(item => item.id === entry.id);
       if (imageTypes.has(entry.mime_type)) {
         const metadata = await sharp(bytes).metadata();
@@ -136,7 +149,7 @@ export async function prepareMedia(publication, root, options = {}) {
             const receiptKey = key + '.receipt.json';
             const publicPath = entry.public_path + suffix;
             const hasReceiptAccess = !grants || Boolean(grants.objects[receiptKey]);
-            const receiptBytes = hasReceiptAccess ? await read(manifest.public_bucket, receiptKey) : null;
+            const receiptBytes = !options.cacheOnly && hasReceiptAccess ? await read(manifest.public_bucket, receiptKey) : null;
             let variant, verifiedVariant;
             if (receiptBytes) {
               let receipt;
@@ -147,7 +160,35 @@ export async function prepareMedia(publication, root, options = {}) {
               if (variant && (hash(variant) !== receipt.sha256 || variant.length !== receipt.size_bytes)) throw new Error('Prepared media failed byte verification');
               verifiedVariant = variant;
             }
-            if (!variant) variant = await sharp(bytes).resize({ width, withoutEnlargement: true })[format]({ quality: recipe.quality[format] }).toBuffer();
+            const preparedKey = `private/${manifest.site_prefix}/prepared/v1/${entry.sha256}/${width}.${format}`;
+            const cachedGrant = grants?.prepared?.[preparedKey], cachedReceiptGrant = grants?.prepared?.[preparedKey + '.receipt.json'];
+            let cachedReceipt;
+            if (!variant && cachedReceiptGrant) {
+              const response = await request(cachedReceiptGrant.get);
+              if (response.ok) {
+                cachedReceipt = JSON.parse((await boundedBytes(response.body, 8192)).toString());
+                if (cachedReceipt.source_sha256 === entry.sha256 && cachedReceipt.recipe_sha256 === recipeHash && cachedReceipt.width === width && cachedReceipt.format === format) {
+                  const cached = await request(cachedGrant.get);
+                  if (cached.ok) {
+                    variant = await boundedBytes(cached.body);
+                    if (hash(variant) !== cachedReceipt.sha256 || variant.length !== cachedReceipt.size_bytes) throw new Error('Prepared media failed byte verification');
+                  } else { await cached.body?.cancel(); if (cached.status !== 404) throw new Error('media_transfer_interrupted'); }
+                }
+              } else { await response.body?.cancel(); if (response.status !== 404) throw new Error('media_transfer_interrupted'); }
+            }
+            if (!variant) variant = await encode(() => sharp(bytes).resize({ width, withoutEnlargement: true })[format]({ quality: recipe.quality[format] }).toBuffer());
+            if (!cachedReceipt && cachedGrant && cachedReceiptGrant) {
+              const saved = await request(cachedGrant.put, { method: 'PUT', headers: cachedGrant.headers, body: variant });
+              await saved.body?.cancel();
+              if (!saved.ok && saved.status !== 412) throw new Error('media_transfer_interrupted');
+              const verified = await request(cachedGrant.get);
+              if (!verified.ok || hash(await boundedBytes(verified.body)) !== hash(variant)) throw new Error('Prepared media failed byte verification');
+              const body = JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: recipeHash, width, format, sha256: hash(variant), size_bytes: variant.length });
+              const savedReceipt = await request(cachedReceiptGrant.put, { method: 'PUT', headers: cachedReceiptGrant.headers, body });
+              await savedReceipt.body?.cancel();
+              if (!savedReceipt.ok && savedReceipt.status !== 412) throw new Error('media_transfer_interrupted');
+            }
+            if (options.cacheOnly) continue;
             await store(variant, key, `image/${format}`, publicPath, true, verifiedVariant);
             const receipt = Buffer.from(JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: recipeHash, width, format, sha256: hash(variant), size_bytes: variant.length }));
             if (hasReceiptAccess) await store(receipt, receiptKey, 'application/json', '', false, receiptBytes);
@@ -170,7 +211,7 @@ export async function prepareMedia(publication, root, options = {}) {
 }
 
 /** Prepare a bounded slice of the frozen library; the coordinator owns the cursor. */
-export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntries = 100, budgetMs = 120000, clock = Date.now } = {}) {
+export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntries = 100, budgetMs = 120000, clock = Date.now, cacheOnly = false } = {}) {
   const manifests = [...(publication.retained_media_manifests ?? []), ...(publication.media_manifest ? [publication.media_manifest] : [])];
   const entries = manifests.flatMap(manifest => manifest.entries.map(entry => ({ manifest, entry })));
   if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor > entries.length || !Number.isSafeInteger(maxEntries) || maxEntries < 1 || !Number.isFinite(budgetMs) || budgetMs <= 0) throw new Error('Invalid media preparation cursor');
@@ -181,7 +222,7 @@ export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntr
     const size = next === cursor ? 1 : Math.min(4, maxEntries - (next - cursor));
     const group = entries.slice(next, next + size);
     const results = await Promise.allSettled(group.map(({ manifest, entry }) =>
-      prepareMedia({ ...publication, retained_media_manifests: [], media_manifest: { ...manifest, entries: [entry] }, media: [{ ...entry }] }, root, { prepareOnly: true, access })));
+      prepareMedia({ ...publication, retained_media_manifests: [], media_manifest: { ...manifest, entries: [entry] }, media: [{ ...entry }] }, root, { prepareOnly: true, cacheOnly, access })));
     const failure = results.find(result => result.status === 'rejected');
     if (failure) throw failure.reason;
     next += group.length;

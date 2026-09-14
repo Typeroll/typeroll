@@ -175,3 +175,17 @@ it('restores the retry allowance after verified progress in a long library', asy
   }
   expect(await queue.claim('org', 'engine-1', 1)).toBeNull();
 });
+
+it('checkpoints a thousand files in one lease and resumes exactly after provider interruption', async () => {
+  const queue = new OrganizationBuildQueue(getStore(), () => now);
+  await queue.enqueue(identity(), 'engine-1', 1000);
+  const claim = (await queue.claim('org', 'engine-1', 1))!;
+  for (let cursor = 100; cursor <= 700; cursor += 100) await queue.checkpointMedia('org', claim.key, claim.lease_id, claim.token, cursor, false, true);
+  expect(await queue.authorize('org', claim.key, claim.lease_id, claim.token)).toMatchObject({ attempt: 1, media_cursor: 700, status: 'running' });
+  now += 91000;
+  const resumed = (await queue.claim('org', 'engine-1', 1))!;
+  expect(resumed).toMatchObject({ media_cursor: 700 });
+  await expect(queue.checkpointMedia('org', claim.key, claim.lease_id, claim.token, 800, false, true)).rejects.toMatchObject({ code: 'build_lease_lost' });
+  for (let cursor = 800; cursor <= 1000; cursor += 100) await queue.checkpointMedia('org', resumed.key, resumed.lease_id, resumed.token, cursor, cursor === 1000, true);
+  expect(await queue.authorize('org', resumed.key, resumed.lease_id, resumed.token)).toMatchObject({ attempt: 2, media_cursor: 1000 });
+});

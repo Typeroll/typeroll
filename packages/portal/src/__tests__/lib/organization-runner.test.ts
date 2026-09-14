@@ -8,10 +8,13 @@ import { engineConfigurationPath, buildInputPath } from '../../lib/builds/state'
 import { enginePath } from '../../lib/builds/cloudflare';
 import { runnerRequest } from '../../lib/builds/runner-http';
 import { encodeSource, encodeArtifact, sha256, BUILD_PROTOCOL, BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
+import { siteHostingGroup } from '../../lib/publishing/hosting-groups';
 import { qualificationFiles } from '../../lib/builds/qualification';
 const storage = vi.hoisted(() => ({ objects: new Map<string, Buffer>(), grants: vi.fn(async (key: string, write = false) => `https://storage.invalid/${key}?write=${write}`) }));
 vi.mock('../../lib/builds/storage', () => ({ buildStorage: async (_org: string, fn: any) => fn({ account: 'a'.repeat(32), read: async (key: string) => { const bytes = storage.objects.get(key); if (!bytes) throw Error('missing'); return bytes; }, grant: storage.grants }) }));
 vi.mock('../../lib/publishing/r2-build-credentials', () => ({ customerBuildMediaAccess: vi.fn() }));
+const assetGrant = vi.hoisted(() => vi.fn(async () => ({ jwt: 'synthetic-asset-grant' })) );
+vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: async () => assetGrant }));
 const runnerToken = 'r'.repeat(43), org = 'org', revision = 'engine-1';
 const identity = { org_id: org, site_id: 'site', version_id: 'main', job_id: 'job', publication_id: 'b'.repeat(64), commit: 'c'.repeat(40), branch: 'main', protocol: BUILD_PROTOCOL, node_version: BUILD_RUNTIME, source_sha256: '' };
 const request = (action: string, token = runnerToken, data = {}, organization = org) => runnerRequest(new Request('https://app.example.invalid/api/builds/runner/org/' + action, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ revision, ...data }) }), organization, action);
@@ -121,4 +124,23 @@ it('finishes a small media library in the same build without an extra provider r
   expect((await request('media-checkpoint', claim.token, attempt)).status).toBe(200);
   expect((await request('upload', claim.token, attempt)).status).toBe(200);
   expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'running', media_cursor: 20, media_batches: 0, attempt: 1 });
+});
+
+it('issues asset-only upload access for the frozen hosting group and denies changed targets', async () => {
+  const { key } = await prepare();
+  await getStore().setDoc(paths.site(org, 'site'), { name: 'Site' });
+  const group = await siteHostingGroup(org, 'site');
+  const publication = { build_task_key: key, publication_id: identity.publication_id, commit: identity.commit,
+    branch: 'main', hosting_group_id: group.id, hosting_group_revision: group.revision, account_id: 'a'.repeat(32), project: 'generated-site' };
+  await getStore().updateDoc(paths.deploy(org, 'site', 'job'), { git_publication: publication });
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  const attempt = { key, lease_id: claim.lease_id };
+  const grant = await request('direct-upload', claim.token, attempt);
+  expect(grant.status).toBe(200);
+  expect(await grant.json()).toEqual({ jwt: 'synthetic-asset-grant' });
+  expect(assetGrant).toHaveBeenLastCalledWith(`/accounts/${'a'.repeat(32)}/pages/projects/generated-site/upload-token`);
+  await getStore().updateDoc(paths.deploy(org, 'site', 'job'), { git_publication: { ...publication, account_id: 'b'.repeat(32) } });
+  expect((await request('direct-upload', claim.token, attempt)).status).toBe(409);
+  await new OrganizationBuildQueue().cancel(org, key);
+  expect((await request('direct-upload', claim.token, attempt)).status).toBe(409);
 });

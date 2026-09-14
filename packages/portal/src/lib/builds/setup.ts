@@ -1,6 +1,9 @@
 import { ensureGithubMainBranch } from '../publishing/providers.mjs';
 import { createGithubRepository } from '../publishing/github-user';
 import { randomBytes, randomUUID } from 'node:crypto';
+import uploaderPackage from './uploader-package.json?raw';
+import uploaderLock from './uploader-lock.json?raw';
+import directUpload from './direct-upload.mjs?raw';
 import executorSource from './executor.mjs?raw';
 import contractSource from './contract.mjs?raw';
 import assetsSource from './assets.mjs?raw';
@@ -49,7 +52,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
   const origin = new URL(process.env.PORTAL_PUBLIC_URL ?? '');
   if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new ConnectionError('Shared builds require the public HTTPS address of this Typeroll server.', 409);
   const revision = randomUUID(), token = randomBytes(32).toString('base64url');
-  let config: EngineConfiguration = { revision, account_id: cf.cloudflare.account_id, owner: git.github.owner, installation_id: git.github.installation_id,
+  let config: EngineConfiguration = { media_preparation: true, revision, account_id: cf.cloudflare.account_id, owner: git.github.owner, installation_id: git.github.installation_id,
     worker_tag: '', trigger_uuid: '', runner_commit: '', token_hash: sha256(token), encrypted_token: encryptSecret(JSON.stringify({ org, token })),
     status: 'preparing', setup_lease_until: Date.now() + 180000 };
   if (previous) {
@@ -92,8 +95,8 @@ export async function configureBuildEngine(org: string, input: Record<string, un
     for (const trigger of triggers) await client(`${base}/builds/triggers/${trigger.trigger_uuid}`, { method: 'PATCH', body: { path_excludes: ['*'] } });
     phase = 'GitHub repository';
     const runner = await publishTree(github, { owner: config.owner, repo: current.runner_repo,
-      files: { 'assets.mjs': assetsSource, 'executor.mjs': executorSource, 'contract.mjs': contractSource, 'engine.json': JSON.stringify({ origin: origin.origin, org_id: org, revision }),
-        '.node-version': BUILD_RUNTIME + '\n', 'package.json': JSON.stringify({ name, private: true, type: 'module', scripts: { build: 'node executor.mjs', 'qualify:artifact': 'node finalize.mjs' } }),
+      files: { 'package-lock.json': uploaderLock, 'direct-upload.mjs': directUpload, 'assets.mjs': assetsSource, 'executor.mjs': executorSource, 'contract.mjs': contractSource, 'engine.json': JSON.stringify({ origin: origin.origin, org_id: org, revision }),
+        '.node-version': BUILD_RUNTIME + '\n', 'package.json': JSON.stringify({ ...JSON.parse(uploaderPackage), scripts: { build: 'node executor.mjs', 'qualify:artifact': 'node finalize.mjs' } }),
         'finalize.mjs': "console.log('Typeroll build attempt finished. Static hosting is handled by the publication coordinator.');\n",
         'README.md': '# Typeroll shared builds\n\nGenerated source only. One runner for this organization. Site repositories and version branches remain separate. Public Worker URLs are disabled. Builds are dispatched explicitly by Typeroll.\n' },
       message: 'Update the organization static build executor' });

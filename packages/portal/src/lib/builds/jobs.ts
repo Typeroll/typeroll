@@ -1,3 +1,4 @@
+import { DIRECT_RECEIPT, validateDirectReceipt } from './direct-upload.mjs';
 import { randomUUID } from 'node:crypto';
 import { paths, type DeployJob } from '@typeroll/shared';
 import { getStore } from '../datastore';
@@ -18,7 +19,7 @@ export async function enqueueBuild(config: EngineConfiguration, identity: Omit<B
     if (storage.account !== config.account_id) throw new ConnectionError('Build storage changed. Set up the shared engine again.', 409);
     await storage.put(sourceKey, source);
   });
-  const publication = kind === 'publication' ? JSON.parse(files['publication.json']) : null;
+  const publication = kind !== 'qualification' ? JSON.parse(files['publication.json']) : null;
   // Domain-only publications can retain an older immutable renderer. Do not
   // send batch commands to a source template that predates that protocol.
   const supportsMediaBatches = files['scripts/media.mjs']?.includes('export async function prepareMediaBatch(');
@@ -84,7 +85,8 @@ export async function completedBuild(org: string, key: string) {
     await dispatchPendingBuild(org, key, config); return null;
   }
   const files = await buildStorage(org, async storage => decodeArtifact(await storage.read(task.artifact_key!), task.identity, task.artifact_sha256!));
-  return { task, files };
+  const direct = files[DIRECT_RECEIPT] ? validateDirectReceipt(JSON.parse(files[DIRECT_RECEIPT].toString('utf8'))) : null;
+  return { task, files, direct };
 }
 
 export async function publicationStillRunning(task: BuildTask) {

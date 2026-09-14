@@ -1,3 +1,4 @@
+import { validateDirectReceipt, type DirectReceipt } from './direct-upload.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -31,4 +32,17 @@ export async function uploadStaticBuild(client: ProviderClient, target: { org: s
     if (!deployment || deployment.latest_stage?.status !== 'success') throw new ConnectionError('The upload finished without a confirmed deployment identity. Check Cloudflare before retrying.', 502, 'static_upload_uncertain');
     return deployment;
   } finally { await fs.rm(temp, { recursive: true, force: true }); }
+}
+
+/** Finalize the official asset manifest; the coordinator never receives the site binary. */
+export async function finalizeDirectUpload(client: ProviderClient, target: { account: string; project: string; branch: string; commit: string }, receipt: DirectReceipt) {
+  validateDirectReceipt(receipt);
+  const root = `/accounts/${target.account}/pages/projects/${target.project}`;
+  const existing = await findPublicationDeployment(client, root, { ...target, ignoreSkipped: true });
+  if (existing) return existing;
+  const body = new FormData();
+  body.set('manifest', JSON.stringify(receipt.manifest)); body.set('branch', target.branch);
+  body.set('commit_hash', target.commit); body.set('commit_dirty', 'false');
+  for (const [name, value] of Object.entries(receipt.controls)) body.set(name, new File([new Uint8Array(Buffer.from(value, 'base64'))], name));
+  return client(`${root}/deployments`, { method: 'POST', body });
 }
