@@ -127,12 +127,14 @@ export async function runnerRequest(request: Request, org: string, action: strin
       const files = decodeArtifact(await storage.read(artifactKey), task.identity, String(input.sha256));
       if (metadata.kind === 'media_preparation') {
         const expected = JSON.stringify({ publication_id: task.identity.publication_id, completed: task.media_total });
-        if (task.media_cursor !== task.media_total || Object.keys(files).length !== 1 || files['preparation.json']?.toString('utf8') !== expected)
+        if (task.media_cursor !== task.media_total || Object.keys(files).length !== 2 || files['preparation.json']?.toString('utf8') !== expected)
           throw new ConnectionError('Media preparation returned an incomplete receipt.', 409);
       }
       if (metadata.kind === 'publication' && files[DIRECT_RECEIPT]) {
-        if (Object.keys(files).length !== 1) throw new ConnectionError('Invalid static upload receipt.', 409);
-        validateDirectReceipt(JSON.parse(files[DIRECT_RECEIPT].toString('utf8')));
+        if (Object.keys(files).length !== 2) throw new ConnectionError('Invalid static upload receipt.', 409);
+        const receipt = validateDirectReceipt(JSON.parse(files[DIRECT_RECEIPT].toString('utf8')));
+        if (receipt.files['.well-known/typeroll/publication.json']?.sha256 !== sha256(files['.well-known/typeroll/publication.json']))
+          throw new ConnectionError('The static upload marker does not match its manifest.', 409);
       }
       if (metadata.kind === 'qualification') {
         const expected = qualificationFiles(task.identity.publication_id);

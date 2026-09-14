@@ -156,7 +156,8 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         }
       }
       if (job.kind === 'media_preparation') {
-        await fs.mkdir(path.join(work, 'dist'));
+        await fs.mkdir(path.join(work, 'dist/.well-known/typeroll'), { recursive: true });
+        await fs.writeFile(path.join(work, 'dist/.well-known/typeroll/publication.json'), JSON.stringify({ id: job.identity.publication_id }));
         await fs.writeFile(path.join(work, 'dist/preparation.json'), JSON.stringify({ publication_id: job.identity.publication_id, completed: job.media_total }));
       } else {
       // Only this trusted media stage receives exact publication-scoped object grants.
@@ -202,7 +203,8 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         { CF_PAGES_UPLOAD_JWT: grant.jwt, CI: 'true', WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: logPath }, temp);
       const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
       const receipt = validateDirectReceipt({ format: 1, ...description, manifest });
-      artifactFiles = { [DIRECT_RECEIPT]: Buffer.from(JSON.stringify(receipt)) };
+      artifactFiles = { [DIRECT_RECEIPT]: Buffer.from(JSON.stringify(receipt)),
+        '.well-known/typeroll/publication.json': await fs.readFile(path.join(dist, '.well-known/typeroll/publication.json')) };
     } else artifactFiles = await outputFiles(path.join(work, 'dist'));
     const artifact = encodeArtifact(job.identity, artifactFiles);
     const upload = await request('upload', job.token, { ...attempt, artifact_format: 2 });

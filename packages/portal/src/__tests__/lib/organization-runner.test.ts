@@ -20,7 +20,7 @@ const identity = { org_id: org, site_id: 'site', version_id: 'main', job_id: 'jo
 const request = (action: string, token = runnerToken, data = {}, organization = org) => runnerRequest(new Request('https://app.example.invalid/api/builds/runner/org/' + action, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ revision, ...data }) }), organization, action);
 async function prepare(kind = 'publication', mediaTotal = 0) {
   const source = encodeSource({ 'publication.json': JSON.stringify({ publication_id: identity.publication_id }) });
-  const frozen = { ...identity, source_sha256: sha256(source) };
+  const frozen = { ...identity, ...(kind === 'media_preparation' ? { job_id: 'media-request' } : {}), source_sha256: sha256(source) };
   const queued = await new OrganizationBuildQueue().enqueue(frozen, revision, mediaTotal);
   storage.objects.set('builds/org/sources/source.json', source);
   await getStore().setDoc(buildInputPath(org, queued.key), { source_key: 'builds/org/sources/source.json', kind, storage_account_id: 'a'.repeat(32) });
@@ -167,4 +167,34 @@ it('issues media grants in bounded slices and retains frozen source integrity', 
   expect((await request('media-access', claim.token, { ...attempt, cursor: 1000 })).status).toBe(400);
   await new OrganizationBuildQueue().cancel(org, queued.key);
   expect((await request('media-access', claim.token, attempt)).status).toBe(409);
+});
+
+it('accepts a direct upload receipt only with its matching frozen publication marker', async () => {
+  const { frozen, key } = await prepare();
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  const markerPath = '.well-known/typeroll/publication.json';
+  const marker = Buffer.from(JSON.stringify({ id: frozen.publication_id }));
+  const receipt = { format: 1, files: { [markerPath]: { sha256: sha256(marker), size: marker.length }, 'index.html': { sha256: sha256('hello'), size: 5 } },
+    controls: {}, manifest: { ['/' + markerPath]: 'a'.repeat(32), '/index.html': 'b'.repeat(32) } };
+  const artifact = encodeArtifact(frozen, { '.typeroll-direct-upload.json': Buffer.from(JSON.stringify(receipt)), [markerPath]: marker });
+  storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
+  expect((await request('complete', claim.token, { key, lease_id: claim.lease_id, sha256: sha256(artifact) })).status).toBe(200);
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'completed' });
+});
+
+it('completes private preparation with a verified marker and no static hosting action', async () => {
+  const { frozen, key } = await prepare('media_preparation', 20);
+  await getStore().setDoc(paths.site(org, 'site'), { name: 'Site' });
+  // The preparation identity must match the coordinator's active private task.
+  const store = getStore();
+  await store.setDoc(`media_preparations/${sha256('org\0site')}`, { org: 'org', site: 'site', active_request: 'request', state: 'running' });
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  expect(claim.kind).toBe('media_preparation');
+  const attempt = { key, lease_id: claim.lease_id };
+  expect((await request('direct-upload', claim.token, attempt)).status).toBe(409);
+  expect((await request('media-checkpoint', claim.token, { ...attempt, cursor: 20, continue_build: true })).status).toBe(200);
+  const artifact = encodeArtifact(frozen, { 'preparation.json': Buffer.from(JSON.stringify({ publication_id: frozen.publication_id, completed: 20 })),
+    '.well-known/typeroll/publication.json': Buffer.from(JSON.stringify({ id: frozen.publication_id })) });
+  storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
+  expect((await request('complete', claim.token, { ...attempt, sha256: sha256(artifact) })).status).toBe(200);
 });
