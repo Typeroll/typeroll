@@ -285,7 +285,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     }
     if (!deployment || deployment.latest_stage?.name !== 'deploy' || deployment.latest_stage?.status !== 'success') {
       if (deployment?.is_skipped || ['failure', 'canceled'].includes(deployment?.latest_stage?.status)) throw new ConnectionError('The Cloudflare build failed. Open the generated project in Cloudflare → Workers & Pages → Deployments for the build log.', 502, 'customer_build_failed');
-      await store.updateDoc(jobPath, { status: 'running', phase: 'building on Cloudflare' });
+      await store.updateDoc(jobPath, { status: 'running', phase: publication.build_engine_revision ? 'distributing static files on Cloudflare' : 'building on Cloudflare' });
       return 'deferred';
     }
     if (deployment.uses_functions == null) deployment = await cloudflare(`${projectRoot}/deployments/${encodeURIComponent(deployment.id)}`);

@@ -60,6 +60,19 @@ describe('versions endpoints', () => {
     expect(body.versions.map((v) => v.id)).toContain(MAIN_VERSION_ID);
   });
 
+  it('lists a metadata-only Main after publication and preserves its deployment fields', async () => {
+    const { token } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.version(ORG, SITE, 'main'), { deploy_url: 'https://synthetic.example', last_deployed_at: '2026-09-14T10:00:00Z' });
+    await getStore().setDoc(paths.version(ORG, SITE, 'redesign'), { name: 'Redesign', kind: 'branch', base_version_id: 'main', robots_blocked: true });
+    const response = await callRoute(import('../../pages/api/v1/sites/[siteId]/versions/index'), 'GET', `http://localhost/api/v1/sites/${SITE}/versions`, { siteId: SITE }, { headers: bearer(token) });
+    expect(response.status).toBe(200);
+    const { versions } = await response.json();
+    expect(versions.map((version: SiteVersion) => version.id)).toEqual(['main', 'redesign']);
+    expect(versions[0]).toMatchObject({ name: 'Main', kind: 'main', deploy_url: 'https://synthetic.example', last_deployed_at: '2026-09-14T10:00:00Z' });
+    expect(versions[1]).toMatchObject({ name: 'Redesign', base_version_id: 'main', robots_blocked: true });
+  });
+
   it('POST / creates a branch with robots_blocked=true', async () => {
     const { token } = await setup();
     const res = await callRoute(

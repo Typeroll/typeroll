@@ -13,6 +13,7 @@
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
+import { listSiteVersions } from '../../../../../../lib/version-store';
 import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
 import type { SiteVersion } from '@typeroll/shared';
 
@@ -29,17 +30,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const list = await getStore().listDocs<SiteVersion>(paths.versions(ctx.orgId, ctx.siteId));
-  if (!list.some((v) => v.id === MAIN_VERSION_ID)) {
-    list.unshift({
-      id: MAIN_VERSION_ID,
-      name: 'Main',
-      kind: 'main',
-      created_at: ctx.site.created_at ?? new Date().toISOString(),
-      robots_blocked: false,
-    });
-  }
-  list.sort((a, b) => (a.kind === 'main' ? -1 : b.kind === 'main' ? 1 : a.name.localeCompare(b.name)));
+  const list = await listSiteVersions(ctx.orgId, ctx.siteId, ctx.site.created_at);
   return apiResponse(ctx, { versions: list });
 };
 

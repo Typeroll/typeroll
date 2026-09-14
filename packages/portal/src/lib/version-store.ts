@@ -32,6 +32,18 @@ import { getStore } from './datastore';
 
 type WithMaybeId = { id?: string };
 
+/** Main can be virtual or contain only publication metadata on legacy sites. */
+export async function listSiteVersions(orgId: string, siteId: string, createdAt?: string): Promise<SiteVersion[]> {
+  const versions = await getStore().listDocs<SiteVersion>(paths.versions(orgId, siteId));
+  const storedMain = versions.find(version => version.id === MAIN_VERSION_ID);
+  const main: SiteVersion = { ...storedMain, id: MAIN_VERSION_ID, name: 'Main', kind: 'main',
+    created_at: storedMain?.created_at ?? createdAt ?? new Date().toISOString(), robots_blocked: storedMain?.robots_blocked ?? false };
+  const branches = versions.filter(version => version.id !== MAIN_VERSION_ID);
+  branches.sort((a, b) => (a.name ?? a.id).localeCompare(b.name ?? b.id));
+  return [main, ...branches];
+}
+
+
 /** Resolved version chain, branch first → main last. Memoised per request. */
 async function versionChain(orgId: string, siteId: string, versionId: string): Promise<string[]> {
   const chain: string[] = [];

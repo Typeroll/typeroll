@@ -112,7 +112,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
       return readBuildEngine(org);
     }
     const connection = await client(`${base}/builds/repos/connections`, { method: 'PUT', body: { provider_type: 'github', provider_account_id: String(repo.owner.id), provider_account_name: config.owner, repo_id: String(repo.id), repo_name: current.runner_repo } });
-    const triggerBody = { branch_includes: ['main'], branch_excludes: [], path_includes: ['*'], path_excludes: ['*'], build_command: 'npm run build', deploy_command: 'npm run qualify:artifact', root_directory: '/', build_token_uuid: tokenId, build_caching_enabled: false, trigger_name: 'Typeroll shared builds' };
+    const triggerBody = { branch_includes: ['main'], branch_excludes: [], path_includes: ['*'], path_excludes: ['*'], build_command: 'npm ci --ignore-scripts --no-audit --no-fund && npm run build', deploy_command: 'npm run qualify:artifact', root_directory: '/', build_token_uuid: tokenId, build_caching_enabled: false, trigger_name: 'Typeroll shared builds' };
     if (trigger) {
       if (trigger.repo_connection?.repo_id && String(trigger.repo_connection.repo_id) !== String(repo.id)) throw new ConnectionError('The Worker is connected to a different repository.', 409);
       trigger = await client(`${base}/builds/triggers/${trigger.trigger_uuid}`, { method: 'PATCH', body: triggerBody });

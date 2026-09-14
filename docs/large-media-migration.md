@@ -1,6 +1,6 @@
 # Large media migration and static delivery
 
-Core 0.1.89 separates durable source transfer, private variant preparation and
+Core 0.1.90 separates durable source transfer, private variant preparation and
 static hosting delivery. WordPress source identities are indexed by a SHA-256
 key scoped to the site; a leased transfer record stores attempts and completion.
 Organization storage migration retains its cursor and per-file outcomes, verifies
@@ -50,3 +50,8 @@ Shared Cloudflare claims prioritize waiting publications over private preparatio
 when a build slot becomes available. A running preparation retains its bounded
 slice before yielding; this does not increase the provider's build concurrency.
 GitHub claims remain bound to their authenticated dispatch.
+
+The Cloudflare supervisor explicitly installs its locked trusted dependencies before
+claiming work, even when automatic provider dependency installation is disabled.
+Engine qualification verifies that the pinned uploader can start. Version listing
+also normalizes Main when earlier publications stored only deployment metadata.

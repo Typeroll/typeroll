@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, json, requirePermission } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
+import { listSiteVersions } from '../../../../../lib/version-store';
 import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
 import type { SiteVersion } from '@typeroll/shared';
 
@@ -17,19 +18,7 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
   const { session, site, owner_org_id } = guard.value;
-  const list = await getStore().listDocs<SiteVersion>(paths.versions(owner_org_id, site.id));
-  // Make sure main is always present in the response even if the underlying
-  // doc hasn't been materialised yet (legacy sites or fresh installs).
-  if (!list.some((v) => v.id === MAIN_VERSION_ID)) {
-    list.unshift({
-      id: MAIN_VERSION_ID,
-      name: 'Main',
-      kind: 'main',
-      created_at: site.created_at ?? new Date().toISOString(),
-      robots_blocked: false,
-    });
-  }
-  list.sort((a, b) => (a.kind === 'main' ? -1 : b.kind === 'main' ? 1 : a.name.localeCompare(b.name)));
+  const list = await listSiteVersions(owner_org_id, site.id, site.created_at);
   return json({ versions: list });
 };
 

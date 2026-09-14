@@ -48,3 +48,11 @@ test('the trusted supervisor invokes the official project uploader with only the
   // both receive the same restricted asset JWT, never the customer's OAuth token.
   assert.match(source, /CF_PAGES_UPLOAD_JWT: grant\.jwt, CLOUDFLARE_API_TOKEN: grant\.jwt/);
 });
+
+
+test('Cloudflare installs the locked trusted uploader before claiming or qualifying work', async () => {
+  const setup = await fs.readFile(new URL('../packages/portal/src/lib/builds/setup.ts', import.meta.url), 'utf8');
+  const executor = await fs.readFile(new URL('../packages/portal/src/lib/builds/executor.mjs', import.meta.url), 'utf8');
+  assert.match(setup, /build_command: 'npm ci --ignore-scripts --no-audit --no-fund && npm run build'/);
+  assert.match(executor, /if \(job.kind === 'qualification'\) \{[\s\S]*?stage = 'uploader';[\s\S]*?'--version'/);
+});
