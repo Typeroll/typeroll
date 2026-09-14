@@ -55,7 +55,15 @@ export class OrganizationBuildQueue {
     // One equality filter avoids requiring a provider-specific composite index.
     const exact = expected ? await this.store.getDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(expected.key)}`) : null;
     const pending = expected ? (exact ? [{ ...exact, id: expected.key }] : []) : await this.store.listDocs<BuildTask>(buildTasksPath(org), { filters: [{ field: 'status', op: 'in', value: ['queued', 'running'] }], limit: 100 });
-    for (const task of pending.sort((a, b) => a.created_at - b.created_at)) {
+    // Shared Cloudflare runners claim organization work. Background preparation
+    // must not keep reclaiming the slot ahead of a user-requested publication.
+    // Read kinds only for eligible candidates; exact GitHub claims stay pinned.
+    const priority = new Map<string, number>();
+    if (!expected) await Promise.all(pending.filter(task => task.engine_revision === engineRevision && task.lease_until <= this.clock()).map(async task => {
+      const input = await this.store.getDoc<{ kind: string }>(`organizations/${pathPart(org)}/build_inputs/${pathPart(task.id)}`);
+      priority.set(task.id, input?.kind === 'media_preparation' ? 1 : 0);
+    }));
+    for (const task of pending.sort((a, b) => (priority.get(a.id) ?? 0) - (priority.get(b.id) ?? 0) || a.created_at - b.created_at)) {
       if (!['queued', 'running'].includes(task.status) || task.engine_revision !== engineRevision || task.lease_until > this.clock() || (expected && task.provider_dispatch_id === expected.dispatch_id)) continue;
       const path = `${buildTasksPath(org)}/${task.id}`;
       if (task.deadline <= this.clock() || task.attempt >= buildAttemptLimit(task)) {

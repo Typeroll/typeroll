@@ -1,6 +1,6 @@
 # Large media migration and static delivery
 
-Core 0.1.88 separates durable source transfer, private variant preparation and
+Core 0.1.89 separates durable source transfer, private variant preparation and
 static hosting delivery. WordPress source identities are indexed by a SHA-256
 key scoped to the site; a leased transfer record stores attempts and completion.
 Organization storage migration retains its cursor and per-file outcomes, verifies
@@ -45,3 +45,8 @@ into a single claim response or grant document. Engines negotiate this capabilit
 with the frozen renderer; older templates retain their original access path.
 Direct uploads accept at most 512 MiB of static output, with 20,000 files and
 25 MiB per file; legacy encoded artifacts retain the 128 MiB limit.
+
+Shared Cloudflare claims prioritize waiting publications over private preparation
+when a build slot becomes available. A running preparation retains its bounded
+slice before yielding; this does not increase the provider's build concurrency.
+GitHub claims remain bound to their authenticated dispatch.

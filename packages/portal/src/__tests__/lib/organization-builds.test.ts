@@ -189,3 +189,28 @@ it('checkpoints a thousand files in one lease and resumes exactly after provider
   for (let cursor = 800; cursor <= 1000; cursor += 100) await queue.checkpointMedia('org', resumed.key, resumed.lease_id, resumed.token, cursor, cursor === 1000, true);
   expect(await queue.authorize('org', resumed.key, resumed.lease_id, resumed.token)).toMatchObject({ attempt: 2, media_cursor: 1000 });
 });
+
+it('claims waiting publications before older background preparation without losing checkpoints', async () => {
+  const queue = new OrganizationBuildQueue(getStore(), () => now);
+  const background = await queue.enqueue(identity('background'), 'engine-1', 1000);
+  await getStore().setDoc(`organizations/org/build_inputs/${background.key}`, { kind: 'media_preparation' });
+  const first = (await queue.claim('org', 'engine-1', 1))!;
+  await queue.checkpointMedia('org', first.key, first.lease_id, first.token, 100);
+  now++;
+  const publication = await queue.enqueue(identity('foreground'), 'engine-1');
+  await getStore().setDoc(`organizations/org/build_inputs/${publication.key}`, { kind: 'publication' });
+  const next = (await queue.claim('org', 'engine-1', 1))!;
+  expect(next.key).toBe(publication.key);
+  const resumed = (await queue.claim('org', 'engine-1', 1))!;
+  expect(resumed.key).toBe(background.key);
+  expect(resumed.media_cursor).toBe(100);
+  expect(resumed.identity).toEqual(first.identity);
+});
+it('keeps a GitHub claim pinned even when a higher priority publication is waiting', async () => {
+  const queue = new OrganizationBuildQueue(getStore(), () => now);
+  const background = await queue.enqueue(identity('background'), 'engine-1', 1000);
+  await getStore().setDoc(`organizations/org/build_inputs/${background.key}`, { kind: 'media_preparation' });
+  await queue.enqueue(identity('foreground'), 'engine-1');
+  const claim = await queue.claim('org', 'engine-1', 1, { key: background.key, dispatch_id: 'synthetic-dispatch' });
+  expect(claim?.key).toBe(background.key);
+});

@@ -75,7 +75,7 @@ export async function completedBuild(org: string, key: string) {
   const task = await getStore().getDoc<BuildTask>(`${buildTasksPath(org)}/${key}`);
   if (!task) throw new ConnectionError('The frozen build was not found.', 409);
   if (['failed', 'cancelled'].includes(task.status)) {
-    if (task.error_code === 'artifact_static_output_size_limit') throw new ConnectionError('The finished site exceeds the 128 MiB publication limit or contains a file larger than 25 MiB. Reduce the published files before retrying. Prepared images are retained.', 413, task.error_code);
+    if (task.error_code === 'artifact_static_output_size_limit') throw new ConnectionError('The finished site exceeds this build engine’s static output limit or contains a file larger than 25 MiB. Reduce the published files before retrying. Prepared images are retained.', 413, task.error_code);
     throw new ConnectionError(`The shared build stopped (${task.error_code ?? task.status}). Retry the publication. Prepared images are retained.`, 502, task.error_code ?? 'shared_build_failed');
   }
   if (task.status !== 'completed') {
