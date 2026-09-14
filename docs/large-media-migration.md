@@ -1,6 +1,6 @@
 # Large media migration and static delivery
 
-Core 0.1.85 separates durable source transfer, private variant preparation and
+Core 0.1.86 separates durable source transfer, private variant preparation and
 static hosting delivery. WordPress source identities are indexed by a SHA-256
 key scoped to the site; a leased transfer record stores attempts and completion.
 Organization storage migration retains its cursor and per-file outcomes, verifies
@@ -38,3 +38,10 @@ source transfer and interrupted provider builds, 429 recovery, unchanged-file re
 private-cache access, branch isolation, changed domains, deleted routes and static
 asset verification. Unit-test fixture durations are not production throughput
 measurements. Record measured runtime and peak memory from real provider runs.
+
+Object grants and final local materialization are issued in slices of at most 100
+media entries. This prevents large libraries from putting every signed object URL
+into a single claim response or grant document. Engines negotiate this capability
+with the frozen renderer; older templates retain their original access path.
+Direct uploads accept at most 512 MiB of static output, with 20,000 files and
+25 MiB per file; legacy encoded artifacts retain the 128 MiB limit.

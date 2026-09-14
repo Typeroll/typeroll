@@ -295,7 +295,7 @@ Original transfer and publication preparation are separate steps. The background
 transfer moves the library into private R2 storage. A publication prepares only
 media referenced by its frozen content and any retained published versions.
 
-Core 0.1.85 adds background preparation after uploads and imports, using the
+Core 0.1.86 adds background preparation after uploads and imports, using the
 Organization's selected Cloudflare or GitHub build engine. **Media** shows the
 progress and offers **Retry preparation** if a job stops. Setup can happen later:
 you can upload, import and edit before connecting a build provider. Preparation
@@ -326,8 +326,9 @@ Site and branch, and verifies its public files. Hosting credentials are never
 passed to the site's renderer. Older engines can still return binary artifacts.
 
 Preparation has a six-hour overall limit, and public verification has its own
-45-minute window after the build completes. Static output is limited to 128 MiB,
-20,000 files and 25 MiB per file. Images and generated variants remain outside
+45-minute window after the build completes. Direct static output is limited to 512 MiB,
+20,000 files and 25 MiB per file. Older binary-artifact engines retain their
+128 MiB package limit. Images and generated variants remain outside
 Git. Corruption, conflicting immutable paths and access errors stop publication;
 retry after fixing the reported problem. Verified preparation is retained.
 

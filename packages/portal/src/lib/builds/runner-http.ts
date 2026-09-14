@@ -22,7 +22,7 @@ import { authorizeGithubClaim } from './github-claim';
 /** These endpoints never use browser cookies or organization API keys. */
 export async function runnerRequest(request: Request, org: string, action: string) {
   try {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(org) || !['claim', 'heartbeat', 'upload', 'complete', 'fail', 'media-checkpoint', 'direct-upload'].includes(action)) return privateJson({ error: 'Not found' }, 404);
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(org) || !['claim', 'heartbeat', 'upload', 'complete', 'fail', 'media-checkpoint', 'direct-upload', 'media-access'].includes(action)) return privateJson({ error: 'Not found' }, 404);
     const token = request.headers.get('authorization')?.match(/^Bearer ([a-zA-Z0-9_.-]{1,16384})$/)?.[1];
     if (!token) return privateJson({ error: 'Build authentication required.' }, 401);
     const input = await publishingJsonBody(request);
@@ -42,15 +42,16 @@ export async function runnerRequest(request: Request, org: string, action: strin
       }
       return await buildStorage(org, async storage => {
         if (storage.account !== metadata.storage_account_id) throw new ConnectionError('Build storage changed.', 409);
-        let mediaAccess;
+        let mediaAccess, batchedAccess = false;
         if (metadata.kind !== 'qualification') {
           const source = decodeSource(await storage.read(metadata.source_key, MAX_SOURCE_BYTES), claim.identity.source_sha256);
           const publication = JSON.parse(source['publication.json']);
-          if (publication.media_manifest?.entries?.length || publication.retained_media_manifests?.length)
+          batchedAccess = input.media_batch_access === true && source['scripts/media.mjs']?.includes('materialize = false');
+          if (!batchedAccess && (publication.media_manifest?.entries?.length || publication.retained_media_manifests?.length))
             mediaAccess = await customerBuildMediaAccess(org, claim.identity.site_id, publication.media_manifest, claim.identity.publication_id, publication.retained_media_manifests);
         }
         return privateJson({ ...claim, kind: metadata.kind, source_url: await storage.grant(metadata.source_key),
-          storage_account_id: storage.account, direct_upload: metadata.kind === 'publication',
+          storage_account_id: storage.account, media_access_batched: batchedAccess, direct_upload: metadata.kind === 'publication',
           ...(mediaAccess ? { media_access: mediaAccess } : {}) });
       });
     }
@@ -68,6 +69,22 @@ export async function runnerRequest(request: Request, org: string, action: strin
       if (metadata.kind === 'qualification') throw new ConnectionError('This build has no media preparation phase.', 409);
       await queue.checkpointMedia(org, key, lease, token, Number(input.cursor), input.continue_build === true, input.keep_lease === true);
       return privateJson({ ok: true });
+    }
+    if (action === 'media-access') {
+      if (metadata.kind === 'qualification') throw new ConnectionError('This task has no media.', 409);
+      const cursor = Number(input.cursor);
+      if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor >= (task.media_total ?? 0)) throw new ConnectionError('Invalid media access cursor.', 400);
+      return buildStorage(org, async storage => {
+        if (storage.account !== metadata.storage_account_id) throw new ConnectionError('Build storage changed.', 409);
+        const source = decodeSource(await storage.read(metadata.source_key, MAX_SOURCE_BYTES), task.identity.source_sha256);
+        const publication = JSON.parse(source['publication.json']);
+        const manifests = [...(publication.retained_media_manifests ?? []), ...(publication.media_manifest ? [publication.media_manifest] : [])];
+        const flattened = manifests.flatMap(manifest => manifest.entries.map((entry: unknown) => ({ manifest, entry })));
+        if (flattened.length !== task.media_total) throw new ConnectionError('Media preparation scope changed.', 409);
+        const selected = flattened.slice(cursor, cursor + 100);
+        const scoped = { ...selected[0].manifest, entries: selected.map(value => value.entry) };
+        return privateJson(await customerBuildMediaAccess(org, task.identity.site_id, scoped, task.identity.publication_id));
+      });
     }
     if (action === 'direct-upload') {
       if (metadata.kind !== 'publication') throw new ConnectionError('This task has no static hosting target.', 409);

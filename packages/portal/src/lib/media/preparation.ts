@@ -27,7 +27,7 @@ export async function requestMediaPreparation(org: string, site: string) {
 /** Uses the selected customer engine, with private cache grants and no hosting target. */
 export async function runPendingMediaPreparation(org?: string): Promise<boolean> {
   const store = getStore(); let pending = false;
-  for (const item of await store.listDocs<Preparation>('media_preparations', { filters: org ? [{ field: 'org', op: '==', value: org }] : [] })) {
+  for (const item of await store.listDocs<Preparation>('media_preparations', { filters: org ? [{ field: 'org', op: '==', value: org }] : [{ field: 'state', op: 'in', value: ['queued', 'running', 'waiting'] }] })) {
     if (item.state === 'complete' || item.state === 'failed') continue;
     if (item.lease_until > Date.now() || item.next_at > Date.now()) { pending = true; continue; }
     const path = jobPath(item.org, item.site), lease = randomUUID();

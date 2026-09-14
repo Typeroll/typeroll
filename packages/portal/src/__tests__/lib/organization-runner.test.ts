@@ -144,3 +144,27 @@ it('issues asset-only upload access for the frozen hosting group and denies chan
   await new OrganizationBuildQueue().cancel(org, key);
   expect((await request('direct-upload', claim.token, attempt)).status).toBe(409);
 });
+
+it('issues media grants in bounded slices and retains frozen source integrity', async () => {
+  const entries = Array.from({ length: 1000 }, (_, id) => ({ id: String(id) }));
+  const publication = { publication_id: identity.publication_id, media_manifest: { entries } };
+  const source = encodeSource({ 'publication.json': JSON.stringify(publication), 'scripts/media.mjs': 'export async function prepareMediaBatch(materialize = false) {}' });
+  const frozen = { ...identity, source_sha256: sha256(source) };
+  const queued = await new OrganizationBuildQueue().enqueue(frozen, revision, 1000);
+  storage.objects.set('batch-source', source);
+  await getStore().setDoc(buildInputPath(org, queued.key), { source_key: 'batch-source', kind: 'publication', storage_account_id: 'a'.repeat(32) });
+  await getStore().setDoc(engineConfigurationPath(org), { revision, status: 'ready', account_id: 'a'.repeat(32), installation_id: 'installation', token_hash: sha256(runnerToken) });
+  await getStore().setDoc(paths.deploy(org, 'site', 'job'), { status: 'running', version_id: 'main' });
+  const { customerBuildMediaAccess } = await import('../../lib/publishing/r2-build-credentials');
+  vi.mocked(customerBuildMediaAccess).mockClear();
+  vi.mocked(customerBuildMediaAccess).mockResolvedValue({ grant_url: 'https://example.invalid/scoped', sha256: 'a'.repeat(64), publication_id: identity.publication_id });
+  const claim = await (await request('claim', runnerToken, { protocol: 1, media_batch_access: true })).json();
+  expect(claim.media_access_batched).toBe(true); expect(customerBuildMediaAccess).not.toHaveBeenCalled();
+  const attempt = { key: queued.key, lease_id: claim.lease_id, cursor: 450 };
+  expect((await request('media-access', claim.token, attempt)).status).toBe(200);
+  const selected = vi.mocked(customerBuildMediaAccess).mock.calls[0][2].entries;
+  expect(selected).toHaveLength(100); expect(selected[0].id).toBe('450'); expect(selected.at(-1).id).toBe('549');
+  expect((await request('media-access', claim.token, { ...attempt, cursor: 1000 })).status).toBe(400);
+  await new OrganizationBuildQueue().cancel(org, queued.key);
+  expect((await request('media-access', claim.token, attempt)).status).toBe(409);
+});

@@ -47,7 +47,7 @@ Typeroll doesn't resize images at serve time. Use appropriately-sized source ima
 
 ## Background preparation
 
-With Core 0.1.85, `get_media_preparation` reports private image preparation status,
+With Core 0.1.86, `get_media_preparation` reports private image preparation status,
 completed files, total files and any issue requiring attention. `prepare_media`
 queues or retries preparation and requires Site admin permission. This does not
 publish a site. REST clients use `GET` and `POST` on

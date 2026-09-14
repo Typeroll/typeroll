@@ -2,8 +2,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { assertFilePath, MAX_ARTIFACT_BYTES } from './contract.mjs';
+import { assertFilePath } from './contract.mjs';
 
+export const MAX_DIRECT_OUTPUT_BYTES = 512 * 1024 * 1024;
 export const DIRECT_RECEIPT = '.typeroll-direct-upload.json';
 /** The supervisor reads bounded metadata. Site bytes remain in the customer's build environment. */
 export async function describeStaticOutput(root) {
@@ -16,7 +17,7 @@ export async function describeStaticOutput(root) {
       if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile()) || stat.isFile() && stat.nlink !== 1) throw Error('unsafe_build_output');
       if (stat.isDirectory()) { await walk(target, name + '/'); continue; }
       total += stat.size;
-      if (stat.size > 25 * 1024 * 1024 || total > MAX_ARTIFACT_BYTES || Object.keys(files).length >= 20000) throw Error('build_output_limit');
+      if (stat.size > 25 * 1024 * 1024 || total > MAX_DIRECT_OUTPUT_BYTES || Object.keys(files).length >= 20000) throw Error('build_output_limit');
       const digest = createHash('sha256');
       for await (const chunk of createReadStream(target)) digest.update(chunk);
       files[name] = { sha256: digest.digest('hex'), size: stat.size };
@@ -39,7 +40,7 @@ export function validateDirectReceipt(value) {
     total += file.size;
     if (!['_headers', '_redirects'].includes(name) && !/^[a-f0-9]{32}$/.test(value.manifest['/' + name] ?? '')) throw Error('incomplete_direct_manifest');
   }
-  if (total > MAX_ARTIFACT_BYTES) throw Error('build_output_limit');
+  if (total > MAX_DIRECT_OUTPUT_BYTES) throw Error('build_output_limit');
   for (const [route, hash] of Object.entries(value.manifest)) {
     if (!route.startsWith('/') || !value.files[route.slice(1)] || ['/_headers', '/_redirects'].includes(route) || !/^[a-f0-9]{32}$/.test(hash)) throw Error('invalid_direct_manifest');
   }

@@ -195,3 +195,12 @@ test('background preparation writes only private variants and a later publicatio
   for (const [key, count] of privateWrites) assert.equal(writes.get(key), count);
   assert.equal(stored.has(entry.public_key), true);
 }));
+
+test('materializes bounded slices without losing current or retained media metadata', async () => withMediaFixture(async ({ publication, root }) => {
+  await prepareMediaBatch(publication, root);
+  publication.retained_media_manifests = [structuredClone(publication.media_manifest)];
+  const first = await prepareMediaBatch(publication, root, 0, { maxEntries: 1, materialize: true });
+  assert.equal(first.cursor, 1); assert.equal(first.total, 2); assert.equal(first.files.length, 3); assert.equal(first.media.length, 0);
+  const second = await prepareMediaBatch(publication, root, 1, { maxEntries: 1, materialize: true });
+  assert.equal(second.cursor, 2); assert.equal(second.files.length, 3); assert.equal(second.media.length, 1); assert.equal(second.media[0].variants.length, 2);
+}));

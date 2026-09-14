@@ -69,7 +69,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     if (!response.ok) throw Error(`coordinator_${response.status}`);
     return response.json();
   };
-  const job = await request('claim', runnerToken, { protocol: 1 });
+  const job = await request('claim', runnerToken, { protocol: 1, media_batch_access: true });
   if (!job) { console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'idle' })); return; }
   if (job.identity.org_id !== config.org_id) throw Error('build_scope_mismatch');
   const startedAt = Date.now();
@@ -140,7 +140,8 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       while (job.media_total > mediaCursor) {
         await fs.writeFile(path.join(work, '.typeroll-runner/media-batch.mjs'),
           "import fs from 'node:fs/promises'; import { prepareMediaBatch } from '../scripts/media.mjs'; const publication=JSON.parse(await fs.readFile('/work/publication.json','utf8')); const progress=await prepareMediaBatch(publication,'/work'," + JSON.stringify(mediaCursor) + ", { cacheOnly: " + JSON.stringify(job.kind === 'media_preparation') + " }); await fs.writeFile('/work/.typeroll-runner/media-progress.json',JSON.stringify(progress));\n");
-        await run(['.typeroll-runner/media-batch.mjs'], true, job.media_access ? { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(job.media_access) } : {});
+        const access = job.media_access_batched ? await request('media-access', job.token, { ...attempt, cursor: mediaCursor }) : job.media_access;
+        await run(['.typeroll-runner/media-batch.mjs'], true, access ? { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(access) } : {});
         const progress = JSON.parse(await fs.readFile(path.join(work, '.typeroll-runner/media-progress.json'), 'utf8'));
         if (progress.total !== job.media_total) throw Error('media_preparation_scope_mismatch');
         const continueBuild = progress.cursor === progress.total;
@@ -159,7 +160,24 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         await fs.writeFile(path.join(work, 'dist/preparation.json'), JSON.stringify({ publication_id: job.identity.publication_id, completed: job.media_total }));
       } else {
       // Only this trusted media stage receives exact publication-scoped object grants.
-      await run(['.typeroll-runner/prepare.mjs'], true, job.media_access ? { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(job.media_access) } : {});
+      if (job.media_access_batched && job.media_total) {
+        const prepared = { publication_id: job.identity.publication_id, media: [], files: [] };
+        let cursor = 0;
+        while (cursor < job.media_total) {
+          const access = await request('media-access', job.token, { ...attempt, cursor });
+          await fs.writeFile(path.join(work, '.typeroll-runner/materialize.mjs'),
+            "import fs from 'node:fs/promises'; import { prepareMediaBatch } from '../scripts/media.mjs'; const publication=JSON.parse(await fs.readFile('/work/publication.json','utf8')); const result=await prepareMediaBatch(publication,'/work'," + cursor + ",{materialize:true}); await fs.writeFile('/work/.typeroll-runner/materialized.json',JSON.stringify(result));");
+          await run(['.typeroll-runner/materialize.mjs'], true, { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(access) });
+          const result = JSON.parse(await fs.readFile(path.join(work, '.typeroll-runner/materialized.json'), 'utf8'));
+          if (result.cursor <= cursor || result.cursor > Math.min(cursor + 100, job.media_total) || result.total !== job.media_total || !Array.isArray(result.files) || !Array.isArray(result.media)) throw Error('media_materialization_scope_mismatch');
+          prepared.files.push(...result.files); prepared.media.push(...result.media); cursor = result.cursor;
+        }
+        const byId = new Map(prepared.media.map(media => [media.id, media]));
+        const publication = JSON.parse(files['publication.json']);
+        if (publication.media_manifest.entries.some(entry => !byId.has(entry.id))) throw Error('media_materialization_incomplete');
+        prepared.media = publication.media.map(media => byId.get(media.id) ?? media);
+        await fs.writeFile(path.join(work, '.typeroll-runner/prepared.json'), JSON.stringify(prepared));
+      } else await run(['.typeroll-runner/prepare.mjs'], true, job.media_access ? { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(job.media_access) } : {});
       stage = 'extension_assets';
       await fs.copyFile(new URL('./assets.mjs', import.meta.url), path.join(work, '.typeroll-runner/assets.mjs'));
       await run(['--input-type=module', '-e', "import { prepareAssets } from './.typeroll-runner/assets.mjs'; await prepareAssets('/work');"], true);
@@ -176,11 +194,12 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       const grant = await request('direct-upload', job.token, attempt);
       if (typeof grant.jwt !== 'string' || grant.jwt.length > 16384) throw Error('invalid_pages_upload_grant');
       const manifestPath = path.join(temp, 'pages-manifest.json');
+      const logPath = path.join(temp, 'wrangler.log'); await fs.symlink('/dev/null', logPath);
       // The official uploader runs outside the untrusted source sandbox. It has
       // an asset-only JWT, never the organization's Cloudflare API credential.
       await command(process.execPath, [fileURLToPath(new URL('./node_modules/wrangler/bin/wrangler.js', import.meta.url)),
         'pages', 'upload', dist, '--output-manifest-path', manifestPath], 300000,
-        { CF_PAGES_UPLOAD_JWT: grant.jwt, CI: 'true', WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: '/dev/null' }, temp);
+        { CF_PAGES_UPLOAD_JWT: grant.jwt, CI: 'true', WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: logPath }, temp);
       const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
       const receipt = validateDirectReceipt({ format: 1, ...description, manifest });
       artifactFiles = { [DIRECT_RECEIPT]: Buffer.from(JSON.stringify(receipt)) };

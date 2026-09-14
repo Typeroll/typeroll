@@ -211,21 +211,24 @@ export async function prepareMedia(publication, root, options = {}) {
 }
 
 /** Prepare a bounded slice of the frozen library; the coordinator owns the cursor. */
-export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntries = 100, budgetMs = 120000, clock = Date.now, cacheOnly = false } = {}) {
+export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntries = 100, budgetMs = 120000, clock = Date.now, cacheOnly = false, materialize = false } = {}) {
   const manifests = [...(publication.retained_media_manifests ?? []), ...(publication.media_manifest ? [publication.media_manifest] : [])];
   const entries = manifests.flatMap(manifest => manifest.entries.map(entry => ({ manifest, entry })));
   if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor > entries.length || !Number.isSafeInteger(maxEntries) || maxEntries < 1 || !Number.isFinite(budgetMs) || budgetMs <= 0) throw new Error('Invalid media preparation cursor');
-  const started = clock(), access = {}; let next = cursor;
+  const started = clock(), access = {}, files = [], media = []; let next = cursor;
   while (next < entries.length && next - cursor < maxEntries && (next === cursor || clock() - started < budgetMs)) {
     // Prime the shared grant once, then overlap independent files. Only a fully
     // verified contiguous group advances the cursor; drain siblings on failure.
     const size = next === cursor ? 1 : Math.min(4, maxEntries - (next - cursor));
     const group = entries.slice(next, next + size);
-    const results = await Promise.allSettled(group.map(({ manifest, entry }) =>
-      prepareMedia({ ...publication, retained_media_manifests: [], media_manifest: { ...manifest, entries: [entry] }, media: [{ ...entry }] }, root, { prepareOnly: true, cacheOnly, access })));
+    const results = await Promise.allSettled(group.map(async ({ manifest, entry }) => {
+      const prepared = { ...publication, retained_media_manifests: [], media_manifest: { ...manifest, entries: [entry] }, media: [{ ...entry }] };
+      const output = await prepareMedia(prepared, root, { prepareOnly: !materialize, cacheOnly, access });
+      if (materialize) { files.push(...output); if (manifest === publication.media_manifest) media.push(...prepared.media); }
+    }));
     const failure = results.find(result => result.status === 'rejected');
     if (failure) throw failure.reason;
     next += group.length;
   }
-  return { cursor: next, total: entries.length };
+  return { cursor: next, total: entries.length, ...(materialize ? { files, media } : {}) };
 }

@@ -32,3 +32,11 @@ test('direct manifests reject dynamic files, private paths and invalid hashes', 
     assert.throws(() => validateDirectReceipt({ format: 1, files: { [name]: { sha256: 'a'.repeat(64), size: 1 } }, controls: {}, manifest: { ['/' + name]: 'b'.repeat(32) } }));
   }
 });
+
+test('direct receipts accept bounded sites above the legacy artifact ceiling', () => {
+  const files = {}, manifest = {};
+  for (let i = 0; i < 20; i++) { const name = `document-${i}.pdf`; files[name] = { sha256: 'a'.repeat(64), size: 25 * 1024 * 1024 }; manifest['/' + name] = 'b'.repeat(32); }
+  assert.equal(Object.keys(validateDirectReceipt({ format: 1, files, manifest, controls: {} }).files).length, 20);
+  files.extra = { sha256: 'a'.repeat(64), size: 25 * 1024 * 1024 }; manifest['/extra'] = 'b'.repeat(32);
+  assert.throws(() => validateDirectReceipt({ format: 1, files, manifest, controls: {} }), /build_output_limit/);
+});
