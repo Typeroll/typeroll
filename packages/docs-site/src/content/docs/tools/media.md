@@ -3,7 +3,43 @@ title: Media Tools
 description: Upload images and other media through Typeroll’s media storage.
 ---
 
-Media storage follows the selected Organization. Before customer storage is ready, uploads can use the configured Typeroll runtime storage. After verified R2 setup and migration, new uploads use the Organization's storage and media host. See [Publishing setup](../../guides/customer-publishing/).
+Media storage follows the selected Organization. Before customer storage is ready, uploads can use the configured Typeroll runtime storage. As soon as R2 is connected and verified, new uploads use the Organization's storage and media host. See [Publishing setup](../../guides/customer-publishing/).
+
+## Direct file uploads through the API
+
+Browsers, scripts and AI agents can upload a local file directly to the
+Organization's R2. The WordPress helper plugin is not required.
+
+1. Send `POST /api/v1/sites/{siteId}/media/upload-url`, authenticated with
+   `Authorization: Bearer <API key>` and write permission:
+
+   ```json
+   {
+     "filename": "photo.jpg",
+     "content_type": "image/jpeg",
+     "size": 123456,
+     "alt_text": "Describe the image"
+   }
+   ```
+
+2. Send the file bytes with `PUT` to the returned `upload_url`, using the same
+   `Content-Type`. Do not send your Typeroll API key to this URL. It is a temporary
+   grant for this one object; the client does not need R2 credentials.
+3. After a successful upload, send `POST` to the returned `finalize_url`, with
+   your Typeroll API key. Wait for successful verification before using the asset.
+   Keep the returned `media_id`; do not construct a media URL yourself.
+
+With verified Organization storage, the upload goes from the client to R2 and
+Core 0.1.97 verifies it in the customer's Cloudflare account. Typeroll handles
+permissions, metadata and status. Responsive variants are prepared separately.
+The selected GitHub or Cloudflare build provider does not change this route.
+
+For an import, check the storage prerequisite below **before requesting upload
+URLs or creating content**. Ordinary newly authored uploads may use draft
+runtime storage before Organization storage is connected. That allowance must
+not be used to bypass the import prerequisite. For files already available at a
+public URL, use the URL-import endpoint below; the agent does not need to download
+and re-upload their bytes.
 
 ## `get_import_readiness`
 
@@ -30,7 +66,7 @@ provide `filename` and `content_type`. Completed imports are reused on retry.
 
 ## `upload_media_from_url`
 
-Requires verified organization storage. With Core 0.1.95 and MCP 0.44.68, submits the source URL to the customer’s transfer Worker. Neither the portal nor MCP downloads the file body. Returns the stored asset and its stable media URL; private originals require authenticated access.
+Requires verified organization storage. With Core 0.1.97 and MCP 0.44.68 or later, submits the source URL to the customer’s transfer Worker. Neither the portal nor MCP downloads the file body. Returns the stored asset and its stable media URL; private originals require authenticated access.
 
 ```
 Upload the hero image from https://unsplash.com/... as the OG image for the homepage.

@@ -1,6 +1,6 @@
 {
   "name": "typeroll",
-  "version": "0.1.96",
+  "version": "0.1.97",
   "private": true,
   "description": "Typeroll CMS – an open-source CMS for static websites, with AI-agent workflows and a client-friendly visual editor for managing multiple client sites.",
   "workspaces": [
@@ -46,5 +46,8 @@
   },
   "overrides": {
     "sharp": "0.35.4"
+  },
+  "devDependencies": {
+    "miniflare": "5.20260828.0-alpha"
   }
 }

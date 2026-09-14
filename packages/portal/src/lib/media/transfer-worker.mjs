@@ -94,8 +94,9 @@ export async function transferFile(job, { fetchImpl = fetch, Digest = crypto.Dig
       async flush() { await writer.close(); },
     })).pipeTo(fixed.writable, { signal: transferSignal });
     pipe.catch(() => { void writer.abort().catch(() => {}); });
+    // Handle non-success responses below; Workers does not implement redirect: 'error'.
     // Fetch and the producer must run together so backpressure never buffers a complete file.
-    const upload = fetchImpl(job.upload_url, { method: 'PUT', body: fixed.readable, duplex: 'half', redirect: 'error', signal: transferSignal,
+    const upload = fetchImpl(job.upload_url, { method: 'PUT', body: fixed.readable, duplex: 'half', redirect: 'manual', signal: transferSignal,
       headers: { 'Content-Type': job.content_type, 'Cache-Control': 'private, no-store' } }).then(response => {
         if (!response.ok) stop.abort();
         return response;
@@ -119,14 +120,14 @@ export async function transferFile(job, { fetchImpl = fetch, Digest = crypto.Dig
       finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
       const bytes = new Uint8Array(size); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; } chunks.length = 0;
       result = { sha256: hex(await crypto.subtle.digest('SHA-256', bytes)), size };
-      uploaded = await fetchImpl(job.upload_url, { method: 'PUT', body: bytes, redirect: 'error', signal, headers: { 'Content-Type': job.content_type, 'Cache-Control': 'private, no-store' } });
+      uploaded = await fetchImpl(job.upload_url, { method: 'PUT', body: bytes, redirect: 'manual', signal, headers: { 'Content-Type': job.content_type, 'Cache-Control': 'private, no-store' } });
     } finally { bufferedTransferActive = false; }
   }
   await uploaded.body?.cancel();
   if (!uploaded.ok) throw failure('media_destination_unavailable', uploaded.status >= 500 || uploaded.status === 429 ? 503 : 422);
   if (!result.size || (job.expected_sha256 && result.sha256 !== job.expected_sha256) || (job.expected_size !== undefined && result.size !== job.expected_size)) throw failure('media_integrity_failed');
   const etag = uploaded.headers.get('etag'); if (!etag) throw failure('media_receipt_missing');
-  const stored = await fetchImpl(job.verify_url, { redirect: 'error', signal, headers: { 'If-Match': etag } });
+  const stored = await fetchImpl(job.verify_url, { redirect: 'manual', signal, headers: { 'If-Match': etag } });
   if (!stored.ok || stored.headers.get('etag') !== etag) { await stored.body?.cancel(); throw failure('media_copy_changed'); }
   const verified = await digestBody(stored, Digest, signal);
   if (result.sha256 !== verified.sha256 || result.size !== verified.size) throw failure('media_integrity_failed');
