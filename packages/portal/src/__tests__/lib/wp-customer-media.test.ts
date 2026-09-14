@@ -14,6 +14,9 @@ const bytes = Buffer.from('synthetic-image');
 const url = 'https://wordpress.example.com/uploads/photo.png';
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore();
+  // Drive retries explicitly in this fixture. In-process timers must not survive
+  // into the next test's datastore and consume its injected one-shot failure.
+  vi.stubEnv('DEPLOY_QUEUE', 'firestore');
   vi.mocked(copyWithTransferService).mockReset().mockResolvedValue({ protocol: 1, id: 'synthetic-request', sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, etag: '"synthetic-etag"' });
   vi.stubEnv('INTEGRATIONS_SECRET_KEY', 'synthetic-encryption-key-for-tests-only-32chars');
   vi.stubEnv('PORTAL_PUBLIC_URL', 'https://cms.example.com');
