@@ -1,4 +1,5 @@
 ---
+import { importStorageStatus } from '../../../../../lib/media/import-policy';
 import AppLayout from '../../../../../layouts/AppLayout.astro';
 import StartWorkflow from '../../../../../components/StartWorkflow.tsx';
 import { getStore } from '../../../../../lib/datastore';
@@ -17,6 +18,7 @@ const store = getStore();
 const type = (Astro.url.searchParams.get('type') ?? 'migration') as WorkflowType;
 const def = registry[type];
 if (!def) return Astro.redirect(`/app/sites/${siteId}/workflows`);
+const importStorage = type === 'migration' ? await importStorageStatus(orgId) : undefined;
 ---
 <AppLayout title={`${def.label} — ${site.name}`} siteId={siteId}>
   <div class="app-header">
@@ -26,5 +28,5 @@ if (!def) return Astro.redirect(`/app/sites/${siteId}/workflows`);
     </div>
   </div>
 
-  <StartWorkflow client:load siteId={siteId} type={type} />
+  <StartWorkflow client:load siteId={siteId} type={type} importStorage={importStorage} />
 </AppLayout>

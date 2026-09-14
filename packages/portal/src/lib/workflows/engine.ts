@@ -8,6 +8,7 @@
 // For now, workflows run inline in the request that triggered them. Long
 // migrations would normally need a queue; that's a later concern.
 
+import { requireImportStorage } from '../media/import-policy';
 import { paths } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
 import { getStore } from '../datastore';
@@ -30,6 +31,7 @@ export class WorkflowEngine {
     triggeredBy: WorkflowRecord['triggered_by'];
     createdBy: string;
   }): Promise<string> {
+    if (args.def.type === 'migration') await requireImportStorage(args.orgId);
     const workflowId = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const record: Omit<WorkflowRecord, 'id'> = {
       site_id: args.siteId,
@@ -49,6 +51,7 @@ export class WorkflowEngine {
   }
 
   async start(orgId: string, workflowId: string, def: WorkflowDef): Promise<WorkflowRecord> {
+    if (def.type === 'migration') await requireImportStorage(orgId);
     const wfPath = `${paths.workflows(orgId)}/${workflowId}`;
     await this.store.updateDoc(wfPath, {
       status: 'running',
@@ -59,6 +62,7 @@ export class WorkflowEngine {
 
   /** Continues a paused workflow from the step after the one that paused. */
   async resume(orgId: string, workflowId: string, def: WorkflowDef): Promise<WorkflowRecord> {
+    if (def.type === 'migration') await requireImportStorage(orgId);
     const wfPath = `${paths.workflows(orgId)}/${workflowId}`;
     const wf = await this.store.getDoc<WorkflowRecord>(wfPath);
     if (!wf) throw new Error('Workflow not found');
@@ -110,6 +114,7 @@ export class WorkflowEngine {
 
       let result: StepResult;
       try {
+        if (def.type === 'migration') await requireImportStorage(orgId);
         result = await step.run(ctx);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

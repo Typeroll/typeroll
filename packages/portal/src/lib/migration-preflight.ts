@@ -93,16 +93,13 @@ export async function runMigrationPreflight(
         label: 'Media storage (R2)',
         status: 'fail',
         severity: 'blocker',
-        detail: mediaError ??
-          'Not configured. Imported pages would keep their original image URLs, so the new site ' +
-          'would still be served images by the old host — invisible until that hosting is cancelled, ' +
-          'at which point every image breaks at once.',
-        fix: customerMedia ? 'Open Publishing → Media storage, resolve the reported connection issue, then retry. Imported files must be saved before the old hosting can be removed.' : 'Set R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_PUBLIC_BASE_URL on the portal, then re-run this check.',
+        detail: mediaError ?? 'Import is locked until the organization’s own storage is connected and verified.',
+        fix: 'Open Publishing → Media storage and connect and verify the organization’s own storage before importing anything.',
       });
 
   if (customerMedia) {
     checks.push({ id: 'hosting', label: 'Publishing', status: 'ok', severity: 'blocker',
-      detail: 'Content can be imported and previewed before connecting publishing accounts or domains. Publishing verifies those requirements separately.' });
+      detail: 'After connecting your organization’s storage, content can be imported and previewed before connecting GitHub or website domains. Publishing verifies those requirements separately.' });
   } else {
     const adapter = getHostingAdapter(site?.hosting_adapter ?? 'cloudflare', site?.hosting_config);
     checks.push(adapter.name !== 'stub'

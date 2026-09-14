@@ -1,3 +1,4 @@
+import { requireImportStorage } from '../media/import-policy';
 import { mapTransfers } from '../media/transfer';
 // MIGRATION workflow — bring a WordPress site to Typeroll.
 //
@@ -48,7 +49,7 @@ import { WPClient, type WPItem, type WPPage } from '../wp/client';
 import { runMigrationPreflight, summarizePreflight } from '../migration-preflight';
 import { cleanWordPressHtml } from '../wp/clean-html';
 import { extractGlobals } from '../wp/globals';
-import { WPMediaTransfer, buildMediaMap, readMediaConfig, mediaTransferAvailability } from '../wp/media';
+import { WPMediaTransfer, buildMediaMap, mediaTransferAvailability } from '../wp/media';
 import {
   reconstructPage,
   isAIReconstructAvailable,
@@ -87,10 +88,9 @@ export const migrationWorkflow: WorkflowDef = {
       name: 'preflight',
       label: 'Check migration readiness',
       async run(ctx) {
-        // First step on purpose. Every blocker here is invisible AFTER the
-        // fact — without R2 the pages import fine and keep serving images
-        // from the old host — so discovering one at the end means redoing
-        // the expensive part of the job.
+        await requireImportStorage(ctx.orgId);
+        // The engine checks organization storage before creating the workflow.
+        // Recheck the remaining migration requirements before source discovery.
         const report = await runMigrationPreflight(ctx.orgId, ctx.siteId, MAIN_VERSION_ID, {
           sourceUrl: String(ctx.config.wp_url ?? '').trim() || undefined,
         });
@@ -382,8 +382,7 @@ export const migrationWorkflow: WorkflowDef = {
         const transfer = new WPMediaTransfer(
           ctx.orgId,
           ctx.siteId,
-          ctx.store,
-          readMediaConfig()
+          ctx.store
         );
         const mediaAvailability = await mediaTransferAvailability(ctx.orgId, ctx.siteId);
         if (!mediaAvailability.configured) {

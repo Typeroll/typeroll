@@ -5,9 +5,32 @@ description: Upload images and other media through Typeroll’s media storage.
 
 Media storage follows the selected Organization. Before customer storage is ready, uploads can use the configured Typeroll runtime storage. After verified R2 setup and migration, new uploads use the Organization's storage and media host. See [Publishing setup](../../guides/customer-publishing/).
 
+## `get_import_readiness`
+
+Available with Core 0.1.95 and MCP 0.44.68. Call before starting an import. Returns
+`ready`, `message`, `code` and `settings_url`. Imports return HTTP 409 with
+`import_storage_required` until the organization’s own storage is verified.
+
+The public API exposes the same check at
+`GET /api/v1/sites/{siteId}/media/import`. Submit an import with:
+
+```json
+{
+  "source_url": "https://old.example.com/uploads/photo.jpg",
+  "filename": "photo.jpg",
+  "content_type": "image/jpeg",
+  "alt_text": "Describe the image"
+}
+```
+
+Send this JSON to `POST /api/v1/sites/{siteId}/media/import` with your site or
+organization API key. Only write access may import; the authenticated site’s
+owning organization determines the destination. For extensionless source URLs,
+provide `filename` and `content_type`. Completed imports are reused on retry.
+
 ## `upload_media_from_url`
 
-Fetches an image from a URL and uploads it through the media API. Returns the stored asset and its public URL.
+Requires verified organization storage. With Core 0.1.95 and MCP 0.44.68, submits the source URL to the customer’s transfer Worker. Neither the portal nor MCP downloads the file body. Returns the stored asset and its stable media URL; private originals require authenticated access.
 
 ```
 Upload the hero image from https://unsplash.com/... as the OG image for the homepage.

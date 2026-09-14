@@ -1,6 +1,9 @@
+import { copyWithTransferService } from '../../lib/media/remote-transfer';
+import { ConnectionError } from '../../lib/publishing/connections';
+vi.mock('../../lib/media/remote-transfer', () => ({ copyWithTransferService: vi.fn() }));
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { paths } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -15,6 +18,7 @@ const sha = createHash('sha256').update('abc').digest('hex');
 const oldUrl = 'https://cms.example.com/api/sites/site/media/image/content';
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore();
+  vi.mocked(copyWithTransferService).mockReset().mockResolvedValue({ protocol: 1, id: "00000000-0000-0000-0000-000000000000", sha256: sha, size: 3, etag: '"verified"' });
   vi.mocked(preparePublicMediaDomains).mockReset().mockResolvedValue(true);
   vi.stubEnv('PORTAL_PUBLIC_URL', 'https://cms.example.com');
   vi.stubEnv('INTEGRATIONS_SECRET_KEY', 'synthetic-encryption-key-for-tests-only-32chars');
@@ -34,14 +38,14 @@ it('verifies bytes before switching storage and preserves an edit made while cop
   await getStore().setDoc(mediaPath, { filename: 'image.png', mime_type: 'image/png', alt_text: 'Before copy', cdn_url: oldUrl, r2_key: 'original', sha256: sha,
     storage: { provider: 'draft_r2', account_id: 'b'.repeat(32), bucket: 'private-drafts', key: 'original', state: 'ready', generation: 'draft' } });
   const send = vi.spyOn(S3Client.prototype, 'send').mockImplementation(async command => {
-    if (command instanceof PutObjectCommand) {
+    if (command instanceof CopyObjectCommand) {
       expect((await getStore().getDoc<any>(mediaPath)).storage.provider).toBe('draft_r2');
       await getStore().updateDoc(mediaPath, { alt_text: 'Edited during copy' });
     }
     return { Body: { transformToByteArray: async () => Buffer.from('abc') }, ContentLength: 3 };
   });
   await requestMediaMigration('org'); await runMediaMigrationBatch('org');
-  expect(send.mock.calls.filter(([command]) => command instanceof GetObjectCommand)).toHaveLength(2);
+  expect(send.mock.calls.filter(([command]) => command instanceof GetObjectCommand)).toHaveLength(0);
   expect(await getStore().getDoc<any>(mediaPath)).toMatchObject({ alt_text: 'Edited during copy', storage: { provider: 'organization_r2', state: 'ready' }, sha256: sha, migration_source: { key: 'original' } });
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', copied_files: 1, copied_bytes: 3 });
 });
@@ -50,7 +54,7 @@ it('does not switch an original whose destination fails byte verification', asyn
   const mediaPath = `${paths.media('org', 'site')}/image`;
   await getStore().setDoc(mediaPath, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl, r2_key: 'original', sha256: sha,
     storage: { provider: 'draft_r2', account_id: 'b'.repeat(32), bucket: 'private-drafts', key: 'original', state: 'ready', generation: 'draft' } });
-  vi.spyOn(S3Client.prototype, 'send').mockImplementation(async command => ({ Body: { transformToByteArray: async () => Buffer.from(command instanceof GetObjectCommand && command.input.Bucket === 'customer-private' ? 'bad' : 'abc') }, ContentLength: 3 }));
+  vi.mocked(copyWithTransferService).mockRejectedValue(new ConnectionError('The copied file does not match the original.', 422, 'media_integrity_failed'));
   await requestMediaMigration('org'); await runMediaMigrationBatch('org');
   expect((await getStore().getDoc<any>(mediaPath)).storage.provider).toBe('draft_r2');
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'failed', copied_files: 0 });
@@ -250,7 +254,8 @@ it('recovers a crash after the copy was saved but before its cursor, without rec
   await store.updateDoc(`publishing_media_migrations/${job.id}`, { retry_at: 0 });
   await runMediaMigrationBatch('org');
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', copied_files: 1, copied_bytes: 3 });
-  expect(send.mock.calls.filter(([command]) => command instanceof PutObjectCommand)).toHaveLength(1);
+  expect(send.mock.calls.filter(([command]) => command instanceof CopyObjectCommand)).toHaveLength(1);
+  expect(copyWithTransferService).toHaveBeenCalledTimes(1);
 });
 
 it('retries an interrupted transfer automatically and pauses after three unsuccessful attempts', async () => {
@@ -280,6 +285,7 @@ it('lets only one worker copy while a duplicate delivery observes the active lea
     return goodBody();
   });
   await requestMediaMigration('org'); await runMediaMigrationBatch('org');
-  expect(send.mock.calls.filter(([command]) => command instanceof PutObjectCommand)).toHaveLength(1);
+  expect(send.mock.calls.filter(([command]) => command instanceof CopyObjectCommand)).toHaveLength(1);
+  expect(copyWithTransferService).toHaveBeenCalledTimes(1);
   expect((await mediaMigrationStatus('org'))?.state).toBe('complete');
 });

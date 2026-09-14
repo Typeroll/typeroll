@@ -1,3 +1,6 @@
+vi.mock('../../lib/media/remote-transfer', () => ({ remoteTransfersEnabled: vi.fn(async () => true), copyWithTransferService: vi.fn() }));
+import { copyWithTransferService } from '../../lib/media/remote-transfer';
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { paths, type Media } from '@typeroll/shared';
@@ -11,6 +14,7 @@ const bytes = Buffer.from('synthetic-image');
 const url = 'https://wordpress.example.com/uploads/photo.png';
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore();
+  vi.mocked(copyWithTransferService).mockReset().mockResolvedValue({ protocol: 1, id: 'synthetic-request', sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, etag: '"synthetic-etag"' });
   vi.stubEnv('INTEGRATIONS_SECRET_KEY', 'synthetic-encryption-key-for-tests-only-32chars');
   vi.stubEnv('PORTAL_PUBLIC_URL', 'https://cms.example.com');
   vi.stubEnv('R2_ACCOUNT_ID', 'b'.repeat(32));
@@ -36,47 +40,48 @@ async function connect() {
 
 it.each(['url', 'item'] as const)('imports WordPress %s media directly to customer storage and reuses verified imports', async kind => {
   await connect();
-  const transfer = () => new WPMediaTransfer('org', 'site', getStore(), null);
+  const transfer = () => new WPMediaTransfer('org', 'site', getStore());
   const execute = () => kind === 'url' ? transfer().ensureUrl(url, 'Photo') : transfer().transfer({ source_url: url, alt_text: 'Photo', mime_type: 'image/png', media_details: { width: 320, height: 240 } } as any);
   const result = await execute();
   expect(result.cdnUrl).toMatch(/^https:\/\/cms\.example\.com\/api\/sites\/site\/media\//);
   const record = await getStore().getDoc<Media>(`${paths.media('org', 'site')}/${result.mediaId}`);
   expect(record).toMatchObject({ storage: { provider: 'organization_r2', state: 'ready', bucket: 'org-private' }, source_aliases: [url], size_bytes: bytes.length });
-  const put = vi.mocked(fetch).mock.calls.find(([, options]) => options?.method === 'PUT')!;
-  expect(new URL(String(put[0])).pathname).toContain('/org-private/');
+  expect(copyWithTransferService).toHaveBeenCalledWith(expect.objectContaining({ orgId: 'org', bucket: 'org-private', sourceUrl: url }));
   expect(await execute()).toEqual(result);
   expect(await getStore().listDocs(paths.media('org', 'site'))).toHaveLength(1);
-  expect(fetch).toHaveBeenCalledTimes(2);
-});
-
-it('imports into private draft storage and permits preparation before publishing connections exist', async () => {
-  const report = await runMigrationPreflight('org', 'site', 'main');
-  expect(report.ready).toBe(true);
-  expect(report.checks.find(check => check.id === 'hosting')?.detail).toContain('before connecting');
-  await new WPMediaTransfer('org', 'site', getStore(), null).ensureUrl(url);
-  expect((await getStore().listDocs<Media>(paths.media('org', 'site')))[0].storage).toMatchObject({ provider: 'draft_r2', state: 'ready' });
-});
-
-it('blocks a disconnected customer account before downloading and never hotlinks as fallback', async () => {
-  await connect();
-  await getStore().updateDoc(connectionPath('org', 'cloudflare'), { status: 'disconnected', encrypted_credentials: null });
-  await expect(new WPMediaTransfer('org', 'site', getStore(), null).ensureUrl(url)).rejects.toMatchObject({ code: 'media_storage_unavailable' });
+  expect(copyWithTransferService).toHaveBeenCalledTimes(1);
   expect(fetch).not.toHaveBeenCalled();
-  const report = await runMigrationPreflight('org', 'site', 'main');
-  expect(report.ready).toBe(false);
-  expect(report.blockers[0].fix).toContain('Publishing → Media storage');
+  expect(vi.mocked(S3Client.prototype.send).mock.calls.some(([command]) => command instanceof GetObjectCommand)).toBe(false);
 });
 
-it('rejects an unavailable source instead of recording a successful customer import', async () => {
-  vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 404 }));
-  await expect(new WPMediaTransfer('org', 'site', getStore(), null).ensureUrl(url)).rejects.toThrow('HTTP 404');
+it.each(['url', 'item'] as const)('blocks %s imports before connecting storage, even with configured draft storage', async kind => {
+  const transfer = new WPMediaTransfer('org', 'site', getStore());
+  await expect(kind === 'url' ? transfer.ensureUrl(url) : transfer.transfer({ source_url: url } as any)).rejects.toMatchObject({ status: 409, code: 'import_storage_required' });
+  expect((await runMigrationPreflight('org', 'site', 'main')).ready).toBe(false);
+  expect(fetch).not.toHaveBeenCalled();
+  expect(copyWithTransferService).not.toHaveBeenCalled();
   expect(await getStore().listDocs(paths.media('org', 'site'))).toHaveLength(0);
 });
 
-it('bounds streamed downloads even when Content-Length is missing', async () => {
-  vi.mocked(fetch).mockResolvedValue(new Response(new ReadableStream({ start(controller) {
-    controller.enqueue(new Uint8Array(25 * 1024 * 1024)); controller.enqueue(new Uint8Array(1)); controller.close();
-  } })));
-  await expect(new WPMediaTransfer('org', 'site', getStore(), null).ensureUrl(url)).rejects.toThrow('25 MB');
-  expect(await getStore().listDocs(paths.media('org', 'site'))).toHaveLength(0);
+it('checks readiness before reusing cached successful imports after a disconnect', async () => {
+  await connect();
+  const transfer = new WPMediaTransfer('org', 'site', getStore());
+  await transfer.ensureUrl(url);
+  await getStore().updateDoc(connectionPath('org', 'cloudflare'), { status: 'disconnected', encrypted_credentials: null });
+  await expect(transfer.ensureUrl(url)).rejects.toMatchObject({ code: 'import_storage_required' });
+  expect(copyWithTransferService).toHaveBeenCalledTimes(1);
+});
+
+it('retains pending identity after transfer failure and retries without duplicate media', async () => {
+  await connect();
+  vi.mocked(copyWithTransferService).mockRejectedValueOnce(new Error('Source unavailable'));
+  const transfer = () => new WPMediaTransfer('org', 'site', getStore());
+  await expect(transfer().ensureUrl(url)).rejects.toThrow('Source unavailable');
+  const pending = await getStore().listDocs<Media>(paths.media('org', 'site'));
+  expect(pending).toHaveLength(1);
+  expect(pending[0]).toMatchObject({ import_pending: true, storage: { state: 'uploading' } });
+  const result = await transfer().ensureUrl(url);
+  expect(result.mediaId).toBe(pending[0].id);
+  expect(await getStore().listDocs(paths.media('org', 'site'))).toHaveLength(1);
+  expect(await getStore().getDoc(`${paths.media('org', 'site')}/${result.mediaId}`)).toMatchObject({ import_pending: false, storage: { state: 'ready' } });
 });

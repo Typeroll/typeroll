@@ -1,3 +1,5 @@
+import { getStore } from '../../lib/datastore';
+import { connectionPath } from '../../lib/publishing/connections';
 // Migration preflight. Each blocker here exists because its failure mode is
 // SILENT — the migration reports success and something is quietly wrong — so
 // the tests pin both the detection and the refusal to start.
@@ -42,6 +44,10 @@ async function seedSite(site: Partial<Site> = {}): Promise<void> {
   } satisfies Partial<SiteVersion>);
 }
 
+async function connectStorage() {
+  await getStore().setDoc(connectionPath(ORG, 'cloudflare'), { status: 'connected', revision: 'test', media_ready: true, encrypted_credentials: 'synthetic', cloudflare: { account_id: 'a'.repeat(32), bucket: 'private', public_bucket: 'public' } });
+}
+
 async function run() {
   const { runMigrationPreflight } = await import('../../lib/migration-preflight');
   return runMigrationPreflight(ORG, SITE, MAIN_VERSION_ID);
@@ -68,8 +74,8 @@ describe('runMigrationPreflight', () => {
     expect(media?.status).toBe('fail');
     expect(media?.severity).toBe('blocker');
     // The reason has to say what goes wrong LATER, not just "not configured".
-    expect(media?.detail).toContain('old host');
-    expect(media?.fix).toContain('R2_ACCOUNT_ID');
+    expect(media?.detail).toContain('locked');
+    expect(media?.fix).toContain('Publishing → Media storage');
   });
 
   it('blocks when deploys would run against the stub adapter', async () => {
@@ -82,6 +88,7 @@ describe('runMigrationPreflight', () => {
 
   it('is ready once both blockers are satisfied', async () => {
     setEnv({ ...R2_ENV, ...CF_ENV });
+    await connectStorage();
     const report = await run();
     expect(report.ready).toBe(true);
     expect(report.blockers).toHaveLength(0);
@@ -89,6 +96,7 @@ describe('runMigrationPreflight', () => {
 
   it('warns — but does not block — when there is no verification origin', async () => {
     setEnv({ ...R2_ENV, ...CF_ENV });
+    await connectStorage();
     const report = await run();
     expect(report.ready).toBe(true);
     expect(check(report, 'verification_origin')?.status).toBe('fail');
@@ -105,6 +113,7 @@ describe('runMigrationPreflight', () => {
 
   it('only checks form email once the site actually has a form', async () => {
     setEnv({ ...R2_ENV, ...CF_ENV });
+    await connectStorage();
     expect(check(await run(), 'forms_email')).toBeUndefined();
 
     const { getStore } = await import('../../lib/datastore');
@@ -118,6 +127,7 @@ describe('runMigrationPreflight', () => {
 
   it('passes form email when a connector is configured', async () => {
     setEnv({ ...R2_ENV, ...CF_ENV });
+    await connectStorage();
     const { getStore } = await import('../../lib/datastore');
     await getStore().setDoc(`${paths.forms(ORG, SITE)}/kontakt`, {
       name: 'Kontakt', created_at: new Date().toISOString(),
@@ -130,6 +140,7 @@ describe('runMigrationPreflight', () => {
 
   it('warns when the target has no design to rebuild into', async () => {
     setEnv({ ...R2_ENV, ...CF_ENV });
+    await connectStorage();
     expect(check(await run(), 'design_reference')?.status).toBe('fail');
 
     const { getStore } = await import('../../lib/datastore');
@@ -146,7 +157,9 @@ describe('runMigrationPreflight', () => {
 describe('source-site probe', () => {
   beforeEach(async () => {
     setEnv({ ...R2_ENV, ...CF_ENV });
+    await connectStorage();
     await seedSite();
+    if (process.env.R2_ACCOUNT_ID) await connectStorage();
   });
   afterEach(() => clearEnv(...Object.keys(R2_ENV), ...Object.keys(CF_ENV)));
 
@@ -242,6 +255,7 @@ describe('migration workflow gate', () => {
   beforeEach(async () => {
     clearEnv(...Object.keys(R2_ENV), ...Object.keys(CF_ENV));
     await seedSite();
+    if (process.env.R2_ACCOUNT_ID) await connectStorage();
   });
   afterEach(() => clearEnv(...Object.keys(R2_ENV), ...Object.keys(CF_ENV)));
 
@@ -267,19 +281,20 @@ describe('migration workflow gate', () => {
 
   it('refuses to start when a blocker stands', async () => {
     const { result } = await runPreflightStep({ wp_url: 'https://old.example.com' });
-    await expect(result).rejects.toThrow(/Migration not started/);
+    await expect(result).rejects.toMatchObject({ code: 'import_storage_required' });
   });
 
-  it('proceeds — loudly — when the operator overrides', async () => {
+  it('never bypasses own storage with skip_preflight', async () => {
     const { result, logs } = await runPreflightStep({
       wp_url: 'https://old.example.com', skip_preflight: true,
     });
-    await expect(result).resolves.toBeTruthy();
-    expect(logs.some((l) => l.startsWith('OVERRIDE:'))).toBe(true);
+    await expect(result).rejects.toMatchObject({ code: 'import_storage_required' });
+    expect(logs).toHaveLength(0);
   });
 
   it('runs clean when the platform is configured', async () => {
     setEnv({ ...R2_ENV, ...CF_ENV });
+    await connectStorage();
     const { result } = await runPreflightStep({});
     const out = await result;
     expect((out as { results: { preflight: { ready: boolean } } }).results.preflight.ready).toBe(true);
@@ -287,6 +302,7 @@ describe('migration workflow gate', () => {
 
   it('probes the configured wp_url — the source check is not agent-only', async () => {
     setEnv({ ...R2_ENV, ...CF_ENV });
+    await connectStorage();
     const seen: string[] = [];
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL) => {

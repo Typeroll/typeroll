@@ -1,3 +1,4 @@
+import { remoteTransfersEnabled, verifyWithTransferService, type TransferReceipt } from '../media/remote-transfer';
 import { createHash, randomUUID } from 'node:crypto';
 import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -96,17 +97,37 @@ export async function finalizeStoredMedia(orgId: string, siteId: string, mediaId
   }
   const r2 = await storageClient(orgId, location);
   try {
-    const object = await r2.send(new GetObjectCommand({ Bucket: location.bucket, Key: location.key }), { abortSignal: AbortSignal.timeout(30_000) });
-    if (!object.Body || !object.ETag || !object.ContentLength || object.ContentLength > MAX_BYTES || (media.size_bytes && media.size_bytes !== object.ContentLength)) throw new ConnectionError('The uploaded file has an unexpected size. Upload it again.', 422, 'media_integrity_failed');
-    const bytes = await object.Body.transformToByteArray();
-    const sha256 = createHash('sha256').update(bytes).digest('hex');
-    if (expectedSha256 && expectedSha256.toLowerCase() !== sha256) throw new ConnectionError('The stored image does not match expected_sha256. Upload it again.', 422, 'media_integrity_failed');
+    let sha256: string, size: number, etag: string;
+    if (await remoteTransfersEnabled(orgId)) {
+      const receipt = await verifyWithTransferService(orgId, r2, location.bucket, location.key, expectedSha256, media.size_bytes);
+      ({ sha256, size, etag } = receipt);
+    } else {
+      const object = await r2.send(new GetObjectCommand({ Bucket: location.bucket, Key: location.key }), { abortSignal: AbortSignal.timeout(30_000) });
+      if (!object.Body || !object.ETag || !object.ContentLength || object.ContentLength > MAX_BYTES || (media.size_bytes && media.size_bytes !== object.ContentLength)) throw new ConnectionError('The uploaded file has an unexpected size. Upload it again.', 422, 'media_integrity_failed');
+      const bytes = await object.Body.transformToByteArray();
+      sha256 = createHash('sha256').update(bytes).digest('hex'); size = bytes.length; etag = object.ETag;
+      if (expectedSha256 && expectedSha256.toLowerCase() !== sha256) throw new ConnectionError('The stored image does not match expected_sha256. Upload it again.', 422, 'media_integrity_failed');
+    }
+    return await freezeVerifiedMedia(orgId, siteId, mediaId, r2, media, { sha256, size, etag });
+  } finally { r2.destroy(); }
+}
+
+/** Internal importer entry point: callers must obtain the receipt from the authenticated transfer service. */
+export async function finalizeTransferredMedia(orgId: string, siteId: string, mediaId: string, receipt: TransferReceipt) {
+  const media = await getStore().getDoc<Media>(`${paths.media(orgId, siteId)}/${mediaId}`);
+  if (!media?.storage || media.storage.state !== 'uploading') throw new ConnectionError('Media upload changed before transfer completed.', 409, 'media_revision_conflict');
+  const r2 = await storageClient(orgId, media.storage);
+  try { return await freezeVerifiedMedia(orgId, siteId, mediaId, r2, media, receipt); }
+  finally { r2.destroy(); }
+}
+async function freezeVerifiedMedia(orgId: string, siteId: string, mediaId: string, r2: S3Client, media: Media, { sha256, size, etag }: Pick<TransferReceipt, 'sha256' | 'size' | 'etag'>) {
+  const location = media.storage!, store = getStore(), path = `${paths.media(orgId, siteId)}/${mediaId}`;
     const prefix = await siteMediaPrefix(orgId, siteId);
     const key = `private/${prefix}/originals/${sha256}/${media.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     await r2.send(new CopyObjectCommand({ Bucket: location.bucket, Key: key, CopySource: `${location.bucket}/${location.key}`,
-      CopySourceIfMatch: object.ETag, MetadataDirective: 'REPLACE', ContentType: media.mime_type, CacheControl: 'private, no-store' }), { abortSignal: AbortSignal.timeout(30_000) });
+      CopySourceIfMatch: etag, MetadataDirective: 'REPLACE', ContentType: media.mime_type, CacheControl: 'private, no-store' }), { abortSignal: AbortSignal.timeout(30_000) });
     const changed = await store.compareAndUpdateDoc<Media>(path, current => current.storage?.generation === location.generation && current.storage?.key === location.key,
-      { storage: { ...location, key, state: 'ready' }, r2_key: key, sha256, size_bytes: bytes.length });
+      { storage: { ...location, key, state: 'ready' }, r2_key: key, sha256, size_bytes: size });
     if (!changed) throw new ConnectionError('Media storage changed during upload verification. Retry finalizing the upload.', 409, 'media_revision_conflict');
     if (location.provider === 'draft_r2') {
       const { requestMediaMigration } = await import('./media-migration');
@@ -114,8 +135,7 @@ export async function finalizeStoredMedia(orgId: string, siteId: string, mediaId
     }
     const { requestMediaPreparation } = await import('../media/preparation');
     await requestMediaPreparation(orgId, siteId);
-    return { sha256, size_bytes: bytes.length, variants_generated: false, variant_count: 0, variants_pending: true };
-  } finally { r2.destroy(); }
+    return { sha256, size_bytes: size, variants_generated: false, variant_count: 0, variants_pending: true };
 }
 
 export async function privateMediaReadUrl(orgId: string, siteId: string, mediaId: string, ttlSeconds = 60) {

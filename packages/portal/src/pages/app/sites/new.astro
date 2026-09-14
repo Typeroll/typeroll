@@ -1,10 +1,12 @@
 ---
 import AppLayout from '../../../layouts/AppLayout.astro';
+import { importStorageStatus } from '../../../lib/media/import-policy';
 import { getSession } from '../../../lib/auth';
 
 const session = await getSession(Astro.cookies);
 if (!session) return Astro.redirect('/login');
-void session;
+if (!session.orgId) return Astro.redirect('/onboarding');
+const importStorage = await importStorageStatus(session.orgId);
 ---
 <AppLayout title="New site">
   <div class="app-header">
@@ -37,7 +39,8 @@ void session;
         <label for="wp_url">WordPress URL</label>
         <input id="wp_url" name="wp_url" type="url" required placeholder="https://oldsite.com" />
       </div>
-      <button type="submit" class="btn">Start migration</button>
+      {!importStorage.ready && <div role="status"><p>{importStorage.message}</p><a class="btn btn-secondary" href={importStorage.settings_url}>Open Publishing → Media storage</a></div>}
+      <button type="submit" class="btn" disabled={!importStorage.ready}>Start migration</button>
     </form>
 
     <form method="POST" action="/api/sites/create-and-plan" class="card stack">

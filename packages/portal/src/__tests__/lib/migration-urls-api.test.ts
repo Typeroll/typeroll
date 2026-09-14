@@ -1,3 +1,5 @@
+import { getStore } from '../../lib/datastore';
+import { connectionPath } from '../../lib/publishing/connections';
 // v1 migration-inventory endpoints + the hreflang write gate on pages.
 //
 // The inventory is what a migration is measured against, so the two
@@ -398,7 +400,10 @@ describe('v1 migration-urls/repair-plain-text', () => {
 
 describe('v1 migration URL imports', () => {
   let token: string;
-  beforeEach(async () => { ({ token } = await setup()); });
+  beforeEach(async () => {
+    ({ token } = await setup());
+    await getStore().setDoc(connectionPath(ORG, 'cloudflare'), { status: 'connected', revision: 'test', media_ready: true, encrypted_credentials: 'synthetic', cloudflare: { account_id: 'a'.repeat(32), bucket: 'private', public_bucket: 'public' } });
+  });
 
   it('imports an explicit recursive sitemap', async () => {
     const originalFetch = globalThis.fetch;

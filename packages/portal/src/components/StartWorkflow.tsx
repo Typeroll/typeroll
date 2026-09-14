@@ -99,9 +99,10 @@ const fieldsByWorkflow: Partial<Record<WorkflowType, FieldDef[]>> = {
 interface Props {
   siteId: string;
   type: WorkflowType;
+  importStorage?: { ready: boolean; message: string; settings_url: string };
 }
 
-export default function StartWorkflow({ siteId, type }: Props) {
+export default function StartWorkflow({ siteId, type, importStorage }: Props) {
   const fields = fieldsByWorkflow[type] ?? [];
   const [values, setValues] = useState<Record<string, string>>(() => {
     const v: Record<string, string> = {};
@@ -113,6 +114,7 @@ export default function StartWorkflow({ siteId, type }: Props) {
 
   async function start(e: React.FormEvent) {
     e.preventDefault();
+    if (type === 'migration' && importStorage?.ready === false) return;
     setBusy(true);
     setError(null);
     const config: Record<string, unknown> = {};
@@ -174,10 +176,11 @@ export default function StartWorkflow({ siteId, type }: Props) {
         ))
       )}
 
+      {importStorage?.ready === false && <div role="status"><p>{importStorage.message}</p><a className="btn btn-secondary" href={importStorage.settings_url}>Open Publishing → Media storage</a></div>}
       {error && <div style={{ color: 'var(--color-danger)', fontSize: '0.875rem' }}>{error}</div>}
 
       <div>
-        <button type="submit" className="btn" disabled={busy}>{busy ? 'Starting…' : 'Start workflow'}</button>
+        <button type="submit" className="btn" disabled={busy || (type === 'migration' && importStorage?.ready === false)}>{busy ? 'Starting…' : 'Start workflow'}</button>
       </div>
     </form>
   );

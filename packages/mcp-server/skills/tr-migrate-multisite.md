@@ -357,3 +357,14 @@ Then, per site:
   page pointing at a domain that still serves the old site is pointing at
   content that doesn't match. Either cut over close together, or write the
   cluster after the last market lands.
+
+## Storage prerequisite
+
+Before reading or importing source content, call `get_import_readiness` (Core
+0.1.95 / MCP 0.44.68 or later). If `ready` is false, stop the import and show the
+returned message and Publishing settings link. The organization must connect
+and verify its own storage first. Do not fall back to draft storage, hotlink
+source images, or use ordinary page-write tools to bypass the import gate.
+Use `upload_media_from_url` for referenced source images; the customer’s
+Cloudflare transfer Worker copies and verifies them directly in R2, independently
+of the GitHub/Cloudflare build-provider choice.

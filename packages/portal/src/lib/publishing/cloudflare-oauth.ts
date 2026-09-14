@@ -8,6 +8,7 @@ import { createProviderClient, ProviderError, type ProviderClient } from './prov
 
 export const CLOUDFLARE_COOKIE = 'typeroll_publishing_cloudflare';
 export const CLOUDFLARE_CALLBACK = '/api/orgs/publishing/cloudflare/callback';
+export const CLOUDFLARE_MEDIA_SCOPES = ['workers-scripts.read', 'workers-scripts.write'];
 export const CLOUDFLARE_BUILD_SCOPES = ['workers-scripts.read', 'workers-scripts.write', 'workers-ci.read', 'workers-ci.write'];
 export const CLOUDFLARE_SCOPES = ['account-settings.read', 'page.read', 'page.write', 'workers-r2.read', 'workers-r2.write', 'offline_access'];
 export const CLOUDFLARE_OPTIONAL_DNS_SCOPES = ['zone.read', 'cache.purge', 'dns.read', 'dns.write', 'zone-transform-rules.read', 'zone-transform-rules.write'];
@@ -87,7 +88,7 @@ export async function startCloudflareConnection(session: FullSession, groupId = 
     encrypted_verifier: sealCredentials(session.orgId, 'cloudflare', { verifier }, groupId) } satisfies Grant);
   const url = new URL('https://dash.cloudflare.com/oauth2/auth');
   url.search = new URLSearchParams({ client_id: config.clientId, redirect_uri: config.callback,
-    response_type: 'code', scope: [...scopesForGroup(groupId), ...CLOUDFLARE_OPTIONAL_DNS_SCOPES, ...buildScopes].join(' '), state,
+    response_type: 'code', scope: [...new Set([...scopesForGroup(groupId), ...CLOUDFLARE_OPTIONAL_DNS_SCOPES, ...(groupId === 'default' ? CLOUDFLARE_MEDIA_SCOPES : []), ...buildScopes])].join(' '), state,
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString();
   return { url: url.toString(), browser, maxAge: TTL / 1000 };
 }

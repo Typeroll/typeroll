@@ -1,5 +1,7 @@
 // Approve a paused workflow → resumes from the step after the review gate.
 
+import { requireImportStorage } from '../../../../../../lib/media/import-policy';
+import { connectionFailure } from '../../../../../../lib/publishing/http';
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, json, requirePermission } from '../../../../../../lib/access';
 import { WorkflowEngine } from '../../../../../../lib/workflows/engine';
@@ -22,6 +24,8 @@ export const POST: APIRoute = async ({ cookies, params, locals }) => {
   if (!wf || wf.site_id !== site.id) return json({ error: 'Not found' }, 404);
 
   const def = getWorkflowDef(wf.type);
+  try { if (def.type === 'migration') await requireImportStorage(owner_org_id); }
+  catch (error) { return connectionFailure(error); }
   const engine = new WorkflowEngine();
   engine.resume(owner_org_id, workflowId, def).catch((err) => {
     console.error(`[workflow ${workflowId}] resume failed:`, err);

@@ -7,6 +7,7 @@ const provision = vi.hoisted(() => vi.fn());
 vi.mock('../../lib/hosting/site-provisioning', () => ({ provisionSiteHosting: provision }));
 vi.mock('../../lib/site-domain', () => ({ declareDomainAtCreation: vi.fn() }));
 vi.mock('../../lib/access', () => ({ requireFullSession: async () => ({ ok: true, value: { orgId: 'test-org', userId: 'test-user' } }) }));
+vi.mock('../../lib/media/import-policy', () => ({ requireImportStorage: vi.fn(async () => {}) }));
 vi.mock('../../lib/workflows/engine', () => ({ WorkflowEngine: class {
   async create() { return 'test-workflow'; }
   async start() {}

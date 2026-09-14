@@ -22,6 +22,21 @@ Your hosting operator must enable customer publishing and configure private draf
 storage. Existing managed sites retain their existing publishing mode until they
 are explicitly migrated.
 
+## Storage before importing
+
+Starting with Core 0.1.95, importing a website, external media, a sitemap or Search
+Console data requires the organization’s own verified storage. Select
+**Publishing → Media storage** to connect it before starting an import. This
+requirement applies in the UI, public import API and MCP; imports never fall back
+to the operator’s draft bucket. GitHub and website domains can be connected later.
+
+Typeroll automatically provisions a media transfer Worker in the organization’s
+Cloudflare account. The **Media transfers** status shows readiness or an actionable
+setup error. Existing OAuth connections may show **Allow media transfers in
+Cloudflare**; approve that permission once. No replacement R2 keys or GitHub build
+connection is needed. Source files travel directly to customer storage and are
+verified there, regardless of the selected build provider.
+
 ## Organization setup
 
 Open the sidebar, select the correct **Organization**, then select **Publishing**

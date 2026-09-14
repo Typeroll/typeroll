@@ -10,7 +10,7 @@ type Connection = {
   github: { owner: string; account_type?: 'Organization' | 'User'; repository_creation_state?: 'ready' | 'reconnect_required' } | null;
   cloudflare: { account_id: string; account_name: string; bucket: string; public_bucket?: string } | null;
 };
-type Connections = { github_next_step?: 'install' | null; media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string; account_type?: 'Organization' | 'User' }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
+type Connections = { media_transfer?: { state: string; code?: string; message?: string }; github_next_step?: 'install' | null; media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string; account_type?: 'Organization' | 'User' }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
 const API = '/api/orgs/publishing';
 
 function GithubSetupStep({ id, title, state, status, children }: {
@@ -177,6 +177,17 @@ export default function PublishingConnections() {
   const cloudflareAccount = data?.cloudflare.cloudflare;
   const r2Overview = cloudflareAccount ? `https://dash.cloudflare.com/${cloudflareAccount.account_id}/r2/overview` : 'https://dash.cloudflare.com/';
   const mediaReady = Boolean(data?.cloudflare.status === 'connected' && data?.cloudflare.media_ready && mediaBucket && cloudflareAccount?.public_bucket);
+  const [checkingTransfer, setCheckingTransfer] = useState(false);
+  async function prepareTransfer(recheck = false) {
+    setCheckingTransfer(true);
+    try { await request('/media-migration', 'POST', { action: 'prepare_transfer', recheck }); }
+    catch (error) { setMediaError({ message: error instanceof Error ? error.message : 'Media transfer setup failed.' }); }
+    finally { try { await refresh(); } catch { setMediaError({ message: 'Could not refresh media status. Reload Publishing to check the result.' }); } finally { setCheckingTransfer(false); } }
+  }
+  useEffect(() => {
+    if (mediaReady && data?.media_transfer?.state === 'automatic' && !checkingTransfer) void prepareTransfer();
+  }, [mediaReady, data?.media_transfer?.state]);
+
   const mediaAccessForm = <div className="stack">
     <p>Paste your R2 upload keys to enable direct uploads.</p>
     <details><summary>How to create R2 upload keys</summary>
@@ -277,11 +288,11 @@ export default function PublishingConnections() {
         </> : <p className="muted">Cloudflare sign-in is not available until the publisher finishes configuring its Cloudflare app.</p>}
         {data.cloudflare.credentials_saved && data.cloudflare.auth_method !== 'oauth' && <p>API and R2 credentials are saved and hidden. To rotate them, open the advanced connection settings below.</p>}
         <details><summary>Advanced: connect with existing API and R2 keys</summary><div className="stack">
-        <p>Use a Cloudflare token scoped to your account with Cloudflare Pages: Edit, Account Settings: Read, and Workers R2 Storage: Edit. Create an R2 bucket and Object Read &amp; Write credentials restricted to that bucket.</p>
+        <p>Use a Cloudflare token scoped to your account with Cloudflare Pages: Edit, Account Settings: Read, Workers R2 Storage: Edit, and Workers Scripts: Edit. Create an R2 bucket and Object Read &amp; Write credentials restricted to that bucket.</p>
         <details><summary>Set up Cloudflare access</summary>
           <ol>
             <li>Open your account in <a href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">Cloudflare</a>. Go to <strong>Workers &amp; Pages → Create application → Pages → Connect to Git</strong> (also called <strong>Import an existing Git repository</strong>). Use <strong>+ Add account</strong> to authorize Cloudflare’s GitHub App for the same GitHub account. Select <strong>All repositories</strong> so future sites are included. You can stop at the repository list.</li>
-            <li>Open <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noreferrer">My Profile → API Tokens</a>. Select <strong>Create Token → Create Custom Token → Get started</strong>. Add the three Account permissions listed above. Under <strong>Account Resources</strong>, choose <strong>Include → Specific account</strong> and your account. Select <strong>Continue to summary → Create Token</strong>, then copy the token into the form below.</li>
+            <li>Open <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noreferrer">My Profile → API Tokens</a>. Select <strong>Create Token → Create Custom Token → Get started</strong>. Add the four Account permissions listed above. Under <strong>Account Resources</strong>, choose <strong>Include → Specific account</strong> and your account. Select <strong>Continue to summary → Create Token</strong>, then copy the token into the form below.</li>
             <li>Open <strong>Storage &amp; databases → R2 object storage → Overview</strong>. Activate R2 if prompted. Select <strong>Create bucket</strong> and keep the default jurisdiction. Copy the bucket name into the form.</li>
             <li>Return to <strong>R2 → Overview → Account Details</strong>. Select <strong>Manage API Tokens</strong>, then <strong>Create Account API token</strong>. Choose <strong>Object Read &amp; Write</strong> for your bucket. Copy both <strong>Access Key ID</strong> and <strong>Secret Access Key</strong> into the form. Account tokens require a Cloudflare Super Administrator.</li>
             <li>Select <strong>Verify and save Cloudflare</strong>. The status changes to <strong>connected</strong> after the access checks pass.</li>
@@ -317,6 +328,14 @@ export default function PublishingConnections() {
           </div>}
           {mediaReady ? <>
             <p>Upload access verified. Your R2 credentials are saved securely and reused for this organization’s sites.</p>
+            {data.media_transfer && <div className="stack" role={data.media_transfer.state === 'error' ? 'alert' : 'status'}>
+              <strong>Media transfers · {checkingTransfer ? 'Setting up…' : data.media_transfer.state === 'ready' ? 'Ready' : data.media_transfer.state === 'error' ? 'Needs attention' : 'Automatic setup'}</strong>
+              <p>{data.media_transfer.message}</p>
+              {data.media_transfer.state === 'error' && (data.media_transfer.code === 'media_transfer_approval_required' && data.cloudflare.auth_method === 'oauth'
+                ? <form onSubmit={event => void submit('cloudflare', event)}><input type="hidden" name="action" value="start" /><button className="btn btn-primary" disabled={busy}>Allow media transfers in Cloudflare</button></form>
+                : <button className="btn" disabled={checkingTransfer} onClick={() => void prepareTransfer(true)}>Retry media transfer setup</button>)}
+            </div>}
+
             <details><summary>Storage details</summary><p>Private originals bucket: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong></p>
             <p>Public images bucket: <strong style={{ overflowWrap: 'anywhere' }}>{cloudflareAccount?.public_bucket}</strong></p></details>
             {data.media_migration && <div role="status">

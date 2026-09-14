@@ -1,3 +1,5 @@
+import { requireImportStorage } from '../../../lib/media/import-policy';
+import { connectionFailure } from '../../../lib/publishing/http';
 import type { APIRoute } from 'astro';
 import { requireFullSession } from '../../../lib/access';
 import { getStore } from '../../../lib/datastore';
@@ -11,6 +13,9 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const guard = await requireFullSession(cookies);
   if (!guard.ok) return guard.response;
   const session = guard.value;
+
+  try { await requireImportStorage(session.orgId); }
+  catch (error) { return connectionFailure(error); }
 
   const form = await request.formData();
   const name = String(form.get('name') ?? '').trim();

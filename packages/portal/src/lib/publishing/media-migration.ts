@@ -1,5 +1,7 @@
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { copyWithTransferService } from '../media/remote-transfer';
 import { createHash, randomUUID } from 'node:crypto';
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { paths, type Media, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { siteMediaPrefix } from '../media-keys';
@@ -12,6 +14,7 @@ import { replacePublicationReferences } from './media-manifest';
 
 const hash = (input: string | Uint8Array) => createHash('sha256').update(input).digest('hex');
 const migrationPath = (orgId: string) => `publishing_media_migrations/${hash(orgId)}`;
+type MigratingMedia = Media & { source_url?: string; import_pending?: boolean };
 interface Cursor { site: string; media: string; phase: 'copying' | 'references' | 'next_site'; reference?: string }
 interface Migration { pass_file_failed?: boolean; pass_request_id?: string; cursor?: Cursor | null; pass_copied?: number; pass_bytes?: number; pass_pending?: number; retry_at?: number; failures?: number; org_id: string; state: 'queued' | 'running' | 'complete' | 'failed'; copied_files: number; copied_bytes: number; pending_files: number; lease_id: string | null; lease_until: number; error?: string | null; request_id?: string }
 
@@ -33,8 +36,8 @@ async function completeEmptyMigration(orgId: string, current: Migration | null):
 }
 
 export async function requestMediaMigration(orgId: string) {
-  const [connection, domains] = await Promise.all([getConnection(orgId, 'cloudflare'), getOrganizationDomains(orgId)]);
-  if (!connectionSummary(connection).media_ready || !domains.media_host) return;
+  const connection = await getConnection(orgId, 'cloudflare');
+  if (!connectionSummary(connection).media_ready) return;
   for (const site of await getStore().listDocs(paths.sites(orgId))) await adoptCustomerPublishingForMedia(orgId, site.id);
   await getStore().createDocIfMissing(migrationPath(orgId), { org_id: orgId, state: 'queued', copied_files: 0, copied_bytes: 0, pending_files: 0, lease_id: null, lease_until: 0 });
   await getStore().compareAndUpdateDoc<Migration>(migrationPath(orgId), () => true, { state: 'queued', error: null, failures: 0, retry_at: 0, request_id: randomUUID() });
@@ -100,6 +103,8 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
     current => ['queued', 'running'].includes(current.state) && current.lease_until < Date.now() && (current.retry_at ?? 0) <= Date.now(),
     { state: 'running', lease_id: lease, lease_until: Date.now() + 120_000 });
   if (!acquired) return;
+  const heartbeat = setInterval(() => { void store.compareAndUpdateDoc<Migration>(path, value => value.lease_id === lease && value.lease_until > Date.now(), { lease_until: Date.now() + 120000 }).catch(() => {}); }, 20000);
+  heartbeat.unref();
   const deadline = Date.now() + budgetMs;
   let cursor = acquired.cursor ?? null;
   const passRequest = cursor ? acquired.pass_request_id ?? acquired.request_id : acquired.request_id;
@@ -132,19 +137,30 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
         if (cursor!.phase === 'copying') {
           for (;;) {
             if (processed >= Math.max(1, maxFiles) || Date.now() >= deadline) { await yieldBatch(); return; }
-            const page = await store.listDocs<Media>(paths.media(orgId, site.id), { startAfterId: cursor!.media, limit: Math.max(1, Math.min(100, maxFiles - processed)) });
+            const page = await store.listDocs<MigratingMedia>(paths.media(orgId, site.id), { startAfterId: cursor!.media, limit: Math.max(1, Math.min(100, maxFiles - processed)) });
             if (!page.length) break;
             for (let offset = 0; offset < page.length; offset += 4) {
               if (Date.now() >= deadline) { await yieldBatch(); return; }
               await checkpoint(cursor!);
               const group = page.slice(offset, offset + 4);
-              const results = await Promise.allSettled(group.map(originalMedia => mediaTransfers.run(destination.account_id, transferReservation, async () => {
+              const results = await Promise.allSettled(group.map(originalMedia => { const transfer = async () => {
                 let media = originalMedia;
                 const recordPath = transferPath(paths.site(orgId, site.id), `storage:${destination.account_id}:${destination.bucket}:${media.id}`);
                 await store.createDocIfMissing(recordPath, { state: 'queued', attempts: 0, lease_until: 0 });
                 const record = await store.getDoc<{ attempts: number }>(recordPath);
                 await store.updateDoc(recordPath, { state: 'running', attempts: (record?.attempts ?? 0) + 1, lease_until: Date.now() + 120_000 });
                 try {
+              if (media.import_pending && media.source_url) {
+                const importLease = await store.getDoc<{ lease_until: number }>(transferPath(paths.site(orgId, site.id), media.source_url));
+                if ((importLease?.lease_until ?? 0) > Date.now()) { pending++; return media; }
+                const { WPMediaTransfer } = await import('../wp/media');
+                await new WPMediaTransfer(orgId, site.id, store).ensureUrl(media.source_url, media.alt_text);
+                media = (await store.getDoc<MigratingMedia>(`${paths.media(orgId, site.id)}/${media.id}`))!;
+                if (media.storage?.state === 'ready') {
+                  await store.updateDoc(`${paths.media(orgId, site.id)}/${media.id}`, { import_pending: false, import_error: null });
+                  media.import_pending = false;
+                }
+              }
               if (media.storage?.provider !== 'organization_r2' && media.r2_key) {
                 if (media.storage?.state === 'uploading') pending++;
                 else {
@@ -152,17 +168,17 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
                   const source = sourceLocation.provider === 'legacy_r2' ? new S3Client({ region: 'auto', endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`, forcePathStyle: true,
                     credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID!, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY! } }) : await storageClient(orgId, sourceLocation);
                   try {
-                    const original = await source.send(new GetObjectCommand({ Bucket: sourceLocation.bucket, Key: sourceLocation.key }), { abortSignal: AbortSignal.timeout(20_000) });
-                    if (!original.Body || !original.ContentLength || original.ContentLength > 25 * 1024 * 1024) throw new MediaIntegrityError('Invalid original size');
-                    const bytes = await original.Body.transformToByteArray(); const digest = hash(bytes);
-                    if (bytes.length !== original.ContentLength || bytes.length > 25 * 1024 * 1024) throw new MediaIntegrityError('Original size changed during migration');
-                    if (media.sha256 && digest !== media.sha256) throw new MediaIntegrityError('Original changed during migration');
                     const prefix = await siteMediaPrefix(orgId, site.id);
+                    const temporaryKey = `transfer-staging/${prefix}/${randomUUID()}`;
+                    const sourceUrl = await getSignedUrl(source, new GetObjectCommand({ Bucket: sourceLocation.bucket, Key: sourceLocation.key }), { expiresIn: 600 });
+                    const receipt = await copyWithTransferService({ orgId, sourceUrl, client: target, bucket: destination.bucket, key: temporaryKey,
+                      contentType: media.mime_type ?? 'image/jpeg', expectedSha256: media.sha256, expectedSize: media.size_bytes });
+                    const digest = receipt.sha256;
                     const key = `private/${prefix}/originals/${digest}/${media.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-                    await target.send(new PutObjectCommand({ Bucket: destination.bucket, Key: key, Body: bytes, ContentType: media.mime_type,
-                      CacheControl: 'private, no-store', Metadata: { sha256: digest } }), { abortSignal: AbortSignal.timeout(20_000) });
-                    const verified = await target.send(new GetObjectCommand({ Bucket: destination.bucket, Key: key }), { abortSignal: AbortSignal.timeout(20_000) });
-                    if (!verified.Body || hash(await verified.Body.transformToByteArray()) !== digest) throw new MediaIntegrityError('Migration copy failed integrity verification');
+                    // Freeze exactly the verified staging object without downloading its bytes into the portal.
+                    await target.send(new CopyObjectCommand({ Bucket: destination.bucket, Key: key, CopySource: `${destination.bucket}/${temporaryKey}`,
+                      CopySourceIfMatch: receipt.etag, ContentType: media.mime_type, CacheControl: 'private, no-store', MetadataDirective: 'REPLACE', Metadata: { sha256: digest } }), { abortSignal: AbortSignal.timeout(20_000) });
+                    await target.send(new DeleteObjectCommand({ Bucket: destination.bucket, Key: temporaryKey }), { abortSignal: AbortSignal.timeout(20_000) }).catch(() => {});
                     const cdnUrl = `${process.env.PORTAL_PUBLIC_URL?.replace(/\/$/, '')}/api/sites/${encodeURIComponent(site.id)}/media/${media.id}/content`;
                     const aliases = [...new Set([...(media.source_aliases ?? []), media.cdn_url, ...(media.variants ?? []).map(variant => variant.cdn_url)])];
                     const latestConnection = await getConnection(orgId, 'cloudflare');
@@ -171,7 +187,7 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
                       current => current.r2_key === media.r2_key && JSON.stringify(current.storage) === JSON.stringify(media.storage),
                       { storage: { ...destination, key, generation: connection.revision, state: 'ready', grant_expires_at: new Date().toISOString() }, r2_key: key,
                         migration_source: { provider: sourceLocation.provider, account_id: sourceLocation.account_id, bucket: sourceLocation.bucket, key: sourceLocation.key },
-                        cdn_url: cdnUrl, source_aliases: aliases, sha256: digest, size_bytes: bytes.length, variants: [] });
+                        cdn_url: cdnUrl, source_aliases: aliases, sha256: digest, size_bytes: receipt.size, variants: [] });
                     if (!changed) pending++;
                     media = (await store.getDoc<Media>(`${paths.media(orgId, site.id)}/${media.id}`)) ?? media;
                   } finally { source.destroy(); }
@@ -185,11 +201,11 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
                     error_code: error instanceof MediaIntegrityError ? 'integrity_verification_failed' : 'transfer_interrupted' });
                   throw error;
                 }
-              })));
+              }; return originalMedia.import_pending ? transfer() : mediaTransfers.run(destination.account_id, transferReservation, transfer); }));
               for (let index = 0; index < results.length; index++) {
                 const result = results[index];
                 if (result.status === 'rejected') { pending++; fileFailure ??= result.reason; }
-                else if (result.value.storage?.provider === 'organization_r2' && result.value.migration_source) {
+                else if (result.value.storage?.provider === 'organization_r2' && (result.value.migration_source || (result.value.source_url && result.value.import_pending === false))) {
                   copied++; copiedBytes += result.value.size_bytes ?? 0;
                 }
                 processed++;
@@ -205,7 +221,7 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
         // Aliases are durable, so a crash or concurrent edit can safely retry.
         const replacements = new Map<string, string>();
         for (const media of await store.listDocs<Media>(paths.media(orgId, site.id))) {
-          for (const alias of media.source_aliases ?? []) replacements.set(alias, media.cdn_url);
+          if (media.storage?.state === 'ready') for (const alias of media.source_aliases ?? []) replacements.set(alias, media.cdn_url);
         }
         const referencePaths = replacements.size ? (await contentDocumentPaths(orgId, site.id)).sort() : [];
         for (const referencePath of referencePaths) {
@@ -246,7 +262,7 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
   } catch (error) {
     if (error instanceof MigrationLeaseLost) return;
     const failures = (acquired.failures ?? 0) + 1;
-    const terminal = error instanceof MediaIntegrityError || error instanceof ConnectionError || failures >= 3;
+    const terminal = error instanceof MediaIntegrityError || (error instanceof ConnectionError && error.status < 500) || failures >= 3;
     await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease && current.request_id === acquired.request_id,
       { state: terminal ? 'failed' : 'queued', lease_id: null, lease_until: 0, failures,
         retry_at: terminal ? 0 : Date.now() + failures * 5_000, pending_files: pending,
@@ -257,7 +273,7 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
     // Do not let an old failure overwrite a newly requested retry.
     await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease,
       { state: 'queued', lease_id: null, lease_until: 0, retry_at: 0 });
-  }
+  } finally { clearInterval(heartbeat); }
 }
 
 /** Called only by trusted workers. Returns a delay for continued work, or null when finished. */

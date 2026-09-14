@@ -1,3 +1,4 @@
+import { transferServiceStatus } from '../../../../lib/media/transfer-service';
 import type { APIRoute } from 'astro';
 import { connectionSummary, getConnection } from '../../../../lib/publishing/connections';
 import { githubSetup, githubChoices, githubNextStep } from '../../../../lib/publishing/github-connection';
@@ -11,7 +12,7 @@ export const GET: APIRoute = async (context) => {
   if (!guard.ok) return guard.response;
   try {
     const orgId = guard.value.orgId;
-    return privateJson({ media_migration: await mediaMigrationStatus(orgId), github: connectionSummary(await getConnection(orgId, 'github')),
+    return privateJson({ media_transfer: await transferServiceStatus(orgId), media_migration: await mediaMigrationStatus(orgId), github: connectionSummary(await getConnection(orgId, 'github')),
       cloudflare: connectionSummary(await getConnection(orgId, 'cloudflare')),
       cloudflare_choices: await cloudflareChoices(guard.value), cloudflare_setup: cloudflareSetup(),
       github_next_step: await githubNextStep(guard.value), github_choices: await githubChoices(guard.value), github_setup: githubSetup(), encryption_available: isSecretCryptoConfigured() });

@@ -1,3 +1,5 @@
+import { requireImportStorage } from '../../../../../../lib/media/import-policy';
+import { connectionFailure } from '../../../../../../lib/publishing/http';
 // POST /api/v1/sites/{siteId}/migration-urls/import-gsc
 // Import page metrics directly from Search Console or from its CSV export.
 
@@ -11,6 +13,9 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  if (ctx.permission === 'read') return apiError('Importing requires write permission.', 403);
+  try { await requireImportStorage(ctx.orgId); }
+  catch (error) { return connectionFailure(error); }
   const body = (await request.json().catch(() => null)) as {
     property?: string;
     months?: number;

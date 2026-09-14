@@ -1,3 +1,4 @@
+vi.mock('../../lib/media/remote-transfer', () => ({ remoteTransfersEnabled: vi.fn(async () => false) }));
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { S3Client, GetObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { paths, type Media } from '@typeroll/shared';

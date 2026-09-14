@@ -1,7 +1,6 @@
 // Media tools (list + signed upload URL + metadata patch).
 
 import { z } from 'zod';
-import { fetchPublicSource } from '../public-http.js';
 import { ok, withErrorBoundary, type ToolDef, type ToolDeps } from './helpers.js';
 
 interface UploadUrlResponse {
@@ -12,34 +11,6 @@ interface UploadUrlResponse {
   expires_in: number;
 }
 
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-
-// Best-effort content-type inference from the URL extension. The server's
-// upload-URL endpoint requires content_type, so we have to pick *something*
-// before the actual fetch — and a bad guess gets corrected by the HEAD
-// response if the agent supplies an override.
-function inferContentType(urlOrFilename: string): string {
-  const lower = urlOrFilename.toLowerCase().split('?')[0]!;
-  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  if (lower.endsWith('.gif')) return 'image/gif';
-  if (lower.endsWith('.avif')) return 'image/avif';
-  if (lower.endsWith('.svg')) return 'image/svg+xml';
-  if (lower.endsWith('.pdf')) return 'application/pdf';
-  return 'application/octet-stream';
-}
-
-function filenameFromUrl(url: string, fallback?: string): string {
-  if (fallback) return fallback;
-  try {
-    const u = new URL(url);
-    const last = u.pathname.split('/').filter(Boolean).pop();
-    if (last) return decodeURIComponent(last);
-  } catch { /* fall through */ }
-  return `import-${Date.now()}`;
-}
-
 interface UrlUploadInput {
   source_url: string;
   filename?: string;
@@ -47,68 +18,24 @@ interface UrlUploadInput {
   alt_text?: string;
 }
 
-async function readSourceBytes(response: Response): Promise<Uint8Array> {
-  const declared = Number(response.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES) {
-    await response.body?.cancel();
-    throw new Error(`Source file too large (max ${MAX_UPLOAD_BYTES} bytes)`);
-  }
-  if (!response.body) return new Uint8Array();
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > MAX_UPLOAD_BYTES) {
-      await reader.cancel();
-      throw new Error(`Source file too large (max ${MAX_UPLOAD_BYTES} bytes)`);
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
-}
-
 async function uploadFromUrl(args: UrlUploadInput, deps: ToolDeps): Promise<Record<string, unknown>> {
-  const filename = filenameFromUrl(args.source_url, args.filename);
-  const sourceRes = await fetchPublicSource(args.source_url);
-  if (!sourceRes.ok) {
-    await sourceRes.body?.cancel();
-    throw new Error(`Failed to fetch source URL: ${sourceRes.status} ${sourceRes.statusText}`);
+  // The API checks organization storage before fetching or creating anything.
+  // File bytes go from the source to the customer's transfer Worker and R2.
+  const source = new URL(args.source_url);
+  if (!['https:', 'http:'].includes(source.protocol) || source.username || source.password || source.port ||
+      !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(source.hostname) || /(?:^|\.)(?:localhost|local|internal|test|invalid)$/i.test(source.hostname)) {
+    throw new Error('Source URL must use a public HTTP(S) hostname without credentials.');
   }
-  const buf = await readSourceBytes(sourceRes);
-  const sourceCt = sourceRes.headers.get('content-type')?.split(';')[0]?.trim();
-  const contentType = args.content_type ?? sourceCt ?? inferContentType(filename);
-  const mint = await deps.client.post<UploadUrlResponse>(deps.siteId, 'media/upload-url', {
-    filename, content_type: contentType, size: buf.byteLength, alt_text: args.alt_text,
-  });
-  const putRes = await fetch(mint.upload_url, {
-    method: 'PUT', headers: { 'Content-Type': contentType }, body: buf,
-  });
-  if (!putRes.ok) throw new Error(`R2 upload failed: ${putRes.status} ${putRes.statusText}`);
-  let finalizeResult: unknown = null;
-  let finalizeError: string | null = null;
-  try {
-    finalizeResult = await deps.client.post(deps.siteId, `media/${encodeURIComponent(mint.media_id)}/finalize`);
-  } catch (error) {
-    finalizeError = error instanceof Error ? error.message : String(error);
-  }
-  return {
-    media_id: mint.media_id, cdn_url: mint.cdn_url, filename,
-    content_type: contentType, size_bytes: buf.byteLength,
-    finalize: finalizeResult, finalize_error: finalizeError,
-  };
+  return deps.client.post(deps.siteId, 'media/import', args);
 }
 
 export const mediaTools: ToolDef[] = [
+  {
+    name: 'get_import_readiness',
+    description: 'Check whether the organization’s own storage is connected and verified before importing content or media. Returns a Publishing settings link when setup is required.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'media/import'))),
+  },
   {
     name: 'read_private_media_url',
     description: 'Get a 60-second read URL for a private media original. Use it for authorized image inspection; never store it in page content or generated source. Use the stable media URL or ID in content.',

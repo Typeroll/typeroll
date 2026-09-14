@@ -129,9 +129,9 @@ export const domainTools: ToolDef[] = [
   {
     name: 'retry_organization_media_migration',
     noSite: true,
-    description: 'Resume verified media migration after fixing account, R2 or domain setup. Source files remain readable; pointer changes require matching hashes. Requires an organization API key.',
-    inputSchema: {},
-    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootPost('publishing/media-migration', {}))),
+    description: 'Resume verified media migration after fixing account or R2 setup. Source files remain readable; pointer changes require matching hashes. Set prepare_transfer to set up or recheck the transfer worker in the organization Cloudflare account. Requires an organization API key.',
+    inputSchema: { prepare_transfer: z.boolean().optional() },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/media-migration', args.prepare_transfer ? { action: 'prepare_transfer', recheck: true } : {}))),
   },
   {
     name: 'read_publishing_readiness',

@@ -257,3 +257,14 @@ get_deploy_status job_id=<id>    # poll
 The same shape applies for any source — Squarespace export, custom
 CMS, scraped HTML, CSV. Replace step 1's "WP REST" probe with whatever
 discovery the source supports, and the rest of the recipe is unchanged.
+
+## Storage prerequisite
+
+Before reading or importing source content, call `get_import_readiness` (Core
+0.1.95 / MCP 0.44.68 or later). If `ready` is false, stop the import and show the
+returned message and Publishing settings link. The organization must connect
+and verify its own storage first. Do not fall back to draft storage, hotlink
+source images, or use ordinary page-write tools to bypass the import gate.
+Use `upload_media_from_url` for referenced source images; the customer’s
+Cloudflare transfer Worker copies and verifies them directly in R2, independently
+of the GitHub/Cloudflare build-provider choice.

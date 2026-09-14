@@ -11,7 +11,7 @@ supported service.
 
 ## Overview
 
-The migration workflow imports accessible WordPress content (pages, posts and supported custom post types) into a new Typeroll site, transfers your media through Typeroll’s media storage, and generates redirects from old URLs to new slugs.
+The migration workflow imports accessible WordPress content (pages, posts and supported custom post types) into a new Typeroll site, transfers your media directly to your organization’s Cloudflare R2 storage, and generates redirects from old URLs to new slugs.
 
 **What it does:**
 
@@ -28,6 +28,14 @@ The migration workflow imports accessible WordPress content (pages, posts and su
 - Touch the source WordPress site in any way
 
 ## Before you start
+
+<Aside type="note" title="Own storage is required before importing">
+  Starting with Core 0.1.95, imports are locked until your organization’s own R2
+  storage is connected and verified. Open the sidebar → **Publishing** → **Media
+  storage**. An organization owner or admin completes the setup there. A GitHub
+  connection, website domain and build provider are not required to import.
+  Ordinary editing and expiring previews remain available before setup.
+</Aside>
 
 <Steps>
 
@@ -68,7 +76,7 @@ and configured its API key securely in the agent environment.
 
 The AI agent will:
 
-1. Verify the WP REST API connection
+1. Call `get_import_readiness` and resolve any storage requirements, then verify the WP REST API connection
 2. Build an inventory of all URLs on the site
 3. Import pages and posts, transferring images along the way
 4. Map any custom post types to collections
@@ -147,3 +155,27 @@ private background image preparation. **Media** shows progress. The Organization
 selected build provider performs encoding; the CMS does not publish draft images.
 See [large libraries and first publication](../customer-publishing/#large-libraries-and-first-publication)
 for setup, limits and recovery.
+
+## Direct transfers and recovery
+
+With Core 0.1.95, Typeroll sets up a small transfer Worker in your organization’s
+connected Cloudflare account. It downloads originals from WordPress directly
+into your private R2 bucket and verifies the copied bytes before Typeroll updates
+references. File bodies do not pass through the Typeroll Cloud portal or the MCP
+server. This is independent of whether GitHub or Cloudflare builds your site.
+
+The **Media storage** card shows transfer setup status. If an existing Cloudflare
+connection needs an additional permission, select **Allow media transfers in
+Cloudflare**, approve, and return. Your R2 keys remain in place. Advanced token
+connections need **Workers Scripts: Edit** as well as the documented R2 access.
+
+Progress is saved per source file. Interrupted copies retain their media identity
+and can be retried from Publishing without duplicating completed imports. Typeroll
+preserves source URLs until verified copies are ready. Keep the source site
+available until the import and reference checks finish. Originals can be up to
+25 MB each; responsive variants are prepared separately by the selected build
+provider.
+
+The same storage prerequisite applies to self-hosted installations using these
+import tools. Configuring the operator’s draft bucket does not satisfy it:
+connect the organization’s own storage in Publishing.

@@ -5,6 +5,8 @@
 // workflows (migration), the response comes back as soon as the first
 // review gate is hit or the workflow finishes.
 
+import { requireImportStorage } from '../../../../../lib/media/import-policy';
+import { connectionFailure } from '../../../../../lib/publishing/http';
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, json, requirePermission } from '../../../../../lib/access';
 import { WorkflowEngine } from '../../../../../lib/workflows/engine';
@@ -31,6 +33,8 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
     return json({ error: e instanceof Error ? e.message : 'Unknown workflow' }, 400);
   }
 
+  try { if (def.type === 'migration') await requireImportStorage(owner_org_id); }
+  catch (error) { return connectionFailure(error); }
   const engine = new WorkflowEngine();
   const workflowId = await engine.create({
     orgId: owner_org_id,

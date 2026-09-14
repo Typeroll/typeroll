@@ -93,3 +93,11 @@ You can add redirects directly from the Migration tab for any unhandled URL.
 ## Media
 
 Images are transferred just-in-time during content extraction. Only images that are actually referenced on imported pages move through Typeroll’s media storage — unused images from the WordPress media library are not transferred.
+
+## Storage prerequisite
+
+With Core 0.1.95 and MCP 0.44.68, the agent first calls `get_import_readiness`.
+If storage is not ready, it stops and directs an organization owner or admin to
+**Publishing → Media storage**. No content or media is imported into draft
+storage as a fallback. Referenced images are copied and verified directly in the
+organization’s Cloudflare account.

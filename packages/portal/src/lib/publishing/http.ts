@@ -28,7 +28,7 @@ export function privateJson(data: unknown, status = 200): Response {
 
 export function connectionFailure(error: unknown): Response {
   if (error instanceof R2VerificationError) return privateJson({ error: error.message, code: error.code, details: error.diagnostic }, error.status);
-  if (error instanceof ConnectionError) return privateJson({ error: error.message, ...(error.code ? { code: error.code } : {}) }, error.status);
+  if (error instanceof ConnectionError) return privateJson({ error: error.message, ...(error.code ? { code: error.code } : {}), ...(error.code === 'import_storage_required' ? { settings_url: '/app/settings/publishing#media-title' } : {}) }, error.status);
   if (error instanceof ProviderError) {
     if (error.codes.includes(10042)) return privateJson({ code: 'r2_activation_required', error: 'R2 is not activated in the connected Cloudflare account. Open Storage & databases → R2 object storage → Overview in Cloudflare and complete the R2 subscription checkout, including billing details if requested. Then return to Typeroll and select I’ve activated R2 — check again. Connecting Cloudflare to Typeroll does not activate R2.' }, 409);
     return privateJson({ error: error.message }, 502);

@@ -179,3 +179,14 @@ get_deploy_status job_id=<id>
   copy it into pages. Set it via `update_site_settings scripts_head="..."`.
 - **Videos.** YouTube/Vimeo embeds are fine (`<iframe>` is allowed).
   Hosted MP4s need re-uploading if the source URL won't persist.
+
+## Storage prerequisite
+
+Before reading or importing source content, call `get_import_readiness` (Core
+0.1.95 / MCP 0.44.68 or later). If `ready` is false, stop the import and show the
+returned message and Publishing settings link. The organization must connect
+and verify its own storage first. Do not fall back to draft storage, hotlink
+source images, or use ordinary page-write tools to bypass the import gate.
+Use `upload_media_from_url` for referenced source images; the customer’s
+Cloudflare transfer Worker copies and verifies them directly in R2, independently
+of the GitHub/Cloudflare build-provider choice.

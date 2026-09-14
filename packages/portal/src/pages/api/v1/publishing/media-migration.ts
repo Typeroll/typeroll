@@ -1,3 +1,4 @@
+import { customerTransferService, transferServiceStatus } from '../../../../lib/media/transfer-service';
 import type { APIRoute } from 'astro';
 import { requireAnyApiKey, apiResponse, apiError } from '../../../../lib/api-auth';
 import { publishingJsonBody, connectionFailure } from '../../../../lib/publishing/http';
@@ -9,8 +10,8 @@ async function handle(request: Request, retry: boolean) {
   const ctx = guard.value;
   if (ctx.tokenSiteId !== null) return apiError('An organization API key is required to manage media migration.', 403);
   try {
-    if (retry) { await publishingJsonBody(request); await requestMediaMigration(ctx.tokenOrgId); }
-    return apiResponse(ctx, { migration: await mediaMigrationStatus(ctx.tokenOrgId) });
+    if (retry) { const body = await publishingJsonBody(request); if (body.action === 'prepare_transfer') await customerTransferService(ctx.tokenOrgId, body.recheck === true); else await requestMediaMigration(ctx.tokenOrgId); }
+    return apiResponse(ctx, { migration: await mediaMigrationStatus(ctx.tokenOrgId), transfer: await transferServiceStatus(ctx.tokenOrgId) });
   } catch (error) { return connectionFailure(error); }
 }
 export const GET: APIRoute = ({ request }) => handle(request, false);
