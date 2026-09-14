@@ -60,8 +60,8 @@ it('verifies source and every output file, and rejects foreign identity, tamperi
   const artifact = encodeArtifact(identity(), files);
   expect(decodeArtifact(artifact, identity(), sha256(artifact))['index.html'].toString()).toBe('<h1>Static</h1>');
   expect(() => decodeArtifact(artifact, identity('site-b'), sha256(artifact))).toThrow('identity');
-  const corrupted = JSON.parse(artifact.toString()); corrupted.files.find((x: any) => x.name === 'index.html').data = Buffer.from('stale').toString('base64');
-  const bytes = Buffer.from(JSON.stringify(corrupted)); expect(() => decodeArtifact(bytes, identity(), sha256(bytes))).toThrow('integrity');
+  const bytes = Buffer.from(artifact); bytes[bytes.length - 1] ^= 1;
+  expect(() => decodeArtifact(bytes, identity(), sha256(bytes))).toThrow('integrity');
   expect(() => encodeArtifact(identity(), { ...files, '_worker.js': Buffer.from('dynamic') })).toThrow('Dynamic');
 });
 it('reports both denied provider resources without returning token metadata', async () => {

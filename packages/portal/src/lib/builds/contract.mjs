@@ -7,6 +7,7 @@ export const MAX_ARTIFACT_BYTES = 128 * 1024 * 1024;
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const identity = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value);
+const ARTIFACT_MAGIC = Buffer.from('TYPEROLL-ARTIFACT-2\n');
 
 export function assertFilePath(name, { artifact = false } = {}) {
   if (typeof name !== 'string' || name.length > 1024 || /[\\\x00-\x1f\x7f?#%:]/.test(name) ||
@@ -47,28 +48,51 @@ export function encodeArtifact(identity, files) {
     if (!(bytes instanceof Uint8Array) || bytes.length > 25 * 1024 * 1024) throw Error('Invalid static output file');
     total += bytes.length;
     if (total > MAX_ARTIFACT_BYTES) throw Error('Static output exceeds the size limit');
-    return { name, sha256: sha256(bytes), data: Buffer.from(bytes).toString('base64') };
+    return { name, sha256: sha256(bytes), size_bytes: bytes.length };
   });
-  const bytes = Buffer.from(JSON.stringify({ protocol: BUILD_PROTOCOL, identity, files: output }));
-  if (bytes.length > MAX_ARTIFACT_BYTES) throw Error('Static artifact exceeds the size limit');
-  return bytes;
+  // Binary framing avoids base64 expanding a valid static site beyond its budget.
+  // Both transport size and decoded file bytes retain the existing 128 MiB cap.
+  const manifest = Buffer.from(JSON.stringify({ protocol: 2, identity, files: output }));
+  const size = ARTIFACT_MAGIC.length + 4 + manifest.length + total;
+  if (size > MAX_ARTIFACT_BYTES) throw Error('Static artifact exceeds the size limit');
+  const length = Buffer.alloc(4); length.writeUInt32BE(manifest.length);
+  return Buffer.concat([ARTIFACT_MAGIC, length, manifest, ...entries.map(([, bytes]) => bytes)], size);
 }
 
 /** Validate bytes independently before deployment; a matching marker alone is insufficient. */
 export function decodeArtifact(bytes, expectedIdentity, expectedHash) {
   assertBuildIdentity(expectedIdentity);
   if (bytes.length > MAX_ARTIFACT_BYTES || !hash(expectedHash) || sha256(bytes) !== expectedHash) throw Error('Static artifact integrity mismatch');
-  const value = JSON.parse(bytes.toString('utf8'));
-  if (value.protocol !== BUILD_PROTOCOL || Object.keys(expectedIdentity).some(key => value.identity?.[key] !== expectedIdentity[key]) ||
+  const binary = bytes.subarray(0, ARTIFACT_MAGIC.length).equals(ARTIFACT_MAGIC);
+  let offset = 0, value;
+  if (binary) {
+    if (bytes.length < ARTIFACT_MAGIC.length + 4) throw Error('Static artifact integrity mismatch');
+    const length = bytes.readUInt32BE(ARTIFACT_MAGIC.length);
+    offset = ARTIFACT_MAGIC.length + 4 + length;
+    if (!length || offset > bytes.length) throw Error('Static artifact integrity mismatch');
+    value = JSON.parse(bytes.subarray(ARTIFACT_MAGIC.length + 4, offset).toString('utf8'));
+  } else value = JSON.parse(bytes.toString('utf8')); // Previously issued JSON artifacts remain readable.
+  if (value.protocol !== (binary ? 2 : BUILD_PROTOCOL) || Object.keys(expectedIdentity).some(key => value.identity?.[key] !== expectedIdentity[key]) ||
       !Array.isArray(value.files) || !value.files.length || value.files.length > 20000) throw Error('Static artifact identity mismatch');
   const files = Object.create(null);
+  let total = 0;
   for (const entry of value.files) {
     assertFilePath(entry.name, { artifact: true });
-    if (Object.hasOwn(files, entry.name) || typeof entry.data !== 'string') throw Error('Duplicate or invalid static output');
-    const data = Buffer.from(entry.data, 'base64');
-    if (data.toString('base64') !== entry.data || data.length > 25 * 1024 * 1024 || sha256(data) !== entry.sha256) throw Error('Static output integrity mismatch');
+    if (Object.hasOwn(files, entry.name)) throw Error('Duplicate or invalid static output');
+    let data;
+    if (binary) {
+      if (!Number.isSafeInteger(entry.size_bytes) || entry.size_bytes < 0 || entry.size_bytes > 25 * 1024 * 1024 || offset + entry.size_bytes > bytes.length) throw Error('Static output integrity mismatch');
+      data = bytes.subarray(offset, offset + entry.size_bytes); offset += entry.size_bytes;
+    } else {
+      if (typeof entry.data !== 'string') throw Error('Duplicate or invalid static output');
+      data = Buffer.from(entry.data, 'base64');
+      if (data.toString('base64') !== entry.data) throw Error('Static output integrity mismatch');
+    }
+    total += data.length;
+    if (total > MAX_ARTIFACT_BYTES || data.length > 25 * 1024 * 1024 || sha256(data) !== entry.sha256) throw Error('Static output integrity mismatch');
     files[entry.name] = data;
   }
+  if (binary && offset !== bytes.length) throw Error('Static artifact integrity mismatch');
   const marker = JSON.parse(files['.well-known/typeroll/publication.json']?.toString('utf8') ?? 'null');
   if (marker?.id !== expectedIdentity.publication_id) throw Error('Static publication marker mismatch');
   return files;

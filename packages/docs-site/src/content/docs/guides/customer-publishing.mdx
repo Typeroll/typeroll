@@ -322,6 +322,15 @@ Preparation has a six-hour overall limit, and public verification has its own
 limits still apply: a large media library does not mean every original can be
 included in one deployment. Images and generated variants remain outside Git.
 
+Core 0.1.84 and its updated shared build engine transfer finished sites as binary
+files instead of expanding every file into base64 text. The publication package
+is still limited to 128 MiB, including its manifest, with at most 20,000 files and
+25 MiB per file. A site that fits these limits no longer fails just because of
+base64 overhead. Build failures also keep their actual cause after a long image
+preparation; they are not replaced by a public-verification timeout message.
+Update Core before updating the shared engine. Existing older runners and their
+already-issued JSON artifacts remain supported by the new Core version.
+
 For an existing organization, after upgrading Core, go to **Publishing → Builds**
 and select **Update build engine** when no build is running. Wait for verification
 before publishing again. Updating the engine does not require reconnecting GitHub

@@ -1,6 +1,6 @@
 {
   "name": "@typeroll/mcp-server",
-  "version": "0.44.56",
+  "version": "0.44.57",
   "description": "Typeroll CMS MCP server – connect AI agents to the REST API to manage content and publish static websites.",
   "license": "MIT",
   "repository": {

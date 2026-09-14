@@ -61,10 +61,12 @@ export async function runnerRequest(request: Request, org: string, action: strin
       await queue.checkpointMedia(org, key, lease, token, Number(input.cursor), input.continue_build === true);
       return privateJson({ ok: true });
     }
-    if (action === 'upload') return buildStorage(org, async storage => {
+    if (action === 'upload') return await buildStorage(org, async storage => {
+      if (input.artifact_format !== undefined && input.artifact_format !== 2) throw new ConnectionError('Unsupported artifact format.', 400);
       if (storage.account !== metadata.storage_account_id) throw new ConnectionError('Build storage changed.', 409);
       await queue.heartbeat(org, key, lease, token);
-      return privateJson({ artifact_url: await storage.grant(`builds/${org}/tasks/${key}/${lease}/artifact.json`, true) });
+      const contentType = input.artifact_format === 2 ? 'application/octet-stream' : 'application/json';
+      return privateJson({ artifact_url: await storage.grant(`builds/${org}/tasks/${key}/${lease}/artifact.json`, true, contentType), content_type: contentType });
     });
     if (action === 'fail') {
       const code = typeof input.code === 'string' && /^[a-z0-9_]{1,80}$/.test(input.code) ? input.code : 'shared_build_failed';

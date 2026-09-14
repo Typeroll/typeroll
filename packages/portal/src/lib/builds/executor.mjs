@@ -158,17 +158,26 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     }
     stage = 'artifact';
     const artifact = encodeArtifact(job.identity, await outputFiles(path.join(work, 'dist')));
-    const upload = await request('upload', job.token, attempt);
+    const upload = await request('upload', job.token, { ...attempt, artifact_format: 2 });
+    if (upload.content_type !== 'application/octet-stream') throw Error('artifact_format_unsupported');
     const uploaded = await fetchImpl(storageUrl(upload.artifact_url), { method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(120000),
-      headers: { 'Content-Type': 'application/json' }, body: artifact });
+      headers: { 'Content-Type': upload.content_type }, body: artifact });
     if (!uploaded.ok) throw Error('artifact_upload_failed');
     await request('complete', job.token, { ...attempt, sha256: sha256(artifact) });
     console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'completed', job: job.identity.job_id, branch: job.identity.branch }));
   } catch (error) {
-    const code = /^[a-z0-9_]{1,80}$/.test(error.message) ? error.message : 'build_failed';
+    const code = artifactFailureCode(error.message);
     try { await request('fail', job.token, { ...attempt, code, stage }); } catch { /* A cancelled or superseded attempt cannot change publication state. */ }
     throw Error(`${stage}_${code}`);
   } finally { clearInterval(heartbeat); abort.abort(); await fs.rm(temp, { recursive: true, force: true }); }
+}
+
+/** Return only fixed diagnostics or existing safe codes, never file paths or credentials. */
+export function artifactFailureCode(message) {
+  if (['Static output exceeds the size limit', 'Static artifact exceeds the size limit', 'build_output_limit'].includes(message)) return 'static_output_size_limit';
+  if (message === 'Invalid build file path') return 'invalid_static_path';
+  if (message === 'Invalid static output file') return 'invalid_static_file';
+  return /^[a-z0-9_]{1,80}$/.test(message) ? message : 'build_failed';
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

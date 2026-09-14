@@ -9,7 +9,7 @@ import { MAX_ARTIFACT_BYTES, sha256 } from './contract.mjs';
 /** Private organization storage. Only exact object grants leave the coordinator. */
 export async function buildStorage<T>(org: string, work: (storage: {
   account: string; put: (key: string, bytes: Buffer) => Promise<void>;
-  read: (key: string, limit?: number) => Promise<Buffer>; grant: (key: string, write?: boolean) => Promise<string>;
+  read: (key: string, limit?: number) => Promise<Buffer>; grant: (key: string, write?: boolean, contentType?: 'application/json' | 'application/octet-stream') => Promise<string>;
 }) => Promise<T>): Promise<T> {
   const connection = await getConnection(org, 'cloudflare');
   if (connection.status !== 'connected' || !connection.media_ready || !connection.cloudflare?.bucket || !connection.encrypted_credentials)
@@ -44,8 +44,8 @@ export async function buildStorage<T>(org: string, work: (storage: {
       catch (error) { if ((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode !== 412) throw error;
         if (sha256(await read(key)) !== sha256(bytes)) throw new ConnectionError('Frozen build object changed.', 409); }
     },
-    grant: (key, write = false) => getSignedUrl(client, write
-      ? new PutObjectCommand({ Bucket: bucket, Key: keyFor(key), ContentType: 'application/json' })
+    grant: (key, write = false, contentType = 'application/json') => getSignedUrl(client, write
+      ? new PutObjectCommand({ Bucket: bucket, Key: keyFor(key), ContentType: contentType })
       : new GetObjectCommand({ Bucket: bucket, Key: keyFor(key) }), { expiresIn: 900 }),
   }); } finally { client.destroy(); }
 }

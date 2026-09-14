@@ -42,7 +42,11 @@ it('issues upload access only to an active attempt on demand', async () => {
   const attempt = { key, lease_id: claim.lease_id };
   expect((await request('upload', runnerToken, attempt)).status).toBe(409);
   expect((await request('upload', claim.token, attempt)).status).toBe(200);
-  expect(storage.grants).toHaveBeenLastCalledWith(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, true);
+  expect(storage.grants).toHaveBeenLastCalledWith(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, true, 'application/json');
+  const binary = await request('upload', claim.token, { ...attempt, artifact_format: 2 });
+  expect(binary.status).toBe(200); expect((await binary.json()).content_type).toBe('application/octet-stream');
+  expect(storage.grants).toHaveBeenLastCalledWith(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, true, 'application/octet-stream');
+  expect((await request('upload', claim.token, { ...attempt, artifact_format: 3 })).status).toBe(400);
   await new OrganizationBuildQueue().cancel(org, key);
   expect((await request('upload', claim.token, attempt)).status).toBe(409);
 });

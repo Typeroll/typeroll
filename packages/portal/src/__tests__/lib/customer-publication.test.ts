@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { paths } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
-import { connectionPath } from '../../lib/publishing/connections';
+import { connectionPath, ConnectionError } from '../../lib/publishing/connections';
 import { getSiteDomains, saveSiteDomains, siteDomainConfigPath } from '../../lib/publishing/domain-config';
 import { executeCustomerPublication } from '../../lib/publishing/customer-runner';
 import { captureImpact } from '../../lib/publishing/impact';
@@ -218,6 +218,17 @@ it('terminates expired provider observation instead of leaving a job running aft
   expect(await executeCustomerPublication(args)).toBe('ran');
   expect(mocks.push).not.toHaveBeenCalled();
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'publication_observation_timeout' } });
+});
+
+it('preserves the build failure after long media preparation instead of reporting a verification timeout', async () => {
+  const key = 'd'.repeat(64);
+  await getStore().updateDoc(jobPath, { started_at: new Date(Date.now() - 70 * 60_000).toISOString(), git_publication: { build_task_key: key } });
+  await getStore().setDoc(`organizations/org/build_tasks/${key}`, { status: 'failed', error_code: 'artifact_static_output_size_limit', deadline: Date.now() + 3600000 });
+  mocks.built.mockRejectedValueOnce(new ConnectionError('The finished site exceeds the publication limit.', 413, 'artifact_static_output_size_limit'));
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(mocks.built).toHaveBeenCalledWith('org', key);
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'artifact_static_output_size_limit' } });
 });
 
 it('publishes ordinary edits to main when datastore map ordering changes but hosts do not', async () => {
