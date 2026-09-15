@@ -53,7 +53,7 @@ describe('getPageTemplateStarter', () => {
     });
     expect(blocks[3].slots?.[1]?.[0]).toMatchObject({
       type: 'core/table_of_contents',
-      data: { source_field: 'body' },
+      data: { levels: 'h2-h3' },
     });
   });
 

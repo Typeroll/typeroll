@@ -68,3 +68,28 @@ describe('reference-backed repeaters', () => {
     expect(html).not.toContain('Beta');
   });
 });
+
+it('offers native ordered Page selection across types and excludes the current Page before limiting', async () => {
+  const { createPageSource } = await import('../page-source.js');
+  const pages = [item('current', { content_type: 'page' }), item('article', { content_type: 'page' }),
+    item('checklist', { content_type: 'checklists' }), item('draft', { content_type: 'page', status: 'draft' })];
+  const pageSource = createPageSource([{ id: 'checklists', name: 'checklists', label_singular: 'Checklist', label_plural: 'Checklists', route_template: '/checklists/{slug}', fields: [], created_at: '2026-09-15T00:00:00Z' }], pages);
+  const html = renderBlocks([repeater({ source_type: 'pages', page_ids: ['current', 'missing', 'draft', 'checklist', 'article'], exclude_current: true, limit: 2 })], {
+    registry, pageSource, context: { page: { id: 'current' } },
+  });
+  expect(html).toContain('checklist'); expect(html).toContain('article');
+  expect(html.indexOf('>checklist<')).toBeLessThan(html.indexOf('>article<'));
+  expect(html).not.toContain('>current<'); expect(html).not.toContain('>draft<');
+  const schema = registry.get('core/repeater')!.schema;
+  expect(schema.find(field => field.name === 'source_type')?.options).toContain('related');
+  expect(schema.find(field => field.name === 'page_ids')?.type).toBe('page_ref_list');
+});
+
+it('resolves related Page references before capping results and keeps the current Page out', async () => {
+  const { createPageSource } = await import('../page-source.js');
+  const pageSource = createPageSource([], ['current', 'second', 'third'].map(id => item(id, { content_type: 'page' })));
+  const html = renderBlocks([repeater({ source_type: 'related', field: 'related', exclude_current: true, limit: 2 })], {
+    registry, pageSource, context: { page: { id: 'current', related: ['missing', 'current', 'second', 'second', 'third'] } },
+  });
+  expect(html).toContain('second'); expect(html).toContain('third'); expect(html).not.toContain('>current<');
+});

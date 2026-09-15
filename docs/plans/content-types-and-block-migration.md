@@ -138,3 +138,43 @@ Their screenshots were inspected; Content type forms now use stacked fields
 and mobile touch targets. Template enforcement and inherited sorting checks
 were both falsified, restored and passed. No remote publication or data
 migration was performed. The remaining cutover requirements above still apply.
+
+## Twenty-article block follow-up — 2026-09-15
+
+Scope is product support for the previously selected twenty articles. It does
+not include the remainder of the site, a site-wide content rewrite, media
+migration, DNS changes or publication.
+
+The table of contents is a dedicated `core/table_of_contents` block placed in a
+Page template, normally beside the body slot. It always derives links from the
+current Page body at selected H2–H4 levels. It has no authored contents or source
+field. Template-only headings are excluded; an empty body produces no index.
+The Article starter displays the index before the body on mobile. Appearance,
+indentation, sticky positioning and active-heading highlighting are configurable.
+
+The repeater exposes ordered Page selection across Content types, related Page
+references and exclusion of the current Page. Missing/unpublished references do
+not consume the visible item limit. Import preserves image click targets
+separately from credit links, removes duplicate lazy-image fallbacks and restores
+lazy video embeds as native responsive video blocks.
+
+A read-only conversion of the twenty live article bodies found no unknown block
+types or horizontal overflow at 390/1440 px after these fixes. Seven source tables
+rendered as native tables. Three HTML form exceptions remain across two articles:
+one moving-price form and two broadband-address widgets. These require their
+business integration rather than a new general content block; submission behavior
+was not tested. The body conversion check blocked remote image/script requests
+and therefore does not establish media availability or full visual parity.
+
+The actual static-layout block initializer was exercised in Chromium for the
+Article starter at both widths, checking links, active headings and mobile order.
+This candidate updates shared docs, the MCP recipe and native starter fixtures.
+No hosted site content or production environment has been changed by this follow-up.
+
+Verification: release planning, dependency audit, docs checks/formatting,
+workspace typechecks, 131 infrastructure tests, 1,995 portal tests, 489 shared
+tests, 130 MCP tests, static smoke scenarios and all workspace builds passed.
+The release gate initially found two assertions pinned to the previous version;
+after updating those expected versions, the affected tests and remaining gate
+steps passed. Controlled regressions in outline scoping, lazy-media conversion
+and ordered Page selection each made their relevant tests fail before restoration.

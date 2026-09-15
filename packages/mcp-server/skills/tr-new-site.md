@@ -58,7 +58,7 @@ Common requirements that are easy to misclassify:
 | Custom cards backed by Pages | `core/repeater` / `core/page_list` with a site-authored `item_compatible` block type as `item_block` |
 | Grouped Page listing | `core/repeater` with `group_by`; array-valued fields place an item in every matching group |
 | Breadcrumbs in a page template | `template/page_breadcrumbs`; page and item routes supply a server-rendered trail |
-| Generated heading index | `core/table_of_contents`; choose heading levels and set `source_field` for Page content |
+| Generated heading index | `core/table_of_contents`; choose heading levels; links always come from the current Page headings |
 | Previous/next Page links | `template/page_navigation`; defaults to content type sort order and can bind explicit neighbor fields |
 | Download CTA that disappears without a file | `template/show_if` around a context-bound `core/button`; a dedicated download block is only editor convenience |
 | Sticky/custom header and multi-column footer | Block-mode header/footer partials plus layout blocks, or one reusable custom block type |

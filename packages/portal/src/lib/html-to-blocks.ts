@@ -32,7 +32,7 @@ export function htmlToBlocks(html: string): ConvertResult {
   const counts = new Map<string, number>();
   const notes: string[] = [];
 
-  blocks.push(...convertNodes(unwrapTopLevel(dom), notes));
+  blocks.push(...convertNodes(normalizeLazyMedia(unwrapTopLevel(dom)), notes));
   const coalesced = coalesceProse(blocks, counts);
   const countTree = (tree: Block[]) => {
     for (const block of tree) {
@@ -48,6 +48,31 @@ export function htmlToBlocks(html: string): ConvertResult {
     summary: Array.from(counts.entries()).map(([block_type, count]) => ({ block_type, count })),
     notes,
   };
+}
+
+/** Restore lazy media and drop a fallback only when the same media is present. */
+function normalizeLazyMedia(nodes: Node[]): Node[] {
+  nodes = nodes.map(node => {
+    if (node.name === 'img' && node.attribs?.['data-lazy-type'] === 'iframe') {
+      const restored = htmlparser2.parseDocument(node.attribs['data-lazy-src'] ?? '').children as unknown as Node[];
+      if (restored.length === 1 && restored[0].name === 'iframe') return restored[0];
+    }
+    return { ...node, ...(node.children ? { children: normalizeLazyMedia(node.children) } : {}) };
+  });
+  const imageSource = (node: Node) => node.attribs?.['data-lazy-src'] || node.attribs?.['data-src'] || node.attribs?.src || '';
+  const imageSources = (node: Node): string[] => node.name === 'noscript' ? []
+    : ['img', 'iframe'].includes(node.name ?? '') ? [node.name + ':' + imageSource(node)] : (node.children ?? []).flatMap(imageSources);
+  const present = new Set(nodes.flatMap(imageSources));
+  return nodes.flatMap(node => {
+    if (node.name === 'noscript') {
+      const children = node.children ?? [];
+      const images = children.filter(child => ['img', 'iframe'].includes(child.name ?? ''));
+      const onlyImages = children.every(child => ['img', 'iframe'].includes(child.name ?? '') || (child.type === 'text' && !child.data?.trim()));
+      if (onlyImages && images.length && images.every(image => present.has(image.name + ':' + imageSource(image)))) return [];
+      if (onlyImages && images.length) return images;
+    }
+    return [node];
+  });
 }
 
 function convertNodes(nodes: Node[], notes: string[]): Block[] {
@@ -71,7 +96,7 @@ function convertNodes(nodes: Node[], notes: string[]): Block[] {
       if (name === 'div' && !heuristic) return convertNodes(node.children ?? [], notes);
     }
     // Split images/videos out of mixed paragraphs rather than burying them in prose.
-    if (name === 'p' && (findFirst(node, 'img') || findFirst(node, 'iframe'))) {
+    if (['p', 'span'].includes(name ?? '') && (findFirst(node, 'img') || findFirst(node, 'iframe'))) {
       const output: Block[] = [];
       let inline: Node[] = [];
       const flush = () => {
@@ -130,7 +155,7 @@ function nodeToBlock(node: Node, notes: string[]): Block | null {
       if (findFirst(node, 'img')) { const b = figure(node, notes)!; b.data.link = node.attribs?.href ?? ''; return b; }
       return tryButton(node, notes) ?? prose(serializeInline(node));
 
-    case 'figure':
+    case 'figure': case 'picture':
       return figure(node, notes);
 
     case 'ul': case 'ol':
@@ -144,7 +169,7 @@ function nodeToBlock(node: Node, notes: string[]): Block | null {
         return mkBlock('core/video', { video_url: src, source: src.includes('vimeo') ? 'vimeo' : 'youtube', aspect_ratio: '16:9', title: node.attribs?.title ?? 'Video' });
       return exception(node, notes);
     }
-    case 'span': case 'strong': case 'em': case 'b': case 'i': case 'small': case 'br':
+    case 'span': case 'strong': case 'em': case 'b': case 'i': case 'small': case 'br': case 'u':
     case 'p':
 
     case 'blockquote':
@@ -189,7 +214,7 @@ function heading(node: Node, level: string): Block {
 function image(node: Node): Block {
   const a = node.attribs ?? {};
   return mkBlock('core/image', {
-    src: a['data-lazy-src'] || a.src || '',
+    src: a['data-lazy-src'] || a['data-src'] || a.src || '',
     alt: a.alt ?? '',
     caption: '',
     link: '',
@@ -220,7 +245,8 @@ function figure(node: Node, notes: string[]): Block | null {
   const block = image(img);
   block.data.caption = caption ? collectText(caption) : '';
   block.data.caption_html = caption ? innerHtml(caption) : '';
-  block.data.link = findFirst(node, 'a')?.attribs?.href ?? '';
+  const imageLink = (current: Node): Node | undefined => current.name === 'a' && findFirst(current, 'img') ? current : (current.children ?? []).map(imageLink).find(Boolean);
+  block.data.link = imageLink(node)?.attribs?.href ?? '';
   const source = findFirst(node, 'source');
   if (source?.attribs?.media?.includes('max-width')) block.data.mobile_src = source.attribs.srcset?.split(/[ ,]/)[0] ?? '';
   return block;

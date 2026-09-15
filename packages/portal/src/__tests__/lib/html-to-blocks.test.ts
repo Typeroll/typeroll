@@ -161,3 +161,30 @@ it('converts WordPress table figures to editable cells and preserves their sourc
   expect(result.blocks[0]).toMatchObject({ type: 'core/table', data: { source: 'Source: <a href="/prices">Price list</a>', rows: [{ cells: [{ html: 'Price', header: true }, { html: '100', background: '#ffcc00' }] }] } });
   expect(result.notes).toEqual([]);
 });
+
+it('converts linked lazy images and captioned WordPress figures without duplicate noscript images', () => {
+  const result = htmlToBlocks('<a href="/offer"><img src="data:image/gif;base64,AA" data-lazy-src="/banner.jpg"><noscript><img src="/banner.jpg"></noscript></a><figure><img src="/photo.jpg" width="300"><noscript><img src="/photo.jpg" width="300"></noscript><figcaption>Photo: <a href="/author">Author</a></figcaption></figure>');
+  expect(result.notes).toEqual([]);
+  expect(result.blocks).toHaveLength(2);
+  expect(result.blocks[0]).toMatchObject({ type: 'core/image', data: { src: '/banner.jpg', link: '/offer' } });
+  expect(result.blocks[1]).toMatchObject({ type: 'core/image', data: { src: '/photo.jpg', link: '', caption_html: 'Photo: <a href="/author">Author</a>' } });
+});
+
+it('preserves a standalone fallback image and a distinct noscript message', () => {
+  const result = htmlToBlocks('<noscript><img src="/only.jpg"></noscript><noscript>Please enable JavaScript</noscript><u>Underlined text</u>');
+  expect(result.blocks[0]).toMatchObject({ type: 'core/image', data: { src: '/only.jpg' } });
+  expect(JSON.stringify(result.blocks)).toContain('Please enable JavaScript');
+  expect(result.blocks.at(-1)).toMatchObject({ type: 'core/prose', data: { html: '<u>Underlined text</u>' } });
+});
+
+
+it('restores a lazy video once as a responsive video block while preserving nearby prose', () => {
+  const frame = '<iframe src="https://www.youtube.com/embed/example" width="1200" height="675"></iframe>';
+  const encoded = frame.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
+  const result = htmlToBlocks('<span>Before<img data-lazy-type="iframe" data-lazy-src="' + encoded + '"><noscript>' + frame + '</noscript>After</span>');
+  expect(result.blocks.map(block => block.type)).toEqual(['core/prose', 'core/video', 'core/prose']);
+  expect(result.blocks[1].data.video_url).toBe('https://www.youtube.com/embed/example');
+  expect(result.blocks[0].data.html).toContain('Before');
+  expect(result.blocks[2].data.html).toContain('After');
+  expect(result.notes).toEqual([]);
+});

@@ -108,9 +108,10 @@ const columns: BlockType = {
       default: '1-1',
     },
     { name: 'gap', type: 'select', label: 'Gap', options: ['sm', 'md', 'lg'], default: 'md' },
+    { name: 'mobile_order', type: 'select', label: 'Mobile order', options: ['left-first', 'right-first'], default: 'left-first' },
     { name: 'align', type: 'select', label: 'Vertical alignment', options: ['start', 'center', 'end'], default: 'start' },
   ],
-  template: `<div data-block="columns" data-ratio="{{ratio}}" data-gap="{{gap}}" data-align="{{align}}">
+  template: `<div data-block="columns" data-ratio="{{ratio}}" data-gap="{{gap}}" data-align="{{align}}" data-mobile-order="{{mobile_order}}">
   <div class="block-columns-col">{{slot:Left}}</div>
   <div class="block-columns-col">{{slot:Right}}</div>
 </div>`,
@@ -135,6 +136,7 @@ const columns: BlockType = {
    the default 1-1 would ever stack. Enumerate the ratios so the collapse
    matches their specificity and wins by source order. */
 @media (max-width: 720px) {
+  [data-block="columns"][data-mobile-order="right-first"] > .block-columns-col:last-child { order:-1; }
   [data-block="columns"],
   [data-block="columns"][data-ratio="2-1"],
   [data-block="columns"][data-ratio="1-2"],

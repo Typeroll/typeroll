@@ -27,13 +27,16 @@ const repeater: BlockType = {
   schema: [
     // SOURCE
     { name: 'source_type', type: 'select', label: 'Source',
-      options: ['static', 'pages', 'children_blocks'], default: 'static' },
+      options: ['static', 'pages', 'related', 'backlinks', 'children_blocks'], default: 'static' },
     { name: 'items', type: 'array', label: 'Items',
       // The item-shape is dynamic — the editor mirrors the item_block's
       // schema for each row in the array. The renderer just walks the
       // array of objects without caring about the shape.
       fields: [] },
-    { name: 'content_type', type: 'content_type_ref', label: 'Content type' },
+    { name: 'content_type', type: 'content_type_ref', label: 'Content type (empty = all types)' },
+    { name: 'field', type: 'text', label: 'Related Page reference field' },
+    { name: 'page_ids', type: 'page_ref_list', label: 'Selected Pages (optional, in order)' },
+    { name: 'exclude_current', type: 'boolean', label: 'Exclude current Page', default: false },
     { name: 'limit', type: 'number', label: 'Max items', default: 12 },
     // Archive pagination (collection sources only): items per page. The
     // build generates /page/2/, /page/3/… routes for the page holding this

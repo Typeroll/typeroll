@@ -691,7 +691,7 @@ await (async function nativeCollectionCompositionScenario() {
         style_overrides: { custom_css: '.smoke-instance-css { overflow-wrap: anywhere; }' },
         slots: [
           [{ id: 'body', type: 'template_content_slot', data: { field: 'body', max_width: 'normal' } }],
-          [{ id: 'outline', type: 'core/table_of_contents', data: { title: 'Contents', levels: 'h2-h3', source_field: 'body' } }],
+          [{ id: 'outline', type: 'core/table_of_contents', data: { title: 'Contents', levels: 'h2-h3' } }],
         ],
       },
       {

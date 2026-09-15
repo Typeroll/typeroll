@@ -1,6 +1,9 @@
+import type { Block } from '../types.js';
 import { describe, it, expect } from 'vitest';
 import { buildCoreBlockRegistry, CORE_BLOCK_TYPES } from '../core-blocks.js';
-import { renderBlock, renderPageBody } from '../render-blocks.js';
+import { renderBlock, renderBlocks, renderPageBody, composePageWithTemplate } from '../render-blocks.js';
+import { prepareHeadingOutline } from '../heading-outline.js';
+import { getPageTemplateStarter } from '../page-template-starters.js';
 const registry = buildCoreBlockRegistry();
 
 describe('article content blocks', () => {
@@ -75,4 +78,48 @@ it('preserves semantic wrapper attributes without accepting event handlers or in
 
 it('registers each core block exactly once', () => {
   expect(CORE_BLOCK_TYPES.map(block => block.id)).toEqual([...new Set(CORE_BLOCK_TYPES.map(block => block.id))]);
+});
+
+it('keeps an inline heading index derived from current nested Page blocks and chosen levels', () => {
+  const toc = { id: 'toc', type: 'core/table_of_contents', data: { levels: 'h2', source_field: 'obsolete' } };
+  const page: { content_mode: string; obsolete: string; blocks: Block[] } = { content_mode: 'blocks', obsolete: '<h2>Stale field</h2>', blocks: [toc,
+    { id: 'section', type: 'core/container', data: {}, children: [
+      { id: 'a', type: 'core/heading', data: { text: 'Packing', level: 'h2', anchor_id: 'old-packing' } },
+      { id: 'b', type: 'core/heading', data: { text: 'Glass', level: 'h3' } },
+    ] },
+  ] };
+  const html = renderPageBody({ registry, context: { page } });
+  const nav = html.match(/<nav[\s\S]*?<\/nav>/)?.[0] ?? '';
+  expect(nav).toContain('href="#old-packing">Packing');
+  expect(nav).not.toContain('Glass');
+  expect(nav).not.toContain('Stale field');
+  page.blocks[1]!.children![0]!.data.text = 'Updated packing';
+  expect(renderPageBody({ registry, context: { page } })).toContain('href="#old-packing">Updated packing');
+  page.blocks.splice(1);
+  expect(renderPageBody({ registry, context: { page } })).toContain('data-empty="true"');
+  const schema = registry.get('core/table_of_contents')!.schema;
+  expect(schema.some(field => ['source_field', 'html', 'body', 'items'].includes(field.name))).toBe(false);
+});
+
+
+it('keeps a template index scoped to the current Page body across edits', () => {
+  const template = [...getPageTemplateStarter('article')!,
+    { id: 'related-heading', type: 'core/heading', data: { text: 'Related articles', level: 'h2' } },
+  ];
+  const page = { title: 'Article', content_mode: 'blocks', blocks: [
+    { id: 'a', type: 'core/heading', data: { text: 'Packing', level: 'h2', anchor_id: 'packing' } },
+    { id: 'b', type: 'core/heading', data: { text: 'Glass', level: 'h3' } },
+    { id: 'c', type: 'core/heading', data: { text: 'Detail', level: 'h4' } },
+  ] };
+  const render = () => prepareHeadingOutline(renderBlocks(composePageWithTemplate(template, page.blocks), { registry, context: { page } })).html;
+  const index = () => render().match(/<nav[^>]*data-block="table_of_contents"[\s\S]*?<\/nav>/)?.[0] ?? '';
+  expect(index()).toContain('href="#packing">Packing');
+  expect(index()).toContain('href="#glass">Glass');
+  expect(index()).not.toContain('Detail');
+  expect(index()).not.toContain('Related articles');
+  page.blocks[0]!.data.text = 'New packing';
+  expect(index()).toContain('href="#packing">New packing');
+  page.blocks.splice(0);
+  expect(index()).toContain('data-empty="true"');
+  expect(index()).not.toContain('<li');
 });

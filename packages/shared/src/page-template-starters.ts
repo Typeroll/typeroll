@@ -36,13 +36,12 @@ export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined
         blk('title', 'template/page_title', { level: 'h1', size: 'auto' }),
         blk('date', 'template/page_date', { field: 'date_published' }),
         {
-          ...blk('content', 'core/columns', { ratio: '3-1', gap: 'lg', align: 'start' }),
+          ...blk('content', 'core/columns', { ratio: '3-1', gap: 'lg', align: 'start', mobile_order: 'right-first' }),
           slots: [
             [blk('body', 'template_content_slot', { field: 'body', max_width: 'normal' })],
             [blk('outline', 'core/table_of_contents', {
               title: 'On this page',
-              levels: 'h2,h3',
-              source_field: 'body',
+              levels: 'h2-h3',
             })],
           ],
         },

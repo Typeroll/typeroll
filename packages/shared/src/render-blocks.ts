@@ -128,6 +128,7 @@ export interface RenderBlocksOptions {
     filter_field?: string;
     filter_value?: string;
     pinned_ids?: string[];
+    exclude_id?: string;
   }) => Record<string, unknown>[];
   /**
    * Forms 2.0: resolver for core/form blocks. Receives the block's form_id
@@ -302,10 +303,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     );
   }
   if (effectiveBlock.type === 'core/table_of_contents') {
-    const sourceField = String(compiled.flatData.source_field ?? 'body');
-    const raw = options.context?.page?.[sourceField];
-    const prepared = prepareHeadingOutline(options.context?.page?.content_mode === 'blocks'
-      ? renderPageBody(options, sourceField) : typeof raw === 'string' ? raw : '');
+    const prepared = prepareHeadingOutline(renderPageBody(options));
     const maxLevel = compiled.flatData.levels === 'h2' ? 2 : compiled.flatData.levels === 'h2-h4' ? 4 : 3;
     const headings = prepared.headings.filter((heading) => heading.level <= maxLevel);
     compiled.flatData.toc_items_html = headings
@@ -494,6 +492,8 @@ function renderRepeater(
       ? data.filter_value : inherited?.value;
     items = options.pageSource({
       content_type: String(data.content_type ?? ''),
+      ids: Array.isArray(data.page_ids) && data.page_ids.length ? refIds(data.page_ids) : undefined,
+      exclude_id: data.exclude_current === true ? String(options.context?.page?.id ?? '') : undefined,
       // paginate supersedes limit: the archive owns the full item list and
       // slices per page; a limit would silently cap the archive.
       limit: perPage > 0 ? undefined : (typeof data.limit === 'number' ? data.limit : undefined),
@@ -549,12 +549,16 @@ function renderRepeater(
             .map((b) => b.id)
         : [];
     }
+    if (data.exclude_current === true) ids = ids.filter(id => id !== String(options.context?.page?.id ?? ''));
+    ids = [...new Set(ids)];
     if (ids.length === 0) return '';
     const cap = typeof data.limit === 'number' && data.limit > 0 ? data.limit : undefined;
     items = options.pageSource({
       content_type: target,
-      ids: cap ? ids.slice(0, cap) : ids,
+      ids,
+      limit: cap,
     });
+    if (cap) items = items.slice(0, cap);
   } else if (sourceType === 'children_blocks') {
     // Render each direct child block as one repeater item, preserving the
     // child's authored block type. Useful for "I want each item to be a
@@ -1001,10 +1005,10 @@ export function renderPageBody(options: RenderBlocksOptions, field = 'body'): st
       ...options,
       context: { ...options.context, page: { ...item, content_mode: 'html', body: '' } },
     });
-    return prepareHeadingOutline(html).html;
+    return prepareHeadingOutline(html, true).html;
   }
   const raw = item?.[field];
-  return prepareHeadingOutline(typeof raw === 'string' ? raw : '').html;
+  return prepareHeadingOutline(typeof raw === 'string' ? raw : '', true).html;
 }
 
 function renderNavigationLinks(

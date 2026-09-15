@@ -58,11 +58,11 @@ function replaceOrAppendId(attrs: string, id: string): string {
 }
 
 /**
- * Materialize stable heading ids and an outline from one sanitized rich-text
- * field. Existing unique ids are preserved; missing or duplicate ids receive
+ * Materialize stable heading ids and an outline from rendered Page HTML.
+ * Existing unique ids are preserved; missing or duplicate ids receive
  * deterministic suffixes. The caller still sanitizes the returned HTML.
  */
-export function prepareHeadingOutline(html: string): PreparedHeadingOutline {
+export function prepareHeadingOutline(html: string, populateIndexes = false): PreparedHeadingOutline {
   const used = new Set<string>();
   const headings: HeadingOutlineEntry[] = [];
   const prepared = html.replace(HEADING_RE, (_match, rawLevel: string, rawAttrs: string, inner: string) => {
@@ -74,12 +74,24 @@ export function prepareHeadingOutline(html: string): PreparedHeadingOutline {
     headings.push({ level, id, text: text || `Section ${headings.length + 1}` });
     return `<h${level}${replaceOrAppendId(rawAttrs, id)}>${inner}</h${level}>`;
   });
-  return { html: prepared, headings };
+  // Fill indexes after the complete body has rendered. An index can itself be
+  // inside the Page body; deriving it while rendering that block would recurse.
+  // Do not repopulate during final template rendering: template-only headings
+  // such as related-card titles do not belong in the Page outline.
+  const indexed = !populateIndexes ? prepared : prepared.replace(/<nav\b([^>]*\bdata-block="table_of_contents"[^>]*)>([\s\S]*?)<\/nav>/g, (_match, attrs: string, body: string) => {
+    const levels = attrs.match(/\bdata-levels="([^"]*)"/)?.[1];
+    const maxLevel = levels === 'h2' ? 2 : levels === 'h2-h4' ? 4 : 3;
+    const included = headings.filter(heading => heading.level <= maxLevel);
+    const escape = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
+    const links = included.map(heading => `<li data-level="${heading.level}"><a href="#${escape(heading.id)}">${escape(heading.text)}</a></li>`).join('');
+    return `<nav${attrs.replace(/\bdata-empty="[^"]*"/, `data-empty="${included.length === 0}"`)}>${body.replace(/<ol>[\s\S]*?<\/ol>/, `<ol>${links}</ol>`)}</nav>`;
+  });
+  return { html: indexed, headings };
 }
 
 /** Derived Page values for reusable templates. The outline is never stored. */
 export function pageBodyContext(html: string): { body: string; outline_html: string } {
-  const prepared = prepareHeadingOutline(html);
+  const prepared = prepareHeadingOutline(html, true);
   const escape = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
   const headings = prepared.headings.filter(heading => heading.level <= 3);
   return { body: prepared.html, outline_html: headings.length

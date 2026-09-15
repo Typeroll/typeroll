@@ -234,17 +234,17 @@ describe('renderBlock — substitution', () => {
     expect(html).not.toContain('data-trail=');
   });
 
-  it('renders a table of contents from a selected rich-text field before JavaScript', () => {
+  it('renders a table of contents from the current Page body before JavaScript', () => {
     const context = {
       page: {
-        article_body: '<h2 id="packa">Packa &amp; skydda</h2><p>Text</p><h3>TV & skärm</h3><h3 id="packa">Dublett</h3>',
+        body: '<h2 id="packa">Packa &amp; skydda</h2><p>Text</p><h3>TV & skärm</h3><h3 id="packa">Dublett</h3>',
       },
     };
     const toc = renderBlock(
       {
         id: 'toc',
         type: 'core/table_of_contents',
-        data: { title: 'Innehåll', levels: 'h2-h3', source_field: 'article_body' },
+        data: { title: 'Innehåll', levels: 'h2-h3' },
       },
       { registry, context },
     );
@@ -253,7 +253,7 @@ describe('renderBlock — substitution', () => {
     expect(toc).toContain('<a href="#packa-2">Dublett</a>');
     expect(toc).toContain('data-empty="false"');
 
-    const body = renderPageBody({ registry, context }, 'article_body');
+    const body = renderPageBody({ registry, context });
     expect(body).toContain('<h3 id="tv-skarm">TV & skärm</h3>');
     expect(body).toContain('<h3 id="packa-2">Dublett</h3>');
   });

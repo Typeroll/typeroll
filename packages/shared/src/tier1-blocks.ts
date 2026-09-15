@@ -1346,40 +1346,70 @@ const tableOfContents: BlockType = {
   schema: [
     { name: 'title', type: 'text', label: 'Title', default: 'On this page' },
     { name: 'levels', type: 'select', label: 'Heading levels', options: ['h2', 'h2-h3', 'h2-h4'], default: 'h2-h3' },
-    { name: 'source_field', type: 'text', label: 'Collection rich-text field', default: 'body' },
+    { name: 'appearance', type: 'select', label: 'Appearance', options: ['card', 'plain'], default: 'card' },
+    { name: 'sticky', type: 'boolean', label: 'Sticky on desktop', default: true },
+    { name: 'indent', type: 'boolean', label: 'Indent subheadings', default: true },
+    { name: 'highlight_active', type: 'boolean', label: 'Highlight current heading', default: true },
   ],
-  template: `<nav data-block="table_of_contents" data-levels="{{levels}}" data-empty="{{toc_empty}}" aria-label="{{title}}"><strong>{{title}}</strong><ol>{{{toc_items_html}}}</ol></nav>`,
+  template: `<nav data-block="table_of_contents" data-levels="{{levels}}" data-appearance="{{appearance}}" data-sticky="{{sticky}}" data-indent="{{indent}}" data-highlight-active="{{highlight_active}}" data-empty="{{toc_empty}}" aria-label="{{title}}"><strong>{{title}}</strong><ol>{{{toc_items_html}}}</ol></nav>`,
   styles: `
 [data-block="table_of_contents"] { position: sticky; top: 1rem; min-width: 0; padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0.5rem; background: var(--color-background, Canvas); }
+[data-block="table_of_contents"][data-sticky="false"] { position:static; }
+.block-columns-col:has(> [data-block="table_of_contents"][data-sticky="true"]) { position:sticky; top:1rem; align-self:start; }
+[data-block="table_of_contents"][data-appearance="plain"] { padding:0; border:0; border-radius:0; background:transparent; }
+[data-block="table_of_contents"][data-indent="false"] li { margin-left:0; }
+[data-block="table_of_contents"] a[aria-current="location"] { font-weight:700; color:var(--color-primary,currentColor); text-decoration:underline; }
 [data-block="table_of_contents"] ol { margin: 0.65rem 0 0; padding-left: 1.25rem; }
-[data-block="table_of_contents"] li[data-level="3"] { margin-left: 1rem; }
-[data-block="table_of_contents"] li[data-level="4"] { margin-left: 2rem; }
+[data-block="table_of_contents"]:not([data-indent="false"]) li[data-level="3"] { margin-left: 1rem; }
+[data-block="table_of_contents"]:not([data-indent="false"]) li[data-level="4"] { margin-left: 2rem; }
 [data-block="table_of_contents"][data-empty="true"] { display: none; }
 [data-block="table_of_contents"] a { overflow-wrap: anywhere; text-underline-offset: 0.15em; }
 [data-block="table_of_contents"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
-@media (max-width: 720px) { [data-block="table_of_contents"] { position: static; } }
+@media (max-width: 720px) { [data-block="table_of_contents"], .block-columns-col:has(> [data-block="table_of_contents"]) { position: static; } }
 `.trim(),
   script: `
 window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
 window.TyperollBlocks.register('core/table_of_contents', (el) => {
   const root = el.closest('main') || document.querySelector('main') || document.body;
   const levels = el.dataset.levels === 'h2' ? 'h2' : el.dataset.levels === 'h2-h4' ? 'h2,h3,h4' : 'h2,h3';
-  const headings = Array.from(root.querySelectorAll(levels)).filter((heading) => !el.contains(heading));
   const list = el.querySelector('ol');
-  if (list && list.children.length) { el.dataset.empty = 'false'; return; }
-  if (!list || !headings.length) { el.dataset.empty = 'true'; return; }
-  const used = new Set(Array.from(document.querySelectorAll('[id]')).map((node) => node.id));
-  headings.forEach((heading, index) => {
-    if (!heading.id) {
-      const base = (heading.textContent || 'section').toLowerCase().normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
-      let id = base, suffix = 2;
-      while (used.has(id)) id = base + '-' + suffix++;
-      heading.id = id; used.add(id);
-    }
-    const li = document.createElement('li'); li.dataset.level = heading.tagName.slice(1);
-    const a = document.createElement('a'); a.href = '#' + heading.id; a.textContent = heading.textContent || ('Section ' + (index + 1));
-    li.appendChild(a); list.appendChild(li);
-  });
+  if (!list) return;
+  if (!list.children.length && el.dataset.empty !== 'true') {
+    const headings = Array.from(root.querySelectorAll(levels)).filter(heading => !el.contains(heading));
+    const used = new Set(Array.from(document.querySelectorAll('[id]')).map(node => node.id));
+    headings.forEach((heading, index) => {
+      if (!heading.id) {
+        const base = (heading.textContent || 'section').toLowerCase().normalize('NFKD').replace(/[\\u0300-\\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
+        let id = base, suffix = 2;
+        while (used.has(id)) id = base + '-' + suffix++;
+        heading.id = id; used.add(id);
+      }
+      const li = document.createElement('li'); li.dataset.level = heading.tagName.slice(1);
+      const a = document.createElement('a'); a.href = '#' + heading.id; a.textContent = heading.textContent || ('Section ' + (index + 1));
+      li.appendChild(a); list.appendChild(li);
+    });
+  }
+  el.dataset.empty = list.children.length ? 'false' : 'true';
+  if (el.dataset.highlightActive === 'false') return;
+  const links = Array.from(list.querySelectorAll('a[href^="#"]'));
+  const entries = links.map(link => {
+    let id = link.getAttribute('href').slice(1);
+    try { id = decodeURIComponent(id); } catch {}
+    return { link, heading: document.getElementById(id) };
+  }).filter(entry => entry.heading);
+  let scheduled = false;
+  const update = () => {
+    scheduled = false;
+    if (!el.isConnected) { window.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule); return; }
+    let current = entries[0];
+    for (const entry of entries) if (entry.heading.getBoundingClientRect().top <= 96) current = entry;
+    links.forEach(link => link.removeAttribute('aria-current'));
+    if (current) current.link.setAttribute('aria-current', 'location');
+  };
+  const schedule = () => { if (!scheduled) { scheduled = true; requestAnimationFrame(update); } };
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule);
+  update();
 });
 `.trim(),
   origin: 'core',

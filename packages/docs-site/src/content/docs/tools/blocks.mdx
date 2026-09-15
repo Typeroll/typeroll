@@ -69,6 +69,38 @@ The AI agent calls `list_block_types` first to see what's available on the curre
 - `core/search` — see [Site search](#site-search) below
 - `core/html` — the raw-HTML escape hatch for one-offs no block covers. Output is sanitised the same way HTML-mode pages are, so it isn't a script vector.
 
+### Article content and automatic contents
+
+Use `core/table`, `core/list`, `core/image`, `core/video` and formatted headings
+for editable article content. Tables support header cells, spans, colors,
+column widths and horizontal scrolling. Images support original dimensions,
+alignment, a separate mobile image, a link and formatted photo credits.
+
+Place **`core/table_of_contents` in the Page template**, next to its
+`template_content_slot`. It derives links from the current Page's headings;
+there is no editable list or source content field. Choose `h2`, `h2-h3` or
+`h2-h4`. Changing, moving or removing a heading updates the generated list.
+Existing heading anchors are preserved and links are present without JavaScript.
+You can choose a plain list or card, indentation, desktop stickiness and
+highlighting of the current heading. On mobile it stays in normal document flow.
+The same block also works inside a Page body.
+
+The Article template starter places its table of contents beside the body on
+larger screens and before the body on mobile. The Two columns block's **Mobile
+order** setting controls this order independently of the desktop layout.
+
+### Related Pages
+
+For a curated list, use `core/repeater` with **Source: Pages** and select Pages
+in the desired order. Leave Content type empty to combine articles, checklists
+and other types. **Exclude current Page** removes the page being displayed.
+Missing and unpublished pages are omitted before the item limit is applied.
+
+In a shared Page template, use **Source: Related** and name a Page reference
+field from the Content type. Each Page then supplies its own selection, while
+the template owns the card layout. Use **Backlinks** to list pages referring to
+the current Page. `core/post_card` provides the image, title and link presentation.
+
 ### Item-compatible kernels
 
 Designed to tile cleanly inside a repeater — no outer padding, kernel layout. Render fine standalone too.
