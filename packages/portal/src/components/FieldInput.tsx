@@ -93,6 +93,9 @@ export default function FieldInput({
           {label}
           <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined}
             type="number"
+            min={field.min}
+            max={field.max}
+            step="any"
             value={(value as number) ?? ''}
             onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
             style={textInput}

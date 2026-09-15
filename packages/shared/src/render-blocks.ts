@@ -754,7 +754,22 @@ export function composePageWithTemplate(
       if (b.type === TEMPLATE_SLOT_ID) {
         foundSlot = true;
         const width = ({ narrow: '560px', normal: '720px', wide: '1120px' } as Record<string, string>)[String(b.data?.max_width)];
-        if (width || b.style_overrides) out.push({ id: `${b.id}-body`, type: 'core/container', data: { tag: 'div', layout: 'flow', inline_style: width ? `width:100%;max-width:${width};margin-inline:auto` : '' }, ...(b.style_overrides ? { style_overrides: b.style_overrides } : {}), children: pageBlocks });
+        const typography = [
+          ['font_size', 12, 32, 'px', '--page-body-font-size'],
+          ['line_height', 1, 2.5, '', '--page-body-line-height'],
+          ['paragraph_spacing', 0, 3, 'em', '--page-body-paragraph-spacing'],
+        ] as const;
+        const declarations = typography.flatMap(([field, min, max, unit, property]) => {
+          const value = b.data?.[field];
+          return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+            ? [`${property}:${value}${unit}`] : [];
+        });
+        const styles = [
+          ...(width ? [`width:100%;max-width:${width};margin-inline:auto`] : []),
+          ...declarations,
+          ...(declarations.length ? ['font-size:var(--page-body-font-size,inherit)', 'line-height:var(--page-body-line-height,inherit)'] : []),
+        ].join(';');
+        if (width || declarations.length || b.style_overrides) out.push({ id: `${b.id}-body`, type: 'core/container', data: { tag: 'div', layout: 'flow', inline_style: styles }, ...(b.style_overrides ? { style_overrides: b.style_overrides } : {}), children: pageBlocks });
         else out.push(...pageBlocks);
         continue;
       }

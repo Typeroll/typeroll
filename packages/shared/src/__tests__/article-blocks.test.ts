@@ -123,3 +123,20 @@ it('keeps a template index scoped to the current Page body across edits', () => 
   expect(index()).toContain('data-empty="true"');
   expect(index()).not.toContain('<li');
 });
+
+it('applies bounded template typography only around the Page content slot', () => {
+  const body: Block[] = [{ id: 'copy', type: 'core/prose', data: { html: '<p>Article body</p>' } }];
+  const template: Block[] = [
+    { id: 'outside', type: 'core/prose', data: { html: '<p>Outside body</p>' } },
+    { id: 'body', type: 'template_content_slot', data: { font_size: 16, line_height: 1.6, paragraph_spacing: 0 } },
+  ];
+  const composed = composePageWithTemplate(template, body);
+  expect(composed[0]).toEqual(template[0]);
+  expect(composed[1].data.inline_style).toContain('--page-body-font-size:16px');
+  expect(composed[1].data.inline_style).toContain('--page-body-line-height:1.6');
+  expect(composed[1].data.inline_style).toContain('--page-body-paragraph-spacing:0em');
+  expect(composed[1].children).toEqual(body);
+  expect(template[1].type).toBe('template_content_slot');
+  template[1].data = { font_size: '16px;color:red', line_height: Infinity, paragraph_spacing: -1 };
+  expect(composePageWithTemplate(template, body)).toEqual([template[0], ...body]);
+});

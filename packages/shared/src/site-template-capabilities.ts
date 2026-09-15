@@ -247,7 +247,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.44.1',
+  template_capabilities_version: '0.44.2',
 
   draft_layer_writes: true,
   forms_steps_only: true,

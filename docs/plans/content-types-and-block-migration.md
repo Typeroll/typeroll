@@ -178,3 +178,20 @@ The release gate initially found two assertions pinned to the previous version;
 after updating those expected versions, the affected tests and remaining gate
 steps passed. Controlled regressions in outline scoping, lazy-media conversion
 and ordered Page selection each made their relevant tests fail before restoration.
+
+## Template typography follow-up — prepared after the block release
+
+Core 0.2.2 adds optional body font size, line height and paragraph spacing to
+`template_content_slot`. These become scoped styles around the composed Page
+body, leaving the template's navigation and related cards unaffected. Blank
+settings retain existing block defaults. The numeric editor accepts decimal
+values and enforces the schema's min/max bounds.
+
+Chromium checks at 390/1440 px measured 16 px body/list text, 25.6 px line height
+and 12 px paragraph spacing for the 16/1.6/0.75 example, with no overflow.
+A controlled restoration of the old Text block CSS made this browser check
+fail. The real static build also asserts the generated slot styles. All release
+checks passed: 1,995 portal, 490 shared and 130 MCP tests, infrastructure checks,
+docs, typechecks, dependency audit, frozen template and workspace builds.
+This is a separate local candidate; no customer content or hosted deployment is
+changed by preparing it.

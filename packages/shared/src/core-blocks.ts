@@ -168,10 +168,10 @@ const prose: BlockType = {
   // och desktop utan media queries. Behåller läsbarhet på små skärmar
   // utan att gå för stort på desktop.
   styles: `
-[data-block="prose"] { min-width: 0; line-height: 1.65; font-size: clamp(1rem, 0.95rem + 0.25vw, 1.125rem); overflow-wrap: anywhere; }
+[data-block="prose"] { min-width: 0; line-height: var(--page-body-line-height, 1.65); font-size: var(--page-body-font-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem)); overflow-wrap: anywhere; }
 [data-block="prose"][data-w="narrow"] { max-width: 38rem; margin-inline: auto; }
 [data-block="prose"][data-w="wide"] { max-width: 60rem; margin-inline: auto; }
-[data-block="prose"] p { margin: 0 0 1em; }
+[data-block="prose"] p { margin: 0 0 var(--page-body-paragraph-spacing, 1em); }
 [data-block="prose"] h1 { margin: 1.5em 0 0.5em; font-size: clamp(1.75rem, 1rem + 3.5vw, 3.5rem); line-height: 1.15; }
 [data-block="prose"] h2 { margin: 1.5em 0 0.5em; font-size: clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem); line-height: 1.2; }
 [data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: clamp(1.25rem, 0.75rem + 2vw, 1.75rem); line-height: 1.25; }
@@ -391,7 +391,12 @@ const templateContentSlot: BlockType = {
   icon: 'box-select',
   category: 'layout',
   container: false,
-  schema: [{ name: 'max_width', type: 'select', label: 'Content width', options: ['full', 'narrow', 'normal', 'wide'], default: 'full' }],
+  schema: [
+    { name: 'max_width', type: 'select', label: 'Content width', options: ['full', 'narrow', 'normal', 'wide'], default: 'full' },
+    { name: 'font_size', type: 'number', label: 'Body text size (px)', min: 12, max: 32, placeholder: 'Block default' },
+    { name: 'line_height', type: 'number', label: 'Body line height', min: 1, max: 2.5, placeholder: 'Block default' },
+    { name: 'paragraph_spacing', type: 'number', label: 'Paragraph spacing (em)', min: 0, max: 3, placeholder: 'Block default' },
+  ],
   template: `<!-- template_content_slot: this should be replaced during composition -->`,
   origin: 'core',
   created_at: ISO_EPOCH,

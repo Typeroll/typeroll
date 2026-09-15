@@ -690,7 +690,7 @@ await (async function nativeCollectionCompositionScenario() {
         data: { ratio: '3-1', gap: 'lg', align: 'start' },
         style_overrides: { custom_css: '.smoke-instance-css { overflow-wrap: anywhere; }' },
         slots: [
-          [{ id: 'body', type: 'template_content_slot', data: { field: 'body', max_width: 'normal' } }],
+          [{ id: 'body', type: 'template_content_slot', data: { field: 'body', max_width: 'normal', font_size: 16, line_height: 1.6, paragraph_spacing: 0.75 } }],
           [{ id: 'outline', type: 'core/table_of_contents', data: { title: 'Contents', levels: 'h2-h3' } }],
         ],
       },
@@ -799,6 +799,9 @@ await (async function nativeCollectionCompositionScenario() {
     child.on('exit', (code) => {
       if (code !== 0) fail(`[native-page-composition] astro build exited with ${code}`);
       const html = readFileSync(join(tmpOut, 'guides', 'energy', 'index.html'), 'utf8');
+      for (const style of ['--page-body-font-size:16px', '--page-body-line-height:1.6', '--page-body-paragraph-spacing:0.75em']) {
+        if (!html.includes(style)) fail(`[native-page-composition] missing template typography: ${style}`);
+      }
       const assetText = existsSync(join(tmpOut, '_assets'))
         ? readdirSync(join(tmpOut, '_assets'), { withFileTypes: true })
             .filter((entry) => entry.isFile() && entry.name.endsWith('.css'))
