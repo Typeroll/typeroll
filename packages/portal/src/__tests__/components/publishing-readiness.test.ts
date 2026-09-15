@@ -28,7 +28,7 @@ for (const surface of ['overview', 'editor'] as const) {
     expect(button().disabled).toBe(true);
     await act(async () => resolve(Response.json(blocked)));
     expect(button().disabled).toBe(true);
-    expect(container.querySelector('a[href="/app/settings/publishing#publishing-builds"]')).not.toBeNull();
+    expect(container.querySelector<HTMLAnchorElement>('a[href="/app/settings/publishing#publishing-builds"]')?.style.color).toBe('inherit');
     current = { ...blocked, ready: true, required: [] };
     await act(async () => window.dispatchEvent(new Event('focus')));
     expect(button().disabled).toBe(false);

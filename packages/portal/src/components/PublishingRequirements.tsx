@@ -8,6 +8,6 @@ export function PublishingRequirements({ setup, error, retry }: {
   if (setup.ready) return null;
   return <div role="status" style={{ flexBasis: '100%', minWidth: 0 }}>
     <p>Publishing setup is incomplete. You can keep editing and use Preview.</p>
-    <ul>{setup.required.map(item => <li key={item.code}><a href={item.settings_url} style={{ textDecoration: 'underline', textUnderlineOffset: '0.15em' }}>{item.message}</a></li>)}</ul>
+    <ul>{setup.required.map(item => <li key={item.code}><a href={item.settings_url} style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: '0.15em' }}>{item.message}</a></li>)}</ul>
   </div>;
 }
