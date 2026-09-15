@@ -19,7 +19,7 @@ export default function FieldInput({
   const fieldId = useId();
   const label = (
     <label htmlFor={fieldId} style={fieldLabel}>
-      {field.label}{field.required && <span aria-label="required"> *</span>}
+      {field.label}{field.required && <span aria-hidden="true"> *</span>}
       {responsive && activeBp && (
         <ResponsiveBadge activeBp={activeBp} hasOwn={!!hasOwn} onReset={() => onChange('')} />
       )}
@@ -34,7 +34,7 @@ export default function FieldInput({
         ? <ContentReferenceInput id={fieldId} siteId={siteId} value={value} onChange={onChange} multiple={field.type === 'page_ref_list'} contentType={field.ref_content_type} types={field.type === 'content_type_ref'} />
         : <p>Choose a site to select content.</p>}</div>;
     case 'richtext':
-      return <div style={fieldGroup}>{label}<RichTextInput id={fieldId} value={v} onChange={onChange} /></div>;
+      return <div style={fieldGroup}>{label}<RichTextInput id={fieldId} label={field.label} required={field.required} value={v} onChange={onChange} /></div>;
     case 'textarea': {
       // The core/html block's `html` field holds whole chunks of markup —
       // give it (and any code-ish field) a near-viewport editing surface
@@ -46,7 +46,7 @@ export default function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <textarea id={fieldId}
+          <textarea id={fieldId} aria-label={field.label} aria-required={field.required || undefined}
             rows={isCode ? 24 : 4}
             value={v}
             placeholder={field.placeholder}
@@ -60,7 +60,7 @@ export default function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <select id={fieldId} value={v} onChange={(e) => onChange(e.target.value)} style={selectInput}>
+          <select id={fieldId} aria-label={field.label} aria-required={field.required || undefined} value={v} onChange={(e) => onChange(e.target.value)} style={selectInput}>
             {(field.options ?? []).map((opt, index) => (
               <option key={opt} value={opt}>{field.option_labels?.[index] ?? opt}</option>
             ))}
@@ -71,7 +71,7 @@ export default function FieldInput({
       return (
         <div style={fieldGroup}>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '.85rem' }}>
-            <input id={fieldId}
+            <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined}
               type="checkbox"
               checked={!!value}
               onChange={(e) => onChange(e.target.checked)}
@@ -84,14 +84,14 @@ export default function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <input id={fieldId} type="color" value={v || '#000000'} onChange={(e) => onChange(e.target.value)} />
+          <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined} type="color" value={v || '#000000'} onChange={(e) => onChange(e.target.value)} />
         </div>
       );
     case 'number':
       return (
         <div style={fieldGroup}>
           {label}
-          <input id={fieldId}
+          <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined}
             type="number"
             value={(value as number) ?? ''}
             onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
@@ -104,7 +104,7 @@ export default function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <textarea id={fieldId}
+          <textarea id={fieldId} aria-label={field.label} aria-required={field.required || undefined}
             rows={5}
             value={Array.isArray(value) ? value.map(String).join('\n') : ''}
             placeholder={field.placeholder ?? 'One value per line'}
@@ -147,7 +147,7 @@ export default function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <input id={fieldId}
+          <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined}
             type={field.type === 'email' ? 'email' : field.type === 'date' ? 'date' : field.type === 'datetime' ? 'datetime-local' : 'text'}
             value={v}
             placeholder={field.placeholder}

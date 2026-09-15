@@ -71,7 +71,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveAttribute('href', 'https://test-site.example.com/deploy-visibility');
       await expect(page.locator('.pmenu__change-details summary')).toContainText('Changes since last deploy');
-      await page.goto('/app/sites/default/pages/posts');
+      await page.goto('/app/sites/default/pages');
       await expect(page.getByRole('row').filter({ hasText: 'Deploy visibility' }).getByTitle('Open live URL')).toHaveCount(1);
       await page.goto('/app/sites/default/pages/deploy-visibility', { waitUntil: 'networkidle' });
       await page.getByRole('button', { name: 'Publish', exact: true }).click();
@@ -88,7 +88,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await page.goto('/app/sites/default/pages/deploy-visibility', { waitUntil: 'networkidle' });
       await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveCount(0);
-      await page.goto('/app/sites/default/pages/posts');
+      await page.goto('/app/sites/default/pages');
       await expect(page.getByRole('row').filter({ hasText: 'Deploy visibility' }).getByTitle('Open live URL')).toHaveCount(0);
       expect(pageErrors).toEqual([]);
     } finally {

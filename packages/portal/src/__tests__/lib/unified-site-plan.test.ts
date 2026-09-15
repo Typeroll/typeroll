@@ -87,3 +87,12 @@ it('migrates shared blocks, form steps, directory settings and scoped edit permi
   const template = Object.entries(plan.documents).find(([path]) => path.startsWith('versions/main/page_templates/'))![1];
   expect((template.blocks as any[])[0].data.condition).toBe('page.title != "item.keep_literal"');
 });
+
+it('plans image blocks in the exact persisted JSON shape without absent dimensions', () => {
+  const input = source();
+  input['versions/main/pages/about'].html_content = '<p>Before</p><img src="https://media.example.test/photo.jpg" alt="Photo"><p>After</p>';
+  const result = planUnifiedSiteMigration(input, '2026-01-01').documents;
+  expect(result).toStrictEqual(JSON.parse(JSON.stringify(result)));
+  const page = result['versions/main/pages/about'];
+  expect(JSON.stringify(page)).toContain('https://media.example.test/photo.jpg');
+});

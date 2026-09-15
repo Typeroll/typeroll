@@ -30,7 +30,7 @@ export function editableHtml(html: string): string {
   return output.innerHTML;
 }
 
-export default function RichTextInput({ id, value, onChange }: { id: string; value: string; onChange: (html: string) => void }) {
+export default function RichTextInput({ id, label, required, value, onChange }: { id: string; label: string; required?: boolean; value: string; onChange: (html: string) => void }) {
   const editor = useRef<HTMLDivElement>(null);
   const selection = useRef<Range | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -56,7 +56,7 @@ export default function RichTextInput({ id, value, onChange }: { id: string; val
   };
   if (sourceMode) return <div>
     <p style={{ fontSize: '0.875rem' }}>This field contains HTML formatting that needs the source editor to preserve it.</p>
-    <textarea id={id} value={value} onChange={event => onChange(event.target.value)} rows={10} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', fontFamily: 'monospace' }} />
+    <textarea id={id} aria-label={label} aria-required={required || undefined} value={value} onChange={event => onChange(event.target.value)} rows={10} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', fontFamily: 'monospace' }} />
   </div>;
   return <div style={{ border: '1px solid #3a3a42', borderRadius: 6, overflow: 'hidden' }}>
     <div role="toolbar" aria-label="Text formatting" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: 6 }}>
@@ -75,7 +75,7 @@ export default function RichTextInput({ id, value, onChange }: { id: string; val
       command('createLink', href); setLinkOpen(false); setHref('');
     }}>Apply</button><button type="button" onClick={() => setLinkOpen(false)}>Cancel</button></div>}
 
-    <div id={id} ref={editor} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true"
+    <div id={id} aria-label={label} aria-required={required || undefined} ref={editor} contentEditable suppressContentEditableWarning role="textbox" aria-multiline="true"
       onInput={() => { dirty.current = true; emit(); }} onBlur={emit} onPaste={e => {
         e.preventDefault();
         const html = e.clipboardData.getData('text/html');

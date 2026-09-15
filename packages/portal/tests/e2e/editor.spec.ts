@@ -1,7 +1,7 @@
 /**
  * Realistic editor flow:
  *   - Land on the default site dashboard
- *   - Open Pages → Posts list
+ *   - Open Pages list
  *   - Click into a page editor
  *   - Edit the title → autosaves to the working copy (unsaved-changes state)
  *   - Deliberately Save via the Publish menu → all-changes-saved state
@@ -17,7 +17,7 @@ test('editor autosave → deliberate Save via Publish menu', async ({ page }) =>
   await page.goto('/app/sites/default');
   await expect(page).toHaveTitle(/Default|ACME|Site/i);
 
-  // Walk to Pages → Posts list.
+  // Walk to Pages list.
   await page.getByRole('link', { name: /pages/i }).first().click();
   await expect(page).toHaveURL(/\/pages/);
 
@@ -29,15 +29,15 @@ test('editor autosave → deliberate Save via Publish menu', async ({ page }) =>
 
   // Wait for the React editor to hydrate — filling before hydration gets
   // silently reverted when React mounts with the server-rendered title.
-  await expect(page.locator('.editor__title-input')).toBeVisible();
+  await expect(page.getByLabel('Page title', { exact: true })).toBeVisible();
   await page.waitForLoadState('networkidle');
 
   // Edit the title. The debounced autosave (~800ms) writes the working
   // copy, so the indicator lands in the unsaved-changes state — the
   // canonical page must be untouched until the deliberate Save.
   const newTitle = `E2E ${Date.now()}`;
-  await page.locator('.editor__title-input').fill(newTitle);
-  await expect(page.locator('.editor__title-input')).toHaveValue(newTitle);
+  await page.getByLabel('Page title', { exact: true }).fill(newTitle);
+  await expect(page.getByLabel('Page title', { exact: true })).toHaveValue(newTitle);
   await expect(page.locator('text=/Unsaved changes/i').first()).toBeVisible({ timeout: 10_000 });
 
   // Deliberate Save via the Publish ▾ menu.
@@ -46,7 +46,7 @@ test('editor autosave → deliberate Save via Publish menu', async ({ page }) =>
   await expect(page.locator('text=/All changes saved/i')).toBeVisible({ timeout: 10_000 });
 
   // Preview iframe should be loadable.
-  const iframe = page.frameLocator('iframe[title="Page preview"]');
+  const iframe = page.frameLocator('iframe[title="Preview"]');
   await expect(iframe.locator('body')).toBeVisible();
 
   // Restore the fixture title (best effort) so repeated local runs don't
@@ -55,7 +55,7 @@ test('editor autosave → deliberate Save via Publish menu', async ({ page }) =>
   // outside-click close never fires and a second Publish click would
   // toggle the panel shut instead of open.
   await page.keyboard.press('Escape');
-  await page.locator('.editor__title-input').fill('Home');
+  await page.getByLabel('Page title', { exact: true }).fill('Home');
   await expect(page.locator('text=/Unsaved changes/i').first()).toBeVisible({ timeout: 10_000 });
   await page.getByRole('button', { name: /publish/i }).click();
   await page.getByRole('button', { name: /^save$/i }).click();

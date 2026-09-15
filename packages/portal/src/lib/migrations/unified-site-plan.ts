@@ -221,7 +221,7 @@ export function planUnifiedSiteMigration(source: SiteDocuments, now: string): Un
   // formats need a migration handler before any persistent write can happen.
   for (const path of removed) if (/\/items\/[^/]+\//.test(path) && !/\/revisions\/[^/]+$/.test(path)) throw new Error(`Unsupported item subdocument at ${path}`);
   output['_migrations/unified-pages'] = { format: 'typeroll-unified-pages-v1', migrated_at: now, source_hash: siteDocumentHash(source) };
-  return { format: 'typeroll-unified-pages-v1', source_hash: siteDocumentHash(source), result_hash: siteDocumentHash(output), documents: output,
+  return { format: 'typeroll-unified-pages-v1', source_hash: siteDocumentHash(source), result_hash: siteDocumentHash(output), documents: canonical(output) as SiteDocuments,
     removed_paths: [...new Set(removed)].filter(path => !(path in output)).sort(), mappings: [...mappings.values()],
     versions: ordered.map(id => ({ id, pages: results.get(id)!.pages.length, content_types: results.get(id)!.contentTypes.length, templates: results.get(id)!.templates.length })), warnings };
 }

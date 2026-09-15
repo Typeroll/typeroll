@@ -27,7 +27,7 @@ for (const surface of ['editor', 'overview', 'pages']) {
       await page.route('**/api/sites/default/deploy', route => route.fulfill({ json: { jobs: [job()], active_job: ready ? null : job() } }));
       await page.route('**/api/sites/default/deploys/availability-test', route => route.fulfill({ json: job() }));
       await page.setViewportSize({ width: 390, height: 844 });
-      const url = surface === 'editor' ? '/app/sites/default/pages/availability' : surface === 'pages' ? '/app/sites/default/pages/posts' : '/app/sites/default';
+      const url = surface === 'editor' ? '/app/sites/default/pages/availability' : surface === 'pages' ? '/app/sites/default/pages' : '/app/sites/default';
       await page.goto(url, { waitUntil: 'networkidle' });
       if (surface === 'editor') await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expect(page.getByRole('status').filter({ hasText: 'Distributing' })).toBeVisible();

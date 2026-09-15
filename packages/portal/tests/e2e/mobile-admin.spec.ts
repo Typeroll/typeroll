@@ -18,7 +18,7 @@ async function expectInsideViewport(page: Page, selector: string) {
 test('key admin surfaces fit a 320px viewport', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 844 });
 
-  await page.goto('/app/sites/default/pages/posts');
+  await page.goto('/app/sites/default/pages');
   await expect(page.getByRole('heading', { name: /Pages/ })).toBeVisible();
   await expectInsideViewport(page, '.app-header__create-form');
   await expect(page.locator('.pages-table thead')).toHaveCSS('display', 'none');

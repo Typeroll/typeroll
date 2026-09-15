@@ -1,4 +1,6 @@
 ---
+import { paths, type SiteVersion } from '@typeroll/shared';
+import { getStore } from '../../../../../lib/datastore';
 import { listContentPages } from '../../../../../lib/content-pages';
 import DeploymentNotice from '../../../../../components/DeploymentNotice.tsx';
 import AppLayout from '../../../../../layouts/AppLayout.astro';
@@ -12,7 +14,8 @@ const { site, versionId, owner_org_id: orgId } = ctx;
 const siteId = site.id;
 
 
-const allPages = await listContentPages(orgId, siteId, versionId);
+const versionDoc = await getStore().getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
+const allPages = await listContentPages(orgId, siteId, versionId, { site, version: versionDoc ?? null });
 const contentTypes = (await vstore.contentTypes(orgId, siteId, versionId)).filter(type => type.id !== 'page');
 const selectedType = Astro.url.searchParams.get('content_type') ?? '';
 const query = (Astro.url.searchParams.get('q') ?? '').trim();
@@ -73,7 +76,7 @@ const pages = allPages.filter(page => (!selectedType || page.content_type === se
               <a href={page.preview_path} target="_blank" rel="noopener" title="Preview (includes drafts)" class="page-row__action">
                 <Icon name="Eye" size={16} />
               </a>
-
+              {page.live_url && <a href={page.live_url} target="_blank" rel="noopener" title="Open live URL" class="page-row__action"><Icon name="ExternalLink" size={16} /></a>}
             </td>
           </tr>
         ))}

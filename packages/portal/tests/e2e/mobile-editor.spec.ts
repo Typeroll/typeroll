@@ -42,7 +42,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await page.getByRole('button', { name: 'Add', exact: true }).tap();
       await page.screenshot({ path: testInfo.outputPath(`mobile-library-${width}.png`) });
       await page.getByRole('button', { name: 'Text', exact: true }).tap();
-      await page.getByLabel('Content', { exact: true }).fill('<p>Added with touch</p>');
+      await page.getByLabel('Content', { exact: true }).fill('Added with touch');
       await expect(page.locator('.block-editor__status')).toContainText('Unsaved changes');
       await page.getByRole('button', { name: 'Page settings', exact: true }).click();
       await page.getByLabel('Page title', { exact: true }).fill('Mobile draft title');
