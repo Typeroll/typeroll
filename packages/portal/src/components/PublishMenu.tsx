@@ -1,3 +1,5 @@
+import { usePublishingReadiness } from './usePublishingReadiness';
+import { PublishingRequirements } from './PublishingRequirements';
 /**
  * The Publish ▾ control — one button in the editor header that owns the
  * whole "how does my work get live?" story:
@@ -147,7 +149,7 @@ export default function PublishMenu({
 
   const [env, setEnv] = useState<'production' | 'staging'>('production');
   const [deployErr, setDeployErr] = useState<string | null>(null);
-  const [publishingSetup, setPublishingSetup] = useState<{ ready: boolean; mode: 'managed' | 'customer_git'; required: Array<{ code: string; message: string; settings_url: string }> } | null>(null);
+  const { setup: publishingSetup, error: setupError, refresh: refreshSetup } = usePublishingReadiness(siteId, open);
   const { job, setJob, watch } = useDeployProgress(siteId, setDeployErr, undefined, !hasUnsaved && !saving);
   const busy = job?.status === 'queued' || job?.status === 'running';
 
@@ -175,8 +177,6 @@ export default function PublishMenu({
     const controller = new AbortController();
     setChangesLoading(true);
     setChangesError(null);
-    fetch(`/api/sites/${siteId}/publishing`, { cache: 'no-store', signal: controller.signal })
-      .then(response => response.ok ? response.json() : null).then(data => { if (!controller.signal.aborted) setPublishingSetup(data); }).catch(() => { if (!controller.signal.aborted) setPublishingSetup(null); });
     fetch(`/api/sites/${siteId}/changes-since-deploy`, { cache: 'no-store', signal: controller.signal })
       .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Content comparison is unavailable.'); return data; })
       .then(data => { if (!controller.signal.aborted) setChanges(data); })
@@ -186,6 +186,7 @@ export default function PublishMenu({
   }, [open, siteId, docUpdatedAt, hasUnsaved]);
 
   async function deploy() {
+    if (busy || !(await refreshSetup())?.ready) return;
     const message = env === 'production'
       ? 'Rebuild and deploy the full site to production? Visitors see the new version when it finishes.'
       : 'Rebuild and deploy to the staging URL? Visitors won\'t see this.';
@@ -199,6 +200,11 @@ export default function PublishMenu({
         body: JSON.stringify({ environment: publishingSetup?.mode === 'customer_git' ? 'production' : env }),
       });
       const data = await res.json();
+      if (!res.ok && data.code === 'publishing_setup_required') {
+        await refreshSetup();
+        setJob(null);
+        return;
+      }
       if (!res.ok || !(data.jobId ?? data.job_id)) throw new Error(data.error ?? 'Failed to start deploy');
       watch((data.jobId ?? data.job_id) as string);
     } catch (e) {
@@ -431,11 +437,7 @@ export default function PublishMenu({
           </div>
           </div>
           <div className="pmenu__section pmenu__deploy-footer">
-            {publishingSetup && !publishingSetup.ready && <div role="status">
-              <p className="pmenu__hint">You can keep editing and use Preview. Complete Publishing setup to deploy this site.</p>
-              <ul>{publishingSetup.required.map(item => <li key={item.code}>{item.message}</li>)}</ul>
-              <a className="pmenu__btn pmenu__linkbtn" href="/app/settings/publishing">Set up Publishing</a>
-            </div>}
+            <PublishingRequirements setup={publishingSetup} error={setupError} retry={() => { void refreshSetup(); }} />
             <div className="pmenu__actions">
               {publishingSetup?.mode !== 'customer_git' && <select
                 aria-label="Deployment environment"
@@ -451,10 +453,10 @@ export default function PublishMenu({
               <button
                 type="button"
                 className="pmenu__btn pmenu__btn--primary"
-                disabled={busy || publishingSetup?.ready === false}
+                disabled={busy || publishingSetup?.ready !== true}
                 onClick={() => void deploy()}
               >
-                {deployLabel}
+                {!busy && publishingSetup?.ready !== true ? (publishingSetup ? 'Publishing setup required' : 'Checking setup…') : deployLabel}
               </button>
             </div>
             {deployErr && <p className="pmenu__hint pmenu__hint--error">{deployErr}</p>}

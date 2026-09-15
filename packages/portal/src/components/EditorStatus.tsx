@@ -13,6 +13,8 @@
  * refreshes the editor so the indicator flips to "up to date".
  */
 
+import { usePublishingReadiness } from './usePublishingReadiness';
+import { PublishingRequirements } from './PublishingRequirements';
 import { useState } from 'react';
 import { useDeployProgress } from './useDeployProgress';
 
@@ -88,6 +90,7 @@ interface DeployButtonProps {
 
 
 export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: DeployButtonProps) {
+  const { setup, error: setupError, refresh } = usePublishingReadiness(siteId);
   const [env, setEnv] = useState<'production' | 'staging'>('production');
   const [err, setErr] = useState<string | null>(null);
   const { job, setJob, watch } = useDeployProgress(siteId, setErr, onDeployed);
@@ -95,6 +98,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
   const busy = job?.status === 'queued' || job?.status === 'running';
 
   async function go() {
+    if (busy || !(await refresh())?.ready) return;
     const message = env === 'production'
       ? 'Deploy to your live production site? This rebuilds the static files and uploads them. Visitors will see the new version once it finishes.'
       : 'Deploy to the staging URL? Visitors won\'t see this.';
@@ -105,9 +109,14 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
       const res = await fetch(`/api/sites/${siteId}/deploy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment: env }),
+        body: JSON.stringify({ environment: setup?.mode === 'customer_git' ? 'production' : env }),
       });
       const data = await res.json();
+      if (!res.ok && data.code === 'publishing_setup_required') {
+        await refresh();
+        setJob(null);
+        return;
+      }
       if (!res.ok || !(data.jobId ?? data.job_id)) throw new Error(data.error ?? 'Failed to start deploy');
       watch((data.jobId ?? data.job_id) as string);
     } catch (e) {
@@ -127,7 +136,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
 
   return (
     <>
-      <select
+      {setup?.mode !== 'customer_git' && <select
         value={env}
         onChange={(e) => setEnv(e.target.value as 'production' | 'staging')}
         disabled={busy}
@@ -136,19 +145,20 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
       >
         <option value="production">Production</option>
         <option value="staging">Staging</option>
-      </select>
+      </select>}
       <button
         type="button"
         className={pendingDeploy && !job ? 'btn btn--sm' : 'btn btn--secondary btn--sm'}
         onClick={go}
-        disabled={busy}
+        disabled={busy || setup?.ready !== true}
         title={pendingDeploy ? 'There are saved changes not yet on the live site' : 'Rebuild and redeploy the live site'}
       >
-        {label}
+        {!busy && setup?.ready !== true ? (setup ? 'Publishing setup required' : 'Checking setup…') : label}
       </button>
       {busy && job?.verification_message && <span role="status" className="text-sm">{job.verification_message}</span>}
       {job?.phase === 'distributing' && <span role="status" className="text-sm">Distributing… The link will appear automatically when ready.</span>}
-      {err && (
+      <PublishingRequirements setup={setup} error={setupError} retry={() => { void refresh(); }} />
+      {err && setup?.ready && (
         <span className="text-sm" style={{ color: 'var(--color-danger)', marginLeft: 8 }}>
           {err}
         </span>

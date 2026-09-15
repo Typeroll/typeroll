@@ -99,7 +99,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (buildTask && ['failed', 'cancelled'].includes(buildTask.status)) await completedBuild(args.orgId, job.git_publication!.build_task_key!);
     if (!preparingBuild && Number.isFinite(observationStart) && Date.now() - observationStart > 45 * 60_000) throw new ConnectionError(job.verification_message ? `Publication verification stopped after 45 minutes. ${job.verification_message.replace('Public verification will retry automatically.', '').trim()} Contact support with deployment ${args.jobId}.` : 'Publication verification did not finish within 45 minutes. Check the Cloudflare build and domain status, then retry.', 409, 'publication_observation_timeout');
     if (args.environment === 'staging' && args.versionId === 'main') throw new ConnectionError('Select a site version to publish a test deployment. The main version publishes the live website.', 409, 'publication_version_required');
-    await assertPublishingReady(args.orgId, args.siteId, args.versionId);
+    await assertPublishingReady(args.orgId, args.siteId, args.versionId, { checkBuild: false });
     const group = await (args.dryRun ? siteHostingGroup : lockSiteHostingGroup)(args.orgId, args.siteId);
     const [gitConnection, cfConnection, domains, organization, site] = await Promise.all([
       getConnection(args.orgId, 'github'), getConnection(args.orgId, 'cloudflare', group.id), getSiteDomains(args.orgId, args.siteId),

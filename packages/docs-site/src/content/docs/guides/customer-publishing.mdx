@@ -22,6 +22,27 @@ Your hosting operator must enable customer publishing and configure private draf
 storage. Existing managed sites retain their existing publishing mode until they
 are explicitly migrated.
 
+## Publishing setup checks
+
+Starting with Core 0.1.99, both the site overview and editor check Publishing
+before enabling deployment. The check includes GitHub, the site's Hosting Group,
+the selected version's website address, required media storage and hosts, and the
+selected build engine's completed verification and required capabilities. An
+older build engine can need an update even if its previous setup succeeded.
+Select the listed **Publishing → Builds** link and finish build setup to update
+and verify it.
+
+Deployment stays disabled while the check runs or cannot be completed. Missing
+steps link directly to their settings. Return after correcting them, or select
+**Check again** after a check error. The server checks again before accepting a
+job, including deployments requested through the public API and MCP.
+
+Saved publication status still determines which pages enter the next build; it
+does not make a page live. Editing, saving and Preview remain available. A new
+custom domain may be prepared before traffic DNS is switched: the candidate must
+still be built and verified before cutover. External service failures can still
+interrupt a build after these setup checks pass.
+
 ## Storage before importing
 
 Starting with Core 0.1.95, importing a website, external media, a sitemap or Search

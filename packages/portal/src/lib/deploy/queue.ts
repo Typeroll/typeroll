@@ -89,7 +89,7 @@ export function deployTaskIdentity(args: Pick<EnqueueArgs, 'jobId' | 'dispatchKe
 
 export class InProcessQueue implements DeployQueue {
   async enqueue(args: EnqueueArgs): Promise<void> {
-    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId);
+    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId, { checkBuild: !args.dispatchKey });
     // Fire-and-forget on the current event loop. The HTTP response from
     // the launcher returns immediately; this Promise resolves on its
     // own. The .catch is essential — without it, any failure (real
@@ -122,7 +122,7 @@ export class FirestoreDeployQueue implements DeployQueue {
   constructor(private store = getStore()) {}
 
   async enqueue(args: EnqueueArgs): Promise<void> {
-    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId);
+    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId, { checkBuild: !args.dispatchKey });
     const now = new Date().toISOString();
     await this.store.createDocIfMissing(
       `${FIRESTORE_DEPLOY_QUEUE_PATH}/${firestoreDeployQueueItemId(args)}`,
@@ -194,7 +194,7 @@ async function runDeployBody(args: EnqueueArgs): Promise<void> {
 
   await safeUpdate({ status: 'running', phase: 'starting' });
   try {
-    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId);
+    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId, { checkBuild: false });
     const result = await runDeploy({
       orgId: args.orgId,
       siteId: args.siteId,
@@ -262,7 +262,7 @@ export class CloudTasksQueue implements DeployQueue {
   ) {}
 
   async enqueue(args: EnqueueArgs): Promise<void> {
-    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId);
+    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId, { checkBuild: !args.dispatchKey });
     // Dynamic import so the @google-cloud/tasks SDK is only loaded in the
     // environment where it's actually used. Keeps `npm run dev:portal`
     // free of unnecessary GCP wiring.
