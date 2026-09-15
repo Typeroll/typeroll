@@ -12,7 +12,7 @@ async function setup() {
   return { store, resolvePublicationVersion, vstore };
 }
 
-it('freezes the selected branch including inherited blocks, templates, partials and collection items', async () => {
+it('freezes the selected branch including inherited blocks, templates, partials and typed pages', async () => {
   const { store, resolvePublicationVersion, vstore } = await setup();
   await store.setDoc(paths.page('org', 'site', 'home', 'main'), { title: 'Main', status: 'published', content_mode: 'blocks', blocks: [{ id: 'heading', type: 'custom-heading', data: { text: 'Main' } }] });
   await store.setDoc(paths.page('org', 'site', 'home', 'design'), { title: 'Design', status: 'published', content_mode: 'blocks', blocks: [{ id: 'heading', type: 'custom-heading', data: { text: 'Design' } }] });
@@ -22,24 +22,24 @@ it('freezes the selected branch including inherited blocks, templates, partials 
   await store.setDoc(paths.partial('org', 'site', 'footer', 'main'), { html_content: 'Inherited footer', status: 'published' });
   await store.setDoc(paths.settings('org', 'site', 'main'), { site_name: 'Main' });
   await store.setDoc(paths.settings('org', 'site', 'design'), { site_name: 'Design' });
-  await store.setDoc(paths.collection('org', 'site', 'posts', 'main'), { name: 'posts', fields: [] });
-  await store.setDoc(paths.collectionItem('org', 'site', 'posts', 'one', 'main'), { title: 'Main item' });
-  await store.setDoc(paths.collectionItem('org', 'site', 'posts', 'one', 'design'), { title: 'Design item' });
+  await store.setDoc(paths.contentType('org', 'site', 'posts', 'main'), { name: 'posts', fields: [] });
+  await store.setDoc(paths.page('org', 'site', 'one', 'main'), { title: 'Main item' });
+  await store.setDoc(paths.page('org', 'site', 'one', 'design'), { title: 'Design item' });
   await store.setDoc(paths.page('org', 'site', 'removed', 'main'), { title: 'Still on main', status: 'published' });
   await vstore.deletePage('org', 'site', 'design', 'removed');
   const design = await resolvePublicationVersion('org', 'site', 'design');
   const main = await resolvePublicationVersion('org', 'site', 'main');
-  expect(design.pages.map(p => p.title)).toEqual(['Design']);
+  expect(design.pages.map(p => p.title)).toEqual(['Design', 'Design item']);
   expect(design.pages[0].blocks?.[0].data.text).toBe('Design');
   expect(design.blockTypes[0].template).toContain('Branch template');
   expect(design.pageTemplates[0].name).toBe('article');
   expect(design.partials[0].html_content).toBe('Inherited footer');
   expect(design.settings?.site_name).toBe('Design');
-  expect(design.collections[0].items[0].title).toBe('Design item');
-  expect(main.pages.map(p => p.title).sort()).toEqual(['Main', 'Still on main']);
+  expect(design.pages.find(page => page.id === 'one')?.title).toBe('Design item');
+  expect(main.pages.map(p => p.title).sort()).toEqual(['Main', 'Main item', 'Still on main']);
   expect(main.blockTypes[0].template).toContain('Main template');
   expect(main.settings?.site_name).toBe('Main');
-  expect(main.collections[0].items[0].title).toBe('Main item');
+  expect(main.pages.find(page => page.id === 'one')?.title).toBe('Main item');
   await store.setDoc(paths.page('org', 'site', 'home', 'design'), { title: 'Later edit' });
   expect(design.pages[0].title).toBe('Design');
 });

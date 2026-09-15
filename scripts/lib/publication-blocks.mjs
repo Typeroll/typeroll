@@ -72,7 +72,7 @@ export function projectPublicationSchema(schema) {
   return schema.filter(field => field.rendered !== false).map(field => {
     if (!object(field) || typeof field.name !== 'string' || !field.name || ['__proto__', 'constructor', 'prototype'].includes(field.name)) throw new Error('Invalid publication field');
     const result = { name: field.name, type: field.type };
-    for (const name of ['label', 'placeholder', 'choices_markup', 'ref_collection']) if (typeof field[name] === 'string') result[name] = field[name];
+    for (const name of ['label', 'placeholder', 'choices_markup', 'ref_content_type']) if (typeof field[name] === 'string') result[name] = field[name];
     for (const name of ['required', 'responsive']) if (typeof field[name] === 'boolean') result[name] = field[name];
     for (const name of ['min', 'max']) if (typeof field[name] === 'number' && Number.isFinite(field[name])) result[name] = field[name];
     for (const name of ['options', 'option_labels']) if (field[name] !== undefined) {

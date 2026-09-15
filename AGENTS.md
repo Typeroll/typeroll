@@ -52,3 +52,9 @@
   identify Cloud/self-hosting differences in setup, permissions, availability
   and runtime ownership. Keep new topics in navigation and agent text exports;
   follow the documentation checklist in `CONTRIBUTING.md`.
+
+- Core 0.2.0 has one Page model. Content types define schema, routes and a default
+  Page template; records live under `pages`, custom data under `Page.fields`.
+  Do not reintroduce separate item editors, storage paths or content APIs. Old
+  shapes belong only in the offline schema migration. Update UI/API/MCP, public
+  docs, agent recipes and native starter fixtures together when this model changes.

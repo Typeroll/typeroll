@@ -138,7 +138,7 @@ Sitemap: https://www.example.com/sitemap.xml
 
 Two XML sitemaps emitted per build:
 
-- **`/sitemap.xml`** — every published page + every collection item that has an `item_template_html` and `route_template`. URLs use the canonical host.
+- **`/sitemap.xml`** — every published Page whose content type produces a route. URLs use the canonical host.
 - **`/sitemap-images.xml`** — images referenced from published content, grouped by parent page.
 
 Both filter out items with `noindex: true`. Both honour the canonical URL rules above.

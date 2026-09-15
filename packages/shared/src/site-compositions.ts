@@ -42,7 +42,7 @@ export function getPartialCompositionStarter(
 
 /** Native archive tree with explicit card semantics and field mappings. */
 export function getArchiveCompositionStarter(options: {
-  collection: string;
+  content_type: string;
   title: string;
   title_field?: string;
   excerpt_field?: string;
@@ -57,8 +57,8 @@ export function getArchiveCompositionStarter(options: {
   return [
     block('archive_breadcrumbs', 'template/page_breadcrumbs', { home_label: 'Home', aria_label: 'Breadcrumbs' }),
     block('archive_title', 'core/heading', { text: options.title, level: 'h1', size: '2xl', align: 'left' }),
-    block('archive_list', 'core/collection_list', {
-      collection: options.collection,
+    block('archive_list', 'core/page_list', {
+      content_type: options.content_type,
       layout: 'grid',
       cols: { mobile: 1, tablet: 2, desktop: 3 },
       gap: 'lg',
@@ -68,7 +68,7 @@ export function getArchiveCompositionStarter(options: {
         image_field: options.image_field ?? 'image',
         image_alt_field: options.image_alt_field ?? 'image_alt',
         href_field: options.href_field ?? 'url',
-        date_field: options.date_field ?? 'published_at',
+        date_field: options.date_field ?? 'date_published',
         heading_level: options.heading_level ?? 'h2',
         download_url_field: options.pdf_url_field ?? '',
         download_label: options.pdf_label ?? 'Download PDF',

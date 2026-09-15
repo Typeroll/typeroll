@@ -13,7 +13,7 @@
 
 import type { AppDef } from './types';
 
-export const DIRECTORY_COLLECTION_KEY = 'collection';
+export const DIRECTORY_CONTENT_TYPE_KEY = 'content_type';
 export const DIRECTORY_EMAIL_FIELD_KEY = 'email_field';
 export const DIRECTORY_LINK_TTL_KEY = 'link_ttl_hours';
 
@@ -46,12 +46,12 @@ export const directoryApp: AppDef = {
   affects_build: true,
   fields: [
     {
-      key: DIRECTORY_COLLECTION_KEY,
-      label: 'Listings collection',
+      key: DIRECTORY_CONTENT_TYPE_KEY,
+      label: 'Listing content type',
       type: 'text',
       required: true,
       placeholder: 'companies',
-      help: 'Machine name of the collection holding the listings.',
+      help: 'Content type ID for listing pages.',
     },
     {
       key: DIRECTORY_EMAIL_FIELD_KEY,
@@ -102,7 +102,7 @@ export const directoryApp: AppDef = {
       // no session, since there is nothing to prefill from yet.
       target: { app: 'directory', form: 'request-link' },
       fields: [
-        { name: 'item_id', type: 'text', label: 'Your listing id', required: true },
+        { name: 'page_id', type: 'text', label: 'Your listing id', required: true },
         { name: 'email', type: 'email', label: 'Email on your listing', required: true },
       ],
     },
@@ -132,7 +132,7 @@ export const directoryApp: AppDef = {
 };
 
 export interface DirectoryConfig {
-  collection: string;
+  content_type: string;
   emailField: string;
   ttlHours: number;
 }
@@ -143,12 +143,12 @@ export function directoryConfig(
 ): DirectoryConfig | null {
   const state = apps?.apps?.directory;
   if (!state?.enabled) return null;
-  const collection = String(state.config?.[DIRECTORY_COLLECTION_KEY] ?? '').trim();
+  const content_type = String(state.config?.[DIRECTORY_CONTENT_TYPE_KEY] ?? '').trim();
   const emailField = String(state.config?.[DIRECTORY_EMAIL_FIELD_KEY] ?? '').trim();
-  if (!collection || !emailField) return null;
+  if (!content_type || !emailField) return null;
   const ttlRaw = Number(state.config?.[DIRECTORY_LINK_TTL_KEY]);
   return {
-    collection,
+    content_type,
     emailField,
     ttlHours: Number.isFinite(ttlRaw) && ttlRaw > 0 ? Math.min(ttlRaw, 168) : 48,
   };

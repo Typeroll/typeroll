@@ -46,11 +46,10 @@ ln -s "$PWD/skills/tr-migrate-wp.md" ~/.claude/skills/
 
 | File | When it triggers | What it does |
 |---|---|---|
-| `tr-blog.md`              | "add a blog", "set up news", "article/podcast section" | Collection schema with `item_template_html` + `route_template` → seed items → listing page with marker block → deploy. **No per-article `create_page` needed** — items materialise their own URLs. |
+| `tr-blog.md` | "add a blog", "set up news" | Articles are Pages of a content type, sharing a native template and Page listing. |
 | `tr-forms.md`             | "contact form", "add a form", "booking form"           | Form definition → embed HTML with signed token → inline JS feedback → deploy. |
-| `tr-directory.md`         | Building a directory site, importing structured data   | Schema → items → per-item URLs via `route_template` → listing page → preview → deploy. |
-| `tr-collection-template.md` | Rich per-item detail pages: audio players, chapter lists, guest cards, image galleries — anything needing loops/nested data | Pre-render HTML into `*_html` fields when Mustache's `{{field}}` / `{{#field}}` aren't enough. Concrete recipes per pattern. |
-| `tr-page-template.md`     | Several pages share structure (category landings, service-detail variants) | Partials + `<x-include>` for HTML mode; formal `PageTemplate` via `set_page_template` for block mode. Refactor existing duplication. |
+| `tr-directory.md`         | Building a directory site, importing structured data   | Content type → Pages → URLs via `route_template` → listing page → preview → deploy. |
+| `tr-page-template.md` | Reusable Page templates: audio players, chapter lists, guest cards, image galleries — anything needing loops/nested data | Compose native blocks around `template_content_slot`; bind Page metadata, structured fields and references. |
 | `tr-seo.md`               | "SEO", "meta descriptions", "structured data"          | Audit → fix titles/descriptions → OG images → JSON-LD → robots.txt → deploy. |
 
 ### Importera innehåll
@@ -59,12 +58,12 @@ ln -s "$PWD/skills/tr-migrate-wp.md" ~/.claude/skills/
 |---|---|---|
 | `tr-migrate-wp.md`     | "migrate from WordPress", a wp-json URL is mentioned     | Walks the WP REST, rebuilds each page in the target's design, transfers media, sets redirects, leaves everything as drafts for review. |
 | `tr-migrate-multisite.md` | "multisite", "our .se/.de/.co.uk sites", migrating several sites at once | One site per domain; per-site URL inventory, design replicated via `.tcblocks`, path preservation, hreflang clusters, and a parity check against the deployed site before DNS moves. |
-| `tr-migrate-astro.md`  | "migrate an Astro site", "import from src/content"       | Lifts Astro Content Collections (`src/content/*`) into Typeroll collections — zod schema → field list, frontmatter → field values, markdown body → richtext field. Translates standalone `src/pages/*` into Typeroll pages, maps `src/layouts` chunks into partials. |
+| `tr-migrate-astro.md`  | "migrate an Astro site", "import from src/content"       | Lifts Astro Content Collections (`src/content/*`) into Typeroll content types — zod schema → field list, frontmatter → field values, Markdown body → Page blocks. Translates standalone `src/pages/*` into Typeroll pages, maps `src/layouts` chunks into partials. |
 | `tr-import-url.md`     | "import from Squarespace/Wix/Webflow", any non-WP URL    | Fetch → clean → adapt to target design → media transfer → draft pages → redirects → deploy. |
 
 ## Prerequisites for every skill
 
-1. `@typeroll/mcp-server` configured in `.claude.json` with a valid
+1. `@typeroll/mcp-server` configured in the agent’s MCP settings with a valid
    `TYPEROLL_API_KEY` and `TYPEROLL_API_URL`.
 2. The agent has read `AGENTS.md` (ships with the MCP package — see
    `node_modules/@typeroll/mcp-server/AGENTS.md` after install, or
@@ -78,7 +77,7 @@ If those are missing, every skill will fail at the first MCP call with
 Skills are markdown files that the agent loads on demand. Each one
 should include:
 
-- A `description:` frontmatter explaining when to load it (Claude uses
+- A `description:` frontmatter explaining when to load it (agents use
   this to pick the right skill).
 - A clear set of preconditions (what MCP tools must work, what state the
   agent needs to know).

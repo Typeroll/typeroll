@@ -33,41 +33,28 @@ export interface SiteTemplateCapabilities {
   supports_inline_style_tag: boolean;
   supports_microdata_attributes: boolean;
 
-  // Collections
-  supports_collection_item_routes: boolean;
-  supports_collection_listings: boolean;
-  supports_grouped_collection_listings: boolean;
-  supports_collection_item_navigation: boolean;
+  // Unified Pages and content types
+  supports_content_type_routes: boolean;
+  supports_page_listings: boolean;
+  supports_grouped_page_listings: boolean;
+  supports_page_navigation: boolean;
   /** Typed exact bindings such as core/button.href = "{{item.pdf_url}}". */
   supports_typed_context_bindings: boolean;
   /** Collection template fields (body, image, date) honor their selected field. */
-  supports_selected_collection_item_fields: boolean;
+  supports_selected_page_fields: boolean;
   /** Breadcrumb links are present in initial page and item HTML. */
   supports_server_rendered_breadcrumbs: boolean;
   /** Table-of-contents links and matching heading ids are present without JS. */
   supports_server_rendered_table_of_contents: boolean;
   /** Native article/checklist starters are accepted through template_kind. */
-  supports_collection_template_presets: boolean;
+  supports_page_template_presets: boolean;
   /** Item navigation can bind explicit previous/next URL and title fields. */
-  supports_explicit_collection_item_navigation: boolean;
-  /**
-   * Tri-state semantics for CollectionDef.route_template:
-   *   null / undefined → backfilled to `/{name}/{slug_field}` at
-   *                      render time (this flag = true)
-   *   ""               → EXPLICIT opt-out from per-item URLs. Never
-   *                      backfilled. effective_route_template = "".
-   *   string value     → used verbatim.
-   *
-   * Agents that want "always route items" should explicitly set
-   * route_template — relying on the backfill works today but leaves
-   * the doc in an ambiguous state that's harder to grep for.
-   */
-  collection_route_default_backfill: boolean;
+  supports_explicit_page_navigation: boolean;
   /** Explicit signal that `""` opts a collection out of per-item URLs
    *  (i.e. backfill does NOT apply to empty string). Surfaced as a
    *  separate flag so the contract is unambiguous in JSON, where
    *  TypeScript doc-comments aren't visible. */
-  collection_route_empty_string_is_opt_out: boolean;
+  content_type_empty_route_is_opt_out: boolean;
 
   // Page-level features
   supports_page_templates: boolean;
@@ -260,7 +247,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.43.1',
+  template_capabilities_version: '0.44.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -288,18 +275,17 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_inline_style_tag: true,
   supports_microdata_attributes: true,
 
-  supports_collection_item_routes: true,
-  supports_collection_listings: true,
-  supports_grouped_collection_listings: true,
-  supports_collection_item_navigation: true,
+  supports_content_type_routes: true,
+  supports_page_listings: true,
+  supports_grouped_page_listings: true,
+  supports_page_navigation: true,
   supports_typed_context_bindings: true,
-  supports_selected_collection_item_fields: true,
+  supports_selected_page_fields: true,
   supports_server_rendered_breadcrumbs: true,
   supports_server_rendered_table_of_contents: true,
-  supports_collection_template_presets: true,
-  supports_explicit_collection_item_navigation: true,
-  collection_route_default_backfill: true,
-  collection_route_empty_string_is_opt_out: true,
+  supports_page_template_presets: true,
+  supports_explicit_page_navigation: true,
+  content_type_empty_route_is_opt_out: true,
 
   supports_page_templates: true,
   supports_content_mode_switching: true,
@@ -350,7 +336,7 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
     'core/button',
     'core/navigation',
     'core/post_card',
-    'core/collection_list',
+    'core/page_list',
     'core/form',
     'core/html',
     'core/media_card',

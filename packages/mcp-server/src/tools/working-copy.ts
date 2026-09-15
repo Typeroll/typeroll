@@ -20,18 +20,13 @@ function v(version?: string): Record<string, string | undefined> | undefined {
 }
 
 const wcTargetSchema = z.object({
-  kind: z.enum(['page', 'partial', 'item']),
+  kind: z.enum(['page', 'partial']),
   id: z.string(),
-  collection: z.string().optional().describe('Required when kind="item": the collection name.'),
-}).describe('Which doc\'s draft: page {id}, partial {id}, or collection item ({collection} + {id}). Templates/item templates have no drafts (their writes apply directly).');
+}).describe('Which doc\'s draft: page {id} or partial {id}. Templates have no drafts (their writes apply directly).');
 
-type WcTargetArg = { kind: 'page' | 'partial' | 'item'; id: string; collection?: string };
+type WcTargetArg = { kind: 'page' | 'partial'; id: string };
 
 function wcPath(t: WcTargetArg): string {
-  if (t.kind === 'item') {
-    if (!t.collection) throw new Error('collection is required when kind="item"');
-    return `working-copy/item/${encodeURIComponent(t.collection)}/${encodeURIComponent(t.id)}`;
-  }
   return `working-copy/${t.kind}/${encodeURIComponent(t.id)}`;
 }
 

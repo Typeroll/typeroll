@@ -30,7 +30,7 @@ export interface ActionContext {
   /** Field values submitted, for `{{token}}` interpolation in action config. */
   data: Record<string, unknown>;
   /** What the submission was about, when the action's source cares. */
-  subject?: { kind: 'submission' | 'collection_item'; collection?: string; id?: string };
+  subject?: { kind: 'submission' | 'page'; content_type?: string; id?: string };
 }
 
 export interface FormActionDef {

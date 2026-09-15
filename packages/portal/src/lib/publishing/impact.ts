@@ -1,11 +1,11 @@
 import { digest } from './providers.mjs';
 
 export interface ImpactEntry {
-  kind: string; id: string; title: string; collection?: string;
+  kind: string; id: string; title: string; content_type?: string;
   fields: Record<string, string>; metadata: string; date_updated: string;
 }
 export interface ImpactSnapshot {
-  protocol: 1; org_id: string; site_id: string; version_id: string;
+  protocol: 2; org_id: string; site_id: string; version_id: string;
   core_commit: string; entries: ImpactEntry[];
 }
 export interface PublicationImpact {
@@ -14,7 +14,7 @@ export interface PublicationImpact {
   classification: 'none' | 'page_content_only' | 'site_wide' | 'unknown';
   changed_pages: number; added_pages: number; removed_pages: number;
   metadata_only: number; total: number;
-  changes: Array<{ kind: string; id: string; title: string; collection?: string; action: 'added' | 'changed' | 'removed'; fields: string[]; date_updated: string; will_deploy: true }>;
+  changes: Array<{ kind: string; id: string; title: string; content_type?: string; action: 'added' | 'changed' | 'removed'; fields: string[]; date_updated: string; will_deploy: true }>;
   reasons: string[];
 }
 
@@ -25,25 +25,21 @@ function canonical(value: any): any {
   return Object.fromEntries(Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => [key, canonical(value[key])]));
 }
 const fingerprint = (value: any) => digest(JSON.stringify(canonical(value)));
-const entryKey = (entry: { kind: string; id: string; collection?: string }) => JSON.stringify([entry.kind, entry.collection ?? '', entry.id]);
+const entryKey = (entry: { kind: string; id: string; content_type?: string }) => JSON.stringify([entry.kind, entry.id]);
 
 /** Fingerprint only the public projection. Working copies and private fields never enter this snapshot. */
 export function captureImpact(publication: any, orgId: string, siteId: string, media: any[] = []): ImpactSnapshot {
   const entries: ImpactEntry[] = [];
-  const add = (kind: string, value: any, collection?: string) => {
+  const add = (kind: string, value: any, content_type?: string) => {
     const { date_updated, updated_at, ...content } = value;
     entries.push({ kind, id: value.id, title: [value.title, value.name, value.id].find(label => typeof label === 'string' && label.length > 0) ?? String(value.id),
-      ...(collection ? { collection } : {}), date_updated: date_updated ?? updated_at ?? '',
+      ...(content_type ? { content_type } : {}), date_updated: date_updated ?? updated_at ?? '',
       metadata: fingerprint({ date_updated, updated_at }),
       fields: Object.fromEntries(Object.entries(content).filter(([, v]) => v !== undefined).map(([key, value]) => [key, fingerprint(value)])),
     });
   };
-  for (const [kind, values] of Object.entries({ page: publication.pages, partial: publication.partials, template: publication.pageTemplates, block_type: publication.blockTypes, redirect: publication.redirects, form: publication.forms })) {
+  for (const [kind, values] of Object.entries({ page: publication.pages, partial: publication.partials, template: publication.pageTemplates, block_type: publication.blockTypes, redirect: publication.redirects, form: publication.forms, content_type: publication.contentTypes })) {
     for (const value of (values ?? []) as any[]) add(kind, value);
-  }
-  for (const collection of publication.collections ?? []) {
-    add('collection', collection.definition);
-    for (const item of collection.items) add('collection_item', item, collection.definition.name);
   }
   for (const [key, title] of Object.entries({ site: 'Site identity', settings: 'Site settings', apps: 'Apps', extensions: 'Extensions', runtime_dependencies: 'Runtime connections', impact_origins: 'Publication addresses' })) add('configuration', { id: key, name: title, value: publication[key] ?? null });
   const content = JSON.stringify(publication);
@@ -57,14 +53,14 @@ export function captureImpact(publication: any, orgId: string, siteId: string, m
   }
   entries.sort((a, b) => entryKey(a).localeCompare(entryKey(b)));
   if (new Set(entries.map(entryKey)).size !== entries.length) throw Error('Duplicate impact identity');
-  return { protocol: 1, org_id: orgId, site_id: siteId, version_id: publication.version_id, core_commit: publication.core_commit, entries };
+  return { protocol: 2, org_id: orgId, site_id: siteId, version_id: publication.version_id, core_commit: publication.core_commit, entries };
 }
 
 /** Observe net source changes, never authorize reuse without an output dependency graph. */
 export function compareImpact(previous: ImpactSnapshot | null | undefined, current: ImpactSnapshot, provisional = false): PublicationImpact {
   const result: PublicationImpact = { comparison: 'baseline_unavailable', provisional, execution: 'full', reuse_verified: false,
     classification: 'unknown', changed_pages: 0, added_pages: 0, removed_pages: 0, metadata_only: 0, total: 0, changes: [], reasons: [] };
-  if (!previous || previous.protocol !== 1 || ['org_id', 'site_id', 'version_id'].some(key => previous[key as keyof ImpactSnapshot] !== current[key as keyof ImpactSnapshot])) {
+  if (!previous || previous.protocol !== 2 || ['org_id', 'site_id', 'version_id'].some(key => previous[key as keyof ImpactSnapshot] !== current[key as keyof ImpactSnapshot])) {
     result.reasons.push('verified_source_baseline_unavailable'); return result;
   }
   result.comparison = 'verified_snapshot';
@@ -75,7 +71,7 @@ export function compareImpact(previous: ImpactSnapshot | null | undefined, curre
     const fields = [...new Set([...Object.keys(a?.fields ?? {}), ...Object.keys(b?.fields ?? {})])].sort().filter(field => a?.fields[field] !== b?.fields[field]);
     if (a && b && !fields.length) { if (a.metadata !== b.metadata) result.metadata_only++; continue; }
     const action = !a ? 'added' : !b ? 'removed' : 'changed';
-    result.changes.push({ kind: entry.kind, id: entry.id, title: entry.title, ...(entry.collection ? { collection: entry.collection } : {}), action, fields, date_updated: entry.date_updated, will_deploy: true });
+    result.changes.push({ kind: entry.kind, id: entry.id, title: entry.title, ...(entry.content_type ? { content_type: entry.content_type } : {}), action, fields, date_updated: entry.date_updated, will_deploy: true });
     if (entry.kind === 'page') result[`${action}_pages`]++;
   }
   result.total = result.changes.length;

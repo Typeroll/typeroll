@@ -27,13 +27,13 @@ const repeater: BlockType = {
   schema: [
     // SOURCE
     { name: 'source_type', type: 'select', label: 'Source',
-      options: ['static', 'collection', 'children_blocks'], default: 'static' },
+      options: ['static', 'pages', 'children_blocks'], default: 'static' },
     { name: 'items', type: 'array', label: 'Items',
       // The item-shape is dynamic — the editor mirrors the item_block's
       // schema for each row in the array. The renderer just walks the
       // array of objects without caring about the shape.
       fields: [] },
-    { name: 'collection', type: 'collection_ref', label: 'Collection' },
+    { name: 'content_type', type: 'content_type_ref', label: 'Content type' },
     { name: 'limit', type: 'number', label: 'Max items', default: 12 },
     // Archive pagination (collection sources only): items per page. The
     // build generates /page/2/, /page/3/… routes for the page holding this
@@ -41,8 +41,8 @@ const repeater: BlockType = {
     // `limit`. One paginated listing per page (the first found drives the
     // routes).
     { name: 'paginate', type: 'number', label: 'Items per page (archive)', min: 1 },
-    { name: 'sort_by', type: 'text', label: 'Sort by field', default: 'published_at' },
-    { name: 'sort_order', type: 'select', label: 'Sort order', options: ['asc', 'desc'], default: 'desc' },
+    { name: 'sort_by', type: 'text', label: 'Sort field (empty = content type default)', default: '' },
+    { name: 'sort_order', type: 'select', label: 'Sort direction', options: ['', 'asc', 'desc'], default: '' },
     { name: 'filter_field', type: 'text', label: 'Filter on field' },
     { name: 'filter_value', type: 'text', label: 'Filter value' },
     { name: 'pinned_ids', type: 'list_simple', label: 'Pinned item ids' },
@@ -370,22 +370,22 @@ const teamGrid: BlockType = {
 };
 
 /**
- * `core/collection_list` — repeater with a collection source. Replaces
+ * `core/page_list` — repeater with a collection source. Replaces
  * the AI hand-rolled listing HTML pattern with a structured block. The
  * site renderer's collection-source resolver fills in items at build
  * time.
  */
 const collectionList: BlockType = {
-  id: 'core/collection_list',
-  name: 'collection_list',
-  label: 'Collection List',
+  id: 'core/page_list',
+  name: 'page_list',
+  label: 'Content type List',
   icon: 'list',
   category: 'content',
   container: 'repeater',
   expand_to: {
     target: 'core/repeater',
     defaults: {
-      source_type: 'collection',
+      source_type: 'pages',
       item_block: 'core/post_card',
       layout: 'grid',
       cols: 3,
@@ -393,10 +393,10 @@ const collectionList: BlockType = {
     },
   },
   schema: [
-    { name: 'collection', type: 'collection_ref', label: 'Collection', required: true },
+    { name: 'content_type', type: 'content_type_ref', label: 'Content type', required: true },
     { name: 'limit', type: 'number', label: 'Max items', default: 12 },
-    { name: 'sort_by', type: 'text', label: 'Sort by field', default: 'published_at' },
-    { name: 'sort_order', type: 'select', label: 'Sort order', options: ['asc', 'desc'], default: 'desc' },
+    { name: 'sort_by', type: 'text', label: 'Sort field (empty = content type default)', default: '' },
+    { name: 'sort_order', type: 'select', label: 'Sort direction', options: ['', 'asc', 'desc'], default: '' },
     { name: 'filter_field', type: 'text', label: 'Filter field' },
     { name: 'filter_value', type: 'text', label: 'Filter value' },
     { name: 'item_block', type: 'block_type_ref', label: 'Item block', default: 'core/post_card' },
@@ -405,7 +405,7 @@ const collectionList: BlockType = {
       { name: 'excerpt_field', type: 'text', label: 'Excerpt field', default: 'excerpt' },
       { name: 'image_field', type: 'text', label: 'Image field', default: 'image' },
       { name: 'image_alt_field', type: 'text', label: 'Image alt field', default: 'image_alt' },
-      { name: 'date_field', type: 'text', label: 'Date field', default: 'published_at' },
+      { name: 'date_field', type: 'text', label: 'Date field', default: 'date_published' },
       { name: 'author_field', type: 'text', label: 'Author field', default: 'author' },
       { name: 'href_field', type: 'text', label: 'Link field', default: 'url' },
       { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3', 'h4'], default: 'h2' },

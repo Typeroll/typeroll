@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
-import type { CollectionDef, Page, Site, SiteVersion, WorkingCopy } from '@typeroll/shared';
+import type { ContentType, Page, Site, SiteVersion, WorkingCopy } from '@typeroll/shared';
 
 const ORG = 'orgone';
 const SITE = 'mysite';
@@ -125,20 +125,20 @@ describe('working-copy routes', () => {
     expect((await readWc('partial--header'))?.fields.html_content).toBe('<nav></nav>');
   });
 
-  it('PUT whitelists item fields against the collection schema', async () => {
+  it('PUT validates Page custom fields against its content type', async () => {
     const { getStore } = await import('../../lib/datastore');
-    await getStore().setDoc(paths.collection(ORG, SITE, 'blog', MAIN_VERSION_ID), {
+    await getStore().setDoc(paths.contentType(ORG, SITE, 'blog', MAIN_VERSION_ID), {
       name: 'blog', label_singular: 'Post', label_plural: 'Posts',
-      fields: [{ name: 'title', type: 'text', label: 'Title' }],
-    } as Partial<CollectionDef>);
-    await getStore().setDoc(paths.collectionItem(ORG, SITE, 'blog', 'p1', MAIN_VERSION_ID), {
-      title: 'Old', status: 'published',
+      fields: [{ name: 'summary', type: 'text', label: 'Summary' }],
+    } as Partial<ContentType>);
+    await getStore().setDoc(paths.page(ORG, SITE, 'p1', MAIN_VERSION_ID), {
+      title: 'Old', status: 'published', content_type: 'blog', fields: { summary: 'Old' },
     });
-    const res = await callWc('PUT', 'item/blog/p1', {
-      fields: { title: 'New', status: 'draft', not_in_schema: 1 },
+    const res = await callWc('PUT', 'page/p1', {
+      fields: { title: 'New', fields: { summary: 'New summary' }, status: 'draft', not_in_schema: 1 },
     });
     expect(res.status).toBe(200);
-    expect((await readWc('item--blog--p1'))?.fields).toEqual({ title: 'New' });
+    expect((await readWc('page--p1'))?.fields).toEqual({ title: 'New', fields: { summary: 'New summary' } });
   });
 
   it('GET returns the copy, DELETE discards it', async () => {

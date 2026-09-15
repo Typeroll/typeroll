@@ -5,13 +5,13 @@
 // slug or old_wp_url. After the migration refactor (docs/page-slug-audit.md
 // follow-up), posts are imported as items in a `posts` collection rather
 // than as flat pages with slash-slugs — so analyzeCoverage now also has
-// to recognise collection items that materialise URLs via route_template.
+// to recognise typed Pages that materialise URLs via route_template.
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type {
-  CollectionDef,
+  ContentType,
   MigrationUrl,
   Page,
   Site,
@@ -51,24 +51,24 @@ async function seedPage(id: string, doc: Partial<Page>): Promise<void> {
   });
 }
 
-async function seedCollection(def: Partial<CollectionDef> & { name: string }): Promise<void> {
+async function seedContentType(def: Partial<ContentType> & { name: string }): Promise<void> {
   const { getStore } = await import('../../lib/datastore');
   // Defaults first, caller's `def` last so explicit fields override.
-  await getStore().setDoc(paths.collection(ORG, SITE, def.name), {
+  await getStore().setDoc(paths.contentType(ORG, SITE, def.name), {
     label_singular: def.name,
     label_plural: def.name,
-    slug_field: 'slug',
-    fields: [{ name: 'slug', type: 'text', label: 'slug', required: true }],
+    fields: [],
     created_at: new Date().toISOString(),
     ...def,
-  } satisfies Partial<CollectionDef>);
+  } satisfies Partial<ContentType>);
 }
 
-async function seedItem(collection: string, id: string, fields: Record<string, unknown>): Promise<void> {
+async function seedTypedPage(contentType: string, id: string, fields: Record<string, unknown>): Promise<void> {
   const { getStore } = await import('../../lib/datastore');
   await getStore().setDoc(
-    paths.collectionItem(ORG, SITE, collection, id, MAIN_VERSION_ID),
+    paths.page(ORG, SITE, id, MAIN_VERSION_ID),
     {
+      content_type: contentType, title: id, content_mode: 'blocks', blocks: [],
       status: 'published',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -109,15 +109,15 @@ describe('analyzeCoverage', () => {
     expect(summary.migrated).toBe(1);
   });
 
-  it('classifies a URL covered by a published collection item via route_template as migrated', async () => {
+  it('classifies a URL covered by a published typed Page via route_template as migrated', async () => {
     await setup();
     await seedInventory([{ path: '/blog/hello-world' }]);
-    await seedCollection({
+    await seedContentType({
       name: 'posts',
       route_template: '/blog/{slug}',
-      fields: [{ name: 'slug', type: 'text', label: 'slug', required: true }],
+      fields: [],
     });
-    await seedItem('posts', 'hello-world', { slug: 'hello-world' });
+    await seedTypedPage('posts', 'hello-world', { slug: 'hello-world' });
     const { analyzeCoverage } = await import('../../lib/wp/url-inventory');
     const { getStore } = await import('../../lib/datastore');
     const { urls, summary } = await analyzeCoverage(getStore(), ORG, SITE);
@@ -127,16 +127,16 @@ describe('analyzeCoverage', () => {
     expect(summary.unhandled).toBe(0);
   });
 
-  it('matches a collection item via its old_wp_url field when the path differs from the new URL', async () => {
+  it('matches a typed Page via its old_wp_url field when the path differs from the new URL', async () => {
     await setup();
     // Old site had /2024/01/hello, new site exposes /blog/hello.
     await seedInventory([{ path: '/2024/01/hello' }]);
-    await seedCollection({
+    await seedContentType({
       name: 'posts',
       route_template: '/blog/{slug}',
-      fields: [{ name: 'slug', type: 'text', label: 'slug', required: true }],
+      fields: [],
     });
-    await seedItem('posts', 'hello', {
+    await seedTypedPage('posts', 'hello', {
       slug: 'hello',
       old_wp_url: 'https://old.example.com/2024/01/hello',
     });
@@ -150,11 +150,11 @@ describe('analyzeCoverage', () => {
     expect(summary.migrated).toBe(1);
   });
 
-  it('does not count draft collection items', async () => {
+  it('does not count draft typed Pages', async () => {
     await setup();
     await seedInventory([{ path: '/blog/draft-post' }]);
-    await seedCollection({ name: 'posts', route_template: '/blog/{slug}' });
-    await seedItem('posts', 'draft-post', { slug: 'draft-post', status: 'draft' });
+    await seedContentType({ name: 'posts', route_template: '/blog/{slug}' });
+    await seedTypedPage('posts', 'draft-post', { slug: 'draft-post', status: 'draft' });
     const { analyzeCoverage } = await import('../../lib/wp/url-inventory');
     const { getStore } = await import('../../lib/datastore');
     const { urls, summary } = await analyzeCoverage(getStore(), ORG, SITE);
@@ -166,12 +166,12 @@ describe('analyzeCoverage', () => {
   it('skips collections with empty route_template (listing-only collections)', async () => {
     await setup();
     await seedInventory([{ path: '/team/anna' }]);
-    await seedCollection({
+    await seedContentType({
       name: 'team',
       route_template: '',
-      fields: [{ name: 'slug', type: 'text', label: 'slug', required: true }],
+      fields: [],
     });
-    await seedItem('team', 'anna', { slug: 'anna' });
+    await seedTypedPage('team', 'anna', { slug: 'anna' });
     const { analyzeCoverage } = await import('../../lib/wp/url-inventory');
     const { getStore } = await import('../../lib/datastore');
     const { urls, summary } = await analyzeCoverage(getStore(), ORG, SITE);
@@ -213,20 +213,20 @@ describe('analyzeCoverage', () => {
     expect(summary.unhandled).toBe(1);
   });
 
-  it('prefers page matches over collection-item matches when both could apply', async () => {
+  it('prefers page matches over typed Page matches when both could apply', async () => {
     await setup();
     await seedInventory([{ path: '/blog/news' }]);
-    // A page and a collection item both claim this URL — pages win
+    // A page and a typed Page both claim this URL — pages win
     // (consistent with the renderer's "pages always shadow items"
     // collision rule documented elsewhere).
     await seedPage('blog-news', { slug: 'blog/news' });
-    await seedCollection({ name: 'posts', route_template: '/blog/{slug}' });
-    await seedItem('posts', 'news', { slug: 'news' });
+    await seedContentType({ name: 'posts', route_template: '/blog/{slug}' });
+    await seedTypedPage('posts', 'news', { slug: 'news' });
     const { analyzeCoverage } = await import('../../lib/wp/url-inventory');
     const { getStore } = await import('../../lib/datastore');
     const { urls } = await analyzeCoverage(getStore(), ORG, SITE);
     expect(urls[0]?.status).toBe('migrated');
-    // Target is the page slug, not the collection item URL.
+    // Target is the page slug, not the typed Page URL.
     expect(urls[0]?.target).toBe('/blog/news');
   });
 });

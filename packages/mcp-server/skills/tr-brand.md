@@ -6,7 +6,7 @@ description: Use when the user asks to create a brand identity, design system, o
 # Design a brand identity for a Typeroll site
 
 > **The buffer model (draft writes).** Every content write in this recipe
-> (pages, blocks, partials, collection items) lands in an unsaved per-doc
+> (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
 > build work, pass `save: true` on write calls (the work is pre-approved by
 > the task itself), or run `commit_working_copy` per doc before any
@@ -177,7 +177,7 @@ Then reference `var(--brand-gradient)` etc. in page HTML and partials.
 
 ## Step 4b — Section + layout design defaults
 
-These are non-negotiable defaults the rest of the platform skills inherit (`tr-new-site`, `tr-directory`, `tr-collection-template`). Apply them on every page that has visible sections — they're battle-tested across real customer migrations.
+These are non-negotiable defaults the rest of the platform skills inherit (`tr-new-site`, `tr-directory`, `tr-page-template`). Apply them on every page that has visible sections — they're battle-tested across real customer migrations.
 
 ### One signal per section boundary
 

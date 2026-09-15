@@ -1,0 +1,17 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { loadSiteContext } from '../../../../../lib/access';
+import { listContentTypes } from '../../../../../lib/content-type-service';
+import { vstore } from '../../../../../lib/version-store';
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, versionId, owner_org_id: orgId } = ctx;
+const types = await listContentTypes({ orgId, siteId: site.id, versionId });
+const pages = await vstore.pages(orgId, site.id, versionId);
+---
+<AppLayout title={`Content types — ${site.name}`} siteId={site.id}>
+  <div class="app-header"><div><a href={`/app/sites/${site.id}/pages`}>← Pages</a><h1>Content types</h1><p class="muted">Set the fields, URL pattern and default template for your pages.</p></div><a class="btn" href={`/app/sites/${site.id}/content-types/new`}>New content type</a></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:1rem">
+    {types.map(type => <a class="card" href={`/app/sites/${site.id}/content-types/${type.id}`}><h2>{type.label_plural}</h2><p>{pages.filter(page => (page.content_type ?? 'page') === type.id).length} pages · {type.fields.length} custom fields</p><p class="muted">{type.route_template || 'No public URL'}</p></a>)}
+  </div>
+</AppLayout>

@@ -173,7 +173,7 @@ describe('bulkReplaceText', () => {
     ).rejects.toThrow();
   });
 
-  it('replaces text in partials, block data, and collection schema fields', async () => {
+  it('replaces text in partials, block data, and custom Page fields', async () => {
     await setup();
     const { getStore } = await import('../../lib/datastore');
     const store = getStore();
@@ -185,13 +185,13 @@ describe('bulkReplaceText', () => {
       title: 'Blocks', slug: 'blocks', status: 'published', content_mode: 'blocks',
       blocks: [{ id: 'b1', type: 'core/text', data: { text: 'Old offer' } }],
     });
-    await store.setDoc(paths.collection(ORG, SITE, 'posts', MAIN_VERSION_ID), {
+    await store.setDoc(paths.contentType(ORG, SITE, 'posts', MAIN_VERSION_ID), {
       name: 'posts', label_singular: 'Post', label_plural: 'Posts',
-      fields: [{ name: 'body', label: 'Body', type: 'richtext' }],
+      fields: [{ name: 'description', label: 'Description', type: 'richtext' }],
       created_at: new Date().toISOString(),
     });
-    await store.setDoc(paths.collectionItem(ORG, SITE, 'posts', 'one', MAIN_VERSION_ID), {
-      status: 'published', body: '<p>Old offer</p>',
+    await store.setDoc(paths.page(ORG, SITE, 'one', MAIN_VERSION_ID), {
+      content_type: 'posts', title: 'One', slug: 'one', status: 'published', fields: { description: '<p>Old offer</p>' },
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     });
 
@@ -199,35 +199,35 @@ describe('bulkReplaceText', () => {
     const result = await bulkReplaceText(ORG, SITE, MAIN_VERSION_ID, {
       pattern: 'Old offer', replacement: 'New offer', scope: 'all', save: true,
     });
-    expect(result.resource_counts).toEqual({ pages: 1, collection_items: 1, partials: 1 });
+    expect(result.resource_counts).toEqual({ pages: 2, partials: 1 });
     expect(result.saved).toBe(3);
 
     const { vstore } = await import('../../lib/version-store');
     expect((await vstore.partial(ORG, SITE, MAIN_VERSION_ID, 'footer'))?.html_content).toContain('New offer');
     const page = await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'blocks');
     expect(page?.blocks?.[0].data.text).toBe('New offer');
-    const item = await vstore.collectionItem(ORG, SITE, MAIN_VERSION_ID, 'posts', 'one');
-    expect(item?.body).toContain('New offer');
+    const item = await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'one');
+    expect(item?.fields?.description).toContain('New offer');
   });
 
-  it('reports collection-field authority conflicts without staging the item', async () => {
+  it('reports custom-field authority conflicts without staging the item', async () => {
     await setup();
     const { getStore } = await import('../../lib/datastore');
     const store = getStore();
-    await store.setDoc(paths.collection(ORG, SITE, 'locked', MAIN_VERSION_ID), {
+    await store.setDoc(paths.contentType(ORG, SITE, 'locked', MAIN_VERSION_ID), {
       name: 'locked', label_singular: 'Entry', label_plural: 'Entries',
-      fields: [{ name: 'body', label: 'Body', type: 'text', writable_by: ['portal'] }],
+      fields: [{ name: 'description', label: 'Description', type: 'text', writable_by: ['portal'] }],
       created_at: new Date().toISOString(),
     });
-    await store.setDoc(paths.collectionItem(ORG, SITE, 'locked', 'one', MAIN_VERSION_ID), {
-      status: 'published', body: 'Old offer',
+    await store.setDoc(paths.page(ORG, SITE, 'one', MAIN_VERSION_ID), {
+      content_type: 'locked', title: 'One', slug: 'one', status: 'published', fields: { description: 'Old offer' },
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     });
     const { bulkReplaceText } = await import('../../lib/bulk-operations');
     const result = await bulkReplaceText(ORG, SITE, MAIN_VERSION_ID, {
-      pattern: 'Old offer', replacement: 'New offer', scope: 'collection_items', collection: 'locked',
+      pattern: 'Old offer', replacement: 'New offer', scope: 'pages', contentType: 'locked',
     });
-    expect(result.conflicts).toEqual([{ target: { kind: 'item', collection: 'locked', id: 'one' }, fields: ['body'] }]);
+    expect(result.conflicts).toEqual([{ target: { kind: 'page', id: 'one' }, fields: ['description'] }]);
     expect(result.updated).toBe(0);
   });
 });

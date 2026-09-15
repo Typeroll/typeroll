@@ -519,10 +519,14 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
                   keep styling here, not inside a content block.
                 </p>
               </div>
+              <label>Page order<input type="number" step="any" value={draft.sort_order ?? ''} onChange={e => update('sort_order', e.target.value === '' ? null : Number(e.target.value))} /></label>
+              <p className="muted text-sm">Lower numbers come first when sorting by page order. Empty values come last.</p>
               <TemplatePicker
                 siteId={siteId}
                 pageId={page.id}
                 currentTemplate={draft.template}
+                onChange={value => update('template', value)}
+                contentType={page.content_type}
               />
               <p className="muted text-sm">
                 Status: <strong>{draft.status}</strong>

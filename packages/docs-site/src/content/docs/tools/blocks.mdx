@@ -1,11 +1,11 @@
 ---
 title: Blocks Tools
-description: Compose pages, partials, page templates, and collection item templates from a library of ~40 reusable blocks. Author custom blocks. Make layouts responsive.
+description: Compose pages, partials, Page templates from a library of ~40 reusable blocks. Author custom blocks. Make layouts responsive.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
-Pages, partials, page templates, and collection item templates all share one editing surface: a tree of **blocks**. The AI agent reaches for blocks instead of writing raw HTML — it's faster, more consistent, and the same edits the AI agent makes are what you see in the editor's drag-and-drop panel.
+Pages, partials, Page templates all share one editing surface: a tree of **blocks**. The AI agent reaches for blocks instead of writing raw HTML — it's faster, more consistent, and the same edits the AI agent makes are what you see in the editor's drag-and-drop panel.
 
 ## The two verb families
 
@@ -20,17 +20,16 @@ There are two distinct kinds of block tools — keep them straight:
 
 A container is anything that holds a tree of blocks. Four kinds:
 
-| Kind            | What it is                                | `target.id`                                |
-| --------------- | ----------------------------------------- | ------------------------------------------ |
-| `page`          | A regular page in blocks-mode             | The page's id                              |
-| `partial`       | A header/footer/free block in blocks-mode | `"header"`, `"footer"`, or a free-block id |
-| `template`      | A page template                           | The template id (e.g. `"blog-post"`)       |
-| `item_template` | A collection's per-item layout            | The collection name (e.g. `"blog"`)        |
+| Kind       | What it is                                | `target.id`                                |
+| ---------- | ----------------------------------------- | ------------------------------------------ |
+| `page`     | A regular page in blocks-mode             | The page's id                              |
+| `partial`  | A header/footer/free block in blocks-mode | `"header"`, `"footer"`, or a free-block id |
+| `template` | A page template                           | The template id (e.g. `"blog-post"`)       |
 
 Every instance tool accepts the same shape:
 
 ```
-target: { kind: "page" | "partial" | "template" | "item_template", id: string }
+target: { kind: "page" | "partial" | "template", id: string }
 ```
 
 For pages, `page_id: "<id>"` is a shorthand for `target: { kind: "page", id: "<id>" }`. Older prompts still work; new patterns should prefer `target`.
@@ -45,9 +44,9 @@ For pages, `page_id: "<id>"` is a shorthand for `target: { kind: "page", id: "<i
   → add_block target={kind:"template", id:"blog-post"} block={type:"template_content_slot"}
 
 "Change how every blog post lays out — show the date next to the title, then a wide image."
-  → add_block target={kind:"item_template", id:"blog"} block={type:"template/item_title"}
-  → add_block target={kind:"item_template", id:"blog"} block={type:"template/page_date"}
-  → add_block target={kind:"item_template", id:"blog"} block={type:"template/item_image"}
+  → add_block target={kind:"template", id:"article-layout"} block={type:"template/page_title"}
+  → add_block target={kind:"template", id:"article-layout"} block={type:"template/page_date"}
+  → add_block target={kind:"template", id:"article-layout"} block={type:"template/page_featured_image"}
 ```
 
 ## The block library
@@ -86,7 +85,7 @@ The repeater abstraction collapses what used to be a dozen specialised widgets i
 - `core/feature_grid` — icon_box grid
 - `core/pricing_table` — pricing_plan grid
 - `core/team_grid` — team_member grid
-- `core/collection_list` — blog/news/any collection, items become post_cards
+- `core/page_list` — Pages of any content type, items become post_cards
 
 Each alias accepts `items: [{...}]` directly — the AI agent passes the per-item field values and the renderer expands the alias to a repeater with the right item-block type.
 
@@ -101,11 +100,11 @@ Each alias accepts `items: [{...}]` directly — the AI agent passes the per-ite
 
 ### Template/\* family (dynamic context)
 
-These read from the render context (`page`/`site`/`item`) rather than from authored block data. Used inside page templates and collection item templates so a blog template can render every post with its own title without per-post copy.
+These read from the render context (`page`/`site`/`item`) rather than from authored block data. Used inside Page templates so a blog template can render every post with its own title without per-post copy.
 
 - Page-context: `template/page_title`, `template/page_featured_image`, `template/page_excerpt`, `template/page_date`, `template/page_author`, `template/page_breadcrumbs`
 - Site-context: `template/site_logo`, `template/site_title`, `template/site_tagline`
-- Item-context: `template/item_title`, `template/item_body`, `template/item_image`
+- Item-context: `template/page_title`, `template_content_slot`, `template/page_featured_image`
 - Conditional: `template/show_if` (renders children only if a condition is truthy)
 
 ## Site search

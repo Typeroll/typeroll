@@ -42,7 +42,7 @@ describe('release manifest', () => {
     })).toEqual({
       core_version: CORE_VERSION,
       data_schema_version: DATA_SCHEMA_VERSION,
-      data_schema_readable: { min: 1, max: 1 },
+      data_schema_readable: { min: 2, max: 2 },
       template_capabilities_version: SITE_TEMPLATE_CAPABILITIES.template_capabilities_version,
       extension_host_protocol_version: EXTENSION_HOST_PROTOCOL_VERSION,
       extension_runtime_version: EXTENSION_RUNTIME_VERSION,

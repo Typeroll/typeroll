@@ -1,70 +1,18 @@
 ---
-title: tr-blog — Set Up a Blog
-description: Create a blog or news section — collection schema, seed articles, listing page, individual article pages, and deploy.
+title: Blog and article sites
+description: Build articles and archive pages with one Page model and a shared template.
 ---
 
-import { Aside } from "@astrojs/starlight/components";
+Use the bundled `tr-blog` recipe with your AI agent. Every article is a Page
+whose content type supplies custom fields, routing and a shared template.
 
-**Triggers on:** "add a blog", "set up news", "article section", "create posts", "inlägg", "nyheter"
+1. Create a reusable Page template, using the article or blog starting layout.
+2. Create an Articles content type with its URL pattern and default template.
+3. Create one Page per article, with native body blocks and custom values in `fields`.
+4. Add `core/page_list` to an archive Page and optional homepage teaser.
+5. Preview desktop/mobile layouts, save working copies and publish the approved version.
 
-## What it does
-
-1. Creates a `blog` collection with a schema (title, slug, date, author, excerpt, body, image, tags)
-2. Seeds 2–3 real articles with your content
-3. Generates the listing page (`/blog`) with a card grid
-4. Creates individual article pages (`/blog/article-slug`)
-5. Updates the header navigation to include a link to the blog
-6. Deploys
-
-## Important: static site means manual sync
-
-Typeroll generates a static site — there is no template engine that auto-renders collection items. Instead, the AI agent writes the listing HTML directly from the current items. This means:
-
-- **Adding a new article** requires updating the listing page HTML too
-- the AI agent handles this automatically when you say "add a new article to the blog"
-- There is no magic sync — ask the AI agent explicitly after adding articles
-
-<Aside type="caution">
-  If you add articles directly in the portal's Collections UI (not through the
-  AI agent), the listing page won't update automatically. Ask the AI agent to
-  "regenerate the blog listing" afterwards.
-</Aside>
-
-## Example prompts
-
-```
-Add a blog to our site. The first three articles should be:
-1. "Vår designfilosofi" — about our minimal approach
-2. "Projekt: Östermalm" — a completed interior project
-3. "Höstens trender 2025" — trend roundup
-```
-
-```
-Add a new blog post: "Working with natural materials" — about our use
-of wood, stone and linen. Published today. Author: Maria Svensson.
-```
-
-## Field name rules
-
-Field names must be lowercase ASCII only. Swedish and other Nordic characters must be transliterated:
-
-| Wrong        | Right                                           |
-| ------------ | ----------------------------------------------- |
-| `rubrik`     | `title` (or `rubrik` — ASCII, this one is fine) |
-| `författare` | `forfattare`                                    |
-| `datum`      | `date` (or `datum` — fine)                      |
-| `ämne`       | `amne`                                          |
-
-The `label` shown in the portal UI can be any text — only the internal `name` must be ASCII.
-
-## Article page structure
-
-Each article gets its own page with `kind: "article"` which activates automatic Article JSON-LD schema:
-
-```
-/blog/                          ← listing page
-/blog/var-designfilosofi        ← individual article
-/blog/projekt-ostermalm
-```
-
-Slugs must be globally unique — the `/blog/` prefix prevents collisions with other pages.
+The listing automatically reflects saved Pages at the next build. Articles use
+the same editor, history, preview, status controls and API as every other Page.
+See [Content types and Page templates](../../tools/content-types/) for tools,
+examples, routing, references and version behavior.

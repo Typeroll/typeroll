@@ -1,0 +1,24 @@
+{
+  "title": "Hello from a smoke-test blog post",
+  "slug": "hello-from-smoke-test",
+  "content_type": "blog",
+  "fields": {
+    "excerpt": "A typed Page using the same rendering path as every other Page."
+  },
+  "content_mode": "blocks",
+  "blocks": [
+    {
+      "id": "m-4d28f178af58cd956da8",
+      "type": "core/prose",
+      "data": {
+        "html": "<p>This Article is a Page with a content type and its own block body. Its shared Page template provides the layout. The static build uses the same Page routing and rendering path as the homepage.</p>",
+        "max_width": "normal"
+      }
+    }
+  ],
+  "status": "published",
+  "date_updated": "2026-05-19T12:42:40.933Z",
+  "date_published": "2026-05-19",
+  "author": "Smoke test",
+  "path": "/blog/hello-from-smoke-test"
+}

@@ -17,9 +17,9 @@
 //                        product. Two facets with 30 and 200 values is 6000
 //                        routes, nearly all of them one-record pages.
 
-import type { CollectionDef, CollectionItem } from './types.js';
+import type { ContentType } from './types.js';
 
-export interface CollectionFacet {
+export interface ContentFacet {
   /** Item field to group by. */
   field: string;
   /** URL prefix, e.g. "/bransch" → /bransch/rormokare/. */
@@ -65,7 +65,7 @@ export function facetSlug(value: string): string {
     .slice(0, 80);
 }
 
-function valuesOf(item: CollectionItem, field: string): string[] {
+function valuesOf(item: Record<string, unknown> & { id: string }, field: string): string[] {
   const raw = (item as Record<string, unknown>)[field];
   // A facet field may be multi-valued (tags). Both shapes group the same way.
   if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string' && v !== '');
@@ -79,8 +79,8 @@ function valuesOf(item: CollectionItem, field: string): string[] {
  * every other route too.
  */
 export function facetRoutes(
-  coll: Pick<CollectionDef, 'facets' | 'facet_combinations'>,
-  items: CollectionItem[],
+  coll: Pick<ContentType, 'facets' | 'facet_combinations'>,
+  items: Array<Record<string, unknown> & { id: string }>,
 ): FacetRoute[] {
   const facets = coll.facets ?? [];
   if (facets.length === 0) return [];

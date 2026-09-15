@@ -26,15 +26,15 @@ export interface CompositionReview {
   missing_block_types: string[];
   business_specific_block_types: string[];
   generic_custom_block_types: string[];
-  required_item_fields: string[];
-  missing_item_fields: string[];
+  required_fields: string[];
+  missing_fields: string[];
   required_capabilities: string[];
   requires_hosted_verification: true;
   workarounds: CompositionWorkaround[];
 }
 
-const ITEM_BINDING = /^\s*\{\{\s*item\.([\w.-]+)\s*\}\}\s*$/;
-const ITEM_REFERENCE = /\bitem\.([\w.-]+)/g;
+const CONTEXT_BINDING = /^\s*\{\{\s*(?:page|item)\.([\w.-]+)\s*\}\}\s*$/;
+const CONTEXT_REFERENCE = /\b(?:page|item)\.([\w.-]+)/g;
 
 function sorted(values: Iterable<string>): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
@@ -48,30 +48,28 @@ function walk(blocks: readonly Block[], visit: (block: Block) => void): void {
   }
 }
 
-function collectItemBindings(value: unknown, fields: Set<string>): void {
+function collectContextBindings(value: unknown, fields: Set<string>): void {
   if (typeof value === 'string') {
-    const match = value.match(ITEM_BINDING);
+    const match = value.match(CONTEXT_BINDING);
     if (match?.[1]) fields.add(match[1]);
     return;
   }
   if (Array.isArray(value)) {
-    for (const entry of value) collectItemBindings(entry, fields);
+    for (const entry of value) collectContextBindings(entry, fields);
     return;
   }
   if (value && typeof value === 'object') {
     for (const entry of Object.values(value as Record<string, unknown>)) {
-      collectItemBindings(entry, fields);
+      collectContextBindings(entry, fields);
     }
   }
 }
 
-function configuredItemFields(block: Block): string[] {
+function configuredPageFields(block: Block): string[] {
   const data = block.data ?? {};
-  if (block.type === 'template/item_body') return [String(data.field ?? 'body')];
-  if (block.type === 'template/item_image') return [String(data.field ?? 'image')];
-  if (block.type === 'core/table_of_contents') return [String(data.source_field ?? 'body')];
+  if (block.type === 'template/page_featured_image') return [String(data.field ?? 'image')];
   if (block.type === 'template/page_date' && typeof data.field === 'string') return [data.field];
-  if (block.type === 'template/item_navigation') {
+  if (block.type === 'template/page_navigation') {
     return [
       data.previous_url_field,
       data.previous_title_field,
@@ -86,7 +84,7 @@ function configuredItemFields(block: Block): string[] {
     ].filter((value): value is string => typeof value === 'string' && value.length > 0);
   }
   if (block.type === 'template/show_if' && typeof data.condition === 'string') {
-    return [...data.condition.matchAll(ITEM_REFERENCE)].map((match) => match[1]!);
+    return [...data.condition.matchAll(CONTEXT_REFERENCE)].map((match) => match[1]!);
   }
   return [];
 }
@@ -111,13 +109,13 @@ export function reviewBlockComposition(
 
   walk(proposal.blocks, (block) => {
     requiredTypes.add(block.type);
-    collectItemBindings(block.data, requiredFields);
-    if (JSON.stringify(block.data).includes('{{item.')) {
+    collectContextBindings(block.data, requiredFields);
+    if (/\{\{(?:page|item)\./.test(JSON.stringify(block.data))) {
       requiredCapabilities.add('supports_typed_context_bindings');
     }
-    for (const field of configuredItemFields(block)) requiredFields.add(field);
-    if (['template/item_body', 'template/item_image', 'template/page_date'].includes(block.type)) {
-      requiredCapabilities.add('supports_selected_collection_item_fields');
+    for (const field of configuredPageFields(block)) requiredFields.add(field);
+    if (['template/page_featured_image', 'template/page_date'].includes(block.type)) {
+      requiredCapabilities.add('supports_selected_page_fields');
     }
     if (block.type === 'template/page_breadcrumbs') {
       requiredCapabilities.add('supports_server_rendered_breadcrumbs');
@@ -125,14 +123,14 @@ export function reviewBlockComposition(
     if (block.type === 'core/table_of_contents') {
       requiredCapabilities.add('supports_server_rendered_table_of_contents');
     }
-    if (block.type === 'template/item_navigation') {
-      requiredCapabilities.add('supports_explicit_collection_item_navigation');
+    if (block.type === 'template/page_navigation') {
+      requiredCapabilities.add('supports_explicit_page_navigation');
     }
 
     const blockType = getType(block.type);
-    if (!blockType) {
+    if (!blockType && block.type !== 'template_content_slot') {
       missingTypes.add(block.type);
-    } else if (blockType.origin !== 'core') {
+    } else if (blockType && blockType.origin !== 'core') {
       if (businessSpecific.has(block.type)) {
         usedBusinessSpecific.add(block.type);
       } else {
@@ -180,7 +178,7 @@ export function reviewBlockComposition(
   });
 
   const declaredFields = proposal.fields
-    ? new Set(proposal.fields.map((field) => field.name))
+    ? new Set(['id', 'title', 'slug', 'body', 'status', 'date_published', 'date_updated', 'og_image', ...proposal.fields.map((field) => field.name)])
     : null;
   const missingFields = declaredFields
     ? [...requiredFields].filter((field) => !declaredFields.has(field))
@@ -195,8 +193,8 @@ export function reviewBlockComposition(
     missing_block_types: sorted(missingTypes),
     business_specific_block_types: sorted(usedBusinessSpecific),
     generic_custom_block_types: sorted(genericCustom),
-    required_item_fields: sorted(requiredFields),
-    missing_item_fields: sorted(missingFields),
+    required_fields: sorted(requiredFields),
+    missing_fields: sorted(missingFields),
     required_capabilities: sorted(requiredCapabilities),
     requires_hosted_verification: true,
     workarounds,

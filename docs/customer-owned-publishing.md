@@ -29,7 +29,7 @@ permissions, DNS options and runtime configuration.
 ## Frozen source and version branches
 
 The portal's customer publication queue freezes the selected version before
-calling GitHub. Pages, blocks, templates, collections, redirects and public
+calling GitHub. Pages, blocks, templates, content types, redirects and public
 runtime settings are projected into an independently buildable Astro project.
 Draft content and private configuration are excluded. Supported public content
 is rendered by the vendored Core renderer, rather than a second synthetic

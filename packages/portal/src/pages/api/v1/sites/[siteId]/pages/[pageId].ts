@@ -1,3 +1,4 @@
+import { pageAddress } from '../../../../../../lib/page-fields';
 // /api/v1/sites/{siteId}/pages/{pageId}
 //
 // GET    — fetch one page. Returns the DRAFT VIEW: the saved doc with any
@@ -36,7 +37,7 @@ const WRITABLE: Array<keyof Page> = [
   'seo_title', 'append_seo_suffix', 'seo_description', 'og_image', 'seo_image_alt', 'canonical_url', 'noindex',
   'alternates', 'lastmod_override', 'json_ld', 'schema_type', 'service',
   'template', 'date_published', 'language', 'image_sizes_default', 'custom_css',
-  'publish_at', 'unpublish_at',
+  'publish_at', 'unpublish_at', 'fields',
 ];
 
 /** Content fields PUT clears when absent from the body ("PUT replaces"). */
@@ -51,7 +52,8 @@ function project(p: Page, hasUnsaved: boolean): Record<string, unknown> {
     title: p.title,
     slug: p.slug,
     path: p.path,
-    url: pageUrlFromDoc(p),
+    content_type: p.content_type ?? 'page',
+    fields: p.fields ?? {},
     status: p.status,
     content_mode: p.content_mode,
     html_content: p.html_content,
@@ -111,7 +113,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   if (!pageId) return apiError('Missing pageId');
   const view = await draftView(ctx, pageId);
   if (!view) return apiError('Not found', 404);
-  return apiResponse(ctx, { page: project(view.page, view.hasUnsaved) });
+  return apiResponse(ctx, { page: { ...project(view.page, view.hasUnsaved), url: await pageAddress(ctx, view.page) } });
 };
 
 async function handleWrite(
@@ -128,7 +130,7 @@ async function handleWrite(
   );
   const view = await draftView(ctx, pageId);
   return {
-    page: view ? project(view.page, view.hasUnsaved) : null,
+    page: view ? { ...project(view.page, view.hasUnsaved), url: await pageAddress(ctx, view.page) } : null,
     saved: result.committed,
     staged_fields: result.staged,
     applied_immediately: result.applied_immediately,
@@ -149,7 +151,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
   if (!existing) return apiError('Not found', 404);
   const body = (await request.json().catch(() => null)) as (Partial<Page> & { save?: boolean }) | null;
-  if (!body) return apiError('Invalid JSON body');
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body');
+  if (body.fields !== undefined && (body.fields === null || typeof body.fields !== 'object' || Array.isArray(body.fields))) return apiError('fields must be an object');
   const blockError = blockTreeInputError(body.blocks);
   if (blockError) return apiError(blockError, 400);
   if (body.content_mode !== undefined) {
@@ -183,7 +186,8 @@ export const PUT: APIRoute = async ({ request, params }) => {
   const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
   if (!existing) return apiError('Not found', 404);
   const body = (await request.json().catch(() => null)) as (Partial<Page> & { save?: boolean }) | null;
-  if (!body) return apiError('Invalid JSON body');
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body');
+  if (body.fields !== undefined && (body.fields === null || typeof body.fields !== 'object' || Array.isArray(body.fields))) return apiError('fields must be an object');
   const blockError = blockTreeInputError(body.blocks);
   if (blockError) return apiError(blockError, 400);
   if (!String(body.title ?? '').trim()) return apiError('title required for PUT');
@@ -199,6 +203,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
   for (const k of REPLACEABLE) {
     if (!(k in update)) update[k] = null;
   }
+  update.fields = { ...Object.fromEntries(Object.keys(existing.fields ?? {}).map(key => [key, null])), ...(body.fields ?? {}) };
   if (body.slug !== undefined) update.slug = body.slug;
 
   try {
@@ -223,7 +228,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   // Auto-generated redirects pointing at the deleted page's URL would 301
   // visitors into a 404 — drop them. Manual redirects are kept on purpose.
   const removed = await removeAutoRedirectsTargeting(
-    ctx.orgId, ctx.siteId, ctx.versionId, pageUrlFromDoc(existing),
+    ctx.orgId, ctx.siteId, ctx.versionId, await pageAddress(ctx, existing) ?? pageUrlFromDoc(existing),
   );
   return apiResponse(ctx, {
     ok: true,

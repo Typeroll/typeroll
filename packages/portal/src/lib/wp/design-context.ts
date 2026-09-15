@@ -9,36 +9,29 @@
 // still works but produces minimal generic markup — there's nothing to
 // match. Document this in the migration UI ("set up your design first").
 
-import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
+import { buildCoreBlockRegistry, composePageWithTemplate, renderBlocks, pageContentValues, createPageSource, MAIN_VERSION_ID } from '@typeroll/shared';
 import { vstore } from '../version-store';
-import type { Page, SiteSettings } from '@typeroll/shared';
 import { defaultSiteSettings } from '@typeroll/shared';
-import type { ReadWriteStore } from '../datastore';
 import type { DesignContext } from './ai-reconstruct';
 
 const MAX_EXAMPLE_PAGES = 3;
 
 export async function loadDesignContext(
-  store: ReadWriteStore,
   orgId: string,
-  siteId: string
+  siteId: string,
+  versionId: string = MAIN_VERSION_ID,
 ): Promise<DesignContext> {
   const settings =
-    (await vstore.settings(orgId, siteId, MAIN_VERSION_ID)) ?? defaultSiteSettings;
+    (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
 
-  // Pick the published HTML-mode pages as design references. Skip pages that
-  // are obviously placeholders ("Start writing…" boilerplate would mislead
-  // the AI).
-  const pages = await vstore.pages(orgId, siteId, MAIN_VERSION_ID);
+  const pages = await vstore.pages(orgId, siteId, versionId);
+  const types = await vstore.contentTypes(orgId, siteId, versionId);
+  const templates = await vstore.pageTemplates(orgId, siteId, versionId);
+  const registry = buildCoreBlockRegistry();
+  for (const type of await vstore.blockTypes(orgId, siteId, versionId)) registry.set(type.id, type);
+  const pageSource = createPageSource(types, pages);
   const examples = pages
-    .filter(
-      (p) =>
-        p.content_mode === 'html' &&
-        (p.status === 'published' || p.status === 'unlisted') &&
-        typeof p.html_content === 'string' &&
-        p.html_content.trim().length > 100 &&
-        !p.html_content.includes('Start writing…')
-    )
+    .filter(page => page.status === 'published' || page.status === 'unlisted')
     .sort((a, b) => {
       // Prefer home > about > services > anything else. The home page is
       // usually the strongest design reference.
@@ -50,8 +43,15 @@ export async function loadDesignContext(
       };
       return priority(a.slug) - priority(b.slug);
     })
-    .slice(0, MAX_EXAMPLE_PAGES)
-    .map((p) => ({ title: p.title, html: p.html_content ?? '' }));
+    .map(page => {
+      if (page.content_mode === 'html') return { title: page.title, html: page.html_content ?? '' };
+      const type = types.find(type => type.id === (page.content_type ?? 'page'));
+      const template = templates.find(template => template.id === (page.template || type?.template));
+      const blocks = template ? composePageWithTemplate(template.blocks, page.blocks ?? []) : page.blocks ?? [];
+      return { title: page.title, html: renderBlocks(blocks, { registry, pageSource, context: { page: pageContentValues(page), content_type: type as unknown as Record<string, unknown> } }) };
+    })
+    .filter(page => page.html.trim().length > 100 && !page.html.includes('Start writing…'))
+    .slice(0, MAX_EXAMPLE_PAGES);
 
   return {
     site_name: settings.site_name,

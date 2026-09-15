@@ -9,15 +9,15 @@ describe('reviewBlockComposition', () => {
       name: 'Article',
       fields: [{ name: 'body' }, { name: 'pdf_url' }],
       blocks: [
-        { id: 'body', type: 'template/item_body', data: { field: 'body' } },
-        { id: 'pdf', type: 'core/button', data: { label: 'PDF', href: '{{item.pdf_url}}' } },
+        { id: 'body', type: 'template_content_slot', data: {} },
+        { id: 'pdf', type: 'core/button', data: { label: 'PDF', href: '{{page.pdf_url}}' } },
       ],
     }, buildCoreBlockRegistry());
 
     expect(review.status).toBe('ready');
-    expect(review.required_item_fields).toEqual(['body', 'pdf_url']);
-    expect(review.required_block_types).toEqual(['core/button', 'template/item_body']);
-    expect(review.missing_item_fields).toEqual([]);
+    expect(review.required_fields).toEqual(['pdf_url']);
+    expect(review.required_block_types).toEqual(['core/button', 'template_content_slot']);
+    expect(review.missing_fields).toEqual([]);
     expect(review.required_capabilities).toContain('supports_typed_context_bindings');
     expect(review.requires_hosted_verification).toBe(true);
     expect(review.workarounds).toEqual([]);
@@ -29,14 +29,14 @@ describe('reviewBlockComposition', () => {
       name: 'Checklist',
       fields: [{ name: 'title' }],
       blocks: [
-        { id: 'body', type: 'template/item_body', data: { field: 'body' } },
+        { id: 'body', type: 'core/prose', data: { html: '{{page.introduction}}' } },
         { id: 'special', type: 'site/download_card', data: {} },
       ],
     }, buildCoreBlockRegistry());
 
     expect(review.status).toBe('waiting_for_native_support');
     expect(review.missing_block_types).toEqual(['site/download_card']);
-    expect(review.missing_item_fields).toEqual(['body']);
+    expect(review.missing_fields).toEqual(['introduction']);
   });
 
   it('allows declared business-specific blocks but flags generic custom replacements', () => {

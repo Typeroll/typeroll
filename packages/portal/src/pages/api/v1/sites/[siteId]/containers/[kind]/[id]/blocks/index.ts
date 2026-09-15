@@ -47,8 +47,8 @@ function parseTarget(params: Record<string, string | undefined>):
   const kind = params.kind;
   const id = params.id;
   if (!kind || !id) return { ok: false, response: apiError('Missing kind or id', 400) };
-  if (kind !== 'page' && kind !== 'partial' && kind !== 'template' && kind !== 'item_template') {
-    return { ok: false, response: apiError(`kind must be page|partial|template|item_template, got "${kind}"`, 400) };
+  if (kind !== 'page' && kind !== 'partial' && kind !== 'template') {
+    return { ok: false, response: apiError(`kind must be page|partial|template, got "${kind}"`, 400) };
   }
   return { ok: true, target: { kind, id } };
 }

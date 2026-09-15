@@ -10,7 +10,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
 import { vstore } from '../../../../../lib/version-store';
 import { signPreviewTicket, isPreviewSigningConfigured } from '../../../../../lib/preview-signing';
-import { buildCollectionRoutes } from '@typeroll/shared';
+import { contentPagePath, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -22,39 +22,22 @@ export const POST: APIRoute = async ({ request, params }) => {
   const body = (await request.json().catch(() => ({}))) as {
     page_id?: string;
     slug?: string;
-    collection_name?: string;
-    item_id?: string;
     ttl_seconds?: number;
     /** Render editor working copies (unsaved autosaved edits) too. Signed
      *  into the token, so it can't be toggled on an existing link. */
     include_working_copy?: boolean;
   };
 
-  // Three target resolution modes, in priority order:
-  //   1. collection_name + item_id  → resolve via the item's route_template
-  //   2. page_id                    → canonical page lookup
-  //   3. slug                       → trust the caller's slug string
-  //   4. nothing                    → home page
   let targetSlug = body.slug?.trim() ?? '';
-  if (body.collection_name && body.item_id) {
-    const coll = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, body.collection_name);
-    if (!coll) return apiError(`Collection ${body.collection_name} not found`, 404);
-    const item = await vstore.collectionItem(
-      ctx.orgId, ctx.siteId, ctx.versionId, body.collection_name, body.item_id,
-    );
-    if (!item) return apiError(`Item ${body.item_id} not found`, 404);
-    const routes = buildCollectionRoutes([coll], new Map([[coll.name, [item]]]));
-    if (routes.length === 0) {
-      return apiError(
-        `Collection ${body.collection_name} has no route_template, or item is missing a token field`,
-        400,
-      );
-    }
-    targetSlug = routes[0]!.path.replace(/^\/+/, '');
-  } else if (body.page_id) {
+  if (body.page_id) {
     const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, body.page_id);
     if (!page) return apiError(`Page ${body.page_id} not found`, 404);
-    targetSlug = page.slug;
+    const type = await vstore.contentType(ctx.orgId, ctx.siteId, ctx.versionId, page.content_type ?? 'page')
+      ?? ((page.content_type ?? 'page') === 'page' ? DEFAULT_CONTENT_TYPE : null);
+    if (!type) return apiError('Content type not found', 404);
+    const path = contentPagePath(page, type);
+    if (path === null) return apiError('This content type has no public URL. Preview the page in the editor.', 400);
+    targetSlug = path.replace(/^\/+/, '');
   }
   if (!targetSlug || targetSlug === 'home') targetSlug = '';
 

@@ -1,0 +1,17 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import ContentTypeEditor from '../../../../../components/ContentTypeEditor';
+import { loadSiteContext } from '../../../../../lib/access';
+import { listContentTypes } from '../../../../../lib/content-type-service';
+import { vstore } from '../../../../../lib/version-store';
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, versionId, owner_org_id: orgId } = ctx;
+const contentType = Astro.params.name === 'new' ? undefined : (await listContentTypes({ orgId, siteId: site.id, versionId })).find(type => type.id === Astro.params.name);
+if (Astro.params.name !== 'new' && !contentType) return Astro.redirect(`/app/sites/${site.id}/content-types`);
+const templates = await vstore.pageTemplates(orgId, site.id, versionId);
+---
+<AppLayout title={`${contentType?.label_plural ?? 'New content type'} — ${site.name}`} siteId={site.id}>
+  <div class="app-header"><div><a href={`/app/sites/${site.id}/content-types`}>← Content types</a><h1>{contentType?.label_plural ?? 'New content type'}</h1></div></div>
+  <div style="max-width:48rem"><ContentTypeEditor client:load siteId={site.id} contentType={contentType} templates={templates} /></div>
+</AppLayout>

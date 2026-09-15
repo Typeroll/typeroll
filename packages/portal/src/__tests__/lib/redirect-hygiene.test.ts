@@ -93,12 +93,12 @@ describe('redirect hygiene — page writes retire shadowing redirects', () => {
 
   it('the gruppsupporter sequence: a published page taking "/" retires the stale auto-redirect', async () => {
     const { token } = await setup();
-    await seedPage('home', { slug: 'home' });            // url "/"
+    await seedPage('home', { slug: '', path: '/' });            // url "/"
     await seedPage('home-new', { slug: 'home-new', status: 'draft', content_mode: 'blocks', blocks: [] });
 
     // Step 1: page A renamed away from "/" → auto-redirect "/" → "/home-html-legacy".
     const r1 = await callRoute(pageRoute(), 'PATCH', pageUrl('home'), pageParams('home'), {
-      headers: bearer(token), body: { slug: 'home-html-legacy', save: true },
+      headers: bearer(token), body: { slug: 'home-html-legacy', path: '/home-html-legacy', save: true },
     });
     expect(r1.status).toBe(200);
     let redirects = await listRedirects();
@@ -110,7 +110,7 @@ describe('redirect hygiene — page writes retire shadowing redirects', () => {
     // Step 2: page B takes "/" and is published — the redirect must retire,
     // or the deploy would 301 the site root away from the new home page.
     const r2 = await callRoute(pageRoute(), 'PATCH', pageUrl('home-new'), pageParams('home-new'), {
-      headers: bearer(token), body: { slug: 'home', status: 'published', save: true },
+      headers: bearer(token), body: { slug: '', path: '/', status: 'published', save: true },
     });
     expect(r2.status).toBe(200);
     const out = await r2.json() as { retired_redirects: Array<{ from_path: string }> };

@@ -23,8 +23,6 @@ export type ExtensionRenderMode = 'bundled_component' | 'embedded_app';
 export type ExtensionScope =
   | 'content:read'
   | 'content:write'
-  | 'collections:read'
-  | 'collections:write'
   | 'forms:read'
   | 'forms:submit'
   | 'forms:write'
@@ -44,8 +42,6 @@ export interface ExtensionScopeDefinition {
 export const EXTENSION_SCOPE_REGISTRY: Readonly<Record<ExtensionScope, ExtensionScopeDefinition>> = {
   'content:read': { scope: 'content:read', minimum_permission: 'read', sensitive: false, description: 'Read site content.' },
   'content:write': { scope: 'content:write', minimum_permission: 'write', sensitive: true, description: 'Change site content.' },
-  'collections:read': { scope: 'collections:read', minimum_permission: 'read', sensitive: false, description: 'Read collections and items.' },
-  'collections:write': { scope: 'collections:write', minimum_permission: 'write', sensitive: true, description: 'Change collections and items.' },
   'forms:read': { scope: 'forms:read', minimum_permission: 'read', sensitive: false, description: 'Read form definitions.' },
   'forms:submit': { scope: 'forms:submit', minimum_permission: 'read', sensitive: false, description: 'Submit to explicitly bound forms.' },
   'forms:write': { scope: 'forms:write', minimum_permission: 'admin', sensitive: true, description: 'Create and change forms.' },

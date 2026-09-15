@@ -18,7 +18,7 @@ for (const [relative, expected] of Object.entries(manifest.files)) {
   if (hash !== expected) throw new Error(`Publication file differs from its frozen manifest: ${relative}`);
 }
 const publication = JSON.parse(await fs.readFile(path.join(root, 'publication.json'), 'utf8'));
-if (publication.format !== 'typeroll-static-publication' || publication.format_version !== 1) throw new Error('Unsupported publication format');
+if (publication.format !== 'typeroll-static-publication' || publication.format_version !== 2) throw new Error('Unsupported publication format');
 let sameHostMedia;
 if (process.env.TYPEROLL_BUILD_MEDIA_PREPARED) {
   const preparedPath = path.resolve(process.env.TYPEROLL_BUILD_MEDIA_PREPARED);
@@ -47,9 +47,8 @@ await writeDoc(`${base}/versions/${versionId}/settings/default`, publication.set
 await writeDoc(`${base}/apps/default`, publication.apps ?? { apps: {} });
 await writeDoc(`${base}/extension_runtime/default`, publication.extensions ?? { installations: [] });
 for (const form of publication.forms ?? []) await writeDoc(`${base}/forms/${form.id}`, form);
-for (const { definition, items } of publication.collections ?? []) {
-  await writeDoc(`${base}/versions/${versionId}/collections/${definition.name}`, definition);
-  for (const item of items) await writeDoc(`${base}/versions/${versionId}/collections/${definition.name}/items/${item.id}`, item);
+for (const type of publication.contentTypes) {
+  await writeDoc(`${base}/versions/${versionId}/content_types/${type.id}`, type);
 }
 for (const [kind, records] of Object.entries({ pages: publication.pages, partials: publication.partials, media: publication.media, block_types: publication.blockTypes ?? [], page_templates: publication.pageTemplates ?? [] })) {
   for (const doc of records) {

@@ -3,7 +3,7 @@ title: Media Tools
 description: Upload images and other media through Typeroll’s media storage.
 ---
 
-Media storage follows the selected Organization. Before customer storage is ready, uploads can use the configured Typeroll runtime storage. As soon as R2 is connected and verified, new uploads use the Organization's storage and media host. See [Publishing setup](../../guides/customer-publishing/).
+Media storage follows the selected Organization. Before customer storage is ready, uploads can use the configured Typeroll runtime storage. As soon as R2 is connected and verified, new uploads go directly to the Organization's storage. Public media hosts are applied during publishing. See [Publishing setup](../../guides/customer-publishing/).
 
 ## Direct file uploads through the API
 
@@ -80,17 +80,27 @@ Uploads an image provided as a base64-encoded string. Useful when the image is g
 
 ## `list_media`
 
-Returns all media assets for this site with their public URLs, filenames and sizes.
+Returns this site’s media assets with stable media URLs, filenames and sizes. A stable URL can identify a private original; it is not necessarily a public delivery URL.
 
 ## Media URLs
 
-Use the absolute URL returned by the media API rather than constructing a `cdn.typeroll.com` address. The host depends on the Organization's configuration. Use the returned URL in:
+Use the stable URL returned by the media API instead of constructing an address. A URL ending in `/api/sites/{site}/media/{id}/content` requires authenticated Site access because it identifies a private original. Typeroll authorizes images temporarily for previews and resolves public delivery URLs during publishing. Public visitors should never need to log in. Use the returned stable URL in:
 
 - `<img src>` attributes in page HTML
 - `og_image` and `logo` settings fields
-- Collection item `image` fields
+- Page custom fields of type `image`
 
 Do not leave imported content dependent on the original source host. Transfer its media before retiring that host. During publishing, Typeroll includes referenced public media in static output and resolves the Site's preferred media host and paths while preserving shared aliases. See [Website and media domains](../../publishing/domains/).
+
+With Core 0.2.0, publishing stops with `media_reference_unresolved` if an internal
+media address cannot be resolved to a public file. The error identifies the
+media record to repair. Re-select the asset from this Site’s Media library, or
+re-import it if it belongs to another Site or no longer exists. Retry publishing
+after the reference is corrected. Do not make the private originals bucket public.
+
+Preview readiness and public availability are different checks. Verify the
+finished site without a Typeroll session, including responsive images, CSS
+backgrounds and file downloads, before retiring the import source.
 
 ## Image recommendations
 

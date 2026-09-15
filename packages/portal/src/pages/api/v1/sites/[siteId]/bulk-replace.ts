@@ -20,10 +20,9 @@ export const POST: APIRoute = async ({ request, params }) => {
     pattern?: string;
     replacement?: string;
     regex?: boolean;
-    scope?: 'pages' | 'collection_items' | 'partials' | 'all';
+    scope?: 'pages' | 'partials' | 'all';
     page_ids?: string[];
-    collection?: string;
-    item_ids?: string[];
+    content_type?: string;
     partial_ids?: string[];
     dry_run?: boolean;
     /** Commit each touched page's working copy in the same call. */
@@ -32,7 +31,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!body) return apiError('Invalid JSON body');
   if (typeof body.pattern !== 'string' || !body.pattern) return apiError('pattern required');
   if (typeof body.replacement !== 'string') return apiError('replacement required');
-  const scopes = new Set(['pages', 'collection_items', 'partials', 'all']);
+  const scopes = new Set(['pages', 'partials', 'all']);
   if (body.scope !== undefined && !scopes.has(body.scope)) return apiError('Invalid scope');
 
   try {
@@ -42,8 +41,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       regex: Boolean(body.regex),
       scope: body.scope,
       pageIds: Array.isArray(body.page_ids) ? body.page_ids : undefined,
-      collection: typeof body.collection === 'string' ? body.collection : undefined,
-      itemIds: Array.isArray(body.item_ids) ? body.item_ids : undefined,
+      contentType: typeof body.content_type === 'string' ? body.content_type : undefined,
       partialIds: Array.isArray(body.partial_ids) ? body.partial_ids : undefined,
       dryRun: Boolean(body.dry_run),
       save: Boolean(body.save),

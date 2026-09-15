@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import test from 'node:test';
+import { isDeepStrictEqual } from 'node:util';
+import { prepareUnifiedPagesMigration } from './lib/unified-pages-migration.mjs';
 
 import {
   createSelfHostBackup,
@@ -58,6 +60,11 @@ function memoryServices({ projectId = 'self-host-project', bucket = 'self-host-m
       },
       writeDocuments: async (records) => {
         for (const record of records) documents.set(record.path, clone(record.data));
+      },
+      compareAndWrite: async (path, expected, next) => {
+        if (!isDeepStrictEqual(documents.get(path) ?? null, expected)) return false;
+        if (next === null) documents.delete(path); else documents.set(path, clone(next));
+        return true;
       },
       deleteDocuments: async (paths) => {
         for (const documentPath of paths) documents.delete(documentPath);
@@ -202,6 +209,8 @@ test('bootstrap is idempotent and requires explicit adoption of existing data', 
   await assert.rejects(bootstrapSelfHost({ services: existing.services }), /--adopt/);
   const adopted = await bootstrapSelfHost({ services: existing.services, adopt: true, id: () => 'adopted' });
   assert.equal(adopted.installation.adopted_existing_data, true);
+  assert.equal(adopted.installation.data_schema_version, 1);
+  await assert.rejects(bootstrapSelfHost({ services: existing.services }), /cannot read installed data schema 1/);
 });
 
 test('backup encrypts all data planes and verifies every encrypted payload', async (t) => {
@@ -282,25 +291,116 @@ test('replace restore removes records not present in the backup', async (t) => {
 test('migrations require a matching verified backup and advance metadata stepwise', async (t) => {
   const { source, backupDir } = await makeBackup(t);
   const migrations = [
-    { id: 'one-to-two', from: 1, to: 2, run: async () => source.state.migrationRuns.push('one-to-two') },
     { id: 'two-to-three', from: 2, to: 3, run: async () => source.state.migrationRuns.push('two-to-three') },
+    { id: 'three-to-four', from: 3, to: 4, run: async () => source.state.migrationRuns.push('three-to-four') },
   ];
-  const status = await migrationStatus({ services: source.services, migrations, targetVersion: 3 });
-  assert.deepEqual(status.steps.map((step) => step.id), ['one-to-two', 'two-to-three']);
-  await assert.rejects(
-    applySelfHostMigrations({ services: source.services, migrations, targetVersion: 3 }),
-    /verified pre-migration backup/,
-  );
+  const status = await migrationStatus({ services: source.services, migrations, targetVersion: 4 });
+  assert.deepEqual(status.steps.map(step => step.id), ['two-to-three', 'three-to-four']);
+  await assert.rejects(applySelfHostMigrations({ services: source.services, migrations, targetVersion: 4 }), /verified pre-migration backup/);
   const verifiedBackup = await verifySelfHostBackup({ backupDir, backupKey: BACKUP_KEY });
-  const result = await applySelfHostMigrations({
-    services: source.services,
-    migrations,
-    targetVersion: 3,
-    verifiedBackup,
-    owner: 'migration-test',
-  });
-  assert.deepEqual(result.applied, ['one-to-two', 'two-to-three']);
-  assert.deepEqual(source.state.migrationRuns, ['one-to-two', 'two-to-three']);
-  assert.equal(result.installation.data_schema_version, 3);
+  const result = await applySelfHostMigrations({ services: source.services, migrations, targetVersion: 4, verifiedBackup, owner: 'migration-test' });
+  assert.deepEqual(result.applied, ['two-to-three', 'three-to-four']);
+  assert.deepEqual(source.state.migrationRuns, ['two-to-three', 'three-to-four']);
+  assert.equal(result.installation.data_schema_version, 4);
   assert.equal(result.installation.migration_lock, undefined);
+});
+
+async function legacyMigrationBackup(t) {
+  const source = memoryServices();
+  await bootstrapSelfHost({ services: source.services });
+  source.state.documents.get(SELF_HOST_INSTALLATION_PATH).data_schema_version = 1;
+  const prefix = 'organizations/example/sites/demo/';
+  source.state.documents.set(`${prefix}versions/main/pages/home`, { title: 'Home', slug: 'home', content_mode: 'html', html_content: '<p>Welcome</p>', status: 'published' });
+  source.state.documents.set(`${prefix}versions/main/collections/posts`, { name: 'posts', label_singular: 'Post', label_plural: 'Posts', route_template: '/news/{slug}', fields: [{ name: 'title', type: 'text', label: 'Title' }, { name: 'body', type: 'richtext', label: 'Body' }] });
+  source.state.documents.set(`${prefix}versions/main/collections/posts/items/news`, { title: 'News', slug: 'news', body: '<h2>Heading</h2><p>Body</p>', status: 'published' });
+  source.state.documents.set(`${prefix}versions/main/collections/posts/items/news/revisions/r1`, { doc: { title: 'Old title', slug: 'news', body: '<p>Old body</p>', status: 'draft' } });
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'typeroll-migration-test-'));
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
+  const backupDir = path.join(parent, 'backup');
+  await createSelfHostBackup({ services: source.services, outputDir: backupDir, backupKey: BACKUP_KEY });
+  const verifiedBackup = await verifySelfHostBackup({ backupDir, backupKey: BACKUP_KEY, forMigration: true });
+  return { ...source, backupDir, verifiedBackup, prefix };
+}
+
+test('schema 1 archives are migration sources, never runtime-compatible restores', async t => {
+  const { services, state, backupDir, verifiedBackup, prefix } = await legacyMigrationBackup(t);
+  await assert.rejects(verifySelfHostBackup({ backupDir, backupKey: BACKUP_KEY }), /not readable/);
+  const before = clone(state.documents);
+  const dryRun = await prepareUnifiedPagesMigration({ verifiedBackup });
+  assert.equal(dryRun.reports.length, 1);
+  assert.equal(dryRun.reports[0].versions[0].pages, 2);
+  assert.deepEqual(state.documents, before);
+  await assert.rejects(applySelfHostMigrations({ services, verifiedBackup }), /writers-stopped/);
+  assert.deepEqual(state.documents, before);
+  const result = await applySelfHostMigrations({ services, verifiedBackup, writersStopped: true });
+  assert.equal(result.installation.data_schema_version, 2);
+  assert.equal(state.documents.get(`${prefix}versions/main/pages/news`).content_type, 'posts');
+  assert.equal(state.documents.get(`${prefix}versions/main/pages/news`).path, '/news/news');
+  assert.equal(state.documents.get(`${prefix}versions/main/pages/news/revisions/r1`).doc.title, 'Old title');
+  assert.equal([...state.documents.keys()].some(key => key.includes('/collections/')), false);
+  assert.deepEqual((await applySelfHostMigrations({ services, verifiedBackup, writersStopped: true })).applied, []);
+});
+
+test('offline migration resumes its original encrypted backup after an interrupted write', async t => {
+  const { services, state, verifiedBackup, prefix } = await legacyMigrationBackup(t);
+  const compareAndWrite = services.firestore.compareAndWrite;
+  let writes = 0;
+  services.firestore.compareAndWrite = async (...args) => {
+    if (++writes === 3) throw new Error('Simulated interruption');
+    return compareAndWrite(...args);
+  };
+  await assert.rejects(applySelfHostMigrations({ services, verifiedBackup, writersStopped: true }), /Simulated interruption/);
+  assert.equal(state.documents.get(SELF_HOST_INSTALLATION_PATH).data_schema_version, 1);
+  services.firestore.compareAndWrite = compareAndWrite;
+  await applySelfHostMigrations({ services, verifiedBackup, writersStopped: true });
+  assert.equal(state.documents.get(SELF_HOST_INSTALLATION_PATH).data_schema_version, 2);
+  assert.ok(state.documents.get(`${prefix}versions/main/pages/news`).blocks.length > 0);
+});
+
+test('changed content and a second backup cannot be silently accepted on migration retry', async t => {
+  const { services, state, verifiedBackup, prefix } = await legacyMigrationBackup(t);
+  const page = `${prefix}versions/main/pages/home`;
+  state.documents.get(page).title = 'Concurrent edit';
+  await assert.rejects(applySelfHostMigrations({ services, verifiedBackup, writersStopped: true }), /Document changed after backup/);
+  assert.equal(state.documents.get(page).title, 'Concurrent edit');
+  const otherBackup = { ...verifiedBackup, manifest: { ...verifiedBackup.manifest, backup_id: 'another-backup' } };
+  await assert.rejects(applySelfHostMigrations({ services, verifiedBackup: otherBackup, writersStopped: true }), /original verified migration backup/);
+});
+
+test('large media backups bound transfers and verify all objects in stable order', async t => {
+  const source = await seedSource();
+  source.state.objects.clear();
+  for (let i = 0; i < 19; i++) source.state.objects.set(`object-${String(i).padStart(2, '0')}`, { body: Buffer.from(`body-${i}`), contentType: 'text/plain' });
+  let active = 0, maximum = 0;
+  source.services.objects.get = async key => Readable.from((async function* () {
+    maximum = Math.max(maximum, ++active);
+    try { await new Promise(resolve => setTimeout(resolve, 5)); yield source.state.objects.get(key).body; }
+    finally { active--; }
+  })());
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'typeroll-parallel-backup-'));
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
+  const backupDir = path.join(parent, 'backup');
+  await createSelfHostBackup({ services: source.services, outputDir: backupDir, backupKey: BACKUP_KEY });
+  const verified = await verifySelfHostBackup({ backupDir, backupKey: BACKUP_KEY });
+  assert.equal(maximum, 8);
+  assert.equal(active, 0);
+  assert.deepEqual([...verified.objectKeys], [...source.state.objects.keys()]);
+});
+
+test('failed parallel media transfer drains its batch and never commits a backup', async t => {
+  const source = await seedSource(); source.state.objects.clear();
+  for (let i = 0; i < 12; i++) source.state.objects.set(`object-${i}`, { body: Buffer.from('body'), contentType: 'text/plain' });
+  let active = 0;
+  source.services.objects.get = async key => Readable.from((async function* () {
+    active++;
+    try { await new Promise(resolve => setTimeout(resolve, 5)); if (key === 'object-0') throw new Error('simulated transfer failure'); yield Buffer.from('body'); }
+    finally { active--; }
+  })());
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'typeroll-failed-parallel-backup-'));
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
+  const backupDir = path.join(parent, 'backup');
+  await assert.rejects(createSelfHostBackup({ services: source.services, outputDir: backupDir, backupKey: BACKUP_KEY }), /simulated transfer failure/);
+  assert.equal(active, 0);
+  assert.equal(fs.existsSync(path.join(backupDir, 'manifest.json')), false);
+  await assert.rejects(verifySelfHostBackup({ backupDir, backupKey: BACKUP_KEY }), /marked incomplete/);
 });

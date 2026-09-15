@@ -76,3 +76,12 @@ export function prepareHeadingOutline(html: string): PreparedHeadingOutline {
   });
   return { html: prepared, headings };
 }
+
+/** Derived Page values for reusable templates. The outline is never stored. */
+export function pageBodyContext(html: string): { body: string; outline_html: string } {
+  const prepared = prepareHeadingOutline(html);
+  const escape = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
+  const headings = prepared.headings.filter(heading => heading.level <= 3);
+  return { body: prepared.html, outline_html: headings.length
+    ? `<ol>${headings.map(heading => `<li data-level="${heading.level}"><a href="#${escape(heading.id)}">${escape(heading.text)}</a></li>`).join('')}</ol>` : '' };
+}

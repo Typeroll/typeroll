@@ -6,7 +6,7 @@ description: Use when the user wants to create a new Typeroll site from scratch,
 # Bootstrap a new Typeroll site
 
 > **The buffer model (draft writes).** Every content write in this recipe
-> (pages, blocks, partials, collection items) lands in an unsaved per-doc
+> (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
 > build work, pass `save: true` on write calls (the work is pre-approved by
 > the task itself), or run `commit_working_copy` per doc before any
@@ -55,11 +55,11 @@ Common requirements that are easy to misclassify:
 |---|---|
 | Full-bleed hero flush below the header | `core/section` + `core/hero`; block-mode sections already own the full width and have no page-shell padding |
 | Responsive icon/card grid | `core/grid` + `core/icon_box`, or `core/feature_grid`; set responsive fields with `set_block_responsive` |
-| Custom cards backed by a collection | `core/repeater` / `core/collection_list` with a site-authored `item_compatible` block type as `item_block` |
-| Grouped collection listing | `core/repeater` with `group_by`; array-valued fields place an item in every matching group |
+| Custom cards backed by Pages | `core/repeater` / `core/page_list` with a site-authored `item_compatible` block type as `item_block` |
+| Grouped Page listing | `core/repeater` with `group_by`; array-valued fields place an item in every matching group |
 | Breadcrumbs in a page template | `template/page_breadcrumbs`; page and item routes supply a server-rendered trail |
-| Generated heading index | `core/table_of_contents`; choose heading levels and set `source_field` for collection content |
-| Previous/next collection item links | `template/item_navigation`; defaults to collection order and can bind explicit neighbor fields |
+| Generated heading index | `core/table_of_contents`; choose heading levels and set `source_field` for Page content |
+| Previous/next Page links | `template/page_navigation`; defaults to content type sort order and can bind explicit neighbor fields |
 | Download CTA that disappears without a file | `template/show_if` around a context-bound `core/button`; a dedicated download block is only editor convenience |
 | Sticky/custom header and multi-column footer | Block-mode header/footer partials plus layout blocks, or one reusable custom block type |
 | Cookie notice | `settings.cookie_consent`, not a page block |
@@ -199,14 +199,14 @@ truth):
   (run `generate_image_variants` after upload) — the in-portal preview
   shows a plain `<img>`, the deployed site gets the upgrade. Use the
   `radius` field for rounded corners.
-- **Repeaters/listings:** `core/collection_list`, `gallery`,
+- **Repeaters/listings:** `core/page_list`, `gallery`,
   `feature_grid` etc. — alias blocks over `core/repeater`. Use these for
-  collection-driven content instead of hand-writing listing markup. The base
+  Pages of a content type instead of hand-writing listing markup. The base
   repeater also supports `group_by`, group ordering/headings, multi-valued
   membership, filters, custom `item_block`, and `item_overrides`.
 - **Long-form navigation:** `core/table_of_contents` builds an anchor list
-  from page headings. Collection block templates use
-  `template/item_navigation` for deterministic previous/next links.
+  from page headings. Page templates use
+  `template/page_navigation` for deterministic previous/next links.
 - **Forms:** `create_form`, then place `core/form` with its `form_id`.
   HTML-mode pages use `<x-form id="…" />`; both paths render the same signed
   shell and runtime. See `tr-forms`.

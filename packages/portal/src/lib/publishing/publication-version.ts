@@ -18,17 +18,14 @@ export async function resolvePublicationVersion(orgId: string, siteId: string, v
     if (!version || version.kind !== 'branch') throw new Error('Publication version no longer exists');
     current = version.base_version_id ?? MAIN_VERSION_ID;
   }
-  const [settings, pages, partials, blockTypes, pageTemplates, redirects, definitions] = await Promise.all([
+  const [settings, pages, partials, blockTypes, pageTemplates, redirects, contentTypes] = await Promise.all([
     vstore.settings(orgId, siteId, versionId),
     vstore.pages(orgId, siteId, versionId),
     vstore.partials(orgId, siteId, versionId),
     vstore.blockTypes(orgId, siteId, versionId),
     vstore.pageTemplates(orgId, siteId, versionId),
     vstore.redirects(orgId, siteId, versionId),
-    vstore.collections(orgId, siteId, versionId),
+    vstore.contentTypes(orgId, siteId, versionId),
   ]);
-  const collections = await Promise.all(definitions.map(async definition => ({
-    definition, items: await vstore.collectionItems(orgId, siteId, versionId, definition.name),
-  })));
-  return { versionId, settings, pages, partials, blockTypes, pageTemplates, redirects, collections };
+  return { versionId, settings, pages, partials, blockTypes, pageTemplates, redirects, contentTypes };
 }

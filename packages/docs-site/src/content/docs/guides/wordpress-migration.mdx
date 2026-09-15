@@ -17,7 +17,7 @@ The migration workflow imports accessible WordPress content (pages, posts and su
 
 - Imports pages and posts as Typeroll pages
 - Transfers media (images) through the media API — only images actually used on imported pages
-- Maps custom post types to Typeroll collections
+- Maps custom post types to Typeroll content types
 - Generates URL redirects
 - Leaves everything as drafts for your review before going live
 
@@ -79,7 +79,7 @@ The AI agent will:
 1. Call `get_import_readiness` and resolve any storage requirements, then verify the WP REST API connection
 2. Build an inventory of all URLs on the site
 3. Import pages and posts, transferring images along the way
-4. Map any custom post types to collections
+4. Map any custom post types to content types
 5. Generate redirects
 6. Show you a coverage report
 

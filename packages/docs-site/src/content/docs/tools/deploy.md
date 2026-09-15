@@ -23,7 +23,7 @@ output never leaves the server and your live site is untouched.
 Build the site but don't publish it — I just want to know it compiles.
 ```
 
-Use it to check that a structural change (a new collection, a schema edit, a
+Use it to check that a structural change (a new content type, a schema edit, a
 template rewrite) actually builds before it reaches visitors. The job is
 reported as `succeeded` with `dry_run: true` and no `deploy_url`.
 

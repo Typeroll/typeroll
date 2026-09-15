@@ -1,13 +1,12 @@
+import { createPageSource, DEFAULT_CONTENT_TYPE, resolveContentPage, publicContentPage, type PageSourceConfig } from '@typeroll/shared';
 // Build-time content fetching. All functions resolve the org+site IDs from
 // env vars so call sites don't need to thread them through.
 
-import { applyTrailingSlash, buildCollectionRoutes, collectionFieldMatches, paths, MAIN_VERSION_ID } from '@typeroll/shared';
+import { applyTrailingSlash, paths, MAIN_VERSION_ID } from '@typeroll/shared';
 import type {
   Block,
   BlockType,
-  CollectionDef,
-  CollectionItem,
-  CollectionItemRoute,
+  ContentType,
   FacetRoute,
   Media,
   Page,
@@ -36,7 +35,7 @@ function ids() {
 // and re-reading is pure waste.
 //
 // It was a lot of waste. `[...slug].astro`'s per-page frontmatter calls
-// `buildBacklinks()` and `buildCollectionSource()`, and each of those walks
+// `buildBacklinks()` and `buildPageSource()`, and each of those walks
 // every collection and loads every item — so every route paid for two full
 // dataset loads. That is O(routes × records), i.e. quadratic for a directory
 // where the routes ARE the records, and it dominated the per-route cost long
@@ -86,12 +85,12 @@ export function _resetBuildCachesForTests(): void {
   getAppsPublic = buildMemo(loadAppsPublic);
   getExtensionsPublic = buildMemo(loadExtensionsPublic);
   getPartials = buildMemo(loadPartials);
-  getAllCollections = buildMemo(loadAllCollections);
-  getCollectionItems = buildMemoKeyed(loadCollectionItems);
+  getContentTypes = buildMemo(loadContentTypes);
+  getPages = buildMemo(loadPages);
   getBlockTypes = buildMemo(loadBlockTypes);
   getBlockRegistry = buildMemo(loadBlockRegistry);
   buildBacklinks = buildMemo(loadBacklinks);
-  buildCollectionSource = buildMemo(loadCollectionSource);
+  buildPageSource = buildMemo(loadPageSource);
 }
 // ---------------------------------------------------------------------------
 
@@ -175,13 +174,31 @@ async function loadPartials(): Promise<{
 }
 export let getPartials = buildMemo(loadPartials);
 
-export async function getAllPages(opts: { includeUnlisted?: boolean } = {}): Promise<Page[]> {
+async function loadPages(): Promise<Page[]> {
   const { orgId, siteId, versionId } = ids();
-  const all = await getStore().listDocs<Page>(paths.pages(orgId, siteId, versionId));
-  return all.filter((p) => {
-    if (p.status === 'published') return true;
-    if (p.status === 'unlisted' && opts.includeUnlisted !== false) return true;
-    return false;
+  const types = new Map((await getContentTypes()).map(type => [type.id, type]));
+  return (await getStore().listDocs<Page>(paths.pages(orgId, siteId, versionId))).map(page => {
+    const type = types.get(page.content_type ?? 'page');
+    if (!type) throw new Error(`Unknown content type for page ${page.id}`);
+    return publicContentPage(page, type);
+  });
+}
+export let getPages = buildMemo(loadPages);
+
+/** Public routes only. Unrouted content remains available to page queries. */
+export async function getAllPages(opts: { includeUnlisted?: boolean } = {}): Promise<Page[]> {
+  const types = new Map((await getContentTypes()).map(type => [type.id, type]));
+  const claimed = new Map<string, string>();
+  return (await getPages()).flatMap(page => {
+    if (page.status !== 'published' && !(page.status === 'unlisted' && opts.includeUnlisted !== false)) return [];
+    const type = types.get(page.content_type ?? 'page');
+    if (!type) throw new Error(`Unknown content type for page ${page.id}: ${page.content_type}`);
+    const resolved = resolveContentPage(page, type);
+    if (!resolved) return [];
+    const key = resolved.path!.replace(/\/+$/, '') || '/';
+    if (claimed.has(key)) throw new Error(`Pages ${claimed.get(key)} and ${page.id} both use ${key}`);
+    claimed.set(key, page.id);
+    return [resolved];
   });
 }
 
@@ -212,88 +229,14 @@ export function urlFor(page: Pick<Page, 'slug' | 'path'>, trailingSlash: SiteSet
   return applyTrailingSlash(withLeading, trailingSlash ?? 'always');
 }
 
-/**
- * List every collection on the active version. Used by getStaticPaths and
- * sitemap generation to enumerate per-item routes.
- */
-async function loadAllCollections(): Promise<CollectionDef[]> {
+async function loadContentTypes(): Promise<ContentType[]> {
   const { orgId, siteId, versionId } = ids();
-  return getStore().listDocs<CollectionDef>(paths.collections(orgId, siteId, versionId));
+  const types = await getStore().listDocs<ContentType>(paths.contentTypes(orgId, siteId, versionId));
+  return types.some(type => type.id === 'page') ? types : [DEFAULT_CONTENT_TYPE, ...types];
 }
-export let getAllCollections = buildMemo(loadAllCollections);
+export let getContentTypes = buildMemo(loadContentTypes);
 
-async function loadCollectionItems(name: string): Promise<CollectionItem[]> {
-  const { orgId, siteId, versionId } = ids();
-  return getStore().listDocs<CollectionItem>(paths.collectionItems(orgId, siteId, name, versionId));
-}
-export let getCollectionItems = buildMemoKeyed(loadCollectionItems);
-
-/**
- * Build the full per-item route map for the active version. One entry per
- * published item whose owning collection has a non-empty `route_template`
- * and whose template placeholders all resolve. Drafts + opted-out
- * collections are filtered out.
- */
-export async function getCollectionItemRoutes(): Promise<CollectionItemRoute[]> {
-  const collections = await getAllCollections();
-  const itemsByCollection = new Map<string, CollectionItem[]>();
-  for (const c of collections) {
-    if (c.route_template === '') continue;
-    const items = await getCollectionItems(c.name);
-    itemsByCollection.set(c.name, items);
-  }
-  return buildCollectionRoutes(collections, itemsByCollection);
-}
-
-/**
- * Coerce any value into a plain string. Used by helpers below.
- * Lives here (not inside [...slug].astro) because Astro v5 hoists
- * `getStaticPaths` into a separate compiled module that can't see
- * top-level helpers from the same .astro file — referencing them
- * from inside getStaticPaths throws `ReferenceError: X is not defined`
- * at build time.
- */
-function asString(v: unknown): string {
-  if (v == null) return '';
-  if (typeof v === 'string') return v;
-  return String(v);
-}
-
-/**
- * Synthesize a Page object from a collection item so BaseLayout (which
- * is Page-shaped) renders metadata correctly. SEO fields fall through
- * item → derived defaults so collection items get reasonable Google
- * previews even without per-item SEO authoring.
- *
- * Exported (and lives here, not in [...slug].astro) so getStaticPaths
- * can reference it across Astro's hoisted-module boundary.
- */
-export function pageForItem(
-  collection: CollectionDef,
-  item: CollectionItem,
-  path: string,
-): Page {
-  const data = item as Record<string, unknown>;
-  const title = asString(data.title) || asString(data.name) || collection.label_singular;
-  const seoTitle = asString(data.seo_title) || title;
-  const seoDescription = asString(data.seo_description) || asString(data.excerpt) || '';
-  return {
-    id: item.id,
-    title,
-    slug: path.replace(/^\/+/, ''),
-    content_mode: 'html',
-    status: 'published',
-    seo_title: seoTitle,
-    seo_description: seoDescription,
-    og_image: asString(data.og_image) || asString(data.image) || undefined,
-    kind: 'article',
-    date_updated: item.updated_at,
-    date_published: asString(data.date_published) || item.created_at,
-    html_content: '',
-  };
-}
-
-function defaultFacetBlocks(collection: CollectionDef, title: string, scope: string): Block[] {
+function defaultFacetBlocks(collection: ContentType, title: string, scope: string): Block[] {
   return [
     {
       id: 'facet-section',
@@ -304,10 +247,10 @@ function defaultFacetBlocks(collection: CollectionDef, title: string, scope: str
         { id: 'facet-intro', type: 'core/prose', data: { html: `<p>${escapeText(scope)}</p>` } },
         {
           id: 'facet-list',
-          type: 'core/collection_list',
+          type: 'core/page_list',
           // No filter_field/filter_value: the block inherits the page's facet
           // scope from the render context.
-          data: { collection: collection.name, source_type: 'collection' },
+          data: { content_type: collection.id, source_type: 'pages' },
         },
       ],
     } as Block,
@@ -324,7 +267,7 @@ function escapeText(s: string): string {
  * the facet's own `label_singular` plus the value — predictable, and the
  * operator can override the whole shell with a `template`.
  */
-export function pageForFacet(collection: CollectionDef, route: FacetRoute): Page {
+export function pageForFacet(collection: ContentType, route: FacetRoute): Page {
   const title = route.filters.map((f) => f.value).join(' · ');
   const scope = route.filters.map((f) => `${f.label_singular}: ${f.value}`).join(', ');
   return {
@@ -408,7 +351,7 @@ const partialHtmlCache = new Map<string, string>();
  * is deliberately absent: it is the same for every page in a build, so a
  * header using {{site.name}} stays cacheable.
  */
-const ROUTE_VARYING_TOKEN = /\{\{\{?\s*(page|item|collection|facet|pagination)\./;
+const ROUTE_VARYING_TOKEN = /\{\{\{?\s*(page|item|content_type|facet|pagination)\./;
 
 /**
  * Can this partial's output differ between routes?
@@ -488,14 +431,14 @@ export async function renderPartialHtml(
       // one) silently rendered as nothing on the live site while the portal's
       // preview, which has always used the merged registry, showed it working.
       //
-      // Context + collectionSource for the same reason: render-preview.ts
+      // Context + pageSource for the same reason: render-preview.ts
       // passes both to partials, so without them a header bound to
       // {{site.name}} or a footer listing recent posts previewed correctly
       // and shipped empty.
       return sanitizeBody(renderBlocks(partial.blocks, {
         registry: await getBlockRegistry(),
         context,
-        collectionSource: await buildCollectionSource(),
+        pageSource: await buildPageSource(),
         onMissingType: (typeId) => {
           throw new Error(`Cannot build partial with missing block type: ${typeId}`);
         },
@@ -521,9 +464,9 @@ export async function renderPartialHtml(
 
 /**
  * Pre-load every collection's items into an in-memory cache so the block
- * renderer's `collectionSource` resolver can stay synchronous (the
+ * renderer's `pageSource` resolver can stay synchronous (the
  * renderer itself isn't async). Returns a sync function the page can pass
- * to `renderBlocks({ collectionSource })`.
+ * to `renderBlocks({ pageSource })`.
  *
  * The resolver applies the repeater's filter/sort/limit at call time so
  * each repeater on a page gets exactly the items it asks for. Pinned
@@ -531,121 +474,19 @@ export async function renderPartialHtml(
  */
 /**
  * Reverse reference index over every published item. Uses the same item set
- * buildCollectionSource loads, so this is a pass over data that's in memory
+ * buildPageSource loads, so this is a pass over data that's in memory
  * either way — never a second read, and never stored.
  */
 async function loadBacklinks(): Promise<import('@typeroll/shared').BacklinkIndex> {
   const { buildBacklinkIndex } = await import('@typeroll/shared');
-  const collections = await getAllCollections();
-  const byName: Record<string, CollectionItem[]> = {};
-  for (const c of collections) {
-    byName[c.name] = (await getCollectionItems(c.name)).filter((i) => i.status === 'published');
-  }
-  return buildBacklinkIndex(collections, byName);
+  return buildBacklinkIndex(await getContentTypes(), (await getPages()).filter(page => page.status === 'published'));
 }
-/** The index is derived purely from stored forward refs, so it is the same for
- *  every route in a build — memoized rather than rebuilt per page. */
 export let buildBacklinks = buildMemo(loadBacklinks);
 
-type CollectionSourceConfig = {
-  collection: string;
-  /** Exactly these items, in this order — the `related`/`backlinks` sources. */
-  ids?: string[];
-  limit?: number;
-  sort_by?: string;
-  sort_order?: 'asc' | 'desc';
-  filter_field?: string;
-  filter_value?: string;
-  pinned_ids?: string[];
-};
-
-async function loadCollectionSource(): Promise<
-  (config: CollectionSourceConfig) => Record<string, unknown>[]
-> {
-  const collections = await getAllCollections();
-  const byName = new Map<string, CollectionItem[]>();
-  const byId = new Map<string, Map<string, CollectionItem>>();
-  for (const c of collections) {
-    const items = await getCollectionItems(c.name);
-    const published = items.filter((i) => i.status === 'published');
-    byName.set(c.name, published);
-    // Built once instead of per `ids` lookup. A page with a related-items
-    // block used to rebuild this map on every render.
-    byId.set(c.name, new Map(published.map((i) => [i.id, i])));
-  }
-
-  // Filter+sort results, keyed by the QUERY rather than by the caller. A site
-  // has a handful of distinct query shapes and potentially thousands of
-  // repeater calls (one per listing per route), so this turns a sort of the
-  // whole collection per call into one sort per shape.
-  const queryCache = new Map<string, CollectionItem[]>();
-
-  return (config) => {
-    const base = byName.get(config.collection);
-    if (!base) return [];
-    // `ids` IS the query for reference-backed sources: return exactly those,
-    // in the order given, skipping any that no longer exist. Sort/filter/
-    // pagination don't apply — the caller already decided the membership.
-    if (config.ids) {
-      const index = byId.get(config.collection)!;
-      return config.ids
-        .map((id) => index.get(id))
-        .filter((i): i is CollectionItem => Boolean(i)) as unknown as Record<string, unknown>[];
-    }
-
-    const key = [
-      config.collection,
-      config.filter_field ?? '',
-      config.filter_value ?? '',
-      config.sort_by ?? '',
-      config.sort_order ?? '',
-    ].join(' ');
-
-    let resolved = queryCache.get(key);
-    if (!resolved) {
-      let out: CollectionItem[] = base.slice();
-      if (config.filter_field && config.filter_value !== undefined) {
-        const f = config.filter_field;
-        const v = config.filter_value;
-        out = out.filter((it) => collectionFieldMatches(it as Record<string, unknown>, f, v));
-      }
-      if (config.sort_by) {
-        const k = config.sort_by;
-        const dir = config.sort_order === 'asc' ? 1 : -1;
-        out.sort((a, b) => {
-          const av = (a as Record<string, unknown>)[k];
-          const bv = (b as Record<string, unknown>)[k];
-          if (av == null) return 1;
-          if (bv == null) return -1;
-          if (av < bv) return -1 * dir;
-          if (av > bv) return 1 * dir;
-          return 0;
-        });
-      }
-      resolved = out;
-      queryCache.set(key, resolved);
-    }
-
-    // `pinned_ids` and `limit` stay OUT of the cache key: they reorder or clip
-    // an already-resolved set, and folding them in would multiply the number
-    // of cached sorts by the number of pin/limit combinations for no gain.
-    let out = resolved;
-    if (config.pinned_ids?.length) {
-      const pinSet = new Set(config.pinned_ids);
-      out = [...out.filter((it) => pinSet.has(it.id)), ...out.filter((it) => !pinSet.has(it.id))];
-    }
-    if (config.limit && out.length > config.limit) {
-      out = out.slice(0, config.limit);
-    }
-    // Never hand back the cached array itself — a consumer that sorts or
-    // splices in place would corrupt every later call sharing this query.
-    return (out === resolved ? out.slice() : out) as unknown as Record<string, unknown>[];
-  };
+async function loadPageSource(): Promise<(config: PageSourceConfig) => Record<string, unknown>[]> {
+  return createPageSource(await getContentTypes(), await getPages());
 }
-
-/** Memoized per build: the resolver closes over the whole published item set,
- *  so rebuilding it per route re-read every collection from disk. */
-export let buildCollectionSource = buildMemo(loadCollectionSource);
+export let buildPageSource = buildMemo(loadPageSource);
 
 /**
  * Fetch a page template doc by id. Returns null if the template doesn't

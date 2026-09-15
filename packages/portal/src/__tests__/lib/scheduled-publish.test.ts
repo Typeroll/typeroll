@@ -38,12 +38,12 @@ async function seed(): Promise<void> {
     title: 'Expiring', slug: 'expiring', status: 'published', content_mode: 'blocks', blocks: [],
     date_published: '2026-01-01T00:00:00Z', unpublish_at: PAST,
   });
-  await store.setDoc(paths.collections(ORG, SITE, MAIN_VERSION_ID) + '/blog', {
+  await store.setDoc(paths.contentTypes(ORG, SITE, MAIN_VERSION_ID) + '/blog', {
     name: 'blog', label: 'Blog', fields: [{ name: 'title', type: 'text', label: 'Title' }],
     created_at: PAST,
   });
-  await store.setDoc(paths.collectionItems(ORG, SITE, 'blog', MAIN_VERSION_ID) + '/post1', {
-    title: 'Post', status: 'draft', created_at: PAST, updated_at: PAST, publish_at: PAST,
+  await store.setDoc(paths.pages(ORG, SITE, MAIN_VERSION_ID) + '/post1', {
+    content_type: 'blog', slug: 'post1', content_mode: 'blocks', blocks: [], title: 'Post', status: 'draft', created_at: PAST, updated_at: PAST, publish_at: PAST,
   });
 }
 
@@ -72,9 +72,8 @@ describe('runPublishSweep', () => {
     const { runPublishSweep } = await import('../../lib/scheduled-publish');
     const result = await runPublishSweep(NOW);
 
-    expect(result.pages_published).toBe(1);
+    expect(result.pages_published).toBe(2);
     expect(result.pages_unpublished).toBe(1);
-    expect(result.items_published).toBe(1);
     expect(result.errors).toEqual([]);
 
     const { getStore } = await import('../../lib/datastore');
@@ -96,7 +95,7 @@ describe('runPublishSweep', () => {
     expect(expiring?.date_published).toBe('2026-01-01T00:00:00Z');
 
     const item = await store.getDoc<{ status: string }>(
-      `${paths.collectionItems(ORG, SITE, 'blog', MAIN_VERSION_ID)}/post1`,
+      `${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/post1`,
     );
     expect(item?.status).toBe('published');
 
@@ -117,7 +116,6 @@ describe('runPublishSweep', () => {
     const second = await runPublishSweep(NOW);
     expect(second.pages_published).toBe(0);
     expect(second.pages_unpublished).toBe(0);
-    expect(second.items_published).toBe(0);
     expect(enqueued).toHaveLength(0);
   });
 
@@ -129,7 +127,7 @@ describe('runPublishSweep', () => {
     // Remove the other due docs so nothing else triggers a deploy.
     await getStore().updateDoc(`${pages}/expiring`, { unpublish_at: null });
     await getStore().updateDoc(
-      `${paths.collectionItems(ORG, SITE, 'blog', MAIN_VERSION_ID)}/post1`,
+      `${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/post1`,
       { publish_at: null },
     );
 

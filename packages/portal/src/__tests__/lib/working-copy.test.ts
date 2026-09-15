@@ -22,7 +22,7 @@ describe('working-copy lib', () => {
     const { wcKey } = await lib();
     expect(wcKey({ kind: 'page', id: 'home' })).toBe('page--home');
     expect(wcKey({ kind: 'partial', id: 'header' })).toBe('partial--header');
-    expect(wcKey({ kind: 'item', collection: 'blog', id: 'post-1' })).toBe('item--blog--post-1');
+    expect(wcKey({ kind: 'page', id: 'post-1' })).toBe('page--post-1');
   });
 
   it('read returns null when no copy exists', async () => {
@@ -49,15 +49,15 @@ describe('working-copy lib', () => {
     expect(wc?.fields.blocks).toEqual([]);
   });
 
-  it('item copies carry their collection and do not collide across collections', async () => {
+  it('all content types use global page identities for working copies', async () => {
     const { mergeWorkingCopy, readWorkingCopy } = await lib();
-    await mergeWorkingCopy(CTX, { kind: 'item', collection: 'blog', id: 'x' }, { title: 'Blog X' });
-    await mergeWorkingCopy(CTX, { kind: 'item', collection: 'team', id: 'x' }, { title: 'Team X' });
-    const blog = await readWorkingCopy(CTX, { kind: 'item', collection: 'blog', id: 'x' });
-    const team = await readWorkingCopy(CTX, { kind: 'item', collection: 'team', id: 'x' });
+    await mergeWorkingCopy(CTX, { kind: 'page', id: 'blog-x' }, { title: 'Blog X' });
+    await mergeWorkingCopy(CTX, { kind: 'page', id: 'team-x' }, { title: 'Team X' });
+    const blog = await readWorkingCopy(CTX, { kind: 'page', id: 'blog-x' });
+    const team = await readWorkingCopy(CTX, { kind: 'page', id: 'team-x' });
     expect(blog?.fields.title).toBe('Blog X');
     expect(team?.fields.title).toBe('Team X');
-    expect(blog?.collection).toBe('blog');
+    expect(blog?.kind).toBe('page');
   });
 
   it('discard removes the copy and is a no-op when absent', async () => {

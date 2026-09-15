@@ -19,7 +19,7 @@ mapping explicitly. See [Webflow's code export documentation](https://help.webfl
 
 The agent can extract page text, semantic structure and reachable images. For
 collection data, define the target Typeroll schema, map exported fields and
-references, then create items through the collection tools.
+references, then create Pages with that content type through the Pages tools.
 
 Webflow classes, layout rules and interactions are not a guaranteed editable
 Typeroll block structure. Rebuild shared headers, footers and page templates in
@@ -29,9 +29,9 @@ separate decisions and testing.
 ## Migration steps
 
 1. Create the target Site, design settings and shared layout. Inventory static
-   pages and collection detail pages as separate groups.
+   static and detail routes to the appropriate Page content types.
 2. Provide public URLs or source files to the agent. If using CSV, agree the
-   collection schema and URL mapping before importing records.
+   content type schema and URL mapping before importing records.
 3. Import one static page and one collection item as drafts. Transfer media and
    replace source-specific styling with the target design.
 4. Review the result in the [editor](../the-editor/). Request blocks for
@@ -44,7 +44,7 @@ separate decisions and testing.
 
 ```text
 Import these Webflow pages and the supplied collection CSV into this Typeroll Site.
-Propose the collection schema and URL mapping first. Rebuild shared layouts as
+Propose the content type schema and URL mapping first. Rebuild shared layouts as
 Typeroll templates, preserve image alt text, and keep the content as drafts.
 ```
 

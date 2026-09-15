@@ -36,7 +36,7 @@ export const PAGE_STATUS_OPTIONS: StatusOption[] = [
   { value: 'published', label: 'Published', description: 'Included in the next deploy. Changing this status does not deploy the site.' },
 ];
 
-/** Partials and collection items are just draft/published. */
+/** Partials are just draft/published. */
 export const SIMPLE_STATUS_OPTIONS: StatusOption[] = [
   { value: 'draft', label: 'Draft', description: 'Excluded from deploys. Use Preview to view the saved draft.' },
   { value: 'published', label: 'Published', description: 'Included in the next deploy. Changing this status does not deploy the site.' },
@@ -54,7 +54,6 @@ interface ChangesResponse {
     date_updated: string;
     status?: string;
     will_deploy: boolean;
-    collection?: string;
     action?: 'added' | 'changed' | 'removed';
   }>;
 }
@@ -118,7 +117,6 @@ const KIND_LABEL: Record<string, string> = {
   page: 'Page',
   partial: 'Partial',
   template: 'Template',
-  collection_item: 'Item',
 };
 
 export default function PublishMenu({
@@ -474,7 +472,7 @@ export default function PublishMenu({
                   </p>
                   <ul className="pmenu__changes">
                     {changes.changes.map((c) => (
-                      <li key={`${c.kind}:${c.collection ?? ''}:${c.id}`}>
+                      <li key={`${c.kind}:${c.id}`}>
                         <span className="pmenu__kind">{KIND_LABEL[c.kind] ?? c.kind}</span>
                         <span className="pmenu__title">{c.title}</span>
                         <span className={c.will_deploy ? 'pmenu__included' : 'pmenu__skip'}>

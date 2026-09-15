@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildCollectionItemSchema, buildPageSchema } from '../schema-generators.js';
-import type { CollectionDef, CollectionItem, Page, SiteSettings } from '../types.js';
+import { buildContentPageSchema, buildPageSchema } from '../schema-generators.js';
+import type { ContentType, Page, SiteSettings } from '../types.js';
+
+function makePage(input: Record<string, unknown>): Page {
+  const { id = 'page', title = '', slug = 'page', status = 'published', html_content, date_published, date_updated, author, ...fields } = input;
+  return { id, title, slug, status, content_mode: 'html', html_content, date_published, date_updated, author, fields } as Page;
+}
 
 const site: SiteSettings = {
   site_name: 'Autopilot',
@@ -72,37 +77,37 @@ describe('buildPageSchema', () => {
   });
 });
 
-describe('buildCollectionItemSchema', () => {
+describe('buildContentPageSchema', () => {
   it('returns null when collection.schema_type is missing', () => {
-    const coll: CollectionDef = {
+    const coll: ContentType = {
       id: 'blog', name: 'blog',
       label_singular: 'Post', label_plural: 'Posts',
-      fields: [], created_at: '2024-01-01',
+      fields: [], route_template: '/{slug}', created_at: '2024-01-01',
     };
-    const item: CollectionItem = { id: 'a', status: 'published', created_at: 'x', updated_at: 'y' };
-    expect(buildCollectionItemSchema(item, coll, site, 'https://x/blog/a/')).toBeNull();
+    const item: Page = makePage({ id: 'a', status: 'published', date_published: 'x', date_updated: 'y' });
+    expect(buildContentPageSchema(item, coll, site, 'https://x/blog/a/')).toBeNull();
   });
 
   it('maps BlogPosting fields with built-in defaults', () => {
-    const coll: CollectionDef = {
+    const coll: ContentType = {
       id: 'blog', name: 'blog',
       label_singular: 'Post', label_plural: 'Posts',
-      fields: [], created_at: '2024-01-01',
+      fields: [], route_template: '/{slug}', created_at: '2024-01-01',
       schema_type: 'BlogPosting',
     };
-    const item: CollectionItem = {
+    const item: Page = makePage({
       id: 'a',
       status: 'published',
-      created_at: '2024-01-01T00:00:00Z',
-      updated_at: '2024-01-02T00:00:00Z',
+      date_published: '2024-01-01T00:00:00Z',
+      date_updated: '2024-01-02T00:00:00Z',
       title: 'My post',
-      body: '<p>Hello world</p>',
+      html_content: '<p>Hello world</p>',
       excerpt: 'Hello',
       featured_image: 'https://cdn/x.png',
       author: 'Tomas',
-    };
+    });
     const ld = JSON.parse(
-      buildCollectionItemSchema(item, coll, site, 'https://x/blog/a/')!,
+      buildContentPageSchema(item, coll, site, 'https://x/blog/a/')!,
     );
     expect(ld['@type']).toBe('BlogPosting');
     expect(ld.headline).toBe('My post');
@@ -120,23 +125,23 @@ describe('buildCollectionItemSchema', () => {
   });
 
   it('honours schema_field_map override for niche fields', () => {
-    const coll: CollectionDef = {
+    const coll: ContentType = {
       id: 'podcast', name: 'podcast',
       label_singular: 'Episode', label_plural: 'Episodes',
-      fields: [], created_at: '2024-01-01',
+      fields: [], route_template: '/{slug}', created_at: '2024-01-01',
       schema_type: 'PodcastEpisode',
       schema_field_map: { mp3: 'contentUrl', show_notes_html: 'description' },
     };
-    const item: CollectionItem = {
+    const item: Page = makePage({
       id: 'ep1',
       status: 'published',
-      created_at: 'c', updated_at: 'u',
+      date_published: 'c', date_updated: 'u',
       title: 'Ep 1',
       mp3: 'https://cdn/ep1.mp3',
       show_notes_html: '<p>Notes</p>',
       duration: 'PT45M',
-    };
-    const ld = JSON.parse(buildCollectionItemSchema(item, coll, site, 'https://x/podcast/ep1/')!);
+    });
+    const ld = JSON.parse(buildContentPageSchema(item, coll, site, 'https://x/podcast/ep1/')!);
     expect(ld['@type']).toBe('PodcastEpisode');
     expect(ld.name).toBe('Ep 1');
     expect(ld.contentUrl).toBe('https://cdn/ep1.mp3');
@@ -145,36 +150,36 @@ describe('buildCollectionItemSchema', () => {
   });
 
   it('emits arbitrary type unknown to the builtin map (Course)', () => {
-    const coll: CollectionDef = {
+    const coll: ContentType = {
       id: 'courses', name: 'courses',
       label_singular: 'Course', label_plural: 'Courses',
-      fields: [], created_at: '2024-01-01',
+      fields: [], route_template: '/{slug}', created_at: '2024-01-01',
       schema_type: 'Course',
     };
-    const item: CollectionItem = {
-      id: 'c1', status: 'published', created_at: 'c', updated_at: 'u',
+    const item: Page = makePage({
+      id: 'c1', status: 'published', date_published: 'c', date_updated: 'u',
       title: 'Intro',
       provider: 'Acme',
-    };
-    const ld = JSON.parse(buildCollectionItemSchema(item, coll, site, 'https://x/courses/c1/')!);
+    });
+    const ld = JSON.parse(buildContentPageSchema(item, coll, site, 'https://x/courses/c1/')!);
     expect(ld['@type']).toBe('Course');
     expect(ld.name).toBe('Intro');
     expect(ld.provider).toEqual({ '@type': 'Organization', name: 'Acme' });
   });
 
   it('passes through object values verbatim (author-as-object, custom sub-schemas)', () => {
-    const coll: CollectionDef = {
+    const coll: ContentType = {
       id: 'blog', name: 'blog',
       label_singular: 'Post', label_plural: 'Posts',
-      fields: [], created_at: '2024-01-01',
+      fields: [], route_template: '/{slug}', created_at: '2024-01-01',
       schema_type: 'BlogPosting',
     };
-    const item: CollectionItem = {
-      id: 'a', status: 'published', created_at: 'c', updated_at: 'u',
+    const item: Page = makePage({
+      id: 'a', status: 'published', date_published: 'c', date_updated: 'u',
       title: 'X',
       author: { '@type': 'Person', name: 'Tomas', url: 'https://x' },
-    };
-    const ld = JSON.parse(buildCollectionItemSchema(item, coll, site, 'https://x/blog/a/')!);
+    });
+    const ld = JSON.parse(buildContentPageSchema(item, coll, site, 'https://x/blog/a/')!);
     expect(ld.author).toEqual({ '@type': 'Person', name: 'Tomas', url: 'https://x' });
   });
 });

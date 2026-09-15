@@ -56,3 +56,10 @@ and agent indexes from the same source; do not maintain separate copies.
 For documentation-only changes, run `node scripts/oss-release-check.mjs --docs-only` and the documentation export tests. Run `npm run release:plan` to
 confirm artifact scope. Documentation can be published without inventing new
 Core or MCP versions; follow the normal release workflow and approval rules.
+
+For content-model changes, also update `docs/content-model.md`, packaged MCP
+`read_guide` and tool descriptions, bundled skills, `typeroll init` instructions,
+site checklist, native starter fixtures and Extension-starter integration docs.
+Retired content APIs must not remain in active examples or generated agent help.
+Keep historical release notes explicitly historical and migration-only shapes
+inside the offline migration.

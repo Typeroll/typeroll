@@ -24,7 +24,7 @@ All authenticated via `X-Typeroll-Key` header or `?key=` query parameter.
 | `GET /wp-json/typeroll/v1/post-types` | Every registered post type with item counts. |
 | `GET /wp-json/typeroll/v1/items/{type}?page=&per_page=` | Items of a post type. Includes rendered content, featured image, ACF values, post meta, taxonomies, builder data. Returns `X-WP-Total` and `X-WP-TotalPages` headers. |
 | `GET /wp-json/typeroll/v1/items/{type}/{id}` | One item with the same shape. |
-| `GET /wp-json/typeroll/v1/acf/groups/{post_id}` | ACF field-group schema applicable to a post — for inferring the matching Typeroll collection schema. |
+| `GET /wp-json/typeroll/v1/acf/groups/{post_id}` | ACF field-group schema applicable to a post — for inferring the matching Typeroll Content type schema. |
 | `GET /wp-json/typeroll/v1/menus` | Navigation menus and their items, hierarchical. |
 
 ## Import storage prerequisite

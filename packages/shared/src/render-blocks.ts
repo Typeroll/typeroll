@@ -40,8 +40,9 @@ import {
 } from './breakpoints.js';
 import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
-import { backlinksFor, refIds, type BacklinkIndex } from './item-refs.js';
+import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
+import { prepareArticleBlockData } from './article-blocks.js';
 import { prepareHeadingOutline } from './heading-outline.js';
 
 /**
@@ -59,7 +60,7 @@ export interface RenderContext {
   /** Build with `siteContext(settings)` — see the note there on `site.name`. */
   site?: Record<string, unknown>;
   item?: Record<string, unknown>;
-  collection?: Record<string, unknown>;
+  content_type?: Record<string, unknown>;
   /**
    * Archive pagination for a repeater with `paginate` set (collection
    * sources only). `current` is 1-based; `base_url` is the page's own URL.
@@ -113,8 +114,8 @@ export interface RenderBlocksOptions {
    * resolve all collection sources up-front before invoking the
    * renderer.
    */
-  collectionSource?: (config: {
-    collection: string;
+  pageSource?: (config: {
+    content_type?: string;
     /**
      * Return exactly these items, in this order, ignoring sort/filter. Used
      * by the `related` and `backlinks` repeater sources, where the id list IS
@@ -279,26 +280,19 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   // only on inert text/URL/image fields; rich HTML remains an explicit block
   // concern and never gains recursive template evaluation.
   for (const field of blockType.schema ?? []) {
-    if (!['text', 'textarea', 'url', 'image', 'file', 'email'].includes(field.type)) continue;
+    if (!['text', 'textarea', 'richtext', 'url', 'image', 'file', 'email'].includes(field.type)) continue;
     const value = compiled.flatData[field.name];
     if (typeof value !== 'string') continue;
-    const match = value.match(/^\s*\{\{\s*((?:page|site|item|collection)\.[\w.-]+)\s*\}\}\s*$/);
+    const match = value.match(/^\s*\{\{\s*((?:page|site|item|content_type)\.[\w.-]+)\s*\}\}\s*$/);
     if (match) compiled.flatData[field.name] = resolveDottedToken(match[1]!, compiled.flatData, options.context) ?? '';
   }
 
-  if (effectiveBlock.type === 'template/item_body') {
-    const fieldName = String(compiled.flatData.field ?? 'body');
-    const raw = options.context?.item?.[fieldName];
-    compiled.flatData.selected_item_body = prepareHeadingOutline(typeof raw === 'string' ? raw : '').html;
-  }
-  if (effectiveBlock.type === 'template/item_image') {
-    const fieldName = String(compiled.flatData.field ?? 'image');
-    compiled.flatData.selected_item_image = options.context?.item?.[fieldName] ?? '';
+  if (effectiveBlock.type === 'template/page_featured_image') {
+    compiled.flatData.selected_page_image = options.context?.page?.[String(compiled.flatData.field ?? 'og_image')] ?? '';
   }
   if (effectiveBlock.type === 'template/page_date') {
-    const fieldName = String(compiled.flatData.field ?? 'published_at');
-    compiled.flatData.selected_page_date = options.context?.item?.[fieldName]
-      ?? options.context?.page?.[fieldName]
+    const fieldName = String(compiled.flatData.field ?? 'date_published');
+    compiled.flatData.selected_page_date = options.context?.page?.[fieldName]
       ?? '';
   }
   if (effectiveBlock.type === 'template/page_breadcrumbs') {
@@ -309,8 +303,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   }
   if (effectiveBlock.type === 'core/table_of_contents') {
     const sourceField = String(compiled.flatData.source_field ?? 'body');
-    const raw = options.context?.item?.[sourceField] ?? options.context?.page?.[sourceField];
-    const prepared = prepareHeadingOutline(typeof raw === 'string' ? raw : '');
+    const raw = options.context?.page?.[sourceField];
+    const prepared = prepareHeadingOutline(options.context?.page?.content_mode === 'blocks'
+      ? renderPageBody(options, sourceField) : typeof raw === 'string' ? raw : '');
     const maxLevel = compiled.flatData.levels === 'h2' ? 2 : compiled.flatData.levels === 'h2-h4' ? 4 : 3;
     const headings = prepared.headings.filter((heading) => heading.level <= maxLevel);
     compiled.flatData.toc_items_html = headings
@@ -318,9 +313,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
       .join('');
     compiled.flatData.toc_empty = headings.length === 0 ? 'true' : 'false';
   }
-  if (effectiveBlock.type === 'template/item_navigation') {
-    const item = options.context?.item ?? {};
-    const collection = options.context?.collection ?? {};
+  if (effectiveBlock.type === 'template/page_navigation') {
+    const item = options.context?.page ?? {};
+    const collection = options.context?.content_type ?? {};
     const previous = navigationLinkData('previous', compiled.flatData, item, collection);
     const next = navigationLinkData('next', compiled.flatData, item, collection);
     compiled.flatData.previous_url = previous.url;
@@ -365,6 +360,19 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     }
   }
 
+  if (['core/heading', 'core/rich_heading'].includes(effectiveBlock.type)) compiled.flatData.heading_anchor_attr = compiled.flatData.anchor_id ? ` id="${escapeHtml(compiled.flatData.anchor_id)}"` : '';
+  if (effectiveBlock.type === 'core/image') {
+    const d = compiled.flatData;
+    const positive = (v: unknown) => Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : 0;
+    const w = positive(d.original_width), h = positive(d.original_height);
+    const maximum = positive(d.max_width) || (d.width === 'original' ? w : 0);
+    d.image_size_style = maximum ? `max-width:min(100%,${maximum}px)` : '';
+    const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''} loading="lazy" decoding="async" />`;
+    const picture = d.mobile_src ? `<picture><source media="(max-width: 640px)" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
+    d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link">${picture}</a>` : picture;
+    d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
+  }
+  prepareArticleBlockData(effectiveBlock.type, compiled.flatData);
   let html = substituteFields(template, compiled.flatData, options.context);
   html = substituteChildren(html, effectiveBlock, options);
   html = substituteSlots(html, effectiveBlock, blockType, options);
@@ -434,7 +442,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
  * Render a repeater block. Loops over the resolved item list and renders
  * each item via the configured `item_block` BlockType. Item data is
  * supplied either statically (`source_type: 'static'`) or by the caller's
- * `collectionSource` resolver for collection-backed repeaters.
+ * `pageSource` resolver for collection-backed repeaters.
  *
  * Layout shell:
  *   - `grid`     — flex/grid wrap with `--cols` + `--gap`
@@ -470,22 +478,22 @@ function renderRepeater(
     if (Array.isArray(raw)) {
       items = raw.filter((x): x is Record<string, unknown> => x !== null && typeof x === 'object');
     }
-  } else if (sourceType === 'collection') {
-    if (!options.collectionSource) {
-      return `<!-- repeater needs a collectionSource for collection-backed sources -->`;
+  } else if (sourceType === 'pages') {
+    if (!options.pageSource) {
+      return `<!-- repeater needs a pageSource for collection-backed sources -->`;
     }
     const perPage = typeof data.paginate === 'number' && data.paginate > 0
       ? Math.floor(data.paginate) : 0;
     // Inherit the page's taxonomy scope when the block declares no filter of
     // its own. Only the first filter is applied here; a combination page
-    // narrows the rest below, since collectionSource takes a single pair.
+    // narrows the rest below, since pageSource takes a single pair.
     const inherited = options.context?.facet?.filters?.[0];
     const filterField = typeof data.filter_field === 'string' && data.filter_field
       ? data.filter_field : inherited?.field;
     const filterValue = typeof data.filter_value === 'string' && data.filter_value !== undefined
       ? data.filter_value : inherited?.value;
-    items = options.collectionSource({
-      collection: String(data.collection ?? ''),
+    items = options.pageSource({
+      content_type: String(data.content_type ?? ''),
       // paginate supersedes limit: the archive owns the full item list and
       // slices per page; a limit would silently cap the archive.
       limit: perPage > 0 ? undefined : (typeof data.limit === 'number' ? data.limit : undefined),
@@ -517,15 +525,15 @@ function renderRepeater(
     // Reference-driven sources. Both reduce to "render exactly this list of
     // ids from that collection"; they differ only in where the ids come from
     // — a ref field on the current item, or the computed reverse index.
-    if (!options.collectionSource) {
-      return `<!-- repeater needs a collectionSource for reference-backed sources -->`;
+    if (!options.pageSource) {
+      return `<!-- repeater needs a pageSource for reference-backed sources -->`;
     }
-    const ctxItem = options.context?.item as Record<string, unknown> | undefined;
+    const ctxItem = (options.context?.item ?? options.context?.page) as Record<string, unknown> | undefined;
     // `collection` names where the RENDERED items live. For `related` that's
     // the ref field's target; for `backlinks` it's the collection doing the
     // referencing (articles pointing at this company), which is also what
     // narrows a multi-collection backlink list down to one renderable shape.
-    const target = String(data.collection ?? '');
+    const target = String(data.content_type ?? '');
     let ids: string[] = [];
     if (sourceType === 'related') {
       const fieldName = String(data.field ?? '');
@@ -536,16 +544,15 @@ function renderRepeater(
       if (ids.length === 0) ids = refIds(ctxItem?.[`${fieldName}_id`]);
     } else {
       const currentId = typeof ctxItem?.id === 'string' ? ctxItem.id : '';
-      const currentCollection = String(options.context?.collection?.name ?? '');
       ids = currentId && options.context?.backlinks
-        ? backlinksFor(options.context.backlinks, currentCollection, currentId, target || undefined)
+        ? backlinksFor(options.context.backlinks, currentId, target || undefined)
             .map((b) => b.id)
         : [];
     }
-    if (ids.length === 0 || !target) return '';
+    if (ids.length === 0) return '';
     const cap = typeof data.limit === 'number' && data.limit > 0 ? data.limit : undefined;
-    items = options.collectionSource({
-      collection: target,
+    items = options.pageSource({
+      content_type: target,
       ids: cap ? ids.slice(0, cap) : ids,
     });
   } else if (sourceType === 'children_blocks') {
@@ -575,7 +582,7 @@ function renderRepeaterItems(
   // For each iteration, push the current item into the render context so
   // the item template can reference `{{item.title}}`, `{{item.url}}` etc.
   // The collection name flows along too for `{{collection.name}}`.
-  const collectionName = String(data.collection ?? '');
+  const collectionName = String(data.content_type ?? '');
   const renderItems = (source: Record<string, unknown>[], offset = 0) => source
     .map((item, i) => {
       const itemBlock: Block = {
@@ -591,9 +598,9 @@ function renderRepeaterItems(
         context: {
           ...options.context,
           item,
-          collection: collectionName
-            ? { name: collectionName, ...(options.context?.collection ?? {}) }
-            : options.context?.collection,
+          content_type: collectionName
+            ? { name: collectionName, ...(options.context?.content_type ?? {}) }
+            : options.context?.content_type,
         },
       };
       return renderBlock(itemBlock, iterOptions);
@@ -742,7 +749,9 @@ export function composePageWithTemplate(
     for (const b of list) {
       if (b.type === TEMPLATE_SLOT_ID) {
         foundSlot = true;
-        out.push(...pageBlocks);
+        const width = ({ narrow: '560px', normal: '720px', wide: '1120px' } as Record<string, string>)[String(b.data?.max_width)];
+        if (width || b.style_overrides) out.push({ id: `${b.id}-body`, type: 'core/container', data: { tag: 'div', layout: 'flow', inline_style: width ? `width:100%;max-width:${width};margin-inline:auto` : '' }, ...(b.style_overrides ? { style_overrides: b.style_overrides } : {}), children: pageBlocks });
+        else out.push(...pageBlocks);
         continue;
       }
       const next: Block = { ...b };
@@ -801,7 +810,7 @@ function resolveDottedToken(
       case 'page':       return context?.page;
       case 'site':       return context?.site;
       case 'item':       return context?.item;
-      case 'collection': return context?.collection;
+      case 'content_type': return context?.content_type;
       default:           return data[head!] as Record<string, unknown> | undefined;
     }
   })();
@@ -857,9 +866,22 @@ function substituteFields(
   data: Record<string, unknown>,
   context?: RenderContext,
 ): string {
+  // Resolve nested optional template sections before interpolating field values.
+  // Bound the pass count so malformed templates cannot recurse indefinitely.
+  let source = template;
+  for (let depth = 0; depth < 32; depth++) {
+    let changed = false;
+    source = source.replace(/\{\{#\s*([\w.-]+)\s*\}\}((?:(?!\{\{#)[\s\S])*?)\{\{\/\s*\1\s*\}\}/g,
+      (_match, name: string, body: string) => {
+        changed = true;
+        const value = resolveDottedToken(name, data, context);
+        return (Array.isArray(value) ? value.length > 0 : Boolean(value)) ? body : '';
+      });
+    if (!changed) break;
+  }
   // {{{field}}} — raw. Must be matched BEFORE the escaped variant or the
   // double-brace regex eats the leading brace of a triple-brace token.
-  let out = template.replace(/\{\{\{\s*([\w.-]+)\s*\}\}\}/g, (_m, name: string) => {
+  let out = source.replace(/\{\{\{\s*([\w.-]+)\s*\}\}\}/g, (_m, name: string) => {
     const v = resolveDottedToken(name, data, context);
     return v == null ? '' : String(v);
   });
@@ -945,7 +967,7 @@ function preparePostCardData(
   const excerpt = contextString(data, item, 'excerpt', 'excerpt_field', 'excerpt');
   const image = contextString(data, item, 'image', 'image_field', 'image');
   const imageAlt = contextString(data, item, 'image_alt', 'image_alt_field', 'image_alt');
-  const date = contextString(data, item, 'date', 'date_field', 'published_at');
+  const date = contextString(data, item, 'date', 'date_field', 'date_published');
   const author = contextString(data, item, 'author', 'author_field', 'author');
   const href = contextString(data, item, 'href', 'href_field', 'url');
   const downloadField = String(data.download_url_field ?? '').trim();
@@ -969,6 +991,20 @@ function preparePostCardData(
   data.post_card_download_html = downloadUrl
     ? `<a class="block-postcard-download" href="${escapeHtml(downloadUrl)}">${escapeHtml(downloadLabel)}</a>`
     : '';
+}
+
+/** Render routed content through the same block pipeline in preview and builds. */
+export function renderPageBody(options: RenderBlocksOptions, field = 'body'): string {
+  const item = options.context?.page;
+  if (field === 'body' && item?.content_mode === 'blocks' && Array.isArray(item.blocks)) {
+    const html = renderBlocks(item.blocks as Block[], {
+      ...options,
+      context: { ...options.context, page: { ...item, content_mode: 'html', body: '' } },
+    });
+    return prepareHeadingOutline(html).html;
+  }
+  const raw = item?.[field];
+  return prepareHeadingOutline(typeof raw === 'string' ? raw : '').html;
 }
 
 function renderNavigationLinks(
@@ -1649,7 +1685,7 @@ export function fnv1aHex(input: string): string {
 /** A collection listing with `paginate` set — what archive route
  *  generation needs from a page's block tree. */
 export interface PaginatedListing {
-  collection: string;
+  content_type: string;
   per_page: number;
   sort_by?: string;
   sort_order?: 'asc' | 'desc';
@@ -1676,9 +1712,9 @@ export function findPaginatedListing(
     else if (bt?.expand_to?.target === 'core/repeater') {
       data = { ...bt.expand_to.defaults, ...(b.data ?? {}) };
     }
-    if (data && data.source_type === 'collection' && typeof data.paginate === 'number' && data.paginate > 0 && data.collection) {
+    if (data && data.source_type === 'pages' && typeof data.paginate === 'number' && data.paginate > 0 && data.content_type) {
       return {
-        collection: String(data.collection),
+        content_type: String(data.content_type),
         per_page: Math.floor(data.paginate),
         sort_by: typeof data.sort_by === 'string' ? data.sort_by : undefined,
         sort_order: data.sort_order === 'asc' || data.sort_order === 'desc' ? data.sort_order : undefined,

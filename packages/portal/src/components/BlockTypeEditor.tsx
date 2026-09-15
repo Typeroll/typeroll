@@ -35,7 +35,7 @@ const FIELD_TYPES: FieldType[] = [
   // Phase 5 additions — the editor handler for these falls back to text
   // input for now; the new types are recognised so the schema can declare
   // them and the renderer / future editor improvements honour them.
-  'icon', 'array', 'object', 'block_type_ref', 'collection_ref',
+  'icon', 'array', 'object', 'block_type_ref', 'content_type_ref', 'page_ref', 'page_ref_list',
 ];
 
 export default function BlockTypeEditor({ siteId, blockType, onSaved, onDeleted }: Props) {
@@ -384,7 +384,7 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
  * Context namespaces (`page.*`, `site.*`, `item.*`) pass through —
  * those are template-time bindings, not block schema fields.
  */
-const CONTEXT_NAMESPACES = new Set(['page', 'site', 'item', 'collection']);
+const CONTEXT_NAMESPACES = new Set(['page', 'site', 'item', 'content_type']);
 
 function TemplateWarnings({
   template,

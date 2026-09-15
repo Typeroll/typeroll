@@ -5,23 +5,24 @@ needs: two forms, a block for each, and the endpoints behind them. What you
 decide is which FIELDS the listed business may change — that's the step that
 matters, and it's the first one below.
 
-Everything below assumes the listings live in a collection called `companies`
+Everything below assumes the listings live in a content type called `companies`
 with a contact field called `email`. Substitute your own names.
 
 ## 1. Decide which fields the business may edit
 
 This is the step that actually matters, and it's opt-in per field. A field with
 no `writable_by` is `['portal','agent']` — the business cannot touch it, which
-is the safe default for every collection that existed before you turned this
+is the safe default for every content type that existed before you turned this
 on.
 
 ```jsonc
-// collection schema
+// content type schema
 {
   "name": "companies",
+  "page_field_rules": {
+    "title": { "label": "Name", "writable_by": ["portal", "owner", "agent"] }
+  },
   "fields": [
-    { "name": "title",  "label": "Name",        "type": "text",
-      "writable_by": ["portal", "owner", "agent"] },
     { "name": "phone",  "label": "Phone",       "type": "text",
       "writable_by": ["portal", "owner"] },
     { "name": "description", "label": "About",  "type": "textarea",
@@ -56,7 +57,7 @@ Two consequences worth internalising:
 
 | Field | Value |
 |---|---|
-| Listings collection | `companies` |
+| Content type | `companies` |
 | Contact email field | `email` |
 | Link lifetime (hours) | `48` |
 
@@ -86,9 +87,9 @@ configure.
 
 The app ships a minimal base — `title` on the edit form. Everything else is
 yours. Open the seeded form in the forms UI and add `form/*` fields whose
-**`name` matches the collection field** you want editable. A field with no
-matching collection field is ignored by the endpoint, and a field the
-collection didn't mark `writable_by: ['owner', …]` is refused, so adding a
+**`name` matches the content type field** you want editable. A field with no
+matching content type field is ignored by the endpoint, and a field the
+content type didn't mark `writable_by: ['owner', …]` is refused, so adding a
 field to the form is never enough on its own — step 1 is the real gate.
 
 Re-enabling the app never overwrites what you added. Disabling removes the
@@ -143,7 +144,7 @@ resource on the page before the JS strips it.
 | Link works once, then 401 | Correct. Grants are single-use; the cookie carries the session afterwards |
 | 401 mid-edit | The grant was revoked, or the hour-long session cookie expired |
 | 403 mid-edit | The app was disabled while a session was open |
-| Field missing from the form | Either it isn't on the form, or the collection field isn't `writable_by: ['owner', …]` — both are required, and the form only ever shows what it can write |
+| Field missing from the form | Either it isn't on the form, or the content type field isn't `writable_by: ['owner', …]` — both are required, and the form only ever shows what it can write |
 | An action you added disappeared on save | Should no longer happen; if it does, the type isn't in the action registry (the save path refuses unknown types deliberately) |
 | Saves succeed but the site doesn't change | Auto-deploy is off (`Site.auto_deploy.enabled`), or you're inside the debounce window |
 

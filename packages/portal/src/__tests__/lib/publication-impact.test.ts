@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { captureImpact, compareImpact } from '../../lib/publishing/impact';
 
 const page = (id: string) => ({ id, title: id, status: 'published', html_content: `<p>${id}</p>`, date_updated: '2026-01-01' });
-const source = () => ({ version_id: 'main', core_commit: 'a'.repeat(40), pages: [page('one'), page('two')], settings: {}, collections: [] as any[] });
+const source = () => ({ version_id: 'main', core_commit: 'a'.repeat(40), pages: [page('one'), page('two')], settings: {}, contentTypes: [] as any[] });
 const snapshot = (value: any) => captureImpact(value, 'org', 'site');
 
 it('identifies a page body change without promising any output reuse', () => {
@@ -27,7 +27,7 @@ it('requires the same organization, site and version and a verified source basel
 });
 it('widens shared definitions, query membership, origins and toolchain changes', () => {
   const before = source();
-  for (const extra of [{ core_commit: 'b'.repeat(40) }, { settings: { sitewide_noindex: true } }, { collections: [{ definition: { id: 'news', name: 'news' }, items: [{ id: 'new', title: 'new' }] }] }, { impact_origins: { media: 'https://media.example.com' } }, { blockTypes: [{ id: 'shared', template: 'changed' }] }]) {
+  for (const extra of [{ core_commit: 'b'.repeat(40) }, { settings: { sitewide_noindex: true } }, { contentTypes: [{ id: 'news', name: 'news', fields: [] }] }, { impact_origins: { media: 'https://media.example.com' } }, { blockTypes: [{ id: 'shared', template: 'changed' }] }]) {
     expect(compareImpact(snapshot(before), snapshot({ ...before, ...extra })).classification).toBe('site_wide');
   }
 });
@@ -47,7 +47,7 @@ it('canonicalizes object ordering while retaining array order and full counts be
   expect(result.total).toBe(77); expect(result.changes).toHaveLength(50); expect(result.added_pages).toBe(75);
 });
 
-it('uses safe labels for collection items with structured title fields', () => {
-  const input = { ...source(), collections: [{ definition: { id: 'news', name: 'news' }, items: [{ id: 'article', title: { en: 'Article' }, name: 42 }] }] };
+it('uses safe labels for malformed Page titles', () => {
+  const input = { ...source(), pages: [{ id: 'article', content_type: 'news', title: { en: 'Article' }, status: 'published' }] };
   expect(snapshot(input).entries.find(entry => entry.id === 'article')?.title).toBe('article');
 });

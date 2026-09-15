@@ -14,7 +14,7 @@ import { paths } from '@typeroll/shared';
 import type { SiteVersion } from '@typeroll/shared';
 
 interface Change {
-  kind: 'page' | 'partial' | 'collection_item' | 'template';
+  kind: 'page' | 'partial' | 'template';
   id: string;
   title: string;
   date_updated: string;
@@ -84,29 +84,6 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
       // Templates always ship — pages decide whether they're used.
       will_deploy: true,
     });
-  }
-
-  const collections = await vstore.collections(orgId, site.id, versionId);
-  for (const c of collections) {
-    const items = await vstore.collectionItems(orgId, site.id, versionId, c.name);
-    for (const it of items) {
-      const stamp = (it as { updated_at?: string }).updated_at;
-      if (!changedSince(stamp)) continue;
-      const status = String((it as { status?: string }).status ?? 'draft');
-      changes.push({
-        kind: 'collection_item',
-        id: it.id,
-        title: String(
-          (it as Record<string, unknown>).title
-            ?? (it as Record<string, unknown>).name
-            ?? it.id,
-        ),
-        date_updated: stamp!,
-        status,
-        will_deploy: status === 'published',
-        collection: c.name,
-      });
-    }
   }
 
   changes.sort((a, b) => (a.date_updated < b.date_updated ? 1 : -1));

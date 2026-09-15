@@ -10,7 +10,7 @@
  */
 
 import { paths } from '@typeroll/shared';
-import type { Page, Partial as PartialDoc, CollectionItem, Revision, RevisionKind } from '@typeroll/shared';
+import type { Page, Partial as PartialDoc, Revision, RevisionKind } from '@typeroll/shared';
 import { getStore } from './datastore';
 
 /** How many revisions to keep per doc per branch. Oldest get pruned. */
@@ -32,7 +32,7 @@ function collectionPath(args: { orgId: string; siteId: string; versionId: string
   const { orgId, siteId, versionId, kind, resourceIds } = args;
   if (kind === 'page') return paths.revisions(orgId, siteId, resourceIds[0], versionId);
   if (kind === 'partial') return paths.partialRevisions(orgId, siteId, resourceIds[0], versionId);
-  return paths.itemRevisions(orgId, siteId, resourceIds[0], resourceIds[1], versionId);
+  throw new Error('Unknown revision kind');
 }
 
 export async function snapshotRevision(args: SnapshotArgs): Promise<string> {
@@ -81,4 +81,3 @@ export async function getRevision(args: {
 /** Type aliases for the common cases — keep call sites tight. */
 export type PageRevision = Revision<Partial<Page>>;
 export type PartialRevision = Revision<Partial<PartialDoc>>;
-export type ItemRevision = Revision<Partial<CollectionItem>>;

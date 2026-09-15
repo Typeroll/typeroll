@@ -144,7 +144,7 @@ and DNS record, when the hosting provider is configured.
 ## Exporting your content
 
 `export_site` (and **Settings → Export** in the portal) downloads your entire
-site as JSON — pages, blocks, partials, collections and their items, settings,
+site as JSON — pages, blocks, partials, content types and templates, settings,
 redirects, forms and media metadata.
 
 It's a plain, documented shape rather than a proprietary blob: your content is

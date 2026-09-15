@@ -30,6 +30,7 @@ const workingCopy = await readWorkingCopy(
 
 // Navigable preview — clicking links inside the iframe stays in preview
 // mode and sees drafts/edits across the whole site, not just this page.
+const contentType = page.content_type ? await vstore.contentType(orgId, siteId, versionId, page.content_type) : null;
 const previewUrl = pagePreviewUrl(siteId, page);
 
 // The editor's status indicator compares each page's date_updated to the
@@ -43,7 +44,7 @@ const liveUrl = pageLiveUrl(site, versionDoc ?? null, page);
 ---
 <AppLayout title={`${page.title} — ${site.name}`} siteId={siteId} bare>
   {page.content_mode === 'blocks' ? (
-    <BlockPageEditor client:load siteId={siteId} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+    <BlockPageEditor client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   ) : (
     <HtmlPageEditor client:load siteId={siteId} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   )}

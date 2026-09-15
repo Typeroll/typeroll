@@ -24,7 +24,7 @@ async function setup() {
 const issue = async (over: Partial<Parameters<typeof import('../../lib/edit-grants').issueGrant>[0]> = {}) => {
   const { issueGrant } = await import('../../lib/edit-grants');
   return issueGrant({
-    orgId: ORG, siteId: SITE, collection: 'companies', itemId: 'c1',
+    orgId: ORG, siteId: SITE, content_type: 'companies', pageId: 'c1',
     email: 'biz@example.com', ...over,
   });
 };
@@ -66,8 +66,8 @@ describe('redeeming', () => {
     const { redeemGrant } = await import('../../lib/edit-grants');
     const out = await redeemGrant(token);
     expect(out.orgId).toBe(ORG);
-    expect(out.grant.collection).toBe('companies');
-    expect(out.grant.item_id).toBe('c1');
+    expect(out.grant.content_type).toBe('companies');
+    expect(out.grant.page_id).toBe('c1');
   });
 
   it('is single-use once consumed', async () => {
@@ -117,7 +117,7 @@ describe('revoking outstanding grants for an item', () => {
     // The "someone forwarded the mail" escape hatch.
     await issue();
     await issue();
-    const other = await issue({ itemId: 'c2' });
+    const other = await issue({ pageId: 'c2' });
     const { revokeGrantsForItem, redeemGrant } = await import('../../lib/edit-grants');
     expect(await revokeGrantsForItem(ORG, SITE, 'companies', 'c1')).toBe(2);
     // The unrelated listing's link still works.

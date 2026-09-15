@@ -55,7 +55,8 @@ export async function bootstrapSelfHost({ services, adopt = false, now = () => n
     installation_id: id(),
     firebase_project_id: services.projectId,
     r2_bucket: services.bucket,
-    data_schema_version: SELF_HOST_DATA_SCHEMA_VERSION,
+    // Unversioned installations predate native Pages. Never label them as migrated.
+    data_schema_version: hasExistingData ? 1 : SELF_HOST_DATA_SCHEMA_VERSION,
     core_version_at_bootstrap: SELF_HOST_CORE_VERSION,
     created_at: timestamp,
     updated_at: timestamp,
@@ -90,6 +91,7 @@ export async function applySelfHostMigrations({
   targetVersion = SELF_HOST_DATA_SCHEMA_VERSION,
   now = () => new Date(),
   owner = randomUUID(),
+  writersStopped = false,
 }) {
   const { installation, steps } = await migrationStatus({ services, migrations, targetVersion });
   if (steps.length === 0) return { applied: [], installation };
@@ -127,7 +129,20 @@ export async function applySelfHostMigrations({
   try {
     for (const step of steps) {
       if (heartbeatError) throw heartbeatError;
-      await step.run({ services });
+      const assertWriteFreeze = async () => {
+        if (!writersStopped) throw new Error('Stop all portal, forms, worker and scheduler writers before migrating; confirm with --writers-stopped');
+        if (heartbeatError) throw heartbeatError;
+        const current = await services.firestore.get(SELF_HOST_INSTALLATION_PATH);
+        if (current?.migration_lock?.owner !== owner || current.migration_lock.expires_at <= new Date().toISOString()) throw new Error('Migration lock ownership was lost');
+      };
+      if (step.id === 'unified-pages-v2') {
+        await assertWriteFreeze();
+        const current = await services.firestore.get(SELF_HOST_INSTALLATION_PATH);
+        const source = { backup_id: manifest.backup_id, manifest_hmac: manifest.manifest_hmac };
+        if (current.migration_source && JSON.stringify(current.migration_source) !== JSON.stringify(source)) throw new Error('Resume with the original verified migration backup');
+        await services.firestore.update(SELF_HOST_INSTALLATION_PATH, { migration_source: source });
+      }
+      await step.run({ services, verifiedBackup, assertWriteFreeze });
       if (heartbeatError) throw heartbeatError;
       const updatedAt = now().toISOString();
       await services.firestore.update(SELF_HOST_INSTALLATION_PATH, {

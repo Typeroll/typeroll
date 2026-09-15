@@ -5,7 +5,7 @@ import { paths, type Media } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { connectionPath, sealCredentials } from '../../lib/publishing/connections';
-import { createMediaUpload, finalizeStoredMedia, privateMediaReadUrl } from '../../lib/publishing/media-storage';
+import { createMediaUpload, finalizeStoredMedia, privateMediaReadUrl, authorizePreviewMedia } from '../../lib/publishing/media-storage';
 
 const account = 'a'.repeat(32);
 beforeEach(async () => {
@@ -80,4 +80,20 @@ it('does not publish or freeze corrupt uploads', async () => {
   expect(send).toHaveBeenCalledTimes(1);
   const saved = await getStore().getDoc<Media>(`${paths.media('org', 'site')}/${upload.mediaId}`);
   expect(saved?.storage?.state).toBe('uploading');
+});
+
+
+it('authorizes only referenced private images for opaque preview frames without scanning the library', async () => {
+  await connect();
+  const store = getStore(), url = 'https://cms.example.com/api/sites/site/media/photo/content';
+  await store.setDoc(`${paths.media('org', 'site')}/photo`, { filename: 'photo.png', mime_type: 'image/png', cdn_url: url,
+    storage: { provider: 'organization_r2', account_id: account, bucket: 'customer-private', key: 'private/photo.png', state: 'ready' } });
+  const scans = vi.spyOn(store, 'listDocs');
+  const html = await authorizePreviewMedia(`<img src="${url}"><div style="background:url('${url}')"></div>`, 'org', 'site', 30);
+  expect(html).not.toContain('/api/sites/');
+  expect(html).toContain('X-Amz-Expires=30');
+  expect(html).toContain(`${account}.r2.cloudflarestorage.com`);
+  expect(scans).not.toHaveBeenCalled();
+  const otherSite = url.replace('/sites/site/', '/sites/another-site/');
+  expect(await authorizePreviewMedia(`<img src="${otherSite}">`, 'org', 'site')).toContain(otherSite);
 });

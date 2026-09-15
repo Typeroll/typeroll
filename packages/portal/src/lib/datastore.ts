@@ -4,6 +4,7 @@
 // JSON-on-disk for local dev), extended with write operations.
 
 import fs from 'node:fs';
+import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
@@ -40,6 +41,8 @@ export interface ReadWriteStore {
    * for single-use grants and rotation races; ordinary updates should keep
    * using updateDoc.
    */
+  /** Compare the complete value returned by getDoc and replace without merging nested fields. */
+  compareAndReplaceDoc(path: string, expected: Record<string, any> | null, data: Record<string, any>): Promise<boolean>;
   compareAndUpdateDoc<T = unknown>(
     path: string,
     check: (current: T & { id: string }) => boolean,
@@ -186,6 +189,18 @@ class FixtureStore implements ReadWriteStore {
     return id;
   }
 
+  async compareAndReplaceDoc(p: string, expected: Record<string, any> | null, data: Record<string, any>): Promise<boolean> {
+    return this.withLock(p, async () => {
+      if (!isDeepStrictEqual(await this.getDoc(p), expected)) return false;
+      const { docPath } = this.resolve(p);
+      await fs.promises.mkdir(path.dirname(docPath), { recursive: true });
+      const tmpPath = `${docPath}.${process.pid}.${Date.now()}.tmp`;
+      await fs.promises.writeFile(tmpPath, JSON.stringify(data, null, 2));
+      await fs.promises.rename(tmpPath, docPath);
+      return true;
+    });
+  }
+
   async compareAndUpdateDoc<T>(
     p: string,
     check: (current: T & { id: string }) => boolean,
@@ -329,6 +344,18 @@ class FirestoreStore implements ReadWriteStore {
     const db = await this.dbPromise;
     const ref = await db.collection(p).add(encodeNestedArrays(data));
     return ref.id;
+  }
+
+  async compareAndReplaceDoc(p: string, expected: Record<string, any> | null, data: Record<string, any>): Promise<boolean> {
+    const db = await this.dbPromise;
+    return db.runTransaction(async transaction => {
+      const ref = db.doc(p);
+      const snap = await transaction.get(ref);
+      const current = snap.exists ? { id: snap.id, ...decodeNestedArrays(snap.data()!) } : null;
+      if (!isDeepStrictEqual(current, expected)) return false;
+      transaction.set(ref, encodeNestedArrays(data));
+      return true;
+    });
   }
 
   async compareAndUpdateDoc<T>(

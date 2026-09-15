@@ -1,22 +1,11 @@
-// HTML → block-tree conversion (heuristic).
-//
-// Walks DOM-ish output from htmlparser2 and emits a Block[] using the core
-// block library. Best-effort: recognized patterns map to typed core blocks;
-// everything else falls through to a `core/prose` block (richtext escape
-// hatch). The user can iteratively replace prose blocks with typed ones
-// after seeing the result.
-//
-// Conversion is intentionally simple — Phase 8 ships this so the editor's
-// "Convert to blocks" button isn't a dead end, not because we expect
-// pixel-perfect fidelity. Authoring shifts to block-mode going forward;
-// migration is one-time per page.
+// HTML conversion preserves content and reports explicit HTML exceptions.
 
 import * as htmlparser2 from 'htmlparser2';
 import { newBlockId } from './block-mutations';
 import type { Block } from '@typeroll/shared';
 
 interface Node {
-  type: 'text' | 'tag';
+  type: 'text' | 'tag' | 'script' | 'style';
   name?: string;
   attribs?: Record<string, string>;
   children?: Node[];
@@ -43,25 +32,66 @@ export function htmlToBlocks(html: string): ConvertResult {
   const counts = new Map<string, number>();
   const notes: string[] = [];
 
-  const topLevel = unwrapTopLevel(dom);
-
-  for (const node of topLevel) {
-    const emitted = nodeToBlock(node, notes);
-    if (emitted) {
-      blocks.push(emitted);
-      bump(counts, emitted.type);
-    }
-  }
-
-  // Coalesce trailing/adjacent prose-like blocks into a single prose block so
-  // a page that was just `<h2>+<p>+<p>` becomes one block, not three.
+  blocks.push(...convertNodes(unwrapTopLevel(dom), notes));
   const coalesced = coalesceProse(blocks, counts);
-
+  const countTree = (tree: Block[]) => {
+    for (const block of tree) {
+      bump(counts, block.type);
+      countTree(block.children ?? []);
+      for (const slot of block.slots ?? []) countTree(slot);
+    }
+  };
+  counts.clear();
+  countTree(coalesced);
   return {
     blocks: coalesced,
     summary: Array.from(counts.entries()).map(([block_type, count]) => ({ block_type, count })),
     notes,
   };
+}
+
+function convertNodes(nodes: Node[], notes: string[]): Block[] {
+  return nodes.flatMap(node => {
+    const name = node.name?.toLowerCase();
+    // Keep meaningful wrapper attributes and semantics while making every
+    // child independently editable. Unstyled divs can be flattened safely.
+    if (node.type === 'tag' && ['html', 'body'].includes(name ?? '')) return convertNodes(node.children ?? [], notes);
+    if (node.type === 'tag' && ['div', 'section', 'article', 'main', 'header', 'footer', 'aside', 'nav'].includes(name ?? '')) {
+      const attributes = node.attribs ?? {};
+      const heuristic = /^(?:grid |grid-cols-2|hero|banner|section|cols?-2)/i.test(attributes.class ?? '') && !attributes.style && !attributes.id;
+      if (!heuristic && (Object.keys(attributes).length || !['div', 'section'].includes(name!))) {
+        const unknown = Object.keys(attributes).filter(key => !['class', 'id', 'style', 'aria-label'].includes(key));
+        if (unknown.some(key => !/^(?:data-[a-z0-9_-]+|aria-[a-z0-9_-]+|role|itemscope|itemtype|itemprop|lang|dir|hidden|title)$/.test(key))) return [exception(node, notes)];
+        return [mkContainer('core/container', {
+          tag: name, layout: 'flow', css_class: attributes.class ?? '', html_id: attributes.id ?? '',
+          inline_style: attributes.style ?? '', aria_label: attributes['aria-label'] ?? '',
+          attributes: unknown.map(name => ({ name, value: attributes[name] })),
+        }, { children: convertNodes(node.children ?? [], notes) })];
+      }
+      if (name === 'div' && !heuristic) return convertNodes(node.children ?? [], notes);
+    }
+    // Split images/videos out of mixed paragraphs rather than burying them in prose.
+    if (name === 'p' && (findFirst(node, 'img') || findFirst(node, 'iframe'))) {
+      const output: Block[] = [];
+      let inline: Node[] = [];
+      const flush = () => {
+        if (inline.length) output.push(prose(`<p>${inline.map(serialize).join('')}</p>`));
+        inline = [];
+      };
+      for (const child of node.children ?? []) {
+        if (['img', 'iframe'].includes(child.name ?? '') || (child.name === 'a' && findFirst(child, 'img'))) {
+          flush(); output.push(...convertNodes([child], notes));
+        } else inline.push(child);
+      }
+      flush();
+      return output;
+    }
+    const block = nodeToBlock(node, notes);
+    if (block && node.attribs?.id && !name?.match(/^h[1-6]$/)) {
+      block.style_overrides = { ...block.style_overrides, html_id: node.attribs.id };
+    }
+    return block ? [block] : [];
+  });
 }
 
 // ─── Walkers ─────────────────────────────────────────────────────────────
@@ -83,27 +113,43 @@ function nodeToBlock(node: Node, notes: string[]): Block | null {
     return prose(`<p>${escapeHtml(txt)}</p>`);
   }
 
+  if (node.type === 'script' || node.type === 'style') return exception(node, notes);
   if (node.type !== 'tag' || !node.name) return null;
   const name = node.name.toLowerCase();
 
   switch (name) {
-    case 'h1': case 'h2': case 'h3': case 'h4':
-      return heading(node, name);
+    case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
+      return (node.children ?? []).some(child => child.type === 'tag')
+        ? mkBlock('core/rich_heading', { html: innerHtml(node), level: name, anchor_id: node.attribs?.id ?? '', align: classToAlign(node) ?? 'left' })
+        : heading(node, name);
 
     case 'img':
       return image(node);
 
     case 'a':
+      if (findFirst(node, 'img')) { const b = figure(node, notes)!; b.data.link = node.attribs?.href ?? ''; return b; }
       return tryButton(node, notes) ?? prose(serializeInline(node));
 
     case 'figure':
       return figure(node, notes);
 
-    case 'p':
     case 'ul': case 'ol':
+      return mkBlock('core/list', { ordered: name === 'ol', start: Number(node.attribs?.start ?? 1),
+        items: (node.children ?? []).filter(n => n.name === 'li').map(n => ({ html: innerHtml(n) })) });
+    case 'table':
+      return table(node);
+    case 'iframe': {
+      const src = node.attribs?.src ?? '';
+      if (/^https?:\/\/(www\.)?(youtube(-nocookie)?\.com|player\.vimeo\.com)\//.test(src))
+        return mkBlock('core/video', { video_url: src, source: src.includes('vimeo') ? 'vimeo' : 'youtube', aspect_ratio: '16:9', title: node.attribs?.title ?? 'Video' });
+      return exception(node, notes);
+    }
+    case 'span': case 'strong': case 'em': case 'b': case 'i': case 'small': case 'br':
+    case 'p':
+
     case 'blockquote':
     case 'pre':
-    case 'table':
+
     case 'hr':
       return prose(serialize(node));
 
@@ -124,7 +170,7 @@ function nodeToBlock(node: Node, notes: string[]): Block | null {
 
     default:
       // Unknown tag: dump as prose with the inner HTML preserved.
-      return prose(serialize(node));
+      return exception(node, notes);
   }
 }
 
@@ -132,6 +178,8 @@ function heading(node: Node, level: string): Block {
   const text = collectText(node);
   return mkBlock('core/heading', {
     text,
+    size: 'theme',
+    anchor_id: node.attribs?.id ?? '',
     level,
     align: classToAlign(node) ?? 'left',
     eyebrow: '',
@@ -141,28 +189,65 @@ function heading(node: Node, level: string): Block {
 function image(node: Node): Block {
   const a = node.attribs ?? {};
   return mkBlock('core/image', {
-    src: a.src ?? '',
+    src: a['data-lazy-src'] || a.src || '',
     alt: a.alt ?? '',
     caption: '',
     link: '',
-    width: classToWidth(node) ?? 'normal',
+    width: classToWidth(node) ?? (a.width ? 'original' : 'normal'),
+    original_width: Number(a.width) || undefined,
+    original_height: Number(a.height) || undefined,
+    align: (a.class ?? '').includes('alignleft') ? 'left' : (a.class ?? '').includes('alignright') ? 'right' : 'center',
+    caption_align: 'left',
   });
 }
 
 function figure(node: Node, notes: string[]): Block | null {
+  const embeddedTable = findFirst(node, 'table');
+  if (embeddedTable && (node.children ?? []).every(child => child.type === 'text' || child === embeddedTable || child.name === 'figcaption')) {
+    const block = table(embeddedTable);
+    const caption = findFirst(node, 'figcaption');
+    if (caption) block.data.source = innerHtml(caption);
+    return block;
+  }
+  const images = (current: Node): number => (current.name === 'img' ? 1 : 0) + (current.children ?? []).reduce((sum, child) => sum + images(child), 0);
+  if (images(node) > 1) return exception(node, notes);
   const img = findFirst(node, 'img');
   const caption = findFirst(node, 'figcaption');
   if (!img) {
-    notes.push('<figure> without <img> — falling back to prose.');
-    return prose(serialize(node));
+    const video = findFirst(node, 'iframe');
+    return video ? nodeToBlock(video, notes) : exception(node, notes);
   }
-  const a = img.attribs ?? {};
-  return mkBlock('core/image', {
-    src: a.src ?? '',
-    alt: a.alt ?? '',
-    caption: caption ? collectText(caption) : '',
-    link: '',
-    width: classToWidth(node) ?? 'normal',
+  const block = image(img);
+  block.data.caption = caption ? collectText(caption) : '';
+  block.data.caption_html = caption ? innerHtml(caption) : '';
+  block.data.link = findFirst(node, 'a')?.attribs?.href ?? '';
+  const source = findFirst(node, 'source');
+  if (source?.attribs?.media?.includes('max-width')) block.data.mobile_src = source.attribs.srcset?.split(/[ ,]/)[0] ?? '';
+  return block;
+}
+
+function innerHtml(node: Node): string { return (node.children ?? []).map(serialize).join(''); }
+
+function exception(node: Node, notes: string[]): Block {
+  const reason = `Review <${node.name ?? 'unknown'}> integration or unsupported markup before publishing.`;
+  notes.push(reason);
+  return { ...mkBlock('core/html', { html: serialize(node) }), name: `Imported ${node.name ?? 'HTML'} — review` };
+}
+
+function table(node: Node): Block {
+  const descendants = (n: Node, tag: string): Node[] => (n.children ?? []).flatMap(c => c.name === tag ? [c] : descendants(c, tag));
+  const styleValue = (n: Node, property: string): string => (n.attribs?.style ?? '').split(';')
+    .map(part => part.split(':')).find(([key]) => key.trim() === property)?.slice(1).join(':').trim() ?? '';
+  return mkBlock('core/table', {
+    caption: findFirst(node, 'caption') ? innerHtml(findFirst(node, 'caption')!) : '',
+    borders: 'all', density: 'normal',
+    rows: descendants(node, 'tr').map(row => ({ cells: (row.children ?? []).filter(c => c.name === 'td' || c.name === 'th').map(cell => ({
+      html: innerHtml(cell), header: cell.name === 'th',
+      colspan: Number(cell.attribs?.colspan ?? 1), rowspan: Number(cell.attribs?.rowspan ?? 1),
+      align: styleValue(cell, 'text-align') || cell.attribs?.align || 'left',
+      background: styleValue(cell, 'background-color') || cell.attribs?.bgcolor || '',
+      color: styleValue(cell, 'color'), width: styleValue(cell, 'width'),
+    })) })),
   });
 }
 
@@ -208,14 +293,10 @@ function divOrSection(node: Node, name: string, notes: string[]): Block | null {
     cls.includes('banner');
 
   if (isSection) {
-    const inner: Block[] = [];
-    for (const c of children) {
-      const b = nodeToBlock(c, notes);
-      if (b) inner.push(b);
-    }
+    const inner = convertNodes(children, notes);
     return mkContainer('core/section', {
       width: 'normal',
-      padding_y: 'md',
+      padding_y: 'none',
       background: '',
       text_color: '',
     }, { children: inner });
@@ -235,9 +316,9 @@ function splitIntoSlots(nodes: Node[], slotCount: number, notes: string[]): Bloc
   const slots: Block[][] = Array.from({ length: slotCount }, () => []);
   let cursor = 0;
   for (const n of nodes) {
-    const b = nodeToBlock(n, notes);
-    if (!b) continue;
-    slots[Math.min(cursor, slotCount - 1)].push(b);
+    const blocks = convertNodes([n], notes);
+    if (!blocks.length) continue;
+    slots[Math.min(cursor, slotCount - 1)].push(...blocks);
     cursor = (cursor + 1) % slotCount;
   }
   return slots;
@@ -249,7 +330,7 @@ function coalesceProse(blocks: Block[], counts: Map<string, number>): Block[] {
   const out: Block[] = [];
   let current: { id: string; html: string[] } | null = null;
   for (const b of blocks) {
-    if (b.type === 'core/prose') {
+    if (b.type === 'core/prose' && !b.style_overrides) {
       if (current) {
         current.html.push(String(b.data.html ?? ''));
       } else {

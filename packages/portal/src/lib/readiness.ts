@@ -1,4 +1,5 @@
 import { getStore } from './datastore';
+import { requireCurrentDataSchema } from './data-schema';
 import { serviceRole, type ServiceRole } from './release';
 
 export type ReadinessState = 'pass' | 'fail' | 'disabled';
@@ -141,6 +142,7 @@ function configChecks(env: NodeJS.ProcessEnv): { role: ServiceRole; checks: Read
 
 async function defaultDatastoreProbe(): Promise<void> {
   await getStore().listDocs('organizations', { limit: 1 });
+  await requireCurrentDataSchema();
 }
 
 export async function readinessReport(

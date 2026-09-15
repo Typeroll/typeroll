@@ -4,6 +4,24 @@ import { getConnection, ConnectionError } from './connections';
 import { getSiteDomains, getOrganizationDomains, markOrganizationMediaHostUsed, publicMediaPath } from './domain-config';
 import { siteMediaPrefix } from '../media-keys';
 
+/** Stable private media identities in serialized content, never signed URLs. */
+export function privateMediaReferences(value: unknown): Array<{ siteId: string; mediaId: string }> {
+  const found = new Map<string, { siteId: string; mediaId: string }>();
+  const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+  for (const match of (serialized ?? '').matchAll(/\/api\/sites\/([a-zA-Z0-9_%.-]+)\/media\/([a-zA-Z0-9_%.-]+)\/content(?=[?#\s"'<>),\]\\]|$)/g)) {
+    try {
+      const siteId = decodeURIComponent(match[1]), mediaId = decodeURIComponent(match[2]);
+      if (siteId.includes('/') || mediaId.includes('/')) continue;
+      found.set(`${siteId}/${mediaId}`, { siteId, mediaId });
+    } catch { /* Invalid encoded paths cannot resolve to a stored media identity. */ }
+  }
+  return [...found.values()];
+}
+function assertPublicMediaReferences(content: unknown) {
+  const unresolved = privateMediaReferences(content);
+  if (unresolved.length) throw new ConnectionError(`Cannot publish: ${unresolved.length} image or file reference(s) still use a private Typeroll address. Re-select or re-import media ${unresolved[0].mediaId} from this site's Media library, then try again.`, 409, 'media_reference_unresolved');
+}
+
 export function replacePublicationReferences<T>(value: T, replacements: Map<string, string>): T {
   const ordered = [...replacements.entries()].sort(([a], [b]) => b.length - a.length);
   const visit = (input: unknown, field = ''): unknown => {
@@ -37,7 +55,7 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   }
   const serialized = JSON.stringify(content);
   const media = all.filter(item => [item.cdn_url, ...(item.source_aliases ?? []), ...(item.variants ?? []).map(variant => variant.cdn_url)].some(url => url && serialized.includes(url)));
-  if (!media.length) return { content, media: [], sourceMedia: [], manifest: null };
+  if (!media.length) { assertPublicMediaReferences(content); return { content, media: [], sourceMedia: [], manifest: null }; }
   if (!connection.cloudflare?.public_bucket || !connection.media_ready) throw new ConnectionError('Complete private and public R2 storage setup in Publishing.', 409, 'media_storage_required');
   const host = content.git_branch && content.git_branch !== 'main' ? websiteHost : domains.desired.media_host || websiteHost;
   if (!host) throw new ConnectionError('Set a media host in Publishing before deploying images.', 409, 'media_domain_required');
@@ -75,8 +93,10 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
       cdn_url: url, variants: [], source_key: item.storage.key, sha256: item.sha256, size_bytes: item.size_bytes,
       public_key: publicKey, public_path: publicPath, aliases };
   });
+  const publicContent = replacePublicationReferences(content, replacements);
+  assertPublicMediaReferences(publicContent);
   await markOrganizationMediaHostUsed(orgId, organization);
-  return { content: replacePublicationReferences(content, replacements), media: entries, sourceMedia: media,
+  return { content: publicContent, media: entries, sourceMedia: media,
     manifest: { delivery, account_id: connection.cloudflare.account_id, original_bucket: connection.cloudflare.bucket, public_bucket: connection.cloudflare.public_bucket,
       media_host: host, website_host: websiteHost, dns_mode: domains.dns_mode, media_path_prefix: publicPrefix, site_prefix: prefix, entries } };
 }

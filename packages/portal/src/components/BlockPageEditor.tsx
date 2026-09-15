@@ -13,8 +13,8 @@
 // cross-slot moves use a "Move into…" button on each tree node — drag
 // across containers is a Phase 2.5 polish.
 
-import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { Block, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition } from '@typeroll/shared';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import type { Block, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES, resolveResponsive, isResponsiveValue, BREAKPOINTS } from '@typeroll/shared';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
@@ -35,11 +35,14 @@ import { DocStatus } from './EditorStatus';
 import PublishMenu, { PAGE_STATUS_OPTIONS } from './PublishMenu';
 import ContentModeSwitcher from './ContentModeSwitcher';
 import TemplatePicker from './TemplatePicker';
+import PageContentTypePicker from './PageContentTypePicker';
 import './BlockPageEditor.css';
+import FieldInput, { fieldGroup, fieldLabel, textInput, textareaInput } from './FieldInput';
 
 interface Props {
   siteId: string;
   page: Page;
+  contentType?: ContentType;
   /** Unsaved autosaved edits, loaded server-side. Overlaid on `page` at mount. */
   workingCopy?: WorkingCopy | null;
   previewUrl: string;
@@ -91,10 +94,12 @@ export const ICONS: Record<string, IconCmp> = {
 
 // ─── Top-level component ────────────────────────────────────────────────
 
-export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt }: Props) {
+export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType }: Props) {
   // The editor edits the working-copy view of the page: canonical doc with
   // any unsaved (autosaved) fields overlaid. All edits autosave to the
   // working copy; the deliberate Save in the Publish menu promotes them.
+  const resourceUrl = `/api/sites/${siteId}/pages/${encodeURIComponent(page.id)}`;
+  const workingCopyUrl = `/api/sites/${siteId}/working-copy/page/${encodeURIComponent(page.id)}`;
   const [draft, setDraft] = useState<Page>({ ...page, ...(workingCopy?.fields ?? {}) } as Page);
   const [hasWc, setHasWc] = useState<boolean>(!!workingCopy);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -217,7 +222,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   }, [draft.blocks, selectedId]);
 
   async function refresh(): Promise<void> {
-    const res = await fetch(`/api/sites/${siteId}/pages/${page.id}/blocks`, {
+    const res = await fetch(`${resourceUrl}/blocks`, {
       headers: { accept: 'application/json' },
     });
     if (!res.ok) return;
@@ -237,7 +242,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     setError(null);
     // Block mutations always target the working copy server-side (buffer
     // model) — the saved page only changes on the deliberate Save.
-    const url = new URL(`/api/sites/${siteId}/pages/${page.id}/blocks`, window.location.origin);
+    const url = new URL(`${resourceUrl}/blocks`, window.location.origin);
     if (args.query) for (const [k, v] of Object.entries(args.query)) url.searchParams.set(k, v);
     try {
       const res = await fetch(url.toString(), {
@@ -329,7 +334,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     setStatus('saving');
     setError(null);
     try {
-      const res = await fetch(`/api/sites/${siteId}/working-copy/page/${page.id}`, {
+      const res = await fetch(workingCopyUrl, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ fields: { blocks: snap } }),
@@ -511,7 +516,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     setStatus('saving');
     setError(null);
     try {
-      const res = await fetch(`/api/sites/${siteId}/working-copy/page/${page.id}`, {
+      const res = await fetch(workingCopyUrl, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ fields }),
@@ -568,7 +573,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     if (metaSaveTimer.current) window.clearTimeout(metaSaveTimer.current);
     setStatus('saving');
     setError(null);
-    const wcUrl = `/api/sites/${siteId}/working-copy/page/${page.id}`;
+    const wcUrl = workingCopyUrl;
     try {
       await flushPendingDraft();
       const res = await fetch(wcUrl, { method: 'POST' });
@@ -587,7 +592,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   }
 
   async function discardWc(): Promise<void> {
-    await fetch(`/api/sites/${siteId}/working-copy/page/${page.id}`, { method: 'DELETE' });
+    await fetch(workingCopyUrl, { method: 'DELETE' });
     // Reload so the editor re-mounts from canonical state — simplest way to
     // guarantee no stale working-copy fields linger in client state.
     window.location.reload();
@@ -597,7 +602,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     setStatus('saving');
     setError(null);
     try {
-      const res = await fetch(`/api/sites/${siteId}/pages/${page.id}`, {
+      const res = await fetch(resourceUrl, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ [field]: iso }),
@@ -619,7 +624,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     setStatus('saving');
     setError(null);
     try {
-      const res = await fetch(`/api/sites/${siteId}/pages/${page.id}`, {
+      const res = await fetch(resourceUrl, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ status: next }),
@@ -683,7 +688,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
             <ArrowLeft size={14} /> Exit editor
           </a>
           <strong className="block-editor__title" title={draft.title}>{draft.title}</strong>
-          <span className="block-editor__slug">/{draft.slug}</span>
+          <span className="block-editor__slug">{draft.slug.startsWith('/') ? draft.slug : `/${draft.slug}`}</span>
           <div className="block-editor__status" role="status"><DocStatus
             save={status}
             dirty={hasWc}
@@ -749,6 +754,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
             <ReviewChanges
               siteId={siteId}
               pageId={page.id}
+              changesUrl={`${resourceUrl}/changes`}
               previewUrl={previewUrl}
               onClose={() => setReviewOpen(false)}
             />
@@ -854,6 +860,8 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
             <MetaPanel
               siteId={siteId}
               page={page}
+              contentType={contentType}
+              hasUnsaved={hasWc || status === 'saving'}
               draft={draft}
               onChange={updateMeta}
             />
@@ -1253,11 +1261,13 @@ function mergeResponsive(raw: unknown, bp: Breakpoint, value: unknown): unknown 
 // SEO, template, content mode — so block-mode pages can edit their title/SEO
 // without leaving the editor. Saves are debounced by the parent's updateMeta.
 function MetaPanel({
-  siteId, page, draft, onChange,
+  siteId, page, draft, onChange, contentType, hasUnsaved,
 }: {
   siteId: string;
   page: Page;
   draft: Page;
+  contentType?: ContentType;
+  hasUnsaved: boolean;
   onChange: <K extends keyof Page>(key: K, value: Page[K]) => void;
 }) {
   return (
@@ -1350,7 +1360,17 @@ function MetaPanel({
       </label>
 
       <div style={{ borderTop: '1px solid #2a2a30', paddingTop: '0.85rem' }}>
-        <TemplatePicker siteId={siteId} pageId={page.id} currentTemplate={draft.template} />
+        <PageContentTypePicker siteId={siteId} page={page} disabled={hasUnsaved} />
+        {contentType ? <>
+          <p>Content type: <a style={{ color: '#a5b4fc' }} href={`/app/sites/${siteId}/content-types/${contentType.name}`}>{contentType.label_singular}</a></p>
+          {contentType.fields.map(field =>
+            <FieldInput key={field.name} siteId={siteId} field={field} value={(draft.fields ?? {})[field.name]} onChange={value => onChange('fields', { ...draft.fields, [field.name]: value })} />)}
+          {contentType.template && <a style={{ color: '#a5b4fc' }} href={`/app/sites/${siteId}/templates/${contentType.template}`}>Edit default template</a>}
+        </> : null}
+        <label style={fieldLabel} htmlFor="page-sort-order">Page order</label>
+        <input id="page-sort-order" type="number" step="any" style={textInput} value={draft.sort_order ?? ''} onChange={e => onChange('sort_order', e.target.value === '' ? null : Number(e.target.value))} />
+        <p style={{ color: '#a1a1aa', fontSize: '.85rem' }}>Lower numbers come first when sorting by page order. Empty values come last.</p>
+        <TemplatePicker siteId={siteId} pageId={page.id} currentTemplate={draft.template} contentType={page.content_type} defaultTemplate={contentType?.template} onChange={value => onChange('template', value)} />
         <ContentModeSwitcher siteId={siteId} pageId={page.id} currentMode="blocks" />
       </div>
     </div>
@@ -1459,350 +1479,6 @@ export function BlockFieldForm({
         })}
       </form>
     </div>
-  );
-}
-
-function FieldInput({
-  siteId, field, value, onChange, responsive, activeBp, hasOwn,
-}: {
-  siteId?: string;
-  field: FieldDefinition;
-  value: unknown;
-  onChange: (v: unknown) => void;
-  responsive?: boolean;
-  activeBp?: Breakpoint;
-  hasOwn?: boolean;
-}) {
-  const fieldId = useId();
-  const label = (
-    <label htmlFor={fieldId} style={fieldLabel}>
-      {field.label}
-      {responsive && activeBp && (
-        <ResponsiveBadge activeBp={activeBp} hasOwn={!!hasOwn} onReset={() => onChange('')} />
-      )}
-    </label>
-  );
-  const v = (value ?? '') as string;
-  switch (field.type) {
-    case 'textarea':
-    case 'richtext': {
-      // The core/html block's `html` field holds whole chunks of markup —
-      // give it (and any code-ish field) a near-viewport editing surface
-      // instead of a cramped 4-row box. Everything stays resizable.
-      const isCode = field.name === 'html' || field.name === 'css' || field.name === 'code';
-      const tallStyle: React.CSSProperties = isCode
-        ? { ...textareaInput, minHeight: '75vh' }
-        : textareaInput;
-      return (
-        <div style={fieldGroup}>
-          {label}
-          <textarea id={fieldId}
-            rows={isCode ? 24 : field.type === 'richtext' ? 8 : 4}
-            value={v}
-            placeholder={field.placeholder}
-            onChange={(e) => onChange(e.target.value)}
-            style={tallStyle}
-          />
-        </div>
-      );
-    }
-    case 'select':
-      return (
-        <div style={fieldGroup}>
-          {label}
-          <select id={fieldId} value={v} onChange={(e) => onChange(e.target.value)} style={selectInput}>
-            {(field.options ?? []).map((opt, index) => (
-              <option key={opt} value={opt}>{field.option_labels?.[index] ?? opt}</option>
-            ))}
-          </select>
-        </div>
-      );
-    case 'boolean':
-      return (
-        <div style={fieldGroup}>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '.85rem' }}>
-            <input id={fieldId}
-              type="checkbox"
-              checked={!!value}
-              onChange={(e) => onChange(e.target.checked)}
-            />
-            {field.label}
-          </label>
-        </div>
-      );
-    case 'color':
-      return (
-        <div style={fieldGroup}>
-          {label}
-          <input type="color" value={v || '#000000'} onChange={(e) => onChange(e.target.value)} />
-        </div>
-      );
-    case 'number':
-      return (
-        <div style={fieldGroup}>
-          {label}
-          <input id={fieldId}
-            type="number"
-            value={(value as number) ?? ''}
-            onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
-            style={textInput}
-          />
-        </div>
-      );
-    case 'list':
-    case 'list_simple':
-      return (
-        <div style={fieldGroup}>
-          {label}
-          <textarea id={fieldId}
-            rows={5}
-            value={Array.isArray(value) ? value.map(String).join('\n') : ''}
-            placeholder={field.placeholder ?? 'One value per line'}
-            onChange={(e) => onChange(e.target.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean))}
-            style={textareaInput}
-          />
-        </div>
-      );
-    case 'array':
-      return (
-        <ArrayFieldInput
-          siteId={siteId}
-          field={field}
-          value={Array.isArray(value) ? value : []}
-          onChange={onChange}
-          label={label}
-        />
-      );
-    case 'object':
-      return (
-        <ObjectFieldInput
-          siteId={siteId}
-          field={field}
-          value={value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}}
-          onChange={onChange}
-          label={label}
-        />
-      );
-    case 'url':
-      return (
-        <UrlFieldInput
-          siteId={siteId}
-          field={field}
-          value={v}
-          onChange={onChange}
-          label={label}
-        />
-      );
-    default:
-      return (
-        <div style={fieldGroup}>
-          {label}
-          <input id={fieldId}
-            type={field.type === 'email' ? 'email' : field.type === 'date' ? 'date' : field.type === 'datetime' ? 'datetime-local' : 'text'}
-            value={v}
-            placeholder={field.placeholder}
-            onChange={(e) => onChange(e.target.value)}
-            style={textInput}
-          />
-        </div>
-      );
-  }
-}
-
-function ObjectFieldInput({
-  siteId, field, value, onChange, label,
-}: {
-  siteId?: string;
-  field: FieldDefinition;
-  value: Record<string, unknown>;
-  onChange: (value: unknown) => void;
-  label: React.ReactNode;
-}) {
-  if (!field.fields?.length) {
-    return <JsonFieldInput value={value} onChange={onChange} label={label} expected="object" />;
-  }
-  return (
-    <fieldset style={{ ...fieldGroup, border: '1px solid #2a2a30', borderRadius: 6, padding: 10 }}>
-      <legend style={{ padding: '0 4px' }}>{label}</legend>
-      {(field.fields ?? []).map((child) => (
-        <FieldInput
-          key={child.name}
-          siteId={siteId}
-          field={child}
-          value={value[child.name]}
-          onChange={(next) => onChange({ ...value, [child.name]: next })}
-        />
-      ))}
-    </fieldset>
-  );
-}
-
-function ArrayFieldInput({
-  siteId, field, value, onChange, label,
-}: {
-  siteId?: string;
-  field: FieldDefinition;
-  value: unknown[];
-  onChange: (value: unknown) => void;
-  label: React.ReactNode;
-}) {
-  const children = field.fields ?? [];
-  if (children.length === 0) {
-    return <JsonFieldInput value={value} onChange={onChange} label={label} expected="array" />;
-  }
-  return (
-    <fieldset style={{ ...fieldGroup, border: '1px solid #2a2a30', borderRadius: 6, padding: 10 }}>
-      <legend style={{ padding: '0 4px' }}>{label}</legend>
-      {value.map((raw, index) => {
-        const row = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-        return (
-          <div key={index} style={{ borderBottom: '1px solid #2a2a30', marginBottom: 10, paddingBottom: 10 }}>
-            {children.map((child) => (
-              <FieldInput
-                key={child.name}
-                siteId={siteId}
-                field={child}
-                value={row[child.name]}
-                onChange={(next) => {
-                  const rows = value.slice();
-                  rows[index] = { ...row, [child.name]: next };
-                  onChange(rows);
-                }}
-              />
-            ))}
-            <button type="button" onClick={() => onChange(value.filter((_, i) => i !== index))} style={smallActionBtn}>
-              Remove item
-            </button>
-          </div>
-        );
-      })}
-      <button type="button" onClick={() => onChange([...value, {}])} style={smallActionBtn}>+ Add item</button>
-    </fieldset>
-  );
-}
-
-function JsonFieldInput({
-  value, onChange, label, expected,
-}: {
-  value: unknown;
-  onChange: (value: unknown) => void;
-  label: React.ReactNode;
-  expected: 'array' | 'object';
-}) {
-  const serialized = JSON.stringify(value, null, 2);
-  const [draft, setDraft] = useState(serialized);
-  const [error, setError] = useState('');
-  useEffect(() => setDraft(serialized), [serialized]);
-
-  const commit = () => {
-    try {
-      const parsed: unknown = JSON.parse(draft);
-      const valid = expected === 'array'
-        ? Array.isArray(parsed)
-        : Boolean(parsed && typeof parsed === 'object' && !Array.isArray(parsed));
-      if (!valid) throw new Error(`Expected a JSON ${expected}`);
-      setError('');
-      onChange(parsed);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : `Invalid JSON ${expected}`);
-    }
-  };
-
-  return (
-    <div style={fieldGroup}>
-      {label}
-      <textarea
-        rows={8}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        spellCheck={false}
-        style={textareaInput}
-      />
-      {error && <span role="alert" style={{ color: '#fca5a5', fontSize: '.75rem' }}>{error}</span>}
-    </div>
-  );
-}
-
-interface InternalPageOption { id: string; title: string; url: string }
-const internalPageRequests = new Map<string, Promise<InternalPageOption[]>>();
-
-function loadInternalPages(siteId: string): Promise<InternalPageOption[]> {
-  const existing = internalPageRequests.get(siteId);
-  if (existing) return existing;
-  const request = fetch(`/api/sites/${encodeURIComponent(siteId)}/pages`)
-    .then((response) => response.ok ? response.json() : Promise.reject(new Error('Page lookup failed')))
-    .then((payload) => Array.isArray(payload.pages) ? payload.pages as InternalPageOption[] : [])
-    .catch((error) => {
-      internalPageRequests.delete(siteId);
-      throw error;
-    });
-  internalPageRequests.set(siteId, request);
-  return request;
-}
-
-function UrlFieldInput({
-  siteId, field, value, onChange, label,
-}: {
-  siteId?: string;
-  field: FieldDefinition;
-  value: string;
-  onChange: (value: unknown) => void;
-  label: React.ReactNode;
-}) {
-  const [pages, setPages] = useState<InternalPageOption[]>([]);
-  useEffect(() => {
-    if (!siteId) return;
-    let active = true;
-    loadInternalPages(siteId)
-      .then((options) => { if (active) setPages(options); })
-      .catch(() => { if (active) setPages([]); });
-    return () => { active = false; };
-  }, [siteId]);
-
-  return (
-    <div style={fieldGroup}>
-      {label}
-      <input type="text" inputMode="url" value={value} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} style={textInput} />
-      {siteId && pages.length > 0 && (
-        <select
-          aria-label={`Choose internal page for ${field.label}`}
-          value={pages.some((page) => page.url === value) ? value : ''}
-          onChange={(e) => { if (e.target.value) onChange(e.target.value); }}
-          style={{ ...selectInput, marginTop: 6 }}
-        >
-          <option value="">Choose internal page…</option>
-          {pages.map((page) => <option key={page.id} value={page.url}>{page.title} ({page.url})</option>)}
-        </select>
-      )}
-    </div>
-  );
-}
-
-// ─── Responsive field badge ─────────────────────────────────────────────
-
-// Shows which breakpoint a responsive field is currently being edited at,
-// whether the shown value is inherited from a smaller breakpoint, and (when
-// this breakpoint has its own value) a button to clear the override back to
-// inheritance.
-function ResponsiveBadge({
-  activeBp, hasOwn, onReset,
-}: {
-  activeBp: Breakpoint;
-  hasOwn: boolean;
-  onReset: () => void;
-}) {
-  const label = BREAKPOINTS[activeBp].label;
-  return (
-    <span style={respBadge} title={`Value for ${label}. Use the device controls to set other breakpoints.`}>
-      <Monitor size={10} style={{ opacity: 0.7 }} />
-      <span>{hasOwn ? label : `${label} · inherited`}</span>
-      {hasOwn && (
-        <button type="button" onClick={onReset} style={respReset} title="Reset to inherited value">
-          ✕
-        </button>
-      )}
-    </span>
   );
 }
 
@@ -2056,34 +1732,6 @@ const dropLine: React.CSSProperties = {
   listStyle: 'none', height: 2, margin: '2px 0', padding: 0,
   background: '#6366f1', borderRadius: 2,
   boxShadow: '0 0 4px rgba(99,102,241,0.7)',
-};
-const fieldGroup: React.CSSProperties = { marginBottom: '0.75rem' };
-const fieldLabel: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
-  fontSize: '.75rem', opacity: 0.7, marginBottom: 4,
-};
-const respBadge: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  fontSize: '.65rem', color: '#a5b4fc', background: 'rgba(99,102,241,0.12)',
-  border: '1px solid rgba(99,102,241,0.3)', borderRadius: 4, padding: '1px 5px',
-  whiteSpace: 'nowrap',
-};
-const respReset: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', background: 'none', border: 'none',
-  color: '#a5b4fc', cursor: 'pointer', padding: 0, fontSize: '.7rem', lineHeight: 1,
-};
-const textInput: React.CSSProperties = {
-  width: '100%', padding: '0.4rem 0.6rem', background: '#1f1f23', color: '#fafafa',
-  border: '1px solid #2a2a30', borderRadius: 6, fontSize: '.85rem', boxSizing: 'border-box',
-};
-const textareaInput: React.CSSProperties = {
-  ...textInput, fontFamily: 'ui-monospace, "SF Mono", Consolas, monospace',
-  lineHeight: 1.5, resize: 'vertical', minHeight: '5.5rem',
-};
-const selectInput: React.CSSProperties = textInput;
-const smallActionBtn: React.CSSProperties = {
-  padding: '0.3rem 0.55rem', fontSize: '.75rem', cursor: 'pointer',
-  background: '#1f1f23', color: '#d4d4d8', border: '1px solid #3f3f46', borderRadius: 5,
 };
 const exitBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 5,

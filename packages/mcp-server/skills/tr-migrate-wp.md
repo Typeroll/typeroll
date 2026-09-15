@@ -6,7 +6,7 @@ description: Use when the user asks to migrate a WordPress site to Typeroll, men
 # Migrate from WordPress to Typeroll
 
 > **The buffer model (draft writes).** Every content write in this recipe
-> (pages, blocks, partials, collection items) lands in an unsaved per-doc
+> (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
 > build work, pass `save: true` on write calls (the work is pre-approved by
 > the task itself), or run `commit_working_copy` per doc before any
@@ -27,7 +27,7 @@ get_migration_readiness source_url="https://oldsite.com"
 ```
 
 When the migration includes reusable page/item layouts, include each proposed
-block composition and its collection fields in this same call. A
+block composition and its content type fields in this same call. A
 `waiting_for_native_support` result means leave that template intact and do
 not replace the gap with generic custom blocks, raw HTML, or corrective site
 CSS. Independent content and SEO work may continue. Rerun the review after the

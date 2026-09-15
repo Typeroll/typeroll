@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { paths } from '@typeroll/shared';
-import type { CollectionItem } from '@typeroll/shared';
+import type { Page } from '@typeroll/shared';
 
 const ORG = 'default';
 const SITE = 'dir';
@@ -35,27 +35,28 @@ async function seed() {
     name: 'Dir', hosting_adapter: 'cloudflare', domain: 'katalogen.se',
   });
   await store.setDoc(paths.apps(ORG, SITE), {
-    apps: { directory: { enabled: true, config: { collection: 'companies', email_field: 'email' } } },
+    apps: { directory: { enabled: true, config: { content_type: 'companies', email_field: 'email' } } },
   });
-  await store.setDoc(paths.collection(ORG, SITE, 'companies'), {
+  await store.setDoc(paths.contentType(ORG, SITE, 'companies'), {
     name: 'companies', label_singular: 'Company', label_plural: 'Companies',
+    route_template: '/companies/{slug}', created_at: 'x',
+    page_field_rules: { title: { label: 'Name', writable_by: ['portal', 'owner', 'agent'] } },
     fields: [
-      { name: 'title', type: 'text', label: 'Name', writable_by: ['portal', 'owner', 'agent'] },
       { name: 'phone', type: 'text', label: 'Phone', writable_by: ['portal', 'owner'] },
       // Billing state — visible on the listing, but never the business's to set.
       { name: 'plan', type: 'text', label: 'Plan', writable_by: ['app'] },
       { name: 'internal', type: 'text', label: 'Internal note' },
     ],
   });
-  await store.setDoc(paths.collectionItem(ORG, SITE, 'companies', 'c1'), {
-    status: 'published', created_at: 'x', updated_at: 'x',
-    title: 'Acme', phone: '070', plan: 'free', internal: 'staff only', email: 'biz@example.com',
+  await store.setDoc(paths.page(ORG, SITE, 'c1'), {
+    content_type: 'companies', slug: 'acme', title: 'Acme', status: 'published', date_updated: 'x', content_mode: 'blocks', blocks: [],
+    fields: { phone: '070', plan: 'free', internal: 'staff only', email: 'biz@example.com' },
   });
 }
 
 const issue = async () => {
   const { issueGrant } = await import('../../lib/edit-grants');
-  return issueGrant({ orgId: ORG, siteId: SITE, collection: 'companies', itemId: 'c1', email: 'biz@example.com' });
+  return issueGrant({ orgId: ORG, siteId: SITE, content_type: 'companies', pageId: 'c1', email: 'biz@example.com' });
 };
 
 const call = async (
@@ -124,14 +125,14 @@ describe('writing', () => {
 
   const readItem = async () => {
     const { vstore } = await import('../../lib/version-store');
-    return vstore.collectionItem(ORG, SITE, 'main', 'companies', 'c1') as Promise<CollectionItem>;
+    return vstore.page(ORG, SITE, 'main', 'c1') as Promise<Page>;
   };
 
   it('writes an owner-writable field and stamps provenance', async () => {
     const res = await call('PUT', { cookies: await session(), body: { phone: '08-1234' } });
     expect(res.status).toBe(200);
-    const item = (await readItem()) as Record<string, unknown>;
-    expect(item.phone).toBe('08-1234');
+    const item = (await readItem()) as Page;
+    expect(item.fields?.phone).toBe('08-1234');
     expect((item._provenance as Record<string, { source: string }>).phone.source).toBe('owner');
   });
 
@@ -139,9 +140,9 @@ describe('writing', () => {
     // `plan` isn't in the whitelist at all, so it never reaches the authority
     // check — dropped by the schema filter, exactly like an unknown key.
     await call('PUT', { cookies: await session(), body: { plan: 'paid', internal: 'hacked' } });
-    const item = (await readItem()) as Record<string, unknown>;
-    expect(item.plan).toBe('free');
-    expect(item.internal).toBe('staff only');
+    const item = (await readItem()) as Page;
+    expect(item.fields?.plan).toBe('free');
+    expect(item.fields?.internal).toBe('staff only');
   });
 
   it('cannot publish or unpublish the listing', async () => {
@@ -151,12 +152,12 @@ describe('writing', () => {
 
   it('loses to a value the portal wrote', async () => {
     const { getStore } = await import('../../lib/datastore');
-    await getStore().updateDoc(paths.collectionItem(ORG, SITE, 'companies', 'c1'), {
+    await getStore().updateDoc(paths.page(ORG, SITE, 'c1'), {
       _provenance: { phone: { source: 'portal', actor: 'staff@x', updated_at: 'T' } },
     });
     const res = await call('PUT', { cookies: await session(), body: { phone: '000' } });
     expect(res.status).toBe(409);
-    expect((await readItem() as Record<string, unknown>).phone).toBe('070');
+    expect((await readItem() as Page).fields?.phone).toBe('070');
   });
 
   it('refuses once the site disables the app, mid-session', async () => {
@@ -231,8 +232,8 @@ describe('cross-origin use — no deploy required', () => {
     } as never);
     expect(res.status).toBe(200);
     const { vstore } = await import('../../lib/version-store');
-    const item = await vstore.collectionItem(ORG, SITE, 'main', 'companies', 'c1');
-    expect((item as Record<string, unknown>).phone).toBe('031-000');
+    const item = await vstore.page(ORG, SITE, 'main', 'c1');
+    expect((item as Page).fields?.phone).toBe('031-000');
   });
 
   it('answers preflight', async () => {
@@ -279,13 +280,13 @@ describe('POST speaks the forms-runtime protocol', () => {
     const res = await post({ phone: '070-999', _protocol: '1' }, await bearer());
     expect(await res.json()).toEqual({ done: true });
     const { vstore } = await import('../../lib/version-store');
-    const item = await vstore.collectionItem(ORG, SITE, 'main', 'companies', 'c1');
-    expect((item as Record<string, unknown>).phone).toBe('070-999');
+    const item = await vstore.page(ORG, SITE, 'main', 'c1');
+    expect((item as Page).fields?.phone).toBe('070-999');
   });
 
   it('reports a lost field as a PER-FIELD error the runtime can highlight', async () => {
     const { getStore } = await import('../../lib/datastore');
-    await getStore().updateDoc(paths.collectionItem(ORG, SITE, 'companies', 'c1'), {
+    await getStore().updateDoc(paths.page(ORG, SITE, 'c1'), {
       _provenance: { phone: { source: 'portal', actor: 'staff', updated_at: 'T' } },
     });
     const body = await (await post({ phone: '000' }, await bearer())).json();
@@ -297,8 +298,8 @@ describe('POST speaks the forms-runtime protocol', () => {
     const res = await post({ phone: '070-111', _hp: 'i am a bot' }, await bearer());
     expect(await res.json()).toEqual({ done: true });
     const { vstore } = await import('../../lib/version-store');
-    const item = await vstore.collectionItem(ORG, SITE, 'main', 'companies', 'c1');
-    expect((item as Record<string, unknown>).phone).toBe('070');  // unchanged
+    const item = await vstore.page(ORG, SITE, 'main', 'c1');
+    expect((item as Page).fields?.phone).toBe('070');  // unchanged
   });
 
   it('returns an expired session as a runtime error, not an HTTP failure', async () => {
@@ -371,12 +372,12 @@ describe('a visitor cannot reach another listing through the URL', () => {
   it('ignores every id-shaped parameter', async () => {
     const { getStore } = await import('../../lib/datastore');
     // A second listing that must stay invisible.
-    await getStore().setDoc(paths.collectionItem(ORG, SITE, 'companies', 'c2'), {
-      status: 'published', created_at: 'x', updated_at: 'x',
-      title: 'SECRET RIVAL', phone: '999', email: 'rival@example.com',
+    await getStore().setDoc(paths.page(ORG, SITE, 'c2'), {
+      content_type: 'companies', slug: 'rival', title: 'SECRET RIVAL', status: 'published', date_updated: 'x',
+      fields: { phone: '999', email: 'rival@example.com' },
     });
 
-    for (const param of ['item_id=c2', 'id=c2', 'listing=c2', 'listing_id=c2', 'collection=companies&item=c2']) {
+    for (const param of ['item_id=c2', 'id=c2', 'listing=c2', 'listing_id=c2', 'content_type=companies&page_id=c2']) {
       const { token } = await issue();                     // a link to c1
       const body = await (await withQuery(token, param)).json();
       expect(body.listing_id, param).toBe('c1');

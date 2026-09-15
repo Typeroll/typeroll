@@ -21,7 +21,7 @@
 // retries the same write forever and its own store drifts out of sync with
 // what's actually published.
 
-import type { CollectionItem, FieldDefinition } from '@typeroll/shared';
+import type { FieldDefinition } from '@typeroll/shared';
 
 /**
  * `import` is bulk seeding (registry dumps, migrations) — deliberately the
@@ -89,7 +89,7 @@ export function isRenderedField(field: FieldDefinition): boolean {
   return (field as { rendered?: boolean }).rendered !== false;
 }
 
-export function readProvenance(item: CollectionItem | undefined): ProvenanceMap {
+export function readProvenance(item: object | undefined): ProvenanceMap {
   const raw = (item as Record<string, unknown> | undefined)?.[PROVENANCE_KEY];
   return raw && typeof raw === 'object' ? (raw as ProvenanceMap) : {};
 }
@@ -103,7 +103,7 @@ export function readProvenance(item: CollectionItem | undefined): ProvenanceMap 
 export function applyFieldAuthority(args: {
   fields: FieldDefinition[];
   incoming: Record<string, unknown>;
-  existing: CollectionItem | undefined;
+  existing: object | undefined;
   actor: WriteActor;
   actorId: string;
   now?: string;
@@ -174,7 +174,7 @@ export function conflictResponse(rejected: RejectedWrite[]): {
 export function stampProvenance(args: {
   fields: FieldDefinition[];
   written: Record<string, unknown>;
-  existing: CollectionItem | undefined;
+  existing: object | undefined;
   actor: WriteActor;
   actorId: string;
   now?: string;

@@ -34,9 +34,7 @@ async function targetExists(ctx: WcCtx, target: WcTarget): Promise<boolean> {
     // they exist), so a working copy may precede the canonical doc.
     return true;
   }
-  return !!(await vstore.collectionItem(
-    ctx.orgId, ctx.siteId, ctx.versionId, target.collection, target.id,
-  ));
+  return false;
 }
 
 export const GET: APIRoute = async ({ cookies, params, locals }) => {

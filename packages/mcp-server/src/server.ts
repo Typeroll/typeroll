@@ -13,7 +13,8 @@ import { z, type ZodRawShape } from 'zod';
 import { TyperollClient } from './client.js';
 import { pageTools } from './tools/pages.js';
 import { partialTools } from './tools/partials.js';
-import { collectionTools } from './tools/collections.js';
+import { contentTypeTools } from './tools/content-types.js';
+import { pageTemplateTools } from './tools/page-templates.js';
 import { mediaTools } from './tools/media.js';
 import { redirectTools } from './tools/redirects.js';
 import { migrationTools } from './tools/migration.js';
@@ -53,6 +54,7 @@ const PERM_RANK: Record<ToolEffect, number> = { read: 0, write: 1, admin: 2 };
  * mutates.
  */
 function effectFor(name: string): ToolEffect {
+  if (name === 'page_completeness') return 'read';
   if (
     name === 'list_apps'
     || name === 'read_app'
@@ -107,8 +109,11 @@ const DEFAULT_INFO = { name: 'typeroll', version: VERSION };
  */
 export const SERVER_INSTRUCTIONS = `
 Typeroll MCP — operating manual. You're managing a Typeroll site (a static-site
-CMS: database content compiles to a fast static site on a deploy). The full
-playbook ships with this server — use it:
+CMS: database content compiles to a fast static site on a deploy). Every article,
+checklist, directory entry and ordinary page is a Page. Content types supply
+custom field schemas, URL patterns and default Page templates. Use Page IDs and
+list_pages with content_type filters; use the same version for all operations.
+The full playbook ships with this server — use it:
 
 0. For the complete operating context (data model, conventions, safety
    boundaries, tool-family reference), call read_guide once. list_skills +
@@ -122,12 +127,13 @@ playbook ships with this server — use it:
    or field names — they're per-site. For installed Extension config, call
    list_extension_installations then read_extension_installation before an
    update.
-3. THE BUFFER MODEL: every content write (pages, blocks, partials,
-   collection items) lands in an unsaved per-doc DRAFT — deploys and plain
+3. THE BUFFER MODEL: content edits to Pages, blocks and partials land in an
+   unsaved per-doc DRAFT — deploys and plain
    previews see saved content only. Iterate freely, view your drafts with
    include_working_copy on the preview tools, then SAVE explicitly:
    commit_working_copy (or save:true on the write call) when the user
-   approves. Status changes and structural ops apply immediately.
+   approves. Status changes and structural ops apply immediately, including
+   Content type and Page template definitions and change_page_content_type.
 4. Branch first for anything larger than a small edit: create_branch, pass
    version=<id> on every subsequent call, merge_branch once approved. Nothing
    touches the live site until then.
@@ -161,7 +167,8 @@ export function buildServer(options: BuildServerOptions): McpServer {
     ...blockTypeTools,
     ...pageBlockTools,
     ...workingCopyTools,
-    ...collectionTools,
+    ...contentTypeTools,
+    ...pageTemplateTools,
     ...mediaTools,
     ...redirectTools,
     ...migrationTools,

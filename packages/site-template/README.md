@@ -2,6 +2,20 @@
 
 The Astro SSG renderer. One `astro build` produces a fully static site for one customer.
 
+## Content model
+
+Core 0.2.0 uses one Page model for all content types, including articles,
+checklists and ordinary pages. The renderer reads `pages/`, `content_types/`
+and `page_templates/` from the selected version. Custom values live in
+`Page.fields`; each Page owns its block body and can share a Page template.
+URL patterns, explicit Page paths and publication status determine the generated
+routes. Records without a detail URL can still supply listing/repeater data.
+
+The native seed fixture demonstrates an article as a Page. Existing installations
+require data schema 2 before this renderer runs; the renderer has no old item
+store fallback. See [the content contract](../../docs/content-model.md) and
+[the upgrade guide](../docs-site/src/content/docs/guides/unified-pages-upgrade.mdx).
+
 ## Inputs
 
 Content comes from the same datastore the portal writes to — Firestore in production, a JSON fixtures tree for local dev. Selection is automatic; set `FIREBASE_SERVICE_ACCOUNT` for Firestore, otherwise fixtures.
@@ -11,6 +25,7 @@ Build-time env vars:
 ```
 TYPEROLL_ORG_ID         which org's data to render
 TYPEROLL_SITE_ID        which site under the org
+TYPEROLL_VERSION_ID     version/branch to render (default main)
 TYPEROLL_SITE_URL       the public site URL (sitemap/canonicals)
 TYPEROLL_FIXTURES_DIR   override fixtures location (dev)
 FIREBASE_SERVICE_ACCOUNT   JSON string; enables Firestore backend
@@ -27,7 +42,7 @@ src/
 │   └── Footer.astro           Renders the footer partial.
 ├── pages/
 │   ├── [...slug].astro        Dynamic page render. HTML and block modes.
-│   ├── sitemap.xml.ts         Built from published + unlisted pages.
+│   ├── sitemap.xml.ts         Published, indexable Page routes of every type.
 │   ├── robots.txt.ts          From settings; default if empty.
 │   └── 404.astro
 ├── lib/

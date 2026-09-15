@@ -6,7 +6,7 @@
 
 import { diffBlocks, type Block, type BlockChange, type Page } from '@typeroll/shared';
 import { vstore } from './version-store';
-import { readWorkingCopy, type WcCtx } from './working-copy';
+import { readWorkingCopy, type WcCtx, type WcTarget } from './working-copy';
 
 export interface PageChangeSummary {
   has_working_copy: boolean;
@@ -20,9 +20,13 @@ export async function pageChangeSummary(
   ctx: WcCtx,
   pageId: string,
 ): Promise<PageChangeSummary | null> {
-  const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
+  return contentChangeSummary(ctx, { kind: 'page', id: pageId });
+}
+
+export async function contentChangeSummary(ctx: WcCtx, target: WcTarget): Promise<PageChangeSummary | null> {
+  const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
   if (!page) return null;
-  const wc = await readWorkingCopy(ctx, { kind: 'page', id: pageId });
+  const wc = await readWorkingCopy(ctx, target);
   if (!wc || !wc.fields || Object.keys(wc.fields).length === 0) {
     return { has_working_copy: false, meta_changed: [], block_changes: [] };
   }

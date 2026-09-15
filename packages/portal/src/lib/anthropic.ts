@@ -1,8 +1,10 @@
+import { createPage } from './page-create';
+import { listContentTypes } from './content-type-service';
 // Anthropic client + the AI chat tool loop that powers /api/sites/[siteId]/chat.
 //
 // The chat lets the user manage the whole site by describing changes in plain
 // English. Claude has tools for every meaningful surface — pages, partials
-// (header/footer/nav), site settings, content collections, media, and
+// (header/footer/nav), site settings, content types, media, and
 // redirects — and the system prompt teaches it the conventions of the
 // platform (HTML mode, CSS variables, status flow, listing patterns).
 
@@ -48,8 +50,6 @@ import {
   type WcTarget,
 } from './working-copy';
 import type {
-  CollectionDef,
-  CollectionItem,
   Media,
   Page,
   Partial as PartialDoc,
@@ -253,13 +253,12 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'save_changes',
     description:
-      'SAVE the unsaved draft (working copy) of a page, partial, or collection item — promotes your edits onto the saved doc with a revision snapshot. Your content edits are DRAFTS until saved: they show in the editor and draft previews but are excluded from deploys. Call this when the user approves the change or asks you to save/publish it. The user can also press Save in the editor themselves.',
+      'SAVE the unsaved draft (working copy) of a page or partial — promotes your edits onto the saved doc with a revision snapshot. Your content edits are DRAFTS until saved: they show in the editor and draft previews but are excluded from deploys. Call this when the user approves the change or asks you to save/publish it. The user can also press Save in the editor themselves.',
     input_schema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['page', 'partial', 'item'] },
+        kind: { type: 'string', enum: ['page', 'partial'] },
         id: { type: 'string', description: 'Page id, partial id, or item id.' },
-        collection: { type: 'string', description: 'Required when kind="item".' },
       },
       required: ['kind', 'id'],
     },
@@ -267,31 +266,35 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'discard_changes',
     description:
-      'Discard the unsaved draft (working copy) of a page, partial, or collection item — the saved doc is untouched. Use when the user rejects your proposed change. CAUTION: this also throws away any unsaved edits the user made in the editor on the same doc.',
+      'Discard the unsaved draft (working copy) of a page or partial — the saved doc is untouched. Use when the user rejects your proposed change. CAUTION: this also throws away any unsaved edits the user made in the editor on the same doc.',
     input_schema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['page', 'partial', 'item'] },
+        kind: { type: 'string', enum: ['page', 'partial'] },
         id: { type: 'string' },
-        collection: { type: 'string', description: 'Required when kind="item".' },
       },
       required: ['kind', 'id'],
     },
   },
   {
     name: 'create_page',
-    description: 'Create a new HTML-mode page. Slug is derived from the title if not provided.',
+    description: 'Create a Page of any content type. Blocks are the default body format. Slug is derived from the title if omitted.',
     input_schema: {
       type: 'object',
       properties: {
         title: { type: 'string' },
+        content_type: { type: 'string' },
+        fields: { type: 'object', additionalProperties: true },
+        path: { type: 'string' },
+        content_mode: { type: 'string', enum: ['blocks', 'html'] },
+        blocks: { type: 'array', items: { type: 'object' } },
         slug: { type: 'string' },
         html_content: { type: 'string' },
         seo_title: { type: 'string' },
         seo_description: { type: 'string' },
         status: { type: 'string', enum: ['draft', 'review', 'unlisted', 'published'] },
       },
-      required: ['title', 'html_content'],
+      required: ['title'],
     },
   },
 
@@ -312,7 +315,7 @@ const tools: Anthropic.Tool[] = [
           type: 'object',
           description: 'Generic container. kind = page | partial | template. Use this to address a partial (e.g. {kind:"partial",id:"header"}) or template ({kind:"template",id:"blog-post"}).',
           properties: {
-            kind: { type: 'string', enum: ['page', 'partial', 'template', 'item_template'] },
+            kind: { type: 'string', enum: ['page', 'partial', 'template'] },
             id: { type: 'string' },
           },
           required: ['kind', 'id'],
@@ -323,7 +326,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'add_block',
     description:
-      "Insert a block into a container — a page, partial, or page template. With no parent_id, inserts at the top level of the container. Otherwise the new block becomes a child of parent_id (or lands in slot_index N for slot-containers). Use `target: {kind, id}` to address partials and templates; `page_id` is the legacy shorthand for `target={kind:'page',id:page_id}`. The block library has ~40 ready-made block types — call list_block_types FIRST to discover them. Layout primitives: core/section, core/columns (2-slot Left/Right), core/grid (N-up; set last_row:'center' when item count doesn't divide by cols — never invent a wide card to fill an orphan row), core/container (flex), core/spacer, core/divider. Content: core/heading, core/prose, core/button, core/image, core/icon, core/icon_box. Marketing: core/hero, core/cta, core/testimonial, core/team_member, core/pricing_plan, core/post_card, core/step_card, core/logo_item. Interactive: core/accordion, core/tabs, core/search (site search — deploy pipeline indexes automatically). Media: core/video, core/form. Repeater aliases: core/gallery, core/logo_cloud, core/testimonials, core/feature_grid, core/pricing_table, core/team_grid, core/collection_list. Template-context: template/page_title, template/page_featured_image, template/site_logo etc. Position defaults to end-of-list.",
+      "Insert a block into a container — a page, partial, or page template. With no parent_id, inserts at the top level of the container. Otherwise the new block becomes a child of parent_id (or lands in slot_index N for slot-containers). Use `target: {kind, id}` to address partials and templates; `page_id` is the legacy shorthand for `target={kind:'page',id:page_id}`. The block library has ~40 ready-made block types — call list_block_types FIRST to discover them. Layout primitives: core/section, core/columns (2-slot Left/Right), core/grid (N-up; set last_row:'center' when item count doesn't divide by cols — never invent a wide card to fill an orphan row), core/container (flex), core/spacer, core/divider. Content: core/heading, core/prose, core/button, core/image, core/icon, core/icon_box. Marketing: core/hero, core/cta, core/testimonial, core/team_member, core/pricing_plan, core/post_card, core/step_card, core/logo_item. Interactive: core/accordion, core/tabs, core/search (site search — deploy pipeline indexes automatically). Media: core/video, core/form. Repeater aliases: core/gallery, core/logo_cloud, core/testimonials, core/feature_grid, core/pricing_table, core/team_grid, core/page_list. Template-context: template/page_title, template/page_featured_image, template/site_logo etc. Position defaults to end-of-list.",
     input_schema: {
       type: 'object',
       properties: {
@@ -332,7 +335,7 @@ const tools: Anthropic.Tool[] = [
           type: 'object',
           description: 'Container address. kind=page|partial|template. For "another item on every page", pass {kind:"partial", id:"header"} or "footer".',
           properties: {
-            kind: { type: 'string', enum: ['page', 'partial', 'template', 'item_template'] },
+            kind: { type: 'string', enum: ['page', 'partial', 'template'] },
             id: { type: 'string' },
           },
           required: ['kind', 'id'],
@@ -363,7 +366,7 @@ const tools: Anthropic.Tool[] = [
         target: {
           type: 'object',
           properties: {
-            kind: { type: 'string', enum: ['page', 'partial', 'template', 'item_template'] },
+            kind: { type: 'string', enum: ['page', 'partial', 'template'] },
             id: { type: 'string' },
           },
           required: ['kind', 'id'],
@@ -385,7 +388,7 @@ const tools: Anthropic.Tool[] = [
         target: {
           type: 'object',
           properties: {
-            kind: { type: 'string', enum: ['page', 'partial', 'template', 'item_template'] },
+            kind: { type: 'string', enum: ['page', 'partial', 'template'] },
             id: { type: 'string' },
           },
           required: ['kind', 'id'],
@@ -408,7 +411,7 @@ const tools: Anthropic.Tool[] = [
         target: {
           type: 'object',
           properties: {
-            kind: { type: 'string', enum: ['page', 'partial', 'template', 'item_template'] },
+            kind: { type: 'string', enum: ['page', 'partial', 'template'] },
             id: { type: 'string' },
           },
           required: ['kind', 'id'],
@@ -428,7 +431,7 @@ const tools: Anthropic.Tool[] = [
         target: {
           type: 'object',
           properties: {
-            kind: { type: 'string', enum: ['page', 'partial', 'template', 'item_template'] },
+            kind: { type: 'string', enum: ['page', 'partial', 'template'] },
             id: { type: 'string' },
           },
           required: ['kind', 'id'],
@@ -448,7 +451,7 @@ const tools: Anthropic.Tool[] = [
         target: {
           type: 'object',
           properties: {
-            kind: { type: 'string', enum: ['page', 'partial', 'template', 'item_template'] },
+            kind: { type: 'string', enum: ['page', 'partial', 'template'] },
             id: { type: 'string' },
           },
           required: ['kind', 'id'],
@@ -717,75 +720,8 @@ const tools: Anthropic.Tool[] = [
     },
   },
 
-  // Collections (blog, team, events, products, etc.)
-  {
-    name: 'list_collections',
-    description: 'List all content collections on the site (blog, team, events, etc.) with their machine names and field schemas.',
-    input_schema: { type: 'object', properties: {} },
-  },
-  {
-    name: 'list_collection_items',
-    description: 'List items in a collection. Returns id, status, and the first few fields of each item.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        collection: { type: 'string', description: 'Collection machine name (e.g. "blog").' },
-        status: { type: 'string', enum: ['draft', 'published', 'all'], description: 'Filter by status. Defaults to "all".' },
-        limit: { type: 'number' },
-      },
-      required: ['collection'],
-    },
-  },
-  {
-    name: 'read_collection_item',
-    description: 'Read all fields of a single collection item.',
-    input_schema: {
-      type: 'object',
-      properties: { collection: { type: 'string' }, item_id: { type: 'string' } },
-      required: ['collection', 'item_id'],
-    },
-  },
-  {
-    name: 'create_collection_item',
-    description:
-      'Create a new item in a collection. Provide the fields that exist in the collection\'s schema. Defaults to status=draft.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        collection: { type: 'string' },
-        fields: {
-          type: 'object',
-          description: 'Map of field_name → value. Must match the collection schema.',
-          additionalProperties: true,
-        },
-        status: { type: 'string', enum: ['draft', 'published'] },
-      },
-      required: ['collection', 'fields'],
-    },
-  },
-  {
-    name: 'update_collection_item',
-    description: 'Update fields on a collection item.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        collection: { type: 'string' },
-        item_id: { type: 'string' },
-        fields: { type: 'object', additionalProperties: true },
-        status: { type: 'string', enum: ['draft', 'published'] },
-      },
-      required: ['collection', 'item_id'],
-    },
-  },
-  {
-    name: 'delete_collection_item',
-    description: 'Delete a collection item permanently.',
-    input_schema: {
-      type: 'object',
-      properties: { collection: { type: 'string' }, item_id: { type: 'string' } },
-      required: ['collection', 'item_id'],
-    },
-  },
+  { name: 'list_content_types', description: 'List content types with their fields, URL patterns and default page templates. Every content record is a Page.', input_schema: { type: 'object', properties: {} } },
+  { name: 'update_page_fields', description: 'Edit custom fields on a page. Read its content type first. Changes stay in the working copy until saved.', input_schema: { type: 'object', properties: { page_id: { type: 'string' }, fields: { type: 'object', additionalProperties: true } }, required: ['page_id', 'fields'] } },
 
   // Media
   {
@@ -854,7 +790,7 @@ export function buildChatSystemPrompt(
   activePage: ActivePageContext | null = null,
 ): string {
   const colors = settings?.colors;
-  return `You are the AI assistant for the website "${siteName}". You help the user manage the site by calling tools. You can edit pages, the navigation, the footer, site settings, content collections (blog posts, team members, events, etc.), media, and redirects.
+  return `You are the AI assistant for the website "${siteName}". You help the user manage the site by calling tools. You can edit pages, the navigation, the footer, site settings, pages of different content types (articles, team members, events), media, and redirects.
 
 # The system you're working in
 
@@ -862,7 +798,7 @@ This is Typeroll, a CMS that compiles to a static site (no database, no server c
 
 ## Drafts and saving — the buffer model
 
-EVERY content edit you make (page bodies, blocks, SEO fields, partials, collection items) lands in an UNSAVED DRAFT (a "working copy") — the same layer the user's editor autosaves into. Drafts are visible in the editor and on the preview links your actions return, but they are NOT part of the saved page and are NEVER included in a deploy. Saving is always an explicit step:
+EVERY content edit you make (page bodies, blocks, SEO fields, partials and custom page fields) lands in an UNSAVED DRAFT (a "working copy") — the same layer the user's editor autosaves into. Drafts are visible in the editor and on the preview links your actions return, but they are NOT part of the saved page and are NEVER included in a deploy. Saving is always an explicit step:
 
 - \`save_changes\` promotes a doc's draft onto the saved page (revision snapshot included) — call it when the user approves, or when they clearly asked for a finished change up front.
 - \`discard_changes\` throws a draft away.
@@ -945,7 +881,7 @@ The platform ships ~40 blocks. \`list_block_types\` is authoritative; below is a
 - \`core/feature_grid\`    — icon_box grid (3-up by default)
 - \`core/pricing_table\`   — pricing_plan grid
 - \`core/team_grid\`       — team_member grid
-- \`core/collection_list\` — blog/news/any collection, items become post_cards
+- \`core/page_list\` — Pages of any content type, items become post_cards
 
 Author-friendly: pass \`items: [{...}, {...}]\` on the alias block. The renderer expands each to the right item-block type. So one \`add_block({ type: 'core/feature_grid', data: { items: [{icon:'zap', heading:'Fast', text:'<p>...</p>'}, ...] } })\` call replaces six add_blocks for section + 3-grid + 3 icon_boxes.
 
@@ -956,7 +892,7 @@ Author-friendly: pass \`items: [{...}, {...}]\` on the alias block. The renderer
 - \`template/page_featured_image\`  → \`{{page.featured_image}}\`
 - \`template/page_author\`, \`template/page_date\`, \`template/page_excerpt\`, \`template/page_breadcrumbs\`
 - \`template/site_logo\`, \`template/site_title\`, \`template/site_tagline\`
-- \`template/item_title\` / \`template/item_body\` / \`template/item_image\` (for collection item templates)
+- \`template/page_title\` / \`template_content_slot\` / \`template/page_featured_image\` (for Page templates)
 - \`template/show_if\` — container that renders children only if a condition is truthy (e.g. \`page.featured_image\` or \`page.status === "published"\`)
 
 When you add a blog template, prefer these over hand-rolling \`core/heading\` with \`{{page.title}}\` in its data — they surface in the editor as named entities.
@@ -1069,19 +1005,8 @@ Settings include name, tagline, logo, favicon, apple_touch_icon (180×180 PNG fo
 
 When the user asks to change brand colors, fonts, or contact info — that's site settings, not a page edit.
 
-## Content collections
-
-Collections are repeatable content types — blog posts, team members, events, products, anything. Each collection has a schema (field definitions). Items in a collection have those fields.
-
-When the user says "add a blog post" or "add Sarah to the team page":
-1. Call list_collections to find the right one (you'll see field names + types).
-2. Call create_collection_item with collection=name and fields={...} matching the schema.
-3. Default status is "draft". Set "published" if the user said publish.
-
-When the user says "show our blog posts on the homepage" or "add a list of upcoming events":
-1. Call list_collection_items to fetch the items.
-2. Edit the relevant page's HTML to include a hand-written list rendering those items (with their titles, dates, links, images). Use simple semantic HTML with the site's CSS variables for styling.
-3. The static site has no template engine — you're literally writing the listing HTML into the page based on the current items. If the user adds more items later, ask them whether you should regenerate the listing.
+## Pages and content types
+Every content record is a Page. Use list_content_types to inspect custom field schemas, then list_pages/read_page/create_page and update_page_fields. Pages of different types share the same block editor, working copies and publishing workflow. Content types can opt out of public URLs by setting route_template to an empty string.
 
 ## Media
 
@@ -1165,7 +1090,7 @@ export async function runChatTurn(args: {
   if (!client) {
     return {
       reply:
-        "I'm not configured to chat yet — the server is missing an ANTHROPIC_API_KEY. Once that's set, I can edit your pages, navigation, content collections, settings, and more directly.",
+        "I'm not configured to chat yet — the server is missing an ANTHROPIC_API_KEY. Once that's set, I can edit your pages, navigation, content types, settings, and more directly.",
       actions: [],
       tool_calls: [],
       iterations: 0,
@@ -1326,6 +1251,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           id: p.id,
           title: p.title,
           slug: p.slug,
+          content_type: p.content_type ?? 'page',
           content_mode: p.content_mode,
           status: p.status,
           live_url: pageLiveUrl(ctx.site, ctx.version, p),
@@ -1347,6 +1273,9 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           has_unsaved_changes: !!pageWc,
           title: page.title,
           slug: page.slug,
+          content_type: page.content_type ?? 'page',
+          fields: page.fields ?? {},
+          blocks: page.blocks,
           content_mode: page.content_mode,
           html_content: page.html_content ?? '',
           seo_title: page.seo_title,
@@ -1546,17 +1475,12 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
 
     case 'save_changes':
     case 'discard_changes': {
-      const kind = String(input.kind) as 'page' | 'partial' | 'item';
+      const kind = String(input.kind) as 'page' | 'partial';
       const id = String(input.id);
-      if (kind !== 'page' && kind !== 'partial' && kind !== 'item') {
-        return { result: { error: 'kind must be page | partial | item' } };
+      if (kind !== 'page' && kind !== 'partial') {
+        return { result: { error: 'kind must be page | partial' } };
       }
-      const target: WcTarget = kind === 'item'
-        ? { kind, collection: String(input.collection ?? ''), id }
-        : { kind, id };
-      if (kind === 'item' && !(target as { collection?: string }).collection) {
-        return { result: { error: 'collection is required when kind="item"' } };
-      }
+      const target: WcTarget = { kind, id };
       try {
         if (name === 'discard_changes') {
           await discardWorkingCopy(wcCtx(ctx), target);
@@ -1565,7 +1489,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
             action: { type: 'update_page', description: `Discarded the unsaved draft of ${kind} ${id}.`, target: id },
           };
         }
-        const commit = await commitWorkingCopy(wcCtx(ctx), target, 'chat-ai');
+        const commit = await commitWorkingCopy(wcCtx(ctx), target, 'chat-ai', 'agent');
         return {
           result: {
             ok: true,
@@ -1582,109 +1506,18 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
     }
 
     case 'create_page': {
-      const title = String(input.title ?? '').trim();
-      if (!title) return { result: { error: 'title required' } };
-      const existing = await vstore.pages(ctx.orgId, ctx.siteId, ctx.versionId);
-      const rawRequested = (input.slug ? String(input.slug) : slugify(title)) || 'page';
-      // Slug remains a single segment (the leaf id). For nested URLs the
-      // caller sets `path` instead — see docs/page-path-plan.md and the
-      // page-paths lib for the shared validator.
-      const requested = rawRequested.replace(/^\/+/, '').replace(/\/+$/, '');
-      if (requested.includes('/')) {
-        return {
-          result: {
-            error: `Slug "${input.slug}" contains a slash. Page slugs must be a single path segment. ` +
-              `For nested URLs, set the \`path\` field explicitly (e.g. "/erbjudanden/sommar").`,
-          },
-        };
+      // Chat cannot author scriptable page metadata through extra input keys.
+      const inputKeys = ['title', 'slug', 'path', 'content_type', 'fields', 'content_mode', 'html_content', 'blocks', 'seo_title', 'seo_description', 'status'];
+      const permitted = Object.fromEntries(inputKeys.filter(key => key in input).map(key => [key, input[key]]));
+      try {
+        const { page } = await createPage(ctx, permitted, 'agent', 'chat-ai');
+        return { result: { page, page_id: page.id }, action: { type: 'create_page', target: page.id, description: `Created "${page.title}".`, preview_url: absolutePreviewUrl(ctx, page) } };
+      } catch (error) {
+        if (error instanceof WorkingCopyError) return { result: { error: error.message } };
+        throw error;
       }
-      // Validate `path` if present. The chat tool's input is loosely
-      // typed so we route it through the same validator the v1 route
-      // uses.
-      const { validatePathField, makeSafePageId, pageUrlFromDoc } = await import('./page-paths');
-      const pathCheck = validatePathField(input.path);
-      if (!pathCheck.ok) return { result: { error: `Invalid path: ${pathCheck.error}` } };
-      const explicitPath = pathCheck.path;
-      let slug = requested;
-      let resolvedPath = explicitPath || `/${slug}`;
-      let pageId = explicitPath ? makeSafePageId(resolvedPath) : slug;
-      let i = 2;
-      const urlTaken = (urlPath: string) => existing.some((p) => pageUrlFromDoc(p) === urlPath);
-      const idTaken = (id: string) => existing.some((p) => p.id === id);
-      while (urlTaken(resolvedPath) || idTaken(pageId)) {
-        slug = `${requested}-${i}`;
-        resolvedPath = explicitPath
-          ? explicitPath.replace(/[^/]+$/, slug)
-          : `/${slug}`;
-        pageId = explicitPath ? makeSafePageId(resolvedPath) : slug;
-        i++;
-      }
-      const status = (input.status as Page['status']) || 'draft';
-      // Block-mode is the platform default. The model can opt into HTML
-      // by passing `content_mode: 'html'` OR by providing `html_content`
-      // (the body field is the strong intent signal).
-      const requestedMode = typeof input.content_mode === 'string'
-        ? String(input.content_mode).toLowerCase()
-        : '';
-      const useHtml = requestedMode === 'html'
-        || (requestedMode === '' && typeof input.html_content === 'string');
-      const baseDoc: Record<string, unknown> = {
-        title,
-        slug,
-        ...(explicitPath ? { path: resolvedPath } : {}),
-        content_mode: useHtml ? 'html' : 'blocks',
-        status,
-        seo_title: input.seo_title ? String(input.seo_title) : undefined,
-        seo_description: input.seo_description ? String(input.seo_description) : undefined,
-        ai_generated: true,
-        date_updated: new Date().toISOString(),
-      };
-      if (useHtml) {
-        baseDoc.html_content = String(input.html_content ?? '');
-      } else {
-        // Seed with a heading + prose block so the editor isn't a blank
-        // canvas — matches the portal UI's "New page" behaviour.
-        baseDoc.blocks = [
-          {
-            id: `blk_${Math.random().toString(36).slice(2, 14)}`,
-            type: 'core/heading',
-            data: { text: title, level: 'h1', align: 'left', eyebrow: '' },
-          },
-          {
-            id: `blk_${Math.random().toString(36).slice(2, 14)}`,
-            type: 'core/prose',
-            data: { html: '<p>Start writing…</p>', max_width: 'normal' },
-          },
-        ];
-      }
-      await store.setDoc(`${paths.pages(ctx.orgId, ctx.siteId, ctx.versionId)}/${pageId}`, baseDoc);
-      // A live page created on a URL retires any redirect FROM it (a real
-      // page beats a redirect — see lib/redirect-hygiene.ts). Drafts leave
-      // redirects alone; retirement happens at publish.
-      {
-        const { isLivePageStatus, retireRedirectsShadowingUrl } = await import('./redirect-hygiene');
-        if (isLivePageStatus(status)) {
-          await retireRedirectsShadowingUrl(ctx.orgId, ctx.siteId, ctx.versionId, resolvedPath);
-        }
-      }
-      return {
-        result: { ok: true, page_id: pageId, slug, ...(explicitPath ? { path: resolvedPath } : {}), url: resolvedPath },
-        action: {
-          type: 'create_page',
-          description: `Created "${title}" (${status}).`,
-          target: pageId,
-          preview_url: absolutePreviewUrl(ctx, explicitPath ? { slug: resolvedPath } : { slug }),
-        },
-      };
     }
 
-    // ─── Block-mode container mutations ────────────────────────────────────
-    // All seven tools accept either `page_id` (legacy shorthand) or a
-    // generic `target: { kind: 'page'|'partial'|'template', id }`.
-    // The block mutations themselves are container-agnostic — only the
-    // load/write path differs by kind. Pages reject early when in
-    // html-mode; partials reject early when in html-mode; templates
-    // are always block trees so the check is a no-op there.
     case 'get_page_blocks': {
       const target = normaliseTarget(input as { target?: { kind?: string; id?: string }; page_id?: string });
       if (!target) return { result: { error: 'Either target or page_id is required' } };
@@ -2247,89 +2080,12 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       };
     }
 
-    // ─── Collections ───────────────────────────────────────────────────────
-    case 'list_collections': {
-      const colls = await vstore.collections(ctx.orgId, ctx.siteId, ctx.versionId);
-      return {
-        result: colls.map((c) => ({
-          name: c.name,
-          label_singular: c.label_singular,
-          label_plural: c.label_plural,
-          icon: c.icon,
-          fields: c.fields.map((f) => ({ name: f.name, label: f.label, type: f.type, required: f.required })),
-        })),
-      };
-    }
-
-    case 'list_collection_items': {
-      const collection = String(input.collection);
-      const items = await vstore.collectionItems(ctx.orgId, ctx.siteId, ctx.versionId, collection);
-      const status = (input.status as string) || 'all';
-      let filtered = status === 'all' ? items : items.filter((it) => it.status === status);
-      if (typeof input.limit === 'number') filtered = filtered.slice(0, input.limit);
-      return {
-        result: filtered.map((it) => it),
-      };
-    }
-
-    case 'read_collection_item': {
-      const collection = String(input.collection);
-      const itemId = String(input.item_id);
-      const item = await vstore.collectionItem(ctx.orgId, ctx.siteId, ctx.versionId, collection, itemId);
-      if (!item) return { result: { error: 'Item not found' } };
-      return { result: item };
-    }
-
-    case 'create_collection_item': {
-      const collection = String(input.collection);
-      const coll = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, collection);
-      if (!coll) return { result: { error: `Collection "${collection}" not found` } };
-      const fields = (input.fields ?? {}) as Record<string, unknown>;
-      const status = (input.status as 'draft' | 'published') ?? 'draft';
-      const now = new Date().toISOString();
-      const allowed = new Set(coll.fields.map((f) => f.name));
-      const item: Record<string, unknown> = { status, created_at: now, updated_at: now };
-      for (const [k, v] of Object.entries(fields)) if (allowed.has(k)) item[k] = v;
-
-      const itemId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-      await store.setDoc(paths.collectionItem(ctx.orgId, ctx.siteId, collection, itemId, ctx.versionId), item);
-      return {
-        result: { ok: true, item_id: itemId },
-        action: {
-          type: 'create_collection_item',
-          description: `Added a ${coll.label_singular.toLowerCase()} to ${coll.label_plural} (${status}).`,
-        },
-      };
-    }
-
-    case 'update_collection_item': {
-      const collection = String(input.collection);
-      const itemId = String(input.item_id);
-      const coll = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, collection);
-      if (!coll) return { result: { error: `Collection "${collection}" not found` } };
-      const existing = await vstore.collectionItem(ctx.orgId, ctx.siteId, ctx.versionId, collection, itemId);
-      if (!existing) return { result: { error: 'Item not found' } };
-
-      const update: Record<string, unknown> = { ...((input.fields ?? {}) as Record<string, unknown>) };
-      if (input.status !== undefined) update.status = input.status;
-
-      await applyContentWrite(
-        wcCtx(ctx), { kind: 'item', collection, id: itemId }, update, { updatedBy: 'chat-ai' },
-      );
-      return {
-        result: { ok: true, draft: true },
-        action: {
-          type: 'update_collection_item',
-          description: `Updated a ${coll.label_singular.toLowerCase()} (unsaved draft).`,
-        },
-      };
-    }
-
-    case 'delete_collection_item': {
-      const collection = String(input.collection);
-      const itemId = String(input.item_id);
-      await vstore.deleteCollectionItem(ctx.orgId, ctx.siteId, ctx.versionId, collection, itemId);
-      return { result: { ok: true }, action: { type: 'delete_collection_item', description: `Deleted an item from ${collection}.` } };
+    // ─── Content types ───────────────────────────────────────────────────────
+    case 'list_content_types': return { result: await listContentTypes(ctx) };
+    case 'update_page_fields': {
+      const id = String(input.page_id);
+      const result = await applyContentWrite(ctx, { kind: 'page', id }, { fields: input.fields }, { updatedBy: 'chat-ai', actor: 'agent' });
+      return { result, action: { type: 'update_page', target: id, description: 'Updated page fields (unsaved draft).' } };
     }
 
     // ─── Media ─────────────────────────────────────────────────────────────

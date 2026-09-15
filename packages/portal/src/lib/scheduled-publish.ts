@@ -15,7 +15,7 @@
 // Releases feature's job (world-class plan #9), which reuses this sweep.
 
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
-import type { CollectionDef, CollectionItem, DeployJob, Page, Site } from '@typeroll/shared';
+import type { DeployJob, Page, Site } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { getDeployQueue } from './deploy/queue';
 import { findActiveDeploy, isExternalDeploy } from './deploy/in-flight';
@@ -24,8 +24,6 @@ import { clearDirtyMarker, isDeployDue } from './auto-deploy';
 export interface SweepResult {
   pages_published: number;
   pages_unpublished: number;
-  items_published: number;
-  items_unpublished: number;
   /** site keys ("orgId/siteId") that got a deploy enqueued */
   deployed: string[];
   /** Subset of `deployed` triggered by pending edits rather than a schedule. */
@@ -49,7 +47,6 @@ export async function runPublishSweep(now: Date = new Date()): Promise<SweepResu
   const store = getStore();
   const result: SweepResult = {
     pages_published: 0, pages_unpublished: 0,
-    items_published: 0, items_unpublished: 0,
     deployed: [], auto_deployed: [], skipped_in_flight: [], errors: [],
   };
   const affected = new Set<string>();
@@ -102,34 +99,6 @@ export async function runPublishSweep(now: Date = new Date()): Promise<SweepResu
           }
         }
 
-        // Collection items.
-        const collections = await store.listDocs<CollectionDef & { name?: string }>(
-          paths.collections(org.id, site.id, MAIN_VERSION_ID),
-        );
-        for (const coll of collections) {
-          const collName = coll.name ?? coll.id;
-          const itemsPath = paths.collectionItems(org.id, site.id, collName, MAIN_VERSION_ID);
-          const items = await store.listDocs<CollectionItem>(itemsPath);
-          for (const item of items) {
-            if (due(item.publish_at, nowIso) && item.status !== 'published') {
-              await store.updateDoc(`${itemsPath}/${item.id}`, {
-                status: 'published',
-                updated_at: nowIso,
-                publish_at: null,
-              });
-              result.items_published++;
-              affected.add(key);
-            } else if (due(item.unpublish_at, nowIso) && item.status === 'published') {
-              await store.updateDoc(`${itemsPath}/${item.id}`, {
-                status: 'draft',
-                updated_at: nowIso,
-                unpublish_at: null,
-              });
-              result.items_unpublished++;
-              affected.add(key);
-            }
-          }
-        }
         // Auto-deploy: a site whose oldest pending edit has aged past its
         // debounce window joins the same `affected` set, so a site with both
         // due schedules and pending edits still gets exactly one build.

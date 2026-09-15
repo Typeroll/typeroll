@@ -66,7 +66,7 @@ export interface Member {
 /**
  * Every site has at least one "version" — `main` — that powers the production
  * deploy. Additional versions are branches: deep-copies of main's content
- * (pages, partials, settings, redirects, collections, chat) that customers use
+ * (pages, partials, settings, redirects, content types, chat) that customers use
  * for redesigns, seasonal campaigns, or trial migrations before promoting back
  * to main.
  *
@@ -488,6 +488,11 @@ export type PageStatus = 'draft' | 'review' | 'unlisted' | 'published';
 
 export interface Page {
   id: string;
+  /** One content model: the type defines fields, routing and the default template. */
+  content_type?: string;
+  fields?: Record<string, unknown>;
+  /** Internal editorial provenance. Excluded from rendered context and exports. */
+  _provenance?: Record<string, { source: 'portal' | 'owner' | 'agent' | 'app' | 'import'; actor: string; updated_at: string }>;
   title: string;
   /**
    * Single URL path segment used to derive the live URL when `path` is
@@ -507,7 +512,7 @@ export interface Page {
    */
   path?: string;
   parent?: string | null;
-  sort_order?: number;
+  sort_order?: number | null;
   template?: string;
 
   content_mode: ContentMode;
@@ -632,9 +637,9 @@ export interface Page {
 
 /**
  * What was edited. Used to surface the right kind of restore action in the UI
- * (page editor vs partial editor vs collection-item editor).
+ * (page editor vs partial editor).
  */
-export type RevisionKind = 'page' | 'partial' | 'collection-item';
+export type RevisionKind = 'page' | 'partial';
 
 /**
  * A pre-edit snapshot. The full doc body lives under `doc` so restoring is a
@@ -653,7 +658,7 @@ export interface Revision<T = Record<string, unknown>> {
 // ─── Working copies ──────────────────────────────────────────────────────
 
 /** Which editor surface a working copy belongs to. */
-export type WorkingCopyKind = 'page' | 'partial' | 'item';
+export type WorkingCopyKind = 'page' | 'partial';
 
 /**
  * Server-side scratch state for in-editor edits that haven't been
@@ -668,13 +673,11 @@ export type WorkingCopyKind = 'page' | 'partial' | 'item';
  * preview overlays them.
  */
 export interface WorkingCopy {
-  /** Constructed key: `page--{id}`, `partial--{id}`, `item--{collection}--{id}`. */
+  /** Constructed key: `page--{id}`, `partial--{id}`. */
   id: string;
   kind: WorkingCopyKind;
-  /** The doc id this copy shadows (pageId / partialId / itemId). */
+  /** The doc id this copy shadows (pageId / partialId). */
   target_id: string;
-  /** For kind='item': the collection name. */
-  collection?: string;
   /** Shallow field overrides, whitelisted per kind at the API boundary. */
   fields: Record<string, unknown>;
   updated_at: string;
@@ -826,9 +829,9 @@ export type FieldType =
   | 'array'            // repeating group; uses FieldDefinition.fields[]
   | 'object'           // nested grouping; uses FieldDefinition.fields[]
   | 'block_type_ref'   // pick a BlockType.id (for repeater item_block)
-  | 'collection_ref'   // pick a Collection.name
-  | 'item_ref'         // pick ONE item from ref_collection
-  | 'item_ref_list'    // pick many items from ref_collection
+  | 'content_type_ref'
+  | 'page_ref'
+  | 'page_ref_list'
   // Added by Forms 2.0 (form/* field blocks):
   | 'choices';         // array of {value,label}; renderer derives
                        // {name}_options_html per FieldDefinition.choices_markup
@@ -851,9 +854,9 @@ export interface FieldDefinition {
   /** For type 'choices': which control markup the renderer derives. */
   choices_markup?: 'select' | 'radio' | 'checkbox';
   /**
-   * Target collection for `item_ref` / `item_ref_list` — the machine name,
-   * as in `collection_ref`. The stored value is the referenced item's id (or
-   * an array of ids); the renderer resolves it against the collection source,
+   * Target content type for `page_ref` / `page_ref_list` — the machine name,
+   * as in `content_type_ref`. The stored value is the referenced Page ID (or
+   * an array of ids); the renderer resolves it against the Page source,
    * which already pre-loads every published item, so a ref costs a map lookup
    * rather than a fetch.
    *
@@ -862,9 +865,9 @@ export interface FieldDefinition {
    * ingests messy data, and a hard constraint would block writes an agent
    * legitimately wants to make.
    */
-  ref_collection?: string;
+  ref_content_type?: string;
   /**
-   * Which surfaces may write this field (collection-item fields only).
+   * Which surfaces may write this field (Page fields).
    * Omitted → `['portal', 'agent']`, exactly today's behaviour.
    *
    * - `portal` — org members in the Typeroll UI
@@ -876,7 +879,7 @@ export interface FieldDefinition {
    *
    * Owner-writability is opt-in per field ON PURPOSE: adding a
    * public-facing edit surface must never retroactively expose fields on a
-   * collection that predates it. See lib/field-authority.ts.
+   * content type that predates it. See lib/field-authority.ts.
    */
   writable_by?: Array<'portal' | 'owner' | 'agent' | 'app' | 'import'>;
   /**
@@ -942,7 +945,7 @@ export interface BlockType {
    * - `true`   — generic container, renders children via `{{children}}`
    * - `'slots'` — multiple named slots via `{{slot:NAME}}`, declared by
    *               `slot_count`/`slot_labels`
-   * - `'repeater'`    — loops over a list (static items[] or a collection
+   * - `'repeater'`    — loops over a list (static items[] or a Page source
    *               query); each iteration renders via `item_block`
    * - `'conditional'` — renders `children` only if a condition expression
    *               evaluates truthy against the render context
@@ -1054,7 +1057,7 @@ export type PageTemplateStatus = 'draft' | 'published';
  * `TEMPLATE_CONTENT_SLOT_TYPE_ID` marking where the consuming page's own
  * blocks render. Pages reference a template via `Page.template` (= this
  * doc's id). Optional `applies_to` constrains the picker to a specific
- * collection or to the global page editor.
+ * content type or to all Pages.
  */
 export interface PageTemplate {
   id: string;
@@ -1063,133 +1066,42 @@ export interface PageTemplate {
   icon?: string;
   /**
    * Where this template can be assigned.
-   * - `page`: assignable to any standalone page
-   * - `collection:{name}`: only for items of the named collection
+   * - `page`: assignable to any Page
+   * - `content_type:{name}`: only for Pages of the named content type
    * - `any`: shown everywhere (default)
    */
-  applies_to?: 'page' | 'any' | `collection:${string}`;
+  applies_to?: 'page' | 'any' | `content_type:${string}`;
   blocks: Block[];
   status: PageTemplateStatus;
   created_at: string;
   date_updated?: string;
 }
 
-// ─── Content Collections ─────────────────────────────────────────────────
+// ─── Content types ───────────────────────────────────────────────────────
 
-export interface CollectionDef {
+export interface ContentType {
   id: string;
-  name: string;             // machine name: blog, team, events
-  label_singular: string;   // "Blog post"
-  label_plural: string;     // "Blog posts"
-  icon?: string;            // emoji
+  name: string;
+  label_singular: string;
+  label_plural: string;
+  icon?: string;
   fields: FieldDefinition[];
-  slug_field?: string;      // which field is the URL slug (defaults to "slug")
-  sort_field?: string;      // default sort field
+  /** Optional authority for common Page metadata; values remain on Page itself. */
+  page_field_rules?: Record<string, { label?: string; writable_by: Array<'portal' | 'owner' | 'agent' | 'app' | 'import'> }>;
+  /** Empty means the pages are data only; Page.path can override a nonempty pattern. */
+  route_template: string;
+  sort_field?: string;
   sort_dir?: 'asc' | 'desc';
-
-  /**
-   * URL template for items in this collection. Tokens look like
-   * `{slug}`, `{date:YYYY/MM}`, `{category}` — every token resolves
-   * against a field on the item. Default `/{name}/{slug}` when omitted.
-   * Slashes are allowed; the renderer creates one static page per
-   * published item at this path.
-   *
-   * Set to an empty string to opt OUT of per-item URLs (the collection
-   * is then "listing-only", same as pre-routing behaviour).
-   */
-  route_template?: string;
-
-  /**
-   * Taxonomy pages — one static page per distinct value of a field
-   * (/bransch/rormokare/, /ort/goteborg/). See taxonomy.ts; note the
-   * min_items guard, since this is where record count turns into ROUTE
-   * count and route count is what the build timeout measures.
-   */
-  facets?: import('./taxonomy.js').CollectionFacet[];
-  /**
-   * Combination pages to also generate, as explicit pairs of facet fields.
-   * NEVER a cartesian product of all facets: two facets with 30 and 200
-   * values is 6000 routes, nearly all of them one-record thin-content pages.
-   */
-  facet_combinations?: import('./taxonomy.js').FacetCombination[];
-
-  /**
-   * Free-form Schema.org type used to auto-emit JSON-LD on every item
-   * in this collection. Examples: "BlogPosting", "PodcastEpisode",
-   * "Product", "Event", "Recipe", "Course", "Article". Anything goes —
-   * users with niche taxonomies (MusicAlbum, SoftwareApplication, ...)
-   * can plug it in without a platform change. When unset, no
-   * collection-driven schema is emitted (per-item `json_ld` still
-   * works).
-   *
-   * The companion `schema_field_map` lets the user say "this field on
-   * my item is the schema property `audioUrl`" — see below.
-   */
+  /** Absent/null allows all compatible templates; an array restricts choices. */
+  allowed_templates?: string[] | null;
+  template?: string;
   schema_type?: string;
-
-  /**
-   * Optional mapping from collection-item field names to Schema.org
-   * property names. Default behaviour is identity (a field named
-   * `title` maps to `title`/`name` depending on type). Use this when
-   * the collection field name doesn't match the schema vocabulary —
-   * e.g. `{ "audio_url": "contentUrl", "show_notes": "description" }`.
-   * Values are copied verbatim into the JSON-LD object so they should
-   * use camelCase (Schema.org's convention). Unmapped fields fall
-   * through to the built-in mapping inside the schema generator.
-   */
   schema_field_map?: Record<string, string>;
-
-  /**
-   * HTML template rendered for each item. `{{field}}` placeholders are
-   * substituted with item field values (HTML-escaped); `{{{field}}}`
-   * (triple-brace) leaves the value raw for fields that intentionally
-   * carry HTML (e.g. a richtext body). When omitted, the renderer falls
-   * back to a minimal default that just dumps title + body so the item
-   * still has *some* URL even before the template is authored.
-   *
-   * The template is sanitized on save like any other customer HTML —
-   * no <script>, no event handlers. Substitutions happen on the
-   * pre-sanitized template, then the merged result is re-sanitized at
-   * render time as defense in depth.
-   *
-   * Mutually exclusive with `item_template_blocks` — when both are set
-   * the block tree wins.
-   */
-  item_template_html?: string;
-
-  /**
-   * Block-tree alternative to `item_template_html`. The renderer walks
-   * this tree with the current item pushed into the render context
-   * (`{{item.*}}` resolves against the item's fields). Same security
-   * model as page block trees — block templates are pre-sanitized;
-   * data substitutions are HTML-escaped; final output runs through
-   * sanitizeBody.
-   *
-   * Use the `template/item_*` block family (item_title, item_body,
-   * item_image …) as bindings — they read from context.item without
-   * the author having to type `{{item.title}}` by hand.
-   *
-   * When this is set, it takes precedence over `item_template_html`.
-   * Set to `[]` (empty array) to explicitly mark the collection as
-   * block-mode without authoring blocks yet — same effect as omitting
-   * both fields (renderer falls back to a minimal default).
-   */
-  item_template_blocks?: Block[];
-
+  facets?: import('./taxonomy.js').ContentFacet[];
+  facet_combinations?: import('./taxonomy.js').FacetCombination[];
   created_at: string;
 }
 
-export interface CollectionItem {
-  id: string;
-  status: 'draft' | 'published';
-  created_at: string;
-  updated_at: string;
-  /** Scheduled publishing — same sweep semantics as Page.publish_at. */
-  publish_at?: string | null;
-  unpublish_at?: string | null;
-  // Dynamic fields per the schema
-  [key: string]: unknown;
-}
 
 // ─── Forms ───────────────────────────────────────────────────────────────
 
@@ -1402,8 +1314,8 @@ export interface EmailConnector {
  */
 export interface EditGrant {
   id: string;
-  collection: string;
-  item_id: string;
+  content_type: string;
+  page_id: string;
   /** Address the link was mailed to; the item's own contact field at issue time. */
   email: string;
   issued_at: string;
@@ -1728,8 +1640,8 @@ export interface SiteApiKey {
  * (the owning org doesn't get a SiteShare row); these levels only apply to
  * other orgs the site has been granted to.
  *
- * - `read`  — list site, view pages, view collections; no mutations
- * - `write` — `read` + edit pages, manage collections, manage media. Cannot
+ * - `read`  — list site, view pages, view content types; no mutations
+ * - `write` — `read` + edit pages, manage content types, manage media. Cannot
  *             change site settings or share to others.
  * - `admin` — full access. Today this is owner-only (re-sharing by non-owners
  *             is intentionally disabled in v1).
@@ -1765,7 +1677,7 @@ export interface SiteShare {
 /**
  * All path helpers. Per-site resources (media, forms, submissions) sit directly
  * under the site. Per-version resources (pages, partials, settings, redirects,
- * collections, chat) sit under sites/{siteId}/versions/{versionId}/ — every
+ * content types, chat) sit under sites/{siteId}/versions/{versionId}/ — every
  * versioned helper takes an optional versionId that defaults to 'main'.
  */
 export const paths = {
@@ -1795,8 +1707,7 @@ export const paths = {
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/pages/${pageId}/revisions`,
   partialRevisions: (orgId: string, siteId: string, partialId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/partials/${partialId}/revisions`,
-  itemRevisions: (orgId: string, siteId: string, name: string, itemId: string, versionId: string = MAIN_VERSION_ID) =>
-    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/collections/${name}/items/${itemId}/revisions`,
+
   redirects: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/redirects`,
   chat: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
@@ -1809,17 +1720,14 @@ export const paths = {
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/page_templates`,
   pageTemplate: (orgId: string, siteId: string, templateId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/page_templates/${templateId}`,
-  collections: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
-    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/collections`,
-  collection: (orgId: string, siteId: string, name: string, versionId: string = MAIN_VERSION_ID) =>
-    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/collections/${name}`,
-  collectionItems: (orgId: string, siteId: string, name: string, versionId: string = MAIN_VERSION_ID) =>
-    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/collections/${name}/items`,
-  collectionItem: (orgId: string, siteId: string, name: string, itemId: string, versionId: string = MAIN_VERSION_ID) =>
-    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/collections/${name}/items/${itemId}`,
+  contentTypes: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/content_types`,
+  contentType: (orgId: string, siteId: string, name: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/content_types/${name}`,
+
   // Editor working copies (autosaved unsaved edits). Per-version, no chain
   // fallback — see the WorkingCopy interface. Key format: `page--{id}`,
-  // `partial--{id}`, `item--{collection}--{id}`.
+  // `partial--{id}`.
   workingCopies: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/working_copies`,
   workingCopy: (orgId: string, siteId: string, key: string, versionId: string = MAIN_VERSION_ID) =>

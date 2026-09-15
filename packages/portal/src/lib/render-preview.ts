@@ -13,8 +13,6 @@
 import { isContentDeployed, pagePathSegment } from './site-urls';
 import type {
   Block,
-  CollectionDef,
-  CollectionItem,
   Page,
   RenderContext,
   SiteSettings,
@@ -22,10 +20,6 @@ import type {
 } from '@typeroll/shared';
 import { vstore } from './version-store';
 import {
-  buildCollectionRoutes,
-  collectionItemBreadcrumbs,
-  collectionRouteNavigation,
-  collectionFieldMatches,
   buildConsentEarlyPaintRuntime,
   buildCoreBlockRegistry,
   collectBlockAssets,
@@ -37,7 +31,16 @@ import {
   MAIN_VERSION_ID,
   renderBlocks,
   renderCookieConsent,
-  renderItemTemplate,
+  createPageSource,
+  DEFAULT_CONTENT_TYPE,
+  contentPagePath,
+  resolveContentPage,
+  pageNavigation,
+  buildBacklinkIndex,
+  prepareHeadingOutline,
+  pageBodyContext,
+  pageContentValues,
+  publicContentPage,
   DEFAULT_COOKIE_CONSENT_TEXT,
   pageBreadcrumbs,
   siteContext,
@@ -176,58 +179,21 @@ export async function renderPreview(
 
   // Pre-load collection items so collection-backed repeaters work in
   // preview the same way they do at build time.
-  const collectionsRaw = await vstore.collections(orgId, siteId, versionId);
-  const itemsByCollection = new Map<string, CollectionItem[]>();
-  for (const c of collectionsRaw) {
-    const items = await vstore.collectionItems(orgId, siteId, versionId, c.name);
-    itemsByCollection.set(c.name, items.filter((i) => i.status === 'published'));
-  }
+  const contentTypes = await vstore.contentTypes(orgId, siteId, versionId);
   const previewPages = await vstore.pages(orgId, siteId, versionId);
-  const collectionSource = (config: {
-    collection: string;
-    /** Exactly these items, in this order — the `related`/`backlinks` sources. */
-    ids?: string[];
-    limit?: number;
-    sort_by?: string;
-    sort_order?: 'asc' | 'desc';
-    filter_field?: string;
-    filter_value?: string;
-    pinned_ids?: string[];
-  }): Record<string, unknown>[] => {
-    const base = itemsByCollection.get(config.collection);
-    if (!base) return [];
-    let out: CollectionItem[] = base.slice();
-    if (config.filter_field && config.filter_value !== undefined) {
-      const f = config.filter_field, v = config.filter_value;
-      out = out.filter((it) => collectionFieldMatches(it as Record<string, unknown>, f, v));
-    }
-    if (config.sort_by) {
-      const k = config.sort_by;
-      const dir = config.sort_order === 'asc' ? 1 : -1;
-      out.sort((a, b) => {
-        const av = (a as Record<string, unknown>)[k];
-        const bv = (b as Record<string, unknown>)[k];
-        if (av == null) return 1;
-        if (bv == null) return -1;
-        if (av < bv) return -1 * dir;
-        if (av > bv) return 1 * dir;
-        return 0;
-      });
-    }
-    if (config.pinned_ids?.length) {
-      const pinSet = new Set(config.pinned_ids);
-      const pinned = out.filter((it) => pinSet.has(it.id));
-      const rest = out.filter((it) => !pinSet.has(it.id));
-      out = [...pinned, ...rest];
-    }
-    if (config.limit && out.length > config.limit) out = out.slice(0, config.limit);
-    return out as unknown as Record<string, unknown>[];
-  };
+  const pageSource = createPageSource(contentTypes, previewPages);
+  const contentType = contentTypes.find(type => type.id === (page!.content_type ?? 'page'))
+    ?? ((page.content_type ?? 'page') === 'page' ? DEFAULT_CONTENT_TYPE : null);
+  if (!contentType) throw new Error(`Unknown content type: ${page.content_type}`);
+  page = resolveContentPage(page, contentType) ?? { ...page, template: page.template || contentType.template };
+
 
   const renderCtx: RenderContext = {
+    content_type: { ...contentType, ...pageNavigation(page, contentType, previewPages, settings.trailing_slash) },
+    backlinks: buildBacklinkIndex(contentTypes, previewPages.filter(candidate => candidate.status === 'published')),
     page: {
-      ...(page as unknown as Record<string, unknown>),
-      breadcrumbs: pageBreadcrumbs(page, previewPages, settings.trailing_slash ?? 'always'),
+      ...pageContentValues(publicContentPage(page, contentType)),
+      breadcrumbs: pageBreadcrumbs(page, previewPages, settings.trailing_slash ?? 'always', contentType),
     },
     site: siteContext(settings as unknown as Record<string, unknown>),
     // Paginating listings render their first slice in the preview; the
@@ -250,38 +216,13 @@ export async function renderPreview(
     ...(header?.content_mode === 'blocks' ? header.blocks ?? [] : []),
     ...(footer?.content_mode === 'blocks' ? footer.blocks ?? [] : []),
   ];
-  const formSource = await (async () => {
-    const { renderFormHtml } = await import('@typeroll/shared');
-    const { formEmbedInfo, POW_BITS, isFormsSigningConfigured } = await import('./forms-signing');
-    const { resolveAppFormEndpoint } = await import('./apps/form-endpoint');
-    type F = import('@typeroll/shared').Form;
-    let forms: F[] = [];
-    try { forms = await store.listDocs<F>(paths.forms(orgId, siteId)); } catch { forms = []; }
-    const byId = new Map(forms.map((f) => [f.id, f]));
-    return (formId: string) => {
-      const form = byId.get(formId);
-      if (!form || (form.steps?.length ?? 0) === 0) return undefined;
-      assetBlocks.push(...form.steps!.flatMap((step) => step.blocks ?? []));
-      // Same resolver the deploy runner uses — an app-backed form must
-      // preview against the endpoint it will actually ship with.
-      const appEndpoint = resolveAppFormEndpoint(form, {
-        siteId,
-        portalUrl: (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, ''),
-      });
-      const embed = appEndpoint ?? formEmbedInfo(orgId, siteId, formId);
-      return renderFormHtml(form, embed, {
-        registry: blockRegistry,
-        pow_bits: appEndpoint ? 0 : (isFormsSigningConfigured() ? POW_BITS : 0),
-        lang: (settings as { language?: string }).language,
-      });
-    };
-  })();
+  const formSource = await previewFormSource(orgId, siteId, blockRegistry, settings, assetBlocks);
 
   const renderPartial = (p: typeof header): string => {
     if (!p) return '';
     if (p.content_mode === 'blocks' && p.blocks?.length) {
       return sanitizeBody(
-        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, collectionSource, onMissingType }),
+        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, pageSource, onMissingType }),
         settings.iframe_allowed_hosts,
       );
     }
@@ -306,21 +247,26 @@ export async function renderPreview(
       extensionSource,
     );
     bodyHtml = rewriteIf(sanitizeBody(expanded, settings.iframe_allowed_hosts));
-  } else if (page.content_mode === 'blocks' && page.blocks?.length) {
+  } else if (page.content_mode === 'blocks') {
+    // Template outlines and body bindings read the rendered Page body, never
+    // an obsolete rich-text field that disappears during migration.
+    renderCtx.page = { ...renderCtx.page, ...pageBodyContext(sanitizeBody(renderBlocks(page.blocks ?? [], {
+      registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType,
+    }), settings.iframe_allowed_hosts)) };
     // Apply a page template if assigned — same composition as the
     // static renderer so the preview matches a real build.
-    let effectiveBlocks = page.blocks;
+    let effectiveBlocks = page.blocks ?? [];
     if (page.template) {
       const tpl = await vstore.pageTemplate(orgId, siteId, versionId, page.template);
       const tplBlocks = tpl?.blocks;
       if (tplBlocks?.length) {
-        effectiveBlocks = composePageWithTemplate(tplBlocks, page.blocks);
+        effectiveBlocks = composePageWithTemplate(tplBlocks, page.blocks ?? []);
       }
     }
     bodyHtml = rewriteIf(sanitizeBody(renderBlocks(effectiveBlocks, {
       registry: blockRegistry,
       context: renderCtx,
-      collectionSource,
+      pageSource,
       formSource,
       onMissingType,
       annotate: opts.annotate,
@@ -333,6 +279,7 @@ export async function renderPreview(
     blocksBody = true;
   }
 
+  bodyHtml = prepareHeadingOutline(bodyHtml).html;
   if (bodyHtml.includes('data-tr-form')) {
     const { FORMS_RUNTIME_JS, FORM_SHELL_CSS } = await import('@typeroll/shared');
     bodyHtml += `<style>${FORM_SHELL_CSS}</style><script>${FORMS_RUNTIME_JS}</script>`;
@@ -410,7 +357,13 @@ export async function renderPreviewBySlug(
   versionId: string,
   opts: PreviewOptions = {},
 ): Promise<string | null> {
-  const pages = await vstore.pages(orgId, siteId, versionId);
+  const types = new Map((await vstore.contentTypes(orgId, siteId, versionId)).map(type => [type.id, type]));
+  if (!types.has('page')) types.set('page', DEFAULT_CONTENT_TYPE);
+  const pages = (await vstore.pages(orgId, siteId, versionId)).flatMap(page => {
+    const type = types.get(page.content_type ?? 'page');
+    const resolved = type ? resolveContentPage(page, type) : null;
+    return resolved ? [resolved] : [];
+  });
   const slugPath = slugParts.join('/').replace(/^\/+|\/+$/g, '');
   const norm = (s: string | undefined) => (s ?? '').replace(/^\/+|\/+$/g, '');
   const isHome = slugPath === '' || slugPath === 'home' || slugPath === 'index';
@@ -422,231 +375,9 @@ export async function renderPreviewBySlug(
     : pages.find((p) => norm(p.path !== undefined ? p.path : p.slug) === slugPath);
   if (pageMatch) return renderPreview(orgId, siteId, pageMatch.id, versionId, opts);
 
-  // No page matched — check collection items. Same precedence as the
-  // static-site renderer: pages always win when both could resolve to
-  // the same path. We only get here if no page claimed the slug.
-  const itemRoute = await findCollectionItemRoute(orgId, siteId, versionId, slugPath);
-  if (itemRoute) {
-    return renderPreviewCollectionItem(orgId, siteId, versionId, itemRoute, opts);
-  }
   return null;
 }
 
-/**
- * Per-item preview by collection + item id, without slug resolution. Used
- * by the /v1/.../preview-link endpoint when an agent wants to preview a
- * specific item it just wrote.
- */
-export async function renderPreviewCollectionItemById(
-  orgId: string,
-  siteId: string,
-  versionId: string,
-  collectionName: string,
-  itemId: string,
-  opts: PreviewOptions = {},
-): Promise<{ html: string; path: string } | null> {
-  const collection = await vstore.collection(orgId, siteId, versionId, collectionName);
-  if (!collection) return null;
-  const item = await vstore.collectionItem(orgId, siteId, versionId, collectionName, itemId);
-  if (!item) return null;
-  const items = await vstore.collectionItems(orgId, siteId, versionId, collectionName);
-  const routes = buildCollectionRoutes([collection], new Map([[collection.name, items]]));
-  const route = routes.find((candidate) => candidate.item.id === itemId);
-  if (!route) return null;
-  const html = await renderPreviewCollectionItem(orgId, siteId, versionId, route, opts);
-  return html ? { html, path: route.path } : null;
-}
-
-async function findCollectionItemRoute(
-  orgId: string,
-  siteId: string,
-  versionId: string,
-  slugPath: string,
-): Promise<{ path: string; collection: CollectionDef; item: CollectionItem } | null> {
-  const target = `/${slugPath}`;
-  const collections = await vstore.collections(orgId, siteId, versionId);
-  // Cheap prefilter: only check collections whose route_template starts
-  // with the same first segment as the slug. Saves listing items on every
-  // collection just because something else has more.
-  const candidates = collections.filter((c) => {
-    if (!c.route_template) return false;
-    const first = c.route_template.split('/').filter(Boolean)[0] ?? '';
-    if (!first || first.startsWith('{')) return true; // wildcard root
-    return target.startsWith(`/${first}/`) || target === `/${first}`;
-  });
-  for (const c of candidates) {
-    const items = await vstore.collectionItems(orgId, siteId, versionId, c.name);
-    const routes = buildCollectionRoutes([c], new Map([[c.name, items]]));
-    const found = routes.find((r) => r.path.replace(/^\/+|\/+$/g, '') === slugPath);
-    if (found) return found;
-  }
-  return null;
-}
-
-async function renderPreviewCollectionItem(
-  orgId: string,
-  siteId: string,
-  versionId: string,
-  route: { path: string; collection: CollectionDef; item: CollectionItem },
-  opts: PreviewOptions,
-): Promise<string | null> {
-  const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
-  const siblingItems = await vstore.collectionItems(orgId, siteId, versionId, route.collection.name);
-  const siblingRoutes = buildCollectionRoutes(
-    [route.collection],
-    new Map([[route.collection.name, siblingItems]]),
-  );
-  const navigation = collectionRouteNavigation(route, siblingRoutes, settings.trailing_slash ?? 'always');
-  let partials = await vstore.partials(orgId, siteId, versionId);
-  if (opts.includeWorkingCopies) {
-    const wcs = await listWorkingCopies({ orgId, siteId, versionId });
-    partials = partials.map((p) =>
-      overlayWorkingCopy(p, wcs.find((w) => w.kind === 'partial' && w.target_id === p.id)),
-    );
-    route = {
-      ...route,
-      item: overlayWorkingCopy(
-        route.item,
-        wcs.find(
-          (w) =>
-            w.kind === 'item'
-            && w.collection === route.collection.name
-            && w.target_id === route.item.id,
-        ),
-      ),
-    };
-  }
-  const header = partials.find((p) => p.kind === 'header' && p.status === 'published');
-  const footer = partials.find((p) => p.kind === 'footer' && p.status === 'published');
-  const freeBlocks = partials.filter((p) => p.kind === 'free');
-
-  let robotsBlocked = false;
-  if (versionId !== MAIN_VERSION_ID) {
-    const v = await getStore().getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
-    robotsBlocked = v?.robots_blocked !== false;
-  }
-
-  // Block-tree template wins when set; legacy HTML template otherwise.
-  // The block path uses the same registry + collectionSource as the
-  // page path, with the current item pushed into context so
-  // `template/item_*` blocks resolve correctly.
-  let bodyHtml: string;
-  let blocksBody = false;
-  let blockCss = '';
-  let blockJs = '';
-  const blockRegistry = buildCoreBlockRegistry();
-  const customBlockTypes = await vstore.blockTypes(orgId, siteId, versionId);
-  for (const bt of customBlockTypes) blockRegistry.set(bt.id, bt);
-  const onMissingType = (typeId: string) =>
-    `<div data-tr-missing-block="${escapeHtml(typeId)}" role="alert" style="padding:1rem;border:2px dashed #c53030;color:#742a2a;background:#fff5f5">Missing block type: ${escapeHtml(typeId)}</div>`;
-
-  // collection_list etc. inside an item template might still need a
-  // resolver, even though the typical "related posts on the blog
-  // detail page" pattern is collection-source-driven. Reuse the
-  // empty stub here — wiring full multi-collection preview through
-  // the item path is heavier than needed for this code site.
-  const collectionSource = (): Record<string, unknown>[] => [];
-
-  const itemCtx: RenderContext = {
-    page: {
-      breadcrumbs: collectionItemBreadcrumbs(route, siblingRoutes, settings.trailing_slash ?? 'always'),
-    },
-    site: siteContext(settings as unknown as Record<string, unknown>),
-    item: route.item as unknown as Record<string, unknown>,
-    collection: {
-      name: route.collection.name,
-      label_singular: route.collection.label_singular,
-      label_plural: route.collection.label_plural,
-      ...navigation,
-    },
-  };
-  if (route.collection.item_template_blocks?.length) {
-    bodyHtml = sanitizeBody(renderBlocks(route.collection.item_template_blocks, {
-      registry: blockRegistry,
-      context: itemCtx,
-      collectionSource,
-      onMissingType,
-    }), settings.iframe_allowed_hosts);
-    blocksBody = true;
-  } else {
-    const merged = renderItemTemplate(route.collection.item_template_html, route.item);
-    bodyHtml = sanitizeBody(expandIncludes(merged, freeBlocks), settings.iframe_allowed_hosts);
-  }
-
-  const data = route.item as Record<string, unknown>;
-  const title = String(data.title ?? data.name ?? route.collection.label_singular);
-  const synthetic: Page = {
-    id: route.item.id,
-    title,
-    slug: route.path.replace(/^\/+/, ''),
-    content_mode: 'html',
-    status: 'published',
-    seo_title: String(data.seo_title ?? title),
-    seo_description: String(data.seo_description ?? data.excerpt ?? ''),
-    og_image: typeof data.og_image === 'string' ? data.og_image
-      : typeof data.image === 'string' ? data.image : undefined,
-    kind: 'article',
-    date_updated: route.item.updated_at,
-    date_published: typeof data.date_published === 'string' ? data.date_published : route.item.created_at,
-    html_content: '',
-  };
-
-  const rewriteIf = (html: string) =>
-    opts.browseRoot ? rewriteInternalHrefs(html, opts.browseRoot, opts.embedSuffix ?? '') : html;
-  const renderPartial = (partial: typeof header): string => {
-    if (!partial) return '';
-    return sanitizeBody(partial.content_mode === 'blocks'
-      ? renderBlocks(partial.blocks ?? [], { registry: blockRegistry, context: itemCtx, collectionSource, onMissingType })
-      : expandIncludes(partial.html_content ?? '', freeBlocks), settings.iframe_allowed_hosts);
-  };
-  const assets = collectBlockAssets([
-    ...(header?.content_mode === 'blocks' ? header.blocks ?? [] : []),
-    ...(footer?.content_mode === 'blocks' ? footer.blocks ?? [] : []),
-    ...(route.collection.item_template_blocks ?? []),
-  ], blockRegistry, { includeScripts: opts.allowScripts === true });
-  blockCss = assets.css;
-  blockJs = assets.js;
-  const editorExtensionRuntime = opts.editorCanvasId && bodyHtml.includes('data-tr-extension-installation')
-    ? await (await import('./extensions/editor-runtime')).buildExtensionEditorRuntimeScript(orgId, siteId, versionId, opts.editorCanvasId)
-    : '';
-  const cookieConsentHtml = opts.allowScripts === true
-    ? rewriteIf(renderPreviewCookieConsent(settings))
-    : '';
-  return resolvePreviewMedia(buildHtml({
-    page: synthetic,
-    versionId,
-    settings,
-    headerHtml: rewriteIf(renderPartial(header)),
-    footerHtml: rewriteIf(renderPartial(footer)),
-    bodyHtml: rewriteIf(bodyHtml),
-    blocksBody,
-    blockCss,
-    blockJs,
-    allowScripts: opts.allowScripts === true,
-    editorCanvasId: opts.editorCanvasId,
-    editorCanvasInteractive: opts.annotate === true,
-    editorExtensionRuntime,
-    previewNavigationBridge: buildPreviewNavigationBridgeScript(opts),
-    cookieConsentHtml,
-    robotsBlocked,
-    banner: opts.showBanner ? {
-      versionId,
-      pageStatus: 'published',
-      pageSlug: synthetic.slug,
-      liveUrl: opts.liveBase && isContentDeployed(opts.deployedVersion ?? null, { date_updated: route.item.updated_at, date_created: route.item.created_at }) ? `${opts.liveBase.replace(/\/$/, '')}${route.path}` : null,
-      editorUrl: `/app/sites/${siteId}/collections/${route.collection.name}/items/${route.item.id}`,
-    } : null,
-  }), orgId, siteId, opts);
-}
-
-/**
- * Replace `href="/foo"` (and single-quoted variant) with `href="{root}/foo"`.
- * Skips protocol-relative (`//`), absolute, pure-anchor (`#x`), mailto, and
- * tel hrefs. Fragments are preserved and re-attached AFTER the signed-token
- * suffix: `/#ansokan` → `{root}/?t=…#ansokan`. (Regression: the old pattern
- * excluded `#` entirely, so `/#section` hrefs escaped the preview surface
- * and bounced visitors to the portal login.)
- */
 function rewriteInternalHrefs(html: string, root: string, suffix: string): string {
   const cleanRoot = root.replace(/\/$/, '');
   return html.replace(
@@ -929,4 +660,32 @@ async function resolvePreviewMedia(html: string, orgId: string, siteId: string, 
   if (opts.sharedMediaToken) return html;
   const { authorizePreviewMedia } = await import('./publishing/media-storage');
   return authorizePreviewMedia(html, orgId, siteId);
+}
+
+async function previewFormSource(orgId: string, siteId: string, blockRegistry: ReturnType<typeof buildCoreBlockRegistry>, settings: SiteSettings, assetBlocks: Block[]) {
+    const { renderFormHtml } = await import('@typeroll/shared');
+    const { formEmbedInfo, POW_BITS, isFormsSigningConfigured } = await import('./forms-signing');
+    const { resolveAppFormEndpoint } = await import('./apps/form-endpoint');
+    type F = import('@typeroll/shared').Form;
+    let forms: F[] = [];
+    try { forms = await getStore().listDocs<F>(paths.forms(orgId, siteId)); } catch { forms = []; }
+    const byId = new Map(forms.map((f) => [f.id, f]));
+    return (formId: string) => {
+      const form = byId.get(formId);
+      if (!form || (form.steps?.length ?? 0) === 0) return undefined;
+      assetBlocks.push(...form.steps!.flatMap((step) => step.blocks ?? []));
+      // Same resolver the deploy runner uses — an app-backed form must
+      // preview against the endpoint it will actually ship with.
+      const appEndpoint = resolveAppFormEndpoint(form, {
+        siteId,
+        portalUrl: (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, ''),
+      });
+      const embed = appEndpoint ?? formEmbedInfo(orgId, siteId, formId);
+      return renderFormHtml(form, embed, {
+        registry: blockRegistry,
+        pow_bits: appEndpoint ? 0 : (isFormsSigningConfigured() ? POW_BITS : 0),
+        lang: (settings as { language?: string }).language,
+      });
+    };
+
 }

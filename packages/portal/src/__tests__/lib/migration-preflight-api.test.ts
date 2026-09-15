@@ -66,7 +66,7 @@ describe('POST /api/v1/sites/{siteId}/migration-preflight', () => {
       template_capabilities_version: string;
       composition_reviews: Array<{
         status: string;
-        missing_item_fields: string[];
+        missing_fields: string[];
       }>;
     };
     expect(body.compositions_ready).toBe(false);
@@ -74,7 +74,7 @@ describe('POST /api/v1/sites/{siteId}/migration-preflight', () => {
     expect(body.template_capabilities_version).toBeTruthy();
     expect(body.composition_reviews[0]).toMatchObject({
       status: 'waiting_for_native_support',
-      missing_item_fields: ['body'],
+      missing_fields: [],
     });
   });
 

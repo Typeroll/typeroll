@@ -1,20 +1,21 @@
-// Map WordPress custom post types onto Typeroll collections.
+// Map WordPress custom post types onto Typeroll content types.
 //
 // Strategy:
 //   1. Enumerate every non-builtin post type via /wp-json/wp/v2/types.
 //   2. For each type, fetch a sample item and infer the field schema from
 //      what's actually present (acf{}, meta{}, native fields like content/
 //      excerpt/title/date).
-//   3. Create a collection on the target site with that schema.
-//   4. Import items as collection items — main body via AI reconstruction,
-//      custom fields mapped onto their corresponding collection fields.
+//   3. Create a content type on the target site with that schema.
+//   4. Import entries as Pages — main body via AI reconstruction,
+//      custom fields mapped onto their corresponding content type fields.
 
+import { PAGE_BUILTIN_FIELDS } from '@typeroll/shared';
 import type { FieldDefinition, FieldType } from '@typeroll/shared';
 import type { WPItem, WPPostType } from './client';
 import { normalizeWordPressPlainText } from './plain-text';
 
-export interface InferredCollection {
-  /** Machine name suitable for paths.collection(...) */
+export interface InferredContentType {
+  /** Machine name suitable for paths.contentType(...) */
   name: string;
   label_singular: string;
   label_plural: string;
@@ -27,47 +28,19 @@ export interface InferredCollection {
 }
 
 const BASE_FIELDS: FieldDefinition[] = [
-  { name: 'title', label: 'Title', type: 'text', required: true },
-  { name: 'slug', label: 'Slug', type: 'text' },
-  { name: 'body', label: 'Body (HTML)', type: 'richtext' },
   { name: 'excerpt', label: 'Excerpt', type: 'textarea' },
   { name: 'featured_image', label: 'Featured image', type: 'image' },
-  { name: 'published_at', label: 'Published at', type: 'date' },
 ];
 
-/** Build a collection definition for a custom post type, inferring extra fields from a sample item. */
-export function inferCollection(type: WPPostType, sampleItem: WPItem | undefined): InferredCollection {
+/** Build a content type definition for a custom post type, inferring extra fields from a sample item. */
+export function inferContentType(type: WPPostType, sampleItem: WPItem | undefined): InferredContentType {
   const name = sanitizeMachineName(type.slug);
   const labelSingular = type.name || titleCase(type.slug);
   const labelPlural = pluralize(labelSingular);
 
   const fields: FieldDefinition[] = [...BASE_FIELDS];
 
-  // Add fields for ACF entries on the sample.
-  if (sampleItem?.acf && typeof sampleItem.acf === 'object') {
-    for (const [key, value] of Object.entries(sampleItem.acf)) {
-      if (BASE_FIELDS.some((f) => f.name === key)) continue;
-      fields.push({
-        name: sanitizeMachineName(key),
-        label: titleCase(key),
-        type: inferFieldType(value),
-      });
-    }
-  }
-
-  // Add fields for any `meta` entries on the sample (when register_post_meta
-  // with show_in_rest was used). Skip _underscore-prefixed (internal).
-  if (sampleItem?.meta && typeof sampleItem.meta === 'object') {
-    for (const [key, value] of Object.entries(sampleItem.meta)) {
-      if (key.startsWith('_')) continue;
-      if (fields.some((f) => f.name === key)) continue;
-      fields.push({
-        name: sanitizeMachineName(key),
-        label: titleCase(key),
-        type: inferFieldType(value),
-      });
-    }
-  }
+  for (const [name, value] of customValues(sampleItem)) fields.push({ name, label: titleCase(name), type: inferFieldType(value) });
 
   return {
     name,
@@ -81,42 +54,41 @@ export function inferCollection(type: WPPostType, sampleItem: WPItem | undefined
 }
 
 /**
- * Build the dynamic field data for one item, given the collection's schema.
+ * Build custom Page field data from the content type's schema.
  * Values from acf{} and meta{} are matched by sanitized name; anything not in
  * the schema is dropped (the API enforces this whitelist anyway).
  */
 export function projectItemFields(
   item: WPItem,
   fields: FieldDefinition[],
-  featuredImageUrl: string | undefined,
-  bodyHtml: string
+  featuredImageUrl: string | undefined
 ): Record<string, unknown> {
-  const out: Record<string, unknown> = {
-    title: item.title?.rendered ? normalizeWordPressPlainText(item.title.rendered) : '',
-    slug: item.slug,
-    body: bodyHtml,
-    excerpt: item.excerpt?.rendered ? normalizeWordPressPlainText(item.excerpt.rendered) : '',
-    featured_image: featuredImageUrl ?? '',
-    published_at: item.date,
-  };
-
-  const acf = (item.acf ?? {}) as Record<string, unknown>;
-  const meta = (item.meta ?? {}) as Record<string, unknown>;
-
-  for (const field of fields) {
-    if (field.name in out) continue; // base fields already set
-    const fromAcf = acf[field.name];
-    if (fromAcf !== undefined && fromAcf !== null) {
-      out[field.name] = coerceForField(fromAcf, field.type);
-      continue;
-    }
-    const fromMeta = meta[field.name];
-    if (fromMeta !== undefined && fromMeta !== null) {
-      out[field.name] = coerceForField(fromMeta, field.type);
-    }
-  }
+  const values = new Map<string, unknown>([
+    ['excerpt', item.excerpt?.rendered ? normalizeWordPressPlainText(item.excerpt.rendered) : ''],
+    ['featured_image', featuredImageUrl ?? ''],
+    ...customValues(item),
+  ]);
+  const out: Record<string, unknown> = {};
+  for (const field of fields) if (values.has(field.name)) out[field.name] = coerceForField(values.get(field.name), field.type);
 
   return out;
+}
+
+/** Preserve ACF names that overlap built-in Page fields without changing Page metadata. */
+function customValues(item: WPItem | undefined): Map<string, unknown> {
+  const values = new Map<string, unknown>();
+  for (const [namespace, source] of [['acf', item?.acf], ['meta', item?.meta]] as const) {
+    if (!source || typeof source !== 'object') continue;
+    for (const [key, value] of Object.entries(source).sort(([a], [b]) => a.localeCompare(b))) {
+      if (key.startsWith('_') || value == null) continue;
+      let name = sanitizeMachineName(key);
+      if (PAGE_BUILTIN_FIELDS.has(name) || BASE_FIELDS.some(field => field.name === name)) name = `wp_${name}`;
+      if (namespace === 'meta') name = `meta_${name}`;
+      if (values.has(name)) throw new Error(`WordPress field names collide after normalization: ${name}. Rename a source field before importing.`);
+      values.set(name, value);
+    }
+  }
+  return values;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────

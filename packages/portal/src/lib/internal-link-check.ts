@@ -1,15 +1,14 @@
 import {
   applyTrailingSlash,
-  buildCollectionRoutes,
+  resolveContentPage,
+  DEFAULT_CONTENT_TYPE,
+  pageContentValues,
   facetRoutes,
   matchRedirect,
   paths,
-  renderItemTemplate,
   sortRedirectsForEmit,
 } from '@typeroll/shared';
 import type {
-  CollectionDef,
-  CollectionItem,
   Media,
   Page,
   Partial as PartialDoc,
@@ -51,33 +50,29 @@ export async function checkInternalLinks(args: {
   site: Site & { id: string };
 }): Promise<InternalLinkReport> {
   const { store, orgId, siteId, versionId } = args;
-  const [pages, partials, collections, templates, redirects, media, settings] = await Promise.all([
+  const [pages, partials, contentTypes, templates, redirects, media, settings] = await Promise.all([
     vstore.pages(orgId, siteId, versionId),
     vstore.partials(orgId, siteId, versionId),
-    vstore.collections(orgId, siteId, versionId),
+    vstore.contentTypes(orgId, siteId, versionId),
     vstore.pageTemplates(orgId, siteId, versionId),
     vstore.redirects(orgId, siteId, versionId),
     store.listDocs<Media>(paths.media(orgId, siteId)),
     vstore.settings(orgId, siteId, versionId),
   ]);
   const trailingSlash = settings?.trailing_slash ?? 'always';
-  const itemsByCollection = new Map<string, CollectionItem[]>();
-  for (const collection of collections) {
-    itemsByCollection.set(
-      collection.name,
-      await vstore.collectionItems(orgId, siteId, versionId, collection.name),
-    );
-  }
-
-  const routes = new Set<string>(['/', '/404.html', '/robots.txt', '/sitemap.xml']);
-  const livePages = pages.filter((page) => page.status === 'published' || page.status === 'unlisted');
-  for (const page of livePages) routes.add(normalizeRoute(pageUrlFromDoc(page)));
-  for (const route of buildCollectionRoutes(collections, itemsByCollection)) {
-    routes.add(normalizeRoute(route.path));
-  }
-  for (const collection of collections) {
-    const published = (itemsByCollection.get(collection.name) ?? []).filter((item) => item.status === 'published');
-    for (const route of facetRoutes(collection, published)) routes.add(normalizeRoute(route.path));
+  const types = new Map(contentTypes.map(type => [type.id, type]));
+  if (!types.has('page')) types.set('page', DEFAULT_CONTENT_TYPE);
+  const routes = new Set<string>(['/404.html', '/robots.txt', '/sitemap.xml']);
+  const livePages = pages.filter(page => page.status === 'published' || page.status === 'unlisted').flatMap(page => {
+    const type = types.get(page.content_type ?? 'page');
+    const resolved = type ? resolveContentPage(page, type) : null;
+    return resolved ? [resolved] : [];
+  });
+  for (const page of livePages) routes.add(normalizeRoute(page.path!));
+  for (const type of types.values()) {
+    const published = pages.filter(page => page.status === 'published' && (page.content_type ?? 'page') === type.id)
+      .map(page => ({ ...pageContentValues(page), id: page.id }));
+    for (const route of facetRoutes(type, published)) routes.add(normalizeRoute(route.path));
   }
 
   const internalOrigins = new Set(
@@ -97,7 +92,7 @@ export async function checkInternalLinks(args: {
   for (const page of livePages) {
     sources.push({
       label: `page:${page.id}`,
-      value: contentOf(page),
+      value: { body: contentOf(page), fields: page.fields },
       basePath: applyTrailingSlash(pageUrlFromDoc(page), trailingSlash),
     });
   }
@@ -107,33 +102,6 @@ export async function checkInternalLinks(args: {
   for (const template of templates.filter((entry) => entry.status === 'published')) {
     sources.push({ label: `template:${template.id}`, value: template.blocks, basePath: '/' });
   }
-  for (const collection of collections) {
-    const publishedItems = (itemsByCollection.get(collection.name) ?? [])
-      .filter((entry) => entry.status === 'published');
-    if (publishedItems.length === 0) {
-      sources.push({
-        label: `collection:${collection.name}:template`,
-        value: { html: collection.item_template_html, blocks: collection.item_template_blocks },
-        basePath: '/',
-      });
-    }
-    for (const item of publishedItems) {
-      const itemPath = buildCollectionRoutes(
-        [collection],
-        new Map([[collection.name, [item]]]),
-      )[0]?.path ?? '/';
-      sources.push({
-        label: `item:${collection.name}/${item.id}`,
-        value: {
-          fields: schemaValues(collection, item),
-          html: renderItemTemplate(collection.item_template_html, item),
-          blocks: collection.item_template_blocks,
-        },
-        basePath: applyTrailingSlash(itemPath, trailingSlash),
-      });
-    }
-  }
-
   const sortedRedirects = sortRedirectsForEmit(redirects);
   const broken: BrokenInternalLink[] = [];
   let checkedLinks = 0;
@@ -174,10 +142,6 @@ export async function checkInternalLinks(args: {
 
 function contentOf(doc: Pick<Page | PartialDoc, 'content_mode' | 'html_content' | 'blocks'>): unknown {
   return doc.content_mode === 'blocks' ? doc.blocks : doc.html_content;
-}
-
-function schemaValues(collection: CollectionDef, item: CollectionItem): Record<string, unknown> {
-  return Object.fromEntries(collection.fields.map((field) => [field.name, item[field.name]]));
 }
 
 function extractHrefs(value: unknown): string[] {

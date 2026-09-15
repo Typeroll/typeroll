@@ -1,0 +1,23 @@
+{
+  "name": "blog",
+  "label_singular": "Blog post",
+  "label_plural": "Blog posts",
+  "fields": [
+    {
+      "name": "excerpt",
+      "label": "Excerpt",
+      "type": "textarea"
+    },
+    {
+      "name": "featured_image",
+      "label": "Featured image",
+      "type": "image"
+    }
+  ],
+  "route_template": "/blog/{slug}",
+  "template": "content-type-blog",
+  "created_at": "2026-05-19T12:14:53.022Z",
+  "icon": "✍️",
+  "sort_field": "date_published",
+  "sort_dir": "desc"
+}

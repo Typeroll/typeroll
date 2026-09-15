@@ -87,22 +87,22 @@ describe('changes-since-deploy', () => {
     expect(body.changes[0]).toMatchObject({ kind: 'page', id: 'wip', will_deploy: false, status: 'draft' });
   });
 
-  it('includes changed partials and collection items', async () => {
+  it('includes changed partials and typed Pages', async () => {
     const { getStore } = await import('../../lib/datastore');
     await getStore().setDoc(paths.partial(ORG, SITE, 'header', MAIN_VERSION_ID), {
       name: 'Header', kind: 'header', content_mode: 'html', status: 'published',
       html_content: '<nav/>', date_updated: AFTER,
     });
-    await getStore().setDoc(paths.collection(ORG, SITE, 'blog', MAIN_VERSION_ID), {
+    await getStore().setDoc(paths.contentType(ORG, SITE, 'blog', MAIN_VERSION_ID), {
       name: 'blog', label_singular: 'Post', label_plural: 'Posts',
-      fields: [{ name: 'title', type: 'text', label: 'Title' }],
+      fields: [], route_template: '/blog/{slug}',
     });
-    await getStore().setDoc(paths.collectionItem(ORG, SITE, 'blog', 'p1', MAIN_VERSION_ID), {
-      title: 'Post 1', status: 'published', updated_at: AFTER,
+    await getStore().setDoc(paths.page(ORG, SITE, 'p1', MAIN_VERSION_ID), {
+      content_type: 'blog', title: 'Post 1', slug: 'post-1', status: 'published', date_updated: AFTER,
     });
     const body = await call();
     const kinds = body.changes.map((c) => c.kind).sort();
-    expect(kinds).toEqual(['collection_item', 'partial']);
+    expect(kinds).toEqual(['page', 'partial']);
     expect(body.changes.every((c) => c.will_deploy)).toBe(true);
   });
 

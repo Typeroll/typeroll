@@ -8,8 +8,6 @@
 
 import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
 import type {
-  CollectionDef,
-  CollectionItem,
   Page,
   Partial as PartialDoc,
   Redirect,
@@ -18,6 +16,7 @@ import type {
 } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { snapshotRevision } from './revisions';
+import { vstore } from './version-store';
 
 export type ChangeSet = { added: string[]; modified: string[]; deleted: string[] };
 
@@ -25,9 +24,9 @@ export interface VersionDiff {
   pages: ChangeSet;
   partials: ChangeSet;
   redirects: ChangeSet;
-  collections: ChangeSet;
-  /** Per-collection changes for items. Empty record means no item changes. */
-  collectionItems: Record<string, ChangeSet>;
+  contentTypes: ChangeSet;
+  pageTemplates: ChangeSet;
+  blockTypes: ChangeSet;
   settings: 'unchanged' | 'modified';
   /** Total number of changed entities across the diff. */
   totalChanges: number;
@@ -74,41 +73,32 @@ export async function diffVersion(
 ): Promise<VersionDiff> {
   // Pages
   const branchPages = await listIds(paths.pages(orgId, siteId, branchId));
-  const basePages = await listIds(paths.pages(orgId, siteId, baseId));
+  const basePages = new Set((await vstore.pages(orgId, siteId, baseId)).map(page => page.id));
   const branchPageTombs = await listIds(tombstoneCollectionPath(orgId, siteId, branchId, 'pages'));
   const pages = classify(branchPages, basePages, branchPageTombs);
 
   // Partials
   const branchPartials = await listIds(paths.partials(orgId, siteId, branchId));
-  const basePartials = await listIds(paths.partials(orgId, siteId, baseId));
+  const basePartials = new Set((await vstore.partials(orgId, siteId, baseId)).map(partial => partial.id));
   const branchPartialTombs = await listIds(tombstoneCollectionPath(orgId, siteId, branchId, 'partials'));
   const partials = classify(branchPartials, basePartials, branchPartialTombs);
 
   // Redirects
   const branchRedirects = await listIds(paths.redirects(orgId, siteId, branchId));
-  const baseRedirects = await listIds(paths.redirects(orgId, siteId, baseId));
+  const baseRedirects = new Set((await vstore.redirects(orgId, siteId, baseId)).map(redirect => redirect.id));
   const branchRedirectTombs = await listIds(tombstoneCollectionPath(orgId, siteId, branchId, 'redirects'));
   const redirects = classify(branchRedirects, baseRedirects, branchRedirectTombs);
 
-  // Collections (defs) + per-collection items
-  const branchColls = await listIds(paths.collections(orgId, siteId, branchId));
-  const baseColls = await listIds(paths.collections(orgId, siteId, baseId));
-  const branchCollTombs = await listIds(tombstoneCollectionPath(orgId, siteId, branchId, 'collections'));
-  const collections = classify(branchColls, baseColls, branchCollTombs);
-
-  // Items for every collection that exists on either side. We need to also
-  // catch items added on collections that existed before the branch.
-  const allCollIds = new Set<string>([...branchColls, ...baseColls]);
-  const collectionItems: Record<string, ChangeSet> = {};
-  for (const name of allCollIds) {
-    const branchItems = await listIds(paths.collectionItems(orgId, siteId, name, branchId));
-    const baseItems = await listIds(paths.collectionItems(orgId, siteId, name, baseId));
-    const branchItemTombs = await listIds(tombstoneCollectionPath(orgId, siteId, branchId, `collection-items:${name}`));
-    const cs = classify(branchItems, baseItems, branchItemTombs);
-    if (cs.added.length || cs.modified.length || cs.deleted.length) {
-      collectionItems[name] = cs;
-    }
-  }
+  const branchTypes = await listIds(paths.contentTypes(orgId, siteId, branchId));
+  const baseTypes = new Set((await vstore.contentTypes(orgId, siteId, baseId)).map(type => type.id));
+  const typeTombs = await listIds(tombstoneCollectionPath(orgId, siteId, branchId, 'content_types'));
+  const contentTypes = classify(branchTypes, baseTypes, typeTombs);
+  const pageTemplates = classify(await listIds(paths.pageTemplates(orgId, siteId, branchId)),
+    new Set((await vstore.pageTemplates(orgId, siteId, baseId)).map(template => template.id)),
+    await listIds(tombstoneCollectionPath(orgId, siteId, branchId, 'page-templates')));
+  const blockTypes = classify(await listIds(paths.blockTypes(orgId, siteId, branchId)),
+    new Set((await vstore.blockTypes(orgId, siteId, baseId)).map(type => type.id)),
+    await listIds(tombstoneCollectionPath(orgId, siteId, branchId, 'block-types')));
 
   // Settings (singleton)
   const branchSettings = await getStore().getDoc<SiteSettings>(paths.settings(orgId, siteId, branchId));
@@ -118,14 +108,12 @@ export async function diffVersion(
     pages.added.length + pages.modified.length + pages.deleted.length +
     partials.added.length + partials.modified.length + partials.deleted.length +
     redirects.added.length + redirects.modified.length + redirects.deleted.length +
-    collections.added.length + collections.modified.length + collections.deleted.length +
-    Object.values(collectionItems).reduce(
-      (n, c) => n + c.added.length + c.modified.length + c.deleted.length,
-      0,
-    ) +
+    contentTypes.added.length + contentTypes.modified.length + contentTypes.deleted.length +
+    pageTemplates.added.length + pageTemplates.modified.length + pageTemplates.deleted.length +
+    blockTypes.added.length + blockTypes.modified.length + blockTypes.deleted.length +
     (settings === 'modified' ? 1 : 0);
 
-  return { pages, partials, redirects, collections, collectionItems, settings, totalChanges };
+  return { pages, partials, redirects, contentTypes, pageTemplates, blockTypes, settings, totalChanges };
 }
 
 /**
@@ -174,7 +162,7 @@ export async function promoteBranch(
     await copy(paths.page(orgId, siteId, id, branchId), paths.page(orgId, siteId, id, baseId));
   }
   for (const id of diff.pages.deleted) {
-    await store.deleteDoc(paths.page(orgId, siteId, id, baseId)).catch(() => {});
+    await vstore.deletePage(orgId, siteId, baseId, id);
   }
 
   // Partials
@@ -185,7 +173,7 @@ export async function promoteBranch(
     await copy(paths.partial(orgId, siteId, id, branchId), paths.partial(orgId, siteId, id, baseId));
   }
   for (const id of diff.partials.deleted) {
-    await store.deleteDoc(paths.partial(orgId, siteId, id, baseId)).catch(() => {});
+    await vstore.deletePartial(orgId, siteId, baseId, id);
   }
 
   // Redirects
@@ -196,31 +184,27 @@ export async function promoteBranch(
     );
   }
   for (const id of diff.redirects.deleted) {
-    await store.deleteDoc(`${paths.redirects(orgId, siteId, baseId)}/${id}`).catch(() => {});
+    await vstore.deleteRedirect(orgId, siteId, baseId, id);
   }
 
-  // Collections (defs)
-  for (const name of [...diff.collections.added, ...diff.collections.modified]) {
-    await copy(paths.collection(orgId, siteId, name, branchId), paths.collection(orgId, siteId, name, baseId));
+  for (const id of [...diff.contentTypes.added, ...diff.contentTypes.modified]) {
+    await copy(paths.contentType(orgId, siteId, id, branchId), paths.contentType(orgId, siteId, id, baseId));
   }
-  for (const name of diff.collections.deleted) {
-    await store.deleteDoc(paths.collection(orgId, siteId, name, baseId)).catch(() => {});
+  for (const id of diff.contentTypes.deleted) {
+    await vstore.deleteContentType(orgId, siteId, baseId, id);
   }
+  for (const id of [...diff.pageTemplates.added, ...diff.pageTemplates.modified]) {
+    await copy(paths.pageTemplate(orgId, siteId, id, branchId), paths.pageTemplate(orgId, siteId, id, baseId));
+  }
+  for (const id of diff.pageTemplates.deleted) await vstore.deletePageTemplate(orgId, siteId, baseId, id);
+  for (const id of [...diff.blockTypes.added, ...diff.blockTypes.modified]) {
+    await copy(paths.blockType(orgId, siteId, id, branchId), paths.blockType(orgId, siteId, id, baseId));
+  }
+  for (const id of diff.blockTypes.deleted) await vstore.deleteBlockType(orgId, siteId, baseId, id);
 
-  // Collection items per-collection
-  for (const [name, cs] of Object.entries(diff.collectionItems)) {
-    for (const id of [...cs.added, ...cs.modified, ...cs.deleted]) {
-      await snapshotBase('collection-item', [name, id], paths.collectionItem(orgId, siteId, name, id, baseId));
-    }
-    for (const id of [...cs.added, ...cs.modified]) {
-      await copy(
-        paths.collectionItem(orgId, siteId, name, id, branchId),
-        paths.collectionItem(orgId, siteId, name, id, baseId),
-      );
-    }
-    for (const id of cs.deleted) {
-      await store.deleteDoc(paths.collectionItem(orgId, siteId, name, id, baseId)).catch(() => {});
-    }
+  // Reintroduced overrides must unhide a tombstoned record on the destination.
+  for (const [kind, changes] of [['pages', diff.pages], ['partials', diff.partials], ['redirects', diff.redirects], ['content_types', diff.contentTypes], ['page-templates', diff.pageTemplates], ['block-types', diff.blockTypes]] as const) {
+    for (const id of [...changes.added, ...changes.modified]) await store.deleteDoc(tombstonePath(orgId, siteId, baseId, kind, id));
   }
 
   // Settings
@@ -262,39 +246,20 @@ export async function resetBranch(
     (id) => `${paths.redirects(orgId, siteId, branchId)}/${id}`,
   );
   await deleteAll(
-    [...diff.collections.added, ...diff.collections.modified],
-    (name) => paths.collection(orgId, siteId, name, branchId),
+    [...diff.contentTypes.added, ...diff.contentTypes.modified],
+    (name) => paths.contentType(orgId, siteId, name, branchId),
   );
-  for (const [name, cs] of Object.entries(diff.collectionItems)) {
-    await deleteAll(
-      [...cs.added, ...cs.modified],
-      (id) => paths.collectionItem(orgId, siteId, name, id, branchId),
-    );
-  }
+  await deleteAll([...diff.pageTemplates.added, ...diff.pageTemplates.modified], id => paths.pageTemplate(orgId, siteId, id, branchId));
+  await deleteAll([...diff.blockTypes.added, ...diff.blockTypes.modified], id => paths.blockType(orgId, siteId, id, branchId));
   if (diff.settings === 'modified') {
     await store.deleteDoc(paths.settings(orgId, siteId, branchId)).catch(() => {});
   }
 
   // Tombstones
-  for (const id of diff.pages.deleted) {
-    await store.deleteDoc(tombstonePath(orgId, siteId, branchId, 'pages', id)).catch(() => {});
-  }
-  for (const id of diff.partials.deleted) {
-    await store.deleteDoc(tombstonePath(orgId, siteId, branchId, 'partials', id)).catch(() => {});
-  }
-  for (const id of diff.redirects.deleted) {
-    await store.deleteDoc(tombstonePath(orgId, siteId, branchId, 'redirects', id)).catch(() => {});
-  }
-  for (const name of diff.collections.deleted) {
-    await store.deleteDoc(tombstonePath(orgId, siteId, branchId, 'collections', name)).catch(() => {});
-  }
-  for (const [name, cs] of Object.entries(diff.collectionItems)) {
-    for (const id of cs.deleted) {
-      await store
-        .deleteDoc(tombstonePath(orgId, siteId, branchId, `collection-items:${name}`, id))
-        .catch(() => {});
+  for (const kind of ['pages', 'partials', 'redirects', 'content_types', 'page-templates', 'block-types']) {
+    for (const id of await listIds(tombstoneCollectionPath(orgId, siteId, branchId, kind))) {
+      await store.deleteDoc(tombstonePath(orgId, siteId, branchId, kind, id));
     }
   }
-
   return diff;
 }

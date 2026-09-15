@@ -11,13 +11,14 @@
 // equivalent so every surface shares one write semantics. Deploys, shared
 // preview links and default previews only ever see committed content.
 
-import type { Page } from '@typeroll/shared';
+import { pageAuthorityFields, type Page } from '@typeroll/shared';
 import { vstore } from './version-store';
-import type { WriteActor } from './field-authority';
+import { applyFieldAuthority, conflictResponse, type WriteActor } from './field-authority';
+import { pageAddress, pageContentType } from './page-fields';
 import { markSiteDirty } from './auto-deploy';
 import { sanitizeBody } from './sanitize';
 import { diffSanitizationDetails, type SanitizationWarningDetail } from './sanitize-warnings';
-import { pageUrlFromDoc, validatePathField } from './page-paths';
+import { validatePathField } from './page-paths';
 import { isLivePageStatus, retireRedirectsShadowingUrl } from './redirect-hygiene';
 import {
   commitWorkingCopy,
@@ -34,7 +35,6 @@ import {
  *  (lib/scheduled-publish.ts) fires on; like status they must never ride
  *  in a working copy. Items share the page's schedule fields. */
 const IMMEDIATE_PAGE_FIELDS = ['status', 'date_published', 'publish_at', 'unpublish_at'] as const;
-const IMMEDIATE_ITEM_FIELDS = ['status', 'publish_at', 'unpublish_at'] as const;
 const IMMEDIATE_FIELDS = ['status'] as const;
 
 export interface ContentWriteResult {
@@ -72,6 +72,7 @@ export async function applyContentWrite(
     retired_redirects: [],
   };
   const fields = { ...rawFields };
+  if (fields.status !== undefined && !['draft', 'review', 'unlisted', 'published'].includes(String(fields.status))) throw new WorkingCopyError('Invalid publication status', 400);
 
   // Page-specific input validation — fail fast at draft-write time, not
   // at commit when the agent has already moved on.
@@ -106,13 +107,23 @@ export async function applyContentWrite(
   // Split publish-state fields from content fields.
   const immediateKeys = target.kind === 'page'
     ? IMMEDIATE_PAGE_FIELDS
-    : target.kind === 'item' ? IMMEDIATE_ITEM_FIELDS : IMMEDIATE_FIELDS;
+    : IMMEDIATE_FIELDS;
   const immediate: Record<string, unknown> = {};
   for (const k of immediateKeys) {
     if (k in fields) {
       immediate[k] = fields[k];
       delete fields[k];
     }
+  }
+
+  if (target.kind === 'page') {
+    const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
+    if (!page) throw new WorkingCopyError('Page not found', 404);
+    const type = await pageContentType(ctx, page);
+    if (!type) throw new WorkingCopyError('Content type not found', 400);
+    const authority = applyFieldAuthority({ fields: pageAuthorityFields(type), incoming: { ...fields, ...(fields.fields as Record<string, unknown> ?? {}) },
+      existing: page, actor: opts.actor ?? 'agent', actorId: opts.updatedBy });
+    if (authority.rejected.length) throw new WorkingCopyError(conflictResponse(authority.rejected).error, 409);
   }
 
   // Content → working copy (whitelisted per kind).
@@ -129,7 +140,7 @@ export async function applyContentWrite(
   }
 
   if (opts.save) {
-    const commit = await commitWorkingCopy(ctx, target, opts.updatedBy, opts.actor);
+    const commit = await commitWorkingCopy(ctx, target, opts.updatedBy, opts.actor ?? 'agent');
     result.committed = commit.committed;
     result.seo_warnings = commit.seo_warnings;
     result.auto_redirects = [...result.auto_redirects, ...commit.auto_redirects];
@@ -156,9 +167,10 @@ async function applyImmediate(
     // claims — retire it, or the deploy's `_redirects` shadows the page.
     if ('status' in immediate) {
       const fresh = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
-      if (fresh && isLivePageStatus(fresh.status)) {
+      const address = fresh ? await pageAddress(ctx, fresh) : null;
+      if (fresh && address && isLivePageStatus(fresh.status)) {
         result.retired_redirects = (
-          await retireRedirectsShadowingUrl(ctx.orgId, ctx.siteId, ctx.versionId, pageUrlFromDoc(fresh))
+          await retireRedirectsShadowingUrl(ctx.orgId, ctx.siteId, ctx.versionId, address)
         ).map((r) => ({ from_path: r.from_path, to_path: r.to_path }));
       }
     }
@@ -181,15 +193,5 @@ async function applyImmediate(
     });
     return;
   }
-  const existing = await vstore.collectionItem(
-    ctx.orgId, ctx.siteId, ctx.versionId, target.collection, target.id,
-  );
-  if (!existing) throw new WorkingCopyError('Item not found', 404);
-  await vstore.writeCollectionItem(ctx.orgId, ctx.siteId, ctx.versionId, target.collection, target.id, {
-    ...immediate,
-    updated_at: now,
-  });
-  // Publish-state changes (status, publish_at) change what the built site
-  // contains just as much as a content edit, so they mark the site dirty too.
-  await markSiteDirty(ctx.orgId, ctx.siteId);
+  throw new WorkingCopyError('Unknown content kind', 400);
 }

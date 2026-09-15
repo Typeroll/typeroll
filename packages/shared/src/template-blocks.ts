@@ -27,7 +27,7 @@ const pageTitle: BlockType = {
     { name: 'level', type: 'select', label: 'Level (semantic)',
       options: ['h1', 'h2', 'h3', 'h4'], default: 'h1' },
     { name: 'size', type: 'select', label: 'Visual size',
-      options: ['auto', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'], default: 'auto', responsive: true },
+      options: ['auto', 'theme', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'], default: 'auto', responsive: true },
     { name: 'align', type: 'select', label: 'Alignment',
       options: ['left', 'center', 'right'], default: 'left', responsive: true },
     { name: 'fallback_text', type: 'text', label: 'Fallback (when no page)', default: 'Page title' },
@@ -47,13 +47,14 @@ const pageFeaturedImage: BlockType = {
   category: 'media',
   container: false,
   schema: [
+    { name: 'field', type: 'text', label: 'Image field', default: 'og_image' },
     { name: 'width', type: 'select', label: 'Width',
       options: ['narrow', 'normal', 'wide', 'full'], default: 'wide' },
     { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio',
       options: ['auto', '16:9', '4:3', '1:1', '3:1'], default: 'auto' },
   ],
   template: `<figure data-block="image" data-w="{{width}}" style="--aspect:{{aspect_ratio}}">
-  <img src="{{page.featured_image}}" alt="{{page.title}}" loading="lazy" decoding="async" />
+  <img src="{{selected_page_image}}" alt="{{page.title}}" loading="lazy" decoding="async" />
 </figure>`,
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -83,7 +84,7 @@ const pageDate: BlockType = {
   container: false,
   schema: [
     { name: 'field', type: 'select', label: 'Field',
-      options: ['published_at', 'updated_at', 'created_at'], default: 'published_at' },
+      options: ['date_published', 'date_updated', 'created_at'], default: 'date_published' },
     { name: 'format', type: 'text', label: 'Format', default: 'MMM D, YYYY' },
   ],
   template: `<time data-block="page-date" datetime="{{selected_page_date}}">{{selected_page_date}}</time>`,
@@ -222,72 +223,10 @@ const showIf: BlockType = {
   created_at: ISO_EPOCH,
 };
 
-// ─── Item-context blocks (for collection-item templates) ────────────────
-
-const itemTitle: BlockType = {
-  id: 'template/item_title',
-  name: 'item_title',
-  label: 'Item title',
-  icon: 'heading',
-  category: 'content',
-  container: false,
-  schema: [
-    { name: 'level', type: 'select', label: 'Level', options: ['h1', 'h2', 'h3'], default: 'h1' },
-    { name: 'size', type: 'select', label: 'Visual size', options: ['auto', 'lg', 'xl', '2xl', '3xl'], default: 'auto', responsive: true },
-  ],
-  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}"><{{=level}} class="block-heading-text">{{item.title}}</{{=level}}></div>`,
-  origin: 'core',
-  created_at: ISO_EPOCH,
-};
-
-const itemBody: BlockType = {
-  id: 'template/item_body',
-  name: 'item_body',
-  label: 'Item body',
-  icon: 'text',
-  category: 'content',
-  container: false,
-  schema: [
-    { name: 'field', type: 'text', label: 'Field name', default: 'body' },
-    { name: 'max_width', type: 'select', label: 'Max width', options: ['narrow', 'normal', 'wide'], default: 'normal' },
-  ],
-  template: `<div data-block="prose" data-w="{{max_width}}">{{{selected_item_body}}}</div>`,
-  styles: `
-[data-block="prose"] { min-width: 0; max-width: 48rem; overflow-wrap: break-word; }
-[data-block="prose"][data-w="narrow"] { max-width: 40rem; }
-[data-block="prose"][data-w="wide"] { max-width: 64rem; }
-[data-block="prose"] :where(a) { overflow-wrap: anywhere; text-underline-offset: 0.15em; }
-[data-block="prose"] :where(a:focus-visible) { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
-[data-block="prose"] :where(img, video, iframe) { max-width: 100%; height: auto; }
-[data-block="prose"] :where(table) { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
-[data-block="prose"] :where(th, td) { padding: 0.5rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
-`.trim(),
-  origin: 'core',
-  created_at: ISO_EPOCH,
-};
-
-const itemImage: BlockType = {
-  id: 'template/item_image',
-  name: 'item_image',
-  label: 'Item image',
-  icon: 'image',
-  category: 'media',
-  container: false,
-  schema: [
-    { name: 'field', type: 'text', label: 'Field name', default: 'image' },
-    { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide', 'full'], default: 'wide' },
-  ],
-  template: `<figure data-block="image" data-w="{{width}}">
-  <img src="{{selected_item_image}}" alt="{{item.title}}" loading="lazy" />
-</figure>`,
-  origin: 'core',
-  created_at: ISO_EPOCH,
-};
-
-const itemNavigation: BlockType = {
-  id: 'template/item_navigation',
-  name: 'item_navigation',
-  label: 'Previous / next item',
+const pageNavigation: BlockType = {
+  id: 'template/page_navigation',
+  name: 'page_navigation',
+  label: 'Previous / next page',
   icon: 'arrow-left-right',
   category: 'content',
   container: false,
@@ -300,14 +239,14 @@ const itemNavigation: BlockType = {
     { name: 'next_url_field', type: 'text', label: 'Next URL field (optional)' },
     { name: 'next_title_field', type: 'text', label: 'Next title field (optional)' },
   ],
-  template: `<nav data-block="item_navigation" aria-label="{{aria_label}}"><a class="item-navigation-previous" data-empty="{{previous_empty}}" rel="prev" href="{{previous_url}}"><small>{{previous_label}}</small><span>{{previous_title}}</span></a><a class="item-navigation-next" data-empty="{{next_empty}}" rel="next" href="{{next_url}}"><small>{{next_label}}</small><span>{{next_title}}</span></a></nav>`,
+  template: `<nav data-block="page_navigation" aria-label="{{aria_label}}"><a class="page-navigation-previous" data-empty="{{previous_empty}}" rel="prev" href="{{previous_url}}"><small>{{previous_label}}</small><span>{{previous_title}}</span></a><a class="page-navigation-next" data-empty="{{next_empty}}" rel="next" href="{{next_url}}"><small>{{next_label}}</small><span>{{next_title}}</span></a></nav>`,
   styles: `
-[data-block="item_navigation"] { display: flex; justify-content: space-between; align-items: stretch; gap: 1rem; margin-block: 2rem; }
-[data-block="item_navigation"] a { display: flex; flex: 1 1 0; min-width: 0; flex-direction: column; padding: 0.85rem 1rem; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 0.5rem; overflow-wrap: anywhere; text-decoration: none; }
-[data-block="item_navigation"] a[data-empty="true"] { display: none; }
-[data-block="item_navigation"] .item-navigation-next { margin-left: auto; text-align: right; }
-[data-block="item_navigation"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
-@media (max-width: 540px) { [data-block="item_navigation"] { flex-direction: column; } [data-block="item_navigation"] .item-navigation-next { margin-left: 0; } }
+[data-block="page_navigation"] { display: flex; justify-content: space-between; align-items: stretch; gap: 1rem; margin-block: 2rem; }
+[data-block="page_navigation"] a { display: flex; flex: 1 1 0; min-width: 0; flex-direction: column; padding: 0.85rem 1rem; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 0.5rem; overflow-wrap: anywhere; text-decoration: none; }
+[data-block="page_navigation"] a[data-empty="true"] { display: none; }
+[data-block="page_navigation"] .page-navigation-next { margin-left: auto; text-align: right; }
+[data-block="page_navigation"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
+@media (max-width: 540px) { [data-block="page_navigation"] { flex-direction: column; } [data-block="page_navigation"] .page-navigation-next { margin-left: 0; } }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -328,8 +267,5 @@ export const TEMPLATE_BLOCK_TYPES: readonly BlockType[] = [
   // Conditional
   showIf,
   // Item-context (for collection-item templates)
-  itemTitle,
-  itemBody,
-  itemImage,
-  itemNavigation,
+  pageNavigation,
 ] as const;

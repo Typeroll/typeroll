@@ -71,21 +71,21 @@ leaves the saved document untouched. Nothing is lost that had been saved.
 
 A few things apply immediately, because they're not content edits:
 
-| Applies immediately                                              | Why                                                                |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Page status (`draft` / `published`) and `date_published`         | These _are_ the publish decision — drafting them would be circular |
-| Creating and deleting pages, partials, collection items          | There's no prior version to buffer against                         |
-| Switching a page between block and HTML mode                     | Structural, not a content edit                                     |
-| Site settings, redirects, block types, media, collection schemas | Configuration, not page content                                    |
-| Page templates and collection item templates                     | These have no working-copy layer at all                            |
+| Applies immediately                                                | Why                                                                |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Page status (`draft` / `published`) and `date_published`           | These _are_ the publish decision — drafting them would be circular |
+| Creating and deleting pages, partials, Pages                       | There's no prior version to buffer against                         |
+| Switching a page between block and HTML mode                       | Structural, not a content edit                                     |
+| Site settings, redirects, block types, media, content type schemas | Configuration, not page content                                    |
+| Page templates and Page templates                                  | These have no working-copy layer at all                            |
 
-Everything else — page content, blocks, partials, collection item fields — goes
+Everything else — page content, blocks, partials, custom Page fields — goes
 through the draft layer.
 
 ## For API and MCP users
 
 - Writes (`update_page`, block mutations, `update_partial`,
-  `update_collection_item`, batch and bulk tools) stage a draft.
+  batch and bulk tools) stage a draft.
 - Reads return the **draft view** plus `has_unsaved_changes`.
 - Commit with `commit_working_copy`, or pass `save: true` on the write call to
   write and commit in one step.

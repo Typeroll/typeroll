@@ -13,12 +13,12 @@
 // (and the chat AI's tool handlers). The legacy /pages/{id}/blocks
 // routes still work via the page-targeted shorthand.
 
-import { paths, ensureBlockIds, type Block, type CollectionDef, type Page, type Partial as PartialDoc, type PageTemplate } from '@typeroll/shared';
+import { paths, ensureBlockIds, type Block, type Page, type Partial as PartialDoc, type PageTemplate } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { vstore } from './version-store';
 import { mergeWorkingCopy, readWorkingCopy, type WcTarget } from './working-copy';
 
-export type BlockContainerKind = 'page' | 'partial' | 'template' | 'item_template';
+export type BlockContainerKind = 'page' | 'partial' | 'template';
 
 export interface BlockContainerTarget {
   kind: BlockContainerKind;
@@ -35,7 +35,7 @@ export function normaliseTarget(input: {
 }): BlockContainerTarget | undefined {
   if (input.target?.kind && input.target.id) {
     const k = input.target.kind;
-    if (k === 'page' || k === 'partial' || k === 'template' || k === 'item_template') {
+    if (k === 'page' || k === 'partial' || k === 'template') {
       return { kind: k, id: input.target.id };
     }
     return undefined;
@@ -51,7 +51,7 @@ export interface LoadedContainer {
   pageSlug?: string;
   pageTitle?: string;
   /** Underlying doc — handed back so writers can re-serialize alongside other fields. */
-  raw: Page | PartialDoc | PageTemplate | CollectionDef;
+  raw: Page | PartialDoc | PageTemplate;
   content_mode: 'blocks' | 'html';
 }
 
@@ -114,9 +114,7 @@ export async function loadContainer(
 
   const store = getStore();
   if (target.kind === 'partial') {
-    const partial = await store.getDoc<PartialDoc>(
-      paths.partial(ctx.orgId, ctx.siteId, target.id, ctx.versionId),
-    );
+    const partial = await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
     if (!partial) throw new ContainerError(`Partial ${target.id} not found`, 404);
     if (partial.content_mode !== 'blocks') {
       throw new ContainerError(
@@ -133,9 +131,7 @@ export async function loadContainer(
   }
 
   if (target.kind === 'template') {
-    const tpl = await store.getDoc<PageTemplate>(
-      paths.pageTemplate(ctx.orgId, ctx.siteId, target.id, ctx.versionId),
-    );
+    const tpl = await vstore.pageTemplate(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
     if (!tpl) throw new ContainerError(`Template ${target.id} not found`, 404);
     return {
       target,
@@ -145,19 +141,7 @@ export async function loadContainer(
     };
   }
 
-  // item_template — target.id is the collection name. The container's
-  // "blocks" is the collection's item_template_blocks field. When the
-  // collection still uses item_template_html, the loaded blocks array
-  // is empty — the caller's first add_block call grows it from there
-  // and the renderer flips to the block path automatically.
-  const coll = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
-  if (!coll) throw new ContainerError(`Collection ${target.id} not found`, 404);
-  return {
-    target,
-    blocks: coll.item_template_blocks ?? [],
-    raw: coll,
-    content_mode: 'blocks',
-  };
+  throw new ContainerError('Unknown container kind', 400);
 }
 
 /**
@@ -171,7 +155,7 @@ export async function writeContainer(
   target: BlockContainerTarget,
   blocks: Block[],
   ctx: { orgId: string; siteId: string; versionId: string },
-  raw: Page | PartialDoc | PageTemplate | CollectionDef,
+  raw: Page | PartialDoc | PageTemplate,
 ): Promise<void> {
   // Every container write funnels through here — normalise missing block
   // ids (hand-authored trees) so the renderer + per-block tools can
@@ -200,12 +184,7 @@ export async function writeContainer(
     return;
   }
 
-  // item_template — write the block tree onto the collection doc's
-  // item_template_blocks field. Goes through vstore.writeCollection so
-  // any pending revision flow stays consistent.
-  await vstore.writeCollection(ctx.orgId, ctx.siteId, ctx.versionId, target.id, {
-    item_template_blocks: blocks,
-  });
+  throw new ContainerError('Unknown container kind', 400);
 }
 
 /**
@@ -217,5 +196,5 @@ export function targetLabel(target: BlockContainerTarget, loaded?: LoadedContain
   if (target.kind === 'page') return loaded?.pageTitle ? `page ${loaded.pageTitle}` : `page ${target.id}`;
   if (target.kind === 'partial') return `partial ${target.id}`;
   if (target.kind === 'template') return `template ${target.id}`;
-  return `item template for ${target.id}`;
+  return `template ${target.id}`;
 }

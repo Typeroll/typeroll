@@ -157,11 +157,12 @@ export async function mediaUploadAvailability(orgId: string) {
 
 /** Opaque editor frames cannot use session cookies for images. Resolve only the private media actually referenced in this render. */
 export async function authorizePreviewMedia(html: string, orgId: string, siteId: string, ttlSeconds = 60) {
-  const { replacePublicationReferences } = await import('./media-manifest');
-  const media = await getStore().listDocs<Media>(paths.media(orgId, siteId));
+  const { replacePublicationReferences, privateMediaReferences } = await import('./media-manifest');
+  const references = privateMediaReferences(html).filter(reference => reference.siteId === siteId);
   const replacements = new Map<string, string>();
-  for (const item of media) {
-    if (!item.storage || !html.includes(item.cdn_url)) continue;
+  for (const reference of references) {
+    const item = await getStore().getDoc<Media>(`${paths.media(orgId, siteId)}/${reference.mediaId}`);
+    if (!item?.storage || !html.includes(item.cdn_url)) continue;
     if (item.storage.state !== 'ready') continue;
     replacements.set(item.cdn_url, await privateMediaReadUrl(orgId, siteId, item.id, ttlSeconds));
   }

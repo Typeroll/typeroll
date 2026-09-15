@@ -95,12 +95,12 @@ describe('Context substitution — raw vs escaped', () => {
   it('triple-brace passes raw HTML for richtext fields', () => {
     const block: Block = {
       id: 'ib',
-      type: 'template/item_body',
-      data: { field: 'body', max_width: 'normal' },
+      type: 'core/prose',
+      data: { html: '{{page.body}}', max_width: 'normal' },
     };
     const html = renderBlock(block, {
       registry,
-      context: { item: { body: '<p><strong>Bold</strong></p>' } },
+      context: { page: { body: '<p><strong>Bold</strong></p>' } },
     });
     expect(html).toContain('<p><strong>Bold</strong></p>');
   });
@@ -207,7 +207,8 @@ describe('Item context inside repeater iteration', () => {
       type: 'core/repeater',
       data: {
         source_type: 'static',
-        item_block: 'template/item_title',
+        item_block: 'core/heading',
+        item_overrides: { text: '{{item.title}}', level: 'h2' },
         layout: 'list',
         items: [
           { title: 'First post' },
@@ -229,7 +230,8 @@ describe('Item context inside repeater iteration', () => {
         type: 'core/repeater',
         data: {
           source_type: 'static',
-          item_block: 'template/item_title',
+          item_block: 'core/heading',
+        item_overrides: { text: '{{item.title}}', level: 'h2' },
           layout: 'list',
           items: [{ title: 'A' }],
         },

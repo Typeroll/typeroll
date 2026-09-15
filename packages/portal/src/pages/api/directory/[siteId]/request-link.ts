@@ -12,7 +12,7 @@
 
 import type { APIRoute } from 'astro';
 import { paths } from '@typeroll/shared';
-import type { CollectionItem, SiteApps } from '@typeroll/shared';
+import type { SiteApps } from '@typeroll/shared';
 import { getStore } from '../../../../lib/datastore';
 import { vstore } from '../../../../lib/version-store';
 import { rateLimit } from '../../../../lib/rate-limit';
@@ -39,7 +39,7 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
   if (!siteId) return accepted();
 
   const body = (await request.json().catch(() => null)) as {
-    item_id?: string;
+    page_id?: string;
     email?: string;
     _hp?: string;
   } | null;
@@ -49,13 +49,13 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
   if (body._hp) return accepted();
 
   const email = (body.email ?? '').trim().toLowerCase();
-  const itemId = (body.item_id ?? '').trim();
-  if (!email || !itemId) return accepted();
+  const pageId = (body.page_id ?? '').trim();
+  if (!email || !pageId) return accepted();
 
   // Two buckets: one per requester so a script can't sweep the directory,
   // one per listing so a business can't be mail-bombed by someone else.
   if (!rateLimit(`dir-req-ip:${clientAddress}`, 10, 10 * 60_000).allowed) return accepted();
-  if (!rateLimit(`dir-req-item:${siteId}:${itemId}`, 3, 60 * 60_000).allowed) return accepted();
+  if (!rateLimit(`dir-req-item:${siteId}:${pageId}`, 3, 60 * 60_000).allowed) return accepted();
 
   try {
     const store = getStore();
@@ -68,15 +68,15 @@ export const POST: APIRoute = async ({ request, params, clientAddress }) => {
     const cfg = directoryConfig(apps ?? undefined);
     if (!cfg) return accepted();
 
-    const item = await vstore.collectionItem(orgId, siteId, 'main', cfg.collection, itemId);
-    if (!item) return accepted();
+    const item = await vstore.page(orgId, siteId, 'main', pageId);
+    if (!item || item.content_type !== cfg.content_type) return accepted();
 
-    const onFile = String((item as Record<string, unknown>)[cfg.emailField] ?? '')
+    const onFile = String(item.fields?.[cfg.emailField] ?? '')
       .trim().toLowerCase();
     if (!onFile || onFile !== email) return accepted();
 
     const { token, expiresAt } = await issueGrant({
-      orgId, siteId, collection: cfg.collection, itemId, email: onFile, ttlHours: cfg.ttlHours,
+      orgId, siteId, content_type: cfg.content_type, pageId, email: onFile, ttlHours: cfg.ttlHours,
     });
 
     const integrations = await store.getDoc<{ email?: import('@typeroll/shared').EmailConnector }>(

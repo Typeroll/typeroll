@@ -19,8 +19,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const kind = params.kind;
   const id = params.id;
   if (!kind || !id) return apiError('Missing kind or id', 400);
-  if (kind !== 'page' && kind !== 'partial' && kind !== 'template' && kind !== 'item_template') {
-    return apiError(`kind must be page|partial|template|item_template, got "${kind}"`, 400);
+  if (kind !== 'page' && kind !== 'partial' && kind !== 'template') {
+    return apiError(`kind must be page|partial|template, got "${kind}"`, 400);
   }
   const target = { kind: kind as BlockContainerKind, id };
 

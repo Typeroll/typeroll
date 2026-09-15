@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   renderBlocks,
+  renderPageBody,
   renderBlock,
   collectUsedBlockTypeIds,
   collectBlockAssets,
@@ -164,9 +165,9 @@ describe('renderBlock — substitution', () => {
     expect(image).toContain('alt="A &amp; B"');
   });
 
-  it('renders the selected collection item rich-text and image fields', () => {
+  it('renders selected Page custom rich-text, image and date fields', () => {
     const context = {
-      item: {
+      page: {
         title: 'Guide',
         body: '<p>Wrong body</p>',
         toc_html: '<h2 id="first">Selected body</h2><p>Copy</p>',
@@ -176,21 +177,21 @@ describe('renderBlock — substitution', () => {
       },
     };
     const body = renderBlock(
-      { id: 'body', type: 'template/item_body', data: { field: 'toc_html', max_width: 'normal' } },
+      { id: 'body', type: 'core/prose', data: { html: '{{page.toc_html}}', max_width: 'normal' } },
       { registry, context },
     );
     expect(body).toContain('Selected body');
     expect(body).not.toContain('Wrong body');
 
     const image = renderBlock(
-      { id: 'image', type: 'template/item_image', data: { field: 'hero', width: 'wide' } },
+      { id: 'image', type: 'template/page_featured_image', data: { field: 'hero', width: 'wide' } },
       { registry, context },
     );
     expect(image).toContain('src="/hero.jpg"');
     expect(image).not.toContain('/wrong.jpg');
 
     const missing = renderBlock(
-      { id: 'missing', type: 'template/item_body', data: { field: 'missing_body', max_width: 'normal' } },
+      { id: 'missing', type: 'core/prose', data: { html: '{{page.missing_body}}', max_width: 'normal' } },
       { registry, context },
     );
     expect(missing).toContain('data-block="prose"');
@@ -235,7 +236,7 @@ describe('renderBlock — substitution', () => {
 
   it('renders a table of contents from a selected rich-text field before JavaScript', () => {
     const context = {
-      item: {
+      page: {
         article_body: '<h2 id="packa">Packa &amp; skydda</h2><p>Text</p><h3>TV & skärm</h3><h3 id="packa">Dublett</h3>',
       },
     };
@@ -252,10 +253,7 @@ describe('renderBlock — substitution', () => {
     expect(toc).toContain('<a href="#packa-2">Dublett</a>');
     expect(toc).toContain('data-empty="false"');
 
-    const body = renderBlock(
-      { id: 'body', type: 'template/item_body', data: { field: 'article_body', max_width: 'normal' } },
-      { registry, context },
-    );
+    const body = renderPageBody({ registry, context }, 'article_body');
     expect(body).toContain('<h3 id="tv-skarm">TV & skärm</h3>');
     expect(body).toContain('<h3 id="packa-2">Dublett</h3>');
   });
@@ -264,7 +262,7 @@ describe('renderBlock — substitution', () => {
     const html = renderBlock(
       {
         id: 'nav',
-        type: 'template/item_navigation',
+        type: 'template/page_navigation',
         data: {
           previous_label: 'Föregående',
           next_label: 'Nästa',
@@ -277,13 +275,13 @@ describe('renderBlock — substitution', () => {
       {
         registry,
         context: {
-          item: {
+          page: {
             prev_url: '/forra/',
             prev_title: 'Förra checklistan',
             next_url: '',
             next_title: 'Must not remain focusable',
           },
-          collection: {
+          content_type: {
             previous: { url: '/sorted-prev/', title: 'Sorted previous' },
             next: { url: '/sorted-next/', title: 'Sorted next' },
           },
@@ -293,7 +291,7 @@ describe('renderBlock — substitution', () => {
     expect(html).toContain('href="/forra/"');
     expect(html).toContain('Förra checklistan');
     expect(html).not.toContain('/sorted-prev/');
-    expect(html).toContain('item-navigation-next" data-empty="true"');
+    expect(html).toContain('page-navigation-next" data-empty="true"');
     expect(html).not.toContain('href="/sorted-next/"');
   });
 });
@@ -784,8 +782,8 @@ describe('collectUsedBlockTypeIds', () => {
 
 describe('collectBlockAssets', () => {
   it('includes alias and repeated item dependencies without unrelated block assets', () => {
-    const assets = collectBlockAssets([{ id: 'listing', type: 'core/collection_list', data: {} }], registry);
-    expect(assets.used_ids).toEqual(['core/collection_list', 'core/post_card', 'core/repeater']);
+    const assets = collectBlockAssets([{ id: 'listing', type: 'core/page_list', data: {} }], registry);
+    expect(assets.used_ids).toEqual(['core/page_list', 'core/post_card', 'core/repeater']);
     expect(assets.css).toContain(registry.get('core/repeater')!.styles);
     expect(assets.css).toContain(registry.get('core/post_card')!.styles);
     expect(assets.used_ids).not.toContain('core/image');
@@ -794,15 +792,15 @@ describe('collectBlockAssets', () => {
   it('resolves each instance override and chained aliases, deduplicating shared assets', () => {
     const custom = new Map(registry);
     custom.set('custom/list', {
-      ...registry.get('core/collection_list')!, id: 'custom/list',
-      expand_to: { target: 'core/collection_list', defaults: { item_block: 'core/image' } },
+      ...registry.get('core/page_list')!, id: 'custom/list',
+      expand_to: { target: 'core/page_list', defaults: { item_block: 'core/image' } },
     });
     const blocks: Block[] = [
       { id: 'images', type: 'custom/list', data: {} },
       { id: 'cards', type: 'custom/list', data: { item_block: 'core/post_card' } },
     ];
     const assets = collectBlockAssets(blocks, custom);
-    expect(assets.used_ids).toEqual(['core/collection_list', 'core/image', 'core/post_card', 'core/repeater', 'custom/list']);
+    expect(assets.used_ids).toEqual(['core/image', 'core/page_list', 'core/post_card', 'core/repeater', 'custom/list']);
     expect(assets.css.split('/* core/repeater */')).toHaveLength(2);
   });
 

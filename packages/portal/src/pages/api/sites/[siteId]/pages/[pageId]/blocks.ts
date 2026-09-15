@@ -4,7 +4,7 @@
 // block editor can call them directly from the browser.
 
 import type { APIRoute } from 'astro';
-import { json, requireSiteAccess } from '../../../../../../lib/access';
+import { json, requireSiteAccess, requirePermission } from '../../../../../../lib/access';
 import { vstore } from '../../../../../../lib/version-store';
 import {
   addBlock,
@@ -31,10 +31,11 @@ type GuardOk = {
 };
 type GuardErr = { error: Response };
 
-async function guardPage(cookies: any, params: any, locals: any): Promise<GuardOk | GuardErr> {
+async function guardPage(cookies: any, params: any, locals: any, write = false): Promise<GuardOk | GuardErr> {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return { error: guard.response };
-  const { session, site, versionId, owner_org_id } = guard.value;
+  if (write) { const check = requirePermission(guard.value, 'write'); if (!check.ok) return { error: check.response }; }
+  const { site, versionId, owner_org_id } = guard.value;
   const pageId = params.pageId;
   if (!pageId) return { error: json({ error: 'Missing pageId' }, 400) };
   const page = await vstore.page(owner_org_id, site.id, versionId, pageId);
@@ -70,7 +71,7 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
 };
 
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
-  const g = await guardPage(cookies, params, locals);
+  const g = await guardPage(cookies, params, locals, true);
   if (g.error) return g.error;
   const body = await request.json().catch(() => null) as {
     block?: Partial<Block>;
@@ -104,7 +105,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
 };
 
 export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
-  const g = await guardPage(cookies, params, locals);
+  const g = await guardPage(cookies, params, locals, true);
   if (g.error) return g.error;
   const body = await request.json().catch(() => null) as {
     block_id?: string;
@@ -129,7 +130,7 @@ export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
 };
 
 export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
-  const g = await guardPage(cookies, params, locals);
+  const g = await guardPage(cookies, params, locals, true);
   if (g.error) return g.error;
   const body = await request.json().catch(() => null) as {
     block_id?: string;
@@ -154,7 +155,7 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
 };
 
 export const DELETE: APIRoute = async ({ request, cookies, params, locals }) => {
-  const g = await guardPage(cookies, params, locals);
+  const g = await guardPage(cookies, params, locals, true);
   if (g.error) return g.error;
   const url = new URL(request.url);
   const blockId = url.searchParams.get('block_id');

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeWordPressPlainText } from '../../lib/wp/plain-text';
-import { projectItemFields } from '../../lib/wp/custom-types';
+import { inferContentType, projectItemFields } from '../../lib/wp/custom-types';
 
 describe('normalizeWordPressPlainText', () => {
   it('decodes named and numeric HTML entities exactly once', () => {
@@ -20,8 +20,8 @@ describe('normalizeWordPressPlainText', () => {
   });
 });
 
-describe('WordPress collection field projection', () => {
-  it('normalizes imported title and excerpt fields', () => {
+describe('WordPress custom field projection', () => {
+  it('normalizes excerpts while leaving the Page title to the common importer', () => {
     const fields = projectItemFields({
       id: 7,
       slug: 'flytta',
@@ -32,8 +32,19 @@ describe('WordPress collection field projection', () => {
       title: { rendered: '<b>Flytta</b> &#8211; enkelt' },
       content: { rendered: '<p>Body</p>' },
       excerpt: { rendered: 'Tryggt &amp; smidigt' },
-    }, [], undefined, '<p>Body</p>');
-    expect(fields.title).toBe('Flytta – enkelt');
+    }, [{ name: 'excerpt', label: 'Excerpt', type: 'textarea' }], undefined);
+    expect(fields.title).toBeUndefined();
     expect(fields.excerpt).toBe('Tryggt & smidigt');
   });
+});
+
+it('preserves normalized WordPress fields without colliding with Page metadata', () => {
+  const item = { acf: { title: 'Custom heading', 'room-count': 3, summary: 'ACF summary' }, meta: { summary: 'Meta summary' } } as any;
+  const type = inferContentType({ slug: 'property', name: 'Property', rest_base: 'property' } as any, item);
+  expect(type.fields.map(field => field.name)).toEqual(expect.arrayContaining(['wp_title', 'room_count', 'summary', 'meta_summary']));
+  expect(projectItemFields(item, type.fields, undefined)).toMatchObject({ wp_title: 'Custom heading', room_count: 3, summary: 'ACF summary', meta_summary: 'Meta summary' });
+  expect(projectItemFields(item, [], undefined)).toEqual({});
+});
+it('reports colliding source field names instead of silently discarding one', () => {
+  expect(() => inferContentType({ slug: 'test' } as any, { acf: { 'room-count': 2, room_count: 3 } } as any)).toThrow('field names collide');
 });

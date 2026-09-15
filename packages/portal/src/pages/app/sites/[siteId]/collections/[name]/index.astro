@@ -1,5 +1,0 @@
----
-const { siteId, name } = Astro.params;
-if (!siteId || !name) return Astro.redirect('/app');
-return Astro.redirect(`/app/sites/${siteId}/collections/${name}/posts`);
----

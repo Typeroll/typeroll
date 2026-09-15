@@ -1,6 +1,6 @@
 /**
  * Shared status indicator + deploy button used across the three editors
- * (HtmlPageEditor, PartialEditor, CollectionItemEditor). The goal is a
+ * (HtmlPageEditor, PartialEditor). The goal is a
  * single, consistent answer to the question "is what I see live yet?":
  *
  *   ● Saving…

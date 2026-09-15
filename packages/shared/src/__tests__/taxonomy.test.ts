@@ -7,13 +7,13 @@
  * several thousand thin-content pages, so both are pinned here.
  */
 import { describe, it, expect } from 'vitest';
-import type { CollectionDef, CollectionItem } from '../types.js';
+import type { ContentType } from '../types.js';
 import { DEFAULT_MIN_ITEMS, facetRoutes, facetSlug } from '../taxonomy.js';
 
 const item = (id: string, extra: Record<string, unknown> = {}) =>
-  ({ id, status: 'published', created_at: 'x', updated_at: 'x', ...extra }) as CollectionItem;
+  ({ id, status: 'published', created_at: 'x', updated_at: 'x', ...extra }) as Record<string, unknown> & { id: string };
 
-const coll = (over: Partial<CollectionDef> = {}): Pick<CollectionDef, 'facets' | 'facet_combinations'> => ({
+const coll = (over: Partial<ContentType> = {}): Pick<ContentType, 'facets' | 'facet_combinations'> => ({
   facets: [
     { field: 'industry', base_path: '/bransch', label_singular: 'Bransch' },
     { field: 'city', base_path: '/ort', label_singular: 'Ort' },

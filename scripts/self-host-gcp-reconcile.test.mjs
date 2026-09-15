@@ -239,6 +239,10 @@ test('runtime apply reuses a verified digest and converges both Cloud Run roles 
       .every((call) => call.args.includes('--to-latest')),
   );
   const portalDeploy = runner.calls.find((call) => hasArgs(call, 'run', 'deploy', 'typeroll-portal'));
+  for (const deployment of runner.calls.filter(call => hasArgs(call, 'run', 'deploy'))) {
+    assert.ok(deployment.args.includes('--command='));
+    assert.ok(deployment.args.includes('--args='));
+  }
   assert.ok(portalDeploy.args.some((arg) => arg.includes(`DEPLOY_WORKER_URL=${portalUrl}/api/internal/deploy-worker`)));
   const scheduler = runner.calls.find((call) => hasArgs(call, 'scheduler', 'jobs', 'update', 'http'));
   assert.ok(scheduler.args.includes(`--uri=${portalUrl}/api/internal/publish-sweep`));

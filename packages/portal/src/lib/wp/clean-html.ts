@@ -2,7 +2,7 @@
 //
 // The goal: produce markup that looks like a human wrote it, not what a page
 // builder spat out. We strip the entire WordPress / Elementor / Breakdance
-// class soup, remove inline styles and tracking IDs, and unwrap pointless
+// class soup and unrelated layout styles, and unwrap pointless
 // nested divs. We keep semantic tags (sections, headings, lists, blockquotes,
 // images), keep useful attributes (href, src, alt), and rewrite media URLs
 // to the customer's new CDN.
@@ -28,9 +28,9 @@ const SEMANTIC_TAGS = new Set([
   'a', 'br', 'hr',
   'img', 'figure', 'figcaption', 'picture',
   'video', 'audio', 'source',
-  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+  'table', 'caption', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
   'section', 'article', 'header', 'footer', 'main', 'aside', 'nav',
-  'span',
+  'span', 'div',
   'iframe', // for video embeds we want to preserve
   'time',
 ]);
@@ -49,16 +49,19 @@ const STRIP_TAGS = new Set([
 
 // Attributes we keep. Everything else is dropped.
 const KEEP_ATTRS: Record<string, string[]> = {
-  '*': [], // no global keep — be explicit per tag
-  a: ['href', 'title', 'rel', 'target'],
+  '*': ['id'], // preserve public fragment destinations
+  a: ['href', 'title', 'rel', 'target', 'name'],
   img: ['src', 'alt', 'width', 'height', 'srcset', 'sizes', 'loading'],
   source: ['src', 'srcset', 'type', 'media'],
   video: ['src', 'poster', 'controls', 'autoplay', 'loop', 'muted', 'playsinline', 'width', 'height'],
   audio: ['src', 'controls'],
   iframe: ['src', 'title', 'width', 'height', 'allow', 'allowfullscreen', 'loading'],
-  table: [],
-  th: ['scope'],
-  td: ['colspan', 'rowspan'],
+  table: ['style'],
+  th: ['scope', 'colspan', 'rowspan', 'style', 'align', 'bgcolor'],
+  td: ['colspan', 'rowspan', 'style', 'align', 'bgcolor'],
+  tr: ['style', 'bgcolor'],
+  ol: ['start', 'reversed', 'type'],
+  li: ['value'],
   time: ['datetime'],
   blockquote: ['cite'],
   q: ['cite'],
@@ -98,6 +101,14 @@ export function cleanWordPressHtml(input: string, opts: CleanOptions = {}): stri
   html = sanitizeHtml(html, {
     allowedTags: Array.from(SEMANTIC_TAGS),
     allowedAttributes,
+    allowedStyles: {
+      '*': {
+        color: [/^#[0-9a-f]{3,8}$/i, /^rgba?\([\d.,%\s]+\)$/i, /^[a-z]+$/i],
+        'background-color': [/^#[0-9a-f]{3,8}$/i, /^rgba?\([\d.,%\s]+\)$/i, /^[a-z]+$/i],
+        'text-align': [/^(left|center|right|justify)$/],
+        width: [/^\d+(?:\.\d+)?(?:px|%|em|rem)$/],
+      },
+    },
     disallowedTagsMode: 'discard',
     transformTags: {
       a: (tagName, attribs) => {

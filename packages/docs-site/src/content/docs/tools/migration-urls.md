@@ -40,7 +40,7 @@ The first classifies each inventory entry against the site's current pages and r
 
 Returns the inventory with a live coverage status per entry:
 
-- `migrated` — a page or collection item answers at that path
+- `migrated` — a Page answers at that path
 - `redirected` — a redirect rule covers it
 - `excluded` — you decided it should 404
 - `unhandled` — nothing covers it yet; this is the work list

@@ -95,7 +95,7 @@ describe('PageTemplate shape', () => {
       id: 'blog-post',
       name: 'blog_post',
       label: 'Blog post',
-      applies_to: 'collection:blog',
+      applies_to: 'content_type:blog',
       blocks: [
         {
           id: 'b1',
@@ -114,11 +114,11 @@ describe('PageTemplate shape', () => {
     expectTypeOf<PageTemplateStatus>().toEqualTypeOf<'draft' | 'published'>();
   });
 
-  it("applies_to template-string permits collection:* literals", () => {
-    const a: PageTemplate['applies_to'] = 'collection:blog';
+  it("applies_to template-string permits content_type:* literals", () => {
+    const a: PageTemplate['applies_to'] = 'content_type:blog';
     const b: PageTemplate['applies_to'] = 'page';
     const c: PageTemplate['applies_to'] = 'any';
-    expect([a, b, c]).toEqual(['collection:blog', 'page', 'any']);
+    expect([a, b, c]).toEqual(['content_type:blog', 'page', 'any']);
   });
 });
 

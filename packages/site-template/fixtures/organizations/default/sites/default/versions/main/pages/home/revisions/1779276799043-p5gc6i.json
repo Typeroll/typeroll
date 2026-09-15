@@ -5,11 +5,23 @@
   "doc": {
     "title": "Home",
     "slug": "home",
-    "content_mode": "html",
+    "content_mode": "blocks",
     "status": "published",
-    "html_content": "<x-include name=\"cta\" />\n\n<img src=\"https://cdn.typeroll.com/orgs/default/sites/default/images/1779275903935-couple-moving-in.jpg\" alt=\"Couple moving in\" style=\"width:100%;display:block;\" />\n\n<h1>Updated for review</h1>",
     "seo_title": "ACME Studio",
     "seo_description": "A timeless website, free from WordPress.",
-    "date_updated": "2026-05-20T11:28:42.956Z"
+    "date_updated": "2026-05-20T11:28:42.956Z",
+    "path": "/",
+    "content_type": "page",
+    "fields": {},
+    "blocks": [
+      {
+        "id": "m-460c4c1fd9c2dfb65328",
+        "type": "core/html",
+        "data": {
+          "html": "<x-include name=\"cta\">\n\n<img src=\"https://cdn.typeroll.com/orgs/default/sites/default/images/1779275903935-couple-moving-in.jpg\" alt=\"Couple moving in\" style=\"width:100%;display:block;\">\n\n<h1>Updated for review</h1></x-include>"
+        },
+        "name": "Imported x-include — review"
+      }
+    ]
   }
 }

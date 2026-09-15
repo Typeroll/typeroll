@@ -73,7 +73,7 @@ export const migrationTools: ToolDef[] = [
   {
     name: 'list_migration_urls',
     description:
-      "The legacy site's URL inventory with LIVE coverage status. Every entry is classified on read against the site's current pages + redirects: `migrated` (a page/collection item answers at that path), `redirected` (a redirect rule covers it), `excluded` (signed off as an intentional 404), `unhandled` (nothing covers it — the work list). Returns a summary over the whole inventory plus a page of entries, sorted worst-first then by GSC clicks. Use `status: \"unhandled\"` to get exactly what's left to do before cutover. Coverage is computed, never stored, so it's current the moment you create a redirect.",
+      "The legacy site's URL inventory with LIVE coverage status. Every entry is classified on read against the site's current pages + redirects: `migrated` (a Page answers at that path), `redirected` (a redirect rule covers it), `excluded` (signed off as an intentional 404), `unhandled` (nothing covers it — the work list). Returns a summary over the whole inventory plus a page of entries, sorted worst-first then by GSC clicks. Use `status: \"unhandled\"` to get exactly what's left to do before cutover. Coverage is computed, never stored, so it's current the moment you create a redirect.",
     inputSchema: {
       status: STATUS.optional().describe('Only return entries with this coverage status.'),
       limit: z.number().int().positive().max(1000).optional().describe('Default 200.'),
@@ -171,11 +171,10 @@ export const migrationTools: ToolDef[] = [
     description:
       'Repair legacy WordPress entity encoding and HTML markup in fields whose contract is plain text. ONLY title, seo_title, seo_description and excerpt are eligible; rich content, slugs, paths and URLs are never changed. ALWAYS run the dry-run first (the default), show every returned before/after diff and conflict to the user, and obtain approval before calling again with dry_run:false. Existing working copies are skipped so another editor\'s draft cannot be overwritten or accidentally saved. save:false stages working copies for portal review; save:true commits through the normal revision and validation path.',
     inputSchema: {
-      scope: z.enum(['pages', 'collection_items', 'all']).optional().describe('Defaults to all.'),
+      scope: z.enum(['pages', 'all']).optional().describe('Defaults to all.'),
       fields: z.array(PLAIN_TEXT_REPAIR_FIELD).min(1).max(4).optional().describe('Narrow the fixed plain-text allowlist.'),
       page_ids: z.array(z.string().min(1)).min(1).max(2000).optional(),
-      collection: z.string().min(1).optional(),
-      item_ids: z.array(z.string().min(1)).min(1).max(2000).optional().describe('Requires collection.'),
+      content_type: z.string().min(1).optional(),
       dry_run: z.boolean().optional().describe('Defaults to true. Set false only after the user reviews the dry-run.'),
       save: z.boolean().optional().describe('With dry_run:false, commit repaired working copies immediately. Defaults to false.'),
       diff_limit: z.number().int().min(1).max(2000).optional().describe('Exact field diffs returned; default 500.'),

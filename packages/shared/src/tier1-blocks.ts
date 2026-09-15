@@ -31,6 +31,13 @@ const container: BlockType = {
   category: 'layout',
   container: true,
   schema: [
+    { name: 'tag', type: 'select', label: 'HTML element', options: ['div', 'section', 'article', 'aside', 'nav', 'header', 'footer', 'main', 'figure'], default: 'div' },
+    { name: 'css_class', type: 'text', label: 'CSS classes' },
+    { name: 'html_id', type: 'text', label: 'Anchor ID' },
+    { name: 'inline_style', type: 'textarea', label: 'Inline CSS' },
+    { name: 'aria_label', type: 'text', label: 'Accessible label' },
+    { name: 'attributes', type: 'array', label: 'Additional attributes', fields: [{ name: 'name', type: 'text', label: 'Attribute' }, { name: 'value', type: 'text', label: 'Value' }] },
+    { name: 'layout', type: 'select', label: 'Layout', options: ['flex', 'flow'], default: 'flex' },
     { name: 'direction', type: 'select', label: 'Direction', options: ['row', 'column'], default: 'column', responsive: true },
     { name: 'wrap', type: 'select', label: 'Wrap', options: ['nowrap', 'wrap'], default: 'wrap', responsive: true },
     { name: 'gap', type: 'select', label: 'Gap', options: ['none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
@@ -49,7 +56,7 @@ const container: BlockType = {
   // named `--{field-name}` so the @media compiler can override it cleanly.
   // Layout-control CSS reads `var(--gap)` etc. and maps the token (sm/md/lg)
   // to a real rem value via attribute-selectors against the inline style.
-  template: `<div data-block="container" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}})">{{children}}</div>`,
+  template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{inline_style}}">{{children}}</{{=tag}}>`,
   styles: `
 [data-block="container"] {
   display: flex; flex-direction: var(--direction, column); flex-wrap: var(--wrap, wrap);

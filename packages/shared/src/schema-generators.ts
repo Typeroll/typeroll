@@ -9,9 +9,9 @@
 //     so unknown types still get something crawler-readable. The user can
 //     extend the result via Page.json_ld which is rendered alongside.
 //
-//   buildCollectionItemSchema(item, collection, site, canonical)
-//     Builds JSON-LD when CollectionDef.schema_type is set. Reads the
-//     item's fields directly; CollectionDef.schema_field_map overrides
+//   buildContentPageSchema(item, collection, site, canonical)
+//     Builds JSON-LD when ContentType.schema_type is set. Reads the
+//     item's fields directly; ContentType.schema_field_map overrides
 //     the default field-name → schema-property mapping so a podcast item
 //     with an `audio_url` field becomes `contentUrl` in the JSON-LD
 //     without renaming the field.
@@ -21,7 +21,7 @@
 // caller is responsible for the `<script type="application/ld+json">`
 // wrapper and for </script> escaping.
 
-import type { CollectionDef, CollectionItem, Page, SiteSettings } from './types.js';
+import type { ContentType, Page, SiteSettings } from './types.js';
 
 type SchemaObj = Record<string, unknown>;
 
@@ -162,7 +162,7 @@ const DEFAULT_FIELD_MAPS: Record<string, Record<string, string>> = {
 
 /**
  * Resolve which schema property an item field maps to. Priority:
- *   1. CollectionDef.schema_field_map (user override)
+ *   1. ContentType.schema_field_map (user override)
  *   2. DEFAULT_FIELD_MAPS[schemaType] (built-in for known types)
  *   3. Identity (field name used verbatim)
  */
@@ -189,13 +189,13 @@ function resolveProperty(
  * Always emits `url` (the canonical route) and `@type` from the collection
  * config. Author/publisher derive from site.organization when known.
  */
-export function buildCollectionItemSchema(
-  item: CollectionItem,
-  collection: CollectionDef,
+export function buildContentPageSchema(
+  page: Page,
+  contentType: ContentType,
   site: SiteSettings,
   canonical: string,
 ): string | null {
-  const schemaType = collection.schema_type?.trim();
+  const schemaType = contentType.schema_type?.trim();
   if (!schemaType) return null;
 
   const obj: SchemaObj = {
@@ -204,8 +204,11 @@ export function buildCollectionItemSchema(
     url: canonical,
   };
 
-  const userMap = collection.schema_field_map;
-  const data = item as Record<string, unknown>;
+  const userMap = contentType.schema_field_map;
+  const data = { ...page.fields, title: page.title, body: page.html_content, author: page.author,
+    ...(page.seo_description ? { description: page.seo_description } : {}),
+    ...(page.og_image ? { image: page.og_image } : {}),
+  };
 
   for (const [field, value] of Object.entries(data)) {
     if (field === 'id' || field === 'status' || field === 'created_at' || field === 'updated_at') {
@@ -231,8 +234,8 @@ export function buildCollectionItemSchema(
 
   // updated_at / created_at fall back to schema-standard dateModified /
   // datePublished when the item didn't carry explicit fields.
-  if (!obj.dateModified && item.updated_at) obj.dateModified = item.updated_at;
-  if (!obj.datePublished && item.created_at) obj.datePublished = item.created_at;
+  if (!obj.dateModified && page.date_updated) obj.dateModified = page.date_updated;
+  if (!obj.datePublished && page.date_published) obj.datePublished = page.date_published;
 
   if (!obj.publisher && site.organization?.name) {
     obj.publisher = {

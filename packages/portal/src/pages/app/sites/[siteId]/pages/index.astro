@@ -1,5 +1,168 @@
 ---
-const { siteId } = Astro.params;
-if (!siteId) return Astro.redirect('/app');
-return Astro.redirect(`/app/sites/${siteId}/pages/posts`);
+import { listContentPages } from '../../../../../lib/content-pages';
+import DeploymentNotice from '../../../../../components/DeploymentNotice.tsx';
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import Icon from '../../../../../components/Icon.astro';
+import { vstore } from '../../../../../lib/version-store';
+import { loadSiteContext } from '../../../../../lib/access';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+
+
+const allPages = await listContentPages(orgId, siteId, versionId);
+const contentTypes = (await vstore.contentTypes(orgId, siteId, versionId)).filter(type => type.id !== 'page');
+const selectedType = Astro.url.searchParams.get('content_type') ?? '';
+const query = (Astro.url.searchParams.get('q') ?? '').trim();
+const pages = allPages.filter(page => (!selectedType || page.content_type === selectedType) && (!query || `${page.title} ${page.path}`.toLowerCase().includes(query.toLowerCase())));
 ---
+<AppLayout title={`Pages — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>📄 Pages</h1>
+      <p class="muted">All pages, articles and other content types</p>
+    </div>
+    <form method="POST" action={`/api/sites/${siteId}/pages/create`} class="row app-header__create-form">
+      <select name="content_type" aria-label="Content type for new page"><option value="page">Page</option>{contentTypes.map(type => <option value={type.name} selected={selectedType === type.name}>{type.label_singular}</option>)}</select>
+      <input name="title" required placeholder="Page title" style="padding: 0.5rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md);" />
+      <button type="submit" class="btn">+ New page</button>
+    </form>
+  </div>
+
+  <DeploymentNotice client:load siteId={siteId} />
+
+  <form method="GET" class="row pages-filters">
+    <label>Content type <select name="content_type" aria-label="Filter by content type"><option value="">All types ({allPages.length})</option><option value="page" selected={selectedType === 'page'}>Page</option>{contentTypes.map(type => <option value={type.name} selected={selectedType === type.name}>{type.label_singular}</option>)}</select></label>
+    <input name="q" aria-label="Search pages" placeholder="Search title or URL" value={query} />
+    <button type="submit" class="btn btn-secondary">Filter</button>
+    <a href={`/app/sites/${siteId}/content-types`} class="btn btn-secondary" style="margin-left:auto">Content types</a>
+  </form>
+
+  <div class="card pages-table-card" style="padding: 0;">
+    <table class="pages-table">
+      <thead>
+        <tr style="text-align: left; background: var(--color-bg);">
+          <th style="padding: 0.75rem 1rem;">Title</th>
+          <th style="padding: 0.75rem 1rem;">URL</th>
+          <th style="padding: 0.75rem 1rem;">Content type</th>
+          <th style="padding: 0.75rem 1rem;">Status</th>
+          <th style="padding: 0.75rem 1rem;">Page order</th>
+          <th style="padding: 0.75rem 1rem;">Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {pages.map(page => (
+          <tr class="page-row">
+            <td class="page-row__title">
+              <a href={page.editor_path}>{page.title || '(untitled)'}</a>
+            </td>
+            <td class="muted page-row__url" data-label="URL">
+              <a href={page.preview_path} target="_blank" rel="noopener" title="Open preview in new tab" style="color: inherit;">
+                {page.path || 'URL not set'}
+              </a>
+            </td>
+            <td class="muted" data-label="Content type">{page.content_type_label}</td>
+            <td data-label="Status">{page.status}</td>
+            <td class="muted" data-label="Page order">{page.sort_order ?? '—'}</td>
+            <td class="muted text-sm" data-label="Updated">
+              {page.updated_at ? new Date(page.updated_at).toLocaleDateString() : '—'}
+            </td>
+            <td class="page-row__actions">
+              <a href={page.preview_path} target="_blank" rel="noopener" title="Preview (includes drafts)" class="page-row__action">
+                <Icon name="Eye" size={16} />
+              </a>
+
+            </td>
+          </tr>
+        ))}
+        {pages.length === 0 && (
+          <tr class="pages-table__empty">
+            <td colspan="7" style="padding: 2rem; text-align: center;" class="muted">No pages yet.</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+
+  <style>
+    .app-header__create-form select, .pages-filters select, .pages-filters input {
+      min-height: 44px; padding: .5rem .75rem; font: inherit; font-size: 1rem;
+      color: var(--color-text); background: var(--color-surface);
+      border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      min-width: 0; max-width: 100%;
+    }
+    .pages-filters { gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
+    .pages-filters label { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .pages-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .page-row { border-top: 1px solid var(--color-border); }
+    .page-row > td { padding: 0.75rem 1rem; }
+    .page-row__actions {
+      text-align: right;
+      white-space: nowrap;
+    }
+    .page-row__action {
+      display: inline-flex;
+      padding: 0.3rem;
+      border-radius: 0.35rem;
+      color: var(--color-text-muted);
+      transition: background 120ms ease, color 120ms ease;
+    }
+    .page-row__action:hover {
+      background: var(--color-bg);
+      color: var(--color-text);
+      text-decoration: none;
+    }
+    .page-row__action + .page-row__action { margin-left: 0.15rem; }
+
+    @media (max-width: 640px) {
+      .pages-table-card {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+      .pages-table,
+      .pages-table tbody { display: block; }
+      .pages-table thead { display: none; }
+      .page-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.45rem 0.75rem;
+        margin-bottom: 0.75rem;
+        padding: 0.875rem 1rem;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        background: var(--color-surface);
+        box-shadow: var(--shadow-sm);
+      }
+      .page-row > td { padding: 0; }
+      .page-row__title {
+        grid-column: 1;
+        min-width: 0;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .page-row__actions { grid-column: 2; grid-row: 1; }
+      .page-row > td[data-label] {
+        display: grid;
+        grid-template-columns: 6rem minmax(0, 1fr);
+        grid-column: 1 / -1;
+        gap: 0.5rem;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .page-row > td[data-label]::before {
+        content: attr(data-label);
+        color: var(--color-text-muted);
+        font-size: 0.8125rem;
+        font-weight: 500;
+      }
+      .pages-table__empty { display: block; }
+      .pages-table__empty td { display: block; }
+    }
+  </style>
+</AppLayout>

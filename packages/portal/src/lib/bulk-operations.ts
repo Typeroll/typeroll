@@ -19,7 +19,7 @@ import {
   overlayWorkingCopy,
 } from './working-copy';
 import { applyFieldAuthority } from './field-authority';
-import type { Block, CollectionDef, CollectionItem, Page, Partial as PartialDoc } from '@typeroll/shared';
+import type { Block, ContentType, Page, Partial as PartialDoc } from '@typeroll/shared';
 
 export interface SearchHit {
   page_id: string;
@@ -95,12 +95,9 @@ export interface ReplaceOptions {
   /** Restrict to these page ids. Omit to apply to every page that matches. */
   pageIds?: string[];
   /** Resource family to scan. Defaults to pages for backwards compatibility. */
-  scope?: 'pages' | 'collection_items' | 'partials' | 'all';
-  /** Restrict collection-item replacement to one collection. Omit to scan all
-   *  collections when scope is collection_items/all. */
-  collection?: string;
-  /** Restrict items inside `collection`. Requires collection. */
-  itemIds?: string[];
+  scope?: 'pages' | 'partials' | 'all';
+  /** Restrict pages to one content type. */
+  contentType?: string;
   /** Restrict partial replacement to these ids. */
   partialIds?: string[];
   /** When true, return sample diffs without writing. */
@@ -116,8 +113,7 @@ export interface ReplaceOptions {
 export interface ReplaceDiff {
   target:
     | { kind: 'page'; id: string }
-    | { kind: 'partial'; id: string }
-    | { kind: 'item'; id: string; collection: string };
+    | { kind: 'partial'; id: string };
   /** Backwards-compatible shortcut, present for page matches only. */
   page_id?: string;
   title: string;
@@ -141,7 +137,6 @@ export interface ReplaceResult {
   resources_with_matches: number;
   resource_counts: {
     pages: number;
-    collection_items: number;
     partials: number;
   };
   conflicts: Array<{
@@ -172,8 +167,8 @@ interface ReplacementCandidate {
   target: ReplaceDiff['target'];
   title: string;
   fields: Record<string, unknown>;
-  original: Page | PartialDoc | CollectionItem;
-  collectionDef?: CollectionDef;
+  original: Page | PartialDoc;
+  contentType?: ContentType;
 }
 
 interface ReplacedField {
@@ -258,8 +253,8 @@ export async function bulkReplaceText(
   opts: ReplaceOptions,
 ): Promise<ReplaceResult> {
   const {
-    pattern, replacement, regex = false, pageIds, itemIds, partialIds,
-    dryRun = false, save = false, scope = 'pages', collection,
+    pattern, replacement, regex = false, pageIds, partialIds,
+    dryRun = false, save = false, scope = 'pages', contentType,
   } = opts;
   const updatedBy = opts.updatedBy ?? 'bulk-replace';
   if (!pattern) throw new Error('pattern required');
@@ -274,30 +269,28 @@ export async function bulkReplaceText(
   const wcs = await listWorkingCopies({ orgId, siteId, versionId });
   const candidates: ReplacementCandidate[] = [];
   const includePages = scope === 'pages' || scope === 'all';
-  const includeItems = scope === 'collection_items' || scope === 'all';
   const includePartials = scope === 'partials' || scope === 'all';
-  if (itemIds && !collection) throw new Error('collection required when item_ids is set');
   if (pageIds && !includePages) throw new Error('page_ids requires scope pages or all');
-  if ((collection || itemIds) && !includeItems) {
-    throw new Error('collection and item_ids require scope collection_items or all');
-  }
   if (partialIds && !includePartials) throw new Error('partial_ids requires scope partials or all');
 
   if (includePages) {
     const restrictTo = pageIds ? new Set(pageIds) : null;
-    const pages = await vstore.pages(orgId, siteId, versionId);
+    const pages = (await vstore.pages(orgId, siteId, versionId)).filter(page => !contentType || (page.content_type ?? 'page') === contentType);
+    const types = await vstore.contentTypes(orgId, siteId, versionId);
     for (const base of restrictTo ? pages.filter((page) => restrictTo.has(page.id)) : pages) {
       const page = overlayWorkingCopy(
         base,
         wcs.find((wc) => wc.kind === 'page' && wc.target_id === base.id),
       );
+      const type = types.find(type => type.id === (page.content_type ?? 'page'));
       candidates.push({
+        contentType: type,
         target: { kind: 'page', id: page.id },
         title: page.title,
         original: page,
-        fields: page.content_mode === 'blocks'
-          ? { blocks: page.blocks }
-          : { html_content: page.html_content },
+        fields: { ...(page.content_mode === 'blocks' ? { blocks: page.blocks } : { html_content: page.html_content }),
+          fields: Object.fromEntries((type?.fields ?? []).filter(field => ['text', 'textarea', 'richtext', 'html'].includes(field.type)).map(field => [field.name, page.fields?.[field.name]])),
+        },
       });
     }
   }
@@ -321,33 +314,6 @@ export async function bulkReplaceText(
     }
   }
 
-  if (includeItems) {
-    const definitions = collection
-      ? [await vstore.collection(orgId, siteId, versionId, collection)].filter(Boolean) as CollectionDef[]
-      : await vstore.collections(orgId, siteId, versionId);
-    if (collection && definitions.length === 0) throw new Error(`Collection not found: ${collection}`);
-    const restrictTo = itemIds ? new Set(itemIds) : null;
-    for (const definition of definitions) {
-      const items = await vstore.collectionItems(orgId, siteId, versionId, definition.name);
-      for (const base of restrictTo ? items.filter((item) => restrictTo.has(item.id)) : items) {
-        const item = overlayWorkingCopy(
-          base,
-          wcs.find((wc) => wc.kind === 'item' && wc.collection === definition.name && wc.target_id === base.id),
-        );
-        const fields = Object.fromEntries(
-          definition.fields.map((field) => [field.name, item[field.name]]),
-        );
-        candidates.push({
-          target: { kind: 'item', id: item.id, collection: definition.name },
-          title: String(item[definition.slug_field ?? 'slug'] ?? item.id),
-          original: item,
-          collectionDef: definition,
-          fields,
-        });
-      }
-    }
-  }
-
   const sampleDiffs: ReplaceDiff[] = [];
   let updated = 0;
   let saved = 0;
@@ -355,7 +321,7 @@ export async function bulkReplaceText(
   let totalMatches = 0;
   let pagesWithMatches = 0;
   let resourcesWithMatches = 0;
-  const resourceCounts = { pages: 0, collection_items: 0, partials: 0 };
+  const resourceCounts = { pages: 0, partials: 0 };
   const conflicts: ReplaceResult['conflicts'] = [];
 
   for (const candidate of candidates) {
@@ -373,11 +339,11 @@ export async function bulkReplaceText(
     }
     if (matchCount === 0 || !firstDiff) { skipped++; continue; }
 
-    if (candidate.target.kind === 'item' && candidate.collectionDef) {
+    if (candidate.target.kind === 'page' && candidate.contentType && changes.fields) {
       const authority = applyFieldAuthority({
-        fields: candidate.collectionDef.fields,
-        incoming: changes,
-        existing: candidate.original as CollectionItem,
+        fields: candidate.contentType.fields,
+        incoming: changes.fields as Record<string, unknown>,
+        existing: candidate.original,
         actor: 'agent',
         actorId: updatedBy,
       });
@@ -398,8 +364,6 @@ export async function bulkReplaceText(
       resourceCounts.pages++;
     } else if (candidate.target.kind === 'partial') {
       resourceCounts.partials++;
-    } else {
-      resourceCounts.collection_items++;
     }
     if (sampleDiffs.length < 3) {
       sampleDiffs.push({
@@ -425,7 +389,7 @@ export async function bulkReplaceText(
           { orgId, siteId, versionId },
           candidate.target,
           updatedBy,
-          candidate.target.kind === 'item' ? 'agent' : undefined,
+          'agent',
         );
         if (commit.committed) saved++;
       }

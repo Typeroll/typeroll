@@ -10,6 +10,7 @@
 // the colors and fonts come from SiteSettings, applied via CSS variables
 // in BaseLayout.
 
+import { ARTICLE_BLOCK_TYPES } from './article-blocks.js';
 import { REPEATER_BLOCK_TYPES } from './repeater-blocks.js';
 import { FORM_BLOCK_TYPES } from './form-blocks.js';
 import { TEMPLATE_BLOCK_TYPES } from './template-blocks.js';
@@ -207,6 +208,7 @@ const heading: BlockType = {
   container: false,
   schema: [
     { name: 'text', type: 'text', label: 'Heading text', required: true },
+    { name: 'anchor_id', type: 'text', label: 'Anchor ID' },
     {
       name: 'level',
       type: 'select',
@@ -218,7 +220,7 @@ const heading: BlockType = {
       name: 'size',
       type: 'select',
       label: 'Visual size',
-      options: ['auto', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'],
+      options: ['auto', 'theme', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'],
       default: 'auto',
       responsive: true,
     },
@@ -237,13 +239,13 @@ const heading: BlockType = {
   // always well-formed.
   template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" style="text-align:{{align}}">
   <span class="block-heading-eyebrow">{{eyebrow}}</span>
-  <{{=level}} class="block-heading-text">{{text}}</{{=level}}>
+  <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>
 </div>`,
   styles: `
 [data-block="heading"] { --heading-fs: clamp(1.75rem, 1rem + 3.5vw, 3.5rem); }
 [data-block="heading"] .block-heading-eyebrow { display: block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.25rem; }
 [data-block="heading"] .block-heading-eyebrow:empty { display: none; }
-[data-block="heading"] .block-heading-text { font-weight: 700; line-height: 1.15; margin: 0; font-size: var(--heading-fs); }
+[data-block="heading"]:not([data-size="theme"]) .block-heading-text { font-weight: 700; line-height: 1.15; margin: 0; font-size: var(--heading-fs); }
 
 /* Explicit visual size — wins over auto */
 [data-block="heading"][data-size="3xl"] { --heading-fs: clamp(2rem,    1rem      + 5vw,   4rem); }
@@ -280,16 +282,26 @@ const image: BlockType = {
     { name: 'src', type: 'image', label: 'Image', required: true },
     { name: 'alt', type: 'text', label: 'Alt text' },
     { name: 'caption', type: 'text', label: 'Caption' },
+    { name: 'caption_html', type: 'richtext', label: 'Formatted caption / credit (overrides plain caption)' },
+    { name: 'caption_align', type: 'select', label: 'Caption alignment', options: ['left', 'center', 'right'], default: 'center' },
+    { name: 'align', type: 'select', label: 'Image alignment', options: ['left', 'center', 'right'], default: 'center' },
+    { name: 'max_width', type: 'number', label: 'Maximum width (px)', min: 1 },
+    { name: 'original_width', type: 'number', label: 'Original width (px)', min: 1 },
+    { name: 'original_height', type: 'number', label: 'Original height (px)', min: 1 },
+    { name: 'mobile_src', type: 'image', label: 'Mobile image (optional)' },
     { name: 'link', type: 'url', label: 'Link to (optional)' },
-    { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide', 'full'], default: 'normal' },
+    { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide', 'full', 'original'], default: 'normal' },
     { name: 'radius', type: 'select', label: 'Corner radius', options: ['none', 'md', 'lg', 'xl'], default: 'none' },
   ],
-  template: `<figure data-block="image" data-w="{{width}}" data-radius="{{radius}}">
-  <a href="{{link}}" class="block-image-link"><img src="{{src}}" alt="{{alt}}" loading="lazy" decoding="async" /></a>
-  <figcaption class="block-image-caption">{{caption}}</figcaption>
+  template: `<figure data-block="image" data-w="{{width}}" data-align="{{align}}" data-caption-align="{{caption_align}}" data-radius="{{radius}}" style="{{image_size_style}}">
+  {{{image_markup}}}
+  <figcaption class="block-image-caption">{{{image_caption_html}}}</figcaption>
 </figure>`,
   styles: `
-[data-block="image"] { margin: 0 auto; }
+[data-block="image"] { margin: 0 auto; width:100%; }
+[data-block="image"][data-align="left"] { margin-left:0; }
+[data-block="image"][data-align="right"] { margin-right:0; }
+[data-block="image"][data-w="original"] img { width:auto; max-width:100%; }
 [data-block="image"][data-w="narrow"] { max-width: 32rem; }
 [data-block="image"][data-w="normal"] { max-width: 48rem; }
 [data-block="image"][data-w="wide"] { max-width: 64rem; }
@@ -299,6 +311,9 @@ const image: BlockType = {
 [data-block="image"][data-radius="lg"] img { border-radius: 1.25rem; }
 [data-block="image"][data-radius="xl"] img { border-radius: 1.75rem; }
 [data-block="image"] .block-image-link[href=""] { pointer-events: none; }
+[data-block="image"][data-caption-align="left"] .block-image-caption { text-align:left; }
+[data-block="image"][data-caption-align="right"] .block-image-caption { text-align:right; }
+[data-block="image"] .block-image-caption p { margin:0; }
 [data-block="image"] .block-image-caption:empty { display: none; }
 [data-block="image"] .block-image-caption { padding: 0.5rem 0; font-size: 0.875rem; opacity: 0.7; text-align: center; }
 `.trim(),
@@ -374,7 +389,7 @@ const templateContentSlot: BlockType = {
   icon: 'box-select',
   category: 'layout',
   container: false,
-  schema: [],
+  schema: [{ name: 'max_width', type: 'select', label: 'Content width', options: ['full', 'narrow', 'normal', 'wide'], default: 'full' }],
   template: `<!-- template_content_slot: this should be replaced during composition -->`,
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -397,6 +412,7 @@ export const CORE_BLOCK_TYPES: readonly BlockType[] = [
   // doesn't grow unwieldy, but merged here so a single registry covers
   // every block ID a page could reference.
   ...TIER1_BLOCK_TYPES,
+  ...ARTICLE_BLOCK_TYPES,
   // Repeater + aliases — see repeater-blocks.ts. These come after Tier 1
   // because some of them reference Tier 1 item blocks via `expand_to`.
   ...REPEATER_BLOCK_TYPES,

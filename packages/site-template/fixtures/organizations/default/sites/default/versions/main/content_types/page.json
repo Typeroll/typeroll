@@ -1,0 +1,8 @@
+{
+  "name": "page",
+  "label_singular": "Page",
+  "label_plural": "Pages",
+  "fields": [],
+  "route_template": "/{slug}",
+  "created_at": "1970-01-01T00:00:00Z"
+}

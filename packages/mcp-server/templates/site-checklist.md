@@ -1,53 +1,52 @@
-# Sajtchecklista — definition of done
+# Site checklist — definition of done
 
-Kopieras in som `checklist.md` i varje sajtmapp av startkitet. Agenten
-bockar av och håller den ärlig — en ruta bockas först när den är
-verifierad (preview/livetest), inte när koden är skriven. Punkter som
-medvetet inte gäller sajten stryks med motivering i build-log.
+The site kit copies this into `checklist.md`. Check an item only after verifying
+it. Record intentional exceptions and their reason in `build-log.md`.
 
-## Grund
+## Setup
 
-- [ ] Site settings: namn, tagline, språk, kontakt
-- [ ] Färger + typsnitt enligt grafisk profil (`update_site_settings`)
-- [ ] Logotyp uppladdad som media, satt i `settings.logo` OCH använd i headern
-- [ ] Favicon (`settings.favicon`) + apple touch icon (`settings.apple_touch_icon`)
-- [ ] Header-partial: nav + ev. CTA, mobilrobust
-- [ ] Footer-partial: kontakt, ev. organisationsinfo
+- [ ] Site settings, language, contact details, colors and fonts match the brief.
+- [ ] Logo, favicon and touch icon are uploaded and used by the site.
+- [ ] Header and footer are reusable partials and work on mobile.
 
-## Innehåll
+## Content model
 
-- [ ] Alla sidor enligt brief; godkänd copy används ordagrant
-- [ ] Bildsättning enligt stilprofilen (`prompts/image-style.md`) — inga textöknar
-- [ ] Alla bilder har riktig `alt`-text (rätt språk)
-- [ ] Formulär skapade + embeddade med `_token` från `read_form`
-- [ ] Interna länkar fungerar (nav, knappar, fotlänkar)
+- [ ] Every article, checklist, directory entry and ordinary page is a Page.
+- [ ] Content types define only custom fields, routes and default Page templates.
+- [ ] Common title, slug, path, body, SEO and status are Page properties.
+- [ ] New body content uses native editable blocks; rare HTML exceptions are named.
+- [ ] Templates contain a `template_content_slot` for each Page's body.
+- [ ] Page references use Page IDs; reference order and missing references are checked.
+- [ ] The same `version` is used for Page, type, template and preview operations.
+- [ ] Existing site data is migrated before running Core 0.2.0; no runtime aliases.
 
-## SEO
+## Content and SEO
 
-- [ ] Sidtitel + meta description per sida
-- [ ] `default_seo_suffix` satt; `default_meta_description` som fallback
-- [ ] OG-bild (`default_og_image`) så delningar får ett kort
-- [ ] Organisation i settings (`organization.name/logo/same_as`) för JSON-LD
-- [ ] Slugs genomtänkta; redirects skapade för varje slug-ändring
-- [ ] `language` rätt satt (styr `<html lang>`)
+- [ ] Approved copy and all expected Pages are present, including every content type.
+- [ ] Images have appropriate alt text; Forms are configured and embedded.
+- [ ] Internal links, navigation, canonicals, redirects and paths are verified.
+- [ ] Each Page has a title, description and suitable social image.
+- [ ] Language, structured data, robots rules and sitemaps are correct.
 
-## Kvalitet
+## Quality
 
-- [ ] Preview granskad på mobil + desktop (alla sektioner, menyn)
-- [ ] Rubrikhierarki: exakt en h1 per sida, logisk nivåföljd
-- [ ] Kontraster ok mot bakgrunderna (profilens palett ≠ automatiskt läsbar)
-- [ ] Stora bilder har varianter (`generate_image_variants`) + rimlig `sizes`
-- [ ] Block-läge: blockluckor journalförda i build-log ("Blockluckor")
+- [ ] Desktop and mobile previews show every section and usable navigation.
+- [ ] Heading hierarchy, contrast and responsive layout have been checked.
+- [ ] Media preparation is ready; images and variants have suitable sizes.
+- [ ] Type changes preserve Page body, identity and path; new required fields are filled.
+- [ ] Saved content and working copies are distinguished; only saved content deploys.
 
-## Lansering
+## Launch
 
-- [ ] Deploy till fallback-URL, godkänd av användaren
-- [ ] Formulär livetestat efter deploy (inskick + bekräftelsesida + inbox)
-- [ ] Favicon/touch-icon syns på den deployade sajten
-- [ ] Domän deklarerad i portalen (canonical bakas in) — DNS pekas SIST
-- [ ] Efter DNS: båda hostname-varianterna verifierade (apex + www)
+- [ ] Customer storage and publishing prerequisites are verified.
+- [ ] Deploy to the configured test address within the user's authorized scope.
+- [ ] Check the compiled site without a Typeroll login, including images and downloads.
+- [ ] No internal authenticated media address remains in public output.
+- [ ] Test Forms submission, confirmation and inbox in the authorized environment.
+- [ ] Prepare and verify final site/media hosts before traffic DNS changes.
+- [ ] Check relevant hostnames after DNS cutover.
 
-## Löpande
+## Handoff
 
-- [ ] `build-log.md` uppdaterad efter varje pass (beslut, friktion, länkar)
-- [ ] Den här listan uppdaterad — obockade rutor är aktiv att-göra-lista
+- [ ] Record decisions, verified URLs and remaining issues in `build-log.md`.
+- [ ] Keep incomplete or skipped checks visible; do not report them as passed.

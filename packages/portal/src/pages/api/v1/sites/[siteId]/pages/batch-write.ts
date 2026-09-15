@@ -16,6 +16,7 @@ import { vstore } from '../../../../../../lib/version-store';
 import { applyContentWrite } from '../../../../../../lib/content-write';
 import { checkAlternates } from '../../../../../../lib/page-alternates';
 import type { Page } from '@typeroll/shared';
+import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 
 const BATCH_MAX = 200;
 
@@ -23,6 +24,8 @@ const WRITABLE: Array<keyof Page> = [
   'title', 'slug', 'html_content', 'status', 'content_mode', 'kind', 'author',
   'seo_title', 'append_seo_suffix', 'seo_description', 'og_image', 'canonical_url', 'noindex',
   'alternates', 'json_ld', 'template', 'date_published',
+  'path', 'fields', 'blocks', 'parent', 'sort_order', 'seo_image_alt', 'language',
+  'lastmod_override', 'image_sizes_default', 'custom_css', 'publish_at', 'unpublish_at',
 ];
 
 function pickWritable(body: Partial<Page>): Partial<Page> {
@@ -58,6 +61,8 @@ export const POST: APIRoute = async ({ request, params }) => {
         const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
         if (!existing) return { page_id: pageId, ok: false, error: 'not found' };
         const rawPatch = (item.patch ?? {}) as Partial<Page>;
+        const blockError = blockTreeInputError(rawPatch.blocks);
+        if (blockError) return { page_id: pageId, ok: false, error: blockError };
         if (rawPatch.content_mode !== undefined) {
           return {
             page_id: pageId,

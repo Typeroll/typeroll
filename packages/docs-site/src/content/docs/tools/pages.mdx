@@ -12,10 +12,15 @@ import { Aside } from "@astrojs/starlight/components";
   publishing or unpublishing applies immediately.
 </Aside>
 
+Core 0.2.0 uses one Page model for all content. See [Content types](../content-types/) and the [upgrade guide](../../guides/unified-pages-upgrade/) for existing installations.
+
 ## Page fields
 
 | Field             | Type                                                     | Description                                                                                                                                             |
 | ----------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `content_type`    | string                                                   | Content type ID; defaults to `page`.                                                                                                                    |
+| `fields`          | object                                                   | Custom values defined by the content type.                                                                                                              |
+| `path`            | string                                                   | Explicit public path, overriding the type URL pattern.                                                                                                  |
 | `title`           | string                                                   | Page title. Used in nav and as default `<title>` tag.                                                                                                   |
 | `slug`            | string                                                   | URL path. `""` = homepage. No leading slash.                                                                                                            |
 | `content_mode`    | `"blocks"` \| `"html"`                                   | `"blocks"` is the default for new pages. See [Blocks](../blocks/) for the block-mode editing surface.                                                   |
@@ -47,7 +52,7 @@ The homepage has `slug: ""` and is stored with `id: "home"`. The AI agent uses t
 
 ## `create_page`
 
-Creates a new page. Required: `title`. Defaults: `status: "draft"`, `content_mode: "blocks"`. The AI agent picks the block library to compose the body unless you ask for HTML mode explicitly.
+Creates a new page. Required: `title`. Pass `content_type` and `fields` for articles or any other type. Defaults: `status: "draft"`, `content_mode: "blocks"`. The AI agent picks the block library to compose the body unless you ask for HTML mode explicitly.
 
 ```
 Create a page titled "Tjänster" at slug "tjanster" with three service sections.
@@ -124,7 +129,7 @@ Take the winter offer down on 28 February.
 
 A sweep runs regularly and flips anything that's due, clears the timer so a
 re-run can't double-fire, and triggers **one** deploy per site no matter how many
-pages changed. Collection items support the same two fields.
+pages changed, regardless of content type.
 
 The times are absolute (ISO 8601). A scheduled publish still only shows content
 that was **saved** — a page with unsaved drafts publishes its saved version.

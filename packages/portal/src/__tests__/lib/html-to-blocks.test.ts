@@ -9,6 +9,7 @@ describe('htmlToBlocks — heading detection', () => {
     expect(r.blocks[0].data.level).toBe('h1');
     expect(r.blocks[0].data.text).toBe('Big');
     expect(r.blocks[1].data.level).toBe('h2');
+    expect(r.blocks[1].data.size).toBe('theme');
     expect(r.blocks[2].data.level).toBe('h3');
   });
 
@@ -90,7 +91,7 @@ describe('htmlToBlocks — prose coalescing', () => {
     expect(proseBlocks).toHaveLength(1);
     expect(String(proseBlocks[0].data.html)).toContain('First');
     expect(String(proseBlocks[0].data.html)).toContain('Second');
-    expect(String(proseBlocks[0].data.html)).toContain('<li>');
+    expect(r.blocks[1]).toMatchObject({ type: 'core/list', data: { items: [{ html: 'x' }] } });
   });
 
   it('does not coalesce across a heading', () => {
@@ -110,9 +111,10 @@ describe('htmlToBlocks — fallback + structure', () => {
     expect(r.blocks[0].type).toBe('core/heading');
   });
 
-  it('falls back to prose for unknown structural tags', () => {
+  it('names unsupported markup as an HTML exception', () => {
     const r = htmlToBlocks('<custom-widget>Hi</custom-widget>');
-    expect(r.blocks[0].type).toBe('core/prose');
+    expect(r.blocks[0].type).toBe('core/html');
+    expect(r.notes[0]).toContain('custom-widget');
   });
 
   it('summary counts per block type', () => {
@@ -121,4 +123,41 @@ describe('htmlToBlocks — fallback + structure', () => {
     expect(summary.get('core/heading')).toBe(2);
     expect(summary.get('core/prose')).toBe(1);
   });
+});
+
+
+describe('content-preserving migration', () => {
+  it('preserves nested article containers without losing headings, links or lists', () => {
+    const result = htmlToBlocks('<article><div class="entry"><h2 id="old-id">Budget</h2><p>A <a href="/x">link</a></p><ol start="3"><li>First</li></ol></div></article>');
+    expect(result.blocks[0]).toMatchObject({ type: 'core/container', data: { tag: 'article' } });
+    const entry = result.blocks[0].children![0];
+    expect(entry.data.css_class).toBe('entry');
+    expect(entry.children!.map(b => b.type)).toEqual(['core/heading', 'core/prose', 'core/list']);
+    expect(entry.children![0].data.anchor_id).toBe('old-id');
+    expect(entry.children![1].data.html).toContain('href="/x"');
+    expect(entry.children![2].data.start).toBe(3);
+  });
+  it('extracts linked images from paragraphs and retains caption markup', () => {
+    const result = htmlToBlocks('<p>Before<a href="/offer"><img src="/photo.jpg" width="400" height="200"></a>After</p><figure><img src="/other.jpg"><figcaption>Credit <a href="/author">Author</a></figcaption></figure>');
+    const images = result.blocks.filter(b => b.type === 'core/image');
+    expect(images).toHaveLength(2);
+    expect(images[0].data).toMatchObject({ link: '/offer', original_width: 400, original_height: 200 });
+    expect(images[1].data.caption_html).toContain('href="/author"');
+    expect(JSON.stringify(result.blocks)).toContain('Before');
+    expect(JSON.stringify(result.blocks)).toContain('After');
+  });
+  it('preserves table header, colored cells, spans and video embeds as native blocks', () => {
+    const result = htmlToBlocks('<table><tr><th colspan="2">Cost</th></tr><tr><td style="background-color:#ff0000">100</td></tr></table><iframe src="https://www.youtube.com/embed/abc"></iframe>');
+    expect(result.blocks[0]).toMatchObject({ type: 'core/table', data: { rows: [
+      { cells: [{ header: true, colspan: 2, html: 'Cost' }] },
+      { cells: [{ background: '#ff0000', html: '100' }] },
+    ] } });
+    expect(result.blocks[1]).toMatchObject({ type: 'core/video', data: { video_url: 'https://www.youtube.com/embed/abc' } });
+  });
+});
+
+it('converts WordPress table figures to editable cells and preserves their source credit', () => {
+  const result = htmlToBlocks('<figure class="wp-block-table"><table><tr><th>Price</th><td style="background-color:#ffcc00">100</td></tr></table><figcaption>Source: <a href="/prices">Price list</a></figcaption></figure>');
+  expect(result.blocks[0]).toMatchObject({ type: 'core/table', data: { source: 'Source: <a href="/prices">Price list</a>', rows: [{ cells: [{ html: 'Price', header: true }, { html: '100', background: '#ffcc00' }] }] } });
+  expect(result.notes).toEqual([]);
 });

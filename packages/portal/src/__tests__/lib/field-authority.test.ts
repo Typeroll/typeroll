@@ -8,7 +8,7 @@
  * wins when two surfaces both may.
  */
 import { describe, it, expect } from 'vitest';
-import type { CollectionItem, FieldDefinition } from '@typeroll/shared';
+import type { Page, FieldDefinition } from '@typeroll/shared';
 import {
   DEFAULT_WRITABLE_BY,
   PROVENANCE_KEY,
@@ -31,7 +31,7 @@ const FIELDS: FieldDefinition[] = [
 ];
 
 const itemWith = (prov: Record<string, { source: string; actor: string; updated_at: string }>) =>
-  ({ id: 'i1', status: 'published', [PROVENANCE_KEY]: prov }) as unknown as CollectionItem;
+  ({ id: 'i1', status: 'published', [PROVENANCE_KEY]: prov }) as unknown as Page;
 
 describe('writable_by defaults', () => {
   it('is portal + agent when undeclared — exactly the pre-existing behaviour', () => {
@@ -157,7 +157,7 @@ describe('provenance bookkeeping', () => {
 
   it('reads a missing or malformed map as empty', () => {
     expect(readProvenance(undefined)).toEqual({});
-    expect(readProvenance({ id: 'x' } as CollectionItem)).toEqual({});
+    expect(readProvenance({ id: 'x' } as Page)).toEqual({});
   });
 
   it('stampProvenance records only schema fields', () => {

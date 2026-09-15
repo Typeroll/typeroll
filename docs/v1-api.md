@@ -24,11 +24,10 @@ Errors use:
 { "error": "Human-readable explanation" }
 ```
 
-Successful resource responses retain their established top-level keys.
-Collection list/get/create/update operations additionally expose the same
-payload under `data`; clients should prefer `data` for new integrations while
-older clients can continue reading `collection`, `collections`, `item`, or
-`items` at the top level.
+Resource responses use native names: `page`, `pages`, `content_type`,
+`content_types`, `template` and `templates`. Core 0.2.0 requires schema 2.
+The old collection/item endpoints and response aliases are removed; migrate
+existing data and update clients together.
 
 ## Writable payload conventions
 
@@ -40,18 +39,18 @@ older clients can continue reading `collection`, `collections`, `item`, or
   `"cols": { "mobile": 1, "tablet": 2, "desktop": 3 }`. Block create and
   update routes reject a top-level `responsive` object because the static
   renderer cannot consume that shape.
-- Collection schema PATCH accepts either top-level fields or the MCP-shaped
-  `{ "patch": { … } }` form.
-- Collection item PATCH accepts `{ "fields": { … } }` and the equivalent
-  `{ "patch": { … } }`. `status` and `save` remain top-level controls.
+- Content type PATCH accepts its writable definition fields at the top level.
+- Page custom values live in `fields`. Common metadata stays at the top level.
+- `POST /pages/{pageId}/content-type` takes `content_type` and an optional complete
+  `fields` replacement. Save/discard its working copy first. A revision preserves
+  the old values; Page identity, body, status and the existing URL are retained.
 - Content fields are staged in a working copy. Pass `save: true` to commit in
   the same call, or commit the working copy separately.
 - Unknown writable fields are rejected or dropped according to the resource's
-  schema contract. A `409` names collection fields rejected by field authority.
+  schema contract. A `409` names Page fields rejected by field authority.
 
-Collection-item `{itemId}` parameters resolve an internal document id first,
-then the collection's configured `slug_field`. Responses include
-`resolved_by: "id" | "slug"`.
+Page endpoints address the Page ID returned by creation. Use `list_pages`
+with a content-type filter to find records; do not infer IDs from slugs.
 
 ## Route index
 
@@ -63,12 +62,10 @@ All site routes below start with `/sites/{siteId}`.
 | Settings | `GET/PATCH /settings` |
 | Pages | `GET/POST /pages`, `GET/PATCH/PUT/DELETE /pages/{pageId}`, `POST /pages/batch-read`, `PATCH /pages/batch`, clone, mode conversion, preview and block-container routes |
 | Partials | `GET/POST /partials`, `GET/PATCH/PUT/DELETE /partials/{partialId}`, `POST /partials/{partialId}/mode`, usage and block-container routes |
-| Page templates | list/create/read/update/delete plus block-container routes under `/templates` |
+| Page templates | `GET/POST /page-templates`, `GET/PATCH/DELETE /page-templates/{templateId}`. Create accepts `starter` or `blocks`. |
+| Content types | `GET/POST /content-types`, `GET/PATCH/DELETE /content-types/{name}`, `GET /content-types/{name}/completeness` |
 | Block types | list/create/read/update/delete, usage, import and export under `/block-types` |
-| Collections | `GET/POST /collections`, `GET/PATCH/DELETE /collections/{name}`; create accepts native `template_kind` presets and explicit `item_template_blocks` |
-| Collection items | `GET/POST /collections/{name}/items`, `POST …/batch-read`, `GET/PATCH/DELETE …/items/{itemId-or-slug}` |
-| Collection analysis | completeness and listing regeneration under `/collections/{name}` |
-| Working copies | `GET/PATCH/DELETE /working-copy/{page|partial|item}/…`, plus commit |
+| Working copies | `GET/PATCH/DELETE /working-copy/{page|partial}/…`, plus commit |
 | Media | list/create/read/update/delete, upload URL, finalize, bulk finalize, variant generation and alt-text context under `/media` |
 | Redirects | `GET/POST /redirects`, `DELETE /redirects/{redirectId}` |
 | Forms | list/create/read/update/delete and submission routes under `/forms` |
@@ -147,7 +144,7 @@ visitor's browser and require an admin-capable API key.
 
 ## Versioned rendering dependencies
 
-Pages, partials, collections, items, page templates, and custom or installed
+Pages, content types, partials, page templates, and custom or installed
 block types are resolved through the selected version's base chain in preview
 and during materialization. A branch therefore inherits dependencies that it
 has not overridden. Deleting an inherited block type creates a branch-local
@@ -167,7 +164,7 @@ check. `POST` the same route with a non-empty `compositions` array to review
 proposed block trees and field mappings before authoring. Generic custom
 replacement blocks, raw HTML, corrective instance CSS, missing block types,
 and missing declared fields return `waiting_for_native_support`; the check
-does not write content. See [Native collection compositions](./collection-compositions.md)
+does not write content. See [Native Page compositions](./page-compositions.md)
 for the payload and response contract.
 
 ### Bulk decisions
@@ -281,7 +278,7 @@ The safe default is a dry run:
 The response contains exact per-field `diffs`, aggregate counts, and
 `conflicts`. An existing working copy skips that resource, preventing the
 repair from overwriting or accidentally publishing another editor's draft.
-Collection fields must also be schema-defined `text` or `textarea` fields and
+Custom Page fields must also be schema-defined `text` or `textarea` fields and
 permit agent writes; an authority conflict skips the whole item.
 
 After reviewing every diff, either create working copies for portal review:
@@ -296,7 +293,7 @@ or commit through the normal revision and validation path:
 { "scope": "all", "dry_run": false, "save": true }
 ```
 
-Use `page_ids`, or `collection` plus optional `item_ids`, to split a large
+Use `page_ids` or `content_type`, to split a large
 repair into reviewable batches. `diff_limit` defaults to 500 and is capped at
 2,000; `truncated` and `additional_diffs` make omitted diffs explicit.
 
@@ -324,7 +321,7 @@ main. The UI retains its labeled date-based list when a baseline is unavailable.
 `classification` describes source inputs (`none`, `page_content_only`,
 `site_wide`, `unknown`), not proven output dependencies. The response includes
 page addition/change/removal counts, `total`, up to 50 `changes`, and structured
-`reasons`. Collection membership, shared definitions, media fingerprints,
+`reasons`. Content type membership, shared definitions, media fingerprints,
 runtime configuration, origins and Core changes conservatively widen scope.
 Preview responses have `provisional: true`; the job recomputes `build_impact`
 from its frozen input. `execution: full` and `reuse_verified: false` remain
@@ -339,8 +336,7 @@ GET /sites/{siteId}/internal-links?version=main
 ```
 
 This performs no public crawl. It finds hrefs in the content that is eligible
-for the selected build, then resolves them against page paths, collection item
-routes, facet routes, same-origin media paths, and exact/pattern redirect
+for the selected build, then resolves them against Page paths and content-type routes, facet routes, same-origin media paths, and exact/pattern redirect
 chains. Broken rows include `from`, `href`, `resolved_path`, and `reason`.
 Deploys run the same check as a non-blocking preflight and retain findings in
 the deploy job's `warnings` array.
@@ -360,9 +356,23 @@ POST /sites/{siteId}/bulk-replace
 }
 ```
 
-`scope` is `pages` (default), `partials`, `collection_items`, or `all`.
-Restrict with `page_ids`, `partial_ids`, or `collection` plus `item_ids`.
+`scope` is `pages` (default), `partials`, or `all`.
+Restrict with `page_ids`, `partial_ids`, or `content_type`.
 Block resources modify editorial `data` only; stable ids and types never
-change. Collection changes are schema-limited and field-authority conflicts
+change. Custom-field changes are schema-limited and field-authority conflicts
 are returned in `conflicts`. Review `sample_diffs`, then repeat with
 `dry_run: false` and optionally `save: true`.
+
+
+Content types also own `sort_field`/`sort_dir` and optional `allowed_templates`.
+Types define content; templates define presentation. Multiple compatible Page
+templates can be allowed, with `template` selecting the default. Null/absent
+`allowed_templates` is unrestricted, `[]` allows none, and a configured default
+must be in an explicit allowed list. Page overrides must be allowed; null/empty
+`Page.template` restores inheritance. Page template changes use Save/Discard.
+
+Listings inherit type sorting unless explicitly overridden. `Page.sort_order`
+is the manual numeric order; null clears it. Missing sort values come last and
+IDs break ties. Explicit ID lists keep their order. Typed `list_pages` queries
+inherit type sorting and accept `sort_by`/`sort_order`; unfiltered API lists
+default to stable IDs. See the public Content types guide for editor steps.

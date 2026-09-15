@@ -14,7 +14,7 @@ import {
   type WordPressPlainTextRepairScope,
 } from '../../../../../../lib/wp/plain-text-repair';
 
-const SCOPES = new Set<WordPressPlainTextRepairScope>(['pages', 'collection_items', 'all']);
+const SCOPES = new Set<WordPressPlainTextRepairScope>(['pages', 'all']);
 const FIELDS = new Set<string>(WORDPRESS_PLAIN_TEXT_REPAIR_FIELDS);
 const MAX_IDS = 2_000;
 const MAX_DIFF_LIMIT = 2_000;
@@ -23,8 +23,7 @@ interface RepairBody {
   scope?: WordPressPlainTextRepairScope;
   fields?: WordPressPlainTextRepairField[];
   page_ids?: string[];
-  collection?: string;
-  item_ids?: string[];
+  content_type?: string;
   dry_run?: boolean;
   save?: boolean;
   diff_limit?: number;
@@ -45,7 +44,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body');
 
   if (body.scope !== undefined && !SCOPES.has(body.scope)) {
-    return apiError('scope must be pages, collection_items, or all');
+    return apiError('scope must be pages or all');
   }
   if (body.fields !== undefined) {
     if (!validStringArray(body.fields, WORDPRESS_PLAIN_TEXT_REPAIR_FIELDS.length)
@@ -56,10 +55,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (body.page_ids !== undefined && !validStringArray(body.page_ids)) {
     return apiError(`page_ids must contain 1-${MAX_IDS} non-empty strings`);
   }
-  if (body.item_ids !== undefined && !validStringArray(body.item_ids)) {
-    return apiError(`item_ids must contain 1-${MAX_IDS} non-empty strings`);
-  }
-  if (body.collection !== undefined && (typeof body.collection !== 'string' || !body.collection)) {
+
+  if (body.content_type !== undefined && (typeof body.content_type !== 'string' || !body.content_type)) {
     return apiError('collection must be a non-empty string');
   }
   if (body.dry_run !== undefined && typeof body.dry_run !== 'boolean') {
@@ -81,8 +78,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       scope: body.scope,
       fields: body.fields,
       pageIds: body.page_ids,
-      collection: body.collection,
-      itemIds: body.item_ids,
+      contentType: body.content_type,
       dryRun,
       save: body.save ?? false,
       diffLimit: body.diff_limit,

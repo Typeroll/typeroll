@@ -12,7 +12,7 @@ import { previewTools } from '../src/tools/preview.js';
 import { siteTools } from '../src/tools/sites.js';
 import { blockTypeTools } from '../src/tools/block-types.js';
 import { settingsTools } from '../src/tools/settings.js';
-import { collectionTools } from '../src/tools/collections.js';
+import { contentTypeTools } from '../src/tools/content-types.js';
 import { mediaTools } from '../src/tools/media.js';
 import { migrationTools } from '../src/tools/migration.js';
 import { domainTools } from '../src/tools/domain.js';
@@ -77,10 +77,10 @@ describe('pages tools', () => {
   it('list_pages forwards filters as query params', async () => {
     const { client, siteId, calls } = setup(() => jsonResponse({ pages: [] }));
     const tool = find(pageTools, 'list_pages') as typeof pageTools[number];
-    const result = await tool.handler({ status: 'draft', limit: 10 } as never, { client, siteId });
+    const result = await tool.handler({ status: 'draft', limit: 10, content_type: 'articles', sort_by: 'rank', sort_order: 'desc', version: 'design' } as never, { client, siteId });
     expect(result.isError).toBeFalsy();
     expect(calls[0].method).toBe('GET');
-    expect(calls[0].url).toBe('https://example.test/api/v1/sites/mysite/pages?status=draft&limit=10');
+    expect(calls[0].url).toBe('https://example.test/api/v1/sites/mysite/pages?status=draft&content_type=articles&sort_by=rank&sort_order=desc&limit=10&version=design');
   });
 
   it('read_page URL-encodes the page id', async () => {
@@ -121,14 +121,12 @@ describe('pages tools', () => {
   });
 });
 
-describe('collection and media tool contracts', () => {
-  it('uses collection consistently while retaining name as a compatibility alias', async () => {
-    const { client, siteId, calls } = setup(() => jsonResponse({ collection: {} }));
-    const tool = find(collectionTools, 'read_collection');
-    await tool.handler({ collection: 'news' } as never, { client, siteId });
-    expect(calls[0].url).toBe('https://example.test/api/v1/sites/mysite/collections/news');
-    await tool.handler({ name: 'legacy' } as never, { client, siteId });
-    expect(calls[1].url).toBe('https://example.test/api/v1/sites/mysite/collections/legacy');
+describe('content type and media tool contracts', () => {
+  it('addresses the native content type endpoint by name', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ content_type: {} }));
+    const tool = find(contentTypeTools, 'read_content_type');
+    await tool.handler({ name: 'news', version: 'design' } as never, { client, siteId });
+    expect(calls[0].url).toBe('https://example.test/api/v1/sites/mysite/content-types/news?version=design');
   });
 
   it('exposes a bounded batch URL upload tool', () => {
@@ -145,7 +143,7 @@ describe('migration tool contracts', () => {
     const compositions = [{
       name: 'Article',
       fields: [{ name: 'body', type: 'richtext' }],
-      blocks: [{ id: 'body', type: 'template/item_body', data: { field: 'body' } }],
+      blocks: [{ id: 'body', type: 'template_content_slot', data: {} }],
     }];
     await tool.handler({ source_url: 'https://old.example.com', compositions } as never, { client, siteId });
     expect(calls[0]).toMatchObject({

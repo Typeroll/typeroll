@@ -27,10 +27,10 @@ describe('native site compositions', () => {
 
   it('builds an archive with responsive columns and configurable card mappings', () => {
     const blocks = getArchiveCompositionStarter({
-      collection: 'articles', title: 'Articles', image_field: 'featured_image',
+      content_type: 'articles', title: 'Articles', image_field: 'featured_image',
       image_alt_field: 'featured_image_alt', heading_level: 'h2',
     });
-    const list = blocks.find((candidate) => candidate.type === 'core/collection_list');
+    const list = blocks.find((candidate) => candidate.type === 'core/page_list');
     expect(list?.data.cols).toEqual({ mobile: 1, tablet: 2, desktop: 3 });
     expect(list?.data.item_overrides).toMatchObject({
       image_field: 'featured_image', image_alt_field: 'featured_image_alt', heading_level: 'h2',

@@ -142,6 +142,12 @@ This project is wired to a Typeroll site through \`@typeroll/mcp-server\`.
 - **Connection** is configured in \`.mcp.json\`. Fill in \`TYPEROLL_API_KEY\`
   (create one in the portal under Settings → API keys) and
   \`TYPEROLL_SITE_ID\`.
+- **One Page model (Core 0.2.0 / MCP 0.45.0).** Every article, checklist,
+  directory entry and ordinary page is a Page. A \`content_type\` supplies its
+  schema, URL pattern and default Page template; custom values live in \`fields\`.
+  Use \`create_page\`, \`list_pages content_type=...\` and Page IDs everywhere.
+  Use the same \`version\` for Pages, types, templates and previews. Existing
+  installations require the schema 2 migration before using this model.
 - **Discover before you write.** Call \`get_site\`, \`read_site_settings\`,
   \`list_pages\`, and \`list_block_types\` before proposing changes so you
   mirror the site's conventions.

@@ -286,6 +286,8 @@ function cloudRunDeployArgs(plan, service, workerUrl) {
     service.service,
     `--region=${plan.region}`,
     `--image=${service.image}`,
+    '--command=',
+    '--args=',
     `--service-account=${service.service_account}`,
     `--cpu=${service.cpu}`,
     `--memory=${service.memory}`,

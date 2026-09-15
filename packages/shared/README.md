@@ -2,6 +2,21 @@
 
 The data contract between the portal and the site renderer. Pure TypeScript with no runtime code.
 
+## One Page model
+
+Core 0.2.0 and MCP 0.45.0 use one content entity: **Page**. Every article,
+checklist, product, directory entry and ordinary page uses the same API, editor,
+blocks, history, preview and status. `content_type` selects a schema, URL pattern
+and default Page template. Custom values belong in `fields`; title, slug, path,
+body, SEO and status are built-in Page properties. Use `page_ref`/`page_ref_list`
+for references and a blank type route pattern for records without detail URLs.
+
+Use `create_page`, `list_pages content_type=...` and the Content type/Page template
+tools. Use the Page ID and the same site `version` throughout editing, references,
+previews and builds. Existing installations must migrate before running this
+release. See the [model guide](https://typeroll.com/docs/tools/content-types/) and
+[upgrade procedure](https://typeroll.com/docs/guides/unified-pages-upgrade/).
+
 ## Contents
 
 - `src/types.ts` — every persistent document type (Organization, Site, Page, Block, Form, etc.) plus the `paths` helper that produces canonical resource addresses.

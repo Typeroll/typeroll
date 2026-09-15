@@ -33,7 +33,7 @@ export const siteTools: ToolDef[] = [
   {
     name: 'get_site_capabilities',
     description:
-      "Discover what the site-template renderer supports for this site. Returns a manifest of feature flags (blocks-mode, x-include, collection routes, custom block scripts, dry-run deploys, etc.) plus template_capabilities_version + the core block type ids. Call this when you're about to do something structural (set route_template on a collection, switch a page to blocks-mode, install a custom block type) and want to feature-detect rather than guess. The manifest is platform-wide today; per-site custom templates land later.",
+      "Discover what the site-template renderer supports for this site. Returns a manifest of feature flags (blocks-mode, x-include, content-type routes, custom block scripts, dry-run deploys, etc.) plus template_capabilities_version + the core block type ids. Call this when you're about to do something structural (set route_template on a content type, switch a page to blocks-mode, install a custom block type) and want to feature-detect rather than guess. The manifest is platform-wide today; per-site custom templates land later.",
     handler: withErrorBoundary(async (_args, { client, siteId }) => {
       const res = await client.get(siteId, 'capabilities');
       return ok(res);

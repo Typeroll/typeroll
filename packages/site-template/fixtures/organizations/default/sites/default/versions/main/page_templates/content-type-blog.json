@@ -1,0 +1,41 @@
+{
+  "name": "content-type-blog",
+  "label": "Blog post",
+  "blocks": [
+    {
+      "id": "blk_t",
+      "type": "template/page_title",
+      "data": {
+        "level": "h1",
+        "size": "auto",
+        "align": "left"
+      }
+    },
+    {
+      "id": "blk_d",
+      "type": "template/page_date",
+      "data": {
+        "field": "published_at"
+      }
+    },
+    {
+      "id": "blk_i",
+      "type": "template/page_featured_image",
+      "data": {
+        "field": "featured_image",
+        "width": "wide"
+      }
+    },
+    {
+      "id": "blk_b",
+      "type": "template_content_slot",
+      "data": {
+        "field": "body",
+        "max_width": "normal"
+      }
+    }
+  ],
+  "status": "published",
+  "created_at": "2026-09-15T00:00:00Z",
+  "date_updated": "2026-09-15T00:00:00Z"
+}

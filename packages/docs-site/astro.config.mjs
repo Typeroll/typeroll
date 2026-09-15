@@ -121,7 +121,7 @@ export default defineConfig({
             { label: 'Blocks', slug: 'tools/blocks' },
             { label: 'Partials', slug: 'tools/partials' },
             { label: 'Settings', slug: 'tools/settings' },
-            { label: 'Collections', slug: 'tools/collections' },
+            { label: 'Content types & templates', slug: 'tools/content-types' },
             { label: 'Forms', slug: 'tools/forms' },
             { label: 'Media', slug: 'tools/media' },
             { label: 'Redirects', slug: 'tools/redirects' },
@@ -134,6 +134,7 @@ export default defineConfig({
           items: [
             { label: 'Legacy managed domains', slug: 'guides/custom-domain' },
             { label: 'Self-Hosting', slug: 'guides/self-hosting' },
+            { label: 'Upgrade to unified Pages', slug: 'guides/unified-pages-upgrade' },
           ],
         },
         {

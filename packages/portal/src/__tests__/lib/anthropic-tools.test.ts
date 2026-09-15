@@ -224,7 +224,7 @@ describe('create_page slug validation (regression — docs/page-slug-audit.md)',
     // are the gate.
     const r = out.result as Record<string, unknown>;
     expect(r.error).toBeFalsy();
-    expect(r.slug).toBe('about');
+    expect((r.page as Record<string, unknown>).slug).toBe('about');
   });
 });
 
@@ -581,66 +581,61 @@ describe('block instance tools — template target', () => {
   });
 });
 
-describe('block instance tools — item_template target', () => {
+describe('block instance tools — page_template target', () => {
   beforeEach(async () => { await resetDatastore(); });
 
-  async function seedCollection(name: string, item_template_blocks?: import('@typeroll/shared').Block[]): Promise<void> {
+  async function seedTemplate(name: string, blocks?: import('@typeroll/shared').Block[]): Promise<void> {
     const { getStore } = await import('../../lib/datastore');
     await getStore().setDoc(
-      `${paths.collections(ORG, SITE, MAIN_VERSION_ID)}/${name}`,
+      `${paths.pageTemplates(ORG, SITE, MAIN_VERSION_ID)}/${name}`,
       {
         id: name, name,
-        label_singular: 'Post', label_plural: 'Posts',
-        fields: [
-          { name: 'title', type: 'text', label: 'Title' },
-          { name: 'body', type: 'richtext', label: 'Body' },
-        ],
-        item_template_blocks,
+        label: 'Post', status: 'published', blocks: blocks ?? [],
         created_at: new Date().toISOString(),
       } as Record<string, unknown>,
     );
   }
 
-  it('add_block writes to the collection\'s item_template_blocks field', async () => {
+  it('add_block writes to the template\'s blocks field', async () => {
     const { ctx, runTool } = await setup();
-    await seedCollection('blog');
+    await seedTemplate('blog');
 
     const out = await runTool('add_block', {
-      target: { kind: 'item_template', id: 'blog' },
-      block: { type: 'template/item_title', data: { level: 'h1', size: 'auto', align: 'left' } },
+      target: { kind: 'template', id: 'blog' },
+      block: { type: 'template/page_title', data: { level: 'h1', size: 'auto', align: 'left' } },
     }, ctx);
     const r = out.result as { ok?: boolean; added_id?: string };
     expect(r.ok).toBe(true);
 
     const { getStore } = await import('../../lib/datastore');
-    const coll = await getStore().getDoc<import('@typeroll/shared').CollectionDef>(
-      `${paths.collections(ORG, SITE, MAIN_VERSION_ID)}/blog`,
+    const coll = await getStore().getDoc<import('@typeroll/shared').PageTemplate>(
+      `${paths.pageTemplates(ORG, SITE, MAIN_VERSION_ID)}/blog`,
     );
-    expect(coll?.item_template_blocks).toHaveLength(1);
-    expect(coll?.item_template_blocks?.[0].type).toBe('template/item_title');
+    expect(coll?.blocks).toHaveLength(1);
+    expect(coll?.blocks?.[0].type).toBe('template/page_title');
   });
 
-  it('get_page_blocks returns the item_template tree', async () => {
+  it('get_page_blocks returns the page_template tree', async () => {
     const { ctx, runTool } = await setup();
-    await seedCollection('blog', [
-      { id: 'b1', type: 'template/item_title', data: { level: 'h1' } },
-      { id: 'b2', type: 'template/item_body', data: { max_width: 'normal' } },
+    await seedTemplate('blog', [
+      { id: 'b1', type: 'template/page_title', data: { level: 'h1' } },
+      { id: 'b2', type: 'template_content_slot', data: { max_width: 'normal' } },
     ]);
 
     const out = await runTool('get_page_blocks', {
-      target: { kind: 'item_template', id: 'blog' },
+      target: { kind: 'template', id: 'blog' },
     }, ctx);
     const r = out.result as { content_mode: string; blocks: import('@typeroll/shared').Block[] };
     expect(r.content_mode).toBe('blocks');
     expect(r.blocks).toHaveLength(2);
-    expect(r.blocks[0].type).toBe('template/item_title');
+    expect(r.blocks[0].type).toBe('template/page_title');
   });
 
-  it('returns 404 for missing collection', async () => {
+  it('returns 404 for missing template', async () => {
     const { ctx, runTool } = await setup();
     const out = await runTool('add_block', {
-      target: { kind: 'item_template', id: 'nope' },
-      block: { type: 'template/item_title', data: {} },
+      target: { kind: 'template', id: 'nope' },
+      block: { type: 'template/page_title', data: {} },
     }, ctx);
     const r = out.result as { error?: string };
     expect(r.error).toMatch(/not found/i);
@@ -648,32 +643,32 @@ describe('block instance tools — item_template target', () => {
 
   it('move + remove + update round-trip in an item template', async () => {
     const { ctx, runTool } = await setup();
-    await seedCollection('blog', [
-      { id: 'b1', type: 'template/item_title', data: { level: 'h1' } },
-      { id: 'b2', type: 'template/item_body', data: { max_width: 'normal' } },
+    await seedTemplate('blog', [
+      { id: 'b1', type: 'template/page_title', data: { level: 'h1' } },
+      { id: 'b2', type: 'template_content_slot', data: { max_width: 'normal' } },
     ]);
 
     // Reorder: put body before title
     await runTool('move_block', {
-      target: { kind: 'item_template', id: 'blog' },
+      target: { kind: 'template', id: 'blog' },
       block_id: 'b2',
       target_position: 0,
     }, ctx);
 
     // Update the title's level
     await runTool('update_block', {
-      target: { kind: 'item_template', id: 'blog' },
+      target: { kind: 'template', id: 'blog' },
       block_id: 'b1',
       data: { level: 'h2' },
     }, ctx);
 
     const { getStore } = await import('../../lib/datastore');
-    const coll = await getStore().getDoc<import('@typeroll/shared').CollectionDef>(
-      `${paths.collections(ORG, SITE, MAIN_VERSION_ID)}/blog`,
+    const coll = await getStore().getDoc<import('@typeroll/shared').PageTemplate>(
+      `${paths.pageTemplates(ORG, SITE, MAIN_VERSION_ID)}/blog`,
     );
-    expect(coll?.item_template_blocks?.[0].id).toBe('b2');
-    expect(coll?.item_template_blocks?.[1].id).toBe('b1');
-    expect((coll?.item_template_blocks?.[1].data as { level?: string }).level).toBe('h2');
+    expect(coll?.blocks?.[0].id).toBe('b2');
+    expect(coll?.blocks?.[1].id).toBe('b1');
+    expect((coll?.blocks?.[1].data as { level?: string }).level).toBe('h2');
   });
 });
 

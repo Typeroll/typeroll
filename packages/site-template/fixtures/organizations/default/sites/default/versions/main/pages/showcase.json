@@ -23,18 +23,38 @@
       "id": "blk_features",
       "type": "core/feature_grid",
       "data": {
-        "cols": { "mobile": 1, "tablet": 2, "desktop": 3 },
+        "cols": {
+          "mobile": 1,
+          "tablet": 2,
+          "desktop": 3
+        },
         "items": [
-          { "icon": "zap", "heading": "Fast", "text": "<p>Static HTML, CDN-served. No origin.</p>" },
-          { "icon": "shield", "heading": "Safe", "text": "<p>No PHP, no database, no exploits.</p>" },
-          { "icon": "smile", "heading": "Simple", "text": "<p>Edit content; the renderer does the rest.</p>" }
+          {
+            "icon": "zap",
+            "heading": "Fast",
+            "text": "<p>Static HTML, CDN-served. No origin.</p>"
+          },
+          {
+            "icon": "shield",
+            "heading": "Safe",
+            "text": "<p>No PHP, no database, no exploits.</p>"
+          },
+          {
+            "icon": "smile",
+            "heading": "Simple",
+            "text": "<p>Edit content; the renderer does the rest.</p>"
+          }
         ]
       }
     },
     {
       "id": "blk_pagetitle",
       "type": "template/page_title",
-      "data": { "level": "h2", "size": "lg", "align": "center" }
+      "data": {
+        "level": "h2",
+        "size": "lg",
+        "align": "center"
+      }
     },
     {
       "id": "blk_cta",
@@ -45,5 +65,8 @@
         "align": "center"
       }
     }
-  ]
+  ],
+  "path": "/showcase",
+  "content_type": "page",
+  "fields": {}
 }

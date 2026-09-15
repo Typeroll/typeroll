@@ -2,6 +2,7 @@
 // any route handler tries to read them. Mounted here because middleware is
 // loaded once at SSR boot — earlier than any per-route module import.
 import './lib/load-env';
+import { requireCurrentDataSchema } from './lib/data-schema';
 import { defineMiddleware } from 'astro:middleware';
 import { MAIN_VERSION_ID } from '@typeroll/shared';
 import { enforceCsrf } from './lib/csrf';
@@ -64,10 +65,10 @@ function ensureDevPublishSweep(): void {
   const queueMode = process.env.DEPLOY_QUEUE ?? 'in_process';
   if (queueMode !== 'in_process') return;
   setInterval(() => {
-    import('./lib/scheduled-publish')
+    requireCurrentDataSchema().then(() => import('./lib/scheduled-publish'))
       .then(({ runPublishSweep }) => runPublishSweep())
       .then((r) => {
-        const n = r.pages_published + r.pages_unpublished + r.items_published + r.items_unpublished;
+        const n = r.pages_published + r.pages_unpublished;
         if (n > 0) console.log(`[publish-sweep] fired: ${JSON.stringify(r)}`);
       })
       .catch((e) => console.error('[publish-sweep] failed:', e));
@@ -75,6 +76,14 @@ function ensureDevPublishSweep(): void {
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  if (!['/api/healthz', '/api/version'].includes(context.url.pathname)) {
+    try { await requireCurrentDataSchema(); }
+    catch {
+      return new Response('Typeroll is being upgraded. Please try again shortly.', {
+        status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '60', 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    }
+  }
   const role = serviceRole();
   if (role === 'worker' && process.env.DEPLOY_QUEUE === 'firestore') {
     const { ensureFirestoreWorkerLoop } = await import('./lib/deploy/firestore-worker');

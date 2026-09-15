@@ -49,13 +49,10 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   - `html` — body lives in `html_content` as a single HTML string.
     Useful when you have hand-written markup to drop in directly.
 
-  Slug is a single path segment — no slashes. `about` → `/about`,
-  `kontakt` → `/kontakt`, empty string `""` → homepage. The v1 API
-  rejects `services/design` and other slash-containing slugs with
-  "Invalid slug … slugs must not contain slashes." For nested URLs
-  like `/blog/{slug}` or `/services/{slug}`, the right primitive is a
-  **collection with `route_template`** (see the `tr-blog` and
-  `tr-directory` skills) — not a flat page with a slashed slug.
+  Every Page has a `content_type` (default `page`) and a `fields` object for
+  custom values. Slug is one segment; use an explicit `path` for a nested URL,
+  or let the content type's `route_template` derive it. All articles and
+  directory entries are Pages created with `create_page`.
 
 - **Partials = global blocks.** Three kinds:
   - `header` — auto-injected at the top of every page.
@@ -69,14 +66,14 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   it the same way as a page. Useful for header/footer authored with
   block types.
 
-- **Collections.** Repeatable content types (blog, team, events,
-  products, restaurants for a directory site, etc.). Each has a schema
-  (`fields[]`) and optional **per-item routing** via `route_template`
-  (e.g. `/restaurants/{slug}`). When set, every published item gets its
-  own static URL rendered through `item_template_blocks` (preferred) or
-  `item_template_html`. Native `article` and `checklist` presets are available
-  through `template_kind`. Set
-  `route_template=""` to opt out and keep the collection listing-only.
+- **Content types.** A field schema, URL pattern and optional default Page
+  template. Use `create_content_type`, `read_content_type`,
+  `update_content_type` and `list_content_types`. Title, slug, body, status and
+  SEO already belong to the Page; define only custom fields. An empty
+  `route_template` gives Pages no public detail URL while retaining their data.
+  List entries with `list_pages content_type=...`. Page IDs are unique within
+  the site, across all content types. `change_page_content_type` preserves a
+  saved Page's identity and existing URL and records a revision.
 
 - **Settings.** Site name, tagline, logo, favicon, colors, fonts,
   contact info, social links, SEO suffix, default meta description
@@ -118,10 +115,11 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   the final update.
 
 - **Page templates.** A `PageTemplate` is a Block[] tree that wraps a
-  page's body. The template contains exactly one block of type
+  page's body. The template contains a block of type
   `template_content_slot` — at render time that block gets replaced by
   the page's own `blocks`. Set `Page.template = "<template-id>"` to
-  apply a template to a page.
+  apply a template to a page, or set the content type’s `template` default.
+  Use `create_page_template starter="article"` for a native starting layout.
 
 - **Block types.** A site has three sources of block types:
   - **Core** (origin: 'core', ids like `core/section`) — shipped in
@@ -160,8 +158,8 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
     visit time. Index = page content only (nav/footer excluded); noindex
     pages stay out. Editor preview shows a placeholder note (the index
     only exists on the deployed site).
-  - **Archive pagination** (0.29.0+): a collection listing
-    (`core/collection_list` / `core/repeater`) with `paginate: N` renders
+  - **Archive pagination** (0.29.0+): a Page listing
+    (`core/page_list` / `core/repeater`) with `paginate: N` renders
     N items per page + a pager, and the build generates `/page/2/`… routes
     automatically. `paginate` supersedes `limit`; one paginated listing
     per page.
@@ -232,24 +230,24 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
     Prefer real blocks when one fits.
   - **Structured records at scale** (template_capabilities_version ≥ 0.31.0).
     Four things landed together for directory-shaped sites:
-    - `collection_completeness` — **start an enrichment pass here**, not by
+    - `page_completeness` — **start an enrichment pass here**, not by
       paging every item. Returns per-field gap counts plus the N worst
       records (missing fields, never-verified fields, fields whose last write
       is older than the staleness window), computed at read time. Fields no
       API key may write are excluded by default: a gap you can't close is
       noise.
-    - **Per-field write authority.** A collection field can declare
+    - **Per-field write authority.** A content type field can declare
       `writable_by` (`portal | owner | agent | app | import`). A write you're
       not permitted, or one that would overwrite a higher-precedence writer
       (a human correction, the listed business's own edit), comes back as
       **409 with the losing field names** — never a silent no-op. Treat that
       as "already handled" and record it; retrying will lose again.
-    - **Item references.** `item_ref` / `item_ref_list` fields point at items
-      in another collection (`ref_collection`). The reverse direction is
+    - **Item references.** `page_ref` / `page_ref_list` fields point at items
+      in another content type (`ref_content_type`). The reverse direction is
       computed at render time — don't try to maintain backlinks yourself.
       Render them with a `core/repeater` whose `source_type` is `related`
-      (a ref field on the current item) or `backlinks` (who points at it).
-    - **Taxonomy pages.** `CollectionDef.facets` generates one page per
+      (a ref field on the current Page) or `backlinks` (who points at it).
+    - **Taxonomy pages.** `ContentType.facets` generates one page per
       distinct field value. ⚠️ This turns record count into ROUTE count, and
       route count is what the build timeout measures. `min_items` (default 2)
       keeps thin-content pages out, and combination pages must be listed
@@ -314,10 +312,10 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   a content diff — trust it for stakeholder review.
 
 - **Deploys.** Customers see live changes only after a deploy. Preview
-  always sees drafts. `trigger_deploy` enqueues; `get_deploy_status`
+  sees saved content unless `include_working_copy:true` is requested. `trigger_deploy` enqueues; `get_deploy_status`
   reports `queued → running → succeeded | failed`.
   `trigger_deploy dry_run=true` builds without publishing — use it to prove
-  a structural change compiles (new collection, schema edit, template
+  a structural change compiles (new content type, schema edit, template
   rewrite) without touching the live site.
   A finished job carries `cost`: total, cpu/memory/request split,
   `duration_s`, per-phase timings, and output size. Estimates from a rate
@@ -349,7 +347,7 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   that build.
 - **THE BUFFER MODEL — every content write is a draft; saving is always
   explicit.** All content writes (update_page, replace_page, block tools,
-  update_partial, update_collection_item, batch/bulk tools) land in a
+  update_partial, batch/bulk tools) land in a
   per-doc *working copy* — the same draft layer the portal editor
   autosaves into. Deploys and plain preview links see SAVED content only;
   your drafts are invisible to them until committed. The loop:
@@ -404,8 +402,8 @@ not optional discovery.
 4. `list_partials` — what shared blocks already exist. **Defaults to
    summary mode** (no html_content, just bytes count) — pass
    `include_content: true` if you actually need the bodies inline.
-5. `list_collections` — what content types exist + their schemas +
-   `route_template` (so you know if items have URLs).
+5. `list_content_types` — what content types exist + their schemas +
+   `route_template` (so you know which Pages have public URLs).
 6. `get_site_capabilities` — renderer version and feature flags. Never infer
    support from remembered release notes.
 7. `list_block_types` — every block type usable on this site: core
@@ -460,8 +458,8 @@ list_pages limit=200                              → inventory
 batch_read_pages page_ids=[…]                     → bulk-load bodies
 list_partials                                     → shared blocks (summary)
 find_pages_using_block partial_id=<id>            → blast radius per block
-list_collections                                  → content types + routing
-list_collection_items collection=<name>           → items (richtext hidden)
+list_content_types                                  → content types + routing
+list_pages content_type=<name>                   → Pages of that type
 ```
 
 `find_pages_using_block` for the header or footer returns the full
@@ -579,49 +577,25 @@ which preserves the raw HTML losslessly. Run with `convert_page_to_blocks
 dry_run=true` first if you want to inspect the proposal before
 committing.
 
-### "Build a directory site / import structured data"
+### "Build a directory or migrate a content family"
 
-```
-create_collection
-  name="restaurants"
-  label_singular="Restaurant" label_plural="Restaurants"
-  fields=[ ...title, slug, address, phone, cuisine, body... ]
-  route_template="/restaurants/{slug}"
-  template_kind="article"
+Read `tr-directory` or `tr-blog` for the full recipe. Create a reusable layout
+with `create_page_template`, then a Content type whose `template` references
+it. Create each entry with `create_page`, passing `content_type`, top-level
+metadata, `fields` for custom values, and `blocks` for the body. Do not define
+another body or title in the custom schema.
 
-# For each row in your source data:
-create_collection_item collection="restaurants" fields={…} status="published"
+A listing Page uses `core/page_list` with `content_type`; it updates from saved
+Pages at every preview/build. Template tools target `{ kind: "template", id }`.
+The shared layout uses `template_content_slot` for the body, `template/page_*`
+metadata blocks, and `{{page.field}}` bindings. Repeater children use
+`{{item.field}}` for the current listed Page.
 
-# Each published item now lives at /restaurants/{slug}, included in
-# sitemap.xml. Preview a specific one:
-get_preview_link collection_name="restaurants" item_id="<id>"
-
-# Optional listing page:
-list_collection_items collection="restaurants" limit=200
-update_page page_id=restaurants patch={ html_content: "<hand-written listing>" }
-```
-
-For articles and checklists, prefer the native `article` / `checklist`
-`template_kind` presets or an explicit `item_template_blocks` tree. Exact
-bindings such as `core/button.href = "{{item.pdf_url}}"` are supported on
-typed text/URL/image fields. `template/item_body.field`,
-`template/page_date.field`, and `core/table_of_contents.source_field` select
-the named item field. Breadcrumbs and outlines exist in initial HTML. Use
-explicit neighbor fields on `template/item_navigation` only when imported
-navigation must differ from collection sort order.
-
-### "Migrate a content type (e.g. WP custom post type)"
-
-```
-list_collections                                     # what exists today?
-read_collection name=blog                            # what fields are writable?
-batch_read_collection_items …                        # load items (richtext hidden)
-# Transform locally; then:
-update_collection_item …  (or)  create_collection_item …
-```
-
-Fields outside the schema are silently dropped — call `read_collection`
-first if you're unsure what's writable.
+For migration updates, read the content type and Page first, then use
+`update_page page_id=... patch={fields:{...}} save=true` for authorized changes.
+Unknown fields return an error. `page_completeness content_type=...` reports
+missing/stale fields without loading every Page body. References use `page_ref`
+or `page_ref_list` with `ref_content_type`. Preview with the returned Page ID.
 
 ### "Add images to a page"
 
@@ -1028,7 +1002,8 @@ preview.
 | **Pages — meta** | `get_page_preview` |
 | **Global blocks (partials)** | `list_partials` (summary by default), `read_partial`, `create_free_block`, `update_partial`, `replace_partial`, `set_partial_mode`, `delete_partial`, `find_pages_using_block`, `list_blocks_with_usage` |
 | **Block types** | `list_block_types`, `read_block_type`, `find_pages_using_block_type`, `export_block_types`, `import_block_types` |
-| **Collections** | `create_collection`, `update_collection_schema`, `delete_collection`, `list_collections`, `read_collection`, `list_collection_items` (richtext hidden by default), `read_collection_item`, `batch_read_collection_items`, `create_collection_item`, `update_collection_item`, `delete_collection_item`, `regenerate_collection_listing` |
+| **Content types** | `list_content_types`, `read_content_type`, `create_content_type`, `update_content_type`, `delete_content_type`, `change_page_content_type`, `page_completeness` |
+| **Page templates** | `list_page_templates`, `read_page_template`, `create_page_template`, `update_page_template`, `delete_page_template` |
 | **Media** | `list_media`, `read_media`, `create_upload_url`, `upload_media_from_url`, `upload_media_inline`, `update_media`, `delete_media`, `finalize_media`, `finalize_all_media`, `generate_image_variants`, `suggest_alt_text_context` |
 | **Redirects** | `list_redirects`, `create_redirect`, `delete_redirect`. `from_path` may be a PATTERN: a trailing `*` (with `:splat` in the target) or `:name` for one segment — one rule retires a whole family of dead URLs (`/category/*` → `/blogg/:splat`). Mid-path splats and query strings are refused, as is any rule that would hide a live page. |
 | **Migration inventory + launch gate** | `get_migration_readiness` (preflight — CALL FIRST), `list_migration_urls`, `add_migration_urls`, `update_migration_url`, `update_migration_urls`, `delete_migration_url`, `import_sitemap`, `import_gsc_performance`, `repair_migration_plain_text`, `verify_migration_urls`, `record_migration_seo_acceptance`, `get_migration_launch_report`. Sitemap indexes are recursive. GSC supports direct Search Console access or CSV and aggregates fragment variants. Plain-text repair is allowlisted and dry-run-first. A complete unfiltered URL check and reviewed SEO evidence are bound to the latest hosted deploy; the launch report fails closed when either is stale or incomplete. |
@@ -1037,7 +1012,7 @@ preview.
 | **Core modules** | `list_apps`, `read_app`, `update_app` (legacy API name; admin; schema-driven config, masked secrets, redeploy when `affects_build` is true) |
 | **Extension installations** | `list_extension_installations`, `read_extension_installation`, `update_extension_installation_config` (admin; schema-driven config, masked secrets preserved, production deploy queued by default) |
 | **Analytics attribution** | `read_funnel_attribution`, `update_funnel_attribution` (specialized Analytics module tools; admin; redeploy after changes) |
-| **Search + bulk** | `search_pages`, `check_internal_links`, `bulk_replace_text`. The link check is database-driven. Bulk replace defaults to pages but can target partials, collection items or all resources, always dry-run first. |
+| **Search + bulk** | `search_pages`, `check_internal_links`, `bulk_replace_text`. The link check is database-driven. Bulk replace defaults to pages but can target partials, Pages or all resources, always dry-run first. |
 | **Branches** | `create_branch`, `read_version`, `delete_branch`, `merge_branch` |
 | **Deploy** | `get_publication_impact`, `trigger_deploy`, `list_deploys`, `get_deploy_status` |
 | **Preview** | `get_preview_link`, `get_page_preview` |
@@ -1045,3 +1020,17 @@ preview.
 Every tool's input is validated server-side; the MCP server only does
 auth + shape. If a tool returns `isError: true`, the body carries
 `{ error, status, body }` from the underlying HTTP response.
+
+
+Content types also own `sort_field`/`sort_dir` and optional `allowed_templates`.
+Types define content; templates define presentation. Multiple compatible Page
+templates can be allowed, with `template` selecting the default. Null/absent
+`allowed_templates` is unrestricted, `[]` allows none, and a configured default
+must be in an explicit allowed list. Page overrides must be allowed; null/empty
+`Page.template` restores inheritance. Page template changes use Save/Discard.
+
+Listings inherit type sorting unless explicitly overridden. `Page.sort_order`
+is the manual numeric order; null clears it. Missing sort values come last and
+IDs break ties. Explicit ID lists keep their order. Typed `list_pages` queries
+inherit type sorting and accept `sort_by`/`sort_order`; unfiltered API lists
+default to stable IDs. See the public Content types guide for editor steps.

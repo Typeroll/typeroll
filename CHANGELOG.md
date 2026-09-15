@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — Core 0.2.0 / MCP 0.45.0
+
+- Content types define allowed Page templates and default sorting. Pages can
+  override the template or inherit it, and edit their manual order through the
+  normal Save/Discard flow. Listings and neighbouring-page links share defaults.
+
+
+- Unify all content as Pages with Content types, custom fields, block bodies,
+  shared Page templates, one editor, history, preview and publication flow.
+- Remove the old Collections API, tools and runtime storage model. Existing
+  installations require the schema 2 migration before starting this Core version.
+- Update public guides, API/MCP help, generated agent instructions, site-kit
+  checklists and example data for the new model.
+- Retain source-site paths, references, branch inheritance, working copies and
+  revisions through the one-time migration. No runtime compatibility aliases.
+
+Entries below describe historical releases, including APIs removed in 0.2.0.
+They are not instructions for the current model.
+
 ## MCP 0.44.49 / Core 0.1.76
 
 - Start media migrations immediately and continue bounded tasks without waiting

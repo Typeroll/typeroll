@@ -1,3 +1,5 @@
+import { pageAuthorityFields } from '@typeroll/shared';
+import { pageAddress, pageContentType, validatePageFields, validatePagePresentation } from './page-fields';
 // Editor working copies — server-side scratch state for unsaved edits.
 //
 // The editors autosave here instead of writing straight to the canonical
@@ -23,8 +25,7 @@ import { vstore } from './version-store';
 import { snapshotRevision } from './revisions';
 import { sanitizeBody } from './sanitize';
 import { buildMediaLookup, transformBodyForSeo, lintBodyForSeo } from './seo-transform';
-import { pageUrlFromDoc } from './page-paths';
-import { PROVENANCE_KEY, stampProvenance, type WriteActor } from './field-authority';
+import { PROVENANCE_KEY, applyFieldAuthority, conflictResponse, type WriteActor } from './field-authority';
 import { markSiteDirty } from './auto-deploy';
 import { isLivePageStatus, retireRedirectsShadowingUrl } from './redirect-hygiene';
 
@@ -36,8 +37,7 @@ export interface WcCtx {
 
 export type WcTarget =
   | { kind: 'page'; id: string }
-  | { kind: 'partial'; id: string }
-  | { kind: 'item'; id: string; collection: string };
+  | { kind: 'partial'; id: string };
 
 /**
  * Per-kind field whitelists. Mirrors the canonical PUT routes' whitelists
@@ -51,7 +51,7 @@ export const PAGE_WC_FIELDS = [
   'blocks', 'html_content', 'seo_title', 'seo_description', 'og_image',
   'seo_image_alt', 'canonical_url', 'noindex', 'alternates', 'lastmod_override', 'json_ld',
   'schema_type', 'service', 'kind', 'author', 'language', 'image_sizes_default',
-  'custom_css',
+  'custom_css', 'fields',
 ] as const;
 
 export const PARTIAL_WC_FIELDS = [
@@ -74,9 +74,6 @@ export function parseWcTarget(raw: string | undefined): WcTarget | null {
   const parts = (raw ?? '').split('/').filter(Boolean);
   if (parts[0] === 'page' && parts.length === 2) return { kind: 'page', id: parts[1] };
   if (parts[0] === 'partial' && parts.length === 2) return { kind: 'partial', id: parts[1] };
-  if (parts[0] === 'item' && parts.length === 3) {
-    return { kind: 'item', collection: parts[1], id: parts[2] };
-  }
   return null;
 }
 
@@ -93,13 +90,21 @@ export async function filterWcFields(
 ): Promise<Record<string, unknown>> {
   let allowed: Set<string>;
   if (target.kind === 'page') {
-    allowed = new Set<string>(PAGE_WC_FIELDS);
+    allowed = new Set<string>([...PAGE_WC_FIELDS, 'fields']);
+    if (fields.fields !== undefined || 'template' in fields || 'sort_order' in fields) {
+      const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
+      if (!page) throw new WorkingCopyError('Page not found', 404);
+      const type = await pageContentType(ctx, page);
+      if (!type) throw new WorkingCopyError('Content type not found', 400);
+      const error = fields.fields !== undefined ? validatePageFields(type, fields.fields) : null;
+      if (error) throw new WorkingCopyError(error, 400);
+      const presentationError = await validatePagePresentation(ctx, type, { ...page, ...fields });
+      if (presentationError) throw new WorkingCopyError(presentationError, 400);
+    }
   } else if (target.kind === 'partial') {
     allowed = new Set<string>(PARTIAL_WC_FIELDS);
   } else {
-    const coll = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, target.collection);
-    if (!coll) throw new WorkingCopyError('Collection not found', 404);
-    allowed = new Set(coll.fields.map((f) => f.name));
+    throw new WorkingCopyError('Unknown working copy kind', 400);
   }
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(fields)) {
@@ -109,9 +114,7 @@ export async function filterWcFields(
 }
 
 export function wcKey(target: WcTarget): string {
-  return target.kind === 'item'
-    ? `item--${target.collection}--${target.id}`
-    : `${target.kind}--${target.id}`;
+  return `${target.kind}--${target.id}`;
 }
 
 export async function readWorkingCopy(
@@ -141,8 +144,7 @@ export async function mergeWorkingCopy(
     id: key,
     kind: target.kind as WorkingCopyKind,
     target_id: target.id,
-    ...(target.kind === 'item' ? { collection: target.collection } : {}),
-    fields: { ...(existing?.fields ?? {}), ...fields },
+    fields: mergePageDraftFields(existing?.fields ?? {}, fields, target.kind === 'page'),
     updated_at: new Date().toISOString(),
     ...(updatedBy ? { updated_by: updatedBy } : {}),
   };
@@ -177,7 +179,16 @@ export function overlayWorkingCopy<T extends object>(
   wc: WorkingCopy | null | undefined,
 ): T {
   if (!wc || !wc.fields) return doc;
-  return { ...doc, ...wc.fields } as T;
+  return mergePageDraftFields(doc as Record<string, unknown>, wc.fields, wc.kind === 'page') as T;
+}
+
+/** A custom-field patch replaces each supplied field, preserving other custom fields. */
+export function mergePageDraftFields(base: Record<string, unknown>, patch: Record<string, unknown>, page: boolean): Record<string, unknown> {
+  const next = { ...base, ...patch };
+  if (page && patch.fields && typeof patch.fields === 'object' && !Array.isArray(patch.fields)) {
+    next.fields = { ...(base.fields as Record<string, unknown> ?? {}), ...patch.fields as Record<string, unknown> };
+  }
+  return next;
 }
 
 export interface CommitResult {
@@ -243,7 +254,16 @@ export async function commitWorkingCopy(
   if (target.kind === 'page') {
     const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
     if (!existing) throw new WorkingCopyError('Page not found', 404);
-    const update: Record<string, unknown> = { ...wc.fields, date_updated: now };
+    const update: Record<string, unknown> = { ...await filterWcFields(ctx, target, wc.fields), date_updated: now };
+    {
+      const type = await pageContentType(ctx, existing);
+      if (!type) throw new WorkingCopyError('Content type not found', 400);
+      const authority = applyFieldAuthority({ fields: pageAuthorityFields(type),
+        incoming: { ...update, ...(update.fields as Record<string, unknown> ?? {}) }, existing, actor: actor ?? 'portal', actorId: createdBy, now });
+      if (authority.rejected.length) throw new WorkingCopyError(conflictResponse(authority.rejected).error, 409);
+      if (update.fields) update.fields = { ...existing.fields, ...Object.fromEntries(Object.entries(authority.update).filter(([name]) => type.fields.some(field => field.name === name))) };
+      update[PROVENANCE_KEY] = authority.provenance;
+    }
     let warnings: string[] = [];
     if (typeof update.html_content === 'string' && update.html_content) {
       const media = await store.listDocs<Media>(paths.media(ctx.orgId, ctx.siteId));
@@ -269,13 +289,13 @@ export async function commitWorkingCopy(
 
     let auto_redirects: CommitResult['auto_redirects'] = [];
     let retired_redirects: CommitResult['retired_redirects'] = [];
-    if ('slug' in update || 'path' in update) {
+    if ('slug' in update || 'path' in update || 'fields' in update) {
       const fresh = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
       if (fresh) {
-        const oldUrl = pageUrlFromDoc(existing);
-        const newUrl = pageUrlFromDoc(fresh);
-        auto_redirects = await maybeAutoRedirect(ctx, oldUrl, newUrl);
-        if (isLivePageStatus(fresh.status)) {
+        const oldUrl = await pageAddress(ctx, existing);
+        const newUrl = await pageAddress(ctx, fresh);
+        if (oldUrl && newUrl) auto_redirects = await maybeAutoRedirect(ctx, oldUrl, newUrl);
+        if (newUrl && isLivePageStatus(fresh.status)) {
           retired_redirects = (
             await retireRedirectsShadowingUrl(ctx.orgId, ctx.siteId, ctx.versionId, newUrl)
           ).map((r) => ({ from_path: r.from_path, to_path: r.to_path }));
@@ -315,37 +335,5 @@ export async function commitWorkingCopy(
     return { ...NO_COMMIT, committed: true };
   }
 
-  // item
-  const existing = await vstore.collectionItem(
-    ctx.orgId, ctx.siteId, ctx.versionId, target.collection, target.id,
-  );
-  if (!existing) throw new WorkingCopyError('Item not found', 404);
-  await snapshotRevision({
-    orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId,
-    kind: 'collection-item', resourceIds: [target.collection, target.id],
-    doc: existing as unknown as Record<string, unknown>, createdBy,
-  });
-  // Stamp per-field provenance for whatever this commit actually publishes.
-  // It happens HERE rather than at draft time because the working copy is
-  // whitelisted to schema field names — `_provenance` would be dropped on the
-  // way in — and because a draft that's never committed shouldn't claim
-  // authorship of a published value. The precedence CHECK still runs at write
-  // time so an agent gets its 409 immediately, not one commit later.
-  const coll = await vstore.collection(ctx.orgId, ctx.siteId, ctx.versionId, target.collection);
-  const provenance = stampProvenance({
-    fields: coll?.fields ?? [],
-    written: wc.fields,
-    existing,
-    actor: actor ?? 'portal',
-    actorId: createdBy,
-    now,
-  });
-  await vstore.writeCollectionItem(ctx.orgId, ctx.siteId, ctx.versionId, target.collection, target.id, {
-    ...wc.fields,
-    ...(Object.keys(provenance).length > 0 ? { [PROVENANCE_KEY]: provenance } : {}),
-    updated_at: now,
-  });
-  await discardWorkingCopy(ctx, target);
-  await markSiteDirty(ctx.orgId, ctx.siteId);
-  return { ...NO_COMMIT, committed: true };
+  throw new WorkingCopyError('Unknown working copy kind', 400);
 }

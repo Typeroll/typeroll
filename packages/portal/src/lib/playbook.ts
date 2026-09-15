@@ -135,17 +135,14 @@ HTML.
 HTML. Then tell the user how to embed it: \`<x-include name="newsletter-cta" />\`
 in any page's html_content. Don't paste the HTML inline on each page.
 
-## Listings from collections
+## Listings from Pages
 
 ### "Show our blog posts on the homepage"
-1. \`list_collections\` to find the blog collection.
-2. \`list_collection_items\` with collection=name. Sort by date if present.
-3. \`read_page\` for the homepage.
-4. Hand-write a listing block in the page body (semantic HTML, the site's
-   CSS variables) referencing the actual items by title, date, slug, image.
-   The static site has no template engine — what you write is what ships.
-5. Write back via \`update_page_html\`. Tell the user that adding new posts
-   later won't auto-update this listing; offer to regenerate on request.
+1. Read content types and Pages to identify the article content type.
+2. Read the homepage's block tree.
+3. Add a \`core/page_list\` with \`content_type\`, sort and limit settings.
+4. Save the page. The listing reads saved Pages at preview/build time and
+   automatically includes later articles; never hand-generate listing HTML.
 
 ## Settings
 

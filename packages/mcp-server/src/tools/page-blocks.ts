@@ -31,9 +31,9 @@ const blockSchema = z.object({
  * `{ kind: 'page', id: page_id }`.
  */
 const targetSchema = z.object({
-  kind: z.enum(['page', 'partial', 'template', 'item_template']),
+  kind: z.enum(['page', 'partial', 'template']),
   id: z.string(),
-}).describe('Address a container. kind=page|partial|template|item_template. Pages: id is the page id. Partials: id is "header"|"footer"|<free-block id>. Templates: id is the PageTemplate id. item_template: id is the COLLECTION NAME — the block tree is the collection\'s per-item layout (e.g. blog post body bound to {{item.title}}, {{item.body}}, etc.).');
+}).describe('Address a page, partial or PageTemplate by its ID. All content uses kind=page; the same block editor applies to every content type.');
 
 function v(version?: string): Record<string, string | undefined> | undefined {
   return version ? { version } : undefined;

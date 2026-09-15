@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
-import type { CollectionDef, Page, Site, SiteVersion } from '@typeroll/shared';
+import type { ContentType, Page, Site, SiteVersion } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 
 const ORG = 'repair-org';
@@ -30,9 +30,9 @@ async function seedPage(id: string, overrides: Partial<Page>): Promise<void> {
   });
 }
 
-async function seedCollection(definition: CollectionDef): Promise<void> {
+async function seedContentType(definition: ContentType): Promise<void> {
   const { getStore } = await import('../../lib/datastore');
-  await getStore().setDoc(paths.collection(ORG, SITE, definition.name, MAIN_VERSION_ID), definition);
+  await getStore().setDoc(paths.contentType(ORG, SITE, definition.name, MAIN_VERSION_ID), definition);
 }
 
 describe('repairWordPressPlainText', () => {
@@ -70,44 +70,41 @@ describe('repairWordPressPlainText', () => {
     expect(page?.canonical_url).toContain('&amp;');
   });
 
-  it('repairs only allowlisted plain-text collection fields and respects field authority', async () => {
-    await seedCollection({
+  it('repairs only allowlisted plain-text Page fields and respects field authority', async () => {
+    await seedContentType({
       id: 'services',
       name: 'services',
       label_singular: 'Service',
       label_plural: 'Services',
-      slug_field: 'slug',
+      page_field_rules: { seo_description: { writable_by: ['portal'] } },
+      route_template: '/{slug}',
       fields: [
-        { name: 'slug', label: 'Slug', type: 'text' },
-        { name: 'title', label: 'Title', type: 'text' },
         { name: 'excerpt', label: 'Excerpt', type: 'textarea' },
-        { name: 'seo_description', label: 'SEO description', type: 'textarea', writable_by: ['portal'] },
-        { name: 'body', label: 'Body', type: 'richtext' },
       ],
       created_at: new Date().toISOString(),
     });
     const { getStore } = await import('../../lib/datastore');
-    await getStore().setDoc(paths.collectionItem(ORG, SITE, 'services', 'packing', MAIN_VERSION_ID), {
+    await getStore().setDoc(paths.page(ORG, SITE, 'packing', MAIN_VERSION_ID), {
       status: 'published',
-      slug: 'packing-&amp;-moving',
+      content_type: 'services', content_mode: 'html', slug: 'packing-&amp;-moving',
       title: '<em>Packing &amp; moving</em>',
-      excerpt: 'Fast &#038; careful',
+      fields: { excerpt: 'Fast &#038; careful' },
       seo_description: 'Locked &amp; field',
-      body: '<p>Rich &amp; content</p>',
+      html_content: '<p>Rich &amp; content</p>',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
 
     const { repairWordPressPlainText } = await import('../../lib/wp/plain-text-repair');
     const result = await repairWordPressPlainText(ORG, SITE, MAIN_VERSION_ID, {
-      scope: 'collection_items',
-      collection: 'services',
+      scope: 'pages',
+      contentType: 'services',
     });
 
     expect(result.resources_with_changes).toBe(0);
     expect(result.conflicts).toEqual([
       expect.objectContaining({
-        target: { kind: 'item', collection: 'services', id: 'packing' },
+        target: { kind: 'page', id: 'packing' },
         reason: 'field_authority',
         fields: ['seo_description'],
       }),
@@ -115,46 +112,43 @@ describe('repairWordPressPlainText', () => {
     expect(result.diffs).toEqual([]);
   });
 
-  it('repairs collection titles and excerpts without changing slug or rich HTML', async () => {
-    await seedCollection({
+  it('repairs Page titles and excerpts without changing slug or rich HTML', async () => {
+    await seedContentType({
       id: 'articles',
       name: 'articles',
       label_singular: 'Article',
       label_plural: 'Articles',
-      slug_field: 'slug',
+      route_template: '/{slug}',
       fields: [
-        { name: 'slug', label: 'Slug', type: 'text' },
-        { name: 'title', label: 'Title', type: 'text' },
         { name: 'excerpt', label: 'Excerpt', type: 'textarea' },
-        { name: 'body', label: 'Body', type: 'richtext' },
       ],
       created_at: new Date().toISOString(),
     });
     const { getStore } = await import('../../lib/datastore');
-    await getStore().setDoc(paths.collectionItem(ORG, SITE, 'articles', 'moving', MAIN_VERSION_ID), {
+    await getStore().setDoc(paths.page(ORG, SITE, 'moving', MAIN_VERSION_ID), {
       status: 'published',
-      slug: 'flytta-&amp;-stadning',
+      content_type: 'articles', content_mode: 'html', slug: 'flytta-&amp;-stadning',
       title: '<strong>Flytta</strong> &amp; städa',
-      excerpt: 'Caf&eacute; &#8211; råd',
-      body: '<p>Keep <strong>rich &amp; HTML</strong></p>',
+      fields: { excerpt: 'Caf&eacute; &#8211; råd' },
+      html_content: '<p>Keep <strong>rich &amp; HTML</strong></p>',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
 
     const { repairWordPressPlainText } = await import('../../lib/wp/plain-text-repair');
     const result = await repairWordPressPlainText(ORG, SITE, MAIN_VERSION_ID, {
-      scope: 'collection_items',
-      collection: 'articles',
+      scope: 'pages',
+      contentType: 'articles',
       dryRun: false,
       save: true,
     });
     expect(result).toMatchObject({ updated: 1, saved: 1, fields_with_changes: 2 });
     const { vstore } = await import('../../lib/version-store');
-    const item = await vstore.collectionItem(ORG, SITE, MAIN_VERSION_ID, 'articles', 'moving');
+    const item = await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'moving');
     expect(item?.title).toBe('Flytta & städa');
-    expect(item?.excerpt).toBe('Café – råd');
+    expect(item?.fields?.excerpt).toBe('Café – råd');
     expect(item?.slug).toBe('flytta-&amp;-stadning');
-    expect(item?.body).toBe('<p>Keep <strong>rich &amp; HTML</strong></p>');
+    expect(item?.html_content).toBe('<p>Keep <strong>rich &amp; HTML</strong></p>');
   });
 
   it('creates a working copy or commits through the normal save path', async () => {
@@ -212,8 +206,7 @@ describe('repairWordPressPlainText', () => {
       fields: ['html_content' as 'title'],
     })).rejects.toThrow('Invalid fields');
     await expect(repairWordPressPlainText(ORG, SITE, MAIN_VERSION_ID, {
-      scope: 'pages',
-      collection: 'services',
-    })).rejects.toThrow('scope collection_items or all');
+      scope: 'unknown' as 'pages',
+    })).rejects.toThrow('Invalid scope');
   });
 });

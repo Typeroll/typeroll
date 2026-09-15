@@ -77,8 +77,8 @@ export function parseGrantToken(
 export async function issueGrant(args: {
   orgId: string;
   siteId: string;
-  collection: string;
-  itemId: string;
+  content_type: string;
+  pageId: string;
   email: string;
   ttlHours?: number;
   now?: Date;
@@ -87,8 +87,8 @@ export async function issueGrant(args: {
   const ttl = args.ttlHours ?? DEFAULT_TTL_HOURS;
   const expiresAt = new Date(now.getTime() + ttl * 3_600_000).toISOString();
   const grantId = await getStore().addDoc(paths.editGrants(args.orgId, args.siteId), {
-    collection: args.collection,
-    item_id: args.itemId,
+    content_type: args.content_type,
+    page_id: args.pageId,
     email: args.email,
     issued_at: now.toISOString(),
     expires_at: expiresAt,
@@ -150,13 +150,13 @@ export async function revokeGrant(orgId: string, siteId: string, grantId: string
 export async function revokeGrantsForItem(
   orgId: string,
   siteId: string,
-  collection: string,
-  itemId: string,
+  content_type: string,
+  pageId: string,
 ): Promise<number> {
   const store = getStore();
   const all = await store.listDocs<EditGrant>(paths.editGrants(orgId, siteId));
   const live = all.filter(
-    (g) => g.collection === collection && g.item_id === itemId && !g.revoked_at && !g.used_at,
+    (g) => g.content_type === content_type && g.page_id === pageId && !g.revoked_at && !g.used_at,
   );
   for (const g of live) await revokeGrant(orgId, siteId, g.id);
   return live.length;

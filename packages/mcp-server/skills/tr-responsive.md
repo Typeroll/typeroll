@@ -25,7 +25,7 @@ Use `set_block_responsive` (or pass the object form directly in `add_block` /
 
 The breakpoint object belongs on the responsive field inside `block.data`,
 for example `data.cols`. Do not add a top-level `block.responsive` object: it
-is not a rendered field, and page, partial and collection-template writes
+is not a rendered field, and page, partial and Page-template writes
 reject it instead of silently storing an inert value.
 
 ```
@@ -46,7 +46,7 @@ Pass a scalar to collapse a field back to one value everywhere.
 iPad, 1/row icon-on-top on a phone":
 
 1. `core/grid` containing `core/icon_box` cards (or a `core/repeater` with
-   `item_block: core/icon_box` for a collection-driven list).
+   `item_block: core/icon_box` for a Page-driven list).
 2. On the grid: `cols = { mobile: 1, tablet: 2, desktop: 4 }`.
 3. On each icon_box (or the repeater's item defaults):
    `layout = { mobile: "icon-top", tablet: "icon-left", desktop: "icon-top" }`.

@@ -1,0 +1,159 @@
+---
+title: Content types and Page templates
+description: Organize every page with a field schema, URL pattern and reusable block template in Typeroll CMS.
+---
+
+Every content record in Typeroll CMS is a **Page**. An article, checklist,
+product, team profile and homepage use the same editor, history, preview,
+publication states and API. A **Content type** supplies custom fields, a URL
+pattern and an optional default **Page template**.
+
+This model requires Core 0.2.0 and MCP 0.45.0. Existing installations must
+complete the [unified Pages migration](../../guides/unified-pages-upgrade/)
+before starting that Core version.
+
+## In the editor
+
+Open your site and choose **Pages** to see all content. Filter by content type
+or publication status. Choose **Content types** to create or edit a type.
+Each page already has its title, slug, block body, SEO settings and status;
+do not add duplicate custom fields for these values.
+
+On a saved page, use **Content type** in its metadata to change type. Save or
+discard pending edits first. The page keeps its identity, body, status and
+existing URL. Fill in the new type’s required fields before saving the change. Fields removed by the change remain in revision history.
+
+## Create a content type
+
+```json
+{
+  "name": "articles",
+  "label_singular": "Article",
+  "label_plural": "Articles",
+  "route_template": "/articles/{slug}",
+  "fields": [
+    { "name": "excerpt", "label": "Summary", "type": "textarea" },
+    { "name": "featured_image", "label": "Cover image", "type": "image" },
+    {
+      "name": "related",
+      "label": "Related pages",
+      "type": "page_ref_list",
+      "ref_content_type": "articles"
+    }
+  ]
+}
+```
+
+Send this to `create_content_type` or `POST /api/v1/sites/{siteId}/content-types`.
+Type IDs use lowercase letters, digits, hyphens and underscores. Custom field
+IDs use lowercase letters, digits and underscores, starting with a letter.
+Display labels can use any language.
+
+Create each article with `create_page`: pass `content_type: "articles"`, common
+metadata at the top level, custom values in `fields`, and its body in `blocks`.
+The returned Page ID is used for every later read, edit, preview and deletion.
+
+`list_content_types`, `read_content_type`, `update_content_type` and
+`delete_content_type` manage definitions. A type cannot be deleted while Pages
+use it. `change_page_content_type` reassigns a saved Page; an explicit `fields`
+object replaces its entire custom-field set, so review it before submitting.
+
+## URLs
+
+`route_template` can contain `{slug}` and custom field tokens, such as
+`/products/{category}/{slug}`. A Page's explicit `path` overrides the pattern.
+Migrated pages keep explicit paths so a later schema edit does not silently
+move existing URLs. A type with an empty pattern has no public detail pages;
+its records can still supply data to other Pages.
+
+## Fields and references
+
+Fields support text, rich text, numbers, booleans, dates, images, files, URLs,
+choices, objects and arrays. `page_ref` and `page_ref_list` refer to Page IDs;
+`ref_content_type` optionally limits the selectable type. References do not
+create a second content store.
+
+`required` marks a completeness requirement. `rendered: false` prevents a custom
+field from reaching public rendering. `writable_by` can restrict edits to
+`portal`, `owner`, `agent`, `app` or `import`. Rejected ownership conflicts return
+HTTP 409. `page_field_rules` configures write authority for supported common
+metadata, including title, author and SEO fields.
+
+## Shared templates
+
+Use **Templates → New template** or `create_page_template`. Choose a starting
+layout (`article`, `blog`, `checklist`, `team`, `events`, `products` or `custom`)
+or supply a block tree. Templates use `template/page_title`,
+`template/page_featured_image`, `template/page_date` and `template_content_slot`.
+The content slot renders the Page's own body blocks; its width is configurable.
+
+Assign the template ID to the content type's `template`. Individual Pages can
+choose their own template. `list_page_templates`, `read_page_template`,
+`update_page_template` and `delete_page_template` expose the same operations to
+agents. Block tools address templates with `target: { kind: "template", id }`.
+
+Template bindings use `{{page.title}}`, `{{page.excerpt}}` and other Page fields.
+Inside a repeater, `{{item.title}}` refers to the current listed Page.
+
+## Listings and related content
+
+Add `core/page_list` with `content_type: "articles"` to any Page. The listing
+reads saved Pages at preview/build time, so adding, changing or deleting an
+article is reflected on the next build without regenerating listing HTML.
+Set `sort_by`, `sort_order`, `limit` or `paginate` to control the list.
+
+Related and backlink repeaters use Page reference fields. Content types can
+also declare facets for generated topic listing pages. These are derived
+routes; the editable source remains the same Page records.
+
+## Versions and saving
+
+Pass the same `version` to type, template and Page operations when working on a
+site branch. Definitions and saved Pages inherit from the base version until
+changed. Working copies stay local to the selected version.
+
+Page content edits require `save: true` or `commit_working_copy`. Structural
+operations, including changing type or editing a template definition, are saved
+immediately. Publishing builds saved content only.
+
+## Sorting and template choices
+
+Content types and templates have separate roles: the type defines fields, URL
+patterns and listing defaults; a template presents a Page's body and metadata.
+Several templates can use the same content type, and compatible templates can
+be reused across types. A listing's card/row layout is independent of the
+detail Page's template.
+
+In **Content types → select a type**, set **Default sort field** and direction.
+Listings without their own sort setting and previous/next links use that order.
+Use **Manual page order** and set **Page order** in each Page's metadata for
+authored ordering. Lower numbers come first in ascending order; empty values
+come last and Page IDs break ties consistently. Explicit listing sort settings
+override the default; explicitly selected Page IDs retain their supplied order.
+The Pages overview groups types and uses each type's order within its group.
+
+Under **Page templates**, optionally enable **Limit the templates editors can
+choose**, select the allowed templates and choose **Default template**. The
+default must be included in that selection. Without a restriction, all compatible
+templates are allowed. Only published templates appear in the Page editor's
+choices. On a Page, select an alternative under **Template**, or choose
+**Use content type’s default template**, then save the Page. Inherited choices
+follow future default changes; explicit choices stay attached to their template.
+Content type definitions save immediately; Page template choices and manual
+order use the Page's working copy and Save/Discard flow.
+
+API/MCP fields: `ContentType.sort_field`, `sort_dir`, `template` and
+`allowed_templates`; `Page.sort_order` and `template`. An absent or null
+`allowed_templates` permits all compatible templates, while `[]` permits none.
+Set a Page's `template` to null or an empty string to restore inheritance; set
+`sort_order` to null to clear manual order. `list_pages` with `content_type`
+inherits its order; `sort_by`/`sort_order` override it. Unfiltered API lists use
+stable Page IDs unless a sort field is specified. Keep query settings unchanged
+while following pagination cursors.
+
+The same rules apply to UI, API and MCP writes in the selected site version.
+The server rejects incompatible or missing templates, removal of templates
+that are still configured, and allowed-list changes that invalidate saved Page
+overrides. A working copy is checked again when saved. Changing type preserves
+an explicit template only if the new type allows it; reset the Page to its
+current default and save before changing to an incompatible type.

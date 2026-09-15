@@ -286,7 +286,7 @@ describe('POST /api/v1/sites/{siteId}/pages', () => {
       expect(body.page.id).toBe('event_sommar');
     });
 
-    it('dedupes URLs when the same path is requested twice (suffixes the leaf segment)', async () => {
+    it('rejects a duplicate explicit URL rather than changing the requested address', async () => {
       const { token } = await setup();
       await callRoute(
         import('../../pages/api/v1/sites/[siteId]/pages/index'),
@@ -302,12 +302,8 @@ describe('POST /api/v1/sites/{siteId}/pages', () => {
         { siteId: SITE },
         { headers: bearer(token), body: { title: 'Second', slug: 'sommar', path: '/erbjudanden/sommar' } },
       );
-      expect(res.status).toBe(201);
-      const body = await res.json() as { page: { slug: string; path: string; id: string } };
-      // Prefix stays stable; leaf segment gets a -2 suffix.
-      expect(body.page.path).toBe('/erbjudanden/sommar-2');
-      expect(body.page.slug).toBe('sommar-2');
-      expect(body.page.id).toBe('erbjudanden_sommar-2');
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toContain('/erbjudanden/sommar');
     });
 
     it('rejects malformed paths up-front', async () => {
@@ -390,7 +386,7 @@ describe('POST /api/v1/sites/{siteId}/pages', () => {
     expect(res.status).toBe(201);
     const body = await res.json() as { page: { content_mode: string; html_content?: string } };
     expect(body.page.content_mode).toBe('html');
-    expect(body.page.html_content).toBe('');
+    expect(body.page.html_content).toContain('<h1>HTML explicit</h1>');
   });
 
   it('uses blocks-mode when content_mode="blocks" is explicitly passed', async () => {

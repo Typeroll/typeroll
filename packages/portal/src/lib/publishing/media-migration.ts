@@ -59,19 +59,13 @@ async function contentDocumentPaths(orgId: string, siteId: string) {
   const versions = new Set(['main', ...(await store.listDocs(paths.versions(orgId, siteId))).map(version => version.id)]);
   for (const version of versions) {
     const root = paths.version(orgId, siteId, version);
-    for (const kind of ['settings', 'pages', 'partials', 'block_types', 'page_templates', 'working_copies']) {
+    for (const kind of ['settings', 'pages', 'partials', 'block_types', 'page_templates', 'working_copies', 'content_types']) {
       for (const doc of await store.listDocs(`${root}/${kind}`)) {
         const path = `${root}/${kind}/${doc.id}`; result.push(path);
         if (kind === 'pages' || kind === 'partials') for (const revision of await store.listDocs(`${path}/revisions`)) result.push(`${path}/revisions/${revision.id}`);
       }
     }
-    for (const collection of await store.listDocs(`${root}/collections`)) {
-      const base = `${root}/collections/${collection.id}`; result.push(base);
-      for (const item of await store.listDocs(`${base}/items`)) {
-        const path = `${base}/items/${item.id}`; result.push(path);
-        for (const revision of await store.listDocs(`${path}/revisions`)) result.push(`${path}/revisions/${revision.id}`);
-      }
-    }
+
   }
   for (const form of await store.listDocs(paths.forms(orgId, siteId))) result.push(`${paths.forms(orgId, siteId)}/${form.id}`);
   return result;

@@ -172,13 +172,9 @@ const initials = (session.displayName ?? session.email ?? 'U')
                 <span class="app-sidebar__link-icon" aria-hidden><Icon name="LayoutDashboard" /></span>
                 <span>Overview</span>
               </a>
-              <a href={`/app/sites/${siteId}/pages`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/pages`) && "app-sidebar__link--active"]}>
+              <a href={`/app/sites/${siteId}/pages`} class:list={["app-sidebar__link", (isActive(`/app/sites/${siteId}/pages`) || isActive(`/app/sites/${siteId}/content-types`)) && "app-sidebar__link--active"]}>
                 <span class="app-sidebar__link-icon" aria-hidden><Icon name="FileText" /></span>
                 <span>Pages</span>
-              </a>
-              <a href={`/app/sites/${siteId}/collections`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/collections`) && "app-sidebar__link--active"]}>
-                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Layers" /></span>
-                <span>Collections</span>
               </a>
               <a href={`/app/sites/${siteId}/forms`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/forms`) && "app-sidebar__link--active"]}>
                 <span class="app-sidebar__link-icon" aria-hidden><Icon name="Inbox" /></span>

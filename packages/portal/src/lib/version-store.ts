@@ -16,11 +16,10 @@
  * use vstore.X(...) instead of store.getDoc(paths.X(...)).
  */
 
-import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
+import { contentPagePath, DEFAULT_CONTENT_TYPE, paths, MAIN_VERSION_ID } from '@typeroll/shared';
 import type {
   BlockType,
-  CollectionDef,
-  CollectionItem,
+  ContentType,
   Page,
   PageTemplate,
   Partial as PartialDoc,
@@ -179,11 +178,9 @@ async function deleteChain(
 export const vstore = {
   // Pages
   page: (orgId: string, siteId: string, versionId: string, pageId: string) =>
-    readChain<Page>(orgId, siteId, versionId, 'pages', pageId,
-      (v) => paths.page(orgId, siteId, pageId, v)),
+    readChain<Page>(orgId, siteId, versionId, 'pages', pageId, v => paths.page(orgId, siteId, pageId, v)),
   pages: (orgId: string, siteId: string, versionId: string) =>
-    listChain<Page>(orgId, siteId, versionId, 'pages',
-      (v) => paths.pages(orgId, siteId, v)),
+    listChain<Page>(orgId, siteId, versionId, 'pages', v => paths.pages(orgId, siteId, v)),
   deletePage: (orgId: string, siteId: string, versionId: string, pageId: string) =>
     deleteChain(orgId, siteId, versionId, 'pages', pageId,
       paths.page(orgId, siteId, pageId, versionId)),
@@ -215,27 +212,19 @@ export const vstore = {
     deleteChain(orgId, siteId, versionId, 'redirects', redirectId,
       `${paths.redirects(orgId, siteId, versionId)}/${redirectId}`),
 
-  // Collections (defs)
-  collection: (orgId: string, siteId: string, versionId: string, name: string) =>
-    readChain<CollectionDef>(orgId, siteId, versionId, 'collections', name,
-      (v) => paths.collection(orgId, siteId, name, v)),
-  collections: (orgId: string, siteId: string, versionId: string) =>
-    listChain<CollectionDef>(orgId, siteId, versionId, 'collections',
-      (v) => paths.collections(orgId, siteId, v)),
-  deleteCollection: (orgId: string, siteId: string, versionId: string, name: string) =>
-    deleteChain(orgId, siteId, versionId, 'collections', name,
-      paths.collection(orgId, siteId, name, versionId)),
-
-  // Collection items — namespaced by collection
-  collectionItem: (orgId: string, siteId: string, versionId: string, name: string, itemId: string) =>
-    readChain<CollectionItem>(orgId, siteId, versionId, `collection-items:${name}`, itemId,
-      (v) => paths.collectionItem(orgId, siteId, name, itemId, v)),
-  collectionItems: (orgId: string, siteId: string, versionId: string, name: string) =>
-    listChain<CollectionItem>(orgId, siteId, versionId, `collection-items:${name}`,
-      (v) => paths.collectionItems(orgId, siteId, name, v)),
-  deleteCollectionItem: (orgId: string, siteId: string, versionId: string, name: string, itemId: string) =>
-    deleteChain(orgId, siteId, versionId, `collection-items:${name}`, itemId,
-      paths.collectionItem(orgId, siteId, name, itemId, versionId)),
+  contentType: (orgId: string, siteId: string, versionId: string, name: string) =>
+    readChain<ContentType>(orgId, siteId, versionId, 'content_types', name,
+      v => paths.contentType(orgId, siteId, name, v)),
+  contentTypes: (orgId: string, siteId: string, versionId: string) =>
+    listChain<ContentType>(orgId, siteId, versionId, 'content_types',
+      v => paths.contentTypes(orgId, siteId, v)),
+  writeContentType: async (orgId: string, siteId: string, versionId: string, name: string, update: Partial<ContentType>) => {
+    const existing = await readChain<ContentType>(orgId, siteId, versionId, 'content_types', name, v => paths.contentType(orgId, siteId, name, v));
+    await getStore().setDoc(paths.contentType(orgId, siteId, name, versionId), { ...existing, ...update });
+    await getStore().deleteDoc(tombstonePath(orgId, siteId, versionId, 'content_types', name));
+  },
+  deleteContentType: (orgId: string, siteId: string, versionId: string, name: string) =>
+    deleteChain(orgId, siteId, versionId, 'content_types', name, paths.contentType(orgId, siteId, name, versionId)),
 
   // Block types + page templates. Chain-fallback so a branch build inherits
   // the base library / templates it didn't override (the deploy materializer
@@ -255,6 +244,7 @@ export const vstore = {
       (v) => paths.blockType(orgId, siteId, typeId, v));
     const { id: _id, ...base } = (existing ?? {}) as BlockType;
     await getStore().setDoc(paths.blockType(orgId, siteId, typeId, versionId), { ...base, ...update });
+    await getStore().deleteDoc(tombstonePath(orgId, siteId, versionId, 'block-types', typeId));
   },
   deleteBlockType: (orgId: string, siteId: string, versionId: string, typeId: string) =>
     deleteChain(orgId, siteId, versionId, 'block-types', typeId,
@@ -265,6 +255,14 @@ export const vstore = {
   pageTemplate: (orgId: string, siteId: string, versionId: string, templateId: string) =>
     readChain<PageTemplate>(orgId, siteId, versionId, 'page-templates', templateId,
       (v) => paths.pageTemplate(orgId, siteId, templateId, v)),
+  writePageTemplate: async (orgId: string, siteId: string, versionId: string, templateId: string, update: Partial<PageTemplate>) => {
+    const existing = await readChain<PageTemplate>(orgId, siteId, versionId, 'page-templates', templateId,
+      v => paths.pageTemplate(orgId, siteId, templateId, v));
+    await getStore().setDoc(paths.pageTemplate(orgId, siteId, templateId, versionId), { ...existing, ...update });
+    await getStore().deleteDoc(tombstonePath(orgId, siteId, versionId, 'page-templates', templateId));
+  },
+  deletePageTemplate: (orgId: string, siteId: string, versionId: string, templateId: string) =>
+    deleteChain(orgId, siteId, versionId, 'page-templates', templateId, paths.pageTemplate(orgId, siteId, templateId, versionId)),
 
   // Helpers exposed for advanced callers (deploy materializer, promote op)
   chain: versionChain,
@@ -285,6 +283,7 @@ export const vstore = {
       (v) => paths.page(orgId, siteId, pageId, v));
     const { id: _id, ...base } = (existing ?? {}) as Page;
     await getStore().setDoc(paths.page(orgId, siteId, pageId, versionId), { ...base, ...update });
+    await getStore().deleteDoc(tombstonePath(orgId, siteId, versionId, 'pages', pageId));
   },
 
   writePartial: async (
@@ -295,6 +294,7 @@ export const vstore = {
       (v) => paths.partial(orgId, siteId, partialId, v));
     const { id: _id, ...base } = (existing ?? {}) as PartialDoc;
     await getStore().setDoc(paths.partial(orgId, siteId, partialId, versionId), { ...base, ...update });
+    await getStore().deleteDoc(tombstonePath(orgId, siteId, versionId, 'partials', partialId));
   },
 
   writeSettings: async (
@@ -306,23 +306,5 @@ export const vstore = {
     await getStore().setDoc(paths.settings(orgId, siteId, versionId), { ...(existing ?? {}), ...update });
   },
 
-  writeCollection: async (
-    orgId: string, siteId: string, versionId: string, name: string,
-    update: Partial<CollectionDef>,
-  ): Promise<void> => {
-    const existing = await readChain<CollectionDef>(orgId, siteId, versionId, 'collections', name,
-      (v) => paths.collection(orgId, siteId, name, v));
-    const { id: _id, ...base } = (existing ?? {}) as CollectionDef;
-    await getStore().setDoc(paths.collection(orgId, siteId, name, versionId), { ...base, ...update });
-  },
 
-  writeCollectionItem: async (
-    orgId: string, siteId: string, versionId: string, name: string, itemId: string,
-    update: Partial<CollectionItem>,
-  ): Promise<void> => {
-    const existing = await readChain<CollectionItem>(orgId, siteId, versionId, `collection-items:${name}`, itemId,
-      (v) => paths.collectionItem(orgId, siteId, name, itemId, v));
-    const { id: _id, ...base } = (existing ?? {}) as CollectionItem;
-    await getStore().setDoc(paths.collectionItem(orgId, siteId, name, itemId, versionId), { ...base, ...update });
-  },
 };

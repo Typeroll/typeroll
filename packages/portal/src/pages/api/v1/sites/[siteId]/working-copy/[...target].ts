@@ -29,9 +29,7 @@ async function targetExists(ctx: WcCtx, target: WcTarget): Promise<boolean> {
     return !!(await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id));
   }
   if (target.kind === 'partial') return true; // create-on-write, like the canonical PUT
-  return !!(await vstore.collectionItem(
-    ctx.orgId, ctx.siteId, ctx.versionId, target.collection, target.id,
-  ));
+  return false;
 }
 
 export const GET: APIRoute = async ({ request, params }) => {
@@ -39,7 +37,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
   const target = parseWcTarget(params.target);
-  if (!target) return apiError('Bad working-copy target — use page/{id}, partial/{id} or item/{collection}/{itemId}', 400);
+  if (!target) return apiError('Bad working-copy target — use page/{id}, partial/{id}', 400);
   const wc = await readWorkingCopy(ctx, target);
   return apiResponse(ctx, { working_copy: wc });
 };
@@ -48,8 +46,9 @@ export const PUT: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  if (ctx.permission === 'read') return apiError('Write permission required', 403);
   const target = parseWcTarget(params.target);
-  if (!target) return apiError('Bad working-copy target — use page/{id}, partial/{id} or item/{collection}/{itemId}', 400);
+  if (!target) return apiError('Bad working-copy target — use page/{id}, partial/{id}', 400);
 
   const body = (await request.json().catch(() => null)) as
     | { fields?: Record<string, unknown> }
@@ -73,10 +72,11 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  if (ctx.permission === 'read') return apiError('Write permission required', 403);
   const target = parseWcTarget(params.target);
-  if (!target) return apiError('Bad working-copy target — use page/{id}, partial/{id} or item/{collection}/{itemId}', 400);
+  if (!target) return apiError('Bad working-copy target — use page/{id}, partial/{id}', 400);
   try {
-    const result = await commitWorkingCopy(ctx, target, `api-key:${ctx.keyPrefix}`);
+    const result = await commitWorkingCopy(ctx, target, `api-key:${ctx.keyPrefix}`, 'agent');
     return apiResponse(ctx, { ok: true, ...result }, 200, {});
   } catch (e) {
     if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
@@ -88,8 +88,9 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  if (ctx.permission === 'read') return apiError('Write permission required', 403);
   const target = parseWcTarget(params.target);
-  if (!target) return apiError('Bad working-copy target — use page/{id}, partial/{id} or item/{collection}/{itemId}', 400);
+  if (!target) return apiError('Bad working-copy target — use page/{id}, partial/{id}', 400);
   await discardWorkingCopy(ctx, target);
   return apiResponse(ctx, { ok: true }, 200, {});
 };

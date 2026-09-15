@@ -1,6 +1,6 @@
 // Archive pagination: a collection repeater with `paginate` renders one
 // slice + a pager, and findPaginatedListing tells the SSG how many
-// /page/N/ routes to emit. Aliases (core/collection_list etc.) resolve
+// /page/N/ routes to emit. Aliases (core/page_list etc.) resolve
 // through expand_to exactly like the renderer does.
 
 import { describe, it, expect } from 'vitest';
@@ -19,8 +19,8 @@ function repeaterBlock(data: Record<string, unknown>): Block {
     id: 'rep1',
     type: 'core/repeater',
     data: {
-      source_type: 'collection',
-      collection: 'blog',
+      source_type: 'pages',
+      content_type: 'blog',
       item_block: 'core/post_card',
       ...data,
     },
@@ -31,7 +31,7 @@ describe('paginated repeater rendering', () => {
   it('renders the requested slice with a pager (prev/next + numbers)', () => {
     const html = renderBlock(repeaterBlock({ paginate: 2 }), {
       registry,
-      collectionSource: () => ITEMS,
+      pageSource: () => ITEMS,
       context: { pagination: { current: 2, base_url: '/blog/' } },
     });
     expect(html).toContain('Post 3');
@@ -47,7 +47,7 @@ describe('paginated repeater rendering', () => {
   it('defaults to page 1 when no pagination context is set (editor preview)', () => {
     const html = renderBlock(repeaterBlock({ paginate: 2 }), {
       registry,
-      collectionSource: () => ITEMS,
+      pageSource: () => ITEMS,
     });
     expect(html).toContain('Post 1');
     expect(html).toContain('Post 2');
@@ -58,7 +58,7 @@ describe('paginated repeater rendering', () => {
   it('honors a no-trailing-slash policy in pager links', () => {
     const html = renderBlock(repeaterBlock({ paginate: 2 }), {
       registry,
-      collectionSource: () => ITEMS,
+      pageSource: () => ITEMS,
       context: { pagination: { current: 2, base_url: '/blog/', trailing_slash: 'never' } },
     });
     expect(html).toContain('href="/blog" rel="prev"');
@@ -69,7 +69,7 @@ describe('paginated repeater rendering', () => {
     let received: { limit?: number } | null = null;
     renderBlock(repeaterBlock({ paginate: 2, limit: 3 }), {
       registry,
-      collectionSource: (cfg) => { received = cfg; return ITEMS; },
+      pageSource: (cfg) => { received = cfg; return ITEMS; },
     });
     expect(received!.limit).toBeUndefined();
   });
@@ -77,7 +77,7 @@ describe('paginated repeater rendering', () => {
   it('no pager when everything fits on one page', () => {
     const html = renderBlock(repeaterBlock({ paginate: 10 }), {
       registry,
-      collectionSource: () => ITEMS,
+      pageSource: () => ITEMS,
     });
     expect(html).toContain('Post 5');
     expect(html).not.toContain('data-block="pager"');
@@ -87,17 +87,17 @@ describe('paginated repeater rendering', () => {
 describe('findPaginatedListing', () => {
   it('finds a direct repeater and a nested alias, merging expand_to defaults', () => {
     const direct = findPaginatedListing([repeaterBlock({ paginate: 4, sort_by: 'date' })], registry);
-    expect(direct).toMatchObject({ collection: 'blog', per_page: 4, sort_by: 'date' });
+    expect(direct).toMatchObject({ content_type: 'blog', per_page: 4, sort_by: 'date' });
 
     const nested: Block[] = [{
       id: 'sec', type: 'core/section', data: {},
       children: [{
-        id: 'list', type: 'core/collection_list',
-        data: { collection: 'blog', paginate: 6 },
+        id: 'list', type: 'core/page_list',
+        data: { content_type: 'blog', paginate: 6 },
       } as Block],
     } as Block];
     const alias = findPaginatedListing(nested, registry);
-    expect(alias).toMatchObject({ collection: 'blog', per_page: 6 });
+    expect(alias).toMatchObject({ content_type: 'blog', per_page: 6 });
   });
 
   it('returns null for unpaginated listings and static repeaters', () => {

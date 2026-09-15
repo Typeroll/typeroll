@@ -18,7 +18,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!guard.ok) return guard.response;
   const writeCheck = requirePermission(guard.value, 'write');
   if (!writeCheck.ok) return writeCheck.response;
-  const { session, site, owner_org_id } = guard.value;
+  const { session, site, owner_org_id, versionId } = guard.value;
 
   const body = (await request.json().catch(() => ({}))) as {
     type?: WorkflowType;
@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
     orgId: owner_org_id,
     siteId: site.id,
     def,
-    config: body.config ?? {},
+    config: { ...body.config, version: versionId },
     triggeredBy: 'manual',
     createdBy: session.userId,
   });

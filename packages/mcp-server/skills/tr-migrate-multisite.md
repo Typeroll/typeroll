@@ -6,7 +6,7 @@ description: Use when migrating SEVERAL sites at once — a WordPress multisite 
 # Migrate a multisite / multi-domain family to Typeroll
 
 > **The buffer model (draft writes).** Every content write in this recipe
-> (pages, blocks, partials, collection items) lands in an unsaved per-doc
+> (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
 > build work, pass `save: true` on write calls (the work is pre-approved by
 > the task itself), or run `commit_working_copy` per doc before any

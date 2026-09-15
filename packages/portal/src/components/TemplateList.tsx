@@ -11,6 +11,7 @@ export default function TemplateList({ siteId }: { siteId: string }) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newLabel, setNewLabel] = useState('');
+  const [starter, setStarter] = useState('custom');
   const [error, setError] = useState<string | null>(null);
 
   async function refresh(): Promise<void> {
@@ -35,7 +36,7 @@ export default function TemplateList({ siteId }: { siteId: string }) {
         label: newLabel.trim() || name,
         applies_to: 'any',
         status: 'draft',
-        blocks: [],
+        starter,
       }),
     });
     if (!res.ok) {
@@ -48,9 +49,10 @@ export default function TemplateList({ siteId }: { siteId: string }) {
   }
 
   async function remove(id: string): Promise<void> {
-    if (!confirm(`Delete the template "${id}"? Pages using it will keep rendering without a template.`)) return;
+    if (!confirm(`Delete the template "${id}"? Choose another template for any pages or content types using it first.`)) return;
     const res = await fetch(`/api/sites/${siteId}/templates?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
     if (res.ok) await refresh();
+    else { const body = await res.json(); setError(body.error ?? "Could not delete template"); }
   }
 
   return (
@@ -58,7 +60,7 @@ export default function TemplateList({ siteId }: { siteId: string }) {
       <header style={head}>
         <h1 style={{ margin: 0, fontSize: '1.1rem' }}>Templates</h1>
         <button type="button" onClick={() => setCreating(true)} style={primaryBtn}>
-          <Plus size={14} /> Ny mall
+          <Plus size={14} /> New template
         </button>
       </header>
 
@@ -70,8 +72,8 @@ export default function TemplateList({ siteId }: { siteId: string }) {
 
       {creating && (
         <div style={createCard}>
-          <h3 style={{ marginTop: 0 }}>Ny mall</h3>
-          <label style={fieldLabel}>Namn (kebab/underscore, t.ex. blog_post)
+          <h3 style={{ marginTop: 0 }}>New template</h3>
+          <label style={fieldLabel}>Template ID (for example, blog-post)
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
@@ -80,13 +82,18 @@ export default function TemplateList({ siteId }: { siteId: string }) {
               autoFocus
             />
           </label>
-          <label style={fieldLabel}>Etikett
+          <label style={fieldLabel}>Label
             <input
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               style={input}
               placeholder="Blog post"
             />
+          </label>
+          <label style={fieldLabel}>Starting layout
+            <select style={input} value={starter} onChange={event => setStarter(event.target.value)}>
+              {['custom', 'article', 'blog', 'checklist', 'team', 'events', 'products'].map(kind => <option key={kind} value={kind}>{kind === 'custom' ? 'Title and page content' : kind[0].toUpperCase() + kind.slice(1)}</option>)}
+            </select>
           </label>
           {error && <p style={errorMsg}>{error}</p>}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -100,6 +107,7 @@ export default function TemplateList({ siteId }: { siteId: string }) {
         <p style={muted}>No templates yet. Create one to get started.</p>
       )}
 
+      {!creating && error && <p role="alert" style={errorMsg}>{error}</p>}
       <ul style={list}>
         {templates.map((t) => (
           <li key={t.id} style={row}>

@@ -6,7 +6,7 @@ description: Use when the user asks to redesign, modernize, or restructure a Typ
 # Redesign a site without breaking the live one
 
 > **The buffer model (draft writes).** Every content write in this recipe
-> (pages, blocks, partials, collection items) lands in an unsaved per-doc
+> (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
 > build work, pass `save: true` on write calls (the work is pre-approved by
 > the task itself), or run `commit_working_copy` per doc before any
@@ -59,7 +59,7 @@ read_partial partial_id="footer"
 list_pages limit=20
 batch_read_pages page_ids=[<top 3-5 pages>]   # see actual conventions
 list_partials                                  # what free blocks exist
-list_collections                               # any data we need to consider
+list_content_types                               # any data we need to consider
 ```
 
 Write the user a short read-back: *"This is a 12-page agency site

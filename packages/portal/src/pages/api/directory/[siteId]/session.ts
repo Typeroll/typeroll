@@ -1,3 +1,4 @@
+import { pageAuthorityFields, pageContentValues, PAGE_BUILTIN_FIELDS } from '@typeroll/shared';
 // The edit surface behind a one-time link. PUBLIC, but every request is
 // bound to a single stored grant.
 //
@@ -18,7 +19,7 @@
 
 import type { APIRoute } from 'astro';
 import { paths } from '@typeroll/shared';
-import type { CollectionDef, SiteApps } from '@typeroll/shared';
+import type { ContentType, SiteApps } from '@typeroll/shared';
 import { getStore } from '../../../../lib/datastore';
 import { vstore } from '../../../../lib/version-store';
 import { directoryConfig } from '../../../../lib/apps/directory';
@@ -86,12 +87,12 @@ async function loadSession(
   siteId: string,
   url: URL,
   request?: Request,
-): Promise<{ orgId: string; collection: string; itemId: string; token: string }> {
+): Promise<{ orgId: string; content_type: string; pageId: string; token: string }> {
   const fresh = url.searchParams.get('t');
   if (fresh) {
     const { orgId, grant } = await redeemGrant(fresh, { consume: true });
     return {
-      orgId, collection: grant.collection, itemId: grant.item_id,
+      orgId, content_type: grant.content_type, pageId: grant.page_id,
       token: buildGrantToken(orgId, siteId, grant.id),
     };
   }
@@ -110,26 +111,26 @@ async function loadSession(
   // A revoked grant kills the live session too, which is the whole point of
   // storing grants — an operator can cut someone off mid-edit.
   if (!grant || grant.revoked_at) throw new EditGrantError('No active editing session', 401);
-  return { orgId: parsed.orgId, collection: grant.collection, itemId: grant.item_id, token: cookie! };
+  return { orgId: parsed.orgId, content_type: grant.content_type, pageId: grant.page_id, token: cookie! };
 }
 
-async function loadCollection(
-  orgId: string, siteId: string, collection: string,
-): Promise<CollectionDef> {
+async function loadContentType(
+  orgId: string, siteId: string, content_type: string,
+): Promise<ContentType> {
   const apps = await getStore().getDoc<SiteApps>(paths.apps(orgId, siteId));
   const cfg = directoryConfig(apps ?? undefined);
   // Disabling the app must close the door on sessions already in flight.
-  if (!cfg || cfg.collection !== collection) {
+  if (!cfg || cfg.content_type !== content_type) {
     throw new EditGrantError('Editing is not available for this site', 403);
   }
-  const coll = await vstore.collection(orgId, siteId, 'main', collection);
+  const coll = await vstore.contentType(orgId, siteId, 'main', content_type);
   if (!coll) throw new EditGrantError('Listing not found', 404);
   return coll;
 }
 
 /** Only the fields this surface may write are ever shown or accepted. */
-function ownerFields(coll: CollectionDef) {
-  return coll.fields.filter((f) => writableBy(f).includes('owner'));
+function ownerFields(coll: ContentType) {
+  return pageAuthorityFields(coll).filter((f) => writableBy(f).includes('owner'));
 }
 
 export const GET: APIRoute = async ({ request, params, cookies }) => {
@@ -138,9 +139,9 @@ export const GET: APIRoute = async ({ request, params, cookies }) => {
   try {
     const url = new URL(request.url);
     const sess = await loadSession(cookies, siteId, url, request);
-    const coll = await loadCollection(sess.orgId, siteId, sess.collection);
-    const item = await vstore.collectionItem(sess.orgId, siteId, 'main', sess.collection, sess.itemId);
-    if (!item) throw new EditGrantError('Listing not found', 404);
+    const coll = await loadContentType(sess.orgId, siteId, sess.content_type);
+    const item = await vstore.page(sess.orgId, siteId, 'main', sess.pageId);
+    if (!item || item.content_type !== sess.content_type) throw new EditGrantError('Listing not found', 404);
 
     if (url.searchParams.get('t')) {
       cookies.set(COOKIE, sess.token, {
@@ -153,12 +154,12 @@ export const GET: APIRoute = async ({ request, params, cookies }) => {
     }
 
     const fields = ownerFields(coll);
-    const data = item as Record<string, unknown>;
+    const data = pageContentValues(item);
 
     // Prefill sources fill fields the RECORD has no value for — they never
     // override it. A source resolves values, never WHICH record: the listing
     // is fixed by the stored grant above, and the only query parameter this
-    // route reads is the signed token. So `?item_id=someone-else` changes
+    // route reads is the signed token. So `?page_id=someone-else` changes
     // nothing, and a source can't be pointed at another business either.
     const formDoc = await getStore().getDoc<import('@typeroll/shared').Form>(
       `${paths.forms(sess.orgId, siteId)}/${url.searchParams.get('form') ?? ''}`,
@@ -176,7 +177,7 @@ export const GET: APIRoute = async ({ request, params, cookies }) => {
       extra = resolved.values;
     }
     return json({
-      listing_id: sess.itemId,
+      listing_id: sess.pageId,
       // Handed back so a cross-origin form can carry the session in a header
       // instead of a cookie. Same value the cookie holds; the grant is already
       // consumed, so this authorises the session and nothing more.
@@ -236,11 +237,11 @@ async function applyEdit(
   incomingRaw: Record<string, unknown>,
 ) {
   const sess = await loadSession(cookies, siteId, new URL(request.url), request);
-  const coll = await loadCollection(sess.orgId, siteId, sess.collection);
-  const existing = await vstore.collectionItem(
-    sess.orgId, siteId, 'main', sess.collection, sess.itemId,
+  const coll = await loadContentType(sess.orgId, siteId, sess.content_type);
+  const existing = await vstore.page(
+    sess.orgId, siteId, 'main', sess.pageId,
   );
-  if (!existing) throw new EditGrantError('Listing not found', 404);
+  if (!existing || existing.content_type !== sess.content_type) throw new EditGrantError('Listing not found', 404);
 
   // Schema whitelist first, then authority. `status` is deliberately absent
   // from both — a business editing its own details must not be able to
@@ -250,14 +251,15 @@ async function applyEdit(
   for (const [k, v] of Object.entries(incomingRaw)) if (allowed.has(k)) incoming[k] = v;
 
   const authority = applyFieldAuthority({
-    fields: coll.fields, incoming, existing,
-    actor: 'owner', actorId: `edit-link:${sess.itemId}`,
+    fields: pageAuthorityFields(coll), incoming, existing,
+    actor: 'owner', actorId: `edit-link:${sess.pageId}`,
   });
   if (authority.rejected.length === 0) {
-    await vstore.writeCollectionItem(sess.orgId, siteId, 'main', sess.collection, sess.itemId, {
-      ...authority.update,
+    await vstore.writePage(sess.orgId, siteId, 'main', sess.pageId, {
+      ...Object.fromEntries(Object.entries(authority.update).filter(([name]) => PAGE_BUILTIN_FIELDS.has(name))),
+      fields: { ...existing.fields, ...Object.fromEntries(Object.entries(authority.update).filter(([name]) => !PAGE_BUILTIN_FIELDS.has(name))) },
       [PROVENANCE_KEY]: authority.provenance,
-      updated_at: new Date().toISOString(),
+      date_updated: new Date().toISOString(),
     });
     await markSiteDirty(sess.orgId, siteId);
   }
@@ -343,7 +345,7 @@ export const POST: APIRoute = async ({ request, params, cookies }) => {
           const { runFormActions } = await import('../../../../lib/forms/actions');
           await runFormActions(doc, {
             orgId: sess.orgId, siteId, data: incoming,
-            subject: { kind: 'collection_item', collection: sess.collection, id: sess.itemId },
+            subject: { kind: 'page', content_type: sess.content_type, id: sess.pageId },
           });
         }
       }

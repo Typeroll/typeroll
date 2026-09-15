@@ -5,10 +5,71 @@
   "doc": {
     "title": "About",
     "slug": "about",
-    "content_mode": "html",
+    "content_mode": "blocks",
     "status": "published",
-    "html_content": "<h1>About us</h1><p>We're a small studio building things that last. Our websites don't have a database. They don't run server code. They're files on a CDN — and they'll keep working until the sun burns out.</p><h2>What we do</h2><p>We migrate WordPress sites onto a static, CDN-hosted stack. The result is faster, more secure, and never needs maintenance again.</p><h2>Get in touch</h2><p>Drop us a line at <a href=\"mailto:hello@acme.example.com\">hello@acme.example.com</a>.</p>",
     "seo_title": "About",
-    "seo_description": "Learn about ACME Studio."
+    "seo_description": "Learn about ACME Studio.",
+    "path": "/about",
+    "content_type": "page",
+    "fields": {},
+    "blocks": [
+      {
+        "id": "m-3998f57f01eb8dade0d8",
+        "type": "core/heading",
+        "data": {
+          "text": "About us",
+          "anchor_id": "",
+          "level": "h1",
+          "align": "left",
+          "eyebrow": ""
+        }
+      },
+      {
+        "id": "m-4e30aac9727be7a33ac4",
+        "type": "core/prose",
+        "data": {
+          "html": "<p>We&apos;re a small studio building things that last. Our websites don&apos;t have a database. They don&apos;t run server code. They&apos;re files on a CDN &#x2014; and they&apos;ll keep working until the sun burns out.</p>",
+          "max_width": "normal"
+        }
+      },
+      {
+        "id": "m-48ae11f080508999c7d1",
+        "type": "core/heading",
+        "data": {
+          "text": "What we do",
+          "anchor_id": "",
+          "level": "h2",
+          "align": "left",
+          "eyebrow": ""
+        }
+      },
+      {
+        "id": "m-718e83f21d6b3ff70e6f",
+        "type": "core/prose",
+        "data": {
+          "html": "<p>We migrate WordPress sites onto a static, CDN-hosted stack. The result is faster, more secure, and never needs maintenance again.</p>",
+          "max_width": "normal"
+        }
+      },
+      {
+        "id": "m-f9d1f9aba4737eb18cd6",
+        "type": "core/heading",
+        "data": {
+          "text": "Get in touch",
+          "anchor_id": "",
+          "level": "h2",
+          "align": "left",
+          "eyebrow": ""
+        }
+      },
+      {
+        "id": "m-7d5fdafa25acb6889a7e",
+        "type": "core/prose",
+        "data": {
+          "html": "<p>Drop us a line at <a href=\"mailto:hello@acme.example.com\">hello@acme.example.com</a>.</p>",
+          "max_width": "normal"
+        }
+      }
+    ]
   }
 }

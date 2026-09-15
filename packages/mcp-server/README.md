@@ -2,13 +2,28 @@
 
 The `@typeroll/mcp-server` package connects MCP-compatible AI clients to the
 [Typeroll CMS](https://typeroll.com) public API. Manage sites through tools to read and
-write pages, partials, collections, media, redirects, versions; trigger
+write pages, partials, content types, media, redirects, versions; trigger
 deploys; mint preview links.
 
 The server is a **thin transport adapter** — tools call the Typeroll REST API,
 with a few workflow tools composing consecutive API calls such as config plus
 deploy. Auth happens at the API layer with a site- or org-scoped key; the MCP
 just carries the bearer through.
+
+## One Page model
+
+Core 0.2.0 and MCP 0.45.0 use one content entity: **Page**. Every article,
+checklist, product, directory entry and ordinary page uses the same API, editor,
+blocks, history, preview and status. `content_type` selects a schema, URL pattern
+and default Page template. Custom values belong in `fields`; title, slug, path,
+body, SEO and status are built-in Page properties. Use `page_ref`/`page_ref_list`
+for references and a blank type route pattern for records without detail URLs.
+
+Use `create_page`, `list_pages content_type=...` and the Content type/Page template
+tools. Use the Page ID and the same site `version` throughout editing, references,
+previews and builds. Existing installations must migrate before running this
+release. See the [model guide](https://typeroll.com/docs/tools/content-types/) and
+[upgrade procedure](https://typeroll.com/docs/guides/unified-pages-upgrade/).
 
 ## Two ways to connect
 
@@ -75,11 +90,11 @@ client using it stops working immediately.
 3. **Tell the agent what kind of work you want.** A good first message:
 
    > "Connect to Typeroll and tell me what you find — site name,
-   > number of pages, what global blocks exist, what collections are
+   > number of pages, what global blocks exist, what content types are
    > defined. Then I'll give you a task."
 
    The agent can call `get_site`, `get_site_capabilities`, `list_pages`,
-   `list_partials`, `list_collections`, and `list_block_types` in sequence and
+   `list_partials`, `list_content_types`, and `list_block_types` in sequence and
    report back. The capabilities + block palette are mandatory before it
    chooses HTML mode or reports a missing site-building feature.
 
@@ -143,7 +158,7 @@ the full reference + concrete operation recipes.
 - **Blocks (instances)** — `get_page_blocks`, `add_block`,
   `update_block`, `move_block`, `remove_block`, `duplicate_block`,
   `set_block_responsive`. All take a `target` (page, partial, page
-  template, or collection item-template), so one tool family edits
+  template), so one tool family edits
   every block container.
 - **Global blocks (partials)** — list (summary mode by default), read,
   create free block, update, replace, delete, `set_partial_mode`,
@@ -154,15 +169,14 @@ the full reference + concrete operation recipes.
   client-side JS (`script`) is honoured only when the site has enabled
   "Allow AI to write block scripts" (a human-set portal setting) —
   otherwise it's stripped with a warning.
-- **Collections + items** — create/update/delete the collection schema
-  itself (incl. `route_template` for per-item URLs and native `article` /
-  `checklist` template presets); list/read/batch-
-  read/create/update/delete items. Existing-collection tools consistently
-  use `collection` (the old `name` argument remains accepted as an alias).
-  Collection repeaters support `group_by`, and item templates can place
-  `template/item_navigation` for deterministic or explicitly field-bound
-  previous/next links. Typed context bindings, breadcrumbs, selected body
-  fields, and table-of-contents links render server-side.
+- **Content types** — `list_content_types`, `read_content_type`,
+  `create_content_type`, `update_content_type`, `delete_content_type`.
+  Every record is a Page; `list_pages` filters by `content_type`.
+  `change_page_content_type` reclassifies a Page without changing its identity
+  or existing URL. `page_completeness` reports missing and stale values.
+- **Page templates** — list/read/create/update/delete reusable block layouts,
+  including article/checklist starters. Set a default per content type or an
+  override per Page. The body remains the Page's own editable block tree.
 - **Media** — `get_import_readiness`, list/read, signed upload URLs,
   `upload_media_from_url`, `upload_media_batch_from_urls` (1–50 sources, max
   25 MiB each, with partial-success results), `upload_media_inline`, metadata
@@ -203,10 +217,10 @@ the full reference + concrete operation recipes.
   Analytics provisioning runs on the platform. Deploy after updates whose
   response has `affects_build: true`.
 - **Search + link integrity** — `search_pages` plus `check_internal_links`,
-  which resolves saved database content against pages, collection/facet routes,
+  which resolves saved database content against pages, Page/facet routes,
   media and redirect chains without crawling the public site.
 - **Bulk** — `bulk_replace_text` with dry-run across pages, partials,
-  block data and schema-defined collection-item fields.
+  block data and custom Page fields.
 - **Migration inventory** — bulk add/update decisions, recursive
   `import_sitemap`, direct or CSV-fallback `import_gsc_performance`, and compact
   `verify_migration_urls` (successful rows omitted unless requested), plus
@@ -218,7 +232,7 @@ the full reference + concrete operation recipes.
   status. A finished job reports `cost`: what the build consumed in server
   time, broken down per phase. Estimates from a rate card, not billing records.
 - **Preview** — `get_preview_link` (signed URL for browser navigation;
-  supports `page_id`, `slug`, or `collection_name + item_id`; pass
+  supports `page_id`, `slug`, or `path`; pass
   `include_working_copy: true` to also render unsaved drafts).
 - **Drafts (the buffer model)** — every content write lands in a per-doc
   unsaved draft (working copy); deploys and plain previews see saved
@@ -238,7 +252,7 @@ curl -H "Authorization: Bearer typeroll_live_..." \
 ```
 
 The MCP server is purely an ergonomics layer on top of that. The complete v1
-contract, including payload envelopes and collection-item slug addressing, is
+contract, including payload envelopes and Page IDs and content-type routing, is
 documented in [`docs/v1-api.md`](../../docs/v1-api.md).
 
 ## Security model
@@ -271,7 +285,7 @@ documented in [`docs/v1-api.md`](../../docs/v1-api.md).
   [docs/claude-code-mcp-setup.md](../../docs/claude-code-mcp-setup.md)
 - Agent operations briefing: [AGENTS.md](./AGENTS.md)
 - Boilerplate skills (site building, brand, forms, SEO, blog,
-  collections, migration, image generation, redesign, …):
+  content types, migration, image generation, redesign, …):
   [skills/](./skills/)
 
 ## License

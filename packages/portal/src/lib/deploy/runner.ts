@@ -29,12 +29,14 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  buildCollectionRoutes,
+  contentPagePath,
+  DEFAULT_CONTENT_TYPE,
+  publicContentPage,
   expandRedirectsForTrailingSlashPolicy,
   paths,
   MAIN_VERSION_ID,
 } from '@typeroll/shared';
-import type { CollectionItem, ExtensionRuntimeSnapshot, Form, Page, Redirect, Site, SiteApps, SiteSettings, SiteVersion, Partial as PartialDoc, TrailingSlashPolicy } from '@typeroll/shared';
+import type { ExtensionRuntimeSnapshot, Form, Page, Redirect, Site, SiteApps, SiteSettings, SiteVersion, Partial as PartialDoc, TrailingSlashPolicy } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { pageUrlFromDoc } from '../page-paths';
 import { partitionShadowedRedirects } from '../redirect-hygiene';
@@ -250,10 +252,10 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   // 3. Write _redirects.
   await phase('writing redirects');
   const siteForRedirect = await getStore().getDoc<Site>(paths.site(args.orgId, args.siteId));
-  const [redirects, pagesForRedirects, collectionsForRedirects, redirectSettings] = await Promise.all([
+  const [redirects, pagesForRedirects, typesForRedirects, redirectSettings] = await Promise.all([
     vstore.redirects(args.orgId, args.siteId, versionId),
     vstore.pages(args.orgId, args.siteId, versionId),
-    vstore.collections(args.orgId, args.siteId, versionId),
+    vstore.contentTypes(args.orgId, args.siteId, versionId),
     vstore.settings(args.orgId, args.siteId, versionId),
   ]);
   // Belt-and-braces: never emit a rule whose from_path a built page owns.
@@ -261,21 +263,18 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   // the page entirely (a stale "/" auto-redirect once hid a site's brand-new
   // home page). The write surfaces retire these eagerly; this guard catches
   // anything that slipped through.
+  const redirectTypeIndex = new Map(typesForRedirects.map(type => [type.id, type]));
+  if (!redirectTypeIndex.has('page')) redirectTypeIndex.set('page', DEFAULT_CONTENT_TYPE);
   const liveUrls = new Set(
     pagesForRedirects
       .filter((p) => p.status === 'published' || p.status === 'unlisted')
-      .map((p) => pageUrlFromDoc(p)),
+      .flatMap(page => {
+        const type = redirectTypeIndex.get(page.content_type ?? 'page');
+        const path = type ? contentPagePath(page, type) : null;
+        return path ? [path] : [];
+      }),
   );
-  const collectionItems = new Map<string, CollectionItem[]>();
-  await Promise.all(collectionsForRedirects.map(async (collection) => {
-    collectionItems.set(
-      collection.name,
-      await vstore.collectionItems(args.orgId, args.siteId, versionId, collection.name),
-    );
-  }));
-  for (const route of buildCollectionRoutes(collectionsForRedirects, collectionItems)) {
-    liveUrls.add(route.path);
-  }
+
   const { kept: safeRedirects, shadowed, shadowedPages } = partitionShadowedRedirects(redirects, liveUrls);
   for (const r of shadowed) {
     const hits = shadowedPages.get(r) ?? [r.from_path];
@@ -587,10 +586,14 @@ export async function materializeFixtures(
   for (const p of partials) await writeDoc(outDir, `${paths.partials(orgId, siteId, versionId)}/${p.id}`, p);
 
   // Pages — only published + unlisted are read at build time anyway
+  const typeIndex = new Map(resolved.contentTypes.map(type => [type.id, type]));
+  if (!typeIndex.has('page')) typeIndex.set('page', DEFAULT_CONTENT_TYPE);
   const pageDocs = resolved.pages;
   for (const p of pageDocs) {
     if (p.status === 'draft' || p.status === 'review') continue;
-    await writeDoc(outDir, `${paths.pages(orgId, siteId, versionId)}/${p.id}`, p);
+    const type = typeIndex.get(p.content_type ?? 'page');
+    if (!type) throw new Error(`Unknown content type for page ${p.id}`);
+    await writeDoc(outDir, `${paths.pages(orgId, siteId, versionId)}/${p.id}`, publicContentPage(p, type));
   }
 
   // Redirects
@@ -618,34 +621,8 @@ export async function materializeFixtures(
     await writeDoc(outDir, `${paths.pageTemplates(orgId, siteId, versionId)}/${t.id}`, t as unknown as Record<string, unknown>);
   }
 
-  // Collections + their items. The renderer reads both directly from the
-  // store (getAllCollections / getCollectionItems) for listing blocks and
-  // per-item route generation — so a deploy build that reads these fixtures
-  // (rather than live Firestore) renders no collection content unless we
-  // materialise them here. Chain-fallback (vstore) so a BRANCH inherits the
-  // collections + items it didn't override, the same class as settings /
-  // block types. Items are keyed under the collection's machine `name`,
-  // matching how the renderer reads them. Drafts are skipped (the renderer
-  // never routes or lists them) — mirrors the page handling above.
-  for (const { definition: c, items: itemDocs } of resolved.collections) {
-    if (!c.name) continue;
-    await writeDoc(outDir, paths.collection(orgId, siteId, c.name, versionId), c as unknown as Record<string, unknown>);
-    // Strip what the published site never reads: per-field provenance, and
-    // any field the schema marks `rendered: false` (agent working state a
-    // portal operator wants visible but the renderer has no business
-    // binding). Keeps the snapshot — and therefore build time — proportional
-    // to what actually renders, and stops `{{item._provenance.*}}` from being
-    // a bindable template path.
-    const hiddenFields = (c.fields ?? [])
-      .filter((f) => (f as { rendered?: boolean }).rendered === false)
-      .map((f) => f.name);
-    for (const item of itemDocs) {
-      if (!item.id || item.status === 'draft') continue;
-      const doc = { ...(item as unknown as Record<string, unknown>) };
-      delete doc._provenance;
-      for (const f of hiddenFields) delete doc[f];
-      await writeDoc(outDir, paths.collectionItem(orgId, siteId, c.name, item.id, versionId), doc);
-    }
+  for (const type of resolved.contentTypes) {
+    await writeDoc(outDir, paths.contentType(orgId, siteId, type.id, versionId), type as unknown as Record<string, unknown>);
   }
 
   // Forms 2.0: forms ship to the build enriched with their embed info

@@ -5,8 +5,7 @@
 // ChatGPT/Claude/Perplexity too.
 
 import type { APIRoute } from 'astro';
-import { applyTrailingSlash } from '@typeroll/shared';
-import { getAllPages, getCollectionItemRoutes, getSiteSettings, urlFor } from '../lib/content';
+import { getAllPages, getSiteSettings, urlFor } from '../lib/content';
 
 export const GET: APIRoute = async ({ site }) => {
   const base = site ? site.toString().replace(/\/$/, '') : '';
@@ -24,16 +23,6 @@ export const GET: APIRoute = async ({ site }) => {
       return `- [${p.title}](${base}${urlFor(p, settings.trailing_slash)})${desc ? `: ${desc}` : ''}`;
     });
   if (pageRows.length > 0) lines.push('', '## Pages', '', ...pageRows);
-
-  const itemRoutes = await getCollectionItemRoutes();
-  const itemRows = itemRoutes
-    .filter(({ item }) => !(item as Record<string, unknown>).noindex)
-    .map(({ path, item }) => {
-      const withSlash = applyTrailingSlash(path, settings.trailing_slash ?? 'always');
-      const title = String((item as Record<string, unknown>).title ?? item.id);
-      return `- [${title}](${base}${withSlash})`;
-    });
-  if (itemRows.length > 0) lines.push('', '## Content', '', ...itemRows);
 
   return new Response(lines.join('\n') + '\n', {
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },

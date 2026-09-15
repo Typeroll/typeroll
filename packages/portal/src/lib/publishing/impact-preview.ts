@@ -19,7 +19,7 @@ export async function previewPublicationImpact(orgId: string, siteId: string, ve
   const store = getStore();
   const target = await store.getDoc<any>(`${paths.site(orgId, siteId)}/publishing_targets/${versionId}`);
   const reference = target?.last_publication;
-  const unavailable = () => compareImpact(null, { protocol: 1, org_id: orgId, site_id: siteId, version_id: versionId, core_commit: '', entries: [] }, true);
+  const unavailable = () => compareImpact(null, { protocol: 2, org_id: orgId, site_id: siteId, version_id: versionId, core_commit: '', entries: [] }, true);
   if (!reference?.snapshot_job_id) return unavailable();
   const job = await store.getDoc<any>(paths.deploy(orgId, siteId, reference.snapshot_job_id));
   if (job?.status !== 'succeeded' || job.version_id !== versionId || job.dry_run) return unavailable();

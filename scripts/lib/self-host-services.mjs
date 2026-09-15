@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import { walkFirestoreCollection } from './firestore-tree.mjs';
 
 function required(env, key) {
   const input = env[key]?.trim();
@@ -62,7 +64,7 @@ export async function createSelfHostServices(env) {
   const { projectId, credentials } = resolveFirebaseAdminTarget(env);
   const bucket = required(env, 'R2_BUCKET');
 
-  const [{ initializeApp, cert, applicationDefault }, { getFirestore, FieldPath, Timestamp, GeoPoint }, { getAuth }, { GoogleAuth }] = await Promise.all([
+  const [{ initializeApp, cert, applicationDefault }, { getFirestore, Timestamp, GeoPoint }, { getAuth }, { GoogleAuth }] = await Promise.all([
     import('firebase-admin/app'),
     import('firebase-admin/firestore'),
     import('firebase-admin/auth'),
@@ -86,28 +88,10 @@ export async function createSelfHostServices(env) {
     },
   });
 
-  async function* walkCollection(collection) {
-    let cursor;
-    for (;;) {
-      let query = collection.orderBy(FieldPath.documentId()).limit(200);
-      if (cursor) query = query.startAfter(cursor);
-      const snapshot = await query.get();
-      if (snapshot.empty) break;
-      for (const document of snapshot.docs) {
-        yield { path: document.ref.path, data: document.data() };
-        const subcollections = await document.ref.listCollections();
-        subcollections.sort((left, right) => left.id.localeCompare(right.id));
-        for (const subcollection of subcollections) yield* walkCollection(subcollection);
-      }
-      cursor = snapshot.docs.at(-1);
-      if (snapshot.size < 200) break;
-    }
-  }
-
   async function* listDocuments() {
     const roots = await db.listCollections();
     roots.sort((left, right) => left.id.localeCompare(right.id));
-    for (const root of roots) yield* walkCollection(root);
+    for (const root of roots) yield* walkFirestoreCollection(root);
   }
 
   async function listDocumentPaths() {
@@ -117,11 +101,20 @@ export async function createSelfHostServices(env) {
   }
 
   async function hasAnyDocument() {
-    const roots = await db.listCollections();
-    for (const root of roots) {
-      if (!(await root.limit(1).get()).empty) return true;
-    }
+    for await (const _document of listDocuments()) return true;
     return false;
+  }
+
+  async function compareAndWrite(documentPath, expected, next) {
+    return db.runTransaction(async transaction => {
+      const ref = db.doc(documentPath);
+      const snapshot = await transaction.get(ref);
+      const current = snapshot.exists ? snapshot.data() : null;
+      if (!isDeepStrictEqual(current, expected)) return false;
+      if (next === null) transaction.delete(ref);
+      else transaction.set(ref, next);
+      return true;
+    });
   }
 
   async function writeDocuments(documents) {
@@ -236,20 +229,22 @@ export async function createSelfHostServices(env) {
     let continuationToken;
     do {
       const page = await r2.send(new ListObjectsV2Command({ Bucket: bucket, ContinuationToken: continuationToken }));
-      for (const item of page.Contents ?? []) {
-        if (!item.Key) continue;
-        const head = await r2.send(new HeadObjectCommand({ Bucket: bucket, Key: item.Key }));
-        yield {
-          key: item.Key,
-          size: item.Size ?? head.ContentLength ?? 0,
-          etag: item.ETag,
-          contentType: head.ContentType,
-          cacheControl: head.CacheControl,
-          contentDisposition: head.ContentDisposition,
-          contentEncoding: head.ContentEncoding,
-          contentLanguage: head.ContentLanguage,
-          metadata: head.Metadata,
-        };
+      for (const items of chunk((page.Contents ?? []).filter(item => item.Key), 8)) {
+        const records = await Promise.all(items.map(async item => {
+          const head = await r2.send(new HeadObjectCommand({ Bucket: bucket, Key: item.Key }));
+          return {
+            key: item.Key,
+            size: item.Size ?? head.ContentLength ?? 0,
+            etag: item.ETag,
+            contentType: head.ContentType,
+            cacheControl: head.CacheControl,
+            contentDisposition: head.ContentDisposition,
+            contentEncoding: head.ContentEncoding,
+            contentLanguage: head.ContentLanguage,
+            metadata: head.Metadata,
+          };
+        }));
+        yield* records;
       }
       continuationToken = page.NextContinuationToken;
     } while (continuationToken);
@@ -319,6 +314,7 @@ export async function createSelfHostServices(env) {
       listPaths: listDocumentPaths,
       hasAny: hasAnyDocument,
       writeDocuments,
+      compareAndWrite,
       deleteDocuments,
       acquireMigrationLock,
       renewMigrationLock,

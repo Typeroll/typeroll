@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { requireCurrentDataSchema } from '../data-schema';
 
 import type { DeployEnvironment, DeployJob } from '@typeroll/shared';
 import { paths } from '@typeroll/shared';
@@ -211,7 +212,7 @@ export function ensureFirestoreWorkerLoop(): void {
   // or wait for the scheduled publication sweep. Persisted leases recover crashes.
   void (async () => {
     for (;;) {
-      try { await runPendingMediaMigrations(); }
+      try { await requireCurrentDataSchema(); await runPendingMediaMigrations(); }
       catch { console.error('[media-migration] worker poll failed'); }
       await delay(pollMs);
     }
@@ -221,6 +222,7 @@ export function ensureFirestoreWorkerLoop(): void {
     let nextSweep = 0;
     for (;;) {
       try {
+        await requireCurrentDataSchema();
         const result = await worker.tick();
         if (result.leased > 0) console.log(`[firestore-worker] ${JSON.stringify(result)}`);
       } catch {
@@ -230,14 +232,13 @@ export function ensureFirestoreWorkerLoop(): void {
       if (Date.now() >= nextSweep) {
         nextSweep = Date.now() + sweepMs;
         try {
+          await requireCurrentDataSchema();
           const sweep = await runPublishSweep();
-          const changed = sweep.pages_published + sweep.pages_unpublished + sweep.items_published + sweep.items_unpublished;
+          const changed = sweep.pages_published + sweep.pages_unpublished;
           if (changed > 0 || sweep.errors.length > 0) {
             console.log(`[publish-sweep] ${JSON.stringify({
               pages_published: sweep.pages_published,
               pages_unpublished: sweep.pages_unpublished,
-              items_published: sweep.items_published,
-              items_unpublished: sweep.items_unpublished,
               error_count: sweep.errors.length,
             })}`);
           }

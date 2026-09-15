@@ -26,17 +26,15 @@ describe('checkInternalLinks', () => {
       name: 'Footer', kind: 'footer', status: 'published', content_mode: 'html',
       html_content: '<a href="https://example.com/missing-too">bad</a>',
     });
-    await store.setDoc(paths.collection(ORG, SITE, 'posts', MAIN_VERSION_ID), {
+    await store.setDoc(paths.contentType(ORG, SITE, 'posts', MAIN_VERSION_ID), {
       name: 'posts', label_singular: 'Post', label_plural: 'Posts',
       fields: [
-        { name: 'slug', label: 'Slug', type: 'text' },
         { name: 'related_url', label: 'Related URL', type: 'url' },
       ],
       route_template: '/posts/{slug}', created_at: new Date().toISOString(),
-      item_template_html: '<a href="{{related_url}}">related</a>',
     });
-    await store.setDoc(paths.collectionItem(ORG, SITE, 'posts', 'one', MAIN_VERSION_ID), {
-      slug: 'hello', related_url: '../missing-related', status: 'published',
+    await store.setDoc(paths.page(ORG, SITE, 'one', MAIN_VERSION_ID), {
+      content_type: 'posts', title: 'Hello', slug: 'hello', fields: { related_url: '../missing-related' }, status: 'published',
       created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     });
     await store.setDoc(`${paths.redirects(ORG, SITE, MAIN_VERSION_ID)}/old`, {
@@ -54,8 +52,8 @@ describe('checkInternalLinks', () => {
     expect(report.redirected_links).toBe(1);
     expect(report.broken.map((entry) => [entry.from, entry.href])).toEqual([
       ['page:home', '/missing'],
+      ['page:one', '../missing-related'],
       ['partial:footer', 'https://example.com/missing-too'],
-      ['item:posts/one', '../missing-related'],
     ]);
   });
 });

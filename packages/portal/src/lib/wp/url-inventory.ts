@@ -1,3 +1,4 @@
+import { contentPagePath, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
 // URL inventory + coverage analysis.
 //
 // The inventory tracks every URL the old WordPress site had. The migration
@@ -14,8 +15,7 @@
 import { paths, MAIN_VERSION_ID, isRedirectPattern, matchRedirect, sortRedirectsForEmit } from '@typeroll/shared';
 import { vstore } from '../version-store';
 import type {
-  CollectionDef,
-  CollectionItem,
+  ContentType,
   MigrationUrl,
   Page,
   Redirect,
@@ -378,21 +378,22 @@ export async function analyzeCoverage(
     store.listDocs<MigrationUrl>(paths.migrationUrls(orgId, siteId)),
     await vstore.pages(orgId, siteId, MAIN_VERSION_ID),
     await vstore.redirects(orgId, siteId, MAIN_VERSION_ID),
-    store.listDocs<CollectionDef>(paths.collections(orgId, siteId, MAIN_VERSION_ID)),
+    store.listDocs<ContentType>(paths.contentTypes(orgId, siteId, MAIN_VERSION_ID)),
   ]);
 
   // Build lookup tables once. Pages are matched on the *resolved* URL
   // (Page.path when set, otherwise "/" + slug) so nested pages opted
   // into via path are classified as migrated, not unhandled. See
   // docs/page-path-plan.md for the field model.
+  const types = new Map(collections.map(type => [type.id, type]));
+  if (!types.has('page')) types.set('page', DEFAULT_CONTENT_TYPE);
   const pageByUrl = new Map<string, Page>();
   for (const p of pages) {
     if (p.status !== 'published' && p.status !== 'unlisted') continue;
-    const resolvedUrl = (typeof p.path === 'string' && p.path.length > 0)
-      ? p.path
-      : (p.slug === 'home' || p.slug === '' || p.slug === 'index' ? '/' : `/${p.slug.replace(/^\//, '')}`);
+    const type = types.get(p.content_type ?? 'page');
+    const resolvedUrl = type ? contentPagePath(p, type) : null;
+    if (!resolvedUrl) continue;
     pageByUrl.set(normalizePath(resolvedUrl), p);
-    if (p.slug === 'home') pageByUrl.set('/', p);
     if (p.old_wp_url) {
       try {
         const u = new URL(p.old_wp_url);
@@ -403,50 +404,6 @@ export async function analyzeCoverage(
     }
   }
 
-  // Collection items with a route_template materialise as static pages too
-  // — index them by URL so the coverage analyzer doesn't classify migrated
-  // posts (now imported as items in a `posts` collection, per
-  // docs/page-slug-audit.md) as unhandled. Items are matched by their
-  // resolved URL, by their slug_field value, and by their old_wp_url
-  // field when populated (the migration sets this for every imported
-  // post). Same matching surface as pages, just sourced from a
-  // collection.
-  const itemUrlInfo = new Map<string, { url: string; status: string }>();
-  for (const coll of collections) {
-    const tpl = coll.route_template;
-    if (!tpl || tpl === '') continue;
-    const slugField = coll.slug_field ?? 'slug';
-    const items = await store.listDocs<CollectionItem>(
-      paths.collectionItems(orgId, siteId, coll.name, MAIN_VERSION_ID),
-    );
-    for (const item of items) {
-      if (item.status !== 'published') continue;
-      const slugVal = item[slugField];
-      if (typeof slugVal !== 'string' || !slugVal) continue;
-      // The renderer's resolver supports `{slug}` and `{date:YYYY/MM}` —
-      // we only inline `{slug_field}` here. Templates with date tokens
-      // remain unresolved for coverage purposes; their items still match
-      // via old_wp_url when present.
-      const url = tpl.replace(`{${slugField}}`, slugVal);
-      if (url.includes('{')) {
-        // Unresolved token — skip URL match, rely on old_wp_url path.
-      } else {
-        itemUrlInfo.set(normalizePath(url), { url, status: 'migrated' });
-      }
-      const oldWp = item.old_wp_url;
-      if (typeof oldWp === 'string' && oldWp) {
-        try {
-          const u = new URL(oldWp);
-          itemUrlInfo.set(normalizePath(u.pathname), {
-            url: url.includes('{') ? oldWp : url,
-            status: 'migrated',
-          });
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-  }
 
   const redirectByFrom = new Map<string, Redirect>();
   const patternRules: Redirect[] = [];
@@ -468,14 +425,8 @@ export async function analyzeCoverage(
     } else if (pageByUrl.has(path)) {
       status = 'migrated';
       const page = pageByUrl.get(path)!;
-      // Resolved URL = Page.path when set, else "/" + slug. Same shape
-      // the renderer uses (urlFor / pageUrlFromDoc).
-      target = (typeof page.path === 'string' && page.path.length > 0)
-        ? page.path
-        : (page.slug === 'home' ? '/' : `/${page.slug.replace(/^\//, '')}`);
-    } else if (itemUrlInfo.has(path)) {
-      status = 'migrated';
-      target = itemUrlInfo.get(path)!.url;
+      target = contentPagePath(page, types.get(page.content_type ?? 'page')!) ?? undefined;
+
     } else if (redirectByFrom.has(path)) {
       status = 'redirected';
       target = redirectByFrom.get(path)!.to_path;

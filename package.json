@@ -1,6 +1,6 @@
 {
   "name": "typeroll",
-  "version": "0.1.101",
+  "version": "0.2.0",
   "private": true,
   "description": "Typeroll CMS – an open-source CMS for static websites, with AI-agent workflows and a client-friendly visual editor for managing multiple client sites.",
   "workspaces": [
@@ -41,6 +41,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1123.0",
+    "esbuild": "0.28.2",
     "firebase-admin": "14.3.0",
     "google-auth-library": "10.9.1"
   },

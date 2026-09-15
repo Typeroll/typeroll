@@ -289,3 +289,19 @@ it('lets only one worker copy while a duplicate delivery observes the active lea
   expect(copyWithTransferService).toHaveBeenCalledTimes(1);
   expect((await mediaMigrationStatus('org'))?.state).toBe('complete');
 });
+
+
+it('rejects a private media identity that cannot be resolved in this site before producing public source', async () => {
+  await expect(publicationMediaManifest('org', 'site', { pages: [{ blocks: [{ type: 'core/image', data: { src: oldUrl } }] }] }, 'site.demos.example.com'))
+    .rejects.toMatchObject({ status: 409, code: 'media_reference_unresolved', message: expect.stringContaining('image') });
+});
+it('rewrites image, srcset, background and download references without exposing private URLs', async () => {
+  await getStore().setDoc(`${paths.media('org', 'site')}/image`, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl, sha256: sha,
+    storage: { provider: 'organization_r2', account_id: 'a'.repeat(32), bucket: 'customer-private', key: 'private/image.png', state: 'ready' } });
+  const content = { html: `<img src="${oldUrl}" srcset="${oldUrl} 640w"><a href="${oldUrl}">Download</a>`, css: `background-image:url('${oldUrl}')` };
+  const result = await publicationMediaManifest('org', 'site', content, 'site.demos.example.com');
+  expect(JSON.stringify(result.content)).not.toContain('/api/sites/');
+  expect(result.content.html.match(/site\.demos\.example\.com/g)).toHaveLength(3);
+  expect(result.content.css).toContain('https://site.demos.example.com/media/');
+  expect(content.html).toContain(oldUrl);
+});

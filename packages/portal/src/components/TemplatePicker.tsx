@@ -1,66 +1,42 @@
-// Page → template association picker. Lists every PageTemplate on the
-// site and writes the chosen one (or null) to the page's `template`
-// field via a PATCH. Mounted in both HtmlPageEditor and BlockPageEditor.
-//
-// Visibility rule (applies_to):
-//   'any' → always shown
-//   'page' → shown on standalone pages (we don't currently render
-//            collection items through this editor, so 'page' is the
-//            common case)
-//   'collection:{name}' → hidden here; collection items pick templates
-//                         via the collection's item editor
+// Page templates apply to every Page; content-type restrictions filter choices.
 
 import { useEffect, useState } from 'react';
-import type { PageTemplate } from '@typeroll/shared';
+import { contentTypeAllowsTemplate, type ContentType, type PageTemplate } from '@typeroll/shared';
 import { ExternalLink } from 'lucide-react';
 
 interface Props {
   siteId: string;
   pageId: string;
   currentTemplate?: string;
+  contentType?: string;
+  defaultTemplate?: string;
+  onChange: (template: string) => void;
 }
 
-export default function TemplatePicker({ siteId, pageId, currentTemplate }: Props) {
+export default function TemplatePicker({ siteId, currentTemplate, contentType = 'page', defaultTemplate, onChange }: Props) {
   const [templates, setTemplates] = useState<PageTemplate[]>([]);
   const [selected, setSelected] = useState<string>(currentTemplate ?? '');
-  const [saving, setSaving] = useState(false);
+  const [type, setType] = useState<ContentType | undefined>();
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/sites/${siteId}/templates`)
-      .then((r) => r.ok ? r.json() as Promise<{ templates: PageTemplate[] }> : Promise.resolve({ templates: [] }))
-      .then((j) => setTemplates(
-        (j.templates ?? []).filter((t) => t.status === 'published' &&
-          (!t.applies_to || t.applies_to === 'any' || t.applies_to === 'page'))
-      ))
-      .catch(() => {});
-  }, [siteId]);
-
-  useEffect(() => {
-    setSelected(currentTemplate ?? '');
-  }, [currentTemplate]);
-
-  async function apply(next: string): Promise<void> {
-    setSaving(true);
-    setError(null);
-    try {
-      // Use the cookie PATCH route so this works without an API key.
-      const res = await fetch(`/api/sites/${siteId}/pages/${pageId}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ template: next || null }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(j.error ?? `Save failed (${res.status})`);
-      }
-      setSelected(next);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  }
+    const controller = new AbortController();
+    setLoading(true); setError(null);
+    Promise.all([fetch(`/api/sites/${siteId}/templates`, { signal: controller.signal }), fetch(`/api/sites/${siteId}/content-types`, { signal: controller.signal })])
+      .then(async ([templates, types]) => {
+        if (!templates.ok || !types.ok) throw new Error('Could not load template choices. Reload and try again.');
+        return Promise.all([templates.json(), types.json()]);
+      })
+      .then(([data, definitions]) => {
+        const definition = (definitions.content_types as ContentType[]).find(type => type.id === contentType);
+        setType(definition);
+        setTemplates((data.templates as PageTemplate[]).filter(template => template.status === 'published' && definition && contentTypeAllowsTemplate(definition, template)));
+        setLoading(false);
+      }).catch(error => { if (error.name !== 'AbortError') { setError(error.message); setLoading(false); } });
+    return () => controller.abort();
+  }, [siteId, contentType]);
+  useEffect(() => { setSelected(currentTemplate ?? ''); }, [currentTemplate]);
 
   return (
     <div style={shell}>
@@ -76,20 +52,17 @@ export default function TemplatePicker({ siteId, pageId, currentTemplate }: Prop
           <ExternalLink size={11} />
         </a>
       </div>
-      {templates.length === 0 ? (
-        <p style={muted}>
-          No published templates.{' '}
-          <a href={`/app/sites/${siteId}/templates`} style={link}>Create one</a>.
-        </p>
-      ) : (
+      {loading ? <p style={muted}>Loading templates…</p> : error ? <p role="alert" style={errorMsg}>{error}</p> : (
         <>
           <select
+            aria-label="Page template"
             value={selected}
-            disabled={saving}
-            onChange={(e) => void apply(e.target.value)}
+            disabled={loading}
+            onChange={(e) => { setSelected(e.target.value); onChange(e.target.value); }}
             style={selectInput}
           >
-            <option value="">No template (render directly)</option>
+            <option value="">{(type?.template || defaultTemplate) ? "Use content type’s default template" : "No default template"}</option>
+            {selected && !templates.some(template => template.id === selected) && <option value={selected} disabled>Current template unavailable — choose another</option>}
             {templates.map((t) => (
               <option key={t.id} value={t.id}>{t.label}</option>
             ))}
@@ -101,7 +74,7 @@ export default function TemplatePicker({ siteId, pageId, currentTemplate }: Prop
           )}
         </>
       )}
-      {error && <p style={errorMsg}>{error}</p>}
+      <p style={muted}>Save the page to apply this choice. Choosing the default follows future changes to the content type’s template.</p>
     </div>
   );
 }

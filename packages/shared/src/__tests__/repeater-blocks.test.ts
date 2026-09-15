@@ -118,13 +118,13 @@ describe('Repeater — static source rendering', () => {
 });
 
 describe('Repeater — collection source rendering', () => {
-  it('calls the collectionSource resolver and renders the returned items', () => {
+  it('calls the pageSource resolver and renders the returned items', () => {
     const block: Block = {
       id: 'r1',
       type: 'core/repeater',
       data: {
-        source_type: 'collection',
-        collection: 'blog',
+        source_type: 'pages',
+        content_type: 'blog',
         limit: 10,
         item_block: 'core/post_card',
         layout: 'grid',
@@ -133,7 +133,7 @@ describe('Repeater — collection source rendering', () => {
     const seen: unknown[] = [];
     const html = renderBlock(block, {
       registry,
-      collectionSource: (config) => {
+      pageSource: (config) => {
         seen.push(config);
         return [
           { title: 'Hello', excerpt: 'World' },
@@ -141,7 +141,7 @@ describe('Repeater — collection source rendering', () => {
         ];
       },
     });
-    expect(seen[0]).toMatchObject({ collection: 'blog', limit: 10 });
+    expect(seen[0]).toMatchObject({ content_type: 'blog', limit: 10 });
     expect(html).toContain('Hello');
     expect(html).toContain('Bonjour');
   });
@@ -151,7 +151,7 @@ describe('Repeater — collection source rendering', () => {
       id: 'archive',
       type: 'core/repeater',
       data: {
-        source_type: 'collection', collection: 'checklists', item_block: 'core/post_card', layout: 'grid',
+        source_type: 'pages', content_type: 'checklists', item_block: 'core/post_card', layout: 'grid',
         item_overrides: {
           title_field: 'name', excerpt_field: 'summary', href_field: 'path',
           image_field: 'hero', image_alt_field: 'hero_alt', heading_level: 'h2',
@@ -161,7 +161,7 @@ describe('Repeater — collection source rendering', () => {
     };
     const html = renderBlock(block, {
       registry,
-      collectionSource: () => [{
+      pageSource: () => [{
         name: 'Moving day', summary: 'Be ready', path: '/moving-day/',
         hero: 'https://cdn.example/hero.jpg', hero_alt: 'Boxes', pdf_url: '/moving-day.pdf',
       }],
@@ -176,26 +176,26 @@ describe('Repeater — collection source rendering', () => {
   it('compiles responsive values on repeater aliases', () => {
     const html = renderBlock({
       id: 'archive',
-      type: 'core/collection_list',
+      type: 'core/page_list',
       data: {
-        collection: 'articles',
+        content_type: 'articles',
         cols: { mobile: 1, tablet: 2, desktop: 3 },
       },
-    }, { registry, collectionSource: () => [] });
+    }, { registry, pageSource: () => [] });
     expect(html).toContain('style="--cols:1;');
     expect(html).toContain('@media (min-width: 640px) { [data-bid="archive"] { --cols: 2 !important; } }');
     expect(html).toContain('@media (min-width: 1280px) { [data-bid="archive"] { --cols: 3 !important; } }');
     expect(html).not.toContain('[object Object]');
   });
 
-  it('emits a comment when collectionSource is missing', () => {
+  it('emits a comment when pageSource is missing', () => {
     const block: Block = {
       id: 'r1',
       type: 'core/repeater',
-      data: { source_type: 'collection', collection: 'blog', item_block: 'core/post_card' },
+      data: { source_type: 'pages', content_type: 'blog', item_block: 'core/post_card' },
     };
     const html = renderBlock(block, { registry });
-    expect(html).toContain('<!-- repeater needs a collectionSource');
+    expect(html).toContain('<!-- repeater needs a pageSource');
   });
 });
 

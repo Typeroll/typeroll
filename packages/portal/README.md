@@ -2,6 +2,21 @@
 
 The Astro SSR + React app. Where users edit content, run workflows, chat with the AI.
 
+## One Page model
+
+Core 0.2.0 and MCP 0.45.0 use one content entity: **Page**. Every article,
+checklist, product, directory entry and ordinary page uses the same API, editor,
+blocks, history, preview and status. `content_type` selects a schema, URL pattern
+and default Page template. Custom values belong in `fields`; title, slug, path,
+body, SEO and status are built-in Page properties. Use `page_ref`/`page_ref_list`
+for references and a blank type route pattern for records without detail URLs.
+
+Use `create_page`, `list_pages content_type=...` and the Content type/Page template
+tools. Use the Page ID and the same site `version` throughout editing, references,
+previews and builds. Existing installations must migrate before running this
+release. See the [model guide](https://typeroll.com/docs/tools/content-types/) and
+[upgrade procedure](https://typeroll.com/docs/guides/unified-pages-upgrade/).
+
 ## Conventions
 
 ### Every API route uses the access helper
@@ -21,7 +36,7 @@ If your route doesn't take a `siteId`, use `requireSession`. Don't roll your own
 
 ### Whitelist updatable fields
 
-When accepting JSON for a write, build an explicit allow-list of which fields to forward to the store. Never spread `body` into a doc directly. This is how the page editor, collection items, settings, and AI tools all guard against rogue field writes.
+When accepting JSON for a write, build an explicit allow-list of which fields to forward to the store. Never spread `body` into a doc directly. This is how the Page editor, content type schemas, settings, and AI tools all guard against rogue field writes.
 
 ### React components mount with `client:load`
 
@@ -43,7 +58,7 @@ src/
 │   │       └── [siteId]/          Per-site routes
 │   │           ├── index.astro    Site dashboard
 │   │           ├── pages/
-│   │           ├── collections/
+│   │           ├── content-types/
 │   │           ├── partials/      Header/footer editor
 │   │           ├── media.astro
 │   │           ├── redirects.astro

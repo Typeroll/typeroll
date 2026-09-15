@@ -19,7 +19,7 @@ and the [connection guide](packages/docs-site/src/content/docs/getting-started/m
 ## What is included
 
 - block and HTML page editing with live preview;
-- collections, reusable blocks, media, redirects, templates, and workflows;
+- Pages with content types, reusable blocks, media, redirects, templates, and workflows;
 - server-backed Forms with stored submissions, email actions, and webhooks;
 - the Extension manifest, installation, admin SSO, and browser runtime;
 - the WordPress migration workflow, URL coverage tools, and helper plugin;

@@ -18,7 +18,7 @@ The migration workflow runs in stages:
 | ------------------- | ----------------------------------------------------------------------------------------- |
 | **Discover**        | Verifies the WP REST API is reachable, probes for the helper plugin                       |
 | **Inventory**       | Walks the sitemap + REST API to build a complete URL list                                 |
-| **Custom types**    | ACF/CPT schemas inferred; each becomes a Typeroll collection                              |
+| **Custom types**    | ACF/CPT schemas inferred; each becomes a Typeroll content type whose records are Pages    |
 | **Extract content** | Pages, posts and custom items reconstructed in your new design; images transferred to CDN |
 | **Redirects**       | Old WordPress URLs mapped to new Typeroll slugs                                           |
 | **Review**          | Paused for your approval — shows unhandled URLs                                           |
@@ -72,7 +72,7 @@ Without the plugin, the migration falls back to the standard `/wp-json/wp/v2/` A
 
 ## Custom post types
 
-Each CPT becomes a Typeroll collection. The schema is inferred from a sample item's ACF fields and post meta:
+Each CPT becomes a Typeroll content type whose records are Pages. The schema is inferred from a sample item's ACF fields and post meta:
 
 - ACF `image` fields → `type: "image"`
 - ACF `text` / `textarea` → `type: "text"` / `type: "textarea"`

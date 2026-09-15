@@ -1,4 +1,4 @@
-import type { CollectionDef, CollectionItem, Page } from '@typeroll/shared';
+import { pageAuthorityFields, type ContentType, type Page } from '@typeroll/shared';
 import { applyFieldAuthority } from '../field-authority';
 import { vstore } from '../version-store';
 import {
@@ -17,7 +17,7 @@ export const WORDPRESS_PLAIN_TEXT_REPAIR_FIELDS = [
 ] as const;
 
 export type WordPressPlainTextRepairField = typeof WORDPRESS_PLAIN_TEXT_REPAIR_FIELDS[number];
-export type WordPressPlainTextRepairScope = 'pages' | 'collection_items' | 'all';
+export type WordPressPlainTextRepairScope = 'pages' | 'all';
 
 export interface WordPressPlainTextRepairOptions {
   /** Resource family to inspect. Defaults to both pages and collection items. */
@@ -25,8 +25,7 @@ export interface WordPressPlainTextRepairOptions {
   /** Narrow the fixed field allowlist. Rich content, slugs and URLs are never accepted. */
   fields?: WordPressPlainTextRepairField[];
   pageIds?: string[];
-  collection?: string;
-  itemIds?: string[];
+  contentType?: string;
   /** Safe default: report exact field diffs without writing. */
   dryRun?: boolean;
   /** Commit through the normal revision/write path after staging each change. */
@@ -38,8 +37,7 @@ export interface WordPressPlainTextRepairOptions {
 
 export interface WordPressPlainTextRepairDiff {
   target:
-    | { kind: 'page'; id: string }
-    | { kind: 'item'; id: string; collection: string };
+    { kind: 'page'; id: string };
   title: string;
   field: WordPressPlainTextRepairField;
   before: string;
@@ -59,7 +57,7 @@ export interface WordPressPlainTextRepairResult {
   resources_scanned: number;
   resources_with_changes: number;
   fields_with_changes: number;
-  resource_counts: { pages: number; collection_items: number };
+  resource_counts: { pages: number };
   conflicts: WordPressPlainTextRepairConflict[];
   diffs: WordPressPlainTextRepairDiff[];
   diffs_shown: number;
@@ -70,9 +68,9 @@ export interface WordPressPlainTextRepairResult {
 interface Candidate {
   target: WordPressPlainTextRepairDiff['target'];
   title: string;
-  original: Page | CollectionItem;
+  original: Page;
   fields: Partial<Record<WordPressPlainTextRepairField, unknown>>;
-  collectionDef?: CollectionDef;
+  contentType?: ContentType;
 }
 
 const PAGE_FIELDS = new Set<WordPressPlainTextRepairField>([
@@ -80,7 +78,7 @@ const PAGE_FIELDS = new Set<WordPressPlainTextRepairField>([
   'seo_title',
   'seo_description',
 ]);
-const COLLECTION_FIELD_TYPES = new Set(['text', 'textarea']);
+const CUSTOM_FIELD_TYPES = new Set(['text', 'textarea']);
 const DEFAULT_DIFF_LIMIT = 500;
 const MAX_DIFF_LIMIT = 2_000;
 
@@ -89,8 +87,7 @@ function workingCopyMatches(
   target: WordPressPlainTextRepairDiff['target'],
 ): boolean {
   return wc.kind === target.kind
-    && wc.target_id === target.id
-    && (target.kind !== 'item' || wc.collection === target.collection);
+    && wc.target_id === target.id;
 }
 
 export async function repairWordPressPlainText(
@@ -100,6 +97,7 @@ export async function repairWordPressPlainText(
   opts: WordPressPlainTextRepairOptions,
 ): Promise<WordPressPlainTextRepairResult> {
   const scope = opts.scope ?? 'all';
+  if (!['all', 'pages'].includes(scope)) throw new Error('Invalid scope');
   const dryRun = opts.dryRun ?? true;
   const save = opts.save ?? false;
   const updatedBy = opts.updatedBy ?? 'wordpress-plain-text-repair';
@@ -109,60 +107,27 @@ export async function repairWordPressPlainText(
   if (invalidFields.length > 0) {
     throw new Error(`Invalid fields: ${invalidFields.join(', ')}`);
   }
-  if (opts.itemIds && !opts.collection) throw new Error('collection required when item_ids is set');
-  if (opts.pageIds && scope !== 'pages' && scope !== 'all') {
-    throw new Error('page_ids requires scope pages or all');
-  }
-  if ((opts.collection || opts.itemIds) && scope !== 'collection_items' && scope !== 'all') {
-    throw new Error('collection and item_ids require scope collection_items or all');
-  }
-
   const selectedFields = new Set<WordPressPlainTextRepairField>(requestedFields);
   const workingCopies = await listWorkingCopies({ orgId, siteId, versionId });
   const candidates: Candidate[] = [];
 
   if (scope === 'pages' || scope === 'all') {
     const restrictTo = opts.pageIds ? new Set(opts.pageIds) : null;
-    const pages = await vstore.pages(orgId, siteId, versionId);
+    const pages = (await vstore.pages(orgId, siteId, versionId)).filter(page => !opts.contentType || (page.content_type ?? 'page') === opts.contentType);
+    const types = await vstore.contentTypes(orgId, siteId, versionId);
     for (const page of restrictTo ? pages.filter((entry) => restrictTo.has(entry.id)) : pages) {
+      const contentType = types.find(type => type.id === (page.content_type ?? 'page'));
       candidates.push({
+        contentType,
         target: { kind: 'page', id: page.id },
         title: page.title,
         original: page,
         fields: Object.fromEntries(
           [...selectedFields]
-            .filter((field) => PAGE_FIELDS.has(field))
-            .map((field) => [field, page[field as keyof Page]]),
+            .filter(field => PAGE_FIELDS.has(field) || contentType?.fields.some(definition => definition.name === field && CUSTOM_FIELD_TYPES.has(definition.type)))
+            .map((field) => [field, PAGE_FIELDS.has(field) ? page[field as keyof Page] : page.fields?.[field]]),
         ),
       });
-    }
-  }
-
-  if (scope === 'collection_items' || scope === 'all') {
-    const definitions = opts.collection
-      ? [await vstore.collection(orgId, siteId, versionId, opts.collection)].filter(Boolean) as CollectionDef[]
-      : await vstore.collections(orgId, siteId, versionId);
-    if (opts.collection && definitions.length === 0) {
-      throw new Error(`Collection not found: ${opts.collection}`);
-    }
-    const restrictTo = opts.itemIds ? new Set(opts.itemIds) : null;
-    for (const definition of definitions) {
-      const repairFields = definition.fields.filter((field) => (
-        selectedFields.has(field.name as WordPressPlainTextRepairField)
-        && allowedFields.has(field.name)
-        && COLLECTION_FIELD_TYPES.has(field.type)
-      ));
-      if (repairFields.length === 0) continue;
-      const items = await vstore.collectionItems(orgId, siteId, versionId, definition.name);
-      for (const item of restrictTo ? items.filter((entry) => restrictTo.has(entry.id)) : items) {
-        candidates.push({
-          target: { kind: 'item', id: item.id, collection: definition.name },
-          title: String(item[definition.slug_field ?? 'slug'] ?? item.id),
-          original: item,
-          collectionDef: definition,
-          fields: Object.fromEntries(repairFields.map((field) => [field.name, item[field.name]])),
-        });
-      }
     }
   }
 
@@ -170,7 +135,7 @@ export async function repairWordPressPlainText(
   let saved = 0;
   let fieldsWithChanges = 0;
   let resourcesWithChanges = 0;
-  const resourceCounts = { pages: 0, collection_items: 0 };
+  const resourceCounts = { pages: 0 };
   const conflicts: WordPressPlainTextRepairConflict[] = [];
   const allDiffs: WordPressPlainTextRepairDiff[] = [];
 
@@ -202,11 +167,11 @@ export async function repairWordPressPlainText(
       continue;
     }
 
-    if (candidate.target.kind === 'item' && candidate.collectionDef) {
+    if (candidate.contentType) {
       const authority = applyFieldAuthority({
-        fields: candidate.collectionDef.fields,
+        fields: pageAuthorityFields(candidate.contentType),
         incoming: changes,
-        existing: candidate.original as CollectionItem,
+        existing: candidate.original,
         actor: 'agent',
         actorId: updatedBy,
       });
@@ -224,13 +189,14 @@ export async function repairWordPressPlainText(
     fieldsWithChanges += candidateDiffs.length;
     allDiffs.push(...candidateDiffs);
     if (candidate.target.kind === 'page') resourceCounts.pages++;
-    else resourceCounts.collection_items++;
 
     if (!dryRun) {
       await mergeWorkingCopy(
         { orgId, siteId, versionId },
         candidate.target as WcTarget,
-        changes,
+        { ...Object.fromEntries(Object.entries(changes).filter(([key]) => PAGE_FIELDS.has(key as WordPressPlainTextRepairField))),
+          fields: Object.fromEntries(Object.entries(changes).filter(([key]) => !PAGE_FIELDS.has(key as WordPressPlainTextRepairField))),
+        },
         updatedBy,
       );
       updated++;
@@ -239,7 +205,7 @@ export async function repairWordPressPlainText(
           { orgId, siteId, versionId },
           candidate.target as WcTarget,
           updatedBy,
-          candidate.target.kind === 'item' ? 'agent' : undefined,
+          'agent',
         );
         if (result.committed) saved++;
       }

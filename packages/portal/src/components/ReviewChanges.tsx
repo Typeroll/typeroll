@@ -13,6 +13,7 @@ import type { BlockChange } from '@typeroll/shared';
 interface Props {
   siteId: string;
   pageId: string;
+  changesUrl?: string;
   /** Plain preview URL (saved view). The draft view appends embed=1. */
   previewUrl: string;
   onClose: () => void;
@@ -31,7 +32,7 @@ const KIND_LABEL: Record<BlockChange['kind'], { label: string; color: string }> 
   removed: { label: 'Borttagen', color: '#f87171' },
 };
 
-export default function ReviewChanges({ siteId, pageId, previewUrl, onClose }: Props) {
+export default function ReviewChanges({ siteId, pageId, previewUrl, onClose, changesUrl }: Props) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const leftRef = useRef<HTMLIFrameElement>(null);
@@ -39,7 +40,7 @@ export default function ReviewChanges({ siteId, pageId, previewUrl, onClose }: P
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/sites/${siteId}/pages/${pageId}/changes`)
+    fetch(changesUrl ?? `/api/sites/${siteId}/pages/${pageId}/changes`)
       .then(async (r) => {
         if (!r.ok) throw new Error(`Could not load changes (${r.status})`);
         return r.json() as Promise<Summary>;
@@ -47,7 +48,7 @@ export default function ReviewChanges({ siteId, pageId, previewUrl, onClose }: P
       .then((s) => { if (!cancelled) setSummary(s); })
       .catch((e) => { if (!cancelled) setError((e as Error).message); });
     return () => { cancelled = true; };
-  }, [siteId, pageId]);
+  }, [siteId, pageId, changesUrl]);
 
   const leftCanvasId = `review-${siteId}-${pageId}-saved`.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 128);
   const rightCanvasId = `review-${siteId}-${pageId}-draft`.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 128);

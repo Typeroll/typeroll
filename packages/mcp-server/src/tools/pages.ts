@@ -14,6 +14,9 @@ export const pageTools: ToolDef[] = [
       'List pages on the active site. Returns id, title, slug, status, and SEO summary (no html_content by default — use read_page or batch_read_pages for body content). Supports filtering by status and forward-cursor pagination. Pass full=true to include html_content + blocks in the response.',
     inputSchema: {
       status: z.enum(['draft', 'review', 'unlisted', 'published', 'all']).optional(),
+      sort_by: z.string().optional().describe('Sort field; defaults to the selected content type’s order. Unfiltered lists use stable Page IDs.'),
+      sort_order: z.enum(['asc', 'desc']).optional(),
+      content_type: z.string().optional().describe('Filter Pages by content type ID.'),
       limit: z.number().int().min(1).max(200).optional(),
       cursor: z.string().optional(),
       full: z.boolean().optional().describe('Set true to include html_content + blocks. Default false (summary only) to avoid large payloads on sites with many pages.'),
@@ -22,6 +25,9 @@ export const pageTools: ToolDef[] = [
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.get(siteId, 'pages', {
         status: args.status,
+        content_type: args.content_type,
+        sort_by: args.sort_by,
+        sort_order: args.sort_order,
         limit: args.limit,
         cursor: args.cursor,
         full: args.full ? 'true' : undefined,
@@ -78,13 +84,15 @@ export const pageTools: ToolDef[] = [
       'the server stores it under id "home" with slug "". ' +
       'Slug must be a single path segment (no slashes). For nested URLs like ' +
       '/erbjudanden/sommar or /tjanster/design, set the optional `path` field explicitly — ' +
-      'e.g. path="/erbjudanden/sommar". For many similar items use a collection with route_template ' +
+      'e.g. path="/erbjudanden/sommar". For pages with the same schema use a content type with route_template ' +
       '(see tr-blog / tr-directory), but for a small group of bespoke pages sharing a URL prefix, ' +
       '`path` is the right primitive. ' +
       'Returns the created page (blocks for blocks-mode, html_content for html-mode) including ' +
       '`url` (the resolved live URL).',
     inputSchema: {
       title: z.string().min(1),
+      content_type: z.string().optional().describe('Content type ID; defaults to page.'),
+      fields: z.record(z.unknown()).optional().describe('Custom field values defined by the content type.'),
       slug: z.string().optional().describe('URL slug — single path segment, no slashes (e.g. "about", "kontakt"). Empty string "" = homepage. For nested URLs set the `path` field explicitly — `slug` stays a leaf id.'),
       path: z.string().optional().describe('Optional explicit URL path for nested pages (e.g. "/erbjudanden/sommar-2026"). When set, takes precedence over slug for routing. Must start with "/", lowercase a-z/0-9/-/_/ only, no "..", no "//", no trailing slash. Slug is still required as the leaf id but two pages CAN share a slug under different paths.'),
       content_mode: z.enum(['blocks', 'html']).optional().describe('Default "blocks". "blocks" stores a Block[] tree (the modern default — supports the full ~40-block library, page templates, and the responsive system). "html" stores raw markup in html_content (legacy path, still fully supported for imported content or hand-written HTML). Passing html_content without content_mode also opts into "html".'),
@@ -103,7 +111,8 @@ export const pageTools: ToolDef[] = [
       kind: z.enum(['page', 'article']).optional(),
       author: z.string().optional(),
       language: z.string().optional().describe('BCP-47 tag overriding the site default (e.g. "en" on an otherwise Swedish site).'),
-      template: z.string().optional().describe('Page template id (PageTemplate). Wraps the body in the template tree at render time.'),
+      sort_order: z.number().finite().optional().describe('Manual Page order; lower numbers come first in ascending lists. Content types and listings choose how to sort.'),
+      template: z.string().nullable().optional().describe('Allowed Page template ID; null uses the content type default.'),
       image_sizes_default: z.string().optional().describe('Per-page default `sizes` for responsive images (e.g. "(max-width: 640px) 360px, 560px"). Overrides the site setting; a per-<img> `sizes` attr still wins. Set when this page\'s images render narrower than the generic default so the browser stops over-fetching.'),
       custom_css: z.string().optional().describe('Per-page CSS, injected into <head> as a <style> AFTER the site-level custom_css (so it overrides site styling). This is the RIGHT home for page-specific styling — page metadata, not content. Put a page\'s <style> here instead of stuffing it into a core/html block (which is opaque and un-editable in the visual editor).'),
       version: versionParam,
@@ -123,6 +132,7 @@ export const pageTools: ToolDef[] = [
       patch: z
         .object({
           title: z.string().optional(),
+      fields: z.record(z.unknown()).optional(),
           slug: z.string().optional(),
           html_content: z.string().optional(),
           blocks: z.array(z.any()).optional().describe('Block tree, only used when content_mode="blocks".'),
@@ -163,7 +173,8 @@ export const pageTools: ToolDef[] = [
               url: z.string().optional(),
             })
             .optional(),
-          template: z.string().optional(),
+          sort_order: z.number().finite().nullable().optional(),
+          template: z.string().nullable().optional().describe('Allowed template ID; null restores the content type default.'),
         })
         .passthrough(),
       save: z.boolean().optional().describe(
@@ -258,6 +269,8 @@ export const pageTools: ToolDef[] = [
       const srcMode = (src.content_mode as 'blocks' | 'html' | undefined) ?? 'html';
       const body: Record<string, unknown> = {
         title: args.title,
+        content_type: src.content_type,
+        fields: src.fields,
         content_mode: srcMode,
         html_content: srcMode === 'html' ? src.html_content : '',
         blocks: srcMode === 'blocks' ? (src.blocks ?? []) : undefined,

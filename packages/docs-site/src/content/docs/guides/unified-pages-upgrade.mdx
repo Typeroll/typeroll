@@ -1,0 +1,72 @@
+---
+title: Upgrade to unified Pages
+description: Migrate existing Typeroll CMS content to one Page model before running Core 0.2.0.
+---
+
+Core 0.2.0 uses one Page model for all content. Content types define fields,
+URL patterns and default templates. The old Collections API, item tools and
+storage layout are removed. This is a coordinated data and runtime upgrade.
+
+Typeroll Cloud operators perform this upgrade for managed installations.
+Self-hosted installations use the procedure below. AI agents and integrations
+must switch to the [Pages](../../tools/pages/) and
+[Content types](../../tools/content-types/) APIs at the same time.
+
+## Prepare
+
+1. Stop all portal, Forms, worker and scheduler processes that can write to the
+   database. Finish or cancel active publication and import jobs first.
+2. Using the new release's backup command, create an encrypted backup of the
+   existing installation. The updated traversal includes revision history below
+   deleted documents. Retain the old runtime and its matching configuration.
+3. With Core 0.2.0 checked out and dependencies installed, run a content dry run:
+
+```sh
+npm run self-host:migrate -- --env-file /secure/typeroll.env --backup /secure/backups/before-unified-pages
+```
+
+Review every reported site, version and HTML exception. The command reads the
+verified backup and makes no database changes. Test its result on an isolated
+copy before the production cutover. An old unversioned installation must first
+be adopted with `self-host:bootstrap -- --adopt`; adoption marks it as schema 1,
+not as already migrated.
+
+## Apply
+
+Use the same backup and confirm the exact Firebase project after stopping all
+writers:
+
+```sh
+npm run self-host:migrate -- --env-file /secure/typeroll.env --backup /secure/backups/before-unified-pages --apply --writers-stopped --confirm-project YOUR_PROJECT_ID
+```
+
+The migration converts every site's Pages, content types, templates, references,
+working copies and history. It preserves version inheritance and public URLs.
+Media objects and authentication accounts are not moved by this operation.
+Shared storage connections and site settings are retained.
+
+After verification succeeds, the installation advances to data schema 2.
+Start the matching Core runtime and MCP 0.45.0. The runtime refuses schema 1,
+missing installation metadata, and a database with an unfinished migration lock.
+Public static sites can remain online while the editing services are stopped.
+
+## If interrupted
+
+Keep writers stopped and rerun the same apply command with the **original
+backup**. The migration accepts only the expected old or new document values.
+A conflicting edit causes it to stop instead of overwriting the change. Do not
+take a new backup of the partially migrated database and use that as its source.
+
+For rollback, stop the new runtime, restore the original verified backup with
+the old release's restore command and restart that matching release. New Core
+versions intentionally cannot restore schema 1 for normal serving. Do not
+resume editing against mixed schemas.
+
+## Integration changes
+
+Create articles and other records with `create_page`, using `content_type` and
+`fields`. Use Page IDs for previews, references, block tools and working copies.
+Replace old collection queries with `list_pages` and a content-type filter.
+Templates are reusable Page templates with a content slot. External Extensions
+using removed content scopes must publish an updated manifest; signed historical
+manifests are not rewritten during migration.

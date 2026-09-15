@@ -20,7 +20,7 @@ function input() {
       { id: 'image', filename: 'one.png', cdn_url: 'https://media.example.invalid/one.png', width: 64, height: 32, uploaded_by: 'private-value', r2_key: 'private-value', variants: [{ cdn_url: 'https://media.example.invalid/one.webp', format: 'webp', width: 64, size_bytes: 100, internal: 'private-value' }] },
       { id: 'unused', filename: 'private.png', cdn_url: 'https://media.example.invalid/private.png', title: 'private-value' },
     ],
-    forms: [], extensions: [], collections: [], blockTypes: [], pageTemplates: [], redirects: [], apps: null,
+    forms: [], extensions: [], contentTypes: [], blockTypes: [], pageTemplates: [], redirects: [], apps: null,
   };
 }
 const identity = { siteUrl: 'https://example.invalid', coreCommit: 'a'.repeat(40), publishedAt: '2026-09-06T12:00:00Z' };
@@ -119,7 +119,7 @@ test('unsupported modules and data structures fail instead of silently losing si
   for (const key of ['forms', 'extensions']) {
     assert.throws(() => projectStaticPublication({ ...input(), [key]: [{ id: 'feature' }] }, identity), /public runtime projection/);
   }
-  assert.throws(() => projectStaticPublication({ ...input(), collections: [{ id: 'feature' }] }, identity), /Invalid publication collection/);
+  assert.throws(() => projectStaticPublication({ ...input(), contentTypes: [{ id: 'feature' }] }, identity), /Invalid publication content type/);
   assert.throws(() => projectStaticPublication({ ...input(), apps: { apps: { analytics: { enabled: true } } } }, identity), /Core modules/);
   const value = input(); value.pages[0].content_mode = 'blocks';
   assert.throws(() => projectStaticPublication(value, identity), /HTML/);
@@ -298,7 +298,7 @@ test('frozen main and branch projects render their own custom blocks and inherit
     const result = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: destination, env: {}, encoding: 'utf8', timeout: 60_000 });
     assert.equal(result.status, 0, result.stderr + result.stdout);
     const html = await fs.readFile(path.join(destination, 'dist/index.html'), 'utf8');
-    assert.ok(html.includes(`<h2 data-version="${versionId}">${versionId} content</h2>`));
+    assert.ok(html.includes(`<h2 data-version="${versionId}" id="${versionId}-content">${versionId} content</h2>`));
     assert.ok(html.includes('<article data-layout="inherited">'));
     assert.ok(!html.includes(versionId === 'design' ? 'main content' : 'design content'));
     assert.match(html, /h2\s*\{\s*color:\s*blue/);
@@ -311,7 +311,7 @@ test('frozen main and branch projects render their own custom blocks and inherit
   }
 });
 
-test('portable source renders collections, form runtime and language metadata while excluding private actions', async t => {
+test('portable source renders typed Pages, form runtime and language metadata while excluding private actions', async t => {
   const { build } = await import('esbuild');
   const source = await build({ entryPoints: [fileURLToPath(new URL('../packages/shared/src/core-blocks.ts', import.meta.url))], bundle: true, platform: 'node', format: 'esm', write: false });
   const { CORE_BLOCK_TYPES } = await import(`data:text/javascript;base64,${Buffer.from(source.outputFiles[0].text).toString('base64')}`);
@@ -321,7 +321,9 @@ test('portable source renders collections, form runtime and language metadata wh
   const value = input();
   value.pages[0].html_content = '<h1>Public runtime</h1><x-form id="contact" />';
   value.pages[0].alternates = [{ hreflang: 'sv', href: 'https://sv.example.invalid/' }];
-  value.collections = [{ definition: { id: 'news', name: 'news', label_singular: 'News', label_plural: 'News', fields: [{ name: 'title', type: 'text' }, { name: 'slug', type: 'text' }, { name: 'body', type: 'richtext' }], item_template_html: '<h1>{{title}}</h1><div>{{{body}}}</div>' }, items: [{ id: 'article', title: 'Frozen collection article', slug: 'article', body: '<p>Portable article body</p>', status: 'published', internal_notes: 'private-value' }, { id: 'draft', status: 'draft', title: 'private-value' }] }];
+  value.contentTypes = [{ id: 'news', name: 'news', label_singular: 'News', label_plural: 'News', route_template: '/news/{slug}', template: 'news-layout', fields: [{ name: 'summary', label: 'Summary', type: 'text' }, { name: 'internal_notes', type: 'text', rendered: false }] }];
+  value.pageTemplates = [{ id: 'news-layout', name: 'news-layout', label: 'News', status: 'published', blocks: [{ id: 'title', type: 'template/page_title', data: { level: 'h1' } }, { id: 'body', type: 'template_content_slot', data: {} }] }];
+  value.pages.push({ id: 'article', title: 'Frozen typed article', slug: 'article', content_type: 'news', content_mode: 'blocks', blocks: [{ id: 'copy', type: 'core/prose', data: { html: '<p>Portable article body</p>' } }], status: 'published', fields: { summary: 'Public summary', internal_notes: 'private-value' }, _provenance: { private: 'private-value' } });
   value.publicRuntime = { apps: { apps: {} }, extensions: { installations: [] }, forms: [{ id: 'contact', name: 'Contact', submit_text: 'Send request', submit_url: 'https://forms.example.invalid/submit/contact', submit_token: 'public-form-capability', pow_bits: 16, actions: [{ config: { token: 'private-value' } }], steps: [{ id: 'step-one', blocks: [{ id: 'field', type: 'form/text', data: { name: 'name', label: 'Your name' } }] }] }], dependencies: [{ kind: 'forms', id: 'contact', endpoint: 'https://forms.example.invalid/submit/contact' }] };
   const publication = projectStaticPublication(value, { ...identity, coreBlockTypes: CORE_BLOCK_TYPES });
   assert.ok(!JSON.stringify(publication).includes('private-value'));
@@ -332,7 +334,7 @@ test('portable source renders collections, form runtime and language metadata wh
   const result = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: tmp, env: {}, encoding: 'utf8', timeout: 60_000 });
   assert.equal(result.status, 0, result.stderr + result.stdout);
   const article = await fs.readFile(path.join(tmp, 'dist/news/article/index.html'), 'utf8');
-  assert.match(article, /Frozen collection article/);
+  assert.match(article, /Frozen typed article/);
   assert.match(article, /Portable article body/);
   const home = await fs.readFile(path.join(tmp, 'dist/index.html'), 'utf8');
   assert.match(home, /hreflang="sv"/);

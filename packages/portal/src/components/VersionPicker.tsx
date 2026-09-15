@@ -12,8 +12,9 @@ interface VersionDiff {
   pages: ChangeSet;
   partials: ChangeSet;
   redirects: ChangeSet;
-  collections: ChangeSet;
-  collectionItems: Record<string, ChangeSet>;
+  contentTypes: ChangeSet;
+  pageTemplates: ChangeSet;
+  blockTypes: ChangeSet;
   settings: 'unchanged' | 'modified';
   totalChanges: number;
 }
@@ -261,10 +262,10 @@ function SyncDialog({ siteId, branch, action, onClose }: SyncDialogProps) {
                 <DiffRow label="Pages" c={diff.pages} />
                 <DiffRow label="Global blocks" c={diff.partials} />
                 <DiffRow label="Redirects" c={diff.redirects} />
-                <DiffRow label="Collections" c={diff.collections} />
-                {Object.entries(diff.collectionItems).map(([name, c]) => (
-                  <DiffRow key={name} label={`Items: ${name}`} c={c} />
-                ))}
+                <DiffRow label="Content types" c={diff.contentTypes} />
+                <DiffRow label="Page templates" c={diff.pageTemplates} />
+                <DiffRow label="Block types" c={diff.blockTypes} />
+
                 {diff.settings === 'modified' && (
                   <tr>
                     <td>Site settings</td>

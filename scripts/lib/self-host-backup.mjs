@@ -20,6 +20,8 @@ import {
   SELF_HOST_DATA_SCHEMA_READABLE_MAX,
   SELF_HOST_DATA_SCHEMA_READABLE_MIN,
   SELF_HOST_INSTALLATION_PATH,
+  SELF_HOST_DATA_SCHEMA_VERSION,
+  planSelfHostMigrations,
 } from './self-host-schema.mjs';
 
 const KEY_CONTEXT = Buffer.from('typeroll-self-host-backup-v1');
@@ -297,17 +299,33 @@ export async function createSelfHostBackup({ services, outputDir, backupKey, now
     activeWriter = new EncryptedWriter(path.join(absolute, 'objects.jsonl.enc'), keys.encryption);
     let objectCount = 0;
     let objectBytes = 0;
-    for await (const object of services.objects.list()) {
-      const name = `${String(objectCount).padStart(10, '0')}.enc`;
-      const encrypted = await encryptStream(
-        await services.objects.get(object.key),
-        path.join(absolute, 'objects', name),
-        keys.encryption,
-      );
-      await activeWriter.write(`${JSON.stringify({ ...object, encrypted })}\n`);
-      objectCount += 1;
-      objectBytes += object.size;
+    const pending = [];
+    async function flushObjects() {
+      // Stream a bounded batch to separate encrypted files. Wait for every
+      // transfer to settle before reporting failure or committing the index.
+      const results = await Promise.allSettled(pending.map(async (object, index) => {
+        const name = `${String(objectCount + index).padStart(10, '0')}.enc`;
+        const encrypted = await encryptStream(
+          await services.objects.get(object.key),
+          path.join(absolute, 'objects', name),
+          keys.encryption,
+        );
+        return { ...object, encrypted };
+      }));
+      const failed = results.find(result => result.status === 'rejected');
+      if (failed) throw failed.reason;
+      for (const result of results) {
+        await activeWriter.write(`${JSON.stringify(result.value)}\n`);
+        objectCount += 1;
+        objectBytes += result.value.size;
+      }
+      pending.length = 0;
     }
+    for await (const object of services.objects.list()) {
+      pending.push(object);
+      if (pending.length === 8) await flushObjects();
+    }
+    if (pending.length) await flushObjects();
     const objectIndexFile = await activeWriter.finish();
     activeWriter = undefined;
 
@@ -336,7 +354,7 @@ function readManifest(backupDir) {
   return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 }
 
-export async function verifySelfHostBackup({ backupDir, backupKey }) {
+export async function verifySelfHostBackup({ backupDir, backupKey, forMigration = false }) {
   const absolute = path.resolve(backupDir);
   if (fs.existsSync(path.join(absolute, 'INCOMPLETE'))) throw new Error('Backup is marked incomplete');
   const manifest = readManifest(absolute);
@@ -345,7 +363,8 @@ export async function verifySelfHostBackup({ backupDir, backupKey }) {
     manifest.data_schema_version < SELF_HOST_DATA_SCHEMA_READABLE_MIN ||
     manifest.data_schema_version > SELF_HOST_DATA_SCHEMA_READABLE_MAX
   ) {
-    throw new Error(`Backup data schema ${manifest.data_schema_version} is not readable by this Core release`);
+    if (!forMigration) throw new Error(`Backup data schema ${manifest.data_schema_version} is not readable by this Core release`);
+    planSelfHostMigrations(manifest.data_schema_version, SELF_HOST_DATA_SCHEMA_VERSION);
   }
   const keys = deriveKeys(backupKey);
   const expectedHmac = Buffer.from(signManifest(manifest, keys.manifest), 'hex');
@@ -393,7 +412,16 @@ export async function verifySelfHostBackup({ backupDir, backupKey }) {
 
   const actual = { firestore_documents: documentCount, auth_users: userCount, r2_objects: objectCount, r2_bytes: objectBytes };
   if (JSON.stringify(actual) !== JSON.stringify(manifest.counts)) throw new Error('Backup counts do not match the verified contents');
-  return { manifest, documentPaths, userIds, objectKeys };
+  return {
+    manifest, documentPaths, userIds, objectKeys,
+    // The verified encrypted backup is the durable source for every retry.
+    // Consumers must finish reading before they perform their first write.
+    async *readDocuments(types = {}) {
+      for await (const record of jsonLines(decryptedStream(absolute, manifest.files.firestore, keys.encryption))) {
+        yield { path: record.path, data: decodeFirestoreValue(record.data, types) };
+      }
+    },
+  };
 }
 
 export async function restoreSelfHostBackup({ services, backupDir, backupKey, mode, now = () => new Date() }) {
