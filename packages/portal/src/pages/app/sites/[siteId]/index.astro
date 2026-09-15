@@ -45,6 +45,11 @@ const counts = {
   unlisted: pages.filter((p) => p.status === 'unlisted').length,
   review: pages.filter((p) => p.status === 'review').length,
 };
+const collections = await vstore.collections(orgId, siteId, versionId);
+await Promise.all(collections.map(async (collection) => {
+  const items = await vstore.collectionItems(orgId, siteId, versionId, collection.name);
+  for (const item of items) counts[item.status] += 1;
+}));
 
 const hostInfo = siteDisplayHost(site);
 ---
@@ -70,8 +75,9 @@ const hostInfo = siteDisplayHost(site);
         {!versionDoc?.distributing_deploy_id && <span data-live-site-link>{' '}&middot;{' '}{DOMAIN_STATE_LABEL[domainState(site)]}</span>}
       </p>
     </div>
-    <div class="row">
+    <div class="row" style="flex-wrap: wrap;">
       <a href={`/app/sites/${siteId}/pages`} class="btn btn--secondary">Manage pages</a>
+      <a href={`/api/sites/${siteId}/preview/browse/`} class="btn btn--secondary" target="_blank" rel="noopener">Preview site</a>
       <a href={`/app/sites/${siteId}/ai`} class="btn">AI chat</a>
     </div>
   </div>
@@ -91,6 +97,7 @@ const hostInfo = siteDisplayHost(site);
     distributing={Boolean(versionDoc?.distributing_deploy_id)}
   />
 
+  <p class="muted text-sm" style="margin-bottom: 0.75rem;">Pages and collection items in this version</p>
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
     <div class="card">
       <div class="muted text-sm">Published</div>
@@ -111,7 +118,10 @@ const hostInfo = siteDisplayHost(site);
   </div>
 
   <div class="card">
-    <h2 style="font-size: 1.125rem; margin-bottom: 1rem;">Recent pages</h2>
+    <div class="row" style="flex-wrap: wrap; justify-content: space-between; margin-bottom: 1rem;">
+      <h2 style="font-size: 1.125rem; margin: 0;">Recent pages</h2>
+      <a href={`/app/sites/${siteId}/pages`} class="btn btn--secondary" style="margin-left: auto; white-space: nowrap;">All pages</a>
+    </div>
     {pages.length === 0 ? (
       <p class="muted">No pages yet.</p>
     ) : (

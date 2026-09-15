@@ -117,6 +117,13 @@ rechecks the Builds card even after the connection card clears the callback
 address. If an older error remains on an earlier version, select **Refresh
 status**. A stale message does not mean that you need to approve access again.
 
+When a test build finishes, its saved status changes in the background. The
+Builds card recovers a conflicting status check by reading the latest result;
+it does not start setup or another test build again. On Core 0.1.100 and earlier,
+if **Build settings changed. Reload and try again.** remains beside **Running a
+test build…**, reload Publishing once to see the saved result. This message
+alone does not mean the test build failed or that you need to reconnect accounts.
+
 On older versions, if setup shows HTTP 403, select **Refresh status** first to
 show the permission action. If setup fails, it has stopped: the card should show
 the failed step and next action, rather than a continuing preparation message.

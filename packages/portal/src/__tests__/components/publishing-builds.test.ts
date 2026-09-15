@@ -4,7 +4,74 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import PublishingBuilds from '../../components/PublishingBuilds';
 let root: Root;
-afterEach(async () => { if (root) await act(async () => root.unmount()); document.body.innerHTML = ''; vi.unstubAllGlobals(); });
+afterEach(async () => { if (root) await act(async () => root.unmount()); document.body.innerHTML = ''; vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+it('recovers automatic verification polling when the completed build changes the revision', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const pending = { provider: 'cloudflare', state: 'qualification_required', revision: 'pending', enabled: false, worker_name: 'builder', issue: { code: 'build_verification_running', message: 'Running a test build…' } };
+  const ready = { ...pending, state: 'ready', revision: 'completed', enabled: true, issue: null };
+  let posts = 0;
+  const request = vi.fn(async (_url: unknown, init?: RequestInit) => {
+    if (init?.method === 'POST') {
+      posts++;
+      return posts === 1 ? Response.json({ code: 'build_settings_changed', error: 'Build settings changed. Reload and try again.' }, { status: 409 }) : Response.json(ready);
+    }
+    return Response.json(posts ? ready : pending);
+  });
+  vi.stubGlobal('fetch', request);
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(createElement(PublishingBuilds)));
+  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  expect(container.querySelector('section')?.dataset.state).toBe('ready');
+  expect(container.textContent).toContain('Shared build engine ready');
+  expect(container.textContent).not.toContain('Running a test build');
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(posts).toBe(1);
+  await act(async () => { [...container.querySelectorAll('button')].find(b => b.textContent === 'Refresh status')!.click(); });
+  expect(JSON.parse(request.mock.calls.filter(([, init]) => init?.method === 'POST')[1][1]!.body as string).revision).toBe('completed');
+});
+
+it('adopts concurrent setup progress without repeating a setup mutation', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const initial = { provider: 'cloudflare', state: 'setup_required', revision: 'old', enabled: false, worker_name: 'builder' };
+  let posted = false;
+  const request = vi.fn(async (_url: unknown, init?: RequestInit) => {
+    if (init?.method === 'POST') { posted = true; return Response.json({ code: 'build_settings_changed', error: 'Build settings changed. Check again.' }, { status: 409 }); }
+    return Response.json(posted ? { ...initial, revision: 'new', state: 'qualification_required', issue: { code: 'build_verification_running', message: 'Running a test build…' } } : initial);
+  });
+  vi.stubGlobal('fetch', request);
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(createElement(PublishingBuilds)));
+  await act(async () => { [...container.querySelectorAll('button')].find(b => b.textContent === 'Finish build setup')!.click(); });
+  expect(container.querySelector('section')?.dataset.state).toBe('waiting');
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).toContain('Running a test build');
+  expect(request.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+});
+
+it('keeps refresh failures visible and recovers on the next status check', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const initial = { provider: 'cloudflare', state: 'qualification_required', revision: 'old', enabled: false, worker_name: 'builder', issue: { code: 'build_verification_running' } };
+  let posts = 0;
+  const request = vi.fn(async (_url: unknown, init?: RequestInit) => {
+    if (init?.method === 'POST') { posts++; return Response.json({ code: 'build_settings_changed' }, { status: 409 }); }
+    if (posts === 1) return Response.json({ error: 'Status service unavailable. Try again.' }, { status: 503 });
+    return Response.json(posts ? { ...initial, revision: 'new', state: 'ready', enabled: true, issue: null } : initial);
+  });
+  vi.stubGlobal('fetch', request);
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(createElement(PublishingBuilds)));
+  const refresh = () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Refresh status')!.click();
+  await act(async () => { refresh(); });
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe('Status service unavailable. Try again.');
+  expect(container.querySelector('.publishing-card__status')?.textContent).toBe('Build setup needs attention');
+  expect(container.querySelector('section')?.dataset.state).toBe('error');
+  await act(async () => { refresh(); });
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.querySelector('section')?.dataset.state).toBe('ready');
+  expect(posts).toBe(2);
+});
 it('guides token setup in the right account and rechecks on return without claiming the engine is ready', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const account = 'a'.repeat(32), worker = 'typeroll-builder-123';

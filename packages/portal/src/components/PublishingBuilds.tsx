@@ -19,12 +19,25 @@ export default function PublishingBuilds({ refreshAfterCloudflareReturn = false 
   }
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const inFlight = useRef(false), awaitingReturn = useRef(false);
+  async function refreshChangedSettings(response: Response, value: { code?: string }, provider: BuildProvider) {
+    if (response.status !== 409 || value.code !== 'build_settings_changed') return false;
+    // A completed background build changes the revision. Read its result instead
+    // of repeating the stale request or replaying a setup mutation.
+    const latest = await fetch('/api/orgs/publishing/builds');
+    const settings = await latest.json();
+    if (!latest.ok) throw Error(settings.error || 'Could not refresh build status. Try Refresh status again.');
+    adopt(settings, provider);
+    setError('');
+    const current = settings.engines?.[provider] ?? settings;
+    setNotice(current.issue?.message || (current.state === 'ready' ? 'Shared build engine ready.' : 'Build status updated.'));
+    return true;
+  }
   async function load() {
     try {
       const response = await fetch('/api/orgs/publishing/builds');
       const value = await response.json();
       if (!response.ok) throw Error(value.error || 'Could not read build settings.');
-      adopt(value);
+      adopt(value); setError('');
       // Refresh older setup records and permissions after the OAuth return.
       if ((value.state === 'build_token_required' && value.worker_found === undefined) || pendingConnectionCheck.current) {
         pendingConnectionCheck.current = false;
@@ -55,6 +68,7 @@ export default function PublishingBuilds({ refreshAfterCloudflareReturn = false 
     try {
       const response = await fetch('/api/orgs/publishing/builds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: current.revision, ...(current.provider === 'github' ? { provider: 'github' } : {}) }) });
       const value = await response.json();
+      if (await refreshChangedSettings(response, value, current.provider)) return;
       if (!response.ok) throw Error(value.error || 'Could not check build setup.');
       adopt(value, current.provider); setNotice(value.engines?.[current.provider]?.issue?.message || value.issue?.message || 'Build setup checked.');
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not check build setup.'); }
@@ -78,6 +92,7 @@ export default function PublishingBuilds({ refreshAfterCloudflareReturn = false 
     try {
       const response = await fetch('/api/orgs/publishing/builds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'setup', revision: engine.revision, ...(engine.provider === 'github' ? { provider: 'github' } : {}) }) });
       const value = await response.json();
+      if (await refreshChangedSettings(response, value, engine.provider)) return;
       if (!response.ok) throw Error(value.error || 'Could not set up shared builds.');
       adopt(value, engine.provider); setNotice(value.engines?.[engine.provider]?.issue?.message || value.issue?.message || 'Build engine checked.');
     } catch (e) {
@@ -118,7 +133,7 @@ export default function PublishingBuilds({ refreshAfterCloudflareReturn = false 
   const setupLabel = state === 'ready' ? 'Update build engine' : needsToken && !engine?.worker_found ? 'Prepare build project' : 'Finish build setup';
   const projectUrl = engine?.worker_found && /^[a-f0-9]{32}$/.test(engine.account_id ?? '') && /^[a-z0-9-]+$/.test(engine.worker_name)
     ? `https://dash.cloudflare.com/${engine.account_id}/workers/services/view/${engine.worker_name}/production/settings` : null;
-  const status = busy ? 'Updating build settings…' : state === 'ready' ? 'Shared build engine ready' : state === 'approval_required' ? 'Build permissions required' : state === 'qualification_required' ? verifying ? 'Running a test build…' : 'Ready to finish setup' : needsToken ? chooseToken ? 'Action needed · Choose a build token' : 'Action needed · Create a build token' : 'Shared build engine setup';
+  const status = busy ? 'Updating build settings…' : error ? 'Build setup needs attention' : state === 'ready' ? 'Shared build engine ready' : state === 'approval_required' ? 'Build permissions required' : state === 'qualification_required' ? verifying ? 'Running a test build…' : 'Ready to finish setup' : needsToken ? chooseToken ? 'Action needed · Choose a build token' : 'Action needed · Create a build token' : 'Shared build engine setup';
   return <PublishingCard id="publishing-builds" title="Builds"
     state={error || ['approval_required', 'error'].includes(state ?? '') ? 'error' : state === 'ready' ? 'ready' : 'waiting'} status={status}>
     <p>Choose where this organization builds its sites and versions. Finished static files go to each site’s Hosting Group.</p>

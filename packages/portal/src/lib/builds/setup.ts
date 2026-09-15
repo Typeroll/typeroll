@@ -38,7 +38,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
   }
   if (input.action !== 'setup') throw new ConnectionError('Unknown build setup action.', 400);
   let current = await readBuildEngine(org);
-  if (input.revision !== current.revision) throw new ConnectionError('Build settings changed. Check again.', 409);
+  if (input.revision !== current.revision) throw new ConnectionError('Build settings changed. Check again.', 409, 'build_settings_changed');
   const store = getStore(), path = engineConfigurationPath(org);
   const previous = await readEngineConfiguration(org);
   if (previous?.status === 'qualifying') return configureBuildEngine(org, { action: 'check', revision: current.revision });
