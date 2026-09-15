@@ -163,17 +163,19 @@ the full reference + concrete operation recipes.
   `template/item_navigation` for deterministic or explicitly field-bound
   previous/next links. Typed context bindings, breadcrumbs, selected body
   fields, and table-of-contents links render server-side.
-- **Media** — list, read, signed upload URLs, `upload_media_from_url`,
-  `upload_media_batch_from_urls` (1–50 sources, max 25 MiB each, with
-  partial-success results),
-  `upload_media_inline` (all URL uploads auto-finalize after PUT — see below),
-  patch metadata, delete, `finalize_media` (per-item: applies immutable
-  Cache-Control + generates AVIF/WebP srcset variants — call after
-  `create_upload_url`'s raw PUT path), `finalize_all_media` (bulk
-  backfill for legacy libraries), `generate_image_variants` (the
-  variant half of finalize, kept for surgical reruns),
-  `suggest_alt_text_context` (returns a tuned prompt for your own
-  vision model).
+- **Media** — `get_import_readiness`, list/read, signed upload URLs,
+  `upload_media_from_url`, `upload_media_batch_from_urls` (1–50 sources, max
+  25 MiB each, with partial-success results), `upload_media_inline`, metadata
+  updates and deletion. Imports require verified Organization storage. With
+  Core 0.1.97, URL imports use the customer's Cloudflare transfer Worker;
+  neither the portal nor MCP downloads the image body. For local files,
+  `create_upload_url` grants a direct R2 PUT, followed by `finalize_media` to
+  verify and freeze the original. Responsive variants are prepared separately
+  by the Organization's selected build provider. Ordinary authored uploads may
+  use draft storage before connection; import tools must not bypass readiness
+  that way. Legacy maintenance includes `finalize_all_media` and
+  `generate_image_variants`. `suggest_alt_text_context` returns a prompt for
+  the agent's vision model. See the [media API and tool guide](https://typeroll.com/docs/tools/media/).
 - **Rendering controls** — semantic `core/navigation`, mapped
   `core/post_card`, `core/table_of_contents`, per-site
   `trailing_slash`, exact `iframe_allowed_hosts`, `icon_192`, and per-page

@@ -27,6 +27,16 @@ All authenticated via `X-Typeroll-Key` header or `?key=` query parameter.
 | `GET /wp-json/typeroll/v1/acf/groups/{post_id}` | ACF field-group schema applicable to a post — for inferring the matching Typeroll collection schema. |
 | `GET /wp-json/typeroll/v1/menus` | Navigation menus and their items, hierarchical. |
 
+## Import storage prerequisite
+
+Before starting an import, connect and verify the Organization's own R2 in
+**Publishing → Media storage**. The WordPress plugin does not need Cloudflare or
+R2 credentials. With Core 0.1.97, Typeroll provisions the customer-side transfer
+Worker that fetches original image URLs into R2 and verifies them. The same
+prerequisite and transfer path apply to Cloud and self-hosted imports, regardless
+of the selected site build provider. See the
+[WordPress migration guide](https://typeroll.com/docs/guides/wordpress-migration/).
+
 ## Installation
 
 1. Build the plugin zip (see below) or download a release.
