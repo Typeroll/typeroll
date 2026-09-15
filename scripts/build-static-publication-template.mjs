@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'typeroll-publication-template-'));
 try {
   const destination = path.join(temporary, 'project');
-  await createStaticPublicationProject({ format: 'typeroll-static-publication', format_version: 1, pages: [], partials: [], media: [] }, destination);
+  await createStaticPublicationProject({ format: 'typeroll-static-publication', format_version: 2, pages: [], partials: [], media: [] }, destination);
   const result = spawnSync('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'], {
     cwd: destination, stdio: 'inherit', timeout: 180_000,
     env: { PATH: process.env.PATH, HOME: process.env.HOME, npm_config_cache: process.env.npm_config_cache },

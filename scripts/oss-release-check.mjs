@@ -24,6 +24,7 @@ export function releaseCheckCommands({ docsOnly = false } = {}) {
     docs[1],
     [npm, ["run", "typecheck"]],
     [npm, ["test"]],
+    [process.execPath, ["scripts/build-static-publication-template.mjs"]],
     [npm, ["run", "build"]],
   ];
 }

@@ -17,6 +17,7 @@ test("the release check validates every publishable surface in fail-fast order",
     "npm run format:check --workspace=@typeroll/docs-site",
     "npm run typecheck",
     "npm test",
+    `${process.execPath} scripts/build-static-publication-template.mjs`,
     "npm run build",
   ]);
 });
