@@ -1365,7 +1365,7 @@ const tableOfContents: BlockType = {
 [data-block="table_of_contents"][data-empty="true"] { display: none; }
 [data-block="table_of_contents"] a { overflow-wrap: anywhere; text-underline-offset: 0.15em; }
 [data-block="table_of_contents"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
-@media (max-width: 720px) { [data-block="table_of_contents"], .block-columns-col:has(> [data-block="table_of_contents"]) { position: static; } }
+@media (max-width: 720px) { [data-block="table_of_contents"], .block-columns-col:has(> [data-block="table_of_contents"][data-sticky="true"]) { position: static; } }
 `.trim(),
   script: `
 window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };

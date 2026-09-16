@@ -117,6 +117,8 @@ const columns: BlockType = {
 </div>`,
   styles: `
 [data-block="columns"] { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+/* Allow wide tables and other scrollable content to shrink inside a track. */
+[data-block="columns"] > .block-columns-col { min-width: 0; }
 [data-block="columns"][data-ratio="2-1"] { grid-template-columns: 2fr 1fr; }
 [data-block="columns"][data-ratio="1-2"] { grid-template-columns: 1fr 2fr; }
 [data-block="columns"][data-ratio="3-1"] { grid-template-columns: 3fr 1fr; }

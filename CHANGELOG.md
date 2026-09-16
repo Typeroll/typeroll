@@ -1,5 +1,12 @@
 # Changelog
 
+## Core 0.2.3 / MCP 0.45.3
+
+- Keep article contents in normal flow on mobile while preserving the sticky
+  desktop sidebar. Wide tables scroll within columns without widening the page.
+- Add browser regression checks for scrolling and layout at mobile and desktop
+  widths. Existing static sites need republication to receive the fixed styles.
+
 ## Unreleased — Core 0.2.0 / MCP 0.45.0
 
 - Content types define allowed Page templates and default sorting. Pages can
