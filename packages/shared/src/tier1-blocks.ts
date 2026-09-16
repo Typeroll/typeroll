@@ -38,6 +38,7 @@ const container: BlockType = {
     { name: 'aria_label', type: 'text', label: 'Accessible label' },
     { name: 'attributes', type: 'array', label: 'Additional attributes', fields: [{ name: 'name', type: 'text', label: 'Attribute' }, { name: 'value', type: 'text', label: 'Value' }] },
     { name: 'layout', type: 'select', label: 'Layout', options: ['flex', 'flow'], default: 'flex' },
+    { name: 'rhythm', type: 'select', label: 'Content spacing', options: ['default', 'article'], default: 'default' },
     { name: 'direction', type: 'select', label: 'Direction', options: ['row', 'column'], default: 'column', responsive: true },
     { name: 'wrap', type: 'select', label: 'Wrap', options: ['nowrap', 'wrap'], default: 'wrap', responsive: true },
     { name: 'gap', type: 'select', label: 'Gap', options: ['none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
@@ -56,8 +57,13 @@ const container: BlockType = {
   // named `--{field-name}` so the @media compiler can override it cleanly.
   // Layout-control CSS reads `var(--gap)` etc. and maps the token (sm/md/lg)
   // to a real rem value via attribute-selectors against the inline style.
-  template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{inline_style}}">{{children}}</{{=tag}}>`,
+  template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-rhythm="{{rhythm}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{inline_style}}">{{children}}</{{=tag}}>`,
   styles: `
+/* Opt-in article flow; never change heading spacing in unrelated layouts. */
+[data-block="semantic-container"][data-rhythm="article"] { display:flow-root; }
+:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="heading"],
+:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="rich_heading"] { margin-block:1.75rem 0.6rem; }
+:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > :first-child { margin-top:0; }
 [data-block="container"] {
   display: flex; flex-direction: var(--direction, column); flex-wrap: var(--wrap, wrap);
   gap: var(--block-gap, 1rem); justify-content: var(--align_main, flex-start); align-items: var(--align_cross, stretch);
@@ -737,8 +743,9 @@ const postCard: BlockType = {
     { name: 'show_date', type: 'boolean', label: 'Show date', default: true },
     { name: 'show_author', type: 'boolean', label: 'Show author', default: false },
     { name: 'image_aspect', type: 'select', label: 'Image aspect', options: ['landscape', 'square', 'portrait'], default: 'landscape' },
+    { name: 'appearance', type: 'select', label: 'Appearance', options: ['plain', 'card'], default: 'plain' },
   ],
-  template: `<article data-block="post_card" data-aspect="{{image_aspect}}" data-img="{{show_image}}" data-exc="{{show_excerpt}}" data-date="{{show_date}}" data-author="{{show_author}}">
+  template: `<article data-block="post_card" data-appearance="{{appearance}}" data-aspect="{{image_aspect}}" data-img="{{show_image}}" data-exc="{{show_excerpt}}" data-date="{{show_date}}" data-author="{{show_author}}">
   {{{post_card_image_html}}}
   <div class="block-postcard-body">
       <{{=heading_level}} class="block-postcard-title">{{{post_card_title_html}}}</{{=heading_level}}>
@@ -752,6 +759,11 @@ const postCard: BlockType = {
 </article>`,
   styles: `
 [data-block="post_card"] { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+[data-block="post_card"][data-appearance="card"] { background:var(--color-background, #fff); border-radius:0.5rem; box-shadow:0 2px 8px rgb(0 0 0 / 12%); gap:0; }
+[data-block="post_card"][data-appearance="card"] .block-postcard-image { display:block; margin:0; border-radius:0.5rem 0.5rem 0 0; }
+[data-block="post_card"][data-appearance="card"] .block-postcard-body { padding:1rem; }
+[data-block="post_card"][data-appearance="card"] .block-postcard-title { font-size:1rem; }
+[data-block="post_card"][data-date="false"][data-author="false"] .block-postcard-meta { display:none; }
 [data-block="post_card"] .block-postcard-link { color: inherit; text-decoration: none; }
 [data-block="post_card"] .block-postcard-link:focus-visible,
 [data-block="post_card"] .block-postcard-download:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
@@ -1355,9 +1367,9 @@ const tableOfContents: BlockType = {
   ],
   template: `<nav data-block="table_of_contents" data-mobile-display="{{mobile_display}}" data-list-style="{{list_style}}" data-levels="{{levels}}" data-appearance="{{appearance}}" data-sticky="{{sticky}}" data-indent="{{indent}}" data-highlight-active="{{highlight_active}}" data-empty="{{toc_empty}}" aria-label="{{title}}"><strong>{{title}}</strong><ol>{{{toc_items_html}}}</ol></nav>`,
   styles: `
-[data-block="table_of_contents"] { position: sticky; top: 1rem; min-width: 0; padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0.5rem; background: var(--color-background, Canvas); }
-[data-block="table_of_contents"][data-sticky="false"] { position:static; }
-.block-columns-col:has(> [data-block="table_of_contents"][data-sticky="true"]) { position:sticky; top:1rem; align-self:start; }
+[data-block="table_of_contents"] { position: sticky; top: var(--toc-top, 1rem); max-height:calc(100dvh - var(--toc-top, 1rem) - 1rem); overflow:auto; box-sizing:border-box; min-width: 0; padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0.5rem; background: var(--color-background, Canvas); }
+[data-block="table_of_contents"][data-sticky="false"] { position:static; max-height:none; }
+.block-columns-col:has(> [data-block="table_of_contents"][data-sticky="true"]) { position:sticky; top:var(--toc-top, 1rem); align-self:start; }
 [data-block="table_of_contents"][data-appearance="plain"] { padding:0; border:0; border-radius:0; background:transparent; }
 [data-block="table_of_contents"][data-indent="false"] li { margin-left:0; }
 [data-block="table_of_contents"] a[aria-current="location"] { font-weight:700; color:var(--color-primary,currentColor); text-decoration:underline; }
@@ -1369,7 +1381,7 @@ const tableOfContents: BlockType = {
 [data-block="table_of_contents"][data-empty="true"] { display: none; }
 [data-block="table_of_contents"] a { overflow-wrap: anywhere; text-underline-offset: 0.15em; }
 [data-block="table_of_contents"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
-@media (max-width: 720px) { [data-block="table_of_contents"][data-mobile-display="hidden"], .block-columns-col:has(> [data-block="table_of_contents"][data-mobile-display="hidden"]:only-child) { display:none; } [data-block="table_of_contents"], .block-columns-col:has(> [data-block="table_of_contents"][data-sticky="true"]) { position: static; } }
+@media (max-width: 720px) { [data-block="table_of_contents"][data-mobile-display="hidden"], .block-columns-col:has(> [data-block="table_of_contents"][data-mobile-display="hidden"]:only-child) { display:none; } [data-block="table_of_contents"], .block-columns-col:has(> [data-block="table_of_contents"][data-sticky="true"]) { position: static; max-height:none; } }
 `.trim(),
   script: `
 window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
@@ -1394,19 +1406,41 @@ window.TyperollBlocks.register('core/table_of_contents', (el) => {
     });
   }
   el.dataset.empty = list.children.length ? 'false' : 'true';
-  if (el.dataset.highlightActive === 'false') return;
+
   const links = Array.from(list.querySelectorAll('a[href^="#"]'));
   const entries = links.map(link => {
     let id = link.getAttribute('href').slice(1);
     try { id = decodeURIComponent(id); } catch {}
     return { link, heading: document.getElementById(id) };
   }).filter(entry => entry.heading);
+  // Imported headers may be semantic headers or use the standard site-header class.
+  // Only top-sticky/fixed headers outside the article reserve viewport space.
+  const headers = Array.from(document.querySelectorAll('header, .site-header, [data-site-header]')).filter(node => !root.contains(node));
+  const column = el.parentElement?.classList.contains('block-columns-col') ? el.parentElement : null;
   let scheduled = false;
+  let previousTop = -1;
+  const observer = new ResizeObserver(() => schedule());
+  headers.forEach(header => observer.observe(header));
   const update = () => {
     scheduled = false;
-    if (!el.isConnected) { window.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule); return; }
+    if (!el.isConnected) { observer.disconnect(); window.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule); return; }
+    const clearance = headers.reduce((bottom, header) => {
+      const style = getComputedStyle(header);
+      const top = parseFloat(style.top);
+      if (!['sticky', 'fixed'].includes(style.position) || !Number.isFinite(top) || style.display === 'none') return bottom;
+      const rect = header.getBoundingClientRect();
+      return Math.max(bottom, style.position === 'sticky' ? Math.max(0, top + rect.height) : Math.max(0, rect.bottom));
+    }, 0);
+    const top = clearance + 16;
+    if (top !== previousTop) {
+      previousTop = top;
+      el.style.setProperty('--toc-top', top + 'px');
+      if (column) column.style.setProperty('--toc-top', top + 'px');
+      entries.forEach(({ heading }) => { heading.style.scrollMarginTop = top + 'px'; });
+    }
+    if (el.dataset.highlightActive === 'false') return;
     let current = entries[0];
-    for (const entry of entries) if (entry.heading.getBoundingClientRect().top <= 96) current = entry;
+    for (const entry of entries) if (entry.heading.getBoundingClientRect().top <= top + 1) current = entry;
     links.forEach(link => link.removeAttribute('aria-current'));
     if (current) current.link.setAttribute('aria-current', 'location');
   };

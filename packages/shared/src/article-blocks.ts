@@ -20,7 +20,7 @@ export const ARTICLE_BLOCK_TYPES: BlockType[] = [
       { name: 'anchor_id', type: 'text', label: 'Anchor ID' },
       { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center', 'right'], default: 'left' },
     ],
-    template: '<{{=level}} {{{heading_anchor_attr}}} style="text-align:{{align}}">{{{html}}}</{{=level}}>',
+    template: '<{{=level}} data-block="rich_heading" {{{heading_anchor_attr}}} style="text-align:{{align}}">{{{html}}}</{{=level}}>',
     origin: 'core', created_at: '1970-01-01T00:00:00Z',
   },
   {

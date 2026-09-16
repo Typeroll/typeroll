@@ -18,6 +18,8 @@ it('keeps server-rendered links and changes the active heading on scroll', () =>
   initialize();
   expect(document.querySelector('[aria-current="location"]')?.getAttribute('href')).toBe('#one');
   secondTop = 40; window.dispatchEvent(new Event('scroll'));
+  expect(document.querySelector('[aria-current="location"]')?.getAttribute('href')).toBe('#one');
+  secondTop = 16; window.dispatchEvent(new Event('scroll'));
   expect(document.querySelector('[aria-current="location"]')?.getAttribute('href')).toBe('#two');
   expect(document.querySelectorAll('nav a')).toHaveLength(2);
 });

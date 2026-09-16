@@ -775,7 +775,7 @@ export function composePageWithTemplate(
           ...declarations,
           ...(declarations.length ? ['font-size:var(--page-body-font-size,inherit)', 'line-height:var(--page-body-line-height,inherit)'] : []),
         ].join(';');
-        if (width || declarations.length || b.style_overrides) out.push({ id: `${b.id}-body`, type: 'core/container', data: { tag: 'div', layout: 'flow', inline_style: styles }, ...(b.style_overrides ? { style_overrides: b.style_overrides } : {}), children: pageBlocks });
+        if (width || declarations.length || b.style_overrides || b.data?.rhythm === 'article') out.push({ id: `${b.id}-body`, type: 'core/container', data: { tag: 'div', layout: 'flow', rhythm: b.data?.rhythm === 'article' ? 'article' : 'default', inline_style: styles }, ...(b.style_overrides ? { style_overrides: b.style_overrides } : {}), children: pageBlocks });
         else out.push(...pageBlocks);
         continue;
       }

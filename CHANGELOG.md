@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Core 0.2.7 / MCP 0.45.7
+
+- Add opt-in article body spacing to Page content slots and editorial starters.
+- Keep sticky contents and linked headings below responsive site headers;
+  scroll long desktop outlines within the available viewport.
+- Add boxed Post Cards for related-article groups using native containers.
+- Document template settings and add browser regressions for spacing, header
+  clearance and card presentation. Existing sites need republication.
+
 ## Unreleased — Core 0.2.4 / MCP 0.45.4
 
 - Split customer publication into durable source, Git and build-dispatch steps.

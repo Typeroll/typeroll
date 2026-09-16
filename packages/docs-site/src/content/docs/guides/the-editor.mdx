@@ -110,6 +110,32 @@ do not cover the text. Wide tables scroll inside their column instead of
 widening the whole page. These layout fixes require Core 0.2.3 or later;
 republish existing sites after upgrading.
 
+### Article spacing and related cards
+
+In Core 0.2.7, the template's **Page content → Content spacing → Article**
+setting adds space before and after body headings, including headings after
+videos and images. It affects the body slot only; navigation and card headings
+keep their own spacing. New Blog, Article and Checklist starters enable it.
+Existing templates keep their current spacing until you choose Article.
+
+The sticky table of contents now clears a sticky or fixed site header and
+keeps clicked headings visible below it. It responds to header size changes.
+Use a semantic `<header>`, `.site-header`, or `[data-site-header]` outside the
+page's `<main>` for a custom header. Long desktop outlines scroll within the
+remaining screen height. The **Highlight current heading** setting does not
+control positioning or anchor clearance.
+
+For related articles, place a **Container** in the article column after Page
+content. Give it a background color and padding, then add a heading and a
+**Repeater** using **Post Card**. Choose **Appearance → Card** in the repeater's
+item settings for a separate card surface, compact titles and padded text.
+Use responsive column counts to keep cards readable on small screens.
+These settings are available through block data in the API and MCP as well as
+the editor: `rhythm: "article"` on `template_content_slot`, and
+`item_overrides: { appearance: "card" }` on the repeater. Rebuild and republish
+existing sites after upgrading; changing a saved template does not update an
+already published static site.
+
 ## Keyboard shortcuts
 
 | Shortcut               | Does                                  |

@@ -52,7 +52,7 @@ test('wide article tables scroll within their column without widening the page',
   }
 });
 
-test('editorial headings, optional mobile outline and card defaults match their declared settings', async ({ page }) => {
+test('editorial headings, optional mobile outline and card defaults match their declared settings', async ({ page }, testInfo) => {
   const registry = buildCoreBlockRegistry();
   const blocks: Block[] = [
     { id: 'title', type: 'core/heading', data: { text: 'An editorial article title', level: 'h1', size: 'article', font_weight: '500' } },
@@ -82,6 +82,75 @@ test('editorial headings, optional mobile outline and card defaults match their 
     expect(heights).toHaveLength(3);
     expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-    await page.screenshot({ path: `../../temp/article-migration-settings-${width}.png`, fullPage: true });
+    await page.screenshot({ path: testInfo.outputPath(`article-migration-settings-${width}.png`), fullPage: true });
   }
+});
+
+test('article rhythm separates media and headings in the body slot', async ({ page }) => {
+  const registry = buildCoreBlockRegistry();
+  const body: Block[] = [
+    { id: 'video', type: 'core/html', data: { html: '<div class="video-placeholder" style="height:250px;background:#ddd">Video</div>' } },
+    { id: 'h', type: 'core/heading', data: { text: 'After the video', level: 'h2', size: 'article' } },
+    { id: 'p', type: 'core/prose', data: { html: '<p>First paragraph</p>' } },
+  ];
+  const blocks = composePageWithTemplate([{ id: 'body', type: 'template_content_slot', data: { rhythm: 'article' } }], body);
+  const assets = collectBlockAssets(blocks, registry);
+  await page.setContent(`<style>body{margin:16px;font:16px sans-serif}${assets.css}</style>${renderBlocks(blocks, { registry })}`);
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 800 });
+    const video = await page.locator('.video-placeholder').boundingBox();
+    const heading = await page.locator('h2').boundingBox();
+    const paragraph = await page.locator('p').boundingBox();
+    expect(heading!.y - video!.y - video!.height).toBeGreaterThanOrEqual(27);
+    expect(heading!.y - video!.y - video!.height).toBeLessThanOrEqual(36);
+    expect(paragraph!.y - heading!.y - heading!.height).toBeGreaterThanOrEqual(9);
+  }
+});
+
+test('sticky outline and anchor targets clear a resizing sticky header', async ({ page }) => {
+  const registry = buildCoreBlockRegistry();
+  const html = article().replace('<main>', '<header style="position:sticky;top:0;height:103px;background:white;z-index:10">Menu</header><main>');
+  await page.setContent(html);
+  await page.addScriptTag({ content: `window.TyperollBlocks={register(name,init){document.querySelectorAll('[data-block="table_of_contents"]').forEach(init)}};${registry.get('core/table_of_contents')!.script}` });
+  await page.locator('[data-block="table_of_contents"]').evaluate(el => { (el as HTMLElement).dataset.highlightActive = 'false'; });
+  for (const height of [103, 150, 81]) {
+    await page.locator('header').evaluate((el, h) => { el.style.height = `${h}px`; }, height);
+    await page.evaluate(() => scrollTo(0, 700));
+    await expect.poll(async () => (await page.locator('[data-block="table_of_contents"]').boundingBox())!.y).toBeGreaterThanOrEqual(height + 15);
+    await page.locator('[data-block="table_of_contents"] a').first().click();
+    const heading = await page.locator('#storage-prices').boundingBox();
+    expect(heading!.y).toBeGreaterThanOrEqual(height + 15);
+    expect(heading!.y).toBeLessThan(height + 40);
+  }
+});
+
+test('boxed related cards provide a distinct surface and compact titles', async ({ page }) => {
+  const registry = buildCoreBlockRegistry();
+  const blocks: Block[] = [{ id: 'card', type: 'core/post_card', data: { title: 'Related article', href: '/related', appearance: 'card', show_excerpt: false, show_date: false } }];
+  await page.setContent(`<style>body{font:16px sans-serif}${collectBlockAssets(blocks, registry).css}</style>${renderBlocks(blocks, { registry })}`);
+  const card = page.locator('[data-block="post_card"]');
+  expect(await card.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+  expect(await card.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe('none');
+  expect(await card.locator('h3').evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBe(16);
+  expect(await card.locator('.block-postcard-body').evaluate(el => parseFloat(getComputedStyle(el).paddingLeft))).toBeGreaterThanOrEqual(16);
+});
+
+
+test('long desktop outlines remain usable within the viewport and expand on mobile', async ({ page }) => {
+  const registry = buildCoreBlockRegistry();
+  const block: Block = { id: 'toc', type: 'core/table_of_contents', data: {} };
+  const headings = Array.from({ length: 40 }, (_, i) => `<h2 id="s${i}">Section ${i}</h2><p>Article text</p>`).join('');
+  await page.setViewportSize({ width: 1440, height: 600 });
+  await page.setContent(`<style>body{margin:0;font:16px sans-serif}${collectBlockAssets([block], registry).css}</style><header style="position:sticky;top:0;height:100px">Menu</header><main>${renderBlocks([block], { registry, context: { page: { content_mode: 'html', body: headings } } })}${headings}</main>`);
+  await page.addScriptTag({ content: `window.TyperollBlocks={register(name,init){document.querySelectorAll('[data-block="table_of_contents"]').forEach(init)}};${registry.get('core/table_of_contents')!.script}` });
+  const toc = page.locator('[data-block="table_of_contents"]');
+  await page.evaluate(() => scrollTo(0, 200));
+  await expect.poll(async () => (await toc.boundingBox())!.y).toBe(116);
+  const box = (await toc.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(584);
+  await toc.getByRole('link', { name: 'Section 39', exact: true }).focus();
+  expect(await toc.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+  await page.setViewportSize({ width: 390, height: 600 });
+  expect(await toc.evaluate(el => getComputedStyle(el).maxHeight)).toBe('none');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

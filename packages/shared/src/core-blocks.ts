@@ -409,6 +409,7 @@ const templateContentSlot: BlockType = {
     { name: 'font_size', type: 'number', label: 'Body text size (px)', min: 12, max: 32, placeholder: 'Block default' },
     { name: 'line_height', type: 'number', label: 'Body line height', min: 1, max: 2.5, placeholder: 'Block default' },
     { name: 'paragraph_spacing', type: 'number', label: 'Paragraph spacing (em)', min: 0, max: 3, placeholder: 'Block default' },
+    { name: 'rhythm', type: 'select', label: 'Content spacing', options: ['default', 'article'], default: 'default' },
   ],
   template: `<!-- template_content_slot: this should be replaced during composition -->`,
   origin: 'core',

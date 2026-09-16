@@ -53,7 +53,13 @@ repeater cards, including image aspect ratios and visibility flags.
 
 Compare representative articles, an archive and home page with source screenshots
 at desktop and mobile widths. Review fonts, heading sizes, content width, card
-layout, breadcrumbs, media, TOC and integrations. Retain intentional improvements
+layout, breadcrumbs, media, TOC and integrations. Scroll through the article;
+check heading gaps after media, TOC clearance below sticky headers, anchor
+landing positions and related-card grouping inside the intended column.
+Core 0.2.7 adds opt-in `rhythm: "article"` on the body slot and
+`appearance: "card"` on Post Cards. Use native template composition for these
+choices rather than adding corrective CSS to individual imported pages. Retain
+intentional improvements
 (such as responsive video) and document deviations.
 
 The launch report requires deploy-bound URL and SEO evidence plus fidelity

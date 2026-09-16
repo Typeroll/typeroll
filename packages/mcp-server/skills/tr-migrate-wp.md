@@ -240,7 +240,11 @@ get_preview_link page_id=<id>                    # one URL the user can click
 
 Compare the source and target at desktop and mobile widths. Review representative
 articles, an archive and the home page. Measure heading sizes, readable width,
-spacing, TOC placement and image/card proportions. Check breadcrumbs and shared
+spacing, TOC placement and image/card proportions. Scroll below the fold: verify
+headings after media, the TOC below a sticky header, anchor landing positions
+and related articles inside the intended content column. In Core 0.2.7+, use
+`rhythm: "article"` on the Page content slot and `appearance: "card"` on Post
+Cards for these native presentation choices; no per-page corrective CSS. Check breadcrumbs and shared
 category references; test forms/Extensions. HTTP 200 and text presence do not
 prove visual fidelity. Document intentional improvements such as responsive video.
 

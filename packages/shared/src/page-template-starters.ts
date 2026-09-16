@@ -27,7 +27,7 @@ export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined
         blk('image', 'template/page_featured_image', { field: 'featured_image', width: 'wide' }),
         blk('title', 'template/page_title', { level: 'h1', size: 'article', align: 'left' }),
         blk('date',  'template/page_date',  { field: 'date_published' }),
-        blk('body',  'template_content_slot',  { field: 'body', max_width: 'normal' }),
+        blk('body',  'template_content_slot',  { field: 'body', max_width: 'normal', rhythm: 'article' }),
       ];
 
     case 'article':
@@ -38,7 +38,7 @@ export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined
         {
           ...blk('content', 'core/columns', { ratio: '3-1', gap: 'lg', align: 'start', mobile_order: 'right-first' }),
           slots: [
-            [blk('body', 'template_content_slot', { field: 'body', max_width: 'normal' })],
+            [blk('body', 'template_content_slot', { field: 'body', max_width: 'normal', rhythm: 'article' })],
             [blk('outline', 'core/table_of_contents', {
               title: 'On this page',
               levels: 'h2-h3',
@@ -61,7 +61,7 @@ export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined
             new_tab: false,
           })],
         },
-        blk('body', 'template_content_slot', { field: 'body', max_width: 'normal' }),
+        blk('body', 'template_content_slot', { field: 'body', max_width: 'normal', rhythm: 'article' }),
         blk('navigation', 'template/page_navigation', {
           previous_label: 'Previous',
           next_label: 'Next',
