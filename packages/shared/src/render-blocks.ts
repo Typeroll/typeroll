@@ -44,6 +44,7 @@ import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData } from './article-blocks.js';
 import { prepareHeadingOutline } from './heading-outline.js';
+import { comparePageValues, pageSort } from './page-options.js';
 
 /**
  * Render context — values exposed to templates via the dotted-path
@@ -556,8 +557,13 @@ function renderRepeater(
     items = options.pageSource({
       content_type: target,
       ids,
-      limit: cap,
     });
+    // Reference order is intentional unless the author selects a sort field.
+    // Sort the complete resolved set before applying the visible-item limit.
+    if (typeof data.sort_by === 'string' && data.sort_by) {
+      const sort = pageSort(undefined, { sort_by: data.sort_by, sort_order: data.sort_order === 'desc' ? 'desc' : 'asc' });
+      items = [...items].sort((a, b) => comparePageValues(a, b, sort));
+    }
     if (cap) items = items.slice(0, cap);
   } else if (sourceType === 'children_blocks') {
     // Render each direct child block as one repeater item, preserving the

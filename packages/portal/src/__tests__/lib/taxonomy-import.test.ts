@@ -26,7 +26,7 @@ describe('normalized taxonomy import', () => {
     expect(tag).toMatchObject({ path: '/tag/moving', content_mode: 'blocks' });
     expect(tag.parent).toBeUndefined();
     expect(JSON.stringify(tag.blocks)).toContain('Unique tag introduction');
-    expect(tag.blocks?.find(block => block.type === 'core/repeater')?.data).toMatchObject({ source_type: 'backlinks' });
+    expect(tag.blocks?.find(block => block.type === 'core/repeater')?.data).toMatchObject({ source_type: 'backlinks', limit: 0 });
   });
   it('preserves term metadata and hierarchy only on the shared page', () => {
     const result = plan([term(1), { ...term(2, 1), acf: { emoji: '📦' }, description: '<p>Shared description</p>' }]);

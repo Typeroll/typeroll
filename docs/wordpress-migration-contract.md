@@ -1,4 +1,4 @@
-# WordPress migration contract — Core 0.2.5
+# WordPress migration contract — Core 0.2.6
 
 The importer preserves content and shared identity. It does not automatically
 redesign a site or send every page to an LLM. Presentation is a separate,

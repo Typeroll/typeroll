@@ -67,6 +67,20 @@ describe('reference-backed repeaters', () => {
     expect(html).toContain('Acme');
     expect(html).not.toContain('Beta');
   });
+
+  it('sorts all resolved backlinks before limiting, while zero limit includes every member', async () => {
+    const { createPageSource } = await import('../page-source.js');
+    const type = { id: 'articles', name: 'articles', label_singular: 'Article', label_plural: 'Articles', route_template: '/{slug}',
+      fields: [{ name: 'category', label: 'Category', type: 'page_ref' as const }], created_at: '2026-09-16' };
+    const pages = Array.from({ length: 15 }, (_, i) => item(`entry-${i}`, { title: `Entry ${i}`, sort_order: 15 - i, fields: { category: 'cat' } }));
+    const options = { registry, pageSource: createPageSource([type], pages), context: { page: { id: 'cat' }, backlinks: buildBacklinkIndex([type], pages) } };
+    const data = { source_type: 'backlinks', content_type: 'articles', sort_by: 'sort_order', sort_order: 'asc' };
+    const limited = renderBlocks([repeater({ ...data, limit: 2 })], options);
+    expect(limited).toContain('Entry 14'); expect(limited).toContain('Entry 13'); expect(limited).not.toContain('>Entry 0<');
+    expect(limited.indexOf('>Entry 14<')).toBeLessThan(limited.indexOf('>Entry 13<'));
+    const complete = renderBlocks([repeater({ ...data, limit: 0 })], options);
+    expect((complete.match(/data-block="post_card"/g) ?? []).length).toBe(15);
+  });
 });
 
 it('offers native ordered Page selection across types and excludes the current Page before limiting', async () => {

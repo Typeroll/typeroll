@@ -60,6 +60,7 @@ export function planTaxonomyImport(sources: TaxonomySource[], origin: string, no
       const converted = htmlToBlocks(term.description ?? '');
       const listing: Block = { id: 'taxonomy-pages', type: 'core/repeater', data: {
         source_type: 'backlinks', item_block: 'core/post_card', cols: { mobile: 1, tablet: 2, desktop: 3 },
+        limit: 0,
         item_overrides: { show_date: false, show_excerpt: false },
       } };
       pages.push({ id: taxonomyPageId(taxonomy.slug, term.id), title: normalizeWordPressPlainText(term.name),
