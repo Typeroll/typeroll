@@ -162,6 +162,7 @@ export function fieldsToStepBlocks(fields: FormField[]): Block[] {
       case 'textarea': return { id, type: 'form/textarea', data: base };
       case 'select': return { id, type: 'form/select', data: { ...base, choices } };
       case 'radio': return { id, type: 'form/radio_group', data: { ...base, choices } };
+      case 'multiselect': return { id, type: 'form/checkbox_group', data: { ...base, choices } };
       case 'checkbox': return choices.length > 0
         ? { id, type: 'form/checkbox_group', data: { ...base, choices } }
         : { id, type: 'form/toggle', data: base };

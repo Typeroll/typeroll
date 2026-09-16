@@ -54,7 +54,10 @@ function sessSet(form,v){try{v?sessionStorage.setItem(sessKey(form),v):sessionSt
 function authHeaders(form){var t=sessGet(form);return t?{Authorization:"Bearer "+t}:{}}
 function fillFields(form,fields){(fields||[]).forEach(function(f){
   var el=form.elements[f.name];if(!el||f.value==null)return;
-  if(el.type==="checkbox"){el.checked=!!f.value}else{el.value=f.value}
+  if(Array.isArray(f.value)){
+    var controls=el.length!==undefined&&!el.tagName?Array.from(el):[el];
+    controls.forEach(function(input){if(input.type==="checkbox")input.checked=f.value.indexOf(input.value)!==-1});
+  }else if(el.type==="checkbox"){el.checked=!!f.value}else{el.value=f.value}
 })}
 function expiredMsg(form){return form.getAttribute("data-msg-expired")||"This link is no longer valid. Please request a new one."}
 async function remoteInit(form,param){
@@ -96,6 +99,7 @@ function init(form){
     var btn=$('[type="submit"]',form);if(btn)btn.disabled=true;
     try{
       var fd=new FormData(form);fd.set("_protocol","1");
+      if(remote)$all('[data-block="form_checkbox_group"]',form).forEach(function(group){var input=$('input[type="checkbox"]',group);if(input&&!fd.has(input.name))fd.set(input.name,"")});
       if(powP){try{fd.set("_pow",await powP)}catch(e){}}
       var hdrs=Object.assign({Accept:"application/json"},sessParam?authHeaders(form):{});
       var res=await fetch(form.action,{method:"POST",body:fd,headers:hdrs});

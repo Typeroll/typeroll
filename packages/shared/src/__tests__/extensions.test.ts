@@ -337,3 +337,12 @@ describe('extension renderer capabilities', () => {
     });
   });
 });
+
+
+it('accepts bounded provider documentation and rejects unsafe URLs and unknown metadata', () => {
+  const documentation = { url: 'https://vendor.example/docs/', agent_instructions: 'Read the guide first.' };
+  expect(validateExtensionManifest({ ...quotePilotManifest, documentation }).valid).toBe(true);
+  for (const patch of [{ url: 'http://vendor.example/docs/' }, { url: 'https://127.0.0.1/private' }, { agent_instructions: 'x'.repeat(16001) }, { secret: 'not-allowed' }]) {
+    expect(validateExtensionManifest({ ...quotePilotManifest, documentation: { ...documentation, ...patch } }).valid).toBe(false);
+  }
+});

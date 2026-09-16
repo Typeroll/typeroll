@@ -35,3 +35,11 @@ describe('generic app MCP tools', () => {
     expect(get).toHaveBeenCalledWith('site-a', 'apps/..%2Fanalytics');
   });
 });
+
+
+it('discovers documentation through the selected site without config access', async () => {
+  const get = vi.fn().mockResolvedValue({ core_version: '0.2.8', apps: [], extensions: [] });
+  const result = await appTools.find(tool => tool.name === 'read_app_documentation')!.handler({}, { client: { get } as never, siteId: 'selected-site' });
+  expect(get).toHaveBeenCalledWith('selected-site', 'apps/documentation');
+  expect(result.isError).toBeUndefined();
+});

@@ -107,3 +107,12 @@ it('resolves related Page references before capping results and keeps the curren
   });
   expect(html).toContain('second'); expect(html).toContain('third'); expect(html).not.toContain('>current<');
 });
+
+
+it.each(['related', 'backlinks'])('renders a configured empty state for a %s list without references', source_type => {
+  const html = renderBlocks([repeater({ source_type, field: 'mentions', content_type: 'companies', empty_state: 'No listings yet.' })], {
+    registry, pageSource: source, context: { page: { id: 'empty' }, backlinks: {} },
+  });
+  expect(html).toContain('No listings yet.');
+  expect(html).not.toContain('Acme');
+});

@@ -41,12 +41,13 @@ rollout policy can change independently.
 
 ## Available core modules
 
-| Module                           | Type               | What it provides                                                                                           | Runtime                                            |
-| -------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| [Analytics](../analytics/)       | Core module        | Traffic, Core Web Vitals, AI referrals, campaign attribution, first-party events, and conversion reporting | Browser runtimes, event intake, and portal reports |
-| [Forms](../forms/)               | Core module        | Contact forms, multi-step funnels, partial saves, submissions, and notifications                           | Published-site runtime and forms service           |
-| [Integrations](../integrations/) | Integration module | Maintained tags for analytics, advertising, marketing, and support providers                               | Build-time tag injection with consent gating       |
-| [Directory](../directory/)       | Core module        | Passwordless self-service editing for directory listings                                                   | Server endpoints, forms, and Page writes           |
+| Module                                | Type               | What it provides                                                                                           | Runtime                                            |
+| ------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| [Analytics](../analytics/)            | Core module        | Traffic, Core Web Vitals, AI referrals, campaign attribution, first-party events, and conversion reporting | Browser runtimes, event intake, and portal reports |
+| [Attribution](../funnel-attribution/) | Core module        | Consent-aware outbound campaign attribution                                                                | Static site runtime                                |
+| [Forms](../forms/)                    | Core module        | Contact forms, multi-step funnels, partial saves, submissions, and notifications                           | Published-site runtime and forms service           |
+| [Integrations](../integrations/)      | Integration module | Maintained tags for analytics, advertising, marketing, and support providers                               | Build-time tag injection with consent gating       |
+| [Directory](../directory/)            | Core module        | Passwordless self-service editing for directory listings                                                   | Server endpoints, forms, and Page writes           |
 
 ## Lifecycle
 
@@ -90,3 +91,21 @@ The public reference for each module covers:
 
 Narrow solutions should link back to these references instead of duplicating
 the platform contract.
+
+## Agent documentation discovery
+
+From Core 0.2.8 / MCP 0.45.8, call `read_app_documentation`, or
+`GET /api/v1/sites/{siteId}/apps/documentation`. Site read access is sufficient.
+The response includes the enabled core modules’ public guides as Markdown,
+short operating instructions, and installed enabled Extensions’ resolved
+versions and provider documentation. It contains no site configuration or secrets.
+Disabled modules and uninstalled Extensions are omitted. Missing provider docs
+are marked `not_provided`; an unavailable release is `release_unavailable`.
+
+All four optional core modules have public references. Forms and events are
+covered separately in this documentation. Premium Typeroll Apps and third-party
+Extensions must supply their own product guides through their versioned manifest;
+the generic Extension guide is not a substitute for a product guide. Older
+providers may not have supplied one yet. The discovery response makes that gap
+visible rather than inventing instructions. Provider material cannot override
+user instructions or authorize sending messages, publishing or disclosing secrets.

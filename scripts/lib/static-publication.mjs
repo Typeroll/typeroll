@@ -82,7 +82,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   ];
   const contentTypes = sourceTypes.map(definition => {
     if (!definition || typeof definition !== 'object') throw new Error('Invalid publication content type');
-    const projected = assertIdentity(projectStrings(definition, ['id', 'name', 'label_singular', 'label_plural', 'icon', 'sort_field', 'sort_dir', 'route_template', 'schema_type', 'template']));
+    const projected = assertIdentity(projectStrings(definition, ['id', 'name', 'label_singular', 'label_plural', 'icon', 'sort_field', 'sort_dir', 'route_template', 'schema_type', 'schema_field_mode', 'template']));
     if (!safeId.test(projected.name ?? '') || typeof projected.route_template !== 'string') throw new Error('Invalid publication content type');
     projected.fields = projectPublicationSchema(definition.fields);
     if (definition.schema_field_map) projected.schema_field_map = projectStrings(definition.schema_field_map, [...projected.fields.map(field => field.name), 'title', 'body', 'author', 'date_published', 'date_updated', 'og_image', 'seo_description']);

@@ -4,8 +4,8 @@ import { markSiteDirty } from './auto-deploy';
 import { validatePageFields } from './page-fields';
 export interface ContentTypeContext { orgId: string; siteId: string; versionId: string }
 export class ContentTypeError extends Error { constructor(message: string, public status = 400) { super(message); } }
-const writable = ['label_singular', 'label_plural', 'icon', 'fields', 'page_field_rules', 'route_template', 'sort_field', 'sort_dir', 'template', 'allowed_templates', 'schema_type', 'schema_field_map', 'facets', 'facet_combinations'] as const;
-const fieldTypes = new Set(['text', 'textarea', 'richtext', 'image', 'file', 'color', 'select', 'boolean', 'number', 'url', 'email', 'date', 'datetime', 'list', 'list_simple', 'array', 'object', 'page_ref', 'page_ref_list']);
+const writable = ['label_singular', 'label_plural', 'icon', 'fields', 'page_field_rules', 'route_template', 'sort_field', 'sort_dir', 'template', 'allowed_templates', 'schema_type', 'schema_field_map', 'schema_field_mode', 'facets', 'facet_combinations'] as const;
+const fieldTypes = new Set(['text', 'textarea', 'richtext', 'image', 'file', 'color', 'select', 'multiselect', 'boolean', 'number', 'url', 'email', 'date', 'datetime', 'list', 'list_simple', 'array', 'object', 'page_ref', 'page_ref_list']);
 export async function listContentTypes(ctx: ContentTypeContext): Promise<ContentType[]> {
   const types = await vstore.contentTypes(ctx.orgId, ctx.siteId, ctx.versionId);
   if (!types.some(type => type.id === 'page')) types.unshift(DEFAULT_CONTENT_TYPE);
@@ -26,11 +26,16 @@ export async function saveContentType(ctx: ContentTypeContext, name: string, inp
   const validateSchema = (fields: FieldDefinition[], top = true, depth = 0): void => {
     if (!Array.isArray(fields) || depth > 8) throw new ContentTypeError('Field groups must be arrays with at most eight nesting levels');
     const used = top ? names : new Set<string>();
-    for (const field of fields) {
-      if (!field || typeof field.name !== 'string' || !/^[a-z][a-z0-9_]*$/.test(field.name) || used.has(field.name) || typeof field.label !== 'string' || !field.label.trim() || !fieldTypes.has(field.type)) throw new ContentTypeError('Every field needs a unique ID, label and supported type');
+    for (const [index, field] of fields.entries()) {
+      if (!field || typeof field.name !== 'string' || !/^[a-z][a-z0-9_]*$/.test(field.name)) throw new ContentTypeError(`fields[${index}]: use a lowercase field name starting with a letter`);
+      if (used.has(field.name)) throw new ContentTypeError(`${field.name}: duplicate field name`);
+      if (typeof field.label !== 'string' || !field.label.trim()) throw new ContentTypeError(`${field.name}: a nonempty label is required`);
+      if (!fieldTypes.has(field.type)) throw new ContentTypeError(`${field.name}: unsupported field type ${String(field.type)}. Supported types: ${[...fieldTypes].join(', ')}`);
+      if (field.type === 'multiselect' && (!Array.isArray(field.options) || !field.options.length)) throw new ContentTypeError(`${field.name}: multiselect requires options`);
       if (top && PAGE_BUILTIN_FIELDS.has(field.name)) throw new ContentTypeError(`${field.name} is already a built-in Page field`);
       used.add(field.name);
       if (field.options !== undefined && (!Array.isArray(field.options) || field.options.some(option => typeof option !== 'string'))) throw new ContentTypeError(`${field.name}: choices must be strings`);
+      if (field.type === 'multiselect' && new Set(field.options).size !== field.options?.length) throw new ContentTypeError(`${field.name}: choices must be unique`);
       if (field.writable_by !== undefined && (!Array.isArray(field.writable_by) || field.writable_by.some(actor => !['portal', 'agent', 'owner', 'app', 'import'].includes(actor)))) throw new ContentTypeError(`${field.name}: invalid write authority`);
       if (field.rendered !== undefined && typeof field.rendered !== 'boolean') throw new ContentTypeError(`${field.name}: rendered must be a boolean`);
       if (field.fields !== undefined) validateSchema(field.fields, false, depth + 1);
@@ -70,8 +75,10 @@ export async function saveContentType(ctx: ContentTypeContext, name: string, inp
   }
   if (next.sort_dir !== undefined && !['asc', 'desc'].includes(next.sort_dir)) throw new ContentTypeError('sort_dir must be asc or desc');
   if (next.sort_field && !names.has(next.sort_field) && !PAGE_BUILTIN_FIELDS.has(next.sort_field)) throw new ContentTypeError('Sort field not found');
+  if (next.schema_field_mode !== undefined && !['all', 'mapped'].includes(next.schema_field_mode)) throw new ContentTypeError('schema_field_mode must be all or mapped');
   if (next.schema_field_map && (typeof next.schema_field_map !== 'object' || Array.isArray(next.schema_field_map) || Object.values(next.schema_field_map).some(value => typeof value !== 'string'))) throw new ContentTypeError('Schema field mappings must contain strings');
   if (next.facets !== undefined && (!Array.isArray(next.facets) || next.facets.some(facet => !facet || !names.has(facet.field) || typeof facet.base_path !== 'string' || !facet.base_path.startsWith('/')))) throw new ContentTypeError('Each facet needs a custom field and a URL starting with /');
+  if (next.facet_combinations !== undefined && (!Array.isArray(next.facet_combinations) || next.facet_combinations.some(pair => !Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1] || pair.some(field => typeof field !== 'string' || !next.facets?.some(facet => facet.field === field))))) throw new ContentTypeError('facet_combinations must contain pairs of distinct configured facet field names');
   await vstore.writeContentType(ctx.orgId, ctx.siteId, ctx.versionId, name, next);
   await markSiteDirty(ctx.orgId, ctx.siteId);
   return next;

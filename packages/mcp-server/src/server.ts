@@ -122,7 +122,7 @@ The full playbook ships with this server — use it:
    list_skills FIRST, then read_skill <name> for the step-by-step recipe
    (tr-new-site, tr-migrate-wp, tr-brand, tr-blog, tr-responsive, …). These are
    the canonical how-to; don't improvise what a skill already covers.
-2. Discover before you write: get_site, get_site_capabilities,
+2. Discover before you write: read_app_documentation, get_site, get_site_capabilities,
    read_site_settings, list_pages, list_block_types. Never hardcode block ids
    or field names — they're per-site. For installed Extension config, call
    list_extension_installations then read_extension_installation before an

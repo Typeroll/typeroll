@@ -417,3 +417,28 @@ describe('a visitor cannot reach another listing through the URL', () => {
     expect(byName.title).toBe('Acme');
   });
 });
+
+
+describe('owner multiple selections', () => {
+  beforeEach(seed);
+  it('validates enum membership and preserves multiple choices through JSON and form submissions', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    const path = paths.contentType(ORG, SITE, 'companies');
+    const type = await store.getDoc<any>(path);
+    await store.setDoc(path, { ...type, fields: [...type.fields, { name: 'seasons', type: 'multiselect', label: 'Seasons', options: ['spring', 'fall'], writable_by: ['owner'] }] });
+    const jar = cookieJar();
+    const { token } = await issue();
+    await call('GET', { token, cookies: jar.api });
+    expect((await call('PUT', { cookies: jar.api, body: { seasons: ['invalid'] } })).status).toBe(400);
+    expect((await call('PUT', { cookies: jar.api, body: { seasons: ['spring', 'fall'] } })).status).toBe(200);
+    const { POST } = await import('../../pages/api/directory/[siteId]/session');
+    for (const values of [['spring', 'fall'], ['fall'], ['']]) {
+      const form = new FormData();
+      for (const value of values) form.append('seasons', value);
+      const response = await POST({ params: { siteId: SITE }, cookies: jar.api, request: new Request(`https://app.typeroll.com/api/directory/${SITE}/session`, { method: 'POST', body: form }) } as never);
+      expect(response.status).toBe(200);
+      expect((await store.getDoc<any>(paths.page(ORG, SITE, 'c1'))).fields.seasons).toEqual(values.filter(Boolean));
+    }
+  });
+});

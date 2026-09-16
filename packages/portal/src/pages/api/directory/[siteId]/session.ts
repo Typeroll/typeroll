@@ -35,6 +35,7 @@ import {
   conflictResponse,
   writableBy,
 } from '../../../../lib/field-authority';
+import { validatePageFields } from '../../../../lib/page-fields';
 import { markSiteDirty } from '../../../../lib/auto-deploy';
 
 import { publishingRuntimeOrigins } from '../../../../lib/publishing/runtime-origins';
@@ -235,6 +236,7 @@ async function applyEdit(
   cookies: Parameters<typeof loadSession>[0],
   request: Request,
   incomingRaw: Record<string, unknown>,
+  fromForm = false,
 ) {
   const sess = await loadSession(cookies, siteId, new URL(request.url), request);
   const coll = await loadContentType(sess.orgId, siteId, sess.content_type);
@@ -250,6 +252,15 @@ async function applyEdit(
   const incoming: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(incomingRaw)) if (allowed.has(k)) incoming[k] = v;
 
+  if (fromForm) for (const field of ownerFields(coll)) {
+    if (!(field.name in incoming)) continue;
+    const value = incoming[field.name];
+    if (field.type === 'multiselect') incoming[field.name] = (Array.isArray(value) ? value : [value]).filter(entry => entry !== '');
+    if (field.type === 'number' && typeof incoming[field.name] === 'string') incoming[field.name] = incoming[field.name] === '' ? null : Number(incoming[field.name]);
+    if (field.type === 'boolean' && typeof incoming[field.name] === 'string') incoming[field.name] = ['yes', 'true', 'on', '1'].includes(incoming[field.name] as string);
+  }
+  const invalid = validatePageFields({ ...coll, fields: coll.fields.filter(field => field.name in incoming) }, Object.fromEntries(Object.entries(incoming).filter(([name]) => !PAGE_BUILTIN_FIELDS.has(name))), true);
+  if (invalid) throw new EditGrantError(invalid, 400);
   const authority = applyFieldAuthority({
     fields: pageAuthorityFields(coll), incoming, existing,
     actor: 'owner', actorId: `edit-link:${sess.pageId}`,
@@ -304,9 +315,10 @@ export const POST: APIRoute = async ({ request, params, cookies }) => {
     const form = await request.formData();
     // The runtime's own control fields never reach the item.
     const incoming: Record<string, unknown> = {};
-    for (const [k, v] of form.entries()) {
+    for (const k of new Set(form.keys())) {
       if (k.startsWith('_')) continue;
-      incoming[k] = typeof v === 'string' ? v : undefined;
+      const values = form.getAll(k).filter((value): value is string => typeof value === 'string');
+      incoming[k] = values.length > 1 ? values : values[0];
     }
     // Honeypot, same field the forms runtime already ships in its markup.
     if (String(form.get('_hp') ?? '')) {
@@ -331,7 +343,7 @@ export const POST: APIRoute = async ({ request, params, cookies }) => {
       return json({ ok: false, errors: [{ message: gate.reason }] }, 200, await corsAnon(siteId, request));
     }
 
-    const { sess, authority } = await applyEdit(siteId, cookies, request, incoming);
+    const { sess, authority } = await applyEdit(siteId, cookies, request, incoming, true);
     const headers = await cors(sess.orgId, siteId, request);
     if (authority.rejected.length === 0) {
       // Whatever the FORM declared, from whichever source — this endpoint

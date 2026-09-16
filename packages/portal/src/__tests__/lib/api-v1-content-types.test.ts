@@ -69,6 +69,32 @@ async function createPage(token: string, body: Record<string, unknown> = {}) { r
 describe('content types and native Pages', () => {
   let token: string;
   beforeEach(async () => { ({ token } = await setup()); });
+  it('accepts directory fields and validates multiselect values on Page writes', async () => {
+    const fields = [
+      { name: 'email', label: 'Email', type: 'email' },
+      { name: 'website', label: 'Website', type: 'url' },
+      { name: 'seasons', label: 'Seasons', type: 'multiselect', options: ['spring', 'fall'] },
+    ];
+    expect((await createType(token, { ...definition(), fields })).status).toBe(200);
+    expect((await createPage(token, { fields: { email: 'a@example.com', website: 'https://example.com', seasons: ['spring', 'fall'] } })).status).toBe(201);
+    for (const seasons of ['spring', ['unknown'], ['spring', 'spring'], [42]]) {
+      const result = await createPage(token, { fields: { seasons } });
+      expect(result.status).toBe(400);
+      expect((await result.json()).error).toContain('seasons');
+    }
+    expect((await createPage(token, { fields: { seasons: [] } })).status).toBe(201);
+    expect((await createPage(token, { fields: { seasons: null } })).status).toBe(201);
+  });
+  it('explains unsupported field types and rejects malformed facet pairs before saving', async () => {
+    const bad = await createType(token, { ...definition(), fields: [{ name: 'seasons', label: 'Seasons', type: 'multi_select' }] });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toContain('seasons: unsupported field type multi_select');
+    const facets = [{ field: 'summary', base_path: '/summary' }, { field: 'related', base_path: '/related' }];
+    for (const facet_combinations of [[{ summary: 'related' }], [['summary']], [['summary', 'missing']], [['summary', 'summary']]]) {
+      expect((await createType(token, { ...definition(), facets, facet_combinations })).status).toBe(400);
+    }
+    expect((await createType(token, { ...definition(), facets, facet_combinations: [['summary', 'related']], schema_field_mode: 'mapped' })).status).toBe(200);
+  });
   it('lists the default type without a special storage family', async () => {
     const response = await callRoute(typeRoute(), 'GET', `${root}/content-types`, { siteId: SITE }, { headers: bearer(token) });
     expect(response.status).toBe(200); expect((await response.json()).content_types[0]).toMatchObject({ id: 'page', route_template: '/{slug}' });

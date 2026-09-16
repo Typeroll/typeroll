@@ -22,11 +22,13 @@ function validateFieldValues(definitions: FieldDefinition[], incoming: unknown, 
     const field = allowed.get(name);
     if (!field) return `Unknown field ${prefix}${name}`;
     if (value == null) continue;
-    if (['array', 'list', 'list_simple', 'page_ref_list'].includes(field.type) && !Array.isArray(value)) return `${name} must be an array`;
+    if (['array', 'list', 'list_simple', 'page_ref_list', 'multiselect'].includes(field.type) && !Array.isArray(value)) return `${name} must be an array`;
     if (field.type === 'number' && (typeof value !== 'number' || !Number.isFinite(value))) return `${name} must be a number`;
     if (field.type === 'boolean' && typeof value !== 'boolean') return `${name} must be a boolean`;
     if (['text', 'textarea', 'richtext', 'image', 'file', 'color', 'url', 'email', 'date', 'datetime', 'select', 'page_ref', 'content_type_ref'].includes(field.type) && typeof value !== 'string') return `${prefix}${name} must be a string`;
-    if (['page_ref_list', 'list_simple'].includes(field.type) && (value as unknown[]).some(entry => typeof entry !== 'string')) return `${prefix}${name} must contain strings`;
+    if (['page_ref_list', 'list_simple', 'multiselect'].includes(field.type) && (value as unknown[]).some(entry => typeof entry !== 'string')) return `${prefix}${name} must contain strings`;
+    if (field.type === 'multiselect' && (value as string[]).some(entry => !field.options?.includes(entry))) return `${prefix}${name} contains an unsupported choice`;
+    if (field.type === 'multiselect' && new Set(value as string[]).size !== (value as string[]).length) return `${prefix}${name} contains duplicate choices`;
     if (field.type === 'select' && field.options && !field.options.includes(String(value))) return `Invalid value for ${name}`;
     if (field.type === 'object' && (typeof value !== 'object' || Array.isArray(value))) return `${prefix}${name} must be an object`;
     if (field.fields && ['object', 'array', 'list'].includes(field.type)) {

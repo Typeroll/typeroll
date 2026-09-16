@@ -552,7 +552,7 @@ function renderRepeater(
     }
     if (data.exclude_current === true) ids = ids.filter(id => id !== String(options.context?.page?.id ?? ''));
     ids = [...new Set(ids)];
-    if (ids.length === 0) return '';
+    if (ids.length === 0) return data.empty_state ? renderRepeaterItems(block, blockType, itemBlockType, data, [], options) : '';
     const cap = typeof data.limit === 'number' && data.limit > 0 ? data.limit : undefined;
     items = options.pageSource({
       content_type: target,

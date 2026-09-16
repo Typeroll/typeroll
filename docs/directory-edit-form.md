@@ -168,3 +168,11 @@ Honest inventory, because "tests pass" and "this works" aren't the same claim:
   query parameter beyond the signed token and `form`, so a third one can't
   appear unnoticed.
 - **Not verified end-to-end:** no Playwright run against a live dev server.
+
+## Current agent workflow (Core 0.2.8)
+
+The public source of truth is `packages/docs-site/src/content/docs/recipes/directory-building.mdx`.
+Start with `read_app_documentation`; config mutation uses the admin bearer API,
+while documentation discovery needs only read access. Owner forms accept native
+multiselect checkbox groups and validate typed values before authority/write.
+Do not infer import or publication permission from this reference.

@@ -1,14 +1,15 @@
 import { z } from 'zod';
 import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
-const schema = z.array(z.object({ name: z.string(), label: z.string(), type: z.string() }).passthrough());
+const schema = z.array(z.object({ name: z.string(), label: z.string(), type: z.enum(['text', 'textarea', 'richtext', 'image', 'file', 'color', 'select', 'multiselect', 'boolean', 'number', 'url', 'email', 'date', 'datetime', 'list', 'list_simple', 'array', 'object', 'page_ref', 'page_ref_list']) }).passthrough());
 const fields = {
   label_singular: z.string().optional(), label_plural: z.string().optional(), fields: schema.optional(),
   page_field_rules: z.record(z.object({ label: z.string().optional(), writable_by: z.array(z.enum(['portal', 'owner', 'agent', 'app', 'import'])) })).optional(),
   allowed_templates: z.array(z.string()).nullable().optional().describe('Allowed Page template IDs, including the default. Null allows all compatible templates; an empty list permits no template.'),
   route_template: z.string().optional(), template: z.string().optional(), schema_type: z.string().optional(),
+  schema_field_mode: z.enum(['all', 'mapped']).optional().describe('Use mapped to emit only explicitly mapped fields. Resolve typed references in Page json_ld for complex graphs.'),
   schema_field_map: z.record(z.string()).optional(),
   icon: z.string().optional(), sort_field: z.string().optional(), sort_dir: z.enum(['asc', 'desc']).optional(),
-  facets: z.array(z.record(z.unknown())).optional(), facet_combinations: z.array(z.record(z.unknown())).optional(),
+  facets: z.array(z.record(z.unknown())).optional(), facet_combinations: z.array(z.tuple([z.string(), z.string()])).optional().describe('Pairs of configured facet field names, not values. Use editable Pages for a curated subset of combinations.'),
 };
 export const contentTypeTools: ToolDef[] = [
   { name: 'page_completeness', description: 'Report missing, unverified and stale fields for Pages of one content type, with per-field counts and worst-first Page IDs. Read-only; agent-writable fields only by default.', inputSchema: { content_type: z.string(), limit: z.number().int().min(1).max(200).optional(), stale_after_days: z.number().min(0).optional(), agent_writable_only: z.boolean().optional(), version: versionParam },

@@ -204,6 +204,7 @@ export function buildContentPageSchema(
     url: canonical,
   };
 
+  const mappedOnly = contentType.schema_field_mode === 'mapped';
   const userMap = contentType.schema_field_map;
   const data = { ...page.fields, title: page.title, body: page.html_content, author: page.author,
     ...(page.seo_description ? { description: page.seo_description } : {}),
@@ -215,7 +216,10 @@ export function buildContentPageSchema(
       continue;
     }
     if (value == null || value === '') continue;
+    if (mappedOnly && !Object.hasOwn(userMap ?? {}, field)) continue;
+    if (contentType.fields.find(def => def.name === field)?.rendered === false) continue;
     const prop = resolveProperty(field, schemaType, userMap);
+    if (!prop || prop.startsWith('@') || prop === 'url' || prop === '__proto__' || prop === 'constructor' || prop === 'prototype') continue;
     // Author / publisher / provider get the Person/Organization envelope
     // automatically when the value is a plain string — Schema.org requires
     // a typed sub-object here, and "name only" is the common authoring case.
@@ -234,10 +238,10 @@ export function buildContentPageSchema(
 
   // updated_at / created_at fall back to schema-standard dateModified /
   // datePublished when the item didn't carry explicit fields.
-  if (!obj.dateModified && page.date_updated) obj.dateModified = page.date_updated;
-  if (!obj.datePublished && page.date_published) obj.datePublished = page.date_published;
+  if (!mappedOnly && !obj.dateModified && page.date_updated) obj.dateModified = page.date_updated;
+  if (!mappedOnly && !obj.datePublished && page.date_published) obj.datePublished = page.date_published;
 
-  if (!obj.publisher && site.organization?.name) {
+  if (!mappedOnly && !obj.publisher && site.organization?.name) {
     obj.publisher = {
       '@type': 'Organization',
       name: site.organization.name,

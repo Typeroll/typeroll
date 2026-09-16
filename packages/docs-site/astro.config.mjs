@@ -109,6 +109,7 @@ export default defineConfig({
         {
           label: 'Recipes',
           items: [
+            { label: 'Build a directory', slug: 'recipes/directory-building' },
             { label: 'Booking-link attribution', slug: 'recipes/booking-link-attribution' },
           ],
         },

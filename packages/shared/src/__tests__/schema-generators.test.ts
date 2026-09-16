@@ -183,3 +183,15 @@ describe('buildContentPageSchema', () => {
     expect(ld.author).toEqual({ '@type': 'Person', name: 'Tomas', url: 'https://x' });
   });
 });
+
+
+it('mapped schema includes only explicit public facts and preserves the canonical envelope', () => {
+  const page = makePage({ title: 'Supplier', website: 'https://supplier.example', claim_email: 'private@example.com', internal_code: 'secret', date_updated: '2026-09-16' });
+  const contentType: ContentType = { id: 'suppliers', name: 'suppliers', label_singular: 'Supplier', label_plural: 'Suppliers', route_template: '/companies/{slug}', created_at: '', schema_type: 'Organization', schema_field_mode: 'mapped',
+    schema_field_map: { title: 'name', website: 'sameAs', claim_email: 'email', internal_code: 'url' },
+    fields: [{ name: 'claim_email', type: 'email', label: 'Private', rendered: false }],
+  };
+  expect(JSON.parse(buildContentPageSchema(page, contentType, site, 'https://directory.example/company/')!)).toEqual({
+    '@context': 'https://schema.org', '@type': 'Organization', url: 'https://directory.example/company/', name: 'Supplier', sameAs: 'https://supplier.example',
+  });
+});

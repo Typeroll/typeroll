@@ -119,6 +119,7 @@ function getBearer(request: Request): string | null {
 
 export function extensionScopeForApiRequest(pathname: string, method: string): ExtensionScope | null {
   const write = method !== 'GET' && method !== 'HEAD';
+  if (!write && /\/apps\/documentation\/?$/.test(pathname)) return 'content:read';
   if (/\/deploys?(?:\/|$)/.test(pathname)) return 'deploy:request';
   if (/\/submissions(?:\/|$)/.test(pathname)) return write ? null : 'submissions:read';
   if (/\/forms(?:\/|$)/.test(pathname)) return write ? 'forms:write' : 'forms:read';

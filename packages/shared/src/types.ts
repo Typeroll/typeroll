@@ -816,6 +816,7 @@ export type FieldType =
   | 'file'
   | 'color'
   | 'select'
+  | 'multiselect'
   | 'boolean'
   | 'number'
   | 'url'
@@ -1097,6 +1098,8 @@ export interface ContentType {
   template?: string;
   schema_type?: string;
   schema_field_map?: Record<string, string>;
+  /** Emit only explicitly mapped fields when set to mapped. */
+  schema_field_mode?: 'all' | 'mapped';
   facets?: import('./taxonomy.js').ContentFacet[];
   facet_combinations?: import('./taxonomy.js').FacetCombination[];
   created_at: string;

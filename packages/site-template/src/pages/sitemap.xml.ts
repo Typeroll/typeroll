@@ -1,15 +1,18 @@
 import type { APIRoute } from 'astro';
-import { getAllPages, getSiteSettings, urlFor } from '../lib/content';
+import { getSiteSettings } from '../lib/content';
+
+import { getSiteRoutes } from '../lib/routes';
 
 export const GET: APIRoute = async ({ site }) => {
   const base = site ? site.toString().replace(/\/$/, '') : '';
-  const pages = await getAllPages({ includeUnlisted: false });
+  const routes = await getSiteRoutes();
   const settings = await getSiteSettings();
 
-  const pageEntries = pages
-    .filter((p) => !p.noindex)
-    .map((p) => {
-      const loc = `${base}${urlFor(p, settings.trailing_slash)}`;
+  const pageEntries = routes
+    .filter(({ props }) => props.page.status === 'published' && !props.page.noindex)
+    .map(({ params, props: { page: p } }) => {
+      const path = params.slug ? `/${params.slug}${settings.trailing_slash === 'never' ? '' : '/'}` : '/';
+      const loc = `${base}${path}`;
       // lastmod_override: explicit string wins; empty string suppresses
       // lastmod entirely; undefined falls back to the timestamps. Editors
       // use this to avoid bumping freshness on minor edits.

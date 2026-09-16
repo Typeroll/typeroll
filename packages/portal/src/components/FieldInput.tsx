@@ -67,6 +67,16 @@ export default function FieldInput({
           </select>
         </div>
       );
+    case 'multiselect': {
+      const selected = Array.isArray(value) ? value : [];
+      return <fieldset style={{ ...fieldGroup, border: 0, padding: 0 }}>
+        <legend style={fieldLabel}>{field.label}{field.required ? ' *' : ''}</legend>
+        {(field.options ?? []).map((option, index) => <label key={option} style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 44 }}>
+          <input type="checkbox" checked={selected.includes(option)} onChange={event => onChange(event.target.checked ? [...selected, option] : selected.filter(item => item !== option))} />
+          {field.option_labels?.[index] ?? option}
+        </label>)}
+      </fieldset>;
+    }
     case 'boolean':
       return (
         <div style={fieldGroup}>

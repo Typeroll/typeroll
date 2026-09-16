@@ -176,6 +176,8 @@ export type ExtensionLifecycleEvent =
   | 'extension.credential_rotated';
 
 export interface ExtensionManifest {
+  /** Provider-authored reference material, not user authorization. */
+  documentation?: { url: string; agent_instructions?: string };
   schema_version: typeof EXTENSION_MANIFEST_SCHEMA_VERSION;
   id: string;
   name: string;
@@ -627,7 +629,7 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
   rejectUnknown(manifest, [
     'schema_version', 'id', 'name', 'version', 'runtime_compatibility', 'distribution',
     'developer', 'permissions', 'auth', 'config_schema', 'frontend', 'admin',
-    'api', 'events', 'data_handling',
+    'api', 'events', 'data_handling', 'documentation',
   ], 'manifest', errors);
   if (manifest.schema_version !== EXTENSION_MANIFEST_SCHEMA_VERSION) {
     errors.push(`schema_version must be ${EXTENSION_MANIFEST_SCHEMA_VERSION}`);
@@ -647,6 +649,12 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
     errors.push('distribution must be private, unlisted, or public');
   }
 
+  if (manifest.documentation !== undefined) {
+    const documentation = asRecord(manifest.documentation, 'documentation', errors);
+    rejectUnknown(documentation, ['url', 'agent_instructions'], 'documentation', errors);
+    validatePublicHttps(documentation.url, 'documentation.url', errors);
+    if (documentation.agent_instructions !== undefined && (typeof documentation.agent_instructions !== 'string' || documentation.agent_instructions.length > 16000)) errors.push('documentation.agent_instructions must be text of at most 16000 characters');
+  }
   const developer = asRecord(manifest.developer, 'developer', errors);
   requireString(developer.name, 'developer.name', errors);
   validatePublicHttps(developer.support_url, 'developer.support_url', errors);

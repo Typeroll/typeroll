@@ -1,21 +1,7 @@
-// Taxonomy (facet) pages — one static page per distinct value of a field.
-//
-// A directory is reached through several dimensions at once: industry,
-// location, size. Category pages are the right shape for that — static,
-// indexable, and what actually ranks — as opposed to a client-side faceted
-// search, which ranks for nothing.
-//
-// ⚠️ This is the one place where 500 records quietly becomes several thousand
-// ROUTES, and route count is what the 10-minute build timeout actually
-// measures. Two guards, both deliberate:
-//
-//   min_items          — a value with one record behind it produces a
-//                        thin-content page that hurts rankings more than it
-//                        helps. Default 2; a facet can raise it.
-//   explicit pairs     — combination pages (/industry/plumber/gothenburg/)
-//                        are enumerated by the operator, never a cartesian
-//                        product. Two facets with 30 and 200 values is 6000
-//                        routes, nearly all of them one-record pages.
+// Automatic facet routes group public records by scalar field values.
+// min_items is a count threshold, not a measure of content quality.
+// Declared field pairs generate every qualifying value combination; use
+// editable Pages for a curated subset or references with readable labels.
 
 import type { ContentType } from './types.js';
 

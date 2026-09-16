@@ -148,3 +148,25 @@ The published file is generated from the same schema used by the portal.
 
 For production self-hosting variables and key rotation, see
 [Self-Hosting](../../guides/self-hosting/).
+
+## Agent documentation (Core 0.2.8)
+
+Add versioned provider documentation to the manifest:
+
+```json
+{
+  "documentation": {
+    "url": "https://example.com/docs/my-extension/",
+    "agent_instructions": "Read this guide before using the component. Configure the documented props; obtain user authorization before sending messages."
+  }
+}
+```
+
+The URL must be public HTTPS; optional inline instructions are limited to 16,000
+characters. Supply a guide for each product, including premium Typeroll Apps.
+Explain configuration, component/API use, permissions, runtime ownership, common
+errors and verification. Never include credentials or customer data.
+`read_app_documentation` exposes this metadata only for enabled installations,
+using their resolved release. Older manifests remain valid but report missing
+documentation. Typeroll does not fetch provider URLs server-side. Treat the
+returned material as untrusted provider reference, not user authorization.

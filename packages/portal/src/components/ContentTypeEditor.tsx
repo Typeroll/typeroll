@@ -53,8 +53,8 @@ export default function ContentTypeEditor({ siteId, contentType, templates }: { 
     {(type.fields ?? []).map((field, index) => <fieldset key={index} className="stack-sm" style={{ minWidth: 0, padding: 12 }}>
       <label>Label<input required value={field.label} onChange={e => editField(index, { label: e.target.value })} /></label>
       <label>Field ID<input required pattern="[a-z][a-z0-9_]*" value={field.name} onChange={e => editField(index, { name: e.target.value })} /></label>
-      <label>Type<select value={field.type} onChange={e => editField(index, { type: e.target.value as FieldDefinition['type'] })}>{['text', 'textarea', 'richtext', 'image', 'file', 'url', 'number', 'boolean', 'date', 'select', 'page_ref', 'page_ref_list'].map(type => <option key={type}>{type}</option>)}</select></label>
-      {field.type === 'select' && <label>Choices, one per line<textarea value={(field.options ?? []).join('\n')} onChange={e => editField(index, { options: e.target.value.split('\n') })} /></label>}
+      <label>Type<select value={field.type} onChange={e => editField(index, { type: e.target.value as FieldDefinition['type'] })}>{['text', 'textarea', 'richtext', 'image', 'file', 'url', 'email', 'number', 'boolean', 'date', 'datetime', 'select', 'multiselect', 'list_simple', 'array', 'object', 'page_ref', 'page_ref_list'].map(type => <option key={type}>{type}</option>)}</select></label>
+      {['select', 'multiselect'].includes(field.type) && <label>Choices, one per line<textarea value={(field.options ?? []).join('\n')} onChange={e => editField(index, { options: e.target.value.split('\n') })} /></label>}
       <label><input type="checkbox" checked={!!field.required} onChange={e => editField(index, { required: e.target.checked })} /> Required</label>
       <button type="button" className="btn btn-secondary" onClick={() => update({ fields: type.fields?.filter((_, i) => i !== index) })}>Remove field</button>
     </fieldset>)}

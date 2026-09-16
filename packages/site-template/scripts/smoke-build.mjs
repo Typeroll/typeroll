@@ -486,6 +486,11 @@ await (async function directoryRendererScenario() {
       }
       // …and it actually lists its own items, i.e. the listing block inherited
       // the facet scope from the render context.
+      const sitemap = readFileSync(join(tmpOut, 'sitemap.xml'), 'utf8');
+      for (const path of ['/ort/goteborg/', '/ort/uppsala/', '/foretag/acme/']) {
+        if (!sitemap.includes(`https://smoke.test${path}</loc>`)) fail(`[directory-renderer] built route missing from sitemap: ${path}`);
+      }
+      if (sitemap.includes('/ort/malmo/')) fail('[directory-renderer] sitemap advertises an unbuilt facet');
       const facetHtml = readFileSync(join(tmpOut, 'ort', 'goteborg', 'index.html'), 'utf8');
       if (!facetHtml.includes('Acme') || !facetHtml.includes('Beta')) {
         fail('[directory-renderer] facet page did not inherit its scope — items missing');

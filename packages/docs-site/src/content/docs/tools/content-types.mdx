@@ -157,3 +157,12 @@ that are still configured, and allowed-list changes that invalidate saved Page
 overrides. A working copy is checked again when saved. Changing type preserves
 an explicit template only if the new type allows it; reset the Page to its
 current default and save before changing to an incompatible type.
+
+## Directory field and SEO contracts (Core 0.2.8)
+
+`multiselect` stores unique strings from required `options`; `email` and `url`
+are supported string fields. `facet_combinations` is an array of two-element
+field-name arrays. `schema_field_mode: "mapped"` limits automatic JSON-LD to
+explicit `schema_field_map` entries and the canonical envelope.
+See the [directory recipe](../../recipes/directory-building/) for payloads,
+references, noindex and import behavior, including current limitations.

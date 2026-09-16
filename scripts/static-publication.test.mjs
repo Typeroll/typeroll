@@ -347,3 +347,12 @@ test('portable source renders typed Pages, form runtime and language metadata wh
   assert.match(home, /Your name/);
   assert.match(home, /Send request/);
 });
+
+test('frozen content types preserve mapped-only schema without hidden field mappings', () => {
+  const value = input();
+  value.contentTypes = [{ id: 'suppliers', name: 'suppliers', label_singular: 'Supplier', label_plural: 'Suppliers', route_template: '/companies/{slug}', schema_type: 'Organization', schema_field_mode: 'mapped', schema_field_map: { title: 'name', secret: 'email' }, fields: [{ name: 'secret', type: 'email', label: 'Secret', rendered: false }] }];
+  const publication = projectStaticPublication(value, identity);
+  const type = publication.contentTypes.find(type => type.id === 'suppliers');
+  assert.equal(type.schema_field_mode, 'mapped');
+  assert.deepEqual(type.schema_field_map, { title: 'name' });
+});
