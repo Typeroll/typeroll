@@ -1536,6 +1536,9 @@ function collectBlockAssetTypeIds(blocks: Block[], registry: RenderBlocksOptions
   const activeItems = new Set<object>();
   function visit(block: Block, defaultPath = new Set<string>()): void {
     const expanded = expandBlockAlias(block, registry, used);
+    // Page titles render the heading markup even when the page body contains
+    // no standalone heading block. Keep its typography in that page's bundle.
+    if (expanded?.block.type === 'template/page_title') used.add('core/heading');
     if (expanded?.blockType.container === 'repeater') {
       const data = compileResponsiveData(expanded.block, expanded.blockType).flatData;
       const itemType = String(data.item_block ?? '');

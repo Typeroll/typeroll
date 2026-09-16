@@ -781,6 +781,11 @@ describe('collectUsedBlockTypeIds', () => {
 });
 
 describe('collectBlockAssets', () => {
+  it('includes heading typography when a Page title is the only heading', () => {
+    const assets = collectBlockAssets([{ id: 'title', type: 'template/page_title', data: { size: 'article' } }], registry);
+    expect(assets.css).toContain('[data-size="article"]');
+    expect(assets.css).toContain('[data-font-weight="500"]');
+  });
   it('includes alias and repeated item dependencies without unrelated block assets', () => {
     const assets = collectBlockAssets([{ id: 'listing', type: 'core/page_list', data: {} }], registry);
     expect(assets.used_ids).toEqual(['core/page_list', 'core/post_card', 'core/repeater']);
