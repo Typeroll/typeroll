@@ -67,16 +67,23 @@ overhead. Large/unknown files reduce the group automatically. Storage throttling
 halves the next group capacity; healthy transfers restore it. Encoding keeps its
 independent single-operation gate. This changes I/O scheduling, not image recipes.
 
-Warm publication verifies the private receipt even when the public variant is
-already available. Existing verified caches need no conditional write attempts.
-A missing private cache is backfilled once from verified public bytes without
-encoding again; cache bytes are verified when consumed.
+Core 0.2.8 (release candidate) adds one immutable completion receipt per media entry,
+written only after its original, variants and aliases have been verified. Its key
+binds source bytes, storage and destination paths; its contents bind the encoder
+recipe and variant hashes. Editorial changes do not invalidate it. A warm
+preparation reads this small receipt without fetching originals, variants, aliases
+or private-cache receipts, running image metadata inspection, or writing objects.
+Changed paths or aliases require a new receipt and preparation. This relies on
+immutable stored objects; it is not an exhaustive storage-availability audit.
 
-After durable preparation completes, batched materialization is read-only: it
-reads each source original and the required public variant/receipt pairs, checks
-their hashes and writes local static output. It does not repeat alias checks,
-private-cache reads, encoding or storage writes. Missing or corrupt prepared
-variants fail instead of silently repeating preparation.
+Materialization then downloads each required original and variant once, verifies
+its hash and writes local static output. Overlapping retained manifests reuse
+verified local files. Missing or corrupt required bytes still fail publication.
+Media delivered from a separate host without static inclusion needs no binary
+downloads on this path. Older frozen renderers and grants keep their original
+variant-receipt path. The first publication with the new renderer creates the
+completion receipts; existing verified encodings are reused. No image files enter
+Git and no image processing moves to the CMS request.
 
 The supervisor releases its lease when the final preparation checkpoint reaches
 the twelve-minute budget, even if all entries are ready. A fresh claim skips

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — Core 0.2.8 / MCP 0.45.8
+
+- Reuse immutable per-image completion receipts during publication instead of
+  downloading originals, variants and aliases again during preparation.
+- Fetch and verify only artifacts required for static output; reuse local files
+  across overlapping retained media manifests. Preserve source, path, storage
+  and encoder boundaries, bounded grants and interrupted-build recovery.
+
 ## Unreleased — Core 0.2.7 / MCP 0.45.7
 
 - Add opt-in article body spacing to Page content slots and editorial starters.

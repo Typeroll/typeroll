@@ -6,9 +6,10 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { prepareMedia, prepareMediaBatch, mediaTransferGroupSize } from './fixtures/static-publication/media.mjs';
+import { mediaReceiptKey } from './fixtures/static-publication/media-receipt.mjs';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
-async function withMediaFixture(run, count = 1) {
+async function withMediaFixture(run, count = 1, completion = false) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'static-media-'));
   const fetchBefore = globalThis.fetch, envBefore = process.env.TYPEROLL_BUILD_MEDIA_ACCESS;
   const original = count === 1 ? await sharp({ create: { width: 640, height: 480, channels: 3, background: '#1374aa' } }).png().toBuffer() : Buffer.from('synthetic document');
@@ -28,8 +29,9 @@ async function withMediaFixture(run, count = 1) {
     if (count === 1) for (const format of ['webp', 'avif']) { const suffix = `.v1.w320.${entry.sha256.slice(0, 16)}.${format}`; suffixes.push(suffix, suffix + '.receipt.json'); }
     for (const key of [publicKey, aliasKey]) for (const suffix of suffixes) objects[key + suffix] = { get: `${origin}/${key + suffix}`, put: `${origin}/${key + suffix}`, headers: {} };
   }
-  const grants = Buffer.from(JSON.stringify({ publication_id: 'frozen', expires_at: Date.now() + 60_000, account_id: account, original_bucket: 'private', public_bucket: 'public', originals, objects, prepared }));
   const publication = { publication_id: 'frozen', media: entries.map(entry => ({ id: entry.id })), media_manifest: { delivery: 'static', account_id: account, original_bucket: 'private', public_bucket: 'public', site_prefix: prefix, website_host: 'www.example.com', media_host: 'images.example.com', entries } };
+  if (completion) for (const entry of entries) { const key = mediaReceiptKey(publication.media_manifest, entry); objects[key] = { get: `${origin}/${key}`, put: `${origin}/${key}`, headers: {} }; }
+  const grants = Buffer.from(JSON.stringify({ publication_id: 'frozen', expires_at: Date.now() + 60_000, account_id: account, original_bucket: 'private', public_bucket: 'public', originals, objects, prepared }));
   process.env.TYPEROLL_BUILD_MEDIA_ACCESS = JSON.stringify({ grant_url: `${origin}/grant`, sha256: sha(grants) });
   globalThis.fetch = async (address, options = {}) => {
     assert.equal(new URL(address).origin, origin);
@@ -45,6 +47,56 @@ async function withMediaFixture(run, count = 1) {
     await fs.rm(root, { recursive: true, force: true });
   }
 }
+
+test('unchanged publication reads one completion receipt and downloads each required artifact only once', async t => withMediaFixture(async ({ publication, root, entries: [entry] }) => {
+  await prepareMediaBatch(publication, root);
+  const fetchBefore = globalThis.fetch, reads = [];
+  globalThis.fetch = (url, options) => { assert.notEqual(options?.method, 'PUT'); reads.push(new URL(url).pathname.slice(1)); return fetchBefore(url, options); };
+  t.mock.method(sharp.prototype, 'metadata', () => { throw Error('unchanged images need no inspection'); });
+  t.mock.method(sharp.prototype, 'toBuffer', () => { throw Error('unchanged images need no encoding'); });
+  await prepareMediaBatch(publication, root);
+  assert.deepEqual(reads, ['grant', mediaReceiptKey(publication.media_manifest, entry)]);
+  reads.length = 0;
+  const result = await prepareMediaBatch(publication, root, 0, { materialize: true });
+  assert.equal(result.files.length, 3);
+  assert.equal(reads.length, 5, 'one grant, one completion receipt, original and two variants');
+  assert.equal(reads.filter(key => key === entry.source_key).length, 1);
+  assert.equal(reads.some(key => key.includes('/prepared/') || key.startsWith(entry.aliases[0].key) || key.endsWith('.receipt.json')), false);
+  reads.length = 0;
+  await prepareMediaBatch(publication, root, 0, { materialize: true });
+  assert.equal(reads.length, 2, 'overlapping retained manifests reuse local verified files');
+}, 1, true));
+
+test('completion receipts bind source, storage and destinations but ignore editorial changes', async () => withMediaFixture(async ({ publication, entries: [entry] }) => {
+  const manifest = publication.media_manifest, key = mediaReceiptKey(manifest, entry);
+  assert.equal(mediaReceiptKey(manifest, { ...entry, title: 'A new title', alt: 'New alt text' }), key);
+  for (const changed of [{ ...entry, sha256: 'f'.repeat(64) }, { ...entry, public_path: '/new.png' }, { ...entry, aliases: [] }]) assert.notEqual(mediaReceiptKey(manifest, changed), key);
+  assert.notEqual(mediaReceiptKey({ ...manifest, public_bucket: 'other' }, entry), key);
+}));
+
+test('interrupted preparation never publishes a completion receipt; cached artifacts still verify on use', async () => withMediaFixture(async ({ publication, root, stored, entries: [entry] }) => {
+  const fetchBefore = globalThis.fetch, key = mediaReceiptKey(publication.media_manifest, entry);
+  globalThis.fetch = (url, options) => String(url).endsWith('.avif') && options?.method === 'PUT' ? Promise.reject(Error('interrupted')) : fetchBefore(url, options);
+  await assert.rejects(() => prepareMediaBatch(publication, root), /media_transfer_interrupted/);
+  assert.equal(stored.has(key), false);
+  globalThis.fetch = fetchBefore;
+  await prepareMediaBatch(publication, root);
+  assert.ok(stored.has(key));
+  const variant = entry.public_key + `.v1.w320.${entry.sha256.slice(0, 16)}.webp`;
+  stored.set(variant, Buffer.from('corrupt'));
+  await assert.rejects(() => prepareMediaBatch(publication, root, 0, { materialize: true }), /byte verification/);
+  stored.delete(variant);
+  await assert.rejects(() => prepareMediaBatch(publication, root, 0, { materialize: true }), /byte verification/);
+}, 1, true));
+
+test('completion receipts cannot change artifact scope or silently omit variants', async () => withMediaFixture(async ({ publication, root, stored, entries: [entry] }) => {
+  await prepareMediaBatch(publication, root);
+  const key = mediaReceiptKey(publication.media_manifest, entry), receipt = JSON.parse(stored.get(key));
+  for (const invalid of [{ ...receipt, key: 'other' }, { ...receipt, recipe_sha256: 'other' }, { ...receipt, variants: [] }, { ...receipt, variants: [{ ...receipt.variants[0], format: '../escape' }, receipt.variants[1]] }]) {
+    stored.set(key, Buffer.from(JSON.stringify(invalid)));
+    await assert.rejects(() => prepareMediaBatch(publication, root), /completion receipt/);
+  }
+}, 1, true));
 
 test('copies verified static media, preserves aliases and rejects changed immutable bytes', async () => withMediaFixture(async ({ publication, root, stored, entries: [entry] }) => {
   const files = await prepareMedia(publication, root);

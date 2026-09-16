@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
+import { mediaReceiptKey } from './media-receipt.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const cache = 'public, max-age=31536000, immutable';
@@ -130,6 +131,42 @@ export async function prepareMedia(publication, root, options = {}) {
   try {
     const prepareEntry = async entry => {
       if (!entry.source_key.startsWith(`private/${manifest.site_prefix}/originals/`) || !entry.public_key.startsWith(`${manifest.site_prefix}/`)) throw new Error('Media entry escaped its site namespace');
+      const completionKey = mediaReceiptKey(manifest, entry);
+      const canComplete = !options.cacheOnly && (!grants || Boolean(grants.objects[completionKey]));
+      const completionBytes = canComplete ? await read(manifest.public_bucket, completionKey) : null;
+      const media = publication.media.find(item => item.id === entry.id);
+      if (completionBytes) {
+        const completed = JSON.parse(completionBytes.toString());
+        if (completed.format !== 1 || completed.key !== completionKey || completed.recipe_sha256 !== recipeHash ||
+            !Array.isArray(completed.variants)) throw new Error('Invalid media completion receipt');
+        const expected = imageTypes.has(entry.mime_type) ? recipe.widths.filter(width => width < completed.width).flatMap(width => ['webp', 'avif'].map(format => ({ width, format }))) : [];
+        if ((imageTypes.has(entry.mime_type) && (!Number.isSafeInteger(completed.width) || completed.width < 1 || !Number.isSafeInteger(completed.height) || completed.height < 1)) ||
+            expected.length !== completed.variants.length || expected.some((variant, index) => {
+              const actual = completed.variants[index];
+              return actual.width !== variant.width || actual.format !== variant.format || !/^[a-f0-9]{64}$/.test(actual.sha256) || !Number.isSafeInteger(actual.size_bytes) || actual.size_bytes < 1;
+            })) throw new Error('Invalid media completion receipt');
+        media.width = completed.width; media.height = completed.height;
+        media.variants = completed.variants.map(variant => ({ width: variant.width, format: variant.format, size_bytes: variant.size_bytes,
+          cdn_url: entry.cdn_url + `.v1.w${variant.width}.${entry.sha256.slice(0, 16)}.${variant.format}` }));
+        // A durable completion receipt replaces library-wide revalidation. Only
+        // artifacts included in this static output need downloading and hashing.
+        if (!options.prepareOnly && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host)) {
+          const artifacts = [{ key: entry.source_key, original: true, sha256: entry.sha256, size_bytes: entry.size_bytes, path: entry.public_path },
+            ...completed.variants.map(variant => { const suffix = `.v1.w${variant.width}.${entry.sha256.slice(0, 16)}.${variant.format}`; return { ...variant, key: entry.public_key + suffix, path: entry.public_path + suffix }; })];
+          for (const artifact of artifacts) {
+            const destination = path.resolve(root, '.publication-media', artifact.path.slice(1));
+            if (!destination.startsWith(path.resolve(root, '.publication-media') + path.sep)) throw new Error('Invalid media output path');
+            let bytes = await fs.readFile(destination).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+            if (!bytes) bytes = await read(artifact.original ? manifest.original_bucket : manifest.public_bucket, artifact.key, artifact.original);
+            if (!bytes || hash(bytes) !== artifact.sha256 || (artifact.size_bytes && bytes.length !== artifact.size_bytes)) throw new Error('Prepared media failed byte verification');
+            await fs.mkdir(path.dirname(destination), { recursive: true });
+            await fs.writeFile(destination, bytes);
+            sameHostFiles.push({ source: destination, path: artifact.path });
+          }
+        }
+        return;
+      }
+      const completedVariants = [];
       const bytes = await read(manifest.original_bucket, entry.source_key, true);
       if (!bytes || hash(bytes) !== entry.sha256 || (entry.size_bytes && bytes.length !== entry.size_bytes)) throw new Error('Original image failed SHA-256 verification');
       async function store(bytes, key, contentType, publicPath, copyToWebsite = true, verifiedExisting = undefined) {
@@ -156,7 +193,6 @@ export async function prepareMedia(publication, root, options = {}) {
       }
       if (!options.cacheOnly) await store(bytes, entry.public_key, entry.mime_type, entry.public_path);
       for (const alias of options.cacheOnly || options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(bytes, alias.key, entry.mime_type, new URL(alias.url).pathname, false);
-      const media = publication.media.find(item => item.id === entry.id);
       if (imageTypes.has(entry.mime_type)) {
         const metadata = await sharp(bytes).metadata();
         media.width = metadata.width; media.height = metadata.height; media.variants = [];
@@ -219,8 +255,15 @@ export async function prepareMedia(publication, root, options = {}) {
             if (hasReceiptAccess && !options.materializeOnly) await store(receipt, receiptKey, 'application/json', '', false, receiptBytes);
             for (const alias of options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(variant, alias.key + suffix, `image/${format}`, new URL(alias.url).pathname + suffix, false);
             media.variants.push({ width, format, size_bytes: variant.length, cdn_url: entry.cdn_url + suffix });
+            completedVariants.push({ width, format, sha256: hash(variant), size_bytes: variant.length });
           }
         }
+      }
+      // Publish last: a partial or interrupted preparation never counts as ready.
+      if (canComplete && !options.materializeOnly) {
+        const receipt = Buffer.from(JSON.stringify({ format: 1, key: completionKey, recipe_sha256: recipeHash,
+          width: media.width, height: media.height, variants: completedVariants }));
+        await store(receipt, completionKey, 'application/json', '', false);
       }
     };
     // Bounded parallel reads keep final materialization from becoming another

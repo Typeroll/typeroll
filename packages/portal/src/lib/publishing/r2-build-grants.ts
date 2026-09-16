@@ -1,6 +1,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { mediaReceiptKey } from '../../../../../scripts/fixtures/static-publication/media-receipt.mjs';
 
 /** Grants authorize exact objects and methods, never a bucket, listing, deletion, or parent key. */
 export async function createBuildMediaGrants(client: S3Client, manifest: any, publicationId: string, ttlSeconds = 21600) {
@@ -28,10 +29,12 @@ export async function createBuildMediaGrants(client: S3Client, manifest: any, pu
       }
     }
     if (manifest.cache_only) continue;
+    suffixes.push({ suffix: mediaReceiptKey(manifest, entry).slice(entry.public_key.length), mime: 'application/json' });
     for (const base of [entry.public_key, ...(entry.aliases ?? []).map((alias: any) => alias.key)]) {
       if (!base.startsWith(`${manifest.site_prefix}/`) || base.split('/').some((part: string) => part === '..' || part === '.')) throw new Error('Public object escaped publication scope');
       for (const { suffix, mime } of suffixes) {
         if (suffix.endsWith('.receipt.json') && base !== entry.public_key) continue;
+        if (suffix.startsWith('.prepared-v1.') && base !== entry.public_key) continue;
         const key = base + suffix;
         if (objects[key]) continue;
         const headers = { 'content-type': mime, 'cache-control': 'public, max-age=31536000, immutable', 'if-none-match': '*' };
