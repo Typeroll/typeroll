@@ -40,6 +40,8 @@ FROM deps AS builder
 WORKDIR /repo
 
 COPY packages/shared/ packages/shared/
+# Enabled-module guides are embedded into the read-only agent documentation API.
+COPY packages/docs-site/src/content/ packages/docs-site/src/content/
 COPY packages/portal/ packages/portal/
 COPY packages/site-template/ packages/site-template/
 # Source for @typeroll/mcp-server/server — imported by the hosted-MCP

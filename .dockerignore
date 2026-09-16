@@ -21,3 +21,6 @@ node_modules
 packages/site-template/fixtures/organizations/default/sites/default/chat_messages
 packages/site-template/fixtures/organizations/default/sites/default/media
 docs
+
+# The portal embeds public module guides at build time.
+!packages/docs-site/src/content/docs/**
