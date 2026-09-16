@@ -58,6 +58,19 @@ describe('Firestore deploy queue worker', () => {
     expect(item?.available_at).toBe(item?.created_at);
   });
 
+  it('immediately resumes a saved checkpoint without consuming the next phase retry budget', async () => {
+    const store = await setup();
+    await new FirestoreDeployQueue(store).enqueue(args);
+    const current = await queuedAt(store);
+    const execute = vi.fn<() => Promise<'continue' | 'ran'>>().mockResolvedValueOnce('continue').mockResolvedValueOnce('ran');
+    const worker = new FirestoreDeployWorker({ store, execute, workerId: 'checkpoint-worker', now: () => current, maxAttempts: 1 });
+    expect(await worker.tick()).toMatchObject({ deferred: 1 });
+    const queued = (await store.listDocs<FirestoreDeployQueueItem>(FIRESTORE_DEPLOY_QUEUE_PATH))[0];
+    expect(queued).toMatchObject({ attempts: 0, available_at: current.toISOString() });
+    expect(await worker.tick()).toMatchObject({ completed: 1 });
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
   it('does not overwrite an existing lease when enqueue is retried', async () => {
     const store = await setup();
     const queue = new FirestoreDeployQueue(store);

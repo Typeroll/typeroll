@@ -31,3 +31,9 @@ it('Firestore separates the continuation while deduplicating repeated approval d
   expect(queued).toHaveLength(2);
   expect(queued.every(item => item.jobId === 'job')).toBe(true);
 });
+
+it('preserves a requested observation delay in the portable durable queue', async () => {
+  await new FirestoreDeployQueue().enqueue({ ...args, delayMs: 60000 });
+  const queued = (await getStore().listDocs<any>(FIRESTORE_DEPLOY_QUEUE_PATH))[0];
+  expect(Date.parse(queued.available_at) - Date.parse(queued.created_at)).toBe(60000);
+});

@@ -305,3 +305,26 @@ it('rewrites image, srcset, background and download references without exposing 
   expect(result.content.css).toContain('https://site.demos.example.com/media/');
   expect(content.html).toContain(oldUrl);
 });
+
+it('resolves deferred media in the builder and keeps aliases across domain-only preparation', async () => {
+  const { resolvePublicationReferences } = await import('../../../../../scripts/fixtures/static-publication/references.mjs');
+  await getStore().setDoc(`${paths.media('org', 'site')}/image`, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl, sha256: sha,
+    storage: { provider: 'organization_r2', account_id: 'a'.repeat(32), bucket: 'customer-private', key: 'original', state: 'ready' } });
+  const source = { site_url: 'https://first.example.com', pages: [{ html: `<img src="${oldUrl}?width=400">` }] };
+  const first = await publicationMediaManifest('org', 'site', source, 'first.example.com', undefined, { deferReferences: true });
+  expect(first.content.pages).toEqual(source.pages);
+  const frozen = { ...first.content, media_manifest: first.manifest, media: first.media };
+  expect(resolvePublicationReferences(frozen).pages[0].html).toContain(first.media[0].cdn_url);
+  await getStore().deleteDoc(`${paths.media('org', 'site')}/image`);
+  const next = await publicationMediaManifest('org', 'site', frozen, 'next.example.com', frozen, { deferReferences: true });
+  const ready = resolvePublicationReferences({ ...next.content, site_url: 'https://next.example.com', media_manifest: next.manifest, media: next.media });
+  expect(ready.pages[0].html).toContain('https://next.example.com/media/');
+  expect(ready.pages[0].html).not.toContain('/api/sites/');
+});
+
+it('does not accept an unresolved private URL merely because a matching media ID is mapped', async () => {
+  await getStore().setDoc(`${paths.media('org', 'site')}/image`, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl, sha256: sha,
+    storage: { provider: 'organization_r2', account_id: 'a'.repeat(32), bucket: 'customer-private', key: 'original', state: 'ready' } });
+  const source = { pages: [{ html: `${oldUrl} https://wrong.example/api/sites/site/media/image/content` }] };
+  await expect(publicationMediaManifest('org', 'site', source, 'site.example', undefined, { deferReferences: true })).rejects.toMatchObject({ code: 'media_reference_unresolved' });
+});

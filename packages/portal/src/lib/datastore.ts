@@ -4,6 +4,7 @@
 // JSON-on-disk for local dev), extended with write operations.
 
 import fs from 'node:fs';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +17,19 @@ export interface Filter {
   value: unknown;
 }
 
+type SnapshotReader = Pick<ReadWriteStore, 'getDoc' | 'listDocs'>;
+const readContext = new AsyncLocalStorage<ReadWriteStore>();
+function inReadContext<T>(reader: SnapshotReader, work: () => Promise<T>): Promise<T> {
+  const readOnly = new Proxy(reader, { get(target, key) {
+    if (key === 'getDoc' || key === 'listDocs') return target[key].bind(target);
+    return () => { throw new Error('Writes are not allowed while capturing publication content'); };
+  } }) as ReadWriteStore;
+  return readContext.run(readOnly, work);
+}
+
 export interface ReadWriteStore {
+  /** Coherent content reads; writes remain outside the snapshot. */
+  readSnapshot?<T>(root: string, work: () => Promise<T>): Promise<T>;
   getDoc<T = unknown>(path: string): Promise<(T & { id: string }) | null>;
   setDoc(path: string, data: Record<string, any>): Promise<void>;
   /** Atomically create a document only when it does not already exist. */
@@ -62,6 +75,35 @@ class FixtureStore implements ReadWriteStore {
     // Don't pre-create the dir here — the resolver's existence check uses
     // dir-non-empty as a signal of "this is the real fixtures dir". Mutation
     // methods create parent dirs lazily as needed.
+  }
+
+  async readSnapshot<T>(root: string, work: () => Promise<T>): Promise<T> {
+    // Fixture writes use atomic rename. Capture synchronously so local async
+    // writers cannot interleave pages and templates while building this view.
+    const records = new Map<string, Record<string, any>>();
+    const walk = (directory: string, prefix: string) => {
+      if (!fs.existsSync(directory)) return;
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        if (entry.isDirectory()) walk(path.join(directory, entry.name), `${prefix}/${entry.name}`);
+        else if (entry.isFile() && entry.name.endsWith('.json')) {
+          const id = entry.name.slice(0, -5);
+          records.set(`${prefix}/${id}`, { id, ...JSON.parse(fs.readFileSync(path.join(directory, entry.name), 'utf8')) });
+        }
+      }
+    };
+    walk(this.resolve(root).dirPath, root);
+    const assertRoot = (p: string) => { if (p !== root && !p.startsWith(`${root}/`)) throw new Error('Read outside publication snapshot'); };
+    return inReadContext({
+      getDoc: async <D>(p: string) => { assertRoot(p); return structuredClone(records.get(p) ?? null) as (D & { id: string }) | null; },
+      listDocs: async <D>(p: string, opts: { filters?: Filter[]; limit?: number; startAfterId?: string } = {}) => {
+        assertRoot(p);
+        let found = [...records].filter(([key]) => key.slice(0, key.lastIndexOf('/')) === p).map(([, value]) => value);
+        found = found.filter(value => (opts.filters ?? []).every(filter => matchesFilter(value, filter)));
+        if (opts.startAfterId !== undefined) found = found.sort((a, b) => a.id.localeCompare(b.id)).filter(value => value.id > opts.startAfterId!);
+        if (opts.limit) found = found.slice(0, opts.limit);
+        return structuredClone(found) as Array<D & { id: string }>;
+      },
+    }, work);
   }
 
   private async withLock<T>(p: string, fn: () => Promise<T>): Promise<T> {
@@ -268,6 +310,30 @@ class FirestoreStore implements ReadWriteStore {
     })();
   }
 
+  async readSnapshot<T>(root: string, work: () => Promise<T>): Promise<T> {
+    const db = await this.dbPromise;
+    const assertRoot = (p: string) => { if (p !== root && !p.startsWith(`${root}/`)) throw new Error('Read outside publication snapshot'); };
+    return db.runTransaction(transaction => inReadContext({
+      getDoc: async <D>(p: string) => {
+        assertRoot(p);
+        const snap = await transaction.get(db.doc(p));
+        return snap.exists ? { id: snap.id, ...decodeNestedArrays(snap.data() as D) } : null;
+      },
+      listDocs: async <D>(p: string, opts: { filters?: Filter[]; limit?: number; startAfterId?: string } = {}) => {
+        assertRoot(p);
+        let query: FirebaseFirestore.Query = db.collection(p);
+        for (const filter of opts.filters ?? []) query = query.where(filter.field, filter.op, filter.value);
+        if (opts.startAfterId !== undefined) {
+          query = query.orderBy('__name__');
+          if (opts.startAfterId) query = query.startAfter(opts.startAfterId);
+        }
+        if (opts.limit) query = query.limit(opts.limit);
+        const snap = await transaction.get(query);
+        return snap.docs.map(doc => ({ id: doc.id, ...decodeNestedArrays(doc.data() as D) }));
+      },
+    }, work), { readOnly: true });
+  }
+
   async getDoc<T>(p: string): Promise<(T & { id: string }) | null> {
     const db = await this.dbPromise;
     const snap = await db.doc(p).get();
@@ -399,6 +465,8 @@ function defaultFixturesDir(): string {
 let cached: ReadWriteStore | null = null;
 
 export function getStore(): ReadWriteStore {
+  const snapshot = readContext.getStore();
+  if (snapshot) return snapshot;
   if (cached) return cached;
   if (isFirebaseAdminConfigured()) {
     cached = new FirestoreStore();

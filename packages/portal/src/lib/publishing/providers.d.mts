@@ -14,3 +14,5 @@ export function findPublicationDeployment(provider: ProviderClient, projectRoot:
 export function setPagesBuildMediaAccess(provider: ProviderClient, projectRoot: string, environment: string, access: unknown): Promise<any>;
 
 export function ensureGithubMainBranch(client: ProviderClient, options: { owner: string; repo: string; repository: any }): Promise<any>;
+
+export class ProviderTransportError extends Error { constructor(provider: string); provider: string; code: 'provider_transport_unavailable'; }

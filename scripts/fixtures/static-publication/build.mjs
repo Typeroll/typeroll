@@ -6,6 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import { prepareMedia } from './media.mjs';
+import { readPublicationContent } from './content.mjs';
+import { resolvePublicationReferences } from './references.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const manifest = JSON.parse(await fs.readFile(path.join(root, 'publication-manifest.json'), 'utf8'));
@@ -17,7 +19,7 @@ for (const [relative, expected] of Object.entries(manifest.files)) {
   const hash = createHash('sha256').update(await fs.readFile(target)).digest('hex');
   if (hash !== expected) throw new Error(`Publication file differs from its frozen manifest: ${relative}`);
 }
-const publication = JSON.parse(await fs.readFile(path.join(root, 'publication.json'), 'utf8'));
+const publication = resolvePublicationReferences(await readPublicationContent(JSON.parse(await fs.readFile(path.join(root, 'publication.json'), 'utf8')), name => fs.readFile(path.join(root, name), 'utf8'), manifest));
 if (publication.format !== 'typeroll-static-publication' || publication.format_version !== 2) throw new Error('Unsupported publication format');
 let sameHostMedia;
 if (process.env.TYPEROLL_BUILD_MEDIA_PREPARED) {

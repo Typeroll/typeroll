@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Core 0.2.4 / MCP 0.45.4
+
+- Split customer publication into durable source, Git and build-dispatch steps.
+  Reuse the frozen source during recovery, renew active ownership and enqueue
+  scheduled recovery without running builds in the global sweep.
+- Capture version content consistently, store snapshot parts with bounded
+  concurrency and reuse unchanged per-record Git blobs. Rendering remains full.
+- Resolve website/media references in the frozen customer renderer; preserve
+  branch identity, media aliases, old renderer snapshots and independent builds.
+- Observe waiting builds without reloading source or probing unrelated providers.
+  Retry temporary service failures and report safe checkpoint timing metadata.
+- Update publishing documentation and API/MCP guidance, including the narrower
+  source-only meaning of a customer-publishing dry run.
+
 ## Core 0.2.3 / MCP 0.45.3
 
 - Keep article contents in normal flow on mobile while preserving the sticky

@@ -1,3 +1,4 @@
+import { resolvePublicationReferences } from '../../../../../scripts/fixtures/static-publication/references.mjs';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { paths } from '@typeroll/shared';
@@ -5,10 +6,18 @@ import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { connectionPath, ConnectionError } from '../../lib/publishing/connections';
 import { getSiteDomains, saveSiteDomains, siteDomainConfigPath } from '../../lib/publishing/domain-config';
-import { executeCustomerPublication } from '../../lib/publishing/customer-runner';
+import { executeCustomerPublication as executePublicationPhase } from '../../lib/publishing/customer-runner';
 import { captureImpact } from '../../lib/publishing/impact';
 import { previewPublicationImpact } from '../../lib/publishing/impact-preview';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
+
+async function executeCustomerPublication(args: Parameters<typeof executePublicationPhase>[0]) {
+  for (let step = 0; step < 4; step++) {
+    const outcome = await executePublicationPhase(args);
+    if (outcome !== 'continue') return outcome;
+  }
+  throw new Error('Publication did not yield to its build provider');
+}
 
 const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi.fn(), probe: vi.fn(), source: vi.fn(), enqueue: vi.fn(), built: vi.fn(), upload: vi.fn(), verify: vi.fn(), candidateVerification: vi.fn(), verificationPlan: vi.fn(), direct: vi.fn(), deployment: null as any }));
 vi.mock('../../lib/publishing/github-connection', () => ({ githubConfiguration: () => ({ appId: '12', privateKey: 'synthetic-only' }) }));
@@ -205,7 +214,7 @@ it('a domain-only preparation reuses the public snapshot and does not publish la
   await getStore().setDoc(paths.deploy('org', 'site', nextArgs.jobId), { status: 'queued', publication_intent: 'domain_prepare', domain_revision: next.revision, source_publication: previous });
   mocks.deployment = null;
   expect(await executeCustomerPublication(nextArgs)).toBe('deferred');
-  const source = JSON.parse(mocks.push.mock.calls.at(-1)![1].files['publication.json']);
+  const source = resolvePublicationReferences(JSON.parse(mocks.push.mock.calls.at(-1)![1].files['publication.json']));
   expect(source.pages[0].html_content).toContain('https://new.example.com/about?from=home#team');
   expect(source.pages[0].canonical_url).toBe('https://new.example.com/');
   expect(JSON.stringify(source)).not.toContain('Unpublished edit');
@@ -288,6 +297,10 @@ it.each([400, 403, 429, 503])('preserves Cloudflare project creation diagnostics
     return provider(route, options);
   });
   await executeCustomerPublication(args);
+  if (status === 429 || status >= 500) {
+    expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'running', coordinator_retries: 1 });
+    for (let attempt = 0; attempt < 5; attempt++) await executeCustomerPublication(args);
+  }
   const failed = await getStore().getDoc<any>(jobPath);
   expect(failed).toMatchObject({ status: 'failed', failure: {
     provider: 'Cloudflare', http_status: status, provider_codes: [8000001],
@@ -442,4 +455,62 @@ it('requires an engine update before queuing a new shared publication on the leg
   await executeCustomerPublication(args);
   expect(mocks.enqueue).not.toHaveBeenCalled();
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('Update the build engine') });
+});
+
+it('yields after freezing and Git publication and never recaptures intervening edits', async () => {
+  expect(await executePublicationPhase(args)).toBe('continue');
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(mocks.github).not.toHaveBeenCalled();
+  expect(mocks.cloudflare).not.toHaveBeenCalled();
+  const first = await getStore().getDoc<any>(jobPath);
+  expect(first).toMatchObject({ phase: 'source frozen', coordinator: { phase: 'source frozen', duration_ms: expect.any(Number) } });
+  await getStore().updateDoc(paths.page('org', 'site', 'home'), { html_content: '<h1>Later draft edit</h1>' });
+  expect(await executePublicationPhase(args)).toBe('continue');
+  const uploaded = mocks.push.mock.calls[0][1].files['publication.json'];
+  expect(uploaded).toContain('Frozen first version');
+  expect(uploaded).not.toContain('Later draft edit');
+  const frozen = await getStore().getDoc<any>(jobPath);
+  expect(frozen.git_publication.snapshot_digest).toBe(first.git_publication.snapshot_digest);
+  expect(await executePublicationPhase(args)).toBe('deferred');
+  expect(mocks.push).toHaveBeenCalledTimes(1);
+});
+
+it('stops a stale attempt before pushing its prepared tree and preserves the new owner', async () => {
+  await executePublicationPhase(args);
+  const targetPath = `${paths.site('org', 'site')}/publishing_targets/main`;
+  mocks.source.mockImplementationOnce(async frozen => {
+    await getStore().updateDoc(targetPath, { lease_id: 'new-worker', lease_until: Date.now() + 300000 });
+    return { 'publication.json': JSON.stringify(frozen) };
+  });
+  expect(await executePublicationPhase(args)).toBe('deferred');
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'running' });
+  expect(await getStore().getDoc(targetPath)).toMatchObject({ lease_id: 'new-worker' });
+});
+
+it.each(['cloudflare', 'github'] as const)('observes a queued %s build without regenerating source or probing hosting', async provider => {
+  await executePublicationPhase(args);
+  const job = await getStore().getDoc<any>(jobPath);
+  await getStore().updateDoc(jobPath, { git_publication: { ...job.git_publication, build_task_key: 'task', build_provider: provider } });
+  const { buildTasksPath } = await import('../../lib/builds/queue');
+  await getStore().setDoc(`${buildTasksPath('org')}/task`, { status: 'running', deadline: Date.now() + 600000, media_total: 337, media_cursor: 200 });
+  mocks.built.mockResolvedValueOnce(null);
+  vi.clearAllMocks();
+  expect(await executePublicationPhase(args)).toBe('deferred');
+  expect(mocks.built).toHaveBeenCalledWith('org', 'task');
+  expect(mocks.github).not.toHaveBeenCalled(); expect(mocks.cloudflare).not.toHaveBeenCalled();
+  expect(mocks.source).not.toHaveBeenCalled(); expect(mocks.push).not.toHaveBeenCalled();
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ phase: 'preparing media: 200 of 337 files ready; continuing automatically' });
+});
+
+it('retries temporary provider failures from the saved source instead of accepting later edits', async () => {
+  await executePublicationPhase(args);
+  const frozen = await getStore().getDoc<any>(jobPath);
+  mocks.github.mockRejectedValueOnce(new ProviderError('GitHub', 503));
+  expect(await executePublicationPhase(args)).toBe('deferred');
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'running', coordinator_retries: 1 });
+  await getStore().updateDoc(paths.page('org', 'site', 'home'), { html_content: 'Must not leak into the retry' });
+  expect(await executePublicationPhase(args)).toBe('continue');
+  expect(mocks.push.mock.calls.at(-1)![1].files['publication.json']).not.toContain('Must not leak');
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ coordinator_retries: 0, git_publication: { snapshot_digest: frozen.git_publication.snapshot_digest } });
 });

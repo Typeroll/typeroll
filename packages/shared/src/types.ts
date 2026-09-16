@@ -1537,6 +1537,10 @@ export interface DeployCost {
 }
 
 export interface DeployJob {
+  /** Last completed CMS checkpoint, excluding time waiting on the customer's build provider. */
+  coordinator?: { phase: string; duration_ms: number; updated_at: string };
+  /** Last queue observation; scheduled recovery only wakes abandoned chains. */
+  coordinator_observed_at?: string;
   execution_backend?: 'customer_git' | 'organization_cloudflare' | 'organization_github';
   id: string;
   version_id: string;

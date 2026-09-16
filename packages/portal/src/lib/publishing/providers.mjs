@@ -18,6 +18,14 @@ export class ProviderError extends Error {
   }
 }
 
+export class ProviderTransportError extends Error {
+  constructor(provider) {
+    super(`${provider} request did not complete; retry after checking resource status`);
+    this.provider = provider;
+    this.code = 'provider_transport_unavailable';
+  }
+}
+
 export function createProviderClient(provider, token, fetchImpl = fetch) {
   const base = provider === 'GitHub' ? GH : provider === 'Cloudflare' ? CF : null;
   if (!base || typeof token !== 'string' || !token) throw new Error('Missing provider credential');
@@ -40,7 +48,7 @@ export function createProviderClient(provider, token, fetchImpl = fetch) {
         ...(body === undefined ? {} : { body: body instanceof FormData ? body : JSON.stringify(body) }),
       });
     } catch {
-      throw new Error(`${provider} request did not complete; retry after checking resource status`);
+      throw new ProviderTransportError(provider);
     }
     if (missing && response.status === 404) return null;
     if (!response.ok) {
@@ -137,10 +145,15 @@ export async function publishTree(github, { owner, repo, branch = 'main', files,
     ref = main;
   }
   const parent = await github(`${root}/git/commits/${ref.object.sha}`);
+  const previous = await github(`${root}/git/trees/${parent.tree.sha}?recursive=1`);
+  const blobs = new Map((previous.truncated ? [] : previous.tree ?? []).filter(entry => entry.type === 'blob' && entry.mode === '100644').map(entry => [entry.path, entry.sha]));
   const tree = await github(`${root}/git/trees`, {
     method: 'POST',
     // Deliberately omit base_tree: stale and manually added files disappear.
-    body: { tree: treeEntries.map(([name, content]) => ({ path: name, mode: '100644', type: 'blob', content })) },
+    body: { tree: treeEntries.map(([name, content]) => {
+      const sha = createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
+      return { path: name, mode: '100644', type: 'blob', ...(blobs.get(name) === sha ? { sha } : { content }) };
+    }) },
   });
   if (parent.tree.sha === tree.sha) return { commit: ref.object.sha, changed: false, branch };
   const commit = await github(`${root}/git/commits`, {

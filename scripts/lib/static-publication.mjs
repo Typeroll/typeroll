@@ -1,3 +1,4 @@
+import { publicationContentFiles } from '../fixtures/static-publication/content.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -258,7 +259,10 @@ export async function createStaticPublicationProject(publication, destination) {
   }
   await fs.mkdir(path.join(destination, 'scripts/source/extensions'), { recursive: true });
   for (const module of ['assets', 'public-http']) await fs.copyFile(path.join(root, `packages/portal/src/lib/extensions/${module}.ts`), path.join(destination, `scripts/source/extensions/${module}.ts`));
-  await json('publication.json', publication);
+  for (const [name, content] of Object.entries(publicationContentFiles(publication))) {
+    await fs.mkdir(path.dirname(path.join(destination, name)), { recursive: true });
+    await fs.writeFile(path.join(destination, name), content);
+  }
   await fs.writeFile(path.join(destination, '.gitignore'), 'node_modules/\ndist/\n.astro/\n.publication-work/\n.publication-media/\n.env*\n');
   await fs.writeFile(path.join(destination, 'README.md'), '# Generated Typeroll publication\n\nEdit in Typeroll. Publishing replaces this entire generated tree; manual repository changes are unsupported.\n\nRun `npm ci` and `npm run build` using Node 22.23.1. The static output is `dist/`. All renderer source and public content are included. Builds never contact Typeroll Cloud. Images stay in customer-owned R2 storage and are never committed to this repository. Builds read and verify the originals with temporary, object-specific R2 access from `TYPEROLL_BUILD_MEDIA_ACCESS`, generate responsive variants, and publish the assets. Independent builds can supply R2 credentials with account_id, original_bucket, public_bucket, original and public fields in the same environment variable; preserve the original storage and frozen media manifest.\n\nThe frozen publication includes public HTML, blocks, templates, content types and runtime configuration. Forms, Apps and Extensions can depend on the endpoints listed in `runtime_dependencies` in `publication.json`. Building the static pages does not replace those services. This repository is not a full CMS backup.\n\nThe vendored Typeroll renderer and shared code use LICENSE.typeroll. Site content retains its existing terms.\n');
   return { pages: publication.pages.length, partials: publication.partials.length, media: publication.media.length };

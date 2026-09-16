@@ -120,7 +120,7 @@ export const POST: APIRoute = async ({ request }) => {
   //    and a failure the user can't act on is worse than a late deploy. The
   //    job doc is still `queued`, so the idempotency check above lets the
   //    redelivered task run.
-  if (outcome === 'deferred') {
+  if (outcome !== 'ran') {
     const pending = await getStore().getDoc<DeployJob>(paths.deploy(payload.orgId, payload.siteId, payload.jobId));
     if (pending && isExternalDeploy(pending) && ['queued', 'running'].includes(pending.status)) {
       // Each observation has a deterministic successor. A duplicate delivery
@@ -128,7 +128,7 @@ export const POST: APIRoute = async ({ request }) => {
       const dispatchKey = createHash('sha256').update(`${payload.dispatchKey ?? payload.jobId}:observe`).digest('hex').slice(0, 16);
       try {
         await getDeployQueue().enqueue({ orgId: payload.orgId, siteId: payload.siteId, versionId: payload.versionId,
-          jobId: payload.jobId, environment: payload.environment, dryRun: payload.dryRun === true, dispatchKey, delayMs: 60000 });
+          jobId: payload.jobId, environment: payload.environment, dryRun: payload.dryRun === true, dispatchKey, delayMs: outcome === 'continue' ? 0 : 60000 });
         return new Response(JSON.stringify({ ok: true, continued: 'external_publication' }), { headers: { 'Content-Type': 'application/json' } });
       } catch {
         return new Response(JSON.stringify({ ok: false, deferred: 'observation_queue_unavailable' }), { status: 503, headers: { 'Retry-After': '60' } });

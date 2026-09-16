@@ -128,8 +128,8 @@ export class FirestoreDeployWorker {
 
         try {
           const outcome = await this.execute(payload(candidate), { slotWaitMs: slotWaitMs() });
-          if (outcome === 'deferred') {
-            await this.requeue(candidate.id, attempts, 'no build slot available');
+          if (outcome !== 'ran') {
+            await this.requeue(candidate.id, attempts, outcome === 'continue' ? 'publication checkpoint' : 'waiting for execution', outcome === 'continue' ? 0 : undefined);
             result.deferred += 1;
           } else {
             await this.store.deleteDoc(queueItemPath(candidate.id));
@@ -161,10 +161,11 @@ export class FirestoreDeployWorker {
     return result;
   }
 
-  private async requeue(id: string, attempts: number, error: string): Promise<void> {
-    const backoffMs = Math.min(60_000, 1_000 * (2 ** Math.max(0, attempts - 1)));
+  private async requeue(id: string, attempts: number, error: string, delayMs?: number): Promise<void> {
+    const backoffMs = delayMs ?? Math.min(60_000, 1_000 * (2 ** Math.max(0, attempts - 1)));
     await this.store.updateDoc(queueItemPath(id), {
       status: 'queued',
+      attempts: delayMs === 0 ? 0 : attempts,
       available_at: new Date(this.now().valueOf() + backoffMs).toISOString(),
       lease_owner: null,
       lease_expires_at: null,

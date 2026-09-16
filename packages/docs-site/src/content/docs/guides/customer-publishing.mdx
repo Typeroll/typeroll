@@ -272,6 +272,39 @@ progress. The link appears automatically after verification.
 The repository is generated output. Edit through Typeroll's UI, API or MCP.
 Manual repository changes are unsupported and may be replaced by a publication.
 
+### Fast handoff and recovery
+
+Starting with Core 0.2.4, customer publishing separates source capture, the Git
+commit and build dispatch into short, resumable steps. Typeroll reads a consistent
+view of the selected version and its inherited content, excludes private drafts,
+and freezes the public source with its renderer and destination addresses.
+Edits saved after this snapshot belong to a later deployment.
+
+The customer’s GitHub or Cloudflare engine resolves website and media addresses,
+prepares images, builds the static site and verifies its output. Waiting for that
+engine does not keep a CMS request open. Retries reuse the saved snapshot and Git
+commit. Leave the page open or return later; UI, API and MCP show the same job.
+Do not start a duplicate deployment just because the external build is still running.
+
+Generated repositories keep pages, templates and other content records in
+`content/`, indexed by `publication.json`. Unchanged Git files are reused; removed
+pages and unsupported manual files are removed from the generated tree. The build
+still renders the whole public site. This optimization does not claim partial
+HTML builds. Images stay in R2, outside Git. The repository contains its frozen
+renderer, content, address mappings and integrity manifest, so independent builds
+do not fetch mutable content from the CMS.
+
+The CMS still reads and validates the public source before handing it off. Large
+sites and provider latency can take longer; this is not a fixed publication-time
+guarantee. API/MCP status can include `job.coordinator` with the last completed CMS
+checkpoint and its attempt duration. It excludes time waiting for an external
+build and is not the site’s total build duration.
+
+For customer publishing, `dry_run` validates and prepares the source without
+pushing Git or starting an external build. It does **not** prove that Astro will
+build successfully. Other self-hosted deployment adapters may run a local build
+without uploading it. Check the job’s phase to see which validation completed.
+
 ## Website and media hosts
 
 Open **Site settings → Publishing → Website and media addresses**. Set the

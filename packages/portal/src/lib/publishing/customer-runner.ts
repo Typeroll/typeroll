@@ -1,3 +1,4 @@
+import { mapPublicationParts } from './parallel';
 import { ensureGithubMainBranch } from './providers.mjs';
 import { createGithubRepository } from './github-user';
 import { verifyManagedProject } from './managed-migration';
@@ -13,7 +14,7 @@ import { getStore } from '../datastore';
 import { getConnection, ConnectionError } from './connections';
 import { githubConfiguration } from './github-connection';
 import { cloudflareClient } from './cloudflare-oauth';
-import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment, digest, ProviderError } from './providers.mjs';
+import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment, digest, ProviderError, ProviderTransportError } from './providers.mjs';
 import { getSiteDomains, samePublicationHosts, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { resolvePublicationVersion } from './publication-version';
 import { assertPublishingReady } from './readiness';
@@ -40,7 +41,7 @@ interface GitPublication extends CustomerVerification {
   build_provider?: BuildProvider; build_engine_revision?: string; build_task_key?: string | null; static_checks_key?: string | null;
   hosting_group_id?: string; hosting_group_revision?: string;
   owner: string; repo: string; project: string; account_id: string; branch: string;
-  publication_id: string; snapshot_chunks: number; snapshot_digest: string; content_cutoff: string;
+  publication_id: string; snapshot_chunks: number; snapshot_digest: string; snapshot_format?: 1; content_cutoff: string;
   domain_revision: string; website_host: string; commit?: string | null; deployment_id?: string | null;
   release_branch?: 'main' | null; snapshot_job_id?: string; cache_purged_deployment?: string; cache_purged_hosts?: string[];
 }
@@ -57,7 +58,7 @@ function projectCreationMessage(error: ProviderError, publication?: GitPublicati
 }
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
-type GitJob = DeployJob & { observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
+type GitJob = DeployJob & { coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const attemptStarted = performance.now();
@@ -82,14 +83,34 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     target => (!target.job_id || target.job_id === args.jobId) && target.lease_until < Date.now(),
     { job_id: args.jobId, lease_id: lease, lease_until: Date.now() + 300_000 });
   if (!acquired) return 'deferred';
-  const assertLease = async () => {
-    if (!await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease && target.lease_until > Date.now(), { lease_until: Date.now() + 300_000 })) throw new Error('Publication lease expired');
+  let leaseLost = false;
+  let renewal: Promise<void> = Promise.resolve();
+  const assertLease = () => {
+    renewal = renewal.then(async () => {
+      if (leaseLost || !await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease && target.lease_until > Date.now(), { lease_until: Date.now() + 300_000 })) {
+        leaseLost = true;
+        throw new ConnectionError('Publication ownership changed; continuing from the saved checkpoint.', 409, 'publication_lease_lost');
+      }
+    });
+    return renewal;
+  };
+  // Keep ownership during an active provider request. Waiting builds release
+  // ownership and the HTTP request; this timer never waits for a remote build.
+  const heartbeat = setInterval(() => { void assertLease().catch(() => { leaseLost = true; }); }, 30_000);
+  heartbeat.unref?.();
+  const checkpoint = async (phase: string, completedPhase = phase, outcome: DeployRunOutcome = 'continue'): Promise<DeployRunOutcome> => {
+    await assertLease();
+    const elapsed = Math.round(performance.now() - attemptStarted);
+    await store.updateDoc(jobPath, { phase, coordinator_retries: 0, coordinator: { phase: completedPhase, duration_ms: elapsed, updated_at: new Date().toISOString() } });
+    console.info(JSON.stringify({ event: 'publication_checkpoint', job_id: args.jobId, phase: completedPhase, duration_ms: elapsed }));
+    return outcome;
   };
   let terminal = false;
   const releaseBuildAccess = async () => {
     for (const environment of ['production', 'preview']) await store.compareAndUpdateDoc<any>(`${paths.site(args.orgId, args.siteId)}/publishing_build_slots/${environment}`, value => value.job_id === args.jobId, { job_id: null });
   };
   try {
+    await store.updateDoc(jobPath, { coordinator_observed_at: new Date().toISOString() });
     const buildTask = job.git_publication?.build_task_key
       ? await store.getDoc<BuildTask>(`${buildTasksPath(args.orgId)}/${job.git_publication.build_task_key}`) : null;
     const observationStart = Math.max(Date.parse(job.observation_started_at ?? job.started_at), buildTask?.completed_at ?? 0);
@@ -98,6 +119,16 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     // public-verification timeout after a long media preparation phase.
     if (buildTask && ['failed', 'cancelled'].includes(buildTask.status)) await completedBuild(args.orgId, job.git_publication!.build_task_key!);
     if (!preparingBuild && Number.isFinite(observationStart) && Date.now() - observationStart > 45 * 60_000) throw new ConnectionError(job.verification_message ? `Publication verification stopped after 45 minutes. ${job.verification_message.replace('Public verification will retry automatically.', '').trim()} Contact support with deployment ${args.jobId}.` : 'Publication verification did not finish within 45 minutes. Check the Cloudflare build and domain status, then retry.', 409, 'publication_observation_timeout');
+    if (buildTask && ['queued', 'running'].includes(buildTask.status)) {
+      if (!await completedBuild(args.orgId, job.git_publication!.build_task_key!)) {
+        const remaining = buildTask.media_total && (buildTask.media_cursor ?? 0) < buildTask.media_total;
+        await assertLease();
+        await store.updateDoc(jobPath, { phase: remaining
+          ? `preparing media: ${buildTask.media_cursor ?? 0} of ${buildTask.media_total} files ready; continuing automatically`
+          : job.git_publication?.build_provider === 'github' ? 'building on GitHub Actions' : 'building on Cloudflare' });
+        return 'deferred';
+      }
+    }
     if (args.environment === 'staging' && args.versionId === 'main') throw new ConnectionError('Select a site version to publish a test deployment. The main version publishes the live website.', 409, 'publication_version_required');
     await assertPublishingReady(args.orgId, args.siteId, args.versionId, { checkBuild: false });
     const group = await (args.dryRun ? siteHostingGroup : lockSiteHostingGroup)(args.orgId, args.siteId);
@@ -106,13 +137,6 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       getOrganizationDomains(args.orgId), store.getDoc<Site>(paths.site(args.orgId, args.siteId)),
     ]);
     const identity = gitConnection.github!;
-    const config = githubConfiguration();
-    const github = await githubInstallationClient({ appId: config.appId, installationId: identity.installation_id, owner: identity.owner, privateKey: config.privateKey });
-    const cloudflare = await cloudflareClient(args.orgId, fetch, undefined, group.id);
-    if (site?.publishing_migration) {
-      if (site.publishing_migration.account_id !== cfConnection.cloudflare?.account_id || site.publishing_migration.hosting_group_id !== group.id) throw new ConnectionError('The migrated Pages project belongs to a different hosting account. Restore its original Hosting Group connection.', 409, 'managed_account_mismatch');
-      await verifyManagedProject(cloudflare, site.publishing_migration);
-    }
     let publication = job.git_publication;
     // Older Firestore updates merged omitted nested fields, retaining the preview commit.
     // Resume that frozen candidate instead of waiting for a main build that was never pushed.
@@ -144,10 +168,13 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         frozen.authored_noindex = resolved.settings?.sitewide_noindex === true;
       }
       // Media originals and metadata for a domain-only build come from the public snapshot too.
-      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined);
+      const deferReferences = job.publication_intent !== 'domain_prepare' || Boolean(prior?.reference_mapping);
+      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences });
       // Compare the exact media records frozen into the manifest, without a second datastore read.
       const impactSnapshot = job.publication_intent === 'domain_prepare' ? null : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
-      frozen = retargetWebsite(mapped.content, [site?.domain ? `https://${site.domain}` : '', prior?.site_url ?? ''], `https://${host}`);
+      const previousOrigins = [site?.domain ? `https://${site.domain}` : '', prior?.site_url ?? '', ...(prior?.reference_mapping?.website_origins ?? [])].filter(Boolean);
+      frozen = deferReferences ? { ...mapped.content, reference_mapping: { format: 1, media: (mapped.content as any).reference_mapping?.media ?? [], website_origins: [...new Set(previousOrigins)] } }
+        : retargetWebsite(mapped.content, previousOrigins, `https://${host}`);
       frozen = { ...frozen, site_url: `https://${host}`, site: { ...frozen.site, domain: host }, media: mapped.media, media_manifest: mapped.manifest };
       if (impactSnapshot) {
         frozen.source_impact_snapshot = impactSnapshot;
@@ -183,7 +210,16 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         publication.branch = `version-domain-${domains.revision.replaceAll('-', '').slice(0, 16)}`;
         publication.release_branch = 'main';
       }
+      await assertLease();
       await store.updateDoc(jobPath, { git_publication: publication });
+      return await checkpoint('source frozen');
+    }
+    const config = githubConfiguration();
+    const github = await githubInstallationClient({ appId: config.appId, installationId: identity.installation_id, owner: identity.owner, privateKey: config.privateKey });
+    const cloudflare = await cloudflareClient(args.orgId, fetch, undefined, group.id);
+    if (site?.publishing_migration) {
+      if (site.publishing_migration.account_id !== cfConnection.cloudflare?.account_id || site.publishing_migration.hosting_group_id !== group.id) throw new ConnectionError('The migrated Pages project belongs to a different hosting account. Restore its original Hosting Group connection.', 409, 'managed_account_mismatch');
+      await verifyManagedProject(cloudflare, site.publishing_migration);
     }
     if ((publication.hosting_group_id ?? 'default') !== group.id || (publication.hosting_group_revision && publication.hosting_group_revision !== group.revision) || publication.account_id !== cfConnection.cloudflare?.account_id || publication.owner !== identity.owner || publication.domain_revision !== domains.revision) {
       throw new ConnectionError('Publishing accounts or domain settings changed. Start a new deployment.', 409);
@@ -234,7 +270,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const pushed = await publishTree(github, { owner: publication.owner, repo: publication.repo, branch: publication.branch, files, message: `Publish ${args.versionId} ${publication.publication_id.slice(0, 12)}` });
       publication = { ...publication, commit: pushed.commit };
       // Record the Git commit before Pages setup: recovery must never capture newer CMS edits.
-      await store.updateDoc(jobPath, { git_publication: publication, phase: publication.build_engine_revision ? 'preparing static build' : 'connecting Cloudflare build' });
+      await assertLease();
+      await store.updateDoc(jobPath, { git_publication: publication });
+      return await checkpoint(publication.build_engine_revision ? 'preparing static build' : 'connecting Cloudflare build', 'source published');
     }
     let project = await cloudflare(projectRoot, { missing: true });
     if (publication.build_engine_revision) {
@@ -261,8 +299,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         const source = await publicationSourceTree(await readSnapshot(args, publication));
         const queued = await enqueueBuild(engine, { org_id: args.orgId, site_id: args.siteId, version_id: args.versionId, job_id: args.jobId,
           publication_id: publication.publication_id, commit: publication.commit, branch: publication.branch }, source);
+        await assertLease();
         publication = { ...publication, build_task_key: queued.key };
-        await store.updateDoc(jobPath, { git_publication: publication, execution_backend: publication.build_provider === 'github' ? 'organization_github' : 'organization_cloudflare', phase: publication.build_provider === 'github' ? 'building on GitHub Actions' : 'building on Cloudflare' });
+        await store.updateDoc(jobPath, { git_publication: publication, execution_backend: publication.build_provider === 'github' ? 'organization_github' : 'organization_cloudflare' });
+        return await checkpoint(publication.build_provider === 'github' ? 'building on GitHub Actions' : 'building on Cloudflare', 'build dispatched', 'deferred');
       }
       if (!deployment || !publication.static_checks_key) {
         const result = await completedBuild(args.orgId, publication.build_task_key!);
@@ -395,7 +435,6 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const finished = new Date().toISOString();
     const stillOwned = await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease && target.lease_until > Date.now(), { lease_until: Date.now() + 60_000 });
     if (!stillOwned) return 'deferred';
-    await store.updateDoc(jobPath, { status: 'succeeded', phase: 'live', deploy_url: `https://${publication.website_host}`, verification_message: null, static_probe: null, finished_at: finished });
     await store.updateDoc(paths.version(args.orgId, args.siteId, args.versionId), { last_deployed_at: finished, last_deployed_content_at: publication.content_cutoff, deploy_url: `https://${publication.website_host}` });
     if (args.versionId === 'main') {
       await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === publication!.domain_revision,
@@ -403,23 +442,35 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
           media_aliases: [...domains.media_aliases, ...(domains.active && !domains.media_aliases.some(alias => samePublicationHosts(alias, domains.active!)) ? [domains.active] : [])] });
       await store.updateDoc(paths.site(args.orgId, args.siteId), { domain: publication.website_host, domain_status: 'live', domain_verified_at: finished });
     }
-    for (const entry of frozen.media_manifest?.entries ?? []) {
+    await mapPublicationParts<any, void>(frozen.media_manifest?.entries ?? [], async entry => {
       const mediaPath = `${paths.media(args.orgId, args.siteId)}/${entry.id}`;
       const aliases = [entry.cdn_url, ...entry.aliases.map((alias: any) => alias.url)];
       for (const width of [320, 640, 1024, 1920]) for (const format of ['webp', 'avif']) aliases.push(`${entry.cdn_url}.v1.w${width}.${entry.sha256.slice(0, 16)}.${format}`);
       const record = await store.getDoc<any>(mediaPath);
-      if (record) await store.compareAndUpdateDoc<any>(mediaPath, current => current.sha256 === entry.sha256 && JSON.stringify(current.source_aliases) === JSON.stringify(record.source_aliases),
+      if (record && aliases.some(alias => !(record.source_aliases ?? []).includes(alias))) await store.compareAndUpdateDoc<any>(mediaPath, current => current.sha256 === entry.sha256 && JSON.stringify(current.source_aliases) === JSON.stringify(record.source_aliases),
         { source_aliases: [...new Set([...(record.source_aliases ?? []), ...aliases])] });
-    }
+    });
     await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease, { last_publication: publication });
+    await assertLease();
+    await store.updateDoc(jobPath, { status: 'succeeded', phase: 'live', deploy_url: `https://${publication.website_host}`, verification_message: null, static_probe: null, finished_at: finished });
     terminal = true;
     return 'ran';
   } catch (error) {
     const target = await store.getDoc<Target>(targetPath);
-    if (target?.lease_id !== lease) return 'deferred';
+    if (leaseLost || target?.lease_id !== lease || target.lease_until <= Date.now()) return 'deferred';
     const failedJob = await store.getDoc<GitJob>(jobPath);
+    const transportCode = (error as any)?.code;
+    const temporary = error instanceof ProviderTransportError ||
+      (error instanceof ProviderError && (error.status === 429 || error.status >= 500)) ||
+      [4, 8, 10, 13, 14, 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN'].includes(transportCode);
+    if (temporary && (failedJob?.coordinator_retries ?? 0) < 5) {
+      await assertLease();
+      await store.updateDoc(jobPath, { coordinator_retries: (failedJob?.coordinator_retries ?? 0) + 1 });
+      console.info(JSON.stringify({ event: 'publication_retry', job_id: args.jobId, phase: failedJob?.phase, code: error instanceof ProviderTransportError ? error.code : 'publication_service_unavailable' }));
+      return 'deferred';
+    }
     const failure = { stage: failedJob?.phase ?? 'connecting publishing accounts',
-      code: error instanceof ConnectionError ? error.code : error instanceof ProviderError ? 'provider_request_failed' : 'publication_internal_error',
+      code: error instanceof ProviderTransportError ? error.code : error instanceof ConnectionError ? error.code : error instanceof ProviderError ? 'provider_request_failed' : 'publication_internal_error',
       ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes } : {}),
       ...(failedJob?.git_publication ? { hosting_group_id: failedJob.git_publication.hosting_group_id ?? 'default', hosting_account_id: failedJob.git_publication.account_id, project: failedJob.git_publication.project } : {}) };
     console.error(JSON.stringify({ event: 'customer_publication_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, ...failure }));
@@ -435,6 +486,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     terminal = true;
     return 'ran';
   } finally {
+    clearInterval(heartbeat);
+    await renewal.catch(() => {});
     try { await recordCustomerCompute(args.orgId, args.siteId, args.jobId, performance.now() - attemptStarted); }
     catch { console.error(JSON.stringify({ event: 'customer_publication_cost_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId })); }
     if (terminal) await releaseBuildAccess();

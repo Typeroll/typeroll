@@ -14,6 +14,7 @@
 // Branch content goes live by merging, and a release-level schedule is the
 // Releases feature's job (world-class plan #9), which reuses this sweep.
 
+import { createHash } from 'node:crypto';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { DeployJob, Page, Site } from '@typeroll/shared';
 import { getStore } from './datastore';
@@ -72,10 +73,16 @@ export async function runPublishSweep(now: Date = new Date()): Promise<SweepResu
         // Reconcile durable external builds even if a Cloud Tasks delivery exhausted its retry window.
         const publishingSite = await store.getDoc<Site>(paths.site(org.id, site.id));
         if (publishingSite?.publishing_mode === 'customer_git') {
-          const pending = (await store.listDocs<DeployJob>(paths.deploys(org.id, site.id))).find(job => isExternalDeploy(job) && ['queued', 'running'].includes(job.status));
-          if (pending) {
-            const { executeCustomerPublication } = await import('./publishing/customer-runner');
-            await executeCustomerPublication({ orgId: org.id, siteId: site.id, jobId: pending.id, versionId: pending.version_id, environment: pending.environment, dryRun: pending.dry_run });
+          const pendingJobs = (await store.listDocs<DeployJob>(paths.deploys(org.id, site.id))).filter(job => isExternalDeploy(job) && ['queued', 'running'].includes(job.status) && job.phase !== 'awaiting domain cutover approval');
+          for (const pending of pendingJobs) {
+            const observed = Date.parse(pending.coordinator_observed_at ?? pending.started_at);
+            if (Number.isFinite(observed) && now.valueOf() - observed < 180000) continue;
+            const target = await store.getDoc<{ lease_until: number }>(`${paths.site(org.id, site.id)}/publishing_targets/${pending.version_id}`);
+            if (target && target.lease_until > now.valueOf()) continue;
+            // Recovery only enqueues work. Never run a site coordinator inside
+            // the global sweep: one slow provider must not hold up every site.
+            const dispatchKey = createHash('sha256').update(`${pending.id}:recover:${Math.floor(now.valueOf() / 300000)}`).digest('hex').slice(0, 16);
+            await getDeployQueue().enqueue({ orgId: org.id, siteId: site.id, jobId: pending.id, versionId: pending.version_id, environment: pending.environment, dryRun: pending.dry_run, dispatchKey });
           }
         }
         // Pages (main version — schedules target the live site).

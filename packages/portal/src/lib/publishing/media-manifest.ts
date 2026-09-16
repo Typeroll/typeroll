@@ -1,3 +1,4 @@
+import { findReferences, replaceReferences } from '../../../../../scripts/fixtures/static-publication/references.mjs';
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getConnection, ConnectionError } from './connections';
@@ -23,25 +24,11 @@ function assertPublicMediaReferences(content: unknown) {
 }
 
 export function replacePublicationReferences<T>(value: T, replacements: Map<string, string>): T {
-  const ordered = [...replacements.entries()].sort(([a], [b]) => b.length - a.length);
-  const visit = (input: unknown, field = ''): unknown => {
-    if (typeof input === 'string' && field !== 'canonical_url') {
-      let result = input;
-      for (const [from, to] of ordered) {
-        const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        result = result.replace(new RegExp(`${escaped}(?=[?#\\s"'<>),\\]\\\\]|$)`, 'g'), () => to);
-      }
-      return result;
-    }
-    if (Array.isArray(input)) return input.map(item => visit(item));
-    if (input && typeof input === 'object') return Object.fromEntries(Object.entries(input).map(([key, item]) => [key, visit(item, key)]));
-    return input;
-  };
-  return visit(value) as T;
+  return replaceReferences(value, replacements);
 }
 
 /** Image bytes and temporary credentials are excluded; Git contains identity, hashes and public routing only. */
-export async function publicationMediaManifest<T extends Record<string, any>>(orgId: string, siteId: string, content: T, websiteHost: string, previousPublication?: Record<string, any>) {
+export async function publicationMediaManifest<T extends Record<string, any>>(orgId: string, siteId: string, content: T, websiteHost: string, previousPublication?: Record<string, any>, options: { deferReferences?: boolean } = {}) {
   const [all, connection, domains, organization, prefix] = await Promise.all([
     getStore().listDocs<Media>(paths.media(orgId, siteId)), getConnection(orgId, 'cloudflare'), getSiteDomains(orgId, siteId),
     getOrganizationDomains(orgId), siteMediaPrefix(orgId, siteId),
@@ -54,7 +41,9 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     })));
   }
   const serialized = JSON.stringify(content);
-  const media = all.filter(item => [item.cdn_url, ...(item.source_aliases ?? []), ...(item.variants ?? []).map(variant => variant.cdn_url)].some(url => url && serialized.includes(url)));
+  const references = (item: Media) => [item.cdn_url, ...(item.source_aliases ?? []), ...(item.variants ?? []).map(variant => variant.cdn_url)].filter(Boolean);
+  const found = findReferences(serialized, all.flatMap(references));
+  const media = all.filter(item => references(item).some(url => found.has(url)));
   if (!media.length) { assertPublicMediaReferences(content); return { content, media: [], sourceMedia: [], manifest: null }; }
   if (!connection.cloudflare?.public_bucket || !connection.media_ready) throw new ConnectionError('Complete private and public R2 storage setup in Publishing.', 409, 'media_storage_required');
   const host = content.git_branch && content.git_branch !== 'main' ? websiteHost : domains.desired.media_host || websiteHost;
@@ -93,8 +82,19 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
       cdn_url: url, variants: [], source_key: item.storage.key, sha256: item.sha256, size_bytes: item.size_bytes,
       public_key: publicKey, public_path: publicPath, aliases };
   });
-  const publicContent = replacePublicationReferences(content, replacements);
-  assertPublicMediaReferences(publicContent);
+  for (const [alias, previousTarget] of previousPublication?.reference_mapping?.media ?? []) {
+    const nextTarget = replacements.get(previousTarget);
+    if (nextTarget) replacements.set(alias, nextTarget);
+  }
+  const publicContent = options.deferReferences
+    ? { ...content, reference_mapping: { format: 1, media: [...replacements], website_origins: [] } }
+    : replacePublicationReferences(content, replacements);
+  if (options.deferReferences) {
+    // Validate exact references, not only media IDs: another host can contain
+    // the same private path without being a registered source alias.
+    const { reference_mapping: _mapping, ...authored } = content;
+    if (privateMediaReferences(authored).length) assertPublicMediaReferences(replacePublicationReferences(authored, replacements));
+  } else assertPublicMediaReferences(publicContent);
   await markOrganizationMediaHostUsed(orgId, organization);
   return { content: publicContent, media: entries, sourceMedia: media,
     manifest: { delivery, account_id: connection.cloudflare.account_id, original_bucket: connection.cloudflare.bucket, public_bucket: connection.cloudflare.public_bucket,

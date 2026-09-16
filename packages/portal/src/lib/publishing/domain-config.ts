@@ -127,17 +127,15 @@ export async function canReplaceOrganizationMediaHost(orgId: string, current: Or
     if ((await store.listDocs(paths.media(orgId, site.id), { limit: 1 })).length) return false;
     // Older releases did not record host use. Include every version's frozen
     // deployments: deleting a CMS media record does not unpublish its URLs.
-    for (const job of await store.listDocs<{ git_publication?: { snapshot_chunks: number; snapshot_digest: string } }>(paths.deploys(orgId, site.id))) {
+    for (const job of await store.listDocs<{ git_publication?: { snapshot_chunks: number; snapshot_digest: string; snapshot_format?: 1 } }>(paths.deploys(orgId, site.id))) {
       if (!job.git_publication) continue;
       const publication = job.git_publication;
       if (!Number.isInteger(publication.snapshot_chunks) || publication.snapshot_chunks < 1 || publication.snapshot_chunks > 250) return false;
-      let snapshot = '';
-      for (let i = 0; i < publication.snapshot_chunks; i++) {
-        const chunk = await store.getDoc<{ data: string }>(`${paths.deploy(orgId, site.id, job.id)}/snapshot_chunks/${String(i).padStart(4, '0')}`);
-        if (typeof chunk?.data !== 'string') return false;
-        snapshot += chunk.data;
-      }
-      if (createHash('sha256').update(snapshot).digest('hex') !== publication.snapshot_digest) return false;
+      let snapshot: string;
+      try {
+        const { readSnapshot } = await import('./publication-snapshot');
+        snapshot = JSON.stringify(await readSnapshot({ orgId, siteId: site.id, jobId: job.id }, publication));
+      } catch { return false; }
       if (snapshot.includes(`https://${current.media_host}/`) || snapshot.includes(`http://${current.media_host}/`)) return false;
     }
   }

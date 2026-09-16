@@ -1,3 +1,5 @@
+import { publicationContentFiles } from '../../../../../scripts/fixtures/static-publication/content.mjs';
+import { mapPublicationParts } from './parallel';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { digest } from './providers.mjs';
@@ -19,17 +21,17 @@ async function templateFor(coreCommit: string): Promise<PublicationTemplate> {
     const text = await fs.readFile(location, 'utf8');
     const count = Math.ceil(text.length / 120000);
     if (count > 200) throw new Error('Publication renderer exceeds the template limit');
-    for (let index = 0; index < count; index++) await store.createDocIfMissing(`${root}/chunks/${index}`, { data: text.slice(index * 120000, (index + 1) * 120000) });
+    await mapPublicationParts(Array.from({ length: count }, (_, i) => i), index => store.createDocIfMissing(`${root}/chunks/${index}`, { data: text.slice(index * 120000, (index + 1) * 120000) }));
     await store.createDocIfMissing(root, { count, digest: digest(text) });
     metadata = (await store.getDoc<{ count: number; digest: string }>(root))!;
   }
   if (!Number.isSafeInteger(metadata.count) || metadata.count < 1 || metadata.count > 200) throw new Error('Invalid frozen renderer');
-  let text = '';
-  for (let index = 0; index < metadata.count; index++) {
+  const parts = await mapPublicationParts(Array.from({ length: metadata.count }, (_, i) => i), async index => {
     const chunk = await store.getDoc<{ data: string }>(`${root}/chunks/${index}`);
     if (!chunk) throw new Error('Frozen renderer is incomplete');
-    text += chunk.data;
-  }
+    return chunk.data;
+  });
+  const text = parts.join('');
   if (digest(text) !== metadata.digest) throw new Error('Frozen renderer failed integrity verification');
   const template = JSON.parse(text) as PublicationTemplate;
   if (template.format !== 'typeroll-publication-template' || !template.files?.['package-lock.json'] || !template.files?.['scripts/build.mjs']) throw new Error('A frozen Core publication template is required');
@@ -40,7 +42,8 @@ async function templateFor(coreCommit: string): Promise<PublicationTemplate> {
 /** No package resolution or Astro build runs on the CMS publication request. */
 export async function publicationSourceTree(publication: any): Promise<Record<string, string>> {
   const template = await templateFor(publication.core_commit);
-  const files = { ...template.files, 'publication.json': `${JSON.stringify(publication, null, 2)}\n` };
+  const content = template.files['scripts/content.mjs'] ? publicationContentFiles(publication) : { 'publication.json': `${JSON.stringify(publication, null, 2)}\n` };
+  const files = { ...template.files, ...content };
   const manifest = { format_version: 1, files: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a < b ? -1 : 1).map(([name, content]) => [name, digest(content)])) };
   return { ...files, 'publication-manifest.json': `${JSON.stringify(manifest, null, 2)}\n` };
 }

@@ -87,6 +87,7 @@ it('uses the personal creation endpoint and keeps all branch publication on inst
   const fetcher = provider({
     [`${root}/git/ref/heads/version-blue`]: { object: { sha: 'parent' } },
     [`${root}/git/commits/parent`]: { tree: { sha: 'old-tree' } },
+    [`${root}/git/trees/old-tree?recursive=1`]: { truncated: false, tree: [] },
     [`${root}/git/trees`]: { sha: 'new-tree' },
     [`${root}/git/commits`]: { sha: 'new-commit' },
     [`${root}/git/refs/heads/version-blue`]: { object: { sha: 'new-commit' } },

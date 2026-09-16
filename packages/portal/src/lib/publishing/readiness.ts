@@ -25,7 +25,7 @@ export async function publishingReadiness(orgId: string, siteId: string, version
   const group = await siteHostingGroup(orgId, siteId);
   const [github, cloudflare, organization, domains, media, storage] = await Promise.all([
     getConnection(orgId, 'github'), getConnection(orgId, 'cloudflare', group.id), getOrganizationDomains(orgId), getSiteDomains(orgId, siteId),
-    store.listDocs(paths.media(orgId, siteId)), getConnection(orgId, 'cloudflare'),
+    store.listDocs(paths.media(orgId, siteId), { limit: 1 }), getConnection(orgId, 'cloudflare'),
   ]);
   const require = (condition: unknown, code: string, message: string, settings_url = '/app/settings/publishing') => {
     if (!condition) required.push({ code, message, settings_url });

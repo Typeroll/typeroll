@@ -6,6 +6,12 @@ import { vstore } from '../version-store';
 /** Resolve branch inheritance before freezing content; this internal result is not a public export. */
 export async function resolvePublicationVersion(orgId: string, siteId: string, versionId: string) {
   const store = getStore();
+  if (!store.readSnapshot) throw new Error('Publication requires a consistent datastore snapshot');
+  return store.readSnapshot(`${paths.site(orgId, siteId)}/versions`, () => resolveVersion(orgId, siteId, versionId));
+}
+
+async function resolveVersion(orgId: string, siteId: string, versionId: string) {
+  const store = getStore();
   const seen = new Set<string>();
   let current = versionId;
   // Do not silently publish main after a selected branch or its base disappeared.

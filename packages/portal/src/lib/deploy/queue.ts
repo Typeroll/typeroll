@@ -100,8 +100,9 @@ export class InProcessQueue implements DeployQueue {
     // logging here covers the case where even the status write fails.
     const attempt = async () => {
       try {
-        if (await runDeployInline(args) === 'deferred') {
-          const timer = setTimeout(() => { void attempt(); }, 10_000);
+        const outcome = await runDeployInline(args);
+        if (outcome !== 'ran') {
+          const timer = setTimeout(() => { void attempt(); }, outcome === 'continue' ? 0 : 10_000);
           timer.unref();
         }
       } catch { console.error('[in-process deploy] background execution failed'); }
@@ -130,7 +131,7 @@ export class FirestoreDeployQueue implements DeployQueue {
         ...args,
         status: 'queued',
         created_at: now,
-        available_at: now,
+        available_at: new Date(Date.parse(now) + (args.delayMs ?? 0)).toISOString(),
         attempts: 0,
       } satisfies FirestoreDeployQueueItem,
     );
@@ -143,7 +144,8 @@ export class FirestoreDeployQueue implements DeployQueue {
  * congested platform is not a broken build, and showing the user a failure
  * they can't act on is worse than a late deploy.
  */
-export type DeployRunOutcome = 'ran' | 'deferred';
+/** continue schedules the next saved coordinator phase without provider backoff. */
+export type DeployRunOutcome = 'ran' | 'deferred' | 'continue';
 
 async function runDeployInline(
   args: EnqueueArgs,

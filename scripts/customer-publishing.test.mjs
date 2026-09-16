@@ -77,11 +77,18 @@ async function localGitApi(t) {
       catch { if (options.missing) return null; throw new Error('Missing ref'); }
     }
     if (endpoint.startsWith('/git/commits/')) return { tree: { sha: git(['rev-parse', `${endpoint.slice(13)}^{tree}`]) } };
+    if (endpoint.startsWith('/git/trees/')) {
+      const sha = endpoint.slice(11).split('?')[0];
+      return { truncated: false, tree: git(['ls-tree', '-r', sha]).split('\n').filter(Boolean).map(line => {
+        const [mode, type, blob, name] = line.split(/\s+/);
+        return { path: name, mode, type, sha: blob };
+      }) };
+    }
     if (endpoint === '/git/trees') {
       // Construct real Git objects, independently of the publisher's tree API.
       git(['read-tree', '--empty']);
       for (const entry of options.body.tree) {
-        const blob = git(['hash-object', '-w', '--stdin'], entry.content);
+        const blob = entry.sha ?? git(['hash-object', '-w', '--stdin'], entry.content);
         git(['update-index', '--add', '--cacheinfo', '100644', blob, entry.path]);
       }
       return { sha: git(['write-tree']) };
@@ -112,6 +119,8 @@ test('real Git trees remove stray files, preserve history, skip no-ops and isola
   const again = await publishTree(api, { ...args, files: { 'nested/source.astro': '<h1>Source</h1>', 'page.json': '{"title":"Second"}' } });
   assert.equal(again.commit, second.commit);
   assert.equal(again.changed, false);
+  const reused = requests.filter(request => request.route.endsWith('/git/trees')).at(-1).body.tree;
+  assert.ok(reused.every(entry => entry.sha && !Object.hasOwn(entry, 'content')));
   const preview = await publishTree(api, { ...args, branch: 'version-next', files: { 'page.json': '{"title":"Preview"}' } });
   assert.equal(git(['rev-parse', 'main']), second.commit);
   assert.equal(git(['rev-parse', `${preview.commit}^`]), second.commit);
@@ -231,6 +240,7 @@ test('three-site onboarding resumes pending builds and verifies a version withou
       return sha ? { object: { sha } } : null;
     }
     if (endpoint.startsWith('/git/commits/')) return commits.get(endpoint.slice(13));
+    if (endpoint.startsWith('/git/trees/')) return { truncated: false, tree: [] };
     if (endpoint === '/git/trees') {
       const sha = digest(JSON.stringify(body.tree));
       trees.set(sha, Object.fromEntries(body.tree.map((entry) => [entry.path, entry.content])));

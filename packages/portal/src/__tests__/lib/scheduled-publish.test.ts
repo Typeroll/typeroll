@@ -64,7 +64,23 @@ describe('runPublishSweep', () => {
     await getStore().setDoc(paths.deploy(ORG, SITE, 'pending'), { status: 'running', execution_backend, version_id: 'main', environment: 'production', started_at: PAST });
     const { runPublishSweep } = await import('../../lib/scheduled-publish');
     await runPublishSweep(NOW);
-    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'pending', orgId: ORG, siteId: SITE }));
+    expect(execute).not.toHaveBeenCalled();
+    expect(enqueued).toEqual([expect.objectContaining({ jobId: 'pending', orgId: ORG, siteId: SITE, dispatchKey: expect.stringMatching(/^[a-f0-9]{16}$/) })]);
+    await runPublishSweep(NOW);
+    expect(enqueued[1]).toEqual(enqueued[0]);
+  });
+
+  it.each(['recent observation', 'active lease', 'cutover approval'])('does not fork recovery for %s', async state => {
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    await store.updateDoc(paths.site(ORG, SITE), { publishing_mode: 'customer_git' });
+    await store.setDoc(paths.deploy(ORG, SITE, 'pending'), { status: 'running', execution_backend: 'customer_git', version_id: 'main', environment: 'production', started_at: PAST,
+      ...(state === 'recent observation' ? { coordinator_observed_at: NOW.toISOString() } : {}),
+      ...(state === 'cutover approval' ? { phase: 'awaiting domain cutover approval' } : {}),
+    });
+    if (state === 'active lease') await store.setDoc(`${paths.site(ORG, SITE)}/publishing_targets/main`, { lease_until: NOW.valueOf() + 300000 });
+    const { runPublishSweep } = await import('../../lib/scheduled-publish');
+    await runPublishSweep(NOW);
     expect(enqueued).toEqual([]);
   });
 

@@ -173,7 +173,10 @@ test('generated renderer builds with no HOME and an unusable package-manager shi
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'tr-static-build-'));
   t.after(() => fs.rm(tmp, { recursive: true, force: true }));
   const destination = path.join(tmp, 'site');
-  await createStaticPublicationProject(projectStaticPublication(input(), identity), destination);
+  const publication = projectStaticPublication(input(), identity);
+  publication.pages[0].html_content += '<a href="https://before.example/about#team">Retargeted</a>';
+  publication.reference_mapping = { format: 1, media: [], website_origins: ['https://before.example'] };
+  await createStaticPublicationProject(publication, destination);
   // Reuse the test environment's installed dependencies without a network install.
   await fs.symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');
   await fs.writeFile(path.join(destination, 'package-lock.json'), '{"lockfileVersion":3}');
@@ -187,6 +190,8 @@ test('generated renderer builds with no HOME and an unusable package-manager shi
   assert.equal(result.status, 0, result.stderr + result.stdout);
   const html = await fs.readFile(path.join(destination, 'dist/index.html'), 'utf8');
   assert.match(html, /<h1>Public<\/h1>/);
+  assert.ok(html.includes(`${new URL(publication.site_url).origin}/about#team`));
+  assert.ok(!html.includes('https://before.example'));
   const marker = JSON.parse(await fs.readFile(path.join(destination, 'dist/.well-known/typeroll/publication.json'), 'utf8'));
   assert.deepEqual(marker.paths, ['/']);
   assert.match(await fs.readFile(path.join(destination, 'dist/_headers'), 'utf8'), new RegExp('X-Typeroll-Publication: ' + marker.id));

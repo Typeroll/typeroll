@@ -71,6 +71,7 @@ describe('deploy-worker forwards dryRun', () => {
         ...actual,
         executeDeployJob: vi.fn(async (args: { dryRun?: boolean }) => {
           seen.dryRun = args.dryRun;
+          return 'ran';
         }),
       };
     });
@@ -99,6 +100,7 @@ describe('deploy-worker forwards dryRun', () => {
         ...actual,
         executeDeployJob: vi.fn(async (args: { dryRun?: boolean }) => {
           seen.dryRun = args.dryRun;
+          return 'ran';
         }),
       };
     });
