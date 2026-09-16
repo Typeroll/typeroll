@@ -642,6 +642,30 @@ describe('POST /api/v1/sites/{siteId}/pages/batch-write', () => {
     expect(home?.html_content).toBe('<p>new home</p>');
   });
 
+  it('assigns stable unique IDs to nested batch-written blocks before saving', async () => {
+    const { token } = await setup();
+    await seedPage('home', { content_mode: 'blocks', blocks: [] });
+    const blocks = [{ id: 'keep', type: 'core/section', data: {}, children: [
+      { type: 'core/heading', data: { text: 'Heading', level: 'h2' } },
+    ], slots: [[{ id: 'keep', type: 'core/prose', data: { html: '<p>Content</p>' } }]] }];
+    const write = async (tree: unknown) => callRoute(
+      import('../../pages/api/v1/sites/[siteId]/pages/batch-write'), 'POST',
+      `http://localhost/api/v1/sites/${SITE}/pages/batch-write`, { siteId: SITE },
+      { headers: bearer(token), body: [{ page_id: 'home', patch: { blocks: tree }, save: true }] },
+    );
+    expect((await (await write(blocks)).json()).results[0]).toMatchObject({ ok: true, saved: true });
+    const { vstore } = await import('../../lib/version-store');
+    const page = await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'home');
+    const section = page!.blocks![0]!;
+    const ids = [section.id, section.children![0]!.id, section.slots![0]![0]!.id];
+    expect(ids.every(id => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(id))).toBe(true);
+    expect(new Set(ids).size).toBe(3);
+    expect(section.id).toBe('keep');
+    expect(section.children![0]!.data).toEqual(blocks[0]!.children[0]!.data);
+    await write(page!.blocks);
+    expect((await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'home'))!.blocks).toEqual(page!.blocks);
+  });
+
   it('reports content_mode as a per-row error instead of silently ignoring it', async () => {
     const { token } = await setup();
     await seedPage('home', { title: 'Home', content_mode: 'html' });

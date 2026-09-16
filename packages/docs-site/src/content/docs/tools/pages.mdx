@@ -89,6 +89,13 @@ Write meta descriptions for all pages.
 
 The AI agent uses `batch_update_pages` automatically for multi-page operations.
 
+For block-based Pages, update `blocks`. Read the saved tree first, preserve existing
+block IDs, and give new blocks unique IDs, including blocks nested in `children`
+or `slots`. An ID must contain 1–128 letters, digits, underscores or hyphens.
+The supplied tree replaces the Page's entire block tree; it is not a list of
+individual block patches. Use `save: true` on each batch entry to commit its
+working copy before deploying, and check every entry's result for errors.
+
 ## `list_pages`
 
 Returns all pages with title, slug, status and SEO fields — but not the HTML body (to keep responses small).

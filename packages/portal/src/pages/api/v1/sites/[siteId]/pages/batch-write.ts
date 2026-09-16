@@ -15,7 +15,7 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { vstore } from '../../../../../../lib/version-store';
 import { applyContentWrite } from '../../../../../../lib/content-write';
 import { checkAlternates } from '../../../../../../lib/page-alternates';
-import type { Page } from '@typeroll/shared';
+import { ensureBlockIds, type Page } from '@typeroll/shared';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 
 const BATCH_MAX = 200;
@@ -33,6 +33,7 @@ function pickWritable(body: Partial<Page>): Partial<Page> {
   for (const k of WRITABLE) {
     if (body[k] !== undefined) (out as Record<string, unknown>)[k] = body[k];
   }
+  if (out.blocks !== undefined) out.blocks = ensureBlockIds(out.blocks);
   return out;
 }
 
