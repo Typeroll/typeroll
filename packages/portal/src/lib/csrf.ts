@@ -112,6 +112,8 @@ function originAllowed(origin: string): boolean {
  *  - `Authorization: Bearer typeroll_live_*`: pass. API keys are their own
  *    CSRF protection — they're not in cookies the browser sends
  *    automatically.
+ *  - Installation bearer credentials: pass only on the site-bound public API,
+ *    where every route authenticates the credential and its granted scopes.
  *  - Exempt paths: pass.
  *  - Otherwise: require an Origin header whose host is in the allowlist
  *    (or matches PORTAL_PUBLIC_URL). Real browsers send Origin on every
@@ -127,6 +129,12 @@ export function enforceCsrf(args: { request: Request; url: URL }): Response | nu
 
   const auth = request.headers.get('authorization') ?? '';
   if (auth.toLowerCase().startsWith('bearer typeroll_live_')) return null;
+
+  // Installation credentials are explicit server-to-server authorization.
+  // Limit the exemption to bearer-only routes; never let a token-shaped header
+  // exempt a cookie-authenticated portal route. requireApiKey rejects invalid
+  // or revoked credentials without falling back to a browser session.
+  if (url.pathname.startsWith('/api/v1/sites/') && /^Bearer tri_\S+$/i.test(auth)) return null;
 
   const origin = request.headers.get('origin');
   if (origin && originAllowed(origin)) return null;

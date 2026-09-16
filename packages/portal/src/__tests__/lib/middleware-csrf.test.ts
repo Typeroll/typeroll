@@ -58,6 +58,21 @@ describe('middleware CSRF — bearer auth exemption', () => {
     expect(res.status).toBe(200);
   });
 
+  it.each(['PUT', 'POST', 'DELETE'])('permits installation bearer %s on the site API without Origin', async (method) => {
+    const res = await callMiddleware({ method, pathname: '/api/v1/sites/site/pages/page/owner-fields', authorization: 'Bearer tri_test_credential' });
+    expect(res.status).toBe(200);
+  });
+
+  it.each(['/api/sites/site/extensions', '/api/internal-admin/builds', '/api/v1/sites-other/site'])('does not exempt cookie routes for an installation-shaped bearer: %s', async (pathname) => {
+    const res = await callMiddleware({ method: 'POST', pathname, authorization: 'Bearer tri_test_credential' });
+    expect(res.status).toBe(403);
+  });
+
+  it('keeps site API mutations without bearer subject to CSRF', async () => {
+    const res = await callMiddleware({ method: 'PUT', pathname: '/api/v1/sites/site/pages/page/owner-fields' });
+    expect(res.status).toBe(403);
+  });
+
   it('NON-typeroll bearer token does NOT bypass (must still pass Origin check)', async () => {
     const res = await callMiddleware({
       method: 'DELETE',
