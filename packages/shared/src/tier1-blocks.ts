@@ -1347,11 +1347,13 @@ const tableOfContents: BlockType = {
     { name: 'title', type: 'text', label: 'Title', default: 'On this page' },
     { name: 'levels', type: 'select', label: 'Heading levels', options: ['h2', 'h2-h3', 'h2-h4'], default: 'h2-h3' },
     { name: 'appearance', type: 'select', label: 'Appearance', options: ['card', 'plain'], default: 'card' },
+    { name: 'mobile_display', type: 'select', label: 'Mobile display', options: ['visible', 'hidden'], default: 'visible' },
+    { name: 'list_style', type: 'select', label: 'List style', options: ['numbered', 'plain'], default: 'numbered' },
     { name: 'sticky', type: 'boolean', label: 'Sticky on desktop', default: true },
     { name: 'indent', type: 'boolean', label: 'Indent subheadings', default: true },
     { name: 'highlight_active', type: 'boolean', label: 'Highlight current heading', default: true },
   ],
-  template: `<nav data-block="table_of_contents" data-levels="{{levels}}" data-appearance="{{appearance}}" data-sticky="{{sticky}}" data-indent="{{indent}}" data-highlight-active="{{highlight_active}}" data-empty="{{toc_empty}}" aria-label="{{title}}"><strong>{{title}}</strong><ol>{{{toc_items_html}}}</ol></nav>`,
+  template: `<nav data-block="table_of_contents" data-mobile-display="{{mobile_display}}" data-list-style="{{list_style}}" data-levels="{{levels}}" data-appearance="{{appearance}}" data-sticky="{{sticky}}" data-indent="{{indent}}" data-highlight-active="{{highlight_active}}" data-empty="{{toc_empty}}" aria-label="{{title}}"><strong>{{title}}</strong><ol>{{{toc_items_html}}}</ol></nav>`,
   styles: `
 [data-block="table_of_contents"] { position: sticky; top: 1rem; min-width: 0; padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0.5rem; background: var(--color-background, Canvas); }
 [data-block="table_of_contents"][data-sticky="false"] { position:static; }
@@ -1360,12 +1362,14 @@ const tableOfContents: BlockType = {
 [data-block="table_of_contents"][data-indent="false"] li { margin-left:0; }
 [data-block="table_of_contents"] a[aria-current="location"] { font-weight:700; color:var(--color-primary,currentColor); text-decoration:underline; }
 [data-block="table_of_contents"] ol { margin: 0.65rem 0 0; padding-left: 1.25rem; }
+[data-block="table_of_contents"][data-list-style="plain"] ol { list-style:none; padding-left:0; }
+[data-block="table_of_contents"] li + li { margin-top:0.5rem; }
 [data-block="table_of_contents"]:not([data-indent="false"]) li[data-level="3"] { margin-left: 1rem; }
 [data-block="table_of_contents"]:not([data-indent="false"]) li[data-level="4"] { margin-left: 2rem; }
 [data-block="table_of_contents"][data-empty="true"] { display: none; }
 [data-block="table_of_contents"] a { overflow-wrap: anywhere; text-underline-offset: 0.15em; }
 [data-block="table_of_contents"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
-@media (max-width: 720px) { [data-block="table_of_contents"], .block-columns-col:has(> [data-block="table_of_contents"][data-sticky="true"]) { position: static; } }
+@media (max-width: 720px) { [data-block="table_of_contents"][data-mobile-display="hidden"], .block-columns-col:has(> [data-block="table_of_contents"][data-mobile-display="hidden"]:only-child) { display:none; } [data-block="table_of_contents"], .block-columns-col:has(> [data-block="table_of_contents"][data-sticky="true"]) { position: static; } }
 `.trim(),
   script: `
 window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };

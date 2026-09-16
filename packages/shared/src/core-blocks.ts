@@ -224,7 +224,7 @@ const heading: BlockType = {
       name: 'size',
       type: 'select',
       label: 'Visual size',
-      options: ['auto', 'theme', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'],
+      options: ['auto', 'theme', 'article', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'],
       default: 'auto',
       responsive: true,
     },
@@ -236,12 +236,13 @@ const heading: BlockType = {
       default: 'left',
       responsive: true,
     },
+    { name: 'font_weight', type: 'select', label: 'Font weight', options: ['400', '500', '600', '700', '800'] },
     { name: 'eyebrow', type: 'text', label: 'Eyebrow', placeholder: 'small label above heading' },
   ],
   // {{=level}} substitutes a validated tag name (h1..h6). The renderer
   // falls back to div if level is missing/invalid, so the output is
   // always well-formed.
-  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" style="text-align:{{align}}">
+  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="text-align:{{align}}">
   <span class="block-heading-eyebrow">{{eyebrow}}</span>
   <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>
 </div>`,
@@ -251,6 +252,11 @@ const heading: BlockType = {
 [data-block="heading"] .block-heading-eyebrow:empty { display: none; }
 [data-block="heading"]:not([data-size="theme"]) .block-heading-text { font-weight: 700; line-height: 1.15; margin: 0; font-size: var(--heading-fs); }
 
+[data-block="heading"][data-font-weight="400"] .block-heading-text { font-weight:400; }
+[data-block="heading"][data-font-weight="500"] .block-heading-text { font-weight:500; }
+[data-block="heading"][data-font-weight="600"] .block-heading-text { font-weight:600; }
+[data-block="heading"][data-font-weight="700"] .block-heading-text { font-weight:700; }
+[data-block="heading"][data-font-weight="800"] .block-heading-text { font-weight:800; }
 /* Explicit visual size — wins over auto */
 [data-block="heading"][data-size="3xl"] { --heading-fs: clamp(2rem,    1rem      + 5vw,   4rem); }
 [data-block="heading"][data-size="2xl"] { --heading-fs: clamp(1.75rem, 1rem      + 3.5vw, 3.5rem); }
@@ -260,6 +266,11 @@ const heading: BlockType = {
 [data-block="heading"][data-size="sm"]  { --heading-fs: clamp(1rem,    0.85rem   + 0.5vw, 1.125rem); }
 
 /* size=auto: derive from semantic level */
+/* Editorial scale, independent of hero sizing and site CSS. */
+[data-block="heading"][data-size="article"] { --heading-fs:clamp(1.25rem, 1rem + 1vw, 1.5rem); }
+[data-block="heading"][data-size="article"][data-level="h1"] { --heading-fs:clamp(1.75rem, 1.25rem + 2vw, 2.5rem); }
+[data-block="heading"][data-size="article"][data-level="h2"] { --heading-fs:clamp(1.5rem, 1.125rem + 1vw, 2rem); }
+[data-block="heading"][data-size="article"] .block-heading-text { line-height:1.2; }
 [data-block="heading"][data-size="auto"][data-level="h1"] { --heading-fs: clamp(2rem,    1rem     + 5vw,   4rem); }
 [data-block="heading"][data-size="auto"][data-level="h2"] { --heading-fs: clamp(1.75rem, 1rem     + 3.5vw, 3.5rem); }
 [data-block="heading"][data-size="auto"][data-level="h3"] { --heading-fs: clamp(1.5rem,  0.875rem + 2.5vw, 2.5rem); }

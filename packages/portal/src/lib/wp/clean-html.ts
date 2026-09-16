@@ -8,12 +8,15 @@
 // to the customer's new CDN.
 
 import sanitizeHtml from 'sanitize-html';
+import { normalizeImportedMediaHtml } from '../html-to-blocks';
 
 export interface CleanOptions {
   /** Map of old WP media URL → new CDN URL. Applied to <img src> and srcset. */
   mediaMap?: Map<string, string>;
   /** Source site origin (e.g. "https://oldsite.com") — used to rewrite internal links to relative paths. */
   sourceOrigin?: string;
+  /** Original page URL for resolving relative media references. */
+  mediaBaseUrl?: string;
   /** Strip empty paragraphs and trim leading/trailing whitespace. */
   collapseWhitespace?: boolean;
 }
@@ -70,9 +73,16 @@ const KEEP_ATTRS: Record<string, string[]> = {
 export function cleanWordPressHtml(input: string, opts: CleanOptions = {}): string {
   if (!input) return '';
 
+  const mediaUrl = (url: string): string => {
+    const direct = opts.mediaMap?.get(url);
+    if (direct) return direct;
+    try { return opts.mediaMap?.get(new URL(url, opts.mediaBaseUrl ?? opts.sourceOrigin).href) ?? url; }
+    catch { return url; }
+  };
+
   // 1. Strip WP-specific block comments — they pad markup heavily and add
   //    nothing once we're no longer inside the WP editor.
-  let html = input.replace(/<!--\s*\/?wp:[^>]*-->/g, '');
+  let html = normalizeImportedMediaHtml(input).replace(/<!--\s*\/?wp:[^>]*-->/g, '');
 
   // 2. Strip generic HTML comments.
   html = html.replace(/<!--[\s\S]*?-->/g, '');
@@ -120,21 +130,27 @@ export function cleanWordPressHtml(input: string, opts: CleanOptions = {}): stri
       },
       img: (tagName, attribs) => {
         const src = attribs.src;
-        if (src && opts.mediaMap?.has(src)) {
-          attribs.src = opts.mediaMap.get(src)!;
-        }
+        if (src) attribs.src = mediaUrl(src);
         if (attribs.srcset && opts.mediaMap) {
           attribs.srcset = attribs.srcset
             .split(',')
             .map((part) => {
               const [url, size] = part.trim().split(/\s+/);
-              const mapped = opts.mediaMap?.get(url);
+              const mapped = mediaUrl(url);
               return mapped ? `${mapped} ${size ?? ''}`.trim() : part.trim();
             })
             .join(', ');
         }
         // Add loading=lazy unless first image (caller can override).
         if (!attribs.loading) attribs.loading = 'lazy';
+        return { tagName, attribs };
+      },
+      source: (tagName, attribs) => {
+        if (attribs.src) attribs.src = mediaUrl(attribs.src);
+        if (attribs.srcset) attribs.srcset = attribs.srcset.split(',').map(part => {
+          const [url, ...descriptor] = part.trim().split(/\s+/);
+          return [mediaUrl(url), ...descriptor].join(' ');
+        }).join(', ');
         return { tagName, attribs };
       },
       // Tags with no attribute whitelist still keep their content; this

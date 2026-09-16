@@ -19,7 +19,7 @@ The AI agent calls `get_migration_readiness` first. It checks the things whose a
 | **Hosting**       | Without credentials, deploys return a job id and publish nothing, while reporting success.                                                                                                                           |
 | **The old site**  | If the host refuses our requests (bot protection, an IP allowlist, HTTP auth on a staging copy), the import produces empty pages — or pages containing the block page, which reads as real content.                  |
 
-Warnings don't stop the job but are worth knowing: no verification URL for the pre-cutover check, no AI reconstruction, forms with no notification address, or a target site with no design for the content to be rebuilt into.
+Warnings don't stop the job but are worth knowing: no verification URL for the pre-cutover check, forms with no notification address, or a target site with no design for the content to be rebuilt into.
 
 If it isn't ready, fix the blockers before starting. The content work is the expensive part of a migration, and every blocker above means doing it twice.
 
@@ -132,3 +132,14 @@ launch.
 For a single WordPress site, the portal's migration workflow builds the inventory for you. For anything else — a Squarespace site, a static export, or a whole family of sites moving together — the AI agent populates it with `add_migration_urls` and works the list down to zero.
 
 For a multi-site or multi-domain move, ask the AI agent to read the `tr-migrate-multisite` skill first.
+
+### Migration fidelity
+
+Core 0.2.5 also requires fidelity evidence for a ready
+launch report. `record_migration_seo_acceptance` accepts
+`fidelity: { desktop, mobile, shared_data, integrations, evidence }`.
+The four checks must be true, with a nonempty description of the source/target
+comparison and checks. Review representative articles, an archive and the home
+page where applicable; document intentional differences. This records an actual
+review, not an automated visual test. Missing evidence reports
+`fidelity_review_missing`, even if HTTP and SEO checks succeeded.

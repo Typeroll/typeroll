@@ -55,6 +55,51 @@ class Typeroll_Helper_Content {
 		return $out;
 	}
 
+	/** Shared public taxonomy definitions, including those hidden from WP REST. */
+	public static function list_taxonomies() {
+		$out = array();
+		foreach ( get_taxonomies( array( 'public' => true ), 'objects' ) as $slug => $taxonomy ) {
+			$out[] = array(
+				'slug' => $slug, 'name' => $taxonomy->labels->name,
+				'rest_base' => $taxonomy->rest_base ?: $slug,
+				'types' => array_values( $taxonomy->object_type ),
+				'hierarchical' => (bool) $taxonomy->hierarchical,
+			);
+		}
+		return $out;
+	}
+
+	/** Terms are exported once, with their archive URLs, parents and custom values. */
+	public static function list_terms( $taxonomy, $page, $per_page ) {
+		$per_page = max( 1, min( 200, (int) $per_page ) );
+		$page = max( 1, (int) $page );
+		$args = array( 'taxonomy' => $taxonomy, 'hide_empty' => false );
+		$total = wp_count_terms( $args );
+		if ( is_wp_error( $total ) ) return $total;
+		$terms = get_terms( array_merge( $args, array(
+			'number' => $per_page, 'offset' => ( $page - 1 ) * $per_page,
+			'orderby' => 'term_id', 'order' => 'ASC',
+		) ) );
+		if ( is_wp_error( $terms ) ) return $terms;
+		$items = array();
+		foreach ( $terms as $term ) {
+			$link = get_term_link( $term );
+			if ( is_wp_error( $link ) ) return $link;
+			$meta = array();
+			foreach ( get_term_meta( $term->term_id ) as $key => $values ) {
+				if ( strpos( $key, '_' ) === 0 ) continue;
+				$meta[ $key ] = self::maybe_unserialize( count( $values ) === 1 ? $values[0] : $values );
+			}
+			$items[] = array(
+				'id' => (int) $term->term_id, 'name' => $term->name, 'slug' => $term->slug,
+				'link' => $link, 'parent' => (int) $term->parent, 'description' => $term->description,
+				'meta' => $meta,
+				'acf' => function_exists( 'get_fields' ) ? ( get_fields( $term ) ?: new stdClass() ) : new stdClass(),
+			);
+		}
+		return array( 'items' => $items, 'total' => (int) $total, 'total_pages' => (int) ceil( $total / $per_page ) );
+	}
+
 	/**
 	 * List items of a post type with everything the migrator needs inlined:
 	 * rendered content, excerpt, featured image, taxonomies, ACF fields, meta.
@@ -134,8 +179,12 @@ class Typeroll_Helper_Content {
 
 		// Taxonomies (categories, tags, custom).
 		$taxonomies = array();
+		$primary_terms = array();
 		$tax_names  = get_object_taxonomies( $post->post_type );
 		foreach ( $tax_names as $tax ) {
+			$primary = (int) get_post_meta( $post->ID, '_yoast_wpseo_primary_' . $tax, true );
+			if ( ! $primary ) $primary = (int) get_post_meta( $post->ID, 'rank_math_primary_' . $tax, true );
+			if ( $primary ) $primary_terms[ $tax ] = $primary;
 			$terms = wp_get_post_terms( $post->ID, $tax );
 			if ( is_wp_error( $terms ) ) continue;
 			$taxonomies[ $tax ] = array_map(
@@ -203,6 +252,7 @@ class Typeroll_Helper_Content {
 			'author'       => (int) $post->post_author,
 			'featured_image' => $featured,
 			'taxonomies'   => $taxonomies,
+			'primary_terms' => (object) $primary_terms,
 			'meta'         => $meta,
 			'acf'          => $acf,
 			'seo'          => $seo,

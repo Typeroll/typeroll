@@ -53,6 +53,27 @@ export interface WPPostType {
   hierarchical?: boolean;
 }
 
+/** Shared taxonomy definitions and terms; never flattened onto article fields. */
+export interface WPTaxonomy {
+  slug: string;
+  name: string;
+  rest_base: string;
+  rest_namespace?: string;
+  types: string[];
+  hierarchical: boolean;
+}
+
+export interface WPTerm {
+  id: number;
+  name: string;
+  slug: string;
+  link: string;
+  description?: string;
+  parent?: number;
+  acf?: Record<string, unknown>;
+  meta?: Record<string, unknown>;
+}
+
 export interface WPMedia {
   id: number;
   source_url: string;
@@ -114,14 +135,14 @@ export class WPClient {
   /**
    * List every registered post type. Builtin types (post, page, attachment,
    * wp_block, etc.) are filtered out — callers want the CUSTOM ones to map
-   * onto Typeroll collections.
+   * onto Typeroll content types.
    */
   async listCustomPostTypes(): Promise<WPPostType[]> {
     let typesObj: Record<string, WPPostType>;
     try {
       typesObj = await this.fetchJSON<Record<string, WPPostType>>('/wp-json/wp/v2/types');
-    } catch {
-      return [];
+    } catch (error) {
+      throw new Error(`Could not discover WordPress content types: ${error instanceof Error ? error.message : error}`);
     }
     const BUILTIN = new Set([
       'post', 'page', 'attachment', 'nav_menu_item', 'wp_block',
@@ -134,6 +155,15 @@ export class WPClient {
   /** Fetch items of a specific (custom) post type by its REST base. */
   async listItemsOfType(restBase: string): Promise<WPItem[]> {
     return this.paginate<WPItem>(`/wp-json/wp/v2/${restBase}?status=publish&per_page=100`);
+  }
+
+  async listTaxonomies(): Promise<WPTaxonomy[]> {
+    return Object.values(await this.fetchJSON<Record<string, WPTaxonomy>>('/wp-json/wp/v2/taxonomies'));
+  }
+
+  async listTerms(taxonomy: WPTaxonomy): Promise<WPTerm[]> {
+    const namespace = taxonomy.rest_namespace || 'wp/v2';
+    return this.paginate<WPTerm>(`/wp-json/${namespace}/${encodeURIComponent(taxonomy.rest_base)}?hide_empty=false&per_page=100`);
   }
 
   async listMedia(): Promise<WPMedia[]> {
@@ -205,15 +235,18 @@ export class WPClient {
       const url = `${this.baseUrl}${path}${sep}page=${page}`;
       const res = await fetch(url, {
         headers: { 'User-Agent': 'Typeroll-Migrator/0.1' },
+        signal: AbortSignal.timeout(60_000),
       });
-      if (res.status === 400) break; // common: "rest_post_invalid_page_number"
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${url}`);
       const items = (await res.json()) as T[];
+      if (!Array.isArray(items)) throw new Error(`Invalid WordPress page ${page}: expected an array.`);
       out.push(...items);
       const totalPages = Number(res.headers.get('X-WP-TotalPages') ?? '1');
-      if (page >= totalPages || items.length === 0) break;
+      if (!Number.isSafeInteger(totalPages) || totalPages < 1) throw new Error(`Invalid WordPress pagination on page ${page}.`);
+      if (items.length === 0 && page < totalPages) throw new Error(`Incomplete WordPress export: page ${page} is empty before the declared last page ${totalPages}. Retry after the source is stable.`);
+      if (page >= totalPages) break;
       page++;
-      if (page > 50) break; // sanity cap
+
     }
     return out;
   }

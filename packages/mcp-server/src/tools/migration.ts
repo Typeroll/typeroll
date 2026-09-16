@@ -37,7 +37,7 @@ export const migrationTools: ToolDef[] = [
   {
     name: 'get_migration_readiness',
     description:
-      "Preflight for an import: is this site actually ready to receive a migration? CALL THIS FIRST, before moving any content. Every check exists because its failure is INVISIBLE afterwards — the pages import, the previews render, the customer signs off, and something is quietly wrong. Pass proposed compositions to also inventory their block, field, and native-feature dependencies before implementation. A generic custom block, raw-HTML fallback, per-instance CSS workaround, missing block type, or missing declared field returns waiting_for_native_support and makes ready=false. Do not implement those workarounds; report the gap and wait for Core support. Business-specific custom blocks are allowed only when explicitly listed. Infrastructure warnings cover the pre-cutover verification URL, AI reconstruction, form notification email and whether the target has a design to rebuild INTO.",
+      "Preflight for an import: is this site actually ready to receive a migration? CALL THIS FIRST, before moving any content. Every check exists because its failure is INVISIBLE afterwards — the pages import, the previews render, the customer signs off, and something is quietly wrong. Pass proposed compositions to also inventory their block, field, and native-feature dependencies before implementation. A generic custom block, raw-HTML fallback, per-instance CSS workaround, missing block type, or missing declared field returns waiting_for_native_support and makes ready=false. Do not implement those workarounds; report the gap and wait for Core support. Business-specific custom blocks are allowed only when explicitly listed. Infrastructure warnings cover the pre-cutover verification URL, form notification email and whether the target has a design to rebuild INTO.",
     inputSchema: {
       source_url: z
         .string()
@@ -226,7 +226,7 @@ export const migrationTools: ToolDef[] = [
   {
     name: 'record_migration_seo_acceptance',
     description:
-      'Record the reviewed SEO/content parity evidence used by the launch report. This does not run the audit. Supply the exact source/target origins, checked timestamp, dataset description, page count and difference counts. status=accepted requires unresolved=0. Re-run and record new evidence after every deploy.',
+      'Record the reviewed SEO/content parity evidence used by the launch report. This does not run the audit. Supply the exact source/target origins, checked timestamp, dataset description, page count and difference counts. Also supply fidelity: desktop/mobile visual comparisons, shared-data checks, integration checks and evidence notes. HTTP 200 is not visual acceptance. status=accepted requires unresolved=0. Re-run and record new evidence after every deploy.',
     inputSchema: {
       status: z.enum(['accepted', 'rejected']),
       checked_at: z.string().datetime(),
@@ -239,6 +239,10 @@ export const migrationTools: ToolDef[] = [
         intentional: z.number().int().nonnegative(),
         unresolved: z.number().int().nonnegative(),
       }),
+      fidelity: z.object({
+        desktop: z.boolean(), mobile: z.boolean(), shared_data: z.boolean(), integrations: z.boolean(),
+        evidence: z.string().min(1),
+      }).optional(),
       notes: z.string().optional(),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -249,7 +253,7 @@ export const migrationTools: ToolDef[] = [
   {
     name: 'get_migration_launch_report',
     description:
-      'Return the launch decision report with separate inventory, exclusion-reason, internal-link, deployed URL parity, deploy freshness and reviewed SEO/content parity sections. launch_ready is false when any evidence is absent, incomplete, failed, targets an old origin, or predates the latest hosted deploy. Use this final gate instead of treating zero unhandled URLs as launch readiness.',
+      'Return the launch decision report with separate inventory, exclusion-reason, internal-link, deployed URL parity, deploy freshness, reviewed SEO/content parity and migration fidelity requirements. launch_ready is false when any evidence is absent, incomplete, failed, targets an old origin, or predates the latest hosted deploy. Use this final gate instead of treating zero unhandled URLs as launch readiness.',
     handler: withErrorBoundary(async (_args, { client, siteId }) => {
       const res = await client.get(siteId, 'migration-report');
       return ok(res);

@@ -1350,7 +1350,13 @@ function compileResponsiveData(
   block: Block,
   blockType: BlockType,
 ): ResponsiveCompileResult {
-  const data = block.data ?? {};
+  // API imports and repeater items can omit editor defaults. Resolve them
+  // here as well, preserving authored false, zero, null and empty strings.
+  const data: Record<string, unknown> = Object.fromEntries(
+    (blockType.schema ?? []).filter(field => field.default !== undefined)
+      .map(field => [field.name, structuredClone(field.default)]),
+  );
+  for (const [name, value] of Object.entries(block.data ?? {})) if (value !== undefined) data[name] = value;
   const flatData: Record<string, unknown> = { ...data };
   const cssVars: Partial<Record<Breakpoint, Record<string, string>>> = {};
   const mappedCss: Partial<Record<Breakpoint, string>> = {};

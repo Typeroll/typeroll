@@ -296,7 +296,7 @@ export async function runSiteParityCheck(args: SiteParityArgs): Promise<SitePari
     );
   }
 
-  const { urls: inventory } = await analyzeCoverage(args.store, args.orgId, args.siteId);
+  const { urls: inventory } = await analyzeCoverage(args.store, args.orgId, args.siteId, args.versionId);
   const filtered = args.statuses?.length
     ? inventory.filter((u) => args.statuses!.includes(u.status))
     : inventory;

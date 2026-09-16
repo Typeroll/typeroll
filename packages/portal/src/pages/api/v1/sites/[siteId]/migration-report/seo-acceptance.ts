@@ -26,6 +26,11 @@ export const PUT: APIRoute = async ({ request, params }) => {
   if (body.status === 'accepted' && differences.unresolved !== 0) {
     return apiError('accepted evidence cannot have unresolved differences');
   }
+  const fidelity = body.fidelity;
+  if (fidelity && (typeof fidelity.evidence !== 'string' || !fidelity.evidence.trim()
+    || ['desktop', 'mobile', 'shared_data', 'integrations'].some(key => typeof fidelity[key as keyof typeof fidelity] !== 'boolean'))) {
+    return apiError('fidelity requires desktop, mobile, shared_data and integrations booleans and a nonempty evidence description');
+  }
   const evidence: MigrationSeoAcceptance = {
     status: body.status,
     checked_at: new Date(body.checked_at!).toISOString(),
@@ -35,6 +40,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
     target_origin: new URL(body.target_origin!).origin,
     checked_pages: body.checked_pages!,
     differences,
+    ...(fidelity ? { fidelity: { desktop: fidelity.desktop, mobile: fidelity.mobile, shared_data: fidelity.shared_data, integrations: fidelity.integrations, evidence: fidelity.evidence.trim() } } : {}),
     ...(body.notes?.trim() ? { notes: body.notes.trim() } : {}),
   };
   const store = getStore();

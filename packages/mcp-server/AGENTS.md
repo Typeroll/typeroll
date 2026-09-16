@@ -75,6 +75,14 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   the site, across all content types. `change_page_content_type` preserves a
   saved Page's identity and existing URL and records a revision.
 
+- **Migration ownership.** Import categories/tags as shared Pages with their own
+  Content types, and store `page_ref_list` memberships on articles. Names,
+  emojis and category order are edited once on the category Page. Never flatten
+  them into editable copies on each article or store a copied `toc_html` field.
+  Preserve source text by default; redesign is a separate decision. Verify
+  source/target fidelity on desktop and mobile, shared references and configured
+  integrations before recording launch acceptance. See `tr-migrate-wp`.
+
 - **Settings.** Site name, tagline, logo, favicon, colors, fonts,
   contact info, social links, SEO suffix, default meta description
   (`default_meta_description` — site-wide fallback for pages without a

@@ -1,6 +1,6 @@
 ---
 title: WordPress Migration
-description: A complete guide to migrating a WordPress site to Typeroll using the AI migration workflow.
+description: A complete guide to migrating a WordPress site to Typeroll with shared categories, editable blocks and a reviewed presentation.
 ---
 
 import { Steps, Aside } from "@astrojs/starlight/components";
@@ -11,6 +11,9 @@ supported service.
 
 ## Overview
 
+The shared-taxonomy and fidelity-review changes described below require Core 0.2.5 and Helper 0.3.2. Cloud availability follows its Core
+rollout; self-hosted installations must update Core and the helper plugin.
+
 The migration workflow imports accessible WordPress content (pages, posts and supported custom post types) into a new Typeroll site, transfers your media directly to your organization’s Cloudflare R2 storage, and generates redirects from old URLs to new slugs.
 
 **What it does:**
@@ -19,7 +22,9 @@ The migration workflow imports accessible WordPress content (pages, posts and su
 - Transfers media (images) through the media API — only images actually used on imported pages
 - Maps custom post types to Typeroll content types
 - Generates URL redirects
-- Leaves everything as drafts for your review before going live
+- Imports categories and tags once as Pages with their own Content types; articles store references
+- Preserves content without automatic AI rewriting
+- Leaves imported content in Review before going live
 
 **What it doesn't do:**
 
@@ -41,11 +46,12 @@ The migration workflow imports accessible WordPress content (pages, posts and su
 
 1. **Build the target site's design**
 
-   The migration imports content into your new design — not the old one. Before starting the migration, set up:
+   Decide whether to preserve the current appearance or deliberately redesign it. Import does not automatically reproduce a WordPress theme. Configure shared presentation separately:
    - Colour palette and fonts (`update_site_settings`)
    - Header partial with navigation
    - Footer partial
-   - 1–2 example pages (home, about) — the AI agent uses these as design references
+   - Reusable article and archive Page templates, plus a home page
+   - Source screenshots at desktop and mobile widths for comparison
 
 2. **Check that the WP REST API is accessible**
 
@@ -78,8 +84,8 @@ The AI agent will:
 
 1. Call `get_import_readiness` and resolve any storage requirements, then verify the WP REST API connection
 2. Build an inventory of all URLs on the site
-3. Import pages and posts, transferring images along the way
-4. Map any custom post types to content types
+3. Import shared categories and tags, including archive URLs, hierarchy and available custom fields
+4. Import pages and posts with taxonomy references and native blocks, transferring referenced images along the way; custom post types become Content types
 5. Generate redirects
 6. Show you a coverage report
 
@@ -96,11 +102,64 @@ Migration complete. Here's the coverage:
 ⚠️  3 URLs unhandled:
 
   /category/projekt     → needs a redirect or category page
-  /tag/stockholm        → tag archive — exclude or redirect to /blog
+  /tag/stockholm        → needs its tag Page and membership listing
   /wp-content/uploads/2019/hero.pdf  → file, needs manual handling
 ```
 
 For each unhandled URL, decide: add a redirect, create a page, or exclude it.
+Category and tag archives are content; do not routinely discard them.
+
+### Shared categories and repeat imports
+
+Each WordPress taxonomy becomes a Content type such as `wp_taxonomy_category`.
+A category is a Page whose title is the category name; its custom fields can hold
+an icon or emoji. Articles have a `page_ref_list` field pointing to those Pages.
+Edit the category once in **Pages**, filtered by its Content type. On an article,
+select category references instead of editing copied names or icons. Archive
+listings use reverse references so membership stays consistent.
+
+Tag Pages work the same way: an article can reference several tags, and each tag
+Page lists the articles referencing it. Category and tag Pages have editable block
+bodies, so you can add a unique introduction, images and other content alongside
+the generated listing. They can also use shared Page templates.
+
+A Page has one parent in the site tree, even when it has several categories or
+tags. That parent supplies breadcrumb ancestry. URLs are separate: the Content
+type's route template or a Page's explicit path determines its address. Migration
+preserves the old paths; nesting an article under a category must not silently
+change its URL. Tags do not change an article's parent or address.
+
+The importer preserves term parents, archive URLs, page parents and manual order.
+An explicit primary category from the helper plugin is used for breadcrumbs;
+a single assigned category can also be used. With multiple categories and no
+primary choice, review the breadcrumb hierarchy instead of guessing a category.
+
+Retries use stable source IDs and preserve existing imported Pages, including
+subsequent edits. They do not refresh existing content from WordPress. A different
+Page at an imported URL, missing term, or incompatible schema stops the import
+with an error. Resolve the mapping before retrying. Older flattened imports need
+a separately reviewed repair; rerunning the importer does not rewrite them.
+
+### Verify presentation and behavior
+
+Compare a representative article sample, an archive and the home page against
+the source on desktop and mobile. Check heading sizes, text width, spacing,
+images, cards, breadcrumbs, table of contents and responsive behavior. Keep the
+table of contents as a generated block in a Page template, never a copied field
+on each article. Test forms and Extensions separately; a rendered shell does not
+prove that the integration works.
+
+Conversion exceptions are included in the workflow review. Use an HTML block
+only for an uncommon source-specific exception; recurring requirements belong
+in reusable blocks or templates. Missing native features must be resolved before
+converting the remaining pages. Source styles and interactive scripts are not
+ported automatically.
+
+The launch report requires current URL/SEO evidence **and** recorded fidelity
+review. Use `record_migration_seo_acceptance` with `fidelity.desktop`, `mobile`,
+`shared_data` and `integrations` plus an `evidence` description. These are review
+results, not automated screenshot tests. A successful HTTP request alone does
+not show that the migration is correct.
 
 Sites imported with an older Typeroll version may have WordPress entities or
 markup left in titles and SEO text. Ask the AI agent to run
@@ -128,6 +187,7 @@ The Typeroll Helper Plugin gives the migration workflow access to:
 - Navigation menus
 - Builder JSON (Elementor, Breakdance)
 - Complete canonical URL list
+- Shared taxonomy terms, archive URLs, parents, term custom fields and primary categories
 
 **Installing:**
 
@@ -146,8 +206,8 @@ The Typeroll Helper Plugin gives the migration workflow access to:
 
 Image transfers use a persistent lookup for each source URL, so repeated imports
 reuse verified media. Transfers overlap within limits for memory and each source
-host; temporary throttling slows requests down. A failed file does not remove
-healthy files already transferred. Keep the WordPress source available until all
+host; temporary throttling slows requests down. A failed required file stops content import with an error; retry after resolving
+source or storage access. Verified files already transferred are reused. Keep the WordPress source available until all
 required media and references are verified.
 
 With Core 0.1.93 and an updated shared build engine, imported originals also queue

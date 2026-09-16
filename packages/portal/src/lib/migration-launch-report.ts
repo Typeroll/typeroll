@@ -20,6 +20,14 @@ export interface MigrationSeoAcceptance {
     unresolved: number;
   };
   notes?: string;
+  /** Human/agent-reviewed evidence, separate from HTTP availability checks. */
+  fidelity?: {
+    desktop: boolean;
+    mobile: boolean;
+    shared_data: boolean;
+    integrations: boolean;
+    evidence: string;
+  };
   deployment_job_id?: string;
   deployment_finished_at?: string;
 }
@@ -61,7 +69,7 @@ export async function buildMigrationLaunchReport(args: {
 }): Promise<MigrationLaunchReport> {
   const { store, orgId, siteId, versionId, site } = args;
   const [{ urls, summary }, internalLinks, deploys, urlEvidence, seoEvidence] = await Promise.all([
-    analyzeCoverage(store, orgId, siteId),
+    analyzeCoverage(store, orgId, siteId, versionId),
     checkInternalLinks({ store, orgId, siteId, versionId, site }),
     store.listDocs<DeployJob>(paths.deploys(orgId, siteId)),
     store.getDoc<StoredSiteParityEvidence>(paths.migrationVerification(orgId, siteId, versionId)),
@@ -111,6 +119,11 @@ export async function buildMigrationLaunchReport(args: {
     });
   } else {
     urlStatus = 'current';
+  }
+
+  const fidelity = seoEvidence?.fidelity;
+  if (!fidelity?.desktop || !fidelity.mobile || !fidelity.shared_data || !fidelity.integrations || !fidelity.evidence?.trim()) {
+    issues.push({ id: 'fidelity_review_missing', detail: 'Record a desktop/mobile comparison with the source, shared-category checks and integration checks. HTTP and SEO checks alone do not verify migration fidelity.' });
   }
 
   let seoStatus: MigrationLaunchReport['seo_parity']['status'] = 'missing';

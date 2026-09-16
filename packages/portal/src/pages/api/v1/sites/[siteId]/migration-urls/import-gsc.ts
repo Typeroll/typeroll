@@ -54,7 +54,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       })),
       { defaultSource: 'gsc', sourceOrigin },
     );
-    const coverage = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId);
+    const coverage = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId, ctx.versionId);
     const importedIds = new Set(metrics.map((row) => {
       try {
         const parsed = row.url.startsWith('/') ? row.url : `${new URL(row.url).pathname}${new URL(row.url).search}`;

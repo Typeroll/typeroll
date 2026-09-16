@@ -3,7 +3,7 @@
  * Plugin Name:       Typeroll Helper
  * Plugin URI:        https://typeroll.com
  * Description:       Exposes WordPress content (pages, posts, custom post types, ACF fields, featured media) to the Typeroll migrator via a single authenticated REST endpoint. Read-only — the plugin never writes to your content.
- * Version:           0.1.0
+ * Version:           0.3.2
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Typeroll
@@ -18,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'TYPEROLL_HELPER_VERSION', '0.3.1' );
+define( 'TYPEROLL_HELPER_VERSION', '0.3.2' );
 define( 'TYPEROLL_HELPER_PATH', plugin_dir_path( __FILE__ ) );
 
 require_once TYPEROLL_HELPER_PATH . 'includes/class-auth.php';

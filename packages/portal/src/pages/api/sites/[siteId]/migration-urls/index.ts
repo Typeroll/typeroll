@@ -11,6 +11,6 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
   const { session, site, owner_org_id } = guard.value;
-  const result = await analyzeCoverage(getStore(), owner_org_id, site.id);
+  const result = await analyzeCoverage(getStore(), owner_org_id, site.id, guard.value.versionId);
   return json(result);
 };

@@ -1,6 +1,6 @@
 ---
 name: tr-migrate-wp
-description: Use when the user asks to migrate a WordPress site to Typeroll, mentions wp-json, or names a WP source URL. Walks the WP REST API, rebuilds pages in the target site's design, transfers media, sets redirects, leaves everything as drafts for human review.
+description: Use when the user asks to migrate a WordPress site to Typeroll, mentions wp-json, or names a WP source URL. Walks the WP REST API, preserves content and shared references in editable blocks, transfers media, sets redirects, leaves everything as drafts for human review.
 ---
 
 # Migrate from WordPress to Typeroll
@@ -15,8 +15,7 @@ description: Use when the user asks to migrate a WordPress site to Typeroll, men
 
 The platform's in-portal migration workflow is the "managed" path for
 customers who want one-click. This skill is the "power-user" path: you
-do it locally, mix data sources freely, and the user (consultant /
-agency) reviews each step in their terminal.
+do it locally, mix data sources freely, and the user reviews each step in their terminal.
 
 ## Preconditions
 
@@ -51,7 +50,7 @@ once the work is done, so discovering it late means redoing the expensive part.
   publish nothing, while reporting success.
 
 Warnings are worth relaying but don't stop you: no verification origin (the
-pre-cutover parity check can't run), no AI reconstruction key, forms without a
+pre-cutover parity check can't run), forms without a
 notification address, or a target site with no design to rebuild INTO.
 
 Then the ordinary preconditions:
@@ -60,9 +59,9 @@ Then the ordinary preconditions:
 - The source WP site has `/wp-json` reachable (Google for "wordpress
   REST API disabled" if not — common for hardened hosts).
 - The Typeroll target site exists **and already carries the design** —
-  settings, header/footer, one or two example pages. The migration rebuilds
-  old content in the NEW design; with nothing to imitate it inherits the old
-  site's look.
+  settings, header/footer, one or two example pages. Import preserves content; shared templates define presentation. Agree whether
+  to preserve the original appearance or redesign it. Do not silently restyle
+  or rewrite imported text.
 - If the target already has content, you must NOT clobber it — always
   `list_pages` first and only write to slugs that don't already exist.
 
@@ -93,7 +92,32 @@ batch_read_pages page_ids=[<2-3 representative ids>]   # see actual conventions
 Don't skip this. Imposing a stranger's design on a customer's site is
 the biggest avoidable mistake.
 
-### 3. Migrate one page at a time, draft status
+### 3. Normalize shared data before importing page bodies
+
+Read taxonomy definitions and paginated terms from the helper's `/taxonomies`
+and `/terms/{taxonomy}` (Helper 0.3.2), or WordPress REST. Create a Content type
+for each taxonomy and one Page per term. Preserve term IDs in a stable source
+mapping, archive URLs, parents and custom fields such as icons/emoji.
+
+Add `page_ref_list` fields to article Content types. Store term Page IDs, never
+copied category names, emojis, slugs or sort values on every article. Category
+archives can list articles using `core/repeater` with `source_type: backlinks`.
+Use an explicit primary category for breadcrumbs when available; do not guess
+among multiple categories. A table of contents is a derived template block,
+not a `toc_html` field.
+
+Category and tag Pages have editable block bodies. Scaffold the source term
+description plus a reverse-reference listing, leaving room for unique editorial
+content. Multiple tag/category references do not give a Page multiple parents:
+preserve its source page parent, or use an unambiguous primary category. Tags do
+not set its parent. `parent` controls breadcrumb ancestry, not URL generation;
+preserve the source `path` even when it differs from the chosen hierarchy.
+
+The managed importer preserves existing imported Pages on retry and refuses
+URL/identity conflicts or dangling term references. An older flattened import
+requires a separately reviewed mapping repair; do not re-import over edits.
+
+### 4. Import one page at a time, draft status
 
 For each source URL:
 
@@ -106,19 +130,12 @@ b. Clean the HTML. Strip Elementor / Gutenberg / Breakdance class
    soup. Drop empty `<div>` and `<span>` wrappers. Keep semantic tags,
    tables, iframes from known hosts (YouTube / Vimeo / Calendly).
 
-c. Migrate referenced images:
-   - For each `<img src>` and CSS `background-image: url()`:
-     1. Download the source image locally.
-     2. `create_upload_url filename=... content_type=...` → returns
-        `{ upload_url, cdn_url, media_id }`.
-     3. PUT the bytes to `upload_url` (curl or fetch with the same
-        content type).
-     4. Replace the `src` with `cdn_url` in the rewritten HTML.
-   - Use `update_media media_id=... alt_text="..."` to set a real alt
-     text (existing WP `alt` attribute or `aria-label`; fall back to
-     filename only as a last resort).
+c. Migrate referenced images with `upload_media_from_url`. The customer's
+   transfer Worker copies and verifies them directly in R2. Use the returned
+   media reference only after verification. Stop and report a failed required
+   transfer; do not silently hotlink the WordPress source.
 
-d. Reconstruct in the target's design with native blocks first. Read the
+d. Preserve exact text, headings, anchors, links, media and semantic structure with native blocks first. Read the
    available block types and map headings, prose, images, buttons and layout
    into their typed fields. Use HTML mode only for source-specific markup that
    has no native representation and has passed the composition preflight.
@@ -138,7 +155,7 @@ e. Write the page as a draft:
    `path: "/2024/01/foo-bar/"`. Slug is one segment; `path` preserves the
    complete nested URL.
 
-### 4. Redirects
+### 5. Redirects
 
 After migration, every URL the agent didn't preserve verbatim needs a
 redirect:
@@ -159,8 +176,8 @@ pattern rule retires the whole family:
 
 | WordPress shape | Rule |
 |---|---|
-| Category archives | `from_path="/category/*"` → `to_path="/blogg/:splat"` (or a single landing page) |
-| Tag archives | `from_path="/tag/*"` → `to_path="/blogg"` |
+| Intentionally retired category archives | `from_path="/category/*"` → `to_path="/blogg/:splat"` (or a single landing page) |
+| Intentionally retired tag archives | `from_path="/tag/*"` → `to_path="/blogg"` |
 | Author archives | `from_path="/author/*"` → `to_path="/om-oss"` |
 | Date-based permalinks | `from_path="/2019/*"` → `to_path="/blogg/:splat"` — one rule per year |
 | Old post prefix → new | `from_path="/blog/:slug"` → `to_path="/artiklar/:slug"` |
@@ -215,16 +232,24 @@ selection or raise `diff_limit` and review the omitted diffs first. Never work
 around a `working_copy` conflict: that resource contains another edit which
 must be resolved separately.
 
-### 5. Preview + review with the user
+### 6. Preview + review with the user
 
 ```
 get_preview_link page_id=<id>                    # one URL the user can click
 ```
 
-Open in the user's browser. The preview navigates the whole site from
-one mint. Iterate on feedback: pages, header, footer.
+Compare the source and target at desktop and mobile widths. Review representative
+articles, an archive and the home page. Measure heading sizes, readable width,
+spacing, TOC placement and image/card proportions. Check breadcrumbs and shared
+category references; test forms/Extensions. HTTP 200 and text presence do not
+prove visual fidelity. Document intentional improvements such as responsive video.
 
-### 6. Ship
+Record `fidelity: { desktop, mobile, shared_data, integrations, evidence }` with
+`record_migration_seo_acceptance`, based on real checks of the exact deployment.
+The launch report requires this evidence in Core 0.2.5.
+Never mark an unavailable integration or uninspected screenshot as accepted.
+
+### 7. Ship
 
 When the user signs off:
 

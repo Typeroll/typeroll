@@ -1,3 +1,5 @@
+import type { WPTaxonomy, WPTerm } from './client';
+
 // Client for the Typeroll Helper plugin (wp-helper-plugin/).
 //
 // When the customer has installed the plugin and provided its API key, this
@@ -63,6 +65,7 @@ export interface HelperItem {
   menu_order: number;
   author: number;
   featured_image: HelperMedia | null;
+  primary_terms?: Record<string, number>;
   taxonomies: Record<string, Array<{ id: number; name: string; slug: string }>>;
   meta: Record<string, unknown>;
   acf: Record<string, unknown>;
@@ -178,6 +181,14 @@ export class WPHelperClient {
     return this.paginate<HelperItem>(`/items/${encodeURIComponent(postType)}`);
   }
 
+  async listTaxonomies(): Promise<WPTaxonomy[]> {
+    return this.get<WPTaxonomy[]>('/taxonomies');
+  }
+
+  async listTerms(taxonomy: WPTaxonomy): Promise<WPTerm[]> {
+    return this.paginate<WPTerm>(`/terms/${encodeURIComponent(taxonomy.slug)}`);
+  }
+
   async menus(): Promise<HelperMenu[]> {
     return this.get<HelperMenu[]>('/menus');
   }
@@ -235,11 +246,14 @@ export class WPHelperClient {
         throw new Error(`Helper ${path} page ${page} → ${res.status}`);
       }
       const items = (await res.json()) as T[];
+      if (!Array.isArray(items)) throw new Error(`Invalid WordPress page ${page}: expected an array.`);
       out.push(...items);
       const totalPages = Number(res.headers.get('X-WP-TotalPages') ?? '1');
-      if (page >= totalPages || items.length === 0) break;
+      if (!Number.isSafeInteger(totalPages) || totalPages < 1) throw new Error(`Invalid WordPress pagination on page ${page}.`);
+      if (items.length === 0 && page < totalPages) throw new Error(`Incomplete WordPress export: page ${page} is empty before the declared last page ${totalPages}. Retry after the source is stable.`);
+      if (page >= totalPages) break;
       page++;
-      if (page > 100) break;
+
     }
     return out;
   }

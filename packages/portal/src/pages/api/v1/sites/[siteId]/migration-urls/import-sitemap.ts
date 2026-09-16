@@ -53,7 +53,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       })),
       { defaultSource: 'sitemap', sourceOrigin },
     );
-    const coverage = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId);
+    const coverage = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId, ctx.versionId);
     return apiResponse(ctx, {
       url: sitemapUrl,
       source_origin: sourceOrigin,

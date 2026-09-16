@@ -16,7 +16,7 @@ const siteId = site.id;
 const store = getStore();
 
 // Server-render the first snapshot so the page is useful even with JS off.
-const initial = await analyzeCoverage(store, orgId, siteId);
+const initial = await analyzeCoverage(store, orgId, siteId, ctx.versionId);
 
 // Readiness is shown on the SAME page as the coverage report, above it:
 // a blocker here (no media storage, stub hosting) invalidates the numbers

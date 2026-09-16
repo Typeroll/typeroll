@@ -59,6 +59,7 @@ async function seedReadyEvidence(): Promise<Site & { id: string }> {
     target_origin: TARGET,
     checked_pages: 1,
     differences: { total: 2, intentional: 2, unresolved: 0 },
+    fidelity: { desktop: true, mobile: true, shared_data: true, integrations: true, evidence: 'Reviewed source and target at 390px and 1440px, shared categories and all active forms.' },
     deployment_job_id: 'deploy-one',
     deployment_finished_at: '2026-09-06T10:00:00.000Z',
   });
@@ -86,6 +87,18 @@ describe('migration launch report', () => {
     expect(report.deployed_url_parity.status).toBe('current');
     expect(report.deployed_url_parity.untested_variants).toBe(0);
     expect(report.seo_parity.status).toBe('current');
+  });
+
+  it('does not treat successful HTTP and SEO checks as visual fidelity evidence', async () => {
+    const site = await seedReadyEvidence();
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    const saved = await store.getDoc<Record<string, unknown>>(paths.migrationSeoAcceptance(ORG, SITE));
+    const { fidelity, ...withoutFidelity } = saved!;
+    await store.setDoc(paths.migrationSeoAcceptance(ORG, SITE), withoutFidelity);
+    const report = await buildMigrationLaunchReport({ store, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, site });
+    expect(report.launch_ready).toBe(false);
+    expect(report.issues.map(issue => issue.id)).toContain('fidelity_review_missing');
   });
 
   it('fails closed when a newer deploy makes HTTP and SEO evidence stale', async () => {

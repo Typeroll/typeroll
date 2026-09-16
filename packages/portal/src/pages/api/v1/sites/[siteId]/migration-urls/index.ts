@@ -38,7 +38,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const limit = clamp(url.searchParams.get('limit'), DEFAULT_LIMIT, MAX_LIMIT);
   const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
 
-  const { urls, summary } = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId);
+  const { urls, summary } = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId, ctx.versionId);
   const filtered = statusFilter ? urls.filter((u) => u.status === statusFilter) : urls;
   const page = filtered.slice(offset, offset + limit);
 
@@ -90,7 +90,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     defaultSource: typeof body.source === 'string' && body.source ? body.source : 'import',
     sourceOrigin: body.source_origin,
   });
-  const { summary } = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId);
+  const { summary } = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId, ctx.versionId);
 
   return apiResponse(ctx, { ...result, summary }, 201, body);
 };
@@ -161,7 +161,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     ids ? { ids } : { source: source! },
     patch,
   );
-  const { summary } = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId);
+  const { summary } = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId, ctx.versionId);
   return apiResponse(ctx, { ...result, summary }, 200, {
     selector: ids ? { ids_count: ids.length } : { source },
     patch,

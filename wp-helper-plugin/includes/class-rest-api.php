@@ -35,6 +35,19 @@ class Typeroll_Helper_Rest_API {
 			'callback'            => array( __CLASS__, 'route_post_types' ),
 		) );
 
+		register_rest_route( self::NAMESPACE_V1, '/taxonomies', array(
+			'methods' => 'GET', 'permission_callback' => $auth,
+			'callback' => function() { return rest_ensure_response( Typeroll_Helper_Content::list_taxonomies() ); },
+		) );
+		register_rest_route( self::NAMESPACE_V1, '/terms/(?P<taxonomy>[\w-]+)', array(
+			'methods' => 'GET', 'permission_callback' => $auth,
+			'callback' => array( __CLASS__, 'route_terms' ),
+			'args' => array(
+				'page' => array( 'default' => 1, 'sanitize_callback' => 'absint' ),
+				'per_page' => array( 'default' => 100, 'sanitize_callback' => 'absint' ),
+			),
+		) );
+
 		register_rest_route( self::NAMESPACE_V1, '/items/(?P<type>[\w-]+)', array(
 			'methods'             => 'GET',
 			'permission_callback' => $auth,
@@ -109,6 +122,19 @@ class Typeroll_Helper_Rest_API {
 
 	public static function route_post_types( $request ) {
 		return rest_ensure_response( Typeroll_Helper_Content::list_post_types() );
+	}
+
+	public static function route_terms( $request ) {
+		$taxonomy = get_taxonomy( $request['taxonomy'] );
+		if ( ! $taxonomy || ! $taxonomy->public ) {
+			return new WP_Error( 'typeroll_unknown_taxonomy', 'Unknown public taxonomy.', array( 'status' => 404 ) );
+		}
+		$result = Typeroll_Helper_Content::list_terms( $request['taxonomy'], $request['page'], $request['per_page'] );
+		if ( is_wp_error( $result ) ) return $result;
+		$response = rest_ensure_response( $result['items'] );
+		$response->header( 'X-WP-Total', (string) $result['total'] );
+		$response->header( 'X-WP-TotalPages', (string) max( 1, $result['total_pages'] ) );
+		return $response;
 	}
 
 	public static function route_items( $request ) {

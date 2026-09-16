@@ -372,13 +372,14 @@ function mergeSources(existing: string[], add: string): string[] {
 export async function analyzeCoverage(
   store: ReadWriteStore,
   orgId: string,
-  siteId: string
+  siteId: string,
+  versionId: string = MAIN_VERSION_ID,
 ): Promise<{ urls: AnalyzedUrl[]; summary: CoverageSummary }> {
   const [inventory, pages, redirects, collections] = await Promise.all([
     store.listDocs<MigrationUrl>(paths.migrationUrls(orgId, siteId)),
-    await vstore.pages(orgId, siteId, MAIN_VERSION_ID),
-    await vstore.redirects(orgId, siteId, MAIN_VERSION_ID),
-    store.listDocs<ContentType>(paths.contentTypes(orgId, siteId, MAIN_VERSION_ID)),
+    vstore.pages(orgId, siteId, versionId),
+    vstore.redirects(orgId, siteId, versionId),
+    vstore.contentTypes(orgId, siteId, versionId),
   ]);
 
   // Build lookup tables once. Pages are matched on the *resolved* URL

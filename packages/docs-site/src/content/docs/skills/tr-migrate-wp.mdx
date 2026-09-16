@@ -14,14 +14,14 @@ and support the same workflow as a managed service.
 
 The migration workflow runs in stages:
 
-| Stage               | What happens                                                                              |
-| ------------------- | ----------------------------------------------------------------------------------------- |
-| **Discover**        | Verifies the WP REST API is reachable, probes for the helper plugin                       |
-| **Inventory**       | Walks the sitemap + REST API to build a complete URL list                                 |
-| **Custom types**    | ACF/CPT schemas inferred; each becomes a Typeroll content type whose records are Pages    |
-| **Extract content** | Pages, posts and custom items reconstructed in your new design; images transferred to CDN |
-| **Redirects**       | Old WordPress URLs mapped to new Typeroll slugs                                           |
-| **Review**          | Paused for your approval — shows unhandled URLs                                           |
+| Stage               | What happens                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------- |
+| **Discover**        | Verifies the WP REST API is reachable, probes for the helper plugin                               |
+| **Inventory**       | Walks the sitemap + REST API to build a complete URL list                                         |
+| **Custom types**    | ACF/CPT schemas inferred; each becomes a Typeroll content type whose records are Pages            |
+| **Extract content** | Source content converted to blocks without rewriting; shared terms referenced; media copied to R2 |
+| **Redirects**       | Old WordPress URLs mapped to new Typeroll slugs                                                   |
+| **Review**          | Paused for review of URLs, conversion exceptions, shared data and desktop/mobile fidelity         |
 
 All imported pages start with `status: "review"`. You sign off before anything goes live.
 
@@ -33,7 +33,7 @@ Migrate my WordPress site at acme.se to this Typeroll site.
 
 ```
 The source site is at https://old.acme.com/wp-json — migrate it here.
-I also have the helper plugin installed with key: abc123xyz
+I have installed the helper plugin and configured its key securely.
 ```
 
 ## Before you start
@@ -42,9 +42,9 @@ The target Typeroll site should already have:
 
 - Colour palette and fonts configured
 - Header and footer partials built (at least a basic version)
-- 1–2 example pages if possible — the AI agent uses them as design references
+- Source and target examples for desktop/mobile comparison
 
-The migration imports **content**, not the old design. Your new design is applied automatically.
+The migration imports **content**, not the old design. Presentation comes from shared templates and must be compared with the source before launch.
 
 ## The helper plugin
 
@@ -55,6 +55,7 @@ The optional open-source Typeroll Helper Plugin exposes:
 - Navigation menus
 - Page builder JSON (Elementor, Breakdance)
 - Canonical URL list
+- Taxonomy terms, their archive URLs, custom fields and hierarchy
 
 Without the plugin, the migration falls back to the standard `/wp-json/wp/v2/` API, which may miss CPTs and ACF data.
 
@@ -64,7 +65,7 @@ Without the plugin, the migration falls back to the standard `/wp-json/wp/v2/` A
 2. Upload to WordPress: **Plugins → Add New → Upload Plugin**
 3. Activate it
 4. Go to **Settings → Typeroll Helper** and generate an API key
-5. Provide the key in your migration prompt
+5. Configure the key through your agent’s secure credential mechanism.
 
 <Aside type="tip">
   The helper plugin is read-only — it never modifies your WordPress site.
@@ -72,7 +73,7 @@ Without the plugin, the migration falls back to the standard `/wp-json/wp/v2/` A
 
 ## Custom post types
 
-Each CPT becomes a Typeroll content type whose records are Pages. The schema is inferred from a sample item's ACF fields and post meta:
+Each CPT becomes a Typeroll content type whose records are Pages. The schema is inferred from all imported items’ ACF fields and post meta:
 
 - ACF `image` fields → `type: "image"`
 - ACF `text` / `textarea` → `type: "text"` / `type: "textarea"`
@@ -101,3 +102,14 @@ If storage is not ready, it stops and directs an organization owner or admin to
 **Publishing → Media storage**. No content or media is imported into draft
 storage as a fallback. Referenced images are copied and verified directly in the
 organization’s Cloudflare account.
+
+## Shared data and acceptance
+
+See [shared categories and repeat imports](../../guides/wordpress-migration/#shared-categories-and-repeat-imports)
+for the Core 0.2.5 migration behavior. Categories are Pages, and article
+fields hold references to them. Never duplicate category names, emojis or
+ordering fields per article. Repeated imports preserve saved edits.
+
+Review the home page, an archive and representative articles at desktop and
+mobile widths. URL coverage is only one check: record visual, shared-data and
+integration evidence before treating the migration as launch-ready.

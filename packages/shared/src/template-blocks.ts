@@ -27,12 +27,13 @@ const pageTitle: BlockType = {
     { name: 'level', type: 'select', label: 'Level (semantic)',
       options: ['h1', 'h2', 'h3', 'h4'], default: 'h1' },
     { name: 'size', type: 'select', label: 'Visual size',
-      options: ['auto', 'theme', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'], default: 'auto', responsive: true },
+      options: ['auto', 'theme', 'article', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'], default: 'auto', responsive: true },
     { name: 'align', type: 'select', label: 'Alignment',
       options: ['left', 'center', 'right'], default: 'left', responsive: true },
+    { name: 'font_weight', type: 'select', label: 'Font weight', options: ['400', '500', '600', '700', '800'] },
     { name: 'fallback_text', type: 'text', label: 'Fallback (when no page)', default: 'Page title' },
   ],
-  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" style="text-align:{{align}}">
+  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="text-align:{{align}}">
   <{{=level}} class="block-heading-text">{{page.title}}</{{=level}}>
 </div>`,
   origin: 'core',

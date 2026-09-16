@@ -25,7 +25,7 @@ export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined
     case 'blog':
       return [
         blk('image', 'template/page_featured_image', { field: 'featured_image', width: 'wide' }),
-        blk('title', 'template/page_title', { level: 'h1', size: 'auto', align: 'left' }),
+        blk('title', 'template/page_title', { level: 'h1', size: 'article', align: 'left' }),
         blk('date',  'template/page_date',  { field: 'date_published' }),
         blk('body',  'template_content_slot',  { field: 'body', max_width: 'normal' }),
       ];
@@ -33,7 +33,7 @@ export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined
     case 'article':
       return [
         blk('breadcrumbs', 'template/page_breadcrumbs', { home_label: 'Home', aria_label: 'Breadcrumbs' }),
-        blk('title', 'template/page_title', { level: 'h1', size: 'auto' }),
+        blk('title', 'template/page_title', { level: 'h1', size: 'article' }),
         blk('date', 'template/page_date', { field: 'date_published' }),
         {
           ...blk('content', 'core/columns', { ratio: '3-1', gap: 'lg', align: 'start', mobile_order: 'right-first' }),

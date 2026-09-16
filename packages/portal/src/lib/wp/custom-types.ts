@@ -2,11 +2,11 @@
 //
 // Strategy:
 //   1. Enumerate every non-builtin post type via /wp-json/wp/v2/types.
-//   2. For each type, fetch a sample item and infer the field schema from
+//   2. For each type, fetch a sample item and infer the field schema from all items and
 //      what's actually present (acf{}, meta{}, native fields like content/
 //      excerpt/title/date).
 //   3. Create a content type on the target site with that schema.
-//   4. Import entries as Pages — main body via AI reconstruction,
+//   4. Import entries as Pages — main body converted to native blocks,
 //      custom fields mapped onto their corresponding content type fields.
 
 import { PAGE_BUILTIN_FIELDS } from '@typeroll/shared';
@@ -33,14 +33,24 @@ const BASE_FIELDS: FieldDefinition[] = [
 ];
 
 /** Build a content type definition for a custom post type, inferring extra fields from a sample item. */
-export function inferContentType(type: WPPostType, sampleItem: WPItem | undefined): InferredContentType {
+export function inferContentType(type: WPPostType, sampleItem: WPItem | WPItem[] | undefined): InferredContentType {
   const name = sanitizeMachineName(type.slug);
   const labelSingular = type.name || titleCase(type.slug);
   const labelPlural = pluralize(labelSingular);
 
   const fields: FieldDefinition[] = [...BASE_FIELDS];
 
-  for (const [name, value] of customValues(sampleItem)) fields.push({ name, label: titleCase(name), type: inferFieldType(value) });
+  const inferred = new Map<string, FieldDefinition>();
+  for (const item of Array.isArray(sampleItem) ? sampleItem : [sampleItem]) {
+    for (const [name, value] of customValues(item)) {
+      if (value === '') continue;
+      const type = inferFieldType(value);
+      const previous = inferred.get(name);
+      if (previous && previous.type !== type) throw new Error(`Inconsistent WordPress field ${name}; map its type before importing.`);
+      inferred.set(name, { name, label: titleCase(name), type });
+    }
+  }
+  fields.push(...inferred.values());
 
   return {
     name,
@@ -105,6 +115,7 @@ function inferFieldType(value: unknown): FieldType {
     if (value.length > 120 || value.includes('\n')) return 'textarea';
     return 'text';
   }
+  if (typeof value === 'object' && !Array.isArray(value) && value && typeof (value as Record<string, unknown>).url === 'string' && String((value as Record<string, unknown>).mime_type ?? '').startsWith('image/')) return 'image';
   if (Array.isArray(value) || typeof value === 'object') {
     // Complex types collapse to textarea (JSON string) for now. A future
     // pass can introspect ACF field groups properly via the helper plugin.
@@ -121,13 +132,14 @@ function coerceForField(value: unknown, type: FieldType): unknown {
     case 'url':
     case 'email':
     case 'date':
-    case 'image':
     case 'file':
     case 'color':
     case 'select':
       if (typeof value === 'string') return value;
       if (typeof value === 'object') return JSON.stringify(value);
       return String(value);
+    case 'image':
+      return typeof value === 'object' && value && 'url' in value ? String(value.url) : String(value ?? '');
     case 'boolean':
       return Boolean(value);
     case 'number':

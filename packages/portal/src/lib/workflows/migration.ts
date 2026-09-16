@@ -1,43 +1,11 @@
 import { vstore } from '../version-store';
 import { requireImportStorage } from '../media/import-policy';
 import { mapTransfers } from '../media/transfer';
-// MIGRATION workflow — bring a WordPress site to Typeroll.
-//
-// Strategy:
-//   The new site has its OWN design — colors, fonts, header/footer partials,
-//   and ideally one or two design-reference pages — set up BEFORE migration.
-//   We do NOT import the old site's globals.
-//
-//   For each page / post / custom-post-type item, we:
-//     1. Get the source HTML (REST `content.rendered`; fall back to the
-//        public page when REST is thin or empty).
-//     2. Find every image URL referenced on the page (inline <img>, srcset,
-//        background-image, plus the featured image). Move each to the new
-//        CDN just-in-time — only images actually used on imported pages
-//        end up on the new R2 bucket. Cached across pages so we don't
-//        re-upload shared images.
-//     3. Pass the cleaned content + featured image + custom fields + the
-//        target site's design context (existing pages, settings) to Claude,
-//        which reconstructs the page in the new design while preserving
-//        every text/image/table/heading.
-//   When ANTHROPIC_API_KEY is missing, the cleaned source HTML is used as-is.
-//
-//   The migration prefers the Typeroll Helper plugin (PHP, in
-//   wp-helper-plugin/) when the customer has installed it and provided
-//   the API key — it gives reliable access to custom post types, ACF
-//   fields, and featured-image metadata regardless of how the source
-//   site's REST is configured. Falls back to standard /wp-json/wp/v2/.
-//
-// Steps:
-//   discover              — verify the WP site; probe helper plugin
-//   extract_site_info     — site name + tagline (target site's design left alone)
-//   enumerate_custom_types — find CPTs, create matching content types
-//   extract_content        — pages + posts + custom items, with JIT media
-//                            transfer and AI reconstruction
-//   generate_redirects     — old URL → new slug
-//   review                 — paused gate before publish
+// Migration preserves source content, stable identities and shared taxonomy
+// relations. Presentation is reviewed separately in reusable Page templates.
+// Media still transfers directly to the organization's verified storage.
 
-import { paths, slugify, MAIN_VERSION_ID } from '@typeroll/shared';
+import { paths, slugify, MAIN_VERSION_ID, contentPagePath, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
 import type {
   ContentType,
   Page,
@@ -50,11 +18,7 @@ import { runMigrationPreflight, summarizePreflight } from '../migration-prefligh
 import { cleanWordPressHtml } from '../wp/clean-html';
 import { extractGlobals } from '../wp/globals';
 import { WPMediaTransfer, buildMediaMap, mediaTransferAvailability } from '../wp/media';
-import {
-  reconstructPage,
-  isAIReconstructAvailable,
-} from '../wp/ai-reconstruct';
-import { loadDesignContext } from '../wp/design-context';
+import { planTaxonomyImport, type TaxonomySource } from '../wp/taxonomy-import';
 import { htmlToBlocks } from '../html-to-blocks';
 import { inferContentType, projectItemFields } from '../wp/custom-types';
 import { fetchRendered, extractMainContent } from '../wp/page-fetcher';
@@ -84,7 +48,7 @@ export const migrationWorkflow: WorkflowDef = {
   type: 'migration',
   label: 'Migrate from WordPress',
   description:
-    'Crawl a WordPress site and reconstruct each page in the new site\'s design. Images move to the new CDN as they\'re referenced. Pages, posts, custom post types, and ACF fields all supported.',
+    'Import WordPress pages, shared categories and references without rewriting content. Convert bodies to editable blocks, move referenced media to your storage, then review templates and fidelity before publishing.',
   steps: [
     {
       name: 'preflight',
@@ -125,31 +89,22 @@ export const migrationWorkflow: WorkflowDef = {
         const helperKey = String(ctx.config.helper_api_key ?? '').trim() || null;
 
         const client = new WPClient(url);
-        ctx.log(`Probing ${url}/wp-json …`);
-        const info = await client.siteInfo();
-        ctx.log(`Found "${info.name}" — ${info.description ?? 'no description'}`);
-
-        let helperOk = false;
-        let sourceLanguage: string | null = null;
-        if (helperKey) {
-          const helperInfo = await WPHelperClient.probe(url, helperKey);
-          if (helperInfo) {
-            helperOk = true;
-            // WP returns language as "sv-SE", "en-US"; BCP 47 is dash-cased,
-            // so we keep it as-is (matches our SiteSettings expectation).
-            sourceLanguage = helperInfo.language ?? null;
-            ctx.log(
-              `Typeroll Helper plugin v${helperInfo.plugin_version} detected. ACF: ${helperInfo.acf_active ? 'yes' : 'no'}. Language: ${sourceLanguage ?? 'unknown'}.`
-            );
-          } else {
-            ctx.log('Helper API key provided but plugin did not respond. Falling back to standard REST.');
+        const helperInfo = helperKey ? await new WPHelperClient(url, helperKey).info() : null;
+        if (helperInfo) {
+          const [major, minor, patch] = helperInfo.plugin_version.split('.').map(Number);
+          if (!(major > 0 || minor > 3 || (minor === 3 && patch >= 2))) {
+            throw new Error(`Update Typeroll Helper in WordPress to 0.3.2 or later before importing. Installed: ${helperInfo.plugin_version}. Shared category export is required.`);
           }
-        } else {
-          ctx.log('No helper API key — using standard /wp-json/wp/v2/. Custom post types and ACF may be incomplete.');
         }
-
-        if (!isAIReconstructAvailable()) {
-          ctx.log('NOTE: ANTHROPIC_API_KEY not set. Pages will be imported as cleaned source HTML, not reconstructed in the new design.');
+        ctx.log(`Reading WordPress site information from ${url}.`);
+        const info = helperInfo ?? await client.siteInfo();
+        ctx.log(`Found "${info.name}" — ${info.description ?? 'no description'}`);
+        const helperOk = Boolean(helperInfo);
+        const sourceLanguage = helperInfo?.language ?? null;
+        if (helperInfo) {
+          ctx.log(`Typeroll Helper v${helperInfo.plugin_version}. ACF: ${helperInfo.acf_active ? 'yes' : 'no'}. Language: ${sourceLanguage ?? 'unknown'}.`);
+        } else {
+          ctx.log('Using standard WordPress REST. Only REST-exposed content types, taxonomies and custom fields are available; review source coverage before launch.');
         }
 
         await ctx.store.updateDoc(paths.site(ctx.orgId, ctx.siteId), {
@@ -341,9 +296,8 @@ export const migrationWorkflow: WorkflowDef = {
           ctx.log(`Helper plugin: ${types.length} custom post type(s) with published items.`);
           for (const type of types) {
             const items = await helper.listItems(type.slug);
-            const sample = items[0] as unknown as WPItem | undefined;
-            if (!sample) continue;
-            await registerContentType(ctx, type.slug, type.name, sample, created);
+            if (!items.length) continue;
+            await registerContentType(ctx, type.slug, type.name, type.rest_base || type.slug, items.map(helperToWP) as WPItem[], created);
           }
         } else {
           // Standard REST path. Won't see types with show_in_rest=false.
@@ -351,19 +305,17 @@ export const migrationWorkflow: WorkflowDef = {
           const types = await client.listCustomPostTypes();
           ctx.log(`Standard REST: ${types.length} custom post type(s) visible.`);
           for (const type of types) {
-            let sample: WPItem | undefined;
+            let items: WPItem[];
             try {
-              const items = await client.listItemsOfType(type.rest_base);
-              sample = items[0];
+              items = await client.listItemsOfType(type.rest_base);
             } catch (e) {
-              ctx.log(`Couldn't sample "${type.slug}": ${e instanceof Error ? e.message : e}. Skipping.`);
-              continue;
+              throw new Error(`Could not read content type "${type.slug}": ${e instanceof Error ? e.message : e}`);
             }
-            if (!sample) {
+            if (!items.length) {
               ctx.log(`Type "${type.slug}" has no items; skipping.`);
               continue;
             }
-            await registerContentType(ctx, type.slug, type.name, sample, created);
+            await registerContentType(ctx, type.slug, type.name, type.rest_base || type.slug, items, created);
           }
         }
 
@@ -373,7 +325,7 @@ export const migrationWorkflow: WorkflowDef = {
 
     {
       name: 'extract_content',
-      label: 'Reconstruct pages in the new design (media moves as it\'s used)',
+      label: 'Import shared categories, page content and media',
       async run(ctx) {
         const url = String(ctx.state.wp_url);
         const sourceOrigin = new URL(url).origin;
@@ -387,18 +339,9 @@ export const migrationWorkflow: WorkflowDef = {
         );
         const mediaAvailability = await mediaTransferAvailability(ctx.orgId, ctx.siteId);
         if (!mediaAvailability.configured) {
-          ctx.log('R2 not configured — image URLs will keep their original WordPress origin.');
+          throw new Error('Import storage is not ready. Connect and verify organization media storage before importing.');
         } else {
           ctx.log(`Imported media will be saved to ${mediaAvailability.destination}.`);
-        }
-
-        const design = await loadDesignContext(ctx.orgId, ctx.siteId, migrationVersion(ctx));
-        if (!design.example_pages.length) {
-          ctx.log(
-            'No design-reference pages on the target site — add 1–2 example pages before migration for best results.'
-          );
-        } else {
-          ctx.log(`Using ${design.example_pages.length} design-reference page(s).`);
         }
 
         // Ensure an article content type exists so WordPress posts can be
@@ -437,17 +380,108 @@ export const migrationWorkflow: WorkflowDef = {
               const items = await client.listItemsOfType(ref.source_rest_base);
               for (const i of items) customItems.push({ ref, item: i });
             } catch (e) {
-              ctx.log(`Failed to list ${ref.source_slug}: ${e instanceof Error ? e.message : e}`);
+              throw new Error(`Failed to list ${ref.source_slug}: ${e instanceof Error ? e.message : e}`);
             }
           }
         }
 
+        const entries = [
+          ...pages.map(item => ({ item: item as WPItem, sourceType: 'page', targetType: 'page' })),
+          ...posts.map(item => ({ item: item as WPItem, sourceType: 'post', targetType: postsContentType })),
+          ...customItems.map(({ ref, item }) => ({ item, sourceType: ref.source_slug, targetType: ref.name })),
+        ];
+        const pageIdFor = (item: WPPage, sourceType: string): string => sourceType === 'page' && isLikelyHome(item, url) ? 'home' : `wp-${sourceType}-${item.id}`;
+        const parentIds = new Map(entries.map(({ item, sourceType }) => [`${sourceType}:${item.id}`, pageIdFor(item, sourceType)]));
+
+        if (!helperActive || !helperKey) {
+          const items = [...pages, ...posts, ...customItems.map(value => value.item)];
+          const mediaIds = items.map(item => item.featured_media ?? 0).filter(Boolean);
+          if (mediaIds.length) {
+            const media = await new WPClient(url).getMediaBatch(mediaIds);
+            for (const item of items) if (item.featured_media) {
+              const image = media.get(item.featured_media);
+              if (!image) throw new Error(`Featured media ${item.featured_media} could not be read for page ${item.id}.`);
+              Object.assign(item, { _featured_url: image.source_url, _featured_alt: image.alt_text ?? '' });
+            }
+          }
+        }
+
+        // Fetch shared terms separately. An unavailable taxonomy endpoint must
+        // fail visibly rather than silently dropping category membership.
+        const taxonomyClient = helperActive && helperKey ? new WPHelperClient(url, helperKey) : new WPClient(url);
+        const sourceTypes = new Set(['page', 'post', ...customRefs.map(ref => ref.source_slug)]);
+        const taxonomies = (await taxonomyClient.listTaxonomies()).filter(taxonomy => taxonomy.types.some(type => sourceTypes.has(type)));
+        const taxonomySources: TaxonomySource[] = [];
+        for (const taxonomy of taxonomies) taxonomySources.push({ taxonomy, terms: await taxonomyClient.listTerms(taxonomy) });
+        const taxonomyPlan = planTaxonomyImport(taxonomySources, sourceOrigin, new Date().toISOString());
+        // Validate all references before creating category pages or importing bodies.
+        for (const { item, sourceType } of entries) {
+          taxonomyPlan.valuesFor(item, sourceType);
+          taxonomyPlan.parentFor(item, sourceType);
+          if (item.parent && !parentIds.has(`${sourceType}:${item.parent}`)) {
+            throw new Error(`Missing parent ${sourceType}:${item.parent} for ${item.id}; include the parent page before importing.`);
+          }
+        }
+        const existingPages = await vstore.pages(ctx.orgId, ctx.siteId, migrationVersion(ctx));
+        const existingTypes = await vstore.contentTypes(ctx.orgId, ctx.siteId, migrationVersion(ctx));
+        const resolvedPaths = new Map(existingPages.map(page => [page.id, contentPagePath(page,
+          existingTypes.find(type => type.id === (page.content_type ?? 'page')) ?? DEFAULT_CONTENT_TYPE)]));
+        const sourcePages = [
+          ...taxonomyPlan.pages.map(page => ({ id: page.id, path: page.path!, url: page.old_wp_url! })),
+          ...entries.map(({ item, sourceType }) => ({
+            id: pageIdFor(item, sourceType), path: pathFromUrl(item.link, sourceOrigin) ?? `/${item.slug}`, url: item.link,
+          })),
+        ];
+        const existingById = new Map(existingPages.map(page => [page.id, page]));
+        const existingByPath = new Map(existingPages.flatMap(page => resolvedPaths.get(page.id) ? [[resolvedPaths.get(page.id)!.replace(/\/+$/, '') || '/', page] as const] : []));
+        const plannedPaths = new Map<string, string>();
+        for (const candidate of sourcePages) {
+          const normalizedPath = candidate.path.replace(/\/+$/, '') || '/';
+          const planned = plannedPaths.get(normalizedPath);
+          if (planned && planned !== candidate.id) throw new Error(`Source URLs collide at ${candidate.path}; map the archive and page before importing.`);
+          plannedPaths.set(normalizedPath, candidate.id);
+          const sameId = existingById.get(candidate.id);
+          const samePath = existingByPath.get(normalizedPath);
+          const conflict = sameId && sameId.old_wp_url !== candidate.url ? sameId : samePath && samePath.id !== candidate.id ? samePath : undefined;
+          if (conflict) throw new Error(`Import conflicts with existing page ${conflict.id} at ${candidate.path}; map the existing page before importing.`);
+        }
+        for (const contentType of taxonomyPlan.contentTypes) {
+          const existing = await vstore.contentType(ctx.orgId, ctx.siteId, migrationVersion(ctx), contentType.name);
+          if (existing && contentType.fields.some(field => !existing.fields.some(value => value.name === field.name && value.type === field.type))) {
+            throw new Error(`Taxonomy schema ${contentType.name} changed. Review its field mapping before importing.`);
+          }
+        }
+        // Declare reference fields on the owning content type, not copies of
+        // term names, icons or other shared metadata on each article.
+        for (const [sourceType, targetType] of [['page', 'page'], ['post', postsContentType], ...customRefs.map(ref => [ref.source_slug, ref.name])]) {
+          const sourceItems = entries.filter(entry => entry.sourceType === sourceType).map(entry => entry.item);
+          const customFields = sourceItems.length ? inferContentType({ slug: sourceType, name: sourceType, rest_base: sourceType }, sourceItems).fields : [];
+          const fields = [...customFields, ...taxonomyPlan.fieldsFor(sourceType)];
+          if (!fields.length) continue;
+          const existing = await vstore.contentType(ctx.orgId, ctx.siteId, migrationVersion(ctx), targetType);
+          for (const field of fields) {
+            const previous = existing?.fields.find(value => value.name === field.name);
+            if (previous && (previous.type !== field.type || previous.ref_content_type !== field.ref_content_type)) {
+              throw new Error(`Field ${targetType}.${field.name} conflicts with the imported field mapping.`);
+            }
+          }
+          await ctx.store.setDoc(paths.contentType(ctx.orgId, ctx.siteId, targetType, migrationVersion(ctx)), {
+            ...(existing ?? { name: targetType, label_singular: 'Page', label_plural: 'Pages', route_template: '/{slug}', created_at: new Date().toISOString() }),
+            fields: [...(existing?.fields ?? []), ...fields.filter(field => !existing?.fields.some(value => value.name === field.name))],
+          });
+        }
+        for (const contentType of taxonomyPlan.contentTypes) {
+          await ctx.store.createDocIfMissing(paths.contentType(ctx.orgId, ctx.siteId, contentType.name, migrationVersion(ctx)), contentType);
+        }
+
+        const targetTypes = new Map((await vstore.contentTypes(ctx.orgId, ctx.siteId, migrationVersion(ctx))).map(type => [type.id, type]));
+
         const total = pages.length + posts.length + customItems.length;
-        ctx.log(`Reconstructing ${pages.length} page(s), ${posts.length} post(s), ${customItems.length} custom-type item(s)…`);
+        ctx.log(`Importing ${pages.length} page(s), ${posts.length} post(s), ${customItems.length} custom-type item(s)…`);
 
         let done = 0;
-        let aiCount = 0;
-        let fallbackCount = 0;
+        let skippedExisting = 0;
+        const conversionReview: Array<{ page_id: string; notes: string[]; html_blocks: number }> = [];
         let imagesMoved = 0;
         const slugMap: Record<string, string> = {};
         const sourceRedirectCache = new Map<string, Promise<string>>();
@@ -457,48 +491,80 @@ export const migrationWorkflow: WorkflowDef = {
         const moveImagesAndBuildMap = async (
           rawHtml: string,
           featuredOldUrl: string | null,
-          featuredAlt: string
+          featuredAlt: string,
+          mediaBaseUrl: string = sourceOrigin,
         ): Promise<{ mediaMap: Map<string, string>; featuredNewUrl: string | null }> => {
-          const urls = extractImageUrls(rawHtml, { sourceOrigin });
+          const urls = extractImageUrls(rawHtml, { baseUrl: mediaBaseUrl });
           const records = await mapTransfers(urls, async (u) => {
               try {
                 const r = await transfer.ensureUrl(u.url, u.alt);
                 imagesMoved++;
                 return r;
               } catch (e) {
-                ctx.log(`Image transfer failed for ${u.url}: ${e instanceof Error ? e.message : e}`);
-                return null;
+                throw new Error(`Image transfer failed for ${u.url}; retry the import after resolving storage/source access. ${e instanceof Error ? e.message : e}`);
               }
             });
           let featuredNewUrl: string | null = null;
           if (featuredOldUrl) {
             try {
-              const r = await transfer.ensureUrl(featuredOldUrl, featuredAlt);
+              const r = await transfer.ensureUrl(new URL(featuredOldUrl, mediaBaseUrl).href, featuredAlt);
               records.push(r);
               imagesMoved++;
               featuredNewUrl = r.cdnUrl;
             } catch (e) {
-              ctx.log(`Featured image transfer failed: ${e instanceof Error ? e.message : e}`);
-              featuredNewUrl = featuredOldUrl;
+              throw new Error(`Featured image transfer failed; retry the import after resolving storage/source access. ${e instanceof Error ? e.message : e}`);
             }
           }
           const mediaMap = buildMediaMap(records.filter((r): r is NonNullable<typeof r> => r != null));
           return { mediaMap, featuredNewUrl };
         };
 
-        const reconstructAndSave = async (
-          item: WPPage,
-          kind: 'page' | 'post'
+        // Term descriptions and images use the same verified media path as
+        // article bodies. Do not strand shared media at the WordPress origin.
+        for (const page of taxonomyPlan.pages) {
+          const { id, ...doc } = page;
+          if (!existingById.has(id)) {
+            const source = taxonomySources.find(value => value.taxonomy.slug && `wp_taxonomy_${value.taxonomy.slug.replace(/-/g, '_')}` === page.content_type)!;
+            const term = source.terms.find(value => `wp-term-${source.taxonomy.slug}-${value.id}` === id)!;
+            const { mediaMap } = await moveImagesAndBuildMap(term.description ?? '', null, '', term.link);
+            const converted = htmlToBlocks(cleanWordPressHtml(term.description ?? '', { mediaMap, sourceOrigin, mediaBaseUrl: term.link, collapseWhitespace: true }));
+            for (const field of taxonomyPlan.contentTypes.find(type => type.name === page.content_type)!.fields) {
+              if (field.type === 'image' && typeof doc.fields?.[field.name] === 'string' && doc.fields[field.name]) {
+                const image = await transfer.ensureUrl(doc.fields[field.name] as string, '');
+                doc.fields[field.name] = image.cdnUrl;
+              }
+            }
+            doc.blocks = [page.blocks![0], ...converted.blocks, page.blocks![page.blocks!.length - 1]];
+            if (converted.notes.length) conversionReview.push({ page_id: id, notes: converted.notes, html_blocks: converted.summary.find(entry => entry.block_type === 'core/html')?.count ?? 0 });
+            await ctx.store.createDocIfMissing(paths.page(ctx.orgId, ctx.siteId, id, migrationVersion(ctx)), doc);
+          }
+          await addInventoryUrl(ctx.store, ctx.orgId, ctx.siteId, { path: page.path!, full_url: page.old_wp_url!, source: 'taxonomy' });
+        }
+
+        const importAndSave = async (
+          item: WPItem,
+          sourceType: string,
+          contentType: string,
         ): Promise<void> => {
           // Track this item's old URL in the inventory.
           await addInventoryUrl(ctx.store, ctx.orgId, ctx.siteId, {
             path: pathFromUrl(item.link, sourceOrigin) ?? '/' + item.slug,
             full_url: item.link,
-            source: kind === 'page' ? 'rest-page' : 'rest-post',
+            source: `rest-${sourceType}`,
           });
           await addWordPressBareSlugGuess(
             ctx.store, ctx.orgId, ctx.siteId, item.link, item.slug, sourceOrigin,
           );
+
+          const isHome = sourceType === 'page' && isLikelyHome(item, url);
+          const pageId = pageIdFor(item, sourceType);
+          const existing = existingById.get(pageId);
+          if (existing) {
+            slugMap[item.link] = existing.path ?? pathFromUrl(item.link, sourceOrigin) ?? `/${item.slug}`;
+            skippedExisting++; done++;
+            ctx.log(`[${item.slug}] Already imported; preserving saved content and edits.`);
+            return;
+          }
 
           let rawHtml = item.content?.rendered ?? '';
 
@@ -533,34 +599,20 @@ export const migrationWorkflow: WorkflowDef = {
           const { mediaMap, featuredNewUrl } = await moveImagesAndBuildMap(
             rawHtml,
             featuredOldUrl,
-            featuredAlt
+            featuredAlt,
+            item.link,
           );
 
           const cleaned = cleanWordPressHtml(rawHtml, {
             mediaMap,
             sourceOrigin,
+            mediaBaseUrl: item.link,
             collapseWhitespace: true,
           });
 
           const featuredImage = featuredNewUrl
             ? { url: featuredNewUrl, alt: featuredAlt }
             : undefined;
-          const excerpt = item.excerpt?.rendered ? normalizeWordPressPlainText(item.excerpt.rendered) : undefined;
-          const extras = collectExtras(item);
-
-          const result = await reconstructPage(design, {
-            title: normalizeWordPressPlainText(item.title.rendered),
-            slug: item.slug,
-            url: item.link,
-            cleaned_html: cleaned,
-            featured_image: featuredImage,
-            excerpt,
-            extras,
-          });
-          if (result.used_ai) aiCount++;
-          else fallbackCount++;
-          if (result.notes) ctx.log(`[${item.slug}] ${result.notes}`);
-
           const rawSlug = item.slug || slugify(normalizeWordPressPlainText(item.title.rendered)) || `page-${item.id}`;
 
           // SEO: prefer the helper plugin's normalized `seo` field (works for
@@ -578,123 +630,53 @@ export const migrationWorkflow: WorkflowDef = {
           const noindex  = helperSEO?.noindex === true ? true : undefined;
           const rawOgImage = helperSEO?.og_image ?? yoast?.og_image?.[0]?.url;
           const ogImage = rawOgImage
-            ? (mediaMap.get(rawOgImage) ?? rawOgImage)
+            ? (mediaMap.get(rawOgImage) ?? (await transfer.ensureUrl(new URL(rawOgImage, item.link).href, '')).cdnUrl)
             : featuredImage?.url;
 
-          const contentType = kind === 'post' ? postsContentType : 'page';
-          const isHome = kind === 'page' && (item.slug === 'home' || isLikelyHome(item, url));
-          const pageId = isHome ? 'home' : `wp-${kind}-${item.id}`;
           const path = isHome ? '/' : pathFromUrl(item.link, sourceOrigin) ?? `/${rawSlug}`;
           const useBlocks = String(ctx.config.target_content_mode ?? 'blocks') !== 'html';
+          const converted = htmlToBlocks(cleaned);
+          if (/<(?:form|script|object|embed)\b/i.test(rawHtml)) converted.notes.push('Source contains interactive markup. Recreate and test the corresponding Form or Extension; imported content alone does not activate it.');
+          if (converted.notes.length) conversionReview.push({ page_id: pageId, notes: converted.notes, html_blocks: converted.summary.find(entry => entry.block_type === 'core/html')?.count ?? 0 });
+          const fieldSchema = targetTypes.get(contentType)?.fields ?? [];
+          const fields = { ...projectItemFields(item, fieldSchema, featuredImage?.url), ...taxonomyPlan.valuesFor(item, sourceType) };
+          // Existing article types may use hero_image; retain their declared mapping.
+          if (fieldSchema.some(field => field.name === 'hero_image')) fields.hero_image = featuredImage?.url ?? '';
+          for (const field of fieldSchema) {
+            const value = fields[field.name];
+            if (field.type === 'image' && typeof value === 'string' && value && value !== featuredImage?.url) {
+              fields[field.name] = (await transfer.ensureUrl(new URL(value, item.link).href, '')).cdnUrl;
+            }
+          }
           const doc: Omit<Page, 'id'> = {
             title: normalizeWordPressPlainText(item.title.rendered),
             slug: isHome ? '' : rawSlug, path, content_type: contentType,
-            fields: kind === 'post' ? { excerpt: excerpt ?? '', hero_image: featuredImage?.url ?? '' } : {},
+            fields,
+            parent: item.parent ? parentIds.get(`${sourceType}:${item.parent}`) : taxonomyPlan.parentFor(item, sourceType),
+            sort_order: item.menu_order,
             content_mode: useBlocks ? 'blocks' : 'html',
-            ...(useBlocks ? { blocks: htmlToBlocks(result.html).blocks } : { html_content: result.html }),
+            ...(useBlocks ? { blocks: converted.blocks } : { html_content: cleaned }),
             seo_title: seoTitle, seo_description: seoDesc, og_image: ogImage, canonical_url: seoCanon, noindex,
-            kind: kind === 'post' ? 'article' : 'page', status: 'review',
-            old_wp_url: item.link, ai_generated: result.used_ai,
+            kind: sourceType === 'page' ? 'page' : 'article', status: 'review',
+            old_wp_url: item.link, ai_generated: false,
             date_published: item.date, date_updated: item.modified,
           };
-          await ctx.store.setDoc(paths.page(ctx.orgId, ctx.siteId, pageId, migrationVersion(ctx)), doc);
+          await ctx.store.createDocIfMissing(paths.page(ctx.orgId, ctx.siteId, pageId, migrationVersion(ctx)), doc);
           slugMap[item.link] = path;
           done++;
           if (done % 3 === 0 || done === total) {
             ctx.setProgress({ total, completed: done });
-            ctx.log(`Done ${done}/${total} — AI: ${aiCount}, src-kept: ${fallbackCount}, images moved: ${imagesMoved}`);
+            ctx.log(`Done ${done}/${total} — existing preserved: ${skippedExisting}, images moved: ${imagesMoved}`);
           }
         };
 
-        for (const p of pages) await reconstructAndSave(p, 'page');
-        for (const p of posts) await reconstructAndSave(p, 'post');
-
-        // ── Custom-type items → pages ─────────────────────────
-
-        for (const { ref, item } of customItems) {
-          const coll = await vstore.contentType(ctx.orgId, ctx.siteId, migrationVersion(ctx), ref.name);
-          if (!coll) continue;
-
-          if (item.link) {
-            await addInventoryUrl(ctx.store, ctx.orgId, ctx.siteId, {
-              path: pathFromUrl(item.link, sourceOrigin) ?? '/' + (item.slug ?? ''),
-              full_url: item.link,
-              source: `rest-${ref.source_slug}`,
-            });
-            await addWordPressBareSlugGuess(
-              ctx.store, ctx.orgId, ctx.siteId, item.link, item.slug ?? '', sourceOrigin,
-            );
-          }
-
-          let rawHtml = item.content?.rendered ?? '';
-          rawHtml = await resolveSourceRedirectsInHtml(rawHtml, sourceOrigin, {
-            cache: sourceRedirectCache,
-          });
-          // Pick up internal links from the source body.
-          for (const p of extractInternalLinks(rawHtml, sourceOrigin)) {
-            await addInventoryUrl(ctx.store, ctx.orgId, ctx.siteId, {
-              path: p,
-              full_url: sourceOrigin + p,
-              source: 'internal-link',
-            });
-          }
-          const featuredOldUrl = (item as unknown as { _featured_url?: string })._featured_url ?? null;
-          const featuredAlt = (item as unknown as { _featured_alt?: string })._featured_alt ?? '';
-          const { mediaMap, featuredNewUrl } = await moveImagesAndBuildMap(
-            rawHtml,
-            featuredOldUrl,
-            featuredAlt
-          );
-
-          const cleaned = cleanWordPressHtml(rawHtml, {
-            mediaMap,
-            sourceOrigin,
-            collapseWhitespace: true,
-          });
-          const featuredImage = featuredNewUrl
-            ? { url: featuredNewUrl, alt: featuredAlt }
-            : undefined;
-
-          let bodyHtml = cleaned;
-          {
-            const result = await reconstructPage(design, {
-              title: normalizeWordPressPlainText(item.title?.rendered ?? ''),
-              slug: item.slug ?? '',
-              url: item.link ?? '',
-              cleaned_html: cleaned,
-              featured_image: featuredImage,
-              excerpt: item.excerpt?.rendered
-                ? normalizeWordPressPlainText(item.excerpt.rendered)
-                : undefined,
-              extras: collectExtras(item),
-            });
-            bodyHtml = result.html;
-            if (result.used_ai) aiCount++;
-            else fallbackCount++;
-          }
-
-          const fields = projectItemFields(item, coll.fields, featuredImage?.url);
-          const pageId = `wp-${ref.source_slug}-${item.id}`;
-          const path = pathFromUrl(item.link, sourceOrigin) ?? `/${ref.name}/${item.slug}`;
-          const now = new Date().toISOString();
-          await ctx.store.setDoc(paths.page(ctx.orgId, ctx.siteId, pageId, migrationVersion(ctx)), {
-            title: normalizeWordPressPlainText(item.title?.rendered ?? ''), slug: item.slug ?? `page-${item.id}`,
-            path, content_type: ref.name, fields, content_mode: 'blocks', blocks: htmlToBlocks(bodyHtml).blocks,
-            status: 'review', date_published: item.date ?? now, date_updated: item.modified ?? now,
-            og_image: featuredImage?.url, old_wp_url: item.link,
-          });
-          if (item.link) slugMap[item.link] = path;
-          done++;
-          if (done % 3 === 0 || done === total) {
-            ctx.setProgress({ total, completed: done });
-          }
-        }
+        for (const { item, sourceType, targetType } of entries) await importAndSave(item, sourceType, targetType);
 
         ctx.log(
-          `Reconstruction complete. AI-reconstructed: ${aiCount}, source-kept: ${fallbackCount}, images moved to CDN: ${imagesMoved}.`
+          `Import complete. Existing pages preserved: ${skippedExisting}, shared terms: ${taxonomyPlan.pages.length}, images moved: ${imagesMoved}. Review desktop/mobile layout and integrations before publishing.`
         );
         return {
-          state: { slug_map: slugMap, imported_count: done, images_moved: imagesMoved },
+          state: { slug_map: { ...Object.fromEntries(taxonomyPlan.pages.map(page => [page.old_wp_url!, page.path!])), ...slugMap }, imported_count: done, images_moved: imagesMoved, shared_terms: taxonomyPlan.pages.length, skipped_existing: skippedExisting, conversion_review: conversionReview },
         };
       },
     },
@@ -773,7 +755,7 @@ export const migrationWorkflow: WorkflowDef = {
       name: 'analyze_coverage',
       label: 'Analyze URL coverage',
       async run(ctx) {
-        const { summary } = await analyzeCoverage(ctx.store, ctx.orgId, ctx.siteId);
+        const { summary } = await analyzeCoverage(ctx.store, ctx.orgId, ctx.siteId, migrationVersion(ctx));
         ctx.log(
           `Coverage: ${summary.total} URL(s) — ${summary.migrated} migrated, ${summary.redirected} redirected, ${summary.excluded} excluded, ${summary.unhandled} unhandled.`
         );
@@ -798,9 +780,13 @@ export const migrationWorkflow: WorkflowDef = {
           unhandled > 0
             ? `Migration complete. ${unhandled} URL(s) are unhandled — resolve them on the Migration page before switching DNS, or mark them as intentional 404s.`
             : 'Migration complete. Every discovered URL is handled.';
-        return reviewGate(message, {
+        return reviewGate(message + ' Content is imported for review, not approved for launch. Compare representative articles, an archive and the home page on desktop and mobile. Check shared categories, templates, media and live integrations; record intentional differences.', {
             imported_pages: ctx.state.imported_count,
             images_moved: ctx.state.images_moved,
+            shared_terms: ctx.state.shared_terms,
+            skipped_existing: ctx.state.skipped_existing,
+            conversion_review: ctx.state.conversion_review,
+            visual_review: 'required',
             content_types_created: collectionsCreated.map((c) => c.name),
             redirects: Object.keys((ctx.state.slug_map ?? {}) as Record<string, string>).length,
             coverage,
@@ -817,13 +803,16 @@ async function registerContentType(
   ctx: Parameters<NonNullable<(typeof migrationWorkflow.steps)[number]['run']>>[0],
   slug: string,
   name: string,
-  sample: WPItem,
+  restBase: string,
+  sample: WPItem[],
   out: StoredContentTypeRef[]
 ): Promise<void> {
-  const def = inferContentType({ slug, name, rest_base: slug } as Parameters<typeof inferContentType>[0], sample);
+  const def = inferContentType({ slug, name, rest_base: restBase } as Parameters<typeof inferContentType>[0], sample);
   const collectionPath = paths.contentType(ctx.orgId, ctx.siteId, def.name, migrationVersion(ctx));
   const existing = await vstore.contentType(ctx.orgId, ctx.siteId, migrationVersion(ctx), def.name);
   if (existing) {
+    const missing = def.fields.filter(field => !existing.fields.some(value => value.name === field.name && value.type === field.type));
+    if (missing.length) throw new Error(`Content type "${def.name}" needs a reviewed field mapping: ${missing.map(field => field.name).join(', ')}`);
     ctx.log(`Content type "${def.name}" already exists — keeping schema.`);
   } else {
     const doc: Omit<ContentType, 'id'> = {
@@ -842,7 +831,7 @@ async function registerContentType(
   }
   out.push({
     source_slug: slug,
-    source_rest_base: slug,
+    source_rest_base: restBase,
     name: def.name,
     item_field: 'body',
   });
@@ -872,6 +861,8 @@ function helperToWP(h: HelperItem): WPPage {
     // Stash the normalized SEO so the page handler can prefer it over
     // yoast_head_json (which only Yoast exposes).
     _seo: h.seo,
+    _taxonomies: h.taxonomies,
+    _primary_terms: h.primary_terms,
   } as WPPage & { _featured_url?: string; _featured_alt?: string; _seo?: HelperItem['seo'] };
 }
 
@@ -900,19 +891,6 @@ function makeSafeDocId(s: string): string {
   return s.replace(/[\/\\]/g, '_').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100) || `doc-${Date.now()}`;
 }
 
-function collectExtras(item: WPPage | WPItem): Record<string, unknown> | undefined {
-  const extras: Record<string, unknown> = {};
-  const acf = (item as WPPage).acf ?? {};
-  const meta = (item as WPPage).meta ?? {};
-  for (const [k, v] of Object.entries(acf)) {
-    if (!k.startsWith('_') && v !== null && v !== '') extras[k] = v;
-  }
-  for (const [k, v] of Object.entries(meta)) {
-    if (!k.startsWith('_') && v !== null && v !== '') extras[`meta.${k}`] = v;
-  }
-  return Object.keys(extras).length ? extras : undefined;
-}
-
 /** Reuse an existing article content type or create a default native Page template. */
 async function ensurePostsContentType(
   store: ReadWriteStore,
@@ -938,7 +916,7 @@ async function ensurePostsContentType(
   while (!await store.createDocIfMissing(paths.pageTemplate(orgId, siteId, templateId, versionId), {
     name: templateId, label: 'Article', status: 'published', created_at: new Date().toISOString(),
     blocks: [{ id: 'article', type: 'core/section', data: { width: 'narrow' }, children: [
-      { id: 'title', type: 'template/page_title', data: {} },
+      { id: 'title', type: 'template/page_title', data: { size: 'article' } },
       { id: 'date', type: 'template/page_date', data: { field: 'date_published' } },
       { id: 'body', type: 'template_content_slot', data: {} },
     ] }],

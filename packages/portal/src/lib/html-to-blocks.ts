@@ -50,12 +50,24 @@ export function htmlToBlocks(html: string): ConvertResult {
   };
 }
 
+/** Restore lazy images/iframes before the WordPress sanitizer removes data attributes. */
+export function normalizeImportedMediaHtml(html: string): string {
+  const nodes = htmlparser2.parseDocument(html).children as unknown as Node[];
+  return htmlparser2.DomUtils.getOuterHTML(normalizeLazyMedia(nodes) as unknown as Parameters<typeof htmlparser2.DomUtils.getOuterHTML>[0]);
+}
+
 /** Restore lazy media and drop a fallback only when the same media is present. */
 function normalizeLazyMedia(nodes: Node[]): Node[] {
   nodes = nodes.map(node => {
     if (node.name === 'img' && node.attribs?.['data-lazy-type'] === 'iframe') {
       const restored = htmlparser2.parseDocument(node.attribs['data-lazy-src'] ?? '').children as unknown as Node[];
       if (restored.length === 1 && restored[0].name === 'iframe') return restored[0];
+    }
+    if (['img', 'source', 'iframe'].includes(node.name ?? '') && node.attribs) {
+      const attrs = { ...node.attribs };
+      if (attrs['data-lazy-src'] || attrs['data-src']) attrs.src = attrs['data-lazy-src'] || attrs['data-src'];
+      if (attrs['data-lazy-srcset'] || attrs['data-srcset']) attrs.srcset = attrs['data-lazy-srcset'] || attrs['data-srcset'];
+      node = { ...node, attribs: attrs };
     }
     return { ...node, ...(node.children ? { children: normalizeLazyMedia(node.children) } : {}) };
   });

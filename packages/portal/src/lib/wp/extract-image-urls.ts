@@ -1,3 +1,6 @@
+import { decodeHTMLAttribute } from 'entities';
+import { normalizeImportedMediaHtml } from '../html-to-blocks';
+
 // Extract every image URL referenced by an HTML fragment.
 //
 // Used by the migration to know which images need to be moved to the new
@@ -17,18 +20,24 @@ export interface ExtractedImage {
 }
 
 export interface ExtractOptions {
-  /** Only return images whose URL starts with this origin (e.g. "https://oldsite.com"). */
+  /** Only return images whose URL has this exact origin (e.g. "https://oldsite.com"). */
   sourceOrigin?: string;
+  /** Resolve relative source media URLs before transferring. */
+  baseUrl?: string;
 }
 
 export function extractImageUrls(html: string, opts: ExtractOptions = {}): ExtractedImage[] {
   if (!html) return [];
+  html = normalizeImportedMediaHtml(html);
 
   const seen = new Map<string, ExtractedImage>();
   const add = (url: string, alt?: string) => {
     if (!url) return;
     if (url.startsWith('data:')) return;
-    if (opts.sourceOrigin && !url.startsWith(opts.sourceOrigin)) return;
+    try {
+      if (opts.baseUrl) url = new URL(url, opts.baseUrl).href;
+      if (opts.sourceOrigin && new URL(url).origin !== new URL(opts.sourceOrigin).origin) return;
+    } catch { return; }
     const existing = seen.get(url);
     if (!existing || (!existing.alt && alt)) seen.set(url, { url, alt });
   };
@@ -83,7 +92,7 @@ export function extractImageUrls(html: string, opts: ExtractOptions = {}): Extra
 
 function matchAttr(tag: string, attr: string): string | null {
   // Match both single- and double-quoted attributes.
-  const re = new RegExp(`\\b${attr}=("([^"]*)"|'([^']*)')`, 'i');
+  const re = new RegExp(`(?:^|\\s)${attr}=("([^"]*)"|'([^']*)')`, 'i');
   const m = tag.match(re);
-  return m ? (m[2] ?? m[3] ?? null) : null;
+  return m ? decodeHTMLAttribute(m[2] ?? m[3] ?? '') : null;
 }

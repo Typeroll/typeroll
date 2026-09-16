@@ -145,24 +145,10 @@ export async function runMigrationPreflight(
         fix: 'Set SITES_BASE_DOMAIN (or provision a Pages project) so the site gets a fallback URL — or pass target_origin explicitly to the parity check.',
       });
 
-  checks.push(process.env.ANTHROPIC_API_KEY
-    ? {
-        id: 'ai_reconstruction',
-        label: 'AI reconstruction',
-        status: 'ok',
-        severity: 'warning',
-        detail: 'Imported pages are rebuilt in the target design.',
-      }
-    : {
-        id: 'ai_reconstruction',
-        label: 'AI reconstruction',
-        status: 'fail',
-        severity: 'warning',
-        detail:
-          'No ANTHROPIC_API_KEY. The in-portal migration falls back to the cleaned source HTML, which ' +
-          'carries the old design rather than the new one.',
-        fix: 'Set ANTHROPIC_API_KEY, or drive the migration from an agent (Claude Code / MCP) that does the reconstruction itself.',
-      });
+  checks.push({
+    id: 'content_preservation', label: 'Content preservation', status: 'ok', severity: 'warning',
+    detail: 'Import preserves source text and shared taxonomy references without AI rewriting. Review templates, desktop/mobile layout and integrations separately before launch.',
+  });
 
   // Forms: only a problem once the site actually has one. A site with no
   // forms yet isn't misconfigured — it just hasn't got there.
