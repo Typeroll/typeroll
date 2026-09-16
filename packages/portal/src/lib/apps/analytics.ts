@@ -11,6 +11,7 @@
 //   - site_tag: CF RUM site tag used SERVER-SIDE to read stats via the CF
 //     GraphQL API. Not embedded in the page; stays out of the build snapshot.
 
+import { analyticsEventRules } from './analytics-event-policy';
 import type { AppDef } from './types';
 
 export const analyticsApp: AppDef = {
@@ -22,7 +23,9 @@ export const analyticsApp: AppDef = {
     'Adds a lightweight cookieless beacon to your published site.',
   category: 'insights',
   affects_build: true,
+  validateConfig(config) { return config.event_rules !== undefined && !analyticsEventRules(config.event_rules) ? 'Invalid Analytics event rules' : undefined; },
   fields: [
+    { key: 'event_rules', label: 'Allowed conversion events', type: 'json', default: [], help: 'Explicit event names, destinations and allowed parameters. Unlisted events are rejected.' },
     {
       key: 'beacon_token',
       label: 'Cloudflare Web Analytics token',

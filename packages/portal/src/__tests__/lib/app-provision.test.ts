@@ -9,7 +9,14 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { paths } from '@typeroll/shared';
 import type { BlockType, Form } from '@typeroll/shared';
-import { directoryApp } from '../../lib/apps/directory';
+import type { AppDef } from '../../lib/apps/types';
+const fixtureApp: AppDef = {
+  id: 'integrations', name: 'Fixture module', description: 'Synthetic provisioning fixture', category: 'marketing', fields: [],
+  forms: [
+    { id: 'edit-record', name: 'Edit record', label: 'Edit record', fields: [{ name: 'title', label: 'Title', type: 'text' }], target: { installation_id: 'fixture', path: '/edit', hydrate: true, session_param: 't' } },
+    { id: 'request-access', name: 'Request access', label: 'Request access', fields: [{ name: 'email', label: 'Email', type: 'email' }], target: { installation_id: 'fixture', path: '/request' } },
+  ],
+};
 import { appBlockTypeId, appFormId, provisionApp } from '../../lib/apps/provision';
 
 const ORG = 'default';
@@ -31,41 +38,41 @@ describe('enabling an app installs its surface', () => {
   });
 
   it('seeds every form the app ships', async () => {
-    const out = await provisionApp(ORG, SITE, directoryApp, true);
+    const out = await provisionApp(ORG, SITE, fixtureApp, true);
     expect(out.forms_created.sort()).toEqual([
-      appFormId('directory', 'edit-listing'),
-      appFormId('directory', 'request-link'),
+      appFormId('integrations', 'edit-record'),
+      appFormId('integrations', 'request-access'),
     ].sort());
-    const edit = await readForm(appFormId('directory', 'edit-listing'));
+    const edit = await readForm(appFormId('integrations', 'edit-record'));
     expect(edit?.steps?.[0]?.blocks?.length ?? 0).toBeGreaterThan(0);
   });
 
   it('carries the app-owned target so the site never configures it', async () => {
-    await provisionApp(ORG, SITE, directoryApp, true);
-    const edit = await readForm(appFormId('directory', 'edit-listing'));
-    expect(edit?.target).toEqual({ app: 'directory', hydrate: true, session_param: 't' });
+    await provisionApp(ORG, SITE, fixtureApp, true);
+    const edit = await readForm(appFormId('integrations', 'edit-record'));
+    expect(edit?.target).toEqual({ installation_id: 'fixture', path: '/edit', hydrate: true, session_param: 't' });
     // The request form is a different endpoint of the SAME app, and needs
     // neither prefill nor a session — there's nothing to prefill from yet.
-    const req = await readForm(appFormId('directory', 'request-link'));
-    expect(req?.target).toEqual({ app: 'directory', form: 'request-link' });
+    const req = await readForm(appFormId('integrations', 'request-access'));
+    expect(req?.target).toEqual({ installation_id: 'fixture', path: '/request' });
   });
 
   it('writes a block per form into the site’s own block_types', async () => {
     // The reason this is boring and works everywhere: the picker, the agent's
     // list_block_types, the renderer, the preview and materialize all already
     // read this collection.
-    await provisionApp(ORG, SITE, directoryApp, true);
-    const bt = await readBlock(appBlockTypeId('directory', 'edit-listing'));
-    expect(bt?.label).toBe('Edit listing');
+    await provisionApp(ORG, SITE, fixtureApp, true);
+    const bt = await readBlock(appBlockTypeId('integrations', 'edit-record'));
+    expect(bt?.label).toBe('Edit record');
     expect(bt?.expand_to).toEqual({
       target: 'core/form',
-      defaults: { form_id: appFormId('directory', 'edit-listing') },
+      defaults: { form_id: appFormId('integrations', 'edit-record') },
     });
   });
 
   it('is idempotent', async () => {
-    await provisionApp(ORG, SITE, directoryApp, true);
-    const second = await provisionApp(ORG, SITE, directoryApp, true);
+    await provisionApp(ORG, SITE, fixtureApp, true);
+    const second = await provisionApp(ORG, SITE, fixtureApp, true);
     expect(second.forms_created).toEqual([]);
     expect(second.forms_kept).toHaveLength(2);
   });
@@ -73,15 +80,15 @@ describe('enabling an app installs its surface', () => {
   it('NEVER overwrites fields the site added', async () => {
     // The whole reason re-enabling is safe. Losing an operator's added fields
     // to a settings toggle would be silent and unrecoverable.
-    await provisionApp(ORG, SITE, directoryApp, true);
-    const id = appFormId('directory', 'edit-listing');
+    await provisionApp(ORG, SITE, fixtureApp, true);
+    const id = appFormId('integrations', 'edit-record');
     const { getStore } = await import('../../lib/datastore');
     const form = (await readForm(id))!;
     form.steps![0]!.blocks!.push({ id: 'extra', type: 'form/text', data: { name: 'phone' } } as never);
     const { id: _drop, ...body } = form;
     await getStore().setDoc(`${paths.forms(ORG, SITE)}/${id}`, body);
 
-    await provisionApp(ORG, SITE, directoryApp, true);
+    await provisionApp(ORG, SITE, fixtureApp, true);
     const after = await readForm(id);
     expect(after?.steps?.[0]?.blocks?.some((b) => b.id === 'extra')).toBe(true);
   });
@@ -91,18 +98,18 @@ describe('disabling', () => {
   beforeEach(async () => {
     makeTmpFixtures();
     await resetDatastore();
-    await provisionApp(ORG, SITE, directoryApp, true);
+    await provisionApp(ORG, SITE, fixtureApp, true);
   });
 
   it('removes the blocks so they leave the picker', async () => {
-    await provisionApp(ORG, SITE, directoryApp, false);
-    expect(await readBlock(appBlockTypeId('directory', 'edit-listing'))).toBeNull();
+    await provisionApp(ORG, SITE, fixtureApp, false);
+    expect(await readBlock(appBlockTypeId('integrations', 'edit-record'))).toBeNull();
   });
 
   it('KEEPS the forms — a settings toggle must not delete content', async () => {
     // A form may carry fields the site added and pages that reference it.
-    await provisionApp(ORG, SITE, directoryApp, false);
-    expect(await readForm(appFormId('directory', 'edit-listing'))).toBeTruthy();
+    await provisionApp(ORG, SITE, fixtureApp, false);
+    expect(await readForm(appFormId('integrations', 'edit-record'))).toBeTruthy();
   });
 });
 
@@ -285,9 +292,9 @@ describe('prefill sources', () => {
     expect(out.values).toEqual({ a: '1' });
   });
 
-  it('picks up sources an app contributes', async () => {
+  it('does not load private app prefill implementations', async () => {
     const { prefillRegistry } = await import('../../lib/forms/prefill');
-    expect((await prefillRegistry()).has('directory/listing')).toBe(true);
+    expect((await prefillRegistry()).has('directory/listing')).toBe(false);
   });
 });
 

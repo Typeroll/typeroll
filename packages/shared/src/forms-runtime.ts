@@ -65,7 +65,8 @@ async function remoteInit(form,param){
   var one=param?url.searchParams.get(param):null;
   try{
     if(one){
-      var res=await fetch(form.action+"?"+encodeURIComponent(param)+"="+encodeURIComponent(one),
+      var exchange=new URL(form.action,location.href);exchange.searchParams.set(param,one);
+      var res=await fetch(exchange.href,
         {headers:{Accept:"application/json"}});
       var data=await res.json().catch(function(){return null});
       if(!res.ok||!data){topError(form,expiredMsg(form));return}

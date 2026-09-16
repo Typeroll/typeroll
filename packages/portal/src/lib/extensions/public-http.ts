@@ -47,6 +47,7 @@ export async function fetchPublicAsset(
   rawUrl: string,
   maxBytes: number,
   fetchImpl: typeof fetch = fetch,
+  headers: Record<string, string> = {},
 ): Promise<Uint8Array> {
   const url = parsePublicHttpsUrl(rawUrl, 'Asset URL');
   await assertPublicDestination(url);
@@ -56,14 +57,26 @@ export async function fetchPublicAsset(
     const response = await fetchImpl(url, {
       redirect: 'manual',
       signal: controller.signal,
-      headers: { 'User-Agent': 'Typeroll-Extension-Assets/1.0' },
+      headers: { 'User-Agent': 'Typeroll-Extension-Assets/1.0', ...headers },
     });
     if (!response.ok) throw new Error(`Asset responded with HTTP ${response.status}`);
     if (response.status >= 300 && response.status < 400) throw new Error('Asset redirects are not allowed');
     const declaredLength = Number(response.headers.get('content-length'));
     if (Number.isFinite(declaredLength) && declaredLength > maxBytes) throw new Error(`Asset exceeds ${maxBytes} bytes`);
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.byteLength > maxBytes) throw new Error(`Asset exceeds ${maxBytes} bytes`);
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Asset returned no body');
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      length += part.value.byteLength;
+      if (length > maxBytes) { await reader.cancel(); throw new Error(`Asset exceeds ${maxBytes} bytes`); }
+      chunks.push(part.value);
+    }
+    const bytes = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
     return bytes;
   } finally {
     clearTimeout(timeout);

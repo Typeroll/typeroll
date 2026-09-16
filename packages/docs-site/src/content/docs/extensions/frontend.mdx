@@ -196,3 +196,11 @@ the network request still goes straight from the published site to the
 provider API. Responses above 1 MiB fail closed.
 
 Next, implement the [provider backend and admin SSO](../backend/).
+
+## First-party Analytics context (runtime 0.40.0)
+
+Bundled components receive `context.analytics`, either null or an object with
+`endpoint`, `token`, and `requires_consent`. This contains a public site event
+token, never a service credential. Respect the site's optional-consent state
+before sending. The CMS accepts only the site's configured event rules; see
+[Events and conversions](../../apps/events/).

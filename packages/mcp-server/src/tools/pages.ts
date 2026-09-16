@@ -85,7 +85,7 @@ export const pageTools: ToolDef[] = [
       'Slug must be a single path segment (no slashes). For nested URLs like ' +
       '/erbjudanden/sommar or /tjanster/design, set the optional `path` field explicitly — ' +
       'e.g. path="/erbjudanden/sommar". For pages with the same schema use a content type with route_template ' +
-      '(see tr-blog / tr-directory), but for a small group of bespoke pages sharing a URL prefix, ' +
+      '(see tr-blog), but for a small group of bespoke pages sharing a URL prefix, ' +
       '`path` is the right primitive. ' +
       'Returns the created page (blocks for blocks-mode, html_content for html-mode) including ' +
       '`url` (the resolved live URL).',

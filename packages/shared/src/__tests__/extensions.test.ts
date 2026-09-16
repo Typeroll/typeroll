@@ -320,7 +320,7 @@ describe('extension scopes', () => {
 describe('extension renderer capabilities', () => {
   it('advertises the executable runtime contract', () => {
     expect(SITE_TEMPLATE_CAPABILITIES).toMatchObject({
-      template_capabilities_version: '0.44.2',
+      template_capabilities_version: '0.45.0',
       supports_extension_blocks: true,
       supports_extension_html_directive: true,
       supports_extension_html_partial_directive: true,
@@ -329,7 +329,7 @@ describe('extension renderer capabilities', () => {
       supports_extension_storage: true,
       supports_extension_form_bindings: true,
       extension_protocol_version: 3,
-      extension_runtime_version: '0.39.1',
+      extension_runtime_version: '0.40.0',
       supports_extension_installation_config_api: true,
       supports_indexing_diagnostics: true,
       supports_migration_launch_report: true,
@@ -343,6 +343,14 @@ it('accepts bounded provider documentation and rejects unsafe URLs and unknown m
   const documentation = { url: 'https://vendor.example/docs/', agent_instructions: 'Read the guide first.' };
   expect(validateExtensionManifest({ ...quotePilotManifest, documentation }).valid).toBe(true);
   for (const patch of [{ url: 'http://vendor.example/docs/' }, { url: 'https://127.0.0.1/private' }, { agent_instructions: 'x'.repeat(16001) }, { secret: 'not-allowed' }]) {
+    expect(validateExtensionManifest({ ...quotePilotManifest, documentation: { ...documentation, ...patch } }).valid).toBe(false);
+  }
+});
+
+it('requires authenticated private guides to keep their instructions out of public manifests', () => {
+  const documentation = { url: 'https://vendor.example/guides/1.0.0', access: 'installation' };
+  expect(validateExtensionManifest({ ...quotePilotManifest, documentation }).valid).toBe(true);
+  for (const patch of [{ access: 'hidden' }, { agent_instructions: 'Private product instructions' }]) {
     expect(validateExtensionManifest({ ...quotePilotManifest, documentation: { ...documentation, ...patch } }).valid).toBe(false);
   }
 });

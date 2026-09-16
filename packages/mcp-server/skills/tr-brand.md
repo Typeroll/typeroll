@@ -177,7 +177,7 @@ Then reference `var(--brand-gradient)` etc. in page HTML and partials.
 
 ## Step 4b — Section + layout design defaults
 
-These are non-negotiable defaults the rest of the platform skills inherit (`tr-new-site`, `tr-directory`, `tr-page-template`). Apply them on every page that has visible sections — they're battle-tested across real customer migrations.
+These are non-negotiable defaults the rest of the platform skills inherit (`tr-new-site`, `tr-page-template`). Apply them on every page that has visible sections — they're battle-tested across real customer migrations.
 
 ### One signal per section boundary
 

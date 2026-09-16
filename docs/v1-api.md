@@ -75,7 +75,7 @@ All site routes below start with `/sites/{siteId}`.
 | Preview | signed preview-link creation under `/preview-link` |
 | Search and bulk | `GET /search`, `POST /bulk-replace`, `GET /internal-links` |
 | Migration | preflight, URL inventory routes, imports and deployed parity verification described below |
-| Insights and attribution | site insights and funnel-attribution read/update routes |
+| Insights | site insights and first-party Analytics event reporting |
 
 The API route source under `packages/portal/src/pages/api/v1` is exhaustive;
 the index above groups specialized subroutes rather than hiding them behind a

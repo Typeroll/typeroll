@@ -292,3 +292,42 @@ private/unlisted system and makes no catalog network call.
   block instances remain as explicit unavailable placeholders.
 - Diagnostics list health, credential metadata, audit actions, event delivery
   classes and declared URL inputs without exposing secrets or token values.
+
+## Protected documentation and scoped server capabilities (Core 0.2.9)
+
+Runtime 0.40.0 adds `documentation.access: "installation"`. The document URL
+must be on an approved provider origin. Core sends a 60-second ES256 assertion
+with `token_use: "documentation"`, empty scopes, the app audience, issuer,
+organization, site, installation and resolved version. The provider verifies
+these claims against its paired issuer and current enabled installation before
+returning Markdown. Core bounds reads to 256 KiB, rejects redirects, checks
+public destinations, and reports failure as `unavailable`. No private guide
+text may appear in the manifest, runtime snapshot, public docs or bundled MCP.
+The endpoint is `GET /api/v1/sites/{siteId}/apps/documentation`; it requires site
+read access. Instructions are reference data, never an authorization grant.
+
+Installation credentials can use these generic APIs with explicit scopes:
+
+| API | Scope | Boundary |
+| --- | --- | --- |
+| `GET /extensions/self` | `extension:config:read` | Own enabled installation, validated non-secret config, version and verified site origins |
+| `GET/PUT /pages/{pageId}/owner-fields` | `content:owner` | Fields explicitly writable by owner; typed validation, sanitization and provenance conflicts |
+| `POST /delivery/email` | `email:send` | Single recipient, bounded plain text, configured site connector, no connector credentials returned |
+| `POST /forms/{formId}/actions` | `forms:execute` | Before/after actions on a form bound to this installation only |
+
+Paths in this table are relative to `/api/v1/sites/{siteId}`. The three new
+write scopes require administrator approval. Ordinary CMS API keys do not
+acquire visitor/owner authority. The provider must authenticate the visitor and
+bind each session to its authorized record before using owner-field APIs.
+
+Forms may declare `target: { installation_id, path, hydrate?, session_param? }`.
+Only a declared POST route on an enabled installation is accepted. Form
+creation and target updates require admin authority; a provider may bind only
+its own installation. Existing form steps, styling, actions and field names
+remain Core data. Endpoint resolution fails closed for a missing/disabled app;
+it never converts an app operation into a normal Forms submission.
+
+Bundled components receive optional `context.analytics` with endpoint, public
+site token and `requires_consent`. Core accepts only configured Analytics event
+rules; the component remains responsible for respecting visitor consent. Core
+does not implement the provider's campaign storage or outbound-link behavior.

@@ -6,14 +6,10 @@ import type { AppId } from '@typeroll/shared';
 import type { AppDef } from './types';
 import { analyticsApp } from './analytics';
 import { integrationsApp } from './integrations';
-import { directoryApp } from './directory';
-import { funnelAttributionApp } from './funnel-attribution';
 
 export const APPS: Record<AppId, AppDef> = {
   analytics: analyticsApp,
   integrations: integrationsApp,
-  directory: directoryApp,
-  funnel_attribution: funnelAttributionApp,
 };
 
 export function getAppDef(id: string): AppDef | undefined {

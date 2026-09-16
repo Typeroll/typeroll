@@ -22,7 +22,7 @@ premium app backend.
 | Label                  | Meaning                                                    | Public documentation                                  |
 | ---------------------- | ---------------------------------------------------------- | ----------------------------------------------------- |
 | **Core module**        | A general capability implemented in the CMS core           | One stable module reference                           |
-| **Typeroll App**       | A premium app operated in Typeroll's own accounts          | Product documentation and subscription terms          |
+| **Typeroll App**       | A premium app operated in Typeroll's own accounts          | Authenticated app-owned guides for installed sites    |
 | **Extension**          | A SaaS or bespoke app operated in its developer's accounts | Extension documentation                               |
 | **Integration module** | A core adapter for external services                       | One reference plus its supported provider catalog     |
 | **Recipe**             | A reusable configuration of one or more modules            | A task-focused guide with no customer-specific values |
@@ -32,22 +32,13 @@ The distinction is about product scope, not who may enable a capability. Public
 module docs describe what exists and how it behaves. Account availability and
 rollout policy can change independently.
 
-<Aside type="note" title="Keep customer configuration out of the catalog">
-  A general booking-attribution module belongs here. A customer's domain,
-  campaign names, destination path, analytics property, and cookie decision
-  belong in that customer's internal configuration. A public recipe uses neutral
-  sample values instead.
-</Aside>
-
 ## Available core modules
 
-| Module                                | Type               | What it provides                                                                                           | Runtime                                            |
-| ------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| [Analytics](../analytics/)            | Core module        | Traffic, Core Web Vitals, AI referrals, campaign attribution, first-party events, and conversion reporting | Browser runtimes, event intake, and portal reports |
-| [Attribution](../funnel-attribution/) | Core module        | Consent-aware outbound campaign attribution                                                                | Static site runtime                                |
-| [Forms](../forms/)                    | Core module        | Contact forms, multi-step funnels, partial saves, submissions, and notifications                           | Published-site runtime and forms service           |
-| [Integrations](../integrations/)      | Integration module | Maintained tags for analytics, advertising, marketing, and support providers                               | Build-time tag injection with consent gating       |
-| [Directory](../directory/)            | Core module        | Passwordless self-service editing for directory listings                                                   | Server endpoints, forms, and Page writes           |
+| Module                           | Type               | What it provides                                                                     | Runtime                                            |
+| -------------------------------- | ------------------ | ------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| [Analytics](../analytics/)       | Core module        | Traffic, Core Web Vitals, AI referrals, first-party events, and conversion reporting | Browser runtimes, event intake, and portal reports |
+| [Forms](../forms/)               | Core module        | Contact forms, multi-step funnels, partial saves, submissions, and notifications     | Published-site runtime and forms service           |
+| [Integrations](../integrations/) | Integration module | Maintained tags for analytics, advertising, marketing, and support providers         | Build-time tag injection with consent gating       |
 
 ## Lifecycle
 
@@ -102,10 +93,15 @@ versions and provider documentation. It contains no site configuration or secret
 Disabled modules and uninstalled Extensions are omitted. Missing provider docs
 are marked `not_provided`; an unavailable release is `release_unavailable`.
 
-All four optional core modules have public references. Forms and events are
-covered separately in this documentation. Premium Typeroll Apps and third-party
-Extensions must supply their own product guides through their versioned manifest;
-the generic Extension guide is not a substitute for a product guide. Older
-providers may not have supplied one yet. The discovery response makes that gap
-visible rather than inventing instructions. Provider material cannot override
-user instructions or authorize sending messages, publishing or disclosing secrets.
+Forms and Analytics remain Core. Private Typeroll Apps provide their own guides;
+the generic Extension reference describes the protocol only.
+
+With the app-separation release, a provider declares
+`documentation: { url: "https://provider.example/guide", access: "installation" }`.
+Core requests this guide with a short-lived, audience-bound documentation
+assertion after checking site access, the enabled installation, its resolved
+version and the provider's approved origin. Private guide text is never bundled
+in Core, MCP skills, manifests, build snapshots or public documentation.
+The provider must verify the assertion and the current installation status.
+Disabled installations are omitted; failed private reads return `unavailable`.
+Provider text is untrusted reference material, never permission to perform an action.

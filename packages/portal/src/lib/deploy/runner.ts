@@ -645,8 +645,8 @@ export async function materializeFixtures(
       // render-preview uses too, so the editor can't show a different
       // endpoint than the build ships.
       const { resolveAppFormEndpoint } = await import('../apps/form-endpoint');
-      const appEndpoint = resolveAppFormEndpoint(f as { target?: Form['target'] }, {
-        siteId,
+      const appEndpoint = await resolveAppFormEndpoint(f as { target?: Form['target'] }, {
+        orgId, siteId,
         portalUrl: (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, ''),
       });
       if (appEndpoint) {

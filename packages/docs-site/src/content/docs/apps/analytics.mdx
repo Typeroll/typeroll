@@ -13,11 +13,10 @@ Analytics is the product surface for understanding traffic and outcomes. Its
 modules remain technically independent: campaign forwarding must still work
 if traffic reporting or an external analytics provider is unavailable.
 
-| Module                 | Purpose                                                                               | Reference                             |
-| ---------------------- | ------------------------------------------------------------------------------------- | ------------------------------------- |
-| Traffic                | Cookieless visits, page views, referrers, Core Web Vitals, and AI-assistant referrals | This page                             |
-| Attribution            | Preserve approved campaign context and forward it to exact destinations               | [Attribution](../funnel-attribution/) |
-| Events and conversions | Record validated first-party funnel events and report their sources                   | [Events and conversions](../events/)  |
+| Module                 | Purpose                                                                               | Reference                            |
+| ---------------------- | ------------------------------------------------------------------------------------- | ------------------------------------ |
+| Traffic                | Cookieless visits, page views, referrers, Core Web Vitals, and AI-assistant referrals | This page                            |
+| Events and conversions | Record validated first-party funnel events and report their sources                   | [Events and conversions](../events/) |
 
 ## Configuration
 
@@ -30,8 +29,7 @@ Hosted installations can provision these identifiers automatically when the
 site has a usable domain and the platform has Cloudflare access. Self-hosted
 installations can supply them from Cloudflare. First-party conversion events
 also require a public portal or forms-service URL and the platform signing
-secret; without both, builds omit the event endpoint while traffic and
-attribution continue to work.
+secret; without both, builds omit the event endpoint while traffic measurement continues to work.
 
 ## Traffic insights
 
@@ -51,10 +49,8 @@ cookieless and intended for aggregate traffic measurement. Confirm the legal
 requirements that apply to your site and jurisdiction before relying on a
 particular consent treatment.
 
-Attribution storage and conversion events follow the site's consent decision.
-The Traffic module does not automatically gain access to attribution cookies,
-and saved campaign values are not sent to third parties merely because they
-exist. See each module's privacy contract before combining them.
+Conversion events follow the site's consent decision.
+Core does not store campaign cookies or rewrite outbound links. Installed apps may add those behaviors under their own documented consent policy.
 
 ## Insights states
 

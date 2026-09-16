@@ -37,6 +37,11 @@ function siteOrigins(site: Site, siteId: string): Set<string> {
   return origins;
 }
 
+export async function extensionSiteOrigins(orgId: string, siteId: string): Promise<Set<string>> {
+  const site = await getStore().getDoc<Site>(paths.site(orgId, siteId));
+  return site?.publishing_mode === 'customer_git' ? new Set(await publishingRuntimeOrigins(orgId, siteId)) : site ? siteOrigins(site, siteId) : new Set();
+}
+
 export async function publicExtensionCors(args: {
   request: Request;
   orgId: string;
@@ -44,9 +49,8 @@ export async function publicExtensionCors(args: {
 }): Promise<Record<string, string>> {
   const origin = args.request.headers.get('origin');
   if (!origin) throw new PublicExtensionTokenError('Origin is required', 403);
-  const site = await getStore().getDoc<Site>(paths.site(args.orgId, args.siteId));
-  const origins = site?.publishing_mode === 'customer_git' ? new Set(await publishingRuntimeOrigins(args.orgId, args.siteId)) : site ? siteOrigins(site, args.siteId) : new Set();
-  if (!site || !origins.has(origin)) throw new PublicExtensionTokenError('Origin is not allowed', 403);
+  const origins = await extensionSiteOrigins(args.orgId, args.siteId);
+  if (!origins.has(origin)) throw new PublicExtensionTokenError('Origin is not allowed', 403);
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',

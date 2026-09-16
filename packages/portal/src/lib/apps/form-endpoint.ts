@@ -1,45 +1,51 @@
-// Where an app-backed form POSTs.
-//
-// The forms module is app-agnostic: a Form declares `target.app` and the two
-// generic behaviours it wants, and something outside resolves that name into
-// a URL. This is that something — and it lives in ONE place because there are
-// two callers that must agree: the deploy runner (bakes submit_url into the
-// build snapshot) and render-preview (mints it live for the editor).
-//
-// They drifted the moment this existed as two code paths: the preview called
-// formEmbedInfo unconditionally, so a directory edit form previewed as posting
-// to the submissions collector. It looked right and would have collected
-// listing edits as form submissions.
+import { paths, type ExtensionInstallation, type Form } from '@typeroll/shared';
+import { getStore } from '../datastore';
+import { formEmbedInfo } from '../forms-signing';
+import { extensionIssuer } from '../extensions/auth';
+import { resolveExtensionVersion } from '../extensions/resolution';
 
-import { getAppDef } from './registry';
-import type { Form } from '@typeroll/shared';
+export interface FormEndpoint { submit_url: string; submit_token: null; pow_bits: 0 }
 
-export interface FormEndpoint {
-  submit_url: string;
-  /** App-backed forms carry no forms HMAC or proof-of-work — their authority
-   *  is whatever session the runtime holds, not a token minted at build time. */
-  submit_token: null;
-  pow_bits: 0;
+/** Resolve only declared, installed provider routes. Never turn a missing app form into a normal submission. */
+export async function resolveAppFormEndpoint(
+  form: Pick<Form, 'target'>,
+  args: { orgId: string; siteId: string; portalUrl: string },
+): Promise<FormEndpoint | null> {
+  if (!form.target) return null;
+  const id = form.target.installation_id;
+  if (!id) {
+    if (form.target.app) throw new Error('This form requires migration to its owning app installation before publishing');
+    return null;
+  }
+  const installation = await getStore().getDoc<ExtensionInstallation>(paths.extensionInstallation(args.orgId, args.siteId, id));
+  if (!installation || installation.status !== 'enabled') throw new Error('The form app installation is unavailable');
+  const version = (await resolveExtensionVersion(installation)).version;
+  const api = version?.manifest.api;
+  const route = form.target.path;
+  if (!api || !route || !api.routes.some(item => item.path === route && item.methods.includes('POST'))) throw new Error('The form endpoint is not declared by its app');
+  if (!route.startsWith('/') || route.startsWith('//') || /[?#]/.test(route)) throw new Error('Invalid app form route');
+  const url = new URL(api.base_url.replace(/\/$/, '') + route);
+  url.searchParams.set('issuer', args.portalUrl);
+  url.searchParams.set('org_id', args.orgId);
+  url.searchParams.set('site_id', args.siteId);
+  url.searchParams.set('installation_id', id);
+  return { submit_url: url.href, submit_token: null, pow_bits: 0 };
 }
 
-/**
- * Resolve a form's app-owned endpoint, or null when it's an ordinary form
- * (or names an app that declares none — in which case the caller falls back
- * to the submissions collector rather than emitting a form that posts
- * nowhere).
- *
- * Deliberately does NOT check whether the app is enabled: the endpoint itself
- * refuses when it isn't, with a message the visitor can act on. Silently
- * re-pointing the form at the submissions collector would be worse — the edit
- * would look accepted and land somewhere nobody reads.
- */
-export function resolveAppFormEndpoint(
-  form: Pick<Form, 'target'>,
-  args: { siteId: string; portalUrl: string },
-): FormEndpoint | null {
-  const app = form.target?.app;
-  if (!app) return null;
-  const url = getAppDef(app)?.formEndpoint?.({ ...args, form: form.target?.form });
-  if (!url) return null;
-  return { submit_url: url, submit_token: null, pow_bits: 0 };
+export function validInstallationFormTarget(target: unknown): target is NonNullable<Form['target']> {
+  if (!target || typeof target !== 'object' || Array.isArray(target)) return false;
+  const value = target as Record<string, unknown>;
+  return typeof value.installation_id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value.installation_id) &&
+    typeof value.path === 'string' && !value.path.startsWith('//') && /^\/[A-Za-z0-9/_-]+$/.test(value.path) &&
+    Object.keys(value).every(key => ['installation_id','path','hydrate','session_param'].includes(key)) &&
+    (value.hydrate === undefined || typeof value.hydrate === 'boolean') &&
+    (value.session_param === undefined || (typeof value.session_param === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(value.session_param)));
+}
+
+export async function installedFormEmbedInfo(orgId: string, siteId: string, form: Form) {
+  if (!form.target) return formEmbedInfo(orgId, siteId, form.id);
+  try {
+    const endpoint = await resolveAppFormEndpoint(form, { orgId, siteId, portalUrl: extensionIssuer() });
+    return endpoint ?? formEmbedInfo(orgId, siteId, form.id);
+  } catch { return { submit_url: null, submit_token: null, pow_bits: 0, unavailable: 'The form app must be installed, enabled and configured before use.' }; }
 }

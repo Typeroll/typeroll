@@ -30,7 +30,6 @@ import { workingCopyTools } from './tools/working-copy.js';
 import { settingsTools } from './tools/settings.js';
 import { siteTools } from './tools/sites.js';
 import { domainTools } from './tools/domain.js';
-import { funnelAttributionTools } from './tools/funnel-attribution.js';
 import { appTools } from './tools/apps.js';
 import { extensionTools } from './tools/extensions.js';
 import { skillTools } from './tools/skills.js';
@@ -62,8 +61,6 @@ function effectFor(name: string): ToolEffect {
     || name === 'list_extension_installations'
     || name === 'read_extension_installation'
     || name === 'update_extension_installation_config'
-    || name === 'read_funnel_attribution'
-    || name === 'update_funnel_attribution'
   ) return 'admin';
   if (
     name.startsWith('list_') ||
@@ -176,7 +173,6 @@ export function buildServer(options: BuildServerOptions): McpServer {
     ...settingsTools,
     ...appTools,
     ...extensionTools,
-    ...funnelAttributionTools,
     ...searchTools,
     ...bulkTools,
     ...versionTools,

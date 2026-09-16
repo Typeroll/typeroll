@@ -21,8 +21,6 @@ export const GET: APIRoute = async ({ request, params }) => {
   const doc = await getStore().getDoc<SiteApps>(paths.apps(ctx.orgId, ctx.siteId));
   const state = maskAppState(def.id, doc?.apps?.[def.id]);
   return apiResponse(ctx, {
-    // Keep the original funnel-attribution response fields for backwards
-    // compatibility while adding the generic descriptor.
     app_id: def.id,
     state,
     app: {

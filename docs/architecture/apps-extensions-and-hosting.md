@@ -9,10 +9,11 @@ or document conflicts with it, this document wins.
 
 ### Typeroll core modules
 
-Forms, Analytics, Directory and similar modules implemented in the open-source
-repository are core CMS capabilities. In Typeroll Cloud their APIs run in the
-Typeroll Cloud environment. In a self-hosted installation their APIs run in
-the operator's environment.
+Forms and Analytics are core CMS capabilities. Directory and Attribution are
+separate Typeroll Apps; their presence in a legacy Core registry does not make
+them Core features. In Typeroll Cloud, Core APIs run in the Typeroll Cloud
+environment. In a self-hosted installation, Core APIs run in the operator's
+environment.
 
 Forms is included in the base product in both editions. Cloud plans may apply
 usage, retention or delivery limits, while self-hosted operators provide their
@@ -20,9 +21,9 @@ own compute, storage and delivery services. Forms must not require a Typeroll
 App or Extension purchase.
 
 Some existing source types, datastore paths and HTTP routes use `App`, `apps`
-or `/settings/apps` as legacy internal identifiers. They remain for backward
-compatibility and must be described as **core modules** in product UI and new
-documentation. They are not Typeroll Apps.
+or `/settings/apps` as legacy internal identifiers. These identifiers do not
+establish product ownership. Classify each capability explicitly; do not label
+Directory or Attribution as Core modules because they use this registry.
 
 ### Typeroll Apps
 
@@ -35,6 +36,30 @@ The open-source repository contains the Extension protocol needed to install
 and use a Typeroll App. It does not contain the premium application's backend,
 business logic, secrets or deployment. No Typeroll App Worker or Function is
 deployed to a customer's Cloudflare, AWS, GCP, Vercel or other account.
+
+### App documentation ownership
+
+Directory and Attribution own their private product guides, configuration
+instructions and agent recipes. They must not be bundled into public Core
+source documentation, the docs website, llms exports, the MCP npm package,
+installable Core skills or Core container assets. Core documentation describes
+the generic installation and discovery protocol, and Core features such as
+Pages, Content types, fields, templates, listings, Forms and Analytics.
+
+Authorized users and agents must be able to discover and read an app guide for
+an enabled installation. The app owns the versioned guide and enforces access;
+Core supplies the generic site/installation integration. Disabling an app or
+losing permission must prevent new guide access. Do not put private guide text,
+credentials or a durable access token in a public manifest or static export.
+A publicly reachable guide with no navigation link or noindex is not private.
+
+### App-separation release
+
+Core 0.2.9 removes the earlier built-in implementations, app-specific MCP tools
+and public product guides. App runtimes and migration tooling live in the private
+app repository. Install the matching private release and qualify each affected
+site before promoting the Core cutover. Existing public Git/npm/image history
+is not made private by removing files in a later release.
 
 ### Third-party SaaS and bespoke applications
 

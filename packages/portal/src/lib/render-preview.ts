@@ -670,16 +670,18 @@ async function previewFormSource(orgId: string, siteId: string, blockRegistry: R
     let forms: F[] = [];
     try { forms = await getStore().listDocs<F>(paths.forms(orgId, siteId)); } catch { forms = []; }
     const byId = new Map(forms.map((f) => [f.id, f]));
+    const endpoints = new Map<string, Awaited<ReturnType<typeof resolveAppFormEndpoint>> | Error>(await Promise.all(forms.map(async form => {
+      try { return [form.id, await resolveAppFormEndpoint(form, { orgId, siteId, portalUrl: (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '') })] as const; }
+      catch (error) { return [form.id, error instanceof Error ? error : new Error('Form app unavailable')] as const; }
+    })));
     return (formId: string) => {
       const form = byId.get(formId);
       if (!form || (form.steps?.length ?? 0) === 0) return undefined;
       assetBlocks.push(...form.steps!.flatMap((step) => step.blocks ?? []));
       // Same resolver the deploy runner uses — an app-backed form must
       // preview against the endpoint it will actually ship with.
-      const appEndpoint = resolveAppFormEndpoint(form, {
-        siteId,
-        portalUrl: (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, ''),
-      });
+      const appEndpoint = endpoints.get(form.id);
+      if (appEndpoint instanceof Error) throw appEndpoint;
       const embed = appEndpoint ?? formEmbedInfo(orgId, siteId, formId);
       return renderFormHtml(form, embed, {
         registry: blockRegistry,

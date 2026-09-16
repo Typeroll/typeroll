@@ -1216,6 +1216,10 @@ export interface Form {
    */
   prefill?: FormAction[];
   target?: {
+    /** Enabled Extension owning this form endpoint. */
+    installation_id?: string;
+    /** Exact declared provider API route, without origin or query. */
+    path?: string;
     /** App owning the endpoint. Resolved via the apps registry at build time. */
     app?: string;
     /**
@@ -1310,24 +1314,6 @@ export interface EmailConnector {
   config: Record<string, unknown>;
 }
 
-/**
- * A single issued edit link. See lib/edit-grants.ts — the token is HMAC'd
- * over this doc's id, so possession of a link is worthless once the doc is
- * marked used or revoked.
- */
-export interface EditGrant {
-  id: string;
-  content_type: string;
-  page_id: string;
-  /** Address the link was mailed to; the item's own contact field at issue time. */
-  email: string;
-  issued_at: string;
-  expires_at: string;
-  /** Set on first redemption. A grant is single-use. */
-  used_at?: string | null;
-  revoked_at?: string | null;
-}
-
 export interface SiteIntegrations {
   email?: EmailConnector;
   updated_at?: string;
@@ -1344,50 +1330,7 @@ export interface SiteIntegrations {
  * names the members so shared code (paths, materialize, renderer) can key
  * off them.
  */
-export type AppId = 'analytics' | 'integrations' | 'directory' | 'funnel_attribution';
-
-export interface FunnelAttributionParameter {
-  from: string;
-  to?: string;
-  fallback?: string;
-  max_length?: number;
-}
-
-export interface FunnelAttributionTarget {
-  type: 'link';
-  protocol?: 'https:';
-  host: string;
-  path: string;
-  click_event?: string;
-  destination?: string;
-}
-
-export interface FunnelAttributionStorage {
-  enabled: boolean;
-  ttl_days?: number;
-  touch?: 'first_touch' | 'last_touch' | 'both';
-  read_touch?: 'first_touch' | 'last_touch';
-  consent?: 'optional';
-  cookie_domain?: string;
-}
-
-export interface FunnelAttributionRule {
-  id: string;
-  page_paths?: string[];
-  source?: 'current_url' | 'current_or_stored';
-  parameters: FunnelAttributionParameter[];
-  targets: FunnelAttributionTarget[];
-  precedence?: 'source_over_target' | 'target_over_source';
-  storage?: FunnelAttributionStorage;
-}
-
-export interface FunnelAttributionConfig {
-  funnels: FunnelAttributionRule[];
-  /** Explicit admin override for forwarding fields such as email or phone. */
-  allow_personal_data?: boolean;
-  /** Explicit acknowledgement that fallback values create synthetic attribution. */
-  allow_synthetic_fallbacks?: boolean;
-}
+export type AppId = 'analytics' | 'integrations';
 
 /** A consented, first-party conversion event recorded by the Analytics app. */
 export interface AnalyticsEvent {
@@ -1743,17 +1686,6 @@ export const paths = {
   // ─── Per-site (shared across versions) ─────────────────────────────────
   media: (orgId: string, siteId: string) =>
     `organizations/${orgId}/sites/${siteId}/media`,
-  /**
-   * One-time edit grants — per-link records for the self-service editing
-   * surface. Stored rather than stateless (unlike invite tokens) because an
-   * edit link is mailed to an address taken from a registry, and mail gets
-   * forwarded: a stored grant buys revocation, audit, and "already used".
-   */
-  editGrants: (orgId: string, siteId: string) =>
-    `organizations/${orgId}/sites/${siteId}/edit_grants`,
-  editGrant: (orgId: string, siteId: string, grantId: string) =>
-    `organizations/${orgId}/sites/${siteId}/edit_grants/${grantId}`,
-
   forms: (orgId: string, siteId: string) =>
     `organizations/${orgId}/sites/${siteId}/forms`,
   submissions: (orgId: string, siteId: string) =>

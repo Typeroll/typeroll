@@ -47,50 +47,10 @@ describe('buildAppState (analytics)', () => {
   });
 });
 
-describe('buildAppState (funnel attribution)', () => {
-  it('parses and validates the JSON field', () => {
-    const state = buildAppState('funnel_attribution', true, {
-      funnels: JSON.stringify([{
-        id: 'campaign',
-        parameters: [{ from: 'utm_source' }],
-        targets: [{ type: 'link', host: 'example.com', path: '/book' }],
-      }]),
-      allow_personal_data: 'false',
-    }, undefined);
-    expect(typeof state).not.toBe('string');
-    if (typeof state === 'string') return;
-    expect(state.config.funnels).toEqual([expect.objectContaining({ id: 'campaign' })]);
-    expect(state.config.allow_personal_data).toBe(false);
-  });
-
-  it('rejects invalid JSON and personal-data parameters by default', () => {
-    expect(buildAppState('funnel_attribution', true, { funnels: '[' }, undefined))
-      .toContain('valid JSON');
-    expect(buildAppState('funnel_attribution', true, {
-      funnels: [{
-        id: 'campaign', parameters: [{ from: 'email' }],
-        targets: [{ type: 'link', host: 'example.com', path: '/book' }],
-      }],
-    }, undefined)).toContain('personal data');
-  });
-
-  it('rejects fallback attribution without explicit acknowledgement', () => {
-    const config = {
-      funnels: [{
-        id: 'campaign', parameters: [{ from: 'utm_source', fallback: 'website' }],
-        targets: [{ type: 'link', host: 'example.com', path: '/book' }],
-      }],
-    };
-    expect(buildAppState('funnel_attribution', true, config, undefined))
-      .toContain('allow_synthetic_fallbacks=true');
-    expect(typeof buildAppState('funnel_attribution', true, {
-      ...config,
-      allow_synthetic_fallbacks: true,
-    }, undefined)).not.toBe('string');
-  });
-});
-
 describe('publicAppsSnapshot — the build projection', () => {
+  it('blocks an enabled legacy module instead of silently omitting its runtime', () => {
+    expect(() => publicAppsSnapshot({ apps: { retired_module: { enabled: true, config: {} } } } as unknown as SiteApps)).toThrow('requires migration');
+  });
   it('includes only enabled apps, only their public_keys', () => {
     const doc: SiteApps = {
       apps: {

@@ -1,10 +1,11 @@
+import { resolveAppFormEndpoint, installedFormEmbedInfo, validInstallationFormTarget } from '../../../../../../lib/apps/form-endpoint';
 // GET  /api/v1/sites/{siteId}/forms      list forms (full shape)
 // POST /api/v1/sites/{siteId}/forms      create a new form
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
-import { formEmbedInfo } from '../../../../../../lib/forms-signing';
+import { extensionIssuer } from '../../../../../../lib/extensions/auth';
 import { paths, collectStepFields, fieldsToSteps } from '@typeroll/shared';
 import type { Form, FormStep } from '@typeroll/shared';
 import { FORM_ID_RE as ID_RE, validateFields, validSteps } from '../../../../../../lib/forms-admin';
@@ -60,8 +61,16 @@ export const POST: APIRoute = async ({ request, params }) => {
   const store = getStore();
   const existing = await store.getDoc(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`);
   if (existing) return apiError(`Form "${id}" already exists`, 409);
+  if (body.target !== undefined) {
+    if (ctx.permission !== 'admin') return apiError('Admin permission required', 403);
+    if (!validInstallationFormTarget(body.target)) return apiError('Invalid form target');
+    if (ctx.extensionIdentity && body.target.installation_id !== ctx.extensionIdentity.installationId) return apiError('A provider may bind only its own forms', 403);
+    try { await resolveAppFormEndpoint({ target: body.target }, { orgId: ctx.orgId, siteId: ctx.siteId, portalUrl: extensionIssuer() }); }
+    catch { return apiError('The target must be a declared endpoint on an enabled installation'); }
+  }
   const doc: Omit<Form, 'id'> = {
     name: body.name,
+    ...(body.target ? { target: body.target } : {}),
     // `actions` (email notifications) are admin-only — never set through the
     // API-key / MCP write path. Managed via the cookie-auth admin route.
     actions: [],
@@ -76,5 +85,5 @@ export const POST: APIRoute = async ({ request, params }) => {
   await store.setDoc(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`, doc);
   const fresh = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`);
   // Embed info up front so create→embed is one round-trip; see [formId].ts GET.
-  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: [] } : fresh, ...formEmbedInfo(ctx.orgId, ctx.siteId, id) }, 201, body);
+  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: [] } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!) }, 201, body);
 };

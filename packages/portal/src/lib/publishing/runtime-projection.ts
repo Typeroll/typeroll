@@ -18,13 +18,13 @@ export async function publicationRuntime(orgId: string, siteId: string) {
     const { analyticsEventEmbedInfo } = await import('../apps/analytics-events');
     apps.apps.analytics.config = { ...apps.apps.analytics.config, ...analyticsEventEmbedInfo(orgId, siteId) };
   }
-  const forms = storedForms.map(form => {
-    const endpoint = resolveAppFormEndpoint(form, { siteId, portalUrl: (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '') }) ||
+  const forms = await Promise.all(storedForms.map(async form => {
+    const endpoint = await resolveAppFormEndpoint(form, { orgId, siteId, portalUrl: (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '') }) ||
       { ...formEmbedInfo(orgId, siteId, form.id), pow_bits: POW_BITS };
     parsePublicHttpsUrl(endpoint.submit_url);
     return { id: form.id, name: form.name, kind: form.kind, submit_text: form.submit_text, success_message: form.success_message,
-      styles: form.styles, steps: form.steps, ...endpoint };
-  });
+      styles: form.styles, steps: form.steps, target: form.target, ...endpoint };
+  }));
   const dependencies = [
     ...forms.map(form => ({ kind: 'forms', id: form.id, endpoint: form.submit_url })),
     ...extensions.installations.map(installation => ({ kind: 'extension', id: installation.extension_id, version: installation.version,

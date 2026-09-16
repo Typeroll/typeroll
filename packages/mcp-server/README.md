@@ -292,4 +292,4 @@ documented in [`docs/v1-api.md`](../../docs/v1-api.md).
 
 MIT — see [LICENSE](../../LICENSE).
 
-Use `read_app_documentation` to discover instructions for the selected site’s enabled modules and Extensions. Read `tr-directory` for structured directory imports, typed fields and SEO. Server support requires Core 0.2.8.
+Use `read_app_documentation` to discover instructions for the selected site’s enabled modules and Extensions. Private app guides are fetched only for enabled installations using the provider’s authenticated documentation contract; they are not bundled in MCP. Generic discovery requires Core 0.2.8; protected guides require the app-separation release.

@@ -189,7 +189,7 @@ function unavailable(el,component){
   el.replaceChildren();var message=document.createElement("p");message.className="tr-extension-unavailable";message.textContent=component.unavailable_message||"This feature is temporarily unavailable.";el.appendChild(message);
 }
 function contextFor(entry){
-  return {protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,preview:entry.descriptor.installation.preview===true,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,url:urlRuntime(entry.capture.values),navigation:navigation(),site:siteRuntime(),storage:storageRuntime(entry),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component)};
+  return {protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,preview:entry.descriptor.installation.preview===true,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,analytics:host.analytics||null,url:urlRuntime(entry.capture.values),navigation:navigation(),site:siteRuntime(),storage:storageRuntime(entry),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component)};
 }
 async function mountBundle(entry,context){
   var component=entry.descriptor.component;loadStyle(component.local_style_url);

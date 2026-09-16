@@ -6,6 +6,16 @@
 - Forms, the Extension protocol, WordPress migration and helper plugin, the
   portal, the public API, MCP, and the static renderer are open-source core
   functionality.
+- Forms and Analytics belong to Core. Directory and Attribution are separate
+  Typeroll Apps, not Core modules. Their application logic, product guides and
+  app-specific agent recipes belong to the private app implementation. Do not
+  bundle those guides in the public docs site, MCP package, skills or Core image.
+  Core owns the generic installation, permission and documentation-discovery
+  contract. A private app guide is available only through authorized access to
+  an enabled installation; an off-navigation or noindex public URL is not private.
+  Existing Directory/Attribution code in this repository is extraction debt,
+  not evidence that these products belong to Core. Keep general Pages, Content
+  types, fields, references, templates, listing blocks and Forms primitives here.
 - Do not add Typeroll Cloud deployment credentials, operator-only routes,
   managed-service operations, marketing code, billing, or premium Typeroll
   Apps.

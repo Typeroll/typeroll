@@ -1,3 +1,4 @@
+import { resolveAppFormEndpoint, installedFormEmbedInfo, validInstallationFormTarget } from '../../../../../../lib/apps/form-endpoint';
 // GET    /api/v1/sites/{siteId}/forms/{formId}
 // PATCH  /api/v1/sites/{siteId}/forms/{formId}
 // DELETE /api/v1/sites/{siteId}/forms/{formId}
@@ -5,9 +6,10 @@
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
-import { formEmbedInfo } from '../../../../../../lib/forms-signing';
+import { extensionIssuer } from '../../../../../../lib/extensions/auth';
 import { paths, fieldsToSteps } from '@typeroll/shared';
 import type { Form, FormField } from '@typeroll/shared';
+
 import { validateFields, validSteps } from '../../../../../../lib/forms-admin';
 
 export const GET: APIRoute = async ({ request, params }) => {
@@ -21,7 +23,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   // submit_token + submit_url are what an agent needs to embed a working
   // form: hidden `_token` input + absolute action URL. The token is stable
   // until FORMS_HMAC_SECRET rotates, so baking it into static HTML is fine.
-  return apiResponse(ctx, { form: { ...doc, actions: [] }, ...formEmbedInfo(ctx.orgId, ctx.siteId, formId) });
+  return apiResponse(ctx, { form: { ...doc, actions: [] }, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, doc) });
 };
 
 export const PATCH: APIRoute = async ({ request, params }) => {
@@ -37,6 +39,14 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!body) return apiError('Invalid JSON body');
 
   const update: Partial<Form> = {};
+  if (body.target !== undefined) {
+    if (ctx.permission !== 'admin') return apiError('Admin permission required', 403);
+    if (ctx.extensionIdentity && body.target?.installation_id !== ctx.extensionIdentity.installationId) return apiError('A provider may bind only its own forms', 403);
+    if (!validInstallationFormTarget(body.target)) return apiError('Invalid form target');
+    try { await resolveAppFormEndpoint({ target: body.target }, { orgId: ctx.orgId, siteId: ctx.siteId, portalUrl: extensionIssuer() }); }
+    catch { return apiError('The target must be a declared endpoint on an enabled installation'); }
+    update.target = body.target;
+  }
   if (body.name !== undefined) update.name = String(body.name);
   if (body.submit_text !== undefined) update.submit_text = String(body.submit_text);
   if (body.success_message !== undefined) update.success_message = String(body.success_message);
@@ -65,7 +75,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     { ...existing, ...update },
   );
   const fresh = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`);
-  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: [] } : fresh, ...formEmbedInfo(ctx.orgId, ctx.siteId, formId) }, 200, body);
+  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: [] } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!) }, 200, body);
 };
 
 export const DELETE: APIRoute = async ({ request, params }) => {

@@ -1,6 +1,6 @@
 ---
 import type { ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { asFunnelAttributionConfig, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, buildFunnelAttributionRuntime, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import { buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -42,7 +42,8 @@ interface Props {
 
 const { page, settings, blockCss, blockJs, extraJsonLd, apps, extensions } = Astro.props;
 const extensionRuntime = extensions?.installations?.length
-  ? buildExtensionRuntimeScript(extensions)
+  ? buildExtensionRuntimeScript(extensions, { analytics: apps?.apps?.analytics?.enabled && typeof apps.apps.analytics.config.event_token === 'string' && typeof apps.apps.analytics.config.event_endpoint === 'string'
+      ? { endpoint: apps.apps.analytics.config.event_endpoint, token: apps.apps.analytics.config.event_token, requires_consent: settings.cookie_consent?.enabled === true } : undefined })
   : '';
 const extensionUsesSensitiveUrlContext = Boolean(extensions?.installations.some((installation) =>
   installation.components.some((component) => {
@@ -81,28 +82,6 @@ const analyticsBeacon = (apps?.apps?.analytics?.enabled
   && apps.apps.analytics.config.beacon_token)
   ? String(apps.apps.analytics.config.beacon_token)
   : null;
-
-const funnelConfig = apps?.apps?.funnel_attribution?.enabled
-  ? asFunnelAttributionConfig({
-      funnels: apps.apps.funnel_attribution.config?.funnels,
-      allow_personal_data: apps.apps.funnel_attribution.config?.allow_personal_data === true,
-      allow_synthetic_fallbacks: apps.apps.funnel_attribution.config?.allow_synthetic_fallbacks === true,
-    })
-  : null;
-const funnelRuntime = funnelConfig
-  ? buildFunnelAttributionRuntime(
-      funnelConfig,
-      settings.cookie_consent?.enabled === true,
-      apps?.apps?.analytics?.enabled
-        && typeof apps.apps.analytics.config?.event_endpoint === 'string'
-        && typeof apps.apps.analytics.config?.event_token === 'string'
-        ? {
-            endpoint: apps.apps.analytics.config.event_endpoint,
-            token: apps.apps.analytics.config.event_token,
-          }
-        : undefined,
-    )
-  : '';
 
 // Merge with inline defaults so optional fields (surface, text_light, size_base)
 // never produce "undefined" / "undefinedpx" in CSS for sites whose settings doc
@@ -232,7 +211,6 @@ const fontFallbackStyle = googleFontFamilies.length
     {extensionRuntime && <script is:inline set:html={extensionRuntime} />}
     {integrationsBodyEnd && <Fragment set:html={integrationsBodyEnd} />}
     {settings.scripts_body_end && <Fragment set:html={settings.scripts_body_end} />}
-    {funnelRuntime && <script is:inline set:html={funnelRuntime} />}
 
     <CookieConsent settings={settings} />
   </body>

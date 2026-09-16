@@ -256,6 +256,8 @@ export function signInstallationAssertion(args: {
   installation: ExtensionInstallation;
   scopes: ExtensionScope[];
   correlationId: string;
+  purpose?: 'documentation';
+  version?: string;
   now?: Date;
 }): string {
   const { privateKey, kid } = signingKey();
@@ -265,7 +267,8 @@ export function signInstallationAssertion(args: {
     iss: extensionIssuer(),
     aud: args.installation.extension_id,
     sub: args.installation.id,
-    token_use: 'installation',
+    token_use: args.purpose ?? 'installation',
+    ...(args.version ? { version: args.version } : {}),
     org_id: args.installation.owner_org_id,
     site_id: args.installation.site_id,
     installation_id: args.installation.id,

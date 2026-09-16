@@ -103,6 +103,9 @@ export function resolveAppConfig(appId: string, s: AppState): Record<string, unk
  * config). This is the exact doc the customer-site renderer reads.
  */
 export function publicAppsSnapshot(doc: SiteApps | undefined): SiteApps {
+  for (const [id, state] of Object.entries(doc?.apps ?? {})) {
+    if (state?.enabled && !getAppDef(id)) throw new Error('An enabled legacy module requires migration to its app installation before publishing.');
+  }
   const out: AppStateMap = {};
   for (const def of listAppDefs()) {
     const state = doc?.apps?.[def.id];

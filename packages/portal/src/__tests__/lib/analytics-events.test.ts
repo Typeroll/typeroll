@@ -18,35 +18,10 @@ async function setup(): Promise<string> {
     hosting_adapter: "cloudflare",
     created_at: new Date().toISOString(),
   });
-  const apps: SiteApps = {
-    apps: {
-      analytics: { enabled: true, config: {} },
-      funnel_attribution: {
-        enabled: true,
-        config: {
-          funnels: [
-            {
-              id: "booking",
-              page_paths: ["/book/"],
-              source: "current_url",
-              parameters: [{ from: "utm_source" }, { from: "utm_campaign" }],
-              targets: [
-                {
-                  type: "link",
-                  host: "calendly.com",
-                  path: "/acme/call",
-                  click_event: "booking_click",
-                  destination: "calendly",
-                },
-              ],
-            },
-          ],
-          allow_personal_data: false,
-          allow_synthetic_fallbacks: false,
-        },
-      },
-    },
-  };
+  const apps: SiteApps = { apps: { analytics: { enabled: true, config: { event_rules: [{
+    id: 'booking', name: 'booking_click', destination: 'calendly', page_paths: ['/book/'],
+    parameters: [{ name: 'utm_source' }, { name: 'utm_campaign' }],
+  }] } } } };
   await getStore().setDoc(paths.apps(ORG, SITE), apps);
   const { signAnalyticsEventToken } =
     await import("../../lib/apps/analytics-events");

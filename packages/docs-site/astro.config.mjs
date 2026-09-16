@@ -86,13 +86,11 @@ export default defineConfig({
               label: 'Analytics',
               items: [
                 { label: 'Overview', slug: 'apps/analytics' },
-                { label: 'Attribution', slug: 'apps/funnel-attribution' },
                 { label: 'Events & conversions', slug: 'apps/events' },
               ],
             },
             { label: 'Forms', slug: 'apps/forms' },
             { label: 'Integrations', slug: 'apps/integrations' },
-            { label: 'Directory', slug: 'apps/directory' },
           ],
         },
         {
@@ -109,8 +107,6 @@ export default defineConfig({
         {
           label: 'Recipes',
           items: [
-            { label: 'Build a directory', slug: 'recipes/directory-building' },
-            { label: 'Booking-link attribution', slug: 'recipes/booking-link-attribution' },
           ],
         },
         {

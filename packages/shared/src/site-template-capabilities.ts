@@ -215,9 +215,6 @@ export interface SiteTemplateCapabilities {
    */
   supports_redirect_wildcards: boolean;
 
-  /** 0.33.0+: validated site-level query forwarding and consent-gated attribution storage. */
-  supports_funnel_attribution: boolean;
-
   /**
    * 0.35.0+: installed Extension components can render as ordinary block
    * instances. The runtime captures only URL inputs declared by the manifest
@@ -247,7 +244,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.44.2',
+  template_capabilities_version: '0.45.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -256,7 +253,6 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_migration_url_api: true,
   supports_migration_launch_report: true,
   supports_redirect_wildcards: true,
-  supports_funnel_attribution: true,
   supports_extension_blocks: true,
   supports_extension_html_directive: true,
   supports_extension_html_partial_directive: true,

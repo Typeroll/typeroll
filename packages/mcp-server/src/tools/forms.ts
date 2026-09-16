@@ -33,6 +33,10 @@ const stepSchema = z.object({
   blocks: z.array(z.record(z.string(), z.unknown())).optional(),
 });
 
+const targetSchema = z.object({
+  installation_id: z.string(), path: z.string(), hydrate: z.boolean().optional(), session_param: z.string().optional(),
+}).optional().describe('Admin-only: bind to a declared POST route of an enabled app installation. Read its authenticated guide first.');
+
 export const formTools: ToolDef[] = [
   {
     name: 'list_forms',
@@ -63,6 +67,7 @@ export const formTools: ToolDef[] = [
       steps: z.array(stepSchema).min(1).optional(),
       submit_text: z.string().optional(),
       success_message: z.string().optional(),
+      target: targetSchema,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       if (!args.fields && !args.steps) {
@@ -84,6 +89,7 @@ export const formTools: ToolDef[] = [
         steps: z.array(stepSchema).optional(),
         submit_text: z.string().optional(),
         success_message: z.string().optional(),
+      target: targetSchema,
       }),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {

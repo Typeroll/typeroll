@@ -19,11 +19,11 @@ describe('site app documentation', () => {
     }
   });
   it('scopes discovery to enabled modules and returns no stored config', async () => {
-    await getStore().setDoc(paths.apps('org', 'one'), { apps: { directory: { enabled: true, config: { secret: 'must-not-leak' } }, analytics: { enabled: false } } });
+    await getStore().setDoc(paths.apps('org', 'one'), { apps: { analytics: { enabled: true, config: { secret: 'must-not-leak' } }, integrations: { enabled: false } } });
     await getStore().setDoc(paths.apps('other-org', 'one'), { apps: { analytics: { enabled: true } } });
     const result = await siteAppDocumentation('org', 'one');
-    expect(result.apps.map(app => app.id)).toEqual(['directory']);
-    expect(result.apps[0].documentation_markdown).toContain('Resumable census imports');
+    expect(result.apps.map(app => app.id)).toEqual(['analytics']);
+    expect(result.apps[0].documentation_markdown).toContain('Analytics');
     expect(JSON.stringify(result)).not.toContain('must-not-leak');
     expect((await siteAppDocumentation('org', 'two')).apps).toEqual([]);
   });

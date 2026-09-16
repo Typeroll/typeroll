@@ -1,56 +1,54 @@
 ---
 title: Events and conversions
-description: Consent-gated first-party conversion events from validated Analytics attribution funnels.
+description: Allowlisted first-party conversion events and aggregate reporting in Analytics.
 ---
 
-Events and conversions is the first-party outcome layer of Analytics. A funnel
-target can declare a `click_event`; when the visitor activates that target,
-Typeroll records the event without delaying navigation.
+Analytics accepts site-bound conversion events without requiring an app. An
+installed app or an approved site integration can produce events; Core owns
+validation, consent configuration, retention and reporting.
 
-## Event contract
+## Declare accepted events
 
-An accepted event contains only:
+With the app-separation release, configure Analytics `event_rules` with
+`update_app app_id="analytics"`. Each rule declares `id`, `name`, `destination`,
+optional exact `page_paths`, and allowed `parameters` (each has `name` and
+optional `max_length`, default 255). Example:
 
-- the declared event name;
-- funnel id and destination label;
-- the current page path;
-- resolved attribution fields already allowlisted by that funnel;
-- server-generated creation and expiry timestamps.
+```json
+{
+  "event_rules": [
+    {
+      "id": "contact",
+      "name": "contact_opened",
+      "destination": "contact_page",
+      "page_paths": ["/services/"],
+      "parameters": [{ "name": "utm_source", "max_length": 100 }]
+    }
+  ]
+}
+```
 
-The endpoint does not store an IP address, cookie id, user id, link text, full
-destination URL, referrer, or arbitrary browser properties. Undeclared event
-names and attribution fields are rejected or discarded.
+Rules are server-only configuration. Published Extension components receive
+`context.analytics` with `endpoint`, `token`, and `requires_consent` when
+Analytics is enabled and the platform event service is configured. This is
+null otherwise. Event producers must respect consent before sending.
 
-## Authenticity and abuse protection
+Send `{ token, event: { name, funnel_id, destination, path, attribution } }`
+to the endpoint. `funnel_id` is the existing wire name for the rule's `id`.
+The server requires a signed site token, an allowed site origin and an exact
+rule match. Unknown event names are rejected; undeclared parameters are
+discarded. Per-IP and per-site limits apply. The published token is not a
+secret visitor credential or proof of a human interaction.
 
-Published builds receive a site-bound signed token. The intake verifies the
-signature, request origin, enabled Analytics and Attribution modules, active
-funnel id, event name, destination, page path, and parameter allowlist. It also
-applies per-IP and per-site rate limits. The browser uses `sendBeacon` with a
-non-blocking keepalive fallback.
+## Privacy and reporting
 
-The public token proves that an event came from a published site build; it is
-not a secret visitor credential. Server-side validation remains authoritative.
+Core stores only the declared name, rule ID, destination label, page path,
+allowlisted parameter values and server timestamps. It does not store visitor
+IP addresses, cookie IDs, full URLs or arbitrary browser properties. Do not
+put personal data into campaign fields. Private app behavior, including
+outbound parameter forwarding, is described in that app's authenticated guide.
 
-## Consent and delivery
-
-When the site uses Typeroll's consent banner, no first-party conversion event
-is sent before optional consent. With no banner, the site's configured consent
-policy applies. Attribution cookies remain a separate mechanism and are never
-required for a current-page event.
-
-If Google Analytics is installed, the same declared click can also be sent to
-`gtag`. Failure in Typeroll Analytics or an external adapter never blocks the
-visitor's navigation.
-
-## Storage and reporting
-
-Events expire after 90 days; expired rows are removed during event intake and
-reporting. Insights reports total conversion events,
-counts by event and destination, and top `utm_source` and `utm_campaign`
-values for 7, 30, or 90 days. A report is marked truncated if more than 5,000
-matching raw events are returned for one period.
-
-This is event attribution, not person-level tracking. Do not use campaign
-parameter names to smuggle email addresses, phone numbers, or other personal
-data into the event pipeline.
+Events expire after 90 days and are removed during intake and reporting.
+Insights shows aggregate events, destinations, `utm_source` and `utm_campaign`
+for 7, 30 or 90 days. Reports indicate truncation above 5,000 matching rows.
+Reporting can continue when the traffic provider is temporarily unavailable.

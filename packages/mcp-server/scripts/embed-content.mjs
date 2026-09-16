@@ -18,6 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+if (process.argv.includes('--clean')) await fs.rm(path.join(root, 'dist'), { recursive: true, force: true });
 const skillsDir = path.join(root, 'skills');
 const outFile = path.join(root, 'src', 'bundled-content.ts');
 

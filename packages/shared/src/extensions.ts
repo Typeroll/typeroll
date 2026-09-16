@@ -1,7 +1,7 @@
 import type { FieldDefinition, SharePermission } from './types.js';
 
 export const EXTENSION_MANIFEST_SCHEMA_VERSION = 3 as const;
-export const EXTENSION_RUNTIME_VERSION = '0.39.1';
+export const EXTENSION_RUNTIME_VERSION = '0.40.0';
 export const EXTENSION_HOST_PROTOCOL_VERSION = 3 as const;
 
 export type ExtensionDistribution = 'private' | 'unlisted' | 'public';
@@ -23,9 +23,12 @@ export type ExtensionRenderMode = 'bundled_component' | 'embedded_app';
 export type ExtensionScope =
   | 'content:read'
   | 'content:write'
+  | 'content:owner'
+  | 'email:send'
   | 'forms:read'
   | 'forms:submit'
   | 'forms:write'
+  | 'forms:execute'
   | 'submissions:read'
   | 'media:read'
   | 'media:write'
@@ -41,9 +44,12 @@ export interface ExtensionScopeDefinition {
 
 export const EXTENSION_SCOPE_REGISTRY: Readonly<Record<ExtensionScope, ExtensionScopeDefinition>> = {
   'content:read': { scope: 'content:read', minimum_permission: 'read', sensitive: false, description: 'Read site content.' },
+  'content:owner': { scope: 'content:owner', minimum_permission: 'admin', sensitive: true, description: 'Read and change explicitly owner-writable Page fields after the provider authenticates the owner.' },
+  'email:send': { scope: 'email:send', minimum_permission: 'admin', sensitive: true, description: 'Send transactional email through the site connector.' },
   'content:write': { scope: 'content:write', minimum_permission: 'write', sensitive: true, description: 'Change site content.' },
   'forms:read': { scope: 'forms:read', minimum_permission: 'read', sensitive: false, description: 'Read form definitions.' },
   'forms:submit': { scope: 'forms:submit', minimum_permission: 'read', sensitive: false, description: 'Submit to explicitly bound forms.' },
+  'forms:execute': { scope: 'forms:execute', minimum_permission: 'admin', sensitive: true, description: 'Run configured actions on forms bound to this installation.' },
   'forms:write': { scope: 'forms:write', minimum_permission: 'admin', sensitive: true, description: 'Create and change forms.' },
   'submissions:read': { scope: 'submissions:read', minimum_permission: 'admin', sensitive: true, description: 'Read submitted form data.' },
   'media:read': { scope: 'media:read', minimum_permission: 'read', sensitive: false, description: 'Read media metadata.' },
@@ -177,7 +183,7 @@ export type ExtensionLifecycleEvent =
 
 export interface ExtensionManifest {
   /** Provider-authored reference material, not user authorization. */
-  documentation?: { url: string; agent_instructions?: string };
+  documentation?: { url: string; access?: 'public' | 'installation'; agent_instructions?: string };
   schema_version: typeof EXTENSION_MANIFEST_SCHEMA_VERSION;
   id: string;
   name: string;
@@ -394,6 +400,7 @@ export interface ExtensionRuntimeSnapshot {
 /** Request-local host information. It is supplied by preview rendering and
  * is never persisted in a deployed Extension snapshot. */
 export interface ExtensionRuntimeHostConfig {
+  analytics?: { endpoint: string; token: string; requires_consent: boolean };
   site_navigation?: {
     /** Prefix that keeps a root-relative site path inside the preview. */
     base_path: string;
@@ -651,7 +658,9 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
 
   if (manifest.documentation !== undefined) {
     const documentation = asRecord(manifest.documentation, 'documentation', errors);
-    rejectUnknown(documentation, ['url', 'agent_instructions'], 'documentation', errors);
+    rejectUnknown(documentation, ['url', 'access', 'agent_instructions'], 'documentation', errors);
+    if (documentation.access !== undefined && !['public', 'installation'].includes(String(documentation.access))) errors.push('documentation.access is invalid');
+    if (documentation.access === 'installation' && documentation.agent_instructions !== undefined) errors.push('Private documentation must not contain inline instructions');
     validatePublicHttps(documentation.url, 'documentation.url', errors);
     if (documentation.agent_instructions !== undefined && (typeof documentation.agent_instructions !== 'string' || documentation.agent_instructions.length > 16000)) errors.push('documentation.agent_instructions must be text of at most 16000 characters');
   }

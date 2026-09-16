@@ -102,3 +102,44 @@ installation headers required by the site API. Store the secret outside source
 control and rotate it from the Extension installation settings.
 
 See the [manifest reference](../manifest/) for the declared surfaces.
+
+## Owner editing, delivery and form actions (Core 0.2.9)
+
+A provider may request `content:owner`, `email:send` and `forms:execute` scopes
+with explicit reasons. All require administrator approval. Use an installation
+server credential with the organization and installation headers; never put it
+in a component, public snapshot or guide.
+
+Relative to `/api/v1/sites/{siteId}`:
+
+- `GET /extensions/self` returns the own enabled installation's resolved
+  version, validated non-secret config and verified site origins.
+- `GET/PUT /pages/{pageId}/owner-fields` reads/writes only fields that explicitly
+  permit owner writes. Types, sanitization and provenance precedence apply;
+  conflicts return 409. Authenticate the visitor and bind its record in the
+  provider before calling this endpoint.
+- `POST /delivery/email` sends `{ to, subject, text }` through the site's
+  configured connector. It supports one recipient and returns delivery errors
+  without exposing connector credentials.
+- `POST /forms/{formId}/actions` accepts `{ phase: "before" | "after", data,
+page_id? }` only when the form belongs to the calling installation.
+
+An administrator can bind an existing or new Form using
+`target: { installation_id, path, hydrate?, session_param? }`. The path must be
+a declared POST route. Both API and MCP support this target. Preserve the
+form's steps, actions and styling when changing its destination.
+
+## Authenticated product guides (Core 0.2.9)
+
+Declare `documentation.access: "installation"` and a HTTPS guide URL on the
+approved provider origin. Omit `agent_instructions` for private guides. Core
+fetches Markdown with a 60-second ES256 assertion: verify issuer, app audience,
+`token_use: "documentation"`, organization, site, installation and app version.
+Recheck current enabled status against the CMS or a securely synchronized
+installation record. Do not follow an arbitrary caller-supplied issuer URL.
+Return `Cache-Control: private,no-store`; reject unauthorized, expired,
+disabled, cross-site and wrong-version requests.
+
+Authorized users and agents discover these guides with `read_app_documentation`.
+Core limits the document to 256 KiB and reports unavailable guides explicitly.
+No private guide text belongs in a public manifest or build asset.

@@ -112,3 +112,8 @@ for (const name of ['llms.txt', 'llms-full.txt', 'llms-small.txt', ...htmlFiles.
 assert.match(read(path.join(dist, 'llms-full.txt')), /Migrate from Wix/);
 assert.equal(failures.length, 0, failures.join('\n'));
 console.log(`Verified ${htmlFiles.length} HTML files: titles, canonicals, indexing, edit links, structured data, internal links, assets and agent documentation.`);
+
+// Removed private app guides must not survive in generated text, HTML or navigation.
+for (const file of files(dist).filter(file => /\.(?:html|txt|xml|json|js)$/.test(file))) {
+  assert.doesNotMatch(read(file), /Resumable census imports|tr-directory|read_funnel_attribution|update_funnel_attribution|\/docs\/(?:apps\/(?:directory|funnel-attribution)|recipes\/(?:directory-building|booking-link-attribution))\//, `Private app guide leaked into ${file}`);
+}

@@ -48,7 +48,6 @@ ln -s "$PWD/skills/tr-migrate-wp.md" ~/.claude/skills/
 |---|---|---|
 | `tr-blog.md` | "add a blog", "set up news" | Articles are Pages of a content type, sharing a native template and Page listing. |
 | `tr-forms.md`             | "contact form", "add a form", "booking form"           | Form definition → embed HTML with signed token → inline JS feedback → deploy. |
-| `tr-directory.md`         | Building a directory site, importing structured data   | Content type → Pages → URLs via `route_template` → listing page → preview → deploy. |
 | `tr-page-template.md` | Reusable Page templates: audio players, chapter lists, guest cards, image galleries — anything needing loops/nested data | Compose native blocks around `template_content_slot`; bind Page metadata, structured fields and references. |
 | `tr-seo.md`               | "SEO", "meta descriptions", "structured data"          | Audit → fix titles/descriptions → OG images → JSON-LD → robots.txt → deploy. |
 

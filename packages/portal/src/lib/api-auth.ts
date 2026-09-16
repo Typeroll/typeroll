@@ -119,9 +119,13 @@ function getBearer(request: Request): string | null {
 
 export function extensionScopeForApiRequest(pathname: string, method: string): ExtensionScope | null {
   const write = method !== 'GET' && method !== 'HEAD';
+  if (/\/extensions\/self\/?$/.test(pathname) && !write) return 'extension:config:read';
+  if (/\/pages\/[^/]+\/owner-fields\/?$/.test(pathname)) return 'content:owner';
+  if (/\/delivery\/email\/?$/.test(pathname) && method === 'POST') return 'email:send';
   if (!write && /\/apps\/documentation\/?$/.test(pathname)) return 'content:read';
   if (/\/deploys?(?:\/|$)/.test(pathname)) return 'deploy:request';
   if (/\/submissions(?:\/|$)/.test(pathname)) return write ? null : 'submissions:read';
+  if (/\/forms\/[^/]+\/actions\/?$/.test(pathname) && method === 'POST') return 'forms:execute';
   if (/\/forms(?:\/|$)/.test(pathname)) return write ? 'forms:write' : 'forms:read';
   if (/\/media(?:\/|$)/.test(pathname)) return write ? 'media:write' : 'media:read';
   if (/\/(?:pages|content-types|partials|block-types|blocks|templates|settings)(?:\/|$)/.test(pathname)) {

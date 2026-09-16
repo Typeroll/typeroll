@@ -1,10 +1,11 @@
 // Public, first-party Analytics event intake. Published sites receive a
 // site-bound HMAC token at build time. The endpoint accepts only events that
-// match an enabled Funnel attribution rule; arbitrary event names, fields,
+// match an enabled Analytics event rule; arbitrary event names, fields,
 // destinations, and personal data never reach storage.
 
+import { analyticsEventRules } from "../../../lib/apps/analytics-event-policy";
 import type { APIRoute } from "astro";
-import { asFunnelAttributionConfig, paths } from "@typeroll/shared";
+import { paths } from "@typeroll/shared";
 import type { AnalyticsEvent, Site, SiteApps } from "@typeroll/shared";
 import { getStore } from "../../../lib/datastore";
 import {
@@ -108,32 +109,12 @@ export const POST: APIRoute = async ({ request }) => {
     store.getDoc<SiteApps>(paths.apps(token.orgId, token.siteId)),
   ]);
   if (!site || !allowedOrigin(request, site)) return response(403);
-  if (
-    !appsDoc?.apps?.analytics?.enabled ||
-    !appsDoc.apps.funnel_attribution?.enabled
-  )
-    return response(404);
-
-  const config = asFunnelAttributionConfig({
-    funnels: appsDoc.apps.funnel_attribution.config?.funnels,
-    allow_personal_data:
-      appsDoc.apps.funnel_attribution.config?.allow_personal_data === true,
-    allow_synthetic_fallbacks:
-      appsDoc.apps.funnel_attribution.config?.allow_synthetic_fallbacks ===
-      true,
-  });
+  if (!appsDoc?.apps?.analytics?.enabled) return response(404);
+  const rules = analyticsEventRules(appsDoc.apps.analytics.config?.event_rules ?? []);
   const event = body.event;
-  if (!config || !event || !event.name || !EVENT_RE.test(event.name))
-    return response(400);
-  const rule = config.funnels.find(
-    (candidate) => candidate.id === event.funnel_id,
-  );
-  const target = rule?.targets.find(
-    (candidate) =>
-      candidate.click_event === event.name &&
-      (candidate.destination ?? candidate.host) === event.destination,
-  );
-  if (!rule || !target) return response(400);
+  if (!rules || !event || !event.name || !EVENT_RE.test(event.name)) return response(400);
+  const rule = rules.find(candidate => candidate.id === event.funnel_id && candidate.name === event.name && candidate.destination === event.destination);
+  if (!rule) return response(400);
   if (
     typeof event.path !== "string" ||
     !event.path.startsWith("/") ||
@@ -145,7 +126,7 @@ export const POST: APIRoute = async ({ request }) => {
 
   const allowedParameters = new Map(
     rule.parameters.map((parameter) => [
-      parameter.to ?? parameter.from,
+      parameter.name,
       parameter.max_length ?? 255,
     ]),
   );

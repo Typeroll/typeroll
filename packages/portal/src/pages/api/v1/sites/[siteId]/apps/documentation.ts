@@ -6,5 +6,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  return apiResponse(ctx, await siteAppDocumentation(ctx.orgId, ctx.siteId));
+  const response = apiResponse(ctx, await siteAppDocumentation(ctx.orgId, ctx.siteId));
+  response.headers.set('Cache-Control', 'private, no-store');
+  return response;
 };
