@@ -11,6 +11,7 @@
 //
 // Id format matches block-mutations' generator: `blk_` + 12 chars of UUID.
 
+import { blockTreeError } from './block-tree-validation.js';
 import type { Block } from './types.js';
 
 function newBlockId(): string {
@@ -31,15 +32,18 @@ function newBlockId(): string {
  * and returns the same array for call-site convenience.
  */
 export function ensureBlockIds(blocks: Block[] | undefined | null): Block[] {
-  if (!Array.isArray(blocks)) return [];
+  if (blocks == null) return [];
+  const error = blockTreeError(blocks);
+  if (error) throw new Error(error);
   const seen = new Set<string>();
   const walk = (list: Block[]): void => {
     for (const block of list) {
       if (!block || typeof block !== 'object') continue;
-      if (typeof block.id !== 'string' || block.id.length === 0 || seen.has(block.id)) {
+      if (typeof block.id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(block.id) || seen.has(block.id)) {
         block.id = newBlockId();
       }
       seen.add(block.id);
+      block.data ??= {};
       if (Array.isArray(block.children)) walk(block.children);
       if (Array.isArray(block.slots)) {
         for (const slot of block.slots) {

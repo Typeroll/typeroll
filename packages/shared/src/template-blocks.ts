@@ -48,15 +48,23 @@ const pageFeaturedImage: BlockType = {
   category: 'media',
   container: false,
   schema: [
+    { name: 'fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
     { name: 'field', type: 'text', label: 'Image field', default: 'og_image' },
     { name: 'width', type: 'select', label: 'Width',
       options: ['narrow', 'normal', 'wide', 'full'], default: 'wide' },
     { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio',
       options: ['auto', '16:9', '4:3', '1:1', '3:1'], default: 'auto' },
   ],
-  template: `<figure data-block="image" data-w="{{width}}" style="--aspect:{{aspect_ratio}}">
+  template: `<figure data-block="image" data-w="{{width}}" data-fit="{{fit}}" data-aspect="{{aspect_ratio}}">
   <img src="{{selected_page_image}}" alt="{{page.title}}" loading="lazy" decoding="async" />
 </figure>`,
+  styles: `[data-block="image"] img { display:block; width:100%; height:auto; object-fit:contain; }
+[data-block="image"][data-fit="cover"] img { object-fit:cover; }
+[data-block="image"][data-aspect="16:9"] img { aspect-ratio:16/9; }
+[data-block="image"][data-aspect="4:3"] img { aspect-ratio:4/3; }
+[data-block="image"][data-aspect="1:1"] img { aspect-ratio:1; }
+[data-block="image"][data-aspect="3:1"] img { aspect-ratio:3/1; }
+`,
   origin: 'core',
   created_at: ISO_EPOCH,
 };
@@ -136,7 +144,7 @@ const pageBreadcrumbs: BlockType = {
   ],
   template: `<nav data-block="breadcrumbs" data-sep="{{separator}}" aria-label="{{aria_label}}">{{{breadcrumbs_html}}}</nav>`,
   styles: `
-[data-block="breadcrumbs"] { width: 100%; min-width: 0; font-size: 0.875rem; color: var(--color-text-light, currentColor); }
+[data-block="breadcrumbs"] { padding-block:var(--breadcrumbs-before, .75rem) var(--breadcrumbs-after, 2rem); width: 100%; min-width: 0; font-size: 0.875rem; color: var(--color-text-light, currentColor); }
 [data-block="breadcrumbs"] ol { list-style: none; padding: 0; margin: 0; display: flex; align-items: baseline; gap: 0.35rem; flex-wrap: wrap; }
 [data-block="breadcrumbs"] li { min-width: 0; overflow-wrap: anywhere; }
 [data-block="breadcrumbs"] li:not(:last-child)::after { content: " › "; margin-inline: 0.35rem 0; opacity: 0.55; speak: never; }

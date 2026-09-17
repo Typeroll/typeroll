@@ -1104,7 +1104,7 @@ describe('inline-edit stamping (options.editable)', () => {
 describe('schema defaults for imported and repeated blocks', () => {
   it('applies post-card image ratio and visibility defaults outside the editor', () => {
     const html = renderBlock({ id: 'card', type: 'core/post_card', data: { title: 'Article', url: '/article', image: '/image.jpg' } }, { registry });
-    expect(html).toContain('data-aspect="landscape"');
+    expect(html).toContain('data-aspect="auto"');
     expect(html).toContain('data-date="true"');
     expect(html).toContain('data-exc="true"');
     expect(html).toContain('data-author="false"');
@@ -1120,7 +1120,7 @@ describe('schema defaults for imported and repeated blocks', () => {
     const html = renderBlock({ id: 'list', type: 'core/repeater', data: { source_type: 'static', item_block: 'core/post_card',
       items: [{ title: 'Article', url: '/article', image: '/image.jpg' }], item_overrides: { show_date: false, show_excerpt: false },
     } }, { registry });
-    expect(html).toContain('data-aspect="landscape"');
+    expect(html).toContain('data-aspect="auto"');
     expect(html).toContain('data-date="false"');
     expect(html).toContain('data-exc="false"');
   });

@@ -1,3 +1,5 @@
+import { ensureBlockIds, type Block } from '@typeroll/shared';
+import { blockTreeInputError } from './block-tree-input';
 import { pageAuthorityFields } from '@typeroll/shared';
 import { pageAddress, pageContentType, validatePageFields, validatePagePresentation } from './page-fields';
 // Editor working copies — server-side scratch state for unsaved edits.
@@ -88,6 +90,13 @@ export async function filterWcFields(
   target: WcTarget,
   fields: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
+  if (Object.hasOwn(fields, 'blocks')) {
+    // PUT replacement uses null to clear absent fields, including a former block body.
+    const blocks = fields.blocks === null ? [] : fields.blocks;
+    const error = blockTreeInputError(blocks);
+    if (error) throw new WorkingCopyError(error, 400);
+    fields = { ...fields, blocks: ensureBlockIds(structuredClone(blocks) as Block[]) };
+  }
   let allowed: Set<string>;
   if (target.kind === 'page') {
     allowed = new Set<string>([...PAGE_WC_FIELDS, 'fields']);

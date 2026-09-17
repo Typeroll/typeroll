@@ -41,7 +41,7 @@ const container: BlockType = {
     { name: 'rhythm', type: 'select', label: 'Content spacing', options: ['default', 'article'], default: 'default' },
     { name: 'direction', type: 'select', label: 'Direction', options: ['row', 'column'], default: 'column', responsive: true },
     { name: 'wrap', type: 'select', label: 'Wrap', options: ['nowrap', 'wrap'], default: 'wrap', responsive: true },
-    { name: 'gap', type: 'select', label: 'Gap', options: ['none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
+    { name: 'gap', type: 'select', label: 'Gap', options: ['auto', 'none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true },
     { name: 'align_main', type: 'select', label: 'Main-axis alignment',
       options: ['start', 'center', 'end', 'space-between', 'space-around'], default: 'start', responsive: true },
     { name: 'align_cross', type: 'select', label: 'Cross-axis alignment',
@@ -114,7 +114,7 @@ const grid: BlockType = {
   container: true,
   schema: [
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 6, responsive: true },
-    { name: 'gap', type: 'select', label: 'Gap', options: ['none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
+    { name: 'gap', type: 'select', label: 'Gap', options: ['auto', 'none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true },
     { name: 'align', type: 'select', label: 'Alignment', options: ['start', 'center', 'end', 'stretch'], default: 'stretch', responsive: true },
     {
       name: 'stack_at',
@@ -138,7 +138,7 @@ const grid: BlockType = {
   ],
   template: `<div data-block="grid" data-stack-at="{{stack_at}}" data-last-row="{{last_row}}" style="--cols:{{cols}};--gap:{{gap}};--align:{{align}}">{{children}}</div>`,
   styles: `
-[data-block="grid"] {
+[data-block="grid"] { --block-gap:var(--grid-gap, 1rem);
   display: grid;
   /* Read --cols DIRECTLY (not a substring-mapped --block-cols): the
      responsive @media compiler overrides --cols per breakpoint, and an
@@ -421,12 +421,12 @@ const hero: BlockType = {
 </section>`,
   styles: `
 [data-block="hero"] {
-  position: relative; padding: 4rem 1rem; background: var(--bg, transparent); overflow: hidden;
+  position: relative; padding: var(--section-padding, 3rem) var(--content-gutter, 1.25rem); background: var(--bg, transparent); overflow: hidden;
 }
 [data-block="hero"][data-height="half-screen"] { min-height: 50vh; display: flex; align-items: center; }
 [data-block="hero"][data-height="screen"]      { min-height: 100vh; display: flex; align-items: center; }
 [data-block="hero"] .block-hero-inner {
-  max-width: 65rem; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center;
+  width:100%; min-width:0; max-width: 65rem; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center;
   position: relative; z-index: 2;
 }
 [data-block="hero"][style*="--layout:centered"] .block-hero-inner { grid-template-columns: 1fr; text-align: center; }
@@ -446,9 +446,9 @@ const hero: BlockType = {
   opacity: 0.7; margin-bottom: 0.5rem;
 }
 [data-block="hero"] .block-hero-eyebrow:empty { display: none; }
-[data-block="hero"] .block-hero-heading { font-size: clamp(2rem, 1rem + 5vw, 4rem); margin: 0 0 1rem; font-weight: 700; line-height: 1.15; }
-[data-block="hero"] .block-hero-sub     { font-size: clamp(1rem, 0.875rem + 0.5vw, 1.25rem); line-height: 1.5; opacity: 0.85; margin-bottom: 1.5rem; }
-[data-block="hero"] .block-hero-media img { width: 100%; height: auto; border-radius: 0.5rem; }
+[data-block="hero"] .block-hero-heading { font-size: var(--type-h1, 1.75rem); margin: 0 0 var(--block-gap-tight, .75rem); font-weight: 700; line-height: 1.2; }
+[data-block="hero"] .block-hero-sub     { font-size: var(--type-lead, 1.125rem); line-height: 1.5; opacity: 0.85; margin-bottom: 1.5rem; }
+[data-block="hero"] .block-hero-media img { display:block; width: 100%; height: auto; object-fit:contain; border-radius: 0.5rem; }
 [data-block="hero"] .block-hero-media:has(img[src=""]) { display: none; }
 @media (max-width: 767px) {
   [data-block="hero"] .block-hero-inner { grid-template-columns: 1fr; gap: 2rem; }
@@ -742,10 +742,11 @@ const postCard: BlockType = {
     { name: 'show_excerpt', type: 'boolean', label: 'Show excerpt', default: true },
     { name: 'show_date', type: 'boolean', label: 'Show date', default: true },
     { name: 'show_author', type: 'boolean', label: 'Show author', default: false },
-    { name: 'image_aspect', type: 'select', label: 'Image aspect', options: ['landscape', 'square', 'portrait'], default: 'landscape' },
+    { name: 'image_fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
+    { name: 'image_aspect', type: 'select', label: 'Image aspect', options: ['auto', 'landscape', 'square', 'portrait'], default: 'auto' },
     { name: 'appearance', type: 'select', label: 'Appearance', options: ['plain', 'card'], default: 'plain' },
   ],
-  template: `<article data-block="post_card" data-appearance="{{appearance}}" data-aspect="{{image_aspect}}" data-img="{{show_image}}" data-exc="{{show_excerpt}}" data-date="{{show_date}}" data-author="{{show_author}}">
+  template: `<article data-block="post_card" data-fit="{{image_fit}}" data-appearance="{{appearance}}" data-aspect="{{image_aspect}}" data-img="{{show_image}}" data-exc="{{show_excerpt}}" data-date="{{show_date}}" data-author="{{show_author}}">
   {{{post_card_image_html}}}
   <div class="block-postcard-body">
       <{{=heading_level}} class="block-postcard-title">{{{post_card_title_html}}}</{{=heading_level}}>
@@ -761,13 +762,14 @@ const postCard: BlockType = {
 [data-block="post_card"] { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
 [data-block="post_card"][data-appearance="card"] { background:var(--color-background, #fff); border-radius:0.5rem; box-shadow:0 2px 8px rgb(0 0 0 / 12%); gap:0; }
 [data-block="post_card"][data-appearance="card"] .block-postcard-image { display:block; margin:0; border-radius:0.5rem 0.5rem 0 0; }
-[data-block="post_card"][data-appearance="card"] .block-postcard-body { padding:1rem; }
+[data-block="post_card"][data-appearance="card"] .block-postcard-body { padding:var(--card-padding, 1rem); }
 [data-block="post_card"][data-appearance="card"] .block-postcard-title { font-size:1rem; }
 [data-block="post_card"][data-date="false"][data-author="false"] .block-postcard-meta { display:none; }
 [data-block="post_card"] .block-postcard-link { color: inherit; text-decoration: none; }
 [data-block="post_card"] .block-postcard-link:focus-visible,
 [data-block="post_card"] .block-postcard-download:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
-[data-block="post_card"] .block-postcard-image { width: 100%; object-fit: cover; border-radius: 0.5rem; background: var(--color-bg-subtle, #f3f4f6); }
+[data-block="post_card"] .block-postcard-image { width: 100%; height:auto; object-fit: contain; border-radius: 0.5rem; background: var(--color-bg-subtle, #f3f4f6); }
+[data-block="post_card"][data-fit="cover"] .block-postcard-image { object-fit:cover; }
 [data-block="post_card"][data-aspect="landscape"] .block-postcard-image { aspect-ratio: 16/9; }
 [data-block="post_card"][data-aspect="square"]    .block-postcard-image { aspect-ratio: 1; }
 [data-block="post_card"][data-aspect="portrait"]  .block-postcard-image { aspect-ratio: 3/4; }
@@ -888,7 +890,7 @@ const navigation: BlockType = {
 [data-block="navigation"] a:focus-visible,
 [data-block="navigation"] .block-navigation-toggle:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; border-radius: 0.2rem; }
 [data-block="navigation"] .block-navigation-toggle { display: none; align-items: center; justify-content: space-between; gap: 1rem; width: 100%; padding: 0.65rem 0.8rem; font: inherit; color: inherit; background: transparent; border: 1px solid color-mix(in srgb, currentColor 22%, transparent); border-radius: 0.4rem; }
-@media (max-width: 720px) {
+@media (max-width: 1023px) {
   [data-block="navigation"] .block-navigation-list { flex-direction: column; align-items: stretch; }
   [data-block="navigation"][data-enhanced="true"] .block-navigation-toggle { display: flex; }
   [data-block="navigation"][data-enhanced="true"] .block-navigation-list[hidden] { display: none; }
@@ -901,7 +903,7 @@ window.TyperollBlocks.register('core/navigation', (el) => {
   const list = el.querySelector('.block-navigation-list');
   if (!button || !list) return;
   el.dataset.enhanced = 'true';
-  const mobile = window.matchMedia('(max-width: 720px)');
+  const mobile = window.matchMedia('(max-width: 1023px)');
   const close = (focus) => { button.setAttribute('aria-expanded', 'false'); list.hidden = mobile.matches; if (focus) button.focus(); };
   close(false);
   button.addEventListener('click', () => {
@@ -1124,6 +1126,7 @@ const mediaCard: BlockType = {
   container: false,
   schema: [
     { name: 'image', type: 'image', label: 'Image', required: true },
+    { name: 'image_fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
     { name: 'image_alt', type: 'text', label: 'Image alt text' },
     { name: 'image_side', type: 'select', label: 'Image side', options: ['right', 'left'], default: 'right' },
     { name: 'image_width', type: 'select', label: 'Image width', options: ['third', 'two-fifths', 'half'], default: 'two-fifths' },
@@ -1135,7 +1138,7 @@ const mediaCard: BlockType = {
     { name: 'background', type: 'color', label: 'Card background' },
     { name: 'radius', type: 'select', label: 'Corner radius', options: ['none', 'md', 'lg', 'xl'], default: 'lg' },
   ],
-  template: `<div data-block="media_card" data-side="{{image_side}}" data-iw="{{image_width}}" data-radius="{{radius}}" style="--mc-bg:{{background}}">
+  template: `<div data-block="media_card" data-fit="{{image_fit}}" data-side="{{image_side}}" data-iw="{{image_width}}" data-radius="{{radius}}" style="--mc-bg:{{background}}">
   <div class="block-mediacard-body">
     <{{=heading_level}} class="block-mediacard-heading">{{heading}}</{{=heading_level}}>
     <div class="block-mediacard-text">{{{text}}}</div>
@@ -1153,7 +1156,8 @@ const mediaCard: BlockType = {
 [data-block="media_card"] .block-mediacard-media { flex: 0 0 40%; min-width: 0; }
 [data-block="media_card"][data-iw="third"] .block-mediacard-media { flex-basis: 33.333%; }
 [data-block="media_card"][data-iw="half"] .block-mediacard-media { flex-basis: 50%; }
-[data-block="media_card"] .block-mediacard-media img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+[data-block="media_card"] .block-mediacard-media img { display: block; width: 100%; height: auto; object-fit: contain; border-radius: inherit; }
+[data-block="media_card"][data-fit="cover"] .block-mediacard-media img { height:100%; object-fit:cover; }
 [data-block="media_card"] .block-mediacard-heading { margin: 0; }
 [data-block="media_card"] .block-mediacard-text { line-height: 1.65; }
 [data-block="media_card"] .block-btn { display: inline-block; padding: 0.75rem 1.75rem; border-radius: 999px; font-weight: 600; text-decoration: none; background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); }
@@ -1164,7 +1168,7 @@ const mediaCard: BlockType = {
   [data-block="media_card"] .block-mediacard-media,
   [data-block="media_card"][data-iw="third"] .block-mediacard-media,
   [data-block="media_card"][data-iw="half"] .block-mediacard-media { flex-basis: auto; }
-  [data-block="media_card"] .block-mediacard-media img { max-height: 18rem; }
+  [data-block="media_card"][data-fit="cover"] .block-mediacard-media img { max-height:18rem; }
 }
 `.trim(),
   origin: 'core',

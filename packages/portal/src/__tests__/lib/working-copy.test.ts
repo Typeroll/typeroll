@@ -18,6 +18,15 @@ describe('working-copy lib', () => {
     await resetDatastore();
   });
 
+  it('normalizes partial editor trees before storing and rejects malformed nodes', async () => {
+    const { filterWcFields } = await lib();
+    const input = { blocks: [{ type: 'core/section', data: {}, children: [{ type: 'core/prose', data: {} }] }] };
+    const out = await filterWcFields(CTX, { kind: 'partial', id: 'header' }, input);
+    expect((out.blocks as any[])[0].id).toMatch(/^blk_/);
+    expect((out.blocks as any[])[0].children[0].id).toMatch(/^blk_/);
+    expect(input.blocks[0]).not.toHaveProperty('id');
+    await expect(filterWcFields(CTX, { kind: 'partial', id: 'header' }, { blocks: [null] })).rejects.toThrow('blocks[0]');
+  });
   it('builds distinct keys per kind', async () => {
     const { wcKey } = await lib();
     expect(wcKey({ kind: 'page', id: 'home' })).toBe('page--home');

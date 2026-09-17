@@ -128,3 +128,20 @@ breakpoints needed.
   that beat the inline mobile baseline. Verify the computed column count at
   the actual breakpoint; no page CSS workaround should be necessary.
 - Background design reference: `docs/responsive-blocks.md` in the platform repo.
+
+
+## Core 0.2.14 native defaults
+
+Use section/hero as top-level background carriers; their inner content owns the
+20px phone / 28px tablet gutters. Do not add another gutter to main. Section
+padding auto is 48/64/80px at phone/768/1280; heading auto is H1 28/32/36 and
+H2 22/24/24 at a 16px root. Use shared --type-h1…h4, --section-padding,
+--block-gap, --card-padding and --grid-gap tokens for theme overrides.
+Navigation collapses through 1023px and becomes inline at 1024px.
+Images preserve the complete subject with intrinsic height and contain; request
+cover and a ratio explicitly only when cropping is intended. Breadcrumb spacing
+uses --breadcrumbs-before / --breadcrumbs-after. Custom field-list item_html
+replaces native bullets; core/list marker none supports custom icons.
+Preview and static CSS order is defaults → blocks/instances → site → Page;
+specificity, inline CSS and !important still apply. Compare without temporary
+corrective CSS before removing any existing site rules.

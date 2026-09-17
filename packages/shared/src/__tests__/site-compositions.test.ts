@@ -20,7 +20,7 @@ describe('native site compositions', () => {
     expect(html).toContain('href="/about/" aria-current="page"');
     expect(html).toContain('aria-expanded="false"');
     const script = registry.get('core/navigation')?.script ?? '';
-    expect(script).toContain("matchMedia('(max-width: 720px)')");
+    expect(script).toContain("matchMedia('(max-width: 1023px)')");
     expect(script).toContain("event.key === 'Escape'");
     expect(script).toContain('list.hidden = mobile.matches');
   });

@@ -60,7 +60,7 @@ test('editorial headings, optional mobile outline and card defaults match their 
     { id: 'outline', type: 'core/table_of_contents', data: { mobile_display: 'hidden', list_style: 'plain' } },
     { id: 'cards', type: 'core/repeater', data: { item_block: 'core/post_card', cols: { mobile: 1, tablet: 2, desktop: 3 },
       items: [1, 2, 3].map(id => ({ title: `Related ${id}`, image: `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="${id * 300}"></svg>`, url: `/related-${id}` })),
-      item_overrides: { show_date: false, show_excerpt: false },
+      item_overrides: { show_date: false, show_excerpt: false, image_aspect: 'landscape' },
     } },
   ];
   const html = prepareHeadingOutline(renderBlocks(blocks, { registry, context: { page: { content_mode: 'blocks', blocks: blocks.slice(0, 2) } } })).html;

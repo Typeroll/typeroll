@@ -40,7 +40,7 @@ const section: BlockType = {
       options: ['narrow', 'normal', 'wide', 'full'],
       default: 'normal',
     },
-    { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['none', 'sm', 'md', 'lg', 'xl'], default: 'md' },
+    { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['auto', 'none', 'sm', 'md', 'lg', 'xl'], default: 'auto' },
     { name: 'background', type: 'color', label: 'Background color' },
     { name: 'text_color', type: 'color', label: 'Text color' },
     // Shaped section transitions. The divider is filled with THIS section's
@@ -56,7 +56,7 @@ const section: BlockType = {
   <span class="block-section-shape block-section-shape--bot" aria-hidden="true"></span>
 </section>`,
   styles: `
-[data-block="section"] { position: relative; padding: var(--block-pad-md, 4rem) var(--content-gutter, 1.25rem); background: var(--block-bg, transparent); color: var(--block-fg, inherit); }
+[data-block="section"] { position: relative; padding: var(--section-padding, 3rem) var(--content-gutter, 1.25rem); background: var(--block-bg, transparent); color: var(--block-fg, inherit); }
 [data-block="section"][data-pad="none"] { padding-top: 0; padding-bottom: 0; }
 [data-block="section"][data-pad="sm"] { padding-top: 2rem; padding-bottom: 2rem; }
 [data-block="section"][data-pad="md"] { padding-top: 4rem; padding-bottom: 4rem; }
@@ -258,6 +258,10 @@ const heading: BlockType = {
 [data-block="heading"][data-font-weight="600"] .block-heading-text { font-weight:600; }
 [data-block="heading"][data-font-weight="700"] .block-heading-text { font-weight:700; }
 [data-block="heading"][data-font-weight="800"] .block-heading-text { font-weight:800; }
+[data-block="heading"][data-size="auto"] .block-heading-text { line-height:1.25; }
+[data-block="heading"][data-size="auto"][data-level="h1"] .block-heading-text { line-height:1.2; }
+[data-block="heading"][data-size="auto"][data-level="h3"] .block-heading-text { line-height:1.3; }
+[data-block="heading"][data-size="auto"][data-level="h4"] .block-heading-text { line-height:1.35; }
 /* Explicit visual size — wins over auto */
 [data-block="heading"][data-size="3xl"] { --heading-fs: clamp(2rem,    1rem      + 5vw,   4rem); }
 [data-block="heading"][data-size="2xl"] { --heading-fs: clamp(1.75rem, 1rem      + 3.5vw, 3.5rem); }
@@ -272,12 +276,12 @@ const heading: BlockType = {
 [data-block="heading"][data-size="article"][data-level="h1"] { --heading-fs:clamp(1.75rem, 1.25rem + 2vw, 2.5rem); }
 [data-block="heading"][data-size="article"][data-level="h2"] { --heading-fs:clamp(1.5rem, 1.125rem + 1vw, 2rem); }
 [data-block="heading"][data-size="article"] .block-heading-text { line-height:1.2; }
-[data-block="heading"][data-size="auto"][data-level="h1"] { --heading-fs: clamp(2rem,    1rem     + 5vw,   4rem); }
-[data-block="heading"][data-size="auto"][data-level="h2"] { --heading-fs: clamp(1.75rem, 1rem     + 3.5vw, 3.5rem); }
-[data-block="heading"][data-size="auto"][data-level="h3"] { --heading-fs: clamp(1.5rem,  0.875rem + 2.5vw, 2.5rem); }
-[data-block="heading"][data-size="auto"][data-level="h4"] { --heading-fs: clamp(1.25rem, 0.75rem  + 2vw,   1.75rem); }
-[data-block="heading"][data-size="auto"][data-level="h5"] { --heading-fs: clamp(1.125rem, 0.75rem + 1vw,   1.375rem); }
-[data-block="heading"][data-size="auto"][data-level="h6"] { --heading-fs: clamp(1rem,    0.85rem  + 0.5vw, 1.125rem); }
+[data-block="heading"][data-size="auto"][data-level="h1"] { --heading-fs: var(--type-h1, 1.75rem); }
+[data-block="heading"][data-size="auto"][data-level="h2"] { --heading-fs: var(--type-h2, 1.375rem); }
+[data-block="heading"][data-size="auto"][data-level="h3"] { --heading-fs: var(--type-h3, 1.125rem); }
+[data-block="heading"][data-size="auto"][data-level="h4"] { --heading-fs: var(--type-h4, 1rem); }
+[data-block="heading"][data-size="auto"][data-level="h5"] { --heading-fs: var(--type-h5, 1rem); }
+[data-block="heading"][data-size="auto"][data-level="h6"] { --heading-fs: var(--type-h6, .875rem); }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -297,6 +301,8 @@ const image: BlockType = {
   schema: [
     { name: 'src', type: 'image', label: 'Image', required: true },
     { name: 'alt', type: 'text', label: 'Alt text' },
+    { name: 'fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
+    { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio', options: ['auto', '16:9', '4:3', '1:1', '3:1'], default: 'auto' },
     { name: 'caption', type: 'text', label: 'Caption' },
     { name: 'caption_html', type: 'richtext', label: 'Formatted caption / credit (overrides plain caption)' },
     { name: 'caption_align', type: 'select', label: 'Caption alignment', options: ['left', 'center', 'right'], default: 'center' },
@@ -309,7 +315,7 @@ const image: BlockType = {
     { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide', 'full', 'original'], default: 'normal' },
     { name: 'radius', type: 'select', label: 'Corner radius', options: ['none', 'md', 'lg', 'xl'], default: 'none' },
   ],
-  template: `<figure data-block="image" data-w="{{width}}" data-align="{{align}}" data-caption-align="{{caption_align}}" data-radius="{{radius}}" style="{{image_size_style}}">
+  template: `<figure data-block="image" data-fit="{{fit}}" data-aspect="{{aspect_ratio}}" data-w="{{width}}" data-align="{{align}}" data-caption-align="{{caption_align}}" data-radius="{{radius}}" style="{{image_size_style}}">
   {{{image_markup}}}
   <figcaption class="block-image-caption">{{{image_caption_html}}}</figcaption>
 </figure>`,
@@ -322,7 +328,13 @@ const image: BlockType = {
 [data-block="image"][data-w="normal"] { max-width: 48rem; }
 [data-block="image"][data-w="wide"] { max-width: 64rem; }
 [data-block="image"][data-w="full"] { max-width: none; }
-[data-block="image"] img { display: block; width: 100%; height: auto; }
+
+[data-block="image"][data-fit="cover"] img { object-fit:cover; }
+[data-block="image"][data-aspect="16:9"] img { aspect-ratio:16/9; }
+[data-block="image"][data-aspect="4:3"] img { aspect-ratio:4/3; }
+[data-block="image"][data-aspect="1:1"] img { aspect-ratio:1; }
+[data-block="image"][data-aspect="3:1"] img { aspect-ratio:3/1; }
+[data-block="image"] img { object-fit:contain; display: block; width: 100%; height: auto; }
 [data-block="image"][data-radius="md"] img { border-radius: 0.5rem; }
 [data-block="image"][data-radius="lg"] img { border-radius: 1.25rem; }
 [data-block="image"][data-radius="xl"] img { border-radius: 1.75rem; }

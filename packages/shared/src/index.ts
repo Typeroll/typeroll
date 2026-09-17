@@ -41,3 +41,5 @@ export * from './page-navigation.js';
 
 export * from './page-heading-policy.js';
 export * from './content-well.js';
+
+export { blockTreeError } from './block-tree-validation.js';

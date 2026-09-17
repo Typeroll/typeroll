@@ -42,12 +42,13 @@ export const ARTICLE_BLOCK_TYPES: BlockType[] = [
   {
     id: 'core/list', name: 'list', label: 'List', icon: 'list', category: 'content', container: false,
     schema: [
+      { name: 'marker', type: 'select', label: 'List marker', options: ['auto', 'none', 'check'], option_labels: ['Bullet or number', 'Custom / no marker', 'Checkmark'], default: 'auto' },
       { name: 'ordered', type: 'boolean', label: 'Numbered list', default: false },
       { name: 'start', type: 'number', label: 'Start number', default: 1 },
       { name: 'items', type: 'array', label: 'Items', fields: [{ name: 'html', type: 'richtext', label: 'Content' }] },
     ],
-    template: `<div data-block="list">{{{list_html}}}</div>`,
-    styles: `[data-block="list"] ul,[data-block="list"] ol{padding-inline-start:1.5rem;margin:1rem 0}[data-block="list"] li{margin:.35rem 0}[data-block="list"] li>p{margin:0}`,
+    template: `<div data-block="list" data-marker="{{marker}}">{{{list_html}}}</div>`,
+    styles: `[data-block="list"] ul,[data-block="list"] ol{padding-inline-start:1.5rem;margin:1rem 0}[data-block="list"] li{margin:.35rem 0}[data-block="list"] li>p{margin:0}[data-block="list"][data-marker="none"] ul,[data-block="list"][data-marker="none"] ol,[data-block="list"][data-marker="check"] ul,[data-block="list"][data-marker="check"] ol{list-style:none;padding-inline-start:0}[data-block="list"][data-marker="check"] li{position:relative;padding-inline-start:1.5em}[data-block="list"][data-marker="check"] li::before{content:"✓";position:absolute;inset-inline-start:0}[data-block="list"] li:has(input[type="checkbox"]){list-style:none}[data-block="list"][data-marker="check"] li:has(input[type="checkbox"])::before{content:none}`,
     origin: 'core', created_at: '1970-01-01T00:00:00Z',
   },
 ];

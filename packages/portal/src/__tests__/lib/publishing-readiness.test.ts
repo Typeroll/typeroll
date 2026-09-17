@@ -74,3 +74,30 @@ it('blocks queue admissions but allows an accepted publication continuation to u
   await getStore().setDoc(connectionPath('org', 'github'), { status: 'disconnected' });
   await expect(queue.enqueue({ ...args, dispatchKey: 'b'.repeat(16) })).rejects.toMatchObject({ code: 'publishing_setup_required' });
 });
+
+it('blocks invalid IDs and unknown block exports before a job is created, including managed sites', async () => {
+  const store = getStore();
+  const pagePath = `${paths.pages('org', 'site', 'main')}/broken`;
+  await store.setDoc(pagePath, { content_mode: 'blocks', status: 'published', blocks: [{ type: 'core/prose', data: {} }] });
+  let result = await publishingReadiness('org', 'site');
+  expect(result.ready).toBe(false);
+  expect(result.required).toContainEqual(expect.objectContaining({ code: 'content_export_invalid', message: expect.stringContaining('pages/broken.blocks[0].id') }));
+  await store.setDoc(paths.site('org', 'site'), { publishing_mode: 'managed' });
+  expect((await publishingReadiness('org', 'site')).ready).toBe(false);
+  await store.updateDoc(pagePath, { blocks: [{ id: 'b', type: 'missing/block', data: {} }] });
+  expect((await publishingReadiness('org', 'site')).required[0].message).toContain('Unsupported publication block type');
+  await store.updateDoc(pagePath, { blocks: [{ id: 'b', type: 'core/repeater', data: { item_block: 'missing-card' } }] });
+  expect((await publishingReadiness('org', 'site')).required[0].message).toContain('blocks[0].data.item_block');
+  await store.updateDoc(pagePath, { blocks: [{ id: 'b', type: 'core/prose', data: { html: '<p>Ready</p>' } }] });
+  expect((await publishingReadiness('org', 'site')).ready).toBe(true);
+});
+
+it('checks the inherited template and block arrays without treating drafts as public content', async () => {
+  const store = getStore(), pagePath = `${paths.pages('org', 'site', 'main')}/profile`;
+  await store.setDoc(pagePath, { content_mode: 'blocks', status: 'draft', blocks: [null] });
+  expect((await publishingReadiness('org', 'site')).ready).toBe(true);
+  await store.setDoc(pagePath, { content_mode: 'blocks', status: 'published' });
+  expect((await publishingReadiness('org', 'site')).required[0].message).toContain('blocks must be an array');
+  await store.updateDoc(pagePath, { blocks: [], template: 'missing' });
+  expect((await publishingReadiness('org', 'site')).required[0].message).toContain('page_templates/missing');
+});

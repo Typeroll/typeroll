@@ -63,7 +63,7 @@ const repeater: BlockType = {
       options: ['grid', 'masonry', 'list', 'carousel', 'justified', 'stack'], default: 'grid' },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 6, responsive: true },
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
-    { name: 'gap', type: 'select', label: 'Gap', options: ['none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
+    { name: 'gap', type: 'select', label: 'Gap', options: ['auto', 'none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true },
     { name: 'align', type: 'select', label: 'Item alignment', options: ['start', 'center', 'end', 'stretch'], default: 'stretch', responsive: true },
 
     // CAROUSEL OPTIONS
@@ -81,7 +81,7 @@ const repeater: BlockType = {
   // without a proper repeater handler.
   template: `<div data-block="repeater" data-layout="{{layout}}"><!-- repeater items render here --></div>`,
   styles: `
-[data-block="repeater"] { --rep-gap: 1rem; }
+[data-block="repeater"] { --rep-gap: var(--grid-gap, 1rem); }
 [data-block="repeater"][style*="--gap:none"] { --rep-gap: 0; }
 [data-block="repeater"][style*="--gap:xs"]   { --rep-gap: 0.25rem; }
 [data-block="repeater"][style*="--gap:sm"]   { --rep-gap: 0.5rem; }
@@ -165,7 +165,7 @@ const gallery: BlockType = {
       item_block: 'core/image',
       layout: 'grid',
       cols: 3,
-      gap: 'md',
+      gap: 'auto',
     },
   },
   // The editor only surfaces these two fields. The rest of the repeater's
@@ -181,7 +181,7 @@ const gallery: BlockType = {
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 6, responsive: true },
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
     { name: 'layout', type: 'select', label: 'Layout', options: ['grid', 'masonry', 'justified'], default: 'grid' },
-    { name: 'gap', type: 'select', label: 'Gap', options: ['none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
+    { name: 'gap', type: 'select', label: 'Gap', options: ['auto', 'none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -315,7 +315,7 @@ const pricingTable: BlockType = {
       item_block: 'core/pricing_plan',
       layout: 'grid',
       cols: 3,
-      gap: 'md',
+      gap: 'auto',
       align: 'stretch',
     },
   },
@@ -399,7 +399,7 @@ const collectionList: BlockType = {
       item_block: 'core/post_card',
       layout: 'grid',
       cols: 3,
-      gap: 'md',
+      gap: 'auto',
     },
   },
   schema: [

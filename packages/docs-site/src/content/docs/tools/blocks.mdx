@@ -155,8 +155,12 @@ an H2. Use multiple field-list blocks for independently titled sections.
 - Null, missing values, blank strings (including whitespace), and empty lists
   omit the **whole row**, including its label.
 - If no rows remain, the **whole block and its heading** are omitted from HTML.
-- Number `0` is a value. Boolean `true` and `false` render as **True** and
-  **False**; an unset boolean is hidden.
+- Number `0` is a value. From Core 0.2.14, boolean rows default to
+  `boolean_display: "property"`: show **Yes** for true and hide false/unset.
+  Choose `boolean_display: "yes-no"` to show both set values. `true_label` and
+  `false_label` let you use labels such as **Ja** / **Nej**. This changes
+  presentation only; false remains a stored value. Core 0.2.12–0.2.13 displayed
+  both set booleans as True/False.
 - Text and textarea values are escaped. URLs become HTTP(S) or site-relative
   links; unsafe URLs are omitted.
 - Select and multiselect fields use `option_labels` when configured, falling
@@ -420,3 +424,101 @@ All accept `target: { kind, id }` or the `page_id` shorthand.
 | `delete_block_type`                         | Remove a custom/third-party type (core protected) |
 | `find_pages_using_block_type`               | Reverse-index: which pages reference this type?   |
 | `export_block_types` / `import_block_types` | `.tcblocks` package format for portability        |
+
+## Responsive defaults and CSS order (Core 0.2.14)
+
+These defaults are shared by Typeroll Cloud, self-hosted preview, and newly
+published static builds. Existing published sites change only after rebuilding.
+Explicit block settings and site CSS remain in place; remove temporary corrective
+CSS only after comparing preview with the intended design.
+
+| Default                    | Phone               | Tablet (768px)      | Desktop (1280px)    |
+| -------------------------- | ------------------- | ------------------- | ------------------- |
+| H1 / H2 / H3 / H4          | 28 / 22 / 18 / 16px | 32 / 24 / 20 / 17px | 36 / 24 / 20 / 18px |
+| Section vertical padding   | 48px                | 64px                | 80px                |
+| Gap between section blocks | 24px                | 24px                | 32px                |
+| Card inset / grid gap      | 16px                | 24px                | 24px                |
+| Content gutter             | 20px                | 28px                | 28px                |
+
+H5 and H6 use 16px and 14px at every width.
+
+Values assume a 16px base font. Semantic headings use line heights 1.2 / 1.25 /
+1.3 / 1.35; body uses 1.55. Explicit heading sizes such as `article` retain their
+own scale. Section `padding_y: "auto"` and grid/repeater `gap: "auto"` select the
+responsive defaults; fixed named sizes remain deliberate overrides.
+
+Use `core/section` or `core/hero` as the top-level background carrier. Its
+background reaches the viewport edge; its inner content has gutters and a maximum
+width. Do not wrap these blocks in a padded main container. Adjacent sections
+receive no extra outer gap on top of their vertical padding. Nesting a section
+inside a constrained column deliberately constrains that section too.
+
+Images use intrinsic height and `contain` by default. `core/image` and
+`template/page_featured_image` accept `fit` and `aspect_ratio`; `core/post_card`
+accepts `image_fit` and `image_aspect`, and `core/media_card` accepts `image_fit`.
+Choose a ratio plus `cover` only when cropping is intended. Hero `full-image` is
+an explicit background-cover layout; other hero layouts preserve the complete
+image. Test at 375, 768 and 1280px with the actual artwork.
+
+Navigation uses the same CSS and JavaScript boundary: through **1023px** it is a
+collapsible menu; from **1024px** links appear inline. Without JavaScript, links
+remain reachable. Escape closes the mobile menu and returns focus to its button.
+
+`core/list.marker` supports `auto`, `none` and `check`. Use `none` for a custom
+icon already in each row, or `check` for one native checkmark. Native checkbox
+inputs suppress the extra marker. Field-list `item_html` owns item decoration:
+Typeroll removes native bullets so a custom checkbox icon is not doubled.
+
+Breadcrumbs have 0.75rem before and 2rem after; from 1024px they use 1rem and
+2.5rem. They do not add an additional section-block gap below the trail.
+Override `--breadcrumbs-before` and `--breadcrumbs-after` without changing links
+or structured data.
+
+### Theme tokens and precedence
+
+The shared scale is `--space-1` through `--space-12` (4, 8, 12, 16, 24, 32,
+40, 48, 64, 80, 96, 128px at a 16px root). Override semantic tokens instead of
+patching individual blocks: `--section-padding`, `--block-gap`,
+`--block-gap-tight`, `--block-gap-loose`, `--grid-gap`, `--card-padding`,
+`--content-gutter`, `--type-h1` … `--type-h6`, `--type-lead`, and
+`--body-leading`. Theme fonts and colors remain independent.
+
+```css
+:root {
+  --type-h2: 1.5rem;
+  --content-gutter: 1rem;
+}
+@media (min-width: 768px) {
+  :root {
+    --content-gutter: 1.5rem;
+  }
+}
+@media (min-width: 1280px) {
+  :root {
+    --content-gutter: 2rem;
+  }
+}
+```
+
+Preview and static output load CSS in the same order: platform defaults and theme
+variables → block definitions and generated instance/responsive styles → site
+Custom CSS → Page Custom CSS. This is source order, not a replacement for the CSS
+cascade: specificity, inline declarations and `!important` still take precedence.
+Use block settings first, theme tokens for shared decisions, and scoped custom
+CSS for deliberate exceptions. Preview does not yet diagnose cascade conflicts.
+
+### Saved blocks and publishing readiness
+
+Whole-tree writes assign missing, invalid or duplicate block IDs recursively,
+including children and slots. Malformed trees are rejected with a field path;
+they are never silently accepted or turned into empty content. IDs are assigned
+before storage, including editor working copies, API batch writes and MCP calls.
+
+`read_publishing_readiness` also validates the saved, version-resolved content:
+invalid IDs, unsupported block types and missing referenced Page templates block
+publication with `content_export_invalid` and an editable resource path. Draft
+Pages and unsaved editor changes do not enter the public export. The same
+validation runs when freezing source and exporting content. It reads content and
+validates the export contract; it does not build the site or process images.
+Readiness is a preflight, not a guarantee that a later provider operation will
+succeed. Accepted jobs continue from their frozen source, not later edits.

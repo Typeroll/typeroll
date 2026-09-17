@@ -1,3 +1,4 @@
+import { assertContentExportable } from './content-preflight';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { SiteVersion } from '@typeroll/shared';
 import { getStore } from '../datastore';
@@ -33,5 +34,7 @@ async function resolveVersion(orgId: string, siteId: string, versionId: string) 
     vstore.redirects(orgId, siteId, versionId),
     vstore.contentTypes(orgId, siteId, versionId),
   ]);
-  return { versionId, settings, pages, partials, blockTypes, pageTemplates, redirects, contentTypes };
+  const resolved = { versionId, settings, pages, partials, blockTypes, pageTemplates, redirects, contentTypes };
+  assertContentExportable(resolved);
+  return resolved;
 }

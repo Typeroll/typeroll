@@ -30,17 +30,24 @@ const dom = (html: string) => { const w = new Window(); w.document.body.innerHTM
 
 describe('native Page field lists', () => {
   it('renders exactly four of ten rows and omits every empty label from the HTML', () => {
-    const html = render({ website: 'https://example.test', hq: 'Oslo', employees: 0, delivery: false, returns: null, payment: '', regions: [], parent: '', partners: [], shipping: '  ' });
+    const html = render({ website: 'https://example.test', hq: 'Oslo', employees: 0, delivery: true, returns: null, payment: '', regions: [], parent: '', partners: [], shipping: '  ' });
     const doc = dom(html);
     expect([...doc.querySelectorAll('dt')].map(x => x.textContent)).toEqual(['Website', 'Headquarters', 'Employees', 'Delivery']);
-    expect([...doc.querySelectorAll('dd')].map(x => x.textContent)).toEqual(['https://example.test', 'Oslo', '0', 'False']);
+    expect([...doc.querySelectorAll('dd')].map(x => x.textContent)).toEqual(['https://example.test', 'Oslo', '0', 'Yes']);
     expect(doc.querySelectorAll('h2')).toHaveLength(1);
     expect(doc.querySelector('[data-layout="two-column"]')).not.toBeNull();
   });
   it('omits the entire section and heading when every selected field is empty or invalid', () => {
     expect(render({ delivery: null, employees: '', regions: [' ', ''], partners: [], website: 'javascript:alert(1)' })).toBe('');
     expect(render({ delivery: 'false', employees: NaN })).toBe('');
-    expect(render({ delivery: true })).toContain('<dd>True</dd>');
+    expect(render({ delivery: true })).toContain('<dd>Yes</dd>');
+  });
+  it('hides false properties but supports explicit localized Yes/No without changing data', () => {
+    expect(render({ delivery: false })).toBe('');
+    const fields = [{ field: 'delivery', boolean_display: 'yes-no', true_label: 'Ja', false_label: 'Nej' }];
+    expect(render({ delivery: false }, { fields })).toContain('<dd>Nej</dd>');
+    expect(render({ delivery: true }, { fields })).toContain('<dd>Ja</dd>');
+    expect(render({ delivery: null }, { fields })).toBe('');
   });
   it('uses field labels, overrides and option labels without mutating data', () => {
     const values = { payment: 'invoice', regions: ['north', 'south'], hq: 'Paris' };
@@ -78,8 +85,8 @@ describe('native Page field lists', () => {
     expect(renderBlock(block, { registry, context: context() })).toContain('Stockholm');
     current.fields!.hq = '';
     expect(renderBlock(block, { registry, context: context() })).toBe('');
-    current.fields!.delivery = false;
-    expect(renderBlock(block, { registry, context: context() })).toContain('<dt>Delivery</dt><dd>False</dd>');
+    current.fields!.delivery = true;
+    expect(renderBlock(block, { registry, context: context() })).toContain('<dt>Delivery</dt><dd>Yes</dd>');
     expect(current.blocks).toEqual([]);
     expect(block).toEqual(before);
   });
@@ -87,7 +94,7 @@ describe('native Page field lists', () => {
     const html = renderBlock(block, { registry, context: { page: pageContentValues(page('p', { hq: 'Rome' })), content_type: { ...type } }, annotate: true });
     expect(html).toContain('data-block-id="facts"');
     expect(collectBlockAssets([block], registry).css).toContain('[data-block="field_list"]');
-    expect(registry.get('core/field_list')?.schema.find(f => f.name === 'fields')?.fields?.map(f => f.name)).toEqual(['field', 'label', 'html', 'css', 'css_class', 'item_html', 'item_links']);
+    expect(registry.get('core/field_list')?.schema.find(f => f.name === 'fields')?.fields?.map(f => f.name)).toEqual(['field', 'label', 'boolean_display', 'true_label', 'false_label', 'html', 'css', 'css_class', 'item_html', 'item_links']);
   });
   it('presents each selected checkbox with custom markup and links only configured option labels', () => {
     const data = { fields: [{ field: 'regions', css_class: 'region-checks',

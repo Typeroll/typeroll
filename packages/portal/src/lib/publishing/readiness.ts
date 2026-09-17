@@ -1,3 +1,4 @@
+import { resolvePublicationVersion } from './publication-version';
 import { selectedBuildProvider } from '../builds/selection';
 import { readBuildEngine } from '../builds/cloudflare';
 import { readGithubEngine } from '../builds/github';
@@ -21,7 +22,14 @@ export async function publishingReadiness(orgId: string, siteId: string, version
   const site = await store.getDoc<Site>(paths.site(orgId, siteId));
   if (!site) throw new ConnectionError('Site not found.', 404);
   const required: PublishingRequirement[] = [];
-  if (site.publishing_mode !== 'customer_git') return { ready: true, mode: 'managed' as const, required };
+  // Accepted jobs validate their frozen source; new admissions validate saved content.
+  if (options.checkBuild !== false) {
+    try { await resolvePublicationVersion(orgId, siteId, versionId); }
+    catch (error) {
+      required.push({ code: 'content_export_invalid', message: error instanceof Error ? error.message : 'Content cannot be exported.', settings_url: `/app/sites/${encodeURIComponent(siteId)}/pages` });
+    }
+  }
+  if (site.publishing_mode !== 'customer_git') return { ready: required.length === 0, mode: 'managed' as const, required };
   const group = await siteHostingGroup(orgId, siteId);
   const [github, cloudflare, organization, domains, media, storage] = await Promise.all([
     getConnection(orgId, 'github'), getConnection(orgId, 'cloudflare', group.id), getOrganizationDomains(orgId), getSiteDomains(orgId, siteId),

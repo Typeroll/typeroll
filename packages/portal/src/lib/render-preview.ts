@@ -554,9 +554,9 @@ ${CONTENT_WELL_CSS}
 /* Mirror site-template/global.css — descendant typography defaults at
    specificity 0 so user class rules win. */
 :where(.page-content) > * + *{margin-top:var(--spacing-md)}
-:where(.page-content) h1{font-size:2.5rem;margin-top:var(--spacing-lg)}
-:where(.page-content) h2{font-size:2rem;margin-top:var(--spacing-lg)}
-:where(.page-content) h3{font-size:1.5rem;margin-top:var(--spacing-md)}
+:where(.page-content) h1{font-size:var(--type-h1);margin-top:var(--spacing-lg)}
+:where(.page-content) h2{font-size:var(--type-h2);margin-top:var(--spacing-lg)}
+:where(.page-content) h3{font-size:var(--type-h3);margin-top:var(--spacing-md)}
 :where(.page-content) img{border-radius:var(--radius-md);margin:var(--spacing-md) 0}
 :where(.page-content) ul,:where(.page-content) ol{padding-left:1.5rem}
 :where(.page-content) blockquote{border-left:3px solid var(--color-accent);padding-left:var(--spacing-md);color:var(--color-text-light);font-style:italic}
@@ -578,9 +578,9 @@ ${CONTENT_WELL_CSS}
   text-decoration:none;font-weight:500;
 }
 .tr-banner a.tr-banner__btn:hover{background:#fff;color:#1f1f23}
-${settings.custom_css ?? ''}
 </style>
 ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
+${settings.custom_css ? `<style data-site-css="1">${settings.custom_css}</style>` : ''}
 ${page.custom_css ? `<style data-page-css="1">${page.custom_css}</style>` : ''}
 ${cookieConsentHtml ? `<script data-cookie-consent-early="1">${buildConsentEarlyPaintRuntime()}</script>` : ''}
 </head>

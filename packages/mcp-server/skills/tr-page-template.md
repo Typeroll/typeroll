@@ -62,7 +62,7 @@ Check `supports_page_field_list` before adding `core/field_list`. Configure
 `data.fields` as `{ field, label? }` rows, optional `title` and `layout`
 (`stack` or `two-column`). It omits empty rows and an entirely empty section,
 respects `rendered: false`, uses select display labels and links Page references.
-Zero and false are real values. Optional row `html` has only `{{label}}` and
+Zero is displayed. From Core 0.2.14, boolean rows hide false/unset by default; set `boolean_display: "yes-no"` to show both set values with `true_label` / `false_label` (defaults Yes/No). Stored false remains real data. Optional row `html` has only `{{label}}` and
 `{{value}}` slots; row `css` contains declarations, and `css_class` supports
 shared selectors. Values stay in Page.fields; never duplicate them into rich text.
 Read the current block schema and content type, and verify preview before publishing.
