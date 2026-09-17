@@ -498,3 +498,28 @@ it('excludes private and undeclared custom fields from Page template preview bin
   expect(html).not.toContain('Undeclared value');
   expect(html).toContain('Public value');
 });
+
+it('renders a native field-list template from saved Page fields and omits empty sections', async () => {
+  await seedSite();
+  const { getStore } = await import('../../lib/datastore');
+  const { renderPreview } = await import('../../lib/render-preview');
+  const store = getStore();
+  await store.setDoc(paths.contentType(ORG, SITE, 'profile', MAIN_VERSION_ID), {
+    name: 'profile', label_singular: 'Profile', label_plural: 'Profiles', route_template: '/{slug}', template: 'profile',
+    fields: [{ name: 'hq', type: 'text', label: 'Headquarters' }, { name: 'delivery', type: 'boolean', label: 'Delivery' }, { name: 'internal', type: 'text', label: 'Internal', rendered: false }],
+  });
+  const blocks: Block[] = [{ id: 'facts', type: 'core/field_list', data: { title: 'At a glance', fields: [{ field: 'hq', html: '<dt>{{label}}</dt><dd><span onclick=\"evil()\" class=\"fact-badge\">{{value}}</span><script>evil()</script></dd>', css: 'color: navy;' }, { field: 'delivery' }, { field: 'internal' }] } }];
+  await store.setDoc(paths.pageTemplate(ORG, SITE, 'profile', MAIN_VERSION_ID), { name: 'profile', label: 'Profile', status: 'published', blocks });
+  await seedBlockPage([], { content_type: 'profile', fields: { hq: 'Stockholm', delivery: false, internal: 'DO-NOT-PUBLISH' } });
+  let html = (await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID))!;
+  expect(html).toContain('<span class=\"fact-badge\">Stockholm</span>');
+  expect(html).toContain('color:navy');
+  expect(html).not.toContain('evil()');
+  expect(html).toContain('<dt>Delivery</dt><dd>False</dd>');
+  expect(html).not.toContain('DO-NOT-PUBLISH');
+  await store.updateDoc(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`, { fields: { hq: '', delivery: null, internal: 'DO-NOT-PUBLISH' } });
+  html = (await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID))!;
+  expect(html).not.toContain('At a glance');
+  expect(html).not.toContain('<dt>');
+  expect((await store.getDoc<PageTemplate>(paths.pageTemplate(ORG, SITE, 'profile', MAIN_VERSION_ID)))?.blocks).toEqual(blocks);
+});

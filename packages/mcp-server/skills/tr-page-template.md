@@ -55,3 +55,19 @@ is the manual numeric order; null clears it. Missing sort values come last and
 IDs break ties. Explicit ID lists keep their order. Typed `list_pages` queries
 inherit type sorting and accept `sort_by`/`sort_order`; unfiltered API lists
 default to stable IDs. See the public Content types guide for editor steps.
+
+## Structured fields without empty labels
+
+Check `supports_page_field_list` before adding `core/field_list`. Configure
+`data.fields` as `{ field, label? }` rows, optional `title` and `layout`
+(`stack` or `two-column`). It omits empty rows and an entirely empty section,
+respects `rendered: false`, uses select display labels and links Page references.
+Zero and false are real values. Optional row `html` has only `{{label}}` and
+`{{value}}` slots; row `css` contains declarations, and `css_class` supports
+shared selectors. Values stay in Page.fields; never duplicate them into rich text.
+Read the current block schema and content type, and verify preview before publishing.
+
+For checkbox lists, `item_html` decorates each selected option with the same
+label/value slots (for example a check icon). `item_links: [{ value, url }]`
+links only chosen stored options to listing URLs, retaining their schema labels.
+Style list items via the row css_class and normal block Custom CSS.

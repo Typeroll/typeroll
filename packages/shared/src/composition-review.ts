@@ -67,6 +67,9 @@ function collectContextBindings(value: unknown, fields: Set<string>): void {
 
 function configuredPageFields(block: Block): string[] {
   const data = block.data ?? {};
+  if (block.type === 'core/field_list' && Array.isArray(data.fields)) {
+    return data.fields.flatMap(row => row && typeof row.field === 'string' && row.field.trim() ? [row.field.trim()] : []);
+  }
   if (block.type === 'template/page_featured_image') return [String(data.field ?? 'image')];
   if (block.type === 'template/page_date' && typeof data.field === 'string') return [data.field];
   if (block.type === 'template/page_navigation') {
@@ -123,6 +126,7 @@ export function reviewBlockComposition(
     if (block.type === 'core/table_of_contents') {
       requiredCapabilities.add('supports_server_rendered_table_of_contents');
     }
+    if (block.type === 'core/field_list') requiredCapabilities.add('supports_page_field_list');
     if (block.type === 'template/page_navigation') {
       requiredCapabilities.add('supports_explicit_page_navigation');
     }

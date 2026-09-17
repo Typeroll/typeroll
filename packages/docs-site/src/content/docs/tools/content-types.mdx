@@ -167,3 +167,11 @@ explicit `schema_field_map` entries and the canonical envelope.
 Pages, typed fields, list blocks, facets and JSON-LD mapping are generic CMS
 features. Product-specific app recipes are available through
 `read_app_documentation` when the relevant app is installed and enabled.
+
+## Present structured fields
+
+Use the native [Page field list](../blocks/#structured-page-fields-without-empty-labels)
+in a shared Page template to show labels and typed values without empty rows.
+Select options use their display labels; individual rows can have custom HTML
+and CSS. Field values remain on the Page, and `rendered: false` always prevents
+public output. This requires Core 0.2.12 and its renderer capability.

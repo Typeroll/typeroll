@@ -101,6 +101,8 @@ export interface SiteTemplateCapabilities {
   supports_post_card_field_mapping: boolean;
   /** Empty or disabled post-card images emit no image element. */
   supports_post_card_empty_media_omission: boolean;
+  /** Native typed Page field lists omit empty rows and headings, respecting field visibility. */
+  supports_page_field_list: boolean;
 
   // Site settings
   supports_writable_scripts_head_body: boolean;
@@ -244,7 +246,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.45.0',
+  template_capabilities_version: '0.46.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -299,6 +301,7 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_native_navigation: true,
   supports_post_card_field_mapping: true,
   supports_post_card_empty_media_omission: true,
+  supports_page_field_list: true,
 
   supports_writable_scripts_head_body: true,
   supports_writable_custom_css: true,
@@ -337,6 +340,7 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
     'core/html',
     'core/media_card',
     'core/table_of_contents',
+    'core/field_list',
     'template/item_navigation',
   ],
 

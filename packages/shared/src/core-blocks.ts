@@ -15,6 +15,7 @@ import { REPEATER_BLOCK_TYPES } from './repeater-blocks.js';
 import { FORM_BLOCK_TYPES } from './form-blocks.js';
 import { TEMPLATE_BLOCK_TYPES } from './template-blocks.js';
 import { TIER1_BLOCK_TYPES } from './tier1-blocks.js';
+import { FIELD_LIST_BLOCK } from './field-list.js';
 import type { BlockType } from './types.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
@@ -429,6 +430,7 @@ export const CORE_BLOCK_TYPES: readonly BlockType[] = [
   image,
   button,
   templateContentSlot,
+  FIELD_LIST_BLOCK,
   // Tier 1 library — see tier1-blocks.ts. Kept separate so the file
   // doesn't grow unwieldy, but merged here so a single registry covers
   // every block ID a page could reference.

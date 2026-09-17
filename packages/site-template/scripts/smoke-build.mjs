@@ -685,10 +685,17 @@ await (async function nativeCollectionCompositionScenario() {
       { name: 'next_url', label: 'Next URL', type: 'url' },
       { name: 'next_title', label: 'Next title', type: 'text' },
       { name: 'category', label: 'Category', type: 'text' },
+      { name: 'delivery', label: 'Delivery', type: 'boolean' },
+      { name: 'cost', label: 'Cost', type: 'number' },
+      { name: 'related', label: 'Related guide', type: 'page_ref' },
+      { name: 'empty_policy', label: 'Empty policy', type: 'text' },
+      { name: 'private_note', label: 'Private note', type: 'text', rendered: false },
     ],
     blocks: [
       { id: 'crumbs', type: 'template/page_breadcrumbs', data: { home_label: 'Home', aria_label: 'Breadcrumbs' } },
       { id: 'title', type: 'template/page_title', data: { level: 'h1', size: 'auto' } },
+      { id: 'facts', type: 'core/field_list', data: { title: 'Guide facts', fields: ['category', 'delivery', 'cost', 'related', 'empty_policy', 'private_note'].map(field => ({ field })) } },
+      { id: 'empty-facts', type: 'core/field_list', data: { title: 'Empty facts heading', fields: [{ field: 'empty_policy' }, { field: 'private_note' }] } },
       {
         id: 'content',
         type: 'core/columns',
@@ -737,7 +744,7 @@ await (async function nativeCollectionCompositionScenario() {
     prev_title: 'Previous guide',
     next_url: '',
     next_title: '',
-    category: 'Energy',
+    category: 'Energy', delivery: false, cost: 0, related: 'first-guide', empty_policy: '', private_note: 'DO-NOT-PUBLISH',
     },
     sort_order: 2,
     status: 'published',
@@ -804,6 +811,9 @@ await (async function nativeCollectionCompositionScenario() {
     child.on('exit', (code) => {
       if (code !== 0) fail(`[native-page-composition] astro build exited with ${code}`);
       const html = readFileSync(join(tmpOut, 'guides', 'energy', 'index.html'), 'utf8');
+      const facts = html.match(/<section[^>]*data-block="field_list"[^>]*>([\s\S]*?)<\/section>/)?.[1] ?? '';
+      if ((facts.match(/<dt>/g) ?? []).length !== 4 || !facts.includes('<dd>False</dd>') || !facts.includes('<dd>0</dd>') || !facts.includes('href="/guides/first-guide/"')) fail('[native-page-composition] typed field list did not render four facts and its reference link');
+      if (html.includes('Empty facts heading') || facts.includes('Empty policy') || facts.includes('Private note') || html.includes('DO-NOT-PUBLISH')) fail('[native-page-composition] empty/private field-list content leaked');
       for (const style of ['--page-body-font-size:16px', '--page-body-line-height:1.6', '--page-body-paragraph-spacing:0.75em']) {
         if (!html.includes(style)) fail(`[native-page-composition] missing template typography: ${style}`);
       }

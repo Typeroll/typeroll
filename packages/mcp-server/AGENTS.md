@@ -75,6 +75,13 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   the site, across all content types. `change_page_content_type` preserves a
   saved Page's identity and existing URL and records a revision.
 
+- **Structured field presentation.** In Core 0.2.12+, use `core/field_list` in
+  Page templates for label/value rows: empty rows and empty sections disappear,
+  while zero and false remain visible. Dropdowns use schema option labels;
+  Page references become links. `rendered: false` is always private. Optional
+  per-row HTML/CSS changes presentation without copying field values into body
+  blocks. Check `supports_page_field_list` and `read_block_type` first.
+
 - **Migration ownership.** Import categories/tags as shared Pages with their own
   Content types, and store `page_ref_list` memberships on articles. Names,
   emojis and category order are edited once on the category Page. Never flatten

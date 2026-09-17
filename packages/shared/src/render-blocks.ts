@@ -45,6 +45,7 @@ import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData } from './article-blocks.js';
 import { prepareHeadingOutline } from './heading-outline.js';
 import { comparePageValues, pageSort } from './page-options.js';
+import { renderFieldList } from './field-list.js';
 
 /**
  * Render context — values exposed to templates via the dotted-path
@@ -333,6 +334,14 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   if (effectiveBlock.type === 'core/post_card') {
     preparePostCardData(compiled.flatData, options.context?.item);
   }
+  let fieldListHtml: string | undefined;
+  if (effectiveBlock.type === 'core/field_list') {
+    const content = renderFieldList(compiled.flatData, options, escapeHtml);
+    if (!content) return '';
+    fieldListHtml = content;
+    compiled.flatData.field_list_html = '<!--typeroll-field-list-->';
+    compiled.flatData.layout = compiled.flatData.layout === 'two-column' ? 'two-column' : 'stack';
+  }
 
   // Derived fields — the template engine doesn't loop or branch, so
   // structured values become prebuilt HTML the template includes raw.
@@ -375,6 +384,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   let html = substituteFields(template, compiled.flatData, options.context);
   html = substituteChildren(html, effectiveBlock, options);
   html = substituteSlots(html, effectiveBlock, blockType, options);
+  // Insert prepared field rows after all template passes. Authored values and
+  // row markup must never become a second Page-context template evaluation.
+  if (fieldListHtml !== undefined) html = html.replace('<!--typeroll-field-list-->', () => fieldListHtml!);
 
   // Inject responsive / visibility attributes onto the outermost element.
   // Both rely on the block's id being CSS-safe (alphanumeric + _ + -);

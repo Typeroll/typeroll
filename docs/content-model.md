@@ -85,3 +85,15 @@ is the manual numeric order; null clears it. Missing sort values come last and
 IDs break ties. Explicit ID lists keep their order. Typed `list_pages` queries
 inherit type sorting and accept `sort_by`/`sort_order`; unfiltered API lists
 default to stable IDs. See the public Content types guide for editor steps.
+
+## Typed field presentation
+
+`core/field_list` reads the current Page.fields against its Content type schema.
+It renders only supported, public, nonempty values and omits its heading when no
+rows remain. Number zero and explicit false remain visible. References use the
+published Page source and canonical route policy. Select labels come from the
+schema. Optional per-row HTML has only label/value slots; no recursive context
+substitution. CSS declarations style the row, with css_class available for
+shared CSS. Visibility checks precede all custom presentation. The same shared
+renderer drives preview and static output; no storage/model migration is needed.
+See the public Blocks guide for the payload and type semantics.

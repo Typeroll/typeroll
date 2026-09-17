@@ -89,6 +89,128 @@ The Article template starter places its table of contents beside the body on
 larger screens and before the body on mobile. The Two columns block's **Mobile
 order** setting controls this order independently of the desktop layout.
 
+### Structured Page fields without empty labels
+
+**Requires Core 0.2.12 and template capability `supports_page_field_list`.**
+Cloud and self-hosting use the same block; check the deployed site's capabilities
+before adding it.
+
+Add **Page field list** (`core/field_list`) to a Page template to present typed
+values from the current Page's `fields`. Choose the content type's field names;
+leave each label blank to use its schema label. Values stay in the structured
+field editor. Changing and saving a Page field updates preview and the next
+publication without editing the Page body or copying values into rich text.
+
+```json
+{
+  "id": "facts",
+  "type": "core/field_list",
+  "data": {
+    "title": "At a glance",
+    "layout": "two-column",
+    "fields": [
+      { "field": "website" },
+      { "field": "headquarters", "label": "Based in" },
+      { "field": "shipping" },
+      { "field": "regions" }
+    ]
+  }
+}
+```
+
+The example assumes those fields are declared on the Page's content type.
+The block renders a semantic definition list. `stack` is the default layout;
+`two-column` becomes a single column on small screens. The optional heading is
+an H2. Use multiple field-list blocks for independently titled sections.
+
+- Null, missing values, blank strings (including whitespace), and empty lists
+  omit the **whole row**, including its label.
+- If no rows remain, the **whole block and its heading** are omitted from HTML.
+- Number `0` is a value. Boolean `true` and `false` render as **True** and
+  **False**; an unset boolean is hidden.
+- Text and textarea values are escaped. URLs become HTTP(S) or site-relative
+  links; unsafe URLs are omitted.
+- Select and multiselect fields use `option_labels` when configured, falling
+  back to the stored option. Multiselect values render as a list.
+- `page_ref` and `page_ref_list` resolve to Page titles and links. Missing,
+  unpublished, unlisted or unrouted targets are omitted. Lists preserve the
+  selected order without duplicate links.
+- Unknown fields, unsupported field types, and fields with **`rendered: false`**
+  never render. A private field cannot be exposed by selecting or styling it.
+
+#### Fine-tune an individual row
+
+Each row optionally accepts `html`, `css` and `css_class`. For example:
+
+```json
+{
+  "field": "shipping",
+  "html": "<dt>{{label}}</dt><dd><span class=\"badge\">{{value}}</span></dd>",
+  "css": "padding: 0.75rem; background: #f3f6fa; border-radius: 0.5rem;",
+  "css_class": "shipping-fact"
+}
+```
+
+`html` replaces the contents of that row's wrapper. Keep a `dt` label and `dd`
+value for definition-list semantics. Its only slots are `{{label}}` (escaped
+label) and `{{value}}` (the safely formatted value, including links or lists).
+Place the value slot in element content. No Page expressions or conditionals are
+evaluated, and values are never reinterpreted as template code. Custom markup
+passes through the normal HTML sanitizer; it cannot add scripts or event handlers.
+
+`css` contains CSS declarations applied to that row's wrapper. For more detailed
+selectors, give the row a `css_class` and use the block's existing **Custom CSS**
+setting, for example `.shipping-fact .badge { font-weight: 600; }`.
+Empty and private fields are omitted **before** custom row markup or styles are
+applied; a custom label or placeholder cannot make an empty row visible.
+
+#### Checkbox lists with icons and selected links
+
+A multiselect already renders one selected option per list item. Set
+`item_html` on that field's row to customize each selected option. For example:
+
+```json
+{
+  "field": "delivery_methods",
+  "css_class": "delivery-options",
+  "item_html": "<span class=\"checked-box\" aria-hidden=\"true\">☑</span> <span>{{value}}</span>",
+  "item_links": [{ "value": "local_pickup", "url": "/delivery/local-pickup/" }]
+}
+```
+
+If `local_pickup` has the schema label **Local pickup**, the visitor sees that
+label as a link; other selected options remain plain labels. `item_links`
+uses stored option values for matching. Unsafe link URLs are ignored. You can
+use a custom image inside `item_html` instead of the checkbox character.
+
+Use the block's Custom CSS for the list and icon, for example:
+
+```css
+.delivery-options .field-list-values {
+  list-style: none;
+  padding: 0;
+}
+.delivery-options li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.delivery-options .checked-box {
+  color: #087044;
+}
+```
+
+Within `item_html`, `{{value}}` is the formatted option label (including its
+configured link) and `{{label}}` is the plain escaped option label. The same
+item template can decorate Page references; their links still come from the
+referenced Pages rather than `item_links`. Unselected options never render;
+clearing the field removes the entire row, including its heading and icons.
+This is presentation stored once in the Page template, not copied Page content.
+
+Agents use the existing `list_block_types`, `read_block_type` and `add_block`
+tools with `target: { "kind": "template", "id": "profile" }`. Inspect the content
+type first. Do not generate per-Page facts HTML or a duplicate rich-text field.
+
 ### Typography in a Page template
 
 In Core 0.2.2 and later, select the template's **Page content** block to set
