@@ -20,6 +20,7 @@ import type {
 } from '@typeroll/shared';
 import { vstore } from './version-store';
 import {
+  CONTENT_WELL_CSS,
   buildConsentEarlyPaintRuntime,
   buildCoreBlockRegistry,
   collectBlockAssets,
@@ -37,6 +38,9 @@ import {
   resolveContentPage,
   pageNavigation,
   buildBacklinkIndex,
+  normalizePageH1s,
+  countBlockH1s,
+  demoteBodyH1s,
   prepareHeadingOutline,
   pageBodyContext,
   pageContentValues,
@@ -248,21 +252,16 @@ export async function renderPreview(
     );
     bodyHtml = rewriteIf(sanitizeBody(expanded, settings.iframe_allowed_hosts));
   } else if (page.content_mode === 'blocks') {
-    // Template outlines and body bindings read the rendered Page body, never
-    // an obsolete rich-text field that disappears during migration.
-    renderCtx.page = { ...renderCtx.page, ...pageBodyContext(sanitizeBody(renderBlocks(page.blocks ?? [], {
+    const tpl = page.template ? await vstore.pageTemplate(orgId, siteId, versionId, page.template) : null;
+    const templateBlocks = tpl?.blocks ?? [];
+    const pageBlocks = countBlockH1s(templateBlocks) ? demoteBodyH1s(page.blocks ?? []) : page.blocks ?? [];
+    renderCtx.page = { ...renderCtx.page, blocks: pageBlocks };
+    // Normalize before deriving the outline so demoted headings retain TOC links.
+    renderCtx.page = { ...renderCtx.page, ...pageBodyContext(normalizePageH1s(sanitizeBody(renderBlocks(pageBlocks, {
       registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType,
-    }), settings.iframe_allowed_hosts)) };
-    // Apply a page template if assigned — same composition as the
-    // static renderer so the preview matches a real build.
-    let effectiveBlocks = page.blocks ?? [];
-    if (page.template) {
-      const tpl = await vstore.pageTemplate(orgId, siteId, versionId, page.template);
-      const tplBlocks = tpl?.blocks;
-      if (tplBlocks?.length) {
-        effectiveBlocks = composePageWithTemplate(tplBlocks, page.blocks ?? []);
-      }
-    }
+    }), settings.iframe_allowed_hosts), !countBlockH1s(templateBlocks))) };
+    const effectiveBlocks = templateBlocks.length
+      ? composePageWithTemplate(templateBlocks, pageBlocks) : pageBlocks;
     bodyHtml = rewriteIf(sanitizeBody(renderBlocks(effectiveBlocks, {
       registry: blockRegistry,
       context: renderCtx,
@@ -279,7 +278,7 @@ export async function renderPreview(
     blocksBody = true;
   }
 
-  bodyHtml = prepareHeadingOutline(bodyHtml).html;
+  bodyHtml = prepareHeadingOutline(normalizePageH1s(bodyHtml)).html;
   if (bodyHtml.includes('data-tr-form')) {
     const { FORMS_RUNTIME_JS, FORM_SHELL_CSS } = await import('@typeroll/shared');
     bodyHtml += `<style>${FORM_SHELL_CSS}</style><script>${FORMS_RUNTIME_JS}</script>`;
@@ -551,11 +550,7 @@ body{font-family:var(--font-body),-apple-system,BlinkMacSystemFont,sans-serif;co
 img,svg,video{display:block;max-width:100%;height:auto}
 h1,h2,h3,h4,h5,h6{font-family:var(--font-heading),sans-serif;line-height:1.2}
 a{color:var(--color-primary)}
-.page-content{max-width:var(--container-medium);margin:0 auto;padding:var(--spacing-lg) var(--spacing-md)}
-.page-content--blocks{max-width:none;padding:0}
-.page-content--blocks > * + *{margin-top:0}
-.page-content--blocks > :not(section, style, script){max-width:var(--container-medium);margin-inline:auto;padding-inline:var(--spacing-md)}
-.page-content--blocks > :not(section, style, script) + :not(section, style, script){margin-top:var(--spacing-md)}
+${CONTENT_WELL_CSS}
 /* Mirror site-template/global.css — descendant typography defaults at
    specificity 0 so user class rules win. */
 :where(.page-content) > * + *{margin-top:var(--spacing-md)}

@@ -97,3 +97,14 @@ substitution. CSS declarations style the row, with css_class available for
 shared CSS. Visibility checks precede all custom presentation. The same shared
 renderer drives preview and static output; no storage/model migration is needed.
 See the public Blocks guide for the payload and type semantics.
+
+## Main heading ownership (Core 0.2.13)
+
+Page templates may provide one H1. Creation and Page write/Save validation reject
+body H1 headings when the effective template already supplies one. Template
+overrides and inherited content-type defaults use the same validation. HTML-mode
+Pages bypass Page templates and may contain one H1. Legacy duplicates are demoted
+to H2 at render time in both preview and static output, preserving stored data.
+The shared composition step gives a known template H1 precedence; a final HTML
+pass handles duplicates introduced by custom blocks. Site chrome does not add an
+automatic page.title heading. Custom brand markup should not use H1.

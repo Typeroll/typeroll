@@ -734,7 +734,7 @@ await (async function nativeCollectionCompositionScenario() {
     slug: 'energy',
     content_type: 'guides', content_mode: 'blocks',
     blocks: [
-      { id: 'prepare', type: 'core/rich_heading', data: { level: 'h2', html: 'Prepare &amp; plan', anchor_id: 'prepare' } },
+      { id: 'prepare', type: 'core/rich_heading', data: { level: 'h1', html: 'Prepare &amp; plan', anchor_id: 'prepare' } },
       { id: 'body', type: 'core/prose', data: { html: '<p>Body</p>' } },
       { id: 'pack', type: 'core/heading', data: { level: 'h3', text: 'Pack safely' } },
     ],
@@ -811,6 +811,7 @@ await (async function nativeCollectionCompositionScenario() {
     child.on('exit', (code) => {
       if (code !== 0) fail(`[native-page-composition] astro build exited with ${code}`);
       const html = readFileSync(join(tmpOut, 'guides', 'energy', 'index.html'), 'utf8');
+      if ((html.match(/<h1\b/g) ?? []).length !== 1 || !/<h2\b[^>]*id="prepare"/.test(html)) fail('[native-page-composition] template title must be the only H1 and legacy body title must become H2');
       const facts = html.match(/<section[^>]*data-block="field_list"[^>]*>([\s\S]*?)<\/section>/)?.[1] ?? '';
       if ((facts.match(/<dt>/g) ?? []).length !== 4 || !facts.includes('<dd>False</dd>') || !facts.includes('<dd>0</dd>') || !facts.includes('href="/guides/first-guide/"')) fail('[native-page-composition] typed field list did not render four facts and its reference link');
       if (html.includes('Empty facts heading') || facts.includes('Empty policy') || facts.includes('Private note') || html.includes('DO-NOT-PUBLISH')) fail('[native-page-composition] empty/private field-list content leaked');

@@ -38,7 +38,22 @@ set_block_responsive ... block_id=<iconbox-id>
   field=layout value={ mobile: "icon-top", tablet: "icon-left" }
 ```
 
-Pass a scalar to collapse a field back to one value everywhere.
+Pass a scalar to collapse a field back to one value everywhere, except the
+listing defaults below.
+
+### Listing grids and content gutters (Core 0.2.13)
+
+`core/repeater` and aliases such as `core/page_list` use one grid column below
+768px even when scalar `cols` is larger. Set `mobile_cols: 2` only when multiple
+mobile columns are intentional. An explicit responsive `cols.mobile` is honored;
+`mobile_cols` takes precedence. Above this threshold `cols` works normally.
+Masonry is opt-in and also uses the explicit mobile count. Other blocks retain
+the five breakpoints above.
+
+Content gutters default to 1.25rem below 768px and 1.75rem at/above 768px.
+Full-bleed section backgrounds keep their padded inner content. Customize
+`--content-gutter` in site CSS if needed. Rebuild published sites after upgrading
+Core to apply these shared preview/static defaults.
 
 ### Worked example — the classic feature grid
 

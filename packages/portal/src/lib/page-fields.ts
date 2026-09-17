@@ -1,5 +1,5 @@
 import type { ContentType, FieldDefinition, Page } from '@typeroll/shared';
-import { DEFAULT_CONTENT_TYPE, contentPagePath, contentTypeAllowsTemplate } from '@typeroll/shared';
+import { DEFAULT_CONTENT_TYPE, contentPagePath, contentTypeAllowsTemplate, pageHeadingError } from '@typeroll/shared';
 import { vstore } from './version-store';
 
 export async function pageContentType(ctx: { orgId: string; siteId: string; versionId: string }, page: Pick<Page, 'content_type'>): Promise<ContentType | null> {
@@ -47,13 +47,13 @@ export async function pageAddress(ctx: { orgId: string; siteId: string; versionI
 }
 
 /** Reused at creation, draft writes, commit and structural type changes. */
-export async function validatePagePresentation(ctx: { orgId: string; siteId: string; versionId: string }, type: ContentType, input: { template?: unknown; sort_order?: unknown }): Promise<string | null> {
+export async function validatePagePresentation(ctx: { orgId: string; siteId: string; versionId: string }, type: ContentType, input: { template?: unknown; sort_order?: unknown; blocks?: Page['blocks']; content_mode?: string; html_content?: string }): Promise<string | null> {
   if (input.sort_order != null && (typeof input.sort_order !== 'number' || !Number.isFinite(input.sort_order))) return 'Page order must be a finite number';
   if (input.template != null && typeof input.template !== 'string') return 'Template must be an ID, or null to use the content type default';
   const id = input.template || type.template;
-  if (!id) return null;
+  if (!id) return pageHeadingError(input);
   const template = await vstore.pageTemplate(ctx.orgId, ctx.siteId, ctx.versionId, String(id));
   if (!template) return 'Template not found in this version';
   if (!contentTypeAllowsTemplate(type, template)) return 'This template is not allowed for the content type. Choose an allowed template or use the content type default.';
-  return null;
+  return pageHeadingError(input, template.blocks);
 }

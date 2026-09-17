@@ -91,14 +91,14 @@ export async function filterWcFields(
   let allowed: Set<string>;
   if (target.kind === 'page') {
     allowed = new Set<string>([...PAGE_WC_FIELDS, 'fields']);
-    if (fields.fields !== undefined || 'template' in fields || 'sort_order' in fields) {
+    if (fields.fields !== undefined || 'template' in fields || 'sort_order' in fields || 'blocks' in fields || 'html_content' in fields) {
       const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
       if (!page) throw new WorkingCopyError('Page not found', 404);
       const type = await pageContentType(ctx, page);
       if (!type) throw new WorkingCopyError('Content type not found', 400);
       const error = fields.fields !== undefined ? validatePageFields(type, fields.fields) : null;
       if (error) throw new WorkingCopyError(error, 400);
-      const presentationError = await validatePagePresentation(ctx, type, { ...page, ...fields });
+      const presentationError = await validatePagePresentation(ctx, type, { ...page, ...(await readWorkingCopy(ctx, target))?.fields, ...fields });
       if (presentationError) throw new WorkingCopyError(presentationError, 400);
     }
   } else if (target.kind === 'partial') {

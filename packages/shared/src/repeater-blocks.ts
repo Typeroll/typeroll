@@ -62,6 +62,7 @@ const repeater: BlockType = {
     { name: 'layout', type: 'select', label: 'Layout',
       options: ['grid', 'masonry', 'list', 'carousel', 'justified', 'stack'], default: 'grid' },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 6, responsive: true },
+    { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
     { name: 'gap', type: 'select', label: 'Gap', options: ['none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
     { name: 'align', type: 'select', label: 'Item alignment', options: ['start', 'center', 'end', 'stretch'], default: 'stretch', responsive: true },
 
@@ -124,10 +125,10 @@ const repeater: BlockType = {
 .tr-repeater-group + .tr-repeater-group { margin-top: 2rem; }
 .tr-repeater-group-title { margin: 0 0 0.75rem; }
 
-@media (max-width: 639px) {
-  /* Default to single column on mobile when cols isn't responsively set */
-  [data-block="repeater"][data-layout="grid"]:not([data-bid]) { grid-template-columns: 1fr; }
-  [data-block="repeater"][data-layout="masonry"]:not([data-bid]) { column-count: 1; }
+@media (max-width: 767px) {
+  /* The mobile count is independent of desktop/tablet column defaults. */
+  [data-block="repeater"][data-layout="grid"] { grid-template-columns: repeat(var(--mobile-cols, 1), minmax(0, 1fr)); }
+  [data-block="repeater"][data-layout="masonry"] { column-count: var(--mobile-cols, 1); }
 }
 `.trim(),
   origin: 'core',
@@ -178,6 +179,7 @@ const gallery: BlockType = {
         { name: 'link', type: 'url', label: 'Link' },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 6, responsive: true },
+    { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
     { name: 'layout', type: 'select', label: 'Layout', options: ['grid', 'masonry', 'justified'], default: 'grid' },
     { name: 'gap', type: 'select', label: 'Gap', options: ['none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
   ],
@@ -215,6 +217,7 @@ const logoCloud: BlockType = {
         { name: 'grayscale', type: 'boolean', label: 'Greyscale', default: true },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 6, min: 2, max: 8, responsive: true },
+    { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -254,6 +257,7 @@ const testimonials: BlockType = {
       ] },
     { name: 'layout', type: 'select', label: 'Layout', options: ['carousel', 'grid'], default: 'carousel' },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },
+    { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -288,6 +292,7 @@ const featureGrid: BlockType = {
         { name: 'link', type: 'url', label: 'Link' },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },
+    { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -332,6 +337,7 @@ const pricingTable: BlockType = {
         { name: 'badge', type: 'text', label: 'Badge' },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 2, max: 4, responsive: true },
+    { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -367,6 +373,7 @@ const teamGrid: BlockType = {
         { name: 'link', type: 'url', label: 'Profile link' },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 4, min: 2, max: 6, responsive: true },
+    { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -417,6 +424,7 @@ const collectionList: BlockType = {
     ] },
     { name: 'layout', type: 'select', label: 'Layout', options: ['grid', 'list', 'carousel', 'masonry'], default: 'grid' },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },
+    { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
     { name: 'gap', type: 'select', label: 'Gap', options: ['sm', 'md', 'lg'], default: 'md' },
     { name: 'empty_state', type: 'richtext', label: 'Empty-state message' },
   ],

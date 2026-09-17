@@ -177,7 +177,7 @@ describe('blocks-mode shell', () => {
     const { renderPreviewBySlug } = await import('../../lib/render-preview');
     const res = await renderPreviewBySlug(ORG, SITE, ['b'], MAIN_VERSION_ID, {});
     expect(res).toContain('class="page-content page-content--blocks"');
-    expect(res).toContain('.page-content--blocks{max-width:none;padding:0}');
+    expect(res).toMatch(/\.page-content--blocks\s*\{\s*max-width:\s*none;\s*padding:\s*0;?\s*\}/);
   });
 
   it('html pages keep the classic padded shell', async () => {

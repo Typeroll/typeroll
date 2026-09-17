@@ -1,4 +1,4 @@
-import { ensureBlockIds, getPageTemplateStarter, templateMatchesContentType, type PageTemplate, type PageTemplateStarterKind } from '@typeroll/shared';
+import { countBlockH1s, ensureBlockIds, getPageTemplateStarter, templateMatchesContentType, type PageTemplate, type PageTemplateStarterKind } from '@typeroll/shared';
 import { vstore } from './version-store';
 import { blockTreeInputError } from './block-tree-input';
 import { markSiteDirty } from './auto-deploy';
@@ -24,6 +24,7 @@ export async function savePageTemplate(ctx: ContentTypeContext, id: string, inpu
   if (!Array.isArray(next.blocks)) throw new ContentTypeError('Template blocks must be an array');
   const error = blockTreeInputError(next.blocks);
   if (error) throw new ContentTypeError(error);
+  if (countBlockH1s(next.blocks) > 1) throw new ContentTypeError('A Page template should provide only one H1. Change additional headings to H2.');
   next.blocks = ensureBlockIds(next.blocks);
   if (existing && next.applies_to !== existing.applies_to) {
     const [pages, types] = await Promise.all([vstore.pages(ctx.orgId, ctx.siteId, ctx.versionId), vstore.contentTypes(ctx.orgId, ctx.siteId, ctx.versionId)]);

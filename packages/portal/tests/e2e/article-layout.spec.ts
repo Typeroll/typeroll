@@ -154,3 +154,57 @@ test('long desktop outlines remain usable within the viewport and expand on mobi
   expect(await toc.evaluate(el => getComputedStyle(el).maxHeight)).toBe('none');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
+
+test('listing grids use one mobile column unless explicitly overridden', async ({ page }, testInfo) => {
+  const { CONTENT_WELL_CSS } = await import('@typeroll/shared');
+  const registry = buildCoreBlockRegistry();
+  const blocks: Block[] = [
+    ...['core/repeater', 'core/page_list'].map((type, index) => ({
+      id: `default-${index}`, type, data: { source_type: 'static', item_block: 'core/post_card', layout: 'grid', cols: 3,
+        items: [{ title: 'First card' }, { title: 'A taller card with more text', excerpt: 'Different card heights must still share grid rows.' }, { title: 'Third card' }] },
+    })),
+    { id: 'explicit', type: 'core/repeater', data: { source_type: 'static', item_block: 'core/post_card', layout: 'grid', cols: 3, mobile_cols: 2, items: [{ title: 'One' }, { title: 'Two' }] } },
+    { id: 'responsive', type: 'core/repeater', data: { source_type: 'static', item_block: 'core/post_card', layout: 'grid', cols: { tablet: 2, desktop: 3 }, items: [{ title: 'One' }, { title: 'Two' }] } },
+  ];
+  const html = renderBlocks(blocks, { registry });
+  const assets = collectBlockAssets(blocks, registry);
+  await page.setContent(`<style>body{margin:0;font:16px/1.6 sans-serif}*{box-sizing:border-box}:root{--container-medium:65rem;--spacing-md:1rem}${CONTENT_WELL_CSS}${assets.css}</style><main class="page-content page-content--blocks">${html}</main>`);
+  for (const width of [320, 390, 767, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const id of ['default-0', 'default-1', 'explicit', 'responsive']) {
+      const cols = await page.locator(`div[data-bid="${id}"]`).evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+      const expected = width < 768 ? (id === 'explicit' ? 2 : 1) : (id === 'responsive' && width < 1280 ? 2 : 3);
+      expect(cols, `${id} at ${width}px`).toBe(expected);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    if (width === 390) await page.screenshot({ path: testInfo.outputPath('mobile-list-defaults.png'), fullPage: true });
+  }
+});
+
+test('content gutters and field rows stay readable without overflow', async ({ page }, testInfo) => {
+  const { CONTENT_WELL_CSS } = await import('@typeroll/shared');
+  const registry = buildCoreBlockRegistry();
+  const blocks: Block[] = [
+    { id: 'facts', type: 'core/field_list', data: { title: 'At a glance', fields: [{ field: 'website' }, { field: 'hq' }, { field: 'empty' }] } },
+    { id: 'section', type: 'core/section', data: { background: '#e5eef7', padding_y: 'sm' }, children: [
+      { id: 'prose', type: 'core/prose', data: { html: '<p>Full-bleed background with padded content.</p>' } },
+    ] },
+  ];
+  const context = { page: { fields: { website: `https://example.test/${'long-path-'.repeat(20)}`, hq: 'Stockholm', empty: '' } }, content_type: { fields: [{ name: 'website', label: 'Website', type: 'url' }, { name: 'hq', label: 'Head office', type: 'text' }, { name: 'empty', label: 'Hidden row', type: 'text' }] } };
+  const html = renderBlocks(blocks, { registry, context });
+  const assets = collectBlockAssets(blocks, registry);
+  await page.setContent(`<style>body{margin:0;font:16px/1.6 sans-serif}*{box-sizing:border-box}:root{--container-medium:65rem;--spacing-md:1rem}${CONTENT_WELL_CSS}${assets.css}</style><main class="page-content page-content--blocks">${html}</main>`);
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    const gutter = width < 768 ? '20px' : '28px';
+    expect(await page.locator('[data-block="field_list"]').evaluate(el => getComputedStyle(el).paddingLeft)).toBe(gutter);
+    expect(await page.locator('[data-block="section"]').evaluate(el => getComputedStyle(el).paddingLeft)).toBe(gutter);
+    expect((await page.locator('[data-block="section"]').boundingBox())?.width).toBe(width);
+    expect(await page.locator('dt').count()).toBe(2);
+    expect(await page.locator('dt').first().evaluate(el => getComputedStyle(el).fontWeight)).toBe('600');
+    expect(await page.locator('dd').first().evaluate(el => getComputedStyle(el).overflowWrap)).toBe('anywhere');
+    expect(parseFloat(await page.locator('dl').evaluate(el => getComputedStyle(el).rowGap))).toBeCloseTo(11.2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    if (width === 390) await page.screenshot({ path: testInfo.outputPath('mobile-field-list-gutters.png'), fullPage: true });
+  }
+});

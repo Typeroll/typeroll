@@ -1,3 +1,4 @@
+import { pageContentType, validatePagePresentation } from '../../../../../lib/page-fields';
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, json, requirePermission } from '../../../../../lib/access';
 import { vstore } from '../../../../../lib/version-store';
@@ -70,6 +71,12 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
   // `image_sizes_default` even when this PUT only touches the body.
   const existing = await vstore.page(owner_org_id, site.id, versionId, pageId);
   if (!existing) return json({ error: 'Page not found' }, 404);
+
+  const type = await pageContentType({ orgId: owner_org_id, siteId: site.id, versionId }, existing);
+  if (type) {
+    const error = await validatePagePresentation({ orgId: owner_org_id, siteId: site.id, versionId }, type, { ...existing, ...update });
+    if (error) return json({ error }, 400);
+  }
 
   // SEO/Core Web Vitals transform: defaults loading="lazy"+decoding="async"
   // on non-leading <img>, injects width/height/alt from the Media collection,

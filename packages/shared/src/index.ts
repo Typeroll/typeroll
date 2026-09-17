@@ -38,3 +38,6 @@ export * from './page-options.js';
 export * from './page-source.js';
 
 export * from './page-navigation.js';
+
+export * from './page-heading-policy.js';
+export * from './content-well.js';

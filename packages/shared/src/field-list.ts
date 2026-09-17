@@ -26,10 +26,10 @@ export const FIELD_LIST_BLOCK: BlockType = {
   styles: `
 [data-block="field_list"] { min-width:0; }
 [data-block="field_list"] > h2 { margin:0 0 1rem; }
-[data-block="field_list"] > dl { display:grid; grid-template-columns:minmax(0,1fr); gap:1rem 2rem; margin:0; }
+[data-block="field_list"] > dl { display:grid; grid-template-columns:minmax(0,1fr); gap:.7rem 2rem; margin:0; }
 [data-block="field_list"] .field-list-row { min-width:0; overflow-wrap:anywhere; }
 [data-block="field_list"] dt { font-weight:600; }
-[data-block="field_list"] dd { margin:.25rem 0 0; white-space:pre-line; }
+[data-block="field_list"] dd { margin:.25rem 0 0; white-space:pre-line; overflow-wrap:anywhere; }
 [data-block="field_list"] ul { margin:0; padding-left:1.25em; }
 @media (min-width:640px) { [data-block="field_list"][data-layout="two-column"] > dl { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 `.trim(),

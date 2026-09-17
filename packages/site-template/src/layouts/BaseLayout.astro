@@ -1,6 +1,6 @@
 ---
 import type { ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import { CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -147,6 +147,7 @@ const fontFallbackStyle = googleFontFamilies.length
     <SEOHead page={page} settings={settings} extraJsonLd={extraJsonLd} />
 
     <style set:html={themeStyle} />
+    <style set:html={CONTENT_WELL_CSS} />
 
     {googleFontUrl && (
       <>

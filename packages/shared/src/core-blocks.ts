@@ -56,7 +56,7 @@ const section: BlockType = {
   <span class="block-section-shape block-section-shape--bot" aria-hidden="true"></span>
 </section>`,
   styles: `
-[data-block="section"] { position: relative; padding: var(--block-pad-md, 4rem) 1rem; background: var(--block-bg, transparent); color: var(--block-fg, inherit); }
+[data-block="section"] { position: relative; padding: var(--block-pad-md, 4rem) var(--content-gutter, 1.25rem); background: var(--block-bg, transparent); color: var(--block-fg, inherit); }
 [data-block="section"][data-pad="none"] { padding-top: 0; padding-bottom: 0; }
 [data-block="section"][data-pad="sm"] { padding-top: 2rem; padding-bottom: 2rem; }
 [data-block="section"][data-pad="md"] { padding-top: 4rem; padding-bottom: 4rem; }

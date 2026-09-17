@@ -71,3 +71,13 @@ For checkbox lists, `item_html` decorates each selected option with the same
 label/value slots (for example a check icon). `item_links: [{ value, url }]`
 links only chosen stored options to listing URLs, retaining their schema labels.
 Style list items via the row css_class and normal block Custom CSS.
+
+## Heading and field-list defaults (Core 0.2.13)
+
+A template H1 owns the Page title. Do not send body `core/heading` blocks with
+`level: "h1"` when the selected/default template supplies one. Use H2. Creation,
+Page writes and Save reject duplicates with a corrective error. Existing duplicate
+headings render as H2 without mutating storage. A Page without a template H1 can
+keep one body H1. The layout itself does not inject an additional title.
+`core/field_list` defaults to a 0.7rem row gap, weight-600 labels and values that
+wrap long URLs. Empty rows and entirely empty groups stay hidden.

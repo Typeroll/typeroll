@@ -45,6 +45,7 @@ import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData } from './article-blocks.js';
 import { prepareHeadingOutline } from './heading-outline.js';
 import { comparePageValues, pageSort } from './page-options.js';
+import { countBlockH1s, demoteBodyH1s, normalizePageH1s } from './page-heading-policy.js';
 import { renderFieldList } from './field-list.js';
 
 /**
@@ -706,13 +707,16 @@ function wrapRepeater(
   const bid = sanitizeCssId(block.id);
   const layout = String(data.layout ?? 'grid');
   const cols = String(data.cols ?? 3);
+  const authoredCols = block.data?.cols;
+  const mobile = data.mobile_cols ?? (isResponsiveValue(authoredCols) ? authoredCols.mobile : undefined);
+  const mobileCols = typeof mobile === 'number' && Number.isInteger(mobile) && mobile >= 1 && mobile <= 6 ? mobile : 1;
   const gap = String(data.gap ?? 'md');
   const align = String(data.align ?? 'stretch');
 
   // The repeater's own outer element. Tier 1 grid styles map --cols → grid;
   // the additional layouts (list, carousel, stack, masonry) get inline
   // CSS classes that the runtime CSS bundle styles.
-  return `<div data-block="repeater" data-bid="${bid}" data-layout="${escapeHtml(layout)}" style="--cols:${escapeHtml(cols)};--gap:${escapeHtml(gap)};--align:${escapeHtml(align)}">${inner}</div>`;
+  return `<div data-block="repeater" data-bid="${bid}" data-layout="${escapeHtml(layout)}" style="--cols:${escapeHtml(cols)};--mobile-cols:${mobileCols};--gap:${escapeHtml(gap)};--align:${escapeHtml(align)}">${inner}</div>`;
 }
 
 /**
@@ -765,6 +769,7 @@ export function composePageWithTemplate(
   templateBlocks: Block[],
   pageBlocks: Block[],
 ): Block[] {
+  if (countBlockH1s(templateBlocks)) pageBlocks = demoteBodyH1s(pageBlocks);
   let foundSlot = false;
   function walk(list: Block[]): Block[] {
     const out: Block[] = [];
@@ -1038,10 +1043,10 @@ export function renderPageBody(options: RenderBlocksOptions, field = 'body'): st
       ...options,
       context: { ...options.context, page: { ...item, content_mode: 'html', body: '' } },
     });
-    return prepareHeadingOutline(html, true).html;
+    return prepareHeadingOutline(normalizePageH1s(html), true).html;
   }
   const raw = item?.[field];
-  return prepareHeadingOutline(typeof raw === 'string' ? raw : '', true).html;
+  return prepareHeadingOutline(normalizePageH1s(typeof raw === 'string' ? raw : ''), true).html;
 }
 
 function renderNavigationLinks(

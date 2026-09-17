@@ -82,6 +82,8 @@ export async function createPage(ctx: WcCtx, input: Partial<Page>, actor: WriteA
     const media = await getStore().listDocs<Media>(paths.media(ctx.orgId, ctx.siteId));
     page.html_content = transformBodyForSeo(clean, buildMediaLookup(media), { cfImageOrigin: process.env.CF_IMAGE_ORIGIN || undefined, defaultSizes: page.image_sizes_default || settings?.image_sizes_default });
   }
+  const headingError = await validatePagePresentation(ctx, type, page);
+  if (headingError) throw new WorkingCopyError(headingError, 400);
   const created = await getStore().createDocIfMissing(paths.page(ctx.orgId, ctx.siteId, page.id, ctx.versionId), { ...page, _provenance: authority.provenance });
   if (!created) throw new WorkingCopyError('A page with this address was just created. Reload and try again.', 409);
   const url = contentPagePath(page, type);

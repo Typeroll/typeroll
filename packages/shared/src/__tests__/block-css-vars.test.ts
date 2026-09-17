@@ -43,6 +43,6 @@ describe('block styles never reference undefined CSS variables without fallback'
 
   it('core/section keeps the padding fallback (regression)', () => {
     const section = registry.get('core/section');
-    expect(section?.styles).toContain('var(--block-pad-md, 4rem) 1rem');
+    expect(section?.styles).toContain('var(--block-pad-md, 4rem) var(--content-gutter, 1.25rem)');
   });
 });

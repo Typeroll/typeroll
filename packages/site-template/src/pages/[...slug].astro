@@ -24,6 +24,9 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
   collectBlockAssets,
   pageNavigation,
   pageContentValues,
+  normalizePageH1s,
+  countBlockH1s,
+  demoteBodyH1s,
   prepareHeadingOutline,
   pageBodyContext,
   composePageWithTemplate,
@@ -134,16 +137,16 @@ let formsRuntimeTag = '';
       extensionSource,
     ), iframeAllowedHosts);
   } else if (props.page.content_mode === 'blocks') {
-    renderCtx.page = { ...renderCtx.page, ...pageBodyContext(sanitizeBody(renderBlocks(props.page.blocks ?? [], {
+    const tpl = props.page.template ? await getPageTemplate(props.page.template) : null;
+    const templateBlocks = tpl?.blocks ?? [];
+    const pageBlocks = countBlockH1s(templateBlocks) ? demoteBodyH1s(props.page.blocks ?? []) : props.page.blocks ?? [];
+    renderCtx.page = { ...renderCtx.page, blocks: pageBlocks };
+    // Derive the outline from the same heading levels used in the final body.
+    renderCtx.page = { ...renderCtx.page, ...pageBodyContext(normalizePageH1s(sanitizeBody(renderBlocks(pageBlocks, {
       registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType,
-    }), iframeAllowedHosts)) };
-    let effectiveBlocks: Block[] = props.page.blocks ?? [];
-    if (props.page.template) {
-      const tpl = await getPageTemplate(props.page.template);
-      if (tpl?.blocks?.length) {
-        effectiveBlocks = composePageWithTemplate(tpl.blocks, props.page.blocks ?? []);
-      }
-    }
+    }), iframeAllowedHosts), !countBlockH1s(templateBlocks))) };
+    const effectiveBlocks: Block[] = templateBlocks.length
+      ? composePageWithTemplate(templateBlocks, pageBlocks) : pageBlocks;
     bodyHtml = sanitizeBody(renderBlocks(effectiveBlocks, {
       registry: blockRegistry,
       context: renderCtx,
@@ -210,7 +213,7 @@ const ld = props.page.schema_type
   ? buildPageSchema(props.page, settings, canonical)
   : contentType ? buildContentPageSchema({ ...props.page, html_content: bodyHtml ?? '' }, contentType, settings, canonical) : null;
 if (ld) extraJsonLd.push(ld);
-if (bodyHtml) bodyHtml = prepareHeadingOutline(bodyHtml).html;
+if (bodyHtml) bodyHtml = prepareHeadingOutline(normalizePageH1s(bodyHtml)).html;
 
 ---
 <BaseLayout page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} extraJsonLd={extraJsonLd}>

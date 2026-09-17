@@ -163,3 +163,17 @@ When adding a responsive field to a block type:
 See `packages/shared/src/render-blocks.ts` (`compileResponsiveData`,
 `renderResponsiveStyleBlock`) for the implementation and
 `packages/shared/src/__tests__/tier1-blocks.test.ts` for worked tests.
+
+## Listing and content defaults (Core 0.2.13)
+
+Repeater grids and aliases (including page_list) default to one column below
+768px. Optional mobile_cols (integer 1–6) overrides that default; an explicitly
+authored responsive cols.mobile remains supported. Scalar cols and tablet
+overrides do not opt into multiple columns below 768px. The general breakpoint
+map is unchanged. The mobile rule also applies to opt-in masonry.
+
+CONTENT_WELL_CSS is shared by BaseLayout and render-preview. Gutter defaults
+are 1.25rem below 768px and 1.75rem above, configurable with --content-gutter.
+Only core/section is full bleed; other semantic section elements (field_list)
+receive normal content padding. Field lists use a .7rem row gap, weight-600
+labels and overflow-wrap:anywhere values.

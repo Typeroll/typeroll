@@ -89,6 +89,34 @@ The Article template starter places its table of contents beside the body on
 larger screens and before the body on mobile. The Two columns block's **Mobile
 order** setting controls this order independently of the desktop layout.
 
+### One main heading and mobile defaults
+
+From **Core 0.2.13**, a Page template that provides an H1 (usually **Page title**)
+owns the Page's main heading. Use H2 for headings in the Page body. The editor's
+Save action and API writes reject a body H1 that duplicates the template title,
+with an explanation of how to fix it. A Page without a template H1 can keep its
+own body H1. HTML-mode Pages also allow only one H1.
+
+Existing content remains editable: preview and static builds render additional
+body H1 headings as H2, preserving their text and anchors. A known template H1
+always takes precedence. The layout does not add another automatic Page title.
+This safeguard does not rewrite saved content; correct the heading level before
+saving a changed body. Custom header/footer HTML should use a non-heading element
+for the site brand.
+
+Repeater grids, including **Page list**, show one column below **768 px** by
+default. Set **Mobile columns** (`mobile_cols`, 1–6) only when multiple columns are
+intentional. An explicitly authored `cols.mobile` is also respected;
+`mobile_cols` takes precedence. At 768 px and wider, the normal `cols` settings
+apply. This listing-specific threshold does not change the general responsive
+breakpoints used by other blocks. Masonry remains an explicit layout choice.
+
+The default content gutter is **1.25 rem** below 768 px and **1.75 rem** above it.
+Full-width section backgrounds still reach the viewport edges, while their
+content has the same gutter. Site CSS can customize `--content-gutter`.
+These shared defaults apply to both Cloud and self-hosted sites after upgrading
+Core and rebuilding the site; previously published files remain unchanged.
+
 ### Structured Page fields without empty labels
 
 **Requires Core 0.2.12 and template capability `supports_page_field_list`.**
@@ -96,7 +124,8 @@ Cloud and self-hosting use the same block; check the deployed site's capabilitie
 before adding it.
 
 Add **Page field list** (`core/field_list`) to a Page template to present typed
-values from the current Page's `fields`. Choose the content type's field names;
+values from the current Page's `fields`. Rows use a 0.7 rem vertical gap, labels use
+font weight 600, and long values wrap to avoid horizontal overflow (Core 0.2.13). Choose the content type's field names;
 leave each label blank to use its schema label. Values stay in the structured
 field editor. Changing and saving a Page field updates preview and the next
 publication without editing the Page body or copying values into rich text.

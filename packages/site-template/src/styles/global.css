@@ -130,33 +130,7 @@ a { color: var(--color-primary); }
 
 /* Default page-content styles for HTML mode pages. Customer-authored HTML
    inherits sensible spacing without needing utility classes. */
-/* The page-content layout shell stays at normal specificity — these are
-   the geometric defaults the page needs to look right out of the box. */
-.page-content {
-  max-width: var(--container-medium);
-  margin: 0 auto;
-  padding: var(--spacing-lg) var(--spacing-md);
-}
-/* Blocks-mode shell: sections own their geometry (core/section is
-   full-bleed outer + constrained .block-section-inner), so the shell must
-   not constrain, pad, or space them — that's what lets a section's
-   background meet the header edge-to-edge with zero hacks. Top-level
-   blocks that are NOT sections (a bare heading/prose on a fresh page)
-   get the classic container as a fallback so they never render
-   edge-to-edge. */
-.page-content--blocks {
-  max-width: none;
-  padding: 0;
-}
-.page-content--blocks > * + * { margin-top: 0; }
-.page-content--blocks > :not(section, style, script) {
-  max-width: var(--container-medium);
-  margin-inline: auto;
-  padding-inline: var(--spacing-md);
-}
-.page-content--blocks > :not(section, style, script) + :not(section, style, script) {
-  margin-top: var(--spacing-md);
-}
+/* Content well geometry is shared with preview via CONTENT_WELL_CSS. */
 /* Descendant typography defaults wrap in :where() so they sit at
    specificity 0 — every class-only rule a customer/AI writes
    (specificity 0,1,0) automatically wins. Without this, a customer

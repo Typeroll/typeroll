@@ -163,7 +163,7 @@ describe('renderPreview — blocks mode', () => {
     const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
     expect(html).toBeTruthy();
     // No block container should be rendered
-    expect(html!).not.toContain('data-block=');
+    expect(html!).not.toMatch(/<[^>]+data-block=/);
   });
 
   it('inlines CSS for every block type actually used (tree-shaken)', async () => {
@@ -182,7 +182,7 @@ describe('renderPreview — blocks mode', () => {
     expect(html!).toContain('data-blocks="1"');
     // section / columns / button / image / prose CSS NOT present — page
     // doesn't use them.
-    expect(html!).not.toContain('[data-block="section"]');
+    expect(html!).not.toContain('[data-block="section"] > .block-section-inner');
     expect(html!).not.toContain('[data-block="columns"]');
     expect(html!).not.toContain('[data-block="button"]');
     expect(html!).not.toContain('[data-block="image"]');
