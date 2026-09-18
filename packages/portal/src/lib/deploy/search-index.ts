@@ -43,7 +43,19 @@ export async function buildSearchIndexIfUsed(buildDir: string): Promise<SearchIn
   }
   try {
     const added = await index.addDirectory({ path: buildDir });
-    await index.writeFiles({ outputPath: path.join(buildDir, 'pagefind') });
+    if (added.errors?.length) throw new Error(`pagefind indexing failed: ${added.errors.join('; ')}`);
+    // Own the writes and await every file before closing the Pagefind process.
+    // Its writeFiles response can arrive while native filesystem writes are
+    // still pending, leaving empty/truncated files when the service is closed.
+    const output = await index.getFiles();
+    if (output.errors?.length) throw new Error(`pagefind output failed: ${output.errors.join('; ')}`);
+    const directory = path.resolve(buildDir, 'pagefind');
+    for (const file of output.files ?? []) {
+      const destination = path.resolve(directory, file.path);
+      if (!destination.startsWith(directory + path.sep)) throw new Error('Invalid search output path');
+      await fs.promises.mkdir(path.dirname(destination), { recursive: true });
+      await fs.promises.writeFile(destination, file.content);
+    }
     return { indexed: true, page_count: added.page_count };
   } finally {
     await pagefind.close().catch(() => {});

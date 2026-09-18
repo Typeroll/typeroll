@@ -323,6 +323,9 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   Inspect `job.render_report` for actual rendered/reused/removed route counts;
   `get_publication_impact` is only a provisional source comparison. Listings,
   references and shared dependencies may rebuild more than the edited page.
+  The renderer replays recorded queries (including empty results), visited
+  records, backlinks and navigation. Unchanged routes leave the render queue;
+  additions/removals invalidate affected consumers, not all Pages by default.
   Missing cache means a full build. Every deployment remains a complete site.
   Shared GitHub/Cloudflare engines need their normal update for remote cache
   transport; do not claim fixed time or cost savings from page counts.

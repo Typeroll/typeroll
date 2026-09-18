@@ -1,3 +1,4 @@
+import { trackedPageSource, trackedBacklinks } from './publication-dependencies.mjs';
 import { createPageSource, DEFAULT_CONTENT_TYPE, resolveContentPage, publicContentPage, type PageSourceConfig } from '@typeroll/shared';
 // Build-time content fetching. All functions resolve the org+site IDs from
 // env vars so call sites don't need to thread them through.
@@ -479,12 +480,12 @@ export async function renderPartialHtml(
  */
 async function loadBacklinks(): Promise<import('@typeroll/shared').BacklinkIndex> {
   const { buildBacklinkIndex } = await import('@typeroll/shared');
-  return buildBacklinkIndex(await getContentTypes(), (await getPages()).filter(page => page.status === 'published'));
+  return trackedBacklinks(buildBacklinkIndex(await getContentTypes(), (await getPages()).filter(page => page.status === 'published')));
 }
 export let buildBacklinks = buildMemo(loadBacklinks);
 
 async function loadPageSource(): Promise<(config: PageSourceConfig) => Record<string, unknown>[]> {
-  return createPageSource(await getContentTypes(), await getPages());
+  return trackedPageSource(createPageSource(await getContentTypes(), await getPages()));
 }
 export let buildPageSource = buildMemo(loadPageSource);
 

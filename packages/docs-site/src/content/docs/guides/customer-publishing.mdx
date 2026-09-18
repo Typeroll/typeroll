@@ -289,8 +289,8 @@ Do not start a duplicate deployment just because the external build is still run
 Generated repositories keep pages, templates and other content records in
 `content/`, indexed by `publication.json`. Unchanged Git files are reused; removed
 pages and unsupported manual files are removed from the generated tree. The build
-still renders the whole public site. This optimization does not claim partial
-HTML builds. Images stay in R2, outside Git. The repository contains its frozen
+publishes a complete static site, with unchanged HTML reused when the
+[partial-build cache](#partial-builds) is available. Images stay in R2, outside Git. The repository contains its frozen
 renderer, content, address mappings and integrity manifest, so independent builds
 do not fetch mutable content from the CMS.
 
@@ -451,13 +451,21 @@ pages when a valid previous render cache is available. A normal body-text edit
 can rebuild that page while reusing other pages. You still publish a complete
 static website; visitors never receive a mixture of deployments.
 
-Listing, pagination and reference blocks depend on other Pages. These consumers
-rebuild when their Page inputs change, including additions and removals. Changes
-to titles, paths, publication status or structured fields conservatively rebuild
-all pages because navigation and references may change. Shared settings, templates,
-media metadata, domains, Core source or Node versions also invalidate the cache.
-Custom or unrecognized blocks use the entire Page set as their dependency.
-This first implementation favors complete output over the smallest possible build.
+Listing and reference blocks record the queries they actually use: filters,
+selected IDs, ordering, limits and result membership. On the next build these
+queries run against the current content, including previously empty results.
+Only visited records contribute value dependencies, so a body edit on page 1 of
+an archive does not invalidate page 2. Adding, removing, moving, renaming or
+changing the status of a Page updates affected lists, references, backlinks,
+breadcrumbs and previous/next links without invalidating unrelated Pages.
+
+Unchanged addresses are excluded from Astro's HTML generation queue. Their
+verified HTML is restored into the new output directory; removed addresses are
+never restored. Shared settings, templates, media metadata, domains, Core source
+and Node versions still invalidate reuse. Custom or unrecognized blocks retain
+a conservative dependency on the entire Page set. Within a query, changes to a
+visited record may cause a rebuild even if the changed field is not displayed.
+This is dependency tracking, not a promise of minimum possible work.
 
 The route inventory, sitemap, robots rules, redirects, search index and shared
 asset processing are regenerated from the complete current site. Removed routes

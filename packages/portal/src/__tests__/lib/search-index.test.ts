@@ -44,6 +44,14 @@ describe('buildSearchIndexIfUsed', () => {
     expect(fs.existsSync(path.join(dir, 'pagefind', 'pagefind-ui.js'))).toBe(true);
     expect(fs.existsSync(path.join(dir, 'pagefind', 'pagefind-ui.css'))).toBe(true);
     expect(fs.existsSync(path.join(dir, 'pagefind', 'pagefind.js'))).toBe(true);
+    async function verifyComplete(directory: string): Promise<void> {
+      for (const entry of await fs.promises.readdir(directory, { withFileTypes: true })) {
+        const file = path.join(directory, entry.name);
+        if (entry.isDirectory()) await verifyComplete(file);
+        else expect((await fs.promises.stat(file)).size, file).toBeGreaterThan(0);
+      }
+    }
+    await verifyComplete(path.join(dir, 'pagefind'));
     await fs.promises.rm(dir, { recursive: true, force: true });
   }, 30_000);
 });

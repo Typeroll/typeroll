@@ -40,8 +40,9 @@ optional `job.render_report` records actual `mode` (`full` or `partial`),
 the available cache that are absent from the current output. This is separate
 from `get_publication_impact`, which compares source inputs before the build.
 
-List and reference dependencies may rebuild alongside an edited Page. Missing or
-invalid cache falls back to full rendering. Both paths produce a complete static
+Recorded queries, visited records, references and navigation identify affected
+consumers, including after additions and removals. Unchanged addresses are excluded
+from the render queue. Missing or invalid cache falls back to full rendering. Both paths produce a complete static
 site with regenerated global output. See [Partial builds](../../guides/customer-publishing/#partial-builds)
 for engine updates, independent builds and limits. These counts do not measure
 provider startup, media processing, upload time or billing savings.

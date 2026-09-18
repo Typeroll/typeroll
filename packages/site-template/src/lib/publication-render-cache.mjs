@@ -1,13 +1,11 @@
 import { createHash } from 'node:crypto';
 
-export const RENDER_CACHE_FORMAT = 1;
+export const RENDER_CACHE_FORMAT = 2;
 export const MAX_RENDER_CACHE_BYTES = 32 * 1024 * 1024;
 export const digest = value => createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest('hex');
-const omit = (value, keys) => Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
 
-// Only blocks whose renderer reads the current page/site are narrow dependencies.
-// New blocks, queries, references and custom block definitions fail closed to the
-// complete Page set. Membership changes therefore cannot leave stale list pages.
+// Built-in queries and references record their actual reads at render time.
+// Unknown blocks retain the whole Page set dependency until their contract is known.
 const localBlocks = new Set([
   'core/section', 'core/columns', 'core/container', 'core/grid', 'core/prose',
   'core/heading', 'core/rich_heading', 'core/image', 'core/button', 'core/spacer',
@@ -20,6 +18,7 @@ const localBlocks = new Set([
   'template/page_date', 'template/page_author', 'template/page_breadcrumbs',
   'template/site_logo', 'template/site_title', 'template/site_tagline',
   'template/show_if', 'template/page_navigation', 'template_content_slot',
+  'core/repeater', 'core/page_list', 'core/field_list',
 ]);
 function broadDependency(value) {
   if (!value || typeof value !== 'object') return false;
@@ -40,33 +39,28 @@ export function createRenderPlan(publication, manifest, runtime = process.versio
     name !== 'publication.json' && !name.startsWith('content/')));
   const globalKey = digest({ format: RENDER_CACHE_FORMAT, runtime, renderer, globals,
     platform: process.platform, arch: process.arch, locale: Intl.DateTimeFormat().resolvedOptions(), year: new Date().getFullYear() });
-  // Navigation may sort on an edit timestamp or even body text. Preserve those
-  // fields in the site dependency when selected by a Content type.
-  const types = JSON.stringify(publication.contentTypes ?? []);
-  const localFields = ['blocks', 'html_content', 'date_updated', 'lastmod'].filter(field =>
-    !types.includes(field) && !(field === 'html_content' && types.includes('body')));
-  const pageIndex = digest(pages.map(page => omit(page, localFields)));
   const allPages = digest(pages);
   const sharedBroad = (publication.blockTypes?.length ?? 0) > 0 || broadDependency(publication.partials) || broadDependency(publication.forms);
   const keys = Object.fromEntries(pages.map(page => {
     const type = publication.contentTypes?.find(value => value.id === (page.content_type ?? 'page'));
     const template = publication.pageTemplates?.find(value => value.id === (page.template || type?.template));
     const broad = sharedBroad || broadDependency(page.blocks) || broadDependency(template?.blocks);
-    return [page.id, { key: digest({ globalKey, page, dependencies: broad ? allPages : pageIndex }),
-      dependency: broad ? 'page_set' : 'page_and_navigation' }];
+    return [page.id, { key: digest({ globalKey, page, dependencies: broad ? allPages : undefined }),
+      dependency: broad ? 'page_set' : 'recorded' }];
   }));
-  return { format: RENDER_CACHE_FORMAT, globalKey, allPages, keys };
+  return { format: RENDER_CACHE_FORMAT, globalKey, allPages, keys, facetBroad: sharedBroad || broadDependency(publication.pageTemplates) };
 }
 
 export function routeFingerprint(plan, pathname, props) {
-  // Synthetic facets always query Pages, even if their generated ID happens to
-  // match an unrelated real Page at another path.
-  const entry = props.facet ? undefined : plan.keys[props.page?.id];
-  return digest({ pathname, props, key: entry?.key ?? digest([plan.globalKey, plan.allPages]) });
+  // Facets carry their own Page and scope in props and record listing queries.
+  // Never inherit the key of an unrelated real Page with the same generated ID.
+  const entry = plan.keys[props.page?.id];
+  return digest({ pathname, props, key: props.facet ? (plan.facetBroad ? digest([plan.globalKey, plan.allPages]) : plan.globalKey) : entry?.key ?? digest([plan.globalKey, plan.allPages]) });
 }
 
 export function validCacheEntry(entry, fingerprint) {
   return entry && entry.fingerprint === fingerprint && typeof entry.html === 'string'
+    && Array.isArray(entry.dependencies) && entry.dependencyHash === digest(entry.dependencies)
     && Buffer.byteLength(entry.html) <= 4 * 1024 * 1024 && digest(entry.html) === entry.sha256;
 }
 

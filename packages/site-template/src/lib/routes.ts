@@ -1,5 +1,6 @@
-import { buildPageSource, getAllPages, getSiteSettings, getContentTypes, getBlockTypes, getPageTemplate, getPages, pageForFacet, isHomePage, urlFor } from './content';
-import { buildCoreBlockRegistry, composePageWithTemplate, findPaginatedListing, facetRoutes, pageBreadcrumbs, pageContentValues } from '@typeroll/shared';
+import { selectChangedRoutes } from './publication-route-cache.mjs';
+import { buildBacklinks, buildPageSource, getAllPages, getSiteSettings, getContentTypes, getBlockTypes, getPageTemplate, getPages, pageForFacet, isHomePage, urlFor } from './content';
+import { pageNavigation, buildCoreBlockRegistry, composePageWithTemplate, findPaginatedListing, facetRoutes, pageBreadcrumbs, pageContentValues } from '@typeroll/shared';
 import type { Block, FacetRoute, Page } from '@typeroll/shared';
 
 // A taxonomy page IS a page — synthetic Page doc, optional PageTemplate,
@@ -87,3 +88,19 @@ export async function getSiteRoutes() {
   return [...pageRoutes, ...archiveRoutes, ...facetEntries];
 }
 
+/** Only the page renderer uses this filter; sitemap keeps the complete inventory. */
+export async function getChangedSiteRoutes() {
+  const routes = await getSiteRoutes();
+  if (!process.env.TYPEROLL_RENDER_CACHE_WORK) return routes;
+  const pages = await getAllPages();
+  const types = await getContentTypes();
+  const settings = await getSiteSettings();
+  return selectChangedRoutes(routes, {
+    query: await buildPageSource(), backlinks: await buildBacklinks(),
+    navigation: (id: string) => {
+      const page = routes.find(route => route.props.page.id === id)?.props.page;
+      const type = page && types.find(type => type.id === (page.content_type ?? 'page'));
+      return page && type ? pageNavigation(page, type, pages, settings.trailing_slash) : {};
+    },
+  }, settings.trailing_slash);
+}

@@ -8,7 +8,7 @@ import { build } from 'esbuild';
 import { prepareMedia } from './media.mjs';
 import { readPublicationContent } from './content.mjs';
 import { resolvePublicationReferences } from './references.mjs';
-import { createRenderPlan, readRenderCache, MAX_RENDER_CACHE_BYTES } from '../packages/site-template/src/lib/publication-render-cache.mjs';
+import { createRenderPlan, readRenderCache, MAX_RENDER_CACHE_BYTES, RENDER_CACHE_FORMAT } from '../packages/site-template/src/lib/publication-render-cache.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const manifest = JSON.parse(await fs.readFile(path.join(root, 'publication-manifest.json'), 'utf8'));
@@ -101,6 +101,16 @@ for (const name of await fs.readdir(cacheWork)) {
   if (name === 'input.json') continue;
   const { pathname, reused: hit, reason, ...entry } = JSON.parse(await fs.readFile(path.join(cacheWork, name), 'utf8'));
   currentRoutes.add(pathname);
+  if (hit) {
+    // Only the freshly discovered inventory emits reuse receipts. Never copy
+    // removed routes or trust a cached filesystem path.
+    const decoded = decodeURIComponent(pathname);
+    if (!decoded.startsWith('/') || decoded.includes('\\') || decoded.split('/').some(part => part === '.' || part === '..') || /[\x00-\x1f]/.test(decoded)) throw new Error('Invalid cached route path');
+    const destination = path.resolve(dist, '.' + decoded, 'index.html');
+    if (!destination.startsWith(dist + path.sep)) throw new Error('Cached route escaped output');
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.writeFile(destination, entry.html);
+  }
   cacheBytes += Buffer.byteLength(JSON.stringify(entry)) + Buffer.byteLength(JSON.stringify(pathname)) + 2;
   if (cacheBytes > MAX_RENDER_CACHE_BYTES - 1024) { cacheOverflow = true; cacheRoutes = Object.create(null); }
   if (!cacheOverflow) cacheRoutes[pathname] = entry;
@@ -121,7 +131,7 @@ for (const file of new Map(sameHostMedia.map(file => [file.path, file])).values(
   await fs.copyFile(file.source, destination);
 }
 // Commit cache only after the complete output succeeds; it never enters dist or Git.
-const nextCache = JSON.stringify({ format: 1, routes: cacheRoutes });
+const nextCache = JSON.stringify({ format: RENDER_CACHE_FORMAT, routes: cacheRoutes });
 try {
   if (!cacheOverflow && Buffer.byteLength(nextCache) <= MAX_RENDER_CACHE_BYTES) {
     await fs.writeFile(cacheFile + '.tmp', nextCache);

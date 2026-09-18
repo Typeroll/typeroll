@@ -1,4 +1,5 @@
 ---
+import { navigationContext } from '../lib/publication-dependencies.mjs';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
@@ -40,9 +41,9 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
 import type { Block, RenderContext } from '@typeroll/shared';
 import { getPageTemplate } from '../lib/content';
 
-import { getSiteRoutes, type PageProps } from '../lib/routes';
+import { getChangedSiteRoutes, type PageProps } from '../lib/routes';
 type Props = PageProps;
-export const getStaticPaths = getSiteRoutes;
+export const getStaticPaths = getChangedSiteRoutes;
 
 const props = Astro.props as Props;
 const settings = await getSiteSettings();
@@ -82,10 +83,11 @@ const extensionSource = (blockTypeId: string) => {
 // safer than failing the build on a missing field.
 const backlinks = await buildBacklinks();
 const contentType = (await getContentTypes()).find(type => type.id === (props.page.content_type ?? 'page'));
+const navigationPages = await getAllPages();
 const renderCtx: RenderContext = {
   page: { ...pageContentValues(props.page), breadcrumbs: props.breadcrumbs },
   site: siteContext(settings as unknown as Record<string, unknown>),
-  content_type: contentType ? { ...contentType, ...pageNavigation(props.page, contentType, await getAllPages(), settings.trailing_slash) } : undefined,
+  content_type: contentType ? navigationContext(contentType, props.page.id, () => pageNavigation(props.page, contentType, navigationPages, settings.trailing_slash)) : undefined,
   // Archive pagination: which slice a paginating repeater renders + where
   // its pager links point. Present on every page render (current: 1 when
   // this is the page's own URL) so the pager shows on page 1 too.
