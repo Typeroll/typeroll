@@ -1,3 +1,4 @@
+import { refreshBuildFailure } from '../../../../../../lib/builds/failure-status';
 // GET /api/v1/sites/{siteId}/deploys/{jobId}
 //
 // One deploy job's status. queued → running → succeeded | failed. The
@@ -34,6 +35,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const jobPath = paths.deploy(ctx.orgId, ctx.siteId, jobId);
   let doc = await store.getDoc<DeployJob>(jobPath);
   if (!doc) return apiError('Not found', 404);
+  doc = await refreshBuildFailure(ctx.orgId, ctx.siteId, doc);
   doc = await refreshDeploymentAvailability(ctx.orgId, ctx.siteId, doc);
 
   // Compute waited-time + auto-fail if it's been queued too long.
@@ -50,8 +52,8 @@ export const GET: APIRoute = async ({ request, params }) => {
       error: `Cloud Tasks worker didn't pick up the job within ${QUEUE_TIMEOUT_SECONDS}s. The queue or worker auth is likely misconfigured. Re-trigger the deploy after checking the deploy-worker route.`,
       finished_at: finishedAt,
     };
-    await store.updateDoc(jobPath, patch as Record<string, unknown>);
-    doc = { ...doc, ...patch } as DeployJob;
+    await store.compareAndUpdateDoc<DeployJob>(jobPath, current => current.status === 'queued' && current.started_at === doc!.started_at, patch as Record<string, unknown>);
+    doc = (await store.getDoc<DeployJob>(jobPath)) ?? doc;
   }
 
   const siteUrls = publicUrlsFor(ctx.site);

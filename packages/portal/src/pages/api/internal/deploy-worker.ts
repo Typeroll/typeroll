@@ -23,17 +23,18 @@
 // want Cloud Tasks to retry a deploy that failed for "the build broke" or
 // "the credentials are wrong"; the user can hit Deploy again from the UI.
 
-import { createHash } from 'node:crypto';
 import type { APIRoute } from 'astro';
 import { isExternalDeploy } from '../../../lib/deploy/in-flight';
 import { getStore } from '../../../lib/datastore';
-import { executeDeployJob, getDeployQueue } from '../../../lib/deploy/queue';
+import { executeDeployJob } from '../../../lib/deploy/queue';
 import { slotWaitMs } from '../../../lib/deploy/concurrency';
 import { paths } from '@typeroll/shared';
 import type { DeployEnvironment, DeployJob } from '@typeroll/shared';
 
 interface Payload {
-  kind?: 'media_migration';
+  kind?: 'media_migration' | 'scheduled_work';
+  workId?: string;
+  generation?: string;
   jobId: string;
   dispatchKey?: string;
   orgId: string;
@@ -61,6 +62,14 @@ export const POST: APIRoute = async ({ request }) => {
     payload = (await request.json()) as Payload;
   } catch {
     return new Response('Bad JSON', { status: 400 });
+  }
+  if (payload?.kind === 'scheduled_work') {
+    if (!payload.workId || !/^[a-f0-9]{64}$/.test(payload.workId) || typeof payload.generation !== 'string') return new Response('Invalid scheduled work', { status: 400 });
+    try {
+      const { executeScheduledWork } = await import('../../../lib/scheduling/worker');
+      await executeScheduledWork(payload.workId, payload.generation);
+      return Response.json({ ok: true });
+    } catch { return Response.json({ ok: false, retry: true }, { status: 503 }); }
   }
   if (payload?.kind === 'media_migration') {
     if (typeof payload.orgId !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(payload.orgId)) return new Response('Invalid organization', { status: 400 });
@@ -123,16 +132,15 @@ export const POST: APIRoute = async ({ request }) => {
   if (outcome !== 'ran') {
     const pending = await getStore().getDoc<DeployJob>(paths.deploy(payload.orgId, payload.siteId, payload.jobId));
     if (pending && isExternalDeploy(pending) && ['queued', 'running'].includes(pending.status)) {
-      // Each observation has a deterministic successor. A duplicate delivery
-      // cannot fork the chain, and ordinary build waiting consumes no retry budget.
-      const dispatchKey = createHash('sha256').update(`${payload.dispatchKey ?? payload.jobId}:observe`).digest('hex').slice(0, 16);
-      try {
-        await getDeployQueue().enqueue({ orgId: payload.orgId, siteId: payload.siteId, versionId: payload.versionId,
-          jobId: payload.jobId, environment: payload.environment, dryRun: payload.dryRun === true, dispatchKey, delayMs: outcome === 'continue' ? 0 : 60000 });
-        return new Response(JSON.stringify({ ok: true, continued: 'external_publication' }), { headers: { 'Content-Type': 'application/json' } });
-      } catch {
-        return new Response(JSON.stringify({ ok: false, deferred: 'observation_queue_unavailable' }), { status: 503, headers: { 'Retry-After': '60' } });
+      if (outcome === 'waiting') return Response.json({ ok: true, waiting: 'durable_event' });
+      if (outcome === 'continue') {
+        const { schedulePublication } = await import('../../../lib/scheduling/continuation');
+        const saved = await getStore().getDoc<any>(jobPath);
+        if (!saved?.continuation || saved.continuation.token === (job as any).continuation?.token) await schedulePublication(jobPath, 'checkpoint');
+        return Response.json({ ok: true, continued: 'checkpoint' });
       }
+      // Contention is a delivery retry, never a second observation chain.
+      return Response.json({ ok: false, retry: true }, { status: 503, headers: { 'Retry-After': '1' } });
     }
     return new Response(JSON.stringify({ ok: false, deferred: 'no_build_slot' }), {
       status: 503,

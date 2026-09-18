@@ -101,8 +101,8 @@ export class InProcessQueue implements DeployQueue {
     const attempt = async () => {
       try {
         const outcome = await runDeployInline(args);
-        if (outcome !== 'ran') {
-          const timer = setTimeout(() => { void attempt(); }, outcome === 'continue' ? 0 : 10_000);
+        if (outcome === 'deferred') {
+          const timer = setTimeout(() => { void attempt(); }, 10_000);
           timer.unref();
         }
       } catch { console.error('[in-process deploy] background execution failed'); }
@@ -144,8 +144,8 @@ export class FirestoreDeployQueue implements DeployQueue {
  * congested platform is not a broken build, and showing the user a failure
  * they can't act on is worse than a late deploy.
  */
-/** continue schedules the next saved coordinator phase without provider backoff. */
-export type DeployRunOutcome = 'ran' | 'deferred' | 'continue';
+/** continue means the next coordinator phase has been durably saved; consume this delivery. */
+export type DeployRunOutcome = 'ran' | 'deferred' | 'continue' | 'waiting';
 
 async function runDeployInline(
   args: EnqueueArgs,
@@ -279,7 +279,7 @@ export class CloudTasksQueue implements DeployQueue {
         // double-deploy. We accept the 1h limit — that's plenty for
         // deploy idempotency.
         name: `${this.queue}/tasks/${deployTaskIdentity(args)}`,
-        ...(args.delayMs ? { scheduleTime: { seconds: Math.ceil((Date.now() + Math.min(60000, Math.max(0, args.delayMs))) / 1000) } } : {}),
+        ...(args.delayMs ? { scheduleTime: { seconds: Math.ceil((Date.now() + Math.max(0, args.delayMs)) / 1000) } } : {}),
         httpRequest: {
           httpMethod: 'POST',
           url: this.workerUrl,

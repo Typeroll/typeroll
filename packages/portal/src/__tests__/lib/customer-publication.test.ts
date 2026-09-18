@@ -54,6 +54,7 @@ beforeEach(async () => {
   mocks.deployment = null;
   mocks.github.mockImplementation(async () => ({ private: true, owner: { id: 123 }, id: 789, default_branch: 'main', description: `Generated Typeroll site ${prefix}` }));
   mocks.cloudflare.mockImplementation(async (route: string, options?: any) => {
+    if (route.endsWith('/deployments/deployment')) return mocks.deployment;
     if (route.includes('/deployments?')) return mocks.deployment ? [mocks.deployment] : [];
     if (route.includes('/domains/')) return { status: 'active' };
     if (route.startsWith('/zones?')) return [{ id: 'zone', name: 'www.example.com', status: 'active', account: { id: 'a'.repeat(32) } }];
@@ -67,7 +68,7 @@ function complete(branch = 'main') {
 }
 
 it('freezes once, waits for the exact Git commit, and hides the live link until public verification', async () => {
-  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
   const first = await getStore().getDoc<any>(jobPath);
   expect(first.status).toBe('running');
   expect(first.deploy_url).toBeUndefined();
@@ -76,7 +77,7 @@ it('freezes once, waits for the exact Git commit, and hides the live link until 
   await getStore().updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: '<h1>Later edit</h1>' });
   complete();
   mocks.probe.mockImplementation(async origin => origin.includes('.pages.dev'));
-  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
   expect((await getStore().getDoc<any>(jobPath)).deploy_url).toBeUndefined();
   expect(mocks.push).toHaveBeenCalledTimes(1);
   const frozen = JSON.parse(mocks.push.mock.calls[0][1].files['publication.json']);
@@ -119,7 +120,7 @@ it('keeps the public link hidden until this deployment has refreshed its own hos
     if (route.endsWith('/purge_cache')) throw new ProviderError('Cloudflare', 429);
     return provider(route, options);
   });
-  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ phase: 'waiting for Cloudflare cache refresh' });
   expect((await getStore().getDoc<any>(jobPath)).deploy_url).toBeUndefined();
   mocks.cloudflare.mockImplementation(provider);
@@ -131,7 +132,7 @@ it('keeps the public link hidden until this deployment has refreshed its own hos
 it('never accepts a successful deployment of another commit or a failed customer build', async () => {
   await executeCustomerPublication(args); complete();
   mocks.deployment.deployment_trigger.metadata.commit_hash = 'c'.repeat(40);
-  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(mocks.probe).not.toHaveBeenCalled();
   mocks.deployment.deployment_trigger.metadata.commit_hash = 'b'.repeat(40);
   mocks.deployment.latest_stage.status = 'failure';
@@ -180,7 +181,7 @@ it('resolves the selected version without writing main and handles provider retr
   const organization = await getOrganizationDomains('org');
   await saveOrganizationDomains('org', { revision: organization.revision, sites_domain: 'sites.example.com', media_host: 'media.example.net', dns_mode: 'external' });
   const branchArgs = { ...args, versionId: 'design' };
-  expect(await executeCustomerPublication(branchArgs)).toBe('deferred');
+  expect(await executeCustomerPublication(branchArgs)).toBe('waiting');
   const request = mocks.push.mock.calls[0][1];
   expect(request.branch).toBe('version-design');
   expect((await getStore().getDoc<any>(jobPath)).git_publication.website_host).toMatch(/\.sites\.example\.com$/);
@@ -188,7 +189,7 @@ it('resolves the selected version without writing main and handles provider retr
   const frozen = JSON.parse(request.files['publication.json']);
   expect(frozen.pages[0].html_content).toContain('Design version');
   expect(frozen.settings.sitewide_noindex).toBe(true);
-  expect(await executeCustomerPublication(branchArgs)).toBe('deferred');
+  expect(await executeCustomerPublication(branchArgs)).toBe('waiting');
   expect(mocks.push).toHaveBeenCalledTimes(1);
   expect((await getStore().getDoc<any>(paths.version('org', 'site', 'main'))).last_deployed_at).toBeUndefined();
   await getStore().updateDoc(jobPath, { version_id: 'design' });
@@ -213,7 +214,7 @@ it('a domain-only preparation reuses the public snapshot and does not publish la
   const nextArgs = { ...args, jobId: 'domain-job' };
   await getStore().setDoc(paths.deploy('org', 'site', nextArgs.jobId), { status: 'queued', publication_intent: 'domain_prepare', domain_revision: next.revision, source_publication: previous });
   mocks.deployment = null;
-  expect(await executeCustomerPublication(nextArgs)).toBe('deferred');
+  expect(await executeCustomerPublication(nextArgs)).toBe('waiting');
   const source = resolvePublicationReferences(JSON.parse(mocks.push.mock.calls.at(-1)![1].files['publication.json']));
   expect(source.pages[0].html_content).toContain('https://new.example.com/about?from=home#team');
   expect(source.pages[0].canonical_url).toBe('https://new.example.com/');
@@ -345,12 +346,12 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
     return provider(route, options);
   });
   mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
-  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(mocks.enqueue).toHaveBeenCalledWith(expect.objectContaining({ revision: 'engine-1' }), expect.objectContaining({ org_id: 'org', site_id: 'site', version_id: 'main', branch: 'main', commit: 'b'.repeat(40) }), expect.any(Object));
   expect(mocks.upload).not.toHaveBeenCalled();
   await getStore().updateDoc(jobPath, { started_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString() });
   await getStore().setDoc('organizations/org/build_tasks/task', { status: 'queued', deadline: Date.now() + 60_000, media_total: 1001, media_cursor: 750 });
-  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'preparing media: 750 of 1001 files ready; continuing automatically' });
   expect(mocks.upload).not.toHaveBeenCalled();
   await getStore().updateDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now(), media_cursor: 1001 });
@@ -363,7 +364,7 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
   mocks.deployment = { ...finished, id: 'skipped-git-build', is_skipped: true, latest_stage: { name: 'queued', status: 'idle' } };
   mocks.upload.mockImplementation(async () => { mocks.deployment = finished; return finished; });
   mocks.probe.mockResolvedValue(true); mocks.verify.mockResolvedValue(false);
-  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(mocks.upload).toHaveBeenCalledWith(mocks.cloudflare, expect.objectContaining({ account: 'a'.repeat(32), group: 'default', branch: 'main' }), { 'index.html': Buffer.from('frozen') });
   expect((await getStore().getDoc<any>(jobPath)).deploy_url).toBeUndefined();
   expect((await getStore().getDoc<any>(jobPath)).render_report).toEqual(renderReport);
@@ -433,13 +434,13 @@ it('keeps direct publication waiting for customer verification, then runs only b
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
   mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
-  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
   await getStore().setDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now() });
   mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1 } });
   mocks.verificationPlan.mockResolvedValue({ verification_checks_key: 'customer-checks', probe_checks_key: 'bounded-probes', static_controls_sha256: 'controls' });
   mocks.direct.mockImplementation(async () => { complete(); return mocks.deployment; });
   mocks.probe.mockResolvedValue(true); mocks.candidateVerification.mockResolvedValue(false);
-  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'verifying static output on the organization build engine' });
   expect((await getStore().getDoc<any>(jobPath)).deploy_url).toBeUndefined();
   expect(mocks.verify).not.toHaveBeenCalled();
@@ -473,7 +474,7 @@ it('yields after freezing and Git publication and never recaptures intervening e
   expect(uploaded).not.toContain('Later draft edit');
   const frozen = await getStore().getDoc<any>(jobPath);
   expect(frozen.git_publication.snapshot_digest).toBe(first.git_publication.snapshot_digest);
-  expect(await executePublicationPhase(args)).toBe('deferred');
+  expect(await executePublicationPhase(args)).toBe('waiting');
   expect(mocks.push).toHaveBeenCalledTimes(1);
 });
 
@@ -498,7 +499,7 @@ it.each(['cloudflare', 'github'] as const)('observes a queued %s build without r
   await getStore().setDoc(`${buildTasksPath('org')}/task`, { status: 'running', deadline: Date.now() + 600000, media_total: 337, media_cursor: 200 });
   mocks.built.mockResolvedValueOnce(null);
   vi.clearAllMocks();
-  expect(await executePublicationPhase(args)).toBe('deferred');
+  expect(await executePublicationPhase(args)).toBe('waiting');
   expect(mocks.built).toHaveBeenCalledWith('org', 'task');
   expect(mocks.github).not.toHaveBeenCalled(); expect(mocks.cloudflare).not.toHaveBeenCalled();
   expect(mocks.source).not.toHaveBeenCalled(); expect(mocks.push).not.toHaveBeenCalled();
@@ -509,7 +510,7 @@ it('retries temporary provider failures from the saved source instead of accepti
   await executePublicationPhase(args);
   const frozen = await getStore().getDoc<any>(jobPath);
   mocks.github.mockRejectedValueOnce(new ProviderError('GitHub', 503));
-  expect(await executePublicationPhase(args)).toBe('deferred');
+  expect(await executePublicationPhase(args)).toBe('waiting');
   expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'running', coordinator_retries: 1 });
   await getStore().updateDoc(paths.page('org', 'site', 'home'), { html_content: 'Must not leak into the retry' });
   expect(await executePublicationPhase(args)).toBe('continue');

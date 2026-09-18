@@ -58,17 +58,22 @@ describe('Firestore deploy queue worker', () => {
     expect(item?.available_at).toBe(item?.created_at);
   });
 
-  it('immediately resumes a saved checkpoint without consuming the next phase retry budget', async () => {
+  it('consumes a saved checkpoint without starting a second continuation chain', async () => {
     const store = await setup();
     await new FirestoreDeployQueue(store).enqueue(args);
     const current = await queuedAt(store);
-    const execute = vi.fn<() => Promise<'continue' | 'ran'>>().mockResolvedValueOnce('continue').mockResolvedValueOnce('ran');
+    const { schedulePublication } = await import('../../lib/scheduling/continuation');
+    const { workPath } = await import('../../lib/scheduling/index');
+    const execute = vi.fn(async () => {
+      await schedulePublication(paths.deploy(args.orgId, args.siteId, args.jobId), 'checkpoint');
+      return 'continue' as const;
+    });
     const worker = new FirestoreDeployWorker({ store, execute, workerId: 'checkpoint-worker', now: () => current, maxAttempts: 1 });
-    expect(await worker.tick()).toMatchObject({ deferred: 1 });
-    const queued = (await store.listDocs<FirestoreDeployQueueItem>(FIRESTORE_DEPLOY_QUEUE_PATH))[0];
-    expect(queued).toMatchObject({ attempts: 0, available_at: current.toISOString() });
     expect(await worker.tick()).toMatchObject({ completed: 1 });
-    expect(execute).toHaveBeenCalledTimes(2);
+    expect(await store.listDocs(FIRESTORE_DEPLOY_QUEUE_PATH)).toEqual([]);
+    expect(await store.getDoc(workPath(paths.deploy(args.orgId, args.siteId, args.jobId), 'publication'))).toMatchObject({ kind: 'publication' });
+    expect(await worker.tick()).toMatchObject({ leased: 0 });
+    expect(execute).toHaveBeenCalledOnce();
   });
 
   it('does not overwrite an existing lease when enqueue is retried', async () => {

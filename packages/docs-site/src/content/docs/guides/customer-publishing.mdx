@@ -595,3 +595,16 @@ and public availability checks before its link is shown as live. Immediate
 continuation reduces avoidable waiting; it does not skip these checks or
 eliminate the build provider's queue time. Self-hosted installations use their
 configured deploy queue and must keep its worker running.
+
+## Progress and retries
+
+From Core 0.2.21, publication steps are chained through saved events. Completing
+the customer build immediately continues the same publication. Slow builds do
+not cause a second build to start. Duplicate result messages are safe to deliver.
+
+A reported build failure, or loss of the build engine's execution heartbeat,
+appears in the portal and deployment-status API/MCP response. Check the build log
+and retry publishing after resolving the cause. A status refresh does not start
+a replacement build. Brief distribution checks can continue after upload until
+the exact static files are publicly available; the live link remains hidden
+until verification succeeds.

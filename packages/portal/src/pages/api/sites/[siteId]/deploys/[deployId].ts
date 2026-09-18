@@ -1,3 +1,4 @@
+import { refreshBuildFailure } from '../../../../../lib/builds/failure-status';
 // Poll endpoint for a deploy job. The client hits this every couple of
 // seconds while the job is in 'queued' or 'running' state.
 
@@ -15,7 +16,8 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const { deployId } = params;
   if (!deployId) return json({ error: 'Missing deployId' }, 400);
 
-  const job = await getStore().getDoc<DeployJob>(paths.deploy(owner_org_id, site.id, deployId));
+  let job = await getStore().getDoc<DeployJob>(paths.deploy(owner_org_id, site.id, deployId));
   if (!job) return json({ error: 'Not found' }, 404);
+  job = await refreshBuildFailure(owner_org_id, site.id, job);
   return json(await refreshDeploymentAvailability(owner_org_id, site.id, job));
 };

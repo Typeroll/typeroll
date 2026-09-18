@@ -472,3 +472,28 @@ traffic.
 Other platforms can run the same three image roles, but the Compose profile is
 the compatibility baseline. Preserve the separate origins, immutable digest,
 and durable queue contract when translating it to another orchestrator.
+
+## Publishing events (Core 0.2.21)
+
+Publishing proceeds from saved step to saved step. A completed build wakes its
+publication immediately; Typeroll does not restart a build because it estimates
+that the build should have finished. Duplicate event deliveries keep the same
+publication identity. A failed or disconnected build is reported through the
+portal and the deployment-status API used by MCP.
+
+The existing `publish-sweep` endpoint now reads an index of pending events and
+explicit page schedules. It does not scan all content or poll running customer
+builds. Keep its recovery schedule enabled to recover failed queue submissions.
+Cloud Tasks and the portable Firestore worker consume the same persisted events.
+
+When upgrading an existing installation, drain active publications and run the
+one-time schedule-index preparation before starting the new workers:
+
+```sh
+node --experimental-strip-types scripts/reindex-publishing.mjs --project PROJECT_ID
+node --experimental-strip-types scripts/reindex-publishing.mjs --project PROJECT_ID --apply --confirm-project PROJECT_ID
+```
+
+Use your existing administration credentials. The first command reports a dry
+run; the second creates missing schedule entries. It does not change page content
+or start builds. It is safe to repeat. Fresh installations do not need this step.

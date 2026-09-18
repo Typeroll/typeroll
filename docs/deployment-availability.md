@@ -7,7 +7,7 @@ publication queue checks the immutable Pages deployment and the actual website
 and media hosts before showing live links. It checks response bodies against
 the artifact hashes and requires removed routes to return 404. A new publication
 header cannot make an old body or deleted page pass. Work resumes in bounded
-batches through the durable queue, with a 45-minute observation deadline.
+batches through the durable event chain. Only visibility checks without a completion signal use short backoff, bounded by the existing 45-minute verification window. Running builds are not periodically restarted. See [Publication event chain](publication-event-chain.md).
 
 Generated cache directives include `no-transform` so Cloudflare's optional
 HTML/image transformations do not change the verified output. Cache, security,

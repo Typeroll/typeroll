@@ -48,7 +48,8 @@ it('claims only the dispatched site/version and prevents an old run from taking 
   now += 91000;
   expect(await queue.claim('org', 'engine', 1, { key: b.key, dispatch_id: '271' })).toBeNull();
   const retry = await queue.claim('org', 'engine', 1, { key: b.key, dispatch_id: '272' });
-  expect(retry?.identity).toEqual(claim?.identity);
+  expect(retry).toBeNull();
+  expect(await getStore().getDoc(`${buildTasksPath('org')}/${b.key}`)).toMatchObject({ status: 'failed', error_code: 'build_connection_lost', attempt: 1 });
   await expect(queue.heartbeat('org', b.key, claim!.lease_id, claim!.token)).rejects.toMatchObject({ code: 'build_lease_lost' });
   await queue.cancel('org', b.key);
   expect(await queue.claim('org', 'engine', 1, { key: b.key, dispatch_id: '273' })).toBeNull();

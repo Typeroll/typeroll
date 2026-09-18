@@ -10,6 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
 import { encodeNestedArrays, decodeNestedArrays } from './firestore-codec';
+import { scheduledIndexWrites, notifyScheduledWrites, isScheduledSource, type IndexWrite } from './scheduling/index';
 
 export interface Filter {
   field: string;
@@ -55,7 +56,7 @@ export interface ReadWriteStore {
    * using updateDoc.
    */
   /** Compare the complete value returned by getDoc and replace without merging nested fields. */
-  compareAndReplaceDoc(path: string, expected: Record<string, any> | null, data: Record<string, any>): Promise<boolean>;
+  compareAndReplaceDoc(path: string, expected: Record<string, any> | null, data: Record<string, any>, effects?: Array<{ path: string; data: Record<string, any> }>): Promise<boolean>;
   compareAndUpdateDoc<T = unknown>(
     path: string,
     check: (current: T & { id: string }) => boolean,
@@ -132,6 +133,15 @@ class FixtureStore implements ReadWriteStore {
     return { dirPath, docPath: `${dirPath}.json` };
   }
 
+  private async indexWrite(p: string, before: any, after: any) {
+    const writes = scheduledIndexWrites(p, before, after);
+    for (const write of writes) {
+      if (write.data) await this.setDoc(write.path, write.data);
+      else await this.deleteDoc(write.path);
+    }
+    await notifyScheduledWrites(writes);
+  }
+
   async getDoc<T>(p: string): Promise<(T & { id: string }) | null> {
     const { docPath } = this.resolve(p);
     if (!fs.existsSync(docPath)) return null;
@@ -142,6 +152,7 @@ class FixtureStore implements ReadWriteStore {
 
   async setDoc(p: string, data: Record<string, any>): Promise<void> {
     return this.withLock(p, async () => {
+      const before = await this.getDoc(p);
       const { docPath } = this.resolve(p);
       await fs.promises.mkdir(path.dirname(docPath), { recursive: true });
       // Atomic write: temp file + rename. A crash mid-write leaves either the
@@ -151,6 +162,7 @@ class FixtureStore implements ReadWriteStore {
       void _id;
       await fs.promises.writeFile(tmpPath, JSON.stringify(rest, null, 2));
       await fs.promises.rename(tmpPath, docPath);
+      await this.indexWrite(p, before, rest);
     });
   }
 
@@ -164,6 +176,7 @@ class FixtureStore implements ReadWriteStore {
       void _id;
       await fs.promises.writeFile(tmpPath, JSON.stringify(rest, null, 2));
       await fs.promises.rename(tmpPath, docPath);
+      await this.indexWrite(p, null, rest);
       return true;
     });
   }
@@ -181,12 +194,15 @@ class FixtureStore implements ReadWriteStore {
       void _outId;
       await fs.promises.writeFile(tmpPath, JSON.stringify(toWrite, null, 2));
       await fs.promises.rename(tmpPath, docPath);
+      await this.indexWrite(p, existing, toWrite);
     });
   }
 
   async deleteDoc(p: string): Promise<void> {
     const { docPath } = this.resolve(p);
+    const before = await this.getDoc(p);
     if (fs.existsSync(docPath)) await fs.promises.unlink(docPath);
+    await this.indexWrite(p, before, null);
   }
 
   async deleteTree(p: string): Promise<void> {
@@ -231,7 +247,7 @@ class FixtureStore implements ReadWriteStore {
     return id;
   }
 
-  async compareAndReplaceDoc(p: string, expected: Record<string, any> | null, data: Record<string, any>): Promise<boolean> {
+  async compareAndReplaceDoc(p: string, expected: Record<string, any> | null, data: Record<string, any>, effects: Array<{ path: string; data: Record<string, any> }> = []): Promise<boolean> {
     return this.withLock(p, async () => {
       if (!isDeepStrictEqual(await this.getDoc(p), expected)) return false;
       const { docPath } = this.resolve(p);
@@ -239,6 +255,8 @@ class FixtureStore implements ReadWriteStore {
       const tmpPath = `${docPath}.${process.pid}.${Date.now()}.tmp`;
       await fs.promises.writeFile(tmpPath, JSON.stringify(data, null, 2));
       await fs.promises.rename(tmpPath, docPath);
+      await this.indexWrite(p, expected, data);
+      for (const effect of effects) await this.updateDoc(effect.path, effect.data);
       return true;
     });
   }
@@ -258,6 +276,7 @@ class FixtureStore implements ReadWriteStore {
       const tmpPath = `${docPath}.${process.pid}.${Date.now()}.tmp`;
       await fs.promises.writeFile(tmpPath, JSON.stringify({ ...existing, ...data }, null, 2));
       await fs.promises.rename(tmpPath, docPath);
+      await this.indexWrite(p, current, { ...existing, ...data });
       return current;
     });
   }
@@ -341,33 +360,59 @@ class FirestoreStore implements ReadWriteStore {
     return { id: snap.id, ...decodeNestedArrays(snap.data() as T) };
   }
 
+  private indexTransaction(transaction: FirebaseFirestore.Transaction, db: FirebaseFirestore.Firestore, p: string, before: any, after: any): IndexWrite[] {
+    const writes = scheduledIndexWrites(p, before, after);
+    for (const write of writes) {
+      if (write.data) transaction.set(db.doc(write.path), write.data);
+      else transaction.delete(db.doc(write.path));
+    }
+    return writes;
+  }
+
   async setDoc(p: string, data: Record<string, any>): Promise<void> {
     const db = await this.dbPromise;
-    // Firestore rejects directly-nested arrays (Block.slots is Block[][]) —
-    // the codec wraps inner arrays in marker maps on write and unwraps on
-    // read, so callers see the same shape the fixtures backend stores.
-    await db.doc(p).set(encodeNestedArrays(data));
+    if (!isScheduledSource(p)) { await db.doc(p).set(encodeNestedArrays(data)); return; }
+    const writes = await db.runTransaction(async tx => {
+      const snap = await tx.get(db.doc(p));
+      tx.set(db.doc(p), encodeNestedArrays(data));
+      return this.indexTransaction(tx, db, p, snap.exists ? decodeNestedArrays(snap.data()) : null, data);
+    });
+    await notifyScheduledWrites(writes);
   }
 
   async createDocIfMissing(p: string, data: Record<string, any>): Promise<boolean> {
     const db = await this.dbPromise;
-    return db.runTransaction(async (transaction) => {
-      const ref = db.doc(p);
-      const snap = await transaction.get(ref);
-      if (snap.exists) return false;
-      transaction.create(ref, encodeNestedArrays(data));
-      return true;
+    const result = await db.runTransaction(async tx => {
+      const snap = await tx.get(db.doc(p));
+      if (snap.exists) return null;
+      tx.create(db.doc(p), encodeNestedArrays(data));
+      return this.indexTransaction(tx, db, p, null, data);
     });
+    if (result) await notifyScheduledWrites(result);
+    return result !== null;
   }
 
   async updateDoc(p: string, data: Record<string, any>): Promise<void> {
     const db = await this.dbPromise;
-    await db.doc(p).set(encodeNestedArrays(data), { merge: true });
+    if (!isScheduledSource(p)) { await db.doc(p).set(encodeNestedArrays(data), { merge: true }); return; }
+    const writes = await db.runTransaction(async tx => {
+      const snap = await tx.get(db.doc(p));
+      const before = snap.exists ? decodeNestedArrays(snap.data()) : null;
+      tx.set(db.doc(p), encodeNestedArrays(data), { merge: true });
+      return this.indexTransaction(tx, db, p, before, { ...before, ...data });
+    });
+    await notifyScheduledWrites(writes);
   }
 
   async deleteDoc(p: string): Promise<void> {
     const db = await this.dbPromise;
-    await db.doc(p).delete();
+    if (!isScheduledSource(p)) { await db.doc(p).delete(); return; }
+    const writes = await db.runTransaction(async tx => {
+      const snap = await tx.get(db.doc(p));
+      tx.delete(db.doc(p));
+      return this.indexTransaction(tx, db, p, snap.exists ? decodeNestedArrays(snap.data()) : null, null);
+    });
+    await notifyScheduledWrites(writes);
   }
 
   async deleteTree(p: string): Promise<void> {
@@ -408,38 +453,45 @@ class FirestoreStore implements ReadWriteStore {
 
   async addDoc(p: string, data: Record<string, any>): Promise<string> {
     const db = await this.dbPromise;
-    const ref = await db.collection(p).add(encodeNestedArrays(data));
+    const ref = db.collection(p).doc();
+    await this.setDoc(ref.path, data);
     return ref.id;
   }
 
-  async compareAndReplaceDoc(p: string, expected: Record<string, any> | null, data: Record<string, any>): Promise<boolean> {
+  async compareAndReplaceDoc(p: string, expected: Record<string, any> | null, data: Record<string, any>, effects: Array<{ path: string; data: Record<string, any> }> = []): Promise<boolean> {
     const db = await this.dbPromise;
-    return db.runTransaction(async transaction => {
-      const ref = db.doc(p);
-      const snap = await transaction.get(ref);
+    const result = await db.runTransaction(async tx => {
+      const ref = db.doc(p), snap = await tx.get(ref);
       const current = snap.exists ? { id: snap.id, ...decodeNestedArrays(snap.data()!) } : null;
-      if (!isDeepStrictEqual(current, expected)) return false;
-      transaction.set(ref, encodeNestedArrays(data));
-      return true;
+      if (!isDeepStrictEqual(current, expected)) return null;
+      const previous = await Promise.all(effects.map(effect => tx.get(db.doc(effect.path))));
+      tx.set(ref, encodeNestedArrays(data));
+      const writes = this.indexTransaction(tx, db, p, current, data);
+      effects.forEach((effect, i) => {
+        const before = previous[i].exists ? decodeNestedArrays(previous[i].data()) : null;
+        tx.set(db.doc(effect.path), encodeNestedArrays(effect.data), { merge: true });
+        writes.push(...this.indexTransaction(tx, db, effect.path, before, { ...before, ...effect.data }));
+      });
+      return writes;
     });
+    if (result) await notifyScheduledWrites(result);
+    return result !== null;
   }
 
-  async compareAndUpdateDoc<T>(
-    p: string,
-    check: (current: T & { id: string }) => boolean,
-    data: Record<string, any>,
-  ): Promise<(T & { id: string }) | null> {
+  async compareAndUpdateDoc<T>(p: string, check: (current: T & { id: string }) => boolean, data: Record<string, any>): Promise<(T & { id: string }) | null> {
     const db = await this.dbPromise;
-    return db.runTransaction(async (transaction) => {
-      const ref = db.doc(p);
-      const snap = await transaction.get(ref);
+    const result = await db.runTransaction(async tx => {
+      const ref = db.doc(p), snap = await tx.get(ref);
       if (!snap.exists) return null;
       const current = { id: snap.id, ...decodeNestedArrays(snap.data() as T) } as T & { id: string };
       if (!check(current)) return null;
-      transaction.set(ref, encodeNestedArrays(data), { merge: true });
-      return current;
+      tx.set(ref, encodeNestedArrays(data), { merge: true });
+      return { current, writes: this.indexTransaction(tx, db, p, current, { ...current, ...data }) };
     });
+    if (result) await notifyScheduledWrites(result.writes);
+    return result?.current ?? null;
   }
+
 }
 
 // ─── Factory ─────────────────────────────────────────────────────────────

@@ -67,14 +67,14 @@ export class OrganizationBuildQueue {
     for (const task of pending.sort((a, b) => (priority.get(a.id) ?? 0) - (priority.get(b.id) ?? 0) || a.created_at - b.created_at)) {
       if (!['queued', 'running'].includes(task.status) || task.engine_revision !== engineRevision || task.lease_until > this.clock() || (expected && task.provider_dispatch_id === expected.dispatch_id)) continue;
       const path = `${buildTasksPath(org)}/${task.id}`;
-      if (task.deadline <= this.clock() || task.attempt >= buildAttemptLimit(task)) {
+      if (task.status === 'running' || task.deadline <= this.clock() || task.attempt >= buildAttemptLimit(task)) {
         await this.store.compareAndUpdateDoc<BuildTask>(path, current => ['queued', 'running'].includes(current.status) && current.lease_until <= this.clock(),
-          { status: 'failed', token_hash: null, error_code: 'build_timeout' });
+          { status: 'failed', token_hash: null, error_code: task.status === 'running' ? 'build_connection_lost' : 'build_timeout', completed_at: this.clock() });
         continue;
       }
       const token = randomBytes(32).toString('base64url'), lease = randomUUID(), now = this.clock();
       const won = await this.store.compareAndUpdateDoc<BuildTask>(path, current => current.engine_revision === engineRevision &&
-        ['queued', 'running'].includes(current.status) && current.lease_until <= now && current.deadline > now && current.attempt === task.attempt && (!expected || current.provider_dispatch_id !== expected.dispatch_id),
+        current.status === 'queued' && current.lease_until <= now && current.deadline > now && current.attempt === task.attempt && (!expected || current.provider_dispatch_id !== expected.dispatch_id),
         { status: 'running', lease_id: lease, token_hash: sha256(token), lease_until: now + LEASE_MS, attempt: task.attempt + 1, ...(expected ? { provider_dispatch_id: expected.dispatch_id } : {}) });
       if (won) return { key: task.id, identity: task.identity, lease_id: lease, token, expires_at: now + LEASE_MS, deadline: task.deadline, media_cursor: task.media_cursor ?? 0, media_total: task.media_total ?? 0 };
     }

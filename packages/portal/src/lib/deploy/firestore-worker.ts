@@ -19,7 +19,7 @@ import {
 const DEFAULT_POLL_MS = 2_000;
 const DEFAULT_LEASE_MS = 30 * 60 * 1_000;
 const DEFAULT_MAX_ATTEMPTS = 5;
-const DEFAULT_SWEEP_MS = 60_000;
+const DEFAULT_SWEEP_MS = 2_000;
 
 type Execute = (args: EnqueueArgs, opts?: { slotWaitMs?: number }) => Promise<DeployRunOutcome>;
 
@@ -128,8 +128,8 @@ export class FirestoreDeployWorker {
 
         try {
           const outcome = await this.execute(payload(candidate), { slotWaitMs: slotWaitMs() });
-          if (outcome !== 'ran') {
-            await this.requeue(candidate.id, attempts, outcome === 'continue' ? 'publication checkpoint' : 'waiting for execution', outcome === 'continue' ? 0 : undefined);
+          if (outcome === 'deferred') {
+            await this.requeue(candidate.id, attempts, 'waiting for execution');
             result.deferred += 1;
           } else {
             await this.store.deleteDoc(queueItemPath(candidate.id));

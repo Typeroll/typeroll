@@ -151,6 +151,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
         const disabled = await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, provider), value => value.revision === engine.revision && value.status === 'qualifying', { status: 'disabled' });
         if (disabled) await store.updateDoc(enginePath(org, provider), { state: 'error', enabled: false, issue: { code: 'build_qualification_failed', message: `Build verification failed during ${stage} (${code}). Set up the shared engine again to retry.` } });
       }
+      await wakeCompletedPublication(org, key, metadata.kind);
       return privateJson({ ok: true });
     }
     const artifactKey = `builds/${org}/tasks/${key}/${lease}/artifact.json`;
@@ -208,7 +209,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
         issue: null } satisfies Partial<BuildEngine>);
     }
     try { await wakeCompletedPublication(org, key, metadata.kind); }
-    catch { console.warn('[build completion] immediate publication continuation unavailable; durable observation remains scheduled'); }
+    catch { console.warn('[build completion] immediate publication continuation unavailable; durable completion work remains indexed'); }
     return privateJson({ ok: true });
   } catch (error) { return connectionFailure(error); }
 }

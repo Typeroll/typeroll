@@ -6,16 +6,11 @@
 // records in a minute — nobody wants forty builds, and nobody wants to press
 // Deploy forty times either.
 //
-// The shape reuses what the publish sweep already does rather than adding a
-// second scheduler: a write stamps a dirty marker, and the sweep enqueues ONE
-// build per site whose marker has aged past the site's debounce window. The
-// sweep already coalesced multiple due documents into one deploy per site, so
-// this is the same idea keyed off a different trigger.
-//
-// Idempotency comes from the marker, not from bookkeeping: state is
-// re-derived on every run, so Cloud Scheduler's at-least-once delivery and
-// overlapping runs are both safe.
+// A dirty marker is indexed atomically with its site write. Its explicit
+// debounce schedules one site publication. A revision distinguishes edits
+// arriving during dispatch even when the oldest pending timestamp is unchanged.
 
+import { randomUUID } from 'node:crypto';
 import { paths } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 import { getStore } from './datastore';
@@ -25,7 +20,7 @@ export const DEFAULT_DEBOUNCE_MINUTES = 15;
 /**
  * Record that a site has unpublished content changes.
  *
- * Only stamps when the marker is CLEAR. The value is the age of the oldest
+ * Preserves the oldest pending timestamp and advances the edit revision. The value is the age of the oldest
  * pending edit, which is what a debounce window measures — refreshing it on
  * every write would let a steady trickle of edits postpone the build forever.
  *
@@ -38,9 +33,10 @@ export async function markSiteDirty(orgId: string, siteId: string): Promise<void
     const store = getStore();
     const site = await store.getDoc<Site>(paths.site(orgId, siteId));
     if (!site?.auto_deploy?.enabled) return;
-    if (site.pending_deploy_at) return;
+
     await store.updateDoc(paths.site(orgId, siteId), {
-      pending_deploy_at: new Date().toISOString(),
+      pending_deploy_at: site.pending_deploy_at ?? new Date().toISOString(),
+      pending_deploy_revision: randomUUID(),
     });
   } catch {
     /* never break a content save over a deploy hint */

@@ -35,7 +35,7 @@ it('keeps small publications and completed private preparation in the current ru
   expect(mediaCheckpointPolicy('media_preparation', { cursor: 99, total: 100 }, 0, deadline, 13 * 60_000)).toEqual({ continueBuild: false, keepLease: false });
   expect(mediaCheckpointPolicy('publication', progress, 0, 120_000, 1)).toEqual({ continueBuild: false, keepLease: false });
 });
-it('claims distinct sites and branches concurrently and keeps retries frozen', async () => {
+it('claims distinct sites and branches concurrently and never restarts expired attempts', async () => {
   const queue = new OrganizationBuildQueue(getStore(), () => now);
   for (const value of [identity(), identity('site-b'), identity('site-a', 'redesign')]) await queue.enqueue(value, 'engine-1');
   const claims = await Promise.all(Array.from({ length: 6 }, () => queue.claim('org', 'engine-1', 1)));
@@ -43,14 +43,12 @@ it('claims distinct sites and branches concurrently and keeps retries frozen', a
   expect(acquired).toHaveLength(3); expect(new Set(acquired.map(x => x!.key)).size).toBe(3);
   expect(await queue.claim('other-org', 'engine-1', 1)).toBeNull();
   now += 91000;
-  const retry = await queue.claim('org', 'engine-1', 1);
-  // Concurrent callers need not finish in queue order. Compare the old lease
-  // for the task actually retried, not the first Promise in the callers array.
-  const first = acquired.find(claim => claim!.key === retry?.key)!;
-  expect(first).toBeDefined();
-  expect(retry?.identity).toEqual(first.identity); expect(retry?.token).not.toBe(first.token);
-  await expect(queue.heartbeat('org', first.key, first.lease_id, first.token)).rejects.toMatchObject({ code: 'build_lease_lost' });
-  await expect(queue.complete('org', first.key, first.lease_id, first.token, { sha256: 'f'.repeat(64), key: `builds/org/tasks/${first.key}/${first.lease_id}/artifact.json` })).rejects.toMatchObject({ code: 'build_lease_lost' });
+  expect(await queue.claim('org', 'engine-1', 1)).toBeNull();
+  for (const first of acquired) {
+    expect(await getStore().getDoc(`${buildTasksPath('org')}/${first!.key}`)).toMatchObject({ status: 'failed', error_code: 'build_connection_lost', attempt: 1 });
+    await expect(queue.heartbeat('org', first!.key, first!.lease_id, first!.token)).rejects.toMatchObject({ code: 'build_lease_lost' });
+    await expect(queue.complete('org', first!.key, first!.lease_id, first!.token, { sha256: 'f'.repeat(64), key: `builds/org/tasks/${first!.key}/${first!.lease_id}/artifact.json` })).rejects.toMatchObject({ code: 'build_lease_lost' });
+  }
 });
 it('rejects incompatible workers, swapped attempt tokens, cancellation and expired jobs', async () => {
   const queue = new OrganizationBuildQueue(getStore(), () => now);
@@ -176,10 +174,14 @@ it('continues a 1001-file frozen build beyond three batches and rejects stale or
   expect(await getStore().getDoc(`${buildTasksPath('org')}/${final.key}`)).toMatchObject({ status: 'completed', media_batches: 11, completed_at: now });
 });
 
+async function reportRetryableFailure(claim: {key:string}) {
+  await getStore().updateDoc(`${buildTasksPath('org')}/${claim.key}`, {status:'queued', token_hash:null, lease_id:null, lease_until:0, error_code:'media_transfer_interrupted'});
+}
+
 it('bounds interrupted media attempts and never extends the absolute preparation deadline', async () => {
   const queue = new OrganizationBuildQueue(getStore(), () => now);
   await queue.enqueue(identity(), 'engine-1', 1000);
-  for (let i = 0; i < 3; i++) { expect(await queue.claim('org', 'engine-1', 1)).not.toBeNull(); now += 91000; }
+  for (let i = 0; i < 3; i++) { const claim = await queue.claim('org', 'engine-1', 1); expect(claim).not.toBeNull(); await reportRetryableFailure(claim!); }
   expect(await queue.claim('org', 'engine-1', 1)).toBeNull();
   await queue.enqueue(identity('other'), 'engine-1', 1000);
   now += 6 * 60 * 60_000 + 1;
@@ -189,23 +191,24 @@ it('bounds interrupted media attempts and never extends the absolute preparation
 it('restores the retry allowance after verified progress in a long library', async () => {
   const queue = new OrganizationBuildQueue(getStore(), () => now);
   await queue.enqueue(identity(), 'engine-1', 500);
-  for (let i = 0; i < 2; i++) { expect(await queue.claim('org', 'engine-1', 1)).not.toBeNull(); now += 91000; }
+  for (let i = 0; i < 2; i++) { const claim = await queue.claim('org', 'engine-1', 1); expect(claim).not.toBeNull(); await reportRetryableFailure(claim!); }
   const successful = (await queue.claim('org', 'engine-1', 1))!;
   await queue.checkpointMedia('org', successful.key, successful.lease_id, successful.token, 100);
   for (let i = 0; i < 3; i++) {
-    expect(await queue.claim('org', 'engine-1', 1)).toMatchObject({ media_cursor: 100 });
-    now += 91000;
+    const claim = await queue.claim('org', 'engine-1', 1);
+    expect(claim).toMatchObject({ media_cursor: 100 });
+    await reportRetryableFailure(claim!);
   }
   expect(await queue.claim('org', 'engine-1', 1)).toBeNull();
 });
 
-it('checkpoints a thousand files in one lease and resumes exactly after provider interruption', async () => {
+it('checkpoints a thousand files and resumes only after a reported retryable failure', async () => {
   const queue = new OrganizationBuildQueue(getStore(), () => now);
   await queue.enqueue(identity(), 'engine-1', 1000);
   const claim = (await queue.claim('org', 'engine-1', 1))!;
   for (let cursor = 100; cursor <= 700; cursor += 100) await queue.checkpointMedia('org', claim.key, claim.lease_id, claim.token, cursor, false, true);
   expect(await queue.authorize('org', claim.key, claim.lease_id, claim.token)).toMatchObject({ attempt: 1, media_cursor: 700, status: 'running' });
-  now += 91000;
+  await reportRetryableFailure(claim);
   const resumed = (await queue.claim('org', 'engine-1', 1))!;
   expect(resumed).toMatchObject({ media_cursor: 700 });
   await expect(queue.checkpointMedia('org', claim.key, claim.lease_id, claim.token, 800, false, true)).rejects.toMatchObject({ code: 'build_lease_lost' });

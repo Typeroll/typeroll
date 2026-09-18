@@ -56,7 +56,9 @@ it('publishes a cache pointer and measured render report only after exact artifa
   expect(enqueuePublication).not.toHaveBeenCalled();
   storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
   expect((await request('complete', claim.token, complete)).status).toBe(200);
-  expect(enqueuePublication).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ jobId: 'job', versionId: 'main', delayMs: 0 }));
+  expect(enqueuePublication).not.toHaveBeenCalled();
+  const { workPath } = await import('../../lib/scheduling/index');
+  expect(await getStore().getDoc(workPath(paths.deploy('org', 'site', 'job'), 'publication'))).toMatchObject({ payload: { token: `result:${key}` } });
   expect(await getStore().getDoc(renderCachePath(frozen))).toMatchObject({ key, lease: claim.lease_id, sha256: 'd'.repeat(64) });
   expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ render_report: report });
   expect((await request('render-cache-upload', claim.token, attempt)).status).toBe(409);

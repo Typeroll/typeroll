@@ -56,7 +56,7 @@ describe('runPublishSweep', () => {
     await seed();
   });
 
-  it.each(['customer_git', 'organization_cloudflare', 'organization_github'] as const)('recovers a %s publication after its task was consumed', async execution_backend => {
+  it.each(['customer_git', 'organization_cloudflare', 'organization_github'] as const)('does not restart a %s publication just because time has elapsed', async execution_backend => {
     const execute = vi.fn(async () => 'deferred');
     vi.doMock('../../lib/publishing/customer-runner', () => ({ executeCustomerPublication: execute }));
     const { getStore } = await import('../../lib/datastore');
@@ -65,9 +65,9 @@ describe('runPublishSweep', () => {
     const { runPublishSweep } = await import('../../lib/scheduled-publish');
     await runPublishSweep(NOW);
     expect(execute).not.toHaveBeenCalled();
-    expect(enqueued).toEqual([expect.objectContaining({ jobId: 'pending', orgId: ORG, siteId: SITE, dispatchKey: expect.stringMatching(/^[a-f0-9]{16}$/) })]);
+    expect(enqueued).toEqual([]);
     await runPublishSweep(NOW);
-    expect(enqueued[1]).toEqual(enqueued[0]);
+    expect(enqueued).toHaveLength(0); // Only an explicit continuation or result can wake this job.
   });
 
   it.each(['recent observation', 'active lease', 'cutover approval'])('does not fork recovery for %s', async state => {
