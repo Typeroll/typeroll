@@ -15,6 +15,8 @@ vi.mock('../../lib/builds/storage', () => ({ buildStorage: async (_org: string, 
 vi.mock('../../lib/publishing/r2-build-credentials', () => ({ customerBuildMediaAccess: vi.fn() }));
 const assetGrant = vi.hoisted(() => vi.fn(async () => ({ jwt: 'synthetic-asset-grant' })) );
 vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: async () => assetGrant }));
+const enqueuePublication = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('../../lib/deploy/queue', () => ({ getDeployQueue: () => ({ enqueue: enqueuePublication }) }));
 const runnerToken = 'r'.repeat(43), org = 'org', revision = 'engine-1';
 const identity = { org_id: org, site_id: 'site', version_id: 'main', job_id: 'job', publication_id: 'b'.repeat(64), commit: 'c'.repeat(40), branch: 'main', protocol: BUILD_PROTOCOL, node_version: BUILD_RUNTIME, source_sha256: '' };
 const request = (action: string, token = runnerToken, data = {}, organization = org) => runnerRequest(new Request('https://app.example.invalid/api/builds/runner/org/' + action, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ revision, ...data }) }), organization, action);
@@ -29,13 +31,14 @@ async function prepare(kind = 'publication', mediaTotal = 0) {
   return { frozen, key: queued.key };
 }
 beforeEach(async () => {
-  makeTmpFixtures(); await resetDatastore(); storage.objects.clear(); storage.grants.mockClear();
+  makeTmpFixtures(); await resetDatastore(); storage.objects.clear(); storage.grants.mockClear(); enqueuePublication.mockReset();
   await getStore().setDoc(connectionPath(org, 'cloudflare'), { status: 'connected', cloudflare: { account_id: 'a'.repeat(32) } });
   await getStore().setDoc(connectionPath(org, 'github'), { status: 'connected', github: { installation_id: 'installation' } });
   await getStore().setDoc(enginePath(org), { revision: 'public-revision', enabled: false, state: 'qualification_required' });
 });
 it('publishes a cache pointer and measured render report only after exact artifact completion', async () => {
   const { frozen, key } = await prepare();
+  await getStore().updateDoc(paths.deploy(org, 'site', 'job'), { environment: 'production', git_publication: { publication_id: frozen.publication_id, commit: frozen.commit, build_task_key: key } });
   const claim = await (await request('claim', runnerToken, { protocol: 1, render_cache: true })).json();
   expect(claim.render_cache_supported).toBe(true);
   expect(claim.render_cache).toBeUndefined();
@@ -50,8 +53,10 @@ it('publishes a cache pointer and measured render report only after exact artifa
   const complete = { ...attempt, sha256: sha256(artifact), render_report: { ...report, secret: 'excluded' }, render_cache_sha256: 'd'.repeat(64) };
   expect((await request('complete', claim.token, complete)).status).not.toBe(200);
   expect(await getStore().getDoc(renderCachePath(frozen))).toBeNull();
+  expect(enqueuePublication).not.toHaveBeenCalled();
   storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
   expect((await request('complete', claim.token, complete)).status).toBe(200);
+  expect(enqueuePublication).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ jobId: 'job', versionId: 'main', delayMs: 0 }));
   expect(await getStore().getDoc(renderCachePath(frozen))).toMatchObject({ key, lease: claim.lease_id, sha256: 'd'.repeat(64) });
   expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ render_report: report });
   expect((await request('render-cache-upload', claim.token, attempt)).status).toBe(409);

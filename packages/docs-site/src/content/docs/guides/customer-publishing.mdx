@@ -580,3 +580,18 @@ access to configure DNS and R2 rules, then ask Typeroll to verify them.
 Domain writes include the current `revision`. Cutover also includes `candidate_id`.
 A stale revision returns 409. Use the normal deploy-status API to inspect build
 progress and `read_publishing_domains` for structured DNS requirements.
+
+## Build completion and publication status
+
+Starting with Core 0.2.20, an authenticated build or verification completion
+immediately queues the next publication step. This works with both organization
+build providers. The portal verifies that the result still belongs to the same
+site version and frozen publication; an older or cancelled build cannot publish
+newer edits.
+
+Periodic observation remains a recovery mechanism if the completion signal or
+queue is temporarily unavailable. A finished build still needs static hosting
+and public availability checks before its link is shown as live. Immediate
+continuation reduces avoidable waiting; it does not skip these checks or
+eliminate the build provider's queue time. Self-hosted installations use their
+configured deploy queue and must keep its worker running.

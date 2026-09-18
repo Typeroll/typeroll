@@ -18,6 +18,7 @@ import { publicationStillRunning } from './jobs';
 import { qualificationFiles } from './qualification';
 import { enginePath, type BuildEngine } from './cloudflare';
 import { authorizeGithubClaim } from './github-claim';
+import { wakeCompletedPublication } from './publication-wakeup';
 
 /** These endpoints never use browser cookies or organization API keys. */
 export async function runnerRequest(request: Request, org: string, action: string) {
@@ -206,6 +207,8 @@ export async function runnerRequest(request: Request, org: string, action: strin
       if (activated) await store.updateDoc(enginePath(org, provider), { revision: randomUUID(), state: 'ready', enabled: true, checked_at: new Date().toISOString(),
         issue: null } satisfies Partial<BuildEngine>);
     }
+    try { await wakeCompletedPublication(org, key, metadata.kind); }
+    catch { console.warn('[build completion] immediate publication continuation unavailable; durable observation remains scheduled'); }
     return privateJson({ ok: true });
   } catch (error) { return connectionFailure(error); }
 }
