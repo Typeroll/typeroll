@@ -926,14 +926,22 @@ export function urlAfterExtensionContextConsumption(urlInput: string | URL, capt
   const url = typeof urlInput === 'string' ? new URL(urlInput, 'https://typeroll.invalid') : new URL(urlInput.toString());
   const fragments = fragmentParams(url);
   let clearRawQuery = false;
+  let fragmentChanged = false;
   for (const capture of captures) {
     for (const name of capture.consumed_query) url.searchParams.delete(name);
-    for (const name of capture.consumed_fragment) fragments.delete(name);
+    for (const name of capture.consumed_fragment) {
+      if (fragments.has(name)) {
+        fragments.delete(name);
+        fragmentChanged = true;
+      }
+    }
     clearRawQuery ||= capture.consumed_raw_query;
   }
   if (clearRawQuery) url.search = '';
-  const fragment = fragments.toString();
-  url.hash = fragment ? `#${fragment}` : '';
+  if (fragmentChanged) {
+    const fragment = fragments.toString();
+    url.hash = fragment ? `#${fragment}` : '';
+  }
   return `${url.pathname}${url.search}${url.hash}`;
 }
 

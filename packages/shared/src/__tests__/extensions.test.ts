@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Window } from 'happy-dom';
 import {
   captureExtensionUrlContext,
   createExtensionNavigation,
@@ -9,6 +10,8 @@ import {
   validateExtensionManifest,
   extensionPropsToFields,
   type ExtensionManifest,
+  type ExtensionRuntimeSnapshot,
+  type ExtensionUrlContextDeclaration,
 } from '../extensions';
 import {
   buildExtensionRuntimeScript,
@@ -185,7 +188,106 @@ describe('extension manifest', () => {
   });
 });
 
+describe('published extension runtime URL cleanup', () => {
+  async function runRuntime(url: string, declaration?: ExtensionUrlContextDeclaration) {
+    const browser = new Window({ url, settings: { disableIframePageLoading: true } });
+    const snapshot: ExtensionRuntimeSnapshot = {
+      runtime_version: '0.40.0', protocol_version: 3, installations: [],
+    };
+    if (declaration) {
+      snapshot.installations.push({
+        installation_id: 'test-installation', extension_id: 'test-extension', version: '1.0.0',
+        public_config: {}, components: [{
+          id: 'test-component', block_type_id: 'extension/test-component', label: 'Test component',
+          render_mode: 'embedded_app', entry: { frame_url: 'https://extension.example/' },
+          url_context: declaration,
+        }],
+      });
+      browser.document.body.innerHTML = '<div data-tr-extension-installation="test-installation" data-tr-extension-component="test-component"></div>';
+    }
+    browser.history.replaceState({ view: 'details' }, '', url);
+    const replaceState = vi.spyOn(browser.history, 'replaceState');
+    try {
+      browser.eval(buildExtensionRuntimeScript(snapshot));
+      browser.document.dispatchEvent(new browser.Event('DOMContentLoaded'));
+      await browser.happyDOM.waitUntilComplete();
+      const captures = declaration ? [captureExtensionUrlContext(declaration, url)] : [];
+      expect(browser.location.pathname + browser.location.search + browser.location.hash)
+        .toBe(urlAfterExtensionContextConsumption(url, captures));
+      return { href: browser.location.href, state: browser.history.state, replacements: replaceState.mock.calls.length };
+    } finally {
+      await browser.happyDOM.close();
+    }
+  }
+
+  it.each(['#popcorn-home-delivery', '#caf%C3%A9%20details', '#tab=one%20two'])('preserves an untouched fragment with no mounted extensions: %s', async (hash) => {
+    const url = 'https://customer.example/company/' + hash;
+    expect(await runRuntime(url)).toEqual({ href: url, state: { view: 'details' }, replacements: 0 });
+  });
+
+  it('preserves a heading anchor when a declared fragment input is absent', async () => {
+    const url = 'https://customer.example/company/#popcorn-home-delivery';
+    expect(await runRuntime(url, { fragment: [{ name: 't', consume: true }] }))
+      .toEqual({ href: url, state: { view: 'details' }, replacements: 0 });
+  });
+
+  it.each([
+    { name: 't', consume: false },
+    { name: 't', consume: true, max_length: 1 },
+    { name: 't', consume: true, pattern: '^[0-9]+$' },
+  ])('preserves exact fragment encoding when the input is not consumed: %j', async (input) => {
+    const url = 'https://customer.example/company/#t=one%20two&tab=details';
+    expect(await runRuntime(url, { fragment: [input] }))
+      .toEqual({ href: url, state: { view: 'details' }, replacements: 0 });
+  });
+
+  it('removes a consumed query token while preserving the ordinary heading anchor', async () => {
+    const result = await runRuntime('https://customer.example/company/?t=test-token&view=full#popcorn-home-delivery', {
+      query: [{ name: 't', consume: true }],
+    });
+    expect(result).toEqual({
+      href: 'https://customer.example/company/?view=full#popcorn-home-delivery',
+      state: { view: 'details' }, replacements: 1,
+    });
+  });
+
+  it('removes a consumed fragment token while retaining the other fragment parameters', async () => {
+    const result = await runRuntime('https://customer.example/company/?view=full#t=test-token&tab=terms', {
+      fragment: [{ name: 't', consume: true }],
+    });
+    expect(result).toEqual({
+      href: 'https://customer.example/company/?view=full#tab=terms',
+      state: { view: 'details' }, replacements: 1,
+    });
+  });
+
+  it('clears the fragment when its only parameter is consumed', async () => {
+    const result = await runRuntime('https://customer.example/company/#t=test-token', {
+      fragment: [{ name: 't', consume: true }],
+    });
+    expect(result.href).toBe('https://customer.example/company/');
+    expect(result.replacements).toBe(1);
+  });
+});
+
 describe('extension URL context', () => {
+  it.each(['#popcorn-home-delivery', '#caf%C3%A9%20details', '#tab=one%20two'])('preserves an untouched fragment in URL cleanup: %s', (hash) => {
+    expect(urlAfterExtensionContextConsumption('https://customer.example/company/' + hash, []))
+      .toBe('/company/' + hash);
+  });
+
+  it('preserves a heading anchor when no declared fragment input was captured', () => {
+    const url = 'https://customer.example/company/#popcorn-home-delivery';
+    const capture = captureExtensionUrlContext({ fragment: [{ name: 't', consume: true }] }, url);
+    expect(urlAfterExtensionContextConsumption(url, [capture])).toBe('/company/#popcorn-home-delivery');
+  });
+
+  it('preserves a heading anchor while removing a consumed query token', () => {
+    const url = 'https://customer.example/company/?t=test-token&view=full#popcorn-home-delivery';
+    const capture = captureExtensionUrlContext({ query: [{ name: 't', consume: true }] }, url);
+    expect(urlAfterExtensionContextConsumption(url, [capture])).toBe('/company/?view=full#popcorn-home-delivery');
+  });
+
   it('captures only declared inputs and removes consumed representations together', () => {
     const declaration = {
       query: [{ name: 'utm_source' }],

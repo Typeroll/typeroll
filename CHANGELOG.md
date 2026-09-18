@@ -2,6 +2,10 @@
 
 ## Unreleased — Core 0.2.18 / MCP 0.45.18
 
+- Preserve ordinary URL anchors and their encoding during Extension context
+  cleanup unless a fragment parameter was actually consumed. Keep the exported
+  helper and generated browser runtime aligned; existing sites need republication.
+
 - Reuse verified media assets already present in the target Pages project before
   downloading originals and variants from R2 in shared Cloudflare/GitHub builds.
 - Scope completed upload receipts to each Organization, Site, version and hosting

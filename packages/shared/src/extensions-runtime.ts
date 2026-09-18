@@ -93,10 +93,11 @@ function capture(component){
   return {values:values,consumeQuery:consumeQuery,consumeFragment:consumeFragment,consumeRaw:consumeRaw};
 }
 function cleanUrl(captures){
-  var url=new URL(location.href);var fragment=new URLSearchParams(url.hash.replace(/^#/,""));var raw=false;
-  captures.forEach(function(capture){capture.consumeQuery.forEach(function(name){url.searchParams.delete(name);});capture.consumeFragment.forEach(function(name){fragment.delete(name);});raw=raw||capture.consumeRaw;});
+  var url=new URL(location.href);var fragment=new URLSearchParams(url.hash.replace(/^#/,""));var raw=false;var fragmentChanged=false;
+  captures.forEach(function(capture){capture.consumeQuery.forEach(function(name){url.searchParams.delete(name);});capture.consumeFragment.forEach(function(name){if(fragment.has(name)){fragment.delete(name);fragmentChanged=true;}});raw=raw||capture.consumeRaw;});
   if(raw)url.search="";
-  var hash=fragment.toString();url.hash=hash?"#"+hash:"";
+  // Ordinary heading anchors must not be normalized as fragment parameters.
+  if(fragmentChanged){var hash=fragment.toString();url.hash=hash?"#"+hash:"";}
   var next=url.pathname+url.search+url.hash;
   if(next!==location.pathname+location.search+location.hash)history.replaceState(history.state,"",next);
 }

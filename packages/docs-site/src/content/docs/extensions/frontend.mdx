@@ -133,6 +133,13 @@ page, for example `/offer/?quote=opaque-value`. At mount time, Typeroll:
 4. removes inputs marked `consume` with `history.replaceState`; and
 5. exposes the captured value through `context.url`.
 
+From Core 0.2.18, cleanup preserves ordinary URL fragments exactly when no
+fragment parameter is consumed. Removing `?quote=opaque-value` therefore leaves
+`#details` unchanged. Consuming a declared fragment parameter removes that
+parameter and retains the remaining fragment parameters. The exported cleanup
+helper and browser runtime behave the same way. Republish existing sites after
+upgrading Core to receive the corrected runtime.
+
 The token is not initial block state and is never inserted into generated
 HTML, saved page data, Typeroll's datastore, or diagnostics.
 

@@ -143,6 +143,13 @@ captures it before any component mounts, removes consumed representations in
 one `history.replaceState`, and passes only declared values. The provider must
 validate expiry, revocation, recipient/action scope and replay behavior.
 
+Core 0.2.18 preserves ordinary URL fragments exactly when cleanup consumes no
+fragment parameter. For example, removing `?quote=token` must leave `#details`
+unchanged, not rewrite it to `#details=`. The exported cleanup helper and browser
+runtime follow the same rule. Consumed fragment parameters are removed while
+retaining the other parameters. Existing static sites need republication to pick
+up the corrected runtime.
+
 The block editor's **URL context** action sets synthetic string values for the
 live preview only. They are sent directly to the isolated canvas and never
 stored in page block data.
