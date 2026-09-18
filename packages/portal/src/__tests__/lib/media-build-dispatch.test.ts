@@ -15,6 +15,7 @@ beforeEach(async () => { makeTmpFixtures(); await resetDatastore(); vi.clearAllM
 afterEach(() => vi.restoreAllMocks());
 
 it.each([false, true])('uses media batching only when the frozen renderer supports it: %s', async supported => {
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now());
   const publication = { media_manifest: { entries: [{ id: 'one' }, { id: 'two' }] }, retained_media_manifests: [{ entries: [{ id: 'retained' }] }] };
   const result = await enqueueBuild(config, identity, { 'publication.json': JSON.stringify(publication), 'scripts/media.mjs': supported ? 'export async function prepareMediaBatch() {}' : 'export async function prepareMedia() {}' });
   expect(result.task.media_total).toBe(supported ? 3 : 0);

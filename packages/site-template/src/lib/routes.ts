@@ -1,6 +1,6 @@
 import { selectChangedRoutes } from './publication-route-cache.mjs';
-import { buildBacklinks, buildPageSource, getAllPages, getSiteSettings, getContentTypes, getBlockTypes, getPageTemplate, getPages, pageForFacet, isHomePage, urlFor } from './content';
-import { pageNavigation, buildCoreBlockRegistry, composePageWithTemplate, findPaginatedListing, facetRoutes, pageBreadcrumbs, pageContentValues } from '@typeroll/shared';
+import { buildBacklinks, buildPageSource, getAllPages, getAllMedia, getSiteSettings, getContentTypes, getBlockTypes, getPageTemplate, getPages, pageForFacet, isHomePage, urlFor } from './content';
+import { buildMediaLookup, pageNavigation, buildCoreBlockRegistry, composePageWithTemplate, findPaginatedListing, facetRoutes, pageBreadcrumbs, pageContentValues } from '@typeroll/shared';
 import type { Block, FacetRoute, Page } from '@typeroll/shared';
 
 // A taxonomy page IS a page — synthetic Page doc, optional PageTemplate,
@@ -96,6 +96,7 @@ export async function getChangedSiteRoutes() {
   const types = await getContentTypes();
   const settings = await getSiteSettings();
   return selectChangedRoutes(routes, {
+    media: buildMediaLookup(await getAllMedia()),
     query: await buildPageSource(), backlinks: await buildBacklinks(),
     navigation: (id: string) => {
       const page = routes.find(route => route.props.page.id === id)?.props.page;

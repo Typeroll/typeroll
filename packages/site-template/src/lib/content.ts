@@ -451,7 +451,10 @@ export async function renderPartialHtml(
     return null;
   };
 
-  if (!BUILD_CACHE_ENABLED || await isRouteVarying(partial)) return render();
+  // A render-cache receipt must capture this route's actual reads, including
+  // custom templates and aliases in shared partials. Reusing HTML here would
+  // silently omit the later route's dependencies from its receipt.
+  if (process.env.TYPEROLL_RENDER_CACHE_WORK || !BUILD_CACHE_ENABLED || await isRouteVarying(partial)) return render();
 
   const key = partial.content_mode === 'blocks' && partial.blocks?.length
     ? `blocks:${partial.id}:${JSON.stringify(partial.blocks)}`

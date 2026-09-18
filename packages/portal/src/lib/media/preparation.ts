@@ -10,16 +10,25 @@ import { enqueueBuild, completedBuild } from '../builds/jobs';
 import { sha256 } from '../builds/contract.mjs';
 import { buildTasksPath, type BuildTask } from '../builds/queue';
 
-interface Preparation { org: string; site: string; state: 'queued' | 'running' | 'complete' | 'waiting' | 'failed'; request: string; active_request?: string; lease: string | null; lease_until: number; next_at: number; task?: string | null; error?: string | null; entries?: Array<{ id: string; sha256: string }>; completed?: number; total?: number }
+interface Preparation { full_scan?: boolean; org: string; site: string; state: 'queued' | 'running' | 'complete' | 'waiting' | 'failed'; request: string; active_request?: string; lease: string | null; lease_until: number; next_at: number; task?: string | null; error?: string | null; entries?: Array<{ id: string; sha256: string }>; completed?: number; total?: number }
 const jobPath = (org: string, site: string) => `media_preparations/${sha256(`${org}\0${site}`)}`;
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
 
 /** Coalesce upload notifications. Durable scheduling never requires a browser to stay open. */
-export async function requestMediaPreparation(org: string, site: string) {
+export async function requestMediaPreparation(org: string, site: string, mediaId?: string) {
   const store = getStore(), path = jobPath(org, site);
-  const created = await store.createDocIfMissing(path, { org, site, state: 'queued', request: randomUUID(), lease: null, lease_until: 0, next_at: Date.now() + 10000 });
+  if (mediaId) {
+    // Finalization names the immutable file it just completed. Never discover
+    // automatic work by scanning all legacy records without preparation flags.
+    const queued = await store.compareAndUpdateDoc<Media>(`${paths.media(org, site)}/${mediaId}`,
+      file => imageTypes.has(file.mime_type ?? '') && file.storage?.provider === 'organization_r2' && file.storage.state === 'ready' && !!file.sha256 &&
+        !(file.preparation?.state === 'ready' && file.preparation.source_sha256 === file.sha256 && file.preparation.recipe === 'v1'),
+      { preparation_pending: true });
+    if (!queued) return;
+  }
+  const created = await store.createDocIfMissing(path, { org, site, full_scan: !mediaId, state: 'queued', request: randomUUID(), lease: null, lease_until: 0, next_at: Date.now() + 10000 });
   const current = await store.getDoc<Preparation>(path);
-  await store.compareAndUpdateDoc<Preparation>(path, value => value.request === current?.request, { request: randomUUID(), state: 'queued', error: null, ...(current?.state === 'failed' ? { task: null } : {}) });
+  await store.compareAndUpdateDoc<Preparation>(path, value => value.request === current?.request, { request: randomUUID(), state: 'queued', error: null, ...(!mediaId ? { full_scan: true } : current?.state === 'complete' ? { full_scan: false } : {}), ...(current?.state === 'failed' ? { task: null } : {}) });
   const { enqueueMediaMigration } = await import('../publishing/media-migration-queue');
   if (created || !['queued', 'running'].includes(current?.state ?? '')) await enqueueMediaMigration(org, 10000).catch(() => { console.error('[media-preparation] scheduling interrupted; durable work will be recovered'); });
 }
@@ -41,7 +50,7 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
         const result = await completedBuild(item.org, item.task);
         if (!result) { pending = true; continue; }
         for (const entry of item.entries ?? []) await store.compareAndUpdateDoc<Media>(`${paths.media(item.org, item.site)}/${entry.id}`,
-          value => value.sha256 === entry.sha256, { preparation: { state: 'ready', source_sha256: entry.sha256, recipe: 'v1' } });
+          value => value.sha256 === entry.sha256, { preparation_pending: false, preparation: { state: 'ready', source_sha256: entry.sha256, recipe: 'v1' } });
         await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease,
           { task: null, state: 'queued', completed: item.entries?.length ?? 0, error: null });
         pending = true;
@@ -53,11 +62,13 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
         await update({ state: 'waiting', next_at: Date.now() + 60000, error: 'Connect media storage and finish or update Builds setup in Publishing to prepare images automatically.' });
         continue;
       }
-      const media = (await store.listDocs<Media & { preparation?: { source_sha256: string; recipe: string; state: string } }>(paths.media(item.org, item.site)))
+      // Jobs queued before targeted uploads shipped retain their library scope.
+      // A new automatic request after completion explicitly switches it off.
+      const media = (await store.listDocs<Media>(paths.media(item.org, item.site), item.full_scan !== false ? undefined : { filters: [{ field: 'preparation_pending', op: '==', value: true }] }))
         .filter(file => imageTypes.has(file.mime_type ?? '') && file.storage?.provider === 'organization_r2' && file.storage.state === 'ready' && file.sha256 &&
           !(file.preparation?.state === 'ready' && file.preparation.source_sha256 === file.sha256 && file.preparation.recipe === 'v1')).slice(0, 1000);
       if (!media.length) {
-        const finished = await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease && value.request === item.request, { state: 'complete', error: null });
+        const finished = await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease && value.request === item.request, { state: 'complete', full_scan: false, error: null });
         pending ||= !finished; continue;
       }
       const prefix = await siteMediaPrefix(item.org, item.site);

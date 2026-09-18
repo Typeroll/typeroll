@@ -705,6 +705,9 @@ export interface Media {
     generation: string; state: 'uploading' | 'ready'; grant_expires_at: string;
   };
   sha256?: string;
+  /** Internal preparation queue marker; automatic uploads select only pending records. */
+  preparation_pending?: boolean;
+  preparation?: { state: 'ready'; source_sha256: string; recipe: string };
   public_path?: string;
   source_aliases?: string[];
   migration_source?: { provider: 'draft_r2' | 'legacy_r2'; account_id: string; bucket: string; key: string };

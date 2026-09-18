@@ -1,5 +1,5 @@
 ---
-import { navigationContext } from '../lib/publication-dependencies.mjs';
+import { navigationContext, trackedMediaLookup } from '../lib/publication-dependencies.mjs';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
@@ -194,7 +194,7 @@ if (bodyHtml && bodyHtml.includes('data-tr-form')) {
 // pages get optimised here for the first time.
 if (bodyHtml) {
   const mediaList = await getAllMedia();
-  const mediaLookup = buildMediaLookup(mediaList);
+  const mediaLookup = trackedMediaLookup(buildMediaLookup(mediaList));
   // Resolve the responsive-image `sizes` default: page-level overrides the
   // site-wide setting; a per-<img> `sizes` attr still wins over both inside
   // the transform. Block-mode pages reach the transform here for the first

@@ -92,7 +92,7 @@ export async function finalizeStoredMedia(orgId: string, siteId: string, mediaId
       await requestMediaMigration(orgId);
     }
     const { requestMediaPreparation } = await import('../media/preparation');
-    await requestMediaPreparation(orgId, siteId);
+    await requestMediaPreparation(orgId, siteId, mediaId);
     return { sha256: media.sha256, size_bytes: media.size_bytes, variants_generated: false, variant_count: 0, variants_pending: true };
   }
   const r2 = await storageClient(orgId, location);
@@ -134,7 +134,7 @@ async function freezeVerifiedMedia(orgId: string, siteId: string, mediaId: strin
       await requestMediaMigration(orgId);
     }
     const { requestMediaPreparation } = await import('../media/preparation');
-    await requestMediaPreparation(orgId, siteId);
+    await requestMediaPreparation(orgId, siteId, mediaId);
     return { sha256, size_bytes: size, variants_generated: false, variant_count: 0, variants_pending: true };
 }
 

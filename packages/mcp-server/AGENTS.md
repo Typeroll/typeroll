@@ -326,6 +326,10 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   The renderer replays recorded queries (including empty results), visited
   records, backlinks and navigation. Unchanged routes leave the render queue;
   additions/removals invalidate affected consumers, not all Pages by default.
+  From Core 0.2.17, custom block templates/aliases use the same tracking. Image
+  metadata lookups invalidate only consuming pages, including previously missing
+  images. Automatic upload preparation queues only the finalized image, not the
+  unmarked legacy library. Older receipts need one full build after upgrading.
   Missing cache means a full build. Every deployment remains a complete site.
   Shared GitHub/Cloudflare engines need their normal update for remote cache
   transport; do not claim fixed time or cost savings from page counts.

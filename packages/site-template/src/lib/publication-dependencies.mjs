@@ -33,6 +33,18 @@ export function trackedBacklinks(index) {
     return value;
   } });
 }
+/** Record successful AND missing URL lookups: later imports can resolve a miss. */
+export function trackedMediaLookup(lookup) {
+  return { ...lookup, byUrl: new Proxy(lookup.byUrl, { get(target, key) {
+    if (key === 'get') return url => {
+      const value = target.get(url);
+      active.getStore()?.push({ kind: 'media', url, hash: digest(value ?? null) });
+      return value;
+    };
+    const value = Reflect.get(target, key, target);
+    return typeof value === 'function' ? value.bind(target) : value;
+  } }) };
+}
 export function recordNavigation(pageId, value) {
   active.getStore()?.push({ kind: 'navigation', id: pageId, hash: digest(value) });
   return value;
@@ -56,6 +68,7 @@ export function dependenciesMatch(dependencies, resolvers, queries = new Map()) 
           return query.hashes.get(index) === hash;
         });
       }
+      if (entry.kind === 'media') return digest(resolvers.media.byUrl.get(entry.url) ?? null) === entry.hash;
       if (entry.kind === 'backlinks') return digest(resolvers.backlinks[entry.id] ?? null) === entry.hash;
       if (entry.kind === 'navigation') return digest(resolvers.navigation(entry.id)) === entry.hash;
       return false;

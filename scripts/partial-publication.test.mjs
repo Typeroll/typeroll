@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { captureDependencies, trackedPageSource, trackedBacklinks, recordNavigation, dependenciesMatch } from '../packages/site-template/src/lib/publication-dependencies.mjs';
+import { captureDependencies, trackedMediaLookup, trackedPageSource, trackedBacklinks, recordNavigation, dependenciesMatch } from '../packages/site-template/src/lib/publication-dependencies.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -31,7 +31,7 @@ test('page changes stay local; query and navigation dependencies are replayed se
   }
   for (const mutate of [
     v => { v.settings.sitewide_noindex = true; }, v => { v.site_url = 'https://new.invalid'; },
-    v => { v.version_id = 'redesign'; }, v => { v.media.push({ id: 'new', cdn_url: 'https://media.invalid/new' }); },
+    v => { v.version_id = 'redesign'; },
     v => { v.pageTemplates.push({ id: 'template', blocks: [] }); },
   ]) {
     const changed = structuredClone(value); mutate(changed);
@@ -43,17 +43,35 @@ test('page changes stay local; query and navigation dependencies are replayed se
   assert.equal(createRenderPlan({ ...value, source_impact_snapshot: { changed: 'diagnostic' }, media_manifest: { publication_id: 'new' } }, manifest).keys.two.key, next.keys.two.key);
 });
 
-test('unknown render contracts retain conservative Page-set dependencies', () => {
-  for (const mutate of [
-    v => { v.pages[1].blocks = [{ type: 'custom/unknown' }]; },
-    v => { v.partials = [{ blocks: [{ type: 'custom/query' }] }]; },
-    v => { v.blockTypes = [{ id: 'core/heading' }]; },
-  ]) {
-    const value = publication(); mutate(value);
-    const before = createRenderPlan(value, manifest);
-    value.pages[0].html_content += 'changed'; value.pages[0].date_updated = 'later';
-    assert.notEqual(createRenderPlan(value, manifest).keys.two.key, before.keys.two.key);
-  }
+test('declarative custom block definitions do not add Page-set dependencies', () => {
+  const value = publication();
+  value.blockTypes = [{ id: 'custom-card', container: false, schema: [], template: '<p>{{page.title}}</p>' }];
+  value.pages[1].blocks = [{ id: 'custom', type: 'custom-card', data: {} }];
+  value.partials = [{ blocks: [{ id: 'shared', type: 'custom-card', data: {} }] }];
+  const before = createRenderPlan(value, manifest);
+  value.pages[0].html_content += 'changed';
+  value.media.push({ id: 'unrelated', cdn_url: 'https://media.invalid/unrelated' });
+  assert.equal(createRenderPlan(value, manifest).keys.two.key, before.keys.two.key);
+  value.blockTypes[0].template = '<aside>{{page.title}}</aside>';
+  assert.notEqual(createRenderPlan(value, manifest).keys.two.key, before.keys.two.key);
+});
+
+test('media receipts track only looked-up URLs, including misses and deletions', async () => {
+  const lookup = { byUrl: new Map([['image', { width: 640, variants: [] }], ['unused', { width: 320 }]]) };
+  const { dependencies } = await captureDependencies(async () => {
+    const tracked = trackedMediaLookup(lookup);
+    assert.equal(tracked.byUrl.get('image').width, 640);
+    assert.equal(tracked.byUrl.get('missing'), undefined);
+  });
+  assert.ok(dependenciesMatch(dependencies, { media: lookup }));
+  lookup.byUrl.set('unused', { width: 800 });
+  assert.ok(dependenciesMatch(dependencies, { media: lookup }));
+  lookup.byUrl.set('missing', { width: 640 });
+  assert.ok(!dependenciesMatch(dependencies, { media: lookup }));
+  lookup.byUrl.delete('missing'); lookup.byUrl.get('image').variants.push({ width: 320, cdn_url: 'new-variant' });
+  assert.ok(!dependenciesMatch(dependencies, { media: lookup }));
+  lookup.byUrl.delete('image');
+  assert.ok(!dependenciesMatch(dependencies, { media: lookup }));
 });
 
 test('route identity, pagination and cache integrity are required for reuse', () => {
@@ -71,6 +89,7 @@ test('route identity, pagination and cache integrity are required for reuse', ()
   assert.equal(routeFingerprint(createRenderPlan(value, manifest), '/category/test/', facetProps), facetKey);
   assert.equal(readRenderCache(Buffer.from('{broken')), null);
   assert.equal(readRenderCache(Buffer.from('{"format":1,"routes":{}}')), null);
+  assert.equal(readRenderCache(Buffer.from('{"format":2,"routes":{}}')), null);
 });
 
 test('partial output equals a clean full build after edits, deletion, noindex and origin changes', async t => {
@@ -263,4 +282,63 @@ test('filtered lists, references, backlinks, breadcrumbs and navigation reuse un
   value.pages = value.pages.filter(page => page.id !== 'new');
   await compare(['list-a', 'cat-a'], ['topics/cat-b', 'independent']);
   assert.ok(!(await output())['topics/cat-a/index.html']);
+});
+
+test('custom templates, aliases and media invalidate only their actual consumers', async t => {
+  const value = publication();
+  const blockPage = (id, blocks) => ({ ...page(id), content_mode: 'blocks', blocks });
+  const image = (src) => ({ id: 'picture', type: 'core/image', data: { src } });
+  value.blockTypes = [
+    { id: 'custom-card', container: false, schema: [], template: '<article><h2>{{item.title}}</h2>{{{item.html_content}}}</article>' },
+    { id: 'custom-list', container: 'repeater', schema: [], template: '{{items}}' },
+    { id: 'custom-alias', container: false, schema: [], expand_to: { target: 'core/repeater', defaults: { source_type: 'pages', content_type: 'page', filter_field: 'category', filter_value: 'a', item_block: 'custom-card' } } },
+    { id: 'custom-title', container: false, schema: [], template: '<span>{{page.title}}</span>' },
+    { id: 'custom-navigation', container: false, schema: [], template: '<a href="{{content_type.next.url}}">{{content_type.next.title}}</a>' },
+  ];
+  value.contentTypes = [{ id: 'page', fields: [{ name: 'category', type: 'text' }], route_template: '/{slug}', sort_field: 'title', sort_dir: 'asc' }];
+  value.pages = [
+    { ...page('a'), fields: { category: 'a' } },
+    { ...page('b'), fields: { category: 'b' } },
+    blockPage('alias', [{ id: 'list', type: 'custom-alias', data: {} }]),
+    blockPage('list', [{ id: 'list', type: 'custom-list', data: { source_type: 'pages', content_type: 'page', filter_field: 'category', filter_value: 'a', item_block: 'custom-card' } }]),
+    blockPage('photo', [image('https://media.invalid/photo.png')]),
+    blockPage('photo-copy', [image('https://media.invalid/photo.png')]),
+    blockPage('other-photo', [image('https://media.invalid/other.png')]),
+    blockPage('missing-photo', [image('https://media.invalid/missing.png')]),
+    blockPage('navigation', [{ id: 'nav', type: 'custom-navigation', data: {} }]),
+    page('independent'),
+  ];
+  value.media = [{ id: 'photo', cdn_url: 'https://media.invalid/photo.png', width: 640, height: 400, variants: [] },
+    { id: 'other', cdn_url: 'https://media.invalid/other.png', width: 500, height: 300 }];
+  value.partials = [{ id: 'header', kind: 'header', status: 'published', content_mode: 'blocks', blocks: [{ id: 'title', type: 'custom-title', data: {} }] }];
+  const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
+  await harness.run(true);
+  async function compare(changed, reused) {
+    await harness.run(); const receipts = await harness.receipts();
+    for (const id of changed) assert.equal(receipts[`/${id}/`]?.reused, false, `${id} must render`);
+    for (const id of reused) assert.equal(receipts[`/${id}/`]?.reused, true, `${id} must reuse`);
+    const output = await harness.output(); await harness.run(true); assert.deepEqual(await harness.output(), output);
+  }
+  value.pages[0].html_content += '<p>Changed</p>';
+  await compare(['a', 'alias', 'list'], ['b', 'photo', 'independent']);
+  value.pages.find(page => page.id === 'other-photo').title = 'Updated neighbor';
+  await compare(['navigation', 'other-photo'], ['a', 'b', 'alias', 'list', 'independent']);
+  value.media[0].width = 800;
+  await compare(['photo', 'photo-copy'], ['a', 'b', 'alias', 'list', 'other-photo', 'independent']);
+  value.media[0].variants = [{ width: 320, format: 'avif', cdn_url: 'https://media.invalid/photo.avif' }];
+  await compare(['photo', 'photo-copy'], ['other-photo', 'independent']);
+  value.media.push({ id: 'missing', cdn_url: 'https://media.invalid/missing.png', width: 300, height: 200 });
+  await compare(['missing-photo'], ['photo', 'other-photo', 'independent']);
+  value.media.shift();
+  await compare(['photo', 'photo-copy'], ['missing-photo', 'independent']);
+  // Real one-page + one-image replacement, with unrelated custom block types installed.
+  value.pages.find(page => page.id === 'photo').blocks[0].data.src = 'https://media.invalid/replacement.png';
+  value.media.push({ id: 'replacement', cdn_url: 'https://media.invalid/replacement.png', width: 1000, height: 500 });
+  await compare(['photo'], ['photo-copy', 'other-photo', 'alias', 'list', 'independent']);
+  // Shared custom repeater reads must be captured on every route, even when the
+  // same partial was already rendered for an earlier route or the 404 page.
+  value.partials.push({ id: 'footer', kind: 'footer', status: 'published', content_mode: 'blocks', blocks: [{ id: 'footer-list', type: 'custom-alias', data: {} }] });
+  await harness.run(true);
+  value.pages[0].title = 'Updated A';
+  await compare(['a', 'b', 'photo', 'independent'], []);
 });

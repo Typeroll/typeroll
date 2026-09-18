@@ -334,11 +334,14 @@ including pagination/facets, not image work or provider startup. The same report
 is exposed by `get_deploy_status` and the sanitized provider-build response.
 
 Partial rendering reuses hash-verified raw HTML only when current route, page,
-navigation/query dependencies, shared inputs and toolchain match. Queries record
-filter/ID/order/limit membership (including empty results) and the records visited
+navigation/query dependencies, consumed media metadata, shared inputs and
+toolchain match. Queries record filter/ID/order/limit membership (including empty results) and the records visited
 by each rendered route. Replaying them detects additions/removals and reference
-changes; unchanged routes are excluded from the HTML generation queue. It regenerates
-global output and publishes a complete artifact. Missing or corrupt caches fall
+changes; unchanged routes are excluded from the HTML generation queue. From Core
+0.2.17, declarative custom blocks use the same tracking as native blocks. Media
+lookups record both found and missing URLs, so a new image or changed variant
+invalidates only its consumers. Older cache receipts require one full build.
+The renderer regenerates global output and publishes a complete artifact. Missing or corrupt caches fall
 back to full builds. See the public customer-publishing guide for engine upgrade,
 local cache, retention and conservative invalidation rules.
 
