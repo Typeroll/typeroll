@@ -49,7 +49,10 @@ export function releaseScopes(files) {
     ['AGENTS.md', 'README.md', 'SECURITY.md', 'CONTRIBUTING.md', 'CHANGELOG.md', 'LICENSE'].includes(file);
   return {
     core: normalized.some((file) => !infrastructureOnly(file) && !docsOnly(file)),
-    mcp: normalized.some((file) => file.startsWith('packages/mcp-server/') || file.startsWith('packages/shared/')),
+    // The standalone MCP package neither imports nor ships Core's release
+    // metadata. Other shared contract changes still require an MCP release.
+    mcp: normalized.some((file) => file.startsWith('packages/mcp-server/') ||
+      (file.startsWith('packages/shared/') && file !== 'packages/shared/src/release.ts')),
     docs: normalized.some(docsOnly),
   };
 }
@@ -61,10 +64,10 @@ export function buildReleasePlan({ sourceSha, coreVersion, mcpVersion, coreTagSh
 
   const coreTag = `core-v${coreVersion}`;
   const mcpTag = `mcp-v${mcpVersion}`;
-  if (coreTagSha && coreTagSha !== sourceSha && releaseScopes(coreChanges).core) {
+  if (coreTagSha && releaseScopes(coreChanges).core) {
     throw new Error(`${coreTag} already points to ${coreTagSha}, but Core-relevant files changed; bump the Core version`);
   }
-  if (mcpTagSha && mcpTagSha !== sourceSha && releaseScopes(mcpChanges).mcp) {
+  if (mcpTagSha && releaseScopes(mcpChanges).mcp) {
     throw new Error(`${mcpTag} already points to ${mcpTagSha}, but MCP-relevant files changed; bump the MCP version`);
   }
 

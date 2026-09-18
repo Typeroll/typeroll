@@ -33,6 +33,22 @@ test('a new stable version plans publication for both independently versioned ar
   assert.equal(plan.mcp_tag, 'mcp-v4.5.6');
 });
 
+test('Core release metadata does not change the independently packaged MCP artifact', () => {
+  assert.deepEqual(releaseScopes(['packages/shared/src/release.ts']), { core: true, mcp: false, docs: false });
+  assert.equal(releaseScopes(['packages/shared/src/types.ts']).mcp, true);
+  const plan = buildReleasePlan({ sourceSha: SHA, coreVersion: '1.2.4', mcpVersion: '4.5.6',
+    mcpTagSha: OLD_SHA, mcpChanges: ['packages/shared/src/release.ts'] });
+  assert.equal(plan.publish_core, true);
+  assert.equal(plan.publish_mcp, false);
+});
+
+test('local product changes require a version bump even when HEAD is the existing tag', () => {
+  assert.throws(() => buildReleasePlan({ sourceSha: SHA, coreVersion: '1.2.3', mcpVersion: '4.5.6',
+    coreTagSha: SHA, coreChanges: ['packages/portal/src/index.ts'] }), /bump the Core version/);
+  assert.throws(() => buildReleasePlan({ sourceSha: SHA, coreVersion: '1.2.3', mcpVersion: '4.5.6',
+    mcpTagSha: SHA, mcpChanges: ['packages/mcp-server/src/index.ts'] }), /bump the MCP version/);
+});
+
 test('an existing version rejects relevant source drift but permits docs-only follow-ups', () => {
   assert.throws(
     () => buildReleasePlan({
