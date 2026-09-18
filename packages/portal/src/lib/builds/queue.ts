@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { getStore, type ReadWriteStore } from '../datastore';
-import { BUILD_PROTOCOL, assertBuildIdentity, sha256, type BuildIdentity } from './contract.mjs';
+import { BUILD_PROTOCOL, assertBuildIdentity, sha256, type BuildIdentity, type RenderReport } from './contract.mjs';
 import { ConnectionError } from '../publishing/connections';
 
 export interface BuildTask {
@@ -22,6 +22,7 @@ export interface BuildTask {
   artifact_sha256: string | null;
   artifact_key: string | null;
   error_code: string | null;
+  render_report?: RenderReport;
 }
 const pathPart = (value: string) => { if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value)) throw new ConnectionError('Invalid build identifier', 400); return value; };
 export const buildTasksPath = (org: string) => `organizations/${pathPart(org)}/build_tasks`;
@@ -105,12 +106,13 @@ export class OrganizationBuildQueue {
         media_cursor: cursor, media_checkpoint_attempt: task.attempt - (retainLease ? 1 : 0), media_batches: (task.media_batches ?? 0) + (retainLease ? 0 : 1), error_code: null });
     if (!won) throw rejected();
   }
-  async complete(org: string, key: string, lease: string, token: string, artifact: { sha256: string; key: string }) {
+  async complete(org: string, key: string, lease: string, token: string, artifact: { sha256: string; key: string; render_report?: RenderReport }) {
     if (!/^[a-f0-9]{64}$/.test(artifact.sha256) || artifact.key !== `builds/${pathPart(org)}/tasks/${pathPart(key)}/${lease}/artifact.json`) throw new ConnectionError('Invalid build artifact scope', 400);
     const won = await this.store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(key)}`, current =>
       current.status === 'running' && current.identity.org_id === org && current.lease_id === lease && current.deadline > this.clock() &&
       current.lease_until > this.clock() && equalToken(token, current.token_hash),
-      { status: 'completed', completed_at: this.clock(), token_hash: null, lease_until: 0, artifact_sha256: artifact.sha256, artifact_key: artifact.key });
+      { status: 'completed', completed_at: this.clock(), token_hash: null, lease_until: 0, artifact_sha256: artifact.sha256, artifact_key: artifact.key,
+        ...(artifact.render_report ? { render_report: artifact.render_report } : {}) });
     if (!won) throw rejected();
   }
   async cancel(org: string, key: string) {

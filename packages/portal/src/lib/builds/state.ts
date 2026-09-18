@@ -1,6 +1,10 @@
 import { getStore } from '../datastore';
 import { ConnectionError, getConnection } from '../publishing/connections';
 import { equalToken } from './queue';
+import { sha256, type BuildIdentity } from './contract.mjs';
+
+export const renderCachePath = (identity: BuildIdentity) => `organizations/${identity.org_id}/build_render_caches/${sha256(`${identity.site_id}\0${identity.version_id}`)}`;
+export interface RenderCachePointer { key: string; lease: string; sha256: string; account: string; created_at: number }
 
 export type BuildProvider = 'cloudflare' | 'github';
 export interface EngineConfiguration { media_preparation?: boolean; static_verification?: boolean;

@@ -4,7 +4,7 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { connectionPath } from '../../lib/publishing/connections';
 import { OrganizationBuildQueue, buildTasksPath } from '../../lib/builds/queue';
-import { engineConfigurationPath, buildInputPath } from '../../lib/builds/state';
+import { engineConfigurationPath, buildInputPath, renderCachePath } from '../../lib/builds/state';
 import { enginePath } from '../../lib/builds/cloudflare';
 import { runnerRequest } from '../../lib/builds/runner-http';
 import { encodeSource, encodeArtifact, sha256, BUILD_PROTOCOL, BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
@@ -33,6 +33,54 @@ beforeEach(async () => {
   await getStore().setDoc(connectionPath(org, 'cloudflare'), { status: 'connected', cloudflare: { account_id: 'a'.repeat(32) } });
   await getStore().setDoc(connectionPath(org, 'github'), { status: 'connected', github: { installation_id: 'installation' } });
   await getStore().setDoc(enginePath(org), { revision: 'public-revision', enabled: false, state: 'qualification_required' });
+});
+it('publishes a cache pointer and measured render report only after exact artifact completion', async () => {
+  const { frozen, key } = await prepare();
+  const claim = await (await request('claim', runnerToken, { protocol: 1, render_cache: true })).json();
+  expect(claim.render_cache_supported).toBe(true);
+  expect(claim.render_cache).toBeUndefined();
+  const attempt = { key, lease_id: claim.lease_id };
+  expect((await request('render-cache-upload', runnerToken, attempt)).status).toBe(409);
+  expect((await request('render-cache-upload', claim.token, attempt)).status).toBe(200);
+  expect(storage.grants).toHaveBeenLastCalledWith(`builds/org/tasks/${key}/${claim.lease_id}/render-cache.json`, true);
+  expect(await getStore().getDoc(renderCachePath(frozen))).toBeNull();
+  const files = Object.fromEntries(Object.entries(qualificationFiles(identity.publication_id)).map(([name, value]) => [name, Buffer.from(value)]));
+  const artifact = encodeArtifact(frozen, files);
+  const report = { format: 1, mode: 'partial', rendered: 1, reused: 49, total: 50, removed: 0, reason: 'unchanged_routes_reused' };
+  const complete = { ...attempt, sha256: sha256(artifact), render_report: { ...report, secret: 'excluded' }, render_cache_sha256: 'd'.repeat(64) };
+  expect((await request('complete', claim.token, complete)).status).not.toBe(200);
+  expect(await getStore().getDoc(renderCachePath(frozen))).toBeNull();
+  storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
+  expect((await request('complete', claim.token, complete)).status).toBe(200);
+  expect(await getStore().getDoc(renderCachePath(frozen))).toMatchObject({ key, lease: claim.lease_id, sha256: 'd'.repeat(64) });
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ render_report: report });
+  expect((await request('render-cache-upload', claim.token, attempt)).status).toBe(409);
+});
+
+it('scopes cache reads to the selected site/version and current storage account', async () => {
+  const { frozen } = await prepare();
+  const pointer = { key: 'e'.repeat(64), lease: '12345678-1234-1234-1234-123456789012', sha256: 'd'.repeat(64), account: 'a'.repeat(32), created_at: 1 };
+  await getStore().setDoc(renderCachePath({ ...frozen, site_id: 'other' }), pointer);
+  await getStore().setDoc(renderCachePath({ ...frozen, version_id: 'branch' }), pointer);
+  await getStore().setDoc(renderCachePath(frozen), { ...pointer, account: 'f'.repeat(32) });
+  const claim = await (await request('claim', runnerToken, { protocol: 1, render_cache: true })).json();
+  expect(claim.render_cache).toBeUndefined();
+  expect(storage.grants).toHaveBeenCalledTimes(1);
+});
+
+it('grants an exact cached object on opt-in without leaking storage credentials', async () => {
+  const { frozen } = await prepare();
+  const pointer = { key: 'e'.repeat(64), lease: '12345678-1234-1234-1234-123456789012', sha256: 'd'.repeat(64), account: 'a'.repeat(32), created_at: 1 };
+  await getStore().setDoc(renderCachePath(frozen), pointer);
+  const claim = await (await request('claim', runnerToken, { protocol: 1, render_cache: true })).json();
+  expect(claim.render_cache).toEqual({ url: `https://storage.invalid/builds/org/tasks/${pointer.key}/${pointer.lease}/render-cache.json?write=false`, sha256: pointer.sha256 });
+});
+
+it.each(['qualification', 'static_verification'])('does not grant render cache writes to %s', async kind => {
+  await prepare(kind);
+  const claim = await (await request('claim', runnerToken, { protocol: 1, render_cache: true })).json();
+  expect(claim.render_cache_supported).toBeUndefined();
+  expect((await request('render-cache-upload', claim.token, { key: claim.key, lease_id: claim.lease_id })).status).toBe(409);
 });
 it('requires completed verification checkpoints and a receipt bound to the frozen source', async () => {
   const { frozen, key } = await prepare('static_verification', 2);

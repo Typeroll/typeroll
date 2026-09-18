@@ -317,7 +317,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         const staticChecks = await saveStaticChecks(args.orgId, result.files, acquired.last_publication?.static_checks_key ?? undefined, result.direct);
         publication = { ...publication, static_checks_key: staticChecks };
         if (result.direct && engine.static_verification) publication = { ...publication, ...await saveCustomerVerification(args.orgId, publication, result.direct, acquired.last_publication) };
-        await store.updateDoc(jobPath, { git_publication: publication, phase: 'uploading static files to the Hosting Group' });
+        await store.updateDoc(jobPath, { git_publication: publication, phase: 'uploading static files to the Hosting Group',
+          ...(result.task.render_report ? { render_report: result.task.render_report } : {}) });
         if (!deployment) {
           await assertLease();
           deployment = result.direct ? await finalizeDirectUpload(cloudflare, { account: publication.account_id, project: publication.project, branch: publication.branch, commit: publication.commit! }, result.direct) : await uploadStaticBuild(cloudflare, { org: args.orgId, group: group.id, account: publication.account_id,

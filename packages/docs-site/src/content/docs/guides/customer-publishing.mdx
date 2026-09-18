@@ -444,6 +444,48 @@ scheduling and time limits belong to your own build environment.
 New browser uploads go directly to your R2 account after it is ready. Disconnecting
 that account does not silently move uploads back to the hosting operator.
 
+## Partial builds
+
+From Core 0.2.15, generated publication builds automatically reuse unchanged
+pages when a valid previous render cache is available. A normal body-text edit
+can rebuild that page while reusing other pages. You still publish a complete
+static website; visitors never receive a mixture of deployments.
+
+Listing, pagination and reference blocks depend on other Pages. These consumers
+rebuild when their Page inputs change, including additions and removals. Changes
+to titles, paths, publication status or structured fields conservatively rebuild
+all pages because navigation and references may change. Shared settings, templates,
+media metadata, domains, Core source or Node versions also invalidate the cache.
+Custom or unrecognized blocks use the entire Page set as their dependency.
+This first implementation favors complete output over the smallest possible build.
+
+The route inventory, sitemap, robots rules, redirects, search index and shared
+asset processing are regenerated from the complete current site. Removed routes
+are never copied from the cache. Image preparation and verified variant reuse
+remain a separate process; partial HTML rendering does not eliminate dependency
+installation, media transfer, static upload or provider startup time.
+
+For Cloudflare or GitHub shared builds, update the organization build engine in
+**Publishing → Builds** after upgrading Core. Both providers use the same renderer
+and private R2 cache, isolated per Site and version. Only completed build attempts
+can supply a baseline. Cache files expire after seven days; missing, expired or
+corrupt files cause a normal full build. Cache storage is optional and never a
+prerequisite for publishing. Older engines continue building in full until updated.
+
+Independent builds of the generated repository retain `.publication-cache.json`
+beside `publication.json` between runs. Keep it outside Git and the public `dist/`
+directory. The current cache is limited to 32 MiB; a larger cache is discarded.
+Use `TYPEROLL_FULL_BUILD=1 npm run build` to compare against a clean full render.
+Ordinary starter builds outside the frozen-publication workflow do not use this
+cache automatically.
+
+The editor's deployment status reports **pages rebuilt** and **reused** after
+rendering. API and MCP clients read `job.render_report` through
+`get_deploy_status`; `mode`, `rendered`, `reused`, `total`, `removed` and `reason`
+describe actual HTML work. Counts include generated pagination and facet routes.
+`get_publication_impact` remains a provisional source comparison, not a prediction
+of cache hits or monetary savings.
+
 The generated repository includes public content, renderer source and a dependency
 lock. Run `npm ci` and `npm run build` with its pinned Node version to build it on
 your own infrastructure. R2 originals remain separate. Cloudflare builds receive

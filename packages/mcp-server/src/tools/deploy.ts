@@ -8,7 +8,7 @@ function v(version?: string): Record<string, string | undefined> | undefined {
 export const deployTools: ToolDef[] = [
   {
     name: 'get_publication_impact',
-    description: 'Read provisional net saved public-source changes against the selected version’s last verified publication. Reports additions, removals, shared inputs, metadata-only changes and unavailable baselines. Does not build or deploy. execution remains full and reuse_verified is false; source-level classification does not prove output reuse or cost savings.',
+    description: 'Read provisional net saved public-source changes against the selected version’s last verified publication. Reports additions, removals, shared inputs, metadata-only changes and unavailable baselines. Does not build or deploy. execution is automatic and reuse_verified is false before the build; inspect job.render_report afterwards for actual rendered/reused counts; source-level classification does not prove output reuse or cost savings.',
     inputSchema: { version: versionParam },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, 'publishing/impact', v(args.version)))),
   },
@@ -38,7 +38,7 @@ export const deployTools: ToolDef[] = [
   {
     name: 'get_deploy_status',
     description:
-      "Status of a single deploy job. Returns { job, queued_for_seconds, queue_timeout_seconds }. job.status is one of queued | running | succeeded | failed. Polling cadence: ~5s for queued/running. job.coordinator, when present, reports the last completed CMS phase and duration_ms for that attempt; external build waiting is excluded. Keep observing the same job across checkpoints; do not trigger duplicate deploys. A job stuck in 'queued' for longer than queue_timeout_seconds (default 300s) auto-flips to failed with phase='queue_timeout' — so a single poll past that timestamp returns the terminal state and you can stop polling.",
+      "Status of a single deploy job. Returns { job, queued_for_seconds, queue_timeout_seconds }. job.status is one of queued | running | succeeded | failed. Polling cadence: ~5s for queued/running. job.render_report, when present, reports actual HTML mode (full/partial), rendered, reused, total and removed route counts plus a fallback reason. It does not measure media or provider startup savings. job.coordinator, when present, reports the last completed CMS phase and duration_ms for that attempt; external build waiting is excluded. Keep observing the same job across checkpoints; do not trigger duplicate deploys. A job stuck in 'queued' for longer than queue_timeout_seconds (default 300s) auto-flips to failed with phase='queue_timeout' — so a single poll past that timestamp returns the terminal state and you can stop polling.",
     inputSchema: { job_id: z.string(), include_provider: z.boolean().optional().describe('Also read the exact Git commit and Cloudflare build stages for a customer Git publication. Does not return build secrets.') },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.get<Record<string, unknown>>(siteId, `deploys/${encodeURIComponent(args.job_id)}`);

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import type { DeployJob } from '@typeroll/shared';
 
 export interface DeployProgress {
+  render_report?: DeployJob['render_report'];
   id?: string;
   status: 'queued' | 'running' | 'succeeded' | 'failed';
   phase?: string;

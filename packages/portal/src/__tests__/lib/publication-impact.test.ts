@@ -7,7 +7,7 @@ const snapshot = (value: any) => captureImpact(value, 'org', 'site');
 
 it('identifies a page body change without promising any output reuse', () => {
   const before = source(), after = source(); after.pages[0].html_content = '<p>Changed</p>';
-  expect(compareImpact(snapshot(before), snapshot(after))).toMatchObject({ comparison: 'verified_snapshot', classification: 'page_content_only', changed_pages: 1, total: 1, execution: 'full', reuse_verified: false, changes: [{ id: 'one', fields: ['html_content'], action: 'changed' }] });
+  expect(compareImpact(snapshot(before), snapshot(after))).toMatchObject({ comparison: 'verified_snapshot', classification: 'page_content_only', changed_pages: 1, total: 1, execution: 'automatic', reuse_verified: false, changes: [{ id: 'one', fields: ['html_content'], action: 'changed' }] });
 });
 it('counts a reverted edit as metadata only while preserving nested customer timestamp fields', () => {
   const before = source(), after = source(); after.pages[0].date_updated = '2026-02-01';

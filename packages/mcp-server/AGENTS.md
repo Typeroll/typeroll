@@ -316,9 +316,16 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
 - **Deploys.** Customers see live changes only after a deploy. Preview
   sees saved content unless `include_working_copy:true` is requested. `trigger_deploy` enqueues; `get_deploy_status`
   reports `queued → running → succeeded | failed`.
-  `trigger_deploy dry_run=true` builds without publishing — use it to prove
-  a structural change compiles (new content type, schema edit, template
-  rewrite) without touching the live site.
+  `trigger_deploy dry_run=true` validates frozen source in customer publishing
+  without a Git push or external build; it does not prove Astro compilation.
+  Other self-hosted adapters may run a local build without upload.
+  From Core 0.2.15, frozen publication builds can reuse unchanged raw HTML.
+  Inspect `job.render_report` for actual rendered/reused/removed route counts;
+  `get_publication_impact` is only a provisional source comparison. Listings,
+  references and shared dependencies may rebuild more than the edited page.
+  Missing cache means a full build. Every deployment remains a complete site.
+  Shared GitHub/Cloudflare engines need their normal update for remote cache
+  transport; do not claim fixed time or cost savings from page counts.
   A finished job carries `cost`: total, cpu/memory/request split,
   `duration_s`, per-phase timings, and output size. Estimates from a rate
   card, not billing records, and gross of free tier — quote them as "roughly"

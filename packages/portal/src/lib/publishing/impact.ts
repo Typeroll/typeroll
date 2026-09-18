@@ -10,7 +10,7 @@ export interface ImpactSnapshot {
 }
 export interface PublicationImpact {
   comparison: 'verified_snapshot' | 'baseline_unavailable';
-  provisional: boolean; execution: 'full'; reuse_verified: false;
+  provisional: boolean; execution: 'automatic'; reuse_verified: false;
   classification: 'none' | 'page_content_only' | 'site_wide' | 'unknown';
   changed_pages: number; added_pages: number; removed_pages: number;
   metadata_only: number; total: number;
@@ -58,7 +58,7 @@ export function captureImpact(publication: any, orgId: string, siteId: string, m
 
 /** Observe net source changes, never authorize reuse without an output dependency graph. */
 export function compareImpact(previous: ImpactSnapshot | null | undefined, current: ImpactSnapshot, provisional = false): PublicationImpact {
-  const result: PublicationImpact = { comparison: 'baseline_unavailable', provisional, execution: 'full', reuse_verified: false,
+  const result: PublicationImpact = { comparison: 'baseline_unavailable', provisional, execution: 'automatic', reuse_verified: false,
     classification: 'unknown', changed_pages: 0, added_pages: 0, removed_pages: 0, metadata_only: 0, total: 0, changes: [], reasons: [] };
   if (!previous || previous.protocol !== 2 || ['org_id', 'site_id', 'version_id'].some(key => previous[key as keyof ImpactSnapshot] !== current[key as keyof ImpactSnapshot])) {
     result.reasons.push('verified_source_baseline_unavailable'); return result;

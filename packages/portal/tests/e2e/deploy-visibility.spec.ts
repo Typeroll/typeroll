@@ -57,12 +57,18 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await summary.click();
       // Exercise the actual UI request, but keep external hosting out of this local test.
       await page.route('**/api/sites/default/deploy', (route) => route.fulfill({ json: { jobId: 'visibility-test' } }));
-      await page.route('**/api/sites/default/deploys/visibility-test', (route) => route.fulfill({ json: { status: 'failed', error: 'Test deployment stopped' } }));
+      await page.route('**/api/sites/default/deploys/visibility-test', (route) => route.fulfill({ json: { status: 'failed', error: 'Test deployment stopped',
+        render_report: { format: 1, mode: 'partial', rendered: 3, reused: 49, total: 52, removed: 0, reason: 'unchanged_routes_reused' } } }));
       page.once('dialog', (dialog) => dialog.accept());
       const request = page.waitForRequest((request) => request.url().endsWith('/api/sites/default/deploy') && request.method() === 'POST');
       await deploy.click();
       expect((await request).postDataJSON()).toEqual({ environment: 'production' });
       await expect(page.getByText('Test deployment stopped', { exact: true })).toBeVisible();
+      const renderSummary = page.getByText('3 pages rebuilt · 49 reused', { exact: true });
+      await expect(renderSummary).toBeVisible();
+      await renderSummary.scrollIntoViewIfNeeded();
+      expect(await renderSummary.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`partial-build-summary-${width}.png`) });
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveCount(0);
 
       // A successful live deployment makes this saved page eligible.

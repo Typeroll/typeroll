@@ -3,10 +3,10 @@ const mocks = vi.hoisted(() => ({ guard: vi.fn(), preview: vi.fn() }));
 vi.mock('../../lib/api-auth', () => ({ requireApiKey: mocks.guard, apiResponse: (_: unknown, value: unknown) => Response.json(value), apiError: (error: string, status: number) => Response.json({ error }, { status }) }));
 vi.mock('../../lib/publishing/impact-preview', () => ({ previewPublicationImpact: mocks.preview }));
 import { GET } from '../../pages/api/v1/sites/[siteId]/publishing/impact';
-beforeEach(() => { vi.clearAllMocks(); mocks.guard.mockResolvedValue({ ok: true, value: { orgId: 'owner', siteId: 'site', versionId: 'branch' } }); mocks.preview.mockResolvedValue({ comparison: 'verified_snapshot', total: 1, provisional: true, execution: 'full', reuse_verified: false }); });
+beforeEach(() => { vi.clearAllMocks(); mocks.guard.mockResolvedValue({ ok: true, value: { orgId: 'owner', siteId: 'site', versionId: 'branch' } }); mocks.preview.mockResolvedValue({ comparison: 'verified_snapshot', total: 1, provisional: true, execution: 'automatic', reuse_verified: false }); });
 const call = (query = '?version=branch') => GET({ request: new Request(`https://portal.example/api/v1/sites/site/publishing/impact${query}`), url: new URL(`https://portal.example/api/v1/sites/site/publishing/impact${query}`), params: { siteId: 'site' } } as any) as Promise<Response>;
 it('uses the authorized owning organization and selected version', async () => {
-  expect(await (await call()).json()).toMatchObject({ version_id: 'branch', total: 1, execution: 'full' });
+  expect(await (await call()).json()).toMatchObject({ version_id: 'branch', total: 1, execution: 'automatic' });
   expect(mocks.preview).toHaveBeenCalledWith('owner', 'site', 'branch');
 });
 it('does not read source when the caller lacks site access', async () => {

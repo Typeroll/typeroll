@@ -7,12 +7,12 @@ import { PublishingRequirements } from './PublishingRequirements';
  *   ┌──────────────────────────────┐
  *   │ Changes    ● Unsaved changes │  Save (deliberate) / Discard
  *   │ Status     [Published    ▾]  │  draft/review/unlisted/published
- *   │ Deploy     what changed list │  Redeploy full site → live
+ *   │ Deploy     what changed list │  Redeploy site → live
  *   └──────────────────────────────┘
  *
  * Editors autosave to a server-side working copy; nothing here is implicit.
  * Save promotes the working copy through the canonical PUT, status changes
- * apply immediately, and Redeploy rebuilds the whole static site from saved
+ * apply immediately, and Redeploy prepares a complete static site from saved
  * + published content (the panel lists exactly what changed since the last
  * deploy so the redeploy button is never a mystery).
  */
@@ -186,7 +186,7 @@ export default function PublishMenu({
   async function deploy() {
     if (busy || !(await refreshSetup())?.ready) return;
     const message = env === 'production'
-      ? 'Rebuild and deploy the full site to production? Visitors see the new version when it finishes.'
+      ? 'Deploy the saved site to production? Visitors see the new version when it finishes.'
       : 'Rebuild and deploy to the staging URL? Visitors won\'t see this.';
     if (!confirm(message)) return;
     setDeployErr(null);
@@ -212,7 +212,7 @@ export default function PublishMenu({
   }
 
   const deployLabel = (() => {
-    if (!job) return (changes ? changes.never_deployed : !lastDeployedAt) ? 'Deploy site' : 'Redeploy full site';
+    if (!job) return (changes ? changes.never_deployed : !lastDeployedAt) ? 'Deploy site' : 'Redeploy site';
     if (job.status === 'queued') return 'Queued…';
     if (job.phase === 'distributing') return 'Distributing…';
     if (job.status === 'running') return job.phase ? `${job.phase}…` : 'Building…';
@@ -388,6 +388,7 @@ export default function PublishMenu({
             </p>
 
             {busy && job?.verification_message && <p role="status" className="pmenu__hint">{job.verification_message}</p>}
+            {job?.render_report && <p role="status" className="pmenu__hint">{job.render_report.rendered} pages rebuilt · {job.render_report.reused} reused</p>}
             {job?.phase === 'distributing' && <p className="pmenu__hint" role="status">Distributing… Your site is being made publicly available. The link will appear automatically when ready.</p>}
             {changesLoading && <p className="pmenu__hint">Checking what changed…</p>}
             {changesError && <p role="alert" className="pmenu__hint pmenu__hint--error">{changesError}</p>}
@@ -402,7 +403,7 @@ export default function PublishMenu({
                   : `Pages added or changed: ${changes.impact.changed_pages + changes.impact.added_pages}. Pages to remove: ${changes.impact.removed_pages}. Total changes: ${changes.total}.`}
                 {changes.impact.metadata_only > 0 && <p>Items with updated publication timestamps: {changes.impact.metadata_only}.</p>}
                 {changes.impact.reasons.includes('toolchain_changed') && <p>The build runtime has changed since the last publication.</p>}
-                <p>This is an estimate from saved content. Deploy still rebuilds the full site.</p>
+                <p>This compares saved content. Unchanged pages may be reused; every deployment publishes a complete site.</p>
               </div>
             )}
             {hasUnsaved && (

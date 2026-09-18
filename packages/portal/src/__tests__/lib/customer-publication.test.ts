@@ -356,7 +356,8 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
   await getStore().updateDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now(), media_cursor: 1001 });
   await getStore().updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: 'New unsaved-to-Git version' });
   await getStore().updateDoc('organizations/org/publishing/build_selection', { provider: providerName === 'github' ? 'cloudflare' : 'github' });
-  mocks.built.mockResolvedValue({ files: { 'index.html': Buffer.from('frozen') } });
+  const renderReport = { format: 1, mode: 'partial', rendered: 1, reused: 49, total: 50, removed: 0, reason: 'unchanged_routes_reused' };
+  mocks.built.mockResolvedValue({ task: { render_report: renderReport }, files: { 'index.html': Buffer.from('frozen') } });
   complete(); const finished = mocks.deployment;
   // Disabled Pages Git integrations still emit a skipped deployment for this commit.
   mocks.deployment = { ...finished, id: 'skipped-git-build', is_skipped: true, latest_stage: { name: 'queued', status: 'idle' } };
@@ -365,6 +366,7 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
   expect(await executeCustomerPublication(args)).toBe('deferred');
   expect(mocks.upload).toHaveBeenCalledWith(mocks.cloudflare, expect.objectContaining({ account: 'a'.repeat(32), group: 'default', branch: 'main' }), { 'index.html': Buffer.from('frozen') });
   expect((await getStore().getDoc<any>(jobPath)).deploy_url).toBeUndefined();
+  expect((await getStore().getDoc<any>(jobPath)).render_report).toEqual(renderReport);
   mocks.verify.mockResolvedValue(true);
   expect(await executeCustomerPublication(args)).toBe('ran');
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', execution_backend: providerName === 'github' ? 'organization_github' : 'organization_cloudflare' });
@@ -433,7 +435,7 @@ it('keeps direct publication waiting for customer verification, then runs only b
   mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
   expect(await executeCustomerPublication(args)).toBe('deferred');
   await getStore().setDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now() });
-  mocks.built.mockResolvedValue({ files: {}, direct: { format: 1 } });
+  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1 } });
   mocks.verificationPlan.mockResolvedValue({ verification_checks_key: 'customer-checks', probe_checks_key: 'bounded-probes', static_controls_sha256: 'controls' });
   mocks.direct.mockImplementation(async () => { complete(); return mocks.deployment; });
   mocks.probe.mockResolvedValue(true); mocks.candidateVerification.mockResolvedValue(false);

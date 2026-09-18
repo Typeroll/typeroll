@@ -4,10 +4,19 @@ export const BUILD_PROTOCOL = 1;
 export const BUILD_RUNTIME = '22.23.1';
 export const MAX_SOURCE_BYTES = 32 * 1024 * 1024;
 export const MAX_ARTIFACT_BYTES = 128 * 1024 * 1024;
+export const MAX_RENDER_CACHE_BYTES = 32 * 1024 * 1024;
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const identity = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value);
 const ARTIFACT_MAGIC = Buffer.from('TYPEROLL-ARTIFACT-2\n');
+
+export function renderReport(value) {
+  if (!value || value.format !== 1 || !['full', 'partial'].includes(value.mode)
+    || !['rendered', 'reused', 'total', 'removed'].every(key => Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 20000)
+    || value.rendered + value.reused !== value.total || (value.mode === 'partial') !== (value.reused > 0)
+    || !['forced_full', 'no_valid_cache', 'unchanged_routes_reused', 'dependencies_changed'].includes(value.reason)) return undefined;
+  return Object.fromEntries(['format', 'mode', 'rendered', 'reused', 'total', 'removed', 'reason'].map(key => [key, value[key]]));
+}
 
 export function assertFilePath(name, { artifact = false } = {}) {
   if (typeof name !== 'string' || name.length > 1024 || /[\\\x00-\x1f\x7f?#%:]/.test(name) ||

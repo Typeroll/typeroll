@@ -156,6 +156,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
         {!busy && setup?.ready !== true ? (setup ? 'Publishing setup required' : 'Checking setup…') : label}
       </button>
       {busy && job?.verification_message && <span role="status" className="text-sm">{job.verification_message}</span>}
+      {job?.render_report && <span role="status" className="text-sm">{job.render_report.rendered} pages rebuilt · {job.render_report.reused} reused</span>}
       {job?.phase === 'distributing' && <span role="status" className="text-sm">Distributing… The link will appear automatically when ready.</span>}
       <PublishingRequirements setup={setup} error={setupError} retry={() => { void refresh(); }} />
       {err && setup?.ready && (

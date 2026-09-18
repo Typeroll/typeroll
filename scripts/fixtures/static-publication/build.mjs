@@ -8,6 +8,7 @@ import { build } from 'esbuild';
 import { prepareMedia } from './media.mjs';
 import { readPublicationContent } from './content.mjs';
 import { resolvePublicationReferences } from './references.mjs';
+import { createRenderPlan, readRenderCache, MAX_RENDER_CACHE_BYTES } from '../packages/site-template/src/lib/publication-render-cache.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const manifest = JSON.parse(await fs.readFile(path.join(root, 'publication-manifest.json'), 'utf8'));
@@ -35,6 +36,20 @@ const versionId = publication.version_id ?? 'main';
 if (!/^[a-z0-9][a-z0-9-]{0,127}$/.test(versionId)) throw new Error('Invalid frozen publication version');
 const work = path.join(root, '.publication-work');
 await fs.rm(work, { recursive: true, force: true });
+const cacheFile = path.join(root, '.publication-cache.json');
+let previousCache = null;
+if (process.env.TYPEROLL_FULL_BUILD !== '1') {
+  try {
+    const stat = await fs.lstat(cacheFile);
+    if (stat.isFile() && !stat.isSymbolicLink() && stat.size <= MAX_RENDER_CACHE_BYTES)
+      previousCache = readRenderCache(await fs.readFile(cacheFile));
+  } catch { /* The cache is optional; an unavailable baseline means a full build. */ }
+}
+const cacheWork = path.join(work, 'render-cache');
+await fs.mkdir(cacheWork, { recursive: true });
+await fs.writeFile(path.join(cacheWork, 'input.json'), JSON.stringify({
+  plan: createRenderPlan(publication, manifest), cache: previousCache,
+}));
 const fixtures = path.join(work, 'fixtures');
 const base = 'organizations/default/sites/default';
 async function writeDoc(relative, doc) {
@@ -64,6 +79,7 @@ const env = {
   ...(process.env.NODE_OPTIONS ? { NODE_OPTIONS: process.env.NODE_OPTIONS } : {}),
   ASTRO_TELEMETRY_DISABLED: '1', TYPEROLL_ORG_ID: 'default', TYPEROLL_SITE_ID: 'default',
   TYPEROLL_VERSION_ID: versionId, TYPEROLL_FIXTURES_DIR: fixtures, TYPEROLL_SITE_URL: publication.site_url,
+  TYPEROLL_RENDER_CACHE_WORK: cacheWork,
 };
 const dist = path.join(root, 'dist');
 await fs.rm(dist, { recursive: true, force: true });
@@ -76,6 +92,23 @@ const result = spawnSync(process.execPath, [astroCli, 'build', '--outDir', dist]
   cwd: path.join(root, 'packages/site-template'), env, stdio: 'inherit', timeout: 10 * 60 * 1000,
 });
 if (result.error || result.status !== 0) throw new Error('Static renderer build failed');
+// Capture raw HTML before bundling/search/extension postprocessing. Every run
+// rebuilds the complete route inventory and global output from this complete tree.
+let cacheRoutes = Object.create(null);
+const currentRoutes = new Set();
+let rendered = 0, reused = 0, cacheBytes = 0, cacheOverflow = false;
+for (const name of await fs.readdir(cacheWork)) {
+  if (name === 'input.json') continue;
+  const { pathname, reused: hit, reason, ...entry } = JSON.parse(await fs.readFile(path.join(cacheWork, name), 'utf8'));
+  currentRoutes.add(pathname);
+  cacheBytes += Buffer.byteLength(JSON.stringify(entry)) + Buffer.byteLength(JSON.stringify(pathname)) + 2;
+  if (cacheBytes > MAX_RENDER_CACHE_BYTES - 1024) { cacheOverflow = true; cacheRoutes = Object.create(null); }
+  if (!cacheOverflow) cacheRoutes[pathname] = entry;
+  if (hit) reused++; else rendered++;
+}
+const report = { format: 1, mode: reused ? 'partial' : 'full', rendered, reused, total: rendered + reused,
+  removed: Object.keys(previousCache?.routes ?? {}).filter(name => !currentRoutes.has(name)).length,
+  reason: process.env.TYPEROLL_FULL_BUILD === '1' ? 'forced_full' : !previousCache ? 'no_valid_cache' : reused ? 'unchanged_routes_reused' : 'dependencies_changed' };
 await build({ entryPoints: [path.join(root, 'scripts/postprocess.ts')], outfile: path.join(work, 'postprocess.mjs'), bundle: true, platform: 'node', format: 'esm', packages: 'external', alias: { '@typeroll/shared': path.join(root, 'packages/shared/src/index.ts') } });
 const { postprocess } = await import(path.join(work, 'postprocess.mjs'));
 await postprocess(dist, publication);
@@ -87,4 +120,14 @@ for (const file of new Map(sameHostMedia.map(file => [file.path, file])).values(
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.copyFile(file.source, destination);
 }
+// Commit cache only after the complete output succeeds; it never enters dist or Git.
+const nextCache = JSON.stringify({ format: 1, routes: cacheRoutes });
+try {
+  if (!cacheOverflow && Buffer.byteLength(nextCache) <= MAX_RENDER_CACHE_BYTES) {
+    await fs.writeFile(cacheFile + '.tmp', nextCache);
+    await fs.rename(cacheFile + '.tmp', cacheFile);
+  } else await fs.rm(cacheFile, { force: true });
+} catch { /* Cache storage cannot fail a successful static publication. */ }
+await fs.writeFile(path.join(work, 'render-report.json'), JSON.stringify(report));
+console.log('TYPEROLL_RENDER_RESULT ' + JSON.stringify(report));
 console.log(`Published ${publication.pages.length} content pages to dist/`);

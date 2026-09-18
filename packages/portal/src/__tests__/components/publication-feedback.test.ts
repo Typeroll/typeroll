@@ -53,7 +53,7 @@ it('labels removed content and does not present a net comparison as partial exec
   const container = await mount(createElement(PublishMenu, { siteId: 'synthetic', pubStatus: 'published', statusOptions: PAGE_STATUS_OPTIONS, hasUnsaved: false, onSave: vi.fn(), onDiscard: vi.fn(), onStatusChange: vi.fn() }));
   await act(async () => (container.querySelector('.pmenu__trigger') as HTMLButtonElement).click());
   expect(container.textContent).toContain('Removed from next deploy');
-  expect(container.textContent).toContain('Deploy still rebuilds the full site.');
+  expect(container.textContent).toContain('Unchanged pages may be reused; every deployment publishes a complete site.');
   expect(container.textContent).toContain('Draft-only and reverted content edits are excluded.');
   expect(container.querySelector('details')?.open).toBe(false);
 });

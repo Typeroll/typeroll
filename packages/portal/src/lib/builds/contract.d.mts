@@ -2,6 +2,9 @@ export const BUILD_PROTOCOL: 1;
 export const BUILD_RUNTIME: string;
 export const MAX_SOURCE_BYTES: number;
 export const MAX_ARTIFACT_BYTES: number;
+export const MAX_RENDER_CACHE_BYTES: number;
+export interface RenderReport { format: 1; mode: 'full' | 'partial'; rendered: number; reused: number; total: number; removed: number; reason: string }
+export function renderReport(value: unknown): RenderReport | undefined;
 export interface BuildIdentity { protocol: 1; org_id: string; site_id: string; version_id: string; job_id: string; publication_id: string; source_sha256: string; commit: string; branch: string; node_version: string }
 export function sha256(bytes: string | Uint8Array): string;
 export function assertFilePath(name: string, options?: { artifact?: boolean }): void;

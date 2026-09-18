@@ -324,10 +324,20 @@ page addition/change/removal counts, `total`, up to 50 `changes`, and structured
 `reasons`. Content type membership, shared definitions, media fingerprints,
 runtime configuration, origins and Core changes conservatively widen scope.
 Preview responses have `provisional: true`; the job recomputes `build_impact`
-from its frozen input. `execution: full` and `reuse_verified: false` remain
-mandatory. This release does not enable partial builds, prove cache reuse or
-claim build-time savings. Dependency-graph observation and clean-artifact
-comparison remain prerequisites for those optimizations.
+from its frozen input. From Core 0.2.15, `execution: automatic` means the frozen
+renderer selects partial reuse or full rendering. `reuse_verified: false` remains
+correct for this pre-build source comparison. The deploy job's `render_report`
+contains actual `{format: 1, mode: "full" | "partial", rendered, reused, total,
+removed, reason}` after rendering. Reasons are `forced_full`, `no_valid_cache`,
+`unchanged_routes_reused` or `dependencies_changed`. Counts cover HTML routes,
+including pagination/facets, not image work or provider startup. The same report
+is exposed by `get_deploy_status` and the sanitized provider-build response.
+
+Partial rendering reuses hash-verified raw HTML only when current route, page,
+navigation/query dependencies, shared inputs and toolchain match. It regenerates
+global output and publishes a complete artifact. Missing or corrupt caches fall
+back to full builds. See the public customer-publishing guide for engine upgrade,
+local cache, retention and conservative invalidation rules.
 
 ## Database internal-link check
 

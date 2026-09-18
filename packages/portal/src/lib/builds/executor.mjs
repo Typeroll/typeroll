@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describeStaticOutput, validateDirectReceipt, DIRECT_RECEIPT } from './direct-upload.mjs';
-import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, decodeSource, encodeArtifact, sha256, assertFilePath } from './contract.mjs';
+import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, decodeSource, encodeArtifact, sha256, assertFilePath, renderReport } from './contract.mjs';
 
 export const BWRAP_URL = 'https://archive.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb';
 export const BWRAP_SHA = '1b506492bd9c7fd0cdb4f02ac822f1d3e336b0aead5113c1239baf8db5db562a';
@@ -78,7 +78,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     if (!response.ok) throw Error(`coordinator_${response.status}`);
     return response.json();
   };
-  const job = await request('claim', runnerToken, { protocol: 1, media_batch_access: true, static_verification: true });
+  const job = await request('claim', runnerToken, { protocol: 1, media_batch_access: true, static_verification: true, render_cache: true });
   if (!job) { console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'idle' })); return; }
   if (job.identity.org_id !== config.org_id) throw Error('build_scope_mismatch');
   const startedAt = Date.now();
@@ -139,8 +139,15 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       return;
     }
     for (const [name, content] of Object.entries(files)) {
-      if (name.startsWith('.typeroll-runner/')) throw Error('reserved_build_source');
+      if (name.startsWith('.typeroll-runner/') || name.startsWith('.publication-cache.json')) throw Error('reserved_build_source');
       const target = path.join(work, name); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, content, { flag: 'wx' });
+    }
+    if (job.kind === 'publication' && job.render_cache) {
+      try {
+        const cached = await responseBytes(await fetchImpl(storageUrl(job.render_cache.url), { redirect: 'error', signal: AbortSignal.timeout(30000) }), MAX_RENDER_CACHE_BYTES);
+        if (sha256(cached) !== job.render_cache.sha256) throw Error('render_cache_integrity');
+        await fs.writeFile(path.join(work, '.publication-cache.json'), cached, { flag: 'wx' });
+      } catch { console.log('TYPEROLL_RENDER_CACHE unavailable; rendering without a baseline'); }
     }
     stage = 'sandbox';
     const deb = await responseBytes(await fetchImpl(BWRAP_URL, { redirect: 'error', signal: AbortSignal.timeout(30000) }), 100000);
@@ -247,8 +254,28 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     const uploaded = await fetchImpl(storageUrl(upload.artifact_url), { method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(120000),
       headers: { 'Content-Type': upload.content_type }, body: artifact });
     if (!uploaded.ok) throw Error('artifact_upload_failed');
-    await request('complete', job.token, { ...attempt, sha256: sha256(artifact) });
-    console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'completed', job: job.identity.job_id, branch: job.identity.branch }));
+    let cacheHash, report;
+    if (job.kind === 'publication') {
+      try {
+        const reportPath = path.join(work, '.publication-work/render-report.json');
+        const stat = await fs.lstat(reportPath);
+        if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > 4096 || !(await fs.realpath(reportPath)).startsWith(work + path.sep)) throw Error('render_report_invalid');
+        report = renderReport(JSON.parse(await fs.readFile(reportPath, 'utf8')));
+      } catch { /* Older frozen renderers have no report. */ }
+      if (job.render_cache_supported && report) {
+        try {
+          const cachePath = path.join(work, '.publication-cache.json');
+          const stat = await fs.lstat(cachePath);
+          if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > MAX_RENDER_CACHE_BYTES) throw Error('render_cache_invalid');
+          const cached = await fs.readFile(cachePath);
+          const grant = await request('render-cache-upload', job.token, attempt);
+          const response = await fetchImpl(storageUrl(grant.url), { method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(30000), headers: { 'Content-Type': 'application/json' }, body: cached });
+          if (response.ok) cacheHash = sha256(cached);
+        } catch { console.log('TYPEROLL_RENDER_CACHE could not save optional baseline'); }
+      }
+    }
+    await request('complete', job.token, { ...attempt, sha256: sha256(artifact), render_cache_sha256: cacheHash, render_report: report });
+    console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'completed', job: job.identity.job_id, branch: job.identity.branch, render_report: report }));
   } catch (error) {
     const code = artifactFailureCode(error.message);
     try { await request('fail', job.token, { ...attempt, code, stage }); } catch { /* A cancelled or superseded attempt cannot change publication state. */ }

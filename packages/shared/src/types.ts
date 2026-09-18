@@ -1483,6 +1483,8 @@ export interface DeployCost {
 }
 
 export interface DeployJob {
+  /** Actual HTML work reported by the frozen publication renderer, not an estimate. */
+  render_report?: { format: 1; mode: 'full' | 'partial'; rendered: number; reused: number; total: number; removed: number; reason: string };
   /** Last completed CMS checkpoint, excluding time waiting on the customer's build provider. */
   coordinator?: { phase: string; duration_ms: number; updated_at: string };
   /** Last queue observation; scheduled recovery only wakes abandoned chains. */

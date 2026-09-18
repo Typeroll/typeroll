@@ -15,17 +15,11 @@ Ask the agent to deploy explicitly after you have reviewed and saved the intende
 
 ### Dry runs
 
-Pass `dry_run: true` to build without publishing. The full build runs —
-content is materialised, Astro renders every page, assets are bundled — but the
-output never leaves the server and your live site is untouched.
-
-```
-Build the site but don't publish it — I just want to know it compiles.
-```
-
-Use it to check that a structural change (a new content type, a schema edit, a
-template rewrite) actually builds before it reaches visitors. The job is
-reported as `succeeded` with `dry_run: true` and no `deploy_url`.
+Pass `dry_run: true` to validate without publishing. Customer publishing validates
+the frozen source without pushing Git or starting an external build. It does not
+prove that Astro compilation succeeds. Other self-hosted adapters may build
+locally without uploading. Inspect the reported phase; a successful dry run has
+`dry_run: true` and no `deploy_url`.
 
 ## `get_deploy_status`
 
@@ -37,6 +31,20 @@ Possible statuses:
 - `running` — build or distribution in progress
 - `succeeded` — deployed successfully
 - `failed` — build error (the AI agent will report what went wrong)
+
+### Partial rendering
+
+From Core 0.2.15, generated publication builds can reuse unchanged HTML. The
+optional `job.render_report` records actual `mode` (`full` or `partial`),
+`rendered`, `reused`, `total`, `removed` and `reason`. `removed` counts routes in
+the available cache that are absent from the current output. This is separate
+from `get_publication_impact`, which compares source inputs before the build.
+
+List and reference dependencies may rebuild alongside an edited Page. Missing or
+invalid cache falls back to full rendering. Both paths produce a complete static
+site with regenerated global output. See [Partial builds](../../guides/customer-publishing/#partial-builds)
+for engine updates, independent builds and limits. These counts do not measure
+provider startup, media processing, upload time or billing savings.
 
 ### Build cost
 
