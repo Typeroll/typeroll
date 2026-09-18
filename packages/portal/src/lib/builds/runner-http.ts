@@ -11,7 +11,7 @@ import { privateJson, publishingJsonBody, connectionFailure } from '../publishin
 import { customerBuildMediaAccess } from '../publishing/r2-build-credentials';
 import { rateLimit } from '../rate-limit';
 import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, type BuildTask } from './queue';
-import { authorizeEngine, assertEngineConnections, readEngineConfiguration, buildInputPath, engineConfigurationPath, renderCachePath, type RenderCachePointer, type BuildInput, type EngineConfiguration } from './state';
+import { authorizeEngine, assertEngineConnections, readEngineConfiguration, buildInputPath, engineConfigurationPath, renderCachePath, assetCachePath, type AssetCachePointer, type RenderCachePointer, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
 import { decodeSource, decodeArtifact, MAX_SOURCE_BYTES, sha256, renderReport } from './contract.mjs';
 import { publicationStillRunning } from './jobs';
@@ -50,7 +50,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
           if (!batchedAccess && (publication.media_manifest?.entries?.length || publication.retained_media_manifests?.length))
             mediaAccess = await customerBuildMediaAccess(org, claim.identity.site_id, publication.media_manifest, claim.identity.publication_id, publication.retained_media_manifests);
         }
-        let renderCache;
+        let renderCache, assetCache;
         if (metadata.kind === 'publication' && input.render_cache === true) {
           try {
             const cached = await store.getDoc<RenderCachePointer>(renderCachePath(claim.identity));
@@ -58,9 +58,18 @@ export async function runnerRequest(request: Request, org: string, action: strin
               renderCache = { url: await storage.grant(`builds/${org}/tasks/${cached.key}/${cached.lease}/render-cache.json`), sha256: cached.sha256 };
           } catch { /* A missing/expired cache must not prevent claiming a publication. */ }
         }
+        if (metadata.kind === 'publication' && input.asset_cache === true) {
+          try {
+            const cached = await store.getDoc<AssetCachePointer>(assetCachePath(claim.identity));
+            if (cached?.account === storage.account && /^[a-f0-9]{64}$/.test(cached.key) && /^[a-f0-9]{64}$/.test(cached.sha256) && /^[a-f0-9-]{36}$/.test(cached.lease) &&
+                ['org_id', 'site_id', 'version_id'].every(key => cached.identity?.[key as keyof typeof cached.identity] === claim.identity[key as keyof typeof claim.identity]))
+              assetCache = { url: await storage.grant(`builds/${org}/tasks/${cached.key}/${cached.lease}/artifact.json`), sha256: cached.sha256, identity: cached.identity };
+          } catch { /* Expired or unavailable receipts fall back to ordinary downloads. */ }
+        }
         return privateJson({ ...claim, kind: metadata.kind, source_url: await storage.grant(metadata.source_key),
           storage_account_id: storage.account, media_access_batched: batchedAccess, direct_upload: metadata.kind === 'publication',
           ...(input.render_cache === true && metadata.kind === 'publication' ? { render_cache_supported: true, render_cache: renderCache } : {}),
+          ...(assetCache ? { asset_cache: assetCache } : {}),
           ...(mediaAccess ? { media_access: mediaAccess } : {}) });
       });
     }
@@ -114,7 +123,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
       const client = await cloudflareClient(org, fetch, undefined, group.id);
       const grant = await client(`/accounts/${publication.account_id}/pages/projects/${publication.project}/upload-token`);
       if (typeof grant.jwt !== 'string') throw new ConnectionError('Cloudflare did not issue an asset upload grant.', 502);
-      return privateJson({ jwt: grant.jwt });
+      return privateJson({ jwt: grant.jwt, target: { account: publication.account_id, project: publication.project } });
     }
     if (action === 'render-cache-upload') {
       if (metadata.kind !== 'publication') throw new ConnectionError('This task has no render cache.', 409);
@@ -144,6 +153,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
       return privateJson({ ok: true });
     }
     const artifactKey = `builds/${org}/tasks/${key}/${lease}/artifact.json`;
+    let cacheableAssets = false;
     await buildStorage(org, async storage => {
       if (storage.account !== metadata.storage_account_id) throw new ConnectionError('Build storage changed.', 409);
       const files = decodeArtifact(await storage.read(artifactKey), task.identity, String(input.sha256));
@@ -160,6 +170,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
       if (['publication', 'static_verification'].includes(metadata.kind) && files[DIRECT_RECEIPT]) {
         if (Object.keys(files).length !== 2) throw new ConnectionError('Invalid static upload receipt.', 409);
         const receipt = validateDirectReceipt(JSON.parse(files[DIRECT_RECEIPT].toString('utf8')));
+        cacheableAssets = Boolean(receipt.target);
         if (receipt.files['.well-known/typeroll/publication.json']?.sha256 !== sha256(files['.well-known/typeroll/publication.json']))
           throw new ConnectionError('The static upload marker does not match its manifest.', 409);
       }
@@ -171,6 +182,14 @@ export async function runnerRequest(request: Request, org: string, action: strin
     });
     await queue.complete(org, key, lease, token, { sha256: String(input.sha256), key: artifactKey,
       ...(metadata.kind === 'publication' ? { render_report: renderReport(input.render_report) } : {}) });
+    if (metadata.kind === 'publication' && cacheableAssets) {
+      const pointer: AssetCachePointer = { key, lease, sha256: String(input.sha256), identity: task.identity, account: metadata.storage_account_id, created_at: task.created_at };
+      try {
+        const path = assetCachePath(task.identity);
+        await store.createDocIfMissing(path, pointer);
+        await store.compareAndUpdateDoc<AssetCachePointer>(path, value => value.created_at <= pointer.created_at, pointer);
+      } catch { /* The completed artifact remains valid without an optional cache pointer. */ }
+    }
     if (metadata.kind === 'publication' && typeof input.render_cache_sha256 === 'string' && /^[a-f0-9]{64}$/.test(input.render_cache_sha256)) {
       // Publish only a completed attempt, scoped to its organization/site/version.
       // A late older build cannot replace a newer baseline. Objects expire under

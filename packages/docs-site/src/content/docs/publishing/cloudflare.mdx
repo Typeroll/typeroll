@@ -82,13 +82,22 @@ Original images are not committed to GitHub. During a build, the engine receives
 access to the media required for that frozen publication and includes referenced
 public media in the static output. This also works across Hosting Group accounts.
 
-Core 0.2.8 (release candidate) reuses a completion record for unchanged images and their
+Core 0.2.8 reuses a completion record for unchanged images and their
 generated sizes. Editing text, captions or alt text does not trigger image
 conversion. Builds download the files needed for static output and check their
 contents, but do not repeat preparation of every stored copy or old media address.
 New images and changed media paths still need preparation. The first publication
 after upgrading creates these records; subsequent publications reuse them. This
 works with both Cloudflare and GitHub build execution.
+
+Core 0.2.18 (release candidate) also lets updated shared build engines reuse
+unchanged media files already stored in the target Pages project. The engine
+checks the previous file hashes with Cloudflare before skipping their R2
+downloads, and checks availability again before upload. Only files required by
+the current publication are included. A missing, expired or invalid cache falls
+back to normal downloads. The first build seeds this cache; both Cloudflare and
+GitHub build execution support it. Independent repository builds still download
+media to produce a complete local output directory.
 
 Shared organization media URLs remain available. Optional site media hosts and
 legacy media paths are handled by [domain settings](../domains/).

@@ -342,3 +342,33 @@ test('storage throttling reduces subsequent groups and healthy transfers restore
     assert.equal(adaptive.mediaTransferGroupSize(publication.media_manifest.entries, 0), 16);
   }, 160);
 });
+
+test('hosted unchanged images reuse hashes without downloading originals or variants', async t => withMediaFixture(async ({ publication, root, entries: [entry] }) => {
+  await prepareMediaBatch(publication, root);
+  const cold = await prepareMediaBatch(publication, root, 0, { materialize: true });
+  const reusableFiles = Object.fromEntries(await Promise.all(cold.files.map(async file => {
+    const bytes = await fs.readFile(file.source); return [file.path.slice(1), { sha256: sha(bytes), size: bytes.length }];
+  })));
+  await fs.rm(path.join(root, '.publication-media'), { recursive: true, force: true });
+  const originalFetch = globalThis.fetch, reads = [];
+  globalThis.fetch = (url, options) => { assert.notEqual(options?.method, 'PUT'); reads.push(new URL(url).pathname.slice(1)); return originalFetch(url, options); };
+  t.mock.method(sharp.prototype, 'toBuffer', () => { throw Error('must reuse encoded images'); });
+  const warm = await prepareMediaBatch(publication, root, 0, { materialize: true, reusableFiles });
+  assert.equal(warm.files.length, 3); assert.ok(warm.files.every(file => file.reused && !file.source));
+  assert.deepEqual(warm.media, cold.media);
+  assert.deepEqual(reads, ['grant', mediaReceiptKey(publication.media_manifest, entry)]);
+  assert.equal(await fs.stat(path.join(root, '.publication-media')).then(() => true, () => false), false);
+  // Evicted provider object: only that file is materialized, all others stay remote.
+  const missing = cold.files.find(file => file.path.endsWith('.avif'));
+  const missingHash = reusableFiles[missing.path.slice(1)].sha256;
+  delete reusableFiles[missing.path.slice(1)]; reads.length = 0;
+  const repaired = await prepareMediaBatch(publication, root, 0, { materialize: true, reusableFiles });
+  assert.equal(repaired.files.filter(file => !file.reused).length, 1);
+  assert.equal(sha(await fs.readFile(repaired.files.find(file => !file.reused).source)), missingHash);
+  assert.equal(reads.length, 3); assert.equal(reads.at(-1), entry.public_key + missing.path.slice(entry.public_path.length));
+  // A changed source digest is a miss even when its output path matches.
+  reusableFiles[entry.public_path.slice(1)].sha256 = '0'.repeat(64); reads.length = 0;
+  const changed = await prepareMediaBatch(publication, root, 0, { materialize: true, reusableFiles });
+  assert.ok(changed.files.some(file => file.path === entry.public_path && !file.reused));
+  assert.ok(reads.includes(entry.source_key));
+}, 1, true));

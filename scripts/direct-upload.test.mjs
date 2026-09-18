@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { describeStaticOutput, validateDirectReceipt } from '../packages/portal/src/lib/builds/direct-upload.mjs';
+import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt } from '../packages/portal/src/lib/builds/direct-upload.mjs';
 
 test('a thousand static files produce only a bounded receipt and preserve control files', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'direct-static-'));
@@ -55,4 +55,55 @@ test('Cloudflare installs the locked trusted uploader before claiming or qualify
   const executor = await fs.readFile(new URL('../packages/portal/src/lib/builds/executor.mjs', import.meta.url), 'utf8');
   assert.match(setup, /build_command: 'npm ci --ignore-scripts --no-audit --no-fund && npm run build'/);
   assert.match(executor, /if \(job.kind === 'qualification'\) \{[\s\S]*?stage = 'uploader';[\s\S]*?'--version'/);
+});
+
+const target = { account: 'a'.repeat(32), project: 'one-site' };
+const priorReceipt = () => ({ format: 1, target, files: { 'photo.png': { sha256: 'a'.repeat(64), size: 11 }, 'removed.png': { sha256: 'b'.repeat(64), size: 13 } },
+  manifest: { '/photo.png': 'c'.repeat(32), '/removed.png': 'd'.repeat(32) }, controls: {} });
+
+test('provider availability is scoped to the exact hosting target and fails back to downloads', async () => {
+  const receipt = priorReceipt(), grant = { target, jwt: 'synthetic' };
+  let calls = 0;
+  const fetch = async (url, options) => {
+    calls++; assert.equal(url, 'https://api.cloudflare.com/client/v4/pages/assets/check-missing');
+    assert.equal(options.redirect, 'error'); assert.deepEqual(JSON.parse(options.body).hashes, ['c'.repeat(32), 'd'.repeat(32)]);
+    return Response.json({ success: true, result: ['d'.repeat(32)] });
+  };
+  assert.deepEqual(await availablePagesAssets(receipt, grant, fetch), { 'photo.png': receipt.files['photo.png'] });
+  assert.equal(calls, 1);
+  for (const changed of [{ ...target, account: 'e'.repeat(32) }, { ...target, project: 'other' }])
+    assert.deepEqual(await availablePagesAssets(receipt, { ...grant, target: changed }, fetch), {});
+  assert.equal(calls, 1);
+  for (const response of [() => new Response(null, { status: 503 }), () => Response.json({ success: true, result: ['unknown'] }), () => { throw Error('offline'); }])
+    assert.deepEqual(await availablePagesAssets(receipt, grant, response), {});
+});
+
+test('reuse merges only current media and never resurrects a removed path or overwrites generated output', () => {
+  const prior = priorReceipt(), prepared = [{ path: '/photo.png', reused: true, sha256: 'a'.repeat(64), size: 11 }];
+  const reused = reusedMediaReceipt(prepared, prior);
+  const local = { files: { 'index.html': { sha256: 'e'.repeat(64), size: 17 } }, controls: {} };
+  const result = mergeDirectReceipt(local, { '/index.html': 'f'.repeat(32) }, reused, target);
+  assert.deepEqual(Object.keys(result.files).sort(), ['index.html', 'photo.png']);
+  assert.deepEqual(result.manifest, { '/index.html': 'f'.repeat(32), '/photo.png': 'c'.repeat(32) });
+  assert.throws(() => mergeDirectReceipt({ ...local, files: { ...local.files, 'photo.png': prior.files['photo.png'] } }, result.manifest, reused, target), /collision/);
+  for (const invalid of [{ ...prepared[0], sha256: 'e'.repeat(64) }, { ...prepared[0], size: 12 }, { ...prepared[0], path: '/../photo.png' }, { ...prepared[0], path: '/unlisted.png' }])
+    assert.throws(() => reusedMediaReceipt([invalid], prior));
+});
+
+test('reused file paths cannot shadow generated directories', () => {
+  const prior = priorReceipt(), reused = reusedMediaReceipt([{ path: '/photo.png', reused: true, sha256: 'a'.repeat(64), size: 11 }], prior);
+  assert.throws(() => mergeDirectReceipt({ files: { 'photo.png/index.html': { sha256: 'e'.repeat(64), size: 1 } }, controls: {} }, { '/photo.png/index.html': 'f'.repeat(32) }, reused, target), /collision/);
+});
+
+test('refreshes reused asset hashes and bounds retries of optional indexing failures', async () => {
+  let calls = 0;
+  const receipt = priorReceipt();
+  assert.equal(await retainPagesAssets(receipt, { jwt: 'synthetic' }, async (url, options) => {
+    assert.equal(url, 'https://api.cloudflare.com/client/v4/pages/assets/upsert-hashes');
+    assert.deepEqual(JSON.parse(options.body).hashes, ['c'.repeat(32), 'd'.repeat(32)]);
+    return ++calls === 1 ? new Response(null, { status: 503 }) : Response.json({ success: true });
+  }), true);
+  assert.equal(calls, 2); calls = 0;
+  assert.equal(await retainPagesAssets(receipt, { jwt: 'synthetic' }, async () => { calls++; throw Error('offline'); }), false);
+  assert.equal(calls, 2);
 });

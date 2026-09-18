@@ -154,6 +154,11 @@ export async function prepareMedia(publication, root, options = {}) {
           const artifacts = [{ key: entry.source_key, original: true, sha256: entry.sha256, size_bytes: entry.size_bytes, path: entry.public_path },
             ...completed.variants.map(variant => { const suffix = `.v1.w${variant.width}.${entry.sha256.slice(0, 16)}.${variant.format}`; return { ...variant, key: entry.public_key + suffix, path: entry.public_path + suffix }; })];
           for (const artifact of artifacts) {
+            const reusable = options.reusableFiles?.[artifact.path.slice(1)];
+            if (reusable?.sha256 === artifact.sha256 && reusable.size === artifact.size_bytes) {
+              sameHostFiles.push({ path: artifact.path, reused: true, sha256: artifact.sha256, size: artifact.size_bytes });
+              continue;
+            }
             const destination = path.resolve(root, '.publication-media', artifact.path.slice(1));
             if (!destination.startsWith(path.resolve(root, '.publication-media') + path.sep)) throw new Error('Invalid media output path');
             let bytes = await fs.readFile(destination).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
@@ -280,11 +285,11 @@ export async function prepareMedia(publication, root, options = {}) {
 }
 
 /** Prepare a bounded slice of the frozen library; the coordinator owns the cursor. */
-export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntries = 100, budgetMs = 120000, clock = Date.now, cacheOnly = false, materialize = false } = {}) {
+export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntries = 100, budgetMs = 120000, clock = Date.now, cacheOnly = false, materialize = false, reusableFiles = {}, access = {} } = {}) {
   const manifests = [...(publication.retained_media_manifests ?? []), ...(publication.media_manifest ? [publication.media_manifest] : [])];
   const entries = manifests.flatMap(manifest => manifest.entries.map(entry => ({ manifest, entry })));
   if (!Number.isSafeInteger(cursor) || cursor < 0 || cursor > entries.length || !Number.isSafeInteger(maxEntries) || maxEntries < 1 || !Number.isFinite(budgetMs) || budgetMs <= 0) throw new Error('Invalid media preparation cursor');
-  const started = clock(), access = {}, files = [], media = []; let next = cursor;
+  const started = clock(), files = [], media = []; let next = cursor;
   while (next < entries.length && next - cursor < maxEntries && (next === cursor || clock() - started < budgetMs)) {
     // Prime the shared grant once, then overlap independent files. Only a fully
     // verified contiguous group advances the cursor; drain siblings on failure.
@@ -292,7 +297,7 @@ export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntr
     const group = entries.slice(next, next + size);
     const results = await Promise.allSettled(group.map(async ({ manifest, entry }) => {
       const prepared = { ...publication, retained_media_manifests: [], media_manifest: { ...manifest, entries: [entry] }, media: [{ ...entry }] };
-      const output = await prepareMedia(prepared, root, { prepareOnly: !materialize, materializeOnly: materialize, cacheOnly, access });
+      const output = await prepareMedia(prepared, root, { prepareOnly: !materialize, materializeOnly: materialize, cacheOnly, access, reusableFiles });
       if (materialize) { files.push(...output); if (manifest === publication.media_manifest) media.push(...prepared.media); }
     }));
     const failure = results.find(result => result.status === 'rejected');

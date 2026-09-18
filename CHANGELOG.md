@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — Core 0.2.18 / MCP 0.45.18
+
+- Reuse verified media assets already present in the target Pages project before
+  downloading originals and variants from R2 in shared Cloudflare/GitHub builds.
+- Scope completed upload receipts to each Organization, Site, version and hosting
+  target. Recheck availability before upload and fall back to complete local
+  output when assets or receipts are unavailable. Preserve atomic deployments.
+- Report media reuse and stage timings in build logs; document the first-build
+  baseline, independent-build behavior and remaining publication work.
+
 ## Unreleased — Core 0.2.8 / MCP 0.45.8
 
 - Reuse immutable per-image completion receipts during publication instead of

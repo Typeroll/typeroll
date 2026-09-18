@@ -499,6 +499,24 @@ are never copied from the cache. Image preparation and verified variant reuse
 remain a separate process; partial HTML rendering does not eliminate dependency
 installation, media transfer, static upload or provider startup time.
 
+Core 0.2.18 (release candidate) adds reuse of unchanged media files already
+available in the target Pages project. Updated shared engines compare the
+current image completion records with a completed upload receipt, then check
+Cloudflare's stored asset hashes before omitting downloads from R2. They combine
+reused media and newly generated files into one complete deployment manifest.
+Files no longer referenced by the publication are excluded; retained media
+aliases remain available when included in the current publication.
+
+Reuse is scoped to the Organization, Site, version, hosting account and Pages
+project. Availability is checked again after rendering; missing assets trigger
+normal downloads and another render before upload. An expired or invalid receipt
+also causes ordinary downloads. The first build with the updated engine creates
+the receipt for later builds. Build logs include `media_report` with reused file
+and byte counts plus materialization and rendering times. These are separate
+from `job.render_report`, which counts HTML routes. Provider startup, dependency
+installation and publication verification still take time; the report does not
+promise a fixed end-to-end speedup.
+
 For Cloudflare or GitHub shared builds, update the organization build engine in
 **Publishing → Builds** after upgrading Core. Both providers use the same renderer
 and private R2 cache, isolated per Site and version. Only completed build attempts

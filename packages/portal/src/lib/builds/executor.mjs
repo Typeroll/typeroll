@@ -4,8 +4,8 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { describeStaticOutput, validateDirectReceipt, DIRECT_RECEIPT } from './direct-upload.mjs';
-import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, decodeSource, encodeArtifact, sha256, assertFilePath, renderReport } from './contract.mjs';
+import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt, DIRECT_RECEIPT } from './direct-upload.mjs';
+import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, decodeSource, decodeArtifact, encodeArtifact, sha256, assertFilePath, renderReport } from './contract.mjs';
 
 export const BWRAP_URL = 'https://archive.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb';
 export const BWRAP_SHA = '1b506492bd9c7fd0cdb4f02ac822f1d3e336b0aead5113c1239baf8db5db562a';
@@ -40,7 +40,7 @@ import { installAssetCache } from './assets.mjs';
 await installAssetCache('/work');
 registerHooks({ load(url, context, next) {
   if (url !== 'file:///work/scripts/media.mjs') return next(url, context);
-  return { format: 'module', shortCircuit: true, source: ${JSON.stringify("import fs from 'node:fs/promises'; import path from 'node:path'; export async function prepareMedia(publication) { const prepared=JSON.parse(await fs.readFile('/work/.typeroll-runner/prepared.json','utf8')); if(prepared.publication_id!==publication.publication_id || !Array.isArray(prepared.media) || !Array.isArray(prepared.files))throw Error('prepared_media_identity_mismatch'); for(const file of prepared.files)if(!path.resolve(file.source).startsWith('/work/.publication-media/'))throw Error('prepared_media_path_mismatch'); publication.media=prepared.media; return prepared.files; }")} };
+  return { format: 'module', shortCircuit: true, source: ${JSON.stringify("import fs from 'node:fs/promises'; import path from 'node:path'; export async function prepareMedia(publication) { const prepared=JSON.parse(await fs.readFile('/work/.typeroll-runner/prepared.json','utf8')); if(prepared.publication_id!==publication.publication_id || !Array.isArray(prepared.media) || !Array.isArray(prepared.files))throw Error('prepared_media_identity_mismatch'); for(const file of prepared.files)if(!file.reused&&!path.resolve(file.source).startsWith('/work/.publication-media/'))throw Error('prepared_media_path_mismatch'); publication.media=prepared.media; return prepared.files; }")} };
 } });
 await import('../scripts/build.mjs');
 `;
@@ -78,7 +78,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     if (!response.ok) throw Error(`coordinator_${response.status}`);
     return response.json();
   };
-  const job = await request('claim', runnerToken, { protocol: 1, media_batch_access: true, static_verification: true, render_cache: true });
+  const job = await request('claim', runnerToken, { protocol: 1, media_batch_access: true, static_verification: true, render_cache: true, asset_cache: true });
   if (!job) { console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'idle' })); return; }
   if (job.identity.org_id !== config.org_id) throw Error('build_scope_mismatch');
   const startedAt = Date.now();
@@ -111,6 +111,8 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     if (url.protocol !== 'https:' || url.hostname !== `${job.storage_account_id}.r2.cloudflarestorage.com` || url.username || url.password || url.port) throw Error('invalid_build_storage');
     return url;
   };
+  let previousAssets, reusableFiles = {}, preparedMediaFiles = [], materializePublication, renderPublication;
+  const mediaReport = { reused_files: 0, reused_bytes: 0, materialization_ms: 0, rendering_ms: 0 };
   try {
     await fs.mkdir(work);
     const bytes = await responseBytes(await fetchImpl(storageUrl(job.source_url), { redirect: 'error', signal: AbortSignal.timeout(60000) }), MAX_SOURCE_BYTES);
@@ -148,6 +150,16 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         if (sha256(cached) !== job.render_cache.sha256) throw Error('render_cache_integrity');
         await fs.writeFile(path.join(work, '.publication-cache.json'), cached, { flag: 'wx' });
       } catch { console.log('TYPEROLL_RENDER_CACHE unavailable; rendering without a baseline'); }
+    }
+    if (job.kind === 'publication' && job.direct_upload && job.asset_cache) {
+      try {
+        if (!['org_id', 'site_id', 'version_id'].every(key => job.asset_cache.identity?.[key] === job.identity[key])) throw Error('asset_cache_scope');
+        const bytes = await responseBytes(await fetchImpl(storageUrl(job.asset_cache.url), { redirect: 'error', signal: AbortSignal.timeout(30000) }), 8 * 1024 * 1024);
+        const cached = decodeArtifact(bytes, job.asset_cache.identity, job.asset_cache.sha256);
+        previousAssets = validateDirectReceipt(JSON.parse(cached[DIRECT_RECEIPT].toString('utf8')));
+        const grant = await request('direct-upload', job.token, attempt);
+        reusableFiles = await availablePagesAssets(previousAssets, grant, fetchImpl);
+      } catch { previousAssets = undefined; reusableFiles = {}; console.log('TYPEROLL_MEDIA_CACHE unavailable; downloading required media'); }
     }
     stage = 'sandbox';
     const deb = await responseBytes(await fetchImpl(BWRAP_URL, { redirect: 'error', signal: AbortSignal.timeout(30000) }), 100000);
@@ -201,39 +213,65 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         await fs.writeFile(path.join(work, 'dist/.well-known/typeroll/publication.json'), JSON.stringify({ id: job.identity.publication_id }));
         await fs.writeFile(path.join(work, 'dist/preparation.json'), JSON.stringify({ publication_id: job.identity.publication_id, completed: job.media_total }));
       } else {
-      // Only this trusted media stage receives exact publication-scoped object grants.
-      if (job.media_access_batched && job.media_total) {
-        const prepared = { publication_id: job.identity.publication_id, media: [], files: [] };
-        let cursor = 0;
-        while (cursor < job.media_total) {
-          const access = await request('media-access', job.token, { ...attempt, cursor });
-          await fs.writeFile(path.join(work, '.typeroll-runner/materialize.mjs'),
-            "import fs from 'node:fs/promises'; import { prepareMediaBatch } from '../scripts/media.mjs'; const publication=JSON.parse(await fs.readFile('/work/publication.json','utf8')); const result=await prepareMediaBatch(publication,'/work'," + cursor + ",{materialize:true}); await fs.writeFile('/work/.typeroll-runner/materialized.json',JSON.stringify(result));");
-          await run(['.typeroll-runner/materialize.mjs'], true, { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(access) });
-          const result = JSON.parse(await fs.readFile(path.join(work, '.typeroll-runner/materialized.json'), 'utf8'));
-          if (result.cursor <= cursor || result.cursor > Math.min(cursor + 100, job.media_total) || result.total !== job.media_total || !Array.isArray(result.files) || !Array.isArray(result.media)) throw Error('media_materialization_scope_mismatch');
-          prepared.files.push(...result.files); prepared.media.push(...result.media); cursor = result.cursor;
-        }
-        const byId = new Map(prepared.media.map(media => [media.id, media]));
-        const publication = JSON.parse(files['publication.json']);
-        if (publication.media_manifest.entries.some(entry => !byId.has(entry.id))) throw Error('media_materialization_incomplete');
-        prepared.media = publication.media.map(media => byId.get(media.id) ?? media);
-        await fs.writeFile(path.join(work, '.typeroll-runner/prepared.json'), JSON.stringify(prepared));
-      } else await run(['.typeroll-runner/prepare.mjs'], true, job.media_access ? { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(job.media_access) } : {});
+      materializePublication = async reusable => {
+        const materializationStarted = Date.now();
+        await fs.writeFile(path.join(work, '.typeroll-runner/reusable-media.json'), JSON.stringify(reusable));
+        // Only this trusted media stage receives exact publication-scoped object grants.
+        if (job.media_access_batched && job.media_total) {
+          const prepared = { publication_id: job.identity.publication_id, media: [], files: [] };
+          let cursor = 0;
+          while (cursor < job.media_total) {
+            const access = await request('media-access', job.token, { ...attempt, cursor });
+            await fs.writeFile(path.join(work, '.typeroll-runner/materialize.mjs'),
+              "import fs from 'node:fs/promises'; import { prepareMediaBatch } from '../scripts/media.mjs'; const publication=JSON.parse(await fs.readFile('/work/publication.json','utf8')); const result=await prepareMediaBatch(publication,'/work'," + cursor + ",{materialize:true,reusableFiles:JSON.parse(await fs.readFile('/work/.typeroll-runner/reusable-media.json','utf8'))}); await fs.writeFile('/work/.typeroll-runner/materialized.json',JSON.stringify(result));");
+            await run(['.typeroll-runner/materialize.mjs'], true, { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(access) });
+            const result = JSON.parse(await fs.readFile(path.join(work, '.typeroll-runner/materialized.json'), 'utf8'));
+            if (result.cursor <= cursor || result.cursor > Math.min(cursor + 100, job.media_total) || result.total !== job.media_total || !Array.isArray(result.files) || !Array.isArray(result.media)) throw Error('media_materialization_scope_mismatch');
+            prepared.files.push(...result.files); prepared.media.push(...result.media); cursor = result.cursor;
+          }
+          const byId = new Map(prepared.media.map(media => [media.id, media]));
+          const publication = JSON.parse(files['publication.json']);
+          if (publication.media_manifest.entries.some(entry => !byId.has(entry.id))) throw Error('media_materialization_incomplete');
+          prepared.media = publication.media.map(media => byId.get(media.id) ?? media);
+          preparedMediaFiles = prepared.files;
+          // Validate source-provided reuse descriptors against the trusted receipt.
+          reusedMediaReceipt(preparedMediaFiles, previousAssets);
+          await fs.writeFile(path.join(work, '.typeroll-runner/prepared.json'), JSON.stringify(prepared));
+        } else await run(['.typeroll-runner/prepare.mjs'], true, job.media_access ? { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(job.media_access) } : {});
+        mediaReport.materialization_ms += Date.now() - materializationStarted;
+      };
+      await materializePublication(reusableFiles);
       stage = 'extension_assets';
       await fs.copyFile(new URL('./assets.mjs', import.meta.url), path.join(work, '.typeroll-runner/assets.mjs'));
       await run(['--input-type=module', '-e', "import { prepareAssets } from './.typeroll-runner/assets.mjs'; await prepareAssets('/work');"], true);
       stage = 'rendering';
       await fs.writeFile(path.join(work, '.typeroll-runner/render.mjs'), RENDER_ADAPTER, { flag: 'wx' });
-      await run(['.typeroll-runner/render.mjs'], false, { TYPEROLL_BUILD_MEDIA_PREPARED: '/work/.typeroll-runner/prepared.json' });
+      renderPublication = async () => {
+        const renderingStarted = Date.now();
+        await run(['.typeroll-runner/render.mjs'], false, { TYPEROLL_BUILD_MEDIA_PREPARED: '/work/.typeroll-runner/prepared.json' });
+        mediaReport.rendering_ms += Date.now() - renderingStarted;
+      };
+      await renderPublication();
     }
     }
     stage = 'artifact';
     let artifactFiles;
     if (job.kind === 'publication' && job.direct_upload) {
       const dist = path.join(work, 'dist');
+      let grant = await request('direct-upload', job.token, attempt);
+      let reused = reusedMediaReceipt(preparedMediaFiles, previousAssets);
+      if (Object.keys(reused.files).length) {
+        const available = await availablePagesAssets(reused, grant, fetchImpl);
+        if (Object.keys(available).length !== Object.keys(reused.files).length) {
+          // Assets may expire while rendering. Rebuild a complete local output;
+          // ordinary Wrangler upload then repairs missing files atomically.
+          stage = 'media'; await materializePublication({});
+          stage = 'rendering'; await renderPublication();
+          stage = 'artifact'; reused = reusedMediaReceipt(preparedMediaFiles, previousAssets);
+          grant = await request('direct-upload', job.token, attempt);
+        }
+      }
       const description = await describeStaticOutput(dist);
-      const grant = await request('direct-upload', job.token, attempt);
       if (typeof grant.jwt !== 'string' || grant.jwt.length > 16384) throw Error('invalid_pages_upload_grant');
       const manifestPath = path.join(temp, 'pages-manifest.json');
       const logPath = path.join(temp, 'wrangler.log'); await fs.symlink('/dev/null', logPath);
@@ -244,7 +282,10 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         'pages', 'project', 'upload', dist, '--output-manifest-path', manifestPath], 300000,
         { CF_PAGES_UPLOAD_JWT: grant.jwt, CLOUDFLARE_API_TOKEN: grant.jwt, CI: 'true', WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: logPath }, temp);
       const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
-      const receipt = validateDirectReceipt({ format: 1, ...description, manifest });
+      const receipt = mergeDirectReceipt(description, manifest, reused, grant.target);
+      if (!await retainPagesAssets(reused, grant, fetchImpl)) console.log('TYPEROLL_MEDIA_CACHE availability index refresh failed; future builds may download files again');
+      mediaReport.reused_files = Object.keys(reused.files).length;
+      mediaReport.reused_bytes = Object.values(reused.files).reduce((total, file) => total + file.size, 0);
       artifactFiles = { [DIRECT_RECEIPT]: Buffer.from(JSON.stringify(receipt)),
         '.well-known/typeroll/publication.json': await fs.readFile(path.join(dist, '.well-known/typeroll/publication.json')) };
     } else artifactFiles = await outputFiles(path.join(work, 'dist'));
@@ -275,7 +316,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       }
     }
     await request('complete', job.token, { ...attempt, sha256: sha256(artifact), render_cache_sha256: cacheHash, render_report: report });
-    console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'completed', job: job.identity.job_id, branch: job.identity.branch, render_report: report }));
+    console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'completed', job: job.identity.job_id, branch: job.identity.branch, render_report: report, media_report: mediaReport }));
   } catch (error) {
     const code = artifactFailureCode(error.message);
     try { await request('fail', job.token, { ...attempt, code, stage }); } catch { /* A cancelled or superseded attempt cannot change publication state. */ }

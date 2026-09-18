@@ -18,7 +18,7 @@ export async function publicationBuildHarness(publication) {
   return {
     destination,
     cleanup: () => fs.rm(root, { recursive: true, force: true }),
-    async run(full = false) {
+    async run(full = false, environment = {}) {
       for (const [name, content] of Object.entries(publicationContentFiles(publication))) {
         await fs.mkdir(path.dirname(path.join(destination, name)), { recursive: true });
         await fs.writeFile(path.join(destination, name), content);
@@ -26,7 +26,7 @@ export async function publicationBuildHarness(publication) {
       await sealPublicationProject(destination);
       const started = performance.now();
       const result = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: destination,
-        env: { PATH: process.env.PATH, ...(full ? { TYPEROLL_FULL_BUILD: '1' } : {}) }, encoding: 'utf8', timeout: 120000 });
+        env: { PATH: process.env.PATH, ...environment, ...(full ? { TYPEROLL_FULL_BUILD: '1' } : {}) }, encoding: 'utf8', timeout: 120000 });
       const milliseconds = performance.now() - started;
       assert.equal(result.status, 0, result.stderr + result.stdout);
       const report = JSON.parse(await fs.readFile(path.join(destination, '.publication-work/render-report.json'), 'utf8'));

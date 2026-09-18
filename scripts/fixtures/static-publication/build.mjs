@@ -28,7 +28,7 @@ if (process.env.TYPEROLL_BUILD_MEDIA_PREPARED) {
   if (!preparedPath.startsWith(root) || !(await fs.lstat(preparedPath)).isFile()) throw new Error('Invalid prepared media path');
   const prepared = JSON.parse(await fs.readFile(preparedPath, 'utf8'));
   if (prepared.publication_id !== publication.publication_id || !Array.isArray(prepared.media) || !Array.isArray(prepared.files)) throw new Error('Prepared media belongs to another publication');
-  for (const file of prepared.files) if (!path.resolve(file.source).startsWith(path.join(root, '.publication-media') + path.sep)) throw new Error('Prepared media escaped its publication');
+  for (const file of prepared.files) if (!file.reused && !path.resolve(file.source).startsWith(path.join(root, '.publication-media') + path.sep)) throw new Error('Prepared media escaped its publication');
   publication.media = prepared.media;
   sameHostMedia = prepared.files;
 } else sameHostMedia = await prepareMedia(publication, root);
@@ -127,6 +127,8 @@ for (const file of new Map(sameHostMedia.map(file => [file.path, file])).values(
   if (!destination.startsWith(dist + path.sep)) throw new Error('Invalid public media path');
   try { await fs.access(destination); throw new Error('Media path collides with a generated page or asset'); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
+  // The trusted uploader merges only these current, verified media paths.
+  if (file.reused) continue;
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.copyFile(file.source, destination);
 }

@@ -333,6 +333,14 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   Missing cache means a full build. Every deployment remains a complete site.
   Shared GitHub/Cloudflare engines need their normal update for remote cache
   transport; do not claim fixed time or cost savings from page counts.
+  Core 0.2.18 adds target-scoped media asset reuse to updated shared engines:
+  unchanged files already available in Pages can skip R2 downloads. Missing or
+  invalid receipts and unavailable assets fall back to ordinary downloads. The
+  first updated build seeds this cache. This works with GitHub and Cloudflare
+  build execution; standalone repository builds still materialize local files.
+  Provider logs expose `media_report` for reused files/bytes and stage timings;
+  `job.render_report` remains HTML-only. Do not equate avoided image downloads
+  with zero traffic or zero verification work for the complete deployment.
   A finished job carries `cost`: total, cpu/memory/request split,
   `duration_s`, per-phase timings, and output size. Estimates from a rate
   card, not billing records, and gross of free tier — quote them as "roughly"

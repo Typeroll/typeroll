@@ -342,3 +342,26 @@ test('custom templates, aliases and media invalidate only their actual consumers
   value.pages[0].title = 'Updated A';
   await compare(['a', 'b', 'photo', 'independent'], []);
 });
+
+test('a deferred-media build has exactly the same complete output as materializing every image', async t => {
+  const value = publication();
+  value.media = [{ id: 'photo', cdn_url: 'https://example.invalid/photo.png', width: 640, height: 480, variants: [] }];
+  value.pages[0].html_content += '<img src="https://example.invalid/photo.png" alt="Synthetic photo" />';
+  const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
+  await fs.mkdir(path.join(harness.destination, '.publication-media'));
+  const directory = await fs.realpath(path.join(harness.destination, '.publication-media'));
+  const bytes = Buffer.from('synthetic media content');
+  const source = path.join(directory, 'photo.png'); await fs.writeFile(source, bytes);
+  const preparedPath = path.join(directory, 'prepared.json');
+  const prepared = { publication_id: value.publication_id, media: value.media, files: [{ path: '/photo.png', source }] };
+  await fs.writeFile(preparedPath, JSON.stringify(prepared));
+  await harness.run(true, { TYPEROLL_BUILD_MEDIA_PREPARED: preparedPath });
+  const complete = await harness.output(); assert.equal(complete['photo.png'], digest(bytes));
+  prepared.files = [{ path: '/photo.png', reused: true, sha256: digest(bytes), size: bytes.length }];
+  await fs.writeFile(preparedPath, JSON.stringify(prepared)); await fs.rm(source);
+  const result = await harness.run(false, { TYPEROLL_BUILD_MEDIA_PREPARED: preparedPath });
+  assert.equal(result.report.reused, 2);
+  const deferred = await harness.output(); assert.equal(deferred['photo.png'], undefined);
+  // The complete manifest restores the already hosted bytes, not a local placeholder.
+  assert.deepEqual({ ...deferred, 'photo.png': prepared.files[0].sha256 }, complete);
+});

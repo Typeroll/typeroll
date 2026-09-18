@@ -4,7 +4,7 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { connectionPath } from '../../lib/publishing/connections';
 import { OrganizationBuildQueue, buildTasksPath } from '../../lib/builds/queue';
-import { engineConfigurationPath, buildInputPath, renderCachePath } from '../../lib/builds/state';
+import { engineConfigurationPath, buildInputPath, renderCachePath, assetCachePath } from '../../lib/builds/state';
 import { enginePath } from '../../lib/builds/cloudflare';
 import { runnerRequest } from '../../lib/builds/runner-http';
 import { encodeSource, encodeArtifact, sha256, BUILD_PROTOCOL, BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
@@ -212,7 +212,7 @@ it('issues asset-only upload access for the frozen hosting group and denies chan
   const attempt = { key, lease_id: claim.lease_id };
   const grant = await request('direct-upload', claim.token, attempt);
   expect(grant.status).toBe(200);
-  expect(await grant.json()).toEqual({ jwt: 'synthetic-asset-grant' });
+  expect(await grant.json()).toEqual({ jwt: 'synthetic-asset-grant', target: { account: 'a'.repeat(32), project: 'generated-site' } });
   expect(assetGrant).toHaveBeenLastCalledWith(`/accounts/${'a'.repeat(32)}/pages/projects/generated-site/upload-token`);
   await getStore().updateDoc(paths.deploy(org, 'site', 'job'), { git_publication: { ...publication, account_id: 'b'.repeat(32) } });
   expect((await request('direct-upload', claim.token, attempt)).status).toBe(409);
@@ -249,12 +249,13 @@ it('accepts a direct upload receipt only with its matching frozen publication ma
   const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
   const markerPath = '.well-known/typeroll/publication.json';
   const marker = Buffer.from(JSON.stringify({ id: frozen.publication_id }));
-  const receipt = { format: 1, files: { [markerPath]: { sha256: sha256(marker), size: marker.length }, 'index.html': { sha256: sha256('hello'), size: 5 } },
+  const receipt = { format: 1, target: { account: 'a'.repeat(32), project: 'generated-site' }, files: { [markerPath]: { sha256: sha256(marker), size: marker.length }, 'index.html': { sha256: sha256('hello'), size: 5 } },
     controls: {}, manifest: { ['/' + markerPath]: 'a'.repeat(32), '/index.html': 'b'.repeat(32) } };
   const artifact = encodeArtifact(frozen, { '.typeroll-direct-upload.json': Buffer.from(JSON.stringify(receipt)), [markerPath]: marker });
   storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
   expect((await request('complete', claim.token, { key, lease_id: claim.lease_id, sha256: sha256(artifact) })).status).toBe(200);
   expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'completed' });
+  expect(await getStore().getDoc(assetCachePath(frozen))).toMatchObject({ key, lease: claim.lease_id, sha256: sha256(artifact), identity: frozen, account: 'a'.repeat(32) });
 });
 
 it('completes private preparation with a verified marker and no static hosting action', async () => {
@@ -272,4 +273,23 @@ it('completes private preparation with a verified marker and no static hosting a
     '.well-known/typeroll/publication.json': Buffer.from(JSON.stringify({ id: frozen.publication_id })) });
   storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
   expect((await request('complete', claim.token, { ...attempt, sha256: sha256(artifact) })).status).toBe(200);
+});
+
+it('grants cached asset receipts only for the current organization, site, version and storage account', async () => {
+  const { frozen } = await prepare();
+  const pointer = { key: 'e'.repeat(64), lease: '12345678-1234-1234-1234-123456789012', sha256: 'd'.repeat(64), account: 'a'.repeat(32), created_at: 1, identity: frozen };
+  await getStore().setDoc(assetCachePath(frozen), pointer);
+  const claim = await (await request('claim', runnerToken, { protocol: 1, asset_cache: true })).json();
+  expect(claim.asset_cache).toEqual({ url: `https://storage.invalid/builds/org/tasks/${pointer.key}/${pointer.lease}/artifact.json?write=false`, sha256: pointer.sha256, identity: frozen });
+  expect(await getStore().getDoc(assetCachePath({ ...frozen, version_id: 'other' }))).toBeNull();
+});
+
+it.each(['account', 'org_id', 'site_id', 'version_id'])('does not grant a mismatched asset baseline: %s', async field => {
+  const { frozen } = await prepare();
+  const pointer = { key: 'e'.repeat(64), lease: '12345678-1234-1234-1234-123456789012', sha256: 'd'.repeat(64), account: 'a'.repeat(32), created_at: 1, identity: frozen };
+  if (field === 'account') pointer.account = 'f'.repeat(32);
+  else pointer.identity = { ...frozen, [field]: 'other' };
+  await getStore().setDoc(assetCachePath(frozen), pointer);
+  const claim = await (await request('claim', runnerToken, { protocol: 1, asset_cache: true })).json();
+  expect(claim.asset_cache).toBeUndefined();
 });
