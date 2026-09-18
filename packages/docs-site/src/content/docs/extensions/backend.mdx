@@ -143,3 +143,112 @@ disabled, cross-site and wrong-version requests.
 Authorized users and agents discover these guides with `read_app_documentation`.
 Core limits the document to 256 KiB and reports unavailable guides explicitly.
 No private guide text belongs in a public manifest or build asset.
+
+## Native portal administration (runtime 0.41.0)
+
+An explicitly trusted app can render a self-contained ES module directly inside
+Typeroll's portal. This is an alternative to the existing isolated iframe admin
+launch. It does not require moving the CMS, authentication or app backend to the
+same provider. A backend can be deployed independently on Cloudflare or another
+HTTPS service.
+
+**Native modules have the portal's browser privileges.** They are not sandboxed.
+A site administrator installing an app is not sufficient authorization to run
+its JavaScript in the portal. The host operator must approve its exact published
+manifest digest, extension ID and developer organization. Every new release
+needs new approval. Untrusted apps should use the iframe launch contract.
+Typeroll Cloud controls this approval; self-host operators own their own trust
+policy. Private app implementations and guides remain with their providers.
+
+Declare a native admin entry in the [manifest](../manifest/):
+
+```json
+{
+  "admin": {
+    "pages": [
+      {
+        "id": "settings",
+        "label": "App settings",
+        "minimum_permission": "admin",
+        "launch_url": "https://app.example.com/admin",
+        "native": {
+          "sdk_version": 1,
+          "script_url": "https://app.example.com/assets/1.0.0/admin.js",
+          "script_sha256": "<SHA-256 of the exact module bytes>",
+          "api_base_url": "https://app.example.com/v1"
+        }
+      }
+    ]
+  }
+}
+```
+
+Use `runtime_compatibility: ">=0.41.0 <1.0.0"`. `launch_url` remains required by
+the manifest contract, but approved native pages do not perform an iframe launch.
+Serve the immutable module with CORS permission for the portal origin. It must
+contain its dependencies: relative imports do not work from the verified Blob
+module. The portal checks SHA-256 and a 1 MiB limit before evaluating it.
+
+```js
+export const sdkVersion = 1;
+export async function mount(root, sdk) {
+  const config = await sdk.configuration.read();
+  const button = document.createElement("button");
+  button.textContent = "Enable feature";
+  button.addEventListener(
+    "click",
+    async () => {
+      try {
+        await sdk.configuration.save({ enabled: true });
+        sdk.notify("Settings saved");
+      } catch (error) {
+        sdk.notify(error.message, "error");
+      }
+    },
+    { signal: sdk.signal },
+  );
+  root.append(button);
+  return () => root.replaceChildren();
+}
+```
+
+The version 1 SDK provides:
+
+| Member                                  | Contract                                                                                                                     |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `context`                               | Read-only issuer, organization, site, installation, app version and permission.                                              |
+| `signal`                                | Abort signal for listeners and in-flight work when the page closes.                                                          |
+| `request('/path', { method, body })`    | JSON request beneath the approved API base; automatically supplies a short-lived user token.                                 |
+| `configuration.read()` / `.save(patch)` | Masked installation config and schema-validated patch; requires site administrator access. Secret values are never returned. |
+| `navigate(path)`                        | Navigate within the current site's portal routes.                                                                            |
+| `notify(message, 'success' \| 'error')` | Accessible portal feedback using plain text.                                                                                 |
+| `setDirty(boolean)`                     | Warn before leaving with unsaved changes; a successful SDK save clears it.                                                   |
+
+Mount into the supplied root, use responsive widths, and return a cleanup function.
+Use text nodes for untrusted values. Portal theme variables can style the content;
+the module must avoid global styles and navigation outside the SDK contract.
+
+Each protected SDK operation rechecks the portal session, current permissions,
+enabled installation and exact host approval. An app version or organization
+change requires reloading the app. API tokens expire after five minutes; their
+claims include `token_use: "portal_admin"`, `page_id`, `version`, `sub`, `org_id`,
+`site_id`, `installation_id`, permission and effective scopes. Verify the ES256
+signature, trusted issuer, audience and expiration, bind the claims to the
+requested resource, and recheck the installation. User revocation has at most
+the token lifetime at a backend unless the backend performs an additional live
+user check. Do not confuse these tokens with installation credentials or guide
+assertions. Never persist them, put them in URLs or forward them on redirects.
+
+Public site components use the existing frontend contract and the version frozen
+at publication. Updating portal administration does not automatically update
+already-published websites. Apps own their operational data; CMS Pages remain
+in Typeroll. Share data through explicit authenticated APIs or events instead of
+writing another app's database.
+
+For self-host operators, approval is a host-owned datastore record at
+`extension_admin_approvals/<manifest_sha256>` with `developer_org_id`,
+`extension_id`, `manifest_sha256` and `enabled: true`. Read the digest from the
+published registry record, verify the release and write through the host's
+administrative datastore access. Set `enabled: false` to revoke it. Do not expose
+this collection through a developer or site-admin API. An ordinary installation
+or organization administrator cannot grant this host-level trust.

@@ -341,6 +341,25 @@ describe('Extension control plane', () => {
     expect(revoked.resolved_form_bindings).toBeUndefined();
   });
 
+  it('requires registration of native module and API origins', async () => {
+    const candidate = manifest();
+    candidate.admin!.pages[0]!.native = {
+      sdk_version: 1, script_url: 'https://unregistered.example/admin.js',
+      script_sha256: SCRIPT_DIGEST, api_base_url: 'https://vendor.example/v1',
+    };
+    await createExtension({ developerOrgId: DEV_ORG, actorId: 'developer-user',
+      id: candidate.id, name: candidate.name,
+      trustedOrigins: ['https://vendor.example', 'https://93.184.216.34'] });
+    const save = () => saveExtensionVersion({ developerOrgId: DEV_ORG,
+      extensionId: candidate.id, actorId: 'developer-user', manifest: candidate });
+    await expect(save()).rejects.toThrow('unregistered execution origins');
+    candidate.admin!.pages[0]!.native!.script_url = 'https://vendor.example/admin.js';
+    candidate.admin!.pages[0]!.native!.api_base_url = 'https://unregistered.example/v1';
+    await expect(save()).rejects.toThrow('unregistered execution origins');
+    candidate.admin!.pages[0]!.native!.api_base_url = 'https://vendor.example/v1';
+    await expect(save()).resolves.toMatchObject({ status: 'draft' });
+  });
+
   it('supports the CLI flow through org-scoped developer and installation APIs', async () => {
     const { createApiKey } = await import('../../lib/api-keys');
     const { token } = await createApiKey({ orgId: DEV_ORG, siteId: null, name: 'Extension CLI', createdBy: 'developer-user' });

@@ -61,6 +61,15 @@ function manifest(): ExtensionManifest {
 }
 
 describe('extension manifest', () => {
+  it('validates native admin modules without treating declarations as host approval', () => {
+    const value = manifest();
+    value.admin = { pages: [{ id: 'settings', label: 'Settings', minimum_permission: 'admin', launch_url: 'https://app.example/settings',
+      native: { sdk_version: 1, script_url: 'https://app.example/v1/admin.js', script_sha256: 'b'.repeat(64), api_base_url: 'https://app.example/v1' } }] };
+    expect(validateExtensionManifest(value).errors).toEqual([]);
+    value.admin.pages[0]!.native!.script_sha256 = 'invalid';
+    expect(validateExtensionManifest(value).errors.some(error => error.includes('script_sha256'))).toBe(true);
+  });
+
   it('maps labelled enums and nested object arrays into editable fields', () => {
     const fields = extensionPropsToFields({
       type: 'object',
@@ -431,7 +440,7 @@ describe('extension renderer capabilities', () => {
       supports_extension_storage: true,
       supports_extension_form_bindings: true,
       extension_protocol_version: 3,
-      extension_runtime_version: '0.40.0',
+      extension_runtime_version: '0.41.0',
       supports_extension_installation_config_api: true,
       supports_indexing_diagnostics: true,
       supports_migration_launch_report: true,

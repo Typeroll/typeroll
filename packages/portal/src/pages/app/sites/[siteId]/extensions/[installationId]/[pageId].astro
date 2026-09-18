@@ -1,6 +1,7 @@
 ---
+import { approvedNativeAdmin } from '../../../../../../lib/extensions/native-admin';
 import AppLayout from '../../../../../../layouts/AppLayout.astro';
-import { loadSiteContext } from '../../../../../../lib/access';
+import { loadSiteContext, requirePermission } from '../../../../../../lib/access';
 import { getStore } from '../../../../../../lib/datastore';
 import { extensionIssuer, issueExtensionLaunchGrant } from '../../../../../../lib/extensions/auth';
 import { resolveExtensionVersion } from '../../../../../../lib/extensions/resolution';
@@ -21,7 +22,12 @@ const manifest = version?.manifest;
 const page = manifest?.admin?.pages.find((entry) => entry.id === pageId);
 if (!page || !manifest) return Astro.redirect(`/app/sites/${site.id}/settings/extensions`);
 
-const launch = await issueExtensionLaunchGrant({
+const allowed = requirePermission(ctx, page.minimum_permission);
+if (!allowed.ok) return allowed.response;
+
+const native = page.native && version && await approvedNativeAdmin(installation, version) ? page.native : null;
+if (page.native && !native) return new Response('This app release is not approved for portal integration', { status: 403 });
+const launch = native ? null : await issueExtensionLaunchGrant({
   ownerOrgId: orgId,
   siteId: site.id,
   installationId,
@@ -33,7 +39,7 @@ const launchOrigin = new URL(page.launch_url).origin;
 Astro.response.headers.set('Referrer-Policy', 'no-referrer');
 Astro.response.headers.set(
   'Content-Security-Policy',
-  `default-src 'self'; frame-src ${launchOrigin}; form-action ${launchOrigin}; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:`,
+  `default-src 'self'; connect-src 'self' ${native ? new URL(native.script_url).origin + ' ' + new URL(native.api_base_url).origin : ''}; frame-src ${launchOrigin}; form-action ${launchOrigin}; script-src 'self' 'unsafe-inline' ${native ? 'blob:' : ''}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:`,
 );
 const frameName = `tr-extension-${installationId}-${pageId}`;
 ---
@@ -46,6 +52,7 @@ const frameName = `tr-extension-${installationId}-${pageId}`;
       </div>
       <a class="btn btn--secondary" href={`/app/sites/${site.id}/settings/extensions`}>Extension settings</a>
     </div>
+    {native ? <div data-native-admin data-site-id={site.id} data-installation-id={installation.id} data-page-id={page.id}>Loading app…</div> : <>
     <iframe
       name={frameName}
       title={page.label}
@@ -54,13 +61,22 @@ const frameName = `tr-extension-${installationId}-${pageId}`;
       class="extension-admin-frame"
     ></iframe>
     <form method="POST" action={page.launch_url} target={frameName} data-extension-launch>
-      <input type="hidden" name="code" value={launch.code} />
+      <input type="hidden" name="code" value={launch!.code} />
       <input type="hidden" name="issuer" value={extensionIssuer()} />
       <input type="hidden" name="installation_id" value={installation.id} />
       <input type="hidden" name="page_id" value={page.id} />
       <noscript><button type="submit" class="btn">Open {page.label}</button></noscript>
     </form>
+    </>}
   </div>
+  <script>
+    import { mountNativeAdmin } from '../../../../../../lib/extensions/native-admin-client';
+    const root = document.querySelector<HTMLElement>('[data-native-admin]');
+    if (root) {
+      const cleanup = await mountNativeAdmin(root);
+      window.addEventListener('pagehide', cleanup, { once: true });
+    }
+  </script>
   <script is:inline>
     document.querySelector('[data-extension-launch]')?.submit();
   </script>

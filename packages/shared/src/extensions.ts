@@ -1,7 +1,7 @@
 import type { FieldDefinition, SharePermission } from './types.js';
 
 export const EXTENSION_MANIFEST_SCHEMA_VERSION = 3 as const;
-export const EXTENSION_RUNTIME_VERSION = '0.40.0';
+export const EXTENSION_RUNTIME_VERSION = '0.41.0';
 export const EXTENSION_HOST_PROTOCOL_VERSION = 3 as const;
 
 export type ExtensionDistribution = 'private' | 'unlisted' | 'public';
@@ -147,6 +147,13 @@ export interface ExtensionAdminPage {
   icon?: string;
   launch_url: string;
   minimum_permission: SharePermission;
+  /** Direct DOM integration requires separate host-operator approval. */
+  native?: {
+    sdk_version: 1;
+    script_url: string;
+    script_sha256: string;
+    api_base_url: string;
+  };
 }
 
 export type ExtensionApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -773,6 +780,14 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
     pageIds.add(pageId);
     requireString(page.label, `admin.pages[${index}].label`, errors);
     validatePublicHttps(page.launch_url, `admin.pages[${index}].launch_url`, errors);
+    if (page.native !== undefined) {
+      const native = asRecord(page.native, `admin.pages[${index}].native`, errors);
+      rejectUnknown(native, ['sdk_version', 'script_url', 'script_sha256', 'api_base_url'], `admin.pages[${index}].native`, errors);
+      if (native.sdk_version !== 1) errors.push(`admin.pages[${index}].native.sdk_version must be 1`);
+      validatePublicHttps(native.script_url, `admin.pages[${index}].native.script_url`, errors);
+      validatePublicHttps(native.api_base_url, `admin.pages[${index}].native.api_base_url`, errors);
+      if (typeof native.script_sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(native.script_sha256)) errors.push(`admin.pages[${index}].native.script_sha256 must be a SHA-256 digest`);
+    }
     if (!['read', 'write', 'admin'].includes(String(page.minimum_permission))) errors.push(`admin.pages[${index}].minimum_permission is invalid`);
   });
 

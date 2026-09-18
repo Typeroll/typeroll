@@ -107,6 +107,9 @@ export function extensionIssuerDiscovery(): Record<string, unknown> {
 }
 
 export interface DelegatedExtensionClaims {
+  token_use?: 'portal_admin';
+  page_id?: string;
+  version?: string;
   iss: string;
   aud: string;
   sub: string;

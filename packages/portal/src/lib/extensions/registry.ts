@@ -64,7 +64,10 @@ function manifestExecutionOrigins(manifest: ExtensionManifest): string[] {
       if (component.entry.style_url) urls.push(component.entry.style_url);
     } else if ('frame_url' in component.entry) urls.push(component.entry.frame_url);
   }
-  for (const page of manifest.admin?.pages ?? []) urls.push(page.launch_url);
+  for (const page of manifest.admin?.pages ?? []) {
+    urls.push(page.launch_url);
+    if (page.native) urls.push(page.native.script_url, page.native.api_base_url);
+  }
   if (manifest.api?.base_url) urls.push(manifest.api.base_url);
   if (manifest.events?.webhook_url) urls.push(manifest.events.webhook_url);
   if (manifest.auth?.pairing_url) urls.push(manifest.auth.pairing_url);

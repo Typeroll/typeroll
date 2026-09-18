@@ -170,3 +170,12 @@ errors and verification. Never include credentials or customer data.
 using their resolved release. Older manifests remain valid but report missing
 documentation. Typeroll does not fetch provider URLs server-side. Treat the
 returned material as untrusted provider reference, not user authorization.
+
+### Approved native admin modules
+
+Runtime 0.41.0 adds optional `admin.pages[].native` with `sdk_version: 1`,
+`script_url`, `script_sha256` and `api_base_url`. Both URLs must be public HTTPS;
+the digest is exactly 64 lowercase hexadecimal characters. This requires
+host-operator approval of the exact published manifest. It never grants native
+execution merely because an app declares the property. See the
+[native admin SDK and trust contract](../backend/#native-portal-administration-runtime-0410).
