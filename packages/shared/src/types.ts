@@ -89,7 +89,7 @@ export interface SiteVersion {
   base_version_id?: string;
   created_at: string;
   created_by?: string;
-  /** Branches default to robots-blocked; main is always indexable. */
+  /** Branches default to robots-blocked; main follows the page and site indexing policy. */
   robots_blocked?: boolean;
   /**
    * Where this version is currently deployed. Main typically derives from
@@ -372,11 +372,14 @@ export interface SiteSettings {
   };
   robots_txt?: string;
   /**
-   * Emit `noindex,nofollow` on every HTML document without conflating the
+   * Emit `noindex` on every HTML document without conflating the
    * indexing directive with robots.txt crawl policy. Useful for staging sites
    * that intentionally use their main version but must never enter search.
    */
   sitewide_noindex?: boolean;
+  sitewide_nofollow?: boolean;
+  /** Editorial review constraints. Rechecked against the complete publication, never used to rewrite content. */
+  seo_review?: { forbidden_markers?: string[]; claims?: Array<{ phrase: string; guidance: string }>; notes?: string[] };
 }
 
 /**
@@ -532,6 +535,8 @@ export interface Page {
   seo_image_alt?: string;
   canonical_url?: string;
   noindex?: boolean;
+  /** Suppress following independently of search indexing. Default: false. */
+  nofollow?: boolean;
   /**
    * `<link rel="alternate" hreflang>` targets for this page's equivalents
    * on sister sites. The shape a multi-domain, multi-language family needs:
@@ -1487,6 +1492,7 @@ export interface DeployCost {
 
 export interface DeployJob {
   /** Actual HTML work reported by the frozen publication renderer, not an estimate. */
+  seo_report?: { version: number; publication_id: string; artifact_sha256?: string; artifact_tree_sha256: string; source_sha256: string; configuration_sha256: string; checked_pages: number; passed: boolean; error_count: number; warning_count: number; errors: Array<{ code: string; url: string; source: { file: string; line: number; field?: string; block_id?: string; page_id?: string }; message: string; remediation: string }>; warnings: Array<{ code: string; url: string; source: { file: string; line: number; field?: string; block_id?: string; page_id?: string }; message: string; remediation: string }> };
   render_report?: { format: 1; mode: 'full' | 'partial'; rendered: number; reused: number; total: number; removed: number; reason: string };
   /** Last completed CMS checkpoint, excluding time waiting on the customer's build provider. */
   coordinator?: { phase: string; duration_ms: number; updated_at: string };

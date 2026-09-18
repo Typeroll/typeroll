@@ -169,7 +169,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       if (job.publication_intent === 'domain_prepare') {
         if (!prior) throw new ConnectionError('The last public snapshot is missing. Publish the site before preparing domains.', 409);
         frozen = structuredClone(prior);
-        frozen.settings.sitewide_noindex = !domains.desired.website_host || frozen.authored_noindex === true;
+        frozen.robots_blocked = args.versionId !== 'main' || !domains.desired.website_host;
+        frozen.settings.sitewide_noindex = frozen.robots_blocked || frozen.authored_noindex === true;
       } else {
         const resolved = await resolvePublicationVersion(args.orgId, args.siteId, args.versionId);
         const publicRuntime = await publicationRuntime(args.orgId, args.siteId);
@@ -335,6 +336,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         publication = { ...publication, static_checks_key: staticChecks };
         if (result.direct && engine.static_verification) publication = { ...publication, ...await saveCustomerVerification(args.orgId, publication, result.direct, acquired.last_publication) };
         await store.updateDoc(jobPath, { git_publication: publication, phase: 'uploading static files to the Hosting Group',
+          ...(result.task.seo_report ? { seo_report: result.task.seo_report } : {}),
           ...(result.task.render_report ? { render_report: result.task.render_report } : {}) });
         if (!deployment) {
           await assertLease();
@@ -503,6 +505,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await store.updateDoc(jobPath, { coordinator_retries: (failedJob?.coordinator_retries ?? 0) + 1 });
       console.info(JSON.stringify({ event: 'publication_retry', job_id: args.jobId, phase: failedJob?.phase, code: error instanceof ProviderTransportError ? error.code : 'publication_service_unavailable' }));
       return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
+    }
+    if (failedJob?.git_publication?.build_task_key) {
+      const failedTask = await store.getDoc<BuildTask>(`${buildTasksPath(args.orgId)}/${failedJob.git_publication.build_task_key}`);
+      if (failedTask?.seo_report) await store.updateDoc(jobPath, { seo_report: failedTask.seo_report });
     }
     const failure = { stage: failedJob?.phase ?? 'connecting publishing accounts',
       code: error instanceof ProviderTransportError ? error.code : error instanceof ConnectionError ? error.code : error instanceof ProviderError ? 'provider_request_failed' : 'publication_internal_error',

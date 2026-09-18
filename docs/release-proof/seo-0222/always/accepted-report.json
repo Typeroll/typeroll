@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "publication_id": "aa822ce9cfc4893fba61a9774f16d806db41614fcbdadb965a29353c4b80b60d",
+  "source_sha256": "b2587c453283be22c75efa83a641062ea2cd33a8d67c745c2f98182750fc953c",
+  "configuration_sha256": "16bf156ef9b4724df5d1f39cb61b27d4fb3aa23b311fd71b5f755d7ef1a00d71",
+  "artifact_tree_sha256": "380b92866d0c5493b06923e7e6e538401afd93e3857bd5d5b83ebb0cfe658f83",
+  "checked_pages": 9,
+  "passed": true,
+  "error_count": 0,
+  "warning_count": 9,
+  "errors": [],
+  "warnings": [
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/404.html",
+      "source": {
+        "file": "404.html",
+        "line": 1,
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/companies/abc/",
+      "source": {
+        "file": "companies/abc/index.html",
+        "line": 1,
+        "page_id": "abc",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/companies/",
+      "source": {
+        "file": "companies/index.html",
+        "line": 1,
+        "page_id": "companies",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/companies/nested/profile/",
+      "source": {
+        "file": "companies/nested/profile/index.html",
+        "line": 1,
+        "page_id": "nested",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/",
+      "source": {
+        "file": "index.html",
+        "line": 1,
+        "page_id": "home",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/special/nested/",
+      "source": {
+        "file": "special/nested/index.html",
+        "line": 1,
+        "page_id": "explicit",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/states/",
+      "source": {
+        "file": "states/index.html",
+        "line": 1,
+        "page_id": "states",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/strict/",
+      "source": {
+        "file": "strict/index.html",
+        "line": 1,
+        "page_id": "strict",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/syndicated/",
+      "source": {
+        "file": "syndicated/index.html",
+        "line": 1,
+        "page_id": "syndicated",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    }
+  ]
+}

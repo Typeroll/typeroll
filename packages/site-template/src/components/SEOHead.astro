@@ -1,16 +1,17 @@
 ---
-import type { Page, PostalAddress, SiteSettings } from '@typeroll/shared';
-import { ogLocale, resolveAlternates } from '@typeroll/shared';
+import type { BreadcrumbItem, Page, PostalAddress, SiteSettings } from '@typeroll/shared';
+import { ogLocale, resolveAlternates, pageRobots, breadcrumbJsonLd as buildBreadcrumbJsonLd } from '@typeroll/shared';
 import { isVersionRobotsBlocked } from '../lib/content';
 
 interface Props {
   page: Page;
   settings: SiteSettings;
+  breadcrumbs?: BreadcrumbItem[];
   /**
    * Additional JSON-LD objects to emit alongside the auto-generated ones.
    * Each entry is a *pre-serialised* JSON string (the caller has already
    * called JSON.stringify). Used for context-specific schemas the static
-   * page itself doesn't know how to build — collection-item Schema.org
+   * page itself doesn't know how to build — content-type Schema.org
    * objects (PodcastEpisode, BlogPosting, …), page-specific schemas
    * (Service, Course, …). Pass strings, not objects, so the caller is
    * the single place that has to know about </script> escaping.
@@ -18,9 +19,9 @@ interface Props {
   extraJsonLd?: string[];
 }
 
-const { page, settings, extraJsonLd } = Astro.props;
+const { page, settings, extraJsonLd, breadcrumbs = [] } = Astro.props;
 
-const isHome = !page.slug || page.slug === 'home' || page.slug === 'index';
+const isHome = Astro.url.pathname === '/';
 const isArticle = page.kind === 'article';
 
 const title = (() => {
@@ -60,9 +61,7 @@ const alternates = resolveAlternates(page.alternates, canonical, language);
 // Page-level and explicit site-wide noindex win; otherwise the version
 // (branches default to blocked).
 const versionBlocked = await isVersionRobotsBlocked();
-const robots = page.noindex || settings.sitewide_noindex || versionBlocked
-  ? 'noindex,nofollow'
-  : 'index,follow';
+const robots = pageRobots(page, settings, versionBlocked);
 
 // Twitter site handle — used for both site and (in absence of an author
 // override) creator. Stored without the leading @.
@@ -181,39 +180,12 @@ function articleSchema(): string | null {
   return safeJsonLd(JSON.stringify(obj));
 }
 
-// Auto BreadcrumbList for any non-home page. We can't always look up parent
-// page titles at build time without an async dance, so we generate items
-// from the URL slug segments. Search engines accept that — the names will
-// be the Title-Cased path components.
+// Use the resolved navigation trail, including content-type route prefixes.
+// Do not infer intermediate routes from a slug: they may not be real pages.
 function breadcrumbSchema(): string | null {
-  if (isHome || !Astro.site) return null;
-  const segments = page.slug.split('/').filter(Boolean);
-  if (segments.length === 0) return null;
-  const base = Astro.site.toString().replace(/\/$/, '');
-  const items: Array<Record<string, unknown>> = [
-    { '@type': 'ListItem', position: 1, name: settings.site_name, item: `${base}/` },
-  ];
-  let acc = '';
-  segments.forEach((seg, i) => {
-    acc += '/' + seg;
-    const isLast = i === segments.length - 1;
-    items.push({
-      '@type': 'ListItem',
-      position: i + 2,
-      name: isLast ? page.title : prettyName(seg),
-      item: `${base}${acc}`,
-    });
-  });
-  const obj = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: items,
-  };
-  return safeJsonLd(JSON.stringify(obj));
-}
-
-function prettyName(seg: string): string {
-  return seg.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  if (!Astro.site || page.id === '404') return null;
+  return safeJsonLd(buildBreadcrumbJsonLd({ pathname: Astro.url.pathname, canonical, baseUrl: Astro.site.href,
+    title: page.title, siteName: settings.site_name, breadcrumbs }));
 }
 
 const orgJsonLd = orgSchema();

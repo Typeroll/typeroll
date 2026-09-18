@@ -16,11 +16,17 @@ import type {
   Page,
   RenderContext,
   SiteSettings,
+  Site,
   SiteVersion,
 } from '@typeroll/shared';
 import { vstore } from './version-store';
 import {
   CONTENT_WELL_CSS,
+  pageRobots,
+  breadcrumbJsonLd,
+  applyTrailingSlash,
+  buildContentPageSchema,
+  buildPageSchema,
   buildConsentEarlyPaintRuntime,
   buildCoreBlockRegistry,
   collectBlockAssets,
@@ -185,19 +191,26 @@ export async function renderPreview(
   // preview the same way they do at build time.
   const contentTypes = await vstore.contentTypes(orgId, siteId, versionId);
   const previewPages = await vstore.pages(orgId, siteId, versionId);
-  const pageSource = createPageSource(contentTypes, previewPages);
+  const pageSource = createPageSource(contentTypes, previewPages, settings.trailing_slash ?? 'always');
   const contentType = contentTypes.find(type => type.id === (page!.content_type ?? 'page'))
     ?? ((page.content_type ?? 'page') === 'page' ? DEFAULT_CONTENT_TYPE : null);
   if (!contentType) throw new Error(`Unknown content type: ${page.content_type}`);
   page = resolveContentPage(page, contentType) ?? { ...page, template: page.template || contentType.template };
 
 
+  const siteForSeo = await store.getDoc<Site>(paths.site(orgId, siteId));
+  const seoBase = siteForSeo?.domain ? `https://${siteForSeo.domain}` : opts.liveBase;
+  const breadcrumbPages = previewPages.map(candidate => {
+    const type = contentTypes.find(type => type.id === (candidate.content_type ?? 'page')) ?? DEFAULT_CONTENT_TYPE;
+    return resolveContentPage(candidate, type) ?? candidate;
+  });
+  const breadcrumbs = pageBreadcrumbs(page, breadcrumbPages, settings.trailing_slash ?? 'always', contentType);
   const renderCtx: RenderContext = {
     content_type: { ...contentType, ...pageNavigation(page, contentType, previewPages, settings.trailing_slash) },
     backlinks: buildBacklinkIndex(contentTypes, previewPages.filter(candidate => candidate.status === 'published')),
     page: {
       ...pageContentValues(publicContentPage(page, contentType)),
-      breadcrumbs: pageBreadcrumbs(page, previewPages, settings.trailing_slash ?? 'always', contentType),
+      breadcrumbs,
     },
     site: siteContext(settings as unknown as Record<string, unknown>),
     // Paginating listings render their first slice in the preview; the
@@ -333,6 +346,14 @@ export async function renderPreview(
     previewNavigationBridge,
     cookieConsentHtml,
     robotsBlocked,
+    seoHead: (() => {
+      if (!seoBase) return '';
+      const pathname = applyTrailingSlash('/' + pagePathSegment(page), settings.trailing_slash ?? 'always');
+      const canonical = page.canonical_url || new URL(pathname, seoBase).href;
+      const schema = [breadcrumbJsonLd({ pathname, canonical, baseUrl: seoBase, title: page.title, siteName: settings.site_name, breadcrumbs }),
+        page.schema_type ? buildPageSchema(page, settings, canonical) : buildContentPageSchema(publicContentPage(page, contentType), contentType, settings, canonical)];
+      return `<link rel="canonical" href="${escapeAttr(canonical)}" />` + schema.filter(Boolean).map(value => `<script type="application/ld+json">${value!.replace(/</g, '\\u003c')}</script>`).join('');
+    })(),
     banner: opts.showBanner ? {
       versionId,
       pageStatus: page.status,
@@ -456,6 +477,7 @@ function buildHtml(args: {
   previewNavigationBridge?: string;
   cookieConsentHtml?: string;
   robotsBlocked: boolean;
+  seoHead?: string;
   banner: BannerArgs | null;
 }): string {
   const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, robotsBlocked, banner } = args;
@@ -476,9 +498,7 @@ function buildHtml(args: {
     size_base: settings.fonts?.size_base ?? 16,
   };
   const fontUrl = buildFontUrl(f.heading, f.body);
-  const robots = page.noindex || settings.sitewide_noindex || robotsBlocked
-    ? 'noindex,nofollow'
-    : 'index,follow';
+  const robots = pageRobots(page, settings, robotsBlocked);
 
   return `<!doctype html>
 <html lang="${escapeAttr(page.language || settings.language || 'en')}">
@@ -488,6 +508,7 @@ function buildHtml(args: {
 <title>${escapeHtml(composePageTitle(page, settings))}</title>
 <meta name="description" content="${escapeAttr(page.seo_description || settings.default_meta_description || settings.tagline || '')}" />
 <meta name="robots" content="${robots}" />
+${args.seoHead ?? ''}
 ${settings.favicon ? `<link rel="icon" href="${escapeAttr(settings.favicon)}" />` : ''}
 ${settings.apple_touch_icon ? `<link rel="apple-touch-icon" sizes="180x180" href="${escapeAttr(settings.apple_touch_icon)}" />` : ''}
 ${settings.icon_192 ? `<link rel="icon" type="image/png" sizes="192x192" href="${escapeAttr(settings.icon_192)}" />` : ''}

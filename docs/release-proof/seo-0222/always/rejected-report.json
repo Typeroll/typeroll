@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "publication_id": "aa822ce9cfc4893fba61a9774f16d806db41614fcbdadb965a29353c4b80b60d",
+  "source_sha256": "3e4e15dd35f8666a440029676ad4c257552386f3495abf2a94c4a0f2439f3130",
+  "configuration_sha256": "a3110208502a436fb1597c5d704b9055f6a6752368d2a088a7f12303e02aa924",
+  "artifact_tree_sha256": "dcfa0040e62ee97b582dc7462e99efaf4b13fb1ede4997a2bd811b9c8fbd31c2",
+  "checked_pages": 9,
+  "passed": false,
+  "error_count": 1,
+  "warning_count": 9,
+  "errors": [
+    {
+      "code": "schema_mapping_unsupported",
+      "url": "https://example.test/",
+      "source": {
+        "file": "content/contentTypes/supplier.json",
+        "line": 1,
+        "field": "schema_field_map.city"
+      },
+      "message": "Unsupported schema property address.addressLocality.",
+      "remediation": "Use a supported direct Schema.org property or remove this mapping; keep the underlying content field."
+    }
+  ],
+  "warnings": [
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/404.html",
+      "source": {
+        "file": "404.html",
+        "line": 1,
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/companies/abc/",
+      "source": {
+        "file": "companies/abc/index.html",
+        "line": 1,
+        "page_id": "abc",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/companies/",
+      "source": {
+        "file": "companies/index.html",
+        "line": 1,
+        "page_id": "companies",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/companies/nested/profile/",
+      "source": {
+        "file": "companies/nested/profile/index.html",
+        "line": 1,
+        "page_id": "nested",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/",
+      "source": {
+        "file": "index.html",
+        "line": 1,
+        "page_id": "home",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/special/nested/",
+      "source": {
+        "file": "special/nested/index.html",
+        "line": 1,
+        "page_id": "explicit",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/states/",
+      "source": {
+        "file": "states/index.html",
+        "line": 1,
+        "page_id": "states",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/strict/",
+      "source": {
+        "file": "strict/index.html",
+        "line": 1,
+        "page_id": "strict",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/syndicated/",
+      "source": {
+        "file": "syndicated/index.html",
+        "line": 1,
+        "page_id": "syndicated",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    }
+  ]
+}

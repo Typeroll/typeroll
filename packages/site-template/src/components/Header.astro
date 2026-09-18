@@ -1,6 +1,6 @@
 ---
 import type { ExtensionIncludeDescriptor, Partial as PartialDoc, RenderContext, SiteSettings } from '@typeroll/shared';
-import { renderPartialHtml } from '../lib/content';
+import { getAllPages, renderPartialHtml } from '../lib/content';
 
 interface Props {
   partial: PartialDoc | null;
@@ -23,6 +23,7 @@ const html: string | null = partial
 // Skip the outer <header class="site-header"> wrapper when the partial
 // already begins with its own <header>. Avoids nested-header output that
 // MCP-FEEDBACK-2 reported on get_page_preview.
+const hasHome = (await getAllPages()).some(page => page.path === '/' || ['', 'home', 'index'].includes(page.slug));
 const startsWithHeader = !!html && /^\s*(?:<!--[\s\S]*?-->\s*)*<header(?:\s|>)/i.test(html);
 ---
 {html && startsWithHeader ? (
@@ -33,11 +34,11 @@ const startsWithHeader = !!html && /^\s*(?:<!--[\s\S]*?-->\s*)*<header(?:\s|>)/i
   <header class="site-header site-header--default">
     <div class="site-header__inner">
       {settings.logo ? (
-        <a href="/" class="site-header__logo-link">
+        <a href={hasHome ? '/' : undefined} class="site-header__logo-link">
           <img src={settings.logo} alt={settings.site_name} class="site-header__logo" />
         </a>
       ) : (
-        <a href="/" class="site-header__title">{settings.site_name}</a>
+        <a href={hasHome ? '/' : undefined} class="site-header__title">{settings.site_name}</a>
       )}
     </div>
   </header>

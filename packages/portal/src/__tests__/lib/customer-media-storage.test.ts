@@ -1,4 +1,7 @@
 vi.mock('../../lib/media/remote-transfer', () => ({ remoteTransfersEnabled: vi.fn(async () => false) }));
+// Queue delivery has separate tests. Do not let a local background migration
+// outlive its fixture and run against the following test's datastore spy.
+vi.mock('../../lib/publishing/media-migration-queue', () => ({ enqueueMediaMigration: vi.fn(async () => {}) }));
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { S3Client, GetObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { paths, type Media } from '@typeroll/shared';

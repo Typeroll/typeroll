@@ -1057,3 +1057,18 @@ is the manual numeric order; null clears it. Missing sort values come last and
 IDs break ties. Explicit ID lists keep their order. Typed `list_pages` queries
 inherit type sorting and accept `sort_by`/`sort_order`; unfiltered API lists
 default to stable IDs. See the public Content types guide for editor steps.
+
+## Artifact SEO checks (Core 0.2.22)
+
+`read_publishing_readiness` and dry-run export checks do not validate future HTML.
+After `trigger_deploy`, inspect `get_deploy_status.seo_report`: blocking technical
+errors preserve the current live site, while editorial warnings require review.
+Reports identify URL, generated file/line and block/page/field where available.
+Do not automatically rewrite copy, remove intentional noindex or invent facts.
+`noindex` and `nofollow` are independent Page fields; `sitewide_nofollow` and
+`seo_review` (forbidden_markers, phrase/guidance claims, review notes) are settings.
+All output is rechecked, including reused pages. Schema field maps support direct
+properties only: reject dotted paths rather than inventing nested addresses.
+Read https://typeroll.com/docs/guides/publication-validation/ for the contract
+and customer migration guidance. Update the organization build engine after the
+matching Core release before publishing.

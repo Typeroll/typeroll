@@ -3,7 +3,7 @@ import type { ContentType, FieldDefinition, Page } from './types.js';
 export const PAGE_BUILTIN_FIELDS = new Set([
   'id', 'title', 'slug', 'path', 'parent', 'sort_order', 'template', 'content_type', 'fields', 'body', 'blocks',
   'content_mode', 'html_content', 'status', 'seo_title', 'append_seo_suffix', 'seo_description', 'og_image',
-  'seo_image_alt', 'canonical_url', 'noindex', 'alternates', 'lastmod_override', 'json_ld', 'kind', 'schema_type',
+  'seo_image_alt', 'canonical_url', 'noindex', 'nofollow', 'alternates', 'lastmod_override', 'json_ld', 'kind', 'schema_type',
   'service', 'author', 'language', 'image_sizes_default', 'old_wp_url', 'ai_generated', 'date_published',
   'date_updated', 'publish_at', 'unpublish_at', 'custom_css',
 ]);

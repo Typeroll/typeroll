@@ -32,7 +32,7 @@ const ALLOWED_FIELDS: Array<keyof Page> = [
   'og_image',
   'seo_image_alt',
   'canonical_url',
-  'noindex',
+  'noindex', 'nofollow',
   'lastmod_override',
   'json_ld',
   'schema_type',

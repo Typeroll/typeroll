@@ -53,7 +53,7 @@ export async function publishingReadiness(orgId: string, siteId: string, version
     const buildsUrl = '/app/settings/publishing#publishing-builds';
     if (!engine || engine.status !== 'ready' || !visible.enabled || visible.state !== 'ready') {
       require(false, 'build_setup_required', 'Finish build setup and verification in Publishing → Builds.', buildsUrl);
-    } else if (!engine.static_verification || !engine.media_preparation) {
+    } else if (!engine.static_verification || !engine.media_preparation || engine.publication_validation !== 1) {
       require(false, 'build_engine_update_required', 'Update the build engine in Publishing → Builds before publishing.', buildsUrl);
     } else {
       try { await assertEngineConnections(orgId, engine); }

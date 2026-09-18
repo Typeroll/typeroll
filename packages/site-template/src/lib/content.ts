@@ -437,6 +437,7 @@ export async function renderPartialHtml(
       // {{site.name}} or a footer listing recent posts previewed correctly
       // and shipped empty.
       return sanitizeBody(renderBlocks(partial.blocks, {
+        provenance: true,
         registry: await getBlockRegistry(),
         context,
         pageSource: await buildPageSource(),
@@ -488,7 +489,7 @@ async function loadBacklinks(): Promise<import('@typeroll/shared').BacklinkIndex
 export let buildBacklinks = buildMemo(loadBacklinks);
 
 async function loadPageSource(): Promise<(config: PageSourceConfig) => Record<string, unknown>[]> {
-  return trackedPageSource(createPageSource(await getContentTypes(), await getPages()));
+  return trackedPageSource(createPageSource(await getContentTypes(), await getPages(), (await getSiteSettings()).trailing_slash ?? 'always'));
 }
 export let buildPageSource = buildMemo(loadPageSource);
 

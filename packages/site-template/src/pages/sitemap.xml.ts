@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { getSiteSettings } from '../lib/content';
+import { getSiteSettings, isVersionRobotsBlocked } from '../lib/content';
 
 import { getSiteRoutes } from '../lib/routes';
 
@@ -8,7 +8,8 @@ export const GET: APIRoute = async ({ site }) => {
   const routes = await getSiteRoutes();
   const settings = await getSiteSettings();
 
-  const pageEntries = routes
+  const blocked = settings.sitewide_noindex || await isVersionRobotsBlocked();
+  const pageEntries = (blocked ? [] : routes)
     .filter(({ props }) => props.page.status === 'published' && !props.page.noindex)
     .map(({ params, props: { page: p } }) => {
       const path = params.slug ? `/${params.slug}${settings.trailing_slash === 'never' ? '' : '/'}` : '/';

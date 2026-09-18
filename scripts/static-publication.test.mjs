@@ -174,6 +174,7 @@ test('generated renderer builds with no HOME and an unusable package-manager shi
   t.after(() => fs.rm(tmp, { recursive: true, force: true }));
   const destination = path.join(tmp, 'site');
   const publication = projectStaticPublication(input(), identity);
+  publication.pages.push({ id: 'about', slug: 'about', title: 'About', status: 'published', content_mode: 'html', html_content: '<h1 id="team">Team</h1>' });
   publication.pages[0].html_content += '<a href="https://before.example/about#team">Retargeted</a>';
   publication.reference_mapping = { format: 1, media: [], website_origins: ['https://before.example'] };
   await createStaticPublicationProject(publication, destination);
@@ -193,7 +194,7 @@ test('generated renderer builds with no HOME and an unusable package-manager shi
   assert.ok(html.includes(`${new URL(publication.site_url).origin}/about#team`));
   assert.ok(!html.includes('https://before.example'));
   const marker = JSON.parse(await fs.readFile(path.join(destination, 'dist/.well-known/typeroll/publication.json'), 'utf8'));
-  assert.deepEqual(marker.paths, ['/']);
+  assert.deepEqual(marker.paths.sort(), ['/', '/about/']);
   assert.match(await fs.readFile(path.join(destination, 'dist/_headers'), 'utf8'), new RegExp('X-Typeroll-Publication: ' + marker.id));
   assert.ok(!result.stderr.includes('Package-manager shim must not run'));
 });
@@ -303,8 +304,8 @@ test('frozen main and branch projects render their own custom blocks and inherit
     const result = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: destination, env: {}, encoding: 'utf8', timeout: 60_000 });
     assert.equal(result.status, 0, result.stderr + result.stdout);
     const html = await fs.readFile(path.join(destination, 'dist/index.html'), 'utf8');
-    assert.ok(html.includes(`<h2 data-version="${versionId}" id="${versionId}-content">${versionId} content</h2>`));
-    assert.ok(html.includes('<article data-layout="inherited">'));
+    assert.match(html, new RegExp(`<h2(?=[^>]*data-version="${versionId}")(?=[^>]*id="${versionId}-content")(?=[^>]*data-source-block-id="heading-one")[^>]*>${versionId} content</h2>`));
+    assert.match(html, /<article[^>]*data-layout="inherited"[^>]*>/);
     assert.ok(!html.includes(versionId === 'design' ? 'main content' : 'design content'));
     assert.match(html, /h2\s*\{\s*color:\s*blue/);
     const redirects = await fs.readFile(path.join(destination, 'dist/_redirects'), 'utf8');

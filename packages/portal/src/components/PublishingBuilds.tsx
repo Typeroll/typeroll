@@ -130,7 +130,7 @@ export default function PublishingBuilds({ refreshAfterCloudflareReturn = false 
   const chooseToken = needsToken && engine?.issue?.code === 'build_token_selection_required';
   const verifying = engine?.issue?.code === 'build_verification_running';
   const readyToSetUp = state === 'qualification_required' && !verifying;
-  const setupLabel = state === 'ready' ? 'Update build engine' : needsToken && !engine?.worker_found ? 'Prepare build project' : 'Finish build setup';
+  const setupLabel = state === 'ready' || engine?.issue?.code === 'build_engine_update_required' ? 'Update build engine' : needsToken && !engine?.worker_found ? 'Prepare build project' : 'Finish build setup';
   const projectUrl = engine?.worker_found && /^[a-f0-9]{32}$/.test(engine.account_id ?? '') && /^[a-z0-9-]+$/.test(engine.worker_name)
     ? `https://dash.cloudflare.com/${engine.account_id}/workers/services/view/${engine.worker_name}/production/settings` : null;
   const status = busy ? 'Updating build settings…' : error ? 'Build setup needs attention' : state === 'ready' ? 'Shared build engine ready' : state === 'approval_required' ? 'Build permissions required' : state === 'qualification_required' ? verifying ? 'Running a test build…' : 'Ready to finish setup' : needsToken ? chooseToken ? 'Action needed · Choose a build token' : 'Action needed · Create a build token' : 'Shared build engine setup';
@@ -145,7 +145,7 @@ export default function PublishingBuilds({ refreshAfterCloudflareReturn = false 
     </>}
     {github && <p>Build minutes count toward this GitHub account’s Actions allowance. Media stays in the organization’s R2 storage.</p>}
     {engine?.account_name && <p>Build account: <strong>{engine.account_name}</strong></p>}
-    {readyToSetUp && <div className="publishing-builds__setup"><h3>Next: finish build setup</h3><p>Click <strong>Finish build setup</strong> below. Typeroll will prepare the build environment and run a test build automatically. The status here will update when it finishes.</p><p>This sets up builds for your organization. It does not publish or change any live site.</p></div>}
+    {readyToSetUp && <div className="publishing-builds__setup"><h3>Next: {setupLabel.toLowerCase()}</h3><p>Click <strong>{setupLabel}</strong> below. Typeroll will prepare the build environment and run a test build automatically. The status here will update when it finishes.</p><p>This sets up builds for your organization. It does not publish or change any live site.</p></div>}
     {verifying && <p>Typeroll is running a test build. You can leave this page; setup continues in the background. The status updates automatically.</p>}
     {state === 'ready' && <p>{active ? 'Shared builds are active. New publications build in this account and upload static files to the site’s Hosting Group.' : 'This engine is ready. Select it below to use it for new publications.'}</p>}
     {github && state !== 'ready' && <p>Set up once for this organization. Typeroll creates a private build repository and runs a verification build through the existing GitHub connection.</p>}

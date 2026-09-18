@@ -32,6 +32,7 @@ function project(p: Page): Record<string, unknown> {
     seo_title: p.seo_title,
     seo_description: p.seo_description,
     noindex: p.noindex,
+    nofollow: p.nofollow,
     json_ld: p.json_ld,
     date_updated: p.date_updated,
   };

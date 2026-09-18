@@ -36,7 +36,7 @@ export function pageBreadcrumbs(
   if (!ancestors.length && !page.parent && type && type.id !== 'page') {
     const token = type.route_template.indexOf('{');
     const prefix = (token < 0 ? '' : type.route_template.slice(0, token)).replace(/\/+$/, '') || '/';
-    if (prefix !== '/' && applyTrailingSlash(prefix, trailingSlash) !== pagePath(page, trailingSlash)) inferred.push({ label: type.label_plural, href: applyTrailingSlash(prefix, trailingSlash) });
+    if (prefix !== '/' && applyTrailingSlash(prefix, trailingSlash) !== pagePath(page, trailingSlash) && pages.some(candidate => candidate.status === 'published' && pagePath(candidate, trailingSlash) === applyTrailingSlash(prefix, trailingSlash))) inferred.push({ label: type.label_plural, href: applyTrailingSlash(prefix, trailingSlash) });
     const siblings = pages.filter(candidate => candidate.content_type === type.id && candidate.status === 'published')
       .map(candidate => ({ ...pageContentValues(candidate), id: candidate.id }));
     const facet = facetRoutes(type, siblings).find(route => route.filters.length === 1 && route.item_ids.includes(page.id));

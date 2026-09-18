@@ -71,13 +71,13 @@ describe('native page navigation and breadcrumbs', () => {
   it('builds type root, taxonomy and current-page breadcrumbs', () => {
     const definition = type({ label_plural: 'Checklists', route_template: '/checklists/{slug}', facets: [{ field: 'category', base_path: '/category', label_singular: 'Category', min_items: 1 }] });
     const current = page({ title: 'Save energy', slug: 'energy', path: '/checklists/energy', fields: { category: 'Energy & climate' } });
-    expect(pageBreadcrumbs(current, [current], 'always', definition)).toEqual([
+    expect(pageBreadcrumbs(current, [current, page({ id: 'hub', path: '/checklists', slug: 'checklists' })], 'always', definition)).toEqual([
       { label: 'Checklists', href: '/checklists/' }, { label: 'Energy & climate', href: '/category/energy-climate/' }, { label: 'Save energy', href: '/checklists/energy/', current: true },
     ]);
   });
   it('omits taxonomy when no matching facet exists', () => {
     const current = page({ path: '/articles/one' });
-    expect(pageBreadcrumbs(current, [current], 'ignore', type())).toEqual([{ label: 'Articles', href: '/articles' }, { label: 'One', href: '/articles/one', current: true }]);
+    expect(pageBreadcrumbs(current, [current], 'ignore', type())).toEqual([{ label: 'One', href: '/articles/one', current: true }]);
   });
   it('prefers explicit parent hierarchy and stops on cycles', () => {
     const pages = [page({ id: 'home', title: 'Home', slug: '', path: '/' }), page({ id: 'guides', title: 'Guides', path: '/guides', parent: 'home' }), page({ id: 'moving', title: 'Moving', path: '/guides/moving', parent: 'guides' })];

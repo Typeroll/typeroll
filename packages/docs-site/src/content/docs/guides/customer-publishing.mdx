@@ -608,3 +608,10 @@ and retry publishing after resolving the cause. A status refresh does not start
 a replacement build. Brief distribution checks can continue after upload until
 the exact static files are publicly available; the live link remains hidden
 until verification succeeds.
+
+## Validate before activation
+
+Core 0.2.22 checks the actual frozen build output before activation. See
+[Publication checks](../publication-validation/) for blocking defects, editorial
+warnings, engine updates and schema-mapping migration. Both Cloudflare and GitHub
+builds use the same gate; a failed check keeps the current live site intact.

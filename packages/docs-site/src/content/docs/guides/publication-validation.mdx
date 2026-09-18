@@ -1,0 +1,126 @@
+---
+title: Publication checks
+description: Validate the actual static output before activation, review editorial warnings, and keep the current live site when technical checks fail.
+---
+
+Available with Core 0.2.22 and its updated organization build engine. This guide
+applies to customer-owned publishing on Cloud and self-hosted installations that
+use the frozen publication runner. A standalone Astro build or the legacy managed
+hosting runner does not automatically run this gate.
+
+## What happens when you publish
+
+After the static build, Typeroll checks the complete output: new and reused HTML,
+JSON-LD, resolved routes, redirects, sitemaps, robots directives and rendered
+shared partials. This happens before activating the deployment. A technical
+failure keeps the current live site unchanged. Publishing readiness checks your
+configuration and exportability; `ready=true` cannot predict the result of a
+future HTML build.
+
+The publication status includes `seo_report` in the portal, deployment API and
+`get_deploy_status`. Each issue includes a URL, generated file and line, a field
+or block ID when available, and suggested remediation. Shared partial issues
+carry their block ID on every affected page. Review the counts as well as the
+examples: reports retain up to 100 examples per severity and have a bounded size.
+
+Technical failures include broken internal page targets, redirect loops, malformed
+JSON-LD, unsupported schema mappings, incorrect generated breadcrumb routes,
+conflicting canonicals, invalid sitemap routes and unnamed linked images.
+Explicit canonical overrides are checked against your configuration, including
+cross-domain originals. An intentionally noindex page may stay public and linked;
+it simply stays out of the indexable sitemap. Fragment filters and client-created
+anchors are not treated as new pages.
+
+## Review warnings without rewriting facts
+
+Warnings cover repeated title words, duplicate or missing metadata, heading jumps,
+generic link text, internal redirects, unexpected nofollow and repeated destinations
+within one list. An image link and title link in the same card are one context;
+useful links repeated in separate navigation or content contexts are allowed.
+These warnings do not block activation and do not rewrite your content.
+
+In **Site settings → Editorial publication checks**, record forbidden internal
+markers, phrases that require review and notes for editors. Agents can use
+`update_site_settings` with the same `seo_review` object:
+
+```json
+{
+  "seo_review": {
+    "forbidden_markers": ["wave-1", "internal research note"],
+    "claims": [
+      {
+        "phrase": "compare earnings",
+        "guidance": "Review this promise: this directory does not provide earnings comparisons."
+      }
+    ],
+    "notes": ["Prefer fewer supported facts over unsupported claims."]
+  }
+}
+```
+
+These examples are project choices, not global forbidden words. Phrase matching
+is case-insensitive and deterministic; it is not a factual or semantic audit.
+Notes guide human and agent review. Every publication checks all output again,
+including legacy and unchanged pages, so changed constraints apply site-wide.
+There are no hard title/description length limits, word counts or required
+exact-match link phrases in this validator.
+
+## Indexing, breadcrumbs and cards
+
+`noindex` and `nofollow` are independent page fields. A public page with
+`noindex: true` normally emits `noindex,follow`; add `nofollow: true` only when
+that is intentional. Site equivalents are `sitewide_noindex` and
+`sitewide_nofollow`. Private previews and blocked versions keep strict indexing
+and following restrictions. Do not remove intentional noindex just to pass a
+publication check.
+
+Breadcrumb JSON-LD uses resolved routes, including content-type prefixes,
+explicit page paths and the trailing-slash policy. The last item follows the
+configured canonical. The homepage has no BreadcrumbList. Do not add a second
+manual BreadcrumbList to work around generated output.
+
+For post cards, use meaningful alt text or `image_alt_field`. If a separately
+linked image has empty alt, Typeroll names the link from the card title, with
+“View page” as the last fallback when no title is supplied. Decorative images
+without links may keep empty alt. No extra link wrapper is added.
+
+## Schema mapping migration
+
+Content-type `schema_field_map` supports direct properties, such as
+`{"excerpt":"description"}`. Dotted paths such as `address.addressLocality` and reserved
+prototype keys are rejected with a field-specific error on save. They are not
+converted into nested objects. Old unsupported mappings fail publication until
+corrected; underlying CMS fields are preserved.
+
+Review and remove or replace unsupported mappings before publishing. Do not map
+a city string to `address` to suppress the error: it would misrepresent the data.
+For a typed nested PostalAddress, use deliberate page JSON-LD containing only
+known public address data, or the supported site-level Organization address
+settings. Do not manufacture empty addresses. The gate checks structural
+correctness, not every Schema.org vocabulary rule or eligibility for rich results.
+
+## Build engine and verification identity
+
+After upgrading Core, open **Publishing → Builds → Update build engine** once
+for each organization/provider you use. The qualification build updates the
+trusted runner; it does not publish customer sites. Existing engines without the
+validation capability cannot admit new publications.
+
+Domain-only preparation intentionally retains the last published source. If that
+snapshot predates publication checks, publish the main version with the current
+Core first, then prepare the domain change. Typeroll reports
+`publication_renderer_update_required`; it does not silently change the frozen
+renderer or publish unsaved/current content during domain preparation.
+
+Every report is bound to a publication ID, frozen source hash, configuration
+hash, output file-tree hash and, on successful completion, transported artifact
+hash. The trusted runner checks the output digest before activation. Renderer
+source and validator versions are output dependencies; this release invalidates
+old HTML render caches. A previous successful SEO report is never reused.
+
+Checks are offline and use the actual artifact. They do not prove external-link
+availability, DNS readiness, runtime app output, every dynamic anchor or access
+by a verified search-engine crawler. Robots inspection understands documented
+product-token fallbacks, including Google-InspectionTool → Googlebot; it does
+not spoof a bot. These checks establish technical correctness, not rankings or
+traffic improvements.

@@ -148,6 +148,8 @@ export interface RenderBlocksOptions {
    * (block tree). Off by default so production output stays clean.
    */
   annotate?: boolean;
+  /** Public source locators without changing runtime selectors or editor behavior. */
+  provenance?: boolean;
   /**
    * Editor-only inline editing: wrap each plain-text field's TEXT-CONTEXT
    * substitution in `<span data-edit="{blockId}:{field}">…</span>` so the
@@ -245,6 +247,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     // aren't in the tree, so without this a repeater would be an un-targetable
     // hole for the editor's canvas hit-test. Uses the pre-alias id + type to
     // match get_page_blocks (same contract as the normal path below).
+    if (options.provenance && block.id) html = injectAttrsIntoFirstTag(html, { 'data-source-block-id': block.id, 'data-source-block-type': block.type });
     if (options.annotate && block.id) {
       html = injectAttrsIntoFirstTag(html, { 'data-block-id': block.id, 'data-block-type': block.type });
     }
@@ -327,6 +330,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     compiled.flatData.next_empty = next.url ? 'false' : 'true';
   }
   if (effectiveBlock.type === 'core/navigation') {
+    if (!String(compiled.flatData.menu_label ?? '').trim()) compiled.flatData.menu_label = 'Menu';
     compiled.flatData.navigation_links_html = renderNavigationLinks(
       effectiveBlock.data?.links,
       options.context?.page,
@@ -406,6 +410,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   // Block provenance — lets an agent map the rendered element back to the
   // authored block it should edit. Uses the original (pre-alias-expansion)
   // id + type so it matches what get_page_blocks returns.
+  if (options.provenance && block.id) { rootAttrs['data-source-block-id'] = block.id; rootAttrs['data-source-block-type'] = block.type; }
   if (options.annotate && block.id) {
     rootAttrs['data-block-id'] = block.id;
     rootAttrs['data-block-type'] = block.type;
@@ -1027,8 +1032,10 @@ function preparePostCardData(
   data.post_card_title_html = href
     ? `<a href="${escapeHtml(href)}" class="block-postcard-link">${escapeHtml(title)}</a>`
     : escapeHtml(title);
+  const imageLabel = title.trim() || 'View page';
+  const imageLinkLabel = !imageAlt.trim() ? ` aria-label="${escapeHtml(imageLabel)}"` : '';
   data.post_card_image_html = data.show_image !== false && image
-    ? `${href ? `<a href="${escapeHtml(href)}" class="block-postcard-link">` : ''}<img class="block-postcard-image" src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" loading="lazy" decoding="async" />${href ? '</a>' : ''}`
+    ? `${href ? `<a href="${escapeHtml(href)}" class="block-postcard-link"${imageLinkLabel}>` : ''}<img class="block-postcard-image" src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" loading="lazy" decoding="async" />${href ? '</a>' : ''}`
     : '';
   data.post_card_download_html = downloadUrl
     ? `<a class="block-postcard-download" href="${escapeHtml(downloadUrl)}">${escapeHtml(downloadLabel)}</a>`

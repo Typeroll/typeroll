@@ -109,18 +109,19 @@ test('partial output equals a clean full build after edits, deletion, noindex an
     { id: 'search', type: 'core/search', data: {} },
     { id: 'listing', type: 'core/repeater', data: { source_type: 'pages', content_type: 'article', item_block: 'core/post_card', paginate: 25, layout: 'grid' } },
   ] });
+  value.pages.push({ ...page('home'), path: '/' });
   const harness = await publicationBuildHarness(value);
   t.after(harness.cleanup);
   const { output, destination } = harness;
   const run = async (full = false) => (await harness.run(full)).report;
-  assert.deepEqual(await run(), { format: 1, mode: 'full', rendered: 52, reused: 0, total: 52, removed: 0, reason: 'no_valid_cache' });
+  assert.deepEqual(await run(), { format: 1, mode: 'full', rendered: 53, reused: 0, total: 53, removed: 0, reason: 'no_valid_cache' });
   value.pages[0].blocks[0].data.html += '<p>Changed body</p>'; value.pages[0].date_updated = '2026-09-18';
   value.publication_id = 'b'.repeat(64);
   const partial = await run();
-  assert.equal(partial.reused, 50); assert.equal(partial.rendered, 2);
+  assert.equal(partial.reused, 51); assert.equal(partial.rendered, 2);
   const partialFiles = await output();
   await run(true); assert.deepEqual(await output(), partialFiles);
-  assert.equal((await run()).reused, 52);
+  assert.equal((await run()).reused, 53);
   async function equivalentPartial() {
     const result = await run();
     const files = await output();
@@ -147,10 +148,10 @@ test('partial output equals a clean full build after edits, deletion, noindex an
   report = await equivalentPartial();
   assert.equal(report.removed, 1);
   assert.ok((await output())['nested/åäö/index.html']);
-  assert.equal((await equivalentPartial()).reused, 52);
+  assert.equal((await equivalentPartial()).reused, 53);
   value.settings.trailing_slash = 'never';
   await equivalentPartial();
-  assert.equal((await equivalentPartial()).reused, 52);
+  assert.equal((await equivalentPartial()).reused, 53);
   value.pages[0].status = 'draft';
   report = await equivalentPartial();
   assert.equal(report.removed, 1);
@@ -239,6 +240,7 @@ test('filtered lists, references, backlinks, breadcrumbs and navigation reuse un
     blockPage('facts', [{ id: 'fields', type: 'core/field_list', data: { fields: [{ field: 'refs' }] } }], { fields: { refs: ['a'] } }),
     page('independent'),
   ];
+  value.pages.push({ ...page('home'), path: '/' });
   const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
   const { run, output, receipts } = harness;
   await run(true);
@@ -311,6 +313,7 @@ test('custom templates, aliases and media invalidate only their actual consumers
   value.media = [{ id: 'photo', cdn_url: 'https://media.invalid/photo.png', width: 640, height: 400, variants: [] },
     { id: 'other', cdn_url: 'https://media.invalid/other.png', width: 500, height: 300 }];
   value.partials = [{ id: 'header', kind: 'header', status: 'published', content_mode: 'blocks', blocks: [{ id: 'title', type: 'custom-title', data: {} }] }];
+  value.pages.push({ ...page('home'), path: '/' });
   const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
   await harness.run(true);
   async function compare(changed, reused) {
@@ -347,6 +350,7 @@ test('a deferred-media build has exactly the same complete output as materializi
   const value = publication();
   value.media = [{ id: 'photo', cdn_url: 'https://example.invalid/photo.png', width: 640, height: 480, variants: [] }];
   value.pages[0].html_content += '<img src="https://example.invalid/photo.png" alt="Synthetic photo" />';
+  value.pages.push({ ...page('home'), path: '/' });
   const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
   await fs.mkdir(path.join(harness.destination, '.publication-media'));
   const directory = await fs.realpath(path.join(harness.destination, '.publication-media'));
@@ -360,7 +364,7 @@ test('a deferred-media build has exactly the same complete output as materializi
   prepared.files = [{ path: '/photo.png', reused: true, sha256: digest(bytes), size: bytes.length }];
   await fs.writeFile(preparedPath, JSON.stringify(prepared)); await fs.rm(source);
   const result = await harness.run(false, { TYPEROLL_BUILD_MEDIA_PREPARED: preparedPath });
-  assert.equal(result.report.reused, 2);
+  assert.equal(result.report.reused, 3);
   const deferred = await harness.output(); assert.equal(deferred['photo.png'], undefined);
   // The complete manifest restores the already hosted bytes, not a local placeholder.
   assert.deepEqual({ ...deferred, 'photo.png': prepared.files[0].sha256 }, complete);

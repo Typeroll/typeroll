@@ -7,6 +7,8 @@ import { Aside } from "@astrojs/starlight/components";
 
 This page documents what Typeroll emits at build time, what the runtime layer does on every request, and how it all interacts with custom domains. If you're trying to understand why your site looks the way it does in Search Console — start here.
 
+Current frozen publications also run [artifact-based publication checks](../../guides/publication-validation/) before activation.
+
 ## The two-URL problem
 
 The fallback-domain and activation details below describe legacy managed hosting. For current customer-owned publishing, use [Website and media domains](../../publishing/domains/): the organization or Hosting Group supplies the address base, and a domain change prepares a candidate before traffic is moved. Creating a site alone does not give it a public Typeroll subdomain.
@@ -99,7 +101,8 @@ contains `noindex`.
 
 For a staging or review site that should remain crawlable but must not appear
 in search results, set `sitewide_noindex: true`. Typeroll then emits
-`<meta name="robots" content="noindex,nofollow">` on every HTML page. This is
+`<meta name="robots" content="noindex,follow">` on public HTML pages. Use
+`sitewide_nofollow: true` for an explicit link-following restriction. This is
 deliberately separate from `robots.txt`: blocking the crawler there can prevent
 it from seeing the noindex directive at all.
 
@@ -117,7 +120,7 @@ Sitemap: https://<canonical-host>/sitemap.xml
 Per-site overrides:
 
 - **Site setting `robots_txt`** — when non-empty, replaces the default body entirely. Use this for site-specific allow/disallow rules.
-- **Version flag `robots_blocked`** — when true, the renderer emits a hard `Disallow: /` regardless of the override. Branches default to `robots_blocked: true` so previews don't get crawled; main is always indexable.
+- **Version flag `robots_blocked`** — when true, the renderer emits a hard `Disallow: /` regardless of the override. Branches default to `robots_blocked: true` so previews don't get crawled; main follows the page and site indexing settings.
 
 The `User-agent: *` block keeps it permissive by default — Typeroll doesn't enumerate specific bots. To block a specific crawler (e.g. AI training), add it explicitly via the `robots_txt` override:
 
@@ -141,7 +144,7 @@ Two XML sitemaps emitted per build:
 - **`/sitemap.xml`** — every published Page whose content type produces a route. URLs use the canonical host.
 - **`/sitemap-images.xml`** — images referenced from published content, grouped by parent page.
 
-Both filter out items with `noindex: true`. Both honour the canonical URL rules above.
+Both filter out items with `noindex: true` and emit no page entries when the site or version blocks indexing. Both honour the canonical URL rules above.
 
 The sitemap is referenced from `robots.txt` and is picked up automatically by Google Search Console / Bing Webmaster Tools when you verify ownership. You don't need to submit it manually after every deploy — search engines re-crawl it on their own schedule.
 

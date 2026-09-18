@@ -2,7 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import { getBlockRegistry, getExtensionsPublic, getPartials, getSiteSettings } from '../lib/content';
+import { getAllPages, getBlockRegistry, getExtensionsPublic, getPartials, getSiteSettings } from '../lib/content';
 import { collectBlockAssets, siteContext } from '@typeroll/shared';
 import type { Block, Page, RenderContext } from '@typeroll/shared';
 
@@ -63,8 +63,10 @@ const page: Page = {
   content_mode: 'html',
   status: 'published',
   noindex: true,
+  canonical_url: new URL('/404.html', Astro.site).href,
 };
 
+const hasHome = (await getAllPages()).some(page => page.path === '/' || ['', 'home', 'index'].includes(page.slug));
 const renderCtx: RenderContext = {
   page: page as unknown as Record<string, unknown>,
   site: siteContext(settings as unknown as Record<string, unknown>),
@@ -75,7 +77,7 @@ const renderCtx: RenderContext = {
   <main class="page-content not-found">
     <h1>{t.title}</h1>
     <p>{t.body}</p>
-    <p><a href="/">{t.back}</a></p>
+    {hasHome && <p><a href="/">{t.back}</a></p>}
   </main>
   <Footer partial={footer} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
 </BaseLayout>

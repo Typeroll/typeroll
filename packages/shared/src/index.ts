@@ -43,3 +43,5 @@ export * from './page-heading-policy.js';
 export * from './content-well.js';
 
 export { blockTreeError } from './block-tree-validation.js';
+
+export * from './seo-policy.js';

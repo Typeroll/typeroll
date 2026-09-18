@@ -1,3 +1,4 @@
+import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { contentPagePath, DEFAULT_CONTENT_TYPE, pageContentValues, publicContentPage } from './page-content-model.js';
 import type { ContentType, Page } from './types.js';
 import { pageSort, comparePageValues } from './page-options.js';
@@ -13,7 +14,7 @@ export interface PageSourceConfig {
   pinned_ids?: string[];
   exclude_id?: string;
 }
-export function createPageSource(types: ContentType[], pages: Page[]): (config: PageSourceConfig) => Record<string, unknown>[] {
+export function createPageSource(types: ContentType[], pages: Page[], trailingSlash: TrailingSlashPolicy = 'ignore'): (config: PageSourceConfig) => Record<string, unknown>[] {
   const byType = new Map([[DEFAULT_CONTENT_TYPE.id, DEFAULT_CONTENT_TYPE], ...types.map(type => [type.id, type] as const)]);
   const publicPages = pages.filter(page => page.status === 'published' && byType.has(page.content_type ?? 'page'))
     .map(page => publicContentPage(page, byType.get(page.content_type ?? 'page')!));
@@ -22,7 +23,7 @@ export function createPageSource(types: ContentType[], pages: Page[]): (config: 
   const values: Array<Record<string, unknown> & { id: string; content_type: string; url: string }> = publicPages.map(page => ({
     ...expandPageRefs(page, byType.get(page.content_type ?? 'page')!, id => publicById.get(id)),
     id: page.id, content_type: page.content_type ?? 'page',
-    url: contentPagePath(page, byType.get(page.content_type ?? 'page')!) ?? '',
+    url: (path => path ? applyTrailingSlash(path, trailingSlash) : '')(contentPagePath(page, byType.get(page.content_type ?? 'page')!)),
   }));
   const byId = new Map(values.map(page => [page.id, page]));
   return config => {

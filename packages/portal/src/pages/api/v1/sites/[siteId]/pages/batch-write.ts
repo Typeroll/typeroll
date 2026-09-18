@@ -22,7 +22,7 @@ const BATCH_MAX = 200;
 
 const WRITABLE: Array<keyof Page> = [
   'title', 'slug', 'html_content', 'status', 'content_mode', 'kind', 'author',
-  'seo_title', 'append_seo_suffix', 'seo_description', 'og_image', 'canonical_url', 'noindex',
+  'seo_title', 'append_seo_suffix', 'seo_description', 'og_image', 'canonical_url', 'noindex', 'nofollow',
   'alternates', 'json_ld', 'template', 'date_published',
   'path', 'fields', 'blocks', 'parent', 'sort_order', 'seo_image_alt', 'language',
   'lastmod_override', 'image_sizes_default', 'custom_css', 'publish_at', 'unpublish_at',

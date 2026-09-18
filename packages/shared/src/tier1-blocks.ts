@@ -879,7 +879,7 @@ const navigation: BlockType = {
     ] },
   ],
   template: `<nav data-block="navigation" aria-label="{{aria_label}}">
-  <button class="block-navigation-toggle" type="button" aria-expanded="false"><span>{{menu_label}}</span><span aria-hidden="true">☰</span></button>
+  <button class="block-navigation-toggle" type="button" aria-label="{{menu_label}}" aria-expanded="false"><span>{{menu_label}}</span><span aria-hidden="true">☰</span></button>
   <ul class="block-navigation-list">{{{navigation_links_html}}}</ul>
 </nav>`,
   styles: `

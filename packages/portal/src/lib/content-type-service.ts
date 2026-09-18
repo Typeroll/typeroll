@@ -1,3 +1,4 @@
+import { schemaFieldMapError } from '@typeroll/shared';
 import { DEFAULT_CONTENT_TYPE, PAGE_BUILTIN_FIELDS, CONFIGURABLE_PAGE_FIELDS, contentTypeAllowsTemplate, templateMatchesContentType, type ContentType, type FieldDefinition } from '@typeroll/shared';
 import { vstore } from './version-store';
 import { markSiteDirty } from './auto-deploy';
@@ -77,6 +78,8 @@ export async function saveContentType(ctx: ContentTypeContext, name: string, inp
   if (next.sort_field && !names.has(next.sort_field) && !PAGE_BUILTIN_FIELDS.has(next.sort_field)) throw new ContentTypeError('Sort field not found');
   if (next.schema_field_mode !== undefined && !['all', 'mapped'].includes(next.schema_field_mode)) throw new ContentTypeError('schema_field_mode must be all or mapped');
   if (next.schema_field_map && (typeof next.schema_field_map !== 'object' || Array.isArray(next.schema_field_map) || Object.values(next.schema_field_map).some(value => typeof value !== 'string'))) throw new ContentTypeError('Schema field mappings must contain strings');
+  const mappingError = schemaFieldMapError(next.schema_field_map);
+  if (mappingError) throw new ContentTypeError(mappingError);
   if (next.facets !== undefined && (!Array.isArray(next.facets) || next.facets.some(facet => !facet || !names.has(facet.field) || typeof facet.base_path !== 'string' || !facet.base_path.startsWith('/')))) throw new ContentTypeError('Each facet needs a custom field and a URL starting with /');
   if (next.facet_combinations !== undefined && (!Array.isArray(next.facet_combinations) || next.facet_combinations.some(pair => !Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1] || pair.some(field => typeof field !== 'string' || !next.facets?.some(facet => facet.field === field))))) throw new ContentTypeError('facet_combinations must contain pairs of distinct configured facet field names');
   await vstore.writeContentType(ctx.orgId, ctx.siteId, ctx.versionId, name, next);

@@ -219,7 +219,7 @@ export function buildContentPageSchema(
     if (mappedOnly && !Object.hasOwn(userMap ?? {}, field)) continue;
     if (contentType.fields.find(def => def.name === field)?.rendered === false) continue;
     const prop = resolveProperty(field, schemaType, userMap);
-    if (!prop || prop.startsWith('@') || prop === 'url' || prop === '__proto__' || prop === 'constructor' || prop === 'prototype') continue;
+    if (!prop || prop.includes('.') || prop.startsWith('@') || prop === 'url' || prop === '__proto__' || prop === 'constructor' || prop === 'prototype') continue;
     // Author / publisher / provider get the Person/Organization envelope
     // automatically when the value is a plain string — Schema.org requires
     // a typed sub-object here, and "name only" is the common authoring case.

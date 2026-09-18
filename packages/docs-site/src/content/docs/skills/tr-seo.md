@@ -72,3 +72,11 @@ Set a default title suffix and write meta descriptions for all pages.
 **OG images need absolute URLs** — Use the absolute URL returned by the media API for the configured media host. Don't use relative paths.
 
 **`canonical_url` + `noindex` together** — noindexed pages don't pass equity, so a canonical on a noindexed page is redundant. Use one or the other.
+
+## Publication artifact review
+
+Read https://typeroll.com/docs/guides/publication-validation/ before publishing.
+Use `get_deploy_status.seo_report` for artifact-bound technical errors and
+editorial warnings. Readiness alone does not certify generated HTML. Preserve
+intentional noindex; following links is controlled independently by `nofollow`.
+Review warnings with the owner rather than rewriting unsupported claims.

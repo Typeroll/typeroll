@@ -1358,6 +1358,10 @@ function MetaPanel({
         />
         Hide from search engines (noindex)
       </label>
+      <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', color: '#d4d4d8', fontSize: '.85rem' }}>
+        <input type="checkbox" checked={!!draft.nofollow} onChange={(e) => onChange('nofollow', e.target.checked)} />
+        Ask search engines not to follow links (nofollow)
+      </label>
 
       <div style={{ borderTop: '1px solid #2a2a30', paddingTop: '0.85rem' }}>
         <PageContentTypePicker siteId={siteId} page={page} disabled={hasUnsaved} />

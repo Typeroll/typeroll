@@ -53,7 +53,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
   const origin = new URL(process.env.PORTAL_PUBLIC_URL ?? '');
   if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new ConnectionError('Shared builds require the public HTTPS address of this Typeroll server.', 409);
   const revision = randomUUID(), token = randomBytes(32).toString('base64url');
-  let config: EngineConfiguration = { media_preparation: true, static_verification: true, revision, account_id: cf.cloudflare.account_id, owner: git.github.owner, installation_id: git.github.installation_id,
+  let config: EngineConfiguration = { media_preparation: true, static_verification: true, publication_validation: 1, revision, account_id: cf.cloudflare.account_id, owner: git.github.owner, installation_id: git.github.installation_id,
     worker_tag: '', trigger_uuid: '', runner_commit: '', token_hash: sha256(token), encrypted_token: encryptSecret(JSON.stringify({ org, token })),
     status: 'preparing', setup_lease_until: Date.now() + 180000 };
   if (previous) {

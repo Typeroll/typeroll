@@ -124,7 +124,7 @@ await (async function sitewideNoindexScenario() {
     (outDir) => {
       for (const route of ['index.html', 'about/index.html']) {
         const html = readFileSync(join(outDir, route), 'utf8');
-        if (!/<meta name="robots" content="noindex,nofollow"\s*\/?\s*>/.test(html)) {
+        if (!/<meta name="robots" content="noindex,follow"\s*\/?\s*>/.test(html)) {
           fail(`[sitewide-noindex] ${route} is missing the site-wide noindex meta directive`);
         }
       }
@@ -789,6 +789,9 @@ await (async function nativeCollectionCompositionScenario() {
     steps: [{ id: 'intro', blocks: [{ id: 'gallery', type: 'core/gallery', data: {
       items: [{ src: '/example.svg', alt: 'Example' }],
     } }] }],
+  }));
+  writeFileSync(join(pageDir, 'guides.json'), JSON.stringify({
+    id: 'guides', title: 'Guides', slug: 'guides', status: 'published', content_mode: 'html', html_content: '<h1>Guides</h1>',
   }));
   writeFileSync(join(pageDir, 'form-assets.json'), JSON.stringify({
     id: 'form-assets', title: 'Form assets', slug: 'form-assets', status: 'published',

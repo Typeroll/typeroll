@@ -7,7 +7,7 @@ import { OrganizationBuildQueue, buildTasksPath } from '../../lib/builds/queue';
 import { engineConfigurationPath, buildInputPath, renderCachePath, assetCachePath } from '../../lib/builds/state';
 import { enginePath } from '../../lib/builds/cloudflare';
 import { runnerRequest } from '../../lib/builds/runner-http';
-import { encodeSource, encodeArtifact, sha256, BUILD_PROTOCOL, BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
+import { encodeSource, encodeArtifact, sha256, outputDigest, BUILD_PROTOCOL, BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
 import { siteHostingGroup } from '../../lib/publishing/hosting-groups';
 import { qualificationFiles } from '../../lib/builds/qualification';
 const storage = vi.hoisted(() => ({ objects: new Map<string, Buffer>(), grants: vi.fn(async (key: string, write = false) => `https://storage.invalid/${key}?write=${write}`) }));
@@ -20,12 +20,17 @@ vi.mock('../../lib/deploy/queue', () => ({ getDeployQueue: () => ({ enqueue: enq
 const runnerToken = 'r'.repeat(43), org = 'org', revision = 'engine-1';
 const identity = { org_id: org, site_id: 'site', version_id: 'main', job_id: 'job', publication_id: 'b'.repeat(64), commit: 'c'.repeat(40), branch: 'main', protocol: BUILD_PROTOCOL, node_version: BUILD_RUNTIME, source_sha256: '' };
 const request = (action: string, token = runnerToken, data = {}, organization = org) => runnerRequest(new Request('https://app.example.invalid/api/builds/runner/org/' + action, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ revision, ...data }) }), organization, action);
+function validSeoReport(files: Record<string, Buffer>) {
+  return { version: 1, publication_id: identity.publication_id, source_sha256: 'd'.repeat(64), configuration_sha256: 'e'.repeat(64),
+    artifact_tree_sha256: outputDigest(Object.fromEntries(Object.entries(files).map(([name, value]) => [name, { sha256: sha256(value), size: value.length }]))),
+    checked_pages: 1, passed: true, error_count: 0, warning_count: 0, errors: [], warnings: [] };
+}
 async function prepare(kind = 'publication', mediaTotal = 0) {
   const source = encodeSource({ 'publication.json': JSON.stringify({ publication_id: identity.publication_id }) });
   const frozen = { ...identity, ...(kind === 'media_preparation' ? { job_id: 'media-request' } : {}), source_sha256: sha256(source) };
   const queued = await new OrganizationBuildQueue().enqueue(frozen, revision, mediaTotal);
   storage.objects.set('builds/org/sources/source.json', source);
-  await getStore().setDoc(buildInputPath(org, queued.key), { source_key: 'builds/org/sources/source.json', kind, storage_account_id: 'a'.repeat(32) });
+  await getStore().setDoc(buildInputPath(org, queued.key), { validation_source_sha256: 'd'.repeat(64), validation_configuration_sha256: 'e'.repeat(64), source_key: 'builds/org/sources/source.json', kind, storage_account_id: 'a'.repeat(32) });
   await getStore().setDoc(engineConfigurationPath(org), { revision, status: kind === 'qualification' ? 'qualifying' : 'ready', account_id: 'a'.repeat(32), installation_id: 'installation', token_hash: sha256(runnerToken), qualification_key: queued.key });
   await getStore().setDoc(paths.deploy(org, 'site', 'job'), { status: 'running', version_id: 'main' });
   return { frozen, key: queued.key };
@@ -50,7 +55,7 @@ it('publishes a cache pointer and measured render report only after exact artifa
   const files = Object.fromEntries(Object.entries(qualificationFiles(identity.publication_id)).map(([name, value]) => [name, Buffer.from(value)]));
   const artifact = encodeArtifact(frozen, files);
   const report = { format: 1, mode: 'partial', rendered: 1, reused: 49, total: 50, removed: 0, reason: 'unchanged_routes_reused' };
-  const complete = { ...attempt, sha256: sha256(artifact), render_report: { ...report, secret: 'excluded' }, render_cache_sha256: 'd'.repeat(64) };
+  const complete = { ...attempt, seo_report: validSeoReport(files), sha256: sha256(artifact), render_report: { ...report, secret: 'excluded' }, render_cache_sha256: 'd'.repeat(64) };
   expect((await request('complete', claim.token, complete)).status).not.toBe(200);
   expect(await getStore().getDoc(renderCachePath(frozen))).toBeNull();
   expect(enqueuePublication).not.toHaveBeenCalled();
@@ -143,10 +148,10 @@ it('rejects another version and accepts the verified exact artifact only once', 
   let artifact = encodeArtifact({ ...frozen, version_id: 'redesign', branch: 'version-redesign' }, files);
   storage.objects.set(artifactKey, artifact);
   const attempt = { key, lease_id: claim.lease_id };
-  expect((await request('complete', claim.token, { ...attempt, sha256: sha256(artifact) })).status).toBe(502);
+  expect((await request('complete', claim.token, { ...attempt, seo_report: validSeoReport(files), sha256: sha256(artifact) })).status).toBe(502);
   artifact = encodeArtifact(frozen, files); storage.objects.set(artifactKey, artifact);
-  expect((await request('complete', claim.token, { ...attempt, sha256: sha256(artifact) })).status).toBe(200);
-  expect((await request('complete', claim.token, { ...attempt, sha256: sha256(artifact) })).status).toBe(409);
+  expect((await request('complete', claim.token, { ...attempt, seo_report: validSeoReport(files), sha256: sha256(artifact) })).status).toBe(200);
+  expect((await request('complete', claim.token, { ...attempt, seo_report: validSeoReport(files), sha256: sha256(artifact) })).status).toBe(409);
   expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'completed', token_hash: null, artifact_sha256: sha256(artifact) });
 });
 it('revokes attempts immediately when publication is cancelled', async () => {
@@ -154,6 +159,39 @@ it('revokes attempts immediately when publication is cancelled', async () => {
   await getStore().updateDoc(paths.deploy(org, 'site', 'job'), { status: 'failed' });
   expect((await request('heartbeat', claim.token, { key: claim.key, lease_id: claim.lease_id })).status).toBe(409);
   expect(await getStore().getDoc(`${buildTasksPath(org)}/${claim.key}`)).toMatchObject({ status: 'cancelled' });
+});
+it('rejects missing, replayed and altered SEO proofs before completing or waking activation', async () => {
+  const { frozen, key } = await prepare();
+  await getStore().setDoc(paths.site(org, 'site'), { last_deployed_at: 'previous', deployment_url: 'https://live.invalid' });
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  const files = Object.fromEntries(Object.entries(qualificationFiles(identity.publication_id)).map(([name, value]) => [name, Buffer.from(value)]));
+  const artifact = encodeArtifact(frozen, files);
+  storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
+  const complete = { key, lease_id: claim.lease_id, sha256: sha256(artifact) };
+  const proof = validSeoReport(files);
+  for (const seo_report of [undefined, { ...proof, publication_id: 'f'.repeat(64) },
+    { ...proof, source_sha256: 'f'.repeat(64) }, { ...proof, configuration_sha256: 'f'.repeat(64) },
+    { ...proof, artifact_tree_sha256: 'f'.repeat(64) }, { ...proof, version: 0 }]) {
+    expect((await request('complete', claim.token, { ...complete, seo_report })).status).not.toBe(200);
+    expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'running' });
+    expect(await getStore().getDoc(paths.site(org, 'site'))).toMatchObject({ last_deployed_at: 'previous', deployment_url: 'https://live.invalid' });
+    expect(enqueuePublication).not.toHaveBeenCalled();
+  }
+  expect((await request('complete', claim.token, { ...complete, seo_report: proof })).status).toBe(200);
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ seo_report: { ...proof, artifact_sha256: sha256(artifact) } });
+});
+
+it('retains actionable validation failures without changing the live site', async () => {
+  const { key } = await prepare();
+  await getStore().setDoc(paths.site(org, 'site'), { last_deployed_at: 'previous' });
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  const seo_report = { ...validSeoReport({}), passed: false, error_count: 1, errors: [{
+    code: 'internal_target_missing', url: 'https://example.test/company/', source: { file: 'company/index.html', line: 3, block_id: 'card' },
+    message: 'Broken internal target: /missing/', remediation: 'Correct the link or create the intended route.',
+  }] };
+  expect((await request('fail', claim.token, { key, lease_id: claim.lease_id, code: 'publication_validation_failed', stage: 'build', seo_report })).status).toBe(200);
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'failed', seo_report });
+  expect(await getStore().getDoc(paths.site(org, 'site'))).toMatchObject({ last_deployed_at: 'previous' });
 });
 it('activates only after the complete qualification artifact matches', async () => {
   const { frozen, key } = await prepare('qualification');
@@ -260,7 +298,7 @@ it('accepts a direct upload receipt only with its matching frozen publication ma
     controls: {}, manifest: { ['/' + markerPath]: 'a'.repeat(32), '/index.html': 'b'.repeat(32) } };
   const artifact = encodeArtifact(frozen, { '.typeroll-direct-upload.json': Buffer.from(JSON.stringify(receipt)), [markerPath]: marker });
   storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
-  expect((await request('complete', claim.token, { key, lease_id: claim.lease_id, sha256: sha256(artifact) })).status).toBe(200);
+  expect((await request('complete', claim.token, { key, lease_id: claim.lease_id, seo_report: { ...validSeoReport({}), artifact_tree_sha256: outputDigest(receipt.files) }, sha256: sha256(artifact) })).status).toBe(200);
   expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'completed' });
   expect(await getStore().getDoc(assetCachePath(frozen))).toMatchObject({ key, lease: claim.lease_id, sha256: sha256(artifact), identity: frozen, account: 'a'.repeat(32) });
 });

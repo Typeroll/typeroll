@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "publication_id": "aa822ce9cfc4893fba61a9774f16d806db41614fcbdadb965a29353c4b80b60d",
+  "source_sha256": "cc4a5412b30acda3866a6f7acad9b228eed9eca53b37f12e2b44c3714d6c116a",
+  "configuration_sha256": "16bf156ef9b4724df5d1f39cb61b27d4fb3aa23b311fd71b5f755d7ef1a00d71",
+  "artifact_tree_sha256": "fb7a8769fdf0f33611bff64ed2246d16ceb447097fda16bc95fae1274281ecb8",
+  "checked_pages": 9,
+  "passed": false,
+  "error_count": 7,
+  "warning_count": 9,
+  "errors": [
+    {
+      "code": "breadcrumb_route",
+      "url": "https://example.test/companies/abc/",
+      "source": {
+        "file": "companies/abc/index.html",
+        "line": 1,
+        "element": "script",
+        "page_id": "abc",
+        "field": "breadcrumbs.2.item"
+      },
+      "message": "Breadcrumb 3 points to https://example.test/abc; expected https://example.test/companies/abc/.",
+      "remediation": "Generate breadcrumbs from resolved page routes."
+    },
+    {
+      "code": "breadcrumb_route",
+      "url": "https://example.test/companies/",
+      "source": {
+        "file": "companies/index.html",
+        "line": 1,
+        "element": "script",
+        "page_id": "companies",
+        "field": "breadcrumbs.1.item"
+      },
+      "message": "Breadcrumb 2 points to https://example.test/companies; expected https://example.test/companies/.",
+      "remediation": "Generate breadcrumbs from resolved page routes."
+    },
+    {
+      "code": "breadcrumb_route",
+      "url": "https://example.test/companies/nested/profile/",
+      "source": {
+        "file": "companies/nested/profile/index.html",
+        "line": 1,
+        "element": "script",
+        "page_id": "nested",
+        "field": "breadcrumbs.2.item"
+      },
+      "message": "Breadcrumb 3 points to https://example.test/nested/profile; expected https://example.test/companies/nested/profile/.",
+      "remediation": "Generate breadcrumbs from resolved page routes."
+    },
+    {
+      "code": "breadcrumb_route",
+      "url": "https://example.test/special/nested/",
+      "source": {
+        "file": "special/nested/index.html",
+        "line": 1,
+        "element": "script",
+        "page_id": "explicit",
+        "field": "breadcrumbs.1.item"
+      },
+      "message": "Breadcrumb 2 points to https://example.test/explicit; expected https://example.test/special/nested/.",
+      "remediation": "Generate breadcrumbs from resolved page routes."
+    },
+    {
+      "code": "breadcrumb_route",
+      "url": "https://example.test/states/",
+      "source": {
+        "file": "states/index.html",
+        "line": 1,
+        "element": "script",
+        "page_id": "states",
+        "field": "breadcrumbs.1.item"
+      },
+      "message": "Breadcrumb 2 points to https://example.test/states; expected https://example.test/states/.",
+      "remediation": "Generate breadcrumbs from resolved page routes."
+    },
+    {
+      "code": "breadcrumb_route",
+      "url": "https://example.test/strict/",
+      "source": {
+        "file": "strict/index.html",
+        "line": 1,
+        "element": "script",
+        "page_id": "strict",
+        "field": "breadcrumbs.1.item"
+      },
+      "message": "Breadcrumb 2 points to https://example.test/strict; expected https://example.test/strict/.",
+      "remediation": "Generate breadcrumbs from resolved page routes."
+    },
+    {
+      "code": "breadcrumb_route",
+      "url": "https://example.test/syndicated/",
+      "source": {
+        "file": "syndicated/index.html",
+        "line": 1,
+        "element": "script",
+        "page_id": "syndicated",
+        "field": "breadcrumbs.1.item"
+      },
+      "message": "Breadcrumb 2 points to https://example.test/syndicated; expected https://original.test/article/.",
+      "remediation": "Generate breadcrumbs from resolved page routes."
+    }
+  ],
+  "warnings": [
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/404.html",
+      "source": {
+        "file": "404.html",
+        "line": 1,
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/companies/abc/",
+      "source": {
+        "file": "companies/abc/index.html",
+        "line": 1,
+        "page_id": "abc",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/companies/",
+      "source": {
+        "file": "companies/index.html",
+        "line": 1,
+        "page_id": "companies",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/companies/nested/profile/",
+      "source": {
+        "file": "companies/nested/profile/index.html",
+        "line": 1,
+        "page_id": "nested",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/",
+      "source": {
+        "file": "index.html",
+        "line": 1,
+        "page_id": "home",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/special/nested/",
+      "source": {
+        "file": "special/nested/index.html",
+        "line": 1,
+        "page_id": "explicit",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/states/",
+      "source": {
+        "file": "states/index.html",
+        "line": 1,
+        "page_id": "states",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/strict/",
+      "source": {
+        "file": "strict/index.html",
+        "line": 1,
+        "page_id": "strict",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    },
+    {
+      "code": "metadata_missing",
+      "url": "https://example.test/syndicated/",
+      "source": {
+        "file": "syndicated/index.html",
+        "line": 1,
+        "page_id": "syndicated",
+        "field": "description"
+      },
+      "message": "Missing description.",
+      "remediation": "Review the page metadata."
+    }
+  ]
+}

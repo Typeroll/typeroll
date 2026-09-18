@@ -10,7 +10,7 @@ export interface PreparedHeadingOutline {
 }
 
 const HEADING_RE = /<h([2-4])\b([^>]*)>([\s\S]*?)<\/h\1\s*>/gi;
-const ID_RE = /\bid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
+const ID_RE = /(?<![\w:-])id\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
 
 function decodeHeadingText(value: string): string {
   return value

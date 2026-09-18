@@ -154,6 +154,7 @@ export const pageTools: ToolDef[] = [
           canonical_url: z.string().optional(),
           path: z.string().optional().describe('Explicit URL path for nested pages (e.g. "/erbjudanden/sommar-2026"). Takes precedence over slug for routing; changing it auto-creates a 301 from the old URL on save.'),
           noindex: z.boolean().optional(),
+          nofollow: z.boolean().optional(),
           alternates: z
             .array(z.object({ hreflang: z.string(), href: z.string() }))
             .nullable()
@@ -280,6 +281,7 @@ export const pageTools: ToolDef[] = [
         og_image: src.og_image,
         canonical_url: undefined,  // intentionally NOT copied — point of canonical is to differ
         noindex: src.noindex,
+        nofollow: src.nofollow,
         kind: src.kind,
         author: src.author,
         json_ld: undefined,  // structured data is usually page-specific; force re-author

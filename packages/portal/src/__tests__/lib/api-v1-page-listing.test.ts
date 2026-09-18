@@ -87,7 +87,7 @@ describe('native Page listings', () => {
     await seedTypedPage('blog', 'beta', { title: 'Beta launch', slug: 'beta' });
     await seedTypedPage('blog', 'alpha', { title: 'Alpha launch', slug: 'alpha' });
     let html = await renderPreview(ORG, SITE, 'news', MAIN_VERSION_ID);
-    expect(html).toContain('href="/blog/alpha"');
+    expect(html).toContain('href="/blog/alpha/"');
     expect(html!.indexOf('Alpha launch')).toBeLessThan(html!.indexOf('Beta launch'));
     await getStore().deleteDoc(paths.page(ORG, SITE, 'alpha'));
     html = await renderPreview(ORG, SITE, 'news', MAIN_VERSION_ID);

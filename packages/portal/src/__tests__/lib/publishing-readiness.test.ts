@@ -15,7 +15,7 @@ vi.mock('../../lib/access', async original => ({ ...await original<typeof import
 vi.mock('../../lib/api-auth', async original => ({ ...await original<typeof import('../../lib/api-auth')>(), requireApiKey: async () => ({ ok: true, value: { orgId: 'org', siteId: 'site', versionId: 'main', permission: 'admin' } }) }));
 async function engine(provider: 'cloudflare' | 'github' = 'cloudflare', extra = {}) {
   await getStore().setDoc(enginePath('org', provider), { provider, state: 'ready', enabled: true });
-  await getStore().setDoc(engineConfigurationPath('org', provider), { provider, status: 'ready', revision: 'engine', account_id: 'cf-account', installation_id: 'installation', owner: 'owner', github: { owner_id: 'github-account' }, static_verification: true, media_preparation: true, ...extra });
+  await getStore().setDoc(engineConfigurationPath('org', provider), { provider, status: 'ready', revision: 'engine', account_id: 'cf-account', installation_id: 'installation', owner: 'owner', github: { owner_id: 'github-account' }, static_verification: true, media_preparation: true, publication_validation: 1, ...extra });
 }
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); const store = getStore();
@@ -100,4 +100,13 @@ it('checks the inherited template and block arrays without treating drafts as pu
   expect((await publishingReadiness('org', 'site')).required[0].message).toContain('blocks must be an array');
   await store.updateDoc(pagePath, { blocks: [], template: 'missing' });
   expect((await publishingReadiness('org', 'site')).required[0].message).toContain('page_templates/missing');
+});
+
+it('exposes missing artifact-validation capability before publication on either provider', async () => {
+  for (const provider of ['cloudflare', 'github'] as const) {
+    await engine(provider, { publication_validation: 0 });
+    await getStore().setDoc(selectionPath('org'), { provider, revision: 'selection' });
+    expect((await publishingReadiness('org', 'site')).required).toContainEqual(expect.objectContaining({ code: 'build_engine_update_required' }));
+    expect((await readBuildSettings('org')).engines[provider]).toMatchObject({ enabled: false, state: 'setup_required' });
+  }
 });

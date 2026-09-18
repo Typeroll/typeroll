@@ -50,6 +50,9 @@ export const settingsTools: ToolDef[] = [
       default_meta_description: z.string().optional().describe('Site-wide fallback <meta name="description">. Used when a page has no seo_description of its own; falls back further to the tagline when unset.'),
       language: z.string().optional().describe('BCP-47 tag (e.g. "en", "sv", "en-GB"). Drives <html lang> on the rendered site.'),
       robots_txt: z.string().optional(),
+      sitewide_noindex: z.boolean().optional().describe('Exclude public pages from search indexing; following links remains a separate setting.'),
+      seo_review: z.object({ forbidden_markers: z.array(z.string().min(1).max(500)).max(100).optional(), claims: z.array(z.object({ phrase: z.string().min(1).max(500), guidance: z.string().min(1).max(500) })).max(100).optional(), notes: z.array(z.string().min(1).max(500)).max(100).optional() }).optional().describe('Editorial review rules checked on all built pages, including unchanged pages. Warnings require human review; no copy is rewritten.'),
+      sitewide_nofollow: z.boolean().optional().describe('Ask search engines not to follow links. Defaults to false.'),
       image_sizes_default: z.string().optional().describe('Site-wide default `sizes` attribute for responsive-image <picture> output, e.g. "(max-width: 640px) 360px, 560px". Tells the browser how wide images actually render so it stops over-fetching the larger srcset variant. A page can override via its own image_sizes_default; a per-<img> `sizes` attribute wins over both. Leave unset for the generic "(max-width: 768px) 100vw, 800px".'),
       // Scriptable surfaces. Trusted because the caller has an API key.
       scripts_head: z.string().optional().describe('Raw HTML injected into <head> on every page. Use for analytics, fonts, third-party CSS links.'),

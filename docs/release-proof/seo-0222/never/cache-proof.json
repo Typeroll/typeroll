@@ -1,0 +1,24 @@
+{
+  "warm": {
+    "format": 1,
+    "mode": "partial",
+    "rendered": 0,
+    "reused": 8,
+    "total": 8,
+    "removed": 0,
+    "reason": "unchanged_routes_reused"
+  },
+  "legacy_format": {
+    "format": 1,
+    "mode": "full",
+    "rendered": 8,
+    "reused": 0,
+    "total": 8,
+    "removed": 0,
+    "reason": "no_valid_cache"
+  },
+  "validator_revision": {
+    "version": 2,
+    "validated_pages": 9
+  }
+}

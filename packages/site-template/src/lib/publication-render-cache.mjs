@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
-export const RENDER_CACHE_FORMAT = 3;
+import { SEO_VALIDATOR_VERSION } from './publication-validation.mjs';
+export const RENDER_CACHE_FORMAT = 4;
 export const MAX_RENDER_CACHE_BYTES = 32 * 1024 * 1024;
 export const digest = value => createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest('hex');
 
@@ -18,7 +19,7 @@ export function createRenderPlan(publication, manifest, runtime = process.versio
     .map(key => [key, publication[key]]));
   const renderer = Object.fromEntries(Object.entries(manifest.files).filter(([name]) =>
     name !== 'publication.json' && !name.startsWith('content/')));
-  const globalKey = digest({ format: RENDER_CACHE_FORMAT, runtime, renderer, globals,
+  const globalKey = digest({ format: RENDER_CACHE_FORMAT, validator: SEO_VALIDATOR_VERSION, runtime, renderer, globals,
     platform: process.platform, arch: process.arch, locale: Intl.DateTimeFormat().resolvedOptions(), year: new Date().getFullYear() });
   const keys = Object.fromEntries(pages.map(page => [page.id, {
     key: digest({ globalKey, page }), dependency: 'recorded',

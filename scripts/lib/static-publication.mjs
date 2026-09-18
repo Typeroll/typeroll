@@ -117,12 +117,18 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     if (input.settings.organization.same_as !== undefined) settings.organization.same_as = projectStringArray(input.settings.organization.same_as, 'organization.same_as');
   }
   if (input.settings?.iframe_allowed_hosts !== undefined) settings.iframe_allowed_hosts = projectStringArray(input.settings.iframe_allowed_hosts, 'iframe_allowed_hosts');
+  if (input.settings?.seo_review) settings.seo_review = {
+    forbidden_markers: projectStringArray(input.settings.seo_review.forbidden_markers ?? [], 'seo_review.forbidden_markers'),
+    notes: projectStringArray(input.settings.seo_review.notes ?? [], 'seo_review.notes'),
+    claims: (input.settings.seo_review.claims ?? []).map(rule => projectStrings(rule, ['phrase', 'guidance'])),
+  };
   settings.colors = projectStrings(input.settings?.colors, ['primary', 'secondary', 'accent', 'background', 'surface', 'text', 'text_light']);
   settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
+  settings.sitewide_nofollow = input.settings?.sitewide_nofollow === true;
   settings.sitewide_noindex = versionId !== 'main' || noindex || input.settings?.sitewide_noindex === true;
   const pages = input.pages.filter((page) => ['published', 'unlisted'].includes(page.status)).map((page) => {
     if (!['html', 'blocks'].includes(page.content_mode)) throw new Error('Unsupported publication page configuration');
-    const projected = assertIdentity({ ...projectStrings(page, stringFields.page), ...projectBooleans(page, ['append_seo_suffix', 'noindex']), ...projectNumbers(page, ['sort_order']) });
+    const projected = assertIdentity({ ...projectStrings(page, stringFields.page), ...projectBooleans(page, ['append_seo_suffix', 'noindex', 'nofollow']), ...projectNumbers(page, ['sort_order']) });
     const definition = typeIndex.get(page.content_type ?? 'page');
     if (!definition) throw new Error('Page refers to an unknown content type');
     projected.content_type = definition.id;
@@ -189,7 +195,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   const publication = {
     format: 'typeroll-static-publication', format_version: 2,
     publication_id: digest(JSON.stringify({ siteUrl, coreCommit, publishedAt, versionId })),
-    version_id: versionId, git_branch: gitBranch,
+    version_id: versionId, git_branch: gitBranch, robots_blocked: versionId !== 'main' || noindex,
     core_commit: coreCommit, published_at: publishedAt, site_url: siteUrl,
     site: projectStrings(input.site, stringFields.site), settings, pages, partials, media, blockTypes, pageTemplates, redirects,
     contentTypes, forms,
@@ -234,7 +240,7 @@ export async function createStaticPublicationProject(publication, destination) {
   await json('package.json', {
     name: 'typeroll-published-site', version: '1.0.0', private: true, type: 'module',
     engines: { node: '>=22.12.0' }, workspaces: ['packages/shared', 'packages/site-template'],
-    scripts: { build: 'node scripts/build.mjs' }, dependencies: { esbuild: version('esbuild'), pagefind: version('pagefind'), sharp: version('sharp'), '@aws-sdk/client-s3': version('@aws-sdk/client-s3') },
+    scripts: { build: 'node scripts/build.mjs' }, dependencies: { esbuild: version('esbuild'), pagefind: version('pagefind'), sharp: version('sharp'), htmlparser2: version('htmlparser2'), '@aws-sdk/client-s3': version('@aws-sdk/client-s3') },
   });
   await json('packages/site-template/package.json', {
     name: '@typeroll/site-template', version: '0.1.0', private: true, type: 'module',
@@ -264,7 +270,7 @@ export async function createStaticPublicationProject(publication, destination) {
     await fs.writeFile(path.join(destination, name), content);
   }
   await fs.writeFile(path.join(destination, '.gitignore'), 'node_modules/\ndist/\n.astro/\n.publication-work/\n.publication-media/\n.publication-cache.json*\n.env*\n');
-  await fs.writeFile(path.join(destination, 'README.md'), '# Generated Typeroll publication\n\nEdit in Typeroll. Publishing replaces this entire generated tree; manual repository changes are unsupported.\n\nRun `npm ci` and `npm run build` using Node 22.23.1. The static output is `dist/`. Builds automatically reuse unchanged HTML from `.publication-cache.json` when available. Query membership, visited records, references and navigation determine which addresses enter the render queue. Added and removed Pages invalidate affected consumers, including previously empty queries. Preserve that optional file between runs, outside Git and public hosting. Use `TYPEROLL_FULL_BUILD=1 npm run build` for a clean full render. `.publication-work/render-report.json` records rendered/reused route counts. The cache is limited to 32 MiB; missing or corrupt cache falls back to full rendering. Shared inputs, toolchain changes and unknown dependencies conservatively invalidate reuse. Route discovery, sitemap, search, controls and media remain complete. All renderer source and public content are included. Builds never contact Typeroll Cloud. Images stay in customer-owned R2 storage and are never committed to this repository. Builds read and verify the originals with temporary, object-specific R2 access from `TYPEROLL_BUILD_MEDIA_ACCESS`, generate responsive variants, and publish the assets. Independent builds can supply R2 credentials with account_id, original_bucket, public_bucket, original and public fields in the same environment variable; preserve the original storage and frozen media manifest.\n\nThe frozen publication includes public HTML, blocks, templates, content types and runtime configuration. Forms, Apps and Extensions can depend on the endpoints listed in `runtime_dependencies` in `publication.json`. Building the static pages does not replace those services. This repository is not a full CMS backup.\n\nThe vendored Typeroll renderer and shared code use LICENSE.typeroll. Site content retains its existing terms.\n');
+  await fs.writeFile(path.join(destination, 'README.md'), '# Generated Typeroll publication\n\nEdit in Typeroll. Publishing replaces this entire generated tree; manual repository changes are unsupported.\n\nRun `npm ci` and `npm run build` using Node 22.23.1. The static output is `dist/`. Builds automatically reuse unchanged HTML from `.publication-cache.json` when available. Query membership, visited records, references and navigation determine which addresses enter the render queue. Added and removed Pages invalidate affected consumers, including previously empty queries. Preserve that optional file between runs, outside Git and public hosting. Use `TYPEROLL_FULL_BUILD=1 npm run build` for a clean full render. `.publication-work/render-report.json` records rendered/reused route counts. Every build validates the complete static artifact, including reused HTML, before activation. `.publication-work/seo-report.json` contains technical errors and editorial warnings bound to the publication, source, settings and output hashes. Technical failures stop the build; warnings require review and never rewrite copy. See https://typeroll.com/docs/guides/publication-validation/. The cache is limited to 32 MiB; missing or corrupt cache falls back to full rendering. Shared inputs, toolchain changes and unknown dependencies conservatively invalidate reuse. Route discovery, sitemap, search, controls and media remain complete. All renderer source and public content are included. Builds never contact Typeroll Cloud. Images stay in customer-owned R2 storage and are never committed to this repository. Builds read and verify the originals with temporary, object-specific R2 access from `TYPEROLL_BUILD_MEDIA_ACCESS`, generate responsive variants, and publish the assets. Independent builds can supply R2 credentials with account_id, original_bucket, public_bucket, original and public fields in the same environment variable; preserve the original storage and frozen media manifest.\n\nThe frozen publication includes public HTML, blocks, templates, content types and runtime configuration. Forms, Apps and Extensions can depend on the endpoints listed in `runtime_dependencies` in `publication.json`. Building the static pages does not replace those services. This repository is not a full CMS backup.\n\nThe vendored Typeroll renderer and shared code use LICENSE.typeroll. Site content retains its existing terms.\n');
   return { pages: publication.pages.length, partials: publication.partials.length, media: publication.media.length };
 }
 

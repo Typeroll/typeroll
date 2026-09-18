@@ -16,6 +16,16 @@ export async function writeRouteReceipt(receipt) {
 export async function selectChangedRoutes(routes, resolvers, trailingSlash) {
   const input = await renderCacheInput();
   if (!input) return routes;
+  const base = process.env.TYPEROLL_SITE_URL;
+  await fs.writeFile(path.join(path.dirname(process.env.TYPEROLL_RENDER_CACHE_WORK), 'routes.json'), JSON.stringify(routes.map(route => {
+    const pathname = new URL(encodeURI(route.params.slug ? `/${route.params.slug}${trailingSlash === 'never' ? '' : '/'}` : '/'), base).pathname;
+    const page = route.props.page;
+    const canonical = page.canonical_url || new URL(pathname, base).href;
+    const parents = (route.props.breadcrumbs ?? []).filter(crumb => !crumb.current && crumb.href !== '/');
+    return { pathname, page_id: page.id, canonical, nofollow: page.nofollow === true, breadcrumbs: pathname === '/' ? [] : [
+      { item: new URL('/', base).href }, ...parents.map(crumb => ({ item: new URL(crumb.href, base).href })), { item: canonical },
+    ] };
+  })));
   const changed = [];
   const queries = new Map();
   for (const route of routes) {

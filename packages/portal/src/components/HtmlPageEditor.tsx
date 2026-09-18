@@ -485,6 +485,10 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
                 <input type="checkbox" checked={draft.noindex ?? false} onChange={(e) => update('noindex', e.target.checked)} />
                 Hide from search engines (noindex)
               </label>
+              <label>
+                <input type="checkbox" checked={draft.nofollow ?? false} onChange={(e) => update('nofollow', e.target.checked)} />
+                Ask search engines not to follow links (nofollow)
+              </label>
               <div className="field">
                 <label>JSON-LD structured data</label>
                 <textarea

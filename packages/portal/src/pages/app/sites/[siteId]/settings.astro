@@ -146,6 +146,14 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
 
     <div class="card stack">
       <h2 style="font-size: 1.125rem;">SEO defaults</h2>
+      <details>
+        <summary>Editorial publication checks</summary>
+        <p class="muted text-sm">Rules apply to every built page, including unchanged pages. Matches are warnings for review; Typeroll does not rewrite your content.</p>
+        <div class="field"><label for="seo-markers">Internal phrases to flag (one per line)</label><textarea id="seo-markers" name="seo_review.forbidden_markers">{settings.seo_review?.forbidden_markers?.join('\n') ?? ''}</textarea></div>
+        <div class="field"><label for="seo-claims">Claims needing review (phrase | review instruction, one per line)</label><textarea id="seo-claims" name="seo_review.claims">{settings.seo_review?.claims?.map(rule => `${rule.phrase} | ${rule.guidance}`).join('\n') ?? ''}</textarea></div>
+        <div class="field"><label for="seo-notes">Editorial constraints for reviewers (one per line)</label><textarea id="seo-notes" name="seo_review.notes">{settings.seo_review?.notes?.join('\n') ?? ''}</textarea></div>
+      </details>
+      <label><input type="checkbox" name="sitewide_nofollow" checked={settings.sitewide_nofollow === true} /> Ask search engines not to follow links on this site (nofollow)</label>
       <p class="muted text-sm">Fallback values used when a page doesn't set its own SEO. Yoast/RankMath/SEOPress/AIOSEO equivalents.</p>
       <div class="field">
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">

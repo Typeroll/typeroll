@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt, DIRECT_RECEIPT } from './direct-upload.mjs';
-import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, decodeSource, decodeArtifact, encodeArtifact, sha256, assertFilePath, renderReport } from './contract.mjs';
+import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, decodeSource, decodeArtifact, encodeArtifact, sha256, assertFilePath, renderReport, seoReport, outputDigest } from './contract.mjs';
 
 export const BWRAP_URL = 'https://archive.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb';
 export const BWRAP_SHA = '1b506492bd9c7fd0cdb4f02ac822f1d3e336b0aead5113c1239baf8db5db562a';
@@ -67,6 +67,13 @@ export async function outputFiles(root) {
 }
 
 /** Only the trusted supervisor can authenticate to the coordinator or upload artifacts. */
+async function readSeoReport(work, publicationId) {
+  const file = path.join(work, '.publication-work/seo-report.json');
+  const stat = await fs.lstat(file);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > 250000 || !(await fs.realpath(file)).startsWith(work + path.sep)) throw Error('publication_validation_report_invalid');
+  return seoReport(JSON.parse(await fs.readFile(file, 'utf8')), publicationId);
+}
+
 export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
   if (process.platform !== 'linux' || process.arch !== 'x64' || process.versions.node !== BUILD_RUNTIME) throw Error('unsupported_build_runtime');
   const origin = new URL(config.origin);
@@ -255,7 +262,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     }
     }
     stage = 'artifact';
-    let artifactFiles;
+    let artifactFiles, validation;
     if (job.kind === 'publication' && job.direct_upload) {
       const dist = path.join(work, 'dist');
       let grant = await request('direct-upload', job.token, attempt);
@@ -272,6 +279,8 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         }
       }
       const description = await describeStaticOutput(dist);
+      validation = await readSeoReport(work, job.identity.publication_id);
+      if (!validation.passed || validation.artifact_tree_sha256 !== outputDigest({ ...description.files, ...reused.files })) throw Error('publication_validation_failed');
       if (typeof grant.jwt !== 'string' || grant.jwt.length > 16384) throw Error('invalid_pages_upload_grant');
       const manifestPath = path.join(temp, 'pages-manifest.json');
       const logPath = path.join(temp, 'wrangler.log'); await fs.symlink('/dev/null', logPath);
@@ -288,7 +297,14 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       mediaReport.reused_bytes = Object.values(reused.files).reduce((total, file) => total + file.size, 0);
       artifactFiles = { [DIRECT_RECEIPT]: Buffer.from(JSON.stringify(receipt)),
         '.well-known/typeroll/publication.json': await fs.readFile(path.join(dist, '.well-known/typeroll/publication.json')) };
-    } else artifactFiles = await outputFiles(path.join(work, 'dist'));
+    } else {
+      artifactFiles = await outputFiles(path.join(work, 'dist'));
+      if (job.kind === 'publication') {
+        validation = await readSeoReport(work, job.identity.publication_id);
+        const tree = Object.fromEntries(Object.entries(artifactFiles).map(([name, bytes]) => [name, { sha256: sha256(bytes), size: bytes.length }]));
+        if (!validation.passed || validation.artifact_tree_sha256 !== outputDigest(tree)) throw Error('publication_validation_failed');
+      }
+    }
     const artifact = encodeArtifact(job.identity, artifactFiles);
     const upload = await request('upload', job.token, { ...attempt, artifact_format: 2 });
     if (upload.content_type !== 'application/octet-stream') throw Error('artifact_format_unsupported');
@@ -315,11 +331,13 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         } catch { console.log('TYPEROLL_RENDER_CACHE could not save optional baseline'); }
       }
     }
-    await request('complete', job.token, { ...attempt, sha256: sha256(artifact), render_cache_sha256: cacheHash, render_report: report });
+    await request('complete', job.token, { ...attempt, sha256: sha256(artifact), render_cache_sha256: cacheHash, render_report: report, seo_report: validation });
     console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'completed', job: job.identity.job_id, branch: job.identity.branch, render_report: report, media_report: mediaReport }));
   } catch (error) {
-    const code = artifactFailureCode(error.message);
-    try { await request('fail', job.token, { ...attempt, code, stage }); } catch { /* A cancelled or superseded attempt cannot change publication state. */ }
+    let validation;
+    if (job.kind === 'publication') { try { validation = await readSeoReport(work, job.identity.publication_id); } catch { /* A renderer may fail before validation. */ } }
+    const code = validation && !validation.passed ? 'publication_validation_failed' : artifactFailureCode(error.message);
+    try { await request('fail', job.token, { ...attempt, code, stage, ...(validation ? { seo_report: validation } : {}) }); } catch { /* A cancelled or superseded attempt cannot change publication state. */ }
     throw Error(`${stage}_${code}`);
   } finally { clearInterval(heartbeat); abort.abort(); await fs.rm(temp, { recursive: true, force: true }); }
 }

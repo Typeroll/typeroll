@@ -388,6 +388,13 @@ export default function PublishMenu({
             </p>
 
             {busy && job?.verification_message && <p role="status" className="pmenu__hint">{job.verification_message}</p>}
+            {job?.seo_report && <details className="pmenu__hint pmenu__validation">
+              <summary>Publication checks: {job.seo_report.error_count} errors · {job.seo_report.warning_count} editorial warnings</summary>
+              <p>{job.seo_report.checked_pages} built pages checked. Editorial warnings need review; no content was rewritten.</p>
+              {[...job.seo_report.errors, ...job.seo_report.warnings].map((issue, index) => <div key={index}>
+                <p><strong>{issue.message}</strong><br />{issue.url}<br />{issue.source.file}:{issue.source.line}{issue.source.block_id ? ` · block ${issue.source.block_id}` : ''}{issue.source.field ? ` · ${issue.source.field}` : ''}<br />{issue.remediation}</p>
+              </div>)}
+            </details>}
             {job?.render_report && <p role="status" className="pmenu__hint">{job.render_report.rendered} pages rebuilt · {job.render_report.reused} reused</p>}
             {job?.phase === 'distributing' && <p className="pmenu__hint" role="status">Distributing… Your site is being made publicly available. The link will appear automatically when ready.</p>}
             {changesLoading && <p className="pmenu__hint">Checking what changed…</p>}
@@ -543,6 +550,7 @@ export default function PublishMenu({
         }
         .pmenu__select--env { width: auto; flex: 1; }
         .pmenu__hint { margin: 0.4rem 0 0; font-size: 0.875rem; color: #a1a1aa; line-height: 1.45; }
+        .pmenu__validation { overflow-wrap: anywhere; }
         .pmenu__hint--warn { color: #f6c177; }
         .pmenu__hint--error { color: #f87171; }
         .pmenu__change-details { margin-top: 8px; border-top: 1px solid #34343a; }

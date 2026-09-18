@@ -16,8 +16,8 @@ afterEach(() => vi.restoreAllMocks());
 
 it.each([false, true])('uses media batching only when the frozen renderer supports it: %s', async supported => {
   vi.spyOn(Date, 'now').mockReturnValue(Date.now());
-  const publication = { media_manifest: { entries: [{ id: 'one' }, { id: 'two' }] }, retained_media_manifests: [{ entries: [{ id: 'retained' }] }] };
-  const result = await enqueueBuild(config, identity, { 'publication.json': JSON.stringify(publication), 'scripts/media.mjs': supported ? 'export async function prepareMediaBatch() {}' : 'export async function prepareMedia() {}' });
+  const publication = { settings: {}, contentTypes: [], media_manifest: { entries: [{ id: 'one' }, { id: 'two' }] }, retained_media_manifests: [{ entries: [{ id: 'retained' }] }] };
+  const result = await enqueueBuild(config, identity, { 'packages/site-template/src/lib/publication-validation.mjs': 'export const SEO_VALIDATOR_VERSION = 1;', 'publication-manifest.json': '{"files":{}}', 'publication.json': JSON.stringify(publication), 'scripts/media.mjs': supported ? 'export async function prepareMediaBatch() {}' : 'export async function prepareMedia() {}' });
   expect(result.task.media_total).toBe(supported ? 3 : 0);
   expect(result.task.deadline - result.task.created_at).toBe((supported ? 360 : 45) * 60_000);
   expect(mocks.dispatch).toHaveBeenCalledOnce();
@@ -25,7 +25,7 @@ it.each([false, true])('uses media batching only when the frozen renderer suppor
 
 it.each(['cloudflare', 'github'] as const)('dispatches the fourth %s media batch without treating successful batches as failed attempts', async provider => {
   const engine = { ...config, provider };
-  const result = await enqueueBuild(engine, identity, { 'publication.json': JSON.stringify({ media_manifest: { entries: Array.from({ length: 350 }, (_, id) => ({ id })) } }), 'scripts/media.mjs': 'export async function prepareMediaBatch() {}' });
+  const result = await enqueueBuild(engine, identity, { 'packages/site-template/src/lib/publication-validation.mjs': 'export const SEO_VALIDATOR_VERSION = 1;', 'publication-manifest.json': '{"files":{}}', 'publication.json': JSON.stringify({ settings: {}, contentTypes: [], media_manifest: { entries: Array.from({ length: 350 }, (_, id) => ({ id })) } }), 'scripts/media.mjs': 'export async function prepareMediaBatch() {}' });
   const queue = new OrganizationBuildQueue();
   for (let i = 0; i < 3; i++) {
     const claim = (await queue.claim('org', config.revision, 1))!;
@@ -35,4 +35,10 @@ it.each(['cloudflare', 'github'] as const)('dispatches the fourth %s media batch
   await dispatchPendingBuild('org', result.key, engine);
   expect(mocks.dispatch).toHaveBeenCalledTimes(2);
   expect(await getStore().getDoc(buildInputPath('org', result.key))).toMatchObject({ dispatch_attempt: 4 });
+});
+
+it('rejects an old frozen renderer before storing or dispatching a publication', async () => {
+  await expect(enqueueBuild(config, identity, { 'publication.json': '{}' })).rejects.toMatchObject({ code: 'publication_renderer_update_required' });
+  expect(mocks.put).not.toHaveBeenCalled();
+  expect(mocks.dispatch).not.toHaveBeenCalled();
 });

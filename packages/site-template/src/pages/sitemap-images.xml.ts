@@ -7,7 +7,7 @@
 // meta tag.
 
 import type { APIRoute } from 'astro';
-import { getAllPages, getSiteSettings, urlFor } from '../lib/content';
+import { getAllPages, getSiteSettings, isVersionRobotsBlocked, urlFor } from '../lib/content';
 import type { Page } from '@typeroll/shared';
 
 export const GET: APIRoute = async ({ site }) => {
@@ -15,7 +15,8 @@ export const GET: APIRoute = async ({ site }) => {
   const pages = await getAllPages({ includeUnlisted: false });
   const settings = await getSiteSettings();
 
-  const entries = pages
+  const blocked = settings.sitewide_noindex || await isVersionRobotsBlocked();
+  const entries = (blocked ? [] : pages)
     .filter((p) => !p.noindex)
     .map((p) => {
       const images = extractImages(p);

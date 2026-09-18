@@ -12,6 +12,8 @@ import { readEngineConfiguration, buildInputPath, type BuildInput, type EngineCo
 import { buildStorage } from './storage';
 
 export async function enqueueBuild(config: EngineConfiguration, identity: Omit<BuildIdentity, 'source_sha256' | 'protocol' | 'node_version'>, files: Record<string, string>, kind: BuildInput['kind'] = 'publication') {
+  if (kind === 'publication' && !files['packages/site-template/src/lib/publication-validation.mjs'])
+    throw new ConnectionError('This frozen renderer predates publication checks. Publish the site with the current Core release before preparing a domain change.', 409, 'publication_renderer_update_required');
   const source = encodeSource(files);
   const frozen: BuildIdentity = { ...identity, source_sha256: sha256(source), protocol: BUILD_PROTOCOL, node_version: BUILD_RUNTIME };
   const sourceKey = `builds/${identity.org_id}/sources/${frozen.source_sha256}.json`;
@@ -22,10 +24,14 @@ export async function enqueueBuild(config: EngineConfiguration, identity: Omit<B
   const publication = ['publication', 'media_preparation'].includes(kind) ? JSON.parse(files['publication.json']) : null;
   // Domain-only publications can retain an older immutable renderer. Do not
   // send batch commands to a source template that predates that protocol.
+  const validation = kind === 'publication' ? {
+    validation_source_sha256: sha256(JSON.stringify(JSON.parse(files['publication-manifest.json']).files)),
+    validation_configuration_sha256: sha256(JSON.stringify({ settings: publication.settings, contentTypes: publication.contentTypes ?? publication.content_files.contentTypes.map((name: string) => JSON.parse(files[name])) })),
+  } : {};
   const supportsMediaBatches = files['scripts/media.mjs']?.includes('export async function prepareMediaBatch(');
   const mediaTotal = kind === 'static_verification' ? JSON.parse(files['verification.json']).checks.length : supportsMediaBatches ? (publication?.media_manifest?.entries?.length ?? 0) + (publication?.retained_media_manifests ?? []).reduce((sum: number, manifest: any) => sum + manifest.entries.length, 0) : 0;
   const queued = await new OrganizationBuildQueue().enqueue(frozen, config.revision, mediaTotal, kind === 'static_verification' ? kind : undefined);
-  await getStore().createDocIfMissing(buildInputPath(identity.org_id, queued.key), { source_key: sourceKey, kind, storage_account_id: config.account_id, provider: config.provider ?? 'cloudflare' } satisfies BuildInput);
+  await getStore().createDocIfMissing(buildInputPath(identity.org_id, queued.key), { ...validation, source_key: sourceKey, kind, storage_account_id: config.account_id, provider: config.provider ?? 'cloudflare' } satisfies BuildInput);
   try { await dispatchPendingBuild(identity.org_id, queued.key, config); }
   catch (error) { await new OrganizationBuildQueue().cancel(identity.org_id, queued.key); throw error; }
   return queued;
@@ -75,6 +81,10 @@ export async function completedBuild(org: string, key: string) {
   const task = await getStore().getDoc<BuildTask>(`${buildTasksPath(org)}/${key}`);
   if (!task) throw new ConnectionError('The frozen build was not found.', 409);
   if (['failed', 'cancelled'].includes(task.status)) {
+    if (task.seo_report && !task.seo_report.passed) {
+      const issue = task.seo_report.errors[0];
+      throw new ConnectionError(`Publication validation failed: ${issue?.message ?? 'Invalid static output'} (${issue?.url ?? ''}). ${issue?.remediation ?? 'Review the validation report.'}`, 422, 'publication_validation_failed');
+    }
     if (task.error_code === 'artifact_static_output_size_limit') throw new ConnectionError('The finished site exceeds this build engine’s static output limit or contains a file larger than 25 MiB. Reduce the published files before retrying. Prepared images are retained.', 413, task.error_code);
     throw new ConnectionError(`The shared build stopped (${task.error_code ?? task.status}). Retry the publication. Prepared images are retained.`, 502, task.error_code ?? 'shared_build_failed');
   }

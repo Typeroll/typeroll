@@ -14,7 +14,7 @@ import { markSiteDirty } from './auto-deploy';
 
 const CREATE_FIELDS = ['path', 'parent', 'sort_order', 'template', 'kind', 'author', 'language',
   'seo_title', 'seo_description', 'og_image', 'seo_image_alt', 'canonical_url', 'append_seo_suffix',
-  'noindex', 'alternates', 'lastmod_override', 'json_ld', 'schema_type', 'service', 'image_sizes_default',
+  'noindex', 'nofollow', 'alternates', 'lastmod_override', 'json_ld', 'schema_type', 'service', 'image_sizes_default',
   'custom_css', 'date_published', 'publish_at', 'unpublish_at'] as const;
 
 /** All surfaces create the same Page. Content types only supply schema and defaults. */

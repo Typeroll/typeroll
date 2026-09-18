@@ -69,6 +69,20 @@ async function createPage(token: string, body: Record<string, unknown> = {}) { r
 describe('content types and native Pages', () => {
   let token: string;
   beforeEach(async () => { ({ token } = await setup()); });
+  it('rejects unsupported schema paths on create and update with a field error', async () => {
+    for (const property of ['address.addressLocality', '__proto__', 'constructor', 'address.__proto__.city']) {
+      const response = await createType(token, { ...definition(), schema_field_map: { summary: property } });
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain('schema_field_map.summary');
+    }
+    expect((await createType(token, { ...definition(), schema_field_map: { summary: 'description' } })).status).toBe(200);
+    const response = await callRoute(detailRoute(), 'PATCH', `${root}/content-types/articles`, { siteId: SITE, name: 'articles' }, {
+      headers: bearer(token), body: { schema_field_map: { summary: 'address.addressRegion' } },
+    });
+    expect(response.status).toBe(400);
+    const read = await callRoute(detailRoute(), 'GET', `${root}/content-types/articles`, { siteId: SITE, name: 'articles' }, { headers: bearer(token) });
+    expect((await read.json()).content_type.schema_field_map).toEqual({ summary: 'description' });
+  });
   it('accepts directory fields and validates multiselect values on Page writes', async () => {
     const fields = [
       { name: 'email', label: 'Email', type: 'email' },

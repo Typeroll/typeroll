@@ -1,5 +1,5 @@
 ---
-import type { ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
+import type { BreadcrumbItem, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
 import { CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
@@ -9,6 +9,7 @@ import '../styles/global.css';
 interface Props {
   page: Page;
   settings: SiteSettings;
+  breadcrumbs?: BreadcrumbItem[];
   /**
    * Public apps snapshot (enabled Typeroll apps + their public config).
    * Drives opt-in injections like the analytics beacon. Absent → no apps.
@@ -40,7 +41,7 @@ interface Props {
   extraJsonLd?: string[];
 }
 
-const { page, settings, blockCss, blockJs, extraJsonLd, apps, extensions } = Astro.props;
+const { page, settings, blockCss, blockJs, extraJsonLd, apps, extensions, breadcrumbs } = Astro.props;
 const extensionRuntime = extensions?.installations?.length
   ? buildExtensionRuntimeScript(extensions, { analytics: apps?.apps?.analytics?.enabled && typeof apps.apps.analytics.config.event_token === 'string' && typeof apps.apps.analytics.config.event_endpoint === 'string'
       ? { endpoint: apps.apps.analytics.config.event_endpoint, token: apps.apps.analytics.config.event_token, requires_consent: settings.cookie_consent?.enabled === true } : undefined })
@@ -144,7 +145,7 @@ const fontFallbackStyle = googleFontFamilies.length
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {extensionUsesSensitiveUrlContext && <meta name="referrer" content="no-referrer" />}
 
-    <SEOHead page={page} settings={settings} extraJsonLd={extraJsonLd} />
+    <SEOHead page={page} settings={settings} extraJsonLd={extraJsonLd} breadcrumbs={breadcrumbs} />
 
     <style set:html={themeStyle} />
     <style set:html={CONTENT_WELL_CSS} />

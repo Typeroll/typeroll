@@ -3,6 +3,7 @@ import type { DeployJob } from '@typeroll/shared';
 
 export interface DeployProgress {
   render_report?: DeployJob['render_report'];
+  seo_report?: DeployJob['seo_report'];
   id?: string;
   status: 'queued' | 'running' | 'succeeded' | 'failed';
   phase?: string;
@@ -27,6 +28,8 @@ export function useDeployProgress(siteId: string, onFailure: (message: string) =
         if (data?.active_job?.id) {
           setJob(data.active_job);
           selectJob(data.active_job.id);
+        } else if (data?.latest_job?.status === 'succeeded' && data.latest_job.seo_report) {
+          setJob(data.latest_job);
         } else if (data?.latest_job?.status === 'failed') {
           setJob(data.latest_job);
           callbacks.current.onFailure(data.latest_job.error ?? 'Deploy failed');

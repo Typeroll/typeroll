@@ -51,7 +51,7 @@ export type WcTarget =
 export const PAGE_WC_FIELDS = [
   'title', 'slug', 'path', 'parent', 'sort_order', 'template',
   'blocks', 'html_content', 'seo_title', 'seo_description', 'og_image',
-  'seo_image_alt', 'canonical_url', 'noindex', 'alternates', 'lastmod_override', 'json_ld',
+  'seo_image_alt', 'canonical_url', 'noindex', 'nofollow', 'alternates', 'lastmod_override', 'json_ld',
   'schema_type', 'service', 'kind', 'author', 'language', 'image_sizes_default',
   'custom_css', 'fields',
 ] as const;

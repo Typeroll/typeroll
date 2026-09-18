@@ -18,7 +18,7 @@ export async function readBuildSettings(org: string) {
   const engines = { cloudflare, github };
   for (const provider of ['cloudflare', 'github'] as const) {
     const engine = await readEngineConfiguration(org, provider);
-    if (engine?.status === 'ready' && (!engine.static_verification || !engine.media_preparation)) {
+    if (engine?.status === 'ready' && (!engine.static_verification || !engine.media_preparation || engine.publication_validation !== 1)) {
       engines[provider] = { ...engines[provider], enabled: false, state: 'setup_required', issue: {
         code: 'build_engine_update_required', message: 'Update the build engine before publishing. Finish build setup to install and verify the required capabilities.',
       } };

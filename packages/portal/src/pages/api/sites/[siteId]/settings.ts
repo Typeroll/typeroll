@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { defaultSiteSettings, normalizeIframeAllowedHosts, paths } from '@typeroll/shared';
+import { seoReviewError, defaultSiteSettings, normalizeIframeAllowedHosts, paths } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, cookies, params, redirect, locals }) => {
@@ -61,6 +61,14 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     return new Response(`Invalid iframe hostnames: ${iframeHostCheck.invalid.join(', ')}`, { status: 400 });
   }
 
+  const lines = (key: string) => String(form.get(key) ?? '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const seo_review = {
+    forbidden_markers: lines('seo_review.forbidden_markers'),
+    notes: lines('seo_review.notes'),
+    claims: lines('seo_review.claims').map(line => { const divider = line.indexOf('|'); return { phrase: divider < 0 ? line : line.slice(0, divider).trim(), guidance: divider < 0 ? '' : line.slice(divider + 1).trim() }; }),
+  };
+  const reviewError = seoReviewError(seo_review);
+  if (reviewError) return new Response(reviewError, { status: 400 });
   const next: SiteSettings = {
     ...existing,
     site_name: String(form.get('site_name') ?? existing.site_name),
@@ -85,6 +93,8 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     custom_css: String(form.get('custom_css') ?? '') || undefined,
     robots_txt: String(form.get('robots_txt') ?? '') || undefined,
     sitewide_noindex: form.get('sitewide_noindex') === 'on',
+    seo_review,
+    sitewide_nofollow: form.get('sitewide_nofollow') === 'on',
     cookie_consent,
     colors,
     fonts,

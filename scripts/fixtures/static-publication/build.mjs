@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { build } from 'esbuild';
+import { validatePublicationDirectory } from '../packages/site-template/src/lib/publication-validation.mjs';
 import { prepareMedia } from './media.mjs';
 import { readPublicationContent } from './content.mjs';
 import { resolvePublicationReferences } from './references.mjs';
@@ -20,7 +21,9 @@ for (const [relative, expected] of Object.entries(manifest.files)) {
   const hash = createHash('sha256').update(await fs.readFile(target)).digest('hex');
   if (hash !== expected) throw new Error(`Publication file differs from its frozen manifest: ${relative}`);
 }
-const publication = resolvePublicationReferences(await readPublicationContent(JSON.parse(await fs.readFile(path.join(root, 'publication.json'), 'utf8')), name => fs.readFile(path.join(root, name), 'utf8'), manifest));
+const frozenPublication = await readPublicationContent(JSON.parse(await fs.readFile(path.join(root, 'publication.json'), 'utf8')), name => fs.readFile(path.join(root, name), 'utf8'), manifest);
+const configurationHash = createHash('sha256').update(JSON.stringify({ settings: frozenPublication.settings, contentTypes: frozenPublication.contentTypes })).digest('hex');
+const publication = resolvePublicationReferences(frozenPublication);
 if (publication.format !== 'typeroll-static-publication' || publication.format_version !== 2) throw new Error('Unsupported publication format');
 let sameHostMedia;
 if (process.env.TYPEROLL_BUILD_MEDIA_PREPARED) {
@@ -59,7 +62,7 @@ async function writeDoc(relative, doc) {
   await fs.writeFile(destination, JSON.stringify(data));
 }
 await writeDoc(base, publication.site);
-await writeDoc(`${base}/versions/${versionId}`, { kind: versionId === 'main' ? 'main' : 'branch', robots_blocked: publication.settings.sitewide_noindex });
+await writeDoc(`${base}/versions/${versionId}`, { kind: versionId === 'main' ? 'main' : 'branch', robots_blocked: publication.robots_blocked === true });
 await writeDoc(`${base}/versions/${versionId}/settings/default`, publication.settings);
 await writeDoc(`${base}/apps/default`, publication.apps ?? { apps: {} });
 await writeDoc(`${base}/extension_runtime/default`, publication.extensions ?? { installations: [] });
@@ -132,6 +135,14 @@ for (const file of new Map(sameHostMedia.map(file => [file.path, file])).values(
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.copyFile(file.source, destination);
 }
+const validation = await validatePublicationDirectory(dist, {
+  publication, configurationHash, routes: JSON.parse(await fs.readFile(path.join(work, 'routes.json'), 'utf8')),
+  sourceHash: createHash('sha256').update(JSON.stringify(manifest.files)).digest('hex'),
+  reusedFiles: Object.fromEntries(sameHostMedia.filter(file => file.reused).map(file => [file.path.slice(1), { sha256: file.sha256, size: file.size }])),
+});
+await fs.writeFile(path.join(work, 'seo-report.json'), JSON.stringify(validation));
+console.log('TYPEROLL_SEO_RESULT ' + JSON.stringify({ passed: validation.passed, errors: validation.error_count, warnings: validation.warning_count }));
+if (!validation.passed) { console.error(JSON.stringify(validation.errors.slice(0, 10))); throw new Error('publication_validation_failed'); }
 // Commit cache only after the complete output succeeds; it never enters dist or Git.
 const nextCache = JSON.stringify({ format: RENDER_CACHE_FORMAT, routes: cacheRoutes });
 try {

@@ -13,7 +13,7 @@ import { rateLimit } from '../rate-limit';
 import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, type BuildTask } from './queue';
 import { authorizeEngine, assertEngineConnections, readEngineConfiguration, buildInputPath, engineConfigurationPath, renderCachePath, assetCachePath, type AssetCachePointer, type RenderCachePointer, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
-import { decodeSource, decodeArtifact, MAX_SOURCE_BYTES, sha256, renderReport } from './contract.mjs';
+import { decodeSource, decodeArtifact, MAX_SOURCE_BYTES, sha256, renderReport, seoReport, outputDigest } from './contract.mjs';
 import { publicationStillRunning } from './jobs';
 import { qualificationFiles } from './qualification';
 import { enginePath, type BuildEngine } from './cloudflare';
@@ -143,10 +143,11 @@ export async function runnerRequest(request: Request, org: string, action: strin
     if (action === 'fail') {
       const code = typeof input.code === 'string' && /^[a-z0-9_]{1,80}$/.test(input.code) ? input.code : 'shared_build_failed';
       const stage = typeof input.stage === 'string' && /^[a-z_]{1,30}$/.test(input.stage) ? input.stage : 'build';
+      const validation = input.seo_report ? seoReport(input.seo_report, task.identity.publication_id) : undefined;
       const retryMedia = ((metadata.kind !== 'qualification' && stage === 'media' && ['build_process_timeout', 'media_transfer_interrupted'].includes(code)) ||
         (metadata.kind === 'static_verification' && stage === 'verification' && code === 'static_verification_pending')) && task.attempt < buildAttemptLimit(task);
       await store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${key}`, value => value.status === 'running' && value.lease_id === lease && value.token_hash === task.token_hash && value.lease_until > Date.now() && value.deadline > Date.now(),
-        { status: retryMedia ? 'queued' : 'failed', token_hash: null, error_code: `${stage}_${code}`, lease_until: 0 });
+        { ...(validation ? { seo_report: validation } : {}), status: retryMedia ? 'queued' : 'failed', token_hash: null, error_code: `${stage}_${code}`, lease_until: 0 });
       if (metadata.kind === 'qualification') {
         const disabled = await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, provider), value => value.revision === engine.revision && value.status === 'qualifying', { status: 'disabled' });
         if (disabled) await store.updateDoc(enginePath(org, provider), { state: 'error', enabled: false, issue: { code: 'build_qualification_failed', message: `Build verification failed during ${stage} (${code}). Set up the shared engine again to retry.` } });
@@ -156,6 +157,9 @@ export async function runnerRequest(request: Request, org: string, action: strin
     }
     const artifactKey = `builds/${org}/tasks/${key}/${lease}/artifact.json`;
     let cacheableAssets = false;
+    const validation = metadata.kind === 'publication' ? seoReport(input.seo_report, task.identity.publication_id) : undefined;
+    if (validation && (validation.source_sha256 !== metadata.validation_source_sha256 || validation.configuration_sha256 !== metadata.validation_configuration_sha256)) throw new ConnectionError('Validation belongs to different frozen source or settings.', 409);
+    if (validation && !validation.passed) throw new ConnectionError('Static publication validation failed.', 409);
     await buildStorage(org, async storage => {
       if (storage.account !== metadata.storage_account_id) throw new ConnectionError('Build storage changed.', 409);
       const files = decodeArtifact(await storage.read(artifactKey), task.identity, String(input.sha256));
@@ -176,6 +180,11 @@ export async function runnerRequest(request: Request, org: string, action: strin
         if (receipt.files['.well-known/typeroll/publication.json']?.sha256 !== sha256(files['.well-known/typeroll/publication.json']))
           throw new ConnectionError('The static upload marker does not match its manifest.', 409);
       }
+      if (validation) {
+        const tree = files[DIRECT_RECEIPT] ? validateDirectReceipt(JSON.parse(files[DIRECT_RECEIPT].toString('utf8'))).files
+          : Object.fromEntries(Object.entries(files).map(([name, bytes]) => [name, { sha256: sha256(bytes), size: bytes.length }]));
+        if (validation.artifact_tree_sha256 !== outputDigest(tree)) throw new ConnectionError('Validation belongs to different output.', 409);
+      }
       if (metadata.kind === 'qualification') {
         const expected = qualificationFiles(task.identity.publication_id);
         if (key !== engine.qualification_key || Object.keys(files).length !== Object.keys(expected).length || Object.entries(expected).some(([name, value]) => sha256(files[name] ?? Buffer.alloc(0)) !== sha256(value)))
@@ -183,7 +192,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
       }
     });
     await queue.complete(org, key, lease, token, { sha256: String(input.sha256), key: artifactKey,
-      ...(metadata.kind === 'publication' ? { render_report: renderReport(input.render_report) } : {}) });
+      ...(metadata.kind === 'publication' ? { render_report: renderReport(input.render_report), seo_report: { ...validation!, artifact_sha256: String(input.sha256) } } : {}) });
     if (metadata.kind === 'publication' && cacheableAssets) {
       const pointer: AssetCachePointer = { key, lease, sha256: String(input.sha256), identity: task.identity, account: metadata.storage_account_id, created_at: task.created_at };
       try {

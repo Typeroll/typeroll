@@ -52,6 +52,7 @@ function projectPage(p: Page, full = false): Record<string, unknown> {
     seo_description: p.seo_description,
     og_image: p.og_image,
     noindex: p.noindex,
+    nofollow: p.nofollow,
     template: p.template,
     sort_order: p.sort_order,
     image_sizes_default: p.image_sizes_default,
