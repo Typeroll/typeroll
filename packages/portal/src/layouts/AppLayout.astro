@@ -4,6 +4,7 @@ import { getSession } from '../lib/auth';
 import { resolveVersionId } from '../lib/access';
 import type { FullSession } from '../lib/access';
 import { getStore } from '../lib/datastore';
+import { listSiteVersions } from '../lib/version-store';
 import { hydrateSharedSites } from '../lib/shares';
 import type { SharePermission } from '@typeroll/shared';
 import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
@@ -60,22 +61,7 @@ if (siteId) {
 let siteVersions: SiteVersion[] = [];
 let currentVersionId: string = MAIN_VERSION_ID;
 if (siteId) {
-  siteVersions = await store.listDocs<SiteVersion>(paths.versions(activeOwnerOrgId, siteId));
-  if (!siteVersions.some((v) => v.id === MAIN_VERSION_ID)) {
-    siteVersions = [
-      {
-        id: MAIN_VERSION_ID,
-        name: 'Main',
-        kind: 'main',
-        created_at: new Date().toISOString(),
-        robots_blocked: false,
-      },
-      ...siteVersions,
-    ];
-  }
-  siteVersions.sort((a, b) =>
-    a.kind === 'main' ? -1 : b.kind === 'main' ? 1 : a.name.localeCompare(b.name),
-  );
+  siteVersions = await listSiteVersions(activeOwnerOrgId, siteId);
   currentVersionId = await resolveVersionId(activeOwnerOrgId, siteId, Astro.locals.versionId);
 }
 
