@@ -20,12 +20,23 @@ export function changedStaticChecks(current, previous = [], reuse = false) {
     known.get(check.route)?.status !== 200 || known.get(check.route)?.sha256 !== check.sha256);
 }
 
+/** Pages may retain retired immutable bundles on the public host for a week.
+ * The exact candidate still checks their absence. Public checks must continue
+ * to verify all current assets, removed Pages, media and unversioned files.
+ */
+export function publicStaticChecks(checks) {
+  const immutableBundle = route =>
+    /^\/_assets\/extensions\/[a-z0-9]+(?:[.-][a-z0-9]+)+\/\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\.(?:css|m?js)$/.test(route) ||
+    /^\/_astro\/[a-zA-Z0-9._-]+[.-][a-zA-Z0-9_-]{8,}\.(?:css|m?js)$/.test(route);
+  return checks.filter(check => check.status !== 404 || !immutableBundle(check.route));
+}
+
 /** Coordinator probes have a fixed response-byte budget, independent of library size. */
 export function selectStaticProbes(checks, changed = checks) {
   const byRoute = new Map(checks.map(check => [check.route, check]));
   const preferred = ['/.well-known/typeroll/publication.json', '/', '/robots.txt', '/sitemap.xml']
     .map(route => byRoute.get(route)).filter(Boolean);
-  const rest = [...changed].sort((a, b) => Number(b.status === 404) - Number(a.status === 404) || a.route.localeCompare(b.route));
+  const rest = publicStaticChecks(changed).sort((a, b) => Number(b.status === 404) - Number(a.status === 404) || a.route.localeCompare(b.route));
   const selected = [], seen = new Set(); let bytes = 0;
   for (const check of [...preferred, ...rest]) {
     if (seen.has(check.route) || selected.length >= PROBE_FILES) continue;

@@ -135,3 +135,8 @@ subdomain. The `main` version uses the live branch; other versions use
 A saved **Published** status is not a live-link guarantee. Wait for the job's
 public availability verification. Use [Publishing](../../guides/customer-publishing/)
 for setup and [Website and media domains](../../publishing/domains/) for domain changes.
+
+Core 0.2.16 public probes do not require immediate deletion of retired versioned
+Extension or hashed Astro CSS/JavaScript bundles, which Cloudflare may retain.
+The exact candidate still checks their absence. Removed Pages/media and all
+current files remain verified. See [verification and retired bundles](../../guides/customer-publishing/#verification-and-retired-static-bundles).

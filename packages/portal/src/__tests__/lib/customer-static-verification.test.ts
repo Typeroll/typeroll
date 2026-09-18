@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { staticControlsHash, changedStaticChecks, selectStaticProbes, verifyCandidateBatch, verifyCandidateCheck, verifyResponseBody, PROBE_BYTES, PROBE_FILES } from '../../lib/builds/static-verifier.mjs';
+import { staticControlsHash, changedStaticChecks, selectStaticProbes, publicStaticChecks, verifyCandidateBatch, verifyCandidateCheck, verifyResponseBody, PROBE_BYTES, PROBE_FILES } from '../../lib/builds/static-verifier.mjs';
 import { sha256, BUILD_PROTOCOL, BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
 import { OrganizationBuildQueue } from '../../lib/builds/queue';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -106,4 +106,27 @@ it('ignores only the generated publication header when comparing control-file be
   expect(staticControlsHash(controls('a'.repeat(64)))).toBe(staticControlsHash(controls('b'.repeat(64))));
   expect(staticControlsHash(controls('a'.repeat(64)))).not.toBe(staticControlsHash(controls('b'.repeat(64), 'index')));
   expect(staticControlsHash(controls('a'.repeat(64)))).not.toBe(staticControlsHash({ ...controls('a'.repeat(64)), _redirects: Buffer.from('/old /new 301').toString('base64') }));
+});
+
+it('allows retired immutable bundles only on public hosts, retaining all candidate removal checks', async () => {
+  const retired = [
+    '/_assets/extensions/se.example.widget/0.2.2/lead-form/index.css',
+    '/_assets/extensions/se.example.widget/0.2.2/lead-form/index.js',
+    '/_astro/index.D4ff2xqW.css',
+  ].map(route => ({ route, status: 404 as const }));
+  const required = [
+    '/removed/', '/media/photo.jpg', '/uploads/private.pdf', '/style.css',
+    '/_assets/photo.jpg', '/_assets/extensions/se.example.widget/latest/lead-form/index.css',
+    '/_assets/extensions/se.example.widget/0.2.2/lead-form/index.html', '/_astro/index.css',
+  ].map(route => ({ route, status: 404 as const }));
+  const current = [check('/.well-known/typeroll/publication.json'), check('/'),
+    check('/_assets/extensions/se.example.widget/0.2.3/lead-form/index.css')];
+  const checks = [...current, ...retired, ...required];
+  expect(publicStaticChecks(checks)).toEqual([...current, ...required]);
+  expect(selectStaticProbes(checks).filter(c => c.status === 404)).toHaveLength(required.length);
+  expect(changedStaticChecks(checks, [], true)).toEqual(checks);
+  const fetchImpl = vi.fn(async () => new Response('retained old CSS', { status: 200 }));
+  expect(await verifyCandidateCheck(origin, retired[0], { fetchImpl })).toBe(false);
+  fetchImpl.mockImplementation(async () => new Response(null, { status: 404 }));
+  expect(await verifyCandidateCheck(origin, retired[0], { fetchImpl })).toBe(true);
 });

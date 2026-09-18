@@ -444,6 +444,20 @@ scheduling and time limits belong to your own build environment.
 New browser uploads go directly to your R2 account after it is ready. Disconnecting
 that account does not silently move uploads back to the hosting operator.
 
+## Verification and retired static bundles
+
+From Core 0.2.16, public verification distinguishes removed content from retired
+immutable code bundles. Cloudflare Pages may retain old cached assets for up to
+one week. A retired versioned Extension CSS/JavaScript file or hashed Astro
+CSS/JavaScript bundle does not block publication merely because its old public
+URL still responds. Its absence is still checked on the exact new deployment.
+All current files remain verified. Removed Pages, media, and unversioned files
+must still disappear; a fresh publication header alone is not proof.
+
+This also applies when the updated server resumes a pending publication. No
+account reconnection, manual status override, or site content change is needed.
+See [Cloudflare's asset retention behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/#asset-retention).
+
 ## Partial builds
 
 From Core 0.2.15, generated publication builds automatically reuse unchanged
