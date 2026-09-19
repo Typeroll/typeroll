@@ -11,7 +11,7 @@
 // arriving during dispatch even when the oldest pending timestamp is unchanged.
 
 import { randomUUID } from 'node:crypto';
-import { paths } from '@typeroll/shared';
+import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 import { getStore } from './datastore';
 
@@ -28,7 +28,9 @@ export const DEFAULT_DEBOUNCE_MINUTES = 15;
  * saving the user's content, and a failed marker write must never fail the
  * save. The worst case is a delayed deploy, and the next write re-stamps.
  */
-export async function markSiteDirty(orgId: string, siteId: string): Promise<void> {
+export async function markSiteDirty(orgId: string, siteId: string, versionId: string): Promise<void> {
+  // Preview versions cannot schedule a main publication or advance its revision.
+  if (versionId !== MAIN_VERSION_ID) return;
   try {
     const store = getStore();
     const site = await store.getDoc<Site>(paths.site(orgId, siteId));

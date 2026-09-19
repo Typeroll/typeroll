@@ -16,7 +16,7 @@ export interface OwnerProposal {
   before: Record<string, unknown>; changes: Record<string, unknown>; fingerprint: string;
   status: 'pending' | 'approved' | 'rejected' | 'revoked'; created_at: string;
   review: { hash: string; encrypted_token: string; expires_at: number; revoked_at?: string };
-  notification: { status: 'pending' | 'sending' | 'sent' | 'failed'; attempts: number; last_attempt_at?: string; sent_at?: string };
+  notification: { status: 'pending' | 'sending' | 'accepted' | 'failed'; attempts: number; last_attempt_at?: string; accepted_at?: string; message_id?: string; delivery_status?: string };
   decision?: { action: 'approve' | 'reject'; request_id: string; fingerprint: string; actor_id: string; at: string; adjustments: Record<string, unknown> };
 }
 const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical)
@@ -67,9 +67,9 @@ export async function ownerFieldDescriptor(scope: ProposalScope, pageId: string)
   if (!page?.content_type) throw new ProposalError('Page not found', 404);
   const type = await vstore.contentType(scope.orgId, scope.siteId, scope.versionId, page.content_type);
   if (!type) throw new ProposalError('Content type not found', 404);
-  const allowedFields = (definitions: FieldDefinition[], inherited = ['portal', 'agent'] as Array<'portal' | 'agent' | 'owner' | 'app' | 'import'>): FieldDefinition[] =>
-    definitions.filter(field => (field.writable_by?.length ? field.writable_by : inherited).includes('owner')).map(field => ({ ...field,
-      ...(field.fields ? { fields: allowedFields(field.fields, field.writable_by?.length ? field.writable_by : inherited) } : {}),
+  const allowedFields = (definitions: FieldDefinition[], inherited = ['portal', 'agent'] as Array<'portal' | 'agent' | 'owner' | 'app' | 'import'>, identityKey?: string): FieldDefinition[] =>
+    definitions.filter(field => field.name === identityKey || (field.writable_by?.length ? field.writable_by : inherited).includes('owner')).map(field => ({ ...field,
+      ...(field.fields ? { fields: allowedFields(field.fields, field.writable_by?.length ? field.writable_by : inherited, ['array', 'list'].includes(field.type) ? field.item_key : undefined) } : {}),
     }));
   const fields = allowedFields(pageAuthorityFields(type));
   return { page, type, fields, revision: answerRevision(page) };
@@ -97,6 +97,7 @@ export async function ownerEditorFields(scope: ProposalScope, page: Page, fields
     return undefined;
   };
   const describe = (field: FieldDefinition): Record<string, unknown> => ({ ...field,
+    ...(field.writable_by?.length && !field.writable_by.includes('owner') ? { read_only: true } : {}),
     ...(field.fields ? { fields: field.fields.map(describe) } : {}),
     ...(['page_ref', 'page_ref_list'].includes(field.type) ? { options: pages.filter(item => !field.ref_content_type || item.content_type === field.ref_content_type).map(item => ({ value: item.id, label: item.title })) } : {}),
   });

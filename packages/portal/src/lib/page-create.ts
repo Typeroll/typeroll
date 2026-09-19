@@ -88,6 +88,6 @@ export async function createPage(ctx: WcCtx, input: Partial<Page>, actor: WriteA
   if (!created) throw new WorkingCopyError('A page with this address was just created. Reload and try again.', 409);
   const url = contentPagePath(page, type);
   const retired = url && isLivePageStatus(page.status) ? await retireRedirectsShadowingUrl(ctx.orgId, ctx.siteId, ctx.versionId, url) : [];
-  await markSiteDirty(ctx.orgId, ctx.siteId);
+  await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
   return { page, retired_redirects: retired.map(redirect => ({ from_path: redirect.from_path, to_path: redirect.to_path })) };
 }

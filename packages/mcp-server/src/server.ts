@@ -62,6 +62,7 @@ function effectFor(name: string): ToolEffect {
     || name === 'list_extension_installations'
     || name === 'read_extension_installation'
     || name === 'update_extension_installation_config'
+    || name === 'activate_extension_release'
   ) return 'admin';
   if (
     name.startsWith('list_') ||

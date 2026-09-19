@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — Core 0.2.26 / MCP 0.45.22
+
+- Require explicit per-installation activation across declared app release boundaries.
+- Add scoped idempotent mail receipts, SES delivery events, quotas and suppression;
+  keep unknown acceptance out of automatic retries. Receiving mail is not included.
+- Retain immutable item identities and keyed provenance in owner descriptors and
+  batch API writes. Branch edits cannot mark main for auto-publication.
+- Add block-authored menus with optional independent mobile composition, typed
+  article-card presentation, and numeric icon sizing. Preserve full content-slot
+  width when typography is applied. Strengthen migration coverage requirements.
+- Extension runtime 0.42.0 identifies the activation/mail contract; candidate apps
+  require it before installation. No customer site is automatically republished.
+
 ## Unreleased — Core 0.2.24 / MCP 0.45.20 unchanged
 
 - Accept bounded, valid SEO reports above 8 KiB on authenticated build completion

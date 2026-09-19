@@ -74,9 +74,9 @@ test('an existing version rejects relevant source drift but permits docs-only fo
 
 test('the generated release manifest matches the runtime version sources', () => {
   const manifest = buildReleaseManifest({ sourceSha: SHA, imageDigest: DIGEST, recordedAt: '2026-09-06' });
-  assert.equal(manifest.core_version, '0.2.25');
-  assert.equal(manifest.mcp_version, '0.45.21');
-  assert.equal(manifest.template_capabilities_version, '0.46.0');
+  assert.equal(manifest.core_version, '0.2.26');
+  assert.equal(manifest.mcp_version, '0.45.22');
+  assert.equal(manifest.template_capabilities_version, '0.46.1');
   assert.equal(manifest.image_digest, DIGEST);
   assert.deepEqual(manifest.data_schema_readable, { min: 2, max: 2 });
 });

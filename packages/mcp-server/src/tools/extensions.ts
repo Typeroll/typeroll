@@ -35,6 +35,20 @@ export const extensionTools: ToolDef[] = [
     }),
   },
   {
+    name: 'activate_extension_release',
+    description: 'Explicitly activate a pending migration release for this site only. First read_extension_installation and review pending_activation_manifest, configuration and app migration instructions. Changes runtime selection immediately; never queues publication. Existing permissions remain unless granted_scopes is explicitly supplied. Admin permission required.',
+    inputSchema: {
+      installation_id: z.string().min(1),
+      version: z.string().min(1).describe('Pending published release to activate.'),
+      config: z.record(z.unknown()).optional(),
+      granted_scopes: z.array(z.string()).optional(),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const { installation_id, ...patch } = args;
+      return ok(await client.patch(siteId, `extensions/${encodeURIComponent(installation_id)}`, patch));
+    }),
+  },
+  {
     name: 'update_extension_installation_config',
     description:
       'Update schema-defined config for an installed Extension. Call read_extension_installation first and send only keys declared by manifest.config_schema. Omitted fields preserve their current values, including masked secrets. This can update public content such as consent text, policy-link text, and policy URLs. A production deploy is queued by default; pass deploy:false only when batching changes and deploy later. Admin permission required.',

@@ -179,3 +179,33 @@ the digest is exactly 64 lowercase hexadecimal characters. This requires
 host-operator approval of the exact published manifest. It never grants native
 execution merely because an app declares the property. See the
 [native admin SDK and trust contract](../backend/#native-portal-administration-runtime-0410).
+
+## Releases requiring activation
+
+Set `activation_policy: "explicit"` before publishing a release that requires a
+configuration or data migration. Existing installations keep their approved
+release family. Later automatic releases cannot bypass this boundary, even if
+the boundary release is deprecated or revoked. Draft releases do not create a
+boundary. New installations explicitly selecting the release already approve it.
+
+A site administrator reviews the pending release in **Extensions → Review
+update**, supplies required configuration and explicitly approves permissions.
+Activation selects the new backend immediately for that installation only; it
+does not publish pages. Prepare provider trust and data migration first, then
+publish updated frontend assets separately. Other installations are unaffected.
+Normal compatible updates within an approved release family remain automatic.
+
+Installation reads expose `pending_activation_version` and
+`pending_activation_manifest`. Administrators can PATCH the installation with
+`version`, optional `config`, and optional `granted_scopes`, or use MCP
+`activate_extension_release`. Omitted permissions never grant new scopes.
+Invalid required configuration leaves the installation unchanged. Customer
+version selection is restricted to forward activation across such a boundary;
+this is not a general version pin or rollback interface.
+
+For structured owner data, immutable array `item_key` fields remain in the owner
+value projection and appear with `read_only: true` in the editing descriptor.
+They are identities, not new owner permissions. Preserve them unchanged when
+editing a row. A managed identity also prevents adding/removing rows unless its
+write authority permits it. Per-leaf provenance uses escaped keyed paths, not
+array positions. Private non-identity fields remain excluded.

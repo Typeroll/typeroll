@@ -105,3 +105,56 @@ never attach old evidence to a new publication. `record_migration_seo_acceptance
 booleans are reviewer attestations, not automated visual proof. Do not set them
 from HTTP status, native-block count or overflow alone. Report a completed
 pre-cutover scope honestly when DNS or integrations remain out of scope.
+
+## Complete census and visual signoff
+
+The initial route census must combine source sitemaps, internal links, archive
+pagination, CMS inventory and known utility routes. Include homepage, archives,
+404/search behavior and routes outside the sitemap where present. Do not invent
+features absent from the source. Assign every route a recipe, template override,
+composition or documented exception. Inventory the whole shell: content outside
+`main`, header, footer, service navigation and archive heroes are not optional.
+
+Derive required evidence from that census. Pair every in-scope source/target route
+at mobile and desktop; add each unique component, breakpoint and interaction
+state. Inspect page-specific media, lists, tables, embeds, CTAs, anchors and related
+content. One representative article cannot attest every article's content.
+
+A coverage row records route, recipe, component, state, actual viewport dimensions,
+source revision, target content/config/Core/publication revision, paired screenshot
+references, reviewer, review time and result. All rows start `UNVERIFIED`.
+Keep independent results for content, links, list cardinality, full membership,
+sequence, appearance, keyboard behavior and delivery. Screenshots must be inspected;
+image diffs and contact sheets assist review and do not prove aesthetics.
+
+For menus capture source and target closed, open and scrolled states, nested groups
+if present, short landscape, focus order, Escape, link activation and breakpoint
+transitions. For TOCs capture top/middle/bottom and anchor landings. Include tabs,
+accordions and empty/loading/error/success states where applicable. Separate mobile
+and desktop menu compositions require separate evidence; shared links may be reused
+but one variant's screenshots do not attest the other.
+
+Report denominators separately: routes/content, paired visual pages, recipes,
+components and states. Missing an archive, open menu, footer or a unique embed leaves
+coverage incomplete even if all captured screenshots pass. Shared block, theme,
+partial or template changes invalidate every dependent row; content changes
+invalidate that route and dependent listings. An old revision cannot approve a new
+one. Source availability failures remain `UNVERIFIED`, not silently excluded.
+
+Visual signoff requires zero uncovered required surfaces and zero unexplained
+regressions. `FAIL` or `UNVERIFIED` blocks that signoff, even when a separately scoped
+technical publication has approval. An intentional deviation needs exact before/
+after evidence, specific user benefit and accepted scope; “cleaner” is not a reason.
+
+Examples from a moving-services migration:
+
+| Surface | Passing evidence | Separate visual result |
+| --- | --- | --- |
+| Mobile menu | Keyboard focus and Escape work | FAIL: header moves, source service group is missing, open-menu composition differs |
+| Category archive | Every destination URL exists | FAIL: source sequence, card anatomy and columns differ |
+| Article body | All text imported | UNVERIFIED: unique embed and footer were never compared |
+
+Do not report “all design checked” from a viewport or recipe sample. Keep source
+link-order comparisons and paired contact sheets with the report. The same contract
+applies to WordPress, URL, Astro and multisite migration; do not create separate,
+weaker checklists for individual import mechanisms.

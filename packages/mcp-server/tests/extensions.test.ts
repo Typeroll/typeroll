@@ -58,3 +58,12 @@ describe('Extension installation MCP tools', () => {
     expect(post).not.toHaveBeenCalled();
   });
 });
+
+
+it('explicit release activation only patches the selected installation and never deploys', async () => {
+  const tool = extensionTools.find(tool => tool.name === 'activate_extension_release')!;
+  const client = { patch: vi.fn().mockResolvedValue({ installation: { version: '2.0.0' } }), post: vi.fn() };
+  await tool.handler({ installation_id: 'install/a', version: '2.0.0', config: { endpoint: 'new' } }, { client, siteId: 'one' } as any);
+  expect(client.patch).toHaveBeenCalledWith('one', 'extensions/install%2Fa', { version: '2.0.0', config: { endpoint: 'new' } });
+  expect(client.post).not.toHaveBeenCalled();
+});

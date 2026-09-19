@@ -1,8 +1,6 @@
 import type { APIRoute } from 'astro';
-import { paths, type SiteIntegrations } from '@typeroll/shared';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
-import { getStore } from '../../../../../../lib/datastore';
-import { sendViaConnector } from '../../../../../../lib/email';
+import { DeliveryError, publicReceipt, sendApplicationEmail } from '../../../../../../lib/email/delivery';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -13,9 +11,10 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!body || typeof body.to !== 'string' || !/^[^\s@,;\r\n]+@[^\s@,;\r\n]+\.[^\s@,;\r\n]+$/.test(body.to) ||
       typeof body.subject !== 'string' || body.subject.length > 200 || /[\r\n]/.test(body.subject) ||
       typeof body.text !== 'string' || body.text.length > 32_000) return apiError('Invalid transactional email', 400);
-  const integrations = await getStore().getDoc<SiteIntegrations>(paths.integrations(ctx.orgId, ctx.siteId));
-  if (!integrations?.email) return apiError('Site email delivery is not configured', 409);
-  const delivery = await sendViaConnector(integrations.email, { from: '', to: body.to, subject: body.subject, text: body.text });
-  if (!delivery.ok) return apiError('Site email delivery failed', 502);
-  return apiResponse(ctx, { accepted: true }, 202);
+  try {
+    const receipt = await sendApplicationEmail({ orgId: ctx.orgId, siteId: ctx.siteId, installationId: ctx.extensionIdentity.installationId }, body);
+    return apiResponse(ctx, publicReceipt(receipt), ['accepted', 'delivered'].includes(receipt.status) ? 202 : 409);
+  } catch (error) {
+    return apiError(error instanceof DeliveryError ? error.message : 'Site email delivery could not be completed', error instanceof DeliveryError ? error.status : 503);
+  }
 };

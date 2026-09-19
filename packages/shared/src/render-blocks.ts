@@ -329,13 +329,15 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     compiled.flatData.next_title = next.title;
     compiled.flatData.next_empty = next.url ? 'false' : 'true';
   }
-  if (effectiveBlock.type === 'core/navigation') {
+  if (['core/navigation', 'core/navigation_links'].includes(effectiveBlock.type)) {
     if (!String(compiled.flatData.menu_label ?? '').trim()) compiled.flatData.menu_label = 'Menu';
     compiled.flatData.navigation_links_html = renderNavigationLinks(
       effectiveBlock.data?.links,
       options.context?.page,
+      effectiveBlock.type === 'core/navigation_links',
     );
   }
+  if (effectiveBlock.type === 'core/navigation_menu') compiled.flatData.menu_mobile_override = String(!!effectiveBlock.slots?.[1]?.length);
   if (effectiveBlock.type === 'core/post_card') {
     preparePostCardData(compiled.flatData, options.context?.item);
   }
@@ -821,7 +823,7 @@ export function composePageWithTemplate(
           ...declarations,
           ...(declarations.length ? ['font-size:var(--page-body-font-size,inherit)', 'line-height:var(--page-body-line-height,inherit)'] : []),
         ].join(';');
-        if (width || declarations.length || b.style_overrides || b.data?.rhythm === 'article') out.push({ id: `${b.id}-body`, type: 'core/container', data: { tag: 'div', layout: 'flow', rhythm: b.data?.rhythm === 'article' ? 'article' : 'default', inline_style: styles }, ...(b.style_overrides ? { style_overrides: b.style_overrides } : {}), children: pageBlocks });
+        if (width || declarations.length || b.style_overrides || b.data?.rhythm === 'article') out.push({ id: `${b.id}-body`, type: 'core/container', data: { tag: 'div', layout: 'flow', width: 'full', padding_x_px: 0, padding_y_px: 0, rhythm: b.data?.rhythm === 'article' ? 'article' : 'default', inline_style: styles }, ...(b.style_overrides ? { style_overrides: b.style_overrides } : {}), children: pageBlocks });
         else out.push(...pageBlocks);
         continue;
       }
@@ -1053,13 +1055,19 @@ function preparePostCardData(
   data.author = author;
   data.href = href;
   data.heading_level = headingLevel;
-  data.post_card_title_html = href
+  const separateAction = String(data.action_label ?? '').trim();
+  const whole = data.whole_card_link === true && !!href && !!title.trim() && !downloadUrl && !separateAction;
+  const linkImage = !!href && !whole;
+  data.card_whole_link = String(whole);
+  data.card_media_width = data.layout === 'row' ? 'calc(var(--image_width_percent,40) * 1%)' : '100%';
+  data.post_card_action_html = href && separateAction ? `<a class="block-postcard-action" href="${escapeHtml(href)}">${escapeHtml(separateAction)}</a>` : '';
+  data.post_card_title_html = href && !separateAction
     ? `<a href="${escapeHtml(href)}" class="block-postcard-link">${escapeHtml(title)}</a>`
     : escapeHtml(title);
   const imageLabel = title.trim() || 'View page';
   const imageLinkLabel = !imageAlt.trim() ? ` aria-label="${escapeHtml(imageLabel)}"` : '';
   data.post_card_image_html = data.show_image !== false && image
-    ? `${href ? `<a href="${escapeHtml(href)}" class="block-postcard-link"${imageLinkLabel}>` : ''}<img class="block-postcard-image" src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" loading="lazy" decoding="async" />${href ? '</a>' : ''}`
+    ? `<div class="block-postcard-media">${linkImage ? `<a href="${escapeHtml(href)}" class="block-postcard-link"${imageLinkLabel}>` : ''}<img class="block-postcard-image" src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" loading="lazy" decoding="async" />${linkImage ? '</a>' : ''}</div>`
     : '';
   data.post_card_download_html = downloadUrl
     ? `<a class="block-postcard-download" href="${escapeHtml(downloadUrl)}">${escapeHtml(downloadLabel)}</a>`
@@ -1083,6 +1091,7 @@ export function renderPageBody(options: RenderBlocksOptions, field = 'body'): st
 function renderNavigationLinks(
   raw: unknown,
   page: Record<string, unknown> | undefined,
+  withIcons = false,
 ): string {
   if (!Array.isArray(raw)) return '';
   const currentRaw = String(page?.path ?? page?.url ?? page?.slug ?? '/');
@@ -1102,7 +1111,8 @@ function renderNavigationLinks(
       const href = String(entry.href ?? '').trim();
       if (!label || !href) return '';
       const ariaCurrent = normalize(href) === current ? ' aria-current="page"' : '';
-      return `<li><a href="${escapeHtml(href)}"${ariaCurrent}>${escapeHtml(label)}</a></li>`;
+      const icon = withIcons ? String(entry.icon ?? '').trim() : '';
+      return `<li><a href="${escapeHtml(href)}"${ariaCurrent}>${icon ? `<span class="block-nav-icon" aria-hidden="true">${renderIconHtml(icon)}</span><span>${escapeHtml(label)}</span>` : escapeHtml(label)}</a></li>`;
     })
     .join('');
 }

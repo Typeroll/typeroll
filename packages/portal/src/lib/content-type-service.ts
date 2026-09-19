@@ -86,7 +86,7 @@ export async function saveContentType(ctx: ContentTypeContext, name: string, inp
   if (next.facets !== undefined && (!Array.isArray(next.facets) || next.facets.some(facet => !facet || !names.has(facet.field) || typeof facet.base_path !== 'string' || !facet.base_path.startsWith('/')))) throw new ContentTypeError('Each facet needs a custom field and a URL starting with /');
   if (next.facet_combinations !== undefined && (!Array.isArray(next.facet_combinations) || next.facet_combinations.some(pair => !Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1] || pair.some(field => typeof field !== 'string' || !next.facets?.some(facet => facet.field === field))))) throw new ContentTypeError('facet_combinations must contain pairs of distinct configured facet field names');
   await vstore.writeContentType(ctx.orgId, ctx.siteId, ctx.versionId, name, next);
-  await markSiteDirty(ctx.orgId, ctx.siteId);
+  await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
   return next;
 }
 export async function removeContentType(ctx: ContentTypeContext, name: string): Promise<void> {
@@ -94,5 +94,5 @@ export async function removeContentType(ctx: ContentTypeContext, name: string): 
   const pages = await vstore.pages(ctx.orgId, ctx.siteId, ctx.versionId);
   if (pages.some(page => page.content_type === name)) throw new ContentTypeError('Move or delete the pages using this content type first', 409);
   await vstore.deleteContentType(ctx.orgId, ctx.siteId, ctx.versionId, name);
-  await markSiteDirty(ctx.orgId, ctx.siteId);
+  await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
 }

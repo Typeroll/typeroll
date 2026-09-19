@@ -26,6 +26,8 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
     initial_version: resolution.initial_version,
     current_version: resolution.resolved_version,
     release_resolution: resolution.reason ?? 'resolved',
+      pending_activation_version: resolution.pending_activation_version,
+      pending_activation_manifest: resolution.pending_activation_manifest,
     credentials: credentials.map(({ secret_hash: _hash, ...credential }) => credential),
     audit: audit.filter((event) => event.installation_id === installation.id).slice(-50),
     event_deliveries: deliveries.filter((delivery) => delivery.installation_id === installation.id).slice(-50),

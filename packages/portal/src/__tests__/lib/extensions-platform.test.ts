@@ -632,6 +632,60 @@ describe('Extension control plane', () => {
     expect((await buildExtensionRuntimeSnapshot(OWNER_ORG, SITE)).installations).toEqual([]);
   });
 
+  it('keeps an explicit activation boundary across later automatic releases until this installation approves it', async () => {
+    const { installation } = await registeredInstallation();
+    const { resolveExtensionVersion } = await import('../../lib/extensions/resolution');
+    for (const [version, activation_policy] of [['1.1.0', 'explicit'], ['1.1.1', 'automatic']] as const) {
+      await saveExtensionVersion({ developerOrgId: DEV_ORG, extensionId: installation.extension_id,
+        actorId: 'developer-user', manifest: manifest({ version, activation_policy }) });
+      await publishExtensionVersion({ developerOrgId: DEV_ORG, extensionId: installation.extension_id,
+        version, verifyAssets: async () => {} });
+    }
+    expect(await resolveExtensionVersion(installation)).toMatchObject({ resolved_version: '1.0.0', pending_activation_version: '1.1.1' });
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().updateDoc(paths.extension(DEV_ORG, installation.extension_id), { allowed_site_ids: [SITE, 'site-two'] });
+    const other = await installExtension({ developerOrgId: DEV_ORG, ownerOrgId: OWNER_ORG, siteId: 'site-two',
+      actorId: 'customer-admin', extensionId: installation.extension_id, version: '1.0.0', grantedScopes: ['content:read'],
+      config: { price_list_id: 'other', api_secret: 'other-secret' } });
+    const activated = await updateExtensionInstallation({ ownerOrgId: OWNER_ORG, siteId: SITE,
+      installationId: installation.id, actorId: 'customer-admin', version: '1.1.0' });
+    expect(await resolveExtensionVersion(activated)).toMatchObject({ resolved_version: '1.1.1' });
+    expect(await resolveExtensionVersion(other)).toMatchObject({ resolved_version: '1.0.0' });
+    expect(activated.granted_scopes).toEqual(installation.granted_scopes);
+    await expect(updateExtensionInstallation({ ownerOrgId: OWNER_ORG, siteId: SITE,
+      installationId: installation.id, actorId: 'customer-admin', version: '1.0.0' })).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('retains a revoked activation boundary and rejects incomplete migration config without changing the installation', async () => {
+    const { installation } = await registeredInstallation();
+    const { resolveExtensionVersion } = await import('../../lib/extensions/resolution');
+    for (const [version, activation_policy] of [['1.1.0', 'explicit'], ['1.1.1', 'automatic']] as const) {
+      const next = manifest({ version, activation_policy });
+      next.config_schema!.properties!.new_required = { type: 'string' };
+      next.config_schema!.required!.push('new_required');
+      await saveExtensionVersion({ developerOrgId: DEV_ORG, extensionId: installation.extension_id, actorId: 'developer-user', manifest: next });
+      await publishExtensionVersion({ developerOrgId: DEV_ORG, extensionId: installation.extension_id, version, verifyAssets: async () => {} });
+    }
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().updateDoc(paths.extensionVersion(DEV_ORG, installation.extension_id, '1.1.0'), { status: 'revoked' });
+    expect(await resolveExtensionVersion(installation)).toMatchObject({ resolved_version: '1.0.0', pending_activation_version: '1.1.1' });
+    const args = { ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, actorId: 'customer-admin', version: '1.1.1' };
+    await expect(updateExtensionInstallation(args)).rejects.toMatchObject({ status: 400 });
+    expect(await getStore().getDoc(paths.extensionInstallation(OWNER_ORG, SITE, installation.id))).toMatchObject({ version: '1.0.0' });
+    const activated = await updateExtensionInstallation({ ...args, config: { new_required: 'configured' } });
+    expect(await resolveExtensionVersion(activated)).toMatchObject({ resolved_version: '1.1.1' });
+  });
+
+  it('does not let a draft activation policy hold back an automatic published release', async () => {
+    const { installation } = await registeredInstallation();
+    for (const [version, activation_policy] of [['1.1.0', 'explicit'], ['1.1.1', 'automatic']] as const) {
+      await saveExtensionVersion({ developerOrgId: DEV_ORG, extensionId: installation.extension_id, actorId: 'developer-user', manifest: manifest({ version, activation_policy }) });
+    }
+    await publishExtensionVersion({ developerOrgId: DEV_ORG, extensionId: installation.extension_id, version: '1.1.1', verifyAssets: async () => {} });
+    const { resolveExtensionVersion } = await import('../../lib/extensions/resolution');
+    expect(await resolveExtensionVersion(installation)).toMatchObject({ resolved_version: '1.1.1' });
+  });
+
   it('moves timeless installations to the newest compatible published release', async () => {
     const { installation } = await registeredInstallation();
     const { getStore } = await import('../../lib/datastore');
@@ -824,6 +878,28 @@ describe('Extension identities', () => {
     await expect(authenticateInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, credential: first.credential, now: new Date('2026-01-01T00:01:30Z') })).resolves.toBeTruthy();
     await expect(authenticateInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, credential: first.credential, now: new Date('2026-01-01T00:02:01Z') })).rejects.toMatchObject({ status: 401 });
     await expect(authenticateInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, credential: second.credential, now: new Date('2026-01-01T00:02:01Z') })).resolves.toBeTruthy();
+  });
+
+  it('limits mail receipt reads to the authenticated installation and requires email scope', async () => {
+    const { installation } = await registeredInstallation();
+    const { getStore } = await import('../../lib/datastore');
+    const { readDelivery, sendApplicationEmail } = await import('../../lib/email/delivery');
+    const { GET } = await import('../../pages/api/v1/sites/[siteId]/delivery/email/[messageId]');
+    await getStore().setDoc(paths.site(OWNER_ORG, SITE), { name: 'Mail site' });
+    await getStore().setDoc(paths.integrations(OWNER_ORG, SITE), { email: { type: 'ses', from: 'mail@example.com', config: {} } });
+    const scope = { orgId: OWNER_ORG, siteId: SITE, installationId: installation.id };
+    const receipt = await sendApplicationEmail(scope, { idempotency_key: 'request-0000000001', to: 'owner@example.com', subject: 'Private', text: 'Private link' }, { send: async () => ({ ok: true, id: 'provider' }) });
+    const { credential } = await rotateInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, actorId: 'admin' });
+    const headers = { Authorization: `Bearer ${credential}`, 'X-Typeroll-Organization-Id': OWNER_ORG, 'X-Typeroll-Installation-Id': installation.id };
+    const call = () => GET({ request: new Request(`https://portal.example/api/v1/sites/${SITE}/delivery/email/${receipt.id}`, { headers }), params: { siteId: SITE, messageId: receipt.id } } as any) as Promise<Response>;
+    expect((await call()).status).toBe(403);
+    await getStore().updateDoc(paths.extensionInstallation(OWNER_ORG, SITE, installation.id), { granted_scopes: ['email:send'] });
+    const rotated = await rotateInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, actorId: 'admin' });
+    headers.Authorization = `Bearer ${rotated.credential}`;
+    const read = await call();
+    expect(read.status).toBe(200);
+    expect(JSON.stringify(await read.json())).not.toContain('Private');
+    expect(await readDelivery({ ...scope, installationId: 'different' }, receipt.id)).toBeNull();
   });
 
   it('enforces the central REST scope map for installation credentials', async () => {

@@ -1099,3 +1099,43 @@ automatically publish. `read_owner_answers` and `override_owner_answers` provide
 revision-bound, reason-audited administrative correction; a rejected import is not
 permission to override an owner. An app must require the owner-fields descriptor's
 `review_ready` before issuing a visitor editing link.
+
+
+## Explicit app release activation (next release)
+
+`read_extension_installation` exposes a pending migration release and its
+manifest separately from the currently resolved release. Review app migration
+instructions, required configuration and provider trust before calling
+`activate_extension_release`. This updates only that installation's runtime
+selection, immediately; it does not deploy the site or grant omitted scopes.
+Publish separately when the app setup and page changes are ready. Installation
+configuration is site-wide, not isolated by a content branch.
+
+Preview-version content writes cannot mark main for automatic publication.
+Passing a branch to content tools does not scope independent installation or
+site-level operations. Never call a production deploy merely to refresh preview.
+
+Owner-review notification `accepted` means the provider accepted a message, not
+that it arrived. `delivery_status` reflects later provider events; `sending` with
+unknown acceptance requires an audited recovery decision, never a timed resend.
+Immutable keyed-array identifiers remain in owner descriptors with read_only;
+retain their values while changing permitted leaves, and never invent replacement
+IDs to bypass write authority.
+
+### Candidate menu and batch-source capabilities
+
+In the next Core release, `core/navigation_menu` has two block slots: desktop/shared
+and optional mobile override. Empty mobile content reuses the default tree;
+nonempty mobile content can have an entirely different composition. Inspect the
+registry before writing. `collapse_below` controls behavior at 576/768/1024 (or
+never), not the shared 640/1024/1280/1536 presentation map. Use
+`core/navigation_links` inside block groups or footers. Article cards expose typed
+image height, title metrics, padding, radius, horizontal media and secondary
+actions; a secondary action disables the whole-card target. Source fidelity still
+requires the complete `tr-migration-evidence` census and matching state coverage.
+
+Batch page writes accept `answer_sources` on each operation beside `patch` and
+`save`, using the single-page source metadata schema. Only `source_url` and
+`import_run_id` may be supplied; identity/authority is assigned by Core. Keyed
+paths such as `programs/@stable~1a/online` survive batch save. Imported evidence
+never authorizes overwriting an existing owner answer.

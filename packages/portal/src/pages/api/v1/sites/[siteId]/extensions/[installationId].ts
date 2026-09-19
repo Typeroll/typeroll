@@ -33,6 +33,8 @@ async function safeInstallation(installation: ExtensionInstallation) {
       current_version: resolution.resolved_version,
       automatically_updated: resolution.automatically_updated,
       release_resolution: resolution.reason ?? 'resolved',
+      pending_activation_version: resolution.pending_activation_version,
+      pending_activation_manifest: resolution.pending_activation_manifest,
     },
     config: maskExtensionConfig(resolution.version?.manifest.config_schema, installation),
     manifest: resolution.version?.manifest,

@@ -15,6 +15,7 @@
 
 import type { BlockType } from './types.js';
 import { pixels } from './presentation-fields.js';
+import { navigationMenu, navigationLinks } from './navigation-menu.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
 
@@ -291,13 +292,14 @@ const icon: BlockType = {
   schema: [
     { name: 'icon', type: 'icon', label: 'Icon' },
     { name: 'size', type: 'select', label: 'Size', options: ['sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
+    pixels('size_px', 'Icon size (px)', 8, 256),
     { name: 'color', type: 'color', label: 'Color' },
     { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center', 'right'], default: 'left', responsive: true },
     { name: 'link', type: 'url', label: 'Link to (optional)' },
   ],
   template: `<span data-block="icon" data-icon="{{icon}}" style="--size:{{size}};--align:{{align}};--color:{{color}}"><a href="{{link}}" class="block-icon-link">{{{icon_svg}}}</a></span>`,
   styles: `
-[data-block="icon"] { display: inline-flex; align-items: center; color: var(--color, currentColor); }
+[data-block="icon"] { display: inline-flex; align-items: center; line-height:1; color: var(--color, currentColor); }
 [data-block="icon"][style*="--align:center"] { display: flex; justify-content: center; }
 [data-block="icon"][style*="--align:right"]  { display: flex; justify-content: flex-end; }
 [data-block="icon"][style*="--size:sm"] { font-size: 1rem; }
@@ -305,6 +307,7 @@ const icon: BlockType = {
 [data-block="icon"][style*="--size:lg"] { font-size: 2rem; }
 [data-block="icon"][style*="--size:xl"] { font-size: 3rem; }
 [data-block="icon"] .block-icon-link[href=""] { pointer-events: none; }
+[data-block="icon"][style*="--size_px:"] { font-size:var(--size_px); }
 [data-block="icon"] svg { width: 1em; height: 1em; }
 `.trim(),
   origin: 'core',
@@ -771,9 +774,21 @@ const postCard: BlockType = {
     { name: 'show_author', type: 'boolean', label: 'Show author', default: false },
     { name: 'image_fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
     { name: 'image_aspect', type: 'select', label: 'Image aspect', options: ['auto', 'landscape', 'square', 'portrait'], default: 'auto' },
+    { name: 'whole_card_link', type: 'boolean', label: 'Link the entire card (without secondary actions)', default: false },
+    { name: 'layout', type: 'select', label: 'Card direction', options: ['column', 'row'], default: 'column', responsive: true, responsive_css: { column: '--card-direction:column;--card-media-width:100%;', row: '--card-direction:row;--card-media-width:calc(var(--image_width_percent,40) * 1%);' } },
+    { name: 'image_width_percent', type: 'number', label: 'Horizontal image width (%)', min: 10, max: 70, css_unit: 'number', responsive: true, default: 40 },
+    pixels('image_height_px', 'Image height (px)', 40, 1200),
+    pixels('title_size_px', 'Title size (px)', 12, 96),
+    { name: 'title_line_height', type: 'number', label: 'Title line height', min: 1, max: 2.5, css_unit: 'number', responsive: true },
+    { name: 'title_weight', type: 'select', label: 'Title weight', options: ['400', '500', '600', '700'], default: '600', responsive: true },
+    pixels('body_padding_px', 'Panel padding (px)', 0, 100),
+    pixels('radius_px', 'Corner radius (px)', 0, 100),
+    { name: 'shadow', type: 'select', label: 'Shadow', options: ['default', 'none', 'subtle'], default: 'default' },
+    { name: 'action_label', type: 'text', label: 'Separate page action label (optional)' },
+    { name: 'download_style', type: 'select', label: 'Download appearance', options: ['link', 'outline'], default: 'link' },
     { name: 'appearance', type: 'select', label: 'Appearance', options: ['plain', 'card'], default: 'plain' },
   ],
-  template: `<article data-block="post_card" data-fit="{{image_fit}}" data-appearance="{{appearance}}" data-aspect="{{image_aspect}}" data-img="{{show_image}}" data-exc="{{show_excerpt}}" data-date="{{show_date}}" data-author="{{show_author}}">
+  template: `<article data-block="post_card" style="--card-direction:{{layout}};--card-media-width:{{card_media_width}};--title_weight:{{title_weight}}" data-whole="{{card_whole_link}}" data-shadow="{{shadow}}" data-download="{{download_style}}" data-fit="{{image_fit}}" data-appearance="{{appearance}}" data-aspect="{{image_aspect}}" data-img="{{show_image}}" data-exc="{{show_excerpt}}" data-date="{{show_date}}" data-author="{{show_author}}">
   {{{post_card_image_html}}}
   <div class="block-postcard-body">
       <{{=heading_level}} class="block-postcard-title">{{{post_card_title_html}}}</{{=heading_level}}>
@@ -782,32 +797,43 @@ const postCard: BlockType = {
         <time class="block-postcard-date">{{date}}</time>
         <span class="block-postcard-author">{{author}}</span>
       </div>
+      {{{post_card_action_html}}}
       {{{post_card_download_html}}}
   </div>
 </article>`,
   styles: `
-[data-block="post_card"] { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
-[data-block="post_card"][data-appearance="card"] { background:var(--color-background, #fff); border-radius:0.5rem; box-shadow:0 2px 8px rgb(0 0 0 / 12%); gap:0; }
-[data-block="post_card"][data-appearance="card"] .block-postcard-image { display:block; margin:0; border-radius:0.5rem 0.5rem 0 0; }
-[data-block="post_card"][data-appearance="card"] .block-postcard-body { padding:var(--card-padding, 1rem); }
-[data-block="post_card"][data-appearance="card"] .block-postcard-title { font-size:1rem; }
+[data-block="post_card"] { display: flex; flex-direction:var(--card-direction,column); gap:0.75rem; min-width:0; position:relative; }
+[data-block="post_card"][data-appearance="card"] { background:var(--color-background, #fff); border-radius:var(--radius_px,0.5rem); overflow:hidden; box-shadow:0 2px 8px rgb(0 0 0 / 12%); gap:0; }
+[data-block="post_card"][data-appearance="card"] .block-postcard-image { display:block; margin:0; border-radius:0; }
+[data-block="post_card"][data-appearance="card"] .block-postcard-body { padding:var(--body_padding_px,var(--card-padding,1rem)); }
+[data-block="post_card"][data-appearance="card"] .block-postcard-title { font-size:var(--title_size_px,1rem); }
 [data-block="post_card"][data-date="false"][data-author="false"] .block-postcard-meta { display:none; }
 [data-block="post_card"] .block-postcard-link { color: inherit; text-decoration: none; }
 [data-block="post_card"] .block-postcard-link:focus-visible,
 [data-block="post_card"] .block-postcard-download:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
-[data-block="post_card"] .block-postcard-image { width: 100%; height:auto; object-fit: contain; border-radius: 0.5rem; background: var(--color-bg-subtle, #f3f4f6); }
+[data-block="post_card"] .block-postcard-image { width: 100%; height:var(--image_height_px,auto); object-fit: contain; border-radius: 0.5rem; background: var(--color-bg-subtle, #f3f4f6); }
 [data-block="post_card"][data-fit="cover"] .block-postcard-image { object-fit:cover; }
 [data-block="post_card"][data-aspect="landscape"] .block-postcard-image { aspect-ratio: 16/9; }
 [data-block="post_card"][data-aspect="square"]    .block-postcard-image { aspect-ratio: 1; }
 [data-block="post_card"][data-aspect="portrait"]  .block-postcard-image { aspect-ratio: 3/4; }
-[data-block="post_card"] .block-postcard-body { display: flex; flex-direction: column; gap: 0.65rem; min-width: 0; }
-[data-block="post_card"] .block-postcard-title { margin: 0; font-size: 1.25rem; font-weight: 600; line-height: 1.3; }
+[data-block="post_card"] .block-postcard-body { display:flex;flex:1;flex-direction:column;gap:0.65rem;min-width:0;padding:var(--body_padding_px,0); }
+[data-block="post_card"] .block-postcard-title { margin: 0; font-size:var(--title_size_px,1.25rem);font-weight:var(--title_weight,600);line-height:var(--title_line_height,1.3); }
 [data-block="post_card"] .block-postcard-excerpt { margin: 0; opacity: 0.8; line-height: 1.5; }
 [data-block="post_card"][data-exc="false"]     .block-postcard-excerpt { display: none; }
 [data-block="post_card"] .block-postcard-meta  { font-size: 0.875rem; opacity: 0.6; display: flex; gap: 0.75rem; }
 [data-block="post_card"][data-date="false"]    .block-postcard-date    { display: none; }
 [data-block="post_card"][data-author="false"]  .block-postcard-author  { display: none; }
 [data-block="post_card"] .block-postcard-download { align-self: flex-start; overflow-wrap: anywhere; font-weight: 600; }
+[data-block="post_card"] .block-postcard-media { flex:none; width:var(--card-media-width,100%); min-width:0; }
+[data-block="post_card"] .block-postcard-media > a { display:block; }
+[data-block="post_card"] :is(.block-postcard-excerpt,.block-postcard-date,.block-postcard-author):empty { display:none; }
+[data-block="post_card"] .block-postcard-meta:not(:has(:is(time,span):not(:empty))) { display:none; }
+[data-block="post_card"][data-whole="true"] .block-postcard-title > a::after { content:'';position:absolute;inset:0; }
+[data-block="post_card"][data-whole="true"]:has(a:focus-visible) { outline:2px solid currentColor;outline-offset:3px; }
+[data-block="post_card"][data-shadow="none"] { box-shadow:none; }
+[data-block="post_card"][data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }
+[data-block="post_card"][data-download="outline"] .block-postcard-download { border:1px solid currentColor;padding:0.55rem 0.8rem;border-radius:4px;text-decoration:none; }
+[data-block="post_card"] .block-postcard-action { align-self:flex-start; }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -1586,7 +1612,7 @@ export const TIER1_BLOCK_TYPES: readonly BlockType[] = [
   spacer,
   divider,
   // Content
-  navigation,
+  navigation, navigationMenu, navigationLinks,
   icon,
   iconBox,
   hero,

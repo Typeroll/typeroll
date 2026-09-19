@@ -55,6 +55,6 @@ export async function changePageContentType(ctx: WcCtx, pageId: string, input: {
   ])) {
     throw new WorkingCopyError('This page changed while its content type was being saved. Reload and try again.', 409);
   }
-  await markSiteDirty(ctx.orgId, ctx.siteId);
+  await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
   return next;
 }

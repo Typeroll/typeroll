@@ -22,6 +22,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 //     and deploy jobs stayed stuck in 'queued' (the bearer doesn't
 //     start with typeroll_live_ so the API-key bypass didn't apply).
 const CSRF_EXEMPT_PATHS = new Set([
+  // Exact SNS topic allowlist + certificate/signature verification in the route.
+  '/api/webhooks/email/ses',
   '/api/forms/submit',
   '/api/analytics/events',
   '/api/extensions/token',

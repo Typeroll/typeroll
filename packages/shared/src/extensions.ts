@@ -1,7 +1,7 @@
 import type { FieldDefinition, SharePermission } from './types.js';
 
 export const EXTENSION_MANIFEST_SCHEMA_VERSION = 3 as const;
-export const EXTENSION_RUNTIME_VERSION = '0.41.0';
+export const EXTENSION_RUNTIME_VERSION = '0.42.0';
 export const EXTENSION_HOST_PROTOCOL_VERSION = 3 as const;
 
 export type ExtensionDistribution = 'private' | 'unlisted' | 'public';
@@ -196,6 +196,8 @@ export interface ExtensionManifest {
   name: string;
   version: string;
   runtime_compatibility: string;
+  /** Explicit releases form an upgrade boundary until a site administrator selects one. */
+  activation_policy?: 'automatic' | 'explicit';
   distribution: ExtensionDistribution;
   developer: {
     name: string;
@@ -643,10 +645,13 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
   rejectUnknown(manifest, [
     'schema_version', 'id', 'name', 'version', 'runtime_compatibility', 'distribution',
     'developer', 'permissions', 'auth', 'config_schema', 'frontend', 'admin',
-    'api', 'events', 'data_handling', 'documentation',
+    'api', 'events', 'data_handling', 'documentation', 'activation_policy',
   ], 'manifest', errors);
   if (manifest.schema_version !== EXTENSION_MANIFEST_SCHEMA_VERSION) {
     errors.push(`schema_version must be ${EXTENSION_MANIFEST_SCHEMA_VERSION}`);
+  }
+  if (manifest.activation_policy !== undefined && !['automatic', 'explicit'].includes(String(manifest.activation_policy))) {
+    errors.push('activation_policy must be automatic or explicit');
   }
   const id = requireString(manifest.id, 'id', errors);
   if (id && !/^[a-z0-9]+(?:[.-][a-z0-9][a-z0-9-]*){2,}$/.test(id)) {

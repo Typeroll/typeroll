@@ -1,3 +1,4 @@
+import { validateAnswerSources } from '../../../../../../lib/answer-source-input';
 // POST /api/v1/sites/{siteId}/pages/batch-write
 //
 // Body: [{ page_id, patch: Partial<Page>, save?: boolean }]   — up to BATCH_MAX
@@ -41,6 +42,7 @@ interface Item {
   page_id: unknown;
   patch?: unknown;
   save?: unknown;
+  answer_sources?: unknown;
 }
 
 export const POST: APIRoute = async ({ request, params }) => {
@@ -55,10 +57,13 @@ export const POST: APIRoute = async ({ request, params }) => {
 
   const results = await Promise.all(
     body.map(async (raw): Promise<{ page_id: string; ok: boolean; saved?: boolean; error?: string }> => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { page_id: '', ok: false, error: 'Each entry must be an object' };
       const item = raw as Item;
       const pageId = typeof item.page_id === 'string' ? item.page_id : '';
       if (!pageId) return { page_id: String(item.page_id ?? ''), ok: false, error: 'page_id required' };
       try {
+        validateAnswerSources(item.answer_sources);
+        if (item.patch && typeof item.patch === 'object' && 'answer_sources' in item.patch) return { page_id: pageId, ok: false, error: 'Set answer_sources on the batch entry, beside patch' };
         const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
         if (!existing) return { page_id: pageId, ok: false, error: 'not found' };
         const rawPatch = (item.patch ?? {}) as Partial<Page>;
@@ -83,7 +88,7 @@ export const POST: APIRoute = async ({ request, params }) => {
         }
         const result = await applyContentWrite(
           ctx, { kind: 'page', id: pageId }, patch,
-          { save: item.save === true, updatedBy: `api-key:${ctx.keyPrefix}` },
+          { save: item.save === true, updatedBy: `api-key:${ctx.keyPrefix}`, answerSources: item.answer_sources },
         );
         return { page_id: pageId, ok: true, saved: result.committed };
       } catch (e) {

@@ -41,7 +41,7 @@ if (ctx.permission !== 'admin') return Astro.redirect(`/app/sites/${ctx.site.id}
      for (const proposal of data.proposals) {
        const card = document.createElement('section'); card.className = 'card'; card.style.padding = '1rem';
        const title = document.createElement('h3'); title.textContent = proposal.title;
-       const state = document.createElement('p'); state.textContent = `${proposal.status} · Notification ${proposal.notification.status} (${proposal.notification.attempts}/3 attempts)`; card.append(title, state);
+       const state = document.createElement('p'); state.textContent = `${proposal.status} · Notification ${proposal.notification.delivery_status || proposal.notification.status} (${proposal.notification.attempts}/3 attempts)`; card.append(title, state);
        if (proposal.status === 'pending') for (const [label, action] of [['Open private review', 'review-link'], ['Retry notification', 'notify'], ['Revoke proposal', 'revoke']]) {
          const button = document.createElement('button'); button.className = 'btn'; button.textContent = label; button.style.margin = '.25rem';
          if (action === 'notify' && !['pending', 'failed'].includes(proposal.notification.status)) continue;

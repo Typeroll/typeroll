@@ -122,6 +122,7 @@ export function extensionScopeForApiRequest(pathname: string, method: string): E
   if (/\/extensions\/self\/?$/.test(pathname) && !write) return 'extension:config:read';
   if (/\/pages\/[^/]+\/owner-fields\/?$/.test(pathname)) return 'content:owner';
   if (/\/delivery\/email\/?$/.test(pathname) && method === 'POST') return 'email:send';
+  if (/\/delivery\/email\/[a-f0-9]{64}\/?$/.test(pathname) && method === 'GET') return 'email:send';
   if (!write && /\/apps\/documentation\/?$/.test(pathname)) return 'content:read';
   if (/\/deploys?(?:\/|$)/.test(pathname)) return 'deploy:request';
   if (/\/submissions(?:\/|$)/.test(pathname)) return write ? null : 'submissions:read';

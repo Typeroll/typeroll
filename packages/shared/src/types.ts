@@ -269,6 +269,8 @@ export interface Site {
    * enqueued; a write during the build re-sets it, so nothing is lost.
    */
   pending_deploy_at?: string | null;
+  /** Distinguishes main edits arriving while a publication is dispatched. */
+  pending_deploy_revision?: string;
 }
 
 // ─── Site Settings ───────────────────────────────────────────────────────

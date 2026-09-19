@@ -32,7 +32,7 @@ export async function savePageTemplate(ctx: ContentTypeContext, id: string, inpu
     if ([...usedTypes].some(type => !templateMatchesContentType(next, type))) throw new ContentTypeError('This template is still used by another content type. Reassign it first.', 409);
   }
   await vstore.writePageTemplate(ctx.orgId, ctx.siteId, ctx.versionId, id, next);
-  await markSiteDirty(ctx.orgId, ctx.siteId);
+  await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
   return next;
 }
 
@@ -41,5 +41,5 @@ export async function removePageTemplate(ctx: ContentTypeContext, id: string): P
   if (pages.some(page => page.template === id) || types.some(type => type.template === id || type.allowed_templates?.includes(id))) throw new ContentTypeError('Choose another template for the pages and content types using this template first', 409);
   if (!await vstore.pageTemplate(ctx.orgId, ctx.siteId, ctx.versionId, id)) throw new ContentTypeError('Template not found', 404);
   await vstore.deletePageTemplate(ctx.orgId, ctx.siteId, ctx.versionId, id);
-  await markSiteDirty(ctx.orgId, ctx.siteId);
+  await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
 }

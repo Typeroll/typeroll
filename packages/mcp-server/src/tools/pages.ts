@@ -222,7 +222,7 @@ export const pageTools: ToolDef[] = [
   {
     name: 'batch_update_pages',
     description:
-      'Apply per-page patches in one call (up to 200 entries). Each entry is { page_id, patch, save? }; failures are reported per-row, the rest still apply. BUFFER MODEL: content patches land in each page\'s unsaved draft; per-entry save:true (or the top-level save flag) commits — typical for a user-approved sweep. content_mode is rejected per-row; switch each page with set_page_mode.',
+      'Apply per-page patches in one call (up to 200 entries). Each entry is { page_id, patch, save?, answer_sources? }; failures are reported per-row, the rest still apply. BUFFER MODEL: content patches land in each page\'s unsaved draft; per-entry save:true (or the top-level save flag) commits — typical for a user-approved sweep. content_mode is rejected per-row; switch each page with set_page_mode.',
     inputSchema: {
       updates: z
         .array(
@@ -230,6 +230,7 @@ export const pageTools: ToolDef[] = [
             page_id: z.string(),
             patch: z.record(z.unknown()),
             save: z.boolean().optional(),
+            answer_sources: answerSources,
           }),
         )
         .min(1)

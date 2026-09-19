@@ -60,6 +60,8 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
       current_version: resolution.resolved_version,
       automatically_updated: resolution.automatically_updated,
       release_resolution: resolution.reason ?? 'resolved',
+      pending_activation_version: resolution.pending_activation_version,
+      pending_activation_manifest: resolution.pending_activation_manifest,
       config: maskExtensionConfig(version?.manifest.config_schema, installation),
       manifest: version?.manifest,
       components: (version?.manifest.frontend?.components ?? []).map((component) => ({

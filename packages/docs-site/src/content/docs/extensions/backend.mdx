@@ -265,3 +265,62 @@ only the approved HTTPS host. Redirects, path traversal and caller-supplied host
 are rejected; credentials remain server-side. Installation credentials cannot
 invoke this operation. A call does not automatically publish the site. Follow the
 app's documented idempotency rules; inspect status before retrying an uncertain write.
+
+## Transactional mail (next release)
+
+An enabled installation with `email:send` can POST
+`/api/v1/sites/{siteId}/delivery/email` using its installation credential and
+organization/installation headers. This is transactional delivery, not permission
+to send unsolicited campaigns. The site administrator configures the provider,
+verified sender and Reply-To; apps never receive provider credentials or choose
+an arbitrary From address.
+
+```json
+{
+  "idempotency_key": "request-0000000001",
+  "to": "owner@example.com",
+  "subject": "Your requested link",
+  "text": "The requested message"
+}
+```
+
+Reuse the same 16–100 character key and identical message for a transport retry.
+A different payload with that key returns 409. Keys and receipt reads are scoped
+to the installation and site. Read `/delivery/email/{message_id}` with the same
+credential for status and normalized events. The response distinguishes
+`accepted` (provider accepted it) from `delivered` (confirmed delivery), `failed`,
+`unknown`, `bounced`, `complained` and `dispatching`. An accepted send returns
+202; other states return 409 with its receipt. Retrying a pending/unknown receipt
+does not send another message. Never generate a new key to bypass an uncertain
+send or a quota.
+
+Reservations and quotas are atomic: 100 messages per installation/day and 500
+per site/day, counted in UTC. Accepted duplicates consume no additional quota.
+Only explicit provider rate-limit rejections get bounded retries (three attempts);
+network failures or interrupted dispatches require investigation, never automatic
+timed replay. Receipt bodies contain no recipient, subject, message body or link
+secret. Deduplication metadata is retained until the site is deleted; operators
+must not prune it while callers can reuse old keys.
+
+Amazon SES is an optional provider for Cloud and self-hosting. Its connector
+requires region, encrypted access keys and a configuration set. The sender must
+be verified in that SES region; sandbox accounts also restrict recipients.
+Configure SNS delivery, bounce, complaint, rejection and rendering-failure events
+to `/api/webhooks/email/ses`, and explicitly allow its exact topic ARN through
+`EMAIL_SES_SNS_TOPICS`. The endpoint verifies the SNS signature and regional AWS
+certificate URL; configured subscriptions are confirmed automatically. It is
+unavailable when no topics are configured. Keep topic publishing restricted to
+the intended SES account/configuration. Provider acceptance alone does not prove
+this event wiring works.
+
+Permanent bounces and complaints suppress that destination for all apps on the
+site. This suppression protects delivery; it does not replace campaign opt-outs.
+SMTP/Postmark still work through their existing connectors, but their delivery
+events are not normalized by this SES adapter. Without events, status stays
+accepted. Core owner-review notifications use the same delivery ledger and show
+transport status in the review queue. Email acceptance never approves a proposal.
+
+Receiving replies, inbound aliases and attachment processing are a separate,
+unavailable capability. A normal monitored Reply-To works without changing a
+site's main MX records. Do not treat an incoming email or its From header as
+verified identity or authorization to approve changes.

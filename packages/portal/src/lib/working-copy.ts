@@ -320,7 +320,7 @@ export async function commitWorkingCopy(
       }
     }
     await discardWorkingCopy(ctx, target);
-    await markSiteDirty(ctx.orgId, ctx.siteId);
+    await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
     return { committed: true, seo_warnings: warnings, auto_redirects, retired_redirects };
   }
 
@@ -348,7 +348,7 @@ export async function commitWorkingCopy(
     }
     await vstore.writePartial(ctx.orgId, ctx.siteId, ctx.versionId, target.id, update as Partial<PartialDoc>);
     await discardWorkingCopy(ctx, target);
-    await markSiteDirty(ctx.orgId, ctx.siteId);
+    await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
     return { ...NO_COMMIT, committed: true };
   }
 

@@ -1,7 +1,7 @@
 import { getStore } from './datastore';
 import { decideOwnerProposal, ownerFieldDescriptor, ownerEditorFields, readOwnerProposal, proposalCollection, proposalPath, reviewSettingsPath,
   validateReviewSettings, checkedPatch, ProposalError, type ProposalScope, type OwnerProposal, type ReviewSettings } from './owner-proposals';
-import { notifyOwnerReviewer } from './owner-review-notifications';
+import { notifyOwnerReviewer, ownerNotificationStatus } from './owner-review-notifications';
 import { decryptSecret, encryptSecret } from './secret-crypto';
 import { vstore, PageWriteConflict } from './version-store';
 import { randomBytes, createHash } from 'node:crypto';
@@ -14,7 +14,7 @@ export async function proposalView(scope: ProposalScope, id: string, token?: str
   const { fields, page } = await ownerFieldDescriptor(scope, proposal.page_id);
   return { proposal_id: id, title: proposal.title, page_id: proposal.page_id, version_id: proposal.version_id,
     status: proposal.status, before: proposal.before, changes: proposal.changes, created_at: proposal.created_at,
-    expires_at: proposal.review.expires_at, fields: await ownerEditorFields(scope, page, fields), notification: proposal.notification,
+    expires_at: proposal.review.expires_at, fields: await ownerEditorFields(scope, page, fields), notification: await ownerNotificationStatus(scope, proposal.notification),
     decision: proposal.decision ? { action: proposal.decision.action, at: proposal.decision.at, adjustments: proposal.decision.adjustments } : null };
 }
 export async function handleOwnerReviewAdmin(scope: ProposalScope, actorId: string, request: Request) {
@@ -23,7 +23,7 @@ export async function handleOwnerReviewAdmin(scope: ProposalScope, actorId: stri
     if (request.method === 'GET') {
       const proposals = await store.listDocs<OwnerProposal>(proposalCollection(scope), { filters: [{ field: 'version_id', op: '==', value: scope.versionId }], limit: 100, startAfterId: url.searchParams.get('cursor') ?? '' });
       return json({ settings: await store.getDoc<ReviewSettings>(reviewSettingsPath(scope)),
-        proposals: proposals.map(({ id, title, page_id, status, created_at, notification }) => ({ id, title, page_id, status, created_at, notification })),
+        proposals: await Promise.all(proposals.map(async ({ id, title, page_id, status, created_at, notification }) => ({ id, title, page_id, status, created_at, notification: await ownerNotificationStatus(scope, notification) }))),
         next_cursor: proposals.length === 100 ? proposals.at(-1)!.id : null });
     }
     const input = await request.json();

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
   EXTENSION_RUNTIME_VERSION,
+  isRuntimeCompatible,
   paths,
   validateExtensionManifest,
   type ExtensionInstallation,
@@ -14,7 +15,7 @@ import {
 import { getStore, generateDocId } from '../datastore';
 import { buildExtensionConfig } from './config';
 import { provisionExtensionBlocks } from './provision';
-import { resolveExtensionVersion } from './resolution';
+import { isForwardRelease, requiresExplicitActivation, resolveExtensionVersion } from './resolution';
 
 export class ExtensionRegistryError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -474,9 +475,6 @@ export async function updateExtensionInstallation(args: {
   if (!current) throw new ExtensionRegistryError('Installation not found', 404);
   if (current.status === 'revoked') throw new ExtensionRegistryError('Installation is revoked', 409);
   const developerOwned = current.developer_org_id === current.owner_org_id;
-  if (args.version && !developerOwned) {
-    throw new ExtensionRegistryError('Customer installations follow compatible published releases automatically', 409);
-  }
   const resolvedVersion = args.version ? null : (await resolveExtensionVersion(current)).version;
   const nextVersionName = args.version ?? resolvedVersion?.version ?? current.version;
   const nextVersion = resolvedVersion ?? await store.getDoc<ExtensionVersion>(
@@ -487,6 +485,16 @@ export async function updateExtensionInstallation(args: {
     || (developerOwned && (nextVersion?.status === 'draft' || nextVersion?.status === 'review'));
   if (!nextVersion || !extension || !installableStatus || nextVersion.manifest.distribution !== extension.distribution) {
     throw new ExtensionRegistryError('Installable extension version not found', 404);
+  }
+  if (!isRuntimeCompatible(nextVersion.compatibility, EXTENSION_RUNTIME_VERSION) ||
+      !isRuntimeCompatible(nextVersion.manifest.runtime_compatibility, EXTENSION_RUNTIME_VERSION)) {
+    throw new ExtensionRegistryError('This release requires a different Extension runtime version', 409);
+  }
+  if (args.version && !developerOwned) {
+    const versions = await store.listDocs<ExtensionVersion>(paths.extensionVersions(current.developer_org_id, current.extension_id));
+    if (!isForwardRelease(current.version, args.version) || !requiresExplicitActivation(current, nextVersion, versions)) {
+      throw new ExtensionRegistryError('Customer installations follow compatible published releases automatically', 409);
+    }
   }
   const scopes = args.grantedScopes ?? current.granted_scopes;
   const requested = new Set(nextVersion.manifest.permissions.map((entry) => entry.scope));

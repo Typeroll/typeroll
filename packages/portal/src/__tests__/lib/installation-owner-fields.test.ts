@@ -31,6 +31,34 @@ describe('installation owner-authorized proposals', () => {
     expect(body.revision).toMatch(/^[a-f0-9]{64}$/); expect(JSON.stringify(body)).not.toContain('private-actor');
     delete state.ctx.extensionIdentity; expect((await call({ title: 'Changed' })).status).toBe(403);
   });
+  it('preserves immutable item identities and keyed sources without authorizing identity edits', async () => {
+    const definition = { name: 'program_answers', type: 'array', item_key: 'program_id', writable_by: ['owner', 'portal', 'agent'], fields: [
+      { name: 'program_id', type: 'text', writable_by: ['portal', 'agent'] },
+      { name: 'name', type: 'text' }, { name: 'online', type: 'boolean' },
+      { name: 'private', type: 'text', writable_by: ['portal'] },
+    ] };
+    await getStore().updateDoc(paths.contentType('org', 'site', 'business'), { fields: [definition] });
+    await getStore().updateDoc(path, { fields: { program_answers: [{ program_id: 'stable/a', name: 'Program A', online: null, private: 'hidden' }] },
+      _provenance: { 'program_answers/@stable~1a/name': { source: 'agent', actor: 'private-actor', updated_at: '2026-09-19T00:00:00Z' } } });
+    const response = await GET({ request: new Request('https://cms.example'), params: { pageId: 'record' } } as never);
+    const body = await response.json();
+    const field = body.fields.find((field: any) => field.name === 'program_answers');
+    expect(field.value).toEqual([{ program_id: 'stable/a', name: 'Program A', online: null }]);
+    expect(field.fields.find((child: any) => child.name === 'program_id')).toMatchObject({ read_only: true });
+    expect(field.sources['program_answers/@stable~1a/name']).toEqual({ kind: 'agent', updated_at: '2026-09-19T00:00:00Z' });
+    expect(JSON.stringify(field)).not.toContain('hidden');
+    if (process.env.TYPEROLL_OWNER_DESCRIPTOR_ARTIFACT) {
+      const { writeFileSync } = await import('node:fs');
+      writeFileSync(process.env.TYPEROLL_OWNER_DESCRIPTOR_ARTIFACT, JSON.stringify(field));
+    }
+    for (const value of [[{ program_id: 'changed', name: 'Program A', online: true }], [], null]) {
+      expect((await call({ program_answers: value })).status).toBe(409);
+    }
+    const edited = process.env.TYPEROLL_OWNER_EDIT_ARTIFACT ? JSON.parse((await import('node:fs')).readFileSync(process.env.TYPEROLL_OWNER_EDIT_ARTIFACT, 'utf8')) : [{ program_id: 'stable/a', name: 'Program A', online: true }];
+    expect(edited).toEqual([{ program_id: 'stable/a', name: 'Program A', online: true }]);
+    expect((await call({ program_answers: edited })).status).toBe(202);
+  });
+
   it('reports incomplete review setup before an app can issue editing links', async () => {
     await getStore().updateDoc(reviewSettingsPath(state.ctx), { enabled: false });
     const response = await GET({ request: new Request('https://cms.example'), params: { pageId: 'record' } } as never);

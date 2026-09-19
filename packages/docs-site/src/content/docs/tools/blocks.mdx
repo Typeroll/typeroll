@@ -607,3 +607,83 @@ behavior. Source CTA classes copied into Prose do not recreate a Button. If the
 source requires additional link semantics such as `sponsored`, `nofollow` or a
 forced download, do not assume that `new_tab` preserves them; verify support in
 the selected block before converting it.
+
+## Block menus and article cards (next Core release)
+
+`core/navigation_menu` provides two editable block slots: **Desktop / shared**
+(slot 0) and optional **Mobile override** (slot 1). Leave slot 1 empty to reuse the
+same content, or build a completely different mobile layout. Use shared partials
+for reusable parts rather than copying link values. `core/navigation_links`
+provides semantic link lists with color, text size, weight, spacing and direction;
+combine them with native containers and headings. The same blocks work in footers.
+
+`collapse_below` accepts `576`, `768`, `769`, `1024` or `never` (strings); default `1024`
+means modal below 1024px and inline at 1024px and above. The modal preserves the
+header position, locks background interaction, contains keyboard focus, closes on
+Escape, link activation or desktop transition, and restores focus on dismissal.
+Without JavaScript, the appropriate menu content remains available in the page.
+The simpler `core/navigation` remains available for flat inline/disclosure menus.
+
+```json
+{
+  "id": "main-menu",
+  "type": "core/navigation_menu",
+  "data": { "collapse_below": "768", "aria_label": "Main navigation" },
+  "slots": [
+    [
+      {
+        "id": "desktop-links",
+        "type": "core/navigation_links",
+        "data": {
+          "direction": "row",
+          "links": [{ "label": "Services", "href": "/services/" }]
+        }
+      }
+    ],
+    [
+      {
+        "id": "mobile-links",
+        "type": "core/navigation_links",
+        "data": {
+          "font_size_px": 28,
+          "color": "#075696",
+          "links": [{ "label": "Explore services", "href": "/services/" }]
+        }
+      }
+    ]
+  ]
+}
+```
+
+`core/post_card` retains natural image proportions by default. Set `image_fit:
+"cover"` explicitly when cropping is intended. Optional responsive
+`image_height_px`, `title_size_px`, `title_line_height`, `title_weight`,
+`body_padding_px` and `radius_px` control article-card proportions. Set
+`appearance: "card"` for a joined image and panel, and `shadow` to `default`,
+`none` or `subtle`. `whole_card_link: true` creates one stretched title link when
+there is no secondary action and the title and URL are present. A download or
+separate page action disables that whole-card mode; anchors are never nested.
+
+Horizontal cards use `layout: "row"` with `image_width_percent` (10–70, default 40).
+Missing media leaves no empty image column. `action_label` adds a separate page
+link, and `download_style: "outline"` presents the mapped download URL as a
+bordered action. These controls work in standalone cards, page lists and repeaters.
+`core/icon.size_px` provides a responsive numeric icon size.
+
+Presentation field maps still use the standard breakpoints: tablet 640, laptop
+1024, desktop 1280 and wide 1536px. A menu's `collapse_below` changes only its
+behavior threshold, **not** those style buckets. Source layouts changing at
+576/768px require an explicit capability gap or deliberate accepted mapping;
+six sampled widths are not proof of all intermediate widths. Do not hide an
+unsupported source breakpoint with undocumented CSS.
+
+`template_content_slot.max_width: "full"` adds no implicit gutter when typography
+is set. Narrow, normal and wide slots retain their declared content widths.
+Nested page blocks remain responsible for their own spacing.
+
+`collapse_below: "769"` keeps the mobile menu through 768px, then switches at
+769px. `toggle_size_px` sizes the open/close icons independently of their minimum
+44px hit area. Link groups accept `font: "body"` or `"heading"` to use the site's
+font choices. Each link may include an `icon`; `icon_size_px` and `icon_gap_px`
+separate its size and spacing from the label. SVG icons and emoji both honor
+`core/icon.size_px`.

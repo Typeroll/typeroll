@@ -104,7 +104,7 @@ it('retains an edit arriving during dispatch even if its dirty timestamp is unch
   await store.updateDoc(sitePath, {auto_deploy:{enabled:true,debounce_minutes:0},pending_deploy_at:new Date(now-1000).toISOString(),pending_deploy_revision:'first'});
   const eventPath = workPath(sitePath,'site_publish');
   const first = await store.getDoc<any>(eventPath);
-  mocks.enqueue.mockImplementationOnce(async () => markSiteDirty('org','site'));
+  mocks.enqueue.mockImplementationOnce(async () => markSiteDirty('org','site','main'));
   await executeScheduledWork(id(eventPath), first.generation);
   expect(await store.getDoc(sitePath)).toMatchObject({pending_deploy_at:new Date(now-1000).toISOString()});
   expect((await store.getDoc<any>(eventPath)).generation).not.toBe(first.generation);

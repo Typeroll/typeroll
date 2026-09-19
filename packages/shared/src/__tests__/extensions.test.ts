@@ -431,7 +431,7 @@ describe('extension scopes', () => {
 describe('extension renderer capabilities', () => {
   it('advertises the executable runtime contract', () => {
     expect(SITE_TEMPLATE_CAPABILITIES).toMatchObject({
-      template_capabilities_version: '0.46.0',
+      template_capabilities_version: '0.46.1',
       supports_extension_blocks: true,
       supports_extension_html_directive: true,
       supports_extension_html_partial_directive: true,
@@ -440,7 +440,7 @@ describe('extension renderer capabilities', () => {
       supports_extension_storage: true,
       supports_extension_form_bindings: true,
       extension_protocol_version: 3,
-      extension_runtime_version: '0.41.0',
+      extension_runtime_version: '0.42.0',
       supports_extension_installation_config_api: true,
       supports_indexing_diagnostics: true,
       supports_migration_launch_report: true,

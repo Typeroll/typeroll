@@ -22,7 +22,7 @@ beforeEach(async () => {
   await store.setDoc(paths.contentType(scope.orgId, scope.siteId, 'company'), { name: 'company', fields: [{ name: 'online', type: 'boolean', writable_by: ['owner', 'portal', 'import'] }] });
   await store.setDoc(pagePath, { title: 'Synthetic company', content_type: 'company', fields: { online: null } });
   await store.setDoc(reviewSettingsPath(scope), { enabled: true, recipient: 'reviewer@example.test', link_ttl_hours: 24 });
-  await store.setDoc(paths.integrations(scope.orgId, scope.siteId), { email: { provider: 'synthetic' } });
+  await store.setDoc(paths.integrations(scope.orgId, scope.siteId), { email: { type: 'synthetic', from: 'sender@example.test', config: {} } });
   ({ proposal_id: id } = await submitOwnerProposal(scope, 'sample', { installationId: 'test', subjectId: 'a'.repeat(64) }, {
     changes: { online: false }, base_revision: answerRevision(await store.getDoc(pagePath)), request_id: 'submission-test-00001',
   }));
@@ -51,12 +51,19 @@ describe('private review delivery and HTTP contract', () => {
     await notifyOwnerReviewer(scope, id, 'https://cms.example.test', true); expect(send).toHaveBeenCalledTimes(1);
   });
   it('preserves pending proposals on failure and caps explicit retries at three attempts', async () => {
-    send.mockRejectedValue(new Error('Synthetic provider error'));
+    send.mockResolvedValue({ ok: false, failure: 'rejected' });
     expect((await notifyOwnerReviewer(scope, id, 'https://cms.example.test')).status).toBe('failed');
     await notifyOwnerReviewer(scope, id, 'https://cms.example.test'); expect(send).toHaveBeenCalledTimes(1);
     for (let i = 0; i < 5; i++) await notifyOwnerReviewer(scope, id, 'https://cms.example.test', true);
     expect(send).toHaveBeenCalledTimes(3); expect((await readOwnerProposal(scope, id)).status).toBe('pending');
     expect((await getStore().getDoc<any>(pagePath))?.fields.online).toBeNull();
+  });
+  it('keeps uncertain mail pending administrator recovery and exposes its durable receipt', async () => {
+    send.mockRejectedValue(new Error('Unknown acceptance'));
+    const result = await notifyOwnerReviewer(scope, id, 'https://cms.example.test');
+    expect(result).toMatchObject({ status: 'sending', delivery_status: 'unknown', message_id: expect.any(String) });
+    await expect(notifyOwnerReviewer(scope, id, 'https://cms.example.test', true)).rejects.toThrow('administrator recovery');
+    expect(send).toHaveBeenCalledTimes(1);
   });
   it('never resends a timed-out sending record; recovery requires an explicit audit reason', async () => {
     await getStore().updateDoc(proposalPath(scope, id), { notification: { status: 'sending', attempts: 1, last_attempt_at: '2000-01-01' } });

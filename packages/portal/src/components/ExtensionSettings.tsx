@@ -24,6 +24,11 @@ interface Installation {
   initial_version?: string;
   current_version?: string;
   automatically_updated?: boolean;
+  pending_activation_version?: string;
+  pending_activation_manifest?: {
+    permissions: Array<{ scope: string; reason: string }>;
+    config_schema?: { required?: string[] };
+  };
   release_resolution?: 'resolved' | 'no_compatible_release';
   status: string;
   granted_scopes: string[];
@@ -146,6 +151,25 @@ export default function ExtensionSettings({ siteId }: { siteId: string }) {
     if (!response.ok) return setFeedback({ kind: 'error', message: data.error ?? 'Update failed' });
     setFeedback({ kind: 'success', message: `${extensionName(item)} ${status === 'enabled' ? 'enabled' : 'disabled'}.` });
     await load();
+  }
+
+  async function activate(item: Installation, form: HTMLFormElement) {
+    beginAction();
+    try {
+      const values = new FormData(form);
+      const config = JSON.parse(String(values.get('config') || '{}'));
+      if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('Configuration must be a JSON object.');
+      const response = await fetch(`/api/sites/${siteId}/extensions/${item.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: item.pending_activation_version, config, granted_scopes: values.getAll('scope') }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? 'Activation failed');
+      await load();
+      setFeedback({ kind: 'success', message: `${extensionName(item)} updated for this site. Check its connection and settings before publishing updated pages.` });
+    } catch (error) {
+      setFeedback({ kind: 'error', message: error instanceof Error ? error.message : 'Activation failed' });
+    } finally { setBusy(false); }
   }
 
   async function rotate(item: Installation) {
@@ -282,7 +306,7 @@ export default function ExtensionSettings({ siteId }: { siteId: string }) {
           onCopy={copy}
           onPair={pairIssuer}
           onSetStatus={setStatus}
-          onRotate={rotate}
+          onActivate={activate} onRotate={rotate}
           onUninstall={uninstall}
         />)}
         {!items.length && <div className="extensions__empty">
@@ -361,7 +385,7 @@ function InstallForm({ entry, busy, onSubmit, onCancel }: {
   </form>;
 }
 
-function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetStatus, onRotate, onUninstall }: {
+function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetStatus, onActivate, onRotate, onUninstall }: {
   item: Installation;
   siteId: string;
   busy: boolean;
@@ -369,6 +393,7 @@ function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetS
   onCopy: (value: string, key: string) => void;
   onPair: (item: Installation) => void;
   onSetStatus: (item: Installation, status: 'enabled' | 'disabled') => void;
+  onActivate: (item: Installation, form: HTMLFormElement) => void;
   onRotate: (item: Installation) => void;
   onUninstall: (item: Installation) => void;
 }) {
@@ -394,6 +419,22 @@ function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetS
 
     {item.version_status === 'deprecated' && <div className="extensions__inline-warning"><TriangleAlert size={18} />The current release is deprecated. Typeroll will select its compatible replacement automatically when one is published.</div>}
     {!available && <div className="extensions__inline-error"><TriangleAlert size={18} />No compatible published release is currently available. This Extension is omitted, but it does not block the rest of the site from being built.</div>}
+
+    {item.pending_activation_version && <details className="extensions__details">
+      <summary><TriangleAlert size={17} /> Review update to {item.pending_activation_version} <ChevronDown size={17} /></summary>
+      <form className="extensions__details-body" onSubmit={(event) => { event.preventDefault(); onActivate(item, event.currentTarget); }}>
+        <p>This release requires activation for this site. Other sites keep their current release. Activation changes the app backend immediately; publish separately to update static pages.</p>
+        <p>Review the app's migration instructions and prepare its connection before activating.</p>
+        {(item.pending_activation_manifest?.permissions ?? []).map(permission => <label className="extensions__permission" key={permission.scope}>
+          <input type="checkbox" name="scope" value={permission.scope} defaultChecked={item.granted_scopes.includes(permission.scope)} />
+          <span><strong>{permission.scope}</strong><small>{permission.reason}</small></span>
+        </label>)}
+        <label className="field"><span>Updated configuration (JSON)</span><textarea name="config" rows={4} defaultValue="{}" spellCheck={false} />
+          <small>Omitted values are preserved where supported. Required fields: {item.pending_activation_manifest?.config_schema?.required?.join(', ') || 'none'}.</small>
+        </label>
+        <button className="btn" disabled={busy || item.status === 'revoked'}>Activate for this site</button>
+      </form>
+    </details>}
 
     <div className="extensions__setup">
       <div className="extensions__setup-card">
@@ -581,6 +622,10 @@ const styles = `
   .extensions__details > summary { display: flex; align-items: center; gap: .5rem; padding: .85rem 1.5rem; color: #57534e; cursor: pointer; list-style: none; font-size: .82rem; font-weight: 600; }
   .extensions__details > summary > svg:last-child { margin-left: auto; transition: transform .15s ease; }
   .extensions__details-body { display: grid; gap: 1.15rem; padding: .35rem 1.5rem 1.5rem; }
+  .extensions__permission { display:flex;align-items:flex-start;gap:.75rem;min-height:44px;cursor:pointer; }
+  .extensions__permission input[type="checkbox"] { width:1.1rem;height:1.1rem;flex:none;margin:.2rem 0 0;padding:0; }
+  .extensions__permission > span { display:grid;gap:.25rem;min-width:0;overflow-wrap:anywhere; }
+  .extensions__permission small { color:var(--color-text-muted);font-size:.8rem; }
   .extensions__details-body h4 { margin-bottom: .55rem; font-size: .85rem; }
   .extensions__scope-list { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; }
   .extensions__scope-list li { display: grid; grid-template-columns: minmax(130px, auto) 1fr; gap: .7rem; align-items: baseline; }

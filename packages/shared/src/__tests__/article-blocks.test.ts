@@ -140,3 +140,16 @@ it('applies bounded template typography only around the Page content slot', () =
   template[1].data = { font_size: '16px;color:red', line_height: Infinity, paragraph_spacing: -1 };
   expect(composePageWithTemplate(template, body)).toEqual([template[0], ...body]);
 });
+
+it('keeps content-slot geometry independent of optional typography', () => {
+  const body: Block[] = [{ id: 'layout', type: 'core/container', data: { width: 'full', max_width_px: 1120, padding_x_px: 0 }, children: [] }];
+  for (const max_width of ['full', 'narrow', 'normal', 'wide']) for (const typography of [{}, { font_size: 16, line_height: 1.6 }]) {
+    const composed = composePageWithTemplate([{ id: 'slot', type: 'template_content_slot', data: { max_width, ...typography } }], body);
+    if (composed[0].id === 'layout') { expect(max_width).toBe('full'); continue; }
+    expect(composed[0].data).toMatchObject({ width: 'full', padding_x_px: 0, padding_y_px: 0 });
+    expect(composed[0].children).toEqual(body);
+    const html = renderBlocks(composed, { registry });
+    expect(html).toContain('data-width="full"');
+    if (max_width !== 'full') expect(html).toContain('max-width:' + ({ narrow: '560px', normal: '720px', wide: '1120px' } as Record<string,string>)[max_width]);
+  }
+});

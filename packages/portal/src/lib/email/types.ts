@@ -11,6 +11,8 @@ export interface EmailMessage {
   html?: string;
   /** Plain-text body. */
   text?: string;
+  /** Platform correlation only; never populated from untrusted message headers. */
+  deliveryId?: string;
 }
 
 export interface SendResult {
@@ -18,4 +20,6 @@ export interface SendResult {
   /** Provider message id when available. */
   id?: string;
   error?: string;
+  /** Only an explicit provider rejection may be retried safely. */
+  failure?: 'rejected' | 'retryable_rejection' | 'unknown';
 }

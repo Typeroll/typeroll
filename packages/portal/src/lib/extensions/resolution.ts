@@ -14,6 +14,8 @@ export interface ExtensionVersionResolution {
   initial_version: string;
   resolved_version?: string;
   automatically_updated: boolean;
+  pending_activation_version?: string;
+  pending_activation_manifest?: ExtensionVersion['manifest'];
   reason?: 'no_compatible_release';
 }
 
@@ -35,6 +37,16 @@ function compareVersions(left: ExtensionVersion, right: ExtensionVersion): numbe
   if (!a[3]) return 1;
   if (!b[3]) return -1;
   return a[3].localeCompare(b[3]);
+}
+
+export function requiresExplicitActivation(installation: ExtensionInstallation, target: ExtensionVersion, versions: ExtensionVersion[]): boolean {
+  const selected = { version: installation.version } as ExtensionVersion;
+  return versions.some(release => ['published', 'deprecated', 'revoked'].includes(release.status) &&
+    release.manifest.activation_policy === 'explicit' && compareVersions(release, selected) > 0 && compareVersions(release, target) <= 0);
+}
+
+export function isForwardRelease(current: string, next: string): boolean {
+  return compareVersions({ version: next } as ExtensionVersion, { version: current } as ExtensionVersion) > 0;
 }
 
 function canRunVersion(
@@ -68,15 +80,19 @@ export async function resolveExtensionVersion(
     const released = version.status === 'published' || version.status === 'deprecated';
     const selectedPreview = developerPreview && version.version === installation.version &&
       (version.status === 'draft' || version.status === 'review');
-    return (released || selectedPreview) && canRunVersion(installation, version);
+    return (released || selectedPreview) && !requiresExplicitActivation(installation, version, versions) && canRunVersion(installation, version);
   });
   const version = candidates.sort(compareVersions).at(-1) ?? null;
+  const pending = versions.filter(release => release.status === 'published' &&
+    requiresExplicitActivation(installation, release, versions) &&
+    isRuntimeCompatible(release.manifest.runtime_compatibility, EXTENSION_RUNTIME_VERSION)).sort(compareVersions).at(-1);
   const initialVersion = installation.initial_version ?? installation.version;
   return {
     version,
     initial_version: initialVersion,
     ...(version ? { resolved_version: version.version } : {}),
-    automatically_updated: Boolean(version && version.version !== initialVersion),
+    automatically_updated: Boolean(version && version.version !== installation.version),
+    ...(pending ? { pending_activation_version: pending.version, pending_activation_manifest: pending.manifest } : {}),
     ...(!version ? { reason: 'no_compatible_release' as const } : {}),
   };
 }

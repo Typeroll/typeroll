@@ -272,3 +272,29 @@ describe('owner answers across canonical API writers', () => {
     expect((await getPage('owner-clear'))?.fields?.online).toBeNull();
   });
 });
+
+it('keeps keyed import evidence in batch writes and cannot replace owner answers with it', async () => {
+  const { token } = await setup();
+  const { getStore } = await import('../../lib/datastore');
+  const store = getStore();
+  await store.setDoc(paths.contentType(ORG, SITE, 'profile'), { name:'profile', fields:[
+    { name:'programs',type:'array',item_key:'program_id',writable_by:['portal','agent','import','owner'],fields:[
+      { name:'program_id',type:'text',writable_by:['portal','agent','import'] },
+      { name:'online',type:'boolean',writable_by:['portal','agent','import','owner'] },
+    ] },
+  ] });
+  const path='programs/@stable~1a/online';
+  await seedPage('source', { content_type:'profile',fields:{programs:[{program_id:'stable/a',online:null}]} });
+  const { POST } = await import('../../pages/api/v1/sites/[siteId]/pages/batch-write');
+  const write=async(answer_sources:unknown)=>POST({ request:new Request(`http://localhost/api/v1/sites/${SITE}/pages/batch-write`,{
+    method:'POST',headers:{...bearer(token),'content-type':'application/json'},body:JSON.stringify([{page_id:'source',save:true,
+      patch:{fields:{programs:[{program_id:'stable/a',online:true}]}},answer_sources}]),
+  }),params:{siteId:SITE}} as any);
+  expect((await (await write({[path]:{source_url:'https://example.org/program',import_run_id:'migration-2026'}})).json()).results[0].ok).toBe(true);
+  const page=await getPage('source');
+  expect(page?._provenance?.[path]).toMatchObject({source:'agent',source_url:'https://example.org/program',import_run_id:'migration-2026'});
+  expect((await (await write({[path]:{source:'owner'}})).json()).results[0].ok).toBe(false);
+  await store.updateDoc(paths.page(ORG,SITE,'source'),{fields:{programs:[{program_id:'stable/a',online:false}]},_provenance:{[path]:{source:'owner',actor:'verified-owner',updated_at:new Date().toISOString()}}});
+  expect((await (await write({[path]:{source_url:'https://example.org/research'}})).json()).results[0].ok).toBe(false);
+  expect((await getPage('source'))?.fields?.programs).toEqual([{program_id:'stable/a',online:false}]);
+});

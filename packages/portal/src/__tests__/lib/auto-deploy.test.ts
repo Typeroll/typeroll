@@ -76,14 +76,34 @@ describe('markSiteDirty', () => {
   it('does nothing on a site that has not opted in', async () => {
     await seed({});
     const { markSiteDirty } = await import('../../lib/auto-deploy');
-    await markSiteDirty('default', 'mysite');
+    await markSiteDirty('default', 'mysite', MAIN_VERSION_ID);
     expect((await read())?.pending_deploy_at).toBeUndefined();
+  });
+
+  it('does not enqueue main when a preview page is created on an opted-in site', async () => {
+    await seed({ auto_deploy: { enabled: true } });
+    const { createPage } = await import('../../lib/page-create');
+    const { page } = await createPage(
+      { orgId: 'default', siteId: 'mysite', versionId: 'preview-qa' },
+      { title: 'Preview only', blocks: [] }, 'portal', 'editor',
+    );
+    expect(page.title).toBe('Preview only');
+    expect((await read())?.pending_deploy_at).toBeUndefined();
+    expect((await read())?.pending_deploy_revision).toBeUndefined();
+  });
+
+  it('preserves an existing main marker and revision during preview edits', async () => {
+    const timestamp = minutesAgo(30);
+    await seed({ auto_deploy: { enabled: true }, pending_deploy_at: timestamp, pending_deploy_revision: 'main-edit' });
+    const { markSiteDirty } = await import('../../lib/auto-deploy');
+    await markSiteDirty('default', 'mysite', 'preview-qa');
+    expect(await read()).toMatchObject({ pending_deploy_at: timestamp, pending_deploy_revision: 'main-edit' });
   });
 
   it('stamps the marker on the first write', async () => {
     await seed({ auto_deploy: { enabled: true } });
     const { markSiteDirty } = await import('../../lib/auto-deploy');
-    await markSiteDirty('default', 'mysite');
+    await markSiteDirty('default', 'mysite', MAIN_VERSION_ID);
     expect(typeof (await read())?.pending_deploy_at).toBe('string');
   });
 
@@ -94,7 +114,7 @@ describe('markSiteDirty', () => {
     await seed({ auto_deploy: { enabled: true }, pending_deploy_at: minutesAgo(30) });
     const before = (await read())?.pending_deploy_at;
     const { markSiteDirty } = await import('../../lib/auto-deploy');
-    await markSiteDirty('default', 'mysite');
+    await markSiteDirty('default', 'mysite', MAIN_VERSION_ID);
     expect((await read())?.pending_deploy_at).toBe(before);
   });
 
@@ -102,7 +122,7 @@ describe('markSiteDirty', () => {
     // Called from commit paths whose real job is saving content; a failure
     // here must never fail the save.
     const { markSiteDirty } = await import('../../lib/auto-deploy');
-    await expect(markSiteDirty('default', 'nope')).resolves.toBeUndefined();
+    await expect(markSiteDirty('default', 'nope', MAIN_VERSION_ID)).resolves.toBeUndefined();
   });
 });
 
