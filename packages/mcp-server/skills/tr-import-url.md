@@ -5,6 +5,12 @@ description: Use when the user wants to import or migrate content from a non-Wor
 
 # Import content from a non-WordPress site
 
+**Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
+Complete its source baseline and one verified prototype per active template.
+Read target content to protect edits, not to justify accidental target defaults.
+Its shared evidence record is required for visual acceptance.
+
+
 > **The buffer model (draft writes).** Every content write in this recipe
 > (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
@@ -45,9 +51,10 @@ Parse `<a href>` links to discover internal pages. Build a list:
 - Top-level pages (About, Services, Contact, etc.)
 - Any sub-pages that look important
 
-Avoid: pagination URLs, session URLs, `/wp-admin`, `/cdn-cgi/`, query strings.
+Exclude private/session/admin URLs deliberately. Inventory public pagination and
+query routes; decide preservation or retirement from their actual purpose.
 
-### 2. Learn the target's design
+### 2. Measure the source and protect existing target work
 
 ```
 read_site_settings
@@ -55,8 +62,8 @@ read_partial partial_id="header"
 list_pages limit=5
 ```
 
-The goal is to understand what CSS variables, class names, and structural
-conventions the target site uses so the imported content looks native.
+Read existing target data to avoid overwriting work. Establish source geometry
+and validate native prototypes using `tr-migration-evidence` before mass writes.
 
 ### 3. Fetch and clean each source page
 
@@ -73,7 +80,9 @@ Can you provide the page source or an HTML export?"
 
 **b. Extract the main content.**
 
-Discard: nav, header, footer, cookie banners, chat widgets, scripts.
+Inventory shared navigation/header/footer, consent and runtime features first;
+map them to reusable partials or supported runtimes before excluding them from
+individual Page bodies.
 Keep: `<main>`, `<article>`, the largest content region.
 
 Clean the HTML:
@@ -89,13 +98,13 @@ Clean the HTML:
 ```
 upload_media_from_url url="<source-img-url>" alt="..."
 ```
-Replace the src with the returned CDN URL. Skip tracking pixels
-(1×1 images), decorative SVGs that are just icons, and anything
-that 404s.
+Replace the src with the returned CDN URL. Classify tracking pixels separately. Preserve meaningful decorative images and
+icons. A required file that fails transfer blocks acceptance; do not silently
+omit it. Inventory PDFs, download hrefs, srcsets and backgrounds as well.
 
 **d. Adapt to the target's design.**
-Replace source-specific CSS classes with target conventions.
-Use `var(--color-*)` for colors, `var(--font-*)` for type.
+Use verified native fields from the source capability map. Preserve appearance
+by default; do not substitute target defaults or corrective tenant CSS.
 
 ### 4. Create pages as drafts
 

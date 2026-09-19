@@ -5,6 +5,12 @@ description: Use when migrating SEVERAL sites at once — a WordPress multisite 
 
 # Migrate a multisite / multi-domain family to Typeroll
 
+**Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
+Complete its source baseline and one verified prototype per active template.
+Read target content to protect edits, not to justify accidental target defaults.
+Its shared evidence record is required for visual acceptance.
+
+
 > **The buffer model (draft writes).** Every content write in this recipe
 > (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
@@ -63,8 +69,8 @@ Ask explicitly:
 - Are the sites **translations of each other** (same page structure) or
   independent? This decides whether hreflang clusters are mechanical or
   hand-mapped.
-- Any domains being **retired or merged**? Those need redirects at the DNS
-  level, not just inside a site.
+- Any domains being **retired or merged**? Those need HTTP redirects served by the old hostname; DNS itself is not
+  a redirect. Plan that hosting separately.
 
 ## Phase 1 — Inventory EVERY old site, before building anything
 
@@ -76,7 +82,7 @@ For each source site, create the target site first (the inventory lives on
 it):
 
 ```
-create_site name="Example DE" domain="example.de"
+create_site name="Example DE"
 ```
 
 Then walk the source and post what you find:
@@ -128,12 +134,10 @@ N times as much.
 
 ## Phase 3 — Replicate the design to the other sites
 
-Design travels as a block-type package, not by hand:
-
-```
-export_block_types site_id=<reference>                 # → .tcblocks JSON
-import_block_types site_id=<other> package=<that JSON>
-```
+Replicate only source-validated native recipes and brand settings. Confirm each
+market's template overrides and business workflows independently. Export/import
+custom block types only for specifically reviewed source-specific exceptions,
+not generic corrective blocks or copied tenant CSS.
 
 Then per site:
 - `read_site_settings` on the reference → `update_site_settings` on the
@@ -149,71 +153,15 @@ alt-text generation:
 update_site site_id=<de-site> language="de"
 ```
 
-## Phase 4 — Migrate content, preserving paths
+## Phase 4 — Preserve each market's business functions
 
-Per site, per URL, follow `tr-migrate-wp` §3. Two rules that matter more here
-than in a single-site migration:
-
-1. **Preserve the path verbatim** unless there's a reason not to. Use
-   `path` for anything nested: `create_page title="Über uns" slug="ueber-uns"
-   path="/ueber-uns"`. A preserved path needs no redirect and loses nothing.
-2. **Rewrite internal links to the NEW paths.** Imported HTML is full of
-   absolute links to the old domain. Sweep them per site:
-
-```
-bulk_replace_text site_id=<de-site> find="https://example.de/" replace="/" dry_run=true
-```
-
-Check the dry-run count against what you expect before running it for real.
-Cross-domain links between sister sites stay absolute — only the site's own
-domain becomes relative.
-
-### Media: per site, not shared
-
-Every Typeroll site has its own media library, so a shared asset (the group
-logo, a product shot used in all markets) is uploaded once **per site** and
-gets a different CDN URL in each. That's correct — the sites are independent
-and one market's deploy must not depend on another's assets — but it means:
-
-- Don't try to reuse a `cdn_url` from site A inside site B's HTML. It will
-  render, and it will break the day site A is deleted or moved.
-- Do write alt text per market, in that market's language:
-  `update_media media_id=… alt_text="…"`. The alt text is content, not
-  metadata, and a Swedish alt on a German page is a real accessibility defect.
-
-Images referenced only from a stylesheet or from unrendered page-builder JSON
-are NOT found by an HTML scan. Spot-check the hero/background images of the
-top pages in the preview before you call a site done.
-
-### Forms are NOT migrated — plan to rebuild them
-
-The HTML cleaner strips `<form>`, `<input>`, `<select>` and `<button>`
-entirely, on purpose: a Contact Form 7 / Gravity / Elementor form posts to
-WordPress endpoints that no longer exist, so importing the markup would give
-you a form that looks alive and silently drops every submission.
-
-So, per site:
-
-```
-create_form name="Kontakt" fields=[…]         # or steps=[…] for a funnel
-add_block target={kind:'page', id:'kontakt'} block={type:'core/form', data:{form_id:'<id>'}}
-```
-
-Then, still per site:
-
-- **Recipient address per market** — the German enquiries rarely go to the
-  Swedish inbox. Check this explicitly; it is the single most common thing
-  to get wrong in a batch of ten.
-- **Email delivery is configured per site** by an admin in the portal
-  (Settings → Integrations), not through this API. Flag it to the user as a
-  manual step — a form that saves submissions but sends no notification looks
-  fine in testing and loses leads in production.
-- **Submit a real test through every form** after deploy, and confirm both the
-  stored submission and the notification email.
-
-Count the old site's forms during Phase 1 and put them in the plan table.
-Ten sites × three forms is thirty forms, and it is the part of the job that
-never shows up in a URL inventory.
+Use the business-function inventory from `tr-migration-evidence`. Some markets
+use native Forms, others an owned lead flow, affiliate destination or partner
+iframe. Do not replace them all with a new contact form. Configure a Form only
+where it is the approved equivalent. Verify each market's recipient, destination,
+language and attribution. Use authorized synthetic tests with a safe recipient;
+record delivery UNVERIFIED when it cannot be tested safely. Never create real
+leads or send mail to third parties as a routine migration test.
 
 ## Phase 5 — Redirects for everything you didn't preserve
 
@@ -232,23 +180,10 @@ For each entry, one of three outcomes — no fourth option:
 Re-read the list. `unhandled` reaching zero is the exit condition for this
 phase.
 
-**Clear the URL families with one rule each**, per site — a WP network
-multiplies the same dead shapes across every market:
-
-```
-create_redirect site_id=<de-site> from_path="/category/*" to_path="/blogg/:splat"
-create_redirect site_id=<de-site> from_path="/tag/*"      to_path="/blogg"
-create_redirect site_id=<de-site> from_path="/2019/*"     to_path="/blogg/:splat"
-```
-
-Only a TRAILING `*` is supported (`:splat` replays the remainder); `:name`
-matches one segment. Pattern-covered inventory URLs count as `redirected`, so
-the work list actually empties. A pattern that would hide a live page is
-refused, naming the pages — narrow the prefix rather than working around it.
-
-Watch the per-market prefixes: the German site's archive base is `/kategorie/`,
-not `/category/`. Write the rules from each site's own inventory, never by
-copying the reference site's.
+Pattern redirects require verified source-to-destination content mappings.
+A category/tag/year shape alone is not proof of equivalent destinations. Check
+expanded artifact size and provider limits, actual slash/query variants and
+that no rule hides a preserved Page. A 200 at the wrong content fails.
 
 ## Phase 6 — Wire the hreflang cluster
 
@@ -301,8 +236,8 @@ is possible at all. Verdicts:
 | `error` | 5xx / timeout | inconclusive, re-run |
 
 `check_source=true` also requests the OLD site, so a URL that already 404s
-upstream shows up as noise in the inventory rather than as a migration
-failure — mark those `excluded`.
+upstream needs a reviewed retention/retirement decision, including traffic and
+backlinks. Never automatically mark source 404s `excluded`.
 
 Slash-equivalent source URLs are one inventory decision but remain separate
 verification requests through `observed_paths`. Therefore `checked` can exceed
@@ -316,7 +251,8 @@ parity, then record the exact dataset and result with
 `record_migration_seo_acceptance`.
 
 Iterate until `missing` and `broken_redirect` are both zero **on every site**.
-Then, per site:
+Only after explicit cutover authorization, per site (`add_domain` prepares a
+new canonical build and is not an inventory-only operation):
 
 1. `add_domain` with the intended apex/www canonical; leave `auto_deploy` on
 2. Wait for that canonical/sitemap deploy to succeed, then point DNS
@@ -338,9 +274,9 @@ Then, per site:
 - [ ] hreflang cluster written on both/all sides, absolute, final domains
 - [ ] `language` set on the site; `<html lang>` correct in the deployed HTML
 - [ ] Internal links rewritten (no lingering absolute links to the old domain)
-- [ ] Forms rebuilt, recipient address correct for THIS market, test submission sent and received
+- [ ] Market-specific business functions mapped; authorized synthetic interaction/delivery verified or explicitly UNVERIFIED
 - [ ] Media uploaded to this site's own library (no cross-site `cdn_url`), alt text in this market's language
-- [ ] Domain declared, canonical deploy succeeded, DNS verified; sitemap submitted
+- [ ] If cutover is authorized: domain declared, canonical deploy succeeded, DNS verified; sitemap submitted. Otherwise report pre-cutover complete separately.
 
 ## Pitfalls specific to this job
 

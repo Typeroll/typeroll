@@ -287,7 +287,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   // only on inert text/URL/image fields; rich HTML remains an explicit block
   // concern and never gains recursive template evaluation.
   for (const field of blockType.schema ?? []) {
-    if (!['text', 'textarea', 'richtext', 'url', 'image', 'file', 'email'].includes(field.type)) continue;
+    if (!['text', 'textarea', 'richtext', 'url', 'image', 'file', 'email', 'icon'].includes(field.type)) continue;
     const value = compiled.flatData[field.name];
     if (typeof value !== 'string') continue;
     const match = value.match(/^\s*\{\{\s*((?:page|site|item|content_type)\.[\w.-]+)\s*\}\}\s*$/);
@@ -385,8 +385,21 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link">${picture}</a>` : picture;
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
   }
+  if (effectiveBlock.type === 'core/icon_box') {
+    const d = compiled.flatData;
+    const linked = d.whole_card_link === true && String(d.link ?? '').trim() !== '' && String(d.heading ?? '').trim() !== '';
+    d.iconbox_linked = linked;
+    d.iconbox_unlinked = !linked;
+    d.iconbox_secondary = !linked && Boolean(String(d.link ?? '').trim());
+    d.link_label ||= d.heading || 'Learn more';
+  }
   prepareArticleBlockData(effectiveBlock.type, compiled.flatData);
   let html = substituteFields(template, compiled.flatData, options.context);
+  const numericStyles = (blockType.schema ?? []).flatMap(field => {
+    const value = numericPresentationValue(field, compiled.flatData[field.name]);
+    return value === undefined ? [] : [`--${field.name}:${value}`];
+  });
+  if (numericStyles.length) html = mergeAttrsIntoFirstTag(html, { style: numericStyles.join(';') }) ?? html;
   html = substituteChildren(html, effectiveBlock, options);
   html = substituteSlots(html, effectiveBlock, blockType, options);
   // Insert prepared field rows after all template passes. Authored values and
@@ -398,6 +411,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   // sanitizeCssId() escapes anything else.
   const bid = sanitizeCssId(effectiveBlock.id);
   const rootAttrs: Record<string, string> = {};
+  if (blockType.schema.some(field => field.css_unit)) rootAttrs['data-presentation'] = encodeURIComponent(blockType.id);
   // data-bid is normally only needed when responsive overrides target it —
   // but an instance script's IIFE resolves its own element by this selector,
   // so a block carrying code in a declared script_field needs it too or its
@@ -1376,6 +1390,13 @@ interface ResponsiveCompileResult {
   hasOverrides: boolean;
 }
 
+function numericPresentationValue(field: FieldDefinition, raw: unknown): string | undefined {
+  if (field.type !== 'number' || !['px', 'number'].includes(field.css_unit ?? '') ||
+      !/^[a-z][a-z0-9_]*$/.test(field.name) || typeof raw !== 'number' || !Number.isFinite(raw)) return undefined;
+  const value = Math.min(field.max ?? 10000, Math.max(field.min ?? 0, raw));
+  return `${value}${field.css_unit === 'px' ? 'px' : ''}`;
+}
+
 function compileResponsiveData(
   block: Block,
   blockType: BlockType,
@@ -1431,7 +1452,7 @@ function compileResponsiveData(
       if (bp === 'mobile') {
         flatData[field.name] = v;
       } else if (v !== prev) {
-        const safe = sanitizeCssVarValue(String(v));
+        const safe = field.css_unit ? numericPresentationValue(field, v) : sanitizeCssVarValue(String(v));
         if (safe) {
           (cssVars[bp] ??= {})[field.name] = safe;
           hasOverrides = true;
@@ -1455,7 +1476,7 @@ function compileResponsiveData(
  * and responsive overrides won't apply — surfaceable in tests.
  */
 function injectAttrsIntoFirstTag(html: string, attrs: Record<string, string>): string {
-  return html.replace(/^(<[a-zA-Z][\w-]*)((?:\s+[^>\/]*?)?)(\s*\/?>)/, (_m, open, existing, close) => {
+  return html.replace(/^(<[a-zA-Z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\s*\/?>)/, (_m, open, existing, close) => {
     let updated = existing ?? '';
     for (const [k, v] of Object.entries(attrs)) {
       // Skip if attribute already present
@@ -1640,6 +1661,8 @@ export function collectBlockAssets(
     const bt = getRegistryEntry(registry, id);
     if (!bt) continue;
     used.push(id);
+    const numericFields = bt.schema.filter(field => field.css_unit && /^[a-z][a-z0-9_]*$/.test(field.name));
+    if (numericFields.length) css.push(`[data-presentation="${encodeURIComponent(bt.id)}"]{${numericFields.map(field => `--${field.name}:initial`).join(';')}}`);
     if (bt.styles) css.push(`/* ${id} */\n${bt.styles}`);
     if (bt.script) js.push(`/* ${id} */\n${bt.script}`);
   }

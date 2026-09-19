@@ -1,3 +1,4 @@
+import { pixels, typographyFields } from './presentation-fields.js';
 // Core block library — ships with the platform. Six general-purpose blocks
 // that cover the vast majority of page composition needs. Custom blocks
 // (origin: 'user' or 'third_party') are loaded from the per-site
@@ -40,6 +41,9 @@ const section: BlockType = {
       options: ['narrow', 'normal', 'wide', 'full'],
       default: 'normal',
     },
+    pixels('max_width_px', 'Inner maximum width (px)', 240),
+    pixels('content_gap_px', 'Space between blocks (px)', 0, 240),
+    { name: 'padding_x', type: 'select', label: 'Horizontal padding', options: ['auto', 'none', 'sm', 'md', 'lg'], default: 'auto', responsive: true, responsive_css: { auto: '--section-px:var(--content-gutter,1.25rem);', none: '--section-px:0px;', sm: '--section-px:1rem;', md: '--section-px:2rem;', lg: '--section-px:3rem;' } },
     { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['auto', 'none', 'sm', 'md', 'lg', 'xl'], default: 'auto' },
     { name: 'background', type: 'color', label: 'Background color' },
     { name: 'text_color', type: 'color', label: 'Text color' },
@@ -50,22 +54,28 @@ const section: BlockType = {
     { name: 'divider_top', type: 'select', label: 'Top divider', options: ['none', 'wave', 'curve', 'tilt'], default: 'none' },
     { name: 'divider_bottom', type: 'select', label: 'Bottom divider', options: ['none', 'wave', 'curve', 'tilt'], default: 'none' },
   ],
-  template: `<section data-block="section" data-width="{{width}}" data-pad="{{padding_y}}" data-divtop="{{divider_top}}" data-divbot="{{divider_bottom}}" style="--block-bg:{{background}};--block-fg:{{text_color}}">
+  template: `<section data-block="section" data-width="{{width}}" data-pad="{{padding_y}}" data-divtop="{{divider_top}}" data-divbot="{{divider_bottom}}" style="--block-bg:{{background}};--block-fg:{{text_color}};--padding_x:{{padding_x}}">
   <span class="block-section-shape block-section-shape--top" aria-hidden="true"></span>
   <div class="block-section-inner">{{children}}</div>
   <span class="block-section-shape block-section-shape--bot" aria-hidden="true"></span>
 </section>`,
   styles: `
 [data-block="section"] { position: relative; padding: var(--section-padding, 3rem) var(--content-gutter, 1.25rem); background: var(--block-bg, transparent); color: var(--block-fg, inherit); }
+[data-block="section"][style*="--padding_x:"] { padding-inline:var(--section-px, var(--content-gutter,1.25rem)); }
+[data-block="section"][style*="--padding_x:auto"] { --section-px:var(--content-gutter,1.25rem); }
+[data-block="section"][style*="--padding_x:none"] { --section-px:0px; }
+[data-block="section"][style*="--padding_x:sm"] { --section-px:1rem; }
+[data-block="section"][style*="--padding_x:md"] { --section-px:2rem; }
+[data-block="section"][style*="--padding_x:lg"] { --section-px:3rem; }
 [data-block="section"][data-pad="none"] { padding-top: 0; padding-bottom: 0; }
 [data-block="section"][data-pad="sm"] { padding-top: 2rem; padding-bottom: 2rem; }
 [data-block="section"][data-pad="md"] { padding-top: 4rem; padding-bottom: 4rem; }
 [data-block="section"][data-pad="lg"] { padding-top: 6rem; padding-bottom: 6rem; }
 [data-block="section"][data-pad="xl"] { padding-top: 8rem; padding-bottom: 8rem; }
-[data-block="section"] > .block-section-inner { max-width: 65rem; margin: 0 auto; }
-[data-block="section"][data-width="narrow"] > .block-section-inner { max-width: 42rem; }
-[data-block="section"][data-width="wide"] > .block-section-inner { max-width: 80rem; }
-[data-block="section"][data-width="full"] > .block-section-inner { max-width: none; }
+[data-block="section"] > .block-section-inner { max-width: var(--max_width_px, 65rem); margin: 0 auto; }
+[data-block="section"][data-width="narrow"] > .block-section-inner { max-width: var(--max_width_px, 42rem); }
+[data-block="section"][data-width="wide"] > .block-section-inner { max-width: var(--max_width_px, 80rem); }
+[data-block="section"][data-width="full"] > .block-section-inner { max-width: var(--max_width_px, none); }
 /* Section dividers — a full-bleed shape painted in the section's own
    --block-bg, overlapping the neighbour by 1px. Hidden unless a shape is set;
    invisible when the section has no background (nothing to paint). */
@@ -109,6 +119,8 @@ const columns: BlockType = {
       default: '1-1',
     },
     { name: 'gap', type: 'select', label: 'Gap', options: ['sm', 'md', 'lg'], default: 'md' },
+    pixels('gap_px', 'Column gap (px)', 0, 240),
+    pixels('right_width_px', 'Right column width (px)', 160, 640),
     { name: 'mobile_order', type: 'select', label: 'Mobile order', options: ['left-first', 'right-first'], default: 'left-first' },
     { name: 'align', type: 'select', label: 'Vertical alignment', options: ['start', 'center', 'end'], default: 'start' },
   ],
@@ -126,6 +138,8 @@ const columns: BlockType = {
 [data-block="columns"][data-ratio="1-3"] { grid-template-columns: 1fr 3fr; }
 [data-block="columns"][data-gap="sm"] { gap: 1rem; }
 [data-block="columns"][data-gap="lg"] { gap: 3rem; }
+[data-block="columns"][style*="--gap_px:"] { gap:var(--gap_px,2rem); }
+@media (min-width:721px) { [data-block="columns"][style*="--right_width_px:"] { grid-template-columns:minmax(0,1fr) minmax(0,var(--right_width_px,280px)); } }
 [data-block="columns"][data-align="center"] { align-items: center; }
 [data-block="columns"][data-align="end"] { align-items: end; }
 /* An optional server-rendered outline should not reserve an unexplained
@@ -238,17 +252,20 @@ const heading: BlockType = {
       responsive: true,
     },
     { name: 'font_weight', type: 'select', label: 'Font weight', options: ['400', '500', '600', '700', '800'] },
+    ...typographyFields,
+    { name: 'color', type: 'color', label: 'Text color' },
     { name: 'eyebrow', type: 'text', label: 'Eyebrow', placeholder: 'small label above heading' },
   ],
   // {{=level}} substitutes a validated tag name (h1..h6). The renderer
   // falls back to div if level is missing/invalid, so the output is
   // always well-formed.
-  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="text-align:{{align}}">
+  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="text-align:{{align}};--heading-color:{{color}}">
   <span class="block-heading-eyebrow">{{eyebrow}}</span>
   <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>
 </div>`,
   styles: `
 [data-block="heading"] { --heading-fs: clamp(1.75rem, 1rem + 3.5vw, 3.5rem); }
+[data-block="heading"] .block-heading-text { color:var(--heading-color,inherit); }
 [data-block="heading"] .block-heading-eyebrow { display: block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.25rem; }
 [data-block="heading"] .block-heading-eyebrow:empty { display: none; }
 [data-block="heading"]:not([data-size="theme"]) .block-heading-text { font-weight: 700; line-height: 1.15; margin: 0; font-size: var(--heading-fs); }
@@ -282,6 +299,8 @@ const heading: BlockType = {
 [data-block="heading"][data-size="auto"][data-level="h4"] { --heading-fs: var(--type-h4, 1rem); }
 [data-block="heading"][data-size="auto"][data-level="h5"] { --heading-fs: var(--type-h5, 1rem); }
 [data-block="heading"][data-size="auto"][data-level="h6"] { --heading-fs: var(--type-h6, .875rem); }
+[data-block="heading"][style*="--font_size_px:"] .block-heading-text { font-size:var(--font_size_px, var(--heading-fs)); }
+[data-block="heading"][data-level][style*="--line_height:"] .block-heading-text { line-height:var(--line_height,1.2); }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -334,7 +353,7 @@ const image: BlockType = {
 [data-block="image"][data-aspect="4:3"] img { aspect-ratio:4/3; }
 [data-block="image"][data-aspect="1:1"] img { aspect-ratio:1; }
 [data-block="image"][data-aspect="3:1"] img { aspect-ratio:3/1; }
-[data-block="image"] img { object-fit:contain; display: block; width: 100%; height: auto; }
+[data-block="image"] img { margin:0; border-radius:0; object-fit:contain; display: block; width: 100%; height: auto; }
 [data-block="image"][data-radius="md"] img { border-radius: 0.5rem; }
 [data-block="image"][data-radius="lg"] img { border-radius: 1.25rem; }
 [data-block="image"][data-radius="xl"] img { border-radius: 1.75rem; }

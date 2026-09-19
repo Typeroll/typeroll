@@ -1,4 +1,4 @@
-# Typeroll skills for Claude Code
+# Typeroll CMS skills for AI agents
 
 Boilerplate skills that pair with [`@typeroll/mcp-server`](../packages/mcp-server/README.md).
 Each one is a self-contained markdown file the agent reads when its
@@ -55,8 +55,9 @@ ln -s "$PWD/skills/tr-migrate-wp.md" ~/.claude/skills/
 
 | File | When it triggers | What it does |
 |---|---|---|
-| `tr-migrate-wp.md`     | "migrate from WordPress", a wp-json URL is mentioned     | Walks the WP REST, rebuilds each page in the target's design, transfers media, sets redirects, leaves everything as drafts for review. |
-| `tr-migrate-multisite.md` | "multisite", "our .se/.de/.co.uk sites", migrating several sites at once | One site per domain; per-site URL inventory, design replicated via `.tcblocks`, path preservation, hreflang clusters, and a parity check against the deployed site before DNS moves. |
+| `tr-migration-evidence.md` | Before any bulk migration | Source baseline, supported-field round-trip, prototypes and separate technical/visual evidence. |
+| `tr-migrate-wp.md`     | "migrate from WordPress", a wp-json URL is mentioned     | Walks the WP REST, preserves source design through verified native prototypes, transfers media, sets redirects, leaves everything as drafts for review. |
+| `tr-migrate-multisite.md` | "multisite", "our .se/.de/.co.uk sites", migrating several sites at once | One site per domain; per-site URL inventory, source-validated native recipes replicated, path preservation, hreflang clusters, and a parity check against the deployed site before DNS moves. |
 | `tr-migrate-astro.md`  | "migrate an Astro site", "import from src/content"       | Lifts Astro Content Collections (`src/content/*`) into Typeroll content types — zod schema → field list, frontmatter → field values, Markdown body → Page blocks. Translates standalone `src/pages/*` into Typeroll pages, maps `src/layouts` chunks into partials. |
 | `tr-import-url.md`     | "import from Squarespace/Wix/Webflow", any non-WP URL    | Fetch → clean → adapt to target design → media transfer → draft pages → redirects → deploy. |
 

@@ -14,6 +14,7 @@
 // They render fine standalone too.
 
 import type { BlockType } from './types.js';
+import { pixels } from './presentation-fields.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
 
@@ -49,6 +50,10 @@ const container: BlockType = {
     { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide', 'full'], default: 'normal' },
     { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['none', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
     { name: 'padding_x', type: 'select', label: 'Horizontal padding', options: ['none', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
+    pixels('max_width_px', 'Maximum width (px)', 240),
+    pixels('gap_px', 'Gap (px)', 0, 240),
+    pixels('padding_x_px', 'Horizontal padding (px)', 0, 240),
+    pixels('padding_y_px', 'Vertical padding (px)', 0, 240),
     { name: 'background', type: 'color', label: 'Background color' },
     { name: 'background_image', type: 'image', label: 'Background image' },
     { name: 'min_height', type: 'select', label: 'Minimum height', options: ['auto', 'sm', 'md', 'lg', 'screen'], default: 'auto' },
@@ -66,15 +71,15 @@ const container: BlockType = {
 :is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > :first-child { margin-top:0; }
 [data-block="container"] {
   display: flex; flex-direction: var(--direction, column); flex-wrap: var(--wrap, wrap);
-  gap: var(--block-gap, 1rem); justify-content: var(--align_main, flex-start); align-items: var(--align_cross, stretch);
-  padding-block: var(--block-py, 2rem); padding-inline: var(--block-px, 1rem);
+  gap: var(--gap_px, var(--block-gap, 1rem)); justify-content: var(--align_main, flex-start); align-items: var(--align_cross, stretch);
+  padding-block: var(--padding_y_px, var(--block-py, 2rem)); padding-inline: var(--padding_x_px, var(--block-px, 1rem));
   background: var(--bg, transparent);
 }
 [data-block="container"][style*="--bg-image:url("] { background-image: var(--bg-image); background-size: cover; background-position: center; }
-[data-block="container"][data-width="narrow"] { max-width: 42rem; margin-inline: auto; }
-[data-block="container"][data-width="normal"] { max-width: 65rem; margin-inline: auto; }
-[data-block="container"][data-width="wide"]   { max-width: 80rem; margin-inline: auto; }
-[data-block="container"][data-width="full"]   { max-width: none; }
+[data-block="container"][data-width="narrow"] { max-width: var(--max_width_px, 42rem); margin-inline: auto; }
+[data-block="container"][data-width="normal"] { max-width: var(--max_width_px, 65rem); margin-inline: auto; }
+[data-block="container"][data-width="wide"]   { max-width: var(--max_width_px, 80rem); margin-inline: auto; }
+[data-block="container"][data-width="full"]   { max-width: var(--max_width_px, none); }
 [data-block="container"][data-min-h="sm"]     { min-height: 30vh; }
 [data-block="container"][data-min-h="md"]     { min-height: 50vh; }
 [data-block="container"][data-min-h="lg"]     { min-height: 70vh; }
@@ -95,6 +100,8 @@ const container: BlockType = {
 [data-block="container"][style*="--padding_x:md"]   { --block-px: 1rem; }
 [data-block="container"][style*="--padding_x:lg"]   { --block-px: 2rem; }
 [data-block="container"][style*="--padding_x:xl"]   { --block-px: 3rem; }
+[data-block="semantic-container"] { display: flow-root; max-width:var(--max_width_px, none); padding-inline:var(--padding_x_px, 0); padding-block:var(--padding_y_px, 0); }
+[data-block="semantic-container"][style*="--gap_px:"] > * + * { margin-top:var(--gap_px, 0); }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -312,6 +319,14 @@ const iconBox: BlockType = {
   container: false,
   item_compatible: true,
   schema: [
+    pixels('icon_size_px', 'Icon size (px)', 16, 160),
+    pixels('heading_size_px', 'Heading size (px)', 12, 80),
+    pixels('min_height_px', 'Minimum height (px)', 0, 800),
+    pixels('padding_px', 'Padding (px)', 0, 120),
+    pixels('radius_px', 'Corner radius (px)', 0, 120),
+    { name: 'background', type: 'color', label: 'Card background' },
+    { name: 'shadow', type: 'select', label: 'Shadow', options: ['none', 'subtle'], default: 'none' },
+    { name: 'whole_card_link', type: 'boolean', label: 'Link entire card', default: false },
     { name: 'icon', type: 'icon', label: 'Icon' },
     { name: 'icon_style', type: 'select', label: 'Icon style',
       options: ['outline', 'filled', 'circle-bg', 'square-bg'], default: 'outline' },
@@ -330,17 +345,17 @@ const iconBox: BlockType = {
     { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center'], default: 'left', responsive: true,
       responsive_css: { 'left': '--align-text: left; --align-items: flex-start;', 'center': '--align-text: center; --align-items: center;' } },
   ],
-  template: `<div data-block="icon_box" data-icon-style="{{icon_style}}" style="--layout:{{layout}};--align:{{align}};--icon-color:{{icon_color}};--icon-bg:{{icon_bg}}">
+  template: `<div data-block="icon_box" data-icon-style="{{icon_style}}" data-whole-link="{{whole_card_link}}" data-shadow="{{shadow}}" style="--layout:{{layout}};--align:{{align}};--icon-color:{{icon_color}};--icon-bg:{{icon_bg}};--card-background:{{background}}">
   <div class="block-iconbox-icon" data-icon="{{icon}}">{{{icon_svg}}}</div>
   <div class="block-iconbox-body">
-    <{{=heading_level}} class="block-iconbox-heading">{{heading}}</{{=heading_level}}>
+    <{{=heading_level}} class="block-iconbox-heading">{{#iconbox_linked}}<a href="{{link}}">{{heading}}</a>{{/iconbox_linked}}{{#iconbox_unlinked}}{{heading}}{{/iconbox_unlinked}}</{{=heading_level}}>
     <div class="block-iconbox-text">{{{text}}}</div>
-    <a href="{{link}}" class="block-iconbox-link">{{link_label}}</a>
+    {{#iconbox_secondary}}<a href="{{link}}" class="block-iconbox-link">{{link_label}}</a>{{/iconbox_secondary}}
   </div>
 </div>`,
   styles: `
 [data-block="icon_box"] {
-  display: flex; gap: 1rem;
+  position:relative; display: flex; gap: 1rem; min-width:0; min-height:var(--min_height_px, 0); padding:var(--padding_px, 0); border-radius:var(--radius_px, 0); background:var(--card-background, transparent);
   flex-direction: var(--layout-dir, column);
   text-align: var(--align-text, left);
   align-items: var(--align-items, flex-start);
@@ -350,17 +365,23 @@ const iconBox: BlockType = {
 [data-block="icon_box"][style*="--layout:icon-right"] { --layout-dir: row-reverse; }
 [data-block="icon_box"][style*="--align:center"]      { --align-text: center; --align-items: center; }
 [data-block="icon_box"] .block-iconbox-icon {
-  flex: 0 0 auto; width: 3rem; height: 3rem; display: flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: var(--icon_size_px, 3rem); height: var(--icon_size_px, 3rem); display: flex; align-items: center; justify-content: center;
   color: var(--icon-color, var(--color-primary, currentColor));
-  font-size: 2rem;
+  font-size: var(--icon_size_px, 2rem);
 }
 [data-block="icon_box"][data-icon-style="circle-bg"] .block-iconbox-icon { border-radius: 50%; background: var(--icon-bg, rgba(0,0,0,0.05)); }
 [data-block="icon_box"][data-icon-style="square-bg"] .block-iconbox-icon { border-radius: 0.5rem; background: var(--icon-bg, rgba(0,0,0,0.05)); }
-[data-block="icon_box"] .block-iconbox-heading { margin: 0 0 0.25rem; font-size: 1.25rem; font-weight: 600; line-height: 1.3; }
+[data-block="icon_box"] .block-iconbox-heading { margin: 0 0 0.25rem; font-size: var(--heading_size_px, 1.25rem); font-weight: 600; line-height: 1.3; }
 [data-block="icon_box"] .block-iconbox-text { line-height: 1.5; opacity: 0.85; }
 [data-block="icon_box"] .block-iconbox-link { display: inline-block; margin-top: 0.5rem; color: var(--color-primary, currentColor); font-weight: 600; }
 [data-block="icon_box"] .block-iconbox-link[href=""] { display: none; }
 [data-block="icon_box"] .block-iconbox-text:empty { display: none; }
+[data-block="icon_box"] .block-iconbox-icon svg { width:100%; height:100%; }
+[data-block="icon_box"][data-shadow="subtle"] { box-shadow:0 2px 12px rgb(0 0 0 / .1); }
+[data-block="icon_box"] .block-iconbox-heading a { color:inherit; text-decoration:none; }
+[data-block="icon_box"] .block-iconbox-heading a::after { content:""; position:absolute; inset:0; border-radius:inherit; }
+[data-block="icon_box"] .block-iconbox-heading a:focus-visible::after { outline:2px solid currentColor; outline-offset:3px; }
+[data-block="icon_box"] .block-iconbox-text a { position:relative; z-index:1; }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -1360,18 +1381,23 @@ const tableOfContents: BlockType = {
   category: 'content',
   container: false,
   schema: [
+    pixels('padding_px', 'Padding (px)', 0, 120),
+    pixels('radius_px', 'Corner radius (px)', 0, 120),
+    { name: 'link_color', type: 'select', label: 'Link color', options: ['theme', 'neutral'], default: 'theme' },
+    { name: 'border', type: 'boolean', label: 'Border', default: true },
+    { name: 'shadow', type: 'select', label: 'Shadow', options: ['none', 'subtle'], default: 'none' },
     { name: 'title', type: 'text', label: 'Title', default: 'On this page' },
     { name: 'levels', type: 'select', label: 'Heading levels', options: ['h2', 'h2-h3', 'h2-h4'], default: 'h2-h3' },
     { name: 'appearance', type: 'select', label: 'Appearance', options: ['card', 'plain'], default: 'card' },
     { name: 'mobile_display', type: 'select', label: 'Mobile display', options: ['visible', 'hidden'], default: 'visible' },
-    { name: 'list_style', type: 'select', label: 'List style', options: ['numbered', 'plain'], default: 'numbered' },
+    { name: 'list_style', type: 'select', label: 'List style', options: ['numbered', 'plain', 'chevron'], default: 'numbered' },
     { name: 'sticky', type: 'boolean', label: 'Sticky on desktop', default: true },
     { name: 'indent', type: 'boolean', label: 'Indent subheadings', default: true },
     { name: 'highlight_active', type: 'boolean', label: 'Highlight current heading', default: true },
   ],
-  template: `<nav data-block="table_of_contents" data-mobile-display="{{mobile_display}}" data-list-style="{{list_style}}" data-levels="{{levels}}" data-appearance="{{appearance}}" data-sticky="{{sticky}}" data-indent="{{indent}}" data-highlight-active="{{highlight_active}}" data-empty="{{toc_empty}}" aria-label="{{title}}"><strong>{{title}}</strong><ol>{{{toc_items_html}}}</ol></nav>`,
+  template: `<nav data-block="table_of_contents" data-link-color="{{link_color}}" data-border="{{border}}" data-shadow="{{shadow}}" data-mobile-display="{{mobile_display}}" data-list-style="{{list_style}}" data-levels="{{levels}}" data-appearance="{{appearance}}" data-sticky="{{sticky}}" data-indent="{{indent}}" data-highlight-active="{{highlight_active}}" data-empty="{{toc_empty}}" aria-label="{{title}}"><strong>{{title}}</strong><ol>{{{toc_items_html}}}</ol></nav>`,
   styles: `
-[data-block="table_of_contents"] { position: sticky; top: var(--toc-top, 1rem); max-height:calc(100dvh - var(--toc-top, 1rem) - 1rem); overflow:auto; box-sizing:border-box; min-width: 0; padding: 1rem; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 0.5rem; background: var(--color-background, Canvas); }
+[data-block="table_of_contents"] { position: sticky; top: var(--toc-top, 1rem); max-height:calc(100dvh - var(--toc-top, 1rem) - 1rem); overflow:auto; box-sizing:border-box; min-width: 0; padding: var(--padding_px, 1rem); border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: var(--radius_px, 0.5rem); background: var(--color-background, Canvas); }
 [data-block="table_of_contents"][data-sticky="false"] { position:static; max-height:none; }
 .block-columns-col:has(> [data-block="table_of_contents"][data-sticky="true"]) { position:sticky; top:var(--toc-top, 1rem); align-self:start; }
 [data-block="table_of_contents"][data-appearance="plain"] { padding:0; border:0; border-radius:0; background:transparent; }
@@ -1386,6 +1412,12 @@ const tableOfContents: BlockType = {
 [data-block="table_of_contents"] a { overflow-wrap: anywhere; text-underline-offset: 0.15em; }
 [data-block="table_of_contents"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
 @media (max-width: 720px) { [data-block="table_of_contents"][data-mobile-display="hidden"], .block-columns-col:has(> [data-block="table_of_contents"][data-mobile-display="hidden"]:only-child) { display:none; } [data-block="table_of_contents"], .block-columns-col:has(> [data-block="table_of_contents"][data-sticky="true"]) { position: static; max-height:none; } }
+[data-block="table_of_contents"][data-border="false"] { border:0; }
+[data-block="table_of_contents"][data-shadow="subtle"] { box-shadow:0 2px 12px rgb(0 0 0 / .1); }
+[data-block="table_of_contents"][data-link-color="neutral"] a { color:inherit; }
+[data-block="table_of_contents"][data-list-style="chevron"] ol { list-style:none; padding-left:0; }
+[data-block="table_of_contents"][data-list-style="chevron"] li { position:relative; padding-inline-start:1em; }
+[data-block="table_of_contents"][data-list-style="chevron"] li::before { content:""; position:absolute; left:0; top:.5em; width:.35em; height:.35em; border-right:1.5px solid; border-top:1.5px solid; transform:rotate(45deg); }
 `.trim(),
   script: `
 window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };

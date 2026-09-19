@@ -863,6 +863,8 @@ export interface FieldDefinition {
   /** Stable child field identifying array/list items for answer provenance. */
   item_key?: string;
   responsive?: boolean;
+  /** Bounded numeric presentation variable emitted by the block renderer. */
+  css_unit?: 'px' | 'number';
   min?: number;
   max?: number;
   /** For type 'choices': which control markup the renderer derives. */

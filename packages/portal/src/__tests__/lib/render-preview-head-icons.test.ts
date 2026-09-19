@@ -48,6 +48,15 @@ describe('renderPreview — head icon links (SEOHead parity)', () => {
     expect(html!).toContain('<link rel="icon" type="image/png" sizes="192x192" href="/media/icon-192.png" />');
   });
 
+  it('uses native system font families without remote font requests', async () => {
+    await seedSite({ fonts: { heading: 'system', body: 'system-ui', size_base: 16 } });
+    const { renderPreview } = await import('../../lib/render-preview');
+    const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
+    expect(html).toContain('--font-body:-apple-system');
+    expect(html).not.toContain('fonts.googleapis.com');
+    expect(html).not.toContain("--font-heading:'system'");
+  });
+
   it('omits icon links when not set', async () => {
     await seedSite();
     const { renderPreview } = await import('../../lib/render-preview');

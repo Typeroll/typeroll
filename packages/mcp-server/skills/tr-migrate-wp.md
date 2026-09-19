@@ -5,6 +5,12 @@ description: Use when the user asks to migrate a WordPress site to Typeroll, men
 
 # Migrate from WordPress to Typeroll
 
+**Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
+Complete its source baseline and one verified prototype per active template.
+Read target content to protect edits, not to justify accidental target defaults.
+Its shared evidence record is required for visual acceptance.
+
+
 > **The buffer model (draft writes).** Every content write in this recipe
 > (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
@@ -58,10 +64,9 @@ Then the ordinary preconditions:
 - `@typeroll/mcp-server` configured with a valid `TYPEROLL_API_KEY`.
 - The source WP site has `/wp-json` reachable (Google for "wordpress
   REST API disabled" if not — common for hardened hosts).
-- The Typeroll target site exists **and already carries the design** —
-  settings, header/footer, one or two example pages. Import preserves content; shared templates define presentation. Agree whether
-  to preserve the original appearance or redesign it. Do not silently restyle
-  or rewrite imported text.
+- The target exists. Establish the source design baseline first, then prove
+  representative target templates using `tr-migration-evidence`. Preserve
+  appearance unless a redesign is explicitly requested.
 - If the target already has content, you must NOT clobber it — always
   `list_pages` first and only write to slugs that don't already exist.
 
@@ -78,7 +83,7 @@ Build a list of every URL you intend to migrate. WP custom post types
 need their REST endpoint (e.g. `/wp-json/wp/v2/news?per_page=100`),
 walking `X-WP-TotalPages` to paginate.
 
-### 2. Learn the target's design
+### 2. Measure the source and protect existing target work
 
 ```
 get_site
@@ -169,19 +174,12 @@ path? If yes, no redirect. If renamed, `create_redirect`. If
 intentionally dropped, mark it `excluded` via `update_migration_url` (the
 customer should sign off on every dropped URL).
 
-**Use wildcards for WordPress's URL families.** A WP site's dead URLs come in
-shapes, not as individuals — and the inventory only knows the ones it found,
-while the old site had more (paginated archives, feeds, attachment pages). One
-pattern rule retires the whole family:
-
-| WordPress shape | Rule |
-|---|---|
-| Intentionally retired category archives | `from_path="/category/*"` → `to_path="/blogg/:splat"` (or a single landing page) |
-| Intentionally retired tag archives | `from_path="/tag/*"` → `to_path="/blogg"` |
-| Author archives | `from_path="/author/*"` → `to_path="/om-oss"` |
-| Date-based permalinks | `from_path="/2019/*"` → `to_path="/blogg/:splat"` — one rule per year |
-| Old post prefix → new | `from_path="/blog/:slug"` → `to_path="/artiklar/:slug"` |
-| Feeds | `from_path="/feed/*"` → `to_path="/blogg"` |
+Use a pattern only after verifying every affected source-to-destination mapping.
+For an explicitly approved prefix change, `/old-blog/:slug` → `/articles/:slug`
+can preserve intent if each destination contains the corresponding article.
+Do not blanket-redirect category/tag/author/feed/year families to a home or blog
+page. Date paths need actual route mappings; stripping a year is not enough.
+Review source 404s rather than automatically excluding them.
 
 Rules:
 
@@ -194,7 +192,9 @@ Rules:
   `/blogg/*` would make every real article under `/blogg/` unreachable. Narrow
   the prefix instead.
 - **Query-string URLs can't be matched.** WP's `/?p=123` has no path to key on;
-  those need handling at the source (or accept the loss and mark them excluded).
+  these require an explicit query-routing solution on the future host or a
+  reviewed retirement decision. The old host cannot handle requests after its
+  hostname moves.
 - Rules are emitted most-specific-first, so a narrow rule always beats a broad
   one — you can safely have `/blogg/recept/*` alongside `/blogg/*`.
 

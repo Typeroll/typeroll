@@ -21,7 +21,7 @@ import type {
 } from '@typeroll/shared';
 import { vstore } from './version-store';
 import {
-  CONTENT_WELL_CSS,
+  CONTENT_WELL_CSS, fontFamilyCss, isSystemFont,
   pageRobots,
   breadcrumbJsonLd,
   applyTrailingSlash,
@@ -533,8 +533,8 @@ ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link re
   --color-surface:${c.surface};
   --color-text:${c.text};
   --color-text-light:${c.text_light};
-  --font-heading:'${f.heading}';
-  --font-body:'${f.body}';
+  --font-heading:${fontFamilyCss(f.heading)};
+  --font-body:${fontFamilyCss(f.body)};
   --font-size-base:${f.size_base}px;
   --spacing-xs:0.25rem; --spacing-sm:0.5rem; --spacing-md:1rem;
   --spacing-lg:2rem;   --spacing-xl:4rem;
@@ -645,7 +645,7 @@ function renderBanner(b: BannerArgs): string {
 }
 
 function buildFontUrl(heading: string, body: string): string | null {
-  const fams = Array.from(new Set([heading, body].filter(Boolean)));
+  const fams = Array.from(new Set([heading, body].filter(value => value && !isSystemFont(value))));
   if (!fams.length) return null;
   return `https://fonts.googleapis.com/css2?${fams
     .map((fam) => `family=${encodeURIComponent(fam)}:wght@400;500;600;700`)

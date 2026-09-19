@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import { fontFamilyCss, isSystemFont, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -110,15 +110,15 @@ const themeStyle = `:root{
   --color-surface:${c.surface};
   --color-text:${c.text};
   --color-text-light:${c.text_light};
-  --font-heading:'${f.heading}';
-  --font-body:'${f.body}';
+  --font-heading:${fontFamilyCss(f.heading)};
+  --font-body:${fontFamilyCss(f.body)};
   --font-size-base:${f.size_base}px;
 }`;
 
 const googleFontFamilies = (() => {
   const fams = new Set<string>();
-  if (f.heading) fams.add(f.heading);
-  if (f.body) fams.add(f.body);
+  if (f.heading && !isSystemFont(f.heading)) fams.add(f.heading);
+  if (f.body && !isSystemFont(f.body)) fams.add(f.body);
   return Array.from(fams);
 })();
 const googleFontUrl = googleFontFamilies.length

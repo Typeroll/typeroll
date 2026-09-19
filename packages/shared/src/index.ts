@@ -45,3 +45,5 @@ export * from './content-well.js';
 export { blockTreeError } from './block-tree-validation.js';
 
 export * from './seo-policy.js';
+
+export * from './fonts.js';

@@ -522,3 +522,45 @@ validation runs when freezing source and exporting content. It reads content and
 validates the export contract; it does not build the site or process images.
 Readiness is a preflight, not a guarantee that a later provider operation will
 succeed. Accepted jobs continue from their frozen source, not later edits.
+
+### Precise native presentation
+
+The **Core 0.2.25 candidate** adds optional dimensions without requiring custom CSS.
+Use `read_block_type` to confirm that the connected runtime exposes these fields;
+Cloud and self-hosted installations gain them when upgraded. Existing size presets
+remain the default. Numeric dimensions accept a number or a responsive object,
+for example `font_size_px: { mobile: 30, laptop: 48 }`. Breakpoints are mobile 0,
+tablet 640, laptop 1024, desktop 1280 and wide 1536 pixels. Values inherit from the
+previous breakpoint; dimensions are bounded by the field's minimum and maximum.
+
+| Block                | Additional controls                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Heading / Page title | `font_size_px`, unitless `line_height`, `color`; semantic `level` stays independent                                              |
+| Section              | `max_width_px` for the inner content, `content_gap_px`, `padding_x` (`auto`, `none`, `sm`, `md`, `lg`)                           |
+| Container            | `max_width_px`, `gap_px`, `padding_x_px`, `padding_y_px`                                                                         |
+| Two columns          | `gap_px`, `right_width_px`; columns still stack at 720px and below                                                               |
+| Site logo            | `height_px`, with intrinsic aspect ratio                                                                                         |
+| Icon box             | `icon_size_px`, `heading_size_px`, `min_height_px`, `padding_px`, `radius_px`, `background`, `shadow: subtle`, `whole_card_link` |
+| Table of contents    | `padding_px`, `radius_px`, `border`, `shadow: subtle`, `link_color: neutral`, `list_style: chevron`                              |
+| Breadcrumbs          | `padding_before_px`, `padding_after_px`, `divider`                                                                               |
+
+For an edge-to-edge composition use a top-level Container with `width: full`,
+`padding_x_px: 0`, `padding_y_px: 0` and `gap_px: 0`. Sections keep backgrounds
+full width while `max_width_px` constrains their inner content. A 1140px inner
+area with a 280px right column and 60px gap leaves 800px for the article when
+space permits. Use smaller responsive gaps on narrow screens.
+
+An Icon box with `whole_card_link: true` links its heading and stretches that
+single link over the card. Body links remain independently accessible. Supply a
+heading and link; an empty target never produces an empty anchor. In repeaters,
+map the heading and link from the referenced Page so navigation follows its route.
+
+Image blocks now explicitly reset their own image margin and `radius: none`.
+Prose images retain their prose styles. Keep `fit: contain` and `aspect_ratio: auto`
+to show the complete image; a crop remains an explicit editorial choice.
+
+Set `settings.fonts.heading` and/or `settings.fonts.body` to `system` for the
+visitor's native system font stack, with no Google Fonts request for that family.
+This works identically in preview and static output. Other values remain Google
+Fonts family names. Check geometry and keyboard focus at each relevant breakpoint
+before publishing; precise dimensions cannot replace visual review.

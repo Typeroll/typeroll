@@ -623,7 +623,7 @@ describe('renderBlock — style overrides', () => {
     expect(html).toContain('id="hero"');
     expect(html).toContain('class="fancy"');
     // heading's root already has style="text-align:…" — margin is appended.
-    expect(html).toMatch(/style="text-align:left;margin-top:2rem"/);
+    expect(html).toMatch(/style="text-align:left;--heading-color:;margin-top:2rem"/);
   });
 
   it('keeps a section a direct <section> child (full-bleed regression)', () => {

@@ -81,3 +81,19 @@ headings render as H2 without mutating storage. A Page without a template H1 can
 keep one body H1. The layout itself does not inject an additional title.
 `core/field_list` defaults to a 0.7rem row gap, weight-600 labels and values that
 wrap long URLs. Empty rows and entirely empty groups stay hidden.
+
+### Native precision (Core 0.2.25 candidate)
+
+Read current block schemas before relying on new controls. Heading/Page title
+support responsive `font_size_px`, unitless `line_height` and `color`. Sections
+separate full-width background from `max_width_px`, `padding_x` and
+`content_gap_px`; Containers add `max_width_px`, `gap_px`, `padding_x_px` and
+`padding_y_px`. Two columns add `gap_px` and `right_width_px`. Use numeric values
+or `{mobile, tablet, laptop, desktop, wide}` overrides, not CSS strings.
+Breadcrumbs have `padding_before_px`, `padding_after_px`, `divider`; TOC has
+`padding_px`, `radius_px`, `border`, `shadow`, `link_color: neutral` and
+`list_style: chevron`. Keep TOC generated from headings. Icon box adds native
+card dimensions and `whole_card_link`; map real Page URLs rather than freezing
+customer routes in HTML. Site logo accepts `height_px`. The `system` font family
+uses the device stack without a webfont request. Preserve complete images and
+validate actual mobile/desktop output, including scrolled outlines.

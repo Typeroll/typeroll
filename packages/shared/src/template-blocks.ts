@@ -11,6 +11,7 @@
 // title") which is much clearer.
 
 import type { BlockType } from './types.js';
+import { pixels, typographyFields } from './presentation-fields.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
 
@@ -30,10 +31,12 @@ const pageTitle: BlockType = {
       options: ['auto', 'theme', 'article', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'], default: 'auto', responsive: true },
     { name: 'align', type: 'select', label: 'Alignment',
       options: ['left', 'center', 'right'], default: 'left', responsive: true },
+    ...typographyFields,
+    { name: 'color', type: 'color', label: 'Text color' },
     { name: 'font_weight', type: 'select', label: 'Font weight', options: ['400', '500', '600', '700', '800'] },
     { name: 'fallback_text', type: 'text', label: 'Fallback (when no page)', default: 'Page title' },
   ],
-  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="text-align:{{align}}">
+  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="text-align:{{align}};--heading-color:{{color}}">
   <{{=level}} class="block-heading-text">{{page.title}}</{{=level}}>
 </div>`,
   origin: 'core',
@@ -138,13 +141,17 @@ const pageBreadcrumbs: BlockType = {
   category: 'content',
   container: false,
   schema: [
+    pixels('padding_before_px', 'Space above (px)', 0, 160),
+    pixels('padding_after_px', 'Space below (px)', 0, 160),
+    { name: 'divider', type: 'boolean', label: 'Bottom divider', default: false },
     { name: 'separator', type: 'select', label: 'Separator', options: ['chevron', 'slash', 'arrow'], default: 'chevron' },
     { name: 'home_label', type: 'text', label: 'Home label', default: 'Home' },
     { name: 'aria_label', type: 'text', label: 'Accessible navigation label', default: 'Breadcrumb' },
   ],
-  template: `<nav data-block="breadcrumbs" data-sep="{{separator}}" aria-label="{{aria_label}}">{{{breadcrumbs_html}}}</nav>`,
+  template: `<nav data-block="breadcrumbs" data-divider="{{divider}}" data-sep="{{separator}}" aria-label="{{aria_label}}">{{{breadcrumbs_html}}}</nav>`,
   styles: `
-[data-block="breadcrumbs"] { padding-block:var(--breadcrumbs-before, .75rem) var(--breadcrumbs-after, 2rem); width: 100%; min-width: 0; font-size: 0.875rem; color: var(--color-text-light, currentColor); }
+[data-block="breadcrumbs"] { padding-block:var(--padding_before_px, var(--breadcrumbs-before, .75rem)) var(--padding_after_px, var(--breadcrumbs-after, 2rem)); width: 100%; min-width: 0; font-size: 0.875rem; color: var(--color-text-light, currentColor); }
+[data-block="breadcrumbs"][data-divider="true"] { border-bottom:1px solid color-mix(in srgb, currentColor 18%, transparent); }
 [data-block="breadcrumbs"] ol { list-style: none; padding: 0; margin: 0; display: flex; align-items: baseline; gap: 0.35rem; flex-wrap: wrap; }
 [data-block="breadcrumbs"] li { min-width: 0; overflow-wrap: anywhere; }
 [data-block="breadcrumbs"] li:not(:last-child)::after { content: " › "; margin-inline: 0.35rem 0; opacity: 0.55; speak: never; }
@@ -168,6 +175,7 @@ const siteLogo: BlockType = {
   category: 'media',
   container: false,
   schema: [
+    pixels('height_px', 'Height (px)', 16, 240),
     { name: 'height', type: 'select', label: 'Height', options: ['sm', 'md', 'lg'], default: 'md' },
     { name: 'link_to_home', type: 'boolean', label: 'Link to home', default: true },
   ],
@@ -177,6 +185,8 @@ const siteLogo: BlockType = {
 [data-block="site-logo"][data-size="sm"] img { height: 1.5rem; }
 [data-block="site-logo"][data-size="md"] img { height: 2.5rem; }
 [data-block="site-logo"][data-size="lg"] img { height: 4rem; }
+[data-block="site-logo"][style*="--height_px:"] img { height:var(--height_px, 40px); }
+[data-block="site-logo"] img { width:auto; max-width:100%; object-fit:contain; margin:0; border-radius:0; }
 [data-block="site-logo"] img[src=""] { display: none; }
 `.trim(),
   origin: 'core',

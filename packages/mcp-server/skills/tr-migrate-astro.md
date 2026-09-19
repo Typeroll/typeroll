@@ -5,6 +5,12 @@ description: Migrate an existing Astro site, including Astro Content Collections
 
 # Migrate an Astro site
 
+**Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
+Complete its source baseline and one verified prototype per active template.
+Read target content to protect edits, not to justify accidental target defaults.
+Its shared evidence record is required for visual acceptance.
+
+
 Astro Content Collections are source data. In Typeroll, each source record
 becomes a Page, and each source schema becomes a Content type. Static Astro
 pages use that same Page model. Shared Astro layouts become Page templates,

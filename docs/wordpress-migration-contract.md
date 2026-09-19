@@ -88,3 +88,28 @@ shared renderer tests; `php wp-helper-plugin/tests/taxonomies.php`; browser
 `article-layout.spec.ts`; then `node scripts/oss-release-check.mjs`.
 The regression tests must reject the previous workflow/renderer. Production
 cutover also requires source-specific screenshots and live integration checks.
+
+## Source-first prototype gate (Core 0.2.25 guidance)
+
+Before bulk body or template writes, complete the shared
+`tr-migration-evidence` MCP skill. It defines one source baseline and evidence
+record used by WordPress, Astro, URL and multisite migrations. Measure source
+fonts, panels, geometry and interaction states; a partially migrated target is
+not a design reference. Prove a saved prototype for every active template and
+its overrides, reading back exact supported fields and comparing real output.
+A native block name or preserved unknown property does not prove support.
+Missing capability is `waiting_for_native_support`, not tenant-specific CSS.
+
+Record source/target URLs, actual viewports, top/scrolled screenshots, expected
+and actual measurements, read-back values, reviewer and exact publication.
+Keep visual judgment separate from HTTP/overflow checks. Invalidate affected
+acceptance after template/theme changes. Existing fidelity booleans remain
+attestations; this release does not add an automated visual score or independently
+verify screenshot contents.
+
+Historical PDF/image addresses and their bytes are separate requirements.
+Assess redirect intent and expanded provider artifact limits; do not exclude
+source 404s or redirect whole archive families without a reviewed decision.
+Inventory each market's actual business flow, with authorized synthetic tests
+and safe recipients. Loading, interaction and delivery have separate results.
+No domain/DNS cutover is implied by creating or inventorying a site.

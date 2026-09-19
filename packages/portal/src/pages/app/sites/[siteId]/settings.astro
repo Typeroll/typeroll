@@ -130,13 +130,15 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
 
     <div class="card stack">
       <h2 style="font-size: 1.125rem;">Typography</h2>
+      <datalist id="font-families"><option value="system">System font (no download)</option><option value="Inter" /></datalist>
+      <p>Use system for the visitor’s device font, or enter a Google Fonts family name.</p>
       <div class="field">
-        <label>Heading font (Google Fonts family name)</label>
-        <input name="fonts.heading" value={settings.fonts.heading} />
+        <label>Heading font</label>
+        <input list="font-families" name="fonts.heading" value={settings.fonts.heading} />
       </div>
       <div class="field">
         <label>Body font</label>
-        <input name="fonts.body" value={settings.fonts.body} />
+        <input list="font-families" name="fonts.body" value={settings.fonts.body} />
       </div>
       <div class="field">
         <label>Base font size (px)</label>
