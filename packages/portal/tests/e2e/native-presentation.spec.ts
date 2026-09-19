@@ -143,3 +143,79 @@ test('configured column stacking releases the outline track and preserves deskto
   await expect(page.getByText('Other sidebar content')).toBeVisible();
   expect(await page.locator('[data-block="columns"]').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(2);
 });
+
+test('asymmetric padding and precise grid gaps follow viewport settings without leaking', async ({ page }, info) => {
+  const padding = { padding_top_px: { mobile: 12, tablet: 20, laptop: 25 }, padding_bottom_px: { mobile: 35, tablet: 50, laptop: 60 } };
+  const gap = { mobile: 15, tablet: 20, laptop: 25 };
+  const tree: Block[] = [
+    { id: 'panel', type: 'core/container', data: { ...padding, padding_y_px: 99, width: 'full' }, children: [heading('hero-label', 'Hero title')] },
+    { id: 'flow-panel', type: 'core/container', data: { ...padding, layout: 'flow', padding_y_px: 99 }, children: [heading('flow-label', 'Flow title')] },
+    { id: 'fallback', type: 'core/container', data: { padding_y_px: 7, padding_top_px: 0 }, children: [{ id: 'nested-padding', type: 'core/container', data: { padding_y: 'none' }, children: [] }] },
+    { id: 'grid', type: 'core/grid', data: { cols: 4, gap_px: gap }, children: [1,2,3,4].map(i => heading(`g${i}`, 'Card')) },
+    { id: 'repeater', type: 'core/repeater', data: { cols: 4, mobile_cols: 2, gap_px: gap, item_block: 'core/icon_box', items: [1,2,3,4].map(i => ({ heading: `Card ${i}` })) } },
+    { id: 'alias', type: 'core/feature_grid', data: { cols: 4, gap_px: gap, items: [{ heading: 'Alias card' }] } },
+    { id: 'outer-grid', type: 'core/grid', data: { gap_px: 55 }, children: [{ id: 'inner-grid', type: 'core/grid', data: { gap: 'sm' }, children: [heading('nested-h', 'Nested')] }, { id: 'inner-repeater', type: 'core/repeater', data: { gap: 'sm', item_block: 'core/icon_box', items: [{ heading: 'Nested card' }] } }] },
+  ];
+  await page.setContent(documentHtml(tree).replace('class="page-content page-content--blocks"', ''));
+  // The measurement well matches the source without any corrective block CSS.
+  await page.addStyleTag({ content: 'main{max-width:1160px;margin:auto}' });
+  for (const width of [390, 768, 1280]) {
+    await page.setViewportSize({ width, height: 950 });
+    for (const title of ['Hero title', 'Flow title']) {
+      expect(await page.getByText(title, { exact: true }).locator('../..').evaluate(el => [getComputedStyle(el).paddingTop, getComputedStyle(el).paddingBottom])).toEqual(width === 390 ? ['12px','35px'] : width === 768 ? ['20px','50px'] : ['25px','60px']);
+    }
+    for (const id of ['grid', 'repeater', 'alias']) expect(await page.locator(`[data-block][data-bid="${id}"]`).evaluate(el => getComputedStyle(el).gap)).toBe(`${width === 390 ? 15 : width === 768 ? 20 : 25}px`);
+    expect(await page.locator('[data-block="grid"][data-bid="grid"]').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(width === 390 ? 1 : 4);
+    if (width === 1280) expect((await page.locator('[data-bid="repeater"] > [data-block="icon_box"]').first().boundingBox())!.width).toBe(271.25);
+    expect(await page.locator('[data-block="grid"] [data-block="grid"]').evaluate(el => getComputedStyle(el).gap)).toBe('8px');
+    expect(await page.locator('[data-block="grid"] [data-block="repeater"]').evaluate(el => getComputedStyle(el).gap)).toBe('8px');
+    expect(await page.locator('[data-block="container"] [data-block="container"]').evaluate(el => getComputedStyle(el).paddingTop)).toBe('0px');
+    await page.screenshot({ path: info.outputPath(`precise-spacing-${width}.png`), fullPage: true });
+  }
+});
+
+test('native sticky headers preserve navigation and outline anchor feedback with scroll padding', async ({ page }, info) => {
+  const body: Block[] = [heading('first', 'First section'), { id: 'spacer', type: 'core/prose', data: { html: '<p>Read the full article.</p>'.repeat(20) } }, heading('second', 'Pack electronics'), { id: 'tail', type: 'core/prose', data: { html: '<p>More article text.</p>'.repeat(50) } }];
+  const header: Block = { id: 'sticky-header', type: 'core/container', data: { tag: 'header', sticky: true, width: 'full', padding_y_px: 26.5, padding_x_px: 25, background: '#ffffff', direction: 'row', align_main: 'space-between', align_cross: 'center' }, children: [
+    { id: 'header-logo', type: 'template/site_logo', data: { height_px: 50 } },
+    { id: 'menu', type: 'core/navigation', data: { links: [{ label: 'Home', href: '/' }, { label: 'Sections', href: '#first-section' }] } },
+  ] };
+  const article: Block = { id: 'columns', type: 'core/columns', data: { right_width_px: 280, stack_below: '1024' }, slots: [body, [{ id: 'outline', type: 'core/table_of_contents', data: {} }]] };
+  const assets = collectBlockAssets([header, article], registry);
+  const render = (tree: Block[]) => prepareHeadingOutline(renderBlocks(tree, { registry, context: { site: { logo: image, name: 'Example' }, page: { content_mode: 'blocks', blocks: body } } })).html;
+  const fixture = (sticky: boolean, padding: number) => {
+    header.data.sticky = sticky;
+    return `<!doctype html><meta name="viewport" content="width=device-width"><style>*{box-sizing:border-box}body{margin:0}${css}${assets.css}html{scroll-padding-top:${padding}px}main{max-width:1140px;margin:auto}</style>${render([header])}<main>${render([article])}</main>`;
+  };
+  for (const sticky of [false, true]) for (const padding of [0, 120]) {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.setContent(fixture(sticky, padding));
+    await page.addScriptTag({ content: `window.TyperollBlocks={register(name,init){document.querySelectorAll(name==='core/navigation'?'[data-block="navigation"]':'[data-block="table_of_contents"]').forEach(init)}};${registry.get('core/navigation')!.script}\n${registry.get('core/table_of_contents')!.script}` });
+    const link = page.locator('[data-block="table_of_contents"]').getByRole('link', { name: 'Pack electronics' });
+    await link.click();
+    await expect(link).toHaveAttribute('aria-current', 'location');
+    expect(await page.locator('[aria-current="location"]').count()).toBe(1);
+    const target = page.locator('#pack-electronics');
+    await expect.poll(async () => (await target.boundingBox())!.y).toBeCloseTo((sticky ? 103 : 0) + 16 + padding, 0);
+    if (sticky) {
+      expect((await page.locator('header').boundingBox())!.y).toBe(0);
+      expect((await page.locator('header').boundingBox())!.height).toBe(103);
+      const menuLink = page.getByRole('link', { name: 'Sections', exact: true });
+      await menuLink.hover();
+      const point = (await menuLink.boundingBox())!;
+      expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('a')?.textContent, { x: point.x + 5, y: point.y + 5 })).toBe('Sections');
+    } else expect((await page.locator('header').boundingBox())!.y).toBeLessThan(0);
+    await page.evaluate(() => scrollTo(0, 0));
+    await expect(page.locator('[data-block="table_of_contents"] a').first()).toHaveAttribute('aria-current', 'location');
+    await link.focus(); await page.keyboard.press('Enter');
+    await expect(link).toHaveAttribute('aria-current', 'location');
+    if (sticky && padding === 0) {
+      await page.screenshot({ path: info.outputPath('native-sticky-anchor.png') });
+      await page.setViewportSize({ width: 390, height: 800 });
+      const toggle = page.locator('.block-navigation-toggle');
+      await toggle.click(); await expect(page.locator('.block-navigation-list')).toBeVisible();
+      await page.keyboard.press('Escape'); await expect(toggle).toBeFocused();
+      await expect(page.locator('.block-navigation-list')).toBeHidden();
+    }
+  }
+});

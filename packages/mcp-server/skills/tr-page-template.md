@@ -104,3 +104,13 @@ Columns `stack_below` accepts the select strings `"721"` (default), `"768"`,
 it in flow. Use `"1024"` for full article width below laptop when justified by
 the source comparison. Do not merely hide the TOC with `hidden_on` while leaving
 a reserved two-column track, or duplicate body content for tablet/desktop.
+
+For a sticky site header, use an outer semantic Container (`tag: "header"`,
+`sticky: true`, optional responsive `sticky_top_px`, 0–240) outside main. Keep
+its background opaque and its containing block tall enough; do not create a
+short header wrapper or clip it with ancestor overflow. Sticky is opt-in.
+Container `padding_top_px`/`padding_bottom_px` override `padding_y_px` per side
+and accept responsive maps. Grid/Repeater and repeater aliases expose responsive
+`gap_px` (0–240). Use these fields for exact source spacing rather than empty
+spacers or corrective CSS. TOC active-section feedback includes document scroll
+padding; remove obsolete duplicated tenant header offsets during migration.

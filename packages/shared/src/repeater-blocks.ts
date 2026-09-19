@@ -1,3 +1,4 @@
+import { pixels } from './presentation-fields.js';
 // `core/repeater` and its alias blocks. Together they replace the
 // "specialised widget per layout × per item-shape" model with a single
 // primitive that takes a source (static items or a collection query), an
@@ -62,6 +63,7 @@ const repeater: BlockType = {
     { name: 'layout', type: 'select', label: 'Layout',
       options: ['grid', 'masonry', 'list', 'carousel', 'justified', 'stack'], default: 'grid' },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 6, responsive: true },
+    pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
     { name: 'gap', type: 'select', label: 'Gap', options: ['auto', 'none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true },
     { name: 'align', type: 'select', label: 'Item alignment', options: ['start', 'center', 'end', 'stretch'], default: 'stretch', responsive: true },
@@ -95,32 +97,32 @@ const repeater: BlockType = {
      redundant with this rule AND shadowed the responsive values via higher
      specificity — an attribute-substring match can't see a computed var.) */
   display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
-  gap: var(--rep-gap); align-items: var(--align, stretch);
+  gap: var(--gap_px, var(--rep-gap)); align-items: var(--align, stretch);
 }
 
 [data-block="repeater"][data-layout="justified"] {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: var(--rep-gap); align-items: var(--align, stretch);
+  gap: var(--gap_px, var(--rep-gap)); align-items: var(--align, stretch);
 }
 
 [data-block="repeater"][data-layout="list"] {
-  display: flex; flex-direction: column; gap: var(--rep-gap);
+  display: flex; flex-direction: column; gap: var(--gap_px, var(--rep-gap));
 }
 
 [data-block="repeater"][data-layout="stack"] {
-  display: flex; flex-wrap: wrap; gap: var(--rep-gap); align-items: var(--align, center);
+  display: flex; flex-wrap: wrap; gap: var(--gap_px, var(--rep-gap)); align-items: var(--align, center);
 }
 
 [data-block="repeater"][data-layout="masonry"] {
-  column-count: var(--cols, 3); column-gap: var(--rep-gap);
+  column-count: var(--cols, 3); column-gap: var(--gap_px, var(--rep-gap));
 }
-[data-block="repeater"][data-layout="masonry"] > * { break-inside: avoid; margin-bottom: var(--rep-gap); }
+[data-block="repeater"][data-layout="masonry"] > * { break-inside: avoid; margin-bottom: var(--gap_px, var(--rep-gap)); }
 
 [data-block="repeater"][data-layout="carousel"] {
-  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: var(--rep-gap);
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: var(--gap_px, var(--rep-gap));
   scrollbar-width: thin;
 }
-[data-block="repeater"][data-layout="carousel"] > * { flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--rep-gap)) / var(--cols, 3)); scroll-snap-align: start; }
+[data-block="repeater"][data-layout="carousel"] > * { flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap))) / var(--cols, 3)); scroll-snap-align: start; }
 
 .tr-repeater-group + .tr-repeater-group { margin-top: 2rem; }
 .tr-repeater-group-title { margin: 0 0 0.75rem; }
@@ -179,6 +181,7 @@ const gallery: BlockType = {
         { name: 'link', type: 'url', label: 'Link' },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 6, responsive: true },
+    pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
     { name: 'layout', type: 'select', label: 'Layout', options: ['grid', 'masonry', 'justified'], default: 'grid' },
     { name: 'gap', type: 'select', label: 'Gap', options: ['auto', 'none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true },
@@ -217,6 +220,7 @@ const logoCloud: BlockType = {
         { name: 'grayscale', type: 'boolean', label: 'Greyscale', default: true },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 6, min: 2, max: 8, responsive: true },
+    pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
   ],
   origin: 'core',
@@ -257,6 +261,7 @@ const testimonials: BlockType = {
       ] },
     { name: 'layout', type: 'select', label: 'Layout', options: ['carousel', 'grid'], default: 'carousel' },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },
+    pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
   ],
   origin: 'core',
@@ -292,6 +297,7 @@ const featureGrid: BlockType = {
         { name: 'link', type: 'url', label: 'Link' },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },
+    pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
   ],
   origin: 'core',
@@ -337,6 +343,7 @@ const pricingTable: BlockType = {
         { name: 'badge', type: 'text', label: 'Badge' },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 2, max: 4, responsive: true },
+    pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
   ],
   origin: 'core',
@@ -373,6 +380,7 @@ const teamGrid: BlockType = {
         { name: 'link', type: 'url', label: 'Profile link' },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 4, min: 2, max: 6, responsive: true },
+    pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
   ],
   origin: 'core',
@@ -424,6 +432,7 @@ const collectionList: BlockType = {
     ] },
     { name: 'layout', type: 'select', label: 'Layout', options: ['grid', 'list', 'carousel', 'masonry'], default: 'grid' },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },
+    pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
     { name: 'gap', type: 'select', label: 'Gap', options: ['sm', 'md', 'lg'], default: 'md' },
     { name: 'empty_state', type: 'richtext', label: 'Empty-state message' },

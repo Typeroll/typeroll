@@ -16,6 +16,20 @@ describe('bounded native presentation', () => {
     expect(css).toContain('--max_width_px:initial');
     expect(render('core/container', {})).toContain('data-presentation="core%2Fcontainer"');
   });
+  it('bounds precise padding and repeater gaps through primitives and aliases', () => {
+    for (const type of ['core/repeater', 'core/feature_grid', 'core/page_list', 'core/gallery']) {
+      const html = render(type, { source_type: 'static', item_block: 'core/icon_box', items: [{ heading: 'Card' }], gap_px: { mobile: 15, tablet: 20, laptop: 25 } });
+      expect(html).toContain('--gap_px:15px');
+      expect(html).toContain('--gap_px: 25px !important');
+      expect(html).toContain('data-presentation="core%2Frepeater"');
+    }
+    const data = { item_block: 'core/icon_box', items: [{ heading: 'Card' }] };
+    expect(render('core/repeater', { ...data, gap_px: 9999 })).toContain('--gap_px:240px');
+    expect(render('core/repeater', { ...data, gap_px: '10px;color:red' })).not.toContain('color:red');
+    expect(render('core/container', { padding_top_px: 0, padding_bottom_px: 999 })).toContain('--padding_top_px:0px;--padding_bottom_px:240px');
+    expect(render('core/container', {})).toContain('data-sticky="false"');
+    expect(render('core/container', { sticky: true, sticky_top_px: -10 })).toContain('--sticky_top_px:0px');
+  });
   it('gives an entire card one named link without nesting body links', () => {
     const html = render('core/icon_box', { heading: 'Packing', link: '/packing/', whole_card_link: true, text: '<a href="/help/">Help</a>', icon: '📦' });
     expect(html).toContain('<a href="/packing/">Packing</a>');

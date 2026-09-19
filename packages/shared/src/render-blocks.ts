@@ -411,6 +411,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   // sanitizeCssId() escapes anything else.
   const bid = sanitizeCssId(effectiveBlock.id);
   const rootAttrs: Record<string, string> = {};
+  if (blockType.id === 'core/grid' && isResponsiveValue(effectiveBlock.data.cols)) rootAttrs['data-responsive-cols'] = 'true';
   if (blockType.schema.some(field => field.css_unit)) rootAttrs['data-presentation'] = encodeURIComponent(blockType.id);
   // data-bid is normally only needed when responsive overrides target it —
   // but an instance script's IIFE resolves its own element by this selector,
@@ -719,7 +720,7 @@ function renderPager(
  */
 function wrapRepeater(
   block: Block,
-  _blockType: BlockType,
+  blockType: BlockType,
   data: Record<string, unknown>,
   inner: string,
 ): string {
@@ -731,11 +732,15 @@ function wrapRepeater(
   const mobileCols = typeof mobile === 'number' && Number.isInteger(mobile) && mobile >= 1 && mobile <= 6 ? mobile : 1;
   const gap = String(data.gap ?? 'md');
   const align = String(data.align ?? 'stretch');
+  const dimensions = blockType.schema.flatMap(field => {
+    const value = numericPresentationValue(field, data[field.name]);
+    return value === undefined ? [] : [`--${field.name}:${value}`];
+  }).join(';');
 
   // The repeater's own outer element. Tier 1 grid styles map --cols → grid;
   // the additional layouts (list, carousel, stack, masonry) get inline
   // CSS classes that the runtime CSS bundle styles.
-  return `<div data-block="repeater" data-bid="${bid}" data-layout="${escapeHtml(layout)}" style="--cols:${escapeHtml(cols)};--mobile-cols:${mobileCols};--gap:${escapeHtml(gap)};--align:${escapeHtml(align)}">${inner}</div>`;
+  return `<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="${escapeHtml(layout)}" style="--cols:${escapeHtml(cols)};--mobile-cols:${mobileCols};--gap:${escapeHtml(gap)};--align:${escapeHtml(align)};${dimensions}">${inner}</div>`;
 }
 
 /**

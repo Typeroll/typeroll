@@ -37,3 +37,18 @@ it('keeps an empty server outline empty even when the template has its own headi
   expect(document.querySelectorAll('nav a')).toHaveLength(0);
   expect(document.querySelector('nav')?.getAttribute('data-empty')).toBe('true');
 });
+
+it('uses the fragment landing line including document scroll padding', () => {
+  vi.spyOn(window, 'requestAnimationFrame').mockImplementation(fn => { fn(0); return 1; });
+  document.documentElement.style.scrollPaddingTop = '120px';
+  document.body.innerHTML = '<main><nav data-levels="h2"><ol><li><a href="#one">First</a></li><li><a href="#two">Second</a></li></ol></nav><h2 id="one">First</h2><h2 id="two">Second</h2></main>';
+  let secondTop = 136.234375;
+  vi.spyOn(document.getElementById('one')!, 'getBoundingClientRect').mockImplementation(() => ({ top: -117.46875 }) as DOMRect);
+  vi.spyOn(document.getElementById('two')!, 'getBoundingClientRect').mockImplementation(() => ({ top: secondTop }) as DOMRect);
+  initialize();
+  expect(document.querySelector('[aria-current="location"]')?.getAttribute('href')).toBe('#two');
+  secondTop = 180; window.dispatchEvent(new Event('scroll'));
+  expect(document.querySelector('[aria-current="location"]')?.getAttribute('href')).toBe('#one');
+  expect(document.querySelectorAll('[aria-current="location"]')).toHaveLength(1);
+  document.documentElement.style.removeProperty('scroll-padding-top');
+});

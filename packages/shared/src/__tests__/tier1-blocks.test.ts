@@ -315,7 +315,7 @@ describe('core/grid — last_row centering', () => {
     expect(grid?.styles).toContain('justify-content: center');
     // flex-basis derives from the same vars the responsive system writes —
     // --cols directly, so per-breakpoint responsive overrides flow through
-    expect(grid?.styles).toContain('var(--cols, 3) - 1) * var(--block-gap, 1rem)');
+    expect(grid?.styles).toContain('var(--cols, 3) - 1) * var(--gap_px, var(--block-gap, 1rem))');
     // flex stretch must own row-height equalization (child height:100% is a grid-ism)
     expect(grid?.styles).toMatch(/data-last-row="center"\] > \*[^}]*height: auto/s);
   });
@@ -330,7 +330,7 @@ describe('core/grid — last_row centering', () => {
     // stack_at collapse targets --cols and MUST be !important to beat the
     // inline `style="--cols:N"` baseline (an inline custom property otherwise
     // wins the cascade and the grid never collapses).
-    expect(grid?.styles).toContain(':not([data-bid]) { --cols: 1 !important; }');
+    expect(grid?.styles).toContain(':not([data-responsive-cols="true"]) { --cols: 1 !important; }');
   });
 
   it('emits per-breakpoint --cols @media rules that the grid CSS consumes', () => {

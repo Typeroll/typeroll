@@ -533,16 +533,16 @@ for example `font_size_px: { mobile: 30, laptop: 48 }`. Breakpoints are mobile 0
 tablet 640, laptop 1024, desktop 1280 and wide 1536 pixels. Values inherit from the
 previous breakpoint; dimensions are bounded by the field's minimum and maximum.
 
-| Block                | Additional controls                                                                                                              |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Heading / Page title | `font_size_px`, unitless `line_height`, `color`; semantic `level` stays independent                                              |
-| Section              | `max_width_px` for the inner content, `content_gap_px`, `padding_x` (`auto`, `none`, `sm`, `md`, `lg`)                           |
-| Container            | `max_width_px`, `gap_px`, `padding_x_px`, `padding_y_px`                                                                         |
-| Two columns          | `gap_px`, `right_width_px`; optional `stack_below` selects the shared column/outline boundary                                    |
-| Site logo            | `height_px`, with intrinsic aspect ratio                                                                                         |
-| Icon box             | `icon_size_px`, `heading_size_px`, `min_height_px`, `padding_px`, `radius_px`, `background`, `shadow: subtle`, `whole_card_link` |
-| Table of contents    | `padding_px`, `radius_px`, `border`, `shadow: subtle`, `link_color: neutral`, `list_style: chevron`                              |
-| Breadcrumbs          | `padding_before_px`, `padding_after_px`, `divider`                                                                               |
+| Block                | Additional controls                                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Heading / Page title | `font_size_px`, unitless `line_height`, `color`; semantic `level` stays independent                                                  |
+| Section              | `max_width_px` for the inner content, `content_gap_px`, `padding_x` (`auto`, `none`, `sm`, `md`, `lg`)                               |
+| Container            | `max_width_px`, `gap_px`, `padding_x_px`, `padding_y_px`, `padding_top_px`, `padding_bottom_px`; opt-in `sticky` and `sticky_top_px` |
+| Two columns          | `gap_px`, `right_width_px`; optional `stack_below` selects the shared column/outline boundary                                        |
+| Site logo            | `height_px`, with intrinsic aspect ratio                                                                                             |
+| Icon box             | `icon_size_px`, `heading_size_px`, `min_height_px`, `padding_px`, `radius_px`, `background`, `shadow: subtle`, `whole_card_link`     |
+| Table of contents    | `padding_px`, `radius_px`, `border`, `shadow: subtle`, `link_color: neutral`, `list_style: chevron`                                  |
+| Breadcrumbs          | `padding_before_px`, `padding_after_px`, `divider`                                                                                   |
 
 For an edge-to-edge composition use a top-level Container with `width: full`,
 `padding_x_px: 0`, `padding_y_px: 0` and `gap_px: 0`. Sections keep backgrounds
@@ -575,3 +575,25 @@ the two-column layout. An empty generated outline never reserves a spare track
 or row; other sidebar blocks remain visible. Standalone outlines retain their
 720px mobile behavior. Select the breakpoint from measured source/readability
 needs, not solely from whether the layout overflows.
+
+Container `padding_top_px` and `padding_bottom_px` independently override
+`padding_y_px` (then the spacing token). All three accept breakpoint maps; zero
+is a real value. For example, a hero can use top padding
+`{ "mobile": 12, "tablet": 20, "laptop": 25 }` and bottom padding
+`{ "mobile": 35, "tablet": 50, "laptop": 60 }` without spacer blocks.
+
+Grid, Repeater and its aliases accept `gap_px` (0–240, responsive). This overrides
+`gap` for that instance across grid, list, carousel and other repeater layouts.
+For example `{ "mobile": 15, "tablet": 20, "laptop": 25 }` gives four 271.25px
+cards in a 1160px desktop well. Nested layouts use their own settings.
+
+For a persistent site header, make the header partial's outer Container a
+`tag: "header"` with `sticky: true`. It stays in normal document flow until it
+reaches `sticky_top_px` (default 0; optional responsive 0–240px) and uses stacking
+level 100. Choose an opaque background. Keep it outside the article/main and
+avoid a short enclosing wrapper or overflow-clipping ancestor: CSS sticky is
+bounded by its containing block. Other Containers remain static by default.
+The outline measures the actual sticky header for its top clearance and anchor
+scroll margins. Its active-heading feedback also accounts for document
+`scroll-padding-top`; remove obsolete tenant offsets when they duplicate the
+native clearance, rather than adding another compensation.

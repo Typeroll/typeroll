@@ -54,6 +54,10 @@ const container: BlockType = {
     pixels('gap_px', 'Gap (px)', 0, 240),
     pixels('padding_x_px', 'Horizontal padding (px)', 0, 240),
     pixels('padding_y_px', 'Vertical padding (px)', 0, 240),
+    pixels('padding_top_px', 'Top padding (px)', 0, 240),
+    pixels('padding_bottom_px', 'Bottom padding (px)', 0, 240),
+    { name: 'sticky', type: 'boolean', label: 'Sticky at top', default: false },
+    pixels('sticky_top_px', 'Sticky top offset (px)', 0, 240),
     { name: 'background', type: 'color', label: 'Background color' },
     { name: 'background_image', type: 'image', label: 'Background image' },
     { name: 'min_height', type: 'select', label: 'Minimum height', options: ['auto', 'sm', 'md', 'lg', 'screen'], default: 'auto' },
@@ -62,7 +66,7 @@ const container: BlockType = {
   // named `--{field-name}` so the @media compiler can override it cleanly.
   // Layout-control CSS reads `var(--gap)` etc. and maps the token (sm/md/lg)
   // to a real rem value via attribute-selectors against the inline style.
-  template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-rhythm="{{rhythm}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{inline_style}}">{{children}}</{{=tag}}>`,
+  template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-rhythm="{{rhythm}}" data-sticky="{{sticky}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{inline_style}}">{{children}}</{{=tag}}>`,
   styles: `
 /* Opt-in article flow; never change heading spacing in unrelated layouts. */
 [data-block="semantic-container"][data-rhythm="article"] { display:flow-root; }
@@ -72,7 +76,7 @@ const container: BlockType = {
 [data-block="container"] {
   display: flex; flex-direction: var(--direction, column); flex-wrap: var(--wrap, wrap);
   gap: var(--gap_px, var(--block-gap, 1rem)); justify-content: var(--align_main, flex-start); align-items: var(--align_cross, stretch);
-  padding-block: var(--padding_y_px, var(--block-py, 2rem)); padding-inline: var(--padding_x_px, var(--block-px, 1rem));
+  padding-block: var(--padding_top_px, var(--padding_y_px, var(--block-py, 2rem))) var(--padding_bottom_px, var(--padding_y_px, var(--block-py, 2rem))); padding-inline: var(--padding_x_px, var(--block-px, 1rem));
   background: var(--bg, transparent);
 }
 [data-block="container"][style*="--bg-image:url("] { background-image: var(--bg-image); background-size: cover; background-position: center; }
@@ -100,7 +104,8 @@ const container: BlockType = {
 [data-block="container"][style*="--padding_x:md"]   { --block-px: 1rem; }
 [data-block="container"][style*="--padding_x:lg"]   { --block-px: 2rem; }
 [data-block="container"][style*="--padding_x:xl"]   { --block-px: 3rem; }
-[data-block="semantic-container"] { display: flow-root; max-width:var(--max_width_px, none); padding-inline:var(--padding_x_px, 0); padding-block:var(--padding_y_px, 0); }
+[data-block="semantic-container"] { display: flow-root; max-width:var(--max_width_px, none); padding-inline:var(--padding_x_px, 0); padding-block:var(--padding_top_px, var(--padding_y_px, 0)) var(--padding_bottom_px, var(--padding_y_px, 0)); }
+:is([data-block="container"], [data-block="semantic-container"])[data-sticky="true"] { position:sticky; top:var(--sticky_top_px,0px); z-index:100; }
 [data-block="semantic-container"][style*="--gap_px:"] > * + * { margin-top:var(--gap_px, 0); }
 `.trim(),
   origin: 'core',
@@ -122,6 +127,7 @@ const grid: BlockType = {
   schema: [
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 6, responsive: true },
     { name: 'gap', type: 'select', label: 'Gap', options: ['auto', 'none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true },
+    pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'align', type: 'select', label: 'Alignment', options: ['start', 'center', 'end', 'stretch'], default: 'stretch', responsive: true },
     {
       name: 'stack_at',
@@ -155,7 +161,7 @@ const grid: BlockType = {
      (both the responsive compiler's and stack_at below) must be !important
      to win the cascade. */
   grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
-  gap: var(--block-gap, 1rem);
+  gap: var(--gap_px, var(--block-gap, 1rem));
   align-items: var(--align, stretch);
 }
 /* last_row:center — flex columns so a partial last row auto-centers.
@@ -167,7 +173,7 @@ const grid: BlockType = {
   justify-content: center;
 }
 [data-block="grid"][data-last-row="center"] > * {
-  flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--block-gap, 1rem)) / var(--cols, 3));
+  flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--block-gap, 1rem))) / var(--cols, 3));
   min-width: 0;
   /* grid tracks equalized row heights; in flex that job belongs to the
      line's align stretch — a child height:100% (the grid-ism) breaks it */
@@ -180,21 +186,21 @@ const grid: BlockType = {
 [data-block="grid"][style*="--gap:lg"]   { --block-gap: 2rem; }
 [data-block="grid"][style*="--gap:xl"]   { --block-gap: 3rem; }
 /* stack_at — collapse to one column below a width. Only for grids WITHOUT
-   per-instance responsive cols (:not([data-bid])); when the author set
+   per-instance responsive cols (:not([data-responsive-cols="true"])); when the author set
    responsive cols, those @media overrides own the column count instead.
    !important is REQUIRED: the column count rides on an inline style=--cols:N
    baseline, and an inline custom property outranks any stylesheet rule — so a
    plain non-important --cols:1 here is shadowed by the inline value and the
    grid never collapses. (Verified in-browser.) */
 @media (max-width: 720px) {
-  [data-block="grid"][data-stack-at="sm"]:not([data-bid]),
+  [data-block="grid"][data-stack-at="sm"]:not([data-responsive-cols="true"]),
   [data-block="grid"]:not([data-stack-at]):not([data-bid]) { --cols: 1 !important; }
 }
 @media (max-width: 900px) {
-  [data-block="grid"][data-stack-at="md"]:not([data-bid]) { --cols: 1 !important; }
+  [data-block="grid"][data-stack-at="md"]:not([data-responsive-cols="true"]) { --cols: 1 !important; }
 }
 @media (max-width: 1000px) {
-  [data-block="grid"][data-stack-at="lg"]:not([data-bid]) { --cols: 1 !important; }
+  [data-block="grid"][data-stack-at="lg"]:not([data-responsive-cols="true"]) { --cols: 1 !important; }
 }
 `.trim(),
   origin: 'core',
@@ -1476,7 +1482,11 @@ window.TyperollBlocks.register('core/table_of_contents', (el) => {
     }
     if (el.dataset.highlightActive === 'false') return;
     let current = entries[0];
-    for (const entry of entries) if (entry.heading.getBoundingClientRect().top <= top + 1) current = entry;
+    // Fragment navigation adds the scroll container's padding to the target's
+    // scroll margin. Use that same landing line for active-section feedback.
+    const scrollPadding = getComputedStyle(document.scrollingElement || document.documentElement).scrollPaddingTop;
+    const padding = (parseFloat(scrollPadding) || 0) * (scrollPadding.endsWith('%') ? window.innerHeight / 100 : 1);
+    for (const entry of entries) if (entry.heading.getBoundingClientRect().top <= top + padding + 1) current = entry;
     links.forEach(link => link.removeAttribute('aria-current'));
     if (current) current.link.setAttribute('aria-current', 'location');
   };
