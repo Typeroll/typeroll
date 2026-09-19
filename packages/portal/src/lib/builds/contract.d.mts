@@ -15,6 +15,9 @@ export function encodeArtifact(identity: BuildIdentity, files: Record<string, Ui
 export function decodeArtifact(bytes: Buffer, identity: BuildIdentity, expectedHash: string): Record<string, Buffer>;
 
 export const SEO_VALIDATOR_VERSION: number;
+export const MAX_SEO_REPORT_CHARACTERS: number;
+export const MAX_SEO_REPORT_BYTES: number;
+export const MAX_RUNNER_RESULT_BYTES: number;
 export interface SeoIssue { code: string; url: string; source: { file: string; line: number; element?: string; block_id?: string; page_id?: string; field?: string }; message: string; remediation: string }
 export interface SeoReport { version: number; publication_id: string; source_sha256: string; configuration_sha256: string; artifact_tree_sha256: string; checked_pages: number; passed: boolean; error_count: number; warning_count: number; errors: SeoIssue[]; warnings: SeoIssue[]; artifact_sha256?: string }
 export function seoReport(value: unknown, publicationId: string): SeoReport;

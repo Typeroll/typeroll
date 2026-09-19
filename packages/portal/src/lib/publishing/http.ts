@@ -44,10 +44,11 @@ export async function connectionBody(request: Request): Promise<unknown> {
 }
 
 /** Shared bounded JSON parser for authenticated API and same-origin cookie handlers. */
-export async function publishingJsonBody(request: Request): Promise<Record<string, unknown>> {
+export async function publishingJsonBody(request: Request, maxBytes = 8192): Promise<Record<string, unknown>> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 1024 * 1024) throw new Error('Invalid JSON byte limit');
   if (!request.headers.get('content-type')?.startsWith('application/json')) throw new ConnectionError('Expected JSON connection data', 415);
   // Bound both declared and streamed bodies; tokens are never reflected in errors.
-  if (Number(request.headers.get('content-length')) > 8192) throw new ConnectionError('Connection data is too large', 413);
+  if (Number(request.headers.get('content-length')) > maxBytes) throw new ConnectionError('Connection data is too large', 413);
   const reader = request.body?.getReader();
   if (!reader) throw new ConnectionError('Connection data is missing');
   let size = 0;
@@ -56,7 +57,7 @@ export async function publishingJsonBody(request: Request): Promise<Record<strin
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > 8192) { await reader.cancel(); throw new ConnectionError('Connection data is too large', 413); }
+    if (size > maxBytes) { await reader.cancel(); throw new ConnectionError('Connection data is too large', 413); }
     chunks.push(value);
   }
   try {

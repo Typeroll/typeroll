@@ -13,7 +13,7 @@ import { rateLimit } from '../rate-limit';
 import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, type BuildTask } from './queue';
 import { authorizeEngine, assertEngineConnections, readEngineConfiguration, buildInputPath, engineConfigurationPath, renderCachePath, assetCachePath, type AssetCachePointer, type RenderCachePointer, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
-import { decodeSource, decodeArtifact, MAX_SOURCE_BYTES, sha256, renderReport, seoReport, outputDigest } from './contract.mjs';
+import { decodeSource, decodeArtifact, MAX_SOURCE_BYTES, MAX_RUNNER_RESULT_BYTES, sha256, renderReport, seoReport, outputDigest } from './contract.mjs';
 import { publicationStillRunning } from './jobs';
 import { qualificationFiles } from './qualification';
 import { enginePath, type BuildEngine } from './cloudflare';
@@ -26,7 +26,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(org) || !['claim', 'heartbeat', 'upload', 'complete', 'fail', 'media-checkpoint', 'direct-upload', 'media-access', 'verification-checkpoint', 'render-cache-upload'].includes(action)) return privateJson({ error: 'Not found' }, 404);
     const token = request.headers.get('authorization')?.match(/^Bearer ([a-zA-Z0-9_.-]{1,16384})$/)?.[1];
     if (!token) return privateJson({ error: 'Build authentication required.' }, 401);
-    const input = await publishingJsonBody(request);
+    const input = await publishingJsonBody(request, ['complete', 'fail'].includes(action) ? MAX_RUNNER_RESULT_BYTES : 8192);
     const queue = new OrganizationBuildQueue(), store = getStore();
     if (action === 'claim') {
       const authorized = input.provider === 'github' ? await authorizeGithubClaim(org, token, input) : null;

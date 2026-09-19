@@ -11,6 +11,10 @@ const identity = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-
 const ARTIFACT_MAGIC = Buffer.from('TYPEROLL-ARTIFACT-2\n');
 
 export const SEO_VALIDATOR_VERSION = 1;
+export const MAX_SEO_REPORT_CHARACTERS = 250000;
+// At most three UTF-8 bytes per UTF-16 code unit, plus the small attempt envelope.
+export const MAX_SEO_REPORT_BYTES = 3 * MAX_SEO_REPORT_CHARACTERS;
+export const MAX_RUNNER_RESULT_BYTES = MAX_SEO_REPORT_BYTES + 8192;
 export const outputDigest = files => sha256(JSON.stringify(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)).map(([name, f]) => [name, f.sha256, f.size])));
 /** Reports are bounded public diagnostics, bound to this attempt and its bytes. */
 export function seoReport(value, publicationId) {
@@ -18,7 +22,7 @@ export function seoReport(value, publicationId) {
       !['source_sha256', 'configuration_sha256', 'artifact_tree_sha256'].every(k => hash(value[k])) ||
       typeof value.passed !== 'boolean' || !['checked_pages', 'error_count', 'warning_count'].every(k => Number.isSafeInteger(value[k]) && value[k] >= 0) ||
       value.passed !== (value.error_count === 0) || !Array.isArray(value.errors) || !Array.isArray(value.warnings) ||
-      value.errors.length > Math.min(100, value.error_count) || value.warnings.length > Math.min(100, value.warning_count) || value.error_count > 0 && value.errors.length === 0 || JSON.stringify(value).length > 250000) throw Error('publication_validation_report_invalid');
+      value.errors.length > Math.min(100, value.error_count) || value.warnings.length > Math.min(100, value.warning_count) || value.error_count > 0 && value.errors.length === 0 || JSON.stringify(value).length > MAX_SEO_REPORT_CHARACTERS) throw Error('publication_validation_report_invalid');
   const issue = item => {
     if (!item || !/^[a-z_]{1,80}$/.test(item.code) || !item.source || typeof item.source !== 'object') throw Error('publication_validation_report_invalid');
     const bounded = (v, max = 2048) => { if (typeof v !== 'string' || v.length > max || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(v)) throw Error('publication_validation_report_invalid'); return v; };

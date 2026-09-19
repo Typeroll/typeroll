@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt, DIRECT_RECEIPT } from './direct-upload.mjs';
-import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, decodeSource, decodeArtifact, encodeArtifact, sha256, assertFilePath, renderReport, seoReport, outputDigest } from './contract.mjs';
+import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, MAX_SEO_REPORT_BYTES, decodeSource, decodeArtifact, encodeArtifact, sha256, assertFilePath, renderReport, seoReport, outputDigest } from './contract.mjs';
 
 // The rolling package pool removes superseded packages; retain this exact verified binary.
 export const BWRAP_URL = 'https://snapshot.ubuntu.com/ubuntu/20260918T000000Z/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb';
@@ -71,7 +71,7 @@ export async function outputFiles(root) {
 async function readSeoReport(work, publicationId) {
   const file = path.join(work, '.publication-work/seo-report.json');
   const stat = await fs.lstat(file);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > 250000 || !(await fs.realpath(file)).startsWith(work + path.sep)) throw Error('publication_validation_report_invalid');
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > MAX_SEO_REPORT_BYTES || !(await fs.realpath(file)).startsWith(work + path.sep)) throw Error('publication_validation_report_invalid');
   return seoReport(JSON.parse(await fs.readFile(file, 'utf8')), publicationId);
 }
 
@@ -338,9 +338,20 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     let validation;
     if (job.kind === 'publication') { try { validation = await readSeoReport(work, job.identity.publication_id); } catch { /* A renderer may fail before validation. */ } }
     const code = validation && !validation.passed ? 'publication_validation_failed' : artifactFailureCode(error.message);
-    try { await request('fail', job.token, { ...attempt, code, stage, ...(validation ? { seo_report: validation } : {}) }); } catch { /* A cancelled or superseded attempt cannot change publication state. */ }
+    try { await reportBuildFailure(request, job.token, attempt, { code, stage, validation }); } catch { /* A cancelled or superseded attempt cannot change publication state. */ }
     throw Error(`${stage}_${code}`);
   } finally { clearInterval(heartbeat); abort.abort(); await fs.rm(temp, { recursive: true, force: true }); }
+}
+
+/** An explicit HTTP 413 has not committed failure state. Report it once without
+ * the rejected diagnostics; never restart the build or retry arbitrary errors. */
+export async function reportBuildFailure(request, token, attempt, { code, stage, validation }) {
+  try {
+    await request('fail', token, { ...attempt, code, stage, ...(validation ? { seo_report: validation } : {}) });
+  } catch (error) {
+    if (!validation || error.message !== 'coordinator_413') throw error;
+    await request('fail', token, { ...attempt, code: 'publication_report_too_large', stage });
+  }
 }
 
 /** Return only fixed diagnostics or existing safe codes, never file paths or credentials. */

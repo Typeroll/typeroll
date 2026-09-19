@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — Core 0.2.24 / MCP 0.45.20 unchanged
+
+- Accept bounded, valid SEO reports above 8 KiB on authenticated build completion
+  and failure callbacks. Keep publishing-account and other runner requests at
+  8 KiB; count streamed UTF-8 bytes and preserve artifact/lease validation.
+- Report an explicitly rejected oversized diagnostic with a small failure
+  callback, so an engine does not appear to lose contact while its error is known.
+- Run release source, browser and dependency checks independently. Reuse the
+  exact qualified documentation artifact and cached Core image build layers.
+
 ## Unreleased — Core 0.2.18 / MCP 0.45.18
 
 - Preserve ordinary URL anchors and their encoding during Extension context

@@ -338,3 +338,19 @@ it.each(['account', 'org_id', 'site_id', 'version_id'])('does not grant a mismat
   const claim = await (await request('claim', runnerToken, { protocol: 1, asset_cache: true })).json();
   expect(claim.asset_cache).toBeUndefined();
 });
+
+it.each(['complete', 'fail'])('accepts a valid SEO report larger than the admin body limit for %s only', async action => {
+  const { frozen, key } = await prepare();
+  const claim = (await new OrganizationBuildQueue().claim(org, revision, 1))!;
+  const files = Object.fromEntries(Object.entries(qualificationFiles(identity.publication_id)).map(([name, value]) => [name, Buffer.from(value)]));
+  const artifact = encodeArtifact(frozen, files);
+  storage.objects.set(`builds/org/tasks/${key}/${claim.lease_id}/artifact.json`, artifact);
+  const warning = { code: 'metadata_missing', url: 'https://fixture.invalid/', source: { file: 'index.html', line: 1 }, message: 'Review '.repeat(300), remediation: 'Review the source metadata.' };
+  const report = { ...validSeoReport(files), warning_count: 20, warnings: Array.from({ length: 20 }, () => warning) };
+  const input = { key, lease_id: claim.lease_id, sha256: sha256(artifact), seo_report: report, stage: 'artifact', code: 'synthetic_failure' };
+  expect(Buffer.byteLength(JSON.stringify(input))).toBeGreaterThan(8192);
+  expect((await request('heartbeat', claim.token, input)).status).toBe(413);
+  expect((await request(action, runnerToken, input)).status).toBe(409);
+  expect((await request(action, claim.token, input)).status).toBe(200);
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: action === 'complete' ? 'completed' : 'failed', seo_report: { warning_count: 20 } });
+});

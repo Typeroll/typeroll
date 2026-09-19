@@ -238,3 +238,12 @@ The order of operations when bringing a new domain live:
 4. **Wait for Google to recrawl.** Recrawl and canonical selection times vary; verify the result in Search Console. To accelerate, request indexing of the homepage manually in Search Console and submit the new sitemap if needed.
 
 Changing the domain without re-deploying leaves the canonical pointing at the previous URL until the next build, so declaring a domain republishes by default. See [Custom Domain guide](../../guides/custom-domain/) for the user-facing walkthrough.
+
+### Build-report delivery
+
+Core 0.2.24 fixes a report-delivery limit that could stop large publications even
+when their build and validation had finished. Install that release and update the
+shared engine in **Publishing → Builds** before retrying an affected publication.
+No page-content migration is needed. The current live site remains active when a
+candidate fails. A report that exceeds the supported bound produces a build error;
+it never bypasses artifact validation or starts a replacement build automatically.
