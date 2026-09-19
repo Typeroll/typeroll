@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt, DIRECT_RECEIPT } from './direct-upload.mjs';
 import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, decodeSource, decodeArtifact, encodeArtifact, sha256, assertFilePath, renderReport, seoReport, outputDigest } from './contract.mjs';
 
-export const BWRAP_URL = 'https://archive.ubuntu.com/ubuntu/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb';
+// The rolling package pool removes superseded packages; retain this exact verified binary.
+export const BWRAP_URL = 'https://snapshot.ubuntu.com/ubuntu/20260918T000000Z/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb';
 export const BWRAP_SHA = '1b506492bd9c7fd0cdb4f02ac822f1d3e336b0aead5113c1239baf8db5db562a';
 
 export function mediaCheckpointPolicy(kind, progress, startedAt, deadline, now = Date.now()) {

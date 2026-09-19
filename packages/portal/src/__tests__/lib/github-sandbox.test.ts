@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { sandboxBinary } from '../../lib/builds/executor.mjs';
+import { BWRAP_URL, sandboxBinary } from '../../lib/builds/executor.mjs';
 import { assertGithubBootstrapEnvironment } from '../../lib/builds/github-sandbox.mjs';
 
 function disk(change: Record<string, unknown> = {}, bytes = 'pinned binary') {
@@ -25,4 +25,13 @@ it('limits privileged bootstrap to explicitly identified ephemeral GitHub Linux 
   for (const args of [[{}, 'linux', 'x64', 0], [env, 'darwin', 'x64', 0], [env, 'linux', 'arm64', 0], [env, 'linux', 'x64', 1001], [{ ...env, RUNNER_ENVIRONMENT: 'self-hosted' }, 'linux', 'x64', 0]]) {
     expect(() => assertGithubBootstrapEnvironment(...args)).toThrow('github_hosted_bootstrap_required');
   }
+});
+
+// A pinned package version can disappear from Ubuntu's rolling package pool.
+it('pins the sandbox archive to a dated official Ubuntu snapshot', () => {
+  const url = new URL(BWRAP_URL);
+  expect(url.origin).toBe('https://snapshot.ubuntu.com');
+  expect(url.pathname).toMatch(/^\/ubuntu\/\d{8}T\d{6}Z\/pool\/main\/b\/bubblewrap\/bubblewrap_[^/]+_amd64\.deb$/);
+  expect(url.search).toBe('');
+  expect(url.hash).toBe('');
 });

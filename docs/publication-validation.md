@@ -121,3 +121,29 @@ remain visible. Directory validation parses one HTML DOM at a time and streams
 asset hashes; unchanged cached media is validated against existing receipts
 without downloading image bodies again. These checks establish technical
 correctness, not ranking or traffic gains.
+
+## Sandbox download correction (Core 0.2.23 candidate)
+
+The Core 0.2.22 staging engine qualification exposed an existing upstream
+dependency failure: Ubuntu removed `bubblewrap_0.9.0-1ubuntu0.1_amd64.deb` from
+its rolling archive (`404`). Core 0.2.23 uses the official Ubuntu snapshot dated
+`20260918T000000Z` for both Cloudflare execution and GitHub sandbox bootstrap.
+The binary, SHA-256 verification, download limit, redirect rejection, and sandbox
+restrictions are unchanged. This is not a validator or data-schema change.
+
+The corrected URL returned HTTP 200 and 50,178 bytes on 2026-09-19. Its SHA-256
+was `1b506492bd9c7fd0cdb4f02ac822f1d3e336b0aead5113c1239baf8db5db562a`,
+identical to the existing pin. The dated-archive regression failed against the
+old URL and passed after correction, alongside the existing sandbox tests.
+The full release gate also passed: dependency audit (existing temporary advisory
+approval), documentation checks, typechecks, 181 infrastructure, 5 docs, 132 MCP,
+2,078 portal and 546 shared tests, renderer smoke scenarios, frozen-template
+packaging and all workspace builds. Hosted provider qualification remains pending.
+The [Ubuntu snapshot service](https://snapshot.ubuntu.com/) retains dated
+archives; it remains an external download dependency and can still be
+unavailable. A failed or mismatched download continues to stop the build.
+
+Existing organization engines must receive the corrected executor through normal
+Publishing → Builds setup and qualification. Merely updating the portal does not
+rewrite their repositories. Real provider qualification and the passing/failing
+artifact staging checks must finish before Cloud production promotion.
