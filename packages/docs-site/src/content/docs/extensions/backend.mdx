@@ -103,7 +103,7 @@ control and rotate it from the Extension installation settings.
 
 See the [manifest reference](../manifest/) for the declared surfaces.
 
-## Owner editing, delivery and form actions (Core 0.2.10)
+## Owner proposals, delivery and form actions (next Core release)
 
 A provider may request `content:owner`, `email:send` and `forms:execute` scopes
 with explicit reasons. All require administrator approval. Use an installation
@@ -114,10 +114,7 @@ Relative to `/api/v1/sites/{siteId}`:
 
 - `GET /extensions/self` returns the own enabled installation's resolved
   version, validated non-secret config and verified site origins.
-- `GET/PUT /pages/{pageId}/owner-fields` reads/writes only fields that explicitly
-  permit owner writes. Types, sanitization and provenance precedence apply;
-  conflicts return 409. Authenticate the visitor and bind its record in the
-  provider before calling this endpoint.
+- `GET/PUT /pages/{pageId}/owner-fields` reads typed owner-writable fields and a revision. PUT creates an isolated pending proposal using `{changes,base_revision,request_id}` and a server-derived `X-Typeroll-Owner-Subject` digest. It never writes accepted Page content directly. Authenticate the visitor and bind its record in the provider. See [Owner answers and review](../../guides/owner-review/). This replaces the direct-write contract in Core 0.2.24 and earlier.
 - `POST /delivery/email` sends `{ to, subject, text }` through the site's
   configured connector. It supports one recipient and returns delivery errors
   without exposing connector credentials.
@@ -125,7 +122,7 @@ Relative to `/api/v1/sites/{siteId}`:
 page_id? }` only when the form belongs to the calling installation.
 
 An administrator can bind an existing or new Form using
-`target: { installation_id, path, hydrate?, session_param? }`. The path must be
+`target: { installation_id, path, hydrate?, session_param?, context_params? }`. The path must be
 a declared POST route. Both API and MCP support this target. Preserve the
 form's steps, actions and styling when changing its destination.
 
@@ -252,3 +249,19 @@ published registry record, verify the release and write through the host's
 administrative datastore access. Set `enabled: false` to revoke it. Do not expose
 this collection through a developer or site-admin API. An ordinary installation
 or organization administrator cannot grant this host-level trust.
+
+### Approved app administration through API/MCP (Core 0.2.25)
+
+`call_extension_admin` provides the same native admin integration to an ordinary
+site administrator API key. Read the enabled installation's own guide for its
+operation paths and effects. Core POST endpoint:
+`/api/v1/sites/{site}/extensions/{installation}/admin-request`.
+
+The body has `page_id` (manifest admin page), `path` (relative to that page's
+approved `native.api_base_url`), `method` (`GET` or `POST`), optional string-map
+`query`, and optional JSON `body` for POST. Core requires an enabled installation
+and host-approved current manifest, signs the administrator identity, and calls
+only the approved HTTPS host. Redirects, path traversal and caller-supplied hosts
+are rejected; credentials remain server-side. Installation credentials cannot
+invoke this operation. A call does not automatically publish the site. Follow the
+app's documented idempotency rules; inspect status before retrying an uncertain write.

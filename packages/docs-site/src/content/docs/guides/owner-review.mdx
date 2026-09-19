@@ -1,0 +1,160 @@
+---
+title: Owner answers and review
+description: Preserve typed answers and sources, review proposed changes, and publish accepted content separately.
+---
+
+This contract is prepared for the next Core release. It is not available on
+Core 0.2.24. Updating an MCP client alone does not update the connected CMS.
+It applies to Typeroll Cloud and self-hosted Typeroll CMS. An installed Extension
+may verify a visitor and submit proposals through its scoped server credential;
+its authentication and setup instructions belong to that installation's guide.
+
+## Configure review
+
+A Site administrator opens **Site settings → Owner change review**, enters one
+reviewer email, chooses a link lifetime (1–168 hours), and enables proposals.
+Configure the site's **Email & notifications** connector and sender separately.
+Self-hosted servers also need `INTEGRATIONS_SECRET_KEY` for encrypted review links.
+No email is sent simply by saving these settings.
+
+The queue shows pending proposals and notification state. Opening a private
+review link requires no login. It grants access to that proposal only. Treat it
+as a secret: do not paste it into public issues, analytics or shared documents.
+Opening or scanning the link never approves it. The reviewer chooses **Approve
+changes**, **Reject changes**, or edits the proposed answers before approving.
+Original owner answers and reviewer adjustments remain separate in the audit
+record. A changed Page or schema blocks stale approval; ask for a fresh proposal
+against the current content instead of forcing an overwrite.
+
+Pending proposals live outside Pages, working copies and publication snapshots.
+An unrelated publication cannot include them. Approval changes accepted CMS
+content but does not start a deployment or enable automatic publishing. An
+existing scheduled publication can include already accepted changes; otherwise
+use the normal publication action after reviewing the accepted content.
+
+## Typed answers and sources
+
+A boolean answer has three states: `true`, `false`, and unknown (`null` or absent).
+The custom-field editor and `form/boolean` offer **Yes**, **No**, and **Clear
+answer**. Omit untouched answers from a patch. An intentional clear sends `null`;
+it does not send `false`. Required answers cannot be cleared when saving complete
+content. Text, numbers, selections, references and structured fields keep their
+own controls. A missing multiselect option says nothing about a binary answer.
+
+For individually protected options use an object of boolean fields, not a
+multiselect whose missing choices would be interpreted as No:
+
+```json
+{
+  "name": "support",
+  "label": "Support offered",
+  "type": "object",
+  "writable_by": ["portal", "owner", "agent", "import"],
+  "fields": [
+    { "name": "online", "label": "Online support?", "type": "boolean" },
+    { "name": "phone", "label": "Phone support?", "type": "boolean" }
+  ]
+}
+```
+
+Child permissions inherit their parent's policy unless explicitly declared.
+Structured arrays need `item_key`, naming a text child with a unique stable ID.
+Reordering preserves identity; removing a protected item or clearing its parent
+still checks every protected answer. Unkeyed arrays are one indivisible value.
+Do not invent IDs or sources while silently migrating existing data: prepare and
+review an explicit mapping first.
+
+The CMS assigns actor identity and time. Provenance follows schema paths such as
+`support/online` and `programs/@program-id/tax_id_required`; path segments escape
+`~` as `~0` and `/` as `~1`. Owner-facing forms receive source kind and time, not
+private actor identities. Saving an unchanged imported value does not confirm it
+as an owner answer. Explicit confirmation of unchanged answers is not offered.
+
+`update_page` and `replace_page` accept optional `answer_sources` alongside their
+patch/page. Each path accepts only `source_url` and `import_run_id`. These provide
+evidence, never permission to impersonate another writer:
+
+```json
+{
+  "page_id": "sample",
+  "patch": { "fields": { "support": { "online": true } } },
+  "answer_sources": {
+    "support/online": {
+      "source_url": "https://example.org/support",
+      "import_run_id": "reviewed-import-01"
+    }
+  },
+  "save": true
+}
+```
+
+Owner answers, including No and deliberate clears, outrank later imports and
+agent updates. Portal corrections retain higher priority. An administrator
+replacing an owner answer must provide an explicit override reason through the
+review administration API. Conflicts return 409; do not retry the same overwrite.
+Separate nonconflicting updates when an entire submitted field is rejected.
+`rendered: false` controls public output independently of write authority.
+
+## API and MCP
+
+All administration below requires Site administrator access. Ordinary Extension
+credentials cannot use these endpoints. `version` selects an existing content
+version; unknown versions are rejected.
+
+- `GET /api/v1/sites/:site/owner-review`: settings and paginated queue (`cursor`).
+- `POST` to the same endpoint accepts `action`: `settings`, `view`, `approve`,
+  `reject`, `notify`, `recover-notification`, `revoke`, `review-link`, or `override`.
+- Proposal actions identify `proposal_id`; decisions also need a stable
+  `request_id` (16–100 letters, numbers, `_` or `-`). An approval may include
+  `adjustments`. Replaying the same decision is safe; a competing decision fails.
+- `override` needs `page_id`, `base_revision`, custom `fields` and a nonempty
+  `reason`. It uses the same field protections and records an explicit audit.
+- Scoped owner Extensions read `GET .../pages/:page/owner-fields` for allowed
+  fields and `revision`. `PUT` submits `{changes,base_revision,request_id}` and
+  a server-derived `X-Typeroll-Owner-Subject` digest. Never expose the installation
+  credential to a browser. Success is 202/pending, not a Page update.
+
+MCP provides `list_owner_proposals`, `read_owner_proposal`,
+`configure_owner_review`, `decide_owner_proposal`,
+`retry_owner_review_notification`, `recover_owner_review_notification` and
+`revoke_owner_proposal`. A notification retry sends transactional email and
+requires the appropriate authorization.
+
+## Delivery failure and recovery
+
+A proposal is saved before notification delivery. A failed email leaves it in the
+queue. There are at most three delivery attempts, including explicit retries.
+An interrupted `sending` attempt is never automatically timed out and resent:
+an administrator first investigates the provider result and records a recovery
+reason. Recovery does not reset the attempt count. The queue remains accessible
+through normal authenticated administration if the email link expires.
+
+Private review pages use no-store, noindex, no-referrer and no third-party assets.
+The token is carried in a URL fragment, removed from history on load, and sent in
+a bearer header. Reloading the cleaned URL requires reopening the original link.
+Firestore performs decision, Page and history writes in one transaction. The
+filesystem fixture datastore is for local testing and does not provide
+multi-document crash recovery; use the transactional backend for live review.
+
+## Migration checklist
+
+Review current `writable_by` rules and identify stable array IDs before enabling
+owner proposals. Preserve evidence and unknown values. Do not convert legacy
+unchecked options or ambiguous false values into confirmed No. Existing working
+copies based on older accepted answers must be refreshed before saving. Update
+participating Extensions and republish affected form/component pages after the
+matching release. Publishing Core does not activate a site's owner workflow or
+send invitations automatically.
+
+Before issuing a visitor edit link, an app must read the owner-fields descriptor
+and require `review_ready: true`. False means the site review settings or host
+secret encryption setup is incomplete; do not send a link into an unusable flow.
+Delivery can still fail later; pending proposals remain in the administrator queue.
+
+Administrators can use `read_owner_answers` to inspect typed values and the current
+revision, then `override_owner_answers` for an explicitly authorized correction
+with a factual `reason`. An import conflict never authorizes such an override.
+`recover_owner_review_notification` records an investigated interrupted delivery;
+it does not send email or reset the attempt limit. The queue exposes the same
+recovery action. Use `retry_owner_review_notification` only after authorization
+to send the transactional notification.

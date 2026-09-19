@@ -37,7 +37,8 @@ export function validInstallationFormTarget(target: unknown): target is NonNulla
   const value = target as Record<string, unknown>;
   return typeof value.installation_id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value.installation_id) &&
     typeof value.path === 'string' && !value.path.startsWith('//') && /^\/[A-Za-z0-9/_-]+$/.test(value.path) &&
-    Object.keys(value).every(key => ['installation_id','path','hydrate','session_param'].includes(key)) &&
+    Object.keys(value).every(key => ['installation_id','path','hydrate','session_param','context_params'].includes(key)) &&
+    (value.context_params === undefined || (Array.isArray(value.context_params) && value.context_params.length <= 8 && value.context_params.every(key => typeof key === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key) && !['issuer', 'org_id', 'site_id', 'installation_id', 'session', 'token', 'grant'].includes(key) && key !== value.session_param))) &&
     (value.hydrate === undefined || typeof value.hydrate === 'boolean') &&
     (value.session_param === undefined || (typeof value.session_param === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(value.session_param)));
 }

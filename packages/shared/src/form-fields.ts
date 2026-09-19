@@ -9,10 +9,11 @@ import type { Block, Form, FormField, FormStep } from './types.js';
 const FIELD_BLOCK_TYPES = new Set([
   'form/text', 'form/email', 'form/phone', 'form/url', 'form/number', 'form/textarea',
   'form/select', 'form/radio_group', 'form/checkbox_group', 'form/toggle',
-  'form/slider', 'form/date', 'form/consent', 'form/hidden',
+  'form/boolean', 'form/slider', 'form/date', 'form/consent', 'form/hidden',
 ]);
 
 const TYPE_BY_BLOCK: Record<string, string> = {
+  'form/boolean': 'boolean',
   'form/text': 'text',
   'form/email': 'email',
   'form/phone': 'tel',
@@ -78,7 +79,7 @@ export function nextStep(form: Form, current: FormStep): FormStep | undefined {
 
 export interface FieldError {
   field: string;
-  code: 'required' | 'invalid_email' | 'pattern' | 'min' | 'max';
+  code: 'required' | 'invalid_email' | 'pattern' | 'min' | 'max' | 'invalid_boolean';
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -97,6 +98,7 @@ export function validateFieldValues(
       continue;
     }
     if (str === '') continue;
+    if (f.type === 'boolean' && raw !== true && raw !== false && raw !== 'true' && raw !== 'false' && raw !== 'null') { errors.push({ field: f.name, code: 'invalid_boolean' }); continue; }
     if (f.type === 'email' && !EMAIL_RE.test(str)) {
       errors.push({ field: f.name, code: 'invalid_email' });
       continue;
@@ -125,6 +127,7 @@ export function validateFieldValues(
 export function defaultErrorMessage(code: FieldError['code'], label: string, lang: string): string {
   const sv = lang.startsWith('sv');
   switch (code) {
+    case 'invalid_boolean': return sv ? `${label}: välj Ja, Nej eller lämna obesvarat` : `${label}: choose Yes, No or leave unanswered`;
     case 'required': return sv ? `${label} måste fyllas i` : `${label} is required`;
     case 'invalid_email': return sv ? `${label} ser inte ut som en giltig e-postadress` : `${label} doesn't look like a valid email address`;
     case 'pattern': return sv ? `${label} har fel format` : `${label} has the wrong format`;
@@ -153,6 +156,7 @@ export function fieldsToStepBlocks(fields: FormField[]): Block[] {
     };
     const choices = (f.options ?? []).map((o) => ({ value: o, label: o }));
     switch (f.type) {
+      case 'boolean': return { id, type: 'form/boolean', data: base };
       case 'email': return { id, type: 'form/email', data: base };
       case 'tel': return { id, type: 'form/phone', data: base };
       case 'number': return {
@@ -179,4 +183,14 @@ export function fieldsToStepBlocks(fields: FormField[]): Block[] {
 /** The whole sugar-to-model conversion: flat fields → a one-step Form.steps. */
 export function fieldsToSteps(fields: FormField[]): FormStep[] {
   return [{ id: 'main', blocks: fieldsToStepBlocks(fields) }];
+}
+
+/** Normalize typed wire values without coercing omitted or empty answers to No. */
+export function normalizeFormAnswers(fields: FormField[], input: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...input };
+  for (const field of fields) if (field.type === 'boolean' && Object.hasOwn(input, field.name)) {
+    const value = input[field.name];
+    result[field.name] = value === 'true' ? true : value === 'false' ? false : value === '' || value === 'null' ? null : value;
+  }
+  return result;
 }

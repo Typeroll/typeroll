@@ -45,6 +45,7 @@ import {
   getStep,
   nextStep,
   validateFieldValues,
+  normalizeFormAnswers,
   defaultErrorMessage,
   buildCoreBlockRegistry,
   renderBlocks,
@@ -367,6 +368,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
   for (const [k, v] of Object.entries(data)) {
     if (!k.startsWith('_')) userData[k] = v;
   }
+  Object.assign(userData, normalizeFormAnswers(fields, userData));
   const fieldErrors = validateFieldValues(fields, userData);
   if (fieldErrors.length) {
     const errors = fieldErrors.map((e) => {

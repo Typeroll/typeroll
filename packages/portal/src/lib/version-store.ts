@@ -16,7 +16,7 @@
  * use vstore.X(...) instead of store.getDoc(paths.X(...)).
  */
 
-import { contentPagePath, DEFAULT_CONTENT_TYPE, paths, MAIN_VERSION_ID } from '@typeroll/shared';
+import { pageAuthorityFields, pageContentValues, PAGE_BUILTIN_FIELDS, contentPagePath, DEFAULT_CONTENT_TYPE, paths, MAIN_VERSION_ID } from '@typeroll/shared';
 import type {
   BlockType,
   ContentType,
@@ -28,6 +28,45 @@ import type {
   SiteVersion,
 } from '@typeroll/shared';
 import { getStore } from './datastore';
+import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import { applyFieldAuthority, conflictResponse, type WriteActor } from './field-authority';
+
+export class PageWriteConflict extends Error { readonly status = 409; }
+export interface PageWriteContext {
+  actor: WriteActor; actorId: string; expected?: Page;
+  overrideReason?: string; sourceUrl?: string; importRunId?: string;
+  contentType?: ContentType;
+  sources?: Record<string, { source_url?: string; import_run_id?: string }>;
+}
+
+
+/** Snapshot both the effective document and every mutable copy-on-write dependency. */
+async function guardedResource<T>(orgId: string, siteId: string, versionId: string, kind: string, id: string, pathFor: (version: string) => string) {
+  const store = getStore();
+  const guards: import('./datastore').ConditionalEffect[] = [];
+  const chain = await versionChain(orgId, siteId, versionId, guards);
+  let value: T | null = null, physical: T | null = null;
+  for (const version of chain) {
+    const path = pathFor(version), doc = await store.getDoc<T>(path);
+    if (version === versionId) physical = doc;
+    guards.push({ path, data: {}, expected: doc as Record<string, unknown> | null, guardOnly: true });
+    const tombstone = tombstonePath(orgId, siteId, version, kind, id);
+    const removed = await store.getDoc(tombstone);
+    guards.push({ path: tombstone, data: {}, expected: removed, guardOnly: true });
+    if (removed) break;
+    if (doc) { value = doc; break; }
+  }
+  return { value, physical, destination: pathFor(versionId), guards };
+}
+export async function pageWriteSnapshot(orgId: string, siteId: string, versionId: string, pageId: string) {
+  const { value, ...snapshot } = await guardedResource<Page>(orgId, siteId, versionId, 'pages', pageId, version => paths.page(orgId, siteId, pageId, version));
+  return { ...snapshot, page: value };
+}
+export async function contentTypeWriteSnapshot(orgId: string, siteId: string, versionId: string, name: string) {
+  const { value, ...snapshot } = await guardedResource<ContentType>(orgId, siteId, versionId, 'content_types', name, version => paths.contentType(orgId, siteId, name, version));
+  return { ...snapshot, type: value };
+}
 
 type WithMaybeId = { id?: string };
 
@@ -44,7 +83,7 @@ export async function listSiteVersions(orgId: string, siteId: string, createdAt?
 
 
 /** Resolved version chain, branch first → main last. Memoised per request. */
-async function versionChain(orgId: string, siteId: string, versionId: string): Promise<string[]> {
+async function versionChain(orgId: string, siteId: string, versionId: string, guards?: import('./datastore').ConditionalEffect[]): Promise<string[]> {
   const chain: string[] = [];
   let cur = versionId;
   const seen = new Set<string>();
@@ -52,7 +91,9 @@ async function versionChain(orgId: string, siteId: string, versionId: string): P
     seen.add(cur);
     chain.push(cur);
     if (cur === MAIN_VERSION_ID) break;
-    const v = await getStore().getDoc<SiteVersion>(paths.version(orgId, siteId, cur));
+    const versionPath = paths.version(orgId, siteId, cur);
+    const v = await getStore().getDoc<SiteVersion>(versionPath);
+    if (guards) guards.push({ path: versionPath, expected: v as unknown as Record<string, unknown> | null, data: {}, guardOnly: true });
     cur = v?.base_version_id ?? MAIN_VERSION_ID;
   }
   // Make sure main is always at the bottom of the chain, even if we walked
@@ -277,13 +318,38 @@ export const vstore = {
 
   writePage: async (
     orgId: string, siteId: string, versionId: string, pageId: string,
-    update: Partial<Page>,
+    update: Partial<Page>, context?: PageWriteContext,
   ): Promise<void> => {
-    const existing = await readChain<Page>(orgId, siteId, versionId, 'pages', pageId,
-      (v) => paths.page(orgId, siteId, pageId, v));
+    const store = getStore(), destination = paths.page(orgId, siteId, pageId, versionId);
+    const snapshot = await pageWriteSnapshot(orgId, siteId, versionId, pageId);
+    const { physical, page: existing } = snapshot;
+    if (context?.expected && !isDeepStrictEqual(existing, context.expected)) throw new PageWriteConflict('Page changed. Reload before saving.');
     const { id: _id, ...base } = (existing ?? {}) as Page;
-    await getStore().setDoc(paths.page(orgId, siteId, pageId, versionId), { ...base, ...update });
-    await getStore().deleteDoc(tombstonePath(orgId, siteId, versionId, 'pages', pageId));
+    const next = { ...base, ...update };
+    // Never accept caller-supplied provenance, including revision restores.
+    if (existing?._provenance) next._provenance = existing._provenance;
+    else delete next._provenance;
+    const typeName = existing?.content_type ?? update.content_type ?? 'page';
+    const schema = await contentTypeWriteSnapshot(orgId, siteId, versionId, typeName);
+    const type = context?.contentType ?? schema.type ?? (typeName === 'page' ? DEFAULT_CONTENT_TYPE : null);
+    if (!type) throw new PageWriteConflict('The Page content type is unavailable. Restore it before saving.');
+    const fields = pageAuthorityFields(type);
+    const result = applyFieldAuthority({ fields, incoming: { ...update, ...update.fields }, existing: existing ?? undefined,
+      actor: context?.actor ?? 'agent', actorId: context?.actorId ?? 'internal',
+      overrideReason: context?.overrideReason, sourceUrl: context?.sourceUrl, importRunId: context?.importRunId, sources: context?.sources });
+    if (result.rejected.length) throw new PageWriteConflict(conflictResponse(result.rejected).error);
+    if (update.fields) next.fields = { ...existing?.fields, ...Object.fromEntries(Object.entries(result.update).filter(([name]) => !PAGE_BUILTIN_FIELDS.has(name))) };
+    for (const [name, value] of Object.entries(result.update)) if (PAGE_BUILTIN_FIELDS.has(name)) (next as Record<string, unknown>)[name] = value;
+    next._provenance = result.provenance;
+    const changed = !isDeepStrictEqual(existing?._provenance ?? {}, result.provenance);
+    const effects: import('./datastore').ConditionalEffect[] = changed ? [{ path: `${destination}/answer_history/${randomUUID()}`, data: {
+      actor: context?.actor ?? 'agent', actor_id: context?.actorId ?? 'internal', at: new Date().toISOString(),
+      before: existing ? pageContentValues(existing) : {}, after: pageContentValues(next as Page), provenance: result.provenance,
+      ...(context?.overrideReason ? { override_reason: context.overrideReason } : {}),
+    } }] : [];
+    effects.push(...snapshot.guards.filter(guard => guard.path !== destination), ...schema.guards);
+    if (!(await store.compareAndReplaceDoc(destination, physical, next, effects))) throw new PageWriteConflict('Page changed. Reload before saving.');
+    await store.deleteDoc(tombstonePath(orgId, siteId, versionId, 'pages', pageId));
   },
 
   writePartial: async (

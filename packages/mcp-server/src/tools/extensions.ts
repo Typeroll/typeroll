@@ -3,6 +3,19 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const extensionTools: ToolDef[] = [
   {
+    name: 'call_extension_admin',
+    description: 'Call an enabled app’s approved admin API using the current site administrator identity. Read that installed app’s guide first for supported paths and effects. GET reads; POST can change app settings. No deployment is queued by Core. Ordinary admin credentials only; installation credentials cannot delegate. Tokens stay server-side.',
+    inputSchema: {
+      installation_id: z.string().min(1), page_id: z.string().min(1),
+      path: z.string().describe('Relative operation below the approved native API base, from the installed app guide.'),
+      method: z.enum(['GET', 'POST']), query: z.record(z.string()).optional(), body: z.record(z.unknown()).optional(),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const { installation_id, ...operation } = args;
+      return ok(await client.post(siteId, `extensions/${encodeURIComponent(installation_id)}/admin-request`, operation));
+    }),
+  },
+  {
     name: 'list_extension_installations',
     description:
       'List the site\'s installed Extensions, including installation ids, manifests, config schemas, and masked current config. Read this before updating installation config. Admin permission required.',

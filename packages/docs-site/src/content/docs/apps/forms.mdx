@@ -70,3 +70,14 @@ quote request, event registration, lead qualification funnel, or directory
 edit form should be documented as a recipe or as part of the Extension that
 ships that form. Customer-specific questions, recipients, legal copy, and
 routing stay in the site's configuration rather than this module reference.
+
+## Typed answer controls (next Core release)
+
+`form/boolean` (or simple field type `boolean`) renders Yes/No with a clear action.
+It preserves false, null and omitted answers separately. App-bound forms can
+declare `target.context_params: ["page_id"]` to forward explicit URL context
+keys while hydrating; security context cannot be overridden. Hydration supplies
+hidden identities and a base revision. Unchanged prefilled answers are omitted
+from revision-bound submissions. A hidden honeypot stays outside keyboard and
+assistive-technology interaction. See [Owner answers and review](../../guides/owner-review/)
+for proposal isolation and the separate publication step.

@@ -495,7 +495,7 @@ export interface Page {
   content_type?: string;
   fields?: Record<string, unknown>;
   /** Internal editorial provenance. Excluded from rendered context and exports. */
-  _provenance?: Record<string, { source: 'portal' | 'owner' | 'agent' | 'app' | 'import'; actor: string; updated_at: string }>;
+  _provenance?: Record<string, { source: 'portal' | 'owner' | 'agent' | 'app' | 'import'; actor: string; updated_at: string; source_url?: string; import_run_id?: string; override_reason?: string }>;
   title: string;
   /**
    * Single URL path segment used to derive the live URL when `path` is
@@ -687,6 +687,9 @@ export interface WorkingCopy {
   fields: Record<string, unknown>;
   updated_at: string;
   updated_by?: string;
+  /** Private optimistic-concurrency snapshot for structured answers. */
+  answer_base?: { fields: Record<string, unknown>; provenance: Page['_provenance'] };
+  answer_sources?: Record<string, { source_url?: string; import_run_id?: string }>;
 }
 
 export interface Redirect {
@@ -857,6 +860,8 @@ export interface FieldDefinition {
    * remain the corresponding option so labels can be localized safely. */
   option_labels?: string[];
   fields?: FieldDefinition[];
+  /** Stable child field identifying array/list items for answer provenance. */
+  item_key?: string;
   responsive?: boolean;
   min?: number;
   max?: number;
@@ -1240,6 +1245,8 @@ export interface Form {
      * showing the form. Response shape: `{ fields: [{ name, value }] }`.
      */
     hydrate?: boolean;
+    /** Explicit URL query context forwarded to the installed endpoint (for example a Page ID). */
+    context_params?: string[];
     /**
      * Query parameter carrying a one-time token. The runtime exchanges it for
      * a session token on first load, stores it for the tab, strips it from

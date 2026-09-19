@@ -1,0 +1,55 @@
+---
+import { REVIEW_HEADERS } from '../../lib/owner-review-http';
+for (const [key, value] of Object.entries(REVIEW_HEADERS)) Astro.response.headers.set(key, value);
+Astro.response.headers.set('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
+---
+<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width" /><meta name="robots" content="noindex,nofollow,noarchive" /><meta name="referrer" content="no-referrer" /><title>Review proposed changes — Typeroll CMS</title></head>
+<body><main id="owner-review"><h1>Review proposed changes</h1><p role="status">Loading this private review…</p></main>
+<script>
+  import { editControl, sameAnswer, type EditField } from '../../lib/answer-controls';
+  const root = document.querySelector<HTMLElement>('#owner-review')!;
+  const url = new URL(location.href);
+  const token = url.hash.slice(1);
+  history.replaceState(null, '', url.pathname + url.search);
+  const endpoint = new URL('/api/owner-review', location.origin); endpoint.search = url.search;
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  const status = root.querySelector('p')!;
+  const node = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const element = document.createElement(tag); if (text) element.textContent = text; return element; };
+  try {
+    const response = await fetch(endpoint, { headers, credentials: 'omit', cache: 'no-store' });
+    const proposal = await response.json(); if (!response.ok) throw Error(proposal.error);
+    root.querySelector('h1')!.textContent = `Review ${proposal.title}`;
+    status.textContent = proposal.status === 'pending' ? 'These are proposed changes from a verified owner. Nothing has been published. Opening this page does not approve them.' : `This proposal is ${proposal.status}.`;
+    const controls = new Map<string, ReturnType<typeof editControl>>();
+    for (const [name, value] of Object.entries(proposal.changes)) {
+      const section = node('section'); const field = proposal.fields.find((item: EditField) => item.name === name);
+      section.append(node('h2', field?.label ?? name));
+      section.append(node('p', 'Previously accepted')); const before = node('pre', proposal.before[name] == null ? 'Unanswered' : typeof proposal.before[name] === 'boolean' ? proposal.before[name] ? 'Yes' : 'No' : JSON.stringify(proposal.before[name], null, 2)); section.append(before);
+      const control = editControl({ ...field, name, label: 'Proposed answer — edit if needed', value }, () => {});
+      controls.set(name, control); section.append(control.element); root.append(section);
+    }
+    if (proposal.status === 'pending') {
+      const actions = node('div'); actions.className = 'actions';
+      const approve = node('button', 'Approve changes'), reject = node('button', 'Reject changes');
+      const notice = node('p'); notice.setAttribute('role', 'status');
+      actions.append(approve, reject); root.append(actions, notice, node('p', 'Approval updates the accepted CMS content. Publishing is a separate action. Your edits are recorded separately from the owner’s original submission.'));
+      let requestId = crypto.randomUUID(); let lastInput = '';
+      const decide = async (action: 'approve' | 'reject') => {
+        const adjustments = action === 'approve' ? Object.fromEntries([...controls].filter(([name, control]) => !sameAnswer(control.read(), proposal.changes[name])).map(([name, control]) => [name, control.read()])) : {};
+        const fingerprint = JSON.stringify({ action, adjustments });
+        if (fingerprint !== lastInput) { requestId = crypto.randomUUID(); lastInput = fingerprint; }
+        approve.disabled = reject.disabled = true;
+        try {
+          const result = await fetch(endpoint, { method: 'POST', headers, credentials: 'omit', body: JSON.stringify({ action, adjustments, request_id: requestId }) });
+          const body = await result.json(); if (!result.ok) throw Error(body.error);
+          status.textContent = `This proposal is ${body.status}.`; notice.textContent = `Proposal ${body.status}. No website has been published.`; actions.remove();
+        } catch (error) { notice.textContent = error instanceof Error ? error.message : 'Unable to record the decision'; }
+        finally { approve.disabled = reject.disabled = false; }
+      };
+      approve.addEventListener('click', () => decide('approve')); reject.addEventListener('click', () => decide('reject'));
+    }
+  } catch (error) { status.textContent = error instanceof Error ? error.message : 'Review link unavailable'; }
+</script>
+<style is:global>
+  body{margin:0;background:#f4f5f7;color:#17212d;font:17px/1.55 system-ui,sans-serif}main{max-width:760px;margin:auto;padding:1.5rem}h1{font-size:clamp(1.6rem,5vw,2.2rem)}section{background:white;border:1px solid #d7dce2;border-radius:.6rem;padding:1.25rem;margin:1.25rem 0}h2{font-size:1.15rem;margin-top:0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f7;padding:.75rem}button{font:inherit;min-height:44px;padding:.6rem 1rem;border:1px solid #64748b;border-radius:.35rem;background:white;cursor:pointer}.actions{display:flex;flex-wrap:wrap;gap:.75rem}.actions button:first-child{background:#142c45;color:white}input,select,textarea{font:inherit;width:100%;box-sizing:border-box}input[type=radio]{width:auto}fieldset{min-width:0}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #2679c4;outline-offset:3px}
+</style></body></html>

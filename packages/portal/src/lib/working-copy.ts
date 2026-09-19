@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { ensureBlockIds, type Block } from '@typeroll/shared';
 import { blockTreeInputError } from './block-tree-input';
 import { pageAuthorityFields } from '@typeroll/shared';
@@ -146,9 +147,12 @@ export async function mergeWorkingCopy(
   target: WcTarget,
   fields: Record<string, unknown>,
   updatedBy?: string,
+  answerSources?: WorkingCopy['answer_sources'],
 ): Promise<WorkingCopy> {
   const key = wcKey(target);
   const existing = await readWorkingCopy(ctx, target);
+  const page = target.kind === 'page' && fields.fields && !existing?.answer_base
+    ? await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id) : null;
   const next: WorkingCopy = {
     id: key,
     kind: target.kind as WorkingCopyKind,
@@ -156,6 +160,8 @@ export async function mergeWorkingCopy(
     fields: mergePageDraftFields(existing?.fields ?? {}, fields, target.kind === 'page'),
     updated_at: new Date().toISOString(),
     ...(updatedBy ? { updated_by: updatedBy } : {}),
+    ...(existing?.answer_base ? { answer_base: existing.answer_base } : page ? { answer_base: { fields: page.fields ?? {}, provenance: page._provenance ?? {} } } : {}),
+    ...((existing?.answer_sources || answerSources) ? { answer_sources: { ...existing?.answer_sources, ...answerSources } } : {}),
   };
   const { id: _id, ...body } = next;
   await getStore().setDoc(
@@ -263,12 +269,14 @@ export async function commitWorkingCopy(
   if (target.kind === 'page') {
     const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
     if (!existing) throw new WorkingCopyError('Page not found', 404);
+    if (wc.answer_base && !isDeepStrictEqual(wc.answer_base, { fields: existing.fields ?? {}, provenance: existing._provenance ?? {} }))
+      throw new WorkingCopyError('Structured answers changed after this draft started. Reload and review the current answers before saving.', 409);
     const update: Record<string, unknown> = { ...await filterWcFields(ctx, target, wc.fields), date_updated: now };
     {
       const type = await pageContentType(ctx, existing);
       if (!type) throw new WorkingCopyError('Content type not found', 400);
       const authority = applyFieldAuthority({ fields: pageAuthorityFields(type),
-        incoming: { ...update, ...(update.fields as Record<string, unknown> ?? {}) }, existing, actor: actor ?? 'portal', actorId: createdBy, now });
+        incoming: { ...update, ...(update.fields as Record<string, unknown> ?? {}) }, existing, actor: actor ?? 'portal', actorId: createdBy, now, sources: wc.answer_sources });
       if (authority.rejected.length) throw new WorkingCopyError(conflictResponse(authority.rejected).error, 409);
       if (update.fields) update.fields = { ...existing.fields, ...Object.fromEntries(Object.entries(authority.update).filter(([name]) => type.fields.some(field => field.name === name))) };
       update[PROVENANCE_KEY] = authority.provenance;
@@ -294,7 +302,7 @@ export async function commitWorkingCopy(
       kind: 'page', resourceIds: [target.id],
       doc: existing as unknown as Record<string, unknown>, createdBy,
     });
-    await vstore.writePage(ctx.orgId, ctx.siteId, ctx.versionId, target.id, update as Partial<Page>);
+    await vstore.writePage(ctx.orgId, ctx.siteId, ctx.versionId, target.id, update as Partial<Page>, { actor: actor ?? 'portal', actorId: createdBy, expected: existing, sources: wc.answer_sources });
 
     let auto_redirects: CommitResult['auto_redirects'] = [];
     let retired_redirects: CommitResult['retired_redirects'] = [];

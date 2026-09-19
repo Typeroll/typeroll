@@ -6,7 +6,7 @@
  * or tombstoned to classify the changes and to apply or roll them back.
  */
 
-import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
+import { paths, MAIN_VERSION_ID, pageAuthorityFields, pageContentValues, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
 import type {
   Page,
   Partial as PartialDoc,
@@ -16,7 +16,8 @@ import type {
 } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { snapshotRevision } from './revisions';
-import { vstore } from './version-store';
+import { vstore, PageWriteConflict } from './version-store';
+import { applyFieldAuthority, conflictResponse } from './field-authority';
 
 export type ChangeSet = { added: string[]; modified: string[]; deleted: string[] };
 
@@ -132,6 +133,18 @@ export async function promoteBranch(
   const store = getStore();
   const diff = await diffVersion(orgId, siteId, branchId, baseId);
 
+  // Reject known owner conflicts before applying any part of this promotion.
+  // Individual Page writes still compare snapshots to reject later races.
+  for (const id of [...diff.pages.added, ...diff.pages.modified]) {
+    const page = await vstore.page(orgId, siteId, branchId, id);
+    const existing = await vstore.page(orgId, siteId, baseId, id);
+    if (!page || !existing) continue;
+    const type = await vstore.contentType(orgId, siteId, branchId, page.content_type ?? 'page') ?? DEFAULT_CONTENT_TYPE;
+    const result = applyFieldAuthority({ fields: pageAuthorityFields(type), incoming: pageContentValues(page), existing,
+      actor: 'portal', actorId: promotedBy });
+    if (result.rejected.length) throw new PageWriteConflict(conflictResponse(result.rejected).error);
+  }
+
   // Snapshot main's current doc (if any) so the promote itself is undoable
   // from main's history — same posture as any normal edit.
   async function snapshotBase(kind: RevisionKind, resourceIds: string[], basePath: string): Promise<void> {
@@ -159,7 +172,9 @@ export async function promoteBranch(
     await snapshotBase('page', [id], paths.page(orgId, siteId, id, baseId));
   }
   for (const id of [...diff.pages.added, ...diff.pages.modified]) {
-    await copy(paths.page(orgId, siteId, id, branchId), paths.page(orgId, siteId, id, baseId));
+    const page = await vstore.page(orgId, siteId, branchId, id);
+    const current = await vstore.page(orgId, siteId, baseId, id);
+    if (page) await vstore.writePage(orgId, siteId, baseId, id, page, { actor: 'portal', actorId: promotedBy, contentType: await vstore.contentType(orgId, siteId, branchId, page.content_type ?? 'page') ?? undefined, ...(current ? { expected: current } : {}) });
   }
   for (const id of diff.pages.deleted) {
     await vstore.deletePage(orgId, siteId, baseId, id);

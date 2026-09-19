@@ -59,7 +59,7 @@ export async function applyContentWrite(
   ctx: WcCtx,
   target: WcTarget,
   rawFields: Record<string, unknown>,
-  opts: { save?: boolean; updatedBy: string; actor?: WriteActor },
+  opts: { save?: boolean; updatedBy: string; actor?: WriteActor; answerSources?: Record<string, { source_url?: string; import_run_id?: string }> },
 ): Promise<ContentWriteResult> {
   const result: ContentWriteResult = {
     staged: [],
@@ -129,7 +129,7 @@ export async function applyContentWrite(
   // Content → working copy (whitelisted per kind).
   const content = await filterWcFields(ctx, target, fields);
   if (Object.keys(content).length > 0) {
-    await mergeWorkingCopy(ctx, target, content, opts.updatedBy);
+    await mergeWorkingCopy(ctx, target, content, opts.updatedBy, opts.answerSources);
     result.staged = Object.keys(content);
   }
 

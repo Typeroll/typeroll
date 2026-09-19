@@ -57,12 +57,12 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
     ? ` data-tr-session-param="${escapeHtml(form.target.session_param)}"`
     : '';
 
-  return `<div data-tr-form="${escapeHtml(form.id)}"${hydrate}${sessionParam}>
+  return `<div data-tr-form="${escapeHtml(form.id)}"${hydrate}${sessionParam} data-tr-context-params="${escapeHtml(JSON.stringify(form.target?.context_params ?? []))}">
 ${styles}<form data-tr-form-el method="POST" action="${escapeHtml(embed.submit_url)}" data-pow-bits="${opts.pow_bits ?? 0}" data-msg-fail="${escapeHtml(failMsg)}" data-msg-done="${escapeHtml(doneMsg)}">
 <input type="hidden" name="_token" value="${escapeHtml(embed.submit_token ?? '')}" />
 <input type="hidden" name="_state" value="" />
 <input type="hidden" name="_form_id" value="${escapeHtml(form.id)}" />
-<input type="text" name="_hp" class="form-hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
+<input type="text" name="_hp" class="form-hp" hidden tabindex="-1" autocomplete="off" aria-hidden="true" />
 <p class="form-toplevel-error form-field-error" hidden tabindex="-1"></p>
 ${stepHtml}
 <div data-form-dynamic-step hidden></div>

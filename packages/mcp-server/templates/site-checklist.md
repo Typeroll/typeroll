@@ -20,6 +20,14 @@ it. Record intentional exceptions and their reason in `build-log.md`.
 - [ ] The same `version` is used for Page, type, template and preview operations.
 - [ ] Existing site data is migrated before running Core 0.2.0; no runtime aliases.
 
+## Optional owner answers (next coordinated release)
+
+- [ ] Owner answers distinguish Yes, No and unanswered; unchanged prefill is not confirmed.
+- [ ] Structured repeated answers have stable item identities and source evidence.
+- [ ] Owner proposals remain outside accepted Pages until explicit review.
+- [ ] Review configuration, notification recovery and normal publication are tested separately.
+- [ ] No live authentication, email, schema migration or publishing is enabled without authorization.
+
 ## Content and SEO
 
 - [ ] Approved copy and all expected Pages are present, including every content type.

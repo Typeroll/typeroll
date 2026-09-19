@@ -72,12 +72,12 @@ export const contentImprovementWorkflow: WorkflowDef = {
 
           // Save improvement as the next version on the same doc, but set
           // status='review' so the customer reviews before publishing.
-          await ctx.store.updateDoc(paths.page(ctx.orgId, ctx.siteId, t.page_id), {
+          await vstore.writePage(ctx.orgId, ctx.siteId, MAIN_VERSION_ID, t.page_id, {
             html_content: stripFences(improvedHtml),
             status: 'review',
             date_updated: new Date().toISOString(),
             ai_generated: true,
-          });
+          }, { actor: 'agent', actorId: `workflow:${ctx.workflowId}`, expected: page });
 
           // Snapshot the previous version into revisions.
           const revisionId = `${Date.now()}`;

@@ -108,3 +108,22 @@ to H2 at render time in both preview and static output, preserving stored data.
 The shared composition step gives a known template H1 precedence; a final HTML
 pass handles duplicates introduced by custom blocks. Site chrome does not add an
 automatic page.title heading. Custom brand markup should not use H1.
+
+
+## Typed owner answers and pending review (next release)
+
+Core 0.2.24 does not include this contract. Boolean answers distinguish true,
+false and unknown; omit untouched answers and send null only for an intentional
+clear. Structured arrays use an explicit stable text `item_key`. Sources and
+authority apply per schema leaf; unchanged imported values are not confirmed.
+`answer_sources` on Page updates/replacements accepts source_url/import_run_id,
+never actor identity. Owner/reviewer values cannot be overwritten by imports or
+agents. Report conflicts rather than retrying an overwrite.
+
+Owner Extensions submit isolated proposals using the current answer revision.
+Pending proposals are outside Pages, working copies and publication. Review is
+an explicit, idempotent decision; acceptance and publication are separate.
+Site-admin MCP tools list/read/configure/decide/revoke owner proposals and manage
+bounded notification retry/recovery. Never include private review links or
+identities in public content. See the shared owner-review guide for the full
+API and migration contract. Private app authentication remains app-owned.

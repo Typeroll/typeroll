@@ -1,26 +1,5 @@
-// Per-field write authority and provenance for collection items.
-//
-// A directory has four kinds of writer touching the same record — a portal
-// operator, the listed business itself (through a one-time edit link), an
-// enrichment agent, and the app's own server logic (billing state). Without
-// per-field rules they overwrite each other silently: the business corrects
-// its description on Monday and a scraper restores the stale one on Tuesday.
-// Nobody notices until a customer complains.
-//
-// Two independent mechanisms, deliberately not conflated:
-//
-//   writable_by  — WHO MAY write a field at all. Exclusivity. A `type` field
-//                  marked ['app'] can't be touched by the business or an
-//                  agent, full stop.
-//   provenance   — WHO LAST WROTE IT, per field, so a contended field can be
-//                  resolved by precedence instead of by whoever ran last.
-//
-// The precedence ladder only decides SHARED fields; exclusive ones never
-// reach it. And a rejected write returns a conflict rather than silently
-// no-op'ing: a silent drop leaves an agent believing it succeeded, so it
-// retries the same write forever and its own store drifts out of sync with
-// what's actually published.
-
+// Schema-leaf write authority and private provenance for Page answers.
+import { isDeepStrictEqual } from 'node:util';
 import type { FieldDefinition } from '@typeroll/shared';
 
 /**
@@ -47,7 +26,7 @@ const RANK: Record<WriteActor, number> = {
  * Applied when a field declares no `writable_by`. Exactly today's behaviour —
  * the portal UI and API keys can write, and nothing else could anyway. The
  * owner surface (edit links) must be opted into per field, so adding it can
- * never retroactively expose an existing collection's fields to the public.
+ * never retroactively expose an existing content type's fields to the public.
  */
 export const DEFAULT_WRITABLE_BY: readonly WriteActor[] = ['portal', 'agent'];
 
@@ -56,6 +35,9 @@ export interface ProvenanceEntry {
   /** User email, API-key prefix, or agent id — whatever identifies the writer. */
   actor: string;
   updated_at: string;
+  source_url?: string;
+  import_run_id?: string;
+  override_reason?: string;
 }
 
 /** Server-maintained, underscore-prefixed so no schema whitelist admits it. */
@@ -65,7 +47,7 @@ export const PROVENANCE_KEY = '_provenance';
 
 export interface RejectedWrite {
   field: string;
-  reason: 'not_writable' | 'lower_precedence';
+  reason: 'not_writable' | 'lower_precedence' | 'override_required' | 'invalid_item_identity';
   /** Present for lower_precedence — who owns the value the write lost to. */
   current_source?: WriteActor;
 }
@@ -101,40 +83,94 @@ export function readProvenance(item: object | undefined): ProvenanceMap {
  * answers "may THIS actor write THIS field", not "is this a real field".
  */
 export function applyFieldAuthority(args: {
-  fields: FieldDefinition[];
-  incoming: Record<string, unknown>;
-  existing: object | undefined;
-  actor: WriteActor;
-  actorId: string;
-  now?: string;
+  fields: FieldDefinition[]; incoming: Record<string, unknown>; existing: object | undefined;
+  actor: WriteActor; actorId: string; now?: string;
+  sourceUrl?: string; importRunId?: string;
+  sources?: Record<string, { source_url?: string; import_run_id?: string }>;
+  /** Explicit administrative correction; callers must authorize it separately. */
+  overrideReason?: string;
+  /** Explicit confirmations are leaf paths, never inferred from a form save. */
+  confirm?: string[];
 }): FieldAuthorityResult {
   const now = args.now ?? new Date().toISOString();
   const current = readProvenance(args.existing);
-  const byName = new Map(args.fields.map((f) => [f.name, f]));
-
+  const existing = args.existing as Record<string, unknown> | undefined;
+  const values = { ...(existing?.fields as Record<string, unknown> ?? {}), ...existing };
   const update: Record<string, unknown> = {};
   const provenance: ProvenanceMap = { ...current };
   const rejected: RejectedWrite[] = [];
-
-  for (const [name, value] of Object.entries(args.incoming)) {
-    const field = byName.get(name);
-    if (!field) continue; // not a schema field — caller's whitelist owns this
-
-    if (!writableBy(field).includes(args.actor)) {
-      rejected.push({ field: name, reason: 'not_writable' });
-      continue;
+  const escape = (value: string) => value.replace(/~/g, '~0').replace(/\//g, '~1');
+  const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+  const sourceAt = (path: string): ProvenanceEntry | undefined => {
+    for (let key = path; key; key = key.includes('/') ? key.slice(0, key.lastIndexOf('/')) : '') if (current[key]) return current[key];
+    return undefined;
+  };
+  const stamp = (path: string) => {
+    provenance[path] = { source: args.actor, actor: args.actorId, updated_at: now,
+      ...(args.sourceUrl ? { source_url: args.sourceUrl } : {}), ...(args.importRunId ? { import_run_id: args.importRunId } : {}),
+      ...(args.sources?.[path]?.source_url ? { source_url: args.sources[path].source_url } : {}),
+      ...(args.sources?.[path]?.import_run_id ? { import_run_id: args.sources[path].import_run_id } : {}),
+      ...(args.overrideReason ? { override_reason: args.overrideReason } : {}) };
+  };
+  const allow = (path: string, allowed: readonly WriteActor[], before: unknown, after: unknown): boolean => {
+    if (isDeepStrictEqual(before, after) && !args.confirm?.includes(path)) return true;
+    if (!allowed.includes(args.actor)) { rejected.push({ field: path, reason: 'not_writable' }); return false; }
+    const prior = sourceAt(path);
+    if (prior && RANK[args.actor] < RANK[prior.source]) {
+      rejected.push({ field: path, reason: 'lower_precedence', current_source: prior.source }); return false;
     }
-
-    const owner = current[name]?.source;
-    if (owner && RANK[args.actor] < RANK[owner]) {
-      rejected.push({ field: name, reason: 'lower_precedence', current_source: owner });
-      continue;
+    if (prior?.source === 'owner' && args.actor === 'portal' && !args.overrideReason?.trim()) {
+      rejected.push({ field: path, reason: 'override_required', current_source: prior.source }); return false;
     }
-
-    update[name] = value;
-    provenance[name] = { source: args.actor, actor: args.actorId, updated_at: now };
+    stamp(path); return true;
+  };
+  const walk = (field: FieldDefinition, before: unknown, after: unknown, path: string, inherited: readonly WriteActor[]): unknown => {
+    const allowed = field.writable_by?.length ? field.writable_by : inherited;
+    if (field.type === 'object' && field.fields && object(after)) {
+      const base = object(before) ? before : {};
+      const next = { ...base };
+      for (const child of field.fields) if (Object.hasOwn(after, child.name))
+        next[child.name] = walk(child, base[child.name], after[child.name], `${path}/${escape(child.name)}`, allowed);
+      return next;
+    }
+    if (['array', 'list'].includes(field.type) && field.fields && field.item_key && Array.isArray(after)) {
+      const key = field.item_key;
+      const previous = Array.isArray(before) ? before : [];
+      const valid = (rows: unknown[]) => rows.every(row => object(row) && typeof row[key] === 'string' && row[key].length > 0 && row[key].length <= 200)
+        && new Set(rows.map(row => (row as Record<string, unknown>)[key])).size === rows.length;
+      if (!valid(after) || !valid(previous)) {
+        rejected.push({ field: path, reason: 'invalid_item_identity' }); return before;
+      }
+      const old = new Map(previous.map(row => [(row as Record<string, unknown>)[key], row]));
+      const retained = new Set(after.map(row => row[key]));
+      for (const row of previous) if (!retained.has(row[key]))
+        walk({ ...field, type: 'object' }, row, undefined, `${path}/@${escape(row[key])}`, allowed);
+      return after.map(row => walk({ ...field, type: 'object' }, old.get(row[key]), row, `${path}/@${escape(row[key])}`, allowed));
+    }
+    // Null resets and complete removals must authorize every affected leaf.
+    // Unkeyed arrays are indivisible, never tracked by mutable numeric indexes.
+    if (field.type === 'object' && field.fields && object(before)) {
+      for (const child of field.fields) if (Object.hasOwn(before, child.name))
+        walk(child, before[child.name], after === null ? null : undefined, `${path}/${escape(child.name)}`, allowed);
+    }
+    if (['array', 'list'].includes(field.type) && field.fields && field.item_key && Array.isArray(before)) {
+      for (const row of before) if (object(row) && typeof row[field.item_key] === 'string')
+        walk({ ...field, type: 'object' }, row, undefined, `${path}/@${escape(row[field.item_key] as string)}`, allowed);
+    }
+    if (!allow(path, allowed, before, after)) return before;
+    // A schema change cannot erase older protected descendant provenance.
+    if (!isDeepStrictEqual(before, after)) for (const key of Object.keys(current)) if (key.startsWith(path + '/'))
+      allow(key, allowed, before, after);
+    return after;
+  };
+  for (const field of args.fields) {
+    if (!Object.hasOwn(args.incoming, field.name)) continue;
+    const start = rejected.length;
+    const previousProvenance = { ...provenance };
+    const next = walk(field, values[field.name], args.incoming[field.name], field.name, writableBy(field));
+    if (rejected.length === start) update[field.name] = next;
+    else { for (const key of Object.keys(provenance)) delete provenance[key]; Object.assign(provenance, previousProvenance); }
   }
-
   return { update, provenance, rejected };
 }
 
@@ -150,6 +186,8 @@ export function conflictResponse(rejected: RejectedWrite[]): {
   const notWritable = rejected.filter((r) => r.reason === 'not_writable').map((r) => r.field);
   const outranked = rejected.filter((r) => r.reason === 'lower_precedence');
   const parts: string[] = [];
+  for (const rejection of rejected.filter(item => ['override_required', 'invalid_item_identity'].includes(item.reason)))
+    parts.push(`${rejection.field}: ${rejection.reason === 'override_required' ? 'an explicit administrative override reason is required' : 'array items need unique stable identities'}`);
   if (notWritable.length) {
     parts.push(`not writable by this surface: ${notWritable.join(', ')}`);
   }

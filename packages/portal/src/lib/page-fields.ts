@@ -14,7 +14,7 @@ export function validatePageFields(type: ContentType, incoming: unknown, require
 function validateFieldValues(definitions: FieldDefinition[], incoming: unknown, prefix = '', requireComplete = false): string | null {
   if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return 'fields must be an object';
   if (requireComplete) for (const field of definitions) {
-    const value = (incoming as Record<string, unknown>)[field.name] ?? field.default;
+    const value = Object.hasOwn(incoming, field.name) ? (incoming as Record<string, unknown>)[field.name] : field.default;
     if (field.required && (value == null || (typeof value === 'string' && !value.trim()) || (Array.isArray(value) && !value.length))) return `${prefix}${field.name} is required`;
   }
   const allowed = new Map(definitions.map(field => [field.name, field]));
@@ -31,6 +31,11 @@ function validateFieldValues(definitions: FieldDefinition[], incoming: unknown, 
     if (field.type === 'multiselect' && new Set(value as string[]).size !== (value as string[]).length) return `${prefix}${name} contains duplicate choices`;
     if (field.type === 'select' && field.options && !field.options.includes(String(value))) return `Invalid value for ${name}`;
     if (field.type === 'object' && (typeof value !== 'object' || Array.isArray(value))) return `${prefix}${name} must be an object`;
+    if (field.item_key && ['array', 'list'].includes(field.type) && Array.isArray(value)) {
+      const keys = value.map(row => row && typeof row === 'object' ? row[field.item_key!] : undefined);
+      if (keys.some(key => typeof key !== 'string' || !key || key.length > 200) || new Set(keys).size !== keys.length)
+        return `${prefix}${name} requires unique nonempty ${field.item_key} values`;
+    }
     if (field.fields && ['object', 'array', 'list'].includes(field.type)) {
       for (const child of field.type === 'object' ? [value] : value as unknown[]) {
         const error = validateFieldValues(field.fields, child, `${prefix}${name}.`, requireComplete);

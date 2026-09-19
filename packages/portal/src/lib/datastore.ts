@@ -18,6 +18,14 @@ export interface Filter {
   value: unknown;
 }
 
+export interface ConditionalEffect {
+  path: string; data: Record<string, any>;
+  /** When provided, all comparisons and writes participate in one transaction. */
+  expected?: Record<string, any> | null;
+  replace?: boolean;
+  guardOnly?: boolean;
+}
+
 type SnapshotReader = Pick<ReadWriteStore, 'getDoc' | 'listDocs'>;
 const readContext = new AsyncLocalStorage<ReadWriteStore>();
 function inReadContext<T>(reader: SnapshotReader, work: () => Promise<T>): Promise<T> {
@@ -56,7 +64,7 @@ export interface ReadWriteStore {
    * using updateDoc.
    */
   /** Compare the complete value returned by getDoc and replace without merging nested fields. */
-  compareAndReplaceDoc(path: string, expected: Record<string, any> | null, data: Record<string, any>, effects?: Array<{ path: string; data: Record<string, any> }>): Promise<boolean>;
+  compareAndReplaceDoc(path: string, expected: Record<string, any> | null, data: Record<string, any>, effects?: ConditionalEffect[]): Promise<boolean>;
   compareAndUpdateDoc<T = unknown>(
     path: string,
     check: (current: T & { id: string }) => boolean,
@@ -247,18 +255,27 @@ class FixtureStore implements ReadWriteStore {
     return id;
   }
 
-  async compareAndReplaceDoc(p: string, expected: Record<string, any> | null, data: Record<string, any>, effects: Array<{ path: string; data: Record<string, any> }> = []): Promise<boolean> {
-    return this.withLock(p, async () => {
+  async compareAndReplaceDoc(p: string, expected: Record<string, any> | null, data: Record<string, any>, effects: ConditionalEffect[] = []): Promise<boolean> {
+    const keys = [...new Set([p, ...effects.map(effect => effect.path)])].sort();
+    const locked = async (index: number): Promise<boolean> => index < keys.length
+      ? this.withLock(keys[index], () => locked(index + 1)) : commit();
+    const commit = async () => {
       if (!isDeepStrictEqual(await this.getDoc(p), expected)) return false;
-      const { docPath } = this.resolve(p);
-      await fs.promises.mkdir(path.dirname(docPath), { recursive: true });
-      const tmpPath = `${docPath}.${process.pid}.${Date.now()}.tmp`;
-      await fs.promises.writeFile(tmpPath, JSON.stringify(data, null, 2));
-      await fs.promises.rename(tmpPath, docPath);
-      await this.indexWrite(p, expected, data);
-      for (const effect of effects) await this.updateDoc(effect.path, effect.data);
+      const before = await Promise.all(effects.map(effect => this.getDoc(effect.path)));
+      if (effects.some((effect, i) => Object.hasOwn(effect, 'expected') && !isDeepStrictEqual(before[i], effect.expected))) return false;
+      const writes = [{ path: p, data, before: expected }, ...effects.map((effect, i) => ({ ...effect, path: effect.path,
+        data: effect.replace ? effect.data : { ...before[i], ...effect.data }, before: before[i] })).filter(effect => !effect.guardOnly)];
+      for (const write of writes) {
+        const { docPath } = this.resolve(write.path);
+        await fs.promises.mkdir(path.dirname(docPath), { recursive: true });
+        const tmpPath = `${docPath}.${process.pid}.${Date.now()}.tmp`;
+        await fs.promises.writeFile(tmpPath, JSON.stringify(write.data, null, 2));
+        await fs.promises.rename(tmpPath, docPath);
+      }
+      for (const write of writes) await this.indexWrite(write.path, write.before, write.data);
       return true;
-    });
+    };
+    return locked(0);
   }
 
   async compareAndUpdateDoc<T>(
@@ -458,19 +475,23 @@ class FirestoreStore implements ReadWriteStore {
     return ref.id;
   }
 
-  async compareAndReplaceDoc(p: string, expected: Record<string, any> | null, data: Record<string, any>, effects: Array<{ path: string; data: Record<string, any> }> = []): Promise<boolean> {
+  async compareAndReplaceDoc(p: string, expected: Record<string, any> | null, data: Record<string, any>, effects: ConditionalEffect[] = []): Promise<boolean> {
     const db = await this.dbPromise;
     const result = await db.runTransaction(async tx => {
       const ref = db.doc(p), snap = await tx.get(ref);
       const current = snap.exists ? { id: snap.id, ...decodeNestedArrays(snap.data()!) } : null;
       if (!isDeepStrictEqual(current, expected)) return null;
       const previous = await Promise.all(effects.map(effect => tx.get(db.doc(effect.path))));
+      if (effects.some((effect, i) => Object.hasOwn(effect, 'expected') && !isDeepStrictEqual(
+        previous[i].exists ? { id: previous[i].id, ...decodeNestedArrays(previous[i].data()!) } : null, effect.expected))) return null;
       tx.set(ref, encodeNestedArrays(data));
       const writes = this.indexTransaction(tx, db, p, current, data);
       effects.forEach((effect, i) => {
+        if (effect.guardOnly) return;
         const before = previous[i].exists ? decodeNestedArrays(previous[i].data()) : null;
-        tx.set(db.doc(effect.path), encodeNestedArrays(effect.data), { merge: true });
-        writes.push(...this.indexTransaction(tx, db, effect.path, before, { ...before, ...effect.data }));
+        if (effect.replace) tx.set(db.doc(effect.path), encodeNestedArrays(effect.data));
+        else tx.set(db.doc(effect.path), encodeNestedArrays(effect.data), { merge: true });
+        writes.push(...this.indexTransaction(tx, db, effect.path, before, effect.replace ? effect.data : { ...before, ...effect.data }));
       });
       return writes;
     });

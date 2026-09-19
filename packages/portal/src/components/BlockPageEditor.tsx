@@ -1368,7 +1368,7 @@ function MetaPanel({
         {contentType ? <>
           <p>Content type: <a style={{ color: '#a5b4fc' }} href={`/app/sites/${siteId}/content-types/${contentType.name}`}>{contentType.label_singular}</a></p>
           {contentType.fields.map(field =>
-            <FieldInput key={field.name} siteId={siteId} field={field} value={(draft.fields ?? {})[field.name]} onChange={value => onChange('fields', { ...draft.fields, [field.name]: value })} />)}
+            <FieldInput key={field.name} siteId={siteId} triState field={field} value={(draft.fields ?? {})[field.name]} onChange={value => onChange('fields', { ...draft.fields, [field.name]: value })} />)}
           {contentType.template && <a style={{ color: '#a5b4fc' }} href={`/app/sites/${siteId}/templates/${contentType.template}`}>Edit default template</a>}
         </> : null}
         <label style={fieldLabel} htmlFor="page-sort-order">Page order</label>

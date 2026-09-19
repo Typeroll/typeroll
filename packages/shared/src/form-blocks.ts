@@ -359,6 +359,25 @@ const formHidden: BlockType = {
   created_at: ISO_EPOCH,
 };
 
+const formBoolean: BlockType = {
+  id: 'form/boolean', name: 'form_boolean', label: 'Yes / No answer', icon: 'circle-check', category: 'content', container: false,
+  schema: [
+    { name: 'name', type: 'text', label: 'Field name', required: true },
+    { name: 'label', type: 'text', label: 'Question', required: true },
+    { name: 'required', type: 'boolean', label: 'Required', default: false },
+    { name: 'help', type: 'text', label: 'Help text' },
+  ],
+  template: `<fieldset data-block="form_boolean" class="form-field" data-field="{{name}}">
+    <legend>{{label}}</legend>
+    <label><input type="radio" name="{{name}}" value="true" data-required="{{required}}" /> Yes</label>
+    <label><input type="radio" name="{{name}}" value="false" data-required="{{required}}" /> No</label>
+    <button type="button" data-clear-answer="{{name}}">Clear answer</button>
+    <p class="form-field-help">{{help}}</p><p class="form-field-error" data-error-for="{{name}}" hidden></p>
+  </fieldset>`,
+  styles: `[data-block="form_boolean"]{border:0;padding:0}[data-block="form_boolean"] legend{font-weight:600}[data-block="form_boolean"] label{display:flex;gap:.65rem;align-items:center;min-height:44px}[data-block="form_boolean"] button{font:inherit;min-height:44px;align-self:start}`,
+  origin: 'core', created_at: ISO_EPOCH,
+};
+
 export const FORM_BLOCK_TYPES: BlockType[] = [
   formText,
   formEmail,
@@ -368,6 +387,7 @@ export const FORM_BLOCK_TYPES: BlockType[] = [
   formTextarea,
   formSelect,
   formRadioGroup,
+  formBoolean,
   formCheckboxGroup,
   formToggle,
   formSlider,

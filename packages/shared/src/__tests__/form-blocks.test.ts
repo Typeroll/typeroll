@@ -6,8 +6,8 @@ import { renderBlock } from '../render-blocks.js';
 const registry = buildCoreBlockRegistry();
 
 describe('form/* block family — structural invariants', () => {
-  it('all 16 blocks are registered in the core registry', () => {
-    expect(FORM_BLOCK_TYPES.length).toBe(16);
+  it('all 17 blocks are registered in the core registry', () => {
+    expect(FORM_BLOCK_TYPES.length).toBe(17);
     for (const bt of FORM_BLOCK_TYPES) {
       expect(registry.get(bt.id), bt.id).toBeDefined();
       expect(bt.id.startsWith('form/'), bt.id).toBe(true);

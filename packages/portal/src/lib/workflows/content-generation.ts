@@ -47,7 +47,8 @@ export const contentGenerationWorkflow: WorkflowDef = {
           date_updated: new Date().toISOString(),
         };
         const pageId = slug;
-        await ctx.store.setDoc(`${paths.pages(ctx.orgId, ctx.siteId)}/${pageId}`, doc);
+        if (!await ctx.store.createDocIfMissing(`${paths.pages(ctx.orgId, ctx.siteId)}/${pageId}`, doc))
+            throw new Error('A Page already exists at the generated identity; existing content was not replaced.');
         ctx.log(`Saved draft at /${slug}`);
         return { results: { page_id: pageId, slug, title } };
       },

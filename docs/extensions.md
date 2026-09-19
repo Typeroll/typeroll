@@ -318,7 +318,7 @@ Installation credentials can use these generic APIs with explicit scopes:
 | API | Scope | Boundary |
 | --- | --- | --- |
 | `GET /extensions/self` | `extension:config:read` | Own enabled installation, validated non-secret config, version and verified site origins |
-| `GET/PUT /pages/{pageId}/owner-fields` | `content:owner` | Fields explicitly writable by owner; typed validation, sanitization and provenance conflicts |
+| `GET/PUT /pages/{pageId}/owner-fields` | `content:owner` | Next release: typed owner fields + revision; PUT creates a pending proposal, never directly saves a Page. See the owner-review guide. |
 | `POST /delivery/email` | `email:send` | Single recipient, bounded plain text, configured site connector, no connector credentials returned |
 | `POST /forms/{formId}/actions` | `forms:execute` | Before/after actions on a form bound to this installation only |
 

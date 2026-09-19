@@ -3,6 +3,8 @@
 import { z } from 'zod';
 import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
 
+const answerSources = z.record(z.object({ source_url: z.string().url().optional(), import_run_id: z.string().max(200).optional() }).strict()).optional().describe('Evidence per schema leaf path. Actor and timestamp are always assigned by the server; unchanged answers are not confirmed.');
+
 function v(version?: string): Record<string, string | undefined> | undefined {
   return version ? { version } : undefined;
 }
@@ -178,6 +180,7 @@ export const pageTools: ToolDef[] = [
           template: z.string().nullable().optional().describe('Allowed template ID; null restores the content type default.'),
         })
         .passthrough(),
+      answer_sources: answerSources,
       save: z.boolean().optional().describe(
         'Also SAVE (commit) the draft in the same call — use for pre-approved or batch changes. Without it, changes stay in the unsaved draft until commit_working_copy.',
       ),
@@ -187,7 +190,7 @@ export const pageTools: ToolDef[] = [
       const res = await client.patch(
         siteId,
         `pages/${encodeURIComponent(args.page_id)}`,
-        { ...args.patch, ...(args.save ? { save: true } : {}) },
+        { ...args.patch, ...(args.answer_sources ? { answer_sources: args.answer_sources } : {}), ...(args.save ? { save: true } : {}) },
         v(args.version),
       );
       return ok(res);
@@ -200,6 +203,7 @@ export const pageTools: ToolDef[] = [
     inputSchema: {
       page_id: z.string(),
       page: z.object({ title: z.string().min(1) }).passthrough(),
+      answer_sources: answerSources,
       save: z.boolean().optional().describe(
         'Also SAVE (commit) the draft in the same call — use for pre-approved or batch changes. Without it, changes stay in the unsaved draft until commit_working_copy.',
       ),
@@ -209,7 +213,7 @@ export const pageTools: ToolDef[] = [
       const res = await client.put(
         siteId,
         `pages/${encodeURIComponent(args.page_id)}`,
-        { ...args.page, ...(args.save ? { save: true } : {}) },
+        { ...args.page, ...(args.answer_sources ? { answer_sources: args.answer_sources } : {}), ...(args.save ? { save: true } : {}) },
         v(args.version),
       );
       return ok(res);

@@ -46,7 +46,7 @@ export default function PageContentTypePicker({ siteId, page, disabled = false }
       <p className="muted text-sm">The page content and existing address are kept. The new type supplies its fields and default template. {target.route_template === '' && 'This type has no public page address.'}</p>
       {removed.length > 0 && <p role="status">These fields will be removed from the page: {removed.join(', ')}. Their previous values remain in revision history.</p>}
       <fieldset disabled={disabled || saving} className="page-type-picker__fields">
-        {target.fields.map(field => <FieldInput key={`${target.id}:${field.name}`} siteId={siteId} field={field} value={nextFields[field.name]} onChange={value => setNextFields(current => ({ ...current, [field.name]: value }))} />)}
+        {target.fields.map(field => <FieldInput key={`${target.id}:${field.name}`} siteId={siteId} triState field={field} value={nextFields[field.name]} onChange={value => setNextFields(current => ({ ...current, [field.name]: value }))} />)}
       </fieldset>
       <button type="button" className="btn btn-primary" disabled={disabled || saving} onClick={() => void apply()}>{saving ? 'Saving…' : 'Save content type'}</button>
     </>}

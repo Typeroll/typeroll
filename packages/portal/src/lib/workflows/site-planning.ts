@@ -101,7 +101,8 @@ Write the page. Be specific and useful — no filler.`
             seo_description: p.description,
             date_updated: new Date().toISOString(),
           };
-          await ctx.store.setDoc(`${paths.pages(ctx.orgId, ctx.siteId)}/${pageId}`, doc);
+          if (!await ctx.store.createDocIfMissing(`${paths.pages(ctx.orgId, ctx.siteId)}/${pageId}`, doc))
+            throw new Error('A Page already exists at the generated identity; existing content was not replaced.');
           written++;
         }
 

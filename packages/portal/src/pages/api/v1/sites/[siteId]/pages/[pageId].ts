@@ -122,12 +122,23 @@ async function handleWrite(
   pageId: string,
   fields: Record<string, unknown>,
   save: boolean,
+  answerSources?: unknown,
 ): Promise<Record<string, unknown>> {
+  if (answerSources !== undefined) {
+    if (!answerSources || typeof answerSources !== 'object' || Array.isArray(answerSources)) throw new WorkingCopyError('answer_sources must be a map of answer paths to source metadata', 400);
+    for (const [path, source] of Object.entries(answerSources)) {
+      if (!/^[a-z][a-z0-9_]*(?:\/[^\s]+)*$/.test(path) || !source || typeof source !== 'object' || Array.isArray(source) ||
+          Object.keys(source).some(key => !['source_url', 'import_run_id'].includes(key))) throw new WorkingCopyError('Answer sources accept only source_url and import_run_id; actor identity is assigned by the server', 400);
+      const meta = source as Record<string, unknown>;
+      if (meta.source_url !== undefined) { try { if (typeof meta.source_url !== 'string' || meta.source_url.length > 4096) throw Error(); const url = new URL(meta.source_url); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw Error(); } catch { throw new WorkingCopyError('source_url must be an HTTP(S) URL without credentials', 400); } }
+      if (meta.import_run_id !== undefined && (typeof meta.import_run_id !== 'string' || meta.import_run_id.length > 200)) throw new WorkingCopyError('Invalid import_run_id', 400);
+    }
+  }
   const result = await applyContentWrite(
     ctx,
     { kind: 'page', id: pageId },
     fields,
-    { save, updatedBy: `api-key:${ctx.keyPrefix}` },
+    { save, updatedBy: `api-key:${ctx.keyPrefix}`, answerSources: answerSources as Record<string, { source_url?: string; import_run_id?: string }> | undefined },
   );
   const view = await draftView(ctx, pageId);
   return {
@@ -151,7 +162,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!pageId) return apiError('Missing pageId');
   const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
   if (!existing) return apiError('Not found', 404);
-  const body = (await request.json().catch(() => null)) as (Partial<Page> & { save?: boolean }) | null;
+  const body = (await request.json().catch(() => null)) as (Partial<Page> & { save?: boolean; answer_sources?: unknown }) | null;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body');
   if (body.fields !== undefined && (body.fields === null || typeof body.fields !== 'object' || Array.isArray(body.fields))) return apiError('fields must be an object');
   const blockError = blockTreeInputError(body.blocks);
@@ -170,7 +181,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (Object.keys(update).length === 0) return apiError('No writable fields in body');
 
   try {
-    const payload = await handleWrite(ctx, pageId, update, body.save === true);
+    const payload = await handleWrite(ctx, pageId, update, body.save === true, body.answer_sources);
     return apiResponse(ctx, payload, 200, body);
   } catch (e) {
     if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
@@ -186,7 +197,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
   if (!pageId) return apiError('Missing pageId');
   const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
   if (!existing) return apiError('Not found', 404);
-  const body = (await request.json().catch(() => null)) as (Partial<Page> & { save?: boolean }) | null;
+  const body = (await request.json().catch(() => null)) as (Partial<Page> & { save?: boolean; answer_sources?: unknown }) | null;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body');
   if (body.fields !== undefined && (body.fields === null || typeof body.fields !== 'object' || Array.isArray(body.fields))) return apiError('fields must be an object');
   const blockError = blockTreeInputError(body.blocks);
@@ -208,7 +219,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
   if (body.slug !== undefined) update.slug = body.slug;
 
   try {
-    const payload = await handleWrite(ctx, pageId, update, body.save === true);
+    const payload = await handleWrite(ctx, pageId, update, body.save === true, body.answer_sources);
     return apiResponse(ctx, payload, 200, body);
   } catch (e) {
     if (e instanceof WorkingCopyError) return apiError(e.message, e.status);

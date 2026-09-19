@@ -90,6 +90,7 @@ export default defineConfig({
               ],
             },
             { label: 'Forms', slug: 'apps/forms' },
+            { label: 'Owner answers & review', slug: 'guides/owner-review' },
             { label: 'Integrations', slug: 'apps/integrations' },
           ],
         },

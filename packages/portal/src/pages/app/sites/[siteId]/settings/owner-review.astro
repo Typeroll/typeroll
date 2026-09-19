@@ -1,0 +1,86 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { loadSiteContext } from '../../../../../lib/access';
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+if (ctx.permission !== 'admin') return Astro.redirect(`/app/sites/${ctx.site.id}/settings`);
+---
+<AppLayout title={`Owner change review — ${ctx.site.name}`} siteId={ctx.site.id}>
+  <main id="review-admin" data-site={ctx.site.id} style="max-width:56rem">
+    <h1>Owner change review</h1>
+    <p>Owner submissions wait here without changing accepted content. Approval and website publishing are separate actions.</p>
+    <form id="review-settings" style="display:grid;gap:1rem;max-width:38rem">
+      <label><input type="checkbox" name="enabled" /> Accept owner change proposals</label>
+      <label>Reviewer email <input type="email" name="recipient" required autocomplete="email" /></label>
+      <label>Review-link lifetime (hours) <input type="number" name="link_ttl_hours" min="1" max="168" value="24" required /></label>
+      <p>Messages use the sender configured in <a href={`/app/sites/${ctx.site.id}/settings/email`}>Email &amp; notifications</a>.</p>
+      <button class="btn btn--primary" type="submit">Save review settings</button>
+    </form>
+    <p id="review-notice" role="status"></p><h2>Change proposals</h2>
+    <button id="review-refresh" class="btn" type="button">Refresh review queue</button>
+    <div id="review-queue" style="display:grid;gap:1rem"></div><button id="review-more" class="btn" hidden>Load more</button>
+  </main>
+</AppLayout>
+<script>
+ const root = document.querySelector<HTMLElement>('#review-admin')!, endpoint = `/api/sites/${root.dataset.site}/owner-review`;
+ const form = document.querySelector<HTMLFormElement>('#review-settings')!, notice = document.querySelector('#review-notice')!, queue = document.querySelector('#review-queue')!;
+ const more = document.querySelector<HTMLButtonElement>('#review-more')!; let cursor: string | null = null;
+ const call = async (body?: unknown, after?: string) => {
+   const response = await fetch(endpoint + (after ? `?cursor=${encodeURIComponent(after)}` : ''), body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+   const result = await response.json(); if (!response.ok) throw Error(result.error ?? 'Unable to update review settings'); return result;
+ };
+ const load = async (append = false) => {
+   try {
+     const data = await call(undefined, append ? cursor ?? undefined : undefined);
+     if (!append) {
+       queue.replaceChildren();
+       (form.elements.namedItem('enabled') as HTMLInputElement).checked = data.settings?.enabled === true;
+       (form.elements.namedItem('recipient') as HTMLInputElement).value = data.settings?.recipient ?? '';
+       (form.elements.namedItem('link_ttl_hours') as HTMLInputElement).value = String(data.settings?.link_ttl_hours ?? 24);
+     }
+     for (const proposal of data.proposals) {
+       const card = document.createElement('section'); card.className = 'card'; card.style.padding = '1rem';
+       const title = document.createElement('h3'); title.textContent = proposal.title;
+       const state = document.createElement('p'); state.textContent = `${proposal.status} · Notification ${proposal.notification.status} (${proposal.notification.attempts}/3 attempts)`; card.append(title, state);
+       if (proposal.status === 'pending') for (const [label, action] of [['Open private review', 'review-link'], ['Retry notification', 'notify'], ['Revoke proposal', 'revoke']]) {
+         const button = document.createElement('button'); button.className = 'btn'; button.textContent = label; button.style.margin = '.25rem';
+         if (action === 'notify' && !['pending', 'failed'].includes(proposal.notification.status)) continue;
+         button.addEventListener('click', async () => { button.disabled = true; try {
+           const result = await call({ action, proposal_id: proposal.id });
+           if (result.review_url) location.assign(result.review_url); else { notice.textContent = 'Review status updated.'; await load(); }
+         } catch (error) { notice.textContent = error instanceof Error ? error.message : 'Request failed'; } finally { button.disabled = false; } }); card.append(button);
+       }
+       if (proposal.notification.status === 'sending' && proposal.status === 'pending') {
+         const details = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = 'Recover an interrupted notification';
+         const help = document.createElement('p'); help.textContent = 'First check the email provider to establish whether delivery failed. This records a reason and permits a later manual retry; it does not send a message.';
+         const reason = document.createElement('textarea'); reason.setAttribute('aria-label', 'Notification recovery reason'); reason.style.cssText = 'width:100%;box-sizing:border-box;min-height:80px';
+         const recover = document.createElement('button'); recover.textContent = 'Record recovery'; recover.className = 'btn';
+         recover.addEventListener('click', async () => { recover.disabled = true; try {
+           await call({ action: 'recover-notification', proposal_id: proposal.id, reason: reason.value }); notice.textContent = 'Recovery recorded. You may now retry the notification.'; await load();
+         } catch (error) { notice.textContent = error instanceof Error ? error.message : 'Recovery failed'; } finally { recover.disabled = false; } });
+         details.append(summary, help, reason, recover); card.append(details);
+       }
+       queue.append(card);
+     }
+     if (!queue.children.length) queue.textContent = 'No proposals in this version.';
+     cursor = data.next_cursor; more.hidden = !cursor;
+   } catch (error) { notice.textContent = error instanceof Error ? error.message : 'Unable to load proposals'; }
+ };
+ form.addEventListener('submit', async event => { event.preventDefault(); try {
+   await call({ action: 'settings', settings: { enabled: (form.elements.namedItem('enabled') as HTMLInputElement).checked,
+     recipient: (form.elements.namedItem('recipient') as HTMLInputElement).value, link_ttl_hours: Number((form.elements.namedItem('link_ttl_hours') as HTMLInputElement).value) } }); notice.textContent = 'Review settings saved.';
+ } catch (error) { notice.textContent = error instanceof Error ? error.message : 'Settings were not saved'; } });
+ document.querySelector('#review-refresh')!.addEventListener('click', () => load());
+ more.addEventListener('click', () => load(true)); load();
+</script>
+<style>
+  #review-admin > p { margin:.75rem 0 1.25rem; }
+  #review-settings { padding-top:.5rem; }
+  #review-settings button { justify-self:start; }
+  #review-admin h2 { margin:2rem 0 .75rem; }
+  #review-refresh { margin-bottom:1rem; }
+  #review-more { margin-top:1rem; }
+  #review-more[hidden] { display:none; }
+  input:not([type=checkbox]){display:block;box-sizing:border-box;width:100%;min-height:44px;padding:.6rem;font:inherit;font-weight:400;border:1px solid #9ca3af;border-radius:.4rem;margin-top:.35rem}
+  label{font-weight:600}
+</style>

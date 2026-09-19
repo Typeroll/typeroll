@@ -94,11 +94,11 @@ describe('precedence on shared fields', () => {
     ]);
   });
 
-  it('lets the portal overwrite anything', () => {
+  it('lets the portal explicitly override an owner correction', () => {
     const existing = itemWith({ phone: { source: 'owner', actor: 'biz@x', updated_at: 'T' } });
     const r = applyFieldAuthority({
       fields: FIELDS, incoming: { phone: '111' }, existing,
-      actor: 'portal', actorId: 'staff@typeroll',
+      actor: 'portal', actorId: 'staff@typeroll', overrideReason: 'Authorized correction',
     });
     expect(r.update).toEqual({ phone: '111' });
     expect(r.rejected).toEqual([]);
@@ -192,5 +192,60 @@ describe('conflictResponse', () => {
     // The machine-readable half is what lets an agent record the loss and
     // stop retrying instead of re-sending the same write forever.
     expect(body.rejected_fields).toHaveLength(2);
+  });
+});
+
+describe('individual answers and intentional resets', () => {
+  const allowed = ['owner', 'portal', 'agent', 'import'] as const;
+  const field = f('answers', { type: 'object', writable_by: [...allowed], fields: [
+    f('online', { type: 'boolean' }), f('offline', { type: 'boolean' }),
+  ] });
+  const apply = (incoming: Record<string, unknown>, existing: object, actor: 'owner' | 'import' = 'owner') =>
+    applyFieldAuthority({ fields: [field], incoming, existing, actor, actorId: 'verified-subject', now: 'T' });
+  it('does not confirm unchanged prefilled values when another answer changes', () => {
+    const existing = { fields: { answers: { online: true, offline: null } },
+      _provenance: { 'answers/online': { source: 'import', actor: 'import-1', updated_at: 'before' } } };
+    const result = apply({ answers: { online: true, offline: false } }, existing);
+    expect(result.provenance['answers/online']).toEqual(existing._provenance['answers/online']);
+    expect(result.provenance['answers/offline'].source).toBe('owner');
+    expect(result.update.answers).toEqual({ online: true, offline: false });
+  });
+  it.each([true, false, null])('protects owner %s from imports and object resets', value => {
+    const accepted = apply({ answers: { online: value } }, { fields: {} });
+    const existing = { fields: accepted.update, _provenance: accepted.provenance };
+    expect(apply({ answers: { online: value === true ? false : true } }, existing, 'import').rejected[0].field).toBe('answers/online');
+    if (value !== null) expect(apply({ answers: null }, existing, 'import').rejected.some(item => item.field === 'answers/online')).toBe(true);
+    const other = apply({ answers: { offline: true } }, existing, 'import');
+    expect(other.rejected).toEqual([]);
+    expect(other.update.answers).toEqual({ online: value, offline: true });
+  });
+  it('treats omission as unchanged and explicit null as a protected reset', () => {
+    const reset = apply({ answers: { online: null } }, { fields: { answers: { online: false } } });
+    expect(reset.provenance['answers/online'].source).toBe('owner');
+    const omitted = apply({}, { fields: reset.update, _provenance: reset.provenance });
+    expect(omitted.update).toEqual({}); expect(omitted.provenance).toEqual(reset.provenance);
+  });
+  it('protects keyed program answers across reordering, removal and replacement', () => {
+    const programs = f('programs', { type: 'array', item_key: 'id', writable_by: [...allowed], fields: [
+      f('id'), f('requires_tax_id', { type: 'boolean' }),
+    ] });
+    const existing = { fields: { programs: [{ id: 'a', requires_tax_id: false }, { id: 'b', requires_tax_id: true }] },
+      _provenance: { 'programs/@a/requires_tax_id': { source: 'owner', actor: 'o', updated_at: 'T' } } };
+    const run = (value: unknown) => applyFieldAuthority({ fields: [programs], incoming: { programs: value }, existing, actor: 'import', actorId: 'i' });
+    expect(run([{ id: 'b', requires_tax_id: false }, { id: 'a', requires_tax_id: false }]).rejected).toEqual([]);
+    expect(run([{ id: 'a', requires_tax_id: true }]).rejected[0].field).toBe('programs/@a/requires_tax_id');
+    expect(run([{ id: 'b', requires_tax_id: false }]).rejected[0].field).toBe('programs/@a/requires_tax_id');
+    expect(run(null).rejected[0].field).toBe('programs/@a/requires_tax_id');
+    expect(run([{ id: 'a' }, { id: 'a' }]).rejected[0].reason).toBe('invalid_item_identity');
+  });
+  it('requires an explicit audited portal override of an owner answer', () => {
+    const existing = { fields: { answers: { online: false } }, _provenance: {
+      'answers/online': { source: 'owner', actor: 'o', updated_at: 'T' },
+    } };
+    const args = { fields: [field], incoming: { answers: { online: true } }, existing, actor: 'portal' as const, actorId: 'authenticated-admin' };
+    expect(applyFieldAuthority(args).rejected[0].reason).toBe('override_required');
+    const result = applyFieldAuthority({ ...args, overrideReason: 'Corrected with company authorization' });
+    expect(result.rejected).toEqual([]);
+    expect(result.provenance['answers/online'].override_reason).toBeTruthy();
   });
 });

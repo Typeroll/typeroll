@@ -241,3 +241,34 @@ describe('buffer model on v1 update_page', () => {
     expect(final?.seo_title).toBe('SEO');
   });
 });
+
+describe('owner answers across canonical API writers', () => {
+  it('rejects stale drafts after an owner answer and rejects bulk replacement of No and clears', async () => {
+    const { token } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    const { mergeWorkingCopy, commitWorkingCopy } = await import('../../lib/working-copy');
+    const store = getStore();
+    await store.setDoc(paths.contentType(ORG, SITE, 'profile'), { name: 'profile', fields: [
+      { name: 'online', label: 'Online?', type: 'boolean', writable_by: ['portal', 'owner', 'agent', 'import'] },
+    ] });
+    await seedPage('stale', { content_type: 'profile', fields: { online: null } });
+    await mergeWorkingCopy(CTX, { kind: 'page', id: 'stale' }, { fields: { online: true } }, 'old-import');
+    const provenance = { online: { source: 'owner' as const, actor: 'verified-synthetic-owner', updated_at: '2026-09-19T00:00:00Z' } };
+    await store.updateDoc(paths.page(ORG, SITE, 'stale'), { fields: { online: false }, _provenance: provenance });
+    await expect(commitWorkingCopy(CTX, { kind: 'page', id: 'stale' }, 'old-import', 'agent')).rejects.toThrow('changed after this draft');
+    for (const [id, value] of [['owner-no', false], ['owner-clear', null]] as const) {
+      await seedPage(id, { content_type: 'profile', fields: { online: value }, _provenance: provenance });
+    }
+    const { POST } = await import('../../pages/api/v1/sites/[siteId]/pages/batch-write');
+    const response = await POST({ request: new Request(`http://localhost/api/v1/sites/${SITE}/pages/batch-write`, {
+      method: 'POST', headers: { ...bearer(token), 'content-type': 'application/json' },
+      body: JSON.stringify(['owner-no', 'owner-clear'].map(page_id => ({ page_id, save: true,
+        patch: { fields: { online: true }, _provenance: {} } }))),
+    }), params: { siteId: SITE } } as any);
+    expect((await response.json()).results).toEqual(expect.arrayContaining([
+      expect.objectContaining({ page_id: 'owner-no', ok: false }), expect.objectContaining({ page_id: 'owner-clear', ok: false }),
+    ]));
+    expect((await getPage('owner-no'))?.fields?.online).toBe(false);
+    expect((await getPage('owner-clear'))?.fields?.online).toBeNull();
+  });
+});

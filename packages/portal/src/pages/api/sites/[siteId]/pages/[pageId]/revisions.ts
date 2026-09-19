@@ -66,6 +66,6 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
     ...(rev.doc as Partial<Page>),
     date_updated: new Date().toISOString(),
   };
-  await vstore.writePage(owner_org_id, site.id, versionId, pageId, restored);
+  await vstore.writePage(owner_org_id, site.id, versionId, pageId, restored, { actor: 'portal', actorId: session.userId, ...(current ? { expected: current } : {}) });
   return json({ ok: true });
 };

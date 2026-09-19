@@ -11,6 +11,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z, type ZodRawShape } from 'zod';
 import { TyperollClient } from './client.js';
+import { ownerReviewTools } from './tools/owner-review.js';
 import { pageTools } from './tools/pages.js';
 import { partialTools } from './tools/partials.js';
 import { contentTypeTools } from './tools/content-types.js';
@@ -160,6 +161,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
     ...skillTools,
     ...siteTools,
     ...pageTools,
+    ...ownerReviewTools,
     ...partialTools,
     ...blockTypeTools,
     ...pageBlockTools,

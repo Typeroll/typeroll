@@ -111,7 +111,7 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
     doc: existing as unknown as Record<string, unknown>,
     createdBy: session.email ?? 'unknown',
   });
-  await vstore.writePage(owner_org_id, site.id, versionId, pageId, update as Partial<Page>);
+  await vstore.writePage(owner_org_id, site.id, versionId, pageId, update as Partial<Page>, { actor: 'portal', actorId: session.userId, expected: existing });
 
   // Slug/status changes can put a live page on a URL an existing redirect
   // still claims — retire that redirect, or the next deploy's `_redirects`

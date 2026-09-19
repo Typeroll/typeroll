@@ -40,6 +40,9 @@ export async function saveContentType(ctx: ContentTypeContext, name: string, inp
       if (field.writable_by !== undefined && (!Array.isArray(field.writable_by) || field.writable_by.some(actor => !['portal', 'agent', 'owner', 'app', 'import'].includes(actor)))) throw new ContentTypeError(`${field.name}: invalid write authority`);
       if (field.rendered !== undefined && typeof field.rendered !== 'boolean') throw new ContentTypeError(`${field.name}: rendered must be a boolean`);
       if (field.fields !== undefined) validateSchema(field.fields, false, depth + 1);
+      if (field.item_key !== undefined && (!['array', 'list'].includes(field.type) ||
+          !field.fields?.some(child => child.name === field.item_key && child.type === 'text')))
+        throw new ContentTypeError(`${field.name}: item_key must identify a text field in an array or list`);
       if (field.default !== undefined) {
         const error = validatePageFields({ ...next, fields: [field] }, { [field.name]: field.default });
         if (error) throw new ContentTypeError(`Invalid default: ${error}`);

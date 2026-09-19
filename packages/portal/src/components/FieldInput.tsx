@@ -6,7 +6,7 @@ import RichTextInput from './RichTextInput';
 import ContentReferenceInput from './ContentReferenceInput';
 
 export default function FieldInput({
-  siteId, field, value, onChange, responsive, activeBp, hasOwn,
+  siteId, field, value, onChange, responsive, activeBp, hasOwn, triState = false,
 }: {
   siteId?: string;
   field: FieldDefinition;
@@ -15,6 +15,7 @@ export default function FieldInput({
   responsive?: boolean;
   activeBp?: Breakpoint;
   hasOwn?: boolean;
+  triState?: boolean;
 }) {
   const fieldId = useId();
   const label = (
@@ -78,6 +79,13 @@ export default function FieldInput({
       </fieldset>;
     }
     case 'boolean':
+      if (triState) return <fieldset style={{ ...fieldGroup, border: 0, padding: 0 }}>
+        <legend style={fieldLabel}>{field.label}</legend>
+        {[true, false].map(answer => <label key={String(answer)} style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 44 }}>
+          <input type="radio" name={fieldId} checked={value === answer} onChange={() => onChange(answer)} />{answer ? 'Yes' : 'No'}
+        </label>)}
+        <button type="button" style={smallActionBtn} onClick={() => onChange(null)}>Clear answer</button>
+      </fieldset>;
       return (
         <div style={fieldGroup}>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: '.85rem' }}>
@@ -130,6 +138,7 @@ export default function FieldInput({
       return (
         <ArrayFieldInput
           siteId={siteId}
+          triState={triState}
           field={field}
           value={Array.isArray(value) ? value : []}
           onChange={onChange}
@@ -140,6 +149,7 @@ export default function FieldInput({
       return (
         <ObjectFieldInput
           siteId={siteId}
+          triState={triState}
           field={field}
           value={value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}}
           onChange={onChange}
@@ -150,6 +160,7 @@ export default function FieldInput({
       return (
         <UrlFieldInput
           siteId={siteId}
+          triState={triState}
           field={field}
           value={v}
           onChange={onChange}
@@ -173,13 +184,14 @@ export default function FieldInput({
 }
 
 function ObjectFieldInput({
-  siteId, field, value, onChange, label,
+  siteId, field, value, onChange, label, triState,
 }: {
   siteId?: string;
   field: FieldDefinition;
   value: Record<string, unknown>;
   onChange: (value: unknown) => void;
   label: React.ReactNode;
+  triState?: boolean;
 }) {
   if (!field.fields?.length) {
     return <JsonFieldInput value={value} onChange={onChange} label={label} expected="object" />;
@@ -191,6 +203,7 @@ function ObjectFieldInput({
         <FieldInput
           key={child.name}
           siteId={siteId}
+          triState={triState}
           field={child}
           value={value[child.name]}
           onChange={(next) => onChange({ ...value, [child.name]: next })}
@@ -201,15 +214,16 @@ function ObjectFieldInput({
 }
 
 function ArrayFieldInput({
-  siteId, field, value, onChange, label,
+  siteId, field, value, onChange, label, triState,
 }: {
   siteId?: string;
   field: FieldDefinition;
   value: unknown[];
   onChange: (value: unknown) => void;
   label: React.ReactNode;
+  triState?: boolean;
 }) {
-  const children = field.fields ?? [];
+  const children = (field.fields ?? []).filter(child => child.name !== field.item_key);
   if (children.length === 0) {
     return <JsonFieldInput value={value} onChange={onChange} label={label} expected="array" />;
   }
@@ -224,6 +238,7 @@ function ArrayFieldInput({
               <FieldInput
                 key={child.name}
                 siteId={siteId}
+                triState={triState}
                 field={child}
                 value={row[child.name]}
                 onChange={(next) => {
@@ -239,7 +254,7 @@ function ArrayFieldInput({
           </div>
         );
       })}
-      <button type="button" onClick={() => onChange([...value, {}])} style={smallActionBtn}>+ Add item</button>
+      <button type="button" onClick={() => onChange([...value, field.item_key ? { [field.item_key]: crypto.randomUUID() } : {}])} style={smallActionBtn}>+ Add item</button>
     </fieldset>
   );
 }
@@ -250,6 +265,7 @@ function JsonFieldInput({
   value: unknown;
   onChange: (value: unknown) => void;
   label: React.ReactNode;
+  triState?: boolean;
   expected: 'array' | 'object';
 }) {
   const serialized = JSON.stringify(value, null, 2);
@@ -305,13 +321,14 @@ function loadInternalPages(siteId: string): Promise<InternalPageOption[]> {
 }
 
 function UrlFieldInput({
-  siteId, field, value, onChange, label,
+  siteId, field, value, onChange, label, triState,
 }: {
   siteId?: string;
   field: FieldDefinition;
   value: string;
   onChange: (value: unknown) => void;
   label: React.ReactNode;
+  triState?: boolean;
 }) {
   const [pages, setPages] = useState<InternalPageOption[]>([]);
   useEffect(() => {

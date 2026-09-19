@@ -11,7 +11,7 @@ const fieldSchema = z.object({
   name: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/),
   type: z.enum([
     'text', 'email', 'tel', 'url', 'number', 'textarea',
-    'select', 'checkbox', 'radio', 'hidden', 'gdpr_consent',
+    'select', 'checkbox', 'boolean', 'radio', 'hidden', 'gdpr_consent',
   ]),
   label: z.string(),
   required: z.boolean().optional(),
@@ -34,6 +34,7 @@ const stepSchema = z.object({
 });
 
 const targetSchema = z.object({
+  context_params: z.array(z.string()).max(8).optional().describe('Explicit URL query keys forwarded to the app hydration endpoint; reserved security keys are rejected.'),
   installation_id: z.string(), path: z.string(), hydrate: z.boolean().optional(), session_param: z.string().optional(),
 }).optional().describe('Admin-only: bind to a declared POST route of an enabled app installation. Read its authenticated guide first.');
 
@@ -59,7 +60,7 @@ export const formTools: ToolDef[] = [
   {
     name: 'create_form',
     description:
-      'Create a form. Steps are the ONLY stored model — a Block[] tree of form/* field blocks per step. Simple forms: pass `fields`, each { name, type, label, required?, placeholder?, options? } (allowed types: text, email, tel, url, number, textarea, select, checkbox, radio, hidden, gdpr_consent) — the server converts them to a single static step; read_form returns the resulting steps. Multi-step funnels: pass `steps` directly (steps swap client-side, partial submissions persist per step). PLACING THE FORM: add a `core/form` block with data.form_id on block-mode pages, or `<x-form id="…" />` to HTML-mode page content. Both expand server-side to the same complete signed shell; never hand-write the form or add inline submit scripts.',
+      'Create a form. Steps are the ONLY stored model — a Block[] tree of form/* field blocks per step. Simple forms: pass `fields`, each { name, type, label, required?, placeholder?, options? } (allowed types: text, email, tel, url, number, textarea, select, checkbox, boolean (Yes/No/unanswered), radio, hidden, gdpr_consent) — the server converts them to a single static step; read_form returns the resulting steps. Multi-step funnels: pass `steps` directly (steps swap client-side, partial submissions persist per step). PLACING THE FORM: add a `core/form` block with data.form_id on block-mode pages, or `<x-form id="…" />` to HTML-mode page content. Both expand server-side to the same complete signed shell; never hand-write the form or add inline submit scripts.',
     inputSchema: {
       id: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/),
       name: z.string().min(1),
