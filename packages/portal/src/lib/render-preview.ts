@@ -565,7 +565,7 @@ ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link re
 .tr-card.has-stroke,.tr-callout.has-stroke{border-radius:0}
 *,*::before,*::after{box-sizing:border-box}
 *{margin:0}
-html,body{height:100%}
+html{height:100%}body{min-height:100%}
 html{font-size:var(--font-size-base)}
 body{font-family:var(--font-body),-apple-system,BlinkMacSystemFont,sans-serif;color:var(--color-text);background:var(--color-background);line-height:1.5;-webkit-font-smoothing:antialiased}
 img,svg,video{display:block;max-width:100%;height:auto}

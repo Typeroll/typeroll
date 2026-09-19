@@ -113,3 +113,16 @@ source 404s or redirect whole archive families without a reviewed decision.
 Inventory each market's actual business flow, with authorized synthetic tests
 and safe recipients. Loading, interaction and delivery have separate results.
 No domain/DNS cutover is implied by creating or inventorying a site.
+
+
+### CTA and field-type evidence
+
+The source inventory must distinguish class-styled CTA anchors from ordinary
+prose, and preserve destinations, affiliate query parameters, fragments,
+new-tab and meaningful rel/download behavior. Native Button `new_tab` must be
+verified from rendered target/rel and actual navigation without JavaScript,
+not an accepted field or data attribute. Unsupported source semantics require
+an explicit capability gap rather than silent removal. Typed numeric settings
+must remain numbers through save/read-back and computed presentation checks;
+strings such as "16" are not evidence that a numeric font-size field is applied.
+See the distributed `tr-migration-evidence` recipe for the prototype gate.

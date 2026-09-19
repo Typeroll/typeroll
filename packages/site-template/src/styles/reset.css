@@ -1,7 +1,9 @@
 /* Minimal modern CSS reset */
 *, *::before, *::after { box-sizing: border-box; }
 * { margin: 0; }
-html, body { height: 100%; }
+html { height: 100%; }
+/* Let long documents expand the sticky containing block beyond the viewport. */
+body { min-height: 100%; }
 body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;

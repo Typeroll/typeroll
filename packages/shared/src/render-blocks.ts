@@ -385,6 +385,11 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link">${picture}</a>` : picture;
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
   }
+  if (effectiveBlock.type === 'core/button') {
+    // Only the typed opt-in may change browsing context; never trust a supplied
+    // prepared flag or coerce strings such as 'false' to true.
+    compiled.flatData.button_new_tab = compiled.flatData.new_tab === true;
+  }
   if (effectiveBlock.type === 'core/icon_box') {
     const d = compiled.flatData;
     const linked = d.whole_card_link === true && String(d.link ?? '').trim() !== '' && String(d.heading ?? '').trim() !== '';

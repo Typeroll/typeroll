@@ -16,6 +16,16 @@ describe('distributed migration workflow safety', () => {
     expect(skill).toContain('PASS: deliberate improvement in mobile usability');
     expect(skill).toContain('booleans are reviewer attestations, not automated visual proof');
   });
+  it('requires typed values and verifies native CTA semantics after conversion', () => {
+    const skill = BUNDLED_SKILLS['tr-migration-evidence'];
+    expect(skill).toContain('number fields use JSON numbers');
+    expect(skill).toContain('not strings');
+    expect(skill).toContain('affiliate queries/fragments');
+    expect(skill).toContain('actual tab opening');
+    expect(skill).toContain('without requiring');
+    expect(skill).toContain('source `sponsored`/`nofollow`');
+    expect(skill).toContain('stop for native support');
+  });
   it('does not prescribe blanket archive redirects, early domain attachment or real test leads', () => {
     const guides = ['tr-migrate-wp', 'tr-migrate-multisite'].map(name => BUNDLED_SKILLS[name]).join('\n');
     expect(guides).not.toMatch(/create_redirect[^\n]*from_path="\/(?:category|tag|2019)\/\*"/);

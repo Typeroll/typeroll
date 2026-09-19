@@ -60,6 +60,16 @@ describe('renderPreview — blocks mode', () => {
     expect(html!).not.toMatch(/<script\b[^>]*>x<\/script>/);
   });
 
+  it('preserves native CTA target and rel through preview sanitization', async () => {
+    await seedSite();
+    await seedBlockPage([{ id: 'cta', type: 'core/button', data: {
+      label: 'Compare offers', href: 'https://example.test/offers/?partner=example&market=se#start', new_tab: true,
+    } }]);
+    const { renderPreview } = await import('../../lib/render-preview');
+    const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
+    expect(html).toMatch(/<a[^>]*href="https:\/\/example.test\/offers\/\?partner=example&amp;market=se#start"[^>]*target="_blank"[^>]*rel="noopener noreferrer"/);
+  });
+
   it('inherits main block-type dependencies into a child-version preview', async () => {
     await seedSite();
     const { getStore } = await import('../../lib/datastore');

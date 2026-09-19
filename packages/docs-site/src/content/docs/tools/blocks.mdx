@@ -597,3 +597,13 @@ The outline measures the actual sticky header for its top clearance and anchor
 scroll margins. Its active-heading feedback also accounts for document
 `scroll-padding-top`; remove obsolete tenant offsets when they duplicate the
 native clearance, rather than adding another compensation.
+
+Button `new_tab: true` opens its link in a new tab using native HTML
+`target="_blank"` with `rel="noopener noreferrer"`, even without JavaScript.
+Omitted or false keeps navigation in the same tab. Supply a JSON boolean, not a
+string. Keep the label meaningful; long labels wrap within the available width.
+During migration verify the rendered link's query parameters, fragment and tab
+behavior. Source CTA classes copied into Prose do not recreate a Button. If the
+source requires additional link semantics such as `sponsored`, `nofollow` or a
+forced download, do not assume that `new_tab` preserves them; verify support in
+the selected block before converting it.

@@ -372,12 +372,8 @@ const button: BlockType = {
     { name: 'size', type: 'select', label: 'Size', options: ['sm', 'md', 'lg'], default: 'md' },
     { name: 'new_tab', type: 'boolean', label: 'Open in new tab' },
   ],
-  // `new_tab` is a boolean; the renderer escapes it to "true"/"false" — the
-  // CSS attribute selector matches "true" to add the target rel attrs via
-  // markup substitution? Simpler: render conditionally via empty target if
-  // not set. We use a class hook instead.
   template: `<p data-block="button" data-variant="{{variant}}" data-size="{{size}}">
-  <a href="{{href}}" class="block-button-link" data-newtab="{{new_tab}}">{{label}}</a>
+  <a href="{{href}}" class="block-button-link" {{#button_new_tab}}target="_blank" rel="noopener noreferrer"{{/button_new_tab}}>{{label}}</a>
 </p>`,
   styles: `
 [data-block="button"] { margin: 1rem 0; }

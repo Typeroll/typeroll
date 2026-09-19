@@ -19,6 +19,10 @@ values (320/390/768/1024/1280/1536 where relevant, plus both sides of actual
 breakpoints). Record loaded font families/weights, color panels, logo/header,
 hero, gutters, article/sidebar widths, card anatomy/grid and footer. Inspect
 loaded images, menus, scrolled TOC, anchor landings and long links.
+Inventory semantic CTA anchors/buttons, downloads and affiliate links before
+copying prose: retain decoded labels, href paths, query parameters, fragments,
+`target` and meaningful `rel` tokens. A source CSS class may identify a CTA
+whose appearance would disappear when copied into prose.
 
 Before removing builder wrappers/classes, preserve the information they carry:
 anchors, lazy/srcset/background images, captions, tables, ordering, downloads,
@@ -41,6 +45,21 @@ do not hide the gap with tenant CSS or generic custom blocks.
 Validate shared Page references, item order, missing images and empty/unpublished
 references. Keep semantics separate from presentation: category emoji belongs
 to its shared Page field, not copied into every article or card excerpt.
+Validate actual field types, not just key names: number fields use JSON numbers
+(`16`, `1.6`, `1`), not strings (`"16"`, `"1.6"`, `"1"`); booleans use `true`/
+`false`. Check responsive map values too. Read-back retention is not enough:
+measure the resulting font size, line height and paragraph spacing. If an
+incorrect type is accepted but ignored, fix the prototype before bulk writes.
+
+Map standalone CTAs to `core/button` when its declared fields preserve the
+source behavior, rather than leaving class-dependent anchors in prose.
+Core 0.2.25+ `new_tab: true` emits `target="_blank"` and
+`rel="noopener noreferrer"` in static HTML; false/unset keeps the same tab.
+Verify the rendered target/rel, preserved affiliate queries/fragments, keyboard
+activation, actual tab opening and narrow-screen wrapping without requiring
+JavaScript. Do not silently discard source `sponsored`/`nofollow`, download
+behavior or other semantics unsupported by the chosen block: record the gap
+and use a supported composition or stop for native support.
 Do not apply a template to hundreds of Pages until its prototype passes.
 
 ## Separate files, addresses and business behavior

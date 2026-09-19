@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { test, expect } from '@playwright/test';
 import { buildCoreBlockRegistry, collectBlockAssets, CONTENT_WELL_CSS, fontFamilyCss, prepareHeadingOutline, renderBlocks, type Block } from '@typeroll/shared';
 const registry = buildCoreBlockRegistry();
+const reset = fs.readFileSync(new URL('../../../site-template/src/styles/reset.css', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../../../site-template/src/styles/global.css', import.meta.url), 'utf8');
 const image = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="250"><rect width="800" height="250" fill="#d5ede9"/><rect x="2" y="2" width="796" height="246" fill="none" stroke="#007e78" stroke-width="4"/><circle cx="400" cy="125" r="100" fill="#ffe8a1"/></svg>').toString('base64');
 const heading = (id: string, text: string): Block => ({ id, type: 'core/heading', data: { level: 'h2', text, font_size_px: { mobile: 26, laptop: 32 }, line_height: 1.2 } });
@@ -28,7 +29,7 @@ const blocks: Block[] = [
 ];
 function documentHtml(tree = blocks) {
   const assets = collectBlockAssets(tree, registry);
-  return `<!doctype html><meta name="viewport" content="width=device-width"><style>*{box-sizing:border-box}body{margin:0}${css}${CONTENT_WELL_CSS}${assets.css}:root{--font-body:${fontFamilyCss('system')};--font-heading:${fontFamilyCss('system')}}</style><header><img alt="Example" src="${image}" style="display:none"></header><main class="page-content page-content--blocks">${prepareHeadingOutline(renderBlocks(tree, { registry, context: { page: { title: 'Example', content_mode: 'blocks', blocks: blocks[2].children![0].slots![0], breadcrumbs: [{ label: 'Packing', href: '/packing/' }] } } })).html}</main>`;
+  return `<!doctype html><meta name="viewport" content="width=device-width"><style>*{box-sizing:border-box}body{margin:0}${reset}${css}${CONTENT_WELL_CSS}${assets.css}:root{--font-body:${fontFamilyCss('system')};--font-heading:${fontFamilyCss('system')}}</style><header><img alt="Example" src="${image}" style="display:none"></header><main class="page-content page-content--blocks">${prepareHeadingOutline(renderBlocks(tree, { registry, context: { page: { title: 'Example', content_mode: 'blocks', blocks: blocks[2].children![0].slots![0], breadcrumbs: [{ label: 'Packing', href: '/packing/' }] } } })).html}</main>`;
 }
 test('native controls preserve edge geometry, type and article proportions at every breakpoint', async ({ page }, info) => {
   await page.setContent(documentHtml());
@@ -67,7 +68,7 @@ test('logo dimensions and card hit target work without changing prose image defa
     { id: 'prose', type: 'core/prose', data: { html: `<img src="${image}" alt="Prose illustration">` } },
   ];
   const assets = collectBlockAssets(tree, registry);
-  await page.setContent(`<!doctype html><style>*{box-sizing:border-box}${css}${CONTENT_WELL_CSS}${assets.css}</style><main class="page-content page-content--blocks">${renderBlocks(tree, { registry, context: { site: { logo: image, name: 'Example' } } })}</main>`);
+  await page.setContent(`<!doctype html><style>*{box-sizing:border-box}${reset}${css}${CONTENT_WELL_CSS}${assets.css}</style><main class="page-content page-content--blocks">${renderBlocks(tree, { registry, context: { site: { logo: image, name: 'Example' } } })}</main>`);
   for (const width of [390, 1024, 1536]) {
     await page.setViewportSize({ width, height: 900 });
     const logo = await page.locator('[data-block="site-logo"] img').boundingBox();
@@ -185,7 +186,7 @@ test('native sticky headers preserve navigation and outline anchor feedback with
   const render = (tree: Block[]) => prepareHeadingOutline(renderBlocks(tree, { registry, context: { site: { logo: image, name: 'Example' }, page: { content_mode: 'blocks', blocks: body } } })).html;
   const fixture = (sticky: boolean, padding: number) => {
     header.data.sticky = sticky;
-    return `<!doctype html><meta name="viewport" content="width=device-width"><style>*{box-sizing:border-box}body{margin:0}${css}${assets.css}html{scroll-padding-top:${padding}px}main{max-width:1140px;margin:auto}</style>${render([header])}<main>${render([article])}</main>`;
+    return `<!doctype html><meta name="viewport" content="width=device-width"><style>*{box-sizing:border-box}body{margin:0}${reset}${css}${assets.css}html{scroll-padding-top:${padding}px}main{max-width:1140px;margin:auto}</style>${render([header])}<main>${render([article])}</main>`;
   };
   for (const sticky of [false, true]) for (const padding of [0, 120]) {
     await page.setViewportSize({ width: 1280, height: 900 });
