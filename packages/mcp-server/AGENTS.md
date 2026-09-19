@@ -7,6 +7,14 @@ what tools to reach for first.
 If anything below conflicts with what you observe in the tools, trust the
 tools — the platform may have moved since this was written.
 
+**Keep context proportional.** Compact connections expose search_tools,
+describe_tool and separate call_read_tool/call_write_tool/call_admin_tool wrappers.
+Discover the specific tool, read its schema, then call it. Use read_guide with
+sections_only=true and section=<id> rather than loading this whole guide at every
+session. Full mode retains named tools. Load only relevant recipes and app guides.
+The local agent-neutral workspace is project intent, not the generated publishing
+repository; current CMS content remains authoritative.
+
 **Start here for site-shaped tasks.** When the user wants to build,
 migrate, redesign, or brand a site, call `list_skills` first — the server
 advertises its own step-by-step playbook (`tr-new-site`, `tr-migrate-wp`,

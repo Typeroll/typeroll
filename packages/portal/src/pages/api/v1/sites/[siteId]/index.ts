@@ -32,7 +32,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  return apiResponse(ctx, project(ctx.site, ctx.versionId));
+  return apiResponse(ctx, { ...project(ctx.site, ctx.versionId), organization_id: ctx.orgId });
 };
 
 /**

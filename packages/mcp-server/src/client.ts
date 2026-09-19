@@ -11,6 +11,7 @@ export interface ClientConfig {
   baseUrl: string;
   /** typeroll_live_... bearer token */
   apiKey: string;
+  defaultVersion?: string;
   /** Override fetch (for tests). Defaults to global fetch. */
   fetchImpl?: typeof fetch;
 }
@@ -27,6 +28,7 @@ export class ApiError extends Error {
 }
 
 export class TyperollClient {
+  private readonly defaultVersion?: string;
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly fetchImpl: typeof fetch;
@@ -36,6 +38,7 @@ export class TyperollClient {
     if (!config.apiKey) throw new Error('apiKey is required');
     this.baseUrl = config.baseUrl.replace(/\/+$/, '');
     this.apiKey = config.apiKey;
+    this.defaultVersion = config.defaultVersion;
     this.fetchImpl = config.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
@@ -43,6 +46,7 @@ export class TyperollClient {
   private url(siteId: string, path: string, query?: Record<string, string | number | undefined>): string {
     const cleanPath = path.replace(/^\/+/, '');
     const url = new URL(`${this.baseUrl}/api/v1/sites/${encodeURIComponent(siteId)}/${cleanPath}`);
+    if (this.defaultVersion) url.searchParams.set('version', this.defaultVersion);
     if (query) {
       for (const [k, v] of Object.entries(query)) {
         if (v !== undefined && v !== null) url.searchParams.set(k, String(v));

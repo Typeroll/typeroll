@@ -21,6 +21,7 @@ import { resolveSiteId } from './resolve-site-id.js';
 import { buildServer } from './server.js';
 import { VERSION } from './version.js';
 import { runExtensionCli } from './extension-cli.js';
+import { doctor, readWorkspace, workspaceClient, verifyWorkspaceBinding } from './workspace.js';
 
 function bail(message: string): never {
   console.error(`typeroll-mcp: ${message}`);
@@ -29,6 +30,24 @@ function bail(message: string): never {
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
+  if (argv[0] === 'doctor') {
+    const args = argv.slice(1);
+    if (args.includes('--help')) { console.log('Usage: typeroll doctor [directory] [--offline] [--json]'); return; }
+    if (args.some(arg => arg.startsWith('-') && !['--offline', '--json'].includes(arg)) || args.filter(arg => !arg.startsWith('-')).length > 1) bail('Usage: doctor [directory] [--offline] [--json]');
+    const result = await doctor(args.find(arg => !arg.startsWith('-')) ?? '.', args.includes('--offline'));
+    console.log(args.includes('--json') ? JSON.stringify(result, null, 2) : result.checks.map(check => `${check.status}: ${check.check} — ${check.message}`).join('\n'));
+    process.exitCode = result.passed ? 0 : 1; return;
+  }
+  if (argv[0] === 'workspace-mcp') {
+    if (argv.length > 2) bail('Usage: workspace-mcp [directory]');
+    const config = await readWorkspace(argv[1] ?? '.');
+    const client = workspaceClient(config, process.env);
+    if (config.site_id) await verifyWorkspaceBinding(config, client);
+    // An unbound workspace permits discovery/site creation only. Save the Site
+    // binding and reconnect before content operations; never guess a target.
+    const server = buildServer({ client, ...(config.site_id ? { fixedSiteId: config.site_id } : { allowedSites: [] }), toolMode: config.tool_mode, info: { name: 'typeroll', version: VERSION } });
+    await server.connect(new StdioServerTransport()); return;
+  }
   if (argv[0] === 'init') {
     const code = await runInitCli(argv.slice(1));
     process.exit(code);
@@ -44,13 +63,18 @@ async function main(): Promise<void> {
   if (argv[0] === '--help' || argv[0] === '-h' || argv[0] === 'help') {
     console.error('Usage:');
     console.error('  typeroll-mcp                              Start the MCP server (reads TYPEROLL_API_URL and TYPEROLL_API_KEY)');
-    console.error('  typeroll-mcp init [dir] [-f]              Bootstrap a project: skills + .mcp.json + AGENTS.md + imagegen lab');
+    console.error('  typeroll-mcp init [dir] [--update]              Create/update an agent-neutral workspace (see init --help)');
     console.error('  typeroll-mcp install-skills <dir> [-f]    Copy bundled skill files to <dir>');
+    console.error('  typeroll-mcp doctor [dir] [--offline]     Read-only workspace/connection checks');
+    console.error('  typeroll-mcp workspace-mcp [dir]          MCP bound to typeroll.json (compact by default)');
     console.error('  typeroll extension <command>              Validate, push, install, configure or promote an Extension');
     console.error('  typeroll-mcp --help                       Show this help');
     process.exit(0);
   }
 
+  if (argv.length) bail('Unknown command. Use --help.');
+  const mode = process.env.TYPEROLL_MCP_TOOL_MODE ?? 'full';
+  if (!['full', 'compact'].includes(mode)) bail('TYPEROLL_MCP_TOOL_MODE must be full or compact.');
   const apiUrl = process.env.TYPEROLL_API_URL?.trim();
   const apiKey = process.env.TYPEROLL_API_KEY?.trim();
   if (!apiUrl) bail('TYPEROLL_API_URL is not set. Point it at your Typeroll portal (e.g. https://app.typeroll.com).');
@@ -71,6 +95,7 @@ async function main(): Promise<void> {
   const server = buildServer({
     client,
     fixedSiteId: siteId,
+    toolMode: mode as 'full' | 'compact',
     info: { name: 'typeroll', version: VERSION },
   });
 

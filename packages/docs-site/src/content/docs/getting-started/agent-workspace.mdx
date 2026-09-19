@@ -1,0 +1,244 @@
+---
+title: Start an agent workspace
+description: Create a small, agent-neutral workspace for a Typeroll site, with project instructions, safe connection settings and on-demand MCP discovery.
+---
+
+The workspace keeps your brief, decisions and verification across agent sessions.
+Typeroll CMS keeps the actual Pages, Content types, templates and settings.
+You can use hosted MCP without a local folder; a workspace is useful for longer
+projects and agents that can read local files.
+
+**Version availability:** this workflow is introduced in MCP **0.45.23**.
+Hosted compact discovery and the Site Organization ID check require Core
+**0.2.27**. Until those releases are installed, use the existing
+[hosted connection](../mcp-server/). These are version requirements, not a promise
+that every Cloud or self-hosted portal has already upgraded.
+
+## Start without a repository
+
+1. Connect your agent to `https://app.typeroll.com/api/mcp?tools=compact`.
+   Self-hosted installations use their own portal origin with the same path.
+   Use the OAuth or private bearer-header setup in [Connect your AI agent](../mcp-server/).
+2. Ask the agent to discover `list_sites` and read the accessible sites.
+3. Select a Site, or use `create_site` with an Organization-scoped key to create
+   one. A site-scoped key cannot create another Site.
+4. Read that Site's capabilities and the relevant recipe. Create editable blocks,
+   review a preview, and save within your agreed scope.
+
+GitHub, Cloudflare and a domain are not required to start authoring or previewing.
+[Publishing setup](../../guides/customer-publishing/) is required before deploying.
+Imports require verified Organization storage **before importing any content**;
+check `get_import_readiness`. This is distinct from ordinary new draft uploads.
+
+## Create the local workspace
+
+Use Node.js 20 or later for the standalone MCP package:
+
+```sh
+npx @typeroll/mcp-server@0.45.23 init ./my-site
+```
+
+This is a local filesystem operation: it creates no remote Site, repository,
+account, deployment or login, and needs no API key. Open the folder in your agent
+client and point it at `AGENTS.md`. Automatic instruction loading depends on the
+client; creating the folder does not guarantee that it reads the file.
+
+```text
+my-site/
+├── AGENTS.md
+├── README.md
+├── typeroll.json
+├── typeroll.lock.json
+├── .gitignore
+├── brief/
+│   ├── site.md
+│   ├── brand.md
+│   └── content-model.md
+├── decisions.md
+├── sources/README.md
+├── scripts/README.md
+└── qa/checklist.md
+```
+
+- **Brief:** purpose, audience, languages, brand, editorial constraints, content
+  authority, types/routes and desktop/mobile navigation intent.
+- **Decisions:** approved scope, design choices and deliberate deviations.
+- **Sources:** research and proposals. Keep private extracts in ignored
+  `sources/private/`. Do not store media libraries or current CMS content as a
+  competing source of truth.
+- **QA:** tested Site/Version, pages, viewports, interaction states, evidence and
+  remaining issues. Screenshots/private reports go in ignored `qa/reports/`.
+- **Scripts:** repeatable imports or checks using the REST API when useful.
+- **Lock:** generator version and hashes of managed starter files. Commit it with
+  the workspace. It does not pin the hosted CMS or its content.
+
+You may version this workspace in your own private Git repository. Keep it
+separate from the CMS-generated publication repository: changes to a site are
+made through Typeroll, not by editing exported build source.
+
+## Bind the Site and Version
+
+Edit the generated `typeroll.json` after selecting or creating your Site:
+
+```json
+{
+  "schema_version": 1,
+  "portal": "https://app.typeroll.com",
+  "organization_id": "your-organization-id",
+  "site_id": "your-site-id",
+  "version": "main",
+  "tool_mode": "compact"
+}
+```
+
+Use IDs returned by Typeroll, not display names. `get_site` returns the Site's
+`organization_id` on Core 0.2.27+. A new workspace has null IDs until you choose
+its target. `portal` is an origin, not an MCP URL; do not put a token in it.
+HTTPS is required except for local loopback development.
+
+For substantial work on an existing Site, use `create_branch`, record the
+returned ID in `version`, and reconnect a local workspace MCP process. The
+workspace process supplies that Version on site API requests; an explicit tool
+Version takes precedence. Hosted MCP cannot read this local file: the agent
+must pass the chosen Site/Version in its calls.
+
+Never put API keys, cookies or provider credentials in `typeroll.json`.
+Use private client settings or environment injection. `.gitignore` excludes
+`.env`, local client configurations and temporary/private output. Ignore rules
+cannot remove secrets that were already committed; inspect existing repositories.
+
+## Optional local client configuration
+
+Hosted MCP is sufficient. If your client launches local stdio processes, you can
+also generate a client configuration explicitly:
+
+```sh
+npx @typeroll/mcp-server@0.45.23 init ./my-site --client claude
+npx @typeroll/mcp-server@0.45.23 init ./my-site --client cursor
+npx @typeroll/mcp-server@0.45.23 init ./my-site --client vscode
+```
+
+Choose one command for your client. These generate `.mcp.json`, `.cursor/mcp.json`
+or `.vscode/mcp.json`, respectively, with a version-pinned invocation of
+`workspace-mcp` and this local folder's absolute path. Existing edited client
+configurations are preserved; merge the desired connection through your client's
+settings. Recreate a local configuration after moving/cloning the workspace.
+These adapters do not certify every client version; see [Client compatibility](../client-compatibility/).
+
+Inject `TYPEROLL_API_KEY` into the launched process. The configuration contains no
+key and does not read `.env` automatically. If the client supports its own secret
+store, use it. Conflicting `TYPEROLL_API_URL` or `TYPEROLL_SITE_ID` environment
+values are rejected rather than silently switching to another Site.
+
+An unbound `workspace-mcp` process allows discovery and site creation only.
+After creation, fill the IDs in `typeroll.json` and reconnect before editing.
+For clients without an adapter, launch:
+
+```sh
+npx @typeroll/mcp-server@0.45.23 workspace-mcp ./my-site
+```
+
+## Check the setup
+
+```sh
+npx @typeroll/mcp-server@0.45.23 doctor ./my-site --offline
+npx @typeroll/mcp-server@0.45.23 doctor ./my-site --json
+```
+
+The online command uses the injected API key. It reads accessible sites, the
+selected Site/Version, its Organization and capabilities. It prints no credential
+values and performs no writes, uploads or deployments. Missing setup returns a
+nonzero exit status and an actionable check. Offline mode validates local setup
+only and marks remote checks as unverified.
+
+Successful reads do not prove write permission, publishing readiness or app setup.
+Read the relevant readiness checks when starting those operations. The doctor
+does not fetch all app guides into your workspace; the agent loads them when needed.
+
+## Keep MCP context small
+
+The full MCP mode advertises the complete tool catalog. Compact mode advertises
+only five tools regardless of the catalog's size:
+
+| Tool              | Purpose                                                                  |
+| ----------------- | ------------------------------------------------------------------------ |
+| `search_tools`    | Search names and task descriptions; brief paginated results, no schemas. |
+| `describe_tool`   | Read one tool's exact schema, full description and effect.               |
+| `call_read_tool`  | Execute only read tools.                                                 |
+| `call_write_tool` | Execute writes, including publishing, within user authorization.         |
+| `call_admin_tool` | Execute app administration/activation within user authorization.         |
+
+For example, discover `read_page`, inspect its schema, then call:
+
+```json
+{
+  "name": "read_page",
+  "arguments": {
+    "site_id": "your-site-id",
+    "page_id": "home",
+    "version": "main"
+  }
+}
+```
+
+Pass this to `call_read_tool`; omit `site_id` for a fixed-site connection.
+Validation and underlying API authorization remain in force. A read wrapper
+cannot invoke a write tool. Discovery itself grants no permission. Client
+confirmation settings still need to cover write/admin wrappers; inspect the
+nested tool name and arguments before approving an operation.
+
+Use `read_guide` with `sections_only: true`, then request the relevant `section`
+ID. Use `list_skills` and read only the task's recipe. Load enabled app guidance
+through `read_app_documentation` when the task needs it. Private app docs stay
+behind authenticated discovery; do not copy them into public repositories.
+
+Compact discovery reduces the initial schema payload, not the amount of content
+a later request can return. Paginate Page lists and request relevant fields;
+do not read an entire site's content or `llms-full.txt` at every session. Clients
+with native deferred tool loading may already avoid much of the full-catalog
+cost. Actual context usage depends on the client and tokenizer.
+
+Existing connections retain full mode. To select compact mode:
+
+- Hosted: add `?tools=compact` to `/api/mcp`; authentication and OAuth audience
+  remain the canonical portal MCP resource.
+- Workspace stdio: generated `tool_mode` is `compact`.
+- Legacy stdio: set `TYPEROLL_MCP_TOOL_MODE=compact`.
+
+Use `tools=full`, `tool_mode: "full"`, or the corresponding environment value to
+restore the named-tool catalog if a client handles it better.
+
+## Update without losing project work
+
+```sh
+npx @typeroll/mcp-server@0.45.23 init ./my-site --update
+```
+
+An unchanged generated file can be upgraded. A user-edited file is reported as
+`modified` and preserved. `typeroll.json` remains user-owned. Review those files
+against current guidance manually; do not assume an update overwrote them.
+The updater does not merge client configurations or delete removed recipes.
+There is no destructive `--force` option for the workspace scaffold.
+
+To update a generated client adapter's pinned MCP version, include the same
+client option: `init ./my-site --update --client cursor` (or `claude`/`vscode`).
+Without `--client`, the updater leaves local client configurations alone.
+
+Recipes are served by MCP by default. For offline reference, opt in:
+
+```sh
+npx @typeroll/mcp-server@0.45.23 init ./my-site --recipes
+npx @typeroll/mcp-server@0.45.23 init ./my-site --recipes --update
+```
+
+They live in neutral `typeroll-skills/` and follow the same hash-based update
+rules. They are Markdown references, not a guarantee of automatic client loading.
+Keep project-specific instructions in `brief/`, `decisions.md` and `AGENTS.md`.
+The runtime capabilities and resolved app versions take precedence over old copies.
+
+## MCP, CLI or API?
+
+Use MCP for interactive agent work and the CLI for workspace setup/checks.
+For repeatable large imports and integration scripts, use the same authenticated
+REST API. The CLI also has Extension commands, but it is not a full site CRUD CLI.
+Both transports use the same CMS; changing transport does not make builds faster.

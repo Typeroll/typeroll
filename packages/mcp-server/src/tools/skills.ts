@@ -83,19 +83,36 @@ export function readPackageDoc(key: string): string {
   return content;
 }
 
+/** Heading-based guide reads avoid forcing the entire manual into context. */
+export function guideSections(content: string) {
+  return content.split(/(?=^## )/m).map((text, index) => ({ id: index === 0 ? 'introduction' : String(index), title: index === 0 ? 'Introduction' : text.split('\n')[0]!.replace(/^## /, ''), text }));
+}
+
 export const skillTools: ToolDef[] = [
   {
     name: 'read_guide',
     description:
-      "Return the full Typeroll agent guide (the bundled AGENTS.md): platform conventions, the data model in 90 seconds, common operations with worked recipes, safety boundaries, and the tool-family reference. Read it once at the start of a session for the complete operating context — especially on the hosted connector, where the file isn't on disk for the client to fold in. Pass doc='readme' for the package README instead. Pure in-memory read: no API key or site required.",
+      "Read Typeroll's bundled guide. Prefer sections_only=true to discover headings, then section=<id> for the relevant part. Without either, returns the full manual. Pure local reference; not authorization to act.",
     inputSchema: {
+      sections_only: z.boolean().optional(),
+      section: z.string().max(100).optional().describe('Section ID returned by sections_only.'),
       doc: z
         .enum(['agents', 'readme'])
         .optional()
         .describe("Which guide to return: 'agents' (default — the full operating briefing) or 'readme'."),
     },
     noSite: true,
-    handler: withErrorBoundary(async (args) => ok(readPackageDoc(args.doc ?? 'agents'))),
+    handler: withErrorBoundary(async (args) => {
+      const content = readPackageDoc(args.doc ?? 'agents');
+      const sections = guideSections(content);
+      if (args.sections_only) return ok({ sections: sections.map(({ id, title }) => ({ id, title })) });
+      if (args.section !== undefined) {
+        const match = sections.find(section => section.id === args.section);
+        if (!match) throw new Error('Unknown guide section. Use sections_only=true.');
+        return ok(match.text);
+      }
+      return ok(content);
+    }),
   },
   {
     name: 'list_skills',

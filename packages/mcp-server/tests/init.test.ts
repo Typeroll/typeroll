@@ -1,128 +1,104 @@
-// Tests for the `init` subcommand. Like install-skills it's a pure
-// filesystem operation. We stand up a temp skills source + a temp project
-// dir and assert the scaffolding, idempotency, and .mcp.json merge rules.
-
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runInit } from '../src/init.js';
+import { runInit, runInitCli } from '../src/init.js';
+import { doctor, readWorkspace, defaultWorkspace, writeWorkspaceFiles, workspaceClient, workspaceSchema, verifyWorkspaceBinding } from '../src/workspace.js';
 
-async function makeTempDir(prefix: string): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), prefix));
-}
-
-async function readJson(file: string): Promise<Record<string, unknown>> {
-  return JSON.parse(await fs.readFile(file, 'utf8'));
-}
-
-async function exists(file: string): Promise<boolean> {
-  try {
-    await fs.access(file);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-describe('runInit', () => {
-  let sourceDir: string;
-  let projectDir: string;
-
-  beforeEach(async () => {
-    sourceDir = await makeTempDir('tr-init-src-');
-    projectDir = await makeTempDir('tr-init-dst-');
-    await fs.writeFile(path.join(sourceDir, 'tr-new-site.md'), '# new site\n', 'utf8');
-    await fs.writeFile(path.join(sourceDir, 'tr-brand.md'), '# brand\n', 'utf8');
-    await fs.writeFile(path.join(sourceDir, 'README.md'), '# not a skill\n', 'utf8');
+describe('agent-neutral workspace', () => {
+  let dir: string;
+  beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'tr-workspace-')); });
+  afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const read = (name: string) => fs.readFile(path.join(dir, name), 'utf8');
+  it('creates a small non-secret scaffold with on-demand recipes and no client lock-in', async () => {
+    await runInit({ dir });
+    expect(await fs.readdir(dir)).not.toContain('.claude');
+    expect(await fs.readdir(dir)).not.toContain('typeroll-skills');
+    expect(await readWorkspace(dir)).toEqual(defaultWorkspace);
+    expect(await read('AGENTS.md')).toContain('describe_tool');
+    expect(await read('AGENTS.md')).not.toContain('loads them automatically');
+    expect(await read('.gitignore')).toContain('.mcp.json');
+    expect(await read('.gitignore')).toContain('.env');
+    expect(await read('brief/site.md')).toContain('Editorial constraints');
   });
-
-  afterEach(async () => {
-    await fs.rm(sourceDir, { recursive: true, force: true });
-    await fs.rm(projectDir, { recursive: true, force: true });
+  it('preserves edited files and configuration while updating unchanged managed templates', async () => {
+    await writeWorkspaceFiles(dir, { 'AGENTS.md': 'old', 'brief/site.md': 'original' }, false);
+    await fs.writeFile(path.join(dir, 'brief/site.md'), 'customer brief');
+    await fs.writeFile(path.join(dir, 'typeroll.json'), JSON.stringify({ ...defaultWorkspace, site_id: 'selected' }));
+    const result = await writeWorkspaceFiles(dir, { 'AGENTS.md': 'new', 'brief/site.md': 'new defaults', 'typeroll.json': JSON.stringify(defaultWorkspace) }, true);
+    expect(await read('AGENTS.md')).toBe('new');
+    expect(await read('brief/site.md')).toBe('customer brief');
+    expect((await readWorkspace(dir)).site_id).toBe('selected');
+    expect(result.find(row => row.path === 'brief/site.md')?.action).toBe('modified');
   });
-
-  it('scaffolds skills, config, AGENTS.md, env example and the imagegen lab', async () => {
-    const result = await runInit({ dir: projectDir, sourceDir });
-
-    // Skills copied (README ignored).
-    expect(result.skills.copied.sort()).toEqual(['tr-brand.md', 'tr-new-site.md']);
-    expect(await exists(path.join(projectDir, '.claude', 'skills', 'tr-new-site.md'))).toBe(true);
-
-    // All four scaffolding files present.
-    expect(await exists(path.join(projectDir, '.mcp.json'))).toBe(true);
-    expect(await exists(path.join(projectDir, 'AGENTS.md'))).toBe(true);
-    expect(await exists(path.join(projectDir, '.env.example'))).toBe(true);
-    expect(await exists(path.join(projectDir, 'images', 'lab', '.gitignore'))).toBe(true);
-
-    // .mcp.json carries the typeroll server entry with placeholders.
-    const config = await readJson(path.join(projectDir, '.mcp.json'));
-    const servers = config.mcpServers as Record<string, { env: Record<string, string> }>;
-    expect(servers.typeroll.env.TYPEROLL_API_URL).toBe('https://app.typeroll.com');
-    expect(servers.typeroll.env.TYPEROLL_API_KEY).toContain('REPLACE');
-    expect(servers.typeroll.env.TYPEROLL_SITE_ID).toContain('REPLACE');
-
-    // The lab .gitignore ignores everything but itself.
-    const labIgnore = await fs.readFile(path.join(projectDir, 'images', 'lab', '.gitignore'), 'utf8');
-    expect(labIgnore).toContain('!.gitignore');
+  it('reruns without duplicating ignore rules and keeps existing untracked agent instructions', async () => {
+    await fs.writeFile(path.join(dir, 'AGENTS.md'), 'My project rules');
+    await runInit({ dir }); const ignore = await read('.gitignore');
+    await runInit({ dir, update: true });
+    expect(await read('AGENTS.md')).toBe('My project rules');
+    expect(await read('.gitignore')).toBe(ignore);
   });
-
-  it('is idempotent: a second run keeps user edits', async () => {
-    await runInit({ dir: projectDir, sourceDir });
-
-    // User edits AGENTS.md and pastes a real key into .mcp.json.
-    await fs.writeFile(path.join(projectDir, 'AGENTS.md'), '# my own notes\n', 'utf8');
-    const cfgPath = path.join(projectDir, '.mcp.json');
-    const cfg = await readJson(cfgPath);
-    (cfg.mcpServers as Record<string, { env: Record<string, string> }>).typeroll.env.TYPEROLL_API_KEY =
-      'typeroll_live_real_secret';
-    await fs.writeFile(cfgPath, JSON.stringify(cfg, null, 2), 'utf8');
-
-    const result = await runInit({ dir: projectDir, sourceDir });
-
-    // AGENTS.md left untouched.
-    expect(await fs.readFile(path.join(projectDir, 'AGENTS.md'), 'utf8')).toBe('# my own notes\n');
-    expect(result.files.find((f) => f.path === 'AGENTS.md')?.action).toBe('skipped');
-
-    // The pasted key survives the merge — placeholders never overwrite real values.
-    const after = await readJson(cfgPath);
-    const env = (after.mcpServers as Record<string, { env: Record<string, string> }>).typeroll.env;
-    expect(env.TYPEROLL_API_KEY).toBe('typeroll_live_real_secret');
+  it.each(['claude', 'cursor', 'vscode'] as const)('writes opt-in %s configuration without keys and preserves custom servers', async client => {
+    const file = client === 'claude' ? '.mcp.json' : client === 'cursor' ? '.cursor/mcp.json' : '.vscode/mcp.json';
+    await runInit({ dir, client });
+    expect(await read(file)).toContain('workspace-mcp');
+    expect(await read(file)).not.toContain('API_KEY');
+    await fs.writeFile(path.join(dir, file), '{"custom":"preserve me"}');
+    const updated = await runInit({ dir, client, update: true });
+    expect(await read(file)).toBe('{"custom":"preserve me"}');
+    expect(updated.files.find(row => row.path === file)?.action).toBe('modified');
   });
-
-  it('merges into an existing .mcp.json without dropping other servers', async () => {
-    // Pre-existing config with a DIFFERENT server and no typeroll entry.
-    await fs.writeFile(
-      path.join(projectDir, '.mcp.json'),
-      JSON.stringify({ mcpServers: { other: { command: 'foo', args: [], env: {} } } }, null, 2),
-      'utf8',
-    );
-
-    await runInit({ dir: projectDir, sourceDir });
-
-    const config = await readJson(path.join(projectDir, '.mcp.json'));
-    const servers = config.mcpServers as Record<string, unknown>;
-    expect(servers.other).toBeDefined();
-    expect(servers.typeroll).toBeDefined();
+  it('installs optional recipes into a neutral directory and preserves edits on update', async () => {
+    const source = path.join(dir, 'fixture'); await fs.mkdir(source);
+    await fs.writeFile(path.join(source, 'tr-new-site.md'), 'v1');
+    await runInit({ dir, recipes: true, sourceDir: source });
+    await fs.writeFile(path.join(source, 'tr-new-site.md'), 'v2');
+    await runInit({ dir, recipes: true, sourceDir: source, update: true });
+    expect(await read('typeroll-skills/tr-new-site.md')).toBe('v2');
+    await fs.writeFile(path.join(dir, 'typeroll-skills/tr-new-site.md'), 'custom');
+    await runInit({ dir, recipes: true, sourceDir: source, update: true });
+    expect(await read('typeroll-skills/tr-new-site.md')).toBe('custom');
   });
-
-  it('--force overwrites files and replaces the typeroll entry', async () => {
-    await runInit({ dir: projectDir, sourceDir });
-    await fs.writeFile(path.join(projectDir, 'AGENTS.md'), '# edited\n', 'utf8');
-
-    const result = await runInit({ dir: projectDir, sourceDir, force: true });
-
-    expect(await fs.readFile(path.join(projectDir, 'AGENTS.md'), 'utf8')).toContain('Typeroll');
-    expect(result.files.find((f) => f.path === 'AGENTS.md')?.action).toBe('created');
+  it('rejects symlink destinations before writing scaffold files', async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'tr-outside-'));
+    try {
+      await fs.symlink(outside, path.join(dir, 'brief'));
+      await expect(runInit({ dir })).rejects.toThrow(/linked/);
+      expect(await fs.readdir(outside)).toEqual([]);
+      expect(await fs.readdir(dir)).toEqual(['brief']);
+    } finally { await fs.rm(outside, { recursive: true, force: true }); }
   });
-
-  it('leaves a malformed .mcp.json untouched rather than corrupting it', async () => {
-    const cfgPath = path.join(projectDir, '.mcp.json');
-    await fs.writeFile(cfgPath, '{ this is not json', 'utf8');
-
-    const result = await runInit({ dir: projectDir, sourceDir });
-
-    expect(await fs.readFile(cfgPath, 'utf8')).toBe('{ this is not json');
-    expect(result.files.find((f) => f.path === '.mcp.json')?.action).toBe('skipped');
+  it('rejects unknown flags and unsafe credential-bearing portal config', async () => {
+    expect(await runInitCli([dir, '--force'])).toBe(1);
+    expect(workspaceSchema.safeParse({ ...defaultWorkspace, api_key: 'secret' }).success).toBe(false);
+    expect(workspaceSchema.safeParse({ ...defaultWorkspace, portal: 'https://user:secret@example.com' }).success).toBe(false);
+    expect(workspaceSchema.safeParse({ ...defaultWorkspace, portal: 'http://example.com' }).success).toBe(false);
+  });
+  it('checks the actual Site, Organization and Version with GETs only, without exposing credentials', async () => {
+    await runInit({ dir });
+    await fs.writeFile(path.join(dir, 'typeroll.json'), JSON.stringify({ ...defaultWorkspace, site_id: 'site', organization_id: 'org', version: 'draft-branch' }));
+    const calls: string[] = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(init?.method).toBe('GET'); calls.push(String(input));
+      return Response.json(String(input).includes('/site/') && !String(input).includes('capabilities') ? { id: 'site', organization_id: 'org', version_id: 'draft-branch' } : { sites: [], supported: true });
+    };
+    const report = await doctor(dir, false, { TYPEROLL_API_KEY: 'test-secret' }, fetchImpl);
+    expect(report.passed).toBe(true);
+    expect(calls.filter(url => url.includes('/site/')).every(url => url.includes('version=draft-branch'))).toBe(true);
+    expect(JSON.stringify(report)).not.toContain('test-secret');
+    expect(report.checks.find(row => row.check === 'writes_and_publishing')?.status).toBe('not_checked');
+    const mismatch = await doctor(dir, false, { TYPEROLL_API_KEY: 'test-secret' }, async () => Response.json({ id: 'other' }));
+    expect(mismatch.passed).toBe(false);
+  });
+  it('refuses a bound MCP session when the portal Organization does not match', async () => {
+    const config = { ...defaultWorkspace, site_id: 'site', organization_id: 'expected' };
+    const client = workspaceClient(config, { TYPEROLL_API_KEY: 'synthetic' }, async () => Response.json({ id: 'site', version_id: 'main', organization_id: 'other' }));
+    await expect(verifyWorkspaceBinding(config, client)).rejects.toThrow(/does not match/);
+  });
+  it('reports offline checks honestly and rejects environment conflicts', async () => {
+    await runInit({ dir }); const report = await doctor(dir, true, {});
+    expect(report.checks.find(row => row.check === 'connection')?.status).toBe('not_checked');
+    expect(report.passed).toBe(false);
+    expect(() => workspaceClient(defaultWorkspace, { TYPEROLL_API_KEY: 'secret', TYPEROLL_API_URL: 'https://wrong.example' })).toThrow(/conflicts/);
   });
 });

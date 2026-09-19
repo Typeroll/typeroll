@@ -5,6 +5,16 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const siteTools: ToolDef[] = [
   {
+    name: 'list_sites', noSite: true,
+    description: 'List accessible Sites without changing them. Use the returned IDs for site_id or your workspace binding. Results are paginated locally.',
+    inputSchema: { offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(50).default(20) },
+    handler: withErrorBoundary(async (args, { client }) => {
+      const response = await client.rootGet<{ sites: unknown[] }>('sites');
+      const sites = response.sites ?? [];
+      return ok({ sites: sites.slice(args.offset, args.offset + args.limit), total: sites.length, next_offset: args.offset + args.limit < sites.length ? args.offset + args.limit : null });
+    }),
+  },
+  {
     name: 'create_site',
     description:
       "Create + bootstrap a NEW site in your org. Seeds default settings, a draft Home page, and a published header/footer so it renders immediately. Requires an ORG-scoped key (a site-scoped key is bound to one existing site and can't mint new ones; you'll get a 403). `name` drives a kebab-case site id; pass `domain` to kick off the \"point your DNS\" flow (never written as a live domain). Returns the new site's id + urls — use that id as `site_id`/`TYPEROLL_SITE_ID` for follow-up calls. After creating, run list_skills → read_skill tr-new-site to bootstrap the design.",

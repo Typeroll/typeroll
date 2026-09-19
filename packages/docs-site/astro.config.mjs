@@ -35,6 +35,7 @@ export default defineConfig({
             { label: 'Connect your AI agent', slug: 'getting-started/mcp-server' },
             { label: 'Client compatibility', slug: 'getting-started/client-compatibility' },
             { label: 'Your First Site', slug: 'getting-started/first-site' },
+            { label: 'Agent workspace', slug: 'getting-started/agent-workspace' },
           ],
         },
         {

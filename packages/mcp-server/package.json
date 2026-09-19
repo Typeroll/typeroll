@@ -1,7 +1,7 @@
 {
   "name": "@typeroll/mcp-server",
-  "version": "0.45.22",
-  "description": "Typeroll CMS MCP server \u2013 connect AI agents to the REST API to manage content and publish static websites.",
+  "version": "0.45.23",
+  "description": "Typeroll CMS MCP server – connect AI agents to the REST API to manage content and publish static websites.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -42,7 +42,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "zod": "^3.23.0"
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "3.25.2"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

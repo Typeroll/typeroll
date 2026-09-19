@@ -36,11 +36,12 @@ import { extensionTools } from './tools/extensions.js';
 import { skillTools } from './tools/skills.js';
 import { fail, type ToolDef, type ToolDeps } from './tools/helpers.js';
 import { VERSION } from './version.js';
+import { compactTools, COMPACT_INSTRUCTIONS, type CallableTool, type ToolEffect } from './compact-tools.js';
 
 /** What permission a tool needs to run. Maps onto the share model: a
  *  read-shared site can `read`-list but cannot mutate. Mode `write` is the
  *  default — applied to anything that isn't trivially side-effect-free. */
-type ToolEffect = 'read' | 'write' | 'admin';
+
 
 const PERM_RANK: Record<ToolEffect, number> = { read: 0, write: 1, admin: 2 };
 
@@ -94,6 +95,7 @@ export interface BuildServerOptions {
   /** Multi-site mode: every tool gains a `site_id` arg, validated against this list. */
   allowedSites?: AllowedSite[];
   info?: { name: string; version: string };
+  toolMode?: 'full' | 'compact';
 }
 
 const DEFAULT_INFO = { name: 'typeroll', version: VERSION };
@@ -155,7 +157,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
 
   const server = new McpServer(options.info ?? DEFAULT_INFO, {
     capabilities: { tools: {} },
-    instructions: SERVER_INSTRUCTIONS,
+    instructions: options.toolMode === 'compact' ? COMPACT_INSTRUCTIONS : SERVER_INSTRUCTIONS,
   });
 
   const allTools: ToolDef[] = [
@@ -200,6 +202,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
     (options.allowedSites ?? []).map((s) => [s.siteId, s]),
   );
 
+  const catalog: CallableTool[] = [];
   for (const tool of allTools) {
     const effect = effectFor(tool.name);
     // Skill-discovery tools (and any future site-less tool) operate without a
@@ -214,23 +217,16 @@ export function buildServer(options: BuildServerOptions): McpServer {
         site_id: z
           .string()
           .describe(
-            `Required. The id of the site this call targets. Use list_sites to discover ids; available sites for this connection: ${
-              (options.allowedSites ?? []).map((s) => s.siteId).join(', ') || '(none)'
-            }.`,
+            'Required. The Site ID this call targets. Use list_sites to discover accessible sites.',
           ),
       };
       schema = { ...(tool.inputSchema ?? {}), ...siteIdField };
     }
 
-    register(
-      tool.name,
-      {
-        description: tool.description,
-        ...(schema ? { inputSchema: schema } : {}),
-      },
+    catalog.push({ name: tool.name, description: tool.description, effect, schema: schema ?? {}, invoke:
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       async (args: any) => {
-        const rawArgs = args ?? {};
+        const rawArgs = { ...(args ?? {}) };
         let siteId: string;
         if (isMultiSite && needsSite) {
           const provided = typeof rawArgs.site_id === 'string' ? rawArgs.site_id.trim() : '';
@@ -268,8 +264,13 @@ export function buildServer(options: BuildServerOptions): McpServer {
         const deps: ToolDeps = { client: options.client, siteId };
         return tool.handler(rawArgs, deps);
       },
-    );
+    });
   }
-
+  for (const tool of options.toolMode === 'compact' ? compactTools(catalog) : catalog) {
+    register(tool.name, {
+      description: tool.description, inputSchema: tool.schema,
+      annotations: { readOnlyHint: tool.effect === 'read', destructiveHint: tool.effect !== 'read', openWorldHint: true },
+    } as any, tool.invoke);
+  }
   return server;
 }

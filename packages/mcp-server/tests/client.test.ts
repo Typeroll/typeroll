@@ -81,3 +81,14 @@ describe('TyperollClient', () => {
     expect(calls[0].url).toBe('https://example.test/api/v1/sites');
   });
 });
+
+it('uses a workspace Version by default while preserving explicit tool overrides', async () => {
+  const { fetch, calls } = mockFetch(() => json({ ok: true }));
+  const client = new TyperollClient({ baseUrl: 'https://portal.test', apiKey: 'synthetic', defaultVersion: 'design', fetchImpl: fetch });
+  await client.patch('site', 'pages/home', { title: 'Draft' });
+  await client.get('site', 'pages/home', { version: 'review' });
+  await client.rootGet('sites');
+  expect(calls[0].url).toContain('version=design');
+  expect(calls[1].url).toContain('version=review');
+  expect(calls[2].url).not.toContain('version=');
+});

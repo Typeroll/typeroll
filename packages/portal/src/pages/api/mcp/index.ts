@@ -76,10 +76,13 @@ async function handle(request: Request): Promise<Response> {
   const portalBase = process.env.PORTAL_PUBLIC_URL?.replace(/\/+$/, '') ?? new URL(request.url).origin;
   const client = new TyperollClient({ baseUrl: portalBase, apiKey });
 
+  const mode = new URL(request.url).searchParams.get('tools') ?? 'full';
+  if (!['full', 'compact'].includes(mode)) return new Response('Use tools=compact or tools=full', { status: 400 });
+  const toolMode = mode as 'full' | 'compact';
   const server = verified.siteId !== null
-    ? buildServer({ client, fixedSiteId: verified.siteId })
+    ? buildServer({ client, fixedSiteId: verified.siteId, toolMode })
     : buildServer({
-        client,
+        client, toolMode,
         allowedSites: (await listAllowedSites(verified.orgId, null)).map((s) => ({
           siteId: s.siteId,
           permission: s.permission,

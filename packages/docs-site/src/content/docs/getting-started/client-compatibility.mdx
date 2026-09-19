@@ -57,9 +57,10 @@ Claude Code documents both HTTP and stdio MCP connections. Use its MCP setup
 command for the selected transport and its authentication flow for a remote
 server. Follow [Claude Code's MCP guide](https://code.claude.com/docs/en/mcp).
 
-Typeroll's optional `init` command currently creates `.mcp.json` and
-`.claude/skills/` files. That scaffold is client-specific; other agents can use
-the MCP connection and `read_guide`, `list_skills` and `read_skill` without it.
+From MCP 0.45.23, `init` creates an agent-neutral workspace. Explicit
+`--client claude` creates its local `.mcp.json`; Cursor and VS Code adapters are
+also optional. Earlier `init` releases created `.claude/skills/` by default.
+See [Agent workspace](../agent-workspace/) for safe updates, binding and credentials.
 
 ### Cursor
 

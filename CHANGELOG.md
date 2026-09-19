@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — Core 0.2.27 / MCP 0.45.23
+
+- Generate agent-neutral site workspaces with briefs, decisions, QA, non-secret
+  Site/Organization/Version bindings and hash-based updates that preserve edits.
+- Add read-only workspace diagnostics and optional local client adapters.
+- Offer compact MCP discovery with five stable tools, on-demand schemas and
+  separate read/write/admin execution. Full mode remains available.
+- Add paginated site discovery and section-based guide reads. Document client
+  context costs, safe project files and the current CLI/API boundary.
+
 ## Unreleased — Core 0.2.26 / MCP 0.45.22
 
 - Require explicit per-installation activation across declared app release boundaries.

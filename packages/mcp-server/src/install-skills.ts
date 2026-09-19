@@ -143,8 +143,8 @@ function printHelp(): void {
   console.error('Copies bundled Typeroll skill markdown files to the destination directory.');
   console.error('');
   console.error('Common destinations:');
-  console.error('  .claude/skills          Project-scoped (recommended)');
-  console.error('  ~/.claude/skills        User-scoped (available in every project)');
+  console.error('  ./typeroll-skills       Neutral recipe directory');
+  console.error('For managed updates use: typeroll init . --recipes --update');
   console.error('');
   console.error('Options:');
   console.error('  --force, -f             Overwrite files that already exist');

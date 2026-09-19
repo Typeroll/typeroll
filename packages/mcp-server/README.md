@@ -81,11 +81,12 @@ client using it stops working immediately.
    For a self-hosted portal, point `TYPEROLL_API_URL` at it (e.g.
    `https://cms.example.com`).
 
-   For the optional Claude Code scaffold, run `npx @typeroll/mcp-server init` in your project
-   folder — it writes/merges this `.mcp.json`, copies the skills into
-   `.claude/skills/`, and adds an `AGENTS.md` pointer + imagegen-lab
-   files. Idempotent; `--force` to overwrite. (Skills only:
-   `npx @typeroll/mcp-server install-skills .claude/skills`.)
+   For an optional agent-neutral workspace, run
+   `npx @typeroll/mcp-server init ./my-site`. It creates project instructions,
+   briefs, decisions and QA files. Local client configuration is opt-in with
+   `--client claude|cursor|vscode`; recipes are opt-in with `--recipes`.
+   Use `--update` to upgrade unchanged generated files while preserving edits.
+   See [Agent workspace](https://typeroll.com/docs/getting-started/agent-workspace/).
 
 3. **Tell the agent what kind of work you want.** A good first message:
 
@@ -132,7 +133,8 @@ the complete schema, compatibility, origin and asset-hash validation.
 The package ships [AGENTS.md](./AGENTS.md), a self-contained briefing
 that explains Typeroll conventions, common operations, and the safety
 boundaries an agent needs to respect. Point your agent at it or use the
-`read_guide` tool. Follow the client’s own instructions for loading local recipes.
+`read_guide` tool with `sections_only: true`, then request relevant sections.
+Follow the client’s own instructions for loading local recipes.
 
 ## Tool surface
 
@@ -141,11 +143,9 @@ the full reference + concrete operation recipes.
 
 - **Skills + guide (self-describing playbook)** — `read_guide`,
   `list_skills`, `read_skill`. The server advertises its own operating
-  guide AND bundled recipes at runtime, so an agent gets the full context
-  on connection without any files copied locally. `read_guide` returns the
-  whole AGENTS.md briefing (data model, conventions, safety, tool families)
-  — the bridge for the hosted connector, which can't read the file off
-  disk. `list_skills` then surfaces the task recipes (`tr-new-site`,
+  guide and bundled recipes at runtime without requiring local copies.
+  `read_guide` supports a section index and individual sections; use the full
+  manual only when the task needs it. `list_skills` then surfaces the task recipes (`tr-new-site`,
   `tr-migrate-wp`, `tr-brand`, `tr-responsive`, …); `read_skill name=…`
   loads one. All pure local reads — no API key or site context — so they
   work identically on the hosted connector and over stdio.
@@ -293,3 +293,18 @@ documented in [`docs/v1-api.md`](../../docs/v1-api.md).
 MIT — see [LICENSE](../../LICENSE).
 
 Use `read_app_documentation` to discover instructions for the selected site’s enabled modules and Extensions. Private app guides are fetched only for enabled installations using the provider’s authenticated documentation contract; they are not bundled in MCP. Generic discovery requires Core 0.2.8; protected guides require the app-separation release.
+
+## Agent workspace and compact discovery
+
+MCP 0.45.23 introduces an agent-neutral `typeroll init` workspace, optional
+client adapters, safe hash-based `init --update`, and read-only `typeroll doctor`.
+Use `workspace-mcp` to bind local calls to `typeroll.json`; no credentials are
+stored there. Recipes are optional rather than automatically injected.
+
+Compact mode exposes five discovery/execution tools instead of every schema.
+Choose `?tools=compact` on the hosted endpoint (Core 0.2.27+), `tool_mode` in the
+workspace, or `TYPEROLL_MCP_TOOL_MODE=compact` for legacy stdio. Full mode remains
+available. Read/write/admin wrappers share normal validation and authorization.
+
+See [Agent workspace](https://typeroll.com/docs/getting-started/agent-workspace/)
+for the folder layout, commands, version requirements and context-budget advice.

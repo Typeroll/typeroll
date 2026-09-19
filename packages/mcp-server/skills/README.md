@@ -1,6 +1,6 @@
 # Typeroll CMS skills for AI agents
 
-Boilerplate skills that pair with [`@typeroll/mcp-server`](../packages/mcp-server/README.md).
+Boilerplate skills that pair with [`@typeroll/mcp-server`](../README.md).
 Each one is a self-contained markdown file the agent reads when its
 description matches the user's request. Recipes call MCP tools; the agent
 adapts them to the specific job.
@@ -12,27 +12,21 @@ save first.
 
 ## Installation
 
-Copy whichever skills you need into your Claude Code skills directory.
-Either:
+Prefer `list_skills` and `read_skill` over loading all recipes into context.
+For optional local reference copies in an agent-neutral workspace:
 
-```bash
-# project-scoped (recommended)
-mkdir -p .claude/skills
-cp skills/*.md .claude/skills/
-
-# or user-scoped (available in every project)
-cp skills/*.md ~/.claude/skills/
+```sh
+npx @typeroll/mcp-server@0.45.23 init ./my-site --recipes
+npx @typeroll/mcp-server@0.45.23 init ./my-site --recipes --update
 ```
 
-Symlinks work too, so you can stay in sync with the upstream:
-
-```bash
-ln -s "$PWD/skills/tr-migrate-wp.md" ~/.claude/skills/
-```
+The files live in `typeroll-skills/`. Updates preserve user edits. Copying Markdown
+is not a guarantee of automatic skill loading in any client; follow its current
+instructions. Read the relevant recipe when the task calls for it.
 
 ## The skills
 
-### Bygga och designa
+### Build and design
 
 | File | When it triggers | What it does |
 |---|---|---|
@@ -42,7 +36,7 @@ ln -s "$PWD/skills/tr-migrate-wp.md" ~/.claude/skills/
 | `tr-content-write.md`  | "write a page about…", "draft copy for…"            | Discovery first (settings + sample pages), then drafts in the site's voice, previews, iterates. |
 | `tr-images.md`         | "make an image / hero / illustration", media uploads | Generates locally → signed upload URL → metadata patch → embed. |
 
-### Funktioner
+### Features
 
 | File | When it triggers | What it does |
 |---|---|---|
@@ -51,7 +45,7 @@ ln -s "$PWD/skills/tr-migrate-wp.md" ~/.claude/skills/
 | `tr-page-template.md` | Reusable Page templates: audio players, chapter lists, guest cards, image galleries — anything needing loops/nested data | Compose native blocks around `template_content_slot`; bind Page metadata, structured fields and references. |
 | `tr-seo.md`               | "SEO", "meta descriptions", "structured data"          | Audit → fix titles/descriptions → OG images → JSON-LD → robots.txt → deploy. |
 
-### Importera innehåll
+### Import content
 
 | File | When it triggers | What it does |
 |---|---|---|
@@ -63,14 +57,13 @@ ln -s "$PWD/skills/tr-migrate-wp.md" ~/.claude/skills/
 
 ## Prerequisites for every skill
 
-1. `@typeroll/mcp-server` configured in the agent’s MCP settings with a valid
-   `TYPEROLL_API_KEY` and `TYPEROLL_API_URL`.
-2. The agent has read `AGENTS.md` (ships with the MCP package — see
-   `node_modules/@typeroll/mcp-server/AGENTS.md` after install, or
-   reference it directly).
+1. A working hosted or local Typeroll MCP connection for API operations. Local
+   stdio uses an injected API key; hosted clients may use OAuth or bearer headers.
+2. The relevant guide sections and the selected Site/Version's capabilities.
+   Use `read_guide sections_only=true` before requesting individual sections.
 
-If those are missing, every skill will fail at the first MCP call with
-"Missing bearer token" or "Invalid or revoked token".
+Recipe discovery and reads are local reference operations; they do not require a
+Site. API operations enforce authentication, scope and setup independently.
 
 ## Authoring more
 

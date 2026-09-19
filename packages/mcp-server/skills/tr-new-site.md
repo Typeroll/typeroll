@@ -23,6 +23,21 @@ structured, per-field editing, native full-bleed sections, responsive
 breakpoints, and templates. HTML mode is the secondary path for
 hand-crafted one-offs and migrated content (section at the end).
 
+## Workspace and context
+
+An optional agent-neutral workspace stores the brief, decisions and QA. It does
+not create a Site or replace CMS content. See the public Agent workspace guide.
+For compact MCP: search_tools, describe_tool, then the appropriate read/write/admin
+wrapper. Load only the relevant guide section and recipe. Discover site apps with
+read_app_documentation when needed; do not bundle private app guides locally.
+
+No Site yet? Use hosted MCP with an Organization key and create_site, or create it
+in the portal. Read back its ID before editing. Use one explicit Site/Version for
+related operations. Larger changes to an existing site should use a branch.
+
+Before importing content or a media library, require get_import_readiness to pass.
+Publishing accounts may remain unconfigured while authoring new drafts and previews.
+
 ## Preconditions
 
 - `@typeroll/mcp-server` configured with a valid `TYPEROLL_API_KEY`.
@@ -196,9 +211,9 @@ truth):
 - **`core/heading`** decouples `level` (h1–h6, semantics) from `size`
   (visual) — exactly one `level: h1` per page.
 - **Images:** `core/image` with an uploaded media URL. The build pipeline
-  automatically emits responsive `<picture>` with AVIF/WebP variants
-  (run `generate_image_variants` after upload) — the in-portal preview
-  shows a plain `<img>`, the deployed site gets the upgrade. Use the
+  emits responsive output from prepared media. Upload through a signed direct
+  grant, finalize it, and use returned IDs/URLs. Follow media preparation status;
+  do not routinely regenerate unchanged images or use legacy maintenance tools. Use the
   `radius` field for rounded corners.
 - **Repeaters/listings:** `core/page_list`, `gallery`,
   `feature_grid` etc. — alias blocks over `core/repeater`. Use these for
@@ -302,7 +317,8 @@ edits, not full-page rewrites.
 
 ### 7. Deploy
 
-When the user approves:
+When the user approves, verify read_publishing_readiness and save the intended
+Version before deploying. A published CMS status is not a live deployment.
 ```
 trigger_deploy
 get_deploy_status job_id=<id>
