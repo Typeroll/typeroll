@@ -70,3 +70,36 @@ The documentation preflight is deliberately repeated at the start of the
 release workflow before Core or MCP can run. The later documentation job uses
 the same command. A formatting or build error therefore cannot leave a
 partially completed release train.
+
+
+## Qualified artifact reuse
+
+Source checks and Playwright run independently on isolated runners; both must
+pass the same source before `Release OSS` can start. A third early job downloads
+the pinned Bubblewrap archive and AppArmor profile, rejects redirects/oversize
+responses, and verifies their exact hashes. Availability failures stop before
+immutable publication, without changing runtime integrity requirements.
+
+The source gate runs `oss-release-check.mjs --release-artifacts`. Its one workspace
+build uses the `/docs/` target, then `prepare-migration.mjs --reuse-build` assembles
+the deployment overlay. `release-artifact.mjs` records source SHA, lockfile hash,
+exact Node version, target and a hash inventory including every generated file. CI uploads
+`docs-SOURCE_SHA` for 30 days. This artifact contains public files only.
+
+Release planning resolves a successful `Tests` push on `main` for that exact
+source and repository. Both automatic and manual release require this proof;
+manual dispatch does not bypass source qualification. Planning and docs deployment
+verify the downloaded inventory and identity. Neither rebuilds documentation or
+installs its build dependencies. Deployment still verifies the published source
+marker and public routes. Expired or absent artifacts fail explicitly; qualify the
+source again instead of silently building untested files during publication.
+
+Core images use a scoped BuildKit cache to reuse layers, while immutable digest,
+source-label and container-contract checks remain authoritative. Cache contents
+never substitute for those checks. Workflow/helper-only changes are explicitly
+classified as release infrastructure and do not require a fictitious Core/MCP
+version bump; changes to runtime source still do.
+
+The Core release job uses built-in version checks and its Docker build, without
+a redundant host `npm ci`. An unchanged MCP package is verified in the registry
+without reinstalling build dependencies or the publishing client.

@@ -15,22 +15,38 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '22.23.1'
           cache: 'npm'
       - run: npm ci
       - name: Validate release candidate
-        run: node scripts/oss-release-check.mjs
+        run: node scripts/oss-release-check.mjs --release-artifacts
 
-  e2e:
-    name: Playwright e2e
+      - uses: actions/upload-artifact@v7
+        with:
+          name: docs-${{ github.sha }}
+          path: temp/docs-migration
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+
+  dependencies:
+    name: Verify pinned build dependencies
     runs-on: ubuntu-latest
-    # Only run e2e when the complete release-candidate check passes.
-    needs: unit
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '22.23.1'
+      - run: node scripts/release-dependencies.mjs
+
+  e2e:
+    name: Playwright e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22.23.1'
           cache: 'npm'
       - run: npm ci
       - name: Install Playwright browsers

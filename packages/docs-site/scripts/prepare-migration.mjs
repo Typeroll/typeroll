@@ -5,9 +5,11 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+if (!process.argv.includes('--reuse-build')) {
 const result = spawnSync(process.execPath, ['scripts/build-subdirectory.mjs'], { cwd: root, stdio: 'inherit' });
 if (result.error) throw result.error;
 if (result.status !== 0) process.exit(result.status ?? 1);
+}
 const output = path.resolve(root, '../../temp/docs-migration');
 rmSync(output, { recursive: true, force: true });
 mkdirSync(path.join(output, 'main-host/docs'), { recursive: true });

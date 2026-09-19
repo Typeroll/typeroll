@@ -36,6 +36,7 @@ export function releaseScopes(files) {
   const normalized = files.filter(Boolean);
   const infrastructureOnly = (file) =>
     file.startsWith('.github/') ||
+    ['scripts/release-artifact.mjs', 'scripts/release-artifact.test.mjs', 'scripts/release-dependencies.mjs', 'scripts/qualified-docs.mjs'].includes(file) ||
     file === 'scripts/oss-release-plan.mjs' ||
     file === 'scripts/oss-release-plan.test.mjs' ||
     file === 'scripts/oss-release-check.mjs' ||

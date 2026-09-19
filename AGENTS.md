@@ -1,8 +1,12 @@
 # Typeroll open-source development
 
 - Use Node.js 22 or later.
-- Run focused tests first, then `node scripts/oss-release-check.mjs` for shared
-  or release-facing changes. This is the same fail-fast gate as main CI.
+- Run focused local tests first. Main CI must pass the complete source gate,
+  independent browser tests and pinned external dependency probes for the exact
+  source. Run `node scripts/oss-release-check.mjs --release-artifacts` locally
+  for broad shared changes, release-infrastructure changes or unresolved risk;
+  do not repeat the full gate after every small edit. The release workflow
+  reuses qualified documentation artifacts instead of rebuilding them.
 - Forms, the Extension protocol, WordPress migration and helper plugin, the
   portal, the public API, MCP, and the static renderer are open-source core
   functionality.

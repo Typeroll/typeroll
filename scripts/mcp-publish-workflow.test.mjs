@@ -60,14 +60,15 @@ test('publication trusts the exact successful release-candidate source gate', ()
   assert.match(workflow, /Verify published image contract/);
 });
 
-test('documentation is validated before any immutable artifact is published', () => {
-  const plan = workflow.indexOf('\n  plan:');
-  const preflight = workflow.indexOf('- name: Validate documentation before publication');
-  const core = workflow.indexOf('\n  core:');
-
-  assert.ok(plan > 0 && preflight > plan && preflight < core);
-  assert.match(workflow, /Validate documentation before publication[\s\S]*node scripts\/oss-release-check\.mjs --docs-only/);
-  assert.match(workflow, /Rebuild the validated documentation[\s\S]*node scripts\/oss-release-check\.mjs --docs-only/);
+test('docs reuse requires exact successful source proof before any publication', () => {
+  assert.match(workflow, /qualified-docs\.mjs/);
+  assert.match(workflow, /Verify qualified documentation before publication[\s\S]*release-artifact\.mjs verify/);
+  assert.match(workflow, /run-id: \$\{\{ needs\.plan\.outputs\.tests_run_id \}\}/);
+  assert.doesNotMatch(workflow, /--docs-only|prepare:migration|build:docs/);
+  assert.match(testWorkflow, /--release-artifacts/);
+  assert.match(testWorkflow, /name: docs-\$\{\{ github\.sha \}\}/);
+  assert.doesNotMatch(testWorkflow, /needs: unit/);
+  assert.match(testWorkflow, /release-dependencies\.mjs/);
 });
 
 test('an interrupted Core publication can recover only from the same source commit', () => {
@@ -90,4 +91,10 @@ test('documentation publication verifies its source without redeploying the reti
   assert.ok(deploy > 0 && verify > deploy);
   assert.match(workflow.slice(verify), /verify-live-docs\.mjs --source-sha/);
   assert.doesNotMatch(workflow, /pages deploy|old-docs-host|--redirects/);
+});
+
+test('unchanged packages do not reinstall build dependencies during publication', () => {
+  const core = workflow.slice(workflow.indexOf('\n  core:'), workflow.indexOf('\n  mcp:'));
+  assert.doesNotMatch(core, /run: npm ci/);
+  assert.match(workflow, /Install MCP build dependencies\n        if: needs\.plan\.outputs\.publish_mcp == 'true'/);
 });

@@ -26,6 +26,7 @@ permissions:
   packages: write
   id-token: write
   attestations: write
+  actions: read
 
 concurrency:
   group: release-oss
@@ -42,6 +43,7 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     outputs:
+      tests_run_id: ${{ steps.qualified.outputs.run_id }}
       source_sha: ${{ steps.plan.outputs.source_sha }}
       core_source_sha: ${{ steps.plan.outputs.core_source_sha }}
       core_version: ${{ steps.plan.outputs.core_version }}
@@ -57,12 +59,24 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '22.23.1'
           cache: npm
-      - name: Install documentation dependencies
-        run: npm ci --workspace=@typeroll/docs-site
-      - name: Validate documentation before publication
-        run: node scripts/oss-release-check.mjs --docs-only
+      - name: Resolve successful source qualification
+        id: qualified
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: node scripts/qualified-docs.mjs
+      - uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.qualified.outputs.run_id }}
+          name: docs-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          path: temp/docs-migration
+      - name: Verify qualified documentation before publication
+        run: node scripts/release-artifact.mjs verify temp/docs-migration
       - name: Validate manual publication confirmation
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run != true
         env:
@@ -102,9 +116,8 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '22.23.1'
           cache: npm
-      - run: npm ci
       - name: Verify Core release version
         run: npm run core:release:verify -- "${{ needs.plan.outputs.core_tag }}"
       # The exact source SHA has already passed the complete release-candidate
@@ -164,6 +177,8 @@ jobs:
           build-args: |
             TYPEROLL_SOURCE_SHA=${{ needs.plan.outputs.source_sha }}
           platforms: linux/amd64
+          cache-from: type=gha,scope=core
+          cache-to: type=gha,scope=core,mode=max
           sbom: true
           provenance: mode=max
       - name: Resolve release digest
@@ -234,13 +249,16 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '22.23.1'
           registry-url: https://registry.npmjs.org
           scope: '@typeroll'
           cache: npm
       - name: Install Trusted Publishing client
+        if: needs.plan.outputs.publish_mcp == 'true'
         run: npm install --global npm@11.6.2
-      - run: npm ci
+      - name: Install MCP build dependencies
+        if: needs.plan.outputs.publish_mcp == 'true'
+        run: npm ci
       - name: Inspect npm release state
         id: npm
         env:
@@ -305,13 +323,16 @@ jobs:
           ref: ${{ needs.plan.outputs.source_sha }}
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '22.23.1'
           cache: npm
-      - run: npm ci --workspace=@typeroll/docs-site
-      - name: Rebuild the validated documentation
-        run: node scripts/oss-release-check.mjs --docs-only
-      - name: Prepare documentation assets
-        run: npm run prepare:migration --workspace=@typeroll/docs-site
+      - uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.plan.outputs.tests_run_id }}
+          name: docs-${{ needs.plan.outputs.source_sha }}
+          path: temp/docs-migration
+      - name: Verify the qualified documentation artifact
+        run: node scripts/release-artifact.mjs verify temp/docs-migration
       - name: Verify documentation deployment token
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_DOCS_API_TOKEN }}
@@ -336,7 +357,7 @@ jobs:
           ref: ${{ needs.plan.outputs.source_sha }}
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '22.23.1'
       - name: Build Cloud-consumable release manifest
         run: >-
           node scripts/oss-release-plan.mjs
