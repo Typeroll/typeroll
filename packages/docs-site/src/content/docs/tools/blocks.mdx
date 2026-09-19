@@ -538,7 +538,7 @@ previous breakpoint; dimensions are bounded by the field's minimum and maximum.
 | Heading / Page title | `font_size_px`, unitless `line_height`, `color`; semantic `level` stays independent                                              |
 | Section              | `max_width_px` for the inner content, `content_gap_px`, `padding_x` (`auto`, `none`, `sm`, `md`, `lg`)                           |
 | Container            | `max_width_px`, `gap_px`, `padding_x_px`, `padding_y_px`                                                                         |
-| Two columns          | `gap_px`, `right_width_px`; columns still stack at 720px and below                                                               |
+| Two columns          | `gap_px`, `right_width_px`; optional `stack_below` selects the shared column/outline boundary                                    |
 | Site logo            | `height_px`, with intrinsic aspect ratio                                                                                         |
 | Icon box             | `icon_size_px`, `heading_size_px`, `min_height_px`, `padding_px`, `radius_px`, `background`, `shadow: subtle`, `whole_card_link` |
 | Table of contents    | `padding_px`, `radius_px`, `border`, `shadow: subtle`, `link_color: neutral`, `list_style: chevron`                              |
@@ -564,3 +564,14 @@ visitor's native system font stack, with no Google Fonts request for that family
 This works identically in preview and static output. Other values remain Google
 Fonts family names. Check geometry and keyboard focus at each relevant breakpoint
 before publishing; precise dimensions cannot replace visual review.
+
+Columns default to `stack_below: "721"` (the existing layout at 720px and below). Choose
+`"768"`, `"1024"` or `"1280"` to stack below that viewport width. For example,
+`"1024"` gives a single column at 768 and 1023px, then two columns at 1024px.
+A Table of contents placed directly in a column slot follows this boundary:
+`mobile_display: "hidden"` hides the outline and its otherwise empty slot;
+`"visible"` keeps it in normal flow while stacked. Sticky behavior returns with
+the two-column layout. An empty generated outline never reserves a spare track
+or row; other sidebar blocks remain visible. Standalone outlines retain their
+720px mobile behavior. Select the breakpoint from measured source/readability
+needs, not solely from whether the layout overflows.

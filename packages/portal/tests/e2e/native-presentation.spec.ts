@@ -93,3 +93,53 @@ test('nested sections keep their own gutter without replacing the parent sibling
   expect(await nested.evaluate(el => getComputedStyle(el).paddingLeft)).toBe('20px');
   expect(await nested.evaluate(el => getComputedStyle(el).marginTop)).toBe('32px');
 });
+
+test('configured column stacking releases the outline track and preserves desktop geometry', async ({ page }, info) => {
+  const tree = structuredClone(blocks);
+  const columns = tree[2].children![0];
+  columns.data.stack_below = '721';
+  const outline = columns.slots![1][0];
+  outline.data.mobile_display = 'hidden';
+  // Responsive outline styles must not count as visible sidebar content.
+  outline.data.padding_px = { mobile: 16, laptop: 24 };
+  await page.setContent(documentHtml(tree));
+  await page.setViewportSize({ width: 768, height: 850 });
+  // Negative control: the legacy threshold really reserves a sidebar here.
+  expect(await page.locator('[data-block="columns"]').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(2);
+  columns.data.stack_below = '1024';
+  await page.setContent(documentHtml(tree));
+  for (const width of [720, 721, 767, 768, 1023, 1024, 1280]) {
+    await page.setViewportSize({ width, height: 850 });
+    const container = page.locator('[data-block="columns"]');
+    const slots = container.locator(':scope > .block-columns-col');
+    const toc = container.locator('[data-block="table_of_contents"]');
+    if (width < 1024) {
+      await expect(toc).toBeHidden(); await expect(slots.nth(1)).toBeHidden();
+      expect((await slots.first().boundingBox())!.width).toBe((await container.boundingBox())!.width);
+      expect(await container.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(1);
+    } else {
+      await expect(toc).toBeVisible(); await expect(slots.nth(1)).toBeVisible();
+      expect(await toc.evaluate(el => getComputedStyle(el).position)).toBe('sticky');
+      if (width === 1280) expect(await container.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').map(parseFloat))).toEqual([800, 280]);
+      await toc.locator('a').first().focus(); await expect(toc.locator('a').first()).toBeFocused();
+      expect(await toc.locator('a').first().getAttribute('href')).toBe('#packing-with-a-deliberate-rhythm');
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await page.screenshot({ path: info.outputPath(`stack-${width}.png`), fullPage: true });
+  }
+  // Visible outlines remain in normal flow while columns are stacked.
+  outline.data.mobile_display = 'visible';
+  await page.setContent(documentHtml(tree));
+  await page.setViewportSize({ width: 768, height: 850 });
+  await expect(page.locator('[data-block="table_of_contents"]')).toBeVisible();
+  expect(await page.locator('[data-block="table_of_contents"]').evaluate(el => getComputedStyle(el).position)).toBe('static');
+  expect(await page.locator('[data-block="table_of_contents"]').locator('..').evaluate(el => getComputedStyle(el).position)).toBe('static');
+  // A genuinely empty outline must not reserve a track or an empty grid row.
+  await page.setContent(documentHtml(tree).replace(/data-empty="false"/g, 'data-empty="true"'));
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await expect(page.locator('[data-block="columns"] > .block-columns-col').nth(1)).toBeHidden();
+  expect(await page.locator('[data-block="columns"]').evaluate(el => getComputedStyle(el).gridTemplateColumns)).toBe('1140px');
+  await page.locator('[data-block="columns"] > .block-columns-col').nth(1).evaluate(el => el.insertAdjacentHTML('beforeend', '<p>Other sidebar content</p>'));
+  await expect(page.getByText('Other sidebar content')).toBeVisible();
+  expect(await page.locator('[data-block="columns"]').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(2);
+});

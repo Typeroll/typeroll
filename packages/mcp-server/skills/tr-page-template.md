@@ -97,3 +97,10 @@ card dimensions and `whole_card_link`; map real Page URLs rather than freezing
 customer routes in HTML. Site logo accepts `height_px`. The `system` font family
 uses the device stack without a webfont request. Preserve complete images and
 validate actual mobile/desktop output, including scrolled outlines.
+
+Columns `stack_below` accepts the select strings `"721"` (default), `"768"`,
+`"1024"`, `"1280"`. A direct-slot TOC follows the selected stacked boundary: its
+`mobile_display: "hidden"` releases the otherwise empty slot; `"visible"` keeps
+it in flow. Use `"1024"` for full article width below laptop when justified by
+the source comparison. Do not merely hide the TOC with `hidden_on` while leaving
+a reserved two-column track, or duplicate body content for tablet/desktop.

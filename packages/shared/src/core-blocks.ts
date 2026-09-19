@@ -1,3 +1,4 @@
+import { COLUMN_STACK_BELOW, COLUMN_STACK_CSS, EMPTY_OUTLINE_COLUMN_CSS } from './column-layout.js';
 import { pixels, typographyFields } from './presentation-fields.js';
 // Core block library — ships with the platform. Six general-purpose blocks
 // that cover the vast majority of page composition needs. Custom blocks
@@ -121,10 +122,11 @@ const columns: BlockType = {
     { name: 'gap', type: 'select', label: 'Gap', options: ['sm', 'md', 'lg'], default: 'md' },
     pixels('gap_px', 'Column gap (px)', 0, 240),
     pixels('right_width_px', 'Right column width (px)', 160, 640),
+    { name: 'stack_below', type: 'select', label: 'Stack below viewport width', options: COLUMN_STACK_BELOW, option_labels: ['721 px (default)', '768 px', '1024 px', '1280 px'], default: '721' },
     { name: 'mobile_order', type: 'select', label: 'Mobile order', options: ['left-first', 'right-first'], default: 'left-first' },
     { name: 'align', type: 'select', label: 'Vertical alignment', options: ['start', 'center', 'end'], default: 'start' },
   ],
-  template: `<div data-block="columns" data-ratio="{{ratio}}" data-gap="{{gap}}" data-align="{{align}}" data-mobile-order="{{mobile_order}}">
+  template: `<div data-block="columns" data-stack-below="{{stack_below}}" data-ratio="{{ratio}}" data-gap="{{gap}}" data-align="{{align}}" data-mobile-order="{{mobile_order}}">
   <div class="block-columns-col">{{slot:Left}}</div>
   <div class="block-columns-col">{{slot:Right}}</div>
 </div>`,
@@ -142,24 +144,8 @@ const columns: BlockType = {
 @media (min-width:721px) { [data-block="columns"][style*="--right_width_px:"] { grid-template-columns:minmax(0,1fr) minmax(0,var(--right_width_px,280px)); } }
 [data-block="columns"][data-align="center"] { align-items: center; }
 [data-block="columns"][data-align="end"] { align-items: end; }
-/* An optional server-rendered outline should not reserve an unexplained
-   sidebar when the selected body has no headings. */
-[data-block="columns"]:has(> .block-columns-col:last-child > [data-block="table_of_contents"][data-empty="true"]) {
-  grid-template-columns: minmax(0, 1fr);
-}
-/* Mobile: collapse to a single column. The ratio rules above carry an extra
-   attribute selector (specificity 0,2,0); a media query adds no specificity,
-   so a bare [data-block="columns"] (0,1,0) here would LOSE to them and only
-   the default 1-1 would ever stack. Enumerate the ratios so the collapse
-   matches their specificity and wins by source order. */
-@media (max-width: 720px) {
-  [data-block="columns"][data-mobile-order="right-first"] > .block-columns-col:last-child { order:-1; }
-  [data-block="columns"],
-  [data-block="columns"][data-ratio="2-1"],
-  [data-block="columns"][data-ratio="1-2"],
-  [data-block="columns"][data-ratio="3-1"],
-  [data-block="columns"][data-ratio="1-3"] { grid-template-columns: 1fr; }
-}
+${COLUMN_STACK_CSS}
+${EMPTY_OUTLINE_COLUMN_CSS}
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
