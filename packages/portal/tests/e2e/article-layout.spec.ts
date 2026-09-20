@@ -15,7 +15,8 @@ function article(wideTable = false) {
   ];
   const page = { title: 'Article', content_mode: 'blocks', blocks: body };
   const template = getPageTemplateStarter('article')!;
-  template.find(block => block.type === 'core/columns')!.slots![1][0].data.sticky = true;
+  const frame = template.find(block => block.type === 'core/section')!;
+  frame.children!.find(block => block.type === 'core/columns')!.slots![1][0].data.sticky = true;
   const blocks = composePageWithTemplate(template, body);
   const registry = buildCoreBlockRegistry();
   const assets = collectBlockAssets(blocks, registry);
