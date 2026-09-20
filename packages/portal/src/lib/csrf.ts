@@ -24,6 +24,7 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const CSRF_EXEMPT_PATHS = new Set([
   // Exact SNS topic allowlist + certificate/signature verification in the route.
   '/api/webhooks/email/ses',
+  '/api/webhooks/email/inbound-ses',
   '/api/forms/submit',
   '/api/analytics/events',
   '/api/extensions/token',

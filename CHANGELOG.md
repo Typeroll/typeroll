@@ -1,5 +1,13 @@
 # Changelog
 
+## Core 0.2.30 / MCP 0.45.25 unchanged
+
+- Allow incoming SES callbacks through portal middleware without a browser Origin.
+  Keep exact SNS topic and cryptographic signature verification in the handler;
+  neighboring routes and browser settings retain CSRF protection.
+- Verify signed notifications and subscription confirmations through the complete
+  middleware and route chain before activating incoming email forwarding.
+
 ## Unreleased — Core 0.2.28 / MCP 0.45.24
 
 - Add versioned site breakpoint widths with editor/API/MCP parity and exact block
