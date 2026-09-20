@@ -9,7 +9,7 @@ import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
-import { encodeNestedArrays, decodeNestedArrays } from './firestore-codec';
+import { encodeFirestoreDocument, decodeNestedArrays } from './firestore-codec';
 import { scheduledIndexWrites, notifyScheduledWrites, isScheduledSource, type IndexWrite } from './scheduling/index';
 
 export interface Filter {
@@ -388,10 +388,10 @@ class FirestoreStore implements ReadWriteStore {
 
   async setDoc(p: string, data: Record<string, any>): Promise<void> {
     const db = await this.dbPromise;
-    if (!isScheduledSource(p)) { await db.doc(p).set(encodeNestedArrays(data)); return; }
+    if (!isScheduledSource(p)) { await db.doc(p).set(encodeFirestoreDocument(p, data)); return; }
     const writes = await db.runTransaction(async tx => {
       const snap = await tx.get(db.doc(p));
-      tx.set(db.doc(p), encodeNestedArrays(data));
+      tx.set(db.doc(p), encodeFirestoreDocument(p, data));
       return this.indexTransaction(tx, db, p, snap.exists ? decodeNestedArrays(snap.data()) : null, data);
     });
     await notifyScheduledWrites(writes);
@@ -402,7 +402,7 @@ class FirestoreStore implements ReadWriteStore {
     const result = await db.runTransaction(async tx => {
       const snap = await tx.get(db.doc(p));
       if (snap.exists) return null;
-      tx.create(db.doc(p), encodeNestedArrays(data));
+      tx.create(db.doc(p), encodeFirestoreDocument(p, data));
       return this.indexTransaction(tx, db, p, null, data);
     });
     if (result) await notifyScheduledWrites(result);
@@ -411,11 +411,11 @@ class FirestoreStore implements ReadWriteStore {
 
   async updateDoc(p: string, data: Record<string, any>): Promise<void> {
     const db = await this.dbPromise;
-    if (!isScheduledSource(p)) { await db.doc(p).set(encodeNestedArrays(data), { merge: true }); return; }
+    if (!isScheduledSource(p)) { await db.doc(p).set(encodeFirestoreDocument(p, data), { merge: true }); return; }
     const writes = await db.runTransaction(async tx => {
       const snap = await tx.get(db.doc(p));
       const before = snap.exists ? decodeNestedArrays(snap.data()) : null;
-      tx.set(db.doc(p), encodeNestedArrays(data), { merge: true });
+      tx.set(db.doc(p), encodeFirestoreDocument(p, data), { merge: true });
       return this.indexTransaction(tx, db, p, before, { ...before, ...data });
     });
     await notifyScheduledWrites(writes);
@@ -484,13 +484,13 @@ class FirestoreStore implements ReadWriteStore {
       const previous = await Promise.all(effects.map(effect => tx.get(db.doc(effect.path))));
       if (effects.some((effect, i) => Object.hasOwn(effect, 'expected') && !isDeepStrictEqual(
         previous[i].exists ? { id: previous[i].id, ...decodeNestedArrays(previous[i].data()!) } : null, effect.expected))) return null;
-      tx.set(ref, encodeNestedArrays(data));
+      tx.set(ref, encodeFirestoreDocument(p, data));
       const writes = this.indexTransaction(tx, db, p, current, data);
       effects.forEach((effect, i) => {
         if (effect.guardOnly) return;
         const before = previous[i].exists ? decodeNestedArrays(previous[i].data()) : null;
-        if (effect.replace) tx.set(db.doc(effect.path), encodeNestedArrays(effect.data));
-        else tx.set(db.doc(effect.path), encodeNestedArrays(effect.data), { merge: true });
+        if (effect.replace) tx.set(db.doc(effect.path), encodeFirestoreDocument(effect.path, effect.data));
+        else tx.set(db.doc(effect.path), encodeFirestoreDocument(effect.path, effect.data), { merge: true });
         writes.push(...this.indexTransaction(tx, db, effect.path, before, effect.replace ? effect.data : { ...before, ...effect.data }));
       });
       return writes;
@@ -506,7 +506,7 @@ class FirestoreStore implements ReadWriteStore {
       if (!snap.exists) return null;
       const current = { id: snap.id, ...decodeNestedArrays(snap.data() as T) } as T & { id: string };
       if (!check(current)) return null;
-      tx.set(ref, encodeNestedArrays(data), { merge: true });
+      tx.set(ref, encodeFirestoreDocument(p, data), { merge: true });
       return { current, writes: this.indexTransaction(tx, db, p, current, { ...current, ...data }) };
     });
     if (result) await notifyScheduledWrites(result.writes);

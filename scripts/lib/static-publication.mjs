@@ -10,7 +10,7 @@ const safeId = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
 const stringFields = {
   site: ['name', 'domain', 'domain_alias'],
   settings: ['site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'scripts_head', 'scripts_body_end', 'custom_css', 'language', 'twitter_handle', 'default_seo_suffix', 'default_meta_description', 'image_sizes_default', 'default_og_image', 'robots_txt', 'trailing_slash'],
-  page: ['id', 'content_type', 'template', 'title', 'slug', 'path', 'parent', 'content_mode', 'html_content', 'custom_css', 'seo_title', 'seo_description', 'og_image', 'seo_image_alt', 'canonical_url', 'lastmod_override', 'json_ld', 'kind', 'schema_type', 'author', 'image_sizes_default', 'status', 'date_updated', 'date_published'],
+  page: ['id', 'content_type', 'template', 'title', 'breadcrumb_label', 'slug', 'path', 'parent', 'content_mode', 'html_content', 'custom_css', 'seo_title', 'seo_description', 'og_image', 'seo_image_alt', 'canonical_url', 'lastmod_override', 'json_ld', 'kind', 'schema_type', 'author', 'image_sizes_default', 'status', 'date_updated', 'date_published'],
   partial: ['id', 'name', 'kind', 'content_mode', 'html_content', 'status', 'date_updated'],
   media: ['id', 'filename', 'cdn_url', 'alt_text', 'title', 'caption', 'mime_type'],
 };
@@ -76,7 +76,9 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   }
   if (input.apps && Object.values(input.apps.apps ?? {}).some((app) => app.enabled) && !input.publicRuntime) throw new Error('Publication requires a public runtime projection for active Core modules');
   const blockTypes = projectPublicationBlockTypes(input.blockTypes, coreBlockTypes);
-  const definitions = [...coreBlockTypes, ...blockTypes];
+  // Keep private declarations available while projecting values. The exported
+  // definitions omit them, but a mapping must not re-introduce their data.
+  const definitions = [...coreBlockTypes, ...input.blockTypes];
   const sourceTypes = input.contentTypes.some(type => type.id === 'page') ? input.contentTypes : [
     { id: 'page', name: 'page', label_singular: 'Page', label_plural: 'Pages', fields: [], route_template: '/{slug}' }, ...input.contentTypes,
   ];

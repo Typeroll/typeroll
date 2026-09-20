@@ -23,13 +23,52 @@ export function projectPublicationData(data, schema) {
   return result;
 }
 
+function projectBlockData(data, definition, definitions, baseData = data) {
+  const projected = projectPublicationData(data, definition.schema);
+  let effective = definition, settings = { ...baseData, ...data };
+  const seen = new Set();
+  while (effective.expand_to) {
+    if (seen.has(effective.id)) throw new Error('Cyclic publication block alias');
+    seen.add(effective.id);
+    settings = { ...effective.expand_to.defaults, ...settings };
+    effective = definitions.find(candidate => candidate.id === effective.expand_to.target);
+    if (!effective) throw new Error('Publication block alias target is missing');
+  }
+  if (effective.container !== 'repeater') return projected;
+  const item = definitions.find(candidate => candidate.id === settings.item_block);
+  if (!item) throw new Error('Publication repeater item block is missing');
+  const overrides = object(settings.item_overrides) ? settings.item_overrides : {};
+  if (Object.hasOwn(data, 'item_overrides')) projected.item_overrides = projectPublicationData(data.item_overrides, item.schema);
+  if (Object.hasOwn(data, 'items')) {
+    if (!Array.isArray(data.items)) throw new Error('Invalid publication repeater items');
+    projected.items = data.items.map(row => {
+      const schema = [...item.schema];
+      // Static rows can bind named source fields (e.g. url or pdf) as well as
+      // the item block's own fields. Explicitly private declarations still win.
+      for (const field of item.schema) {
+        if (field.rendered === false || !field.name.endsWith('_field')) continue;
+        const name = overrides[field.name] ?? row?.[field.name] ?? field.default;
+        if (typeof name !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(name) || ['constructor', 'prototype'].includes(name) || schema.some(candidate => candidate.name === name)) continue;
+        // Context mappings render scalar text/URLs, not arbitrary nested data.
+        if (row[name] !== null && !['string', 'number', 'boolean', 'undefined'].includes(typeof row[name])) continue;
+        schema.push({ name, type: 'text' });
+      }
+      const group = settings.group_by;
+      if (typeof group === 'string' && /^[a-zA-Z][a-zA-Z0-9_-]*$/.test(group) && !['constructor', 'prototype'].includes(group) && !schema.some(field => field.name === group)
+        && (typeof row[group] === 'string' || Array.isArray(row[group]) && row[group].every(value => typeof value === 'string'))) schema.push({ name: group, type: 'text' });
+      return projectPublicationData(row, schema);
+    });
+  }
+  return projected;
+}
+
 export function projectPublicationBlocks(blocks, definitions, depth = 0) {
   if (!Array.isArray(blocks) || depth > 50) throw new Error('Publication requires HTML content or a valid block tree');
   return blocks.map(block => {
     if (!object(block) || !/^[a-zA-Z0-9_-]{1,128}$/.test(block.id ?? '')) throw new Error('Invalid publication block ID');
     const definition = definitions.find(definition => definition.id === block.type);
     if (!definition) throw new Error('Unsupported publication block type');
-    const result = { id: block.id, type: block.type, data: projectPublicationData(block.data, definition.schema) };
+    const result = { id: block.id, type: block.type, data: projectBlockData(block.data, definition, definitions) };
     if (block.children !== undefined) result.children = projectPublicationBlocks(block.children, definitions, depth + 1);
     if (block.slots !== undefined) {
       if (!Array.isArray(block.slots)) throw new Error('Invalid publication block slots');
@@ -49,7 +88,7 @@ export function projectPublicationBlocks(blocks, definitions, depth = 0) {
           if (typeof override.hidden !== 'boolean') throw new Error('Invalid responsive visibility');
           projected.hidden = override.hidden;
         }
-        if (override.data_overrides !== undefined) projected.data_overrides = projectPublicationData(override.data_overrides, definition.schema);
+        if (override.data_overrides !== undefined) projected.data_overrides = projectBlockData(override.data_overrides, definition, definitions, block.data);
         if (typeof override.class_overrides === 'string') projected.class_overrides = override.class_overrides;
         result.responsive[breakpoint] = projected;
       }

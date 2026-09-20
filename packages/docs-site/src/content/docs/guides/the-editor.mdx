@@ -257,3 +257,15 @@ Two related editors, reachable from the site sidebar:
 - **Blocks** — create reusable custom block types for this site: schema, HTML
   template, scoped CSS, and optionally client-side JavaScript (which requires an
   explicit opt-in, because it runs in your visitors' browsers).
+
+## Deep block trees and history
+
+Core 0.2.34 stores Firestore revision and field-history payloads without adding
+nesting to the Page tree. Existing history remains readable and restorable; no
+content migration is required. An invalid document that exceeds storage nesting
+limits returns HTTP 422 with `code: "storage_document_too_deep"`, a `field` locator
+and a message in the UI/API. Reduce the indicated nesting instead of retrying
+unchanged content. MCP receives the same API error.
+
+Custom breadcrumb labels are also preserved in static publications from this
+version. Deploy again to update existing public breadcrumbs.

@@ -264,7 +264,7 @@ const heading: BlockType = {
   <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>
 </div>`,
   styles: `
-[data-block="heading"] { --heading-fs: clamp(1.75rem, 1rem + 3.5vw, 3.5rem); }
+[data-block="heading"] { --heading-fs: clamp(1.75rem, 1rem + 3.5vw, 3.5rem); min-width:0;max-width:100%;overflow-wrap:anywhere; }
 [data-block="heading"] .block-heading-text { color:var(--heading-color,inherit); }
 [data-block="heading"] .block-heading-eyebrow { display: block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.25rem; }
 [data-block="heading"] .block-heading-eyebrow:empty { display: none; }

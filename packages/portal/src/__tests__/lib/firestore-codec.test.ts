@@ -85,3 +85,36 @@ describe('marker field name is legal in Firestore', () => {
     expect(markerKey).not.toMatch(/^__.*__$/);
   });
 });
+
+describe('Firestore history snapshots', () => {
+  it('round-trips revision and provenance payloads without adding tree depth', async () => {
+    const { encodeFirestoreDocument } = await import('../../lib/firestore-codec');
+    for (const [collection, payload] of [
+      ['revisions', { kind: 'page', doc: SLOTS_PAGE }],
+      ['answer_history', { actor: 'owner', before: SLOTS_PAGE, after: { ...SLOTS_PAGE, title: 'Updated' } }],
+    ] as const) {
+      const encoded = encodeFirestoreDocument(`sites/site/${collection}/entry`, payload);
+      expect(decodeNestedArrays(encoded)).toEqual(payload);
+      expect(JSON.stringify(encoded)).toContain('_tr_snapshot_json_');
+      expect(decodeNestedArrays(encodeNestedArrays(payload))).toEqual(payload);
+    }
+    expect(encodeFirestoreDocument('sites/site/pages/home', { doc: { title: 'Ordinary field' } })).toEqual({ doc: { title: 'Ordinary field' } });
+  });
+
+  it('rejects invalid document depth and cycles with a field locator', async () => {
+    const { encodeFirestoreDocument, StorageDocumentError } = await import('../../lib/firestore-codec');
+    let deep: any = { value: 1 };
+    for (let n = 0; n < 22; n++) deep = { nested: deep };
+    expect(() => encodeFirestoreDocument('pages/home', deep)).toThrow(StorageDocumentError);
+    try { encodeFirestoreDocument('pages/home', deep); } catch (error: any) {
+      expect(error.code).toBe('storage_document_too_deep'); expect(error.field).toContain('nested.');
+    }
+    const cycle: any = {}; cycle.child = cycle;
+    expect(() => encodeFirestoreDocument('pages/home', cycle)).toThrow(/circular/);
+    expect(() => encodeFirestoreDocument('revisions/entry', { doc: cycle })).toThrow(/circular/);
+  });
+
+  it('rejects unreadable snapshots without echoing their contents', () => {
+    expect(() => decodeNestedArrays({ doc: { _tr_snapshot_json_: 'private-corrupt-payload' } })).toThrow('This history snapshot could not be read.');
+  });
+});

@@ -155,3 +155,16 @@ on desktop with fine pointers; mobile/touch retains 44px. For dense taxonomy
 footers use `direction: "column"`, `font_size_px: 14.4`, `line_height: 1.1`,
 `gap_px: 4` and `padding_y_px: 0`. Primary menus keep comfortable defaults. Verify both narrow and
 wide views and publish the intended version after saving; no automatic migration.
+
+
+## Publication fidelity (Core 0.2.34)
+
+Static Repeater rows and aliases export the selected item block’s declared public
+fields, explicit card mappings and grouping labels. Use `title`/`href` for static
+Post Cards and `item_overrides` for common appearance; never place private data
+in public fields. `rendered: false` still excludes the field. `breadcrumb_label`
+is preserved separately from the Page title. Older public artifacts need a new
+deployment; do not rewrite the saved rows to compensate. Native Heading and Page
+Title wrap long words without shrinking authored type. Firestore history adds no
+extra Page nesting; an actual storage depth limit returns structured HTTP 422
+`storage_document_too_deep` with the offending field path.

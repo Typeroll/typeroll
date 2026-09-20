@@ -16,6 +16,39 @@
 // can catch.
 
 const MARKER = '_tr_nested_array_';
+const SNAPSHOT_MARKER = '_tr_snapshot_json_';
+
+export class StorageDocumentError extends Error {
+  readonly status = 422;
+  constructor(readonly code: string, message: string, readonly field?: string) { super(message); }
+}
+
+/** History is opaque content, never a queryable second Page tree. Keeping its
+ * payload as JSON prevents the revision/provenance envelope from adding depth
+ * to a Page that Firestore already accepted. Existing object snapshots still read. */
+export function encodeFirestoreDocument(documentPath: string, data: Record<string, any>): Record<string, any> {
+  const collection = documentPath.split('/').at(-2);
+  const fields = collection === 'revisions' ? ['doc'] : collection === 'answer_history' ? ['before', 'after'] : [];
+  const prepared = { ...data };
+  for (const field of fields) if (isPlainObject(prepared[field])) {
+    try { prepared[field] = { [SNAPSHOT_MARKER]: JSON.stringify(prepared[field]) }; }
+    catch { throw new StorageDocumentError('storage_document_invalid', 'The history snapshot contains invalid or circular data. No content was saved.', field); }
+  }
+  const seen = new Set<object>();
+  function validate(value: unknown, segments: string[] = []) {
+    if (segments.length > 21) throw new StorageDocumentError('storage_document_too_deep', 'This document contains too many nested fields for storage. Reduce nesting or contact support before saving again.', segments.join('.'));
+    if (!Array.isArray(value) && !isPlainObject(value)) return;
+    if (seen.has(value)) throw new StorageDocumentError('storage_document_invalid', 'The document contains circular data. No content was saved.', segments.join('.'));
+    seen.add(value);
+    for (const [key, child] of Object.entries(value)) validate(child, [...segments, key]);
+    seen.delete(value);
+  }
+  // Validate before recursive encoding too, so a cycle cannot exhaust the stack.
+  validate(prepared);
+  const encoded = encodeNestedArrays(prepared);
+  validate(encoded);
+  return encoded;
+}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
@@ -56,6 +89,12 @@ function walkDecode(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(walkDecode);
   if (isPlainObject(value)) {
     const keys = Object.keys(value);
+    if (keys.length === 1 && keys[0] === SNAPSHOT_MARKER && typeof value[SNAPSHOT_MARKER] === 'string') {
+      let decoded: unknown;
+      try { decoded = JSON.parse(value[SNAPSHOT_MARKER]); } catch { /* Report corruption without returning the payload. */ }
+      if (!isPlainObject(decoded)) throw new StorageDocumentError('storage_snapshot_invalid', 'This history snapshot could not be read. Contact support before restoring it.');
+      return decoded;
+    }
     if (keys.length === 1 && keys[0] === MARKER && Array.isArray(value[MARKER])) {
       return (value[MARKER] as unknown[]).map(walkDecode);
     }

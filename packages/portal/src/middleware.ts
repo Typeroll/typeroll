@@ -9,6 +9,7 @@ import { enforceCsrf } from './lib/csrf';
 import { getSession, sessionNeedsRefresh, refreshSessionForUser } from './lib/auth';
 import { firebaseApiKey } from './lib/runtime-config-server';
 import { serviceRole } from './lib/release';
+import { StorageDocumentError } from './lib/firestore-codec';
 
 /**
  * The active site version (main vs a branch) travels in a cookie. Middleware
@@ -137,5 +138,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  return next();
+  try { return await next(); }
+  catch (error) {
+    if (context.url.pathname.startsWith('/api/') && error instanceof StorageDocumentError) {
+      return new Response(JSON.stringify({ error: error.message, code: error.code, ...(error.field ? { field: error.field } : {}) }), {
+        status: error.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
+    throw error;
+  }
 });

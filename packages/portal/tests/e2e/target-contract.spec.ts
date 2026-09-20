@@ -211,3 +211,30 @@ test('authenticated Core shell fits the target viewport', async ({ page }, testI
     contentType: 'image/png',
   });
 });
+
+test('deep block Pages save and restore through the real target datastore', async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  const headers = { Origin: portalOrigin };
+  const title = `Deep history ${testInfo.project.name} ${Date.now()}`;
+  const created = await page.request.post(`/api/sites/${SITE_ID}/pages/create`, { headers, form: { title, content_mode: 'blocks' }, maxRedirects: 0 });
+  expect(created.status()).toBe(302);
+  const id = created.headers().location?.split('/').at(-1);
+  expect(id).toBeTruthy();
+  const url = `/api/sites/${SITE_ID}/pages/${id}`;
+  try {
+    let block: any = { id: 'leaf', type: 'core/container', data: { background_gradient: { from: '#ffffff', to: '#eeeeee' } } };
+    for (let n = 0; n < 8; n++) block = { id: `group-${n}`, type: 'core/container', data: {}, children: [block] };
+    const blocks = [block];
+    expect((await page.request.put(url, { headers, data: { blocks, content_mode: 'blocks' } })).status()).toBe(200);
+    const changed = await page.request.put(url, { headers, data: { title: `${title} changed` } });
+    expect(changed.status(), await changed.text()).toBe(200);
+    const history = await (await page.request.get(`${url}/revisions`)).json();
+    const saved = history.revisions.find((rev: any) => rev.doc.title === title && rev.doc.blocks?.[0]?.id === 'group-7');
+    expect(saved.doc.blocks).toEqual(blocks);
+    expect((await page.request.post(`${url}/revisions`, { headers, data: { revId: saved.id } })).status()).toBe(200);
+    const restored = await (await page.request.get(url)).json();
+    expect(restored.title).toBe(title); expect(restored.blocks).toEqual(blocks);
+  } finally {
+    expect((await page.request.delete(url, { headers })).status()).toBe(200);
+  }
+});

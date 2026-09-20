@@ -285,6 +285,13 @@ The repeater abstraction collapses what used to be a dozen specialised widgets i
 
 Each alias accepts `items: [{...}]` directly — the AI agent passes the per-item field values and the renderer expands the alias to a repeater with the right item-block type.
 
+From Core 0.2.34, frozen publications retain static rows against the selected item
+block’s public schema, including card field mappings and grouping labels.
+`rendered: false` fields and unrelated row metadata stay private. A Post Card row
+can use `{ title: "Guide", href: "/guide/" }`; use `item_overrides` for shared
+presentation. Republish sites built with an older Core to restore missing static
+card values. Saved CMS rows do not need to be rewritten.
+
 ```
 "Add a feature grid with our three differentiators."
   → add_block block={type:"core/feature_grid", data:{items:[
@@ -982,3 +989,10 @@ The editable Footer starter selects this density; existing saved footers and
 primary menus do not change density automatically. Review long labels, keyboard
 focus and grouping, then publish the chosen Site version to include the changes
 in static output. Upgrading Core alone does not republish customer websites.
+
+### Long heading words
+
+From Core 0.2.34, native Heading and Page Title wrap long words inside their
+content well, including centered flex layouts. Authored font sizes stay unchanged;
+a long word can break across lines instead of widening the page. Check the saved
+preview and republished output at your smallest supported viewport.
