@@ -47,8 +47,8 @@ export const PROVENANCE_KEY = '_provenance';
 
 export interface RejectedWrite {
   field: string;
-  reason: 'not_writable' | 'lower_precedence' | 'override_required' | 'invalid_item_identity';
-  /** Present for lower_precedence — who owns the value the write lost to. */
+  reason: 'not_writable' | 'lower_precedence' | 'override_required' | 'invalid_item_identity' | 'stale_source';
+  /** Who owns the destination value that prevented this write. */
   current_source?: WriteActor;
 }
 
@@ -87,6 +87,9 @@ export function applyFieldAuthority(args: {
   actor: WriteActor; actorId: string; now?: string;
   sourceUrl?: string; importRunId?: string;
   sources?: Record<string, { source_url?: string; import_run_id?: string }>;
+  /** Internal promotion only: provenance read from a guarded persisted Page,
+   * never from a request payload. The operation actor is not the answer author. */
+  persistedProvenance?: ProvenanceMap;
   /** Explicit administrative correction; callers must authorize it separately. */
   overrideReason?: string;
   /** Explicit confirmations are leaf paths, never inferred from a form save. */
@@ -101,11 +104,17 @@ export function applyFieldAuthority(args: {
   const rejected: RejectedWrite[] = [];
   const escape = (value: string) => value.replace(/~/g, '~0').replace(/\//g, '~1');
   const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
-  const sourceAt = (path: string): ProvenanceEntry | undefined => {
-    for (let key = path; key; key = key.includes('/') ? key.slice(0, key.lastIndexOf('/')) : '') if (current[key]) return current[key];
+  const sourceAt = (path: string, map = current): ProvenanceEntry | undefined => {
+    for (let key = path; key; key = key.includes('/') ? key.slice(0, key.lastIndexOf('/')) : '') if (map[key]) return map[key];
     return undefined;
   };
   const stamp = (path: string) => {
+    if (args.persistedProvenance) {
+      const source = sourceAt(path, args.persistedProvenance);
+      if (source) provenance[path] = { ...source };
+      // Legacy unattributed values remain unattributed; promotion is not confirmation.
+      return;
+    }
     provenance[path] = { source: args.actor, actor: args.actorId, updated_at: now,
       ...(args.sourceUrl ? { source_url: args.sourceUrl } : {}), ...(args.importRunId ? { import_run_id: args.importRunId } : {}),
       ...(args.sources?.[path]?.source_url ? { source_url: args.sources[path].source_url } : {}),
@@ -113,13 +122,25 @@ export function applyFieldAuthority(args: {
       ...(args.overrideReason ? { override_reason: args.overrideReason } : {}) };
   };
   const allow = (path: string, allowed: readonly WriteActor[], before: unknown, after: unknown): boolean => {
-    if (isDeepStrictEqual(before, after) && !args.confirm?.includes(path)) return true;
-    if (!allowed.includes(args.actor)) { rejected.push({ field: path, reason: 'not_writable' }); return false; }
     const prior = sourceAt(path);
-    if (prior && RANK[args.actor] < RANK[prior.source]) {
+    const transferred = args.persistedProvenance ? sourceAt(path, args.persistedProvenance) : undefined;
+    const actor = transferred?.source ?? args.actor;
+    if (isDeepStrictEqual(before, after) && !args.confirm?.includes(path)) {
+      // Keep a genuine newer source decision even when its final value matches
+      // main; never stamp the administrator who merely initiated promotion.
+      if (transferred && (!prior || (RANK[actor] >= RANK[prior.source] &&
+          Date.parse(transferred.updated_at) > Date.parse(prior.updated_at)))) stamp(path);
+      return true;
+    }
+    if (!allowed.includes(actor)) { rejected.push({ field: path, reason: 'not_writable' }); return false; }
+    if (prior && RANK[actor] < RANK[prior.source]) {
       rejected.push({ field: path, reason: 'lower_precedence', current_source: prior.source }); return false;
     }
-    if (prior?.source === 'owner' && args.actor === 'portal' && !args.overrideReason?.trim()) {
+    if (args.persistedProvenance && prior && (!transferred ||
+        !Number.isFinite(Date.parse(transferred.updated_at)) || Date.parse(prior.updated_at) > Date.parse(transferred.updated_at))) {
+      rejected.push({ field: path, reason: 'stale_source', current_source: prior.source }); return false;
+    }
+    if (prior?.source === 'owner' && actor === 'portal' && !(transferred?.override_reason ?? args.overrideReason)?.trim()) {
       rejected.push({ field: path, reason: 'override_required', current_source: prior.source }); return false;
     }
     stamp(path); return true;
@@ -186,6 +207,8 @@ export function conflictResponse(rejected: RejectedWrite[]): {
   const notWritable = rejected.filter((r) => r.reason === 'not_writable').map((r) => r.field);
   const outranked = rejected.filter((r) => r.reason === 'lower_precedence');
   const parts: string[] = [];
+  for (const rejection of rejected.filter(item => item.reason === 'stale_source'))
+    parts.push(`${rejection.field}: destination answer changed after the source decision`);
   for (const rejection of rejected.filter(item => ['override_required', 'invalid_item_identity'].includes(item.reason)))
     parts.push(`${rejection.field}: ${rejection.reason === 'override_required' ? 'an explicit administrative override reason is required' : 'array items need unique stable identities'}`);
   if (notWritable.length) {

@@ -17,7 +17,7 @@ import type {
 import { getStore } from './datastore';
 import { snapshotRevision } from './revisions';
 import { vstore, PageWriteConflict } from './version-store';
-import { applyFieldAuthority, conflictResponse } from './field-authority';
+import { applyFieldAuthority, conflictResponse, readProvenance } from './field-authority';
 
 export type ChangeSet = { added: string[]; modified: string[]; deleted: string[] };
 
@@ -141,7 +141,7 @@ export async function promoteBranch(
     if (!page || !existing) continue;
     const type = await vstore.contentType(orgId, siteId, branchId, page.content_type ?? 'page') ?? DEFAULT_CONTENT_TYPE;
     const result = applyFieldAuthority({ fields: pageAuthorityFields(type), incoming: pageContentValues(page), existing,
-      actor: 'portal', actorId: promotedBy });
+      actor: 'portal', actorId: promotedBy, persistedProvenance: readProvenance(page) });
     if (result.rejected.length) throw new PageWriteConflict(conflictResponse(result.rejected).error);
   }
 
@@ -174,7 +174,7 @@ export async function promoteBranch(
   for (const id of [...diff.pages.added, ...diff.pages.modified]) {
     const page = await vstore.page(orgId, siteId, branchId, id);
     const current = await vstore.page(orgId, siteId, baseId, id);
-    if (page) await vstore.writePage(orgId, siteId, baseId, id, page, { actor: 'portal', actorId: promotedBy, contentType: await vstore.contentType(orgId, siteId, branchId, page.content_type ?? 'page') ?? undefined, ...(current ? { expected: current } : {}) });
+    if (page) await vstore.writePage(orgId, siteId, baseId, id, page, { actor: 'portal', actorId: promotedBy, promotedFrom: branchId, ...(current ? { expected: current } : {}) });
   }
   for (const id of diff.pages.deleted) {
     await vstore.deletePage(orgId, siteId, baseId, id);

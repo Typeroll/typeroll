@@ -30,7 +30,7 @@ import type {
 import { getStore } from './datastore';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { applyFieldAuthority, conflictResponse, type WriteActor } from './field-authority';
+import { applyFieldAuthority, conflictResponse, readProvenance, type WriteActor } from './field-authority';
 
 export class PageWriteConflict extends Error { readonly status = 409; }
 export interface PageWriteContext {
@@ -38,6 +38,9 @@ export interface PageWriteContext {
   overrideReason?: string; sourceUrl?: string; importRunId?: string;
   contentType?: ContentType;
   sources?: Record<string, { source_url?: string; import_run_id?: string }>;
+  /** Server-only branch promotion. Read and guard the source instead of trusting
+   * caller-supplied provenance, including a provenance map on `update`. */
+  promotedFrom?: string;
 }
 
 
@@ -321,6 +324,11 @@ export const vstore = {
     update: Partial<Page>, context?: PageWriteContext,
   ): Promise<void> => {
     const store = getStore(), destination = paths.page(orgId, siteId, pageId, versionId);
+    if (context?.promotedFrom !== undefined && (context.actor !== 'portal' || !context.promotedFrom || context.promotedFrom === versionId))
+      throw new PageWriteConflict('Invalid Page promotion context.');
+    const promotion = context?.promotedFrom ? await pageWriteSnapshot(orgId, siteId, context.promotedFrom, pageId) : undefined;
+    if (promotion && (!promotion.page || !isDeepStrictEqual(promotion.page, update)))
+      throw new PageWriteConflict('Source Page changed. Reload before promoting.');
     const snapshot = await pageWriteSnapshot(orgId, siteId, versionId, pageId);
     const { physical, page: existing } = snapshot;
     if (context?.expected && !isDeepStrictEqual(existing, context.expected)) throw new PageWriteConflict('Page changed. Reload before saving.');
@@ -329,14 +337,17 @@ export const vstore = {
     // Never accept caller-supplied provenance, including revision restores.
     if (existing?._provenance) next._provenance = existing._provenance;
     else delete next._provenance;
-    const typeName = existing?.content_type ?? update.content_type ?? 'page';
+    const typeName = promotion?.page?.content_type ?? existing?.content_type ?? update.content_type ?? 'page';
     const schema = await contentTypeWriteSnapshot(orgId, siteId, versionId, typeName);
-    const type = context?.contentType ?? schema.type ?? (typeName === 'page' ? DEFAULT_CONTENT_TYPE : null);
+    const sourceSchema = context?.promotedFrom ? await contentTypeWriteSnapshot(orgId, siteId, context.promotedFrom, typeName) : undefined;
+    const type = sourceSchema ? sourceSchema.type ?? (typeName === 'page' ? DEFAULT_CONTENT_TYPE : null)
+      : context?.contentType ?? schema.type ?? (typeName === 'page' ? DEFAULT_CONTENT_TYPE : null);
     if (!type) throw new PageWriteConflict('The Page content type is unavailable. Restore it before saving.');
     const fields = pageAuthorityFields(type);
     const result = applyFieldAuthority({ fields, incoming: { ...update, ...update.fields }, existing: existing ?? undefined,
       actor: context?.actor ?? 'agent', actorId: context?.actorId ?? 'internal',
-      overrideReason: context?.overrideReason, sourceUrl: context?.sourceUrl, importRunId: context?.importRunId, sources: context?.sources });
+      overrideReason: context?.overrideReason, sourceUrl: context?.sourceUrl, importRunId: context?.importRunId, sources: context?.sources,
+      ...(promotion ? { persistedProvenance: readProvenance(promotion.page ?? undefined) } : {}) });
     if (result.rejected.length) throw new PageWriteConflict(conflictResponse(result.rejected).error);
     if (update.fields) next.fields = { ...existing?.fields, ...Object.fromEntries(Object.entries(result.update).filter(([name]) => !PAGE_BUILTIN_FIELDS.has(name))) };
     for (const [name, value] of Object.entries(result.update)) if (PAGE_BUILTIN_FIELDS.has(name)) (next as Record<string, unknown>)[name] = value;
@@ -345,9 +356,11 @@ export const vstore = {
     const effects: import('./datastore').ConditionalEffect[] = changed ? [{ path: `${destination}/answer_history/${randomUUID()}`, data: {
       actor: context?.actor ?? 'agent', actor_id: context?.actorId ?? 'internal', at: new Date().toISOString(),
       before: existing ? pageContentValues(existing) : {}, after: pageContentValues(next as Page), provenance: result.provenance,
+      ...(context?.promotedFrom ? { promoted_from: context.promotedFrom } : {}),
       ...(context?.overrideReason ? { override_reason: context.overrideReason } : {}),
     } }] : [];
     effects.push(...snapshot.guards.filter(guard => guard.path !== destination), ...schema.guards);
+    if (promotion) effects.push(...promotion.guards, ...(sourceSchema?.guards ?? []));
     if (!(await store.compareAndReplaceDoc(destination, physical, next, effects))) throw new PageWriteConflict('Page changed. Reload before saving.');
     await store.deleteDoc(tombstonePath(orgId, siteId, versionId, 'pages', pageId));
   },
