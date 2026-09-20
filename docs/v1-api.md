@@ -64,6 +64,7 @@ All site routes below start with `/sites/{siteId}`.
 | Partials | `GET/POST /partials`, `GET/PATCH/PUT/DELETE /partials/{partialId}`, `POST /partials/{partialId}/mode`, usage and block-container routes |
 | Page templates | `GET/POST /page-templates`, `GET/PATCH/DELETE /page-templates/{templateId}`. Create accepts `starter` or `blocks`. |
 | Content types | `GET/POST /content-types`, `GET/PATCH/DELETE /content-types/{name}`, `GET /content-types/{name}/completeness` |
+| Composition starters | `GET /composition-starters?kind=profile` returns one native editable tree without saving. Supports Page starters, header/footer and archive (requires `content_type`, optional `title`). |
 | Block types | list/create/read/update/delete, usage, import and export under `/block-types` |
 | Working copies | `GET/PATCH/DELETE /working-copy/{page|partial}/…`, plus commit |
 | Media | list/create/read/update/delete, upload URL, finalize, bulk finalize, variant generation and alt-text context under `/media` |

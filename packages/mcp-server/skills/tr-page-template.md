@@ -12,7 +12,7 @@ default template, and an individual Page can override it.
 
 1. `create_page_template name="article-layout" label="Article" starter="article" status="published"`.
    Alternatively supply `blocks` instead of `starter`. Presets include article,
-   blog, checklist, team, events, products and custom.
+   blog, checklist, team, events, products, profile, landing and custom.
 2. `update_content_type name="articles" patch={template:"article-layout"}`.
    For a single-page override, `update_page page_id=... patch={template:"article-layout"} save=true`.
 3. Read and edit the template through `read_page_template` or block tools with
@@ -114,3 +114,27 @@ and accept responsive maps. Grid/Repeater and repeater aliases expose responsive
 `gap_px` (0–240). Use these fields for exact source spacing rather than empty
 spacers or corrective CSS. TOC active-section feedback includes document scroll
 padding; remove obsolete duplicated tenant header offsets during migration.
+
+
+## Qualified composition starters (Core 0.2.32 / MCP 0.45.26 candidate)
+
+Check `supports_composition_starters` and `supports_default_presentation_contract`.
+Use `get_composition_starter` to read one editable `header`, `footer`, `archive`
+or Page-template starter without changing CMS data. An archive also requires
+`content_type`; optional `title` names its heading. Replace sample navigation,
+map the Profile's empty field_list to real public fields, and save through the
+normal version-aware tools. `create_page_template` accepts the same Page starter
+names as Templates → New template. Starters are copies, never live links that
+replace an existing design after an upgrade.
+
+Sections own background/gutters, Containers default to no padding, and article
+flow owns heading rhythm. Inspect Appearance before Advanced settings. Reset
+restores block defaults; don't mirror styles into canonical fields. Formatted
+headings have typed responsive typography. Container `overflow: "clip"` and
+menu `panel_padding: "none"` are deliberate opt-ins. Default PDF text links are
+underlined theme links. Missing template image/date/excerpt/author emits no node.
+
+For an existing Container whose padding was omitted, review the new zero-padding
+output; explicitly set the former `md` values if they should remain (horizontal
+2rem, vertical 4rem). Never bulk-replace existing templates. Read
+https://typeroll.com/docs/tools/blocks/ for the full default/migration contract.

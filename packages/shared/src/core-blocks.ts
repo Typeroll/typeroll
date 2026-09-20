@@ -1,5 +1,5 @@
 import { COLUMN_STACK_BELOW, COLUMN_STACK_CSS, EMPTY_OUTLINE_COLUMN_CSS } from './column-layout.js';
-import { pixels, typographyFields, componentBreakpointsField } from './presentation-fields.js';
+import { pixels, typographyFields, componentBreakpointsField, groupPresentationField } from './presentation-fields.js';
 // Core block library — ships with the platform. Six general-purpose blocks
 // that cover the vast majority of page composition needs. Custom blocks
 // (origin: 'user' or 'third_party') are loaded from the per-site
@@ -45,7 +45,7 @@ const section: BlockType = {
     pixels('max_width_px', 'Inner maximum width (px)', 240),
     pixels('content_gap_px', 'Space between blocks (px)', 0, 240),
     { name: 'padding_x', type: 'select', label: 'Horizontal padding', options: ['auto', 'none', 'sm', 'md', 'lg'], default: 'auto', responsive: true, responsive_css: { auto: '--section-px:var(--content-gutter,1.25rem);', none: '--section-px:0px;', sm: '--section-px:1rem;', md: '--section-px:2rem;', lg: '--section-px:3rem;' } },
-    { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['auto', 'none', 'sm', 'md', 'lg', 'xl'], default: 'auto' },
+    { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['auto', 'compact', 'none', 'sm', 'md', 'lg', 'xl'], default: 'auto' },
     { name: 'background', type: 'color', label: 'Background color' },
     { name: 'text_color', type: 'color', label: 'Text color' },
     // Shaped section transitions. The divider is filled with THIS section's
@@ -68,6 +68,7 @@ const section: BlockType = {
 [data-block="section"][style*="--padding_x:sm"] { --section-px:1rem; }
 [data-block="section"][style*="--padding_x:md"] { --section-px:2rem; }
 [data-block="section"][style*="--padding_x:lg"] { --section-px:3rem; }
+[data-block="section"][data-pad="compact"] { padding-block:var(--header-padding,1rem); }
 [data-block="section"][data-pad="none"] { padding-top: 0; padding-bottom: 0; }
 [data-block="section"][data-pad="sm"] { padding-top: 2rem; padding-bottom: 2rem; }
 [data-block="section"][data-pad="md"] { padding-top: 4rem; padding-bottom: 4rem; }
@@ -468,7 +469,7 @@ export const CORE_BLOCK_TYPES: readonly BlockType[] = [
   // (page/site/item). Used inside PageTemplates so a blog template can
   // bind {{page.title}} once and every blog post renders correctly.
   ...TEMPLATE_BLOCK_TYPES,
-].map(block => ({ ...block, schema: [...block.schema, componentBreakpointsField] }));
+].map(block => ({ ...block, schema: [...block.schema, componentBreakpointsField].map(groupPresentationField) }));
 
 /**
  * Build a registry Map for use with `renderBlocks`. Custom block types

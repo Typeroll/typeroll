@@ -16,13 +16,14 @@ describe('native site compositions', () => {
       registry,
       context: { page: { path: '/about/' }, site: { logo: '/logo.svg', name: 'Example' } },
     });
-    expect(html).toContain('<nav data-block="navigation" aria-label="Primary"');
+    expect(html).toContain('<nav data-block="navigation_menu"');
+    expect(html).toContain('aria-label="Primary"');
     expect(html).toContain('href="/about/" aria-current="page"');
     expect(html).toContain('aria-expanded="false"');
-    const script = registry.get('core/navigation')?.script ?? '';
-    expect(script).toContain("matchMedia('(max-width: 1023px)')");
-    expect(script).toContain("event.key === 'Escape'");
-    expect(script).toContain('list.hidden = mobile.matches');
+    const script = registry.get('core/navigation_menu')?.script ?? '';
+    expect(html).toContain('data-collapse="1024"');
+    expect(script).toContain("addEventListener('cancel'");
+    expect(script).toContain('dialog');
   });
 
   it('builds an archive with responsive columns and configurable card mappings', () => {
@@ -30,7 +31,7 @@ describe('native site compositions', () => {
       content_type: 'articles', title: 'Articles', image_field: 'featured_image',
       image_alt_field: 'featured_image_alt', heading_level: 'h2',
     });
-    const list = blocks.find((candidate) => candidate.type === 'core/page_list');
+    const list = blocks[0].children?.find((candidate) => candidate.type === 'core/page_list');
     expect(list?.data.cols).toEqual({ mobile: 1, tablet: 2, desktop: 3 });
     expect(list?.data.item_overrides).toMatchObject({
       image_field: 'featured_image', image_alt_field: 'featured_image_alt', heading_level: 'h2',

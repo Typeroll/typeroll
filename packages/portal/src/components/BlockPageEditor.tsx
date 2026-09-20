@@ -646,7 +646,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
 
   const componentWidths = selected?.block.data.responsive_breakpoints as ResponsiveBreakpoints | null | undefined;
   const effectiveWidths = componentWidths ?? responsiveBreakpoints;
-  const deviceWidth = effectiveWidths ? breakpointPreviewWidth(activeBp, resolveBreakpointWidths(effectiveWidths)) : (DEVICES.find((d) => d.bp === activeBp) ?? DEVICES[DEVICES.length - 1]).width;
+  const deviceWidth = breakpointPreviewWidth(activeBp, resolveBreakpointWidths(effectiveWidths));
   // Scale-to-fit math: a numeric preset wider than the available panel is
   // shrunk with a CSS transform so its FULL width still renders (the iframe's
   // own @media queries then react to the real preset width, not the panel's).
@@ -833,7 +833,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               flex: '0 0 auto',
               transform: previewScale < 1 ? `scale(${previewScale})` : undefined,
               transformOrigin: 'top center',
-              border: '1px solid #2a2a30', borderRadius: 8, overflow: 'hidden', background: '#fff',
+              boxShadow: '0 0 0 1px #2a2a30', borderRadius: 8, overflow: 'hidden', background: '#fff',
             }}>
               <iframe
                 ref={iframeRef}
@@ -1469,28 +1469,39 @@ export function BlockFieldForm({
       <h3 style={{ marginTop: 0, fontSize: '0.95rem' }}>{blockType.label}</h3>
       <p style={{ fontSize: '.75rem', opacity: 0.6, marginTop: 0, marginBottom: '1rem' }}>{blockType.id}</p>
       <form onSubmit={(e) => e.preventDefault()}>
-        {blockType.schema.map((f) => {
-          const raw = local[f.name];
-          const responsive = !!(f as { responsive?: boolean }).responsive;
-          // The input shows the value resolved at the active breakpoint;
-          // `hasOwn` marks whether THIS breakpoint sets it explicitly (vs.
-          // inheriting a smaller breakpoint's value).
-          const value = responsive ? resolveResponsive(raw, activeBp) : raw;
-          const hasOwn = responsive && isResponsiveValue(raw)
-            && (raw as Partial<Record<Breakpoint, unknown>>)[activeBp] !== undefined;
-          return (
-            <FieldInput
-              key={f.name}
-              siteId={siteId}
-              field={f}
-              siteWidths={responsiveBreakpoints}
-              value={value}
-              responsive={responsive}
-              activeBp={activeBp}
-              hasOwn={hasOwn}
-              onChange={(v) => set(f.name, v, responsive, f.default)}
-            />
-          );
+        {(['content', 'appearance', 'advanced'] as const).map(group => {
+          const fields = blockType.schema.filter(field => (field.editor_group ?? 'content') === group);
+          if (!fields.length) return null;
+          const inputs = fields.map((f) => {
+            const raw = local[f.name];
+            const responsive = !!(f as { responsive?: boolean }).responsive;
+            // The input shows the value resolved at the active breakpoint;
+            // `hasOwn` marks whether THIS breakpoint sets it explicitly (vs.
+            // inheriting a smaller breakpoint's value).
+            const value = responsive ? resolveResponsive(raw ?? f.default, activeBp) : (raw ?? f.default);
+            const hasOwn = responsive && isResponsiveValue(raw)
+              && (raw as Partial<Record<Breakpoint, unknown>>)[activeBp] !== undefined;
+            return (
+              <div key={f.name}>
+                <FieldInput
+                  siteId={siteId}
+                  field={f}
+                  siteWidths={responsiveBreakpoints}
+                  value={value}
+                  responsive={responsive}
+                  activeBp={activeBp}
+                  hasOwn={hasOwn}
+                  onChange={(v) => set(f.name, v, responsive, f.default)}
+                />
+                {group !== 'content' && raw != null && <button type="button" className="block-field-reset" onClick={() => commit(f.name, f.default)}>Reset {f.label.toLowerCase()}</button>}
+              </div>
+            );
+          });
+          return group === 'content' ? <div key={group}>{inputs}</div> : <details key={group} className="block-field-settings">
+            <summary>{group === 'appearance' ? 'Appearance' : 'Advanced settings'}</summary>
+            <p>{group === 'appearance' ? 'Defaults follow the block and Site theme.' : 'Exact measurements and component-specific overrides.'}</p>
+            {inputs}
+          </details>;
         })}
       </form>
     </div>

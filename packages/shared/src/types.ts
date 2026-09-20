@@ -854,6 +854,8 @@ export type FieldType =
                        // {name}_options_html per FieldDefinition.choices_markup
 
 export interface FieldDefinition {
+  /** Optional inspector grouping; values and API write semantics are unchanged. */
+  editor_group?: 'content' | 'appearance' | 'advanced';
   name: string;
   type: FieldType;
   label: string;

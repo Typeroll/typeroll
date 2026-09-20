@@ -179,9 +179,10 @@ const siteLogo: BlockType = {
     { name: 'height', type: 'select', label: 'Height', options: ['sm', 'md', 'lg'], default: 'md' },
     { name: 'link_to_home', type: 'boolean', label: 'Link to home', default: true },
   ],
-  template: `<a data-block="site-logo" data-size="{{height}}" href="/"><img src="{{site.logo}}" alt="{{site.name}}" /></a>`,
+  template: `<a data-block="site-logo" data-size="{{height}}" href="/">{{{site_logo_html}}}</a>`,
   styles: `
-[data-block="site-logo"] { display: inline-flex; align-items: center; }
+[data-block="site-logo"] { display:inline-flex;align-items:center;min-width:0;max-width:100%;font-weight:600;overflow-wrap:anywhere;text-decoration:none;color:inherit; }
+[data-block="site-logo"]:focus-visible { outline:2px solid currentColor;outline-offset:3px; }
 [data-block="site-logo"][data-size="sm"] img { height: 1.5rem; }
 [data-block="site-logo"][data-size="md"] img { height: 2.5rem; }
 [data-block="site-logo"][data-size="lg"] img { height: 4rem; }

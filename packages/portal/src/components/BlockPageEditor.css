@@ -67,3 +67,8 @@
 .page-type-picker > label { color: #d4d4d8; }
 .page-type-picker .muted { color: #a1a1aa; }
 .page-type-picker__fields { padding: 0; margin: 0; border: 0; min-width: 0; }
+
+.block-field-settings { margin-top: 1rem; border-top: 1px solid var(--color-border); padding-top: .75rem; }
+.block-field-settings > summary { cursor: pointer; font-weight: 600; padding-block: .5rem; }
+.block-field-settings > p { font-size: .8rem; color: var(--color-text-muted); margin-block: .5rem 1rem; }
+.block-field-settings .block-field-reset { margin-bottom: .75rem; background: none; border: 0; color: var(--color-primary); font-size: .8rem; padding: .25rem 0; cursor: pointer; text-decoration: underline; }

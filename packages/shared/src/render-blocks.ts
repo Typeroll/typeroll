@@ -306,11 +306,21 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
 
   if (effectiveBlock.type === 'template/page_featured_image') {
     compiled.flatData.selected_page_image = options.context?.page?.[String(compiled.flatData.field ?? 'og_image')] ?? '';
+    if (!String(compiled.flatData.selected_page_image).trim()) return '';
   }
   if (effectiveBlock.type === 'template/page_date') {
     const fieldName = String(compiled.flatData.field ?? 'date_published');
     compiled.flatData.selected_page_date = options.context?.page?.[fieldName]
       ?? '';
+    if (!String(compiled.flatData.selected_page_date).trim()) return '';
+  }
+  if (effectiveBlock.type === 'template/page_excerpt' && !String(options.context?.page?.excerpt ?? '').trim()) return '';
+  if (effectiveBlock.type === 'template/page_author' && !String((options.context?.page?.author as { name?: string } | undefined)?.name ?? '').trim()) return '';
+  if (effectiveBlock.type === 'template/site_logo') {
+    const site = options.context?.site;
+    compiled.flatData.site_logo_html = site?.logo
+      ? `<img src="${escapeHtml(site.logo)}" alt="${escapeHtml(site.name ?? '')}" />`
+      : escapeHtml(site?.name || 'Home');
   }
   if (effectiveBlock.type === 'template/page_breadcrumbs') {
     compiled.flatData.breadcrumbs_html = renderBreadcrumbs(
@@ -1072,7 +1082,7 @@ function preparePostCardData(
   const linkImage = !!href && !whole;
   data.background ||= 'var(--color-background,#fff)';
   data.border_color ||= 'transparent';
-  data.download_color ||= 'inherit';
+  data.download_color ||= 'var(--color-primary,currentColor)';
   data.download_weight ||= data.action_weight || '600';
   data.post_card_sizing_css = postCardImageSizing[String(data.image_sizing)] ?? postCardImageSizing.auto;
   data.post_card_download_css = data.download_width === 'full'

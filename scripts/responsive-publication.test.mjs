@@ -57,3 +57,33 @@ test('frozen component controls survive export and invalidate only affected cont
   await fs.appendFile(source,'\n// Renderer dependency change for cache qualification.\n');
   assert.equal((await harness.run()).report.rendered,2);
 });
+
+test('qualified composition defaults reach the real frozen Astro build and invalidate warm HTML', async t => {
+  const { build } = await import('esbuild');
+  const compiled = await build({ stdin: { contents: "export * from './packages/shared/src/page-template-starters.ts'; export * from './packages/shared/src/site-compositions.ts';", resolveDir: process.cwd() }, bundle: true, format: 'esm', platform: 'node', write: false });
+  const { getPageTemplateStarter, getPartialCompositionStarter } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString('base64')}`);
+  const value = { format: 'typeroll-static-publication', format_version: 2, publication_id: 'c'.repeat(64), core_commit: 'c'.repeat(40),
+    site_url: 'https://example.invalid', version_id: 'main', site: { name: 'Example' }, settings: { site_name: 'Example', trailing_slash: 'always' },
+    pages: [{ id: 'home', path: '/', slug: 'home', title: 'Home', status: 'published', template: 'profile', content_mode: 'blocks', blocks: [
+      { id: 'group', type: 'core/container', data: { radius_px: 12, overflow: 'clip' }, children: [
+        { id: 'heading', type: 'core/rich_heading', data: { html: '<a href="/">A linked heading</a>', level: 'h2', font_size_px: 20, align: { mobile: 'left', tablet: 'center' } } },
+      ] },
+    ] }],
+    partials: ['header', 'footer'].map(kind => ({ id: kind, name: kind, kind, status: 'published', content_mode: 'blocks', blocks: getPartialCompositionStarter(kind, { links: [{ label: 'Home', href: '/' }] }) })),
+    pageTemplates: [{ id: 'profile', status: 'published', blocks: getPageTemplateStarter('profile') }],
+    media: [], contentTypes: [], blockTypes: [], forms: [] };
+  const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
+  await harness.run();
+  const html = await fs.readFile(path.join(harness.destination, 'dist/index.html'), 'utf8');
+  assert.equal((html.match(/<h1\b/g) ?? []).length, 1);
+  assert.match(html, /data-block="navigation_menu"/);
+  assert.match(html, /data-overflow="clip"/);
+  assert.match(html, /--padding_x:\s*none/);
+  assert.match(html, /--font_size_px:\s*20px/);
+  assert.match(html, /data-block="rich_heading"/);
+  assert.doesNotMatch(html, /<img[^>]*src=""/);
+  assert.doesNotMatch(html, /<[^>]+data-block="page-excerpt"/);
+  assert.equal((await harness.run()).report.reused, 1);
+  await fs.appendFile(path.join(harness.destination, 'packages/shared/src/content-well.ts'), '\n// Presentation dependency qualification.\n');
+  assert.equal((await harness.run()).report.rendered, 1);
+});

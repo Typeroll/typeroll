@@ -14,30 +14,21 @@ export function getPartialCompositionStarter(
   kind: 'header' | 'footer',
   options: { links: NavigationLink[]; navigation_label?: string; menu_label?: string },
 ): Block[] {
-  const navigation = block(`${kind}_navigation`, 'core/navigation', {
-    links: options.links,
-    aria_label: options.navigation_label ?? (kind === 'header' ? 'Main navigation' : 'Footer navigation'),
-    menu_label: options.menu_label ?? 'Menu',
+  const links = (id: string, direction: string) => block(id, 'core/navigation_links', {
+    links: options.links, direction, gap_px: direction === 'row' ? 24 : 8,
   });
-  return [
-    block(`${kind}_section`, 'core/section', {
-      width: 'wide',
-      padding_y: kind === 'header' ? 'sm' : 'lg',
-    }, [
-      block(`${kind}_layout`, 'core/container', {
-        direction: { mobile: 'column', tablet: 'row' },
-        align_main: 'space-between',
-        align_cross: 'center',
-        gap: 'md',
-        width: 'wide',
-        padding_y: 'none',
-        padding_x: 'none',
-      }, [
-        block(`${kind}_logo`, 'template/site_logo', { height: kind === 'header' ? 'md' : 'sm', link_to_home: true }),
-        navigation,
-      ]),
-    ]),
-  ];
+  const navigation: Block = kind === 'header'
+    ? { ...block('header_navigation', 'core/navigation_menu', {
+      aria_label: options.navigation_label ?? 'Main navigation',
+      menu_label: options.menu_label ?? 'Open menu',
+    }), slots: [[links('header_desktop_links', 'row')], [links('header_mobile_links', 'column')]] }
+    : block('footer_navigation', 'core/container', { tag: 'nav', layout: 'flow', aria_label: options.navigation_label ?? 'Footer navigation' }, [links('footer_links', 'row')]);
+  return [block(`${kind}_section`, 'core/section', {
+    width: 'wide', padding_y: kind === 'header' ? 'compact' : 'auto',
+  }, [block(`${kind}_layout`, 'core/container', {
+    direction: kind === 'header' ? 'row' : { mobile: 'column', tablet: 'row' },
+    wrap: kind === 'header' ? 'nowrap' : 'wrap', align_main: 'space-between', align_cross: 'center', gap: 'md', width: 'full',
+  }, [block(`${kind}_logo`, 'template/site_logo', { height: kind === 'header' ? 'md' : 'sm', link_to_home: true }), navigation])])];
 }
 
 /** Native archive tree with explicit card semantics and field mappings. */
@@ -54,15 +45,20 @@ export function getArchiveCompositionStarter(options: {
   pdf_label?: string;
   heading_level?: 'h2' | 'h3' | 'h4';
 }): Block[] {
-  return [
+  return [block('archive_frame', 'core/section', { width: 'wide' }, [
     block('archive_breadcrumbs', 'template/page_breadcrumbs', { home_label: 'Home', aria_label: 'Breadcrumbs' }),
-    block('archive_title', 'core/heading', { text: options.title, level: 'h1', size: '2xl', align: 'left' }),
+    block('archive_title', 'core/heading', { text: options.title, level: 'h1', size: 'auto', align: 'left' }),
     block('archive_list', 'core/page_list', {
       content_type: options.content_type,
       layout: 'grid',
+      responsive_breakpoints: { tablet: 768, laptop: 1024, desktop: 1280, wide: 1536 },
       cols: { mobile: 1, tablet: 2, desktop: 3 },
       gap: 'lg',
       item_overrides: {
+        appearance: 'card', whole_card_link: true,
+        // A bounded, uncropped archive thumbnail frame keeps portrait media
+        // from stretching every card in a row. Ordinary image defaults remain intrinsic.
+        image_sizing: 'fixed', image_height_px: 240, image_fit: 'contain',
         title_field: options.title_field ?? 'title',
         excerpt_field: options.excerpt_field ?? 'excerpt',
         image_field: options.image_field ?? 'image',
@@ -74,5 +70,5 @@ export function getArchiveCompositionStarter(options: {
         download_label: options.pdf_label ?? 'Download PDF',
       },
     }),
-  ];
+  ])];
 }

@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { getPageTemplateStarter, inferStarterKind } from '../page-template-starters.js';
+import { getPageTemplateStarter as makeStarter, inferStarterKind } from '../page-template-starters.js';
+
+const getPageTemplateStarter = (kind: Parameters<typeof makeStarter>[0]) => makeStarter(kind)?.[0]?.children;
 
 describe('getPageTemplateStarter', () => {
+  it('wraps standard starter content in one native section', () => {
+    expect(makeStarter('blog')?.[0]).toMatchObject({type:'core/section',data:{width:'narrow'}});
+    expect(makeStarter('article')?.[0]).toMatchObject({type:'core/section',data:{width:'wide'}});
+  });
   it('returns a blog starter with item_title, item_image (featured_image), item_body', () => {
     const blocks = getPageTemplateStarter('blog');
     expect(blocks).toBeTruthy();

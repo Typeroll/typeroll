@@ -63,6 +63,7 @@ export default function FieldInput({
         <div style={fieldGroup}>
           {label}
           <select id={fieldId} aria-label={field.label} aria-required={field.required || undefined} value={v} onChange={(e) => onChange(e.target.value)} style={selectInput}>
+            {!field.required && field.default == null && <option value="">{field.editor_group ? 'Default' : 'Choose…'}</option>}
             {(field.options ?? []).map((opt, index) => (
               <option key={opt} value={opt}>{field.option_labels?.[index] ?? opt}</option>
             ))}

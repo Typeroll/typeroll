@@ -9,6 +9,7 @@ export const CONTENT_WELL_CSS = `
  --block-gap:var(--space-5); --block-gap-tight:var(--space-3); --block-gap-loose:var(--space-6);
  --card-padding:var(--space-4); --grid-gap:var(--space-4);
  --type-h1:1.75rem; --type-h2:1.375rem; --type-h3:1.125rem; --type-h4:1rem; --type-h5:1rem; --type-h6:.875rem;
+ --heading-space-before:var(--space-6);--heading-space-after:.65rem;--header-padding:var(--space-4);
  --type-lead:1.0625rem; --body-leading:1.55;
  --breadcrumbs-before:.75rem; --breadcrumbs-after:2rem;
 }
@@ -32,8 +33,14 @@ export const CONTENT_WELL_CSS = `
 :where(.page-content) h5 { font-size:var(--type-h5); line-height:1.4; }
 :where(.page-content) h6 { font-size:var(--type-h6); line-height:1.4; }
 .page-content .block-section-inner { --section-child-gap:var(--content_gap_px,var(--block-gap)); }
-.page-content .block-section-inner > * + * { margin-block-start:var(--section-child-gap,var(--block-gap)); }
-.page-content .block-section-inner > :first-child { margin-block-start:0; }
-.page-content .block-section-inner > :last-child { margin-block-end:0; }
-.page-content .block-section-inner > [data-block="breadcrumbs"] + * { margin-block-start:0; }
+.block-section-inner > :not(style,script) ~ :not(style,script) { margin-block-start:var(--section-child-gap,var(--block-gap)); }
+.block-section-inner > :first-child { margin-block-start:0; }
+.block-section-inner > :last-child { margin-block-end:0; }
+.block-section-inner > [data-block="breadcrumbs"] + * { margin-block-start:0; }
+/* Flow spacing belongs to the parent; hidden optional blocks render no node. */
+[data-block="semantic-container"][data-rhythm="article"] > :not(style,script) ~ :not(style,script) { margin-block-start:var(--block-gap-tight,.75rem); }
+[data-block="semantic-container"][data-rhythm="article"] > :is([data-block="heading"],[data-block="rich_heading"]) { margin-block:var(--heading-space-before,2rem) var(--heading-space-after,.65rem); }
+[data-block="semantic-container"][data-rhythm="article"] > :is([data-block="heading"],[data-block="rich_heading"]):first-child { margin-block-start:0; }
+[data-block="semantic-container"][data-rhythm="article"] > :is([data-block="heading"],[data-block="rich_heading"]) + :not(style,script) { margin-block-start:0; }
+[data-block="semantic-container"][data-rhythm="article"] > :last-child { margin-block-end:0; }
 `.trim();

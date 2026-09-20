@@ -147,6 +147,9 @@ export interface SiteTemplateCapabilities {
   supports_component_responsive_breakpoints: boolean;
   supports_post_card_image_sizing: boolean;
   supports_component_surface_controls: boolean;
+  /** Native editable starters and spacing/optional-content default contract. */
+  supports_composition_starters: boolean;
+  supports_default_presentation_contract: boolean;
   supports_prose_typography: boolean;
   supports_breadcrumb_labels: boolean;
   supports_post_card_action_layout: boolean;
@@ -335,6 +338,8 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_component_responsive_breakpoints: true,
   supports_post_card_image_sizing: true,
   supports_component_surface_controls: true,
+  supports_composition_starters: true,
+  supports_default_presentation_contract: true,
   supports_prose_typography: true,
   supports_breadcrumb_labels: true,
   supports_post_card_action_layout: true,

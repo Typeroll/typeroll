@@ -839,3 +839,79 @@ open symbol; `close_size_px` optionally overrides the close symbol while both
 retain their minimum 44px hit area. Existing modal focus, Escape and scrolling
 behavior is unchanged. Republish after upgrading to include the new static
 presentation; no customer content is rewritten by the upgrade.
+
+## Coherent starting layouts (candidate)
+
+The Core 0.2.32 / MCP 0.45.26 candidate improves native defaults and editable
+starters. Check `supports_composition_starters` and
+`supports_default_presentation_contract` in Site capabilities. Availability depends on the installed Core version. Existing saved
+Page templates and partials are never replaced automatically.
+
+In **Templates → New template → Starting layout**, choose **Article** for a body
+with a generated outline, **Profile** for a title, optional image/summary and
+structured facts, or **Landing** for a title frame followed by full-width body
+sections. Blog, checklist, team, events, products and a basic title/body layout
+remain available. A Content type chooses its default template; each Page can use
+another allowed template. Templates do not own or duplicate the Page's data.
+
+Agents can read one editable composition without writing:
+
+```text
+get_composition_starter kind="profile"
+get_composition_starter kind="header"
+get_composition_starter kind="archive" content_type="articles" title="Guides"
+```
+
+The equivalent authenticated read is
+`GET /api/v1/sites/{siteId}/composition-starters?kind=profile`.
+Header/footer starters contain a sample Home link: replace it with real site
+navigation. The header uses separate desktop and mobile link trees in the native
+menu. Archive starters include a title, breadcrumbs and responsive Page cards. Their
+media frame is deliberately 240px high with `contain`: the full subject stays
+visible without a portrait stretching the entire card row. Ordinary Image block
+defaults remain intrinsic.
+The Profile facts list starts empty: add rows mapped to the actual Content type's
+public fields. No field names are guessed and no data is copied into rich text.
+Save the resulting tree using the normal Page/template/partial tools. Read-only
+starter retrieval does not create or replace any document.
+
+### Spacing belongs to the surrounding layout
+
+- **Section** owns the full-width background, vertical separation, inner content
+  width and horizontal gutter. New Page starters supply this frame.
+- **Container** groups children. Its default horizontal and vertical padding is
+  now `none`, so nested groups do not compound gutters. Set padding explicitly
+  for a panel that needs its own interior space.
+- **Article flow** owns heading separation. It uses `--heading-space-before`
+  (2rem) and `--heading-space-after` (0.65rem), and removes leading/trailing space
+  at the body edges. Standalone headings do not add arbitrary outer margins.
+- **Cards** own their interior spacing. Images retain their complete subject
+  unless an explicit crop/ratio is chosen. Missing image/date/author/excerpt
+  blocks leave no empty node. Field lists omit missing rows and empty sections.
+
+Theme tokens and deliberate block overrides remain available. Exact measurements
+are under **Advanced settings**; common presentation choices are under
+**Appearance**. Both start collapsed. **Reset** removes the authored override or
+restores the block default. Required content fields remain visible.
+
+Formatted headings (`core/rich_heading`) support linked rich text with the same
+responsive size, line height, weight, font and alignment controls as ordinary
+headings. A container with rounded corners clips child backgrounds only when
+`overflow: "clip"` is explicitly selected; the default remains `visible` for
+menus, focus and other overflowing content. Mobile menus include an inner inset;
+`panel_padding: "none"` deliberately removes it. PDF text links use the theme's
+primary color and an underline, while authored color and outlined styles win.
+
+### Existing-site review before publishing
+
+For existing Containers with omitted `padding_x` or `padding_y`, the next build
+uses the new zero-padding default. To preserve the old appearance, explicitly
+save `padding_x: "md"` and/or `padding_y: "md"` for the missing axes before
+publishing (previously 2rem horizontal and 4rem vertical). Existing pixel or token
+overrides are not changed. Review both new and existing compositions in a Version;
+never replace a saved template with a starter as an upgrade procedure.
+
+Check long titles, empty optional fields, portrait/landscape media, zero/one/many
+listing results, mobile navigation and keyboard focus. Review an actual static
+build as well as preview. A new Core revision invalidates affected rendered HTML;
+customer sites are not republished automatically.

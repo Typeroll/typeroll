@@ -49,8 +49,8 @@ const container: BlockType = {
     { name: 'align_cross', type: 'select', label: 'Cross-axis alignment',
       options: ['start', 'center', 'end', 'stretch'], default: 'stretch', responsive: true },
     { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide', 'full'], default: 'normal' },
-    { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['none', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
-    { name: 'padding_x', type: 'select', label: 'Horizontal padding', options: ['none', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
+    { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['none', 'sm', 'md', 'lg', 'xl'], default: 'none', responsive: true },
+    { name: 'padding_x', type: 'select', label: 'Horizontal padding', options: ['none', 'sm', 'md', 'lg', 'xl'], default: 'none', responsive: true },
     pixels('max_width_px', 'Maximum width (px)', 240),
     pixels('min_height_px', 'Minimum height (px)', 0, 1600),
     pixels('gap_px', 'Gap (px)', 0, 240),
@@ -63,6 +63,7 @@ const container: BlockType = {
     { name: 'background', type: 'color', label: 'Background color' },
     pixels('radius_px', 'Corner radius (px)', 0, 100),
     { name: 'shadow', type: 'select', label: 'Shadow', options: ['none', 'subtle', 'header'], default: 'none' },
+    { name: 'overflow', type: 'select', label: 'Child content', options: ['visible', 'clip'], option_labels: ['Allow overflow', 'Clip to rounded edges'], default: 'visible' },
     { name: 'background_image', type: 'image', label: 'Background image' },
     { name: 'min_height', type: 'select', label: 'Minimum height', options: ['auto', 'sm', 'md', 'lg', 'screen'], default: 'auto' },
   ],
@@ -70,19 +71,21 @@ const container: BlockType = {
   // named `--{field-name}` so the @media compiler can override it cleanly.
   // Layout-control CSS reads `var(--gap)` etc. and maps the token (sm/md/lg)
   // to a real rem value via attribute-selectors against the inline style.
-  template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-shadow="{{shadow}}" data-rhythm="{{rhythm}}" data-sticky="{{sticky}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{inline_style}}">{{children}}</{{=tag}}>`,
+  template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-shadow="{{shadow}}" data-overflow="{{overflow}}" data-rhythm="{{rhythm}}" data-sticky="{{sticky}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{inline_style}}">{{children}}</{{=tag}}>`,
   styles: `
  :is([data-block="container"], [data-block="semantic-container"]) { border-radius:var(--radius_px,0px); }
+:is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] { overflow:clip; }
+:is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] :focus-visible { outline-offset:-3px; }
 :is([data-block="container"], [data-block="semantic-container"])[data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }
 :is([data-block="container"], [data-block="semantic-container"])[data-shadow="header"] { box-shadow:0 2px 5px rgb(0 0 0 / 20%); }
 /* Opt-in article flow; never change heading spacing in unrelated layouts. */
 [data-block="semantic-container"][data-rhythm="article"] { display:flow-root; }
 :is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="heading"],
-:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="rich_heading"] { margin-block:1.75rem 0.6rem; }
+:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="rich_heading"] { margin-block:var(--heading-space-before,2rem) var(--heading-space-after,.65rem); }
 :is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > :first-child { margin-top:0; }
 [data-block="container"] {
   display: flex; flex-direction: var(--direction, column); flex-wrap: var(--wrap, wrap);
-  gap: var(--gap_px, var(--block-gap, 1rem)); justify-content: var(--align_main, flex-start); align-items: var(--align_cross, stretch);
+  --container-gap:initial;gap: var(--gap_px, var(--container-gap,var(--block-gap,1rem))); justify-content: var(--align_main, flex-start); align-items: var(--align_cross, stretch);
   padding-block: var(--padding_top_px, var(--padding_y_px, var(--block-py, 2rem))) var(--padding_bottom_px, var(--padding_y_px, var(--block-py, 2rem))); padding-inline: var(--padding_x_px, var(--block-px, 1rem));
   background: var(--bg, transparent);
 }
@@ -96,12 +99,12 @@ const container: BlockType = {
 [data-block="container"][data-min-h="lg"]     { min-height: 70vh; }
 [data-block="container"][data-min-h="screen"] { min-height: 100vh; }
 :is([data-block="container"], [data-block="semantic-container"])[style*="--min_height_px:"] { min-height:var(--min_height_px); }
-[data-block="container"][style*="--gap:none"]       { --block-gap: 0; }
-[data-block="container"][style*="--gap:xs"]         { --block-gap: 0.25rem; }
-[data-block="container"][style*="--gap:sm"]         { --block-gap: 0.5rem; }
-[data-block="container"][style*="--gap:md"]         { --block-gap: 1rem; }
-[data-block="container"][style*="--gap:lg"]         { --block-gap: 2rem; }
-[data-block="container"][style*="--gap:xl"]         { --block-gap: 3rem; }
+[data-block="container"][style*="--gap:none"]       { --container-gap: 0; }
+[data-block="container"][style*="--gap:xs"]         { --container-gap: 0.25rem; }
+[data-block="container"][style*="--gap:sm"]         { --container-gap: 0.5rem; }
+[data-block="container"][style*="--gap:md"]         { --container-gap: 1rem; }
+[data-block="container"][style*="--gap:lg"]         { --container-gap: 2rem; }
+[data-block="container"][style*="--gap:xl"]         { --container-gap: 3rem; }
 [data-block="container"][style*="--padding_y:none"] { --block-py: 0; }
 [data-block="container"][style*="--padding_y:sm"]   { --block-py: 2rem; }
 [data-block="container"][style*="--padding_y:md"]   { --block-py: 4rem; }
@@ -159,7 +162,7 @@ const grid: BlockType = {
   ],
   template: `<div data-block="grid" data-stack-at="{{stack_at}}" data-last-row="{{last_row}}" style="--cols:{{cols}};--gap:{{gap}};--align:{{align}}">{{children}}</div>`,
   styles: `
-[data-block="grid"] { --block-gap:var(--grid-gap, 1rem);
+[data-block="grid"] { --container-gap:var(--grid-gap, 1rem);
   display: grid;
   /* Read --cols DIRECTLY (not a substring-mapped --block-cols): the
      responsive @media compiler overrides --cols per breakpoint, and an
@@ -169,7 +172,7 @@ const grid: BlockType = {
      (both the responsive compiler's and stack_at below) must be !important
      to win the cascade. */
   grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
-  gap: var(--gap_px, var(--block-gap, 1rem));
+  gap: var(--gap_px, var(--container-gap,var(--block-gap,1rem)));
   align-items: var(--align, stretch);
 }
 /* last_row:center — flex columns so a partial last row auto-centers.
@@ -181,18 +184,18 @@ const grid: BlockType = {
   justify-content: center;
 }
 [data-block="grid"][data-last-row="center"] > * {
-  flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--block-gap, 1rem))) / var(--cols, 3));
+  flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--container-gap,var(--grid-gap,1rem)))) / var(--cols, 3));
   min-width: 0;
   /* grid tracks equalized row heights; in flex that job belongs to the
      line's align stretch — a child height:100% (the grid-ism) breaks it */
   height: auto;
 }
-[data-block="grid"][style*="--gap:none"] { --block-gap: 0; }
-[data-block="grid"][style*="--gap:xs"]   { --block-gap: 0.25rem; }
-[data-block="grid"][style*="--gap:sm"]   { --block-gap: 0.5rem; }
-[data-block="grid"][style*="--gap:md"]   { --block-gap: 1rem; }
-[data-block="grid"][style*="--gap:lg"]   { --block-gap: 2rem; }
-[data-block="grid"][style*="--gap:xl"]   { --block-gap: 3rem; }
+[data-block="grid"][style*="--gap:none"] { --container-gap: 0; }
+[data-block="grid"][style*="--gap:xs"]   { --container-gap: 0.25rem; }
+[data-block="grid"][style*="--gap:sm"]   { --container-gap: 0.5rem; }
+[data-block="grid"][style*="--gap:md"]   { --container-gap: 1rem; }
+[data-block="grid"][style*="--gap:lg"]   { --container-gap: 2rem; }
+[data-block="grid"][style*="--gap:xl"]   { --container-gap: 3rem; }
 /* stack_at — collapse to one column below a width. Only for grids WITHOUT
    per-instance responsive cols (:not([data-responsive-cols="true"])); when the author set
    responsive cols, those @media overrides own the column count instead.
@@ -871,6 +874,9 @@ const postCard: BlockType = {
 [data-block="post_card"][data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }
 [data-block="post_card"][data-download="outline"] .block-postcard-download { border:var(--download_border_width_px,1px) solid currentColor;padding:var(--download_padding_y_px,.55rem) var(--download_padding_x_px,.8rem);border-radius:var(--download_radius_px,4px);text-decoration:none; }
 [data-block="post_card"] .block-postcard-actions { display:flex;flex-direction:var(--actions_direction,column);flex-wrap:wrap;align-items:var(--actions_align,start);gap:var(--actions_gap_px,.65rem); }
+[data-block="post_card"][data-download="link"] .block-postcard-download { text-decoration:underline;text-underline-offset:.15em; }
+[data-block="post_card"] .block-postcard-actions a { min-height:44px;display:inline-flex;align-items:center;justify-content:center; }
+[data-block="post_card"] .block-postcard-actions a:hover { text-decoration:underline;text-decoration-thickness:2px; }
 [data-block="post_card"] .block-postcard-actions:empty { display:none; }
 [data-block="post_card"] .block-postcard-actions a { font-size:var(--action_size_px,inherit);font-weight:var(--action_weight,600); }
 [data-block="post_card"] .block-postcard-actions .block-postcard-download { font-size:var(--download_size_px,var(--action_size_px,inherit));font-weight:var(--download_weight,var(--action_weight,600)); }

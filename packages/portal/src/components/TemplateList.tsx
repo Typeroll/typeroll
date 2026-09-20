@@ -92,7 +92,7 @@ export default function TemplateList({ siteId }: { siteId: string }) {
           </label>
           <label style={fieldLabel}>Starting layout
             <select style={input} value={starter} onChange={event => setStarter(event.target.value)}>
-              {['custom', 'article', 'blog', 'checklist', 'team', 'events', 'products'].map(kind => <option key={kind} value={kind}>{kind === 'custom' ? 'Title and page content' : kind[0].toUpperCase() + kind.slice(1)}</option>)}
+              {['custom', 'article', 'blog', 'checklist', 'team', 'events', 'products', 'profile', 'landing'].map(kind => <option key={kind} value={kind}>{kind === 'custom' ? 'Title and page content' : kind[0].toUpperCase() + kind.slice(1)}</option>)}
             </select>
           </label>
           {error && <p style={errorMsg}>{error}</p>}

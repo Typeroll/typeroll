@@ -9,6 +9,8 @@ export type PageTemplateStarterKind =
   | 'team'
   | 'events'
   | 'products'
+  | 'profile'
+  | 'landing'
   | 'custom';
 
 /**
@@ -20,12 +22,12 @@ function blk(id: string, type: string, data: Record<string, unknown>): Block {
 }
 
 /** Native, editable starting layouts for reusable Page templates. */
-export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined): Block[] | undefined {
+function starterBody(kind: PageTemplateStarterKind | undefined): Block[] | undefined {
   switch (kind) {
     case 'blog':
       return [
         blk('image', 'template/page_featured_image', { field: 'featured_image', width: 'wide' }),
-        blk('title', 'template/page_title', { level: 'h1', size: 'article', align: 'left' }),
+        blk('title', 'template/page_title', { level: 'h1', size: 'auto', align: 'left' }),
         blk('date',  'template/page_date',  { field: 'date_published' }),
         blk('body',  'template_content_slot',  { field: 'body', max_width: 'normal', rhythm: 'article' }),
       ];
@@ -33,10 +35,10 @@ export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined
     case 'article':
       return [
         blk('breadcrumbs', 'template/page_breadcrumbs', { home_label: 'Home', aria_label: 'Breadcrumbs' }),
-        blk('title', 'template/page_title', { level: 'h1', size: 'article' }),
+        blk('title', 'template/page_title', { level: 'h1', size: 'auto' }),
         blk('date', 'template/page_date', { field: 'date_published' }),
         {
-          ...blk('content', 'core/columns', { ratio: '3-1', gap: 'lg', align: 'start', mobile_order: 'right-first' }),
+          ...blk('content', 'core/columns', { ratio: '3-1', gap: 'lg', align: 'start', stack_below: '1024', mobile_order: 'right-first' }),
           slots: [
             [blk('body', 'template_content_slot', { field: 'body', max_width: 'normal', rhythm: 'article' })],
             [blk('outline', 'core/table_of_contents', {
@@ -78,7 +80,7 @@ export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined
         blk('photo', 'template/page_featured_image', { field: 'photo', width: 'narrow' }),
         blk('title', 'template/page_title', { level: 'h1', size: 'auto' }),
         // The role is a custom Page field.
-        blk('role',  'core/prose', { html: '<p class="role">{{page.role}}</p>', max_width: 'narrow' }),
+        blk('role', 'core/field_list', { fields: [{ field: 'role' }] }),
         blk('bio', 'template_content_slot', {}),
       ];
 
@@ -98,6 +100,16 @@ export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined
         blk('body',  'template_content_slot',  {}),
       ];
 
+    case 'profile':
+      return [
+        blk('image', 'template/page_featured_image', { field: 'og_image', width: 'narrow' }),
+        blk('title', 'template/page_title', {}),
+        blk('summary', 'template/page_excerpt', {}),
+        blk('facts', 'core/field_list', { fields: [] }),
+        blk('body', 'template_content_slot', { rhythm: 'article' }),
+      ];
+    case 'landing':
+      return [blk('title', 'template/page_title', { align: 'center' }), blk('summary', 'template/page_excerpt', {})];
     case 'custom':
       return [
         blk('title', 'template/page_title', { level: 'h1', size: 'auto' }),
@@ -107,6 +119,17 @@ export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined
     default:
       return undefined;
   }
+}
+
+/** Starters are editable copies. Updating Core never replaces an existing template. */
+export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined): Block[] | undefined {
+  const children = starterBody(kind);
+  if (!children) return undefined;
+  for (const child of children) {
+    if (child.type === 'template_content_slot') child.data = { rhythm: 'article', ...child.data };
+  }
+  const frame: Block = { ...blk('frame', 'core/section', { width: kind === 'article' ? 'wide' : 'narrow' }), children };
+  return kind === 'landing' ? [frame, blk('body', 'template_content_slot', { max_width: 'full' })] : [frame];
 }
 
 /**

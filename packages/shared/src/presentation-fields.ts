@@ -21,3 +21,11 @@ export const postCardImageSizing: Record<string, string> = {
   fixed: '--card-image-position:static;--card-image-height:var(--image_height_px,200px);',
   stretch: '--card-image-position:absolute;--card-image-height:100%;',
 };
+
+/** Registry metadata also keeps API/MCP clients aligned with the native inspector. */
+export function groupPresentationField(field: FieldDefinition): FieldDefinition {
+  if (field.editor_group || field.required) return field;
+  const advanced = field.css_unit || ['responsive_breakpoints','inline_style','css_class','html_id','attributes','anchor_id','stack_below_px'].includes(field.name);
+  const appearance = field.responsive || field.type === 'color' || ['font_weight','width','max_width','appearance','shadow','overflow','radius','size','font','image_fit','fit','image_aspect','aspect_ratio','title_font','image_sizing','download_style','download_behavior','panel_padding','collapse_below','rhythm'].includes(field.name);
+  return { ...field, editor_group: advanced ? 'advanced' : appearance ? 'appearance' : 'content' };
+}
