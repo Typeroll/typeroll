@@ -25,6 +25,7 @@ export type ExtensionScope =
   | 'content:write'
   | 'content:owner'
   | 'email:send'
+  | 'email:inbound:status'
   | 'forms:read'
   | 'forms:submit'
   | 'forms:write'
@@ -45,6 +46,7 @@ export interface ExtensionScopeDefinition {
 export const EXTENSION_SCOPE_REGISTRY: Readonly<Record<ExtensionScope, ExtensionScopeDefinition>> = {
   'content:read': { scope: 'content:read', minimum_permission: 'read', sensitive: false, description: 'Read site content.' },
   'content:owner': { scope: 'content:owner', minimum_permission: 'admin', sensitive: true, description: 'Read and change explicitly owner-writable Page fields after the provider authenticates the owner.' },
+  'email:inbound:status': { scope: 'email:inbound:status', minimum_permission: 'admin', sensitive: true, description: 'Read metadata and forwarding status for incoming mail routes explicitly bound to this installation. Does not grant access to messages or attachments.' },
   'email:send': { scope: 'email:send', minimum_permission: 'admin', sensitive: true, description: 'Send transactional email through the site connector.' },
   'content:write': { scope: 'content:write', minimum_permission: 'write', sensitive: true, description: 'Change site content.' },
   'forms:read': { scope: 'forms:read', minimum_permission: 'read', sensitive: false, description: 'Read form definitions.' },

@@ -2,6 +2,7 @@
 import AppLayout from '../../../../../layouts/AppLayout.astro';
 import { loadSiteContext } from '../../../../../lib/access';
 import EmailSettings from '../../../../../components/EmailSettings.tsx';
+import InboundEmailSettings from '../../../../../components/InboundEmailSettings.tsx';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
@@ -25,6 +26,7 @@ if (permission !== 'admin') return Astro.redirect(`/app/sites/${siteId}/settings
 
   <div style="max-width: 640px;">
     <EmailSettings client:load siteId={siteId} />
+    <InboundEmailSettings client:load siteId={siteId} />
   </div>
 
   <p class="text-sm muted" style="margin-top: 1.5rem;">

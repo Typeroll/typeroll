@@ -36,16 +36,18 @@ export async function readDelivery(scope: MailScope, id: string): Promise<Delive
 /** One durable reservation, one sender. Uncertain sends are never reclaimed by a timer. */
 export async function sendApplicationEmail(scope: MailScope,
   input: { idempotency_key: string; to: string; subject: string; text: string },
-  dependencies: { send?: (connector: EmailConnector, message: EmailMessage) => Promise<SendResult>; sleep?: typeof pause } = {},
+  dependencies: { send?: (connector: EmailConnector, message: EmailMessage) => Promise<SendResult>; sleep?: typeof pause; forwarding?: { replyTo: string } } = {},
 ): Promise<DeliveryReceipt> {
   if (typeof input.idempotency_key !== 'string' || !/^[A-Za-z0-9_-]{16,100}$/.test(input.idempotency_key)) throw new DeliveryError('idempotency_key must contain 16–100 letters, digits, underscores or hyphens', 400);
+  // Structural callers can contain routing metadata. Persist only the scope IDs.
+  scope = { orgId: scope.orgId, siteId: scope.siteId, installationId: scope.installationId };
   const store = getStore();
   const integrations = await store.getDoc<SiteIntegrations>(paths.integrations(scope.orgId, scope.siteId));
   if (!integrations?.email) throw new DeliveryError('Site email delivery is not configured', 409);
   const connector = integrations.email;
   const id = hash(JSON.stringify([scope.orgId, scope.siteId, scope.installationId, input.idempotency_key]));
   const path = receiptPath(scope, id);
-  const fingerprint = hash(JSON.stringify([input.to.trim().toLowerCase(), input.subject, input.text]));
+  const fingerprint = hash(JSON.stringify([input.to.trim().toLowerCase(), input.subject, input.text, ...(dependencies.forwarding ? [dependencies.forwarding] : [])]));
   const recipient = hash(`${scope.orgId}\0${scope.siteId}\0${input.to.trim().toLowerCase()}`);
   const now = new Date().toISOString();
   const receipt: DeliveryReceipt = { ...scope, id, fingerprint, recipient_digest: recipient, provider: connector.type,
@@ -77,7 +79,7 @@ export async function sendApplicationEmail(scope: MailScope,
   for (let attempt = 1; attempt <= 3; attempt++) {
     await store.updateDoc(path, { attempts: attempt });
     let result: SendResult;
-    try { result = await send(connector, { from: '', to: input.to, subject: input.subject, text: input.text, deliveryId: id }); }
+    try { result = await send(connector, { from: '', to: input.to, subject: input.subject, text: input.text, deliveryId: id, ...(dependencies.forwarding ? { replyTo: dependencies.forwarding.replyTo, forwarded: true } : {}) }); }
     catch { result = { ok: false, failure: 'unknown' }; }
     if (!result.ok && result.failure === 'retryable_rejection' && attempt < 3) {
       await (dependencies.sleep ?? pause)(attempt * 250);

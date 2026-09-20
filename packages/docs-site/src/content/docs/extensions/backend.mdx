@@ -320,7 +320,10 @@ events are not normalized by this SES adapter. Without events, status stays
 accepted. Core owner-review notifications use the same delivery ledger and show
 transport status in the review queue. Email acceptance never approves a proposal.
 
-Receiving replies, inbound aliases and attachment processing are a separate,
-unavailable capability. A normal monitored Reply-To works without changing a
-site's main MX records. Do not treat an incoming email or its From header as
-verified identity or authorization to approve changes.
+Incoming aliases and text forwarding are available from Core 0.2.29 when enabled
+by the host; see
+[Incoming email](/docs/guides/incoming-email/) for setup, limits and the separate
+`email:inbound:status` permission. Body/attachment reads and inbound app workflow
+subscriptions remain unavailable. A normal monitored Reply-To still works without
+changing a site's main MX records. Incoming mail is never verified ownership or
+authorization to approve changes.

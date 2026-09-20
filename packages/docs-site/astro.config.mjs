@@ -32,6 +32,7 @@ export default defineConfig({
             { label: 'Introduction', slug: 'getting-started/introduction' },
             { label: 'Cloud and self-hosting', slug: 'getting-started/cloud-and-self-hosting' },
             { label: 'Using Typeroll Cloud', slug: 'guides/typeroll-cloud' },
+            { label: 'Incoming email', slug: 'guides/incoming-email' },
             { label: 'Connect your AI agent', slug: 'getting-started/mcp-server' },
             { label: 'Client compatibility', slug: 'getting-started/client-compatibility' },
             { label: 'Your First Site', slug: 'getting-started/first-site' },

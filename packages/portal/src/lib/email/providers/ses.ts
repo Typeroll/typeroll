@@ -25,7 +25,11 @@ export const sesProvider: EmailProvider = {
         ...(msg.replyTo ? { ReplyToAddresses: [msg.replyTo] } : {}),
         ConfigurationSetName: String(config.values.configuration_set ?? ''),
         ...(msg.deliveryId ? { EmailTags: [{ Name: 'typeroll_delivery', Value: msg.deliveryId }] } : {}),
-        Content: { Simple: { Subject: { Data: msg.subject, Charset: 'UTF-8' }, Body: {
+        Content: { Simple: { ...(msg.forwarded ? { Headers: [
+          { Name: 'Auto-Submitted', Value: 'auto-generated' },
+          { Name: 'X-Auto-Response-Suppress', Value: 'All' },
+          { Name: 'X-Typeroll-Forwarded', Value: '1' },
+        ] } : {}), Subject: { Data: msg.subject, Charset: 'UTF-8' }, Body: {
           ...(msg.text ? { Text: { Data: msg.text, Charset: 'UTF-8' } } : {}),
           ...(msg.html ? { Html: { Data: msg.html, Charset: 'UTF-8' } } : {}),
         } } },

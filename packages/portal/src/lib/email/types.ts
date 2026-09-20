@@ -13,6 +13,8 @@ export interface EmailMessage {
   text?: string;
   /** Platform correlation only; never populated from untrusted message headers. */
   deliveryId?: string;
+  /** Internal forwarding only; suppress automatic replies and forwarding loops. */
+  forwarded?: boolean;
 }
 
 export interface SendResult {

@@ -23,3 +23,16 @@ describe('SES transport', () => {
     expect(mocks.send).toHaveBeenCalledTimes(1);
   });
 });
+
+it('marks forwarded mail to prevent automatic replies without copying original headers', async () => {
+  mocks.send.mockResolvedValue({ MessageId: 'forward' });
+  await sesProvider.send(config, { from: config.from, to: 'owner@example.com', replyTo: 'sender@example.net', subject: 'Fwd: subject', text: 'body', forwarded: true });
+  expect(mocks.send.mock.calls[0]![0].input).toMatchObject({
+    FromEmailAddress: config.from, ReplyToAddresses: ['sender@example.net'],
+    Content: { Simple: { Headers: [
+      { Name: 'Auto-Submitted', Value: 'auto-generated' },
+      { Name: 'X-Auto-Response-Suppress', Value: 'All' },
+      { Name: 'X-Typeroll-Forwarded', Value: '1' },
+    ] } },
+  });
+});

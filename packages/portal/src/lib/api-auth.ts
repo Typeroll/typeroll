@@ -118,6 +118,7 @@ function getBearer(request: Request): string | null {
 }
 
 export function extensionScopeForApiRequest(pathname: string, method: string): ExtensionScope | null {
+  if (/\/delivery\/inbound(?:\/[a-f0-9]{64})?\/?$/.test(pathname) && method === 'GET') return 'email:inbound:status';
   const write = method !== 'GET' && method !== 'HEAD';
   if (/\/extensions\/self\/?$/.test(pathname) && !write) return 'extension:config:read';
   if (/\/pages\/[^/]+\/owner-fields\/?$/.test(pathname)) return 'content:owner';

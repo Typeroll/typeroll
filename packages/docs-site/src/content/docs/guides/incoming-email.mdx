@@ -1,0 +1,169 @@
+---
+title: Incoming email and forwarding
+description: Receive replies at approved site addresses and forward text safely, with separate app permissions.
+---
+
+Available from **Core 0.2.29** when the hosting administrator enables the receiving
+adapter. Typeroll Cloud availability also depends on the managed rollout and
+approved site configuration. Existing Reply-To addresses continue to work. Do not
+change DNS or Reply-To until your host has deployed and tested the receiving path.
+
+## What it does
+
+A site can forward incoming replies from an approved address to one approved
+mailbox. This does not require a separate mailbox subscription for the receiving
+alias. It does not give your normal email client permission to send as the site.
+
+The first adapter uses Amazon SES receiving and sending. It forwards plain text,
+using the site's verified From identity, with the original authenticated sender
+as Reply-To. It does not impersonate the original sender in From. Inbound
+Reply-To, arbitrary headers, HTML and attachments are not copied. This keeps the
+outbound SPF/DKIM/DMARC configuration tied to your own verified identity.
+Incoming mail is never proof of ownership or permission to change site content.
+
+## Site setup
+
+1. Ask your hosting administrator to verify the receiving subdomain, exact alias,
+   forwarding destination and SES sender. Wildcard aliases and arbitrary targets
+   are not supported. Existing root-domain email can stay with another provider.
+2. Open **Site settings → Email & notifications → Incoming email & forwarding**.
+   Review the displayed alias and destination, then choose **Enable forwarding**.
+3. Send an authorized test message and check both the last-message delivery state
+   and the destination inbox. Provider acceptance is not confirmed delivery.
+4. Only after that test succeeds, update the site's outgoing **Reply-To** field.
+
+Changing the host-approved alias, target, sender or installation disables the
+route until a site administrator approves its new revision. Disabling an app
+installation also stops its bound routes. Disabling forwarding does not roll back
+a message already dispatched.
+
+## Limits and failures
+
+- Automatic text forwarding supports messages up to **10 MiB**, including MIME
+  attachments. SES stores the original in a private S3 bucket and sends only
+  metadata through SNS, so ordinary replies are not subject to SNS's 150 KB body
+  limit. Larger received messages are held and trigger a destination alert.
+  The rendered text limit is 30,000 characters.
+- Confirmed viruses are blocked. Uncertain virus/spam results and missing or
+  non-PASS DMARC results are **held for review**, not classified as malicious.
+  An alert without message content goes to the approved destination. If that
+  alert also fails, structured operational alarms must notify the operator.
+- Attachments are omitted even when the scan passes. The forwarded text says so.
+  Automated replies, list mail, ambiguous senders and known forwarding headers
+  are blocked to prevent loops. No rejection message is sent to the unverified sender automatically; the approved destination receives an attention notice.
+- SES address rules also accept plus labels. Core forwards only the exact
+  approved alias: plus labels, unknown or multiple recipients for a known storage
+  route produce `blocked: recipient_not_approved` and a deduplicated attention
+  notice, without forwarding the original. Unmatched storage routes emit a
+  separate operator event. Neither result proves SMTP-time rejection.
+- At most 1,000 incoming receipts per site/day are reserved. Outgoing mail uses
+  the existing 100-per-installation/day and 500-per-site/day transactional limits.
+- A repeated provider event does not send a second copy. Interrupted or uncertain
+  dispatch requires administrator review; it is never reclaimed by a timer.
+- `forwarded` means an outbound request was accepted. The nested delivery status
+  distinguishes accepted, delivered, bounced and complained. `blocked` includes
+  a reason. `processing` or `unknown` is not proof of delivery and must not cause
+  an automatic resend with a new identifier.
+
+Raw mail is stored only in the private receiving S3 bucket. Confirmed viruses are deleted immediately; other objects
+remain available to authorized operators for a short investigation period under
+S3 lifecycle expiry. Core does not serve raw messages or create public URLs and
+will not process a notification older than 24 hours. The lifecycle rule makes
+objects eligible for deletion after one day; AWS physical deletion is
+asynchronous. It is not an exact 24-hour deletion guarantee.
+
+Typeroll's database contains no subject, sender address, body or attachment.
+Receipt metadata expires after 30 days, with backend TTL cleanup. Existing
+outbound deduplication/suppression metadata follows its separate policy.
+
+### Failure visibility
+
+A failure before Core cannot be reported as a Core receipt:
+
+- SMTP rejection is reported by the sending mail system. Provider receiving
+  limits still apply; SMTP acceptance is not proof of downstream delivery.
+- SES→S3 or SES→SNS errors require provider-side alarms and an operator runbook.
+- SNS→Core delivery failures require SNS delivery-failure alarms and bounded retries.
+- Core `held`/`blocked` records state the reason; an attention email is sent only
+  to the approved destination, never back to a potentially forged sender.
+- Forwarding `failed`/`unknown` and failed attention notices raise separate
+  operational events. Successful forwarding is distinguished from confirmed
+  destination delivery.
+
+Do not enable an address until a real receiving test and these failure alarms
+have been exercised. There is no inbox UI or automatic release of held mail.
+An operator investigates it before expiry; do not silently delete a held message
+and describe it as delivered.
+
+## API and app permissions
+
+Site administrators can use:
+
+- `GET /api/v1/sites/{siteId}/delivery/inbound` to inspect approved routes and the
+  last receipt, including delivery status.
+- `PUT /api/v1/sites/{siteId}/delivery/inbound` with
+  `{ "route_id": "replies", "revision": "<current revision>", "enabled": true }`.
+  This only enables an existing host-approved route; it cannot create aliases or
+  change destinations. The setting is site-wide, not version-specific.
+- `GET /api/v1/sites/{siteId}/delivery/inbound/{receipt_id}` for a known receipt.
+
+An enabled app may request the separate, administrator-approved
+`email:inbound:status` scope. It can read only routes and receipt metadata bound to
+its own installation; forwarding destination addresses are omitted. `email:send`
+does not imply incoming-mail access. Apps cannot enable routes or choose targets.
+
+There is no app API for reading bodies or attachments, and no automatic inbound
+app workflow trigger in this release. Future receive subscriptions and content
+read permissions require separate explicit approval and retention contracts.
+
+## Self-host receiving adapter
+
+Configure `EMAIL_SES_INBOUND_ROUTES` as a JSON array in protected host configuration:
+
+```json
+[
+  {
+    "id": "site-replies",
+    "orgId": "organization-id",
+    "siteId": "site-id",
+    "installationId": "core-forwarding",
+    "alias": "replies@mail.example.com",
+    "target": "owner@example.net",
+    "from": "notifications@mail.example.com",
+    "topic": "arn:aws:sns:eu-central-1:123456789012:site-inbound",
+    "bucket": "private-site-inbound",
+    "prefix": "site-replies/",
+    "region": "eu-central-1"
+  }
+]
+```
+
+Use `core-forwarding` for a site-owned route or the exact enabled installation ID
+for an app-bound route. Verify domain and destination ownership before adding a
+route. Keep addresses out of source control and general deployment logs.
+
+Configure an SES receipt rule for the exact alias with scanning enabled and an
+S3 action with a site-specific object-key prefix and a metadata SNS notification. Enable bucket-level server-side encryption and block all public access. Do not enable SES client-side KMS encryption with this adapter. Publish only from the intended SES account and
+rule through an exact topic policy. Subscribe
+`https://your-cms.example/api/webhooks/email/inbound-ses` with raw message delivery
+disabled. This endpoint validates the SNS signature against an exact allowed topic
+and regional AWS certificate URL; it confirms a valid subscription automatically.
+It is separate from the outbound SES delivery-events webhook.
+
+Set bounded HTTP retry policies and alarm on notification failures. In Firestore,
+enable TTL on the native timestamp field `expires_at` for collection groups
+`mail_inbound_receipts` and `mail_inbound_quotas`; actual deletion is asynchronous.
+For a file-backed self-host store, configure equivalent metadata expiry cleanup
+before enabling incoming mail. Public receipt access stops at expiry regardless.
+SNS signature verification needs no AWS secret. S3 reads/deletes use a separate
+protected `EMAIL_SES_INBOUND_STORAGE` JSON object containing `access_key_id` and
+`secret_access_key`. Grant only GetObject/DeleteObject on the approved bucket
+prefixes. Do not use an account administrator or the outgoing SES sender key.
+The adapter checks the signed notification's bucket, prefix, object ID, topic,
+region and expected bucket owner before fetching content.
+
+Place the receiving rule before broader existing rules and stop the rule set
+after handling it. Define and test the receiving domain’s other-recipient policy
+separately. An SES bounce action sends a rejection email; it must not be described
+as SMTP-time rejection without verifying that behavior. Preserve unrelated mail
+routes and domains.
