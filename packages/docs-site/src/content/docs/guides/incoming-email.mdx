@@ -3,7 +3,7 @@ title: Incoming email and forwarding
 description: Receive replies at approved site addresses and forward text safely, with separate app permissions.
 ---
 
-Available from **Core 0.2.29** when the hosting administrator enables the receiving
+Available from **Core 0.2.31** when the hosting administrator enables the receiving
 adapter. Typeroll Cloud availability also depends on the managed rollout and
 approved site configuration. Existing Reply-To addresses continue to work. Do not
 change DNS or Reply-To until your host has deployed and tested the receiving path.
@@ -31,6 +31,11 @@ Incoming mail is never proof of ownership or permission to change site content.
 3. Send an authorized test message and check both the last-message delivery state
    and the destination inbox. Provider acceptance is not confirmed delivery.
 4. Only after that test succeeds, update the site's outgoing **Reply-To** field.
+
+SES also sends an internal setup notification when it checks a receiving rule.
+Typeroll verifies its SNS signature and storage route, then acknowledges it
+without forwarding, an attention email or a customer message receipt. It does
+not replace the real test message in step 3.
 
 Changing the host-approved alias, target, sender or installation disables the
 route until a site administrator approves its new revision. Disabling an app

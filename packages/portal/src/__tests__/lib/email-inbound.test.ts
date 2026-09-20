@@ -151,3 +151,29 @@ it('rejects an object reference outside the exact site prefix before fetching ma
   await expect(receive(message)).rejects.toMatchObject({ status: 403 });
   expect(send).not.toHaveBeenCalled();
 });
+
+
+it.each([true, false])('ignores authenticated SES setup notifications without side effects when enabled=%s', async enabled => {
+  const [configured] = await siteInboundRoutes(route.orgId, route.siteId);
+  await setInboundRoute(route.orgId, route.siteId, { route_id: route.id, revision: configured!.revision, enabled });
+  const message = event('', 'AMAZON_SES_SETUP_NOTIFICATION');
+  message.receipt.recipients = ['recipient@example.com'];
+  const before = await siteInboundRoutes(route.orgId, route.siteId);
+  const load = vi.fn();
+  expect(await receiveSesEmail(route.topic, message, { send, load, remove })).toEqual({ status: 'ignored', reason: 'provider_setup_notification' });
+  expect(send).not.toHaveBeenCalled(); expect(load).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
+  expect(console.error).not.toHaveBeenCalled();
+  expect(await siteInboundRoutes(route.orgId, route.siteId)).toEqual(before);
+  expect(await getStore().listDocs(`${paths.site(route.orgId, route.siteId)}/mail_inbound_receipts`)).toHaveLength(0);
+  expect(await getStore().listDocs(`${paths.site(route.orgId, route.siteId)}/mail_inbound_quotas`)).toHaveLength(0);
+});
+it('keeps storage isolation and exact message identity for SES setup notifications', async () => {
+  const invalid = event('', 'AMAZON_SES_SETUP_NOTIFICATION');
+  invalid.receipt.action.objectKey = 'another-route/AMAZON_SES_SETUP_NOTIFICATION';
+  await expect(receive(invalid)).rejects.toMatchObject({ status: 403 });
+  expect(send).not.toHaveBeenCalled();
+  const lookalike = event('', 'AMAZON_SES_SETUP_NOTIFICATION-extra');
+  lookalike.receipt.recipients = ['recipient@example.com'];
+  expect(await receive(lookalike)).toMatchObject({ status: 'blocked', reason: 'recipient_not_approved' });
+  expect(send).toHaveBeenCalledOnce();
+});

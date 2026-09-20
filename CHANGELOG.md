@@ -1,5 +1,11 @@
 # Changelog
 
+## Core 0.2.31 / MCP 0.45.25 unchanged
+
+- Acknowledge SES internal setup notifications after topic, signature and storage
+  route verification, without customer alerts, receipts or quota consumption.
+  Ordinary mail and lookalike identifiers keep their existing checks.
+
 ## Core 0.2.30 / MCP 0.45.25 unchanged
 
 - Allow incoming SES callbacks through portal middleware without a browser Origin.

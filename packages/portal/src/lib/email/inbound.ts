@@ -103,6 +103,10 @@ export async function receiveSesEmail(topic: string, payload: unknown,
     return { status: 'ignored', reason: 'route_not_approved' };
   }
   inboundObject(route, message);
+  // SES emits this reserved message when validating a receipt rule's S3/SNS
+  // action. It is provider setup, not customer mail. Keep signature/topic and
+  // exact storage-route verification ahead of this no-op, including when off.
+  if (messageId === 'AMAZON_SES_SETUP_NOTIFICATION') return { status: 'ignored', reason: 'provider_setup_notification' };
   const revision = routeRevision(route);
   const store = getStore();
   const setting = await store.getDoc<RouteSetting>(settingPath(route));
