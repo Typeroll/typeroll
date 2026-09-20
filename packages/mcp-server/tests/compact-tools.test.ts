@@ -60,3 +60,32 @@ it('discovers sites and guide sections without loading the full manual', async (
   expect(section.content[0].text).toContain(index.sections[1].title);
   expect(section.content[0].text.length).toBeLessThan(20000);
 });
+
+it('discovers native presentation controls by the terms used in the portal', async () => {
+  const { client } = await connect('compact');
+  for (const [query, expected] of [['breakpoints', 'update_site_settings'], ['breadcrumb', 'update_page']]) {
+    const found = payload(await client.callTool({ name: 'search_tools', arguments: { query, limit: 12 } }));
+    expect(found.tools.map((tool: { name: string }) => tool.name)).toContain(expected);
+  }
+});
+
+for (const mode of ['compact', 'full'] as const) it(`preserves presentation fields and branch scope through ${mode} MCP`, async () => {
+  const { client, calls } = await connect(mode);
+  const schema = async (name: string) => mode === 'compact'
+    ? payload(await client.callTool({ name: 'describe_tool', arguments: { name } })).inputSchema
+    : (await client.listTools()).tools.find(tool => tool.name === name)!.inputSchema;
+  expect((await schema('update_site_settings')).properties.responsive_breakpoints).toBeDefined();
+  expect((await schema('update_page')).properties.patch.properties.breadcrumb_label).toBeDefined();
+  const call = (name: string, args: Record<string, unknown>) => client.callTool(mode === 'compact'
+    ? { name: 'call_write_tool', arguments: { name, arguments: args } }
+    : { name, arguments: args });
+  const widths = { tablet: 576, laptop: 769, desktop: 1024, wide: 1280 };
+  expect((await call('update_site_settings', { responsive_breakpoints: widths, version: 'redesign' })).isError).not.toBe(true);
+  expect(calls[0].url).toContain('/settings?version=redesign');
+  expect(JSON.parse(calls[0].body!)).toEqual({ responsive_breakpoints: widths });
+  expect((await call('update_page', { page_id: 'tips', patch: { breadcrumb_label: 'Moving tips' }, save: true, version: 'redesign' })).isError).not.toBe(true);
+  expect(calls[1].url).toContain('/pages/tips?version=redesign');
+  expect(JSON.parse(calls[1].body!)).toEqual({ breadcrumb_label: 'Moving tips', save: true });
+  await call('update_site_settings', { responsive_breakpoints: null });
+  expect(JSON.parse(calls[2].body!)).toEqual({ responsive_breakpoints: null });
+});

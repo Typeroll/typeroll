@@ -29,7 +29,7 @@ export const settingsTools: ToolDef[] = [
   {
     name: 'update_site_settings',
     description:
-      'Patch site settings. Only the fields you pass change. ' +
+      'Patch site settings, including responsive breakpoints for block layouts and visibility. Only the fields you pass change. ' +
       'Pass fields at the TOP LEVEL of the object — do NOT wrap in a "settings" key. ' +
       'Example: {"site_name": "Acme", "colors": {"primary": "#ff0"}} not {"settings": {...}}. ' +
       'Nested objects (colors, fonts, contact, social) are shallow-merged into the existing value. ' +

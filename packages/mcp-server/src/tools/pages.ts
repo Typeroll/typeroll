@@ -129,7 +129,7 @@ export const pageTools: ToolDef[] = [
   {
     name: 'update_page',
     description:
-      'Shallow-merge update on a page (only the fields you pass change). BUFFER MODEL: content fields land in the page\'s unsaved DRAFT (working copy) — invisible to deploys and default previews until saved; `status`/`date_published` apply immediately. Pass save:true to commit in the same call, or commit_working_copy later after the user approves. Returns the draft view of the page. For "replace this page entirely", use replace_page. This tool does not accept content_mode; switch modes with `set_page_mode`.',
+      'Shallow-merge update on a page, including its short breadcrumb label (only the fields you pass change). BUFFER MODEL: content fields land in the page\'s unsaved DRAFT (working copy) — invisible to deploys and default previews until saved; `status`/`date_published` apply immediately. Pass save:true to commit in the same call, or commit_working_copy later after the user approves. Returns the draft view of the page. For "replace this page entirely", use replace_page. This tool does not accept content_mode; switch modes with `set_page_mode`.',
     inputSchema: {
       page_id: z.string(),
       patch: z
