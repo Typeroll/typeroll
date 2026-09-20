@@ -143,6 +143,10 @@ export interface SiteTemplateCapabilities {
   supports_transitive_form_assets: boolean;
   /** Responsive schema fields accept breakpoint objects inside block.data. */
   supports_responsive_data_fields: boolean;
+  supports_site_responsive_breakpoints: boolean;
+  supports_prose_typography: boolean;
+  supports_breadcrumb_labels: boolean;
+  supports_post_card_action_layout: boolean;
   /** Reusable native header, footer, and archive composition factories ship in Core. */
   supports_site_composition_presets: boolean;
 
@@ -246,7 +250,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.46.1',
+  template_capabilities_version: '0.47.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -324,6 +328,10 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_versioned_block_type_inheritance: true,
   supports_transitive_form_assets: true,
   supports_responsive_data_fields: true,
+  supports_site_responsive_breakpoints: true,
+  supports_prose_typography: true,
+  supports_breadcrumb_labels: true,
+  supports_post_card_action_layout: true,
   supports_site_composition_presets: true,
 
   core_block_type_ids: [

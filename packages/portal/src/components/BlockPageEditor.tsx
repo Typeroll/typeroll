@@ -15,7 +15,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { Block, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType } from '@typeroll/shared';
-import { CORE_BLOCK_TYPES, resolveResponsive, isResponsiveValue, BREAKPOINTS } from '@typeroll/shared';
+import { CORE_BLOCK_TYPES, resolveResponsive, isResponsiveValue, resolveBreakpointWidths, breakpointPreviewWidth, type ResponsiveBreakpoints } from '@typeroll/shared';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
 } from '@dnd-kit/core';
@@ -40,6 +40,7 @@ import './BlockPageEditor.css';
 import FieldInput, { fieldGroup, fieldLabel, textInput, textareaInput } from './FieldInput';
 
 interface Props {
+  responsiveBreakpoints?: ResponsiveBreakpoints | null;
   siteId: string;
   page: Page;
   contentType?: ContentType;
@@ -94,7 +95,7 @@ export const ICONS: Record<string, IconCmp> = {
 
 // ─── Top-level component ────────────────────────────────────────────────
 
-export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType }: Props) {
+export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints }: Props) {
   // The editor edits the working-copy view of the page: canonical doc with
   // any unsaved (autosaved) fields overlaid. All edits autosave to the
   // working copy; the deliberate Save in the Publish menu promotes them.
@@ -643,7 +644,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     }
   }
 
-  const deviceWidth = (DEVICES.find((d) => d.bp === activeBp) ?? DEVICES[DEVICES.length - 1]).width;
+  const deviceWidth = responsiveBreakpoints ? breakpointPreviewWidth(activeBp, resolveBreakpointWidths(responsiveBreakpoints)) : (DEVICES.find((d) => d.bp === activeBp) ?? DEVICES[DEVICES.length - 1]).width;
   // Scale-to-fit math: a numeric preset wider than the available panel is
   // shrunk with a CSS transform so its FULL width still renders (the iframe's
   // own @media queries then react to the real preset width, not the panel's).
@@ -719,7 +720,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               <Redo2 size={14} />
             </button>
           </div>
-          <div className="block-editor__desktop-devices"><DeviceToggle activeBp={activeBp} onChange={setActiveBp} /></div>
+          <div className="block-editor__desktop-devices"><DeviceToggle responsiveBreakpoints={responsiveBreakpoints} activeBp={activeBp} onChange={setActiveBp} /></div>
           {selectedBlockType?.extension && <button type="button" style={metaBtn(false)} onClick={configureExtensionPreview} title="Set URL values for the Extension preview without saving them">
             URL context
           </button>}
@@ -821,7 +822,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
 
         {/* Center: preview */}
         <section id="block-editor-preview" className="block-editor__preview">
-          <div className="block-editor__mobile-devices"><DeviceToggle activeBp={activeBp} onChange={setActiveBp} /></div>
+          <div className="block-editor__mobile-devices"><DeviceToggle responsiveBreakpoints={responsiveBreakpoints} activeBp={activeBp} onChange={setActiveBp} /></div>
           <div ref={centerRef} className="block-editor__canvas">
           <div style={frameOuter}>
             <div style={{
@@ -1292,6 +1293,11 @@ function MetaPanel({
       </div>
 
       <div style={fieldGroup}>
+        <label htmlFor="block-breadcrumb-label" style={fieldLabel}>Breadcrumb label</label>
+        <input id="block-breadcrumb-label" style={textInput} maxLength={200} value={draft.breadcrumb_label ?? ''} onChange={(e) => onChange('breadcrumb_label', e.target.value)} placeholder={draft.title || 'Uses the page title'} />
+      </div>
+
+      <div style={fieldGroup}>
         <label htmlFor="block-seo-title" style={fieldLabel}>SEO title</label>
         <input id="block-seo-title"
           style={textInput}
@@ -1491,7 +1497,7 @@ export function BlockFieldForm({
 // Five presets mapped onto the five responsive breakpoints. Selecting one
 // drives the preview width AND the active editing breakpoint for responsive
 // fields (e.g. grid columns).
-export function DeviceToggle({ activeBp, onChange }: { activeBp: Breakpoint; onChange: (bp: Breakpoint) => void }) {
+export function DeviceToggle({ activeBp, onChange, responsiveBreakpoints }: { activeBp: Breakpoint; onChange: (bp: Breakpoint) => void; responsiveBreakpoints?: ResponsiveBreakpoints | null }) {
   return (
     <div style={{ display: 'flex', gap: 4, border: '1px solid #2a2a30', borderRadius: 6, padding: 2 }}>
       {DEVICES.map((d) => {
@@ -1502,7 +1508,7 @@ export function DeviceToggle({ activeBp, onChange }: { activeBp: Breakpoint; onC
             type="button"
             onClick={() => onChange(d.bp)}
             style={deviceBtn(activeBp === d.bp)}
-            title={`${d.label} — ${BREAKPOINTS[d.bp].label}`}
+            title={`${d.label} — ${d.bp} starts at ${resolveBreakpointWidths(responsiveBreakpoints)[d.bp]}px`}
           >
             <span style={{ display: 'inline-flex', transform: d.landscape ? 'rotate(90deg)' : undefined }}>
               <Icon size={14} />

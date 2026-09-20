@@ -1147,3 +1147,13 @@ Batch page writes accept `answer_sources` on each operation beside `patch` and
 `import_run_id` may be supplied; identity/authority is assigned by Core. Keyed
 paths such as `programs/@stable~1a/online` survive batch save. Imported evidence
 never authorizes overwriting an existing owner answer.
+
+
+### Native presentation in Core 0.2.28
+
+Read `tr-responsive` for site-specific `responsive_breakpoints`; five breakpoint
+names remain stable. Prose supports typed typography/alignment, containers have
+responsive `min_height_px`, and Post Card supports an action group and optional
+title icon. Use `read_block_type` for the exact current schemas. Set a Page's
+`breadcrumb_label` for a short navigation label without changing its title or
+route. Do not duplicate parent category information into each article body.

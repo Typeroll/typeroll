@@ -687,3 +687,46 @@ Nested page blocks remain responsible for their own spacing.
 font choices. Each link may include an `icon`; `icon_size_px` and `icon_gap_px`
 separate its size and spacing from the label. SVG icons and emoji both honor
 `core/icon.size_px`.
+
+## Native presentation controls (Core 0.2.28)
+
+Use typed block fields before writing corrective CSS. These controls work in
+Page bodies, shared Page templates, partials and repeater item overrides.
+
+- `core/prose`: `font_size_px`, `line_height`, `paragraph_spacing_px`, `text_align`
+  and `font_weight` support responsive values; `font` selects `inherit`, `body`
+  or `heading`. For footer copy, use `font_size_px: 14.4`, `line_height: 1.6`,
+  `text_align: "center"` and `paragraph_spacing_px: 0` on ordinary prose.
+- `core/container`: `min_height_px` supports responsive minimum height. Content
+  may grow beyond it; this never clips longer translations or zoomed text.
+- `core/post_card`: `actions_direction`, `actions_gap_px`, `action_size_px`,
+  `action_weight` and `body_gap_px` control the action group and panel spacing.
+  Keep the page and download destinations separate. `whole_card_link` is
+  disabled when secondary actions are present.
+- For an image-free link card, set `show_image: false`, `whole_card_link: true`,
+  `title_icon: "arrow-right"`, and optionally `title_icon_color`,
+  `title_icon_size_px` and `title_icon_gap_px`. The decorative icon stays inside
+  the named title link; it does not add a second keyboard target.
+
+Example Post Card data for a repeater with a public PDF field named `pdf`:
+
+```json
+{
+  "layout": { "mobile": "column", "laptop": "row" },
+  "image_width_percent": 40,
+  "action_label": "Read",
+  "download_url_field": "pdf",
+  "download_style": "outline",
+  "actions_direction": { "mobile": "column", "laptop": "row" },
+  "actions_gap_px": 20,
+  "action_size_px": 14.4,
+  "body_gap_px": 20
+}
+```
+
+Missing media is omitted. Action rows may wrap when space is limited. Cards
+retain their data order; these fields do not sort the listing. See
+[site-specific widths](/docs/tools/settings/#site-specific-responsive-widths-core-0228)
+for exact authored breakpoints. Existing sites must be republished to use the
+new renderer. Cloud and self-hosted installations need Core 0.2.28; MCP schemas
+are available from 0.45.24.

@@ -277,6 +277,8 @@ export interface Site {
 
 export interface SiteSettings {
   site_name: string;
+  /** Exact widths for authored block styles and visibility; null restores defaults. */
+  responsive_breakpoints?: import('./breakpoints.js').ResponsiveBreakpoints | null;
   tagline?: string;
   logo?: string;
   favicon?: string;
@@ -524,6 +526,7 @@ export interface Page {
   blocks?: Block[];
   html_content?: string;
 
+  breadcrumb_label?: string | null;
   seo_title?: string;
   /** Set false to use the page SEO title verbatim, without the site suffix. */
   append_seo_suffix?: boolean;

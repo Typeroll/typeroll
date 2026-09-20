@@ -409,6 +409,10 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
                 </div>
               )}
               <div className="field">
+                <label>Breadcrumb label</label>
+                <input maxLength={200} value={draft.breadcrumb_label ?? ''} onChange={(e) => update('breadcrumb_label', e.target.value)} placeholder={draft.title} />
+              </div>
+              <div className="field">
                 <label>SEO title</label>
                 <input value={draft.seo_title ?? ''} onChange={(e) => update('seo_title', e.target.value)} placeholder={draft.title} />
               </div>

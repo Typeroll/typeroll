@@ -745,3 +745,35 @@ describe('audit log', () => {
     expect(entry.path).toContain('/pages/home');
   });
 });
+
+describe('native presentation metadata', () => {
+  it('round-trips breadcrumb labels through creation, batch writes and reads without changing routes', async () => {
+    const { token } = await setup();
+    const base = `http://localhost/api/v1/sites/${SITE}/pages`;
+    const created = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/index'), 'POST', base, { siteId: SITE }, { headers: bearer(token), body: { title: 'A deliberately long page title', breadcrumb_label: 'Short', slug: 'guide', content_mode: 'blocks', blocks: [] } });
+    expect(created.status).toBe(201);
+    const { page } = await created.json();
+    const read = () => callRoute(import('../../pages/api/v1/sites/[siteId]/pages/[pageId]'), 'GET', `${base}/${page.id}`, { siteId: SITE, pageId: page.id }, { headers: bearer(token) });
+    expect((await (await read()).json()).page.breadcrumb_label).toBe('Short');
+    const result = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/batch-write'), 'POST', `${base}/batch-write`, { siteId: SITE }, { headers: bearer(token), body: [{ page_id: page.id, patch: { breadcrumb_label: 'Updated' }, save: true }] });
+    expect(result.status).toBe(200);
+    const saved = (await (await read()).json()).page;
+    expect(saved.breadcrumb_label).toBe('Updated');
+    expect(saved.title).toBe('A deliberately long page title');
+    expect(saved.slug).toBe('guide');
+    const invalid = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/[pageId]'), 'PATCH', `${base}/${page.id}`, { siteId: SITE, pageId: page.id }, { headers: bearer(token), body: { breadcrumb_label: { invalid: true } } });
+    expect(invalid.status).toBe(400);
+  });
+  it('validates and resets site responsive widths through the real settings API', async () => {
+    const { token } = await setup();
+    const endpoint = `http://localhost/api/v1/sites/${SITE}/settings`;
+    const route = import('../../pages/api/v1/sites/[siteId]/settings');
+    const write = (value: unknown) => callRoute(route, 'PATCH', endpoint, { siteId: SITE }, { headers: bearer(token), body: { responsive_breakpoints: value } });
+    const widths = { tablet: 576, laptop: 769, desktop: 1024, wide: 1280 };
+    expect((await write(widths)).status).toBe(200);
+    expect((await write({ ...widths, laptop: 500 })).status).toBe(400);
+    const read = await callRoute(route, 'GET', endpoint, { siteId: SITE }, { headers: bearer(token) });
+    expect((await read.json()).settings.responsive_breakpoints).toEqual(widths);
+    expect((await write(null)).status).toBe(200);
+  });
+});

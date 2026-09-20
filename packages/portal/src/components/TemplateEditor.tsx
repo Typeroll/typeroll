@@ -23,6 +23,7 @@ import { useBlockDnd } from './block-dnd';
 import type { Breakpoint } from '@typeroll/shared';
 
 interface Props {
+  responsiveBreakpoints?: import('@typeroll/shared').ResponsiveBreakpoints | null;
   siteId: string;
   template: PageTemplate;
 }
@@ -142,7 +143,7 @@ function moveBlockTo(
   return addBlock(without, moved, parentId, slotIdx, position).tree;
 }
 
-export default function TemplateEditor({ siteId, template }: Props) {
+export default function TemplateEditor({ siteId, template, responsiveBreakpoints }: Props) {
   const [draft, setDraft] = useState<PageTemplate>(template);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
@@ -334,7 +335,7 @@ export default function TemplateEditor({ siteId, template }: Props) {
             <option value="draft">Utkast</option>
             <option value="published">Published</option>
           </select>
-          <DeviceToggle activeBp={activeBp} onChange={setActiveBp} />
+          <DeviceToggle responsiveBreakpoints={responsiveBreakpoints} activeBp={activeBp} onChange={setActiveBp} />
         </div>
       </header>
 

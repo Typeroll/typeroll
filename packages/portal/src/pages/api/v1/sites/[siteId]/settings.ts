@@ -12,10 +12,10 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
 import { vstore } from '../../../../../lib/version-store';
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
-import { seoReviewError, normalizeIframeAllowedHosts, type SiteSettings } from '@typeroll/shared';
+import { responsiveBreakpointsError, seoReviewError, normalizeIframeAllowedHosts, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
-  'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
+  'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
   'default_meta_description', 'language', 'robots_txt', 'image_sizes_default',
   'sitewide_noindex', 'sitewide_nofollow', 'seo_review',
   // Scriptable surfaces. Trusted because the caller has an API key.
@@ -43,6 +43,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return apiError('Invalid JSON body');
+  if (body.responsive_breakpoints !== undefined) { const error = responsiveBreakpointsError(body.responsive_breakpoints); if (error) return apiError(error, 400); }
   if (body.trailing_slash !== undefined && !['always', 'never', 'ignore'].includes(String(body.trailing_slash))) {
     return apiError('trailing_slash must be one of: always, never, ignore', 400);
   }

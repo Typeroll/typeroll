@@ -43,6 +43,17 @@ test('page changes stay local; query and navigation dependencies are replayed se
   assert.equal(createRenderPlan({ ...value, source_impact_snapshot: { changed: 'diagnostic' }, media_manifest: { publication_id: 'new' } }, manifest).keys.two.key, next.keys.two.key);
 });
 
+test('site widths and resolved ancestor labels invalidate the affected rendered artifact', () => {
+  const value = publication(), before = createRenderPlan(value, manifest);
+  value.settings.responsive_breakpoints = { tablet: 576, laptop: 769, desktop: 1024, wide: 1280 };
+  const after = createRenderPlan(value, manifest);
+  assert.notEqual(after.keys.one.key, before.keys.one.key);
+  const props = { page: value.pages[1], breadcrumbs: [{ label: 'Long title', href: '/one/' }] };
+  const key = routeFingerprint(after, '/two/', props);
+  props.breadcrumbs[0].label = 'Short label';
+  assert.notEqual(routeFingerprint(after, '/two/', props), key);
+});
+
 test('declarative custom block definitions do not add Page-set dependencies', () => {
   const value = publication();
   value.blockTypes = [{ id: 'custom-card', container: false, schema: [], template: '<p>{{page.title}}</p>' }];

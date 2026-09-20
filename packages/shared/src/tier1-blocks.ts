@@ -52,6 +52,7 @@ const container: BlockType = {
     { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['none', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
     { name: 'padding_x', type: 'select', label: 'Horizontal padding', options: ['none', 'sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
     pixels('max_width_px', 'Maximum width (px)', 240),
+    pixels('min_height_px', 'Minimum height (px)', 0, 1600),
     pixels('gap_px', 'Gap (px)', 0, 240),
     pixels('padding_x_px', 'Horizontal padding (px)', 0, 240),
     pixels('padding_y_px', 'Vertical padding (px)', 0, 240),
@@ -89,6 +90,7 @@ const container: BlockType = {
 [data-block="container"][data-min-h="md"]     { min-height: 50vh; }
 [data-block="container"][data-min-h="lg"]     { min-height: 70vh; }
 [data-block="container"][data-min-h="screen"] { min-height: 100vh; }
+:is([data-block="container"], [data-block="semantic-container"])[style*="--min_height_px:"] { min-height:var(--min_height_px); }
 [data-block="container"][style*="--gap:none"]       { --block-gap: 0; }
 [data-block="container"][style*="--gap:xs"]         { --block-gap: 0.25rem; }
 [data-block="container"][style*="--gap:sm"]         { --block-gap: 0.5rem; }
@@ -775,7 +777,7 @@ const postCard: BlockType = {
     { name: 'image_fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
     { name: 'image_aspect', type: 'select', label: 'Image aspect', options: ['auto', 'landscape', 'square', 'portrait'], default: 'auto' },
     { name: 'whole_card_link', type: 'boolean', label: 'Link the entire card (without secondary actions)', default: false },
-    { name: 'layout', type: 'select', label: 'Card direction', options: ['column', 'row'], default: 'column', responsive: true, responsive_css: { column: '--card-direction:column;--card-media-width:100%;', row: '--card-direction:row;--card-media-width:calc(var(--image_width_percent,40) * 1%);' } },
+    { name: 'layout', type: 'select', label: 'Card direction', options: ['column', 'row'], default: 'column', responsive: true, responsive_css: { column: '--card-direction:column !important;--card-media-width:100% !important;', row: '--card-direction:row !important;--card-media-width:calc(var(--image_width_percent,40) * 1%) !important;' } },
     { name: 'image_width_percent', type: 'number', label: 'Horizontal image width (%)', min: 10, max: 70, css_unit: 'number', responsive: true, default: 40 },
     pixels('image_height_px', 'Image height (px)', 40, 1200),
     pixels('title_size_px', 'Title size (px)', 12, 96),
@@ -785,10 +787,19 @@ const postCard: BlockType = {
     pixels('radius_px', 'Corner radius (px)', 0, 100),
     { name: 'shadow', type: 'select', label: 'Shadow', options: ['default', 'none', 'subtle'], default: 'default' },
     { name: 'action_label', type: 'text', label: 'Separate page action label (optional)' },
+    { name: 'actions_direction', type: 'select', label: 'Action layout', options: ['column', 'row'], default: 'column', responsive: true },
+    pixels('actions_gap_px', 'Action gap (px)', 0, 100),
+    pixels('action_size_px', 'Action text size (px)', 10, 60),
+    { name: 'action_weight', type: 'select', label: 'Action weight', options: ['400', '500', '600', '700'], default: '600', responsive: true },
+    pixels('body_gap_px', 'Panel gap (px)', 0, 100),
+    { name: 'title_icon', type: 'icon', label: 'Title icon (optional)' },
+    pixels('title_icon_size_px', 'Title icon size (px)', 8, 96),
+    pixels('title_icon_gap_px', 'Title icon gap (px)', 0, 100),
+    { name: 'title_icon_color', type: 'color', label: 'Title icon color' },
     { name: 'download_style', type: 'select', label: 'Download appearance', options: ['link', 'outline'], default: 'link' },
     { name: 'appearance', type: 'select', label: 'Appearance', options: ['plain', 'card'], default: 'plain' },
   ],
-  template: `<article data-block="post_card" style="--card-direction:{{layout}};--card-media-width:{{card_media_width}};--title_weight:{{title_weight}}" data-whole="{{card_whole_link}}" data-shadow="{{shadow}}" data-download="{{download_style}}" data-fit="{{image_fit}}" data-appearance="{{appearance}}" data-aspect="{{image_aspect}}" data-img="{{show_image}}" data-exc="{{show_excerpt}}" data-date="{{show_date}}" data-author="{{show_author}}">
+  template: `<article data-block="post_card" style="--card-direction:{{layout}};--card-media-width:{{card_media_width}};--title_weight:{{title_weight}};--actions_direction:{{actions_direction}};--action_weight:{{action_weight}};--title_icon_color:{{title_icon_color}}" data-whole="{{card_whole_link}}" data-shadow="{{shadow}}" data-download="{{download_style}}" data-fit="{{image_fit}}" data-appearance="{{appearance}}" data-aspect="{{image_aspect}}" data-img="{{show_image}}" data-exc="{{show_excerpt}}" data-date="{{show_date}}" data-author="{{show_author}}">
   {{{post_card_image_html}}}
   <div class="block-postcard-body">
       <{{=heading_level}} class="block-postcard-title">{{{post_card_title_html}}}</{{=heading_level}}>
@@ -797,8 +808,7 @@ const postCard: BlockType = {
         <time class="block-postcard-date">{{date}}</time>
         <span class="block-postcard-author">{{author}}</span>
       </div>
-      {{{post_card_action_html}}}
-      {{{post_card_download_html}}}
+      <div class="block-postcard-actions">{{{post_card_action_html}}}{{{post_card_download_html}}}</div>
   </div>
 </article>`,
   styles: `
@@ -816,7 +826,7 @@ const postCard: BlockType = {
 [data-block="post_card"][data-aspect="landscape"] .block-postcard-image { aspect-ratio: 16/9; }
 [data-block="post_card"][data-aspect="square"]    .block-postcard-image { aspect-ratio: 1; }
 [data-block="post_card"][data-aspect="portrait"]  .block-postcard-image { aspect-ratio: 3/4; }
-[data-block="post_card"] .block-postcard-body { display:flex;flex:1;flex-direction:column;gap:0.65rem;min-width:0;padding:var(--body_padding_px,0); }
+[data-block="post_card"] .block-postcard-body { display:flex;flex:1;flex-direction:column;gap:var(--body_gap_px,0.65rem);min-width:0;padding:var(--body_padding_px,0); }
 [data-block="post_card"] .block-postcard-title { margin: 0; font-size:var(--title_size_px,1.25rem);font-weight:var(--title_weight,600);line-height:var(--title_line_height,1.3); }
 [data-block="post_card"] .block-postcard-excerpt { margin: 0; opacity: 0.8; line-height: 1.5; }
 [data-block="post_card"][data-exc="false"]     .block-postcard-excerpt { display: none; }
@@ -833,7 +843,14 @@ const postCard: BlockType = {
 [data-block="post_card"][data-shadow="none"] { box-shadow:none; }
 [data-block="post_card"][data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }
 [data-block="post_card"][data-download="outline"] .block-postcard-download { border:1px solid currentColor;padding:0.55rem 0.8rem;border-radius:4px;text-decoration:none; }
-[data-block="post_card"] .block-postcard-action { align-self:flex-start; }
+[data-block="post_card"] .block-postcard-actions { display:flex;flex-direction:var(--actions_direction,column);flex-wrap:wrap;align-items:flex-start;gap:var(--actions_gap_px,.65rem); }
+[data-block="post_card"] .block-postcard-actions:empty { display:none; }
+[data-block="post_card"] .block-postcard-actions a { font-size:var(--action_size_px,inherit);font-weight:var(--action_weight,600); }
+[data-block="post_card"] .block-postcard-actions a:focus-visible { outline:2px solid currentColor;outline-offset:3px; }
+[data-block="post_card"] .block-postcard-title:has(> .block-postcard-title-icon),
+[data-block="post_card"] .block-postcard-title:has(.block-postcard-title-icon) > a { display:flex;align-items:center;gap:var(--title_icon_gap_px,12px); }
+[data-block="post_card"] .block-postcard-title-icon { display:inline-flex;flex:none;font-size:var(--title_icon_size_px,24px);line-height:1;color:var(--title_icon_color,currentColor); }
+[data-block="post_card"] .block-postcard-title-icon svg { width:1em;height:1em; }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,

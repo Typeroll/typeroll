@@ -12,7 +12,7 @@ nothing.
 
 ## The model in one paragraph
 
-There are **five fixed breakpoints** (`packages/shared/src/breakpoints.ts`):
+There are **five named breakpoints with default widths** (`packages/shared/src/breakpoints.ts`):
 `mobile (<640) / tablet (≥640) / laptop (≥1024) / desktop (≥1280) / wide
 (≥1536)`, mobile-first. A block field marked `responsive: true` accepts either
 a scalar (applies everywhere) or a sparse object `{ mobile?, tablet?, laptop?,
@@ -177,3 +177,25 @@ are 1.25rem below 768px and 1.75rem above, configurable with --content-gutter.
 Only core/section is full bleed; other semantic section elements (field_list)
 receive normal content padding. Field lists use a .7rem row gap, weight-600
 labels and overflow-wrap:anywhere values.
+
+
+## Site-specific responsive widths (Core 0.2.28)
+
+The five names stay the same, but their widths can be set in **Site settings →
+Typography → Responsive block widths**, or through `update_site_settings`:
+
+```json
+{"responsive_breakpoints":{"tablet":576,"laptop":769,"desktop":1024,"wide":1280}}
+```
+
+Send all four increasing integer widths (320–2560px); `null` restores
+640/1024/1280/1536px. Values are versioned with the site's settings. Responsive
+block fields, repeater item overrides and `hidden_on` use these widths in the
+editor preview and static output. Reload an open editor after changing them.
+Republish to update live pages; changing widths invalidates rendered-page caches.
+
+This does not change explicit menu `collapse_below`, grid `stack_at`, listing
+mobile defaults or theme typography thresholds. Set the menu threshold separately
+when it must match, and use explicit responsive `cols` for exact listing columns.
+Check one pixel below and at each threshold, including fractional widths for
+visibility. Do not hide layout overflow to make a test pass.

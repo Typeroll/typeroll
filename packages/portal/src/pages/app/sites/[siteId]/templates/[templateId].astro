@@ -1,4 +1,5 @@
 ---
+import { vstore } from '../../../../../lib/version-store';
 import AppLayout from '../../../../../layouts/AppLayout.astro';
 import TemplateEditor from '../../../../../components/TemplateEditor.tsx';
 import { loadSiteContext } from '../../../../../lib/access';
@@ -20,5 +21,5 @@ const template = await store.getDoc<PageTemplate>(
 if (!template) return Astro.redirect(`/app/sites/${siteId}/templates`);
 ---
 <AppLayout title={`${template.label} — Mall — ${site.name}`} siteId={siteId} bare>
-  <TemplateEditor client:load siteId={siteId} template={template} />
+  <TemplateEditor responsiveBreakpoints={(await vstore.settings(orgId, siteId, versionId))?.responsive_breakpoints} client:load siteId={siteId} template={template} />
 </AppLayout>

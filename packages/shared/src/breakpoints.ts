@@ -5,7 +5,7 @@
 // is the baseline, and each subsequent breakpoint *overrides* the value
 // from `mobile` upward via @media (min-width: …).
 //
-// The five breakpoints are deliberately fixed in the data model. Adding
+// The five breakpoint names are fixed; sites may configure their widths. Adding
 // or renaming a breakpoint later requires a data migration; keep the
 // list small and aligned with what real designs actually need.
 
@@ -123,7 +123,39 @@ export const BREAKPOINTS_ABOVE_MOBILE: readonly Exclude<Breakpoint, 'mobile'>[] 
  * Build the @media query string for a breakpoint. Mobile returns an empty
  * string because that level is the baseline (no media query needed).
  */
-export function mediaQuery(bp: Breakpoint): string {
+export function mediaQuery(bp: Breakpoint, widths = defaultBreakpointWidths): string {
   if (bp === 'mobile') return '';
-  return `@media (min-width: ${BREAKPOINTS[bp].min}px)`;
+  return `@media (min-width: ${widths[bp]}px)`;
+}
+
+
+export type BreakpointWidths = Record<Breakpoint, number>;
+export const defaultBreakpointWidths: BreakpointWidths = { mobile: 0, tablet: 640, laptop: 1024, desktop: 1280, wide: 1536 };
+export type ResponsiveBreakpoints = Omit<BreakpointWidths, 'mobile'>;
+
+/** Named editing ranges stay stable; sites may choose exact viewport thresholds. */
+export function responsiveBreakpointsError(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) return 'responsive_breakpoints must be an object or null';
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).some(key => !BREAKPOINTS_ABOVE_MOBILE.includes(key as never))) return 'responsive_breakpoints supports tablet, laptop, desktop and wide only';
+  let previous = 319;
+  for (const name of BREAKPOINTS_ABOVE_MOBILE) {
+    const width = input[name];
+    if (typeof width !== 'number' || !Number.isInteger(width) || width <= previous || width > 2560) return `responsive_breakpoints.${name} must be an integer greater than ${previous} and at most 2560`;
+    previous = width;
+  }
+  return null;
+}
+
+export function resolveBreakpointWidths(value?: unknown): BreakpointWidths {
+  return value != null && !responsiveBreakpointsError(value)
+    ? { mobile: 0, ...(value as ResponsiveBreakpoints) } : { ...defaultBreakpointWidths };
+}
+
+/** Pick a preview width inside the edited range, including custom narrow ranges. */
+export function breakpointPreviewWidth(bp: Breakpoint, widths: BreakpointWidths): number {
+  const preferred = { mobile: 390, tablet: 740, laptop: 1024, desktop: 1280, wide: 1536 }[bp];
+  const next = BREAKPOINT_ORDER[BREAKPOINT_ORDER.indexOf(bp) + 1];
+  return Math.min(next ? widths[next] - 1 : 2560, Math.max(widths[bp], preferred));
 }

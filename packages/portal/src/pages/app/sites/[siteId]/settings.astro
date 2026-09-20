@@ -3,7 +3,7 @@ import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { defaultSiteSettings, paths } from '@typeroll/shared';
+import { defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, paths } from '@typeroll/shared';
 import type { Site, SiteSettings } from '@typeroll/shared';
 import DomainManager from '../../../../components/DomainManager.tsx';
 import { SiteHostingGroup } from '../../../../components/HostingGroups';
@@ -130,6 +130,12 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
 
     <div class="card stack">
       <h2 style="font-size: 1.125rem;">Typography</h2>
+      <details>
+        <summary>Responsive block widths</summary>
+        <p>Viewport width where each block editing range starts. Use increasing widths. These control authored responsive fields and block visibility; menu collapse and other explicit component thresholds remain separate.</p>
+        {BREAKPOINTS_ABOVE_MOBILE.map(name => <div class="field"><label for={`responsive-${name}`}>{name} starts at (px)</label><input id={`responsive-${name}`} name={`responsive_breakpoints.${name}`} type="number" min="320" max="2560" step="1" required value={resolveBreakpointWidths(settings.responsive_breakpoints)[name]} /></div>)}
+        <p>Defaults: 640, 1024, 1280 and 1536. Reload an open editor after changing these widths.</p>
+      </details>
       <datalist id="font-families"><option value="system">System font (no download)</option><option value="Inter" /></datalist>
       <p>Use system for the visitor’s device font, or enter a Google Fonts family name.</p>
       <div class="field">

@@ -38,6 +38,7 @@ export const settingsTools: ToolDef[] = [
       'Pass `version` to scope the write to a branch (copy-on-write) instead of main — the right way to brand/recolor a site inside a redesign branch (colors, fonts, logo, custom_css) without touching the live settings. Omit it to write main.',
     inputSchema: {
       version: versionParam,
+      responsive_breakpoints: z.object({ tablet: z.number().int().min(320).max(2560), laptop: z.number().int().min(320).max(2560), desktop: z.number().int().min(320).max(2560), wide: z.number().int().min(320).max(2560) }).strict().nullable().optional().describe('Increasing viewport widths for authored responsive block fields and hidden_on. All four required; null restores defaults. Menu collapse remains explicit.'),
       site_name: z.string().optional(),
       tagline: z.string().optional(),
       logo: z.string().optional(),

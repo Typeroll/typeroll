@@ -154,3 +154,19 @@ When a page is in `content_mode: "html"`, the AI agent follows these conventions
 - **No `<script>` tags** — use site settings for analytics/chat widgets
 
 In block-mode pages, none of these conventions apply directly — the block library handles structure and the renderer enforces semantics. See the [Blocks](../blocks/) reference.
+
+## Short breadcrumb labels (Core 0.2.28)
+
+Set optional `breadcrumb_label` through `create_page`, `update_page`, the Pages
+API (including batch writes), or **Page settings → Breadcrumb label**. A label
+is at most 200 characters; null, empty or whitespace-only values use the normal
+page title. It changes the breadcrumb label only, not `title`, SEO title, slug,
+path, canonical or hierarchy. Parent labels are shared by their descendants.
+For inferred Content-type trails, the published hub's short label takes
+precedence over the type's plural label. A home page has no breadcrumb trail.
+
+For example, a hub titled “Our complete guide to moving” may have
+`breadcrumb_label: "Moving tips"`. Its child keeps its full page title and route.
+Republish after changing a parent label so affected descendants update too.
+MCP 0.45.24 exposes the optional field; Cloud/self-hosted servers require Core
+0.2.28.

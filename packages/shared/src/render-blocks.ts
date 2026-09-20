@@ -37,6 +37,7 @@ import {
   mediaQuery,
   resolveResponsive,
   type Breakpoint,
+  resolveBreakpointWidths, defaultBreakpointWidths, BREAKPOINT_ORDER, type BreakpointWidths,
 } from './breakpoints.js';
 import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
@@ -242,6 +243,11 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     const compiled = compileResponsiveData(effectiveBlock, blockType);
     const responsiveBlock: Block = { ...effectiveBlock, data: compiled.flatData };
     let html = renderRepeater(responsiveBlock, blockType, options);
+    // An explicit mobile baseline opts into the authored column map. Preserve
+    // the one-column mobile default for scalar counts and maps without mobile.
+    if (isResponsiveValue(effectiveBlock.data.cols) && effectiveBlock.data.cols.mobile != null && effectiveBlock.data.mobile_cols == null) {
+      html = injectAttrsIntoFirstTag(html, { 'data-responsive-cols': 'true' });
+    }
     // Annotate the repeater's own root so the rendered element maps back to
     // the authored (alias) block — its looped items carry synthetic ids that
     // aren't in the tree, so without this a repeater would be an un-targetable
@@ -256,8 +262,10 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
         sanitizeCssId(effectiveBlock.id),
         compiled.cssVars,
         compiled.mappedCss,
+        resolveBreakpointWidths(options.context?.site?.responsive_breakpoints),
       );
     }
+    html = applyVisibility(html, effectiveBlock, options);
     html = applyStyleOverrides(html, effectiveBlock);
     return html;
   }
@@ -455,11 +463,6 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     rootAttrs['data-tr-extension-component'] = blockType.extension.component_id;
     rootAttrs['data-block-data'] = JSON.stringify(effectiveBlock.data ?? {});
   }
-  if (effectiveBlock.hidden_on?.length) {
-    for (const bp of effectiveBlock.hidden_on) {
-      rootAttrs[`data-hidden-${bp}`] = '';
-    }
-  }
   if (Object.keys(rootAttrs).length > 0) {
     html = injectAttrsIntoFirstTag(html, rootAttrs);
   }
@@ -469,9 +472,10 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   // template; the style block only carries @media overrides for
   // breakpoints above mobile.
   if (compiled.hasOverrides) {
-    html += renderResponsiveStyleBlock(bid, compiled.cssVars, compiled.mappedCss);
+    html += renderResponsiveStyleBlock(bid, compiled.cssVars, compiled.mappedCss, resolveBreakpointWidths(options.context?.site?.responsive_breakpoints));
   }
 
+  html = applyVisibility(html, effectiveBlock, options);
   html = applyStyleOverrides(html, effectiveBlock);
 
   return html;
@@ -1055,6 +1059,8 @@ function preparePostCardData(
   data.author = author;
   data.href = href;
   data.heading_level = headingLevel;
+  const icon = String(data.title_icon ?? '').trim();
+  const titleContent = `${icon ? `<span class="block-postcard-title-icon" aria-hidden="true">${renderIconHtml(icon)}</span>` : ''}<span>${escapeHtml(title)}</span>`;
   const separateAction = String(data.action_label ?? '').trim();
   const whole = data.whole_card_link === true && !!href && !!title.trim() && !downloadUrl && !separateAction;
   const linkImage = !!href && !whole;
@@ -1062,8 +1068,8 @@ function preparePostCardData(
   data.card_media_width = data.layout === 'row' ? 'calc(var(--image_width_percent,40) * 1%)' : '100%';
   data.post_card_action_html = href && separateAction ? `<a class="block-postcard-action" href="${escapeHtml(href)}">${escapeHtml(separateAction)}</a>` : '';
   data.post_card_title_html = href && !separateAction
-    ? `<a href="${escapeHtml(href)}" class="block-postcard-link">${escapeHtml(title)}</a>`
-    : escapeHtml(title);
+    ? `<a href="${escapeHtml(href)}" class="block-postcard-link">${titleContent}</a>`
+    : titleContent;
   const imageLabel = title.trim() || 'View page';
   const imageLinkLabel = !imageAlt.trim() ? ` aria-label="${escapeHtml(imageLabel)}"` : '';
   data.post_card_image_html = data.show_image !== false && image
@@ -1520,6 +1526,7 @@ function renderResponsiveStyleBlock(
   bid: string,
   cssVars: Partial<Record<Breakpoint, Record<string, string>>>,
   mappedCss: Partial<Record<Breakpoint, string>>,
+  widths: BreakpointWidths = defaultBreakpointWidths,
 ): string {
   const parts: string[] = [];
   for (const bp of BREAKPOINTS_ABOVE_MOBILE) {
@@ -1548,7 +1555,7 @@ function renderResponsiveStyleBlock(
       // (icon-top → icon-left) flip behaviour per breakpoint.
       inner.push(`[data-bid="${bid}"][data-bid="${bid}"] { ${mapped} }`);
     }
-    if (inner.length) parts.push(`${mediaQuery(bp)} { ${inner.join(' ')} }`);
+    if (inner.length) parts.push(`${mediaQuery(bp, widths)} { ${inner.join(' ')} }`);
   }
   if (parts.length === 0) return '';
   return `<style data-bid="${bid}">${parts.join('\n')}</style>`;
@@ -1829,4 +1836,19 @@ export function findPaginatedListing(
     if (nested) return nested;
   }
   return null;
+}
+
+function applyVisibility(html: string, block: Block, options: RenderBlocksOptions): string {
+  const hidden = block.hidden_on?.filter(bp => BREAKPOINT_ORDER.includes(bp));
+  if (!hidden?.length) return html;
+  const configured = options.context?.site?.responsive_breakpoints;
+  if (!configured) return injectAttrsIntoFirstTag(html, Object.fromEntries(hidden.map(bp => [`data-hidden-${bp}`, ''])));
+  const widths = resolveBreakpointWidths(configured);
+  const bid = sanitizeCssId(block.id);
+  const css = hidden.map(bp => {
+    const next = BREAKPOINT_ORDER[BREAKPOINT_ORDER.indexOf(bp) + 1];
+    const upper = next ? ` and (width < ${widths[next]}px)` : '';
+    return `@media (min-width: ${widths[bp]}px)${upper} { [data-bid="${bid}"] { display:none !important; } }`;
+  }).join('');
+  return injectAttrsIntoFirstTag(html, { 'data-bid': bid }) + `<style data-bid="${bid}">${css}</style>`;
 }

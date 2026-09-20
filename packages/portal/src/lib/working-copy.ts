@@ -51,7 +51,7 @@ export type WcTarget =
  */
 export const PAGE_WC_FIELDS = [
   'title', 'slug', 'path', 'parent', 'sort_order', 'template',
-  'blocks', 'html_content', 'seo_title', 'seo_description', 'og_image',
+  'blocks', 'html_content', 'breadcrumb_label', 'seo_title', 'seo_description', 'og_image',
   'seo_image_alt', 'canonical_url', 'noindex', 'nofollow', 'alternates', 'lastmod_override', 'json_ld',
   'schema_type', 'service', 'kind', 'author', 'language', 'image_sizes_default',
   'custom_css', 'fields',
@@ -101,7 +101,7 @@ export async function filterWcFields(
   let allowed: Set<string>;
   if (target.kind === 'page') {
     allowed = new Set<string>([...PAGE_WC_FIELDS, 'fields']);
-    if (fields.fields !== undefined || 'template' in fields || 'sort_order' in fields || 'blocks' in fields || 'html_content' in fields) {
+    if (fields.fields !== undefined || 'breadcrumb_label' in fields || 'template' in fields || 'sort_order' in fields || 'blocks' in fields || 'html_content' in fields) {
       const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
       if (!page) throw new WorkingCopyError('Page not found', 404);
       const type = await pageContentType(ctx, page);

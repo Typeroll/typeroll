@@ -52,7 +52,8 @@ export async function pageAddress(ctx: { orgId: string; siteId: string; versionI
 }
 
 /** Reused at creation, draft writes, commit and structural type changes. */
-export async function validatePagePresentation(ctx: { orgId: string; siteId: string; versionId: string }, type: ContentType, input: { noindex?: unknown; nofollow?: unknown; template?: unknown; sort_order?: unknown; blocks?: Page['blocks']; content_mode?: string; html_content?: string }): Promise<string | null> {
+export async function validatePagePresentation(ctx: { orgId: string; siteId: string; versionId: string }, type: ContentType, input: { breadcrumb_label?: unknown; noindex?: unknown; nofollow?: unknown; template?: unknown; sort_order?: unknown; blocks?: Page['blocks']; content_mode?: string; html_content?: string }): Promise<string | null> {
+  if (input.breadcrumb_label != null && (typeof input.breadcrumb_label !== 'string' || input.breadcrumb_label.length > 200)) return 'breadcrumb_label must be text up to 200 characters, or null';
   for (const key of ['noindex', 'nofollow'] as const) if (input[key] != null && typeof input[key] !== 'boolean') return `${key} must be boolean`;
   if (input.sort_order != null && (typeof input.sort_order !== 'number' || !Number.isFinite(input.sort_order))) return 'Page order must be a finite number';
   if (input.template != null && typeof input.template !== 'string') return 'Template must be an ID, or null to use the content type default';

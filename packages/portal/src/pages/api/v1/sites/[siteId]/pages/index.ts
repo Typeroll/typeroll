@@ -47,6 +47,7 @@ function projectPage(p: Page, full = false): Record<string, unknown> {
     language: p.language,
     kind: p.kind,
     author: p.author,
+    breadcrumb_label: p.breadcrumb_label,
     seo_title: p.seo_title,
     append_seo_suffix: p.append_seo_suffix,
     seo_description: p.seo_description,

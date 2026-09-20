@@ -145,3 +145,25 @@ replaces native bullets; core/list marker none supports custom icons.
 Preview and static CSS order is defaults → blocks/instances → site → Page;
 specificity, inline CSS and !important still apply. Compare without temporary
 corrective CSS before removing any existing site rules.
+
+
+## Site-specific responsive widths (Core 0.2.28)
+
+The five names stay the same, but their widths can be set in **Site settings →
+Typography → Responsive block widths**, or through `update_site_settings`:
+
+```json
+{"responsive_breakpoints":{"tablet":576,"laptop":769,"desktop":1024,"wide":1280}}
+```
+
+Send all four increasing integer widths (320–2560px); `null` restores
+640/1024/1280/1536px. Values are versioned with the site's settings. Responsive
+block fields, repeater item overrides and `hidden_on` use these widths in the
+editor preview and static output. Reload an open editor after changing them.
+Republish to update live pages; changing widths invalidates rendered-page caches.
+
+This does not change explicit menu `collapse_below`, grid `stack_at`, listing
+mobile defaults or theme typography thresholds. Set the menu threshold separately
+when it must match, and use explicit responsive `cols` for exact listing columns.
+Check one pixel below and at each threshold, including fractional widths for
+visibility. Do not hide layout overflow to make a test pass.

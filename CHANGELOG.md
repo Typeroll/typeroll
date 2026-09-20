@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — Core 0.2.28 / MCP 0.45.24
+
+- Add versioned site breakpoint widths with editor/API/MCP parity and exact block
+  visibility ranges. Preserve explicit menu and theme thresholds.
+- Add native prose typography, container minimum height, short Page breadcrumb
+  labels and Post Card action/icon presentation. Fix responsive card media width.
+- Advertise template capabilities 0.47.0; existing sites require republication.
+
 ## Unreleased — Core 0.2.27 / MCP 0.45.23
 
 - Generate agent-neutral site workspaces with briefs, decisions, QA, non-secret

@@ -35,7 +35,7 @@ import type { Page } from '@typeroll/shared';
 
 const WRITABLE: Array<keyof Page> = [
   'title', 'slug', 'path', 'html_content', 'blocks', 'status', 'content_mode', 'kind', 'author',
-  'seo_title', 'append_seo_suffix', 'seo_description', 'og_image', 'seo_image_alt', 'canonical_url', 'noindex', 'nofollow',
+  'breadcrumb_label', 'seo_title', 'append_seo_suffix', 'seo_description', 'og_image', 'seo_image_alt', 'canonical_url', 'noindex', 'nofollow',
   'alternates', 'lastmod_override', 'json_ld', 'schema_type', 'service',
   'template', 'date_published', 'language', 'image_sizes_default', 'custom_css',
   'publish_at', 'unpublish_at', 'fields',
@@ -62,6 +62,7 @@ function project(p: Page, hasUnsaved: boolean): Record<string, unknown> {
     kind: p.kind,
     author: p.author,
     language: p.language,
+    breadcrumb_label: p.breadcrumb_label,
     seo_title: p.seo_title,
     append_seo_suffix: p.append_seo_suffix,
     seo_description: p.seo_description,

@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { seoReviewError, defaultSiteSettings, normalizeIframeAllowedHosts, paths } from '@typeroll/shared';
+import { responsiveBreakpointsError, seoReviewError, defaultSiteSettings, normalizeIframeAllowedHosts, paths } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, cookies, params, redirect, locals }) => {
@@ -69,8 +69,14 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   };
   const reviewError = seoReviewError(seo_review);
   if (reviewError) return new Response(reviewError, { status: 400 });
+  const responsive_breakpoints = form.has('responsive_breakpoints.tablet')
+    ? Object.fromEntries(['tablet', 'laptop', 'desktop', 'wide'].map(name => [name, Number(form.get(`responsive_breakpoints.${name}`))])) as NonNullable<SiteSettings['responsive_breakpoints']>
+    : existing.responsive_breakpoints;
+  const breakpointError = responsiveBreakpointsError(responsive_breakpoints);
+  if (breakpointError) return new Response(breakpointError, { status: 400 });
   const next: SiteSettings = {
     ...existing,
+    responsive_breakpoints,
     site_name: String(form.get('site_name') ?? existing.site_name),
     tagline: String(form.get('tagline') ?? '') || undefined,
     logo: String(form.get('logo') ?? '') || undefined,

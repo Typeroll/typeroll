@@ -13,7 +13,7 @@ import { isLivePageStatus, retireRedirectsShadowingUrl } from './redirect-hygien
 import { markSiteDirty } from './auto-deploy';
 
 const CREATE_FIELDS = ['path', 'parent', 'sort_order', 'template', 'kind', 'author', 'language',
-  'seo_title', 'seo_description', 'og_image', 'seo_image_alt', 'canonical_url', 'append_seo_suffix',
+  'breadcrumb_label', 'seo_title', 'seo_description', 'og_image', 'seo_image_alt', 'canonical_url', 'append_seo_suffix',
   'noindex', 'nofollow', 'alternates', 'lastmod_override', 'json_ld', 'schema_type', 'service', 'image_sizes_default',
   'custom_css', 'date_published', 'publish_at', 'unpublish_at'] as const;
 

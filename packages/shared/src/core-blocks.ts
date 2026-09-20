@@ -164,17 +164,24 @@ const prose: BlockType = {
   container: false,
   schema: [
     { name: 'html', type: 'richtext', label: 'Content' },
+    ...typographyFields,
+    pixels('paragraph_spacing_px', 'Paragraph spacing (px)', 0, 160),
+    { name: 'text_align', type: 'select', label: 'Text alignment', options: ['inherit', 'start', 'center', 'end', 'justify'], default: 'inherit', responsive: true },
+    { name: 'font_weight', type: 'select', label: 'Text weight', options: ['inherit', '400', '500', '600', '700'], default: 'inherit', responsive: true },
+    { name: 'font', type: 'select', label: 'Font family', options: ['inherit', 'body', 'heading'], default: 'inherit' },
     { name: 'max_width', type: 'select', label: 'Max width', options: ['narrow', 'normal', 'wide'], default: 'normal' },
   ],
-  template: `<div data-block="prose" data-w="{{max_width}}">{{{html}}}</div>`,
+  template: `<div data-block="prose" data-w="{{max_width}}" data-font="{{font}}" style="--text_align:{{text_align}};--font_weight:{{font_weight}}">{{{html}}}</div>`,
   // Fluid type via clamp() — rubriker och brödtext skalar mellan mobil
   // och desktop utan media queries. Behåller läsbarhet på små skärmar
   // utan att gå för stort på desktop.
   styles: `
-[data-block="prose"] { min-width: 0; line-height: var(--page-body-line-height, 1.65); font-size: var(--page-body-font-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem)); overflow-wrap: anywhere; }
+[data-block="prose"] { min-width: 0; line-height: var(--line_height, var(--page-body-line-height, 1.65)); font-size: var(--font_size_px, var(--page-body-font-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem))); text-align:var(--text_align,inherit); font-weight:var(--font_weight,inherit); overflow-wrap: anywhere; }
 [data-block="prose"][data-w="narrow"] { max-width: 38rem; margin-inline: auto; }
 [data-block="prose"][data-w="wide"] { max-width: 60rem; margin-inline: auto; }
-[data-block="prose"] p { margin: 0 0 var(--page-body-paragraph-spacing, 1em); }
+[data-block="prose"] p { margin: 0 0 var(--paragraph_spacing_px,var(--page-body-paragraph-spacing, 1em)); }
+[data-block="prose"][data-font="body"] { font-family:var(--font-body,inherit); }
+[data-block="prose"][data-font="heading"] { font-family:var(--font-heading,inherit); }
 [data-block="prose"] h1 { margin: 1.5em 0 0.5em; font-size: clamp(1.75rem, 1rem + 3.5vw, 3.5rem); line-height: 1.15; }
 [data-block="prose"] h2 { margin: 1.5em 0 0.5em; font-size: clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem); line-height: 1.2; }
 [data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: clamp(1.25rem, 0.75rem + 2vw, 1.75rem); line-height: 1.25; }

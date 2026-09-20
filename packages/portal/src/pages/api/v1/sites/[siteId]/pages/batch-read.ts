@@ -29,6 +29,7 @@ function project(p: Page): Record<string, unknown> {
     content_mode: p.content_mode,
     html_content: p.html_content,
     kind: p.kind,
+    breadcrumb_label: p.breadcrumb_label,
     seo_title: p.seo_title,
     seo_description: p.seo_description,
     noindex: p.noindex,

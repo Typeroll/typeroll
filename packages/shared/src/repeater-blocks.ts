@@ -129,8 +129,8 @@ const repeater: BlockType = {
 
 @media (max-width: 767px) {
   /* The mobile count is independent of desktop/tablet column defaults. */
-  [data-block="repeater"][data-layout="grid"] { grid-template-columns: repeat(var(--mobile-cols, 1), minmax(0, 1fr)); }
-  [data-block="repeater"][data-layout="masonry"] { column-count: var(--mobile-cols, 1); }
+  [data-block="repeater"][data-layout="grid"]:not([data-responsive-cols]) { grid-template-columns: repeat(var(--mobile-cols, 1), minmax(0, 1fr)); }
+  [data-block="repeater"][data-layout="masonry"]:not([data-responsive-cols]) { column-count: var(--mobile-cols, 1); }
 }
 `.trim(),
   origin: 'core',
