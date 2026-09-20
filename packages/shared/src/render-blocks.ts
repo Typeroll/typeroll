@@ -40,6 +40,7 @@ import {
   resolveBreakpointWidths, defaultBreakpointWidths, BREAKPOINT_ORDER, type BreakpointWidths,
 } from './breakpoints.js';
 import { postCardImageSizing } from './presentation-fields.js';
+import { surfaceColor, surfaceGradientCss } from './surface-presentation.js';
 import { columnStackCss } from './column-layout.js';
 import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
@@ -358,6 +359,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     );
   }
   if (effectiveBlock.type === 'core/navigation_menu') compiled.flatData.menu_mobile_override = String(!!effectiveBlock.slots?.[1]?.length);
+  if (['core/container', 'core/section'].includes(effectiveBlock.type)) {
+    compiled.flatData.surface_gradient_css = surfaceGradientCss(compiled.flatData.background_gradient);
+  }
   if (effectiveBlock.type === 'core/post_card') {
     preparePostCardData(compiled.flatData, options.context?.item);
   }
@@ -1083,6 +1087,12 @@ function preparePostCardData(
   data.background ||= 'var(--color-background,#fff)';
   data.border_color ||= 'transparent';
   data.download_color ||= 'var(--color-primary,currentColor)';
+  data.hover_background = surfaceColor(data.hover_background) || 'color-mix(in srgb,var(--color-primary,currentColor) 8%,var(--card-bg,white))';
+  data.hover_border_color = surfaceColor(data.hover_border_color) || 'var(--color-primary,currentColor)';
+  data.hover_color = surfaceColor(data.hover_color) || 'inherit';
+  data.download_hover_background = surfaceColor(data.download_hover_background) || 'var(--download-color,var(--color-primary,currentColor))';
+  data.download_hover_color = surfaceColor(data.download_hover_color) || 'var(--color-on-primary,#fff)';
+  data.card_interactive = String(!!href && !!title.trim() && data.title_link !== false);
   data.download_weight ||= data.action_weight || '600';
   data.post_card_sizing_css = postCardImageSizing[String(data.image_sizing)] ?? postCardImageSizing.auto;
   data.post_card_download_css = data.download_width === 'full'

@@ -116,7 +116,7 @@ spacers or corrective CSS. TOC active-section feedback includes document scroll
 padding; remove obsolete duplicated tenant header offsets during migration.
 
 
-## Qualified composition starters (Core 0.2.32 / MCP 0.45.26 candidate)
+## Qualified composition starters (Core 0.2.32 / MCP 0.45.26 and later)
 
 Check `supports_composition_starters` and `supports_default_presentation_contract`.
 Use `get_composition_starter` to read one editable `header`, `footer`, `archive`
@@ -138,3 +138,20 @@ For an existing Container whose padding was omitted, review the new zero-padding
 output; explicitly set the former `md` values if they should remain (horizontal
 2rem, vertical 4rem). Never bulk-replace existing templates. Read
 https://typeroll.com/docs/tools/blocks/ for the full default/migration contract.
+
+
+## Native surface controls (Core 0.2.33 / MCP 0.45.27)
+
+Check `supports_surface_feedback_and_gradients`. Section/Container
+`background_gradient: { from: "#f8fbff", to: "#e8f4fc", angle: 135 }` adds
+an opt-in two-stop gradient; remove the object to return to the solid/image
+background. Use real colors or simple theme variables, never CSS declarations.
+Post Card `hover_background`, `hover_border_color`, `hover_color` and outlined
+PDF `download_hover_background`/`download_hover_color` control pointer, pressed
+and keyboard feedback. Repeater/page_list item_overrides use the same schema.
+Keep focus visible and check contrasting color pairs; don't move the card.
+Navigation Links `density: "compact-desktop"` gives footer links a 24px minimum
+on desktop with fine pointers; mobile/touch retains 44px. For dense taxonomy
+footers use `direction: "column"`, `font_size_px: 14.4`, `line_height: 1.1`,
+`gap_px: 4` and `padding_y_px: 0`. Primary menus keep comfortable defaults. Verify both narrow and
+wide views and publish the intended version after saving; no automatic migration.

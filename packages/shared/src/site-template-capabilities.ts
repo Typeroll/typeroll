@@ -150,6 +150,7 @@ export interface SiteTemplateCapabilities {
   /** Native editable starters and spacing/optional-content default contract. */
   supports_composition_starters: boolean;
   supports_default_presentation_contract: boolean;
+  supports_surface_feedback_and_gradients: boolean;
   supports_prose_typography: boolean;
   supports_breadcrumb_labels: boolean;
   supports_post_card_action_layout: boolean;
@@ -256,7 +257,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.48.0',
+  template_capabilities_version: '0.49.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -340,6 +341,7 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_component_surface_controls: true,
   supports_composition_starters: true,
   supports_default_presentation_contract: true,
+  supports_surface_feedback_and_gradients: true,
   supports_prose_typography: true,
   supports_breadcrumb_labels: true,
   supports_post_card_action_layout: true,

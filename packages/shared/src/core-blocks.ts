@@ -1,5 +1,6 @@
 import { COLUMN_STACK_BELOW, COLUMN_STACK_CSS, EMPTY_OUTLINE_COLUMN_CSS } from './column-layout.js';
 import { pixels, typographyFields, componentBreakpointsField, groupPresentationField } from './presentation-fields.js';
+import { backgroundGradientField } from './surface-presentation.js';
 // Core block library — ships with the platform. Six general-purpose blocks
 // that cover the vast majority of page composition needs. Custom blocks
 // (origin: 'user' or 'third_party') are loaded from the per-site
@@ -47,6 +48,7 @@ const section: BlockType = {
     { name: 'padding_x', type: 'select', label: 'Horizontal padding', options: ['auto', 'none', 'sm', 'md', 'lg'], default: 'auto', responsive: true, responsive_css: { auto: '--section-px:var(--content-gutter,1.25rem);', none: '--section-px:0px;', sm: '--section-px:1rem;', md: '--section-px:2rem;', lg: '--section-px:3rem;' } },
     { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['auto', 'compact', 'none', 'sm', 'md', 'lg', 'xl'], default: 'auto' },
     { name: 'background', type: 'color', label: 'Background color' },
+    backgroundGradientField,
     { name: 'text_color', type: 'color', label: 'Text color' },
     // Shaped section transitions. The divider is filled with THIS section's
     // own background colour and overlaps the neighbour by 1px — so it never
@@ -55,13 +57,14 @@ const section: BlockType = {
     { name: 'divider_top', type: 'select', label: 'Top divider', options: ['none', 'wave', 'curve', 'tilt'], default: 'none' },
     { name: 'divider_bottom', type: 'select', label: 'Bottom divider', options: ['none', 'wave', 'curve', 'tilt'], default: 'none' },
   ],
-  template: `<section data-block="section" data-width="{{width}}" data-pad="{{padding_y}}" data-divtop="{{divider_top}}" data-divbot="{{divider_bottom}}" style="--block-bg:{{background}};--block-fg:{{text_color}};--padding_x:{{padding_x}}">
+  template: `<section data-block="section" data-width="{{width}}" data-pad="{{padding_y}}" data-divtop="{{divider_top}}" data-divbot="{{divider_bottom}}" style="--block-bg:{{background}};--block-fg:{{text_color}};--padding_x:{{padding_x}};{{surface_gradient_css}}">
   <span class="block-section-shape block-section-shape--top" aria-hidden="true"></span>
   <div class="block-section-inner">{{children}}</div>
   <span class="block-section-shape block-section-shape--bot" aria-hidden="true"></span>
 </section>`,
   styles: `
 [data-block="section"] { position: relative; padding: var(--section-padding, 3rem) var(--content-gutter, 1.25rem); background: var(--block-bg, transparent); color: var(--block-fg, inherit); }
+[data-block="section"] { --surface-gradient:initial;background-image:var(--surface-gradient,none); }
 [data-block="section"][style*="--padding_x:"] { padding-inline:var(--section-px, var(--content-gutter,1.25rem)); }
 [data-block="section"][style*="--padding_x:auto"] { --section-px:var(--content-gutter,1.25rem); }
 [data-block="section"][style*="--padding_x:none"] { --section-px:0px; }

@@ -16,6 +16,7 @@ export function getPartialCompositionStarter(
 ): Block[] {
   const links = (id: string, direction: string) => block(id, 'core/navigation_links', {
     links: options.links, direction, gap_px: direction === 'row' ? 24 : 8,
+    ...(kind === 'footer' ? { density: 'compact-desktop' } : {}),
   });
   const navigation: Block = kind === 'header'
     ? { ...block('header_navigation', 'core/navigation_menu', {

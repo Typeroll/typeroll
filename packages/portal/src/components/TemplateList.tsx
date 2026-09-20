@@ -112,7 +112,7 @@ export default function TemplateList({ siteId }: { siteId: string }) {
         {templates.map((t) => (
           <li key={t.id} style={row}>
             <FileSymlink size={16} />
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <a href={`/app/sites/${siteId}/templates/${t.id}`} style={rowTitle}>
                 {t.label}
               </a>
@@ -131,46 +131,46 @@ export default function TemplateList({ siteId }: { siteId: string }) {
 }
 
 const shell: React.CSSProperties = {
-  padding: '2rem', maxWidth: 720, margin: '0 auto', color: '#e4e4e7',
+  padding: '2rem', maxWidth: 720, margin: '0 auto', color: 'var(--color-text)',
 };
 const head: React.CSSProperties = {
   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  marginBottom: '1rem',
+  marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem',
 };
 const muted: React.CSSProperties = {
-  color: '#a1a1aa', fontSize: '.9rem', margin: '0 0 1rem',
+  color: 'var(--color-text-muted)', fontSize: '.9rem', margin: '0 0 1rem',
 };
 const createCard: React.CSSProperties = {
-  background: '#161618', border: '1px solid #2a2a30', borderRadius: 8,
+  background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8,
   padding: '1rem', marginBottom: '1rem',
 };
 const fieldLabel: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', gap: 4, marginBottom: '.75rem',
-  fontSize: '.75rem', color: '#a1a1aa',
+  fontSize: '.75rem', color: 'var(--color-text-muted)',
 };
 const input: React.CSSProperties = {
-  padding: '.4rem .6rem', background: '#1f1f23', color: '#fafafa',
-  border: '1px solid #2a2a30', borderRadius: 6, fontSize: '.9rem',
+  padding: '.4rem .6rem', background: 'var(--color-surface)', color: 'var(--color-text)',
+  border: '1px solid var(--color-border)', borderRadius: 6, fontSize: '.9rem',
 };
 const list: React.CSSProperties = { listStyle: 'none', padding: 0, margin: 0 };
 const row: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 12,
-  padding: '.6rem .75rem', borderBottom: '1px solid #1f1f23',
+  padding: '.6rem .75rem', borderBottom: '1px solid var(--color-border)',
 };
 const rowTitle: React.CSSProperties = {
-  color: '#fafafa', textDecoration: 'none', fontWeight: 500,
+  color: 'var(--color-text)', textDecoration: 'none', fontWeight: 500, overflowWrap: 'anywhere',
 };
-const rowMeta: React.CSSProperties = { fontSize: '.75rem', color: '#a1a1aa', marginTop: 2 };
+const rowMeta: React.CSSProperties = { fontSize: '.75rem', color: 'var(--color-text-muted)', marginTop: 2 };
 const primaryBtn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '.4rem .8rem', background: '#6366f1', color: '#fff',
+  padding: '.4rem .8rem', background: 'var(--color-primary)', color: '#fff',
   border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '.85rem',
 };
 const secondaryBtn: React.CSSProperties = {
-  padding: '.4rem .8rem', background: 'transparent', color: '#fafafa',
-  border: '1px solid #2a2a30', borderRadius: 6, cursor: 'pointer', fontSize: '.85rem',
+  padding: '.4rem .8rem', background: 'transparent', color: 'var(--color-text)',
+  border: '1px solid var(--color-border)', borderRadius: 6, cursor: 'pointer', fontSize: '.85rem',
 };
 const iconBtn: React.CSSProperties = {
-  background: 'none', border: 'none', color: '#a1a1aa', cursor: 'pointer', padding: 4,
+  background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', padding: 4,
 };
-const errorMsg: React.CSSProperties = { color: '#ef4444', fontSize: '.85rem', margin: 0 };
+const errorMsg: React.CSSProperties = { color: 'var(--color-danger)', fontSize: '.85rem', margin: 0 };

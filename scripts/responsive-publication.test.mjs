@@ -65,8 +65,9 @@ test('qualified composition defaults reach the real frozen Astro build and inval
   const value = { format: 'typeroll-static-publication', format_version: 2, publication_id: 'c'.repeat(64), core_commit: 'c'.repeat(40),
     site_url: 'https://example.invalid', version_id: 'main', site: { name: 'Example' }, settings: { site_name: 'Example', trailing_slash: 'always' },
     pages: [{ id: 'home', path: '/', slug: 'home', title: 'Home', status: 'published', template: 'profile', content_mode: 'blocks', blocks: [
-      { id: 'group', type: 'core/container', data: { radius_px: 12, overflow: 'clip' }, children: [
+      { id: 'group', type: 'core/container', data: { radius_px: 12, overflow: 'clip', background_gradient: { from: '#f8fbff', to: '#e8f4fc', angle: 135 } }, children: [
         { id: 'heading', type: 'core/rich_heading', data: { html: '<a href="/">A linked heading</a>', level: 'h2', font_size_px: 20, align: { mobile: 'left', tablet: 'center' } } },
+        { id: 'card', type: 'core/post_card', data: { title: 'Guide', href: '/', whole_card_link: true, hover_background: '#e8f4fc', hover_border_color: '#186ec0' } },
       ] },
     ] }],
     partials: ['header', 'footer'].map(kind => ({ id: kind, name: kind, kind, status: 'published', content_mode: 'blocks', blocks: getPartialCompositionStarter(kind, { links: [{ label: 'Home', href: '/' }] }) })),
@@ -78,12 +79,15 @@ test('qualified composition defaults reach the real frozen Astro build and inval
   assert.equal((html.match(/<h1\b/g) ?? []).length, 1);
   assert.match(html, /data-block="navigation_menu"/);
   assert.match(html, /data-overflow="clip"/);
+  assert.match(html, /linear-gradient\(135deg,#f8fbff 0%,#e8f4fc 100%\)/);
+  assert.match(html, /data-density="compact-desktop"/);
+  assert.match(html, /--card-hover-bg:\s*#e8f4fc/);
   assert.match(html, /--padding_x:\s*none/);
   assert.match(html, /--font_size_px:\s*20px/);
   assert.match(html, /data-block="rich_heading"/);
   assert.doesNotMatch(html, /<img[^>]*src=""/);
   assert.doesNotMatch(html, /<[^>]+data-block="page-excerpt"/);
   assert.equal((await harness.run()).report.reused, 1);
-  await fs.appendFile(path.join(harness.destination, 'packages/shared/src/content-well.ts'), '\n// Presentation dependency qualification.\n');
+  await fs.appendFile(path.join(harness.destination, 'packages/shared/src/surface-presentation.ts'), '\n// Presentation dependency qualification.\n');
   assert.equal((await harness.run()).report.rendered, 1);
 });

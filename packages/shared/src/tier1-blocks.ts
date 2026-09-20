@@ -15,6 +15,7 @@
 
 import type { BlockType } from './types.js';
 import { pixels, postCardImageSizing } from './presentation-fields.js';
+import { backgroundGradientField } from './surface-presentation.js';
 import { navigationMenu, navigationLinks } from './navigation-menu.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
@@ -61,6 +62,7 @@ const container: BlockType = {
     { name: 'sticky', type: 'boolean', label: 'Sticky at top', default: false },
     pixels('sticky_top_px', 'Sticky top offset (px)', 0, 240),
     { name: 'background', type: 'color', label: 'Background color' },
+    backgroundGradientField,
     pixels('radius_px', 'Corner radius (px)', 0, 100),
     { name: 'shadow', type: 'select', label: 'Shadow', options: ['none', 'subtle', 'header'], default: 'none' },
     { name: 'overflow', type: 'select', label: 'Child content', options: ['visible', 'clip'], option_labels: ['Allow overflow', 'Clip to rounded edges'], default: 'visible' },
@@ -71,9 +73,9 @@ const container: BlockType = {
   // named `--{field-name}` so the @media compiler can override it cleanly.
   // Layout-control CSS reads `var(--gap)` etc. and maps the token (sm/md/lg)
   // to a real rem value via attribute-selectors against the inline style.
-  template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-shadow="{{shadow}}" data-overflow="{{overflow}}" data-rhythm="{{rhythm}}" data-sticky="{{sticky}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{inline_style}}">{{children}}</{{=tag}}>`,
+  template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-shadow="{{shadow}}" data-overflow="{{overflow}}" data-rhythm="{{rhythm}}" data-sticky="{{sticky}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{surface_gradient_css}}{{inline_style}}">{{children}}</{{=tag}}>`,
   styles: `
- :is([data-block="container"], [data-block="semantic-container"]) { border-radius:var(--radius_px,0px); }
+ :is([data-block="container"], [data-block="semantic-container"]) { --surface-gradient:initial;border-radius:var(--radius_px,0px); }
 :is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] { overflow:clip; }
 :is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] :focus-visible { outline-offset:-3px; }
 :is([data-block="container"], [data-block="semantic-container"])[data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }
@@ -89,7 +91,7 @@ const container: BlockType = {
   padding-block: var(--padding_top_px, var(--padding_y_px, var(--block-py, 2rem))) var(--padding_bottom_px, var(--padding_y_px, var(--block-py, 2rem))); padding-inline: var(--padding_x_px, var(--block-px, 1rem));
   background: var(--bg, transparent);
 }
-[data-block="container"][style*="--bg-image:url("] { background-image: var(--bg-image); background-size: cover; background-position: center; }
+:is([data-block="container"], [data-block="semantic-container"]) { background-image:var(--surface-gradient,var(--bg-image,none)); background-size:cover; background-position:center; }
 [data-block="container"][data-width="narrow"] { max-width: var(--max_width_px, 42rem); margin-inline: auto; }
 [data-block="container"][data-width="normal"] { max-width: var(--max_width_px, 65rem); margin-inline: auto; }
 [data-block="container"][data-width="wide"]   { max-width: var(--max_width_px, 80rem); margin-inline: auto; }
@@ -796,6 +798,9 @@ const postCard: BlockType = {
     { name: 'title_weight', type: 'select', label: 'Title weight', options: ['400', '500', '600', '700'], default: '600', responsive: true },
     { name: 'background', type: 'color', label: 'Panel background' },
     { name: 'border_color', type: 'color', label: 'Card border color' },
+    { name: 'hover_background', type: 'color', label: 'Interactive card background' },
+    { name: 'hover_border_color', type: 'color', label: 'Interactive card border' },
+    { name: 'hover_color', type: 'color', label: 'Interactive card text' },
     pixels('border_width_px', 'Card border width (px)', 0, 20),
     { name: 'title_font', type: 'select', label: 'Title font', options: ['heading', 'body', 'inherit'], default: 'heading' },
     pixels('body_padding_x_px', 'Panel horizontal padding (px)', 0, 100),
@@ -814,6 +819,8 @@ const postCard: BlockType = {
     pixels('download_size_px', 'Download text size (px)', 10, 60),
     { name: 'download_weight', type: 'select', label: 'Download text weight', options: ['400', '500', '600', '700'], responsive: true },
     { name: 'download_color', type: 'color', label: 'Download text and border color' },
+    { name: 'download_hover_background', type: 'color', label: 'Interactive download background' },
+    { name: 'download_hover_color', type: 'color', label: 'Interactive download text' },
     pixels('download_border_width_px', 'Download border width (px)', 0, 20),
     pixels('download_radius_px', 'Download corner radius (px)', 0, 100),
     pixels('download_padding_x_px', 'Download horizontal padding (px)', 0, 100),
@@ -829,7 +836,7 @@ const postCard: BlockType = {
     { name: 'download_style', type: 'select', label: 'Download appearance', options: ['link', 'outline'], default: 'link' },
     { name: 'appearance', type: 'select', label: 'Appearance', options: ['plain', 'card'], default: 'plain' },
   ],
-  template: `<article data-block="post_card" style="--card-direction:{{layout}};--card-media-width:{{card_media_width}};--title_weight:{{title_weight}};--actions_direction:{{actions_direction}};--action_weight:{{action_weight}};--title_icon_color:{{title_icon_color}};--card-bg:{{background}};--card-border-color:{{border_color}};--actions_align:{{actions_align}};--download_weight:{{download_weight}};--download-color:{{download_color}};{{post_card_sizing_css}}{{post_card_download_css}}" data-title-font="{{title_font}}" data-whole="{{card_whole_link}}" data-shadow="{{shadow}}" data-download="{{download_style}}" data-fit="{{image_fit}}" data-appearance="{{appearance}}" data-aspect="{{image_aspect}}" data-img="{{show_image}}" data-exc="{{show_excerpt}}" data-date="{{show_date}}" data-author="{{show_author}}">
+  template: `<article data-block="post_card" style="--card-direction:{{layout}};--card-media-width:{{card_media_width}};--title_weight:{{title_weight}};--actions_direction:{{actions_direction}};--action_weight:{{action_weight}};--title_icon_color:{{title_icon_color}};--card-bg:{{background}};--card-border-color:{{border_color}};--actions_align:{{actions_align}};--download_weight:{{download_weight}};--download-color:{{download_color}};--card-hover-bg:{{hover_background}};--card-hover-border:{{hover_border_color}};--card-hover-fg:{{hover_color}};--download-hover-bg:{{download_hover_background}};--download-hover-fg:{{download_hover_color}};{{post_card_sizing_css}}{{post_card_download_css}}" data-title-font="{{title_font}}" data-whole="{{card_whole_link}}" data-interactive="{{card_interactive}}" data-shadow="{{shadow}}" data-download="{{download_style}}" data-fit="{{image_fit}}" data-appearance="{{appearance}}" data-aspect="{{image_aspect}}" data-img="{{show_image}}" data-exc="{{show_excerpt}}" data-date="{{show_date}}" data-author="{{show_author}}">
   {{{post_card_image_html}}}
   <div class="block-postcard-body">
       <{{=heading_level}} class="block-postcard-title">{{{post_card_title_html}}}</{{=heading_level}}>
@@ -888,6 +895,21 @@ const postCard: BlockType = {
 [data-block="post_card"] .block-postcard-title:has(.block-postcard-title-icon) > a { display:flex;align-items:center;gap:var(--title_icon_gap_px,12px); }
 [data-block="post_card"] .block-postcard-title-icon { display:inline-flex;flex:none;font-size:var(--title_icon_size_px,24px);line-height:1;color:var(--title_icon_color,currentColor); }
 [data-block="post_card"] .block-postcard-title-icon svg { width:1em;height:1em; }
+/* Feedback never changes geometry or translates adjacent hit targets. */
+[data-block="post_card"][data-interactive="true"] { transition:background-color 160ms,color 160ms,outline-color 160ms; }
+@media (hover:hover) {
+  [data-block="post_card"][data-interactive="true"]:hover { background:var(--card-hover-bg);color:var(--card-hover-fg,inherit);outline:1px solid var(--card-hover-border);outline-offset:-1px; }
+  [data-block="post_card"][data-download="outline"] .block-postcard-download:hover { background:var(--download-hover-bg);color:var(--download-hover-fg);border-color:var(--download-color);text-decoration:none; }
+}
+[data-block="post_card"][data-interactive="true"]:has(a:active),
+[data-block="post_card"][data-interactive="true"]:has(a:focus-visible) { background:var(--card-hover-bg);color:var(--card-hover-fg,inherit);outline:2px solid var(--card-hover-border);outline-offset:-2px; }
+[data-block="post_card"][data-download="outline"] .block-postcard-download { transition:background-color 160ms,color 160ms; }
+[data-block="post_card"][data-download="outline"] .block-postcard-download:is(:active,:focus-visible) { background:var(--download-hover-bg);color:var(--download-hover-fg);border-color:var(--download-color);text-decoration:none; }
+[data-block="post_card"] .block-postcard-download:focus-visible { outline:2px solid var(--download-color,currentColor);outline-offset:2px; }
+@media (prefers-reduced-motion:reduce) {
+  [data-block="post_card"][data-interactive="true"], [data-block="post_card"] .block-postcard-download { transition:none; }
+}
+
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
