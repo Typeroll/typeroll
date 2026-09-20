@@ -335,7 +335,7 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
             <option value="draft">Utkast</option>
             <option value="published">Published</option>
           </select>
-          <DeviceToggle responsiveBreakpoints={responsiveBreakpoints} activeBp={activeBp} onChange={setActiveBp} />
+          <DeviceToggle responsiveBreakpoints={(selected?.block.data.responsive_breakpoints as import('@typeroll/shared').ResponsiveBreakpoints | null | undefined) ?? responsiveBreakpoints} activeBp={activeBp} onChange={setActiveBp} />
         </div>
       </header>
 
@@ -413,6 +413,7 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
               </div>
             ) : (
               <BlockFieldForm
+                responsiveBreakpoints={responsiveBreakpoints}
                 key={selected.block.id}
                 siteId={siteId}
                 block={selected.block}

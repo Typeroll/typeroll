@@ -730,3 +730,112 @@ retain their data order; these fields do not sort the listing. See
 for exact authored breakpoints. Existing sites must be republished to use the
 new renderer. Cloud and self-hosted installations need Core 0.2.28; MCP schemas
 are available from 0.45.24.
+
+## Independent component controls (candidate)
+
+These controls require template capability version `0.48.0` and the matching
+Core release. They are not available in Core 0.2.31. Inspect `read_block_type`
+and site capabilities before writing them. Cloud and self-hosted installations
+use the same schema, renderer and editor controls.
+
+Each core block can set a complete `data.responsive_breakpoints` map:
+
+```json
+{
+  "responsive_breakpoints": {
+    "tablet": 577,
+    "laptop": 769,
+    "desktop": 1041,
+    "wide": 1440
+  }
+}
+```
+
+This changes only that block's responsive fields and `hidden_on`, never siblings
+or child blocks. A listing's own map controls its grid; set the map in
+`item_overrides` to control its repeated cards independently. Four increasing
+integer widths between 320 and 2560 are required. Set the map to `null` to reuse
+the Site widths. The editor's **Block viewport widths** section applies all four
+numbers together; **Use Site widths** resets them. The selected block's device
+labels use its local widths. Explicit menu collapse and column stacking remain
+separate controls.
+
+### Cards with a fixed mobile image and a stretching desktop image
+
+Example Post Card data for a listing with a `pdf` URL field:
+
+```json
+{
+  "responsive_breakpoints": {
+    "tablet": 577,
+    "laptop": 769,
+    "desktop": 1041,
+    "wide": 1440
+  },
+  "appearance": "card",
+  "layout": { "mobile": "column", "desktop": "row" },
+  "image_width_percent": 40,
+  "image_sizing": { "mobile": "fixed", "desktop": "stretch" },
+  "image_height_px": 200,
+  "image_fit": "cover",
+  "border_width_px": 3,
+  "border_color": "#dddddd",
+  "radius_px": 6,
+  "body_padding_x_px": 16,
+  "body_padding_y_px": 12,
+  "action_label": "Read",
+  "action_size_px": 14,
+  "action_weight": "600",
+  "actions_direction": { "mobile": "column", "desktop": "row" },
+  "actions_align": "center",
+  "actions_gap_px": 20,
+  "download_url_field": "pdf",
+  "download_behavior": "download",
+  "download_style": "outline",
+  "download_width": { "mobile": "full", "desktop": "fill" },
+  "download_color": "#009d9d",
+  "download_border_width_px": 3,
+  "download_radius_px": 6,
+  "download_padding_x_px": 20,
+  "download_padding_y_px": 12,
+  "download_size_px": 13,
+  "download_weight": "700"
+}
+```
+
+`image_sizing: "auto"` preserves a supplied pixel height, otherwise intrinsic
+height. `intrinsic` explicitly ignores pixel height; `fixed` uses it (200px
+fallback); `stretch` fills the media column to the card's content height and is
+intended for row layouts. Combine `stretch` with an explicit `image_fit: "cover"`
+only when cropping is intended. Missing media creates no empty panel.
+
+The title stays linked when `action_label` adds a separate action. Set
+`title_link: false` to opt out; this also disables the whole-card overlay.
+Secondary actions always disable that overlay. `download_behavior: "navigate"`
+is the default; `download` emits the native HTML download attribute. Browsers may
+navigate instead for cross-origin files, depending on the file server's response.
+Typeroll does not proxy a file to force a download.
+
+For a subtle link card, use `background: "#f8f9fa"`, `title_font: "body"`,
+`body_padding_x_px: 16` and `body_padding_y_px: 12`. Keep `show_image: false`,
+`whole_card_link: true` and an optional `title_icon` for one named link.
+
+### Category headers and menus
+
+`core/columns.left_width_px: 150` reserves a 150px left track; the right track
+uses the remaining space. `stack_below_px: 481` stacks through 480px and takes
+precedence over the preset `stack_below`. It accepts 320–1600px. Set only one
+fixed side; if both are supplied, `left_width_px` takes precedence. These fields
+do not change sibling columns or the Site's responsive widths.
+
+Wrap the icon, heading and link cards in `core/container` with `radius_px: 6`
+and `shadow: "subtle"`. A header can instead use `shadow: "header"`. Container
+shadows default to `none`. Its child icon panel can independently use
+`min_height_px: { "mobile": 120, "tablet": 150 }` with tablet starting at 481px.
+An image link remains a normal accessible link.
+
+Navigation uses matching SVG open/close symbols. `toggle_size_px` controls the
+open symbol; `close_size_px` optionally overrides the close symbol while both
+retain their minimum 44px hit area. Existing modal focus, Escape and scrolling
+behavior is unchanged. Republish after upgrading to include the new static
+presentation; no customer content is rewritten by the upgrade.

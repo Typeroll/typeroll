@@ -10,13 +10,16 @@ export const navigationMenu: BlockType = {
     { name: 'close_label', type: 'text', label: 'Close label', default: 'Close menu' },
     { name: 'collapse_below', type: 'select', label: 'Collapse below (px)', options: ['never', '576', '768', '769', '1024'], default: '1024' },
     pixels('toggle_size_px', 'Menu icon size (px)', 16, 64),
+    pixels('close_size_px', 'Close icon size (px)', 16, 64),
     { name: 'background', type: 'color', label: 'Panel background', default: '#ffffff' },
   ],
-  template: `<nav data-block="navigation_menu" data-collapse="{{collapse_below}}" data-mobile-override="{{menu_mobile_override}}" aria-label="{{aria_label}}" style="--menu-background:{{background}}"><button type="button" class="block-menu-open" aria-label="{{menu_label}}" aria-expanded="false"><span aria-hidden="true">☰</span></button><div class="block-menu-content">{{slot:0}}{{children}}</div><div class="block-menu-mobile">{{slot:1}}</div><dialog class="block-menu-dialog" aria-label="{{aria_label}}"><button type="button" class="block-menu-close" aria-label="{{close_label}}"><span aria-hidden="true">×</span></button><div class="block-menu-scroll"></div></dialog></nav>`,
+  template: `<nav data-block="navigation_menu" data-collapse="{{collapse_below}}" data-mobile-override="{{menu_mobile_override}}" aria-label="{{aria_label}}" style="--menu-background:{{background}}"><button type="button" class="block-menu-open" aria-label="{{menu_label}}" aria-expanded="false"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button><div class="block-menu-content">{{slot:0}}{{children}}</div><div class="block-menu-mobile">{{slot:1}}</div><dialog class="block-menu-dialog" aria-label="{{aria_label}}"><button type="button" class="block-menu-close" aria-label="{{close_label}}"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m5 5 14 14M19 5 5 19"/></svg></button><div class="block-menu-scroll"></div></dialog></nav>`,
   styles: `
 [data-block="navigation_menu"] { min-width:0; }
 [data-block="navigation_menu"] > :is(.block-menu-open,.block-menu-mobile) { display:none; }
 [data-block="navigation_menu"] :is(.block-menu-open,.block-menu-close) { min-width:44px; min-height:44px; padding:0; color:inherit; background:transparent; border:0; font:inherit; font-size:var(--toggle_size_px,28px); cursor:pointer; }
+[data-block="navigation_menu"] :is(.block-menu-open,.block-menu-close) svg { display:block;width:var(--toggle_size_px,28px);height:var(--toggle_size_px,28px);margin:auto; }
+[data-block="navigation_menu"] .block-menu-close svg { width:var(--close_size_px,var(--toggle_size_px,28px));height:var(--close_size_px,var(--toggle_size_px,28px)); }
 [data-block="navigation_menu"] :is(a,button):focus-visible { outline:2px solid currentColor; outline-offset:3px; }
 [data-block="navigation_menu"] .block-menu-dialog { position:fixed; inset:0; width:100%; height:100dvh; max-width:none; max-height:none; margin:0; padding:0; border:0; background:transparent; color:inherit; overflow:hidden; }
 [data-block="navigation_menu"] .block-menu-dialog:not([open]) { display:none; }

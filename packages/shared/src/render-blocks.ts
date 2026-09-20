@@ -39,6 +39,8 @@ import {
   type Breakpoint,
   resolveBreakpointWidths, defaultBreakpointWidths, BREAKPOINT_ORDER, type BreakpointWidths,
 } from './breakpoints.js';
+import { postCardImageSizing } from './presentation-fields.js';
+import { columnStackCss } from './column-layout.js';
 import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
@@ -262,7 +264,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
         sanitizeCssId(effectiveBlock.id),
         compiled.cssVars,
         compiled.mappedCss,
-        resolveBreakpointWidths(options.context?.site?.responsive_breakpoints),
+        resolveBreakpointWidths(effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints),
       );
     }
     html = applyVisibility(html, effectiveBlock, options);
@@ -395,6 +397,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link">${picture}</a>` : picture;
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
   }
+  const columnThreshold = effectiveBlock.type === 'core/columns' && typeof compiled.flatData.stack_below_px === 'number' && Number.isFinite(compiled.flatData.stack_below_px)
+    ? Math.min(1600, Math.max(320, Math.round(compiled.flatData.stack_below_px))) : null;
+  if (columnThreshold !== null) compiled.flatData.stack_below = 'custom';
   if (effectiveBlock.type === 'core/button') {
     // Only the typed opt-in may change browsing context; never trust a supplied
     // prepared flag or coerce strings such as 'false' to true.
@@ -436,7 +441,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     const v = effectiveBlock.data?.[f];
     return typeof v === 'string' && v.trim() !== '';
   });
-  if (compiled.hasOverrides || carriesInstanceScript) rootAttrs['data-bid'] = bid;
+  if (compiled.hasOverrides || carriesInstanceScript || columnThreshold !== null) rootAttrs['data-bid'] = bid;
   // Block provenance — lets an agent map the rendered element back to the
   // authored block it should edit. Uses the original (pre-alias-expansion)
   // id + type so it matches what get_page_blocks returns.
@@ -472,9 +477,10 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   // template; the style block only carries @media overrides for
   // breakpoints above mobile.
   if (compiled.hasOverrides) {
-    html += renderResponsiveStyleBlock(bid, compiled.cssVars, compiled.mappedCss, resolveBreakpointWidths(options.context?.site?.responsive_breakpoints));
+    html += renderResponsiveStyleBlock(bid, compiled.cssVars, compiled.mappedCss, resolveBreakpointWidths(effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints));
   }
 
+  if (columnThreshold !== null) html += `<style data-bid="${bid}">${columnStackCss(columnThreshold, `[data-block="columns"][data-bid="${bid}"]`)}</style>`;
   html = applyVisibility(html, effectiveBlock, options);
   html = applyStyleOverrides(html, effectiveBlock);
 
@@ -1062,12 +1068,21 @@ function preparePostCardData(
   const icon = String(data.title_icon ?? '').trim();
   const titleContent = `${icon ? `<span class="block-postcard-title-icon" aria-hidden="true">${renderIconHtml(icon)}</span>` : ''}<span>${escapeHtml(title)}</span>`;
   const separateAction = String(data.action_label ?? '').trim();
-  const whole = data.whole_card_link === true && !!href && !!title.trim() && !downloadUrl && !separateAction;
+  const whole = data.whole_card_link === true && data.title_link !== false && !!href && !!title.trim() && !downloadUrl && !separateAction;
   const linkImage = !!href && !whole;
+  data.background ||= 'var(--color-background,#fff)';
+  data.border_color ||= 'transparent';
+  data.download_color ||= 'inherit';
+  data.download_weight ||= data.action_weight || '600';
+  data.post_card_sizing_css = postCardImageSizing[String(data.image_sizing)] ?? postCardImageSizing.auto;
+  data.post_card_download_css = data.download_width === 'full'
+    ? '--download-flex:0 0 auto;--download-width:100%;--download-align:stretch;'
+    : data.download_width === 'fill' ? '--download-flex:1 1 auto;--download-width:auto;--download-align:auto;'
+    : '--download-flex:0 1 auto;--download-width:auto;--download-align:auto;';
   data.card_whole_link = String(whole);
   data.card_media_width = data.layout === 'row' ? 'calc(var(--image_width_percent,40) * 1%)' : '100%';
   data.post_card_action_html = href && separateAction ? `<a class="block-postcard-action" href="${escapeHtml(href)}">${escapeHtml(separateAction)}</a>` : '';
-  data.post_card_title_html = href && !separateAction
+  data.post_card_title_html = href && data.title_link !== false
     ? `<a href="${escapeHtml(href)}" class="block-postcard-link">${titleContent}</a>`
     : titleContent;
   const imageLabel = title.trim() || 'View page';
@@ -1076,7 +1091,7 @@ function preparePostCardData(
     ? `<div class="block-postcard-media">${linkImage ? `<a href="${escapeHtml(href)}" class="block-postcard-link"${imageLinkLabel}>` : ''}<img class="block-postcard-image" src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" loading="lazy" decoding="async" />${linkImage ? '</a>' : ''}</div>`
     : '';
   data.post_card_download_html = downloadUrl
-    ? `<a class="block-postcard-download" href="${escapeHtml(downloadUrl)}">${escapeHtml(downloadLabel)}</a>`
+    ? `<a class="block-postcard-download" href="${escapeHtml(downloadUrl)}"${data.download_behavior === 'download' ? ' download' : ''}>${escapeHtml(downloadLabel)}</a>`
     : '';
 }
 
@@ -1841,7 +1856,7 @@ export function findPaginatedListing(
 function applyVisibility(html: string, block: Block, options: RenderBlocksOptions): string {
   const hidden = block.hidden_on?.filter(bp => BREAKPOINT_ORDER.includes(bp));
   if (!hidden?.length) return html;
-  const configured = options.context?.site?.responsive_breakpoints;
+  const configured = block.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints;
   if (!configured) return injectAttrsIntoFirstTag(html, Object.fromEntries(hidden.map(bp => [`data-hidden-${bp}`, ''])));
   const widths = resolveBreakpointWidths(configured);
   const bid = sanitizeCssId(block.id);

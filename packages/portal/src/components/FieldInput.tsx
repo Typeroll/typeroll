@@ -1,14 +1,15 @@
 import { useEffect, useId, useState } from 'react';
-import type { Breakpoint, FieldDefinition } from '@typeroll/shared';
-import { BREAKPOINTS } from '@typeroll/shared';
+import type { Breakpoint, FieldDefinition, ResponsiveBreakpoints } from '@typeroll/shared';
+import { BREAKPOINTS, BREAKPOINTS_ABOVE_MOBILE, resolveBreakpointWidths, responsiveBreakpointsError } from '@typeroll/shared';
 import { Monitor } from 'lucide-react';
 import RichTextInput from './RichTextInput';
 import ContentReferenceInput from './ContentReferenceInput';
 
 export default function FieldInput({
-  siteId, field, value, onChange, responsive, activeBp, hasOwn, triState = false,
+  siteId, field, value, onChange, responsive, activeBp, hasOwn, triState = false, siteWidths,
 }: {
   siteId?: string;
+  siteWidths?: ResponsiveBreakpoints | null;
   field: FieldDefinition;
   value: unknown;
   onChange: (v: unknown) => void;
@@ -146,6 +147,7 @@ export default function FieldInput({
         />
       );
     case 'object':
+      if (field.name === 'responsive_breakpoints') return <BlockWidthsInput value={value} siteWidths={siteWidths} onChange={onChange} />;
       return (
         <ObjectFieldInput
           siteId={siteId}
@@ -181,6 +183,27 @@ export default function FieldInput({
         </div>
       );
   }
+}
+
+/** Save all widths together so autosave never persists a half-edited map. */
+function BlockWidthsInput({ value, siteWidths, onChange }: { value: unknown; siteWidths?: ResponsiveBreakpoints | null; onChange: (value: unknown) => void }) {
+  const initial = () => Object.fromEntries(BREAKPOINTS_ABOVE_MOBILE.map(key => [key, String(resolveBreakpointWidths(value ?? siteWidths)[key])]));
+  const [draft, setDraft] = useState(initial);
+  useEffect(() => setDraft(initial()), [JSON.stringify(value), JSON.stringify(siteWidths)]);
+  const next = Object.fromEntries(BREAKPOINTS_ABOVE_MOBILE.map(key => [key, Number(draft[key])]));
+  const error = responsiveBreakpointsError(next);
+  return <details style={fieldGroup}>
+    <summary>Block viewport widths {value ? '(custom)' : '(Site default)'}</summary>
+    <p>Overrides only this block. Child blocks and other components keep their own widths.</p>
+    {BREAKPOINTS_ABOVE_MOBILE.map(key => <label key={key} style={fieldLabel}>
+      {key} starts at (px)
+      <input aria-label={`Block ${key} starts at (px)`} type="number" min={320} max={2560} step={1}
+        value={draft[key]} style={textInput} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))} />
+    </label>)}
+    {error && <p role="alert">Use four increasing whole numbers between 320 and 2560.</p>}
+    <button type="button" disabled={!!error} onClick={() => onChange(next)}>Apply block widths</button>
+    <button type="button" onClick={() => onChange(null)}>Use Site widths</button>
+  </details>;
 }
 
 function ObjectFieldInput({

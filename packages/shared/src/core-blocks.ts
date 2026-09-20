@@ -1,5 +1,5 @@
 import { COLUMN_STACK_BELOW, COLUMN_STACK_CSS, EMPTY_OUTLINE_COLUMN_CSS } from './column-layout.js';
-import { pixels, typographyFields } from './presentation-fields.js';
+import { pixels, typographyFields, componentBreakpointsField } from './presentation-fields.js';
 // Core block library — ships with the platform. Six general-purpose blocks
 // that cover the vast majority of page composition needs. Custom blocks
 // (origin: 'user' or 'third_party') are loaded from the per-site
@@ -121,7 +121,9 @@ const columns: BlockType = {
     },
     { name: 'gap', type: 'select', label: 'Gap', options: ['sm', 'md', 'lg'], default: 'md' },
     pixels('gap_px', 'Column gap (px)', 0, 240),
-    pixels('right_width_px', 'Right column width (px)', 160, 640),
+    pixels('right_width_px', 'Right column width (px)', 80, 640),
+    pixels('left_width_px', 'Left column width (px)', 80, 640),
+    { name: 'stack_below_px', type: 'number', label: 'Custom stacking threshold (px)', min: 320, max: 1600 },
     { name: 'stack_below', type: 'select', label: 'Stack below viewport width', options: COLUMN_STACK_BELOW, option_labels: ['721 px (default)', '768 px', '1024 px', '1280 px'], default: '721' },
     { name: 'mobile_order', type: 'select', label: 'Mobile order', options: ['left-first', 'right-first'], default: 'left-first' },
     { name: 'align', type: 'select', label: 'Vertical alignment', options: ['start', 'center', 'end'], default: 'start' },
@@ -141,7 +143,8 @@ const columns: BlockType = {
 [data-block="columns"][data-gap="sm"] { gap: 1rem; }
 [data-block="columns"][data-gap="lg"] { gap: 3rem; }
 [data-block="columns"][style*="--gap_px:"] { gap:var(--gap_px,2rem); }
-@media (min-width:721px) { [data-block="columns"][style*="--right_width_px:"] { grid-template-columns:minmax(0,1fr) minmax(0,var(--right_width_px,280px)); } }
+[data-block="columns"][style*="--right_width_px:"] { grid-template-columns:minmax(0,1fr) minmax(0,var(--right_width_px,280px)); }
+[data-block="columns"][style*="--left_width_px:"] { grid-template-columns:minmax(0,var(--left_width_px,150px)) minmax(0,1fr); }
 [data-block="columns"][data-align="center"] { align-items: center; }
 [data-block="columns"][data-align="end"] { align-items: end; }
 ${COLUMN_STACK_CSS}
@@ -465,7 +468,7 @@ export const CORE_BLOCK_TYPES: readonly BlockType[] = [
   // (page/site/item). Used inside PageTemplates so a blog template can
   // bind {{page.title}} once and every blog post renders correctly.
   ...TEMPLATE_BLOCK_TYPES,
-] as const;
+].map(block => ({ ...block, schema: [...block.schema, componentBreakpointsField] }));
 
 /**
  * Build a registry Map for use with `renderBlocks`. Custom block types

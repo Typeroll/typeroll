@@ -431,7 +431,7 @@ describe('extension scopes', () => {
 describe('extension renderer capabilities', () => {
   it('advertises the executable runtime contract', () => {
     expect(SITE_TEMPLATE_CAPABILITIES).toMatchObject({
-      template_capabilities_version: '0.47.0',
+      template_capabilities_version: '0.48.0',
       supports_site_responsive_breakpoints: true,
       supports_prose_typography: true,
       supports_breadcrumb_labels: true,

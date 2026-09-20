@@ -144,6 +144,9 @@ export interface SiteTemplateCapabilities {
   /** Responsive schema fields accept breakpoint objects inside block.data. */
   supports_responsive_data_fields: boolean;
   supports_site_responsive_breakpoints: boolean;
+  supports_component_responsive_breakpoints: boolean;
+  supports_post_card_image_sizing: boolean;
+  supports_component_surface_controls: boolean;
   supports_prose_typography: boolean;
   supports_breadcrumb_labels: boolean;
   supports_post_card_action_layout: boolean;
@@ -250,7 +253,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.47.0',
+  template_capabilities_version: '0.48.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -329,6 +332,9 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_transitive_form_assets: true,
   supports_responsive_data_fields: true,
   supports_site_responsive_breakpoints: true,
+  supports_component_responsive_breakpoints: true,
+  supports_post_card_image_sizing: true,
+  supports_component_surface_controls: true,
   supports_prose_typography: true,
   supports_breadcrumb_labels: true,
   supports_post_card_action_layout: true,

@@ -644,7 +644,9 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     }
   }
 
-  const deviceWidth = responsiveBreakpoints ? breakpointPreviewWidth(activeBp, resolveBreakpointWidths(responsiveBreakpoints)) : (DEVICES.find((d) => d.bp === activeBp) ?? DEVICES[DEVICES.length - 1]).width;
+  const componentWidths = selected?.block.data.responsive_breakpoints as ResponsiveBreakpoints | null | undefined;
+  const effectiveWidths = componentWidths ?? responsiveBreakpoints;
+  const deviceWidth = effectiveWidths ? breakpointPreviewWidth(activeBp, resolveBreakpointWidths(effectiveWidths)) : (DEVICES.find((d) => d.bp === activeBp) ?? DEVICES[DEVICES.length - 1]).width;
   // Scale-to-fit math: a numeric preset wider than the available panel is
   // shrunk with a CSS transform so its FULL width still renders (the iframe's
   // own @media queries then react to the real preset width, not the panel's).
@@ -720,7 +722,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               <Redo2 size={14} />
             </button>
           </div>
-          <div className="block-editor__desktop-devices"><DeviceToggle responsiveBreakpoints={responsiveBreakpoints} activeBp={activeBp} onChange={setActiveBp} /></div>
+          <div className="block-editor__desktop-devices"><DeviceToggle responsiveBreakpoints={effectiveWidths} activeBp={activeBp} onChange={setActiveBp} /></div>
           {selectedBlockType?.extension && <button type="button" style={metaBtn(false)} onClick={configureExtensionPreview} title="Set URL values for the Extension preview without saving them">
             URL context
           </button>}
@@ -822,7 +824,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
 
         {/* Center: preview */}
         <section id="block-editor-preview" className="block-editor__preview">
-          <div className="block-editor__mobile-devices"><DeviceToggle responsiveBreakpoints={responsiveBreakpoints} activeBp={activeBp} onChange={setActiveBp} /></div>
+          <div className="block-editor__mobile-devices"><DeviceToggle responsiveBreakpoints={effectiveWidths} activeBp={activeBp} onChange={setActiveBp} /></div>
           <div ref={centerRef} className="block-editor__canvas">
           <div style={frameOuter}>
             <div style={{
@@ -848,6 +850,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
         <aside id="block-editor-fields" className="block-editor__fields">
           {selected ? (
             <BlockFieldForm
+                responsiveBreakpoints={responsiveBreakpoints}
               key={selected.block.id}
               flushRef={fieldFlush}
               onDirty={() => setHasWc(true)}
@@ -1388,11 +1391,12 @@ function MetaPanel({
 }
 
 export function BlockFieldForm({
-  siteId, block, blockType, activeBp = DEFAULT_BP, onChange, flushRef, onDirty,
+  siteId, block, blockType, activeBp = DEFAULT_BP, onChange, flushRef, onDirty, responsiveBreakpoints,
 }: {
   siteId?: string;
   block: Block;
   blockType: BlockType | null;
+  responsiveBreakpoints?: ResponsiveBreakpoints | null;
   activeBp?: Breakpoint;
   onChange: (data: Record<string, unknown>) => void | Promise<void>;
   flushRef?: React.MutableRefObject<(() => Promise<void>) | null>;
@@ -1479,6 +1483,7 @@ export function BlockFieldForm({
               key={f.name}
               siteId={siteId}
               field={f}
+              siteWidths={responsiveBreakpoints}
               value={value}
               responsive={responsive}
               activeBp={activeBp}

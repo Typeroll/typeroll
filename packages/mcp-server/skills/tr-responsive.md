@@ -167,3 +167,33 @@ mobile defaults or theme typography thresholds. Set the menu threshold separatel
 when it must match, and use explicit responsive `cols` for exact listing columns.
 Check one pixel below and at each threshold, including fractional widths for
 visibility. Do not hide layout overflow to make a test pass.
+
+## Independent components (candidate capability 0.48.0)
+
+Not available in Core 0.2.31. Read capabilities and the live block registry first.
+Every core block accepts `data.responsive_breakpoints` with all four increasing
+integers (320–2560); null restores Site widths. It affects only that block's
+responsive fields/visibility, not children. Listing grid and item cards are
+independent: put card widths in `item_overrides.responsive_breakpoints`.
+
+A checklist card can use widths `{tablet:577,laptop:769,desktop:1041,wide:1440}`,
+`layout:{mobile:"column",desktop:"row"}`, `image_width_percent:40`,
+`image_sizing:{mobile:"fixed",desktop:"stretch"}`, `image_height_px:200`, and
+explicit `image_fit:"cover"`. Intrinsic ignores pixel height; auto preserves it.
+Use stretch only for row layouts. Border, x/y panel padding, background and
+`title_font` are native fields. `action_label` no longer removes the title link;
+`title_link:false` opts out. Secondary actions prevent whole-card overlays.
+
+PDF styling is independent: `download_width:{mobile:"full",desktop:"fill"}`,
+`download_size_px:13`, `download_weight:"700"`, `download_color`,
+`download_border_width_px`, `download_radius_px`, `download_padding_x_px` and
+`download_padding_y_px`. `actions_align:"center"` centers the action row.
+`download_behavior:"download"` emits HTML download; cross-origin file hosts may
+still cause browser navigation. Default is navigate, no proxy.
+
+Columns expose `left_width_px:150` and `stack_below_px:481` (stack through480).
+Set one fixed side; left wins if both set. Custom stacking overrides the preset.
+Container `radius_px` and `shadow` (none/subtle/header) style a composed group.
+Menus use matching SVG symbols; `close_size_px` overrides the close symbol size
+without shrinking the44px hit area. Compare exact threshold boundaries in real
+preview and static output before deleting corrective CSS.

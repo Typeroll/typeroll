@@ -7,7 +7,7 @@ const reset = fs.readFileSync(new URL('../../../site-template/src/styles/reset.c
 const css = fs.readFileSync(new URL('../../../site-template/src/styles/global.css', import.meta.url), 'utf8');
 const image = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400"><rect width="800" height="400" fill="#80bbd2"/></svg>').toString('base64');
 const links = Array.from({ length: 7 }, (_, i) => ({ label: `Service ${i+1}`, href: `#service-${i+1}` }));
-const menu = (collapse = '1024'): Block => ({ id:'menu',type:'core/navigation_menu',data:{collapse_below:collapse},children:[
+const menu = (collapse = '1024'): Block => ({ id:'menu',type:'core/navigation_menu',data:{collapse_below:collapse,toggle_size_px:28,close_size_px:40},children:[
   { id:'primary',type:'core/navigation_links',data:{links:links.slice(0,2),font_size_px:28,color:'#075696',padding_y_px:16} },
   { id:'services',type:'core/container',data:{width:'full',padding_x_px:24,padding_y_px:24,background:'#e6faf6'},children:[
     { id:'service-heading',type:'core/heading',data:{text:'Services',level:'h2',font_size_px:24} },
@@ -32,6 +32,8 @@ test('one block menu preserves header geometry, links and modal behavior at exac
     await toggle.click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
+    await expect(toggle.locator('svg')).toHaveCSS('width','28px');
+    await expect(dialog.getByRole('button',{name:'Close menu'}).locator('svg')).toHaveCSS('width','40px');
     expect(await page.locator('#logo').boundingBox()).toEqual(before);
     expect(await page.locator('#content').boundingBox()).toEqual(contentBefore);
     expect(await dialog.locator('a').evaluateAll(nodes=>nodes.map(a=>a.getAttribute('href')))).toEqual(links.map(x=>x.href));
