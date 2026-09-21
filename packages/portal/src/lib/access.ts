@@ -11,7 +11,7 @@
 // actually belongs to the user's org.
 
 import type { AstroCookies } from 'astro';
-import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
+import { paths, MAIN_VERSION_ID, ARCHIVED_SITE_MESSAGE, isArchivedSite } from '@typeroll/shared';
 import type { MemberRole, Site, SiteShare, SharePermission, SiteVersion } from '@typeroll/shared';
 import { getSession, isPendingSession, type Session } from './auth';
 import { getStore } from './datastore';
@@ -156,12 +156,42 @@ const PERMISSION_RANK: Record<SharePermission, number> = { read: 0, write: 1, ad
  *   const write = requirePermission(guard.value, 'write');
  *   if (!write.ok) return write.response;
  *   const { owner_org_id } = guard.value;  // use this for paths.*()
+ *
+ * An archived site refuses anything above `read` here rather than in each of
+ * the 60-odd mutating routes. Archiving that only hid the site from a list
+ * would be a label, not a state: an agent, an API key or a bookmarked URL
+ * would keep writing to it. Reads stay open so the site remains inspectable,
+ * which is the point of archiving instead of destroying.
+ *
+ * Restoring is the one write that must survive this gate — see
+ * `requireSiteLifecycleChange`, which does not route through here.
  */
 export function requirePermission(
   ctx: SiteContext,
   required: SharePermission,
 ): GuardResult<SiteContext> {
   if (PERMISSION_RANK[ctx.permission] < PERMISSION_RANK[required]) {
+    return { ok: false, response: json({ error: 'Insufficient permission' }, 403) };
+  }
+  if (required !== 'read' && isArchivedSite(ctx.site)) {
+    return { ok: false, response: json({ error: ARCHIVED_SITE_MESSAGE }, 409) };
+  }
+  return { ok: true, value: ctx };
+}
+
+/**
+ * Gate for changing the lifecycle itself. Separate from requirePermission
+ * because that one refuses every write on an archived site, which would make
+ * restoring impossible.
+ *
+ * Owner-org admins only: a cross-org share, however privileged, must not be
+ * able to retire or revive someone else's site.
+ */
+export function requireSiteLifecycleChange(ctx: SiteContext): GuardResult<SiteContext> {
+  if (!ctx.is_owner) {
+    return { ok: false, response: json({ error: 'Only the owning organization can change a site lifecycle' }, 403) };
+  }
+  if (PERMISSION_RANK[ctx.permission] < PERMISSION_RANK.admin) {
     return { ok: false, response: json({ error: 'Insufficient permission' }, 403) };
   }
   return { ok: true, value: ctx };

@@ -1,0 +1,56 @@
+---
+title: Archive a site
+description: Retire a site you are finished with, so it stops appearing and stops accepting changes, without deleting anything.
+---
+
+A site you are done with — a migration rehearsal, an abandoned copy, a customer
+who has left — can be archived. Archiving is reversible and deletes nothing.
+
+## What archiving does
+
+- The site leaves your dashboard. It stays reachable from its own URL, and the
+  dashboard offers a **Show archived sites** link.
+- Every change is refused: editing, publishing, form submissions written through
+  the API, and writes from API keys, MCP agents and installed apps alike. The
+  refusal is the same wherever the request comes from, so an agent that still
+  has the site's URL cannot quietly keep working on it.
+- Reading still works, including the content export. An archived site remains
+  fully inspectable.
+- The last published site keeps serving. Archiving stops new publications; it
+  does not take down what is already live.
+
+## Archive a site
+
+1. Open **Settings** for the site.
+2. Find **Archive this site**.
+3. Optionally write down why. The note is shown on the same page later, which is
+   usually the answer to "what was this and why did we stop?"
+4. Select **Archive this site**.
+
+You need admin permission in the organization that owns the site. A site shared
+with you from another organization cannot be archived by you, however much
+access you were granted.
+
+## Restore a site
+
+Open the site's **Settings** and select **Restore this site**. It returns to the
+dashboard and accepts changes again immediately.
+
+## If the site still has a domain
+
+Archiving is refused while a custom domain is live or verified on the site.
+That combination would leave the domain serving the last published version with
+no supported way to update it. Move or remove the domain first — see
+[Custom domains](../../publishing/domains/) — then archive.
+
+## Deleting a site permanently
+
+Archiving is as far as the portal goes, and that is deliberate. A site also owns
+media in storage shared across your organization, and it is connected to your
+Git repository and your hosting project. Removing those is not reversible and
+not always ours to do — your repository is yours.
+
+Permanent deletion is therefore an operator procedure rather than a button.
+Archive the site first, then ask Typeroll support to destroy it. You will get an
+inventory of exactly what would be removed, and what has to be handled in your
+own accounts, before anything happens.

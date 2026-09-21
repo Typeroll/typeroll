@@ -3,7 +3,7 @@ import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, paths } from '@typeroll/shared';
+import { defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, paths, isArchivedSite } from '@typeroll/shared';
 import type { Site, SiteSettings } from '@typeroll/shared';
 import DomainManager from '../../../../components/DomainManager.tsx';
 import { SiteHostingGroup } from '../../../../components/HostingGroups';
@@ -21,6 +21,11 @@ const membership = session.orgId === orgId ? await organizationMembership(sessio
 const canManagePublishing = membership?.role === 'owner' || membership?.role === 'admin';
 
 const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
+const archived = isArchivedSite(site);
+// Archiving refuses a site that is still answering on a customer domain, so
+// the page says that up front instead of offering a button that 409s.
+const domainBlocksArchiving =
+  Boolean(site.domain) && (site.domain_status === 'live' || site.domain_status === 'verified');
 ---
 <AppLayout title={`Settings — ${site.name}`} siteId={siteId}>
   <div class="app-header">
@@ -391,6 +396,50 @@ const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSit
       <div>
         <a href={`/app/sites/${siteId}/settings/sharing`} class="btn">Manage sharing →</a>
       </div>
+    </div>
+  </div>
+
+  <div style="max-width: 720px; margin-top: 1rem;">
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem; margin: 0;">{archived ? 'Archived' : 'Archive this site'}</h2>
+      {archived ? (
+        <>
+          <p class="muted text-sm" style="margin: 0;">
+            This site is archived. It is hidden from the dashboard and refuses every change and
+            publication, including from API keys and agents. Nothing has been deleted, and the
+            content export below still works.
+          </p>
+          {site.lifecycle?.reason && (
+            <p class="muted text-sm" style="margin: 0; font-style: italic;">{site.lifecycle.reason}</p>
+          )}
+          <form method="POST" action={`/api/sites/${siteId}/lifecycle`}>
+            <input type="hidden" name="action" value="restore" />
+            <button type="submit" class="btn">Restore this site</button>
+          </form>
+        </>
+      ) : (
+        <>
+          <p class="muted text-sm" style="margin: 0;">
+            Retire a site you are finished with. It leaves the dashboard and stops accepting changes
+            and publications, but nothing is deleted and you can restore it here at any time.
+            Destroying a site permanently is a separate operator procedure, because it also touches
+            shared media storage, your Git repository and your hosting project.
+          </p>
+          {domainBlocksArchiving ? (
+            <p class="muted text-sm" style="margin: 0;">
+              {site.domain} still points at this site. Move or remove the domain first — archiving
+              stops publishing, so the live site would keep answering with no way to update it.
+            </p>
+          ) : (
+            <form method="POST" action={`/api/sites/${siteId}/lifecycle`} class="stack">
+              <input type="hidden" name="action" value="archive" />
+              <label class="text-sm" for="archive-reason">Why (optional, shown here later)</label>
+              <input id="archive-reason" name="reason" type="text" maxlength="500" placeholder="Superseded by the new migration" />
+              <div><button type="submit" class="btn">Archive this site</button></div>
+            </form>
+          )}
+        </>
+      )}
     </div>
   </div>
 

@@ -37,6 +37,7 @@ export default defineConfig({
             { label: 'Client compatibility', slug: 'getting-started/client-compatibility' },
             { label: 'Your First Site', slug: 'getting-started/first-site' },
             { label: 'Agent workspace', slug: 'getting-started/agent-workspace' },
+            { label: 'Archive a site', slug: 'guides/archive-a-site' },
           ],
         },
         {

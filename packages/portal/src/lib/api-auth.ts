@@ -18,7 +18,7 @@
 // Any failure returns a 401/403 Response. Routes call this and short-circuit
 // the same way they do for requireSiteAccess.
 
-import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
+import { paths, MAIN_VERSION_ID, ARCHIVED_SITE_MESSAGE, isArchivedSite } from '@typeroll/shared';
 import type { ExtensionScope, Site, SharePermission, SiteVersion } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { json } from './access';
@@ -172,6 +172,12 @@ async function requireExtensionApiCredential(
     if (version) versionId = requestedVersion;
   }
   const isWrite = request.method !== 'GET' && request.method !== 'HEAD';
+  // An archived site is inspectable but frozen, for an installation exactly
+  // as for a person. Refused before the rate-limit bucket: a write that can
+  // never succeed should not spend the installation's budget.
+  if (isWrite && isArchivedSite(site)) {
+    return { ok: false, response: json({ error: ARCHIVED_SITE_MESSAGE }, 409) };
+  }
   const limit = rateLimit(`${isWrite ? 'ew' : 'er'}:${installationId}`, isWrite ? WRITE_LIMIT : READ_LIMIT, WINDOW_MS);
   if (!limit.allowed) return { ok: false, response: json({ error: 'Rate limit exceeded' }, 429) };
   return {
@@ -328,6 +334,12 @@ export async function requireApiKey(
   const isWrite = request.method !== 'GET' && request.method !== 'HEAD';
   if (isWrite && permission === 'read') {
     return { ok: false, response: json({ error: 'This token has read-only access to this site' }, 403) };
+  }
+  // Same rule as the session API: archived means frozen, not hidden. Without
+  // this an API key or an MCP agent would keep writing to a site the portal
+  // no longer shows anyone.
+  if (isWrite && isArchivedSite(site)) {
+    return { ok: false, response: json({ error: ARCHIVED_SITE_MESSAGE }, 409) };
   }
   // Rate limit per key. Reads and writes share separate buckets so a
   // chatty read agent doesn't starve a deploy-trigger write.

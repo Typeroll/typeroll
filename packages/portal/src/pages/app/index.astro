@@ -3,7 +3,7 @@ import AppLayout from '../../layouts/AppLayout.astro';
 import { getSession } from '../../lib/auth';
 import { getStore } from '../../lib/datastore';
 import { hydrateSharedSites } from '../../lib/shares';
-import { paths } from '@typeroll/shared';
+import { paths, isArchivedSite } from '@typeroll/shared';
 import { domainState, DOMAIN_STATE_LABEL } from '../../lib/site-public-urls';
 import type { Site } from '@typeroll/shared';
 
@@ -11,8 +11,14 @@ const session = await getSession(Astro.cookies);
 if (!session) return Astro.redirect('/login');
 const orgId = session.orgId;
 if (!orgId) return Astro.redirect('/onboarding');
-const sites = await getStore().listDocs<Site>(paths.sites(orgId));
-const sharedSites = await hydrateSharedSites(orgId);
+const allSites = await getStore().listDocs<Site>(paths.sites(orgId));
+// Archived sites leave the dashboard but stay reachable, behind ?archived=1
+// and their own URLs. Hiding them completely would turn "retired" into
+// "vanished" and leave no way back without operator help.
+const showArchived = Astro.url.searchParams.get('archived') === '1';
+const sites = showArchived ? allSites : allSites.filter((site) => !isArchivedSite(site));
+const archivedCount = allSites.length - allSites.filter((site) => !isArchivedSite(site)).length;
+const sharedSites = (await hydrateSharedSites(orgId)).filter(({ site }) => !isArchivedSite(site));
 ---
 <AppLayout title="Dashboard">
   <div class="app-header">
@@ -39,13 +45,22 @@ const sharedSites = await hydrateSharedSites(orgId);
               <a href={`/app/sites/${site.id}`} class="card" style="text-decoration: none; display: block;">
                 <h3>{site.name}</h3>
                 <p class="muted text-sm" style="margin-top: 0.25rem;">{site.domain ?? 'No domain set'}</p>
-                <div style="margin-top: 1rem;">
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; align-items: center;">
                   <span class={`status status--${domainState(site)}`}>{DOMAIN_STATE_LABEL[domainState(site)]}</span>
+                  {isArchivedSite(site) && <span class="status status--archived">Archived</span>}
                 </div>
               </a>
             ))}
           </div>
         </section>
+      )}
+
+      {archivedCount > 0 && (
+        <p class="muted text-sm" style="margin-top: 1rem;">
+          {showArchived
+            ? <a href="/app">Hide {archivedCount} archived {archivedCount === 1 ? 'site' : 'sites'}</a>
+            : <a href="/app?archived=1">Show {archivedCount} archived {archivedCount === 1 ? 'site' : 'sites'}</a>}
+        </p>
       )}
 
       {sharedSites.length > 0 && (
@@ -83,6 +98,7 @@ const sharedSites = await hydrateSharedSites(orgId);
     .status--pending { background: rgba(245,158,11,0.1); color: var(--color-accent); }
     .status--failed { background: rgba(220,38,38,0.1); color: var(--color-danger); }
     .status--none { background: rgba(120,113,108,0.1); color: var(--color-text-muted); }
+    .status--archived { background: rgba(120,113,108,0.18); color: var(--color-text-muted); }
 
     .perm {
       display: inline-block;

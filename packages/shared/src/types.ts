@@ -271,6 +271,28 @@ export interface Site {
   pending_deploy_at?: string | null;
   /** Distinguishes main edits arriving while a publication is dispatched. */
   pending_deploy_revision?: string;
+  /**
+   * Retirement state. A site that is finished with — a migration rehearsal,
+   * an abandoned clone, a customer who left — stops being a live thing an
+   * operator can edit or publish, WITHOUT its data being destroyed.
+   *
+   * Absence means active, so no existing site needs a migration and no read
+   * path has to know about this field to keep working.
+   *
+   * Archiving is reversible and is deliberately the only lifecycle step the
+   * portal can perform. Destroying a site touches R2 objects shared at the
+   * organization level, a customer Git repository, a Cloudflare Pages project
+   * and private app databases, none of which the portal owns; that belongs to
+   * the operator, and it requires this field to be set first.
+   */
+  lifecycle?: {
+    status: 'archived';
+    archived_at: string;
+    /** User id that archived it — the operator shows this before destroying anything. */
+    archived_by: string;
+    /** Free text shown in the portal, so a future reader knows why it was retired. */
+    reason?: string;
+  };
 }
 
 // ─── Site Settings ───────────────────────────────────────────────────────
