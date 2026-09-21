@@ -1,5 +1,11 @@
 # Changelog
 
+## Core 0.2.37 / MCP 0.45.31
+
+- Include full original-width AVIF/WebP candidates in static publishing and explicit media generation, without upscaling or duplicate widths.
+- Coordinate v2 immutable variant keys, scoped grants, completion receipts, aliases and preparation state; preserve originals and old public URLs.
+- Verify actual encoded dimensions, frozen publication HTML, browser selection and warm-cache reuse.
+
 ## Core 0.2.36 / MCP 0.45.30
 
 - Extend recognizable, keyboard-visible text links to native lists, tables, image captions and other rendered rich-text surfaces, preserving interactive card, image, button and navigation styling.

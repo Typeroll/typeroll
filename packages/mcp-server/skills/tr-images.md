@@ -173,3 +173,13 @@ for a brand-new page, include the `<img>` directly in `create_page`'s
 - **SVG** for icons + simple illustrations. Vector scales perfectly.
 - **PDF** is supported by `create_upload_url` for document downloads;
   link with `<a href>`, not `<img>`.
+
+## Check publication resolution (Core 0.2.37+)
+
+Native AVIF/WebP generation includes each smaller preset and the full original
+width, without upscaling or duplicate width descriptors. Check `currentSrc` and
+the actual encoded dimensions on the published site; the CMS preview can use the
+original and hide an undersized derivative. Do not compensate with custom CSS
+or `sizes` alone. Existing static sites need republication for the versioned v2
+recipe; unchanged subsequent builds reuse verified media. Explicit API variant
+workflows must regenerate their variant metadata before rebuilding.

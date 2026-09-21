@@ -17,15 +17,14 @@
 //
 // Skip rules:
 //   - Source format isn't an image we can process → return null
-//   - Variant width >= source width → skip (don't upscale)
-//   - Source format matches target format + size → skip (would be a
-//     no-op copy)
+//   - Preset widths above the source are omitted; original width is always included.
 
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { MEDIA_VARIANT_WIDTHS, mediaVariantCandidates, mediaVariantSuffix } from '../../../../scripts/fixtures/static-publication/media-recipe.mjs';
 import sharp from 'sharp';
 import type { Media, MediaVariant } from '@typeroll/shared';
 
-const VARIANT_WIDTHS = [320, 640, 1024, 1920] as const;
 const VARIANT_FORMATS = ['webp', 'avif'] as const;
 
 const PROCESSABLE_MIME = new Set([
@@ -96,16 +95,13 @@ export async function generateImageVariants(
   // For each (width, format) combination, produce a variant unless it'd
   // be an upscale.
   const variants: MediaVariant[] = [];
-  const skipped: string[] = [];
+  const skipped = MEDIA_VARIANT_WIDTHS.filter(width => width > sourceWidth).map(width => `${width}w (> source ${sourceWidth}w)`);
+  const sourceHash = createHash('sha256').update(srcBytes).digest('hex');
   const baseKey = stripExt(media.r2_key);
 
-  for (const width of VARIANT_WIDTHS) {
-    if (width >= sourceWidth) {
-      skipped.push(`${width}w (>= source ${sourceWidth}w)`);
-      continue;
-    }
+  for (const { width, slot } of mediaVariantCandidates(sourceWidth)) {
     for (const format of VARIANT_FORMATS) {
-      const variantKey = `${baseKey}.w${width}.${format}`;
+      const variantKey = baseKey + mediaVariantSuffix(slot, sourceHash, format);
       const buf = await sharp(srcBytes)
         .resize({ width, withoutEnlargement: true })
         [format]({ quality: format === 'avif' ? 60 : 80 })

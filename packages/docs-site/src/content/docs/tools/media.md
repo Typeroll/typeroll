@@ -123,3 +123,23 @@ publish a site. REST clients use `GET` and `POST` on
 `/api/v1/sites/{site}/media/preparation`; `list_media` also includes preparation
 status. The Organization's selected, updated shared build engine performs this
 work. Original files and prepared draft variants remain private until publication.
+
+## Responsive image resolution (Core 0.2.37+)
+
+Static publishing and explicit variant generation create AVIF and WebP images
+at the supported smaller widths and at the original image width. Exact preset
+widths are included once; small originals also receive a full-width candidate.
+Typeroll never enlarges the generated pixels. A layout wider than the original
+can still enlarge it on screen, so upload enough resolution for its intended use.
+
+This prevents a modern browser from selecting a smaller image just because its
+chosen `<picture>` format lacks the original width. Changing `sizes` alone cannot
+recover missing pixels. Previewing the original is not a substitute for checking
+the published derivative at the intended viewport and pixel density.
+
+Existing sites adopt this on their next publication. The new `v2` preparation
+recipe uses separate immutable cache addresses; the first publication prepares
+new variants once. Later unchanged builds keep reusing their verified receipts
+and files. Old published image addresses and original files are preserved. For
+independent workflows that explicitly generate variants through the API/MCP, run
+variant generation again before rebuilding; no customer CSS patch is needed.

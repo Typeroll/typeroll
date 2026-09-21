@@ -25,7 +25,7 @@ try {
   const access = await createBuildMediaGrants(client, manifest, publication.publication_id, 300);
   process.env.TYPEROLL_BUILD_MEDIA_ACCESS = JSON.stringify(access);
   await prepareMedia(publication, root);
-  assert.equal(publication.media[0].variants.length, 4);
+  assert.equal(publication.media[0].variants.length, 6);
   await prepareMedia(publication, root);
   console.log(JSON.stringify({ check: 'real original read, responsive variants, public write, hash verification, idempotent rebuild', passed: true }));
   const grants = await (await fetch(access.grant_url, { redirect: 'error', signal: AbortSignal.timeout(20000) })).json();

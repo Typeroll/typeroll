@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
 import { mediaReceiptKey } from './media-receipt.mjs';
+import { MEDIA_RECIPE_VERSION, MEDIA_VARIANT_WIDTHS, mediaVariantCandidates, mediaVariantSuffix } from './media-recipe.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const cache = 'public, max-age=31536000, immutable';
@@ -12,7 +13,7 @@ async function boundedBytes(response, limit = 25 * 1024 * 1024) {
   for await (const chunk of response) { size += chunk.length; if (size > limit) throw new Error('Media response is too large'); chunks.push(Buffer.from(chunk)); }
   return Buffer.concat(chunks);
 }
-const recipe = { version: 1, encoder: sharp.versions, widths: [320, 640, 1024, 1920], quality: { webp: 80, avif: 60 } };
+const recipe = { version: MEDIA_RECIPE_VERSION, encoder: sharp.versions, widths: MEDIA_VARIANT_WIDTHS, include_original: true, quality: { webp: 80, avif: 60 } };
 const recipeHash = hash(JSON.stringify(recipe));
 // Encoding has its own CPU gate, separate from overlapping storage transfers.
 let encoding = false; const encoders = [];
@@ -139,7 +140,7 @@ export async function prepareMedia(publication, root, options = {}) {
         const completed = JSON.parse(completionBytes.toString());
         if (completed.format !== 1 || completed.key !== completionKey || completed.recipe_sha256 !== recipeHash ||
             !Array.isArray(completed.variants)) throw new Error('Invalid media completion receipt');
-        const expected = imageTypes.has(entry.mime_type) ? recipe.widths.filter(width => width < completed.width).flatMap(width => ['webp', 'avif'].map(format => ({ width, format }))) : [];
+        const expected = imageTypes.has(entry.mime_type) ? mediaVariantCandidates(completed.width).flatMap(({ width }) => ['webp', 'avif'].map(format => ({ width, format }))) : [];
         if ((imageTypes.has(entry.mime_type) && (!Number.isSafeInteger(completed.width) || completed.width < 1 || !Number.isSafeInteger(completed.height) || completed.height < 1)) ||
             expected.length !== completed.variants.length || expected.some((variant, index) => {
               const actual = completed.variants[index];
@@ -147,12 +148,12 @@ export async function prepareMedia(publication, root, options = {}) {
             })) throw new Error('Invalid media completion receipt');
         media.width = completed.width; media.height = completed.height;
         media.variants = completed.variants.map(variant => ({ width: variant.width, format: variant.format, size_bytes: variant.size_bytes,
-          cdn_url: entry.cdn_url + `.v1.w${variant.width}.${entry.sha256.slice(0, 16)}.${variant.format}` }));
+          cdn_url: entry.cdn_url + mediaVariantSuffix(variant.width === completed.width ? 'original' : `w${variant.width}`, entry.sha256, variant.format) }));
         // A durable completion receipt replaces library-wide revalidation. Only
         // artifacts included in this static output need downloading and hashing.
         if (!options.prepareOnly && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host)) {
           const artifacts = [{ key: entry.source_key, original: true, sha256: entry.sha256, size_bytes: entry.size_bytes, path: entry.public_path },
-            ...completed.variants.map(variant => { const suffix = `.v1.w${variant.width}.${entry.sha256.slice(0, 16)}.${variant.format}`; return { ...variant, key: entry.public_key + suffix, path: entry.public_path + suffix }; })];
+            ...completed.variants.map(variant => { const suffix = mediaVariantSuffix(variant.width === completed.width ? 'original' : `w${variant.width}`, entry.sha256, variant.format); return { ...variant, key: entry.public_key + suffix, path: entry.public_path + suffix }; })];
           for (const artifact of artifacts) {
             const reusable = options.reusableFiles?.[artifact.path.slice(1)];
             if (reusable?.sha256 === artifact.sha256 && reusable.size === artifact.size_bytes) {
@@ -201,12 +202,11 @@ export async function prepareMedia(publication, root, options = {}) {
       if (imageTypes.has(entry.mime_type)) {
         const metadata = await sharp(bytes).metadata();
         media.width = metadata.width; media.height = metadata.height; media.variants = [];
-        for (const width of [320, 640, 1024, 1920]) {
-          if (width >= metadata.width) continue;
+        for (const { width, slot } of mediaVariantCandidates(metadata.width)) {
           for (const format of ['webp', 'avif']) {
             // A receipt is written only after reading back the immutable variant.
             // It binds reuse to the original, exact encoder and transformation recipe.
-            const suffix = `.v1.w${width}.${entry.sha256.slice(0, 16)}.${format}`;
+            const suffix = mediaVariantSuffix(slot, entry.sha256, format);
             const key = entry.public_key + suffix;
             const receiptKey = key + '.receipt.json';
             const publicPath = entry.public_path + suffix;
@@ -222,7 +222,7 @@ export async function prepareMedia(publication, root, options = {}) {
               if (variant && (hash(variant) !== receipt.sha256 || variant.length !== receipt.size_bytes)) throw new Error('Prepared media failed byte verification');
               verifiedVariant = variant;
             }
-            const preparedKey = `private/${manifest.site_prefix}/prepared/v1/${entry.sha256}/${width}.${format}`;
+            const preparedKey = `private/${manifest.site_prefix}/prepared/${MEDIA_RECIPE_VERSION}/${entry.sha256}/${slot}.${format}`;
             const cachedGrant = grants?.prepared?.[preparedKey], cachedReceiptGrant = grants?.prepared?.[preparedKey + '.receipt.json'];
             let cachedReceipt;
             if (!options.materializeOnly && cachedReceiptGrant) {

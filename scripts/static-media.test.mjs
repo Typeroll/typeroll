@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
@@ -9,44 +8,7 @@ import { prepareMedia, prepareMediaBatch, mediaTransferGroupSize } from './fixtu
 import { mediaReceiptKey } from './fixtures/static-publication/media-receipt.mjs';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
-async function withMediaFixture(run, count = 1, completion = false) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'static-media-'));
-  const fetchBefore = globalThis.fetch, envBefore = process.env.TYPEROLL_BUILD_MEDIA_ACCESS;
-  const original = count === 1 ? await sharp({ create: { width: 640, height: 480, channels: 3, background: '#1374aa' } }).png().toBuffer() : Buffer.from('synthetic document');
-  const account = 'a'.repeat(32), prefix = 'media/abcdefghij', origin = `https://${account}.r2.cloudflarestorage.com`;
-  const stored = new Map(), objects = {}, prepared = {}, originals = {}, entries = [], writes = new Map();
-  for (let i = 0; i < count; i++) {
-    const publicKey = `${prefix}/image-${i}.png`, sourceKey = `private/${prefix}/originals/image-${i}.png`, aliasKey = `${prefix}/shared-${i}.png`;
-    stored.set(sourceKey, original); originals[sourceKey] = `${origin}/${sourceKey}`;
-    const entry = { id: `image-${i}`, source_key: sourceKey, public_key: publicKey, public_path: `/image-${i}.png`, mime_type: count === 1 ? 'image/png' : 'application/octet-stream',
-      cdn_url: `https://images.example.com/image-${i}.png`, sha256: sha(original), size_bytes: original.length, aliases: [{ url: `https://media.example.com/shared-${i}.png`, key: aliasKey }] };
-    entries.push(entry);
-    if (count === 1) for (const format of ['webp', 'avif']) for (const tail of ['', '.receipt.json']) {
-      const key = `private/${prefix}/prepared/v1/${entry.sha256}/320.${format}${tail}`;
-      prepared[key] = { get: `${origin}/${key}`, put: `${origin}/${key}`, headers: {} };
-    }
-    const suffixes = [''];
-    if (count === 1) for (const format of ['webp', 'avif']) { const suffix = `.v1.w320.${entry.sha256.slice(0, 16)}.${format}`; suffixes.push(suffix, suffix + '.receipt.json'); }
-    for (const key of [publicKey, aliasKey]) for (const suffix of suffixes) objects[key + suffix] = { get: `${origin}/${key + suffix}`, put: `${origin}/${key + suffix}`, headers: {} };
-  }
-  const publication = { publication_id: 'frozen', media: entries.map(entry => ({ id: entry.id })), media_manifest: { delivery: 'static', account_id: account, original_bucket: 'private', public_bucket: 'public', site_prefix: prefix, website_host: 'www.example.com', media_host: 'images.example.com', entries } };
-  if (completion) for (const entry of entries) { const key = mediaReceiptKey(publication.media_manifest, entry); objects[key] = { get: `${origin}/${key}`, put: `${origin}/${key}`, headers: {} }; }
-  const grants = Buffer.from(JSON.stringify({ publication_id: 'frozen', expires_at: Date.now() + 60_000, account_id: account, original_bucket: 'private', public_bucket: 'public', originals, objects, prepared }));
-  process.env.TYPEROLL_BUILD_MEDIA_ACCESS = JSON.stringify({ grant_url: `${origin}/grant`, sha256: sha(grants) });
-  globalThis.fetch = async (address, options = {}) => {
-    assert.equal(new URL(address).origin, origin);
-    const key = new URL(address).pathname.slice(1);
-    if (key === 'grant') return new Response(grants);
-    if (options.method === 'PUT') { if (stored.has(key)) return new Response(null, { status: 412 }); stored.set(key, Buffer.from(options.body)); writes.set(key, (writes.get(key) ?? 0) + 1); return new Response(null); }
-    return stored.has(key) ? new Response(stored.get(key)) : new Response(null, { status: 404 });
-  };
-  try { await run({ publication, stored, writes, root, entries }); }
-  finally {
-    globalThis.fetch = fetchBefore;
-    if (envBefore === undefined) delete process.env.TYPEROLL_BUILD_MEDIA_ACCESS; else process.env.TYPEROLL_BUILD_MEDIA_ACCESS = envBefore;
-    await fs.rm(root, { recursive: true, force: true });
-  }
-}
+import { withMediaFixture } from './lib/test-media-storage.mjs';
 
 test('unchanged publication reads one completion receipt and downloads each required artifact only once', async t => withMediaFixture(async ({ publication, root, entries: [entry] }) => {
   await prepareMediaBatch(publication, root);
@@ -58,8 +20,8 @@ test('unchanged publication reads one completion receipt and downloads each requ
   assert.deepEqual(reads, ['grant', mediaReceiptKey(publication.media_manifest, entry)]);
   reads.length = 0;
   const result = await prepareMediaBatch(publication, root, 0, { materialize: true });
-  assert.equal(result.files.length, 3);
-  assert.equal(reads.length, 5, 'one grant, one completion receipt, original and two variants');
+  assert.equal(result.files.length, 5);
+  assert.equal(reads.length, 7, 'one grant, one completion receipt, original and four variants');
   assert.equal(reads.filter(key => key === entry.source_key).length, 1);
   assert.equal(reads.some(key => key.includes('/prepared/') || key.startsWith(entry.aliases[0].key) || key.endsWith('.receipt.json')), false);
   reads.length = 0;
@@ -82,7 +44,7 @@ test('interrupted preparation never publishes a completion receipt; cached artif
   globalThis.fetch = fetchBefore;
   await prepareMediaBatch(publication, root);
   assert.ok(stored.has(key));
-  const variant = entry.public_key + `.v1.w320.${entry.sha256.slice(0, 16)}.webp`;
+  const variant = entry.public_key + `.v2.w320.${entry.sha256.slice(0, 16)}.webp`;
   stored.set(variant, Buffer.from('corrupt'));
   await assert.rejects(() => prepareMediaBatch(publication, root, 0, { materialize: true }), /byte verification/);
   stored.delete(variant);
@@ -100,13 +62,13 @@ test('completion receipts cannot change artifact scope or silently omit variants
 
 test('copies verified static media, preserves aliases and rejects changed immutable bytes', async () => withMediaFixture(async ({ publication, root, stored, entries: [entry] }) => {
   const files = await prepareMedia(publication, root);
-  assert.equal(files.length, 3);
+  assert.equal(files.length, 5);
   assert.equal(sha(await fs.readFile(path.join(root, '.publication-media/image-0.png'))), entry.sha256);
-  assert.equal(publication.media[0].variants.length, 2);
+  assert.equal(publication.media[0].variants.length, 4);
   assert.equal(sha(stored.get(entry.aliases[0].key)), entry.sha256);
   assert.equal(files.some(file => /private|shared|receipt/.test(file.path)), false);
   publication.retained_media_manifests = [publication.media_manifest];
-  assert.equal((await prepareMedia(publication, root)).length, 6);
+  assert.equal((await prepareMedia(publication, root)).length, 10);
   stored.set(entry.public_key, Buffer.from('different immutable contents'));
   await assert.rejects(() => prepareMedia(publication, root), /different bytes/);
 }));
@@ -124,11 +86,11 @@ test('resumes a process interruption without encoding finished variants again an
   const encode = sharp.prototype.toBuffer; let encoded = 0;
   t.mock.method(sharp.prototype, 'toBuffer', function (...args) { encoded++; return encode.apply(this, args); });
   assert.deepEqual(await prepareMediaBatch(publication, root), { cursor: 1, total: 1 });
-  assert.equal(encoded, 1, 'only the unfinished AVIF needs encoding');
+  assert.equal(encoded, 3, 'unfinished 320px AVIF and the two original-width variants need encoding');
   encoded = 0;
   await prepareMedia(publication, root);
   assert.equal(encoded, 0, 'the final static build reuses verified encodings');
-  const variantKey = entry.public_key + `.v1.w320.${entry.sha256.slice(0, 16)}.webp`;
+  const variantKey = entry.public_key + `.v2.w320.${entry.sha256.slice(0, 16)}.webp`;
   stored.set(variantKey, Buffer.from('tampered variant'));
   await assert.rejects(() => prepareMedia(publication, root), /byte verification/);
 }));
@@ -155,7 +117,7 @@ test('a time budget yields after a completed file and retains old-version manife
   const progress = await prepareMediaBatch(publication, root, 0, { budgetMs: 1, clock: () => now++ });
   assert.deepEqual(progress, { cursor: 1, total: 2 });
   assert.deepEqual(await prepareMediaBatch(publication, root, 1), { cursor: 2, total: 2 });
-  assert.equal((await prepareMedia(publication, root)).length, 6);
+  assert.equal((await prepareMedia(publication, root)).length, 10);
 }));
 
 test('retries an interrupted response body and does not retry denied access', async () => withMediaFixture(async ({ publication, root, entries: [entry] }) => {
@@ -243,7 +205,7 @@ test('background preparation writes only private variants and a later publicatio
   assert.equal([...writes.keys()].every(key => key.startsWith('private/')), true);
   const privateWrites = [...writes.entries()];
   await prepareMedia(publication, root);
-  assert.equal(publication.media[0].variants.length, 2);
+  assert.equal(publication.media[0].variants.length, 4);
   for (const [key, count] of privateWrites) assert.equal(writes.get(key), count);
   assert.equal(stored.has(entry.public_key), true);
 }));
@@ -259,13 +221,13 @@ test('warm publication makes no write attempts and backfills a missing private c
   const toBuffer = sharp.prototype.toBuffer; let encodings = 0;
   t.mock.method(sharp.prototype, 'toBuffer', function (...args) { encodings++; return toBuffer.apply(this, args); });
   await prepareMediaBatch(publication, root);
-  assert.equal((await prepareMediaBatch(publication, root, 0, { materialize: true })).files.length, 3);
+  assert.equal((await prepareMediaBatch(publication, root, 0, { materialize: true })).files.length, 5);
   assert.deepEqual(puts, [], 'verified private and public variants need no conditional write attempts');
   assert.equal(encodings, 0);
 
   for (const key of stored.keys()) if (key.includes('/prepared/')) stored.delete(key);
   await prepareMedia(publication, root);
-  assert.equal(puts.length, 4, 'backfill the two variants and receipts from verified public bytes');
+  assert.equal(puts.length, 8, 'backfill the four variants and receipts from verified public bytes');
   assert.ok(puts.every(key => key.startsWith('/private/')));
   assert.equal(encodings, 0);
   puts.length = 0;
@@ -277,9 +239,9 @@ test('materializes bounded slices without losing current or retained media metad
   await prepareMediaBatch(publication, root);
   publication.retained_media_manifests = [structuredClone(publication.media_manifest)];
   const first = await prepareMediaBatch(publication, root, 0, { maxEntries: 1, materialize: true });
-  assert.equal(first.cursor, 1); assert.equal(first.total, 2); assert.equal(first.files.length, 3); assert.equal(first.media.length, 0);
+  assert.equal(first.cursor, 1); assert.equal(first.total, 2); assert.equal(first.files.length, 5); assert.equal(first.media.length, 0);
   const second = await prepareMediaBatch(publication, root, 1, { maxEntries: 1, materialize: true });
-  assert.equal(second.cursor, 2); assert.equal(second.files.length, 3); assert.equal(second.media.length, 1); assert.equal(second.media[0].variants.length, 2);
+  assert.equal(second.cursor, 2); assert.equal(second.files.length, 5); assert.equal(second.media.length, 1); assert.equal(second.media[0].variants.length, 4);
 }));
 
 test('final materialization reads only source originals and verified public variants', async t => withMediaFixture(async ({ publication, root, entries: [entry] }) => {
@@ -293,14 +255,14 @@ test('final materialization reads only source originals and verified public vari
   };
   t.mock.method(sharp.prototype, 'toBuffer', () => { throw Error('materialization must not encode'); });
   const result = await prepareMediaBatch(publication, root, 0, { materialize: true });
-  assert.equal(result.files.length, 3); assert.equal(result.media[0].variants.length, 2);
-  assert.equal(reads.length, 6, 'one grant, one original, two receipts and two variants');
+  assert.equal(result.files.length, 5); assert.equal(result.media[0].variants.length, 4);
+  assert.equal(reads.length, 10, 'one grant, one original, four receipts and four variants');
   for (const file of result.files) assert.ok((await fs.stat(file.source)).size > 0);
 }));
 
 test('final materialization rejects a missing or corrupt prepared variant without repairing storage', async () => withMediaFixture(async ({ publication, root, stored, entries: [entry] }) => {
   await prepareMediaBatch(publication, root);
-  const key = entry.public_key + `.v1.w320.${entry.sha256.slice(0, 16)}.webp`;
+  const key = entry.public_key + `.v2.w320.${entry.sha256.slice(0, 16)}.webp`;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (url, options) => { assert.notEqual(options?.method, 'PUT'); return originalFetch(url, options); };
   stored.set(key, Buffer.from('corrupt variant'));
@@ -354,7 +316,7 @@ test('hosted unchanged images reuse hashes without downloading originals or vari
   globalThis.fetch = (url, options) => { assert.notEqual(options?.method, 'PUT'); reads.push(new URL(url).pathname.slice(1)); return originalFetch(url, options); };
   t.mock.method(sharp.prototype, 'toBuffer', () => { throw Error('must reuse encoded images'); });
   const warm = await prepareMediaBatch(publication, root, 0, { materialize: true, reusableFiles });
-  assert.equal(warm.files.length, 3); assert.ok(warm.files.every(file => file.reused && !file.source));
+  assert.equal(warm.files.length, 5); assert.ok(warm.files.every(file => file.reused && !file.source));
   assert.deepEqual(warm.media, cold.media);
   assert.deepEqual(reads, ['grant', mediaReceiptKey(publication.media_manifest, entry)]);
   assert.equal(await fs.stat(path.join(root, '.publication-media')).then(() => true, () => false), false);
@@ -372,3 +334,32 @@ test('hosted unchanged images reuse hashes without downloading originals or vari
   assert.ok(changed.files.some(file => file.path === entry.public_path && !file.reused));
   assert.ok(reads.includes(entry.source_key));
 }, 1, true));
+
+for (const sourceWidth of [160, 320, 640, 750, 1024, 2100]) test(`native variants retain the full ${sourceWidth}px source without upscaling`, async () => withMediaFixture(async ({ publication, root, stored }) => {
+  await prepareMedia(publication, root);
+  for (const format of ['webp', 'avif']) {
+    const variants=publication.media[0].variants.filter(v=>v.format===format);
+    assert.equal(Math.max(...variants.map(v=>v.width)),sourceWidth);
+    assert.equal(new Set(variants.map(v=>v.width)).size,variants.length);
+    for (const variant of variants) {
+      const bytes=stored.get(publication.media_manifest.site_prefix + new URL(variant.cdn_url).pathname);
+      assert.ok(bytes);
+      assert.equal((await sharp(bytes).metadata()).width,variant.width);
+      assert.ok(variant.width <= sourceWidth);
+    }
+  }
+}, 1, true, sourceWidth));
+
+test('v1 completion and derivative caches cannot satisfy the full-width v2 recipe', async () => withMediaFixture(async ({ publication, root, stored, entries:[entry] }) => {
+  const oldKey=mediaReceiptKey(publication.media_manifest,entry).replace('.prepared-v2.','.prepared-v1.');
+  stored.set(oldKey,Buffer.from('{"format":1,"variants":[]}'));
+  const oldVariant=entry.public_key + `.v1.w640.${entry.sha256.slice(0,16)}.avif`;
+  stored.set(oldVariant,Buffer.from('old cache must not be read'));
+  const originalFetch=globalThis.fetch, reads=[];
+  globalThis.fetch=(url,options)=>{ reads.push(new URL(url).pathname);return originalFetch(url,options); };
+  await prepareMedia(publication,root);
+  assert.equal(reads.some(key=>key.includes('.v1.') || key.includes('.prepared-v1.') || key.includes('/prepared/v1/')),false);
+  assert.equal(publication.media[0].variants.at(-1).width,750);
+  assert.ok(publication.media[0].variants.every(v=>v.cdn_url.includes('.v2.')));
+  assert.equal(stored.get(oldVariant).toString(),'old cache must not be read');
+},1,true,750));

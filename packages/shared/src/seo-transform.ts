@@ -128,7 +128,7 @@ export function transformBodyForSeo(
 
     // 3. Pre-generated R2 variants — emit a <picture> with AVIF + WebP
     //    sources. This is the path Typeroll itself uses: `lib/image-variants.ts`
-    //    builds 320/640/1024/1920 widths × {avif,webp} on R2, the Media
+    //    builds smaller preset widths plus original width in AVIF/WebP on R2; the Media
     //    doc carries them in `variants`, and we wrap the original <img>
     //    in <picture> so modern browsers pick the smallest matching
     //    format/width. Saves ~70-90% on byte transfer for large PNGs.

@@ -3,6 +3,8 @@ import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { mediaReceiptKey } from '../../../../../scripts/fixtures/static-publication/media-receipt.mjs';
 
+import { MEDIA_RECIPE_VERSION, MEDIA_VARIANT_SLOTS, mediaVariantSuffix } from '../../../../../scripts/fixtures/static-publication/media-recipe.mjs';
+
 /** Grants authorize exact objects and methods, never a bucket, listing, deletion, or parent key. */
 export async function createBuildMediaGrants(client: S3Client, manifest: any, publicationId: string, ttlSeconds = 21600) {
   if (!/^[a-f0-9]{64}$/.test(publicationId) || !manifest.site_prefix || !Number.isSafeInteger(ttlSeconds) || ttlSeconds < 1 || ttlSeconds > 86400) throw new Error('Invalid media grant scope');
@@ -15,16 +17,16 @@ export async function createBuildMediaGrants(client: S3Client, manifest: any, pu
     originals[entry.source_key] = await read(manifest.original_bucket, entry.source_key);
     const suffixes = [{ suffix: '', mime: entry.mime_type }];
     if (['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif'].includes(entry.mime_type)) {
-      for (const width of [320, 640, 1024, 1920]) for (const format of ['webp', 'avif']) {
+      for (const slot of MEDIA_VARIANT_SLOTS) for (const format of ['webp', 'avif']) {
         for (const tail of ['', '.receipt.json']) {
-          const key = `private/${manifest.site_prefix}/prepared/v1/${entry.sha256}/${width}.${format}${tail}`;
+          const key = `private/${manifest.site_prefix}/prepared/${MEDIA_RECIPE_VERSION}/${entry.sha256}/${slot}.${format}${tail}`;
           if (prepared[key]) continue;
           const headers = { 'content-type': tail ? 'application/json' : `image/${format}`, 'cache-control': 'private, no-store', 'if-none-match': '*' };
           prepared[key] = { get: await read(manifest.original_bucket, key), headers,
             put: await getSignedUrl(client, new PutObjectCommand({ Bucket: manifest.original_bucket, Key: key, ContentType: headers['content-type'], CacheControl: headers['cache-control'], IfNoneMatch: '*' }),
               { expiresIn: ttlSeconds, signableHeaders: new Set(Object.keys(headers)) }) };
         }
-        const suffix = `.v1.w${width}.${entry.sha256.slice(0, 16)}.${format}`;
+        const suffix = mediaVariantSuffix(slot, entry.sha256, format);
         suffixes.push({ suffix, mime: `image/${format}` }, { suffix: suffix + '.receipt.json', mime: 'application/json' });
       }
     }
@@ -34,7 +36,7 @@ export async function createBuildMediaGrants(client: S3Client, manifest: any, pu
       if (!base.startsWith(`${manifest.site_prefix}/`) || base.split('/').some((part: string) => part === '..' || part === '.')) throw new Error('Public object escaped publication scope');
       for (const { suffix, mime } of suffixes) {
         if (suffix.endsWith('.receipt.json') && base !== entry.public_key) continue;
-        if (suffix.startsWith('.prepared-v1.') && base !== entry.public_key) continue;
+        if (suffix.startsWith(`.prepared-${MEDIA_RECIPE_VERSION}.`) && base !== entry.public_key) continue;
         const key = base + suffix;
         if (objects[key]) continue;
         const headers = { 'content-type': mime, 'cache-control': 'public, max-age=31536000, immutable', 'if-none-match': '*' };

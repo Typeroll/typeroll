@@ -69,7 +69,7 @@ describe('generateImageVariants', () => {
     };
   }
 
-  it('produces webp + avif variants at every size below the source width', async () => {
+  it('produces webp + avif variants at preset sizes and the full source width', async () => {
     const { generateImageVariants } = await import('../../lib/image-variants');
     const media = buildMedia();
     const result = await generateImageVariants(media, {
@@ -80,12 +80,12 @@ describe('generateImageVariants', () => {
     expect(result).not.toBeNull();
     if (!result) return;
     // Source is 1500w, so 320 + 640 + 1024 fit (1920 is skipped).
-    // 3 widths × 2 formats = 6 variants.
-    expect(result.variants).toHaveLength(6);
+    // 4 widths × 2 formats = 8 variants.
+    expect(result.variants).toHaveLength(8);
     const formats = new Set(result.variants.map((v) => v.format));
     expect(formats).toEqual(new Set(['webp', 'avif']));
     const widths = new Set(result.variants.map((v) => v.width));
-    expect(widths).toEqual(new Set([320, 640, 1024]));
+    expect(widths).toEqual(new Set([320, 640, 1024, 1500]));
     expect(result.skipped.some((s) => s.includes('1920w'))).toBe(true);
     expect(result.source_width).toBe(1500);
   });
@@ -98,12 +98,12 @@ describe('generateImageVariants', () => {
       accessKeyId: 'k', secretAccessKey: 's',
       publicBase: 'https://cdn.example.com',
     });
-    // 6 puts (3 widths × 2 formats).
-    expect(captured.length).toBe(6);
+    // Four widths, including the original, in both modern formats.
+    expect(captured.length).toBe(8);
     const keys = captured.map((p) => p.Key).sort();
-    expect(keys).toContain('orgs/o/sites/s/images/photo.w320.webp');
-    expect(keys).toContain('orgs/o/sites/s/images/photo.w320.avif');
-    expect(keys).toContain('orgs/o/sites/s/images/photo.w1024.avif');
+    expect(keys.some(key => /photo\.v2\.w320\.[a-f0-9]{16}\.webp$/.test(key))).toBe(true);
+    expect(keys.some(key => /photo\.v2\.original\.[a-f0-9]{16}\.avif$/.test(key))).toBe(true);
+    expect(keys.some(key => /photo\.v2\.w1024\.[a-f0-9]{16}\.avif$/.test(key))).toBe(true);
     // All variants get the immutable cache header so CF caches them forever.
     for (const c of captured) {
       expect(c.CacheControl).toBe('public, max-age=31536000, immutable');

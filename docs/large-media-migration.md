@@ -17,7 +17,7 @@ prepares at most 1,000 pending originals per task, with checkpoints every bounde
 slice. Cache-only grants contain no public object upload URLs. Original and variant
 cache keys remain in private R2. Draft preparation never creates a deployment.
 
-The private cache namespace is recipe v1 and full source SHA-256. Its receipts also
+The private cache namespace is recipe v2 and full source SHA-256. Its receipts also
 bind the actual encoder versions and output checksums. When upgrading encoders or
 transformation parameters, bump the recipe namespace in both the renderer and grant
 generator, and the preparation record recipe. Never overwrite immutable variants.
@@ -127,3 +127,14 @@ Large page/media bodies are verified by the customer engine; coordinator probes
 are explicitly a bounded sample. Existing legacy frozen jobs keep their original
 path, with streaming public-response hashing to avoid full-file buffer copies.
 Update shared engines before starting new publications on this release.
+
+Core 0.2.37 shares `media-recipe.mjs` across grant issuance, preparation and
+explicit API generation. The fixed `original` slot authorizes one exact object
+per format even when dimensions are unknown before the customer runner reads
+the source. Its srcset descriptor is the measured original width, never the
+slot name. Only preset widths strictly smaller than the original are added.
+Completion receipts use `.prepared-v2.`, private cache paths use `prepared/v2`,
+and public variants use `.v2.`; prior v1 completions cannot bypass generation.
+The original bytes and old public aliases are not overwritten or deleted.
+The first v2 build prepares the new recipe; subsequent unchanged builds retain
+the no-reencoding and no-unnecessary-download behavior.

@@ -14,7 +14,10 @@ it('grants the exact completion receipt and keeps private preparation unpublishe
   try {
     await createBuildMediaGrants(client, manifest, 'b'.repeat(64));
     const key = mediaReceiptKey(manifest, entry);
-    expect(Object.keys(grant.objects).filter(key => key.includes('.prepared-v1.'))).toEqual([key]);
+    expect(Object.keys(grant.objects).filter(key => key.includes('.prepared-v2.'))).toEqual([key]);
+    expect(grant.objects[entry.public_key + '.v2.original.' + entry.sha256.slice(0, 16) + '.avif']).toBeDefined();
+    expect(Object.keys(grant.prepared).some(key => key.endsWith('/original.avif'))).toBe(true);
+    expect(Object.keys(grant.objects).some(key => key.includes('.v1.'))).toBe(false);
     expect(grant.objects[key].headers['if-none-match']).toBe('*');
     expect(new URL(grant.objects[key].get).pathname).toBe('/public/' + key);
     await createBuildMediaGrants(client, { ...manifest, cache_only: true }, 'b'.repeat(64));

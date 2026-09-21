@@ -1,3 +1,4 @@
+import { MEDIA_VARIANT_SLOTS, mediaVariantSuffix } from '../../../../../scripts/fixtures/static-publication/media-recipe.mjs';
 import { schedulePublication, waitForBuild, waitForPublicationCondition } from '../scheduling/continuation';
 import { mapPublicationParts } from './parallel';
 import { ensureGithubMainBranch } from './providers.mjs';
@@ -482,7 +483,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     await mapPublicationParts<any, void>(frozen.media_manifest?.entries ?? [], async entry => {
       const mediaPath = `${paths.media(args.orgId, args.siteId)}/${entry.id}`;
       const aliases = [entry.cdn_url, ...entry.aliases.map((alias: any) => alias.url)];
-      for (const width of [320, 640, 1024, 1920]) for (const format of ['webp', 'avif']) aliases.push(`${entry.cdn_url}.v1.w${width}.${entry.sha256.slice(0, 16)}.${format}`);
+      for (const slot of MEDIA_VARIANT_SLOTS) for (const format of ['webp', 'avif']) aliases.push(entry.cdn_url + mediaVariantSuffix(slot, entry.sha256, format));
       const record = await store.getDoc<any>(mediaPath);
       if (record && aliases.some(alias => !(record.source_aliases ?? []).includes(alias))) await store.compareAndUpdateDoc<any>(mediaPath, current => current.sha256 === entry.sha256 && JSON.stringify(current.source_aliases) === JSON.stringify(record.source_aliases),
         { source_aliases: [...new Set([...(record.source_aliases ?? []), ...aliases])] });

@@ -76,7 +76,7 @@ it('an automatic upload selects only requested images, not a legacy library with
 
 it('finalizing an already prepared image or non-image creates no background work', async () => {
   const store = await configureEngine();
-  await store.setDoc(`${paths.media('org', 'site')}/ready`, { ...imageDoc('a'), preparation: { state: 'ready', source_sha256: 'a'.repeat(64), recipe: 'v1' } });
+  await store.setDoc(`${paths.media('org', 'site')}/ready`, { ...imageDoc('a'), preparation: { state: 'ready', source_sha256: 'a'.repeat(64), recipe: 'v2' } });
   await store.setDoc(`${paths.media('org', 'site')}/pdf`, { ...imageDoc('b'), mime_type: 'application/pdf' });
   await requestMediaPreparation('org', 'site', 'ready');
   await requestMediaPreparation('org', 'site', 'pdf');
@@ -127,4 +127,27 @@ it('finishes a legacy queued library job before switching later uploads to targe
   await store.setDoc(`${paths.media('org', 'site')}/new`, imageDoc('c'));
   await requestMediaPreparation('org', 'site', 'new'); await runPendingMediaPreparation('org');
   expect((mocks.source.mock.calls[1][0] as any).media_manifest.entries.map((entry: any) => entry.id)).toEqual(['new']);
+});
+
+it('an older completed recipe cannot suppress preparation of the full-width candidate', async () => {
+  const store = await configureEngine();
+  await store.setDoc(`${paths.media('org', 'site')}/old`, { ...imageDoc('a'), preparation: { state: 'ready', source_sha256: 'a'.repeat(64), recipe: 'v1' } });
+  await requestMediaPreparation('org', 'site', 'old');
+  expect(await store.getDoc(`${paths.media('org', 'site')}/old`)).toMatchObject({ preparation_pending: true });
+  expect((await store.listDocs('media_preparations')).length).toBeGreaterThan(0);
+});
+
+it('completing a task from before the recipe rollout does not certify the new recipe', async () => {
+  const store=await configureEngine();
+  await store.setDoc(`${paths.media('org', 'site')}/image`,imageDoc('a'));
+  await requestMediaPreparation('org','site','image'); await releaseDelay(); await runPendingMediaPreparation('org');
+  const job=(await store.listDocs('media_preparations'))[0];
+  await store.updateDoc(`media_preparations/${job.id}`,{recipe:'v1'});
+  mocks.completed.mockResolvedValue({task:{},files:{}});
+  await runPendingMediaPreparation('org');
+  expect(await store.getDoc(`${paths.media('org', 'site')}/image`)).toMatchObject({preparation_pending:true,preparation:{recipe:'v1'}});
+  mocks.completed.mockResolvedValue(null);
+  await runPendingMediaPreparation('org');
+  expect(mocks.enqueue).toHaveBeenCalledTimes(2);
+  expect((await store.listDocs('media_preparations'))[0]).toMatchObject({recipe:'v2'});
 });

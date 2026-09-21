@@ -1,3 +1,4 @@
+import { MEDIA_RECIPE_VERSION } from '../../../../../scripts/fixtures/static-publication/media-recipe.mjs';
 import { randomUUID } from 'node:crypto';
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from '../datastore';
@@ -10,7 +11,7 @@ import { enqueueBuild, completedBuild } from '../builds/jobs';
 import { sha256 } from '../builds/contract.mjs';
 import { buildTasksPath, type BuildTask } from '../builds/queue';
 
-interface Preparation { full_scan?: boolean; org: string; site: string; state: 'queued' | 'running' | 'complete' | 'waiting' | 'failed'; request: string; active_request?: string; lease: string | null; lease_until: number; next_at: number; task?: string | null; error?: string | null; entries?: Array<{ id: string; sha256: string }>; completed?: number; total?: number }
+interface Preparation { recipe?: string; full_scan?: boolean; org: string; site: string; state: 'queued' | 'running' | 'complete' | 'waiting' | 'failed'; request: string; active_request?: string; lease: string | null; lease_until: number; next_at: number; task?: string | null; error?: string | null; entries?: Array<{ id: string; sha256: string }>; completed?: number; total?: number }
 const jobPath = (org: string, site: string) => `media_preparations/${sha256(`${org}\0${site}`)}`;
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
 
@@ -22,7 +23,7 @@ export async function requestMediaPreparation(org: string, site: string, mediaId
     // automatic work by scanning all legacy records without preparation flags.
     const queued = await store.compareAndUpdateDoc<Media>(`${paths.media(org, site)}/${mediaId}`,
       file => imageTypes.has(file.mime_type ?? '') && file.storage?.provider === 'organization_r2' && file.storage.state === 'ready' && !!file.sha256 &&
-        !(file.preparation?.state === 'ready' && file.preparation.source_sha256 === file.sha256 && file.preparation.recipe === 'v1'),
+        !(file.preparation?.state === 'ready' && file.preparation.source_sha256 === file.sha256 && file.preparation.recipe === MEDIA_RECIPE_VERSION),
       { preparation_pending: true });
     if (!queued) return;
   }
@@ -49,8 +50,10 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
       if (item.task) {
         const result = await completedBuild(item.org, item.task);
         if (!result) { pending = true; continue; }
+        // A completion from before a rollout keeps its actual recipe identity.
+        const completedRecipe = item.recipe ?? 'v1';
         for (const entry of item.entries ?? []) await store.compareAndUpdateDoc<Media>(`${paths.media(item.org, item.site)}/${entry.id}`,
-          value => value.sha256 === entry.sha256, { preparation_pending: false, preparation: { state: 'ready', source_sha256: entry.sha256, recipe: 'v1' } });
+          value => value.sha256 === entry.sha256, { preparation_pending: completedRecipe !== MEDIA_RECIPE_VERSION, preparation: { state: 'ready', source_sha256: entry.sha256, recipe: completedRecipe } });
         await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease,
           { task: null, state: 'queued', completed: item.entries?.length ?? 0, error: null });
         pending = true;
@@ -66,7 +69,7 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
       // A new automatic request after completion explicitly switches it off.
       const media = (await store.listDocs<Media>(paths.media(item.org, item.site), item.full_scan !== false ? undefined : { filters: [{ field: 'preparation_pending', op: '==', value: true }] }))
         .filter(file => imageTypes.has(file.mime_type ?? '') && file.storage?.provider === 'organization_r2' && file.storage.state === 'ready' && file.sha256 &&
-          !(file.preparation?.state === 'ready' && file.preparation.source_sha256 === file.sha256 && file.preparation.recipe === 'v1')).slice(0, 1000);
+          !(file.preparation?.state === 'ready' && file.preparation.source_sha256 === file.sha256 && file.preparation.recipe === MEDIA_RECIPE_VERSION)).slice(0, 1000);
       if (!media.length) {
         const finished = await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease && value.request === item.request, { state: 'complete', full_scan: false, error: null });
         pending ||= !finished; continue;
@@ -75,7 +78,7 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
       const entries = media.map(file => ({ id: file.id, source_key: file.storage!.key, sha256: file.sha256!, size_bytes: file.size_bytes,
         mime_type: file.mime_type, public_key: `${prefix}/prepared/${file.sha256}`, public_path: `/prepared/${file.sha256}`, aliases: [] }));
       const preparationRequest = randomUUID();
-      const publicationId = sha256(JSON.stringify({ request: preparationRequest, entries, recipe: 'v1' }));
+      const publicationId = sha256(JSON.stringify({ request: preparationRequest, entries, recipe: MEDIA_RECIPE_VERSION }));
       const publication = { core_commit: process.env.TYPEROLL_SOURCE_SHA, publication_id: publicationId, media: entries,
         media_manifest: { cache_only: true, site_prefix: prefix, entries, account_id: connection.cloudflare.account_id,
           original_bucket: connection.cloudflare.bucket, public_bucket: connection.cloudflare.public_bucket } };
@@ -83,7 +86,7 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
       if (!await update({ active_request: preparationRequest })) { pending = true; continue; }
       const queued = await enqueueBuild(engine, { org_id: item.org, site_id: item.site, version_id: 'main', job_id: `media-${preparationRequest}`,
         publication_id: publicationId, commit: engine.runner_commit, branch: 'main' }, source, 'media_preparation');
-      await update({ task: queued.key, active_request: preparationRequest, entries: entries.map(({ id, sha256 }) => ({ id, sha256 })),
+      await update({ task: queued.key, recipe: MEDIA_RECIPE_VERSION, active_request: preparationRequest, entries: entries.map(({ id, sha256 }) => ({ id, sha256 })),
         state: 'running', total: entries.length, completed: 0, next_at: 0 });
       pending = true;
     } catch {
