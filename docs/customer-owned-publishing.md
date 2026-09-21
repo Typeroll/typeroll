@@ -79,6 +79,13 @@ Provider build status is available through the authenticated site API and MCP
 `get_deploy_status` with `include_provider: true`. It excludes provider secrets
 and environment-variable configuration.
 
+Public verification allows retired native AVIF/WebP variant URLs to remain only
+when their source path and source hash match an original still present in the
+frozen artifact. Candidate verification still checks retired output is absent;
+removed or replaced originals and unversioned files keep public removal checks.
+Older persisted probe lists use the full artifact manifest as evidence and a new
+policy checkpoint, so an in-flight publication can recover without another build.
+
 A domain change freezes future website/media origins into a candidate before
 traffic cutover. The preparation API reports certificate and DNS requirements;
 external agents can apply those requirements with their own DNS access.

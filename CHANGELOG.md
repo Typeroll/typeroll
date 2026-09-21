@@ -1,5 +1,10 @@
 # Changelog
 
+## Core 0.2.38 / MCP 0.45.31 unchanged
+
+- Allow retired native image variants on public hosts only when the frozen artifact retains the exact original image bytes. Keep candidate removal checks and checks for deleted or replaced originals.
+- Recover already-running publications from older saved probe lists using the full frozen manifest and a new verification-policy checkpoint. No rebuild or manual job reset is required.
+
 ## Core 0.2.37 / MCP 0.45.31
 
 - Include full original-width AVIF/WebP candidates in static publishing and explicit media generation, without upscaling or duplicate widths.

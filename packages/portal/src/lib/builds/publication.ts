@@ -5,7 +5,7 @@ import { buildStorage } from './storage';
 import { sha256 } from './contract.mjs';
 import type { DirectReceipt } from './direct-upload.mjs';
 import { staticManifestChecks, staticChecks, verifyStaticResponse, type StaticCheck, type StaticObservation } from './verification';
-import { staticControlsHash, changedStaticChecks, selectStaticProbes, publicStaticChecks, PROBE_FILE_BYTES, PROBE_BYTES, PROBE_FILES } from './static-verifier.mjs';
+import { staticControlsHash, changedStaticChecks, selectStaticProbes, publicStaticChecks, needsMediaRetentionEvidence, PROBE_FILE_BYTES, PROBE_BYTES, PROBE_FILES } from './static-verifier.mjs';
 import { enqueueBuild, completedBuild } from './jobs';
 import { readEngineConfiguration, type BuildProvider } from './state';
 import { buildTasksPath, type BuildTask } from './queue';
@@ -78,13 +78,22 @@ export async function saveStaticChecks(org: string, files: Record<string, Buffer
 
 /** Durable, bounded checks let the normal publication queue wait for public distribution. */
 export async function verifyStaticBatch(org: string, jobPath: string, checksKey: string, origin: string, bounded = false) {
-  const store = getStore(), checkPath = `${jobPath}/build_verifications/${sha256(`${checksKey}\0${origin}\0public-v2`)}`;
+  const store = getStore(), checkPath = `${jobPath}/build_verifications/${sha256(`${checksKey}\0${origin}\0public-v3`)}`;
   const state = await store.getDoc<{ cursor: number; complete: boolean }>(checkPath);
   if (state?.complete) return true;
   const savedChecks = await buildStorage(org, async storage => JSON.parse((await storage.read(checksKey, 32 * 1024 * 1024)).toString('utf8')) as StaticCheck[]);
   // Apply the policy at consumption too so in-flight publications with older
   // persisted probe lists can recover through the normal coordinator.
-  const checks = Array.isArray(savedChecks) ? publicStaticChecks(savedChecks) as StaticCheck[] : savedChecks;
+  let currentChecks = savedChecks;
+  if (bounded && Array.isArray(savedChecks) && needsMediaRetentionEvidence(savedChecks)) {
+    const job = await store.getDoc<{ git_publication?: { static_checks_key?: string } }>(jobPath);
+    const fullKey = job?.git_publication?.static_checks_key;
+    if (fullKey && fullKey !== checksKey) {
+      currentChecks = await buildStorage(org, async storage => JSON.parse((await storage.read(fullKey, 32 * 1024 * 1024)).toString('utf8')) as StaticCheck[]);
+      if (!Array.isArray(currentChecks)) throw new ConnectionError('Static verification data is missing.', 409);
+    }
+  }
+  const checks = Array.isArray(savedChecks) ? publicStaticChecks(savedChecks, currentChecks) as StaticCheck[] : savedChecks;
   if (!Array.isArray(checks) || !checks.length) throw new ConnectionError('Static verification data is missing.', 409);
   if (bounded && checks.length > PROBE_FILES) throw new ConnectionError('Coordinator probe count exceeds its limit.', 409);
   let downloaded = 0;

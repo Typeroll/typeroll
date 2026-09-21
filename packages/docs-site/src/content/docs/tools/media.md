@@ -143,3 +143,11 @@ new variants once. Later unchanged builds keep reusing their verified receipts
 and files. Old published image addresses and original files are preserved. For
 independent workflows that explicitly generate variants through the API/MCP, run
 variant generation again before rebuilding; no customer CSS patch is needed.
+
+### Older image variants during publication
+
+From Core 0.2.38, an older generated AVIF/WebP URL may remain available while
+the same original image is still included unchanged in the website. This does
+not block publication when the image recipe changes. New pages use the new
+variants. Removing or replacing the original still requires the corresponding
+public removal checks to pass; this is not a general exception for deleted media.

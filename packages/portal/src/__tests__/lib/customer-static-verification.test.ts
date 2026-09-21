@@ -130,3 +130,25 @@ it('allows retired immutable bundles only on public hosts, retaining all candida
   fetchImpl.mockImplementation(async () => new Response(null, { status: 404 }));
   expect(await verifyCandidateCheck(origin, retired[0], { fetchImpl })).toBe(true);
 });
+
+
+it('allows old native media variants only while their exact source remains in the artifact', async () => {
+  const source = check('/media/photo.jpg', 'original image');
+  const variant = (suffix: string) => ({ route: `${source.route}.${suffix}`, status: 404 as const });
+  const old = variant(`v1.w640.${source.sha256.slice(0, 16)}.avif`);
+  const full = variant(`v2.original.${source.sha256.slice(0, 16)}.webp`);
+  const current = check(`/media/photo.jpg.v2.w320.${source.sha256.slice(0, 16)}.avif`);
+  expect(publicStaticChecks([source, old, full, current])).toEqual([source, current]);
+  expect(publicStaticChecks([old], [source])).toEqual([]);
+  expect(publicStaticChecks([old], [])).toEqual([old]);
+  expect(publicStaticChecks([old], [check(source.route, 'replacement image')])).toEqual([old]);
+  for (const suffix of ['v1.w640.not-a-hash.avif', `v1.w640.${source.sha256.slice(0, 16)}.avif?x=1`, `v1.original.${source.sha256.slice(0, 16)}.jpg`]) {
+    const required = variant(suffix);
+    expect(publicStaticChecks([required], [source])).toEqual([required]);
+  }
+  const removed = { route: source.route, status: 404 as const };
+  expect(publicStaticChecks([removed, old])).toEqual([removed, old]);
+  expect(selectStaticProbes([source, old, current], [old, current])).toEqual([current]);
+  expect(changedStaticChecks([source, old], [source], true)).toEqual([old]);
+  expect(await verifyCandidateCheck(origin, old, { fetchImpl: async () => new Response('old variant') })).toBe(false);
+});
