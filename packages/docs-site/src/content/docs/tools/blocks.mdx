@@ -1060,3 +1060,103 @@ card-title and image-wrapper links retain their own styles.
 Existing static sites need a new publication to receive these defaults. An
 explicit custom stylesheet can still override them; remove old blanket anchor
 resets when they conflict with readable text links.
+
+### Navigation inputs and service tabs
+
+From **Core 0.2.40 / MCP 0.45.33**, `core/navigation_form` collects a few
+initial values and navigates to another page. It does **not** submit a lead,
+call a provider, send email, or require an app installation. Use `core/form`
+for the later submission, with its own consent, validation and provider setup.
+
+```json
+{
+  "id": "quote-start",
+  "type": "core/navigation_form",
+  "data": {
+    "destination": "/quote/",
+    "handoff_key": "quote-start",
+    "button_label": "Continue",
+    "columns": { "mobile": "1", "laptop": "3" },
+    "fields": [
+      {
+        "name": "address",
+        "label": "Address",
+        "kind": "text",
+        "required": true
+      },
+      { "name": "area", "label": "Area", "kind": "number" }
+    ]
+  }
+}
+```
+
+Use native `text`, `number` or `select` fields. Select options have `value`
+and `label`. Labels are accessible even with `show_labels: false`.
+`gap_px`, `input_height_px`, `font_size_px`, `radius_px` and input/button
+colors control presentation. `font` selects `inherit`, `body` or `heading`.
+Use `line_height`, `input_padding_x_px`, `input_padding_y_px`,
+`input_border_width_px` and `input_border_color` for native input styling.
+`button_nowrap`, `button_padding_x_px` and `button_padding_y_px` control
+tight continue buttons; verify the longest label at the narrowest width.
+Number fields support `min`, `max` and positive `step` constraints.
+`columns` includes the continue button.
+For unequal widths use `column_widths`, such as `"1fr 180px"` or
+`"2fr 2fr 1fr 1fr"`. A field's `column` and `row`, plus `button_column`
+and `button_row`, accept responsive values. Columns accept `auto`, `full`,
+`1`–`6`, `span 2` or `span 3`; rows accept `auto` or `1`–`6`.
+Use local `responsive_breakpoints` when the component needs different widths.
+Keep visual placement consistent with a sensible DOM/keyboard reading order.
+
+The destination must be a path on the **same origin**, without query parameters
+or a fragment. Values are never added to the URL. The latest handoff is stored
+in that browser tab and accepted for at most 15 minutes: up to 32 named fields, 512 characters
+each. Do not use it for secrets. The packet is removed when consumed or replaced; an unused expired packet can
+remain until another handoff or the tab closes. Closing the tab discards its session storage;
+blocked storage or disabled JavaScript still permits navigation, but not prefill.
+This is not persistent draft storage or cross-domain form integration.
+
+To display the defaults on the destination, use another `core/navigation_form`
+with `mode: "receive"`, the same `handoff_key`, and an explicit `fields` list.
+It renders editable inputs without a continue/submission button and consumes
+matching defaults once. Unknown fields, expired values and mismatched destination
+paths are rejected. A provider integration must deliberately adopt these defaults
+and validate them again; placing a receive block beside an unrelated form does
+not automatically populate or submit that form.
+
+`core/tabs` accepts up to six `labels` and matching `slots`. A label without
+`href` selects its slot; a label with `href` is a normal link and ignores its
+slot. Labels support `icon`. Tab buttons precede direct links in the strip. Set `choice_flow: "continuous"`
+to let individual choices wrap together; `grouped` keeps the two groups together.
+`choice_row_gap_px`, `headline_font_size_px` and `headline_line_height` allow
+separate row and headline rhythm.
+Use `headline` for optional inline introductory text and responsive
+`headline_full_width` to move it onto its own row. Native choice controls include
+`font`, `line_height`, `choice_min_height_px` (at least 24 px),
+`choice_padding_x_px`, `choice_padding_y_px`, `choice_radius_px`,
+`choice_icon_size_px` and `style: "plain"` for borderless choices.
+`choice_color`, `active_background` and `active_color` control colors;
+`active_font_weight` controls the selected label weight. a collapsed
+input panel does not show an active background.
+Arrow keys, Home and End switch tabs without recreating inputs. Set
+`collapse_below: "1025"` and `collapse_mode: "panels"` to keep service choices
+visible while a tap opens/closes the input panel on smaller screens. The default
+`collapse_mode: "all"` uses a separate disclosure button. `never` keeps content
+expanded. Without JavaScript, slot content and direct links remain available.
+
+### Missing card images and compact footer links
+
+From **Core 0.2.40**, `core/post_card` can use `missing_image: "placeholder"`
+with `placeholder_icon`, `placeholder_background`, `placeholder_color` and
+responsive `placeholder_icon_size_px`. Missing, null, empty and whitespace-only
+images use the decorative panel; real images retain their original presentation.
+`show_image: false` still hides both. Existing image height/aspect settings control
+the panel geometry. The default remains `missing_image: "omit"`. Set these once
+on the shared card or `item_overrides` of a listing/repeater; do not manufacture
+featured images on every Page. Linked placeholders use the card title as their
+accessible name, and the decorative icon is hidden from assistive technology.
+
+For compact footer lists, `core/navigation_links` supports `density: "compact"`
+at all widths and responsive `link_min_height_px` (minimum 24 px). For example,
+24 px link height, zero vertical padding and a 4 px gap produce a 28 px rhythm
+for one-line links; wrapped labels can grow. Comfortable navigation remains
+44 px by default, and `compact-desktop` retains its previous desktop behavior.

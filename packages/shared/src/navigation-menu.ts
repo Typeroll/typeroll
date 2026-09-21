@@ -101,26 +101,28 @@ export const navigationLinks: BlockType = {
     { name:'font', type:'select',label:'Font',options:['inherit','body','heading'],default:'inherit' },
     pixels('icon_size_px','Link icon size (px)',8,96),pixels('icon_gap_px','Icon gap (px)',0,80),
     { name:'color', type:'color', label:'Link color' },
-    { name:'density', type:'select', label:'Link density', options:['comfortable','compact-desktop'], option_labels:['Comfortable','Compact on desktop'], default:'comfortable', editor_group:'appearance' },
+    { name:'density', type:'select', label:'Link density', options:['comfortable','compact-desktop','compact'], option_labels:['Comfortable','Compact on desktop','Compact at every width'], default:'comfortable', editor_group:'appearance' },
     { name:'font_weight', type:'select', label:'Weight', options:['400','500','600','700'], default:'400', responsive:true },
     pixels('font_size_px','Text size (px)',10,96),
     { name:'line_height', type:'number', label:'Line height', min:1,max:3,css_unit:'number',responsive:true,default:1.4 },
+    pixels('link_min_height_px','Minimum link height (px)',24,120),
     pixels('gap_px','Gap (px)',0,120), pixels('padding_y_px','Link vertical padding (px)',0,80),
   ],
   template:`<ul data-block="navigation_links" data-font="{{font}}" data-density="{{density}}" style="--direction:{{direction}};--link_color:{{color}};--font_weight:{{font_weight}}">{{{navigation_links_html}}}</ul>`,
   styles:`[data-block="navigation_links"] { display:flex;flex-direction:var(--direction,column);flex-wrap:wrap;gap:var(--gap_px,8px);list-style:none;margin:0;padding:0; }
 [data-block="navigation_links"] > li { min-width:0;max-width:100%;list-style:none;margin:0;padding:0; }
 [data-block="navigation_links"] > li::marker { content:''; }
-[data-block="navigation_links"] > li > a { display:flex;align-items:center;min-height:44px;gap:var(--icon_gap_px,12px);color:var(--link_color,inherit);font-size:var(--font_size_px,inherit);line-height:var(--line_height,1.4);font-weight:var(--font_weight,400);padding-block:var(--padding_y_px,8px);text-decoration:none;overflow-wrap:anywhere; }
+[data-block="navigation_links"] > li > a { display:flex;align-items:center;min-height:var(--link_min_height_px,44px);gap:var(--icon_gap_px,12px);color:var(--link_color,inherit);font-size:var(--font_size_px,inherit);line-height:var(--line_height,1.4);font-weight:var(--font_weight,400);padding-block:var(--padding_y_px,8px);text-decoration:none;overflow-wrap:anywhere; }
 [data-block="navigation_links"][data-font="body"] { font-family:var(--font-body,inherit); }
 [data-block="navigation_links"][data-font="heading"] { font-family:var(--font-heading,inherit); }
 [data-block="navigation_links"] .block-nav-icon { font-size:var(--icon_size_px,24px);width:1em;flex:none;line-height:1; }
 [data-block="navigation_links"] .block-nav-icon svg { width:1em;height:1em; }
 [data-block="navigation_links"] a:hover { text-decoration:underline; }
-[data-block="navigation_links"][data-density="compact-desktop"] > li > a { min-height:44px; }
+[data-block="navigation_links"][data-density="compact"] { gap:var(--gap_px,4px); }
+[data-block="navigation_links"][data-density="compact"] > li > a { min-height:var(--link_min_height_px,24px);padding-block:var(--padding_y_px,0px); }
 @media (min-width:1024px) and (hover:hover) and (pointer:fine) {
   [data-block="navigation_links"][data-density="compact-desktop"] { gap:var(--gap_px,4px); }
-  [data-block="navigation_links"][data-density="compact-desktop"] > li > a { min-height:24px;padding-block:var(--padding_y_px,0px); }
+  [data-block="navigation_links"][data-density="compact-desktop"] > li > a { min-height:var(--link_min_height_px,24px);padding-block:var(--padding_y_px,0px); }
 }
 [data-block="navigation_links"] a:focus-visible { outline:2px solid currentColor;outline-offset:3px; }`,
   origin:'core',created_at:'1970-01-01T00:00:00Z',

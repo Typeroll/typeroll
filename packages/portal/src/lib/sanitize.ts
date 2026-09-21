@@ -100,7 +100,7 @@ const options: IOptions = {
   // sanitize-html currently classifies `download` as non-boolean and drops
   // the common valueless form. HTML defines it as a boolean-like attribute,
   // so keep an empty value when the caller writes `<a download>`.
-  nonBooleanAttributes: sanitizeHtml.defaults.nonBooleanAttributes.filter((name) => name !== 'download'),
+  nonBooleanAttributes: sanitizeHtml.defaults.nonBooleanAttributes.filter((name) => !['download', 'hidden'].includes(name)),
   allowedAttributes: {
     // Schema.org microdata (itemscope/itemtype/itemprop/itemref/itemid) are
     // passive metadata attributes — no security risk, drive Google rich
@@ -108,7 +108,7 @@ const options: IOptions = {
     // PostalAddress / Article / Product etc. inline. Page.json_ld
     // remains the recommended path for complex structured data, but
     // microdata is sometimes simpler for small annotations.
-    '*': ['id', 'class', 'style', 'data-*', 'aria-*', 'role', 'lang', 'dir',
+    '*': ['id', 'class', 'style', 'data-*', 'aria-*', 'role', 'lang', 'dir', 'hidden',
       'itemscope', 'itemtype', 'itemprop', 'itemref', 'itemid'],
     a: ['href', 'target', 'rel', 'title', 'download'],
     'x-include': ['name'],
@@ -188,7 +188,7 @@ const options: IOptions = {
     pattern: ['x', 'y', 'width', 'height', 'patternunits', 'patterntransform', 'viewbox'],
     symbol: ['viewbox', 'preserveaspectratio'],
     form: ['action', 'method', 'enctype', 'target', 'name'],
-    input: ['type', 'name', 'value', 'placeholder', 'required', 'min', 'max', 'pattern', 'autocomplete', 'checked', 'readonly', 'disabled', 'tabindex'],
+    input: ['type', 'name', 'value', 'placeholder', 'required', 'min', 'max', 'step', 'maxlength', 'pattern', 'autocomplete', 'checked', 'readonly', 'disabled', 'tabindex'],
     textarea: ['name', 'placeholder', 'required', 'rows', 'cols'],
     select: ['name', 'required', 'multiple'],
     option: ['value', 'selected'],

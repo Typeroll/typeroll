@@ -1,3 +1,4 @@
+import { tabs } from './tabs.js';
 // Tier 1 block library — the most-used blocks across CMS / page-builder
 // products (Elementor, Breakdance, Gutenberg, popular extensions). Together
 // with the seven core blocks in `core-blocks.ts`, this covers the ~95% case
@@ -16,6 +17,7 @@
 import type { BlockType } from './types.js';
 import { pixels, articleHeadingFields, focalPointFields, postCardImageSizing } from './presentation-fields.js';
 import { backgroundGradientField } from './surface-presentation.js';
+import { navigationForm } from './navigation-form.js';
 import { navigationMenu, navigationLinks } from './navigation-menu.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
@@ -786,12 +788,17 @@ const postCard: BlockType = {
     { name: 'download_behavior', type: 'select', label: 'Download link behavior', options: ['navigate', 'download'], default: 'navigate' },
     { name: 'download_label', type: 'text', label: 'Download label', default: 'Download PDF' },
     { name: 'show_image', type: 'boolean', label: 'Show image', default: true },
+    { name: 'missing_image', type: 'select', label: 'When the image is missing', options: ['omit', 'placeholder'], default: 'omit' },
+    { name: 'placeholder_icon', type: 'icon', label: 'Placeholder icon (optional)' },
+    { name: 'placeholder_background', type: 'color', label: 'Placeholder background' },
+    { name: 'placeholder_color', type: 'color', label: 'Placeholder icon color' },
+    pixels('placeholder_icon_size_px', 'Placeholder icon size (px)', 8, 160),
     { name: 'show_excerpt', type: 'boolean', label: 'Show excerpt', default: true },
     { name: 'show_date', type: 'boolean', label: 'Show date', default: true },
     { name: 'show_author', type: 'boolean', label: 'Show author', default: false },
     { name: 'image_fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain', responsive: true, responsive_css: { contain:'--card-image-fit:contain !important;', cover:'--card-image-fit:cover !important;' } },
     ...focalPointFields,
-    { name: 'image_aspect', type: 'select', label: 'Image aspect', options: ['auto', 'landscape', 'square', 'portrait'], default: 'auto', responsive: true, responsive_css: Object.fromEntries(Object.entries({auto:'auto',landscape:'16/9',square:'1',portrait:'3/4'}).map(([key,value])=>[key,`--card-image-aspect:${value} !important;`])) },
+    { name: 'image_aspect', type: 'select', label: 'Image aspect', options: ['auto', 'landscape', 'square', 'portrait'], default: 'auto', responsive: true, responsive_css: Object.fromEntries(Object.entries({auto:'auto',landscape:'16/9',square:'1',portrait:'3/4'}).map(([key,value])=>[key,`--card-image-aspect:${value} !important;--card-placeholder-aspect:${key==='auto'?'16/9':value} !important;`])) },
     { name: 'whole_card_link', type: 'boolean', label: 'Link the entire card (without secondary actions)', default: false },
     { name: 'layout', type: 'select', label: 'Card direction', options: ['column', 'row'], default: 'column', responsive: true, responsive_css: { column: '--card-direction:column !important;--card-media-width:100% !important;', row: '--card-direction:row !important;--card-media-width:calc(var(--image_width_percent,40) * 1%) !important;' } },
     { name: 'image_width_percent', type: 'number', label: 'Horizontal image width (%)', min: 10, max: 70, css_unit: 'number', responsive: true, default: 40 },
@@ -868,6 +875,11 @@ const postCard: BlockType = {
 [data-block="post_card"][data-aspect="landscape"] { --card-image-aspect:16/9; }
 [data-block="post_card"][data-aspect="square"] { --card-image-aspect:1; }
 [data-block="post_card"][data-aspect="portrait"] { --card-image-aspect:3/4; }
+[data-block="post_card"][data-aspect="square"] { --card-placeholder-aspect:1; }
+[data-block="post_card"][data-aspect="portrait"] { --card-placeholder-aspect:3/4; }
+[data-block="post_card"] .block-postcard-image.block-postcard-placeholder { display:grid;place-items:center;aspect-ratio:var(--card-placeholder-aspect,16/9);background:var(--placeholder-bg,var(--color-bg-subtle,#f3f4f6));color:var(--placeholder-fg,currentColor); }
+[data-block="post_card"] .block-postcard-placeholder > span { display:flex;align-items:center;justify-content:center;font-size:var(--placeholder_icon_size_px,48px);line-height:1; }
+[data-block="post_card"] .block-postcard-placeholder svg { width:1em;height:1em; }
 [data-block="post_card"] .block-postcard-body { display:flex;flex:1;flex-direction:column;gap:var(--body_gap_px,0.65rem);min-width:0;padding:var(--body_padding_y_px,var(--body_padding_px,0)) var(--body_padding_x_px,var(--body_padding_px,0)); }
 [data-block="post_card"] .block-postcard-title { margin: 0; font-size:var(--title_size_px,1.25rem);font-weight:var(--title_weight,600);line-height:var(--title_line_height,1.3); }
 [data-block="post_card"] .block-postcard-excerpt { margin: 0; opacity: 0.8; line-height: 1.5; }
@@ -1092,74 +1104,6 @@ const accordion: BlockType = {
 [data-block="accordion"] details[open] summary::after { transform: rotate(90deg); }
 [data-block="accordion"][data-icon="plus"] details[open] summary::after { content: "−"; transform: none; }
 [data-block="accordion"] details > div { margin-top: 0.75rem; line-height: 1.6; }
-`.trim(),
-  origin: 'core',
-  created_at: ISO_EPOCH,
-};
-
-/**
- * `tabs` — tabbed content. Uses slot-container shape so each tab's
- * content is a block tree, not just richtext. Tab labels live in the
- * `tabs` array; the slot at index i renders tab i's content.
- */
-const tabs: BlockType = {
-  id: 'core/tabs',
-  name: 'tabs',
-  label: 'Tabs',
-  icon: 'panels-top-left',
-  category: 'content',
-  container: 'slots',
-  slot_count: 6, // up to 6 tabs; extra slots empty if fewer used
-  slot_labels: ['Tab 1', 'Tab 2', 'Tab 3', 'Tab 4', 'Tab 5', 'Tab 6'],
-  schema: [
-    { name: 'labels', type: 'array', label: 'Tab labels',
-      fields: [
-        { name: 'label', type: 'text', label: 'Label' },
-        { name: 'icon', type: 'icon', label: 'Icon' },
-      ] },
-    { name: 'style', type: 'select', label: 'Style', options: ['underline', 'pills', 'boxed'], default: 'underline' },
-    { name: 'align', type: 'select', label: 'Tab strip alignment', options: ['left', 'center'], default: 'left', responsive: true },
-    { name: 'default_open', type: 'number', label: 'Default open tab (0-based)', default: 0 },
-  ],
-  template: `<div data-block="tabs" data-style="{{style}}" style="--align:{{align}}" data-default="{{default_open}}" data-labels="{{labels}}">
-  <div class="block-tabs-strip" role="tablist"></div>
-  <div class="block-tabs-panels">
-    <div class="block-tabs-panel">{{slot:Tab 1}}</div>
-    <div class="block-tabs-panel">{{slot:Tab 2}}</div>
-    <div class="block-tabs-panel">{{slot:Tab 3}}</div>
-    <div class="block-tabs-panel">{{slot:Tab 4}}</div>
-    <div class="block-tabs-panel">{{slot:Tab 5}}</div>
-    <div class="block-tabs-panel">{{slot:Tab 6}}</div>
-  </div>
-</div>`,
-  styles: `
-[data-block="tabs"] .block-tabs-strip { display: flex; gap: 0.25rem; justify-content: var(--align, flex-start); border-bottom: 1px solid rgba(0,0,0,0.1); margin-bottom: 1rem; }
-[data-block="tabs"][data-style="pills"] .block-tabs-strip { border-bottom: none; gap: 0.5rem; }
-[data-block="tabs"] .block-tabs-panel:not([data-active]) { display: none; }
-[data-block="tabs"] .block-tabs-panel:empty { display: none; }
-`.trim(),
-  script: `
-window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
-window.TyperollBlocks.register('core/tabs', (el) => {
-  const labels = JSON.parse(el.dataset.labels || '[]');
-  const strip  = el.querySelector('.block-tabs-strip');
-  const panels = Array.from(el.querySelectorAll('.block-tabs-panel'));
-  const defaultIdx = parseInt(el.dataset.default || '0', 10);
-  panels.forEach((p, i) => {
-    if (!p.children.length && p.textContent.trim() === '') return;
-    const btn = document.createElement('button');
-    btn.type = 'button'; btn.role = 'tab';
-    btn.textContent = (labels[i] && labels[i].label) || ('Tab ' + (i + 1));
-    btn.dataset.idx = String(i);
-    btn.addEventListener('click', () => activate(i));
-    strip.appendChild(btn);
-  });
-  function activate(idx) {
-    panels.forEach((p, i) => p.toggleAttribute('data-active', i === idx));
-    strip.querySelectorAll('button').forEach((b) => b.toggleAttribute('data-active', parseInt(b.dataset.idx, 10) === idx));
-  }
-  activate(Math.max(0, Math.min(defaultIdx, panels.length - 1)));
-});
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -1716,4 +1660,5 @@ export const TIER1_BLOCK_TYPES: readonly BlockType[] = [
   video,
   // Forms
   form,
+  navigationForm,
 ] as const;

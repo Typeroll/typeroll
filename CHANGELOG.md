@@ -1,5 +1,12 @@
 # Changelog
 
+## Core 0.2.40 / MCP 0.45.33
+
+- Add provider-independent navigation inputs with same-origin, bounded tab defaults and explicit receiver fields; preserve safe navigation without storage or JavaScript.
+- Render accessible mixed service tabs/direct links with responsive disclosure, native presentation controls and working static slots.
+- Support decorative missing-thumbnail panels and deliberately compact mobile footer navigation without changing comfortable defaults.
+- Document migration discovery, responsive composition and privacy boundaries in public guides and MCP recipes.
+
 ## Core 0.2.39 / MCP 0.45.32
 
 - Add a guarded, idempotent Retry verification action in the portal and authenticated API/MCP for timed-out, already-served customer publications.

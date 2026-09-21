@@ -91,11 +91,11 @@ const allowedTags = [
 
 const options: IOptions = {
   allowedTags,
-  nonBooleanAttributes: sanitizeHtml.defaults.nonBooleanAttributes.filter((name) => name !== 'download'),
+  nonBooleanAttributes: sanitizeHtml.defaults.nonBooleanAttributes.filter((name) => !['download', 'hidden'].includes(name)),
   allowedAttributes: {
     // Schema.org microdata is passive metadata — keep it on every element
     // for rich-results support. Mirror with packages/portal/src/lib/sanitize.ts.
-    '*': ['id', 'class', 'style', 'data-*', 'aria-*', 'role', 'lang', 'dir',
+    '*': ['id', 'class', 'style', 'data-*', 'aria-*', 'role', 'lang', 'dir', 'hidden',
       'itemscope', 'itemtype', 'itemprop', 'itemref', 'itemid'],
     a: ['href', 'target', 'rel', 'title', 'download'],
     'x-include': ['name'],
@@ -175,7 +175,7 @@ const options: IOptions = {
     pattern: ['x', 'y', 'width', 'height', 'patternunits', 'patterntransform', 'viewbox'],
     symbol: ['viewbox', 'preserveaspectratio'],
     form: ['action', 'method', 'enctype', 'target', 'name'],
-    input: ['type', 'name', 'value', 'placeholder', 'required', 'min', 'max', 'pattern', 'autocomplete', 'checked', 'readonly', 'disabled', 'tabindex'],
+    input: ['type', 'name', 'value', 'placeholder', 'required', 'min', 'max', 'step', 'maxlength', 'pattern', 'autocomplete', 'checked', 'readonly', 'disabled', 'tabindex'],
     textarea: ['name', 'placeholder', 'required', 'rows', 'cols'],
     select: ['name', 'required', 'multiple'],
     option: ['value', 'selected'],

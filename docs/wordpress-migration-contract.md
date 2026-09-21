@@ -126,3 +126,24 @@ an explicit capability gap rather than silent removal. Typed numeric settings
 must remain numbers through save/read-back and computed presentation checks;
 strings such as "16" are not evidence that a numeric font-size field is applied.
 See the distributed `tr-migration-evidence` recipe for the prototype gate.
+
+## Input banners, missing thumbnails and compact navigation
+
+Inventory an initial input/navigation banner separately from the destination
+submission form and provider. Preserve fields, service choices, destinations,
+required validation, placement and collapsed/open states even when the provider
+integration is deferred. Use `core/navigation_form` and mixed `core/tabs` for
+same-origin local defaults; this is not a lead submission. Never put addresses
+in query strings, claim cross-origin session-storage prefill, or reinstall a
+provider-owned block merely to restore a navigation surface. Receiving forms
+must explicitly adopt and validate accepted defaults. Test storage denial,
+expiry, service switching, keyboard operation and both preview/static routes.
+
+Inspect a mixed listing row containing real and missing featured images.
+Theme-specific missing-image decoration belongs in shared `post_card` settings
+(`missing_image: placeholder`), not new Page media. Preserve `show_image: false`,
+card geometry and accessible link names. Include null and empty image variants.
+
+Measure footer link box height plus inter-item gap, not text line-height alone.
+Use compact density/minimum height controls deliberately; preserve wrapping,
+focus, link order, list junction gaps and the agreed mobile column count.

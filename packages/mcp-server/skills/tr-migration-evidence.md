@@ -158,3 +158,20 @@ Do not report “all design checked” from a viewport or recipe sample. Keep so
 link-order comparisons and paired contact sheets with the report. The same contract
 applies to WordPress, URL, Astro and multisite migration; do not create separate,
 weaker checklists for individual import mechanisms.
+
+
+## Navigation and empty-media variants
+
+Inventory first-step input banners independently of final submission providers.
+Preserve their fields, required/minimum validation, service tabs and direct links,
+mobile collapsed/open states and navigation even when the final integration is
+deferred. Core 0.2.40 provides native `core/navigation_form` and mixed `core/tabs`.
+Read their schema instead of rebuilding them in HTML or reintroducing a provider
+block. Defaults are same-origin and tab-scoped; never place addresses in URLs or
+claim cross-origin prefill. The receiving form must explicitly accept the fields.
+
+Compare listing rows with both real and missing images. Use shared post-card
+placeholder settings for theme decoration, preserving real featured images and
+explicit `show_image: false`. Compare actual footer link height plus gap, wrapping,
+focus and column breakpoints; compact navigation density is an intentional option.
+Verify native preview and static output on the agreed viewport boundaries.

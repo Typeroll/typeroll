@@ -1,3 +1,5 @@
+import { prepareTabs } from './tabs.js';
+import { prepareNavigationForm } from './navigation-form.js';
 // Block-tree → HTML renderer.
 //
 // Pure function used by both the SSG renderer (packages/site-template) and
@@ -358,6 +360,8 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
       effectiveBlock.type === 'core/navigation_links',
     );
   }
+  if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots);
+  if (effectiveBlock.type === 'core/navigation_form') prepareNavigationForm(compiled.flatData, effectiveBlock.id, effectiveBlock.data, effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints);
   if (effectiveBlock.type === 'core/navigation_menu') compiled.flatData.menu_mobile_override = String(!!effectiveBlock.slots?.[1]?.length);
   if (['core/container', 'core/section'].includes(effectiveBlock.type)) {
     compiled.flatData.surface_gradient_css = surfaceGradientCss(compiled.flatData.background_gradient);
@@ -1064,7 +1068,7 @@ function preparePostCardData(
 ): void {
   const title = contextString(data, item, 'title', 'title_field', 'title');
   const excerpt = contextString(data, item, 'excerpt', 'excerpt_field', 'excerpt');
-  const image = contextString(data, item, 'image', 'image_field', 'image');
+  const image = contextString(data, item, 'image', 'image_field', 'image').trim();
   const imageAlt = contextString(data, item, 'image_alt', 'image_alt_field', 'image_alt');
   const date = contextString(data, item, 'date', 'date_field', 'date_published');
   const author = contextString(data, item, 'author', 'author_field', 'author');
@@ -1108,9 +1112,13 @@ function preparePostCardData(
     ? `<a href="${escapeHtml(href)}" class="block-postcard-link">${titleContent}</a>`
     : titleContent;
   const imageLabel = title.trim() || 'View page';
-  const imageLinkLabel = !imageAlt.trim() ? ` aria-label="${escapeHtml(imageLabel)}"` : '';
-  data.post_card_image_html = data.show_image !== false && image
-    ? `<div class="block-postcard-media">${linkImage ? `<a href="${escapeHtml(href)}" class="block-postcard-link"${imageLinkLabel}>` : ''}<img class="block-postcard-image" src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" loading="lazy" decoding="async" />${linkImage ? '</a>' : ''}</div>`
+  const imageLinkLabel = !image || !imageAlt.trim() ? ` aria-label="${escapeHtml(imageLabel)}"` : '';
+  const placeholderIcon = String(data.placeholder_icon ?? '').trim();
+  const placeholder = data.missing_image === 'placeholder'
+    ? `<div class="block-postcard-image block-postcard-placeholder" aria-hidden="true" style="--placeholder-bg:${escapeHtml(surfaceColor(data.placeholder_background) || 'var(--color-bg-subtle,#f3f4f6)')};--placeholder-fg:${escapeHtml(surfaceColor(data.placeholder_color) || 'currentColor')}">${placeholderIcon ? `<span>${renderIconHtml(placeholderIcon)}</span>` : ''}</div>` : '';
+  const media = image ? `<img class="block-postcard-image" src="${escapeHtml(image)}" alt="${escapeHtml(imageAlt)}" loading="lazy" decoding="async" />` : placeholder;
+  data.post_card_image_html = data.show_image !== false && media
+    ? `<div class="block-postcard-media">${linkImage ? `<a href="${escapeHtml(href)}" class="block-postcard-link"${imageLinkLabel}>` : ''}${media}${linkImage ? '</a>' : ''}</div>`
     : '';
   data.post_card_download_html = downloadUrl
     ? `<a class="block-postcard-download" href="${escapeHtml(downloadUrl)}"${data.download_behavior === 'download' ? ' download' : ''}>${escapeHtml(downloadLabel)}</a>`
@@ -1180,6 +1188,7 @@ function substituteSlots(
   return html.replace(/\{\{\s*slot:([\w-]+)\s*\}\}/g, (_m, ref: string) => {
     const slotIndex = resolveSlotIndex(ref, blockType);
     if (slotIndex < 0) return '';
+    if (blockType.id === 'core/tabs' && Array.isArray(block.data.labels) && block.data.labels[slotIndex]?.href) return '';
     const slot = block.slots?.[slotIndex];
     return slot ? renderBlocks(slot, options) : '';
   });

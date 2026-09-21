@@ -199,3 +199,31 @@ mobile defaults or theme typography thresholds. Set the menu threshold separatel
 when it must match, and use explicit responsive `cols` for exact listing columns.
 Check one pixel below and at each threshold, including fractional widths for
 visibility. Do not hide layout overflow to make a test pass.
+
+## Navigation inputs, tabs and media gaps (Core 0.2.40)
+
+`core/navigation_form` is a local page-to-page handoff, deliberately separate
+from provider-owned form submission. It emits labelled native controls and a
+no-JavaScript fallback link. Runtime validation uses the controls' constraints,
+then stores at most 32 short values in one tab packet for 15 minutes and navigates.
+A receiver opts into exact field names and destination path; values never become
+query parameters. Preview follows the existing rewritten href and embed suffix.
+Storage errors affect prefill only. Receiving values remains untrusted input.
+
+Both preview/static sanitizers retain passive `hidden`, input `step` and
+`maxlength`; scripts remain in the trusted block bundle, not authored HTML.
+Tests cover the sanitized output, not just the raw renderer. Native browser tests
+cover expiry, wrong targets, unknown fields, blocked storage and no-script links.
+
+Layout uses the shared local breakpoint map. Form fields and the continue button
+have independent row/column placement; weighted tracks allow a narrow area field
+without hardcoding customer layouts. Tabs support semantic tab buttons and direct
+links with either grouped or continuous flex wrapping, optional inline headline,
+keyboard activation and panel-only mobile collapse. Hidden panels stay in the
+DOM so typed values survive service switching. A selected collapsed tab does not
+pretend its content is open. Check customer composition against source, including
+both closed and expanded states, before accepting a migration.
+
+Post-card placeholders reuse card media geometry and never alter Page media.
+Compact navigation links opt into a 24 px minimum, while comfortable defaults
+stay unchanged. Actual source composition and empty-image states belong in QA.
