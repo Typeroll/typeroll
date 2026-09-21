@@ -45,10 +45,22 @@ export function buildAppState(
           return `${f.label} must be valid JSON`;
         }
       }
-      // Preserve an existing non-secret value when the incoming one is empty
-      // or omitted — so disabling (or a partial save) never discards config;
-      // re-enabling stays one click. Only a real new value overwrites.
-      if (v === undefined || v === '') v = existing?.config?.[f.key];
+      // Omitted preserves; explicitly empty clears.
+      //
+      // Preserving an OMITTED field is what keeps disabling and partial saves
+      // from discarding config, so re-enabling stays one click. Preserving an
+      // EXPLICITLY EMPTY one left no way to clear a field at all: a caller who
+      // sent `""` believing they had removed a key still shipped it. On a
+      // surface whose whole purpose is holding values that reach visitors,
+      // silently retaining one is the wrong default.
+      //
+      // Presence is checked on the raw input rather than on `v`, because the
+      // number and boolean coercions above turn an empty value into undefined
+      // and would otherwise make an explicit clear indistinguishable from an
+      // omission.
+      if (v === undefined || v === '') {
+        v = Object.hasOwn(incoming, f.key) ? undefined : existing?.config?.[f.key];
+      }
       if (enabled && f.required && (v === undefined || v === null || v === '')) return `${f.label} is required`;
       if (v !== undefined && v !== '') config[f.key] = v;
     }
