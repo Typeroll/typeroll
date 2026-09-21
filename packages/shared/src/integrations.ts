@@ -445,23 +445,60 @@ function components(place){
   if(place&&place.formatted_address)out.formatted=place.formatted_address;
   return out;
 }
+function modern(input,options,onSelect){
+  // PlaceAutocompleteElement is the only Places entry point available to
+  // Google accounts created on or after 2025-03-01. Legacy Autocomplete throws
+  // for them, so preferring this is what keeps the capability working for a
+  // NEW customer rather than only for one with an existing project.
+  var Element=W.google.maps.places.PlaceAutocompleteElement;
+  if(typeof Element!=='function')return false;
+  var country=String(options&&options.country||'').toLowerCase();
+  var element=new Element(/^[a-z]{2}$/.test(country)?{includedRegionCodes:[country]}:{});
+  // The element is its own input. The block's own field stays in the DOM as
+  // the value carrier, so the form, its name, its required flag and the
+  // handoff all behave exactly as they do with no provider at all.
+  element.style.width='100%';
+  input.style.display='none';
+  input.parentNode.insertBefore(element,input.nextSibling);
+  element.addEventListener('gmp-select',function(event){
+    var place=event&&event.placePrediction&&event.placePrediction.toPlace&&event.placePrediction.toPlace();
+    if(!place){try{onSelect({});}catch(e){}return;}
+    place.fetchFields({fields:['addressComponents','formattedAddress']}).then(function(){
+      var parts=components({address_components:(place.addressComponents||[]).map(function(part){
+        return {types:part.types,long_name:part.longText,short_name:part.shortText};
+      }),formatted_address:place.formattedAddress});
+      input.value=parts.formatted||input.value;
+      try{onSelect(parts);}catch(e){}
+    }).catch(function(){});
+  });
+  return true;
+}
+function legacy(input,options,onSelect){
+  // Still the path for an existing Google customer whose project predates the
+  // cutoff. Not reachable for a new one — it is a fallback, not the default.
+  if(typeof W.google.maps.places.Autocomplete!=='function')return false;
+  var config={types:['geocode'],fields:['address_components','formatted_address']};
+  var country=String(options&&options.country||'').toLowerCase();
+  if(/^[a-z]{2}$/.test(country))config.componentRestrictions={country:country};
+  var widget=new W.google.maps.places.Autocomplete(input,config);
+  widget.addListener('place_changed',function(){
+    try{onSelect(components(widget.getPlace()));}catch(e){}
+  });
+  // The widget submits on Enter otherwise, which would navigate before the
+  // visitor has picked a suggestion.
+  input.addEventListener('keydown',function(event){
+    if(event.key==='Enter'&&document.querySelector('.pac-container:not([style*="display: none"])'))event.preventDefault();
+  });
+  return true;
+}
 function ready(){
   W.TyperollClientCapabilities.address_autocomplete={
     attach:function(input,options,onSelect){
       if(!W.google||!W.google.maps||!W.google.maps.places)return false;
-      var config={types:['geocode'],fields:['address_components','formatted_address']};
-      var country=String(options&&options.country||'').toLowerCase();
-      if(/^[a-z]{2}$/.test(country))config.componentRestrictions={country:country};
-      var widget=new W.google.maps.places.Autocomplete(input,config);
-      widget.addListener('place_changed',function(){
-        try{onSelect(components(widget.getPlace()));}catch(e){}
-      });
-      // The widget submits on Enter otherwise, which would navigate before the
-      // visitor has picked a suggestion.
-      input.addEventListener('keydown',function(event){
-        if(event.key==='Enter'&&document.querySelector('.pac-container:not([style*="display: none"])'))event.preventDefault();
-      });
-      return true;
+      // Modern first, legacy second. A provider offering neither registers
+      // nothing, which is the same honest fallback as an absent key.
+      try{if(modern(input,options,onSelect))return true;}catch(e){}
+      try{return legacy(input,options,onSelect);}catch(e){return false;}
     }
   };
   document.dispatchEvent(new CustomEvent('typeroll:capability',{detail:{name:'address_autocomplete'}}));
@@ -470,7 +507,7 @@ W.__typerollPlacesReady=ready;
 var lang=(document.documentElement.getAttribute('lang')||'').slice(0,5);
 var el=document.createElement('script');
 el.async=true;
-el.src='https://maps.googleapis.com/maps/api/js?key=__KEY__&libraries=places&loading=async&callback=__typerollPlacesReady'+(/^[A-Za-z-]{2,5}$/.test(lang)?'&language='+encodeURIComponent(lang):'');
+el.src='https://maps.googleapis.com/maps/api/js?key=__KEY__&libraries=places&v=weekly&loading=async&callback=__typerollPlacesReady'+(/^[A-Za-z-]{2,5}$/.test(lang)?'&language='+encodeURIComponent(lang):'');
 // A blocked or failed load leaves the capability unregistered, which is
 // exactly the no-key state: every field stays a plain input.
 el.onerror=function(){};

@@ -138,3 +138,33 @@ describe('navigation_form markup', () => {
     expect(navigationForm.script).toContain('postal_code');
   });
 });
+
+describe('provider API generation', () => {
+  // google.maps.places.Autocomplete is unavailable to Google accounts created
+  // on or after 2025-03-01. Building only on it would ship a capability that
+  // loads, validates and produces nothing for exactly the new customers this
+  // request was written to serve — silently, with only a deprecation warning.
+  const loader = () => renderClientCapabilityScripts(configured, ['address_autocomplete']).consentTags;
+
+  it('prefers PlaceAutocompleteElement', () => {
+    expect(loader()).toContain('PlaceAutocompleteElement');
+  });
+
+  it('keeps legacy Autocomplete only as a fallback for existing projects', () => {
+    const script = loader();
+    expect(script).toContain('places.Autocomplete');
+    // Modern is tried first; legacy is only reached when it returns false.
+    expect(script.indexOf('PlaceAutocompleteElement')).toBeLessThan(script.indexOf('function legacy'));
+  });
+
+  it('registers nothing when the provider offers neither, which is the no-key fallback', () => {
+    const script = loader();
+    expect(script).toContain("typeof Element!=='function'");
+    expect(script).toContain("typeof W.google.maps.places.Autocomplete!=='function'");
+  });
+
+  it('keeps the block field as the value carrier so the handoff is unchanged', () => {
+    expect(loader()).toContain("input.style.display='none'");
+    expect(loader()).toContain('input.value=parts.formatted');
+  });
+});
