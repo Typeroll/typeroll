@@ -408,7 +408,8 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     d.image_size_style = maximum ? `max-width:min(100%,${maximum}px)` : '';
     const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''} loading="lazy" decoding="async" />`;
     const picture = d.mobile_src ? `<picture><source media="(max-width: 640px)" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
-    d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link">${picture}</a>` : picture;
+    const frame = `<span class="block-image-frame">${picture}</span>`;
+    d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link">${frame}</a>` : frame;
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
   }
   const columnThreshold = effectiveBlock.type === 'core/columns' && typeof compiled.flatData.stack_below_px === 'number' && Number.isFinite(compiled.flatData.stack_below_px)
@@ -842,12 +843,13 @@ export function composePageWithTemplate(
           return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
             ? [`${property}:${value}${unit}`] : [];
         });
+        const headingScale = Object.fromEntries([...[1,2,3,4,5,6].map(level => `h${level}_size_px`), 'heading_before_px', 'heading_after_px'].filter(field => b.data?.[field] !== undefined).map(field => [field,b.data[field]]));
         const styles = [
           ...(width ? [`width:100%;max-width:${width};margin-inline:auto`] : []),
           ...declarations,
           ...(declarations.length ? ['font-size:var(--page-body-font-size,inherit)', 'line-height:var(--page-body-line-height,inherit)'] : []),
         ].join(';');
-        if (width || declarations.length || b.style_overrides || b.data?.rhythm === 'article') out.push({ id: `${b.id}-body`, type: 'core/container', data: { tag: 'div', layout: 'flow', width: 'full', padding_x_px: 0, padding_y_px: 0, rhythm: b.data?.rhythm === 'article' ? 'article' : 'default', inline_style: styles }, ...(b.style_overrides ? { style_overrides: b.style_overrides } : {}), children: pageBlocks });
+        if (width || declarations.length || Object.keys(headingScale).length || b.style_overrides || b.data?.rhythm === 'article') out.push({ id: `${b.id}-body`, type: 'core/container', data: { tag: 'div', layout: 'flow', width: 'full', padding_x_px: 0, padding_y_px: 0, rhythm: b.data?.rhythm === 'article' ? 'article' : 'default', inline_style: styles, ...headingScale, ...(b.data?.responsive_breakpoints ? { responsive_breakpoints: b.data.responsive_breakpoints } : {}) }, ...(b.style_overrides ? { style_overrides: b.style_overrides } : {}), children: pageBlocks });
         else out.push(...pageBlocks);
         continue;
       }
@@ -1015,7 +1017,7 @@ function renderBreadcrumbs(raw: unknown, homeLabel: string): string {
       current: item.current === true,
     });
   }
-  return `<ol>${crumbs.map((crumb, index) => {
+  return `<ol role="list">${crumbs.map((crumb, index) => {
     const current = crumb.current || index === crumbs.length - 1 || !crumb.href;
     return current
       ? `<li><span aria-current="page">${escapeHtml(crumb.label)}</span></li>`
@@ -1724,7 +1726,7 @@ export function collectBlockAssets(
     if (!bt) continue;
     used.push(id);
     const numericFields = bt.schema.filter(field => field.css_unit && /^[a-z][a-z0-9_]*$/.test(field.name));
-    if (numericFields.length) css.push(`[data-presentation="${encodeURIComponent(bt.id)}"]{${numericFields.map(field => `--${field.name}:initial`).join(';')}}`);
+    if (numericFields.length) css.push(`[data-presentation="${encodeURIComponent(bt.id)}"]{${numericFields.map(field => `--${field.name}:${/^(?:h[1-6]_size_px|heading_(?:before|after)_px)$/.test(field.name) ? 'inherit' : 'initial'}`).join(';')}}`);
     if (bt.styles) css.push(`/* ${id} */\n${bt.styles}`);
     if (bt.script) js.push(`/* ${id} */\n${bt.script}`);
   }

@@ -36,7 +36,7 @@ const pageTitle: BlockType = {
     { name: 'font_weight', type: 'select', label: 'Font weight', options: ['400', '500', '600', '700', '800'] },
     { name: 'fallback_text', type: 'text', label: 'Fallback (when no page)', default: 'Page title' },
   ],
-  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="text-align:{{align}};--heading-color:{{color}}">
+  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);--heading-color:{{color}}">
   <{{=level}} class="block-heading-text">{{page.title}}</{{=level}}>
 </div>`,
   origin: 'core',
@@ -152,9 +152,9 @@ const pageBreadcrumbs: BlockType = {
   styles: `
 [data-block="breadcrumbs"] { padding-block:var(--padding_before_px, var(--breadcrumbs-before, .75rem)) var(--padding_after_px, var(--breadcrumbs-after, 2rem)); width: 100%; min-width: 0; font-size: 0.875rem; color: var(--color-text-light, currentColor); }
 [data-block="breadcrumbs"][data-divider="true"] { border-bottom:1px solid color-mix(in srgb, currentColor 18%, transparent); }
-[data-block="breadcrumbs"] ol { list-style: none; padding: 0; margin: 0; display: flex; align-items: baseline; gap: 0.35rem; flex-wrap: wrap; }
-[data-block="breadcrumbs"] li { min-width: 0; overflow-wrap: anywhere; }
-[data-block="breadcrumbs"] li:not(:last-child)::after { content: " › "; margin-inline: 0.35rem 0; opacity: 0.55; speak: never; }
+[data-block="breadcrumbs"] ol { list-style: none; padding: 0; margin: 0; display: block; }
+[data-block="breadcrumbs"] li { display:inline; min-width: 0; overflow-wrap: anywhere; }
+[data-block="breadcrumbs"] li:not(:last-child)::after { content: " › "; margin-inline: 0.35rem; opacity: 0.55; speak: never; }
 [data-block="breadcrumbs"][data-sep="slash"] li:not(:last-child)::after { content: " / "; }
 [data-block="breadcrumbs"][data-sep="arrow"] li:not(:last-child)::after { content: " → "; }
 [data-block="breadcrumbs"] a { color: var(--color-primary, currentColor); text-underline-offset: 0.15em; }

@@ -996,3 +996,54 @@ From Core 0.2.34, native Heading and Page Title wrap long words inside their
 content well, including centered flex layouts. Authored font sizes stay unchanged;
 a long word can break across lines instead of widening the page. Check the saved
 preview and republished output at your smallest supported viewport.
+
+### Image framing and shared article scales (Core 0.2.35+)
+
+Image keeps the entire original visible by default. For intentional art direction,
+`core/image.scale_percent` enlarges the image **inside** a clipped frame (100–200%).
+The frame grows with the image's intrinsic height; it does not crop vertically.
+Supply `original_width` and `original_height` to reserve that space before loading.
+Caption and keyboard focus stay outside the clip. Keep the original SVG and alt text.
+
+For a centered illustration at 120% through 576px and 100% above it:
+
+```json
+{
+  "id": "illustration",
+  "type": "core/image",
+  "data": {
+    "src": "https://media.example.com/illustration.svg",
+    "alt": "Packing a moving box",
+    "original_width": 600,
+    "original_height": 150,
+    "scale_percent": { "mobile": 120, "tablet": 100 },
+    "focal_x": 50,
+    "responsive_breakpoints": {
+      "tablet": 577,
+      "laptop": 769,
+      "desktop": 1024,
+      "wide": 1280
+    }
+  }
+}
+```
+
+`fit` and `aspect_ratio` are responsive on Image. Post Card exposes responsive
+`image_fit` and `image_aspect`. Both offer `focal_x` and `focal_y` (0–100): horizontal
+framing and the focal point inside a fixed-aspect/cover image. A vertical focal
+point has no visible effect on an uncropped intrinsic-height image. These controls
+also work on Post Cards inside repeaters and page lists via `item_overrides`.
+
+Set `h1_size_px` through `h6_size_px` on the Page content slot to define one shared
+body heading scale, including formatted headings and headings in nested containers.
+For example, `h2_size_px: {mobile:24, tablet:28, laptop:32}` with slot viewport
+widths `{tablet:481, laptop:769, desktop:1024, wide:1280}` gives three exact sizes.
+Individual headings can still override `font_size_px`. Optional responsive
+`heading_before_px` and `heading_after_px` tune spacing where `rhythm: "article"`
+is applied. Containers can scope the same controls to a section. Omitted values
+retain existing defaults; the page title outside the slot is unaffected.
+
+Breadcrumbs retain an ordered list and the current-page indicator, but flow inline:
+a long current title continues in the remaining line space and wraps naturally.
+Use `breadcrumb_label` only when a shorter label is editorially appropriate.
+Heading alignment is responsive in the editor, preview and static publication.

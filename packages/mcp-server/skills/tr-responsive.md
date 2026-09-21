@@ -197,3 +197,19 @@ Container `radius_px` and `shadow` (none/subtle/header) style a composed group.
 Menus use matching SVG symbols; `close_size_px` overrides the close symbol size
 without shrinking the44px hit area. Compare exact threshold boundaries in real
 preview and static output before deleting corrective CSS.
+
+## Native image framing and body heading scales (Core 0.2.35+)
+
+Use `core/image.scale_percent` (100–200, responsive) for deliberate horizontal
+framing; 100 retains the uncropped original. `focal_x`/`focal_y` are percentage
+positions; Image `fit`/`aspect_ratio` and Post Card `image_fit`/`image_aspect` are
+responsive. Keep intrinsic dimensions and original SVG/alt. A mobile 120% centered
+image uses scale_percent={mobile:120,tablet:100}, focal_x=50 and local
+responsive_breakpoints={tablet:577,laptop:769,desktop:1024,wide:1280}.
+
+Set `h1_size_px`…`h6_size_px` on `template_content_slot`, not every Page heading.
+These responsive values inherit through nested containers; explicit font_size_px
+on a heading wins. `heading_before_px`/`heading_after_px` control article-rhythm
+spacing. The slot's local breakpoint map controls its scale. Breadcrumbs flow as
+inline ordered-list items, including long current titles. Do not shorten customer
+headings to compensate for a layout issue. Read the deployed block schema first.

@@ -1,6 +1,7 @@
 // HTML conversion preserves content and reports explicit HTML exceptions.
 
 import * as htmlparser2 from 'htmlparser2';
+import { parseFragment, type DefaultTreeAdapterMap } from 'parse5';
 import { newBlockId } from './block-mutations';
 import type { Block } from '@typeroll/shared';
 
@@ -10,6 +11,24 @@ interface Node {
   attribs?: Record<string, string>;
   children?: Node[];
   data?: string;
+}
+
+/** Apply the browser's tree-construction rules to the original input first.
+ * Serializing a permissive parser's repaired tree before this step can move
+ * media across malformed WordPress heading/paragraph boundaries permanently.
+ */
+function parseRawHtml(html: string): Node[] {
+  function adapt(node: DefaultTreeAdapterMap['childNode']): Node[] {
+    if (node.nodeName === '#text') return [{ type: 'text', data: (node as DefaultTreeAdapterMap['textNode']).value }];
+    if (!('tagName' in node)) return [];
+    return [{ type: node.tagName === 'script' ? 'script' : node.tagName === 'style' ? 'style' : 'tag',
+      name: node.tagName,
+      attribs: Object.fromEntries(node.attrs.map(attr => [attr.prefix ? `${attr.prefix}:${attr.name}` : attr.name, attr.value])),
+      children: node.childNodes.flatMap(adapt),
+    }];
+  }
+  // Migration restores noscript fallbacks without executing scripts.
+  return parseFragment(html, { scriptingEnabled: false }).childNodes.flatMap(adapt);
 }
 
 export interface ConvertResult {
@@ -27,7 +46,7 @@ export interface ConvertResult {
  * parser tolerates either).
  */
 export function htmlToBlocks(html: string): ConvertResult {
-  const dom = htmlparser2.parseDocument(html ?? '').children as unknown as Node[];
+  const dom = parseRawHtml(html ?? '');
   const blocks: Block[] = [];
   const counts = new Map<string, number>();
   const notes: string[] = [];
@@ -52,7 +71,7 @@ export function htmlToBlocks(html: string): ConvertResult {
 
 /** Restore lazy images/iframes before the WordPress sanitizer removes data attributes. */
 export function normalizeImportedMediaHtml(html: string): string {
-  const nodes = htmlparser2.parseDocument(html).children as unknown as Node[];
+  const nodes = parseRawHtml(html);
   return htmlparser2.DomUtils.getOuterHTML(normalizeLazyMedia(nodes) as unknown as Parameters<typeof htmlparser2.DomUtils.getOuterHTML>[0]);
 }
 
@@ -60,7 +79,7 @@ export function normalizeImportedMediaHtml(html: string): string {
 function normalizeLazyMedia(nodes: Node[]): Node[] {
   nodes = nodes.map(node => {
     if (node.name === 'img' && node.attribs?.['data-lazy-type'] === 'iframe') {
-      const restored = htmlparser2.parseDocument(node.attribs['data-lazy-src'] ?? '').children as unknown as Node[];
+      const restored = parseRawHtml(node.attribs['data-lazy-src'] ?? '');
       if (restored.length === 1 && restored[0].name === 'iframe') return restored[0];
     }
     if (['img', 'source', 'iframe'].includes(node.name ?? '') && node.attribs) {
@@ -106,6 +125,13 @@ function convertNodes(nodes: Node[], notes: string[]): Block[] {
         }, { children: convertNodes(node.children ?? [], notes) })];
       }
       if (name === 'div' && !heuristic) return convertNodes(node.children ?? [], notes);
+    }
+    // Image-only heading wrappers are formatting debris, not semantic headings.
+    // Keep their position (and any incoming anchor) without inventing a TOC entry.
+    if (/^h[1-6]$/.test(name ?? '') && !collectText(node).trim() && (findFirst(node, 'img') || findFirst(node, 'iframe'))) {
+      const media = convertNodes(node.children ?? [], notes);
+      if (node.attribs?.id && media[0]) media[0].style_overrides = { ...media[0].style_overrides, html_id: node.attribs.id };
+      return media;
     }
     // Split images/videos out of mixed paragraphs rather than burying them in prose.
     if (['p', 'span'].includes(name ?? '') && (findFirst(node, 'img') || findFirst(node, 'iframe'))) {

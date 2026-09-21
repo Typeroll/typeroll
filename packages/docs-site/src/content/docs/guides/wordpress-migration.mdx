@@ -289,3 +289,19 @@ Intentional changes need explicit before/after evidence and an accepted benefit.
 The agent skill `tr-migration-evidence` is the shared contract for WordPress, URL,
 Astro and multisite work; its coverage starts unverified and requires no uncovered
 surfaces or unexplained regressions before visual signoff.
+
+### Preserve media positions when converting HTML
+
+Core 0.2.35+ applies browser-compatible HTML tree construction to the **raw source**
+before restoring lazy media or sanitizing markup. Do not parse and serialize a
+malformed WordPress body with a different parser first: that can move images across
+heading boundaries before Typeroll receives it. Keep the original response for QA.
+Image-only heading wrappers become native image blocks in their original body
+position, rather than empty semantic headings or image entries in the generated TOC.
+Meaningful heading IDs remain intact; duplicate noscript media fallbacks are removed.
+
+Compare the ordered sequence of headings, text, media and CTAs, not just counts or
+image presence. Include malformed heading wrappers, lazy images, related-content
+boundaries and images after several sections. This update does not rewrite existing
+Pages. For an already migrated site, repair affected block positions against the
+raw source and review the generated page; do not reimport over subsequent edits.

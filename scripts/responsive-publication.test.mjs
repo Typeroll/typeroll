@@ -91,3 +91,24 @@ test('qualified composition defaults reach the real frozen Astro build and inval
   await fs.appendFile(path.join(harness.destination, 'packages/shared/src/surface-presentation.ts'), '\n// Presentation dependency qualification.\n');
   assert.equal((await harness.run()).report.rendered, 1);
 });
+
+test('framed SVG and shared body scale reach frozen output with renderer cache invalidation', async t => {
+  const value={format:'typeroll-static-publication',format_version:2,publication_id:'e'.repeat(64),core_commit:'e'.repeat(40),site_url:'https://example.invalid',version_id:'main',site:{name:'Example'},settings:{site_name:'Example',trailing_slash:'always'},
+    pages:[{id:'home',path:'/',slug:'home',title:'Home',status:'published',template:'article',content_mode:'blocks',blocks:[
+      {id:'picture',type:'core/image',data:{src:'https://media.example.invalid/hero.svg',alt:'Illustration',original_width:600,original_height:150,scale_percent:{mobile:120,tablet:100},responsive_breakpoints:{tablet:577,laptop:769,desktop:1024,wide:1280}}},
+      {id:'heading',type:'core/heading',data:{text:'Advice',level:'h2',size:'article',align:{mobile:'center',laptop:'left'},responsive_breakpoints:{tablet:577,laptop:769,desktop:1024,wide:1280}}}]}],
+    pageTemplates:[{id:'article',status:'published',blocks:[{id:'slot',type:'template_content_slot',data:{h2_size_px:{mobile:24,laptop:32},rhythm:'article',heading_before_px:27.2,heading_after_px:9.6,responsive_breakpoints:{tablet:481,laptop:769,desktop:1024,wide:1280}}}]}],media:[],partials:[],contentTypes:[],blockTypes:[],forms:[]};
+  const harness=await publicationBuildHarness(value);t.after(harness.cleanup);
+  const html=()=>fs.readFile(path.join(harness.destination,'dist/index.html'),'utf8');
+  await harness.run();const first=await html();
+  assert.match(first,/class="block-image-frame"/);assert.match(first,/width="600" height="150"/);
+  assert.match(first,/--scale_percent:\s*120/);assert.match(first,/min-width:\s*577px/);
+  assert.match(first,/--h2_size_px:\s*24px/);assert.match(first,/--h2_size_px:\s*32px/);
+  assert.match(first,/--heading_before_px:\s*27\.2px/);assert.match(first,/--align:\s*left/);
+  assert.equal((await harness.run()).report.reused,1);
+  value.pageTemplates[0].blocks[0].data.h2_size_px.mobile=26;
+  assert.equal((await harness.run()).report.rendered,1);
+  assert.match(await html(),/--h2_size_px:\s*26px/);
+  await fs.appendFile(path.join(harness.destination,'packages/shared/src/core-blocks.ts'),'\n// Renderer cache qualification.\n');
+  assert.equal((await harness.run()).report.rendered,1);
+});

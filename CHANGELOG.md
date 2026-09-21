@@ -1,5 +1,12 @@
 # Changelog
 
+## Core 0.2.35 / MCP 0.45.29
+
+- Wrap breadcrumb titles continuously while preserving ordered-list semantics.
+- Add responsive image framing, fit/aspect and focal controls; keep intrinsic, uncropped defaults.
+- Add shared body heading scales and spacing to Page content slots and containers; fix responsive heading alignment.
+- Parse original migration HTML with browser tree-construction rules and convert image-only headings in place. Existing content is not rewritten automatically.
+
 ## Core 0.2.31 / MCP 0.45.25 unchanged
 
 - Acknowledge SES internal setup notifications after topic, signature and storage

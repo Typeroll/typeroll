@@ -297,3 +297,12 @@ source images, or use ordinary page-write tools to bypass the import gate.
 Use `upload_media_from_url` for referenced source images; the customer’s
 Cloudflare transfer Worker copies and verifies them directly in R2, independently
 of the GitHub/Cloudflare build-provider choice.
+
+### Raw-source media order (Core 0.2.35+)
+
+Pass raw body HTML into conversion before any parse/serialize round trip with
+another parser. Core applies browser tree construction before lazy-media cleanup.
+An image-only H2 becomes an image at that position, not a semantic heading.
+Compare ordered headings/text/media/CTAs, including malformed wrappers, lazy and
+noscript images and related-content boundaries. Existing Pages are not rewritten;
+repair confirmed placement errors against raw source without reimporting edits.

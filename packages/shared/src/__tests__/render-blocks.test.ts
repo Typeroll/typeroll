@@ -227,7 +227,7 @@ describe('renderBlock — substitution', () => {
       },
     );
     expect(html).toContain('aria-label="Brödsmulor"');
-    expect(html).toContain('<ol>');
+    expect(html).toContain('<ol role="list">');
     expect(html).toContain('<a href="/">Start</a>');
     expect(html).toContain('<a href="/flyttchecklistor/">Checklistor</a>');
     expect(html).toContain('aria-current="page">Spara energi</span>');
@@ -623,7 +623,7 @@ describe('renderBlock — style overrides', () => {
     expect(html).toContain('id="hero"');
     expect(html).toContain('class="fancy"');
     // heading's root already has style="text-align:…" — margin is appended.
-    expect(html).toMatch(/style="text-align:left;--heading-color:;margin-top:2rem"/);
+    expect(html).toMatch(/style="--align:left;text-align:var\(--align,left\);--heading-color:;margin-top:2rem"/);
   });
 
   it('keeps a section a direct <section> child (full-bleed regression)', () => {

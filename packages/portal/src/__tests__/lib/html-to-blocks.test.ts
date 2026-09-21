@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { htmlToBlocks } from '../../lib/html-to-blocks';
+import { cleanWordPressHtml } from '../../lib/wp/clean-html';
 
 describe('htmlToBlocks — heading detection', () => {
   it('maps <h1>/<h2>/<h3>/<h4> to core/heading with level', () => {
@@ -187,4 +188,29 @@ it('restores a lazy video once as a responsive video block while preserving near
   expect(result.blocks[0].data.html).toContain('Before');
   expect(result.blocks[2].data.html).toContain('After');
   expect(result.notes).toEqual([]);
+});
+
+describe('raw WordPress content order', () => {
+  it('repairs malformed heading wrappers before serialization and keeps the image in its body position', () => {
+    // Minimal source-shaped reproduction: a nested H2 is implicitly closed by browsers.
+    const result=htmlToBlocks('<h2 id="first">First<h2 id="second">Second</h2><p>Details</p><h2><img data-lazy-src="/price.jpg" src="/placeholder.gif" width="1000" height="666" alt="Boxes"><noscript><img src="/price.jpg" alt="Boxes"></noscript></h2><h2 id="after">After</h2><a class="btn" href="/quote">Get a quote</a>');
+    expect(result.blocks.map(b=>b.type)).toEqual(['core/heading','core/heading','core/prose','core/image','core/heading','core/button']);
+    expect(result.blocks[0].data.anchor_id).toBe('first');
+    expect(result.blocks[1].data.anchor_id).toBe('second');
+    expect(result.blocks[3].data).toMatchObject({src:'/price.jpg',original_width:1000,original_height:666});
+    expect(result.blocks[4].data.anchor_id).toBe('after');
+  });
+  it('preserves ordered headings, media and calls to action through the WordPress sanitizer too', () => {
+    const raw='<h2 id="first">First<h2 id="second">Second</h2><p>Details</p><h2><img data-src="https://old.example/price.jpg" src="/placeholder.gif" alt="Boxes"><noscript><img src="https://old.example/price.jpg" alt="Boxes"></noscript></h2><h2 id="related">Related</h2><p><a href="/quote">Request a quote</a></p>';
+    const result=htmlToBlocks(cleanWordPressHtml(raw,{mediaMap:new Map([['https://old.example/price.jpg','https://media.example/price.jpg']])}));
+    expect(result.blocks.map(b=>b.type)).toEqual(['core/heading','core/heading','core/prose','core/image','core/heading','core/prose']);
+    expect(result.blocks[3].data.src).toBe('https://media.example/price.jpg');
+    expect(result.blocks[4].data.anchor_id).toBe('related');
+    expect(result.blocks[5].data.html).toContain('href="/quote"');
+  });
+  it('keeps linked image-only headings as native media, not textual headings or TOC entries', () => {
+    const result=htmlToBlocks('<p>Intro</p><h2><a href="/photo.jpg"><img src="/photo.jpg" alt="Photo"></a></h2><h2>Related</h2>');
+    expect(result.blocks.map(b=>b.type)).toEqual(['core/prose','core/image','core/heading']);
+    expect(result.blocks[1].data.link).toBe('/photo.jpg');
+  });
 });

@@ -29,3 +29,14 @@ export function groupPresentationField(field: FieldDefinition): FieldDefinition 
   const appearance = field.responsive || field.type === 'color' || ['font_weight','width','max_width','appearance','shadow','overflow','radius','size','font','image_fit','fit','image_aspect','aspect_ratio','title_font','image_sizing','download_style','download_behavior','panel_padding','collapse_below','rhythm'].includes(field.name);
   return { ...field, editor_group: advanced ? 'advanced' : appearance ? 'appearance' : 'content' };
 }
+
+/** Optional shared body heading scale. Individual heading sizes still win. */
+export const articleHeadingFields: FieldDefinition[] = [
+  ...[1,2,3,4,5,6].map(level => pixels(`h${level}_size_px`, `Body H${level} size (px)`, 12, 160)),
+  pixels('heading_before_px', 'Body heading space before (px)', 0, 240),
+  pixels('heading_after_px', 'Body heading space after (px)', 0, 120),
+];
+export const focalPointFields: FieldDefinition[] = ['x','y'].map(axis => ({
+  name: `focal_${axis}`, label: `Image focal ${axis === 'x' ? 'horizontal' : 'vertical'} position (%)`,
+  type: 'number', min: 0, max: 100, default: 50, css_unit: 'number', responsive: true,
+}));

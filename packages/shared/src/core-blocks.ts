@@ -1,5 +1,5 @@
 import { COLUMN_STACK_BELOW, COLUMN_STACK_CSS, EMPTY_OUTLINE_COLUMN_CSS } from './column-layout.js';
-import { pixels, typographyFields, componentBreakpointsField, groupPresentationField } from './presentation-fields.js';
+import { pixels, articleHeadingFields, focalPointFields, typographyFields, componentBreakpointsField, groupPresentationField } from './presentation-fields.js';
 import { backgroundGradientField } from './surface-presentation.js';
 // Core block library — ships with the platform. Six general-purpose blocks
 // that cover the vast majority of page composition needs. Custom blocks
@@ -259,7 +259,7 @@ const heading: BlockType = {
   // {{=level}} substitutes a validated tag name (h1..h6). The renderer
   // falls back to div if level is missing/invalid, so the output is
   // always well-formed.
-  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="text-align:{{align}};--heading-color:{{color}}">
+  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);--heading-color:{{color}}">
   <span class="block-heading-eyebrow">{{eyebrow}}</span>
   <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>
 </div>`,
@@ -293,6 +293,7 @@ const heading: BlockType = {
 [data-block="heading"][data-size="article"][data-level="h1"] { --heading-fs:clamp(1.75rem, 1.25rem + 2vw, 2.5rem); }
 [data-block="heading"][data-size="article"][data-level="h2"] { --heading-fs:clamp(1.5rem, 1.125rem + 1vw, 2rem); }
 [data-block="heading"][data-size="article"] .block-heading-text { line-height:1.2; }
+${[1,2,3,4,5,6].map(level => `[data-block="heading"][data-level="h${level}"]:not([data-size="theme"]) .block-heading-text { font-size:var(--font_size_px,var(--h${level}_size_px,var(--heading-fs))); }`).join("\n")}
 [data-block="heading"][data-size="auto"][data-level="h1"] { --heading-fs: var(--type-h1, 1.75rem); }
 [data-block="heading"][data-size="auto"][data-level="h2"] { --heading-fs: var(--type-h2, 1.375rem); }
 [data-block="heading"][data-size="auto"][data-level="h3"] { --heading-fs: var(--type-h3, 1.125rem); }
@@ -320,8 +321,10 @@ const image: BlockType = {
   schema: [
     { name: 'src', type: 'image', label: 'Image', required: true },
     { name: 'alt', type: 'text', label: 'Alt text' },
-    { name: 'fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
-    { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio', options: ['auto', '16:9', '4:3', '1:1', '3:1'], default: 'auto' },
+    { name: 'fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain', responsive: true, responsive_css: { contain: '--image-fit:contain !important;', cover: '--image-fit:cover !important;' } },
+    { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio', options: ['auto', '16:9', '4:3', '1:1', '3:1'], default: 'auto', responsive: true, responsive_css: Object.fromEntries(Object.entries({ auto:'auto', '16:9':'16/9', '4:3':'4/3', '1:1':'1', '3:1':'3/1' }).map(([key,value])=>[key,`--image-aspect:${value} !important;`])) },
+    { name: 'scale_percent', type: 'number', label: 'Image scale inside frame (%)', min: 100, max: 200, default: 100, css_unit: 'number', responsive: true },
+    ...focalPointFields,
     { name: 'caption', type: 'text', label: 'Caption' },
     { name: 'caption_html', type: 'richtext', label: 'Formatted caption / credit (overrides plain caption)' },
     { name: 'caption_align', type: 'select', label: 'Caption alignment', options: ['left', 'center', 'right'], default: 'center' },
@@ -348,11 +351,16 @@ const image: BlockType = {
 [data-block="image"][data-w="wide"] { max-width: 64rem; }
 [data-block="image"][data-w="full"] { max-width: none; }
 
-[data-block="image"][data-fit="cover"] img { object-fit:cover; }
-[data-block="image"][data-aspect="16:9"] img { aspect-ratio:16/9; }
-[data-block="image"][data-aspect="4:3"] img { aspect-ratio:4/3; }
-[data-block="image"][data-aspect="1:1"] img { aspect-ratio:1; }
-[data-block="image"][data-aspect="3:1"] img { aspect-ratio:3/1; }
+[data-block="image"] { --image-fit:contain;--image-aspect:auto; }
+[data-block="image"][data-fit="cover"] { --image-fit:cover; }
+[data-block="image"][data-aspect="16:9"] { --image-aspect:16/9; }
+[data-block="image"][data-aspect="4:3"] { --image-aspect:4/3; }
+[data-block="image"][data-aspect="1:1"] { --image-aspect:1; }
+[data-block="image"][data-aspect="3:1"] { --image-aspect:3/1; }
+[data-block="image"] .block-image-frame { display:block;overflow:hidden; }
+[data-block="image"] .block-image-link { display:block; }
+[data-block="image"] .block-image-link:focus-visible { outline:2px solid currentColor;outline-offset:3px; }
+[data-block="image"] .block-image-frame img { width:calc(var(--scale_percent,100) * 1%);max-width:none;position:relative;left:calc(var(--focal_x,50) * 1%);transform:translateX(calc(var(--focal_x,50) * -1%));aspect-ratio:var(--image-aspect,auto);object-fit:var(--image-fit,contain);object-position:calc(var(--focal_x,50) * 1%) calc(var(--focal_y,50) * 1%); }
 [data-block="image"] img { margin:0; border-radius:0; object-fit:contain; display: block; width: 100%; height: auto; }
 [data-block="image"][data-radius="md"] img { border-radius: 0.5rem; }
 [data-block="image"][data-radius="lg"] img { border-radius: 1.25rem; }
@@ -433,6 +441,7 @@ const templateContentSlot: BlockType = {
   category: 'layout',
   container: false,
   schema: [
+    ...articleHeadingFields,
     { name: 'max_width', type: 'select', label: 'Content width', options: ['full', 'narrow', 'normal', 'wide'], default: 'full' },
     { name: 'font_size', type: 'number', label: 'Body text size (px)', min: 12, max: 32, placeholder: 'Block default' },
     { name: 'line_height', type: 'number', label: 'Body line height', min: 1, max: 2.5, placeholder: 'Block default' },

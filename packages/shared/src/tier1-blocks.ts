@@ -14,7 +14,7 @@
 // They render fine standalone too.
 
 import type { BlockType } from './types.js';
-import { pixels, postCardImageSizing } from './presentation-fields.js';
+import { pixels, articleHeadingFields, focalPointFields, postCardImageSizing } from './presentation-fields.js';
 import { backgroundGradientField } from './surface-presentation.js';
 import { navigationMenu, navigationLinks } from './navigation-menu.js';
 
@@ -34,6 +34,7 @@ const container: BlockType = {
   category: 'layout',
   container: true,
   schema: [
+    ...articleHeadingFields,
     { name: 'tag', type: 'select', label: 'HTML element', options: ['div', 'section', 'article', 'aside', 'nav', 'header', 'footer', 'main', 'figure'], default: 'div' },
     { name: 'css_class', type: 'text', label: 'CSS classes' },
     { name: 'html_id', type: 'text', label: 'Anchor ID' },
@@ -80,10 +81,12 @@ const container: BlockType = {
 :is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] :focus-visible { outline-offset:-3px; }
 :is([data-block="container"], [data-block="semantic-container"])[data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }
 :is([data-block="container"], [data-block="semantic-container"])[data-shadow="header"] { box-shadow:0 2px 5px rgb(0 0 0 / 20%); }
+/* Only an explicitly authored scale overrides theme-sized headings. */
+${[1,2,3,4,5,6].map(level => `:is([data-block="container"], [data-block="semantic-container"])[style*="--h${level}_size_px:"] [data-block="heading"][data-level="h${level}"][data-size="theme"] .block-heading-text { font-size:var(--font_size_px,var(--h${level}_size_px)); }`).join('\n')}
 /* Opt-in article flow; never change heading spacing in unrelated layouts. */
 [data-block="semantic-container"][data-rhythm="article"] { display:flow-root; }
 :is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="heading"],
-:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="rich_heading"] { margin-block:var(--heading-space-before,2rem) var(--heading-space-after,.65rem); }
+:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="rich_heading"] { margin-block:var(--heading_before_px,var(--heading-space-before,2rem)) var(--heading_after_px,var(--heading-space-after,.65rem)); }
 :is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > :first-child { margin-top:0; }
 [data-block="container"] {
   display: flex; flex-direction: var(--direction, column); flex-wrap: var(--wrap, wrap);
@@ -786,8 +789,9 @@ const postCard: BlockType = {
     { name: 'show_excerpt', type: 'boolean', label: 'Show excerpt', default: true },
     { name: 'show_date', type: 'boolean', label: 'Show date', default: true },
     { name: 'show_author', type: 'boolean', label: 'Show author', default: false },
-    { name: 'image_fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
-    { name: 'image_aspect', type: 'select', label: 'Image aspect', options: ['auto', 'landscape', 'square', 'portrait'], default: 'auto' },
+    { name: 'image_fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain', responsive: true, responsive_css: { contain:'--card-image-fit:contain !important;', cover:'--card-image-fit:cover !important;' } },
+    ...focalPointFields,
+    { name: 'image_aspect', type: 'select', label: 'Image aspect', options: ['auto', 'landscape', 'square', 'portrait'], default: 'auto', responsive: true, responsive_css: Object.fromEntries(Object.entries({auto:'auto',landscape:'16/9',square:'1',portrait:'3/4'}).map(([key,value])=>[key,`--card-image-aspect:${value} !important;`])) },
     { name: 'whole_card_link', type: 'boolean', label: 'Link the entire card (without secondary actions)', default: false },
     { name: 'layout', type: 'select', label: 'Card direction', options: ['column', 'row'], default: 'column', responsive: true, responsive_css: { column: '--card-direction:column !important;--card-media-width:100% !important;', row: '--card-direction:row !important;--card-media-width:calc(var(--image_width_percent,40) * 1%) !important;' } },
     { name: 'image_width_percent', type: 'number', label: 'Horizontal image width (%)', min: 10, max: 70, css_unit: 'number', responsive: true, default: 40 },
@@ -858,11 +862,12 @@ const postCard: BlockType = {
 [data-block="post_card"] .block-postcard-link { color: inherit; text-decoration: none; }
 [data-block="post_card"] .block-postcard-link:focus-visible,
 [data-block="post_card"] .block-postcard-download:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
-[data-block="post_card"] .block-postcard-image { display:block;position:var(--card-image-position,static);inset:0;width:100%;height:var(--card-image-height,var(--image_height_px,auto)); object-fit: contain; border-radius: 0.5rem; background: var(--color-bg-subtle, #f3f4f6); }
-[data-block="post_card"][data-fit="cover"] .block-postcard-image { object-fit:cover; }
-[data-block="post_card"][data-aspect="landscape"] .block-postcard-image { aspect-ratio: 16/9; }
-[data-block="post_card"][data-aspect="square"]    .block-postcard-image { aspect-ratio: 1; }
-[data-block="post_card"][data-aspect="portrait"]  .block-postcard-image { aspect-ratio: 3/4; }
+[data-block="post_card"] { --card-image-fit:contain;--card-image-aspect:auto; }
+[data-block="post_card"] .block-postcard-image { aspect-ratio:var(--card-image-aspect,auto);object-position:calc(var(--focal_x,50) * 1%) calc(var(--focal_y,50) * 1%); display:block;position:var(--card-image-position,static);inset:0;width:100%;height:var(--card-image-height,var(--image_height_px,auto)); object-fit:var(--card-image-fit,contain); border-radius: 0.5rem; background: var(--color-bg-subtle, #f3f4f6); }
+[data-block="post_card"][data-fit="cover"] { --card-image-fit:cover; }
+[data-block="post_card"][data-aspect="landscape"] { --card-image-aspect:16/9; }
+[data-block="post_card"][data-aspect="square"] { --card-image-aspect:1; }
+[data-block="post_card"][data-aspect="portrait"] { --card-image-aspect:3/4; }
 [data-block="post_card"] .block-postcard-body { display:flex;flex:1;flex-direction:column;gap:var(--body_gap_px,0.65rem);min-width:0;padding:var(--body_padding_y_px,var(--body_padding_px,0)) var(--body_padding_x_px,var(--body_padding_px,0)); }
 [data-block="post_card"] .block-postcard-title { margin: 0; font-size:var(--title_size_px,1.25rem);font-weight:var(--title_weight,600);line-height:var(--title_line_height,1.3); }
 [data-block="post_card"] .block-postcard-excerpt { margin: 0; opacity: 0.8; line-height: 1.5; }
