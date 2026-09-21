@@ -20,6 +20,15 @@ test('main Tests run the repository release-candidate check with complete histor
   assert.match(testWorkflow, /name: Validate release candidate[\s\S]*node scripts\/oss-release-check\.mjs/);
 });
 
+test('documentation-only skips are bound to the conservative source plan and still seal the docs artifact', () => {
+  assert.match(testWorkflow, /run: node scripts\/source-check-plan.mjs/);
+  assert.match(testWorkflow, /Validate documentation candidate[\s\S]*npm run release:plan[\s\S]*npm run security:audit[\s\S]*--docs-only --release-artifacts/);
+  for (const name of ['dependencies', 'e2e']) {
+    const job = testWorkflow.slice(testWorkflow.indexOf(`\n  ${name}:`));
+    assert.match(job, /needs: plan\n    if: needs.plan.outputs.docs_only != 'true'/);
+  }
+});
+
 test('the OSS release train is serialized and uses pinned Trusted Publishing tooling', () => {
   assert.match(workflow, /concurrency:\s*\n\s+group: release-oss\s*\n\s+cancel-in-progress: false/);
   assert.match(workflow, /id-token: write/);

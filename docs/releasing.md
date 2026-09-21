@@ -14,8 +14,8 @@ train. Do not push `core-v*` or `mcp-v*` tags manually.
   standalone MCP package or its shared contract changes.
 - Documentation-only changes need no package version bump.
 
-Install dependencies once, then run the single release-candidate check before
-committing:
+Install dependencies once and run focused checks during development. For broad
+changes, release infrastructure or unresolved risk, run the complete local gate:
 
 ```bash
 npm ci
@@ -24,8 +24,8 @@ node scripts/oss-release-check.mjs
 ```
 
 Refresh release tags before the local check so it sees the same published
-versions as CI. Changes under `packages/shared/`, including the Core runtime
-version, also require a new MCP version.
+versions as CI. Shared contract changes require a new MCP version; changing only
+`packages/shared/src/release.ts` does not change the standalone MCP package.
 
 This is the same fail-fast check run by `Tests`: release planning, dependency
 audit, documentation schema and Astro checks, formatting, type checking, tests,
@@ -38,13 +38,13 @@ tag without the corresponding version bump.
 After the exact `main` commit passes `Tests`, the release workflow runs these
 steps:
 
-1. validate documentation formatting and its production build, then validate
-   versions, tags, and changed product scopes;
+1. verify the exact qualified documentation artifact, then validate versions,
+   tags, and changed product scopes;
 2. in parallel, build the Core image once, publish it by immutable digest,
    verify `/api/version`, then create `core-vX.Y.Z`;
 3. in the same parallel phase, build and inspect MCP, publish with npm Trusted
    Publishing, verify npm, then create `mcp-vX.Y.Z`;
-4. in the same parallel phase, build and deploy public documentation from the
+4. in the same parallel phase, deploy the already built documentation from the
    exact source commit;
 5. after all three outputs succeed, upload `oss-upstream.lock.json`, containing
    the exact Core source commit,
@@ -54,7 +54,7 @@ steps:
 The publishing jobs do not repeat the complete audit, type, unit, integration,
 and workspace-build gate that the exact SHA already passed in `Tests`. They keep
 their artifact-specific proofs: Core version and container runtime checks, MCP
-package build and dry-run inspection, and the documentation production build.
+package build and dry-run inspection, and documentation artifact integrity.
 
 An already released unchanged Core or MCP version is verified and reused. If an
 image reached GHCR but the workflow stopped before creating its Core tag, a
@@ -66,16 +66,28 @@ must remain bound to `publish-mcp.yml`.
 Cloud must consume the manifest artifact from a successful completed train. It
 must never reconstruct a release from a mutable tag or rebuild the public image.
 
-The documentation preflight is deliberately repeated at the start of the
-release workflow before Core or MCP can run. The later documentation job uses
-the same command. A formatting or build error therefore cannot leave a
-partially completed release train.
+## Documentation-only source checks
 
+`source-check-plan.mjs` selects a short lane only for a push to public `main`
+whose previous commit already passed the exact repository's `Tests` workflow.
+The complete Git diff must contain only Markdown/MDX under `docs/` or
+`packages/docs-site/src/content/`, or the named top-level Markdown guides.
+Renames include both paths. Unknown paths, dependencies, CI changes, incomplete
+history, missing baseline proof and pull requests all use the full source gate.
+
+The short lane still installs locked dependencies, validates the release plan,
+audits dependencies, checks documentation schema/types and formatting, builds
+production docs and seals the exact artifact. It skips application tests,
+application/browser builds and external customer-builder download probes.
+Core and MCP versions remain unchanged; documentation work needs no Cloud rollout.
+A docs-only CI success can serve as the baseline for the next docs-only delta.
+The first change to this selection logic always receives full qualification.
 
 ## Qualified artifact reuse
 
-Source checks and Playwright run independently on isolated runners; both must
-pass the same source before `Release OSS` can start. A third early job downloads
+For full candidates, source checks and Playwright run independently on isolated
+runners after scope selection; both must pass before `Release OSS` can start.
+A third early job downloads
 the pinned Bubblewrap archive and AppArmor profile, rejects redirects/oversize
 responses, and verifies their exact hashes. Availability failures stop before
 immutable publication, without changing runtime integrity requirements.

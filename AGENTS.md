@@ -3,7 +3,9 @@
 - Use Node.js 22 or later.
 - Run focused local tests first. Main CI must pass the complete source gate,
   independent browser tests and pinned external dependency probes for the exact
-  source. Run `node scripts/oss-release-check.mjs --release-artifacts` locally
+  source. The documentation-only lane in `docs/releasing.md` may reuse a qualified
+  baseline and omit application checks only for the allowlisted documentation delta.
+  Run `node scripts/oss-release-check.mjs --release-artifacts` locally
   for broad shared changes, release-infrastructure changes or unresolved risk;
   do not repeat the full gate after every small edit. The release workflow
   reuses qualified documentation artifacts instead of rebuilding them.
