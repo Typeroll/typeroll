@@ -41,7 +41,7 @@ beforeEach(() => {
     listeners.push([type, handler]);
     addEventListener(type, handler, options as AddEventListenerOptions);
   }) as typeof document.addEventListener;
-  vi.spyOn(window.location, 'assign').mockImplementation((url: string) => { assigned = String(url); });
+  vi.spyOn(window.location, 'assign').mockImplementation((url: string | URL) => { assigned = String(url); });
 });
 afterEach(() => {
   for (const [type, handler] of listeners) document.removeEventListener(type, handler);
