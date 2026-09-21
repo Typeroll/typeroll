@@ -5,6 +5,7 @@ import { paths } from '@typeroll/shared';
 import { publicMediaPath } from '../../../../../lib/publishing/domain-config';
 import { connectionFailure } from '../../../../../lib/publishing/http';
 import type { Media } from '@typeroll/shared';
+import { deleteMediaObjects } from '../../../../../lib/media-deletion';
 
 const EDITABLE: Array<keyof Media> = ['filename', 'alt_text', 'title', 'caption', 'width', 'height', 'public_path'];
 
@@ -46,18 +47,24 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
 };
 
 /**
- * Remove a media item: drop the underlying R2 object, then delete the doc.
- * The order matters — if the R2 delete fails we still want the doc gone so
- * the user can re-upload without the library claiming the name is taken.
- * Worst case is an orphan R2 object, which we'd rather have than a
- * dangling-link in the UI.
+ * Remove a media item: the objects behind it, then the document.
+ *
+ * Objects first, and the document is kept when any of them survive. The
+ * previous order dropped the document regardless, trading a dangling link in
+ * the UI against an orphan in storage — reasonable for one image, wrong as a
+ * policy, because nothing ever came back to collect them and the document was
+ * the only remaining index of those bytes.
+ *
+ * It also attempted R2 only when the record had no `storage`, so anything in
+ * an organization's own bucket kept its bytes silently, and it never touched
+ * variants. See lib/media-deletion.ts.
  */
 export const DELETE: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
   const writeCheck = requirePermission(guard.value, 'write');
   if (!writeCheck.ok) return writeCheck.response;
-  const { session, site, owner_org_id } = guard.value;
+  const { site, owner_org_id } = guard.value;
   const { mediaId } = params;
   if (!mediaId) return json({ error: 'Missing mediaId' }, 400);
 
@@ -66,26 +73,14 @@ export const DELETE: APIRoute = async ({ cookies, params, locals }) => {
   const existing = await store.getDoc<Media>(docPath);
   if (!existing) return json({ error: 'Not found' }, 404);
 
-  // Best-effort R2 cleanup. Only attempts when R2 is configured AND we have
-  // the object key stored on the doc (older uploads predate the r2_key field).
-  if (!existing.storage && existing.r2_key && process.env.R2_ACCOUNT_ID && process.env.R2_BUCKET) {
-    try {
-      const { S3Client, DeleteObjectCommand } = await import('@aws-sdk/client-s3');
-      const r2 = new S3Client({
-        region: 'auto',
-        endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-        credentials: {
-          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-        },
-      });
-      await r2.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET!, Key: existing.r2_key }));
-    } catch {
-      // Swallow — leaves an orphan object but doesn't block the user from
-      // freeing up the slot in the library.
-    }
+  const outcome = await deleteMediaObjects(owner_org_id, existing);
+  if (outcome.failed.length > 0) {
+    // Retryable, and the record stays so the objects remain findable.
+    return json({
+      error: 'The stored files for this item could not be removed. Nothing was deleted; try again.',
+      failed: outcome.failed,
+    }, 502);
   }
-
   await store.deleteDoc(docPath);
-  return json({ ok: true });
+  return json({ ok: true, objects_deleted: outcome.deleted });
 };
