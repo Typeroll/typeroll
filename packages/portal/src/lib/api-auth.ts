@@ -421,7 +421,27 @@ export function apiResponse(
   }
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      // Which site, in which organization, this call actually reached.
+      //
+      // A site id is unique within an organization, not across them, and
+      // resolveTokenSite deliberately prefers the token's own org — that is
+      // the tenant boundary working. The hazard is not cross-tenant access,
+      // it's ambiguity: an integrator holding a key for the wrong
+      // organization, using an id that exists in both, edits the wrong site
+      // and gets a 200 with nothing in the response to say so.
+      //
+      // Only GET /v1/sites/{id} echoed organization_id, so this was visible
+      // on 1 of ~99 routes and invisible on every write. Headers rather than
+      // the body because the body shape of all of them is a published
+      // contract and this is diagnostic metadata, not data.
+      // An org-scoped key on a listing route carries a placeholder site, so
+      // the site header is omitted rather than sent empty — a header that is
+      // sometimes a lie is worse than one that is sometimes absent.
+      'Typeroll-Organization-Id': ctx.orgId,
+      ...(ctx.siteId ? { 'Typeroll-Site-Id': ctx.siteId } : {}),
+    },
   });
 }
 
