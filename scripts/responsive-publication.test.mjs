@@ -112,3 +112,22 @@ test('framed SVG and shared body scale reach frozen output with renderer cache i
   await fs.appendFile(path.join(harness.destination,'packages/shared/src/core-blocks.ts'),'\n// Renderer cache qualification.\n');
   assert.equal((await harness.run()).report.rendered,1);
 });
+
+test('native text links reach frozen output and renderer changes invalidate cached HTML', async t => {
+  const value = { format:'typeroll-static-publication',format_version:2,publication_id:'f'.repeat(64),core_commit:'f'.repeat(40),site_url:'https://example.invalid',version_id:'main',site:{name:'Example'},settings:{site_name:'Example',trailing_slash:'always'},
+    pages:[{id:'home',path:'/',slug:'home',title:'Home',status:'published',content_mode:'blocks',blocks:[
+      {id:'list',type:'core/list',data:{items:[{html:'<a href="/">List reference</a>'}]}},
+      {id:'table',type:'core/table',data:{rows:[{cells:[{html:'<a href="/">Table reference</a>'}]}]}},
+      {id:'image',type:'core/image',data:{src:'https://media.example.invalid/hero.svg',alt:'Illustration',caption_html:'<a href="/">Image credit</a>'}},
+    ]}],pageTemplates:[],media:[],partials:[],contentTypes:[],blockTypes:[],forms:[] };
+  const harness=await publicationBuildHarness(value);t.after(harness.cleanup);
+  await harness.run();
+  const html=await fs.readFile(path.join(harness.destination,'dist/index.html'),'utf8');
+  for(const text of ['List reference','Table reference','Image credit']) assert.match(html,new RegExp(`href="/"[^>]*>${text}</a>`));
+  assert.match(html,/\.block-image-caption/);
+  assert.match(html,/a\[href\][^{]*\{[^}]*text-decoration:\s*underline/);
+  assert.match(html,/a\[href\]:focus-visible/);
+  assert.equal((await harness.run()).report.reused,1);
+  await fs.appendFile(path.join(harness.destination,'packages/shared/src/render-blocks.ts'),'\n// Native text-link renderer cache qualification.\n');
+  assert.equal((await harness.run()).report.rendered,1);
+});

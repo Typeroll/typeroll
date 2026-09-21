@@ -213,3 +213,11 @@ on a heading wins. `heading_before_px`/`heading_after_px` control article-rhythm
 spacing. The slot's local breakpoint map controls its scale. Breadcrumbs flow as
 inline ordered-list items, including long current titles. Do not shorten customer
 headings to compensate for a layout issue. Read the deployed block schema first.
+
+## Native text links (Core 0.2.36+)
+
+Inline links in native rich-text surfaces (including lists, tables and image
+captions) are underlined and keyboard-focusable by default. Use native fields;
+do not add customer CSS patches just to restore recognizable text links. Card
+titles, image wrappers, buttons and navigation retain their own styles. Republish
+existing sites to adopt the updated renderer.

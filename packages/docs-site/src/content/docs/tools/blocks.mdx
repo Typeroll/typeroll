@@ -1048,6 +1048,15 @@ a long current title continues in the remaining line space and wraps naturally.
 Use `breadcrumb_label` only when a shorter label is editorially appropriate.
 Heading alignment is responsive in the editor, preview and static publication.
 
-Ordinary text links inside `core/prose` are underlined with a small underline
-offset, including when the theme resets anchor decoration. This default does not
-change native button, navigation or card link styling.
+### Recognizable text links (Core 0.2.36+)
+
+Native rich-text links are underlined with a small offset, including when the
+theme resets anchor decoration. This covers prose, lists, table cells/captions/
+sources, image captions, rich headings, card body text, hero/callout text,
+testimonials, biographies, steps, feature text, form help and consent text.
+Keyboard focus remains visible and long URLs can wrap. Native button, navigation,
+card-title and image-wrapper links retain their own styles.
+
+Existing static sites need a new publication to receive these defaults. An
+explicit custom stylesheet can still override them; remove old blanket anchor
+resets when they conflict with readable text links.

@@ -1,5 +1,10 @@
 # Changelog
 
+## Core 0.2.36 / MCP 0.45.30
+
+- Extend recognizable, keyboard-visible text links to native lists, tables, image captions and other rendered rich-text surfaces, preserving interactive card, image, button and navigation styling.
+- Verify real frozen output, renderer cache invalidation and mobile/desktop computed styles; document adoption through republication.
+
 ## Core 0.2.35 / MCP 0.45.29
 
 - Keep prose text links visibly underlined across theme resets without changing native buttons, cards or navigation.
