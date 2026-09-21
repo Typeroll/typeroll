@@ -400,6 +400,42 @@ export async function requireApiKey(
  * read; we don't re-read the request stream here. Pass `undefined` for
  * GETs (they're filtered out by shouldAudit anyway).
  */
+/**
+ * Which site, in which organization, this call actually reached.
+ *
+ * A site id is unique within an organization, not across them, and
+ * resolveTokenSite deliberately prefers the token's own org — that is the
+ * tenant boundary working. The hazard is not cross-tenant access, it's
+ * ambiguity: an integrator holding a key for the wrong organization, using an
+ * id that exists in both, edits the wrong site and gets a 200 with nothing in
+ * the response to say so.
+ *
+ * The site header is omitted rather than sent empty for org-scoped listing
+ * contexts, whose site fields are placeholders. A header that is sometimes a
+ * lie is worse than one that is sometimes absent.
+ */
+export function apiIdentityHeaders(ctx: Pick<ApiContext, 'orgId' | 'siteId'>): Record<string, string> {
+  return {
+    'Typeroll-Organization-Id': ctx.orgId,
+    ...(ctx.siteId ? { 'Typeroll-Site-Id': ctx.siteId } : {}),
+  };
+}
+
+/**
+ * Stamp identity onto a response this module did not build — a delegated
+ * handler, or a raw body like the export archive.
+ *
+ * Exists because apiResponse is the seam for 101 of the 105 v1 routes and not
+ * for the other four, and those four are where extension integrators work.
+ * Rebuilds rather than mutates: a Response's headers are immutable once it has
+ * been constructed by some code paths.
+ */
+export function withApiIdentity(ctx: Pick<ApiContext, 'orgId' | 'siteId'>, response: Response): Response {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(apiIdentityHeaders(ctx))) headers.set(name, value);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 export function apiResponse(
   ctx: ApiContext,
   data: unknown,
@@ -421,34 +457,18 @@ export function apiResponse(
   }
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      'Content-Type': 'application/json',
-      // Which site, in which organization, this call actually reached.
-      //
-      // A site id is unique within an organization, not across them, and
-      // resolveTokenSite deliberately prefers the token's own org — that is
-      // the tenant boundary working. The hazard is not cross-tenant access,
-      // it's ambiguity: an integrator holding a key for the wrong
-      // organization, using an id that exists in both, edits the wrong site
-      // and gets a 200 with nothing in the response to say so.
-      //
-      // Only GET /v1/sites/{id} echoed organization_id, so this was visible
-      // on 1 of ~99 routes and invisible on every write. Headers rather than
-      // the body because the body shape of all of them is a published
-      // contract and this is diagnostic metadata, not data.
-      // An org-scoped key on a listing route carries a placeholder site, so
-      // the site header is omitted rather than sent empty — a header that is
-      // sometimes a lie is worse than one that is sometimes absent.
-      'Typeroll-Organization-Id': ctx.orgId,
-      ...(ctx.siteId ? { 'Typeroll-Site-Id': ctx.siteId } : {}),
-    },
+    headers: { 'Content-Type': 'application/json', ...apiIdentityHeaders(ctx) },
   });
 }
 
 /** Convenience for "this argument was malformed" responses that DON'T need
  *  to go through the audit log (no write was attempted). */
-export function apiError(message: string, status = 400): Response {
-  return json({ error: message }, status);
+export function apiError(message: string, status = 400, ctx?: Pick<ApiContext, 'orgId' | 'siteId'>): Response {
+  // `ctx` is optional because many callers raise before a site is resolved.
+  // Pass it wherever one exists: a 404 is precisely when the caller wants to
+  // know which site was consulted, since the thing they asked for may well
+  // exist on the site they meant.
+  return ctx ? withApiIdentity(ctx, json({ error: message }, status)) : json({ error: message }, status);
 }
 
 /**

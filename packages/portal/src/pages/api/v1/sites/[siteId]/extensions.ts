@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { paths, type ExtensionInstallation, type ExtensionScope } from '@typeroll/shared';
 import { json } from '../../../../../lib/access';
-import { requireApiKey } from '../../../../../lib/api-auth';
+import { requireApiKey, withApiIdentity } from '../../../../../lib/api-auth';
 import { maskExtensionConfig } from '../../../../../lib/extensions/config';
 import { ExtensionRegistryError, installExtension } from '../../../../../lib/extensions/registry';
 import { getStore } from '../../../../../lib/datastore';
@@ -14,7 +14,7 @@ function canAdmin(permission: string): boolean {
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
-  if (!canAdmin(guard.value.permission)) return json({ error: 'Admin permission required' }, 403);
+  if (!canAdmin(guard.value.permission)) return withApiIdentity(guard.value, json({ error: 'Admin permission required' }, 403));
   const installations = await getStore().listDocs<ExtensionInstallation>(
     paths.extensionInstallations(guard.value.orgId, guard.value.siteId),
   );
@@ -36,15 +36,15 @@ export const GET: APIRoute = async ({ request, params }) => {
       version_status: version?.status ?? 'missing',
     };
   }));
-  return json({ extensions: safe });
+  return withApiIdentity(guard.value, json({ extensions: safe }));
 };
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
-  if (!canAdmin(guard.value.permission)) return json({ error: 'Admin permission required' }, 403);
+  if (!canAdmin(guard.value.permission)) return withApiIdentity(guard.value, json({ error: 'Admin permission required' }, 403));
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body) return json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return withApiIdentity(guard.value, json({ error: 'Invalid JSON body' }, 400));
   try {
     const installation = await installExtension({
       developerOrgId: String(body.developer_org_id ?? guard.value.tokenOrgId),
@@ -58,9 +58,9 @@ export const POST: APIRoute = async ({ request, params }) => {
         ? body.config as Record<string, unknown>
         : {},
     });
-    return json({ installation: { ...installation, private_config: undefined, secret_config_enc: undefined } }, 201);
+    return withApiIdentity(guard.value, json({ installation: { ...installation, private_config: undefined, secret_config_enc: undefined } }, 201));
   } catch (error) {
-    if (error instanceof ExtensionRegistryError) return json({ error: error.message }, error.status);
-    return json({ error: 'Failed to install Extension' }, 500);
+    if (error instanceof ExtensionRegistryError) return withApiIdentity(guard.value, json({ error: error.message }, error.status));
+    return withApiIdentity(guard.value, json({ error: 'Failed to install Extension' }, 500));
   }
 };

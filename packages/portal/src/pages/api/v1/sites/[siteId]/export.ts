@@ -11,7 +11,7 @@
 // (chain-resolved, like a deploy of that branch).
 
 import type { APIRoute } from 'astro';
-import { apiError, requireApiKey } from '../../../../../lib/api-auth';
+import { apiError, requireApiKey, withApiIdentity } from '../../../../../lib/api-auth';
 import { buildContentExport } from '../../../../../lib/export';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import { getStore } from '../../../../../lib/datastore';
@@ -32,12 +32,14 @@ export const GET: APIRoute = async ({ request, params }) => {
   }
 
   const { zip, filename } = await buildContentExport(ctx.orgId, ctx.siteId, versionId);
-  return new Response(new Uint8Array(zip), {
+  // An export is the one response someone files away and reads back later,
+  // out of context, so naming the site it came from matters most here.
+  return withApiIdentity(ctx, new Response(new Uint8Array(zip), {
     status: 200,
     headers: {
       'Content-Type': 'application/zip',
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Cache-Control': 'no-store',
     },
-  });
+  }));
 };

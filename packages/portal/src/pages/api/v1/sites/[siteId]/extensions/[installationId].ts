@@ -5,7 +5,7 @@
 import type { APIRoute } from 'astro';
 import { paths, type ExtensionInstallation, type ExtensionScope } from '@typeroll/shared';
 import { json } from '../../../../../../lib/access';
-import { requireApiKey } from '../../../../../../lib/api-auth';
+import { requireApiKey, withApiIdentity } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { maskExtensionConfig } from '../../../../../../lib/extensions/config';
 import { resolveExtensionVersion } from '../../../../../../lib/extensions/resolution';
@@ -49,19 +49,19 @@ async function safeInstallation(installation: ExtensionInstallation) {
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
-  if (guard.value.permission !== 'admin') return json({ error: 'Admin permission required' }, 403);
+  if (guard.value.permission !== 'admin') return withApiIdentity(guard.value, json({ error: 'Admin permission required' }, 403));
   const installation = await load(guard.value.orgId, guard.value.siteId, params.installationId);
-  if (!installation) return json({ error: 'Installation not found' }, 404);
-  return json(await safeInstallation(installation));
+  if (!installation) return withApiIdentity(guard.value, json({ error: 'Installation not found' }, 404));
+  return withApiIdentity(guard.value, json(await safeInstallation(installation)));
 };
 
 export const PATCH: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
-  if (guard.value.permission !== 'admin') return json({ error: 'Admin permission required' }, 403);
-  if (!params.installationId) return json({ error: 'Missing installationId' }, 400);
+  if (guard.value.permission !== 'admin') return withApiIdentity(guard.value, json({ error: 'Admin permission required' }, 403));
+  if (!params.installationId) return withApiIdentity(guard.value, json({ error: 'Missing installationId' }, 400));
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body) return json({ error: 'Invalid JSON body' }, 400);
+  if (!body) return withApiIdentity(guard.value, json({ error: 'Invalid JSON body' }, 400));
 
   try {
     if (body.status === 'enabled' || body.status === 'disabled') {
@@ -86,9 +86,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         ? body.config as Record<string, unknown>
         : undefined,
     });
-    return json(await safeInstallation(installation));
+    return withApiIdentity(guard.value, json(await safeInstallation(installation)));
   } catch (error) {
-    if (error instanceof ExtensionRegistryError) return json({ error: error.message }, error.status);
-    return json({ error: 'Failed to update Extension installation' }, 500);
+    if (error instanceof ExtensionRegistryError) return withApiIdentity(guard.value, json({ error: error.message }, error.status));
+    return withApiIdentity(guard.value, json({ error: 'Failed to update Extension installation' }, 500));
   }
 };
