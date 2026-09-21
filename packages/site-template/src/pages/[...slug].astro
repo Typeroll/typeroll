@@ -23,6 +23,7 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
   buildMediaLookup,
   buildPageSchema,
   collectBlockAssets,
+  collectClientCapabilities,
   pageNavigation,
   pageContentValues,
   normalizePageH1s,
@@ -120,6 +121,7 @@ const formSource = await buildFormSource(blockRegistry, settings.language, (bloc
 let bodyHtml: string | null = null;
 let blockCss = '';
 let blockJs = '';
+let clientCapabilities: string[] = [];
 // The body's block tree, kept so CSS/JS can be collected in ONE pass together
 // with the header's and footer's — see below. Null for HTML-mode bodies.
 let bodyBlocks: Block[] | null = null;
@@ -175,6 +177,9 @@ let formsRuntimeTag = '';
     ...(footer?.content_mode === 'blocks' ? footer.blocks ?? [] : []),
   ];
   const assets = collectBlockAssets([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks], blockRegistry);
+  // Same tree as the asset pass — a header banner and a footer banner both
+  // asking for addresses must produce one loader, not two.
+  clientCapabilities = [...collectClientCapabilities([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks])];
   blockCss = assets.css;
   blockJs = assets.js;
 }
@@ -219,7 +224,7 @@ if (ld) extraJsonLd.push(ld);
 if (bodyHtml) bodyHtml = prepareHeadingOutline(normalizePageH1s(bodyHtml)).html;
 
 ---
-<BaseLayout breadcrumbs={props.breadcrumbs} page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} extraJsonLd={extraJsonLd}>
+<BaseLayout breadcrumbs={props.breadcrumbs} page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} clientCapabilities={clientCapabilities} extraJsonLd={extraJsonLd}>
   <Header partial={header} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
 
   {bodyHtml ? (

@@ -1115,6 +1115,43 @@ remain until another handoff or the tab closes. Closing the tab discards its ses
 blocked storage or disabled JavaScript still permits navigation, but not prefill.
 This is not persistent draft storage or cross-domain form integration.
 
+### Address suggestions
+
+A `text` field with `suggest_address: true` offers address suggestions as the
+visitor types, and carries the chosen address's parts to the destination
+alongside the text. Set the block's `address_country` to a two-letter code to
+restrict results. The suggestion language follows the site's content language.
+
+This needs a **Google Places browser key** on the site: open the Integrations
+app and fill in *Google Places — Browser API key*. Restrict that key by HTTP
+referrer in the Google Cloud console — it is a public key that ships to every
+visitor by design, exactly as it does on any site using the widget directly.
+The provider script loads only on pages that have a field asking for it, once
+per page however many fields ask, and it is held by the site's cookie-consent
+gate as a `functional` integration.
+
+With no key configured, or a key that fails validation, the field is an
+ordinary text input. Navigation and the handoff still work. That is also what
+you see in the editor canvas and in preview, which cannot run a provider
+script — so a field showing no suggestions there is expected, not a fault.
+Check a published page.
+
+A selected address also sends its components under `<field>_street`,
+`<field>_street_number`, `<field>_postal_code`, `<field>_locality` and
+`<field>_country`. Name receiving fields to match to prefill them. Editing the
+text after choosing a suggestion drops the components, so the destination never
+receives parts describing a different address from the one on screen.
+
+```json
+{
+  "name": "address_from",
+  "label": "Moving from",
+  "kind": "text",
+  "required": true,
+  "suggest_address": true
+}
+```
+
 To display the defaults on the destination, use another `core/navigation_form`
 with `mode: "receive"`, the same `handoff_key`, and an explicit `fields` list.
 It renders editable inputs without a continue/submission button and consumes

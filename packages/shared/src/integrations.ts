@@ -38,11 +38,40 @@ export interface IntegrationField {
   pattern: RegExp;
 }
 
+/**
+ * A capability a native block can ask for, backed by an owner-supplied public
+ * client key.
+ *
+ * Exists because the catalog previously had exactly one output — a site-wide
+ * head/body_end tag — so a value could reach `BaseLayout` and nothing else. A
+ * block that needed a third-party browser key had no supported path at all,
+ * and the only thing that worked was an Extension installation, which couples
+ * a capability to a product the owner may not want.
+ *
+ * The key is NOT projected into block markup. The provider's loader emits it
+ * once per page and registers a binder under a capability name; blocks ask the
+ * registry for the capability and never see the key. That keeps the key in one
+ * reviewed place instead of repeated into every block instance, and it makes
+ * the absent-key case fall out for free: no loader, no registration, and the
+ * block renders its plain fallback. Which is also why the editor canvas and
+ * the preview shell degrade honestly — neither can run a provider script, so
+ * neither registers anything.
+ */
+export interface IntegrationClientCapability {
+  /** What a block asks for, e.g. `address_autocomplete`. */
+  capability: string;
+  /**
+   * Emitted once per page when some block on it declared this capability.
+   * Receives the same validated field values as `snippet`.
+   */
+  loader: (v: Record<string, string>) => string;
+}
+
 export interface IntegrationProvider {
   id: string;
   name: string;
   /** Grouping in the portal UI. */
-  group: 'analytics' | 'advertising' | 'support' | 'marketing';
+  group: 'analytics' | 'advertising' | 'support' | 'marketing' | 'content';
   consent_category: ConsentCategory;
   placement: 'head' | 'body_end';
   fields: IntegrationField[];
@@ -53,6 +82,13 @@ export interface IntegrationProvider {
    * Returning '' means "nothing to emit".
    */
   snippet: (v: Record<string, string>) => string;
+  /**
+   * Set when this provider backs a block capability rather than a site-wide
+   * tag. Such a provider emits nothing unless a block on the page asked for
+   * it — an owner who configures a key for one page does not get a third-party
+   * script on every other page.
+   */
+  client?: IntegrationClientCapability;
 }
 
 // Common ID shapes. Deliberately narrow — every one of these vendors issues
@@ -63,6 +99,8 @@ const GA4 = /^G-[A-Z0-9]{4,20}$/;
 const GTM = /^GTM-[A-Z0-9]{4,20}$/;
 const DOMAIN = /^[a-z0-9.-]{3,253}$/;
 const HTTPS_URL = /^https:\/\/[a-z0-9.-]{3,253}(\/[A-Za-z0-9/_-]*)?$/;
+// Google browser keys are `AIza` plus 35 chars from a URL-safe alphabet.
+const GOOGLE_BROWSER_KEY = /^AIza[A-Za-z0-9_-]{35}$/;
 
 export const INTEGRATION_PROVIDERS: readonly IntegrationProvider[] = [
   // ─── Analytics ─────────────────────────────────────────────────────────
@@ -299,6 +337,36 @@ export const INTEGRATION_PROVIDERS: readonly IntegrationProvider[] = [
       `"https://chimpstatic.com/mcjs-connected/js/users/${v.user_id}.js");</script>`,
   },
 
+  // ─── Block capabilities ────────────────────────────────────────────────
+  //
+  // These back a native block rather than emitting a site-wide tag. Nothing
+  // ships unless a block on the page asked for the capability.
+  {
+    id: 'google_places',
+    name: 'Google Places',
+    group: 'content',
+    // Address suggestions are part of the form the visitor chose to fill in,
+    // not measurement or advertising. `functional` is the honest category, and
+    // it still routes through the site's existing consent gate.
+    consent_category: 'functional',
+    placement: 'head',
+    docs: 'https://developers.google.com/maps/documentation/javascript/get-api-key',
+    fields: [{
+      key: 'browser_key',
+      label: 'Browser API key',
+      placeholder: 'AIza…',
+      help: 'A browser key, restricted by HTTP referrer in the Google Cloud console. It ships to every visitor by design — restrict it there, not here.',
+      pattern: GOOGLE_BROWSER_KEY,
+    }],
+    // Nothing site-wide. A key configured for one page must not put a
+    // third-party script on every other page of the site.
+    snippet: () => '',
+    client: {
+      capability: 'address_autocomplete',
+      loader: (v) => PLACES_LOADER.replace('__KEY__', v.browser_key),
+    },
+  },
+
   // ─── Support widgets ───────────────────────────────────────────────────
   {
     id: 'intercom',
@@ -343,6 +411,118 @@ export const INTEGRATION_PROVIDERS: readonly IntegrationProvider[] = [
       `s1.setAttribute('crossorigin','*');s0.parentNode.insertBefore(s1,s0)})();</script>`,
   },
 ] as const;
+
+/**
+ * The Google Places loader.
+ *
+ * Vendor specifics live here, in reviewed platform code, rather than in the
+ * block — which is the same bargain the rest of this catalog makes. The block
+ * asks for `address_autocomplete` and receives structured address parts; it
+ * knows nothing about google.maps, and a second provider for this capability
+ * would need no change to any block.
+ *
+ * Language comes from `<html lang>` rather than a field: the site already
+ * declares its content language and asking the owner to repeat it is a second
+ * place to get it wrong. Country restriction is per-attach, because one page
+ * can carry blocks with different restrictions.
+ *
+ * Never contains a literal "</script" — it is injected inside a script element.
+ */
+const PLACES_LOADER = String.raw`<script>(function(){
+var W=window;if(W.TyperollClientCapabilities&&W.TyperollClientCapabilities.address_autocomplete)return;
+W.TyperollClientCapabilities=W.TyperollClientCapabilities||{};
+var PARTS={street_number:'street_number',route:'street',postal_code:'postal_code',locality:'locality',postal_town:'locality',country:'country'};
+function components(place){
+  var out={};
+  (place&&place.address_components||[]).forEach(function(part){
+    (part.types||[]).forEach(function(type){
+      var name=PARTS[type];
+      // A locality and a postal_town can both be present; the first wins so a
+      // postal town never silently replaces a real locality.
+      if(name&&out[name]===undefined)out[name]=name==='country'?(part.short_name||part.long_name):part.long_name;
+    });
+  });
+  if(place&&place.formatted_address)out.formatted=place.formatted_address;
+  return out;
+}
+function ready(){
+  W.TyperollClientCapabilities.address_autocomplete={
+    attach:function(input,options,onSelect){
+      if(!W.google||!W.google.maps||!W.google.maps.places)return false;
+      var config={types:['geocode'],fields:['address_components','formatted_address']};
+      var country=String(options&&options.country||'').toLowerCase();
+      if(/^[a-z]{2}$/.test(country))config.componentRestrictions={country:country};
+      var widget=new W.google.maps.places.Autocomplete(input,config);
+      widget.addListener('place_changed',function(){
+        try{onSelect(components(widget.getPlace()));}catch(e){}
+      });
+      // The widget submits on Enter otherwise, which would navigate before the
+      // visitor has picked a suggestion.
+      input.addEventListener('keydown',function(event){
+        if(event.key==='Enter'&&document.querySelector('.pac-container:not([style*="display: none"])'))event.preventDefault();
+      });
+      return true;
+    }
+  };
+  document.dispatchEvent(new CustomEvent('typeroll:capability',{detail:{name:'address_autocomplete'}}));
+}
+W.__typerollPlacesReady=ready;
+var lang=(document.documentElement.getAttribute('lang')||'').slice(0,5);
+var el=document.createElement('script');
+el.async=true;
+el.src='https://maps.googleapis.com/maps/api/js?key=__KEY__&libraries=places&loading=async&callback=__typerollPlacesReady'+(/^[A-Za-z-]{2,5}$/.test(lang)?'&language='+encodeURIComponent(lang):'');
+// A blocked or failed load leaves the capability unregistered, which is
+// exactly the no-key state: every field stays a plain input.
+el.onerror=function(){};
+document.head.appendChild(el);
+})();</` + `script>`;
+
+export interface ClientCapabilityScripts {
+  /** Loaders that fire regardless of consent. */
+  tags: string;
+  /** Loaders whose category requires consent; the caller routes these through the site's gate. */
+  consentTags: string;
+  /** Capability names actually backed by a configured key — for tests and the portal's status UI. */
+  emitted: string[];
+}
+
+/**
+ * Loaders for the capabilities a page actually asked for.
+ *
+ * `requested` comes from the blocks on the page, so a configured key ships
+ * only where something needs it. A capability with no configured provider, or
+ * a key that fails its pattern, emits nothing at all — the block's fallback is
+ * the same code path as a site that never configured the key, so there is no
+ * separate half-working state to reason about.
+ */
+export function renderClientCapabilityScripts(
+  config: Record<string, unknown> | undefined,
+  requested: Iterable<string>,
+): ClientCapabilityScripts {
+  const wanted = new Set(requested);
+  const tags: string[] = [];
+  const consentTags: string[] = [];
+  const emitted: string[] = [];
+  if (!config || wanted.size === 0) return { tags: '', consentTags: '', emitted };
+
+  for (const provider of INTEGRATION_PROVIDERS) {
+    if (!provider.client || !wanted.has(provider.client.capability)) continue;
+    const values: Record<string, string> = {};
+    let complete = true;
+    for (const field of provider.fields) {
+      const raw = config[integrationConfigKey(provider.id, field.key)];
+      const value = typeof raw === 'string' ? raw.trim() : '';
+      if (!value || !field.pattern.test(value)) { complete = false; break; }
+      values[field.key] = value;
+    }
+    if (!complete) continue;
+    const tag = provider.client.loader(values);
+    if (!tag) continue;
+    (provider.consent_category === 'necessary' ? tags : consentTags).push(tag);
+    emitted.push(provider.client.capability);
+  }
+  return { tags: tags.join('\n'), consentTags: consentTags.join('\n'), emitted };
+}
 
 export function getIntegrationProvider(id: string): IntegrationProvider | undefined {
   return INTEGRATION_PROVIDERS.find((p) => p.id === id);

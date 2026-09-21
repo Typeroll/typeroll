@@ -1641,6 +1641,32 @@ export const BLOCKS_RUNTIME_CSS = `
  * Walk a block tree and collect the set of BlockType ids actually used.
  * Used by the build pipeline (Phase 3) to tree-shake the CSS/JS bundle.
  */
+/**
+ * Client capabilities the blocks on a page ask for — third-party browser
+ * scripts backed by an owner-configured key, see `renderClientCapabilityScripts`.
+ *
+ * Collected from block DATA rather than from block types, because whether a
+ * capability is needed is an authoring decision: one navigation_form wants
+ * address suggestions, the next one on the same site does not. Collecting per
+ * type would put a provider script on every page carrying the block.
+ *
+ * Returning a set is what makes "one script per page" fall out — a header and
+ * a footer banner both asking for addresses produce one loader.
+ */
+export function collectClientCapabilities(blocks: Block[], out: Set<string> = new Set()): Set<string> {
+  for (const block of blocks) {
+    if (block.type === 'core/navigation_form') {
+      const fields = (block.data?.fields as Array<Record<string, unknown>> | undefined) ?? [];
+      if (Array.isArray(fields) && fields.some((field) => field?.suggest_address === true)) {
+        out.add('address_autocomplete');
+      }
+    }
+    if (block.children) collectClientCapabilities(block.children, out);
+    if (block.slots) for (const slot of block.slots) collectClientCapabilities(slot, out);
+  }
+  return out;
+}
+
 export function collectUsedBlockTypeIds(blocks: Block[], out: Set<string> = new Set()): Set<string> {
   for (const b of blocks) {
     out.add(b.type);

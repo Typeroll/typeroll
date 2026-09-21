@@ -129,7 +129,12 @@ export function prepareNavigationForm(
               )
               .join(" ")
           : "";
-      const attrs = `id="${escape(inputId)}" name="${escape(name)}" class="navigation-input"${field.required === true ? " required" : ""}`;
+      // `suggest` only ever adds behaviour. The markup is identical with and
+      // without a configured key, which is what lets the editor canvas, the
+      // preview shell and the published page agree on everything except the
+      // suggestions themselves — none of the three can be wrong about layout.
+      const suggest = field.suggest_address === true && kind === "text";
+      const attrs = `id="${escape(inputId)}" name="${escape(name)}" class="navigation-input"${field.required === true ? " required" : ""}${suggest ? ' data-navigation-suggest="address" autocomplete="off"' : ""}`;
       const input =
         kind === "select"
           ? `<select ${attrs}><option value="">${escape(field.placeholder || "Choose…")}</option>${(Array.isArray(
@@ -163,6 +168,9 @@ export function prepareNavigationForm(
     data.mode === "navigate" && data.destination
       ? `<div class="navigation-actions"><a data-navigation-fallback href="${escape(data.destination)}">${escape(data.button_label || "Continue")}</a><button type="button" data-navigation-continue hidden>${escape(data.button_label || "Continue")}</button></div>`
       : "";
+  data.address_country = /^[A-Za-z]{2}$/.test(String(data.address_country ?? ""))
+    ? String(data.address_country).toLowerCase()
+    : "";
   data.navigation_colors = [
     ["button_background", "--navigation-button-bg"],
     ["button_color", "--navigation-button-color"],
@@ -178,13 +186,27 @@ export function prepareNavigationForm(
 }
 
 // Values stay in this browser tab. No submissions, URL parameters, telemetry,
-// cookies, third-party storage, provider calls, or automatic network retries.
+// cookies, third-party storage, or automatic network retries.
+//
+// Address suggestions are the one exception, and only when the site owner has
+// configured a provider key AND a field opted in. Then the typed text goes to
+// that provider, exactly as it would on any site using their widget directly.
+// The block never learns which provider it is: it asks the page for the
+// `address_autocomplete` capability and receives structured address parts. An
+// unconfigured key, a blocked script, or a surface that cannot run one — the
+// editor canvas, the preview shell — all produce the same result, which is
+// that nothing registers and every field stays a plain input.
 export const NAVIGATION_FORM_RUNTIME = String.raw`
 window.TyperollBlocks.register('core/navigation_form', (el) => {
   const prefix='typeroll:page-defaults:v1:';
   const key=el.dataset.handoffKey;
   const fields=Array.from(el.querySelectorAll('.navigation-input'));
   const accepted=fields.map(input=>input.name);
+  // Structured address parts, keyed by the field that produced them. Kept
+  // beside the typed text rather than replacing it: the display string is what
+  // the visitor sees and confirms, the parts are what a destination form needs.
+  const parts={};
+  const PART_NAMES=['street','street_number','postal_code','locality','country','formatted'];
   const safeName=name=>/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(name)&&!['constructor','prototype'].includes(name.toLowerCase())&&!/password|token|secret|authorization/i.test(name);
   function consume(handoffKey, acceptedFields) {
     if(!/^[a-zA-Z0-9_-]{1,64}$/.test(handoffKey)||!Array.isArray(acceptedFields)||acceptedFields.length>32)return {};
@@ -201,8 +223,12 @@ window.TyperollBlocks.register('core/navigation_form', (el) => {
   }
   window.TyperollPageHandoff={consume};
   if(el.dataset.mode==='receive') {
-    const defaults=consume(key,accepted);
+    // A receiving field may be named for a part (address_from_postal_code) or
+    // for the whole address, so both are offered to consume().
+    const wanted=accepted.concat(accepted.flatMap(name=>PART_NAMES.map(part=>name+'_'+part)));
+    const defaults=consume(key,wanted);
     fields.forEach(input=>{if(Object.prototype.hasOwnProperty.call(defaults,input.name))input.value=defaults[input.name];});
+    bindSuggestions();
     return;
   }
   const link=el.querySelector('[data-navigation-fallback]'),button=el.querySelector('[data-navigation-continue]');
@@ -213,7 +239,18 @@ window.TyperollBlocks.register('core/navigation_form', (el) => {
   function navigate(){
     if(fields.some(input=>!input.reportValidity()))return;
     const values={};
-    fields.forEach(input=>{if(safeName(input.name))values[input.name]=String(input.value).slice(0,512);});
+    fields.forEach(input=>{
+      if(!safeName(input.name))return;
+      values[input.name]=String(input.value).slice(0,512);
+      const found=parts[input.name];
+      // Only carry parts the visitor's current text actually produced. A
+      // selection followed by hand-editing the field would otherwise ship
+      // components describing a different address.
+      if(found&&found.for===input.value)PART_NAMES.forEach(part=>{
+        const name=input.name+'_'+part;
+        if(typeof found.values[part]==='string'&&safeName(name))values[name]=found.values[part].slice(0,512);
+      });
+    });
     try {
       // A small fixed prefix budget avoids retaining multiple abandoned banners.
       const keys=[];for(let i=0;i<sessionStorage.length;i++){const item=sessionStorage.key(i);if(item?.startsWith(prefix))keys.push(item);}
@@ -224,6 +261,43 @@ window.TyperollBlocks.register('core/navigation_form', (el) => {
   }
   button.addEventListener('click',navigate);
   el.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.matches('input')){event.preventDefault();navigate();}});
+  bindSuggestions();
+
+  function bindSuggestions(){
+    const wanting=fields.filter(input=>input.dataset.navigationSuggest==='address');
+    if(!wanting.length)return;
+    let bound=false;
+    function attach(){
+      if(bound)return;
+      const capability=(window.TyperollClientCapabilities||{}).address_autocomplete;
+      if(!capability||typeof capability.attach!=='function')return;
+      bound=true;
+      const country=el.dataset.addressCountry||'';
+      wanting.forEach(input=>{
+        try{
+          capability.attach(input,{country:country},selected=>{
+            if(!selected||typeof selected!=='object')return;
+            const kept={};
+            PART_NAMES.forEach(part=>{if(typeof selected[part]==='string')kept[part]=selected[part];});
+            parts[input.name]={for:input.value,values:kept};
+          });
+        }catch(e){/* One field failing must not take the others with it. */}
+      });
+    }
+    // The loader may register before or after this block initialises, so both
+    // orders are handled. No loader at all means neither fires and the fields
+    // stay plain, which is the honest fallback.
+    attach();
+    if(bound)return;
+    function announced(event){
+      if(!event||!event.detail||event.detail.name!=='address_autocomplete')return;
+      attach();
+      // Dropped once it has done its job, so the handler stops retaining this
+      // block's inputs after they leave the document.
+      if(bound)document.removeEventListener('typeroll:capability',announced);
+    }
+    document.addEventListener('typeroll:capability',announced);
+  }
 });
 `;
 
@@ -279,6 +353,12 @@ export const navigationForm: BlockType = {
       default: "page-defaults",
     },
     {
+      name: "address_country",
+      type: "text",
+      label: "Restrict addresses to country (2-letter code)",
+      placeholder: "se",
+    },
+    {
       name: "aria_label",
       type: "text",
       label: "Accessible name",
@@ -315,6 +395,12 @@ export const navigationForm: BlockType = {
           name: "required",
           type: "boolean",
           label: "Required",
+          default: false,
+        },
+        {
+          name: "suggest_address",
+          type: "boolean",
+          label: "Suggest addresses",
           default: false,
         },
         {
@@ -398,7 +484,7 @@ export const navigationForm: BlockType = {
     { name: "input_color", type: "color", label: "Input text" },
   ],
   template:
-    '<div id="navigation-{{navigation_id}}" data-block="navigation_form" role="form" aria-label="{{aria_label}}" data-handoff-key="{{handoff_key}}" data-mode="{{mode}}" data-show-labels="{{show_labels}}" data-font="{{font}}" data-button-nowrap="{{button_nowrap}}" style="--columns:{{columns}};{{navigation_colors}}">{{{navigation_fields_html}}}{{{navigation_action_html}}}</div>{{{navigation_layout_html}}}',
+    '<div id="navigation-{{navigation_id}}" data-block="navigation_form" role="form" aria-label="{{aria_label}}" data-handoff-key="{{handoff_key}}" data-mode="{{mode}}" data-show-labels="{{show_labels}}" data-font="{{font}}" data-button-nowrap="{{button_nowrap}}" data-address-country="{{address_country}}" style="--columns:{{columns}};{{navigation_colors}}">{{{navigation_fields_html}}}{{{navigation_action_html}}}</div>{{{navigation_layout_html}}}',
   styles: `[data-block="navigation_form"]{display:grid;grid-template-columns:repeat(var(--columns,1),minmax(0,1fr));gap:var(--gap_px,12px);align-items:end;font-size:var(--font_size_px,1rem);line-height:var(--line_height,1.4)}
 [data-block="navigation_form"][data-font="body"]{font-family:var(--font-body,inherit)}
 [data-block="navigation_form"][data-font="heading"]{font-family:var(--font-heading,inherit)}

@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { fontFamilyCss, isSystemFont, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import { fontFamilyCss, isSystemFont, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -32,6 +32,12 @@ interface Props {
    */
   blockJs?: string;
   /**
+   * Client capabilities the blocks on this page asked for — see
+   * collectClientCapabilities. Drives which provider loaders ship, so a key
+   * configured once does not put a third-party script on every page.
+   */
+  clientCapabilities?: string[];
+  /**
    * Pre-serialised JSON-LD objects emitted into <head> alongside the
    * auto-generated ones in SEOHead. Used for context-specific schemas the
    * static page itself doesn't know how to build — collection-item shapes
@@ -41,7 +47,7 @@ interface Props {
   extraJsonLd?: string[];
 }
 
-const { page, settings, blockCss, blockJs, extraJsonLd, apps, extensions, breadcrumbs } = Astro.props;
+const { page, settings, blockCss, blockJs, clientCapabilities, extraJsonLd, apps, extensions, breadcrumbs } = Astro.props;
 const extensionRuntime = extensions?.installations?.length
   ? buildExtensionRuntimeScript(extensions, { analytics: apps?.apps?.analytics?.enabled && typeof apps.apps.analytics.config.event_token === 'string' && typeof apps.apps.analytics.config.event_endpoint === 'string'
       ? { endpoint: apps.apps.analytics.config.event_endpoint, token: apps.apps.analytics.config.event_token, requires_consent: settings.cookie_consent?.enabled === true } : undefined })
@@ -73,6 +79,16 @@ const integrations = apps?.apps?.integrations?.enabled
 const consentGated = settings.cookie_consent?.enabled === true;
 const integrationsHead = integrations
   ? integrations.head + (consentGated ? wrapConsentScripts(integrations.headConsent) : integrations.headConsent)
+  : '';
+// Block capabilities: an owner-supplied public client key reaching a native
+// block. Emitted only for capabilities the page's blocks actually declared,
+// and only once each however many blocks want it. Routed through the same
+// consent gate as every other non-necessary integration tag.
+const capabilities = apps?.apps?.integrations?.enabled && clientCapabilities?.length
+  ? renderClientCapabilityScripts(apps.apps.integrations.config, clientCapabilities)
+  : null;
+const capabilityHead = capabilities
+  ? capabilities.tags + (consentGated ? wrapConsentScripts(capabilities.consentTags) : capabilities.consentTags)
   : '';
 const integrationsBodyEnd = integrations
   ? integrations.bodyEnd + (consentGated ? wrapConsentScripts(integrations.bodyEndConsent) : integrations.bodyEndConsent)
@@ -185,6 +201,7 @@ const fontFallbackStyle = googleFontFamilies.length
     {page.custom_css && <style set:html={page.custom_css} />}
     {settings.scripts_head && <Fragment set:html={settings.scripts_head} />}
     {integrationsHead && <Fragment set:html={integrationsHead} />}
+    {capabilityHead && <Fragment set:html={capabilityHead} />}
 
     {/* Analytics app (opt-in): Cloudflare Web Analytics beacon. Cookieless,
        deferred; the token is the public client beacon token. */}
