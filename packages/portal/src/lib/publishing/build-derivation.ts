@@ -125,7 +125,9 @@ export function validateDerivationResult(
   input: DerivationInput,
   provider: string,
 ): DerivationResult {
-  const fail = (message: string): never => { throw new DerivationError(message, provider); };
+  // Annotated on the variable, not just the arrow, so TypeScript uses it for
+  // control-flow narrowing after each call.
+  const fail: (message: string) => never = (message) => { throw new DerivationError(message, provider); };
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('Derivation result must be an object');
   const result = raw as Record<string, unknown>;
 
@@ -172,7 +174,7 @@ export function validateDerivationResult(
     if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
       fail(`Receipt ${kind}:${id} must carry a non-negative integer count`);
     }
-    return { kind, id, count };
+    return { kind, id, count: count as number };
   });
 
   // A provider that consulted nothing cannot have derived anything from the
