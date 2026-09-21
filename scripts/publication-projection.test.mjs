@@ -32,3 +32,31 @@ test('full source projection cannot reintroduce private fields through card mapp
   assert.deepEqual(value.pages[0].blocks[0].data.items, [{ title: 'Public', group: 'Guides' }]);
   assert.ok(!JSON.stringify(value).includes('secret'));
 });
+
+test('a declared-public browser key in app config does not fail the credential guard', () => {
+  // M26 acceptance point 6. publicAppsSnapshot copies only each app's declared
+  // public_keys, so a value reaching `apps` has already been declared safe to
+  // ship to every visitor — which is exactly what this guard enforces.
+  const key = 'AIza' + 'b'.repeat(35);
+  const publicRuntime = {
+    apps: { apps: { integrations: { enabled: true, config: { google_places__browser_key: key } } } },
+    extensions: { installations: [] },
+    dependencies: [],
+  };
+  const value = projectStaticPublication({
+    site: { name: 'Example' }, settings: {}, apps: publicRuntime.apps, publicRuntime,
+    pages: [{ id: 'home', title: 'Home', slug: '', status: 'published', content_mode: 'blocks', blocks: [] }],
+    partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], blockTypes: [], redirects: [],
+  }, identity);
+  assert.equal(value.apps.apps.integrations.config.google_places__browser_key, key);
+});
+
+test('a browser key in ordinary page content still fails the credential guard', () => {
+  // The exemption is for declared-public configuration, not for the key shape.
+  const key = 'AIza' + 'c'.repeat(35);
+  assert.throws(() => projectStaticPublication({
+    site: { name: 'Example' }, settings: {},
+    pages: [{ id: 'home', title: key, slug: '', status: 'published', content_mode: 'blocks', blocks: [] }],
+    partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], blockTypes: [], redirects: [],
+  }, identity), /Credential-like value/);
+});

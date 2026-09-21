@@ -205,10 +205,23 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     extensions: input.publicRuntime?.extensions ?? { installations: [] },
     runtime_dependencies: input.publicRuntime?.dependencies ?? [],
   };
-  // Runtime configuration is projected from explicitly public Extension schema fields.
+  // Runtime configuration is projected from explicitly public schema fields.
   // Google browser keys can be public there; private keys and GitHub tokens never are.
+  //
+  // Two places carry declared-public configuration and both are exempt from the
+  // browser-key pattern. Extension `public_config` holds fields a manifest
+  // marked public. `apps` is the output of publicAppsSnapshot, which copies
+  // ONLY each app's declared `public_keys` — so a value reaching it has already
+  // been declared safe to ship to every visitor, which is the same statement
+  // this check exists to enforce.
+  //
+  // The apps exemption was missing until a site configured a Google Places
+  // browser key through the integrations catalog. Publication then failed at
+  // freeze with a generic internal error, on a value the schema had just
+  // accepted, for a key whose entire purpose is to reach the browser.
   const outsidePublicConfig = {
     ...publication,
+    apps: { apps: {} },
     extensions: { ...publication.extensions, installations: (publication.extensions.installations ?? []).map(({ public_config, ...installation }) => installation) },
   };
   if (/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}/.test(JSON.stringify(publication)) ||
