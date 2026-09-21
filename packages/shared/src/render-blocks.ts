@@ -843,7 +843,7 @@ export function composePageWithTemplate(
           return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
             ? [`${property}:${value}${unit}`] : [];
         });
-        const headingScale = Object.fromEntries([...[1,2,3,4,5,6].map(level => `h${level}_size_px`), 'heading_before_px', 'heading_after_px'].filter(field => b.data?.[field] !== undefined).map(field => [field,b.data[field]]));
+        const headingScale = Object.fromEntries([...[1,2,3,4,5,6].map(level => `h${level}_size_px`), 'heading_before_px', 'heading_after_px'].filter(field => b.data?.[field] != null).map(field => [field,b.data[field]]));
         const styles = [
           ...(width ? [`width:100%;max-width:${width};margin-inline:auto`] : []),
           ...declarations,

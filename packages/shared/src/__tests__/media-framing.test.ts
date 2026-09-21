@@ -23,6 +23,10 @@ describe('native media framing and shared article typography', () => {
     expect(css).toMatch(/breadcrumbs"\] li \{[^}]*display:inline/);
     expect(css).not.toContain('flex-wrap:wrap');
   });
+  it('clearing a shared scale does not introduce a new content wrapper', () => {
+    const body: Block[]=[{id:'section',type:'core/section',data:{}}];
+    expect(composePageWithTemplate([{id:'body',type:'template_content_slot',data:{h2_size_px:null,heading_before_px:null}}],body)).toEqual(body);
+  });
   it('scopes responsive typography to the content slot while preserving authored sizes and source blocks', () => {
     const body: Block[]=[{id:'heading',type:'core/heading',data:{level:'h2',text:'Heading',size:'article'}},{id:'custom',type:'core/heading',data:{level:'h3',text:'Custom',font_size_px:42}}];
     const slot: Block[]=[{id:'body',type:'template_content_slot',data:{h2_size_px:{mobile:24,tablet:28,laptop:32},responsive_breakpoints:widths}}];
