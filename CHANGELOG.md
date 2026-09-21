@@ -2,6 +2,7 @@
 
 ## Core 0.2.35 / MCP 0.45.29
 
+- Keep prose text links visibly underlined across theme resets without changing native buttons, cards or navigation.
 - Wrap breadcrumb titles continuously while preserving ordered-list semantics.
 - Add responsive image framing, fit/aspect and focal controls; keep intrinsic, uncropped defaults.
 - Add shared body heading scales and spacing to Page content slots and containers; fix responsive heading alignment.

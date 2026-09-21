@@ -194,7 +194,7 @@ const prose: BlockType = {
 [data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: clamp(1.25rem, 0.75rem + 2vw, 1.75rem); line-height: 1.25; }
 [data-block="prose"] h4 { margin: 1.5em 0 0.5em; font-size: clamp(1.125rem, 0.75rem + 1vw, 1.375rem); line-height: 1.3; }
 [data-block="prose"] ul, [data-block="prose"] ol { margin: 0 0 1em 1.5em; }
-[data-block="prose"] a { color: var(--color-primary, currentColor); overflow-wrap: anywhere; }
+[data-block="prose"] a { color: var(--color-primary, currentColor); overflow-wrap: anywhere; text-decoration:underline; text-underline-offset:.15em; }
 [data-block="prose"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
 [data-block="prose"] img { max-width: 100%; height: auto; }
 [data-block="prose"] table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
