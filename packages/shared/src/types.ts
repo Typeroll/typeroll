@@ -1750,6 +1750,10 @@ export const paths = {
   // Materialize writes a PUBLIC projection into build snapshots.
   apps: (orgId: string, siteId: string) =>
     `organizations/${orgId}/sites/${siteId}/apps/default`,
+  // Build-derived data, frozen into the publication. Read-only output of a
+  // build, never an editable mirror of the facts it was derived from.
+  derived: (orgId: string, siteId: string) =>
+    `organizations/${orgId}/sites/${siteId}/derived/default`,
   extensionInstallations: (orgId: string, siteId: string) =>
     `organizations/${orgId}/sites/${siteId}/extension_installations`,
   extensionInstallation: (orgId: string, siteId: string, installationId: string) =>

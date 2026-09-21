@@ -215,6 +215,25 @@ export interface ExtensionManifest {
   frontend?: { components: ExtensionFrontendComponent[] };
   admin?: { pages: ExtensionAdminPage[] };
   api?: ExtensionApi;
+  /**
+   * Opt-in: this app computes published data during a build, from the frozen
+   * accepted content of the version being published.
+   *
+   * Opt-in because it puts a provider on the publication's critical path. An
+   * app that only renders in the browser must not be able to fail a build.
+   *
+   * `sources` is declared up front rather than discovered from the response so
+   * two apps claiming the same source collide at install time, where someone
+   * can act on it, instead of mid-publication.
+   */
+  build_derivation?: {
+    /** Relative path below `api.base_url`. Core POSTs the frozen input here. */
+    path: string;
+    /** Derived source ids this app produces, e.g. `directory.profiles`. */
+    sources: string[];
+    /** When true, a failure fails the publication and the live site keeps serving. */
+    required?: boolean;
+  };
   events?: {
     subscriptions: ExtensionLifecycleEvent[];
     webhook_url?: string;

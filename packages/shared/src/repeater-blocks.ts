@@ -28,7 +28,8 @@ const repeater: BlockType = {
   schema: [
     // SOURCE
     { name: 'source_type', type: 'select', label: 'Source',
-      options: ['static', 'pages', 'related', 'backlinks', 'children_blocks'], default: 'static' },
+      options: ['static', 'pages', 'related', 'backlinks', 'children_blocks', 'derived'], default: 'static' },
+    { name: 'derived_source', type: 'text', label: 'Derived source id (e.g. directory.profiles)' },
     { name: 'items', type: 'array', label: 'Items',
       // The item-shape is dynamic — the editor mirrors the item_block's
       // schema for each row in the array. The renderer just walks the

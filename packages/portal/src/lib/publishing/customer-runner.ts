@@ -29,6 +29,8 @@ import { preparePagesDomain, applyPreparedTraffic } from './domain-provider';
 import { retainDistinctMediaManifests, publicationMediaManifest } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { publicationRuntime } from './runtime-projection';
+import { runBuildDerivations } from './build-derivation';
+import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
 import { preparePublicMediaDomains } from './media-domain';
 import { recordPublishingOrigin } from './runtime-origins';
 import { retargetWebsite } from './publication-retarget';
@@ -203,11 +205,35 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       } else {
         const resolved = await resolvePublicationVersion(args.orgId, args.siteId, args.versionId);
         const publicRuntime = await publicationRuntime(args.orgId, args.siteId);
+        // Derived data is computed from the frozen content, before rendering,
+        // and frozen into the artifact alongside it. A required provider that
+        // fails throws here — which is how the previous live artifact keeps
+        // serving, since activation only happens after every step succeeds.
+        const derivation = await runBuildDerivations(
+          {
+            org_id: args.orgId, site_id: args.siteId, version_id: resolved.versionId,
+            content_digest: publicationContentDigest(resolved),
+            config_digest: publicationConfigDigest(publicRuntime),
+            provider_version: '',
+          },
+          await derivationProvidersFor(args.orgId, args.siteId, publicRuntime.extensions),
+        );
         frozen = projectStaticPublication({ ...resolved, site: { ...site, domain: host }, media: [], forms: publicRuntime.forms, extensions: publicRuntime.extensions.installations, publicRuntime }, {
           siteUrl: `https://${host}`, coreCommit: process.env.TYPEROLL_SOURCE_SHA ?? '', publishedAt: contentCutoff,
           noindex: args.versionId !== 'main' || !domains.desired.website_host, coreBlockTypes: CORE_BLOCK_TYPES,
         });
         frozen.authored_noindex = resolved.settings?.sitewide_noindex === true;
+        if (derivation.sources.length > 0) {
+          frozen.derived = Object.fromEntries(derivation.sources.map(source => [source.id, source.records]));
+        }
+        // Receipts join the existing dependency list so a partial build knows
+        // derived output depends on records outside the pages it rendered.
+        // A zero-count receipt matters most: without it, adding the first
+        // matching record leaves a stale empty listing nothing invalidates.
+        if (derivation.receipts.length > 0) {
+          frozen.derivation = { receipts: derivation.receipts, cache_keys: derivation.cache_keys,
+            ...(derivation.skipped.length > 0 ? { skipped: derivation.skipped } : {}) };
+        }
       }
       // Media originals and metadata for a domain-only build come from the public snapshot too.
       const deferReferences = job.publication_intent !== 'domain_prepare' || Boolean(prior?.reference_mapping);

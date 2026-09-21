@@ -91,6 +91,17 @@ export interface RenderContext {
    * the author having to hand-configure a filter per generated page.
    */
   facet?: { filters: Array<{ field: string; value: string; label_singular: string }> };
+  /**
+   * Data an installed app computed from this publication's frozen accepted
+   * content — see lib/publishing/build-derivation.ts. Keyed by derived source
+   * id (`directory.profiles`).
+   *
+   * Read-only build output, not a second place to edit facts. A repeater with
+   * `source_type: 'derived'` renders from it, so a listing, its counts and its
+   * filter data all come from the same accepted revision as the profile beside
+   * them, rather than from mirrors something else had to refresh.
+   */
+  derived?: Record<string, Array<Record<string, unknown>>>;
 }
 
 export interface RenderBlocksOptions {
@@ -546,6 +557,18 @@ function renderRepeater(
     if (Array.isArray(raw)) {
       items = raw.filter((x): x is Record<string, unknown> => x !== null && typeof x === 'object');
     }
+  } else if (sourceType === 'derived') {
+    // Absent is empty, deliberately: a site that publishes before an app has
+    // derived anything renders an empty listing, not a broken page. The
+    // publication refuses to activate when a required provider fails, so an
+    // empty source here means the app genuinely produced nothing.
+    const sourceId = String(data.derived_source ?? '');
+    const records = options.context?.derived?.[sourceId];
+    items = Array.isArray(records)
+      ? records.filter((x): x is Record<string, unknown> => x !== null && typeof x === 'object')
+      : [];
+    const limit = typeof data.limit === 'number' && data.limit > 0 ? Math.floor(data.limit) : 0;
+    if (limit > 0) items = items.slice(0, limit);
   } else if (sourceType === 'pages') {
     if (!options.pageSource) {
       return `<!-- repeater needs a pageSource for collection-backed sources -->`;

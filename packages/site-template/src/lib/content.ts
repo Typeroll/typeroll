@@ -84,6 +84,7 @@ function buildMemoKeyed<T>(load: (key: string) => Promise<T>): (key: string) => 
 export function _resetBuildCachesForTests(): void {
   getSiteSettings = buildMemo(loadSiteSettings);
   getAppsPublic = buildMemo(loadAppsPublic);
+  getDerived = buildMemo(loadDerived);
   getExtensionsPublic = buildMemo(loadExtensionsPublic);
   getPartials = buildMemo(loadPartials);
   getContentTypes = buildMemo(loadContentTypes);
@@ -137,6 +138,21 @@ async function loadAppsPublic(): Promise<import('@typeroll/shared').SiteApps> {
   return doc ?? { apps: {} };
 }
 export let getAppsPublic = buildMemo(loadAppsPublic);
+
+/**
+ * Data an installed app derived from this publication's frozen accepted
+ * content. Absent means none was derived, which renders as empty listings
+ * rather than a failure — a required provider failing already stopped the
+ * publication before it could reach here.
+ */
+async function loadDerived(): Promise<Record<string, Array<Record<string, unknown>>>> {
+  const { orgId, siteId } = ids();
+  const doc = await getStore().getDoc<{ sources?: Record<string, Array<Record<string, unknown>>> }>(
+    paths.derived(orgId, siteId),
+  );
+  return doc?.sources ?? {};
+}
+export let getDerived = buildMemo(loadDerived);
 
 async function loadExtensionsPublic(): Promise<import('@typeroll/shared').ExtensionRuntimeSnapshot> {
   const { orgId, siteId } = ids();

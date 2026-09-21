@@ -65,6 +65,10 @@ await writeDoc(base, publication.site);
 await writeDoc(`${base}/versions/${versionId}`, { kind: versionId === 'main' ? 'main' : 'branch', robots_blocked: publication.robots_blocked === true });
 await writeDoc(`${base}/versions/${versionId}/settings/default`, publication.settings);
 await writeDoc(`${base}/apps/default`, publication.apps ?? { apps: {} });
+// Build output an app derived from this publication's frozen content. One doc
+// rather than one per source: it is written and read whole, and source ids
+// contain dots, which are not document names.
+await writeDoc(`${base}/derived/default`, { sources: publication.derived ?? {} });
 await writeDoc(`${base}/extension_runtime/default`, publication.extensions ?? { installations: [] });
 for (const form of publication.forms ?? []) await writeDoc(`${base}/forms/${form.id}`, form);
 for (const type of publication.contentTypes) {

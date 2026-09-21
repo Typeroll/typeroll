@@ -9,6 +9,7 @@ import { buildFormSource,
   getAllMedia,
   getAllPages,
   getAppsPublic,
+  getDerived,
   getExtensionsPublic,
   getBlockRegistry,
   getContentTypes,
@@ -50,6 +51,7 @@ const props = Astro.props as Props;
 const settings = await getSiteSettings();
 const iframeAllowedHosts = settings.iframe_allowed_hosts ?? [];
 const appsPublic = await getAppsPublic();
+const derived = await getDerived();
 const extensionsPublic = await getExtensionsPublic();
 const { header, footer, freeBlocks } = await getPartials();
 
@@ -94,6 +96,7 @@ const renderCtx: RenderContext = {
   // this is the page's own URL) so the pager shows on page 1 too.
   // Reverse reference index — lets a `backlinks` repeater on an item page
   // list "who points at me" without anyone maintaining that list by hand.
+  derived,
   backlinks,
   // Taxonomy scope — a listing block that declares no filter of its own
   // inherits this, so the same block works on a normal page and on

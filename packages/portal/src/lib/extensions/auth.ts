@@ -259,7 +259,11 @@ export function signInstallationAssertion(args: {
   installation: ExtensionInstallation;
   scopes: ExtensionScope[];
   correlationId: string;
-  purpose?: 'documentation';
+  /**
+   * Narrows what the proof may be used for. A derivation token must not be
+   * replayable as a documentation read, or the reverse.
+   */
+  purpose?: 'documentation' | 'build_derivation';
   version?: string;
   now?: Date;
 }): string {
