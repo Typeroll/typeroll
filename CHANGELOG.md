@@ -1,5 +1,11 @@
 # Changelog
 
+## Core 0.2.39 / MCP 0.45.32
+
+- Add a guarded, idempotent Retry verification action in the portal and authenticated API/MCP for timed-out, already-served customer publications.
+- Reuse the exact job and artifact; run real public checks and normal CMS finalization without source generation, build dispatch, upload or DNS changes.
+- Reject superseded jobs, changed publishing modes, incomplete receipts and unrelated failure types; preserve the original failure and durable retry identity.
+
 ## Core 0.2.38 / MCP 0.45.31 unchanged
 
 - Allow retired native image variants on public hosts only when the frozen artifact retains the exact original image bytes. Keep candidate removal checks and checks for deleted or replaced originals.

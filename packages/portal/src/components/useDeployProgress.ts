@@ -9,6 +9,7 @@ export interface DeployProgress {
   phase?: string;
   verification_message?: string | null;
   error?: string;
+  failure?: { code?: string } | null;
 }
 
 /** Resume an active deploy after navigation; timers and requests end on unmount. */
@@ -16,7 +17,8 @@ export function useDeployProgress(siteId: string, onFailure: (message: string) =
   const [job, setJob] = useState<DeployProgress | null>(null);
   const [jobId, watch] = useState<string | null>(null);
   const selectedJob = useRef<string | null>(null);
-  function selectJob(id: string) { selectedJob.current = id; watch(id); }
+  const [watchRevision, setWatchRevision] = useState(0);
+  function selectJob(id: string) { selectedJob.current = id; watch(id); setWatchRevision(value => value + 1); }
   const callbacks = useRef({ onFailure, onDeployed, canReload });
   callbacks.current = { onFailure, onDeployed, canReload };
   useEffect(() => {
@@ -68,6 +70,6 @@ export function useDeployProgress(siteId: string, onFailure: (message: string) =
     }
     void tick();
     return () => { controller.abort(); clearTimeout(timer); delete document.documentElement.dataset.typerollDeployment; };
-  }, [siteId, jobId]);
+  }, [siteId, jobId, watchRevision]);
   return { job, setJob, watch: selectJob };
 }

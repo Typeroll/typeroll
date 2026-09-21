@@ -190,3 +190,17 @@ describe('GET /v1/.../deploys/{jobId}', () => {
     expect(res.status).toBe(404);
   });
 });
+
+it('requires authenticated site admin access for verification retry and rejects missing jobs without enqueueing', async () => {
+  const { token } = await setup();
+  const route = import('../../pages/api/v1/sites/[siteId]/deploy');
+  const url = `http://localhost/api/v1/sites/${SITE}/deploy`;
+  const body = { retry_verification_job_id: 'missing-job' };
+  expect((await callRoute(route, 'POST', url, { siteId: SITE }, { body })).status).toBe(401);
+  const authorized = await callRoute(route, 'POST', url, { siteId: SITE }, { headers: bearer(token), body });
+  expect(authorized.status).toBe(404);
+  const { getStore } = await import('../../lib/datastore');
+  expect(await getStore().listDocs(paths.deploys(ORG, SITE))).toHaveLength(0);
+  const invalid = await callRoute(route, 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { ...body, dry_run: true } });
+  expect(invalid.status).toBe(400);
+});

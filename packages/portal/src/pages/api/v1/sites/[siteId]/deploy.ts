@@ -1,3 +1,5 @@
+import { retryPublicationVerification } from '../../../../../lib/publishing/verification-retry';
+import { ConnectionError } from '../../../../../lib/publishing/connections';
 // POST /api/v1/sites/{siteId}/deploy
 //
 // Enqueue a deploy of the currently-resolved version (main by default,
@@ -26,7 +28,16 @@ export const POST: APIRoute = async ({ request, params }) => {
   const body = (await request.json().catch(() => ({}))) as {
     environment?: DeployEnvironment;
     dry_run?: boolean;
+    retry_verification_job_id?: string;
   };
+  if (body.retry_verification_job_id !== undefined) {
+    try {
+      if (typeof body.retry_verification_job_id !== 'string' || body.dry_run === true) return privateJson({ error: 'Provide a deployment ID without dry_run.' }, 400);
+      return privateJson(await retryPublicationVerification(ctx.orgId, ctx.siteId, body.retry_verification_job_id, ctx.versionId), 202);
+    } catch (error) {
+      return privateJson({ error: error instanceof ConnectionError ? error.message : 'Could not retry publication verification.', code: error instanceof ConnectionError ? error.code : 'verification_retry_failed' }, error instanceof ConnectionError ? error.status : 500);
+    }
+  }
   const environment: DeployEnvironment = body.environment === 'staging' ? 'staging' : 'production';
   const dryRun = body.dry_run === true;
   if (!dryRun) {

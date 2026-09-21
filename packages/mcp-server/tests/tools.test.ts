@@ -424,3 +424,9 @@ describe('settings tools — branch (version) support', () => {
     expect(JSON.parse(calls[0].body!)).toEqual({ site_name: 'Acme' });
   });
 });
+
+it('retries verification with the same job and version without requesting a build', async () => {
+  const { client, siteId, calls } = setup(() => jsonResponse({ job_id: 'same-job', verification_only: true }, 202));
+  await find(deployTools, 'retry_deploy_verification').handler({ job_id: 'same-job', version: 'main' } as never, { client, siteId });
+  expect(calls).toEqual([{ method: 'POST', url: 'https://example.test/api/v1/sites/mysite/deploy?version=main', body: JSON.stringify({ retry_verification_job_id: 'same-job' }) }]);
+});

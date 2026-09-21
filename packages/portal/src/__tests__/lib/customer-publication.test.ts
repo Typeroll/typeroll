@@ -517,3 +517,28 @@ it('retries temporary provider failures from the saved source instead of accepti
   expect(mocks.push.mock.calls.at(-1)![1].files['publication.json']).not.toContain('Must not leak');
   expect(await getStore().getDoc(jobPath)).toMatchObject({ coordinator_retries: 0, git_publication: { snapshot_digest: frozen.git_publication.snapshot_digest } });
 });
+
+it('resumes a timed-out public verification through the same job without provider mutations or a new build', async () => {
+  await executeCustomerPublication(args); complete(); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  const store = getStore(), original = await store.getDoc<any>(jobPath);
+  const publication = { ...original.git_publication, build_task_key: 'finished-build', verification_task_key: 'finished-verification', static_checks_key: 'full', probe_checks_key: 'probes', project_prepared: true };
+  await store.updateDoc(jobPath, { status: 'failed', phase: 'failed', failure: { code: 'publication_observation_timeout', stage: 'waiting for updated static files' }, git_publication: publication });
+  for (const key of ['finished-build', 'finished-verification']) await store.setDoc(`organizations/org/build_tasks/${key}`, { status: 'completed', identity: { org_id: 'org', site_id: 'site', version_id: 'main', job_id: 'job', publication_id: publication.publication_id, commit: publication.commit } });
+  const { retryPublicationVerification } = await import('../../lib/publishing/verification-retry');
+  expect(await retryPublicationVerification('org', 'site', 'job', 'main')).toMatchObject({ job_id: 'job', verification_only: true });
+  const resumed = await store.getDoc<any>(jobPath);
+  expect(resumed).toMatchObject({ status: 'running', git_publication: publication });
+  expect(resumed.started_at).toBe(original.started_at);
+  expect(resumed.verification_retry.failure.code).toBe('publication_observation_timeout');
+  expect(await retryPublicationVerification('org', 'site', 'job', 'main')).toMatchObject({ already_running: true });
+  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.upload, mocks.direct, mocks.cloudflare]) mock.mockClear();
+  mocks.verify.mockResolvedValue(false);
+  expect(await executePublicationPhase(args)).toBe('waiting');
+  expect((await store.getDoc<any>(jobPath)).status).toBe('running');
+  mocks.verify.mockResolvedValue(true);
+  expect(await executePublicationPhase(args)).toBe('ran');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', phase: 'live', git_publication: publication });
+  expect(await store.getDoc<any>(paths.version('org', 'site', 'main'))).toMatchObject({ last_deployed_content_at: publication.content_cutoff });
+  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.upload, mocks.direct, mocks.cloudflare]) expect(mock).not.toHaveBeenCalled();
+});

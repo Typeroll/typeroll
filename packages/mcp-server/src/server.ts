@@ -57,7 +57,8 @@ const PERM_RANK: Record<ToolEffect, number> = { read: 0, write: 1, admin: 2 };
 function effectFor(name: string): ToolEffect {
   if (name === 'page_completeness') return 'read';
   if (
-    name === 'list_apps'
+    name === 'retry_deploy_verification'
+    || name === 'list_apps'
     || name === 'read_app'
     || name === 'update_app'
     || name === 'list_extension_installations'

@@ -140,3 +140,27 @@ Core 0.2.16 public probes do not require immediate deletion of retired versioned
 Extension or hashed Astro CSS/JavaScript bundles, which Cloudflare may retain.
 The exact candidate still checks their absence. Removed Pages/media and all
 current files remain verified. See [verification and retired bundles](../../guides/customer-publishing/#verification-and-retired-static-bundles).
+
+## `retry_deploy_verification`
+
+From Core 0.2.39 / MCP 0.45.32, an admin can retry public verification of a
+customer publication that timed out **after** its build and candidate checks
+finished and its files reached the public host. In the site overview, choose
+**Retry verification** beside the failed deployment. The server rejects
+incomplete builds, newer deployments for the same version, changed hosting and
+other failure types. Correct the reported technical problem first.
+
+The retry keeps the same job ID, saved source, Git commit and artifact. It checks
+the real public marker and files, then updates CMS publication status only if
+those checks pass. It does not build, upload, change DNS or publish later edits.
+Poll `get_deploy_status` for the same job after requesting the retry.
+
+```json
+{ "job_id": "deployment-id", "version": "main" }
+```
+
+The equivalent authenticated API call is
+`POST /api/v1/sites/{siteId}/deploy?version=main` with
+`{ "retry_verification_job_id": "deployment-id" }`. Do not combine it with
+`dry_run`. Requesting another retry while the same verification is running
+returns the existing job; it does not start another verification chain.

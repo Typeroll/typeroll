@@ -152,7 +152,8 @@ async function runDeployInline(
   opts: { slotWaitMs?: number } = {},
 ): Promise<DeployRunOutcome> {
   const site = await getStore().getDoc<{ publishing_mode?: string }>(paths.site(args.orgId, args.siteId));
-  if (site?.publishing_mode === 'customer_git') {
+  const retry = site?.publishing_mode !== 'customer_git' && (await getStore().getDoc<{ verification_retry?: unknown }>(paths.deploy(args.orgId, args.siteId, args.jobId)))?.verification_retry;
+  if (site?.publishing_mode === 'customer_git' || retry) {
     const { executeCustomerPublication } = await import('../publishing/customer-runner');
     return executeCustomerPublication(args);
   }

@@ -342,3 +342,20 @@ The matching MCP tools are `read_organization_build_engine`,
 These tools work before a site exists. Self-hosted servers use their configured
 public HTTPS URL as the OIDC audience and the same organization-owned storage;
 this workflow does not require Typeroll Cloud authentication or hosting.
+
+
+### Recovering a terminal public-verification timeout
+
+Core 0.2.39 adds an admin-authorized verification-only retry. Admission requires
+completed build and candidate-verification tasks bound to the exact job, commit
+and publication, an already-applied static deployment receipt, and no newer job
+for the version. The durable continuation and running state are saved with one
+compare-and-replace; original failure and request identity remain recorded.
+The coordinator checks current hosting and public artifact bytes before normal
+CMS finalization. Its dedicated branch cannot generate source, enqueue builds,
+upload output or prepare DNS. A publishing-mode change fails closed rather than
+reinterpreting recovery as a different hosting adapter's build.
+
+Use the documented public API or MCP operation, never direct database success
+flags. The original 45-minute observation timeout remains bounded; an explicit
+retry opens a new observation window without changing the original start time.

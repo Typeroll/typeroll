@@ -1,3 +1,4 @@
+import { assertVerificationRetry } from './verification-retry';
 import { MEDIA_VARIANT_SLOTS, mediaVariantSuffix } from '../../../../../scripts/fixtures/static-publication/media-recipe.mjs';
 import { schedulePublication, waitForBuild, waitForPublicationCondition } from '../scheduling/continuation';
 import { mapPublicationParts } from './parallel';
@@ -61,7 +62,7 @@ function projectCreationMessage(error: ProviderError, publication?: GitPublicati
 }
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
-export type GitJob = DeployJob & { coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
+export type GitJob = DeployJob & { failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const attemptStarted = performance.now();
@@ -113,8 +114,35 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   const releaseBuildAccess = async () => {
     for (const environment of ['production', 'preview']) await store.compareAndUpdateDoc<any>(`${paths.site(args.orgId, args.siteId)}/publishing_build_slots/${environment}`, value => value.job_id === args.jobId, { job_id: null });
   };
+  const finishPublication = async (publication: GitPublication, domains: DomainConfiguration, frozen: any): Promise<DeployRunOutcome> => {
+    await recordPublishingOrigin(args.orgId, args.siteId, `https://${publication.website_host}`);
+    const finished = new Date().toISOString();
+    const stillOwned = await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease && target.lease_until > Date.now(), { lease_until: Date.now() + 60_000 });
+    if (!stillOwned) return 'deferred';
+    await store.updateDoc(paths.version(args.orgId, args.siteId, args.versionId), { last_deployed_at: finished, last_deployed_content_at: publication.content_cutoff, deploy_url: `https://${publication.website_host}` });
+    if (args.versionId === 'main') {
+      await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === publication!.domain_revision,
+        { active: { ...domains.desired, website_host: publication.website_host }, state: 'live',
+          media_aliases: [...domains.media_aliases, ...(domains.active && !domains.media_aliases.some(alias => samePublicationHosts(alias, domains.active!)) ? [domains.active] : [])] });
+      await store.updateDoc(paths.site(args.orgId, args.siteId), { domain: publication.website_host, domain_status: 'live', domain_verified_at: finished });
+    }
+    await mapPublicationParts<any, void>(frozen.media_manifest?.entries ?? [], async entry => {
+      const mediaPath = `${paths.media(args.orgId, args.siteId)}/${entry.id}`;
+      const aliases = [entry.cdn_url, ...entry.aliases.map((alias: any) => alias.url)];
+      for (const slot of MEDIA_VARIANT_SLOTS) for (const format of ['webp', 'avif']) aliases.push(entry.cdn_url + mediaVariantSuffix(slot, entry.sha256, format));
+      const record = await store.getDoc<any>(mediaPath);
+      if (record && aliases.some(alias => !(record.source_aliases ?? []).includes(alias))) await store.compareAndUpdateDoc<any>(mediaPath, current => current.sha256 === entry.sha256 && JSON.stringify(current.source_aliases) === JSON.stringify(record.source_aliases),
+        { source_aliases: [...new Set([...(record.source_aliases ?? []), ...aliases])] });
+    });
+    await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease, { last_publication: publication });
+    await assertLease();
+    await store.updateDoc(jobPath, { status: 'succeeded', phase: 'live', deploy_url: `https://${publication.website_host}`, verification_message: null, static_probe: null, finished_at: finished });
+    terminal = true;
+    return 'ran';
+  };
   try {
     await store.updateDoc(jobPath, { coordinator_observed_at: new Date().toISOString() });
+    if (job.verification_retry) await assertVerificationRetry(args.orgId, args.siteId, job, true);
     const buildTask = job.git_publication?.build_task_key
       ? await store.getDoc<BuildTask>(`${buildTasksPath(args.orgId)}/${job.git_publication.build_task_key}`) : null;
     const observationStart = Math.max(Date.parse(job.observation_started_at ?? job.started_at), buildTask?.completed_at ?? 0);
@@ -153,7 +181,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     let publication = job.git_publication;
     // Older Firestore updates merged omitted nested fields, retaining the preview commit.
     // Resume that frozen candidate instead of waiting for a main build that was never pushed.
-    if (publication?.branch === 'main' && publication.release_branch === 'main') {
+    if (!job.verification_retry && publication?.branch === 'main' && publication.release_branch === 'main') {
       publication = { ...publication, commit: null, deployment_id: null, release_branch: null, build_task_key: null, static_checks_key: null, verification_task_key: null, verification_checks_key: null, probe_checks_key: null, static_controls_sha256: null, candidate_verified_id: null, deployment_receipt: null, website_preparation: null, media_preparation: null, traffic_applied: false };
       await store.updateDoc(jobPath, { git_publication: publication, phase: 'promoting verified source' });
     }
@@ -241,6 +269,22 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     }
     if ((publication.hosting_group_id ?? 'default') !== group.id || (publication.hosting_group_revision && publication.hosting_group_revision !== group.revision) || publication.account_id !== cfConnection.cloudflare?.account_id || publication.owner !== identity.owner || publication.domain_revision !== domains.revision) {
       throw new ConnectionError('Publishing accounts or domain settings changed. Start a new deployment.', 409);
+    }
+    if (job.verification_retry) {
+      // This path can only verify and record an already-served artifact. It does
+      // not enter source generation, build dispatch, upload or DNS preparation.
+      const frozen = await readSnapshot(args, publication);
+      const mediaHost = frozen.media_manifest?.delivery === 'static' ? frozen.media_manifest.media_host : null;
+      const origins = [...new Set([`https://${publication.website_host}`, ...(mediaHost ? [`https://${mediaHost}`] : [])])];
+      for (const origin of origins) {
+        if (!await probePublication(origin, '/.well-known/typeroll/publication.json', publication.publication_id) ||
+            !await verifyStaticBatch(args.orgId, jobPath, publication.probe_checks_key!, origin, true)) {
+          await store.updateDoc(jobPath, { phase: 'retrying public verification' });
+          return await waitForPublicationCondition(jobPath, 'retrying public verification');
+        }
+      }
+      await assertLease();
+      return await finishPublication(publication, domains, frozen);
     }
     const projectRoot = `/accounts/${publication.account_id}/pages/projects/${publication.project}`;
     if (!publication.commit) {
@@ -469,30 +513,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         }
       }
     }
-    await recordPublishingOrigin(args.orgId, args.siteId, `https://${publication.website_host}`);
-    const finished = new Date().toISOString();
-    const stillOwned = await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease && target.lease_until > Date.now(), { lease_until: Date.now() + 60_000 });
-    if (!stillOwned) return 'deferred';
-    await store.updateDoc(paths.version(args.orgId, args.siteId, args.versionId), { last_deployed_at: finished, last_deployed_content_at: publication.content_cutoff, deploy_url: `https://${publication.website_host}` });
-    if (args.versionId === 'main') {
-      await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === publication!.domain_revision,
-        { active: { ...domains.desired, website_host: publication.website_host }, state: 'live',
-          media_aliases: [...domains.media_aliases, ...(domains.active && !domains.media_aliases.some(alias => samePublicationHosts(alias, domains.active!)) ? [domains.active] : [])] });
-      await store.updateDoc(paths.site(args.orgId, args.siteId), { domain: publication.website_host, domain_status: 'live', domain_verified_at: finished });
-    }
-    await mapPublicationParts<any, void>(frozen.media_manifest?.entries ?? [], async entry => {
-      const mediaPath = `${paths.media(args.orgId, args.siteId)}/${entry.id}`;
-      const aliases = [entry.cdn_url, ...entry.aliases.map((alias: any) => alias.url)];
-      for (const slot of MEDIA_VARIANT_SLOTS) for (const format of ['webp', 'avif']) aliases.push(entry.cdn_url + mediaVariantSuffix(slot, entry.sha256, format));
-      const record = await store.getDoc<any>(mediaPath);
-      if (record && aliases.some(alias => !(record.source_aliases ?? []).includes(alias))) await store.compareAndUpdateDoc<any>(mediaPath, current => current.sha256 === entry.sha256 && JSON.stringify(current.source_aliases) === JSON.stringify(record.source_aliases),
-        { source_aliases: [...new Set([...(record.source_aliases ?? []), ...aliases])] });
-    });
-    await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease, { last_publication: publication });
-    await assertLease();
-    await store.updateDoc(jobPath, { status: 'succeeded', phase: 'live', deploy_url: `https://${publication.website_host}`, verification_message: null, static_probe: null, finished_at: finished });
-    terminal = true;
-    return 'ran';
+    return await finishPublication(publication, domains, frozen);
   } catch (error) {
     const target = await store.getDoc<Target>(targetPath);
     if (leaseLost || target?.lease_id !== lease || target.lease_until <= Date.now()) return 'deferred';

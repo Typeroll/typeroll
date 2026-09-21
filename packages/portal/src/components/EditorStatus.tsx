@@ -125,6 +125,18 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
     }
   }
 
+  async function retryVerification() {
+    if (!job?.id || busy) return;
+    const prior = job;
+    setErr(null); setJob({ ...job, status: 'running', phase: 'retrying public verification' });
+    try {
+      const response = await fetch(`/api/sites/${siteId}/deploy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ retry_verification_job_id: prior.id }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? 'Could not retry verification');
+      watch(data.job_id);
+    } catch (error) { setJob(prior); setErr(error instanceof Error ? error.message : 'Could not retry verification'); }
+  }
+
   const label = (() => {
     if (!job) return pendingDeploy ? 'Deploy →' : 'Redeploy';
     if (job.status === 'queued') return 'Queued…';
@@ -155,6 +167,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
       >
         {!busy && setup?.ready !== true ? (setup ? 'Publishing setup required' : 'Checking setup…') : label}
       </button>
+      {job?.status === 'failed' && job.failure?.code === 'publication_observation_timeout' && <button type="button" className="btn btn--secondary btn--sm" onClick={retryVerification} title="Check the same published files again. No rebuild, upload or DNS change.">Retry verification</button>}
       {busy && job?.verification_message && <span role="status" className="text-sm">{job.verification_message}</span>}
       {job?.render_report && <span role="status" className="text-sm">{job.render_report.rendered} pages rebuilt · {job.render_report.reused} reused</span>}
       {job?.phase === 'distributing' && <span role="status" className="text-sm">Distributing… The link will appear automatically when ready.</span>}

@@ -28,6 +28,12 @@ export const deployTools: ToolDef[] = [
     }),
   },
   {
+    name: 'retry_deploy_verification',
+    description: 'Retry only public verification of an already-served customer publication that failed with publication_observation_timeout. Reuses the exact job, Git commit and build artifact; never builds, uploads or changes DNS. Requires completed build/candidate receipts, unchanged hosting and no newer deployment for this version. Does not publish later CMS edits. Poll get_deploy_status for the same job_id. Admin permission required.',
+    inputSchema: { job_id: z.string(), version: versionParam },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'deploy', { retry_verification_job_id: args.job_id }, v(args.version)))),
+  },
+  {
     name: 'list_deploys',
     description: 'Recent deploy jobs, newest first (capped at 50).',
     handler: withErrorBoundary(async (_args, { client, siteId }) => {

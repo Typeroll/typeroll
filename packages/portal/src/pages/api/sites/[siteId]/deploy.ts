@@ -1,3 +1,5 @@
+import { retryPublicationVerification } from '../../../../lib/publishing/verification-retry';
+import { ConnectionError } from '../../../../lib/publishing/connections';
 // Deploy entry point.
 //
 // Creates a DeployJob doc, hands the work to the configured DeployQueue,
@@ -31,7 +33,15 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
   if (!adminCheck.ok) return adminCheck.response;
   const { session, site, versionId, owner_org_id } = guard.value;
 
-  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment };
+  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment; retry_verification_job_id?: string };
+  if (body.retry_verification_job_id !== undefined) {
+    try {
+      if (typeof body.retry_verification_job_id !== 'string') return json({ error: 'Provide a deployment ID.' }, 400);
+      return json(await retryPublicationVerification(owner_org_id, site.id, body.retry_verification_job_id, versionId), 202);
+    } catch (error) {
+      return json({ error: error instanceof ConnectionError ? error.message : 'Could not retry publication verification.', code: error instanceof ConnectionError ? error.code : 'verification_retry_failed' }, error instanceof ConnectionError ? error.status : 500);
+    }
+  }
   const environment: DeployEnvironment = body.environment === 'staging' ? 'staging' : 'production';
 
   const store = getStore();
