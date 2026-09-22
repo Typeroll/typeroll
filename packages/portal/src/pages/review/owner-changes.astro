@@ -48,9 +48,18 @@ Astro.response.headers.set('Content-Security-Policy', "default-src 'none'; scrip
        * outcome takes it.
        */
       const announce = () => {
+        // Un-hidden before the scroll, because a display:none element is not
+        // in the accessibility tree and its role="status" cannot announce.
         notice.hidden = false;
-        notice.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        notice.focus();
+        // preventScroll, or focus() jumps instantly and fights the smooth
+        // scroll -- the two together land the viewport somewhere neither
+        // chose. Focus is what actually announces this to a screen reader;
+        // the live region is the fallback for browsers that ignore it.
+        notice.focus({ preventScroll: true });
+        notice.scrollIntoView({
+          block: 'center',
+          behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        });
       };
       const decide = async (action: 'approve' | 'reject') => {
         const adjustments = action === 'approve' ? Object.fromEntries([...controls].filter(([name, control]) => !sameAnswer(control.read(), proposal.changes[name])).map(([name, control]) => [name, control.read()])) : {};
