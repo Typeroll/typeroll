@@ -837,14 +837,35 @@ export interface Block {
    */
   hidden_on?: Breakpoint[];
 
-  style_overrides?: {
-    spacing_before?: string;
-    spacing_after?: string;
-    custom_css?: string;
-    custom_class?: string;
-    html_id?: string;
-  };
+  style_overrides?: StyleOverrides;
 }
+
+/**
+ * Every key the renderer reads from `style_overrides`, in one place.
+ *
+ * Declared as a value rather than only a type because the write path has to
+ * check against it at runtime: a key outside this set is stored, returned and
+ * built without complaint, and never reaches the markup. `custom_class`
+ * written as `class` cost someone a deploy and an afternoon before a rendered
+ * colour gave it away.
+ */
+export const STYLE_OVERRIDE_KEYS = ['spacing_before', 'spacing_after', 'custom_css', 'custom_class', 'html_id'] as const;
+export type StyleOverrideKey = (typeof STYLE_OVERRIDE_KEYS)[number];
+// Written out rather than `Partial<Record<…>>`: this module declares its own
+// `Partial` (a CMS header/footer fragment), which shadows the global utility.
+export interface StyleOverrides {
+  spacing_before?: string;
+  spacing_after?: string;
+  custom_css?: string;
+  custom_class?: string;
+  html_id?: string;
+}
+/** Fails to compile if the list and the shape ever name different keys. */
+type StyleOverrideKeysAgree = StyleOverrideKey extends keyof StyleOverrides
+  ? (keyof StyleOverrides extends StyleOverrideKey ? true : never)
+  : never;
+const styleOverrideKeysAgree: StyleOverrideKeysAgree = true;
+void styleOverrideKeysAgree;
 
 export type FieldType =
   | 'text'

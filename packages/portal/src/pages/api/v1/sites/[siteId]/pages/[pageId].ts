@@ -28,7 +28,7 @@ import {
   readWorkingCopy,
   WorkingCopyError,
 } from '../../../../../../lib/working-copy';
-import { ensureBlockIds } from '@typeroll/shared';
+import { blockTreeWarnings, ensureBlockIds } from '@typeroll/shared';
 import { checkAlternates } from '../../../../../../lib/page-alternates';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 import type { Page } from '@typeroll/shared';
@@ -175,7 +175,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
   try {
     const payload = await handleWrite(ctx, pageId, update, body.save === true, body.answer_sources);
-    return apiResponse(ctx, payload, 200, body);
+    // Reported, not rejected: the write is otherwise fine and the caller has
+    // already spent the round trip. It has to travel in the body, because a
+    // caller driving the API cannot read our logs.
+    const warnings = blockTreeWarnings(body.blocks);
+    return apiResponse(ctx, warnings.length ? { ...payload, warnings } : payload, 200, body);
   } catch (e) {
     if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
     throw e;
@@ -213,7 +217,11 @@ export const PUT: APIRoute = async ({ request, params }) => {
 
   try {
     const payload = await handleWrite(ctx, pageId, update, body.save === true, body.answer_sources);
-    return apiResponse(ctx, payload, 200, body);
+    // Reported, not rejected: the write is otherwise fine and the caller has
+    // already spent the round trip. It has to travel in the body, because a
+    // caller driving the API cannot read our logs.
+    const warnings = blockTreeWarnings(body.blocks);
+    return apiResponse(ctx, warnings.length ? { ...payload, warnings } : payload, 200, body);
   } catch (e) {
     if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
     throw e;

@@ -2,7 +2,7 @@ import { validateAnswerSources } from '../../../../../../lib/answer-source-input
 // POST /api/v1/sites/{siteId}/pages/batch-write
 //
 // Body: [{ page_id, patch: Partial<Page>, save?: boolean }]   — up to BATCH_MAX
-// Returns: { results: Array<{ page_id, ok, saved, error? }> }
+// Returns: { results: Array<{ page_id, ok, saved, error?, warnings? }> }
 //
 // Buffer model: each patch's content fields land in that page's WORKING
 // COPY; `status`/`date_published` apply immediately. Per-entry `save: true`
@@ -16,7 +16,7 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { vstore } from '../../../../../../lib/version-store';
 import { applyContentWrite } from '../../../../../../lib/content-write';
 import { checkAlternates } from '../../../../../../lib/page-alternates';
-import { ensureBlockIds, type Page } from '@typeroll/shared';
+import { blockTreeWarnings, ensureBlockIds, type Page } from '@typeroll/shared';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 
 const BATCH_MAX = 200;
@@ -56,7 +56,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (body.length > BATCH_MAX) return apiError(`Too many entries (max ${BATCH_MAX})`);
 
   const results = await Promise.all(
-    body.map(async (raw): Promise<{ page_id: string; ok: boolean; saved?: boolean; error?: string }> => {
+    body.map(async (raw): Promise<{ page_id: string; ok: boolean; saved?: boolean; error?: string; warnings?: ReturnType<typeof blockTreeWarnings> }> => {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { page_id: '', ok: false, error: 'Each entry must be an object' };
       const item = raw as Item;
       const pageId = typeof item.page_id === 'string' ? item.page_id : '';
@@ -90,7 +90,10 @@ export const POST: APIRoute = async ({ request, params }) => {
           ctx, { kind: 'page', id: pageId }, patch,
           { save: item.save === true, updatedBy: `api-key:${ctx.keyPrefix}`, answerSources: item.answer_sources },
         );
-        return { page_id: pageId, ok: true, saved: result.committed };
+        // Per entry, beside its own result: a sweep of 200 pages must say
+        // which page carried the inert key, not that one of them did.
+        const warnings = blockTreeWarnings((item.patch as { blocks?: unknown } | undefined)?.blocks);
+        return { page_id: pageId, ok: true, saved: result.committed, ...(warnings.length ? { warnings } : {}) };
       } catch (e) {
         return { page_id: pageId, ok: false, error: e instanceof Error ? e.message : 'unknown error' };
       }

@@ -1235,3 +1235,41 @@ There is deliberately no `archive` route kind. A listing is a block inside an
 ordinary page rather than a route of its own, so nothing in a built page
 identifies one — and a guess would be worse than an absence, because
 stylesheets would be written against it.
+
+## Write warnings (Core 0.2.48)
+
+A successful write can carry `warnings` alongside its result. They report
+things that were stored and will never be read — a write that looks correct and
+is not.
+
+```json
+{
+  "ok": true,
+  "warnings": [
+    {
+      "code": "unknown_style_override",
+      "block_id": "b1",
+      "path": "blocks[0].style_overrides.class",
+      "key": "class",
+      "message": "style_overrides.class is not a style override and will never be applied. Supported keys: spacing_before, spacing_after, custom_css, custom_class, html_id."
+    }
+  ]
+}
+```
+
+`style_overrides` is a closed set — `spacing_before`, `spacing_after`,
+`custom_css`, `custom_class`, `html_id` — so any other key is inert. Writing
+`class` instead of `custom_class` stores the key, returns 200, builds and
+deploys, and never reaches the markup.
+
+Warnings are returned by `PATCH /pages/{pageId}`, `PATCH /partials/{partialId}`
+and `POST /pages/batch-write`, where each entry carries its own so a sweep says
+which page was affected. The field is absent when there is nothing to report.
+
+**They do not reject the write.** A write that is otherwise right should land,
+and the caller has already spent the round trip. Check for `warnings` after a
+successful write; the absence of the field is the only clean signal.
+
+A block type's `data` is deliberately not checked this way. Its fields vary per
+type and evolve, so an unknown field there is forward compatibility rather than
+a mistake.
