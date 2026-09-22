@@ -92,11 +92,32 @@ describe('reviewer-readable answers', () => {
   });
 
   it('distinguishes unanswered from asserting no facts', () => {
+    // Measured across 450 published FundraiserChart profiles, the states that
+    // actually occur are populated, empty object and *absent key* -- with zero
+    // nulls anywhere. A formatter tested only against null would look correct
+    // and put the 41 absent-key fields through the wrong branch.
+    expect(displayAnswer(undefined)).toBe('Unanswered');
     expect(displayAnswer(null)).toBe('Unanswered');
     expect(displayAnswer({})).toBe('None specified');
     expect(displayAnswer([])).toBe('None');
+    // Absent and null must stay the same answer; empty object must not join
+    // them. Nine companies assert no sales support, and a reviewer shown
+    // "Unanswered" for that would fill it in, replacing an assertion with a
+    // guess.
+    expect(displayAnswer(undefined)).toBe(displayAnswer(null));
+    expect(displayAnswer({})).not.toBe(displayAnswer(undefined));
     // An owner's explicit clear inside an answer object stays unknown.
     expect(displayAnswer({ training: null })).toContain('Training: Unanswered');
+  });
+
+  it('reads an absent before-key as unanswered through the real call site', () => {
+    const message = ownerReviewMessage({
+      title: 'Shelton Foods', labels: { sales_method_answers: 'Sales methods' },
+      before: {}, changes: { sales_method_answers: { online: true } },
+      url: 'https://example.test/review#t', expiresAt: 0,
+    });
+    expect(message.text).toContain('Before: Unanswered');
+    expect(message.text).toContain('Online: Yes');
   });
 
   it('stops recursing before a reviewer stops reading', () => {
