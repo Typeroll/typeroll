@@ -17,8 +17,15 @@ export const GET: APIRoute = async ({ request }) => {
   const ctx = guard.value;
   const allowed = await listAllowedSites(ctx.tokenOrgId, ctx.tokenSiteId);
   return apiResponse(ctx, {
-    sites: allowed.map(({ site }) => ({
+    // A site id is unique within an organization and not across them, and
+    // listAllowedSites already knows which organization owns each entry. The
+    // single-site route reports it and this one dropped it, so the cheapest
+    // call for a caller to learn where it is pointed was the one that could
+    // not answer. It matters most for a shared-in site, whose owner is not
+    // the token's organization.
+    sites: allowed.map(({ site, ownerOrgId }) => ({
       id: site.id,
+      organization_id: ownerOrgId,
       name: site.name,
       domain: (site as { domain?: string }).domain,
       urls: publicUrlsFor(site),

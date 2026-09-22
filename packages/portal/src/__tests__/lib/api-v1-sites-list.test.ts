@@ -54,7 +54,7 @@ async function makeKey(siteId: string | null): Promise<string> {
 
 async function listSites(token: string): Promise<{
   status: number;
-  sites: Array<{ id: string; name: string; domain?: string; urls: Record<string, unknown> }>;
+  sites: Array<{ id: string; organization_id: string; name: string; domain?: string; urls: Record<string, unknown> }>;
 }> {
   const mod = await import('../../pages/api/v1/sites/index') as { GET: APIRoute };
   const req = new Request('https://api.example/api/v1/sites', {
@@ -70,6 +70,22 @@ async function listSites(token: string): Promise<{
 describe('GET /api/v1/sites', () => {
   beforeEach(async () => {
     await resetDatastore();
+  });
+
+  it('names the owning organization per site, including a shared-in one', async () => {
+    // A site id is unique within an organization and not across them. Without
+    // this field a caller cannot tell which organization it is pointed at
+    // without one request per site, and the shared-in case is where the
+    // token's organization and the owner differ — exactly when guessing from
+    // the id is wrong.
+    await setup();
+    const token = await makeKey(null);
+    const { sites } = await listSites(token);
+    const byId = Object.fromEntries(sites.map((site) => [site.id, site.organization_id]));
+    expect(byId[SITE_A]).toBe(ORG);
+    expect(byId[SITE_B]).toBe(ORG);
+    expect(byId[SHARED_SITE]).toBe(OTHER_ORG);
+    for (const site of sites) expect(site.organization_id).toBeTruthy();
   });
 
   it('org-scoped key lists all owned sites plus shared-in sites', async () => {
