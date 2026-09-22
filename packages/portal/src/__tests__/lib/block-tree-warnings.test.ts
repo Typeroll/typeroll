@@ -6,7 +6,7 @@
 // pixel that was the wrong colour.
 
 import { describe, expect, it } from 'vitest';
-import { blockTreeWarnings, STYLE_OVERRIDE_KEYS } from '@typeroll/shared';
+import { blockTreeWarnings, STYLE_OVERRIDE_KEYS, styleOverrideWarnings } from '@typeroll/shared';
 
 const block = (over: Record<string, unknown> = {}) => ({ id: 'b1', type: 'core/prose', ...over });
 
@@ -59,5 +59,35 @@ describe('unknown style overrides', () => {
     loop.children = [loop];
     expect(() => blockTreeWarnings([loop])).not.toThrow();
     expect(blockTreeWarnings([loop])).toHaveLength(1);
+  });
+});
+
+describe('a single-block write', () => {
+  it('warns on an unknown override, naming the block rather than a tree index', () => {
+    // The discovery path for this defect was a one-block PATCH, and those
+    // routes take style_overrides directly rather than as a tree — so the tree
+    // walker never saw the write where the mistake is easiest to make.
+    const warnings = styleOverrideWarnings({ class: 'moveria-home' }, 'blk_1');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.key).toBe('class');
+    expect(warnings[0]!.block_id).toBe('blk_1');
+    expect(warnings[0]!.path).toBe('blk_1.style_overrides.class');
+    // The message names what to use instead, since `class` for `custom_class`
+    // is exactly what a caller produces from memory.
+    expect(warnings[0]!.message).toContain('custom_class');
+  });
+
+  it('is silent on the keys the renderer actually reads', () => {
+    expect(styleOverrideWarnings({ custom_class: 'x', html_id: 'y' }, 'blk_1')).toEqual([]);
+  });
+
+  it('reports every unknown key, not just the first', () => {
+    const warnings = styleOverrideWarnings({ class: 'a', not_a_real_key: 'b' }, 'blk_1');
+    expect(warnings.map((w) => w.key).sort()).toEqual(['class', 'not_a_real_key']);
+  });
+
+  it('ignores a missing or non-object value rather than throwing', () => {
+    for (const value of [undefined, null, 'string', ['array']])
+      expect(styleOverrideWarnings(value, 'blk_1')).toEqual([]);
   });
 });

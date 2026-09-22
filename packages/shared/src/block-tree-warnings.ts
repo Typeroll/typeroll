@@ -71,3 +71,32 @@ export function blockTreeWarnings(value: unknown, root = 'blocks'): BlockTreeWar
   visit(value, root);
   return warnings;
 }
+
+/**
+ * The same check for a single-block write.
+ *
+ * The tree walker covers page and partial writes, which is where it was first
+ * wired in. But the discovery path for this defect was a one-block PATCH —
+ * `style_overrides: { class: "moveria-home" }` on a block id — and those routes
+ * take the overrides directly, never as a tree, so the warning never reached
+ * the route where the mistake is easiest to make.
+ *
+ * The path names the block rather than an index, because there is no tree for
+ * an index to mean anything in.
+ */
+export function styleOverrideWarnings(
+  styleOverrides: unknown,
+  blockId?: string,
+): BlockTreeWarning[] {
+  if (!styleOverrides || typeof styleOverrides !== 'object' || Array.isArray(styleOverrides)) return [];
+  const known = new Set<string>(STYLE_OVERRIDE_KEYS);
+  return Object.keys(styleOverrides)
+    .filter((key) => !known.has(key))
+    .map((key) => ({
+      code: 'unknown_style_override' as const,
+      ...(blockId ? { block_id: blockId } : {}),
+      path: `${blockId ?? 'block'}.style_overrides.${key}`,
+      key,
+      message: `style_overrides.${key} is not a style override and will never be applied. Supported keys: ${STYLE_OVERRIDE_KEYS.join(', ')}.`,
+    }));
+}

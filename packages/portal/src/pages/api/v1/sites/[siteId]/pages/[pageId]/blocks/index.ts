@@ -31,6 +31,7 @@ import {
   readWorkingCopy,
 } from '../../../../../../../../lib/working-copy';
 import type { Block, Page } from '@typeroll/shared';
+import { styleOverrideWarnings } from '@typeroll/shared';
 
 // Buffer model: mutations read from and write to the page's WORKING COPY
 // (the draft layer). Nothing lands on the saved page until an explicit
@@ -147,7 +148,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       style_overrides: body.style_overrides,
     });
     await persistDraft(ctx, pageId, blocks);
-    return apiResponse(ctx, { blocks, ...(warnings.length ? { warnings } : {}) });
+    // A misspelled override is stored, returned and built without comment.
+    // The caller cannot read our logs, so it travels in the body.
+    const overrideWarnings = styleOverrideWarnings(body.style_overrides, body.block_id);
+    return apiResponse(ctx, {
+      ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}), blocks, ...(warnings.length ? { warnings } : {}) });
   } catch (e) {
     return mutError(e);
   }

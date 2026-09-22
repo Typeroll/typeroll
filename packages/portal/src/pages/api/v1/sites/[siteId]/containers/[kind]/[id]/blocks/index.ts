@@ -39,6 +39,7 @@ import {
   resolveScriptFields,
 } from '../../../../../../../../../lib/block-script-gate';
 import type { Block } from '@typeroll/shared';
+import { styleOverrideWarnings } from '@typeroll/shared';
 
 function parseTarget(params: Record<string, string | undefined>):
   | { ok: true; target: { kind: BlockContainerKind; id: string } }
@@ -156,7 +157,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       style_overrides: body.style_overrides,
     });
     await writeContainer(t.target, blocks, ctx, loaded.raw);
-    return apiResponse(ctx, { blocks, ...(warnings.length ? { warnings } : {}) });
+    // A misspelled override is stored, returned and built without comment.
+    // The caller cannot read our logs, so it travels in the body.
+    const overrideWarnings = styleOverrideWarnings(body.style_overrides, body.block_id);
+    return apiResponse(ctx, {
+      ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}), blocks, ...(warnings.length ? { warnings } : {}) });
   } catch (e) {
     return mutError(e);
   }
