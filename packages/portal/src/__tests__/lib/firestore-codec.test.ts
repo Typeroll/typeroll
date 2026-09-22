@@ -5,7 +5,7 @@
 // encoded form free of array-in-array.
 
 import { describe, it, expect } from 'vitest';
-import { encodeNestedArrays, decodeNestedArrays } from '../../lib/firestore-codec';
+import { encodeNestedArrays, decodeNestedArrays, encodeFirestoreDocument } from '../../lib/firestore-codec';
 
 /** Deep-scan: true if any array directly contains an array (the shape Firestore rejects). */
 function hasNestedArray(v: unknown): boolean {
@@ -116,5 +116,91 @@ describe('Firestore history snapshots', () => {
 
   it('rejects unreadable snapshots without echoing their contents', () => {
     expect(() => decodeNestedArrays({ doc: { _tr_snapshot_json_: 'private-corrupt-payload' } })).toThrow('This history snapshot could not be read.');
+  });
+});
+
+describe('block trees are stored as content, not as structure', () => {
+  // The composition that could not be saved: moveria-se's footer sits at
+  // Firestore's nesting ceiling, so the draft envelope pushed it one level over
+  // and an ordinary edit was rejected. Depth is measured here the way the codec
+  // measures it, against the encoded document.
+  const deepest = (value: unknown, segs: string[] = [], best = { n: 0 }): number => {
+    if (segs.length > best.n) best.n = segs.length;
+    if (value && typeof value === 'object') {
+      for (const [k, child] of Object.entries(value)) deepest(child, [...segs, k], best);
+    }
+    return best.n;
+  };
+  /**
+   * A block tree `levels` deep, alternating `children` and `slots` so it
+   * exercises the array-in-array shape at depth. One branch per level: a tree
+   * that forks on both keys is 2^levels nodes, which is a test that measures
+   * the machine rather than the codec.
+   */
+  const tree = (levels: number): any =>
+    levels === 0
+      ? [{ id: 'leaf', type: 'core/prose', data: { html: '<p>x</p>' } }]
+      : levels % 2 === 0
+        ? [{ id: `l${levels}`, type: 'core/container', slots: [tree(levels - 1)] }]
+        : [{ id: `l${levels}`, type: 'core/container', children: tree(levels - 1) }];
+
+  it('stores a tree far deeper than Firestore would accept', () => {
+    const encoded = encodeFirestoreDocument('o/1/sites/s/versions/main/pages/p', { blocks: tree(40) });
+    // 40 levels is comfortably past the limit as native maps; compressed it is flat.
+    expect(deepest(encoded)).toBeLessThan(5);
+    expect(decodeNestedArrays(encoded)).toEqual({ blocks: tree(40) });
+  });
+
+  it('accepts a draft of a tree that sits at the ceiling', () => {
+    // This is the exact shape that failed: the same tree one level down, under
+    // the working copy's `fields` envelope.
+    const blocks = tree(18);
+    expect(() => encodeFirestoreDocument(
+      'o/1/sites/s/versions/main/working_copies/partial:header',
+      { kind: 'partial', fields: { blocks } },
+    )).not.toThrow();
+    const encoded = encodeFirestoreDocument(
+      'o/1/sites/s/versions/main/working_copies/partial:header',
+      { kind: 'partial', fields: { blocks } },
+    );
+    expect((decodeNestedArrays(encoded) as any).fields.blocks).toEqual(blocks);
+  });
+
+  it('round-trips the nested arrays that made the codec necessary', () => {
+    // Block.slots is Block[][], the shape Firestore rejects outright.
+    const blocks = [{ id: 'a', slots: [[{ id: 'b' }], [{ id: 'c' }]] }];
+    const encoded = encodeFirestoreDocument('o/1/sites/s/versions/main/partials/header', { blocks });
+    expect(decodeNestedArrays(encoded)).toEqual({ blocks });
+  });
+
+  it('does not mutate the document it was given', () => {
+    const doc = { kind: 'partial', fields: { blocks: tree(3) } };
+    const before = JSON.stringify(doc);
+    encodeFirestoreDocument('o/1/sites/s/versions/main/working_copies/partial:header', doc);
+    expect(JSON.stringify(doc)).toBe(before);
+    expect(Array.isArray(doc.fields.blocks)).toBe(true);
+  });
+
+  it('leaves a document carrying no blocks untouched', () => {
+    const doc = { name: 'Header', content_mode: 'html', html_content: '<nav/>' };
+    expect(decodeNestedArrays(encodeFirestoreDocument('o/1/sites/s/versions/main/partials/header', doc))).toEqual(doc);
+  });
+
+  it('still reads a tree written before compression existed', () => {
+    // Existing documents hold native arrays. They must keep reading, because
+    // nothing rewrites them until their page is next saved.
+    const legacy = { blocks: [{ id: 'a', children: [{ id: 'b' }] }] };
+    expect(decodeNestedArrays(legacy)).toEqual(legacy);
+  });
+
+  it('does not compress a revision snapshot twice', () => {
+    const encoded = encodeFirestoreDocument('o/1/sites/s/revisions/r1', { doc: { blocks: tree(3) } }) as any;
+    expect(typeof encoded.doc._tr_snapshot_json_).toBe('string');
+    expect(encoded.doc._tr_blocks_gz_).toBeUndefined();
+  });
+
+  it('reports unreadable stored content instead of returning a partial tree', () => {
+    expect(() => decodeNestedArrays({ blocks: { _tr_blocks_gz_: 'not-gzip' } }))
+      .toThrow(/could not be read/);
   });
 });

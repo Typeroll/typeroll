@@ -1,3 +1,4 @@
+import { gzipSync, gunzipSync } from 'node:zlib';
 // Firestore cannot store directly-nested arrays — `[[a], [b]]` is rejected
 // with `INVALID_ARGUMENT: Property array contains an invalid nested entity`.
 // Our block trees legitimately contain that shape (`Block.slots: Block[][]`),
@@ -17,6 +18,39 @@
 
 const MARKER = '_tr_nested_array_';
 const SNAPSHOT_MARKER = '_tr_snapshot_json_';
+const BLOCKS_MARKER = '_tr_blocks_gz_';
+
+/**
+ * Block trees are stored compressed instead of as native nested maps.
+ *
+ * Firestore caps how deeply a document may nest, and a real composition
+ * reaches it: moveria-se's header and footer sit at exactly the ceiling, which
+ * is why an ordinary edit adding one wrapper could not be saved. The ceiling is
+ * not ours to raise — Firestore rejects the write itself — so the fix is to
+ * stop spending nesting on content that is never queried by field.
+ *
+ * Nothing reads into a block tree: no query filters or orders by it, no field
+ * mask selects part of it, and a working copy already stores a whole tree as
+ * one value rather than merging into it. So the tree is content, not
+ * structure, and it belongs in storage the same way `revisions` already keeps
+ * its snapshot — as an opaque payload.
+ *
+ * Compressed as well as serialized because block JSON repeats the same keys and
+ * defaults on every node: measured 6.7-6.8x on the five largest pages in
+ * production, which is what keeps the 1 MiB document limit far away rather than
+ * merely further off. Base64 rather than raw bytes so the fixtures backend,
+ * which is plain JSON, round-trips it identically to Firestore.
+ */
+const BLOCK_PATHS: Record<string, string[]> = {
+  pages: ['blocks'],
+  partials: ['blocks'],
+  page_templates: ['blocks'],
+  // A draft stores the tree one level down, under its `fields` envelope. That
+  // envelope is what pushed an at-the-ceiling document over: it is a real
+  // Firestore level, so exempting it from the depth check would only move the
+  // rejection from us to Firestore. Compressing the tree removes the cost.
+  working_copies: ['fields.blocks'],
+};
 
 export class StorageDocumentError extends Error {
   readonly status = 422;
@@ -29,10 +63,22 @@ export class StorageDocumentError extends Error {
 export function encodeFirestoreDocument(documentPath: string, data: Record<string, any>): Record<string, any> {
   const collection = documentPath.split('/').at(-2);
   const fields = collection === 'revisions' ? ['doc'] : collection === 'answer_history' ? ['before', 'after'] : [];
-  const prepared = { ...data };
+  let prepared = { ...data };
   for (const field of fields) if (isPlainObject(prepared[field])) {
     try { prepared[field] = { [SNAPSHOT_MARKER]: JSON.stringify(prepared[field]) }; }
     catch { throw new StorageDocumentError('storage_document_invalid', 'The history snapshot contains invalid or circular data. No content was saved.', field); }
+  }
+  // A revision already carries its whole payload as one snapshot string, so its
+  // blocks are inside that string and must not be compressed a second time.
+  for (const path of fields.length ? [] : BLOCK_PATHS[collection ?? ''] ?? []) {
+    prepared = replaceAtPath(prepared, path.split('.'), (tree) => {
+      if (!Array.isArray(tree)) return tree;
+      try {
+        return { [BLOCKS_MARKER]: gzipSync(Buffer.from(JSON.stringify(tree), 'utf8')).toString('base64') };
+      } catch {
+        throw new StorageDocumentError('storage_document_invalid', 'The block content contains invalid or circular data. No content was saved.', path);
+      }
+    });
   }
   const seen = new Set<object>();
   function validate(value: unknown, segments: string[] = []) {
@@ -48,6 +94,25 @@ export function encodeFirestoreDocument(documentPath: string, data: Record<strin
   const encoded = encodeNestedArrays(prepared);
   validate(encoded);
   return encoded;
+}
+
+/**
+ * Copy `document`, replacing the value at `segments` with `next(value)`.
+ *
+ * Copies every object along the path rather than writing through, because the
+ * caller still owns the data it passed in — mutating a draft's `fields` here
+ * would hand the rest of the request a tree that had become a string.
+ */
+function replaceAtPath(
+  document: Record<string, any>,
+  segments: string[],
+  next: (value: unknown) => unknown,
+): Record<string, any> {
+  const [head, ...rest] = segments;
+  if (head === undefined || !(head in document)) return document;
+  if (rest.length === 0) return { ...document, [head]: next(document[head]) };
+  const child = document[head];
+  return isPlainObject(child) ? { ...document, [head]: replaceAtPath(child, rest, next) } : document;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -94,6 +159,14 @@ function walkDecode(value: unknown): unknown {
       try { decoded = JSON.parse(value[SNAPSHOT_MARKER]); } catch { /* Report corruption without returning the payload. */ }
       if (!isPlainObject(decoded)) throw new StorageDocumentError('storage_snapshot_invalid', 'This history snapshot could not be read. Contact support before restoring it.');
       return decoded;
+    }
+    if (keys.length === 1 && keys[0] === BLOCKS_MARKER && typeof value[BLOCKS_MARKER] === 'string') {
+      let decoded: unknown;
+      try { decoded = JSON.parse(gunzipSync(Buffer.from(value[BLOCKS_MARKER] as string, 'base64')).toString('utf8')); }
+      catch { throw new StorageDocumentError('storage_blocks_invalid', 'The stored block content could not be read. Contact support before editing this page.'); }
+      // Decoded content is ordinary data again, so it still needs unwrapping
+      // for any nested-array markers that were encoded before compression.
+      return Array.isArray(decoded) ? decoded.map(walkDecode) : decoded;
     }
     if (keys.length === 1 && keys[0] === MARKER && Array.isArray(value[MARKER])) {
       return (value[MARKER] as unknown[]).map(walkDecode);

@@ -1,8 +1,8 @@
 {
   "name": "typeroll",
-  "version": "0.2.44",
+  "version": "0.2.45",
   "private": true,
-  "description": "Typeroll CMS \u2013 an open-source CMS for static websites, with AI-agent workflows and a client-friendly visual editor for managing multiple client sites.",
+  "description": "Typeroll CMS – an open-source CMS for static websites, with AI-agent workflows and a client-friendly visual editor for managing multiple client sites.",
   "workspaces": [
     "packages/*"
   ],
