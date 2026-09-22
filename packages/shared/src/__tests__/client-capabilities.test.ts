@@ -157,6 +157,22 @@ describe('provider API generation', () => {
     expect(script.indexOf('PlaceAutocompleteElement')).toBeLessThan(script.indexOf('function legacy'));
   });
 
+  it('carries the field placeholder onto the element that replaces it', () => {
+    // The modern element renders its own input and the author's field is
+    // hidden behind it, so anything set on the field has to travel across.
+    // Switching address suggestions on used to erase the placeholder — a
+    // presentation regression caused by enabling a capability, which is the
+    // hardest kind to trace back to its cause.
+    const script = loader();
+    expect(script).toContain('input.placeholder');
+    // Before the element is inserted, or the field is already hidden when the
+    // value is read.
+    expect(script.indexOf('input.placeholder')).toBeLessThan(script.indexOf("input.style.display='none'"));
+    // Property and attribute: the element is a custom element in some builds.
+    expect(script).toContain('element.placeholder=input.placeholder');
+    expect(script).toContain("element.setAttribute('placeholder',input.placeholder)");
+  });
+
   it('registers nothing when the provider offers neither, which is the no-key fallback', () => {
     const script = loader();
     expect(script).toContain("typeof Element!=='function'");

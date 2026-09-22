@@ -458,6 +458,15 @@ function modern(input,options,onSelect){
   // the value carrier, so the form, its name, its required flag and the
   // handoff all behave exactly as they do with no provider at all.
   element.style.width='100%';
+  // The element replaces the visible input, so anything the author set on the
+  // field has to travel with it. A placeholder that silently disappears the
+  // moment address suggestions are switched on is a presentation regression
+  // caused by enabling a capability, which is the worst kind to trace: the
+  // field looks wrong and nothing about the provider is obviously involved.
+  // Set both, because the element is a custom element in some builds and a
+  // plain wrapper in others.
+  if(input.placeholder){try{element.placeholder=input.placeholder;}catch(e){}
+    try{element.setAttribute('placeholder',input.placeholder);}catch(e){}}
   input.style.display='none';
   input.parentNode.insertBefore(element,input.nextSibling);
   element.addEventListener('gmp-select',function(event){
