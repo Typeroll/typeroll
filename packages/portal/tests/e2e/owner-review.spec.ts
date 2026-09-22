@@ -44,7 +44,21 @@ for (const width of [375, 1280]) test(`private review and admin queue at ${width
   await page.screenshot({ path: info.outputPath(`private-review-${width}.png`), fullPage: true });
   await page.getByLabel('Yes', { exact: true }).check();
   await page.getByRole('button', { name: 'Approve changes' }).click();
-  await expect(page.getByText('Proposal approved. No website has been published.')).toBeVisible();
+  // This approval edits the answer first, so it is an edit-and-approve and the
+  // confirmation has to say so -- it is a different act from approving as
+  // submitted, and the reviewer should see which one they performed.
+  const confirmation = page.getByText('Approved with your edits.');
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toContainText('nothing has been published');
+  // The defect this replaced was not a missing message but an unreachable one:
+  // it rendered at the top of a long page while the reviewer was at the bottom
+  // having just pressed the button. At 375px that is most of a screen away.
+  await expect(confirmation).toBeInViewport();
+  // And it takes the focus that removing the buttons destroyed, which is the
+  // only thing that announces an irreversible outcome to a screen reader.
+  await expect(confirmation).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Approve changes' })).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath(`review-confirmed-${width}.png`), fullPage: false });
   const accepted = JSON.parse(await readFile(contentFile, 'utf8'));
   expect(accepted.fields.online).toBe(true); expect(accepted._provenance.online.source).toBe('portal');
   const decided = JSON.parse(await readFile(join(tmpdir(), 'typeroll-e2e-fixtures', proposalPath + '.json'), 'utf8'));
