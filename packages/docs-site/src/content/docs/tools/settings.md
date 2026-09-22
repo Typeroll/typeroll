@@ -3,6 +3,10 @@ title: Settings Tools
 description: Site-wide configuration — colours, fonts, contact info, social links, SEO defaults.
 ---
 
+These tools wrap `/api/v1/sites/{siteId}/settings`, read and patch the same document.
+The same API key works over REST; see
+[calling the same operations over REST](../overview/#calling-the-same-operations-over-rest).
+
 ## `read_site_settings`
 
 Returns all current site settings.

@@ -3,6 +3,10 @@ title: Migration URL Tools
 description: Track every URL the old site had, and prove the new one answers before you switch DNS.
 ---
 
+These tools wrap `/api/v1/sites/{siteId}/migration-urls`, with `/import-sitemap` and `/import-gsc` for bulk import.
+The same API key works over REST; see
+[calling the same operations over REST](../overview/#calling-the-same-operations-over-rest).
+
 When you move an existing site to Typeroll, the risk isn't the content — it's the URLs. Every address that Google, a bookmark or another site's link points at has to keep working, or you lose the traffic that was already yours.
 
 Typeroll keeps a **URL inventory** per site for exactly this, and the AI agent can read and write it.

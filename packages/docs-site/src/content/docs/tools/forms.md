@@ -3,6 +3,10 @@ title: Forms Tools
 description: Server-backed contact, booking and multi-step forms — HMAC-protected, rate-limited, honeypot-guarded.
 ---
 
+These tools wrap `/api/v1/sites/{siteId}/forms`, with `/{formId}`, `/{formId}/actions` and `/{formId}/submissions` beneath it.
+The same API key works over REST; see
+[calling the same operations over REST](../overview/#calling-the-same-operations-over-rest).
+
 See [tr-forms](../../skills/tr-forms/) for the full recipe.
 
 ## How a form is stored

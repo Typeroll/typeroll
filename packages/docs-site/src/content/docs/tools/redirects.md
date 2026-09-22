@@ -3,6 +3,10 @@ title: Redirects Tools
 description: Manage URL redirects — essential after migrations and slug changes.
 ---
 
+These tools wrap `/api/v1/sites/{siteId}/redirects`, with `/{redirectId}` for a single rule.
+The same API key works over REST; see
+[calling the same operations over REST](../overview/#calling-the-same-operations-over-rest).
+
 Redirects are built into the static site as a Cloudflare Pages `_redirects` file. They're 301 permanent redirects by default.
 
 ## `create_redirect`

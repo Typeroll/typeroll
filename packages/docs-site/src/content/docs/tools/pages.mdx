@@ -84,6 +84,15 @@ Update the Services page: change the seo_description to "..."
 
 Updates multiple pages in one call. More efficient than individual updates for bulk changes like SEO fixes.
 
+Over the REST API this is `POST /api/v1/sites/{siteId}/pages/batch-write`, taking
+`[{ page_id, patch, save? }]` up to 200 entries and answering
+`{ results: [{ page_id, ok, saved, error? }] }`. Each entry applies
+independently, so one failed page does not abort the rest, and `save: true`
+commits that page's working copy in the same call. Prefer it to a loop of
+single-page writes: a per-page loop across a whole site is slower, has no
+per-entry report, and leaves a partial result you have to reconstruct by
+reading the data back.
+
 ```
 Write meta descriptions for all pages.
 ```
@@ -110,6 +119,15 @@ Returns a single page including its full `html_content`. The AI agent uses this 
 ## `batch_read_pages`
 
 Reads multiple pages by ID in one call. Returns `{ pages_by_id: { id: page }, not_found: [] }`.
+
+Over the REST API this is `POST /api/v1/sites/{siteId}/pages/batch-read`, taking
+`{ page_ids: [...] }` up to 200 ids and answering
+`{ pages: [{ page_id, found, page? }] }`. Each `page` carries `fields` and
+`blocks`, which `list_pages` omits by default.
+
+It reads **accepted content**. A page with an uncommitted working copy is
+returned as it was last saved, not as it currently reads in the editor — so use
+`read_page` when you need to tell a draft from accepted content.
 
 ## `search_pages`
 

@@ -35,6 +35,49 @@ The AI agent picks tools based on context. You never need to say "call `create_p
 
 All tool calls go through the MCP server, which forwards your `TYPEROLL_API_KEY` to the portal API. Organization and site keys have different scopes; each call is limited to the sites and operations the key permits.
 
+## Calling the same operations over REST
+
+Every tool above is a thin wrapper over the authenticated REST API, and the API
+is the same key and the same permissions. If you are scripting rather than
+driving an agent, the tool name is not what you call — the route is. The
+correspondence is by resource, not by tool name:
+
+| Resource       | Route family                            |
+| -------------- | --------------------------------------- |
+| Pages          | `/api/v1/sites/{siteId}/pages`          |
+| Partials       | `/api/v1/sites/{siteId}/partials`       |
+| Settings       | `/api/v1/sites/{siteId}/settings`       |
+| Forms          | `/api/v1/sites/{siteId}/forms`          |
+| Redirects      | `/api/v1/sites/{siteId}/redirects`      |
+| Migration URLs | `/api/v1/sites/{siteId}/migration-urls` |
+| Content types  | `/api/v1/sites/{siteId}/content-types`  |
+| Media          | `/api/v1/sites/{siteId}/media`          |
+| Deploys        | `/api/v1/sites/{siteId}/deploy`         |
+
+Three things that do not follow the pattern, because each has cost someone an
+afternoon:
+
+- **Bulk page operations are their own routes**, not a flag on `/pages`:
+  `POST /api/v1/sites/{siteId}/pages/batch-read` takes `{ page_ids }` and
+  `POST /api/v1/sites/{siteId}/pages/batch-write` takes
+  `[{ page_id, patch, save? }]`, both up to 200 entries with per-entry results.
+  Reach for these before writing a loop over single-page calls — a loop across a
+  whole site is slower, reports nothing per entry, and leaves a partial result
+  you have to reconstruct by reading the data back.
+
+- **An installed app's admin actions run through Core**, not against the app
+  directly: `POST /api/v1/sites/{siteId}/extensions/{installationId}/admin-request`
+  with `{ page_id, path, method, query?, body? }`. An ordinary
+  site-administrator API key is sufficient — Core mints the app's administrator
+  proof on its behalf and records the actor as `api-key:{prefix}`. You do not
+  need a portal session, and the app's own guide lists the paths it accepts.
+
+- **Reads return accepted content.** A page with an uncommitted working copy
+  comes back as it was last saved, not as it currently reads in the editor. Use
+  `read_page` or the single-page route when you need to tell a draft from
+  accepted content; the list and batch-read routes will not show you the
+  difference.
+
 ## Rate limits
 
 The portal API is rate-limited per API key. For large batch operations (importing many pages, bulk SEO updates), the AI agent uses `batch_update_pages` to stay within limits.

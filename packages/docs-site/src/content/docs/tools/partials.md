@@ -3,6 +3,10 @@ title: Partials Tools
 description: Tools for managing header, footer and other shared HTML fragments.
 ---
 
+These tools wrap `/api/v1/sites/{siteId}/partials`, with `/{partialId}`, `/{partialId}/mode` and `/{partialId}/usage` beneath it.
+The same API key works over REST; see
+[calling the same operations over REST](../overview/#calling-the-same-operations-over-rest).
+
 Partials are shared content included on every page. The two built-in partials are `header` and `footer`. You can create additional partials for reusable components (e.g. a cookie banner, a CTA section).
 
 Like pages, partials have a `content_mode` of either `"html"` or `"blocks"`. The `replace_partial` tool below is for HTML-mode partials. For block-mode partials, the [block instance tools](../blocks/) take a `target: { kind: "partial", id: "<partial_id>" }` and edit individual blocks just like they do on pages:
