@@ -4,6 +4,7 @@ export * from './breakpoints.js';
 export * from './defaults.js';
 export * from './global-blocks.js';
 export * from './page-breadcrumbs.js';
+export * from './page-identity.js';
 export * from './render-blocks.js';
 export * from './heading-outline.js';
 export * from './composition-review.js';

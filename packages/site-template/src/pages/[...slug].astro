@@ -39,6 +39,7 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
   renderBlocks,
   siteContext,
   transformBodyForSeo,
+  pageIdentityAttributes,
 } from '@typeroll/shared';
 import type { Block, RenderContext } from '@typeroll/shared';
 import { getPageTemplate } from '../lib/content';
@@ -111,6 +112,17 @@ const renderCtx: RenderContext = {
         trailing_slash: settings.trailing_slash ?? 'always',
       },
 };
+
+// What this page says about itself in its markup. The route is the only place
+// that knows whether this URL is a facet or a numbered slice, so it is built
+// here rather than inferred later from the page alone.
+const facetScope = props.facet?.filters?.[0];
+const identity = pageIdentityAttributes({
+  page: props.page,
+  ...(facetScope ? { facet: { field: facetScope.field, value: String(facetScope.value ?? '') } } : {}),
+  ...(props.pageNum ? { pageNum: props.pageNum } : {}),
+  defaultContentType: 'page',
+});
 
 // Collection-backed repeaters fetch their items via this resolver. Built
 // once per build (it pre-loads all published items from every collection)
@@ -227,7 +239,7 @@ if (ld) extraJsonLd.push(ld);
 if (bodyHtml) bodyHtml = prepareHeadingOutline(normalizePageH1s(bodyHtml)).html;
 
 ---
-<BaseLayout breadcrumbs={props.breadcrumbs} page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} clientCapabilities={clientCapabilities} extraJsonLd={extraJsonLd}>
+<BaseLayout identity={identity} breadcrumbs={props.breadcrumbs} page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} clientCapabilities={clientCapabilities} extraJsonLd={extraJsonLd}>
   <Header partial={header} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
 
   {bodyHtml ? (

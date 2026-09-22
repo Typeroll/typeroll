@@ -8,6 +8,12 @@ import '../styles/global.css';
 
 interface Props {
   page: Page;
+  /**
+   * `data-*` attributes describing which route this is, spread onto <body>.
+   * Built by `pageIdentityAttributes`; absent keys are absent attributes, so
+   * a selector never matches a page that lacks the thing it names.
+   */
+  identity?: Record<string, string>;
   settings: SiteSettings;
   breadcrumbs?: BreadcrumbItem[];
   /**
@@ -222,7 +228,7 @@ const fontFallbackStyle = googleFontFamilies.length
       <script is:inline set:html={buildConsentEarlyPaintRuntime()} />
     )}
   </head>
-  <body>
+  <body {...(Astro.props.identity ?? {})}>
     <slot />
     {blockJs && (
       <script set:html={`(function(){var registry={};window.TyperollBlocks={register:function(id,init){registry[id]=init;},init:function(){Object.keys(registry).forEach(function(id){document.querySelectorAll('[data-block-type="'+id+'"]').forEach(function(el){try{registry[id](el,JSON.parse(el.getAttribute('data-block-data')||'{}'));}catch(e){console.error('[block init]',id,e);}});});}};${blockJs};window.TyperollBlocks.init();})();`} />

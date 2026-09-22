@@ -1197,3 +1197,41 @@ at all widths and responsive `link_min_height_px` (minimum 24 px). For example,
 24 px link height, zero vertical padding and a 4 px gap produce a 28 px rhythm
 for one-line links; wrapped labels can grow. Comfortable navigation remains
 44 px by default, and `compact-desktop` retains its previous desktop behavior.
+
+## Page identity in built markup (Core 0.2.47)
+
+Every built page carries `data-*` attributes on `<body>` describing which route
+it is, so a stylesheet can vary by route without duplicating a block tree
+behind visibility branches.
+
+| Attribute                               | Value                                                    |
+| --------------------------------------- | -------------------------------------------------------- |
+| `data-route`                            | `home`, `facet`, `item` or `page` — always present       |
+| `data-page`                             | the page id                                              |
+| `data-content-type`                     | the content type id                                      |
+| `data-template`                         | the Page template id, when the page has one              |
+| `data-facet-field` / `data-facet-value` | the taxonomy scope, on a facet route                     |
+| `data-depth`                            | segments below the root: `/` is `0`, `/guides/a/` is `2` |
+| `data-page-number`                      | the slice number, only on pages after the first          |
+
+```css
+body[data-route="home"] .banner {
+  --banner: var(--color-primary);
+}
+body[data-route="item"][data-content-type="article"] .banner {
+  --banner: teal;
+}
+```
+
+**Absent and empty are different.** A page with no template omits
+`data-template` rather than emitting an empty one, so `[data-template]` means
+"has a template" and never matches a page that does not. The same holds for
+every optional attribute above.
+
+**These are a contract.** Once a site styles against them, renaming one breaks
+that site, so the set is added to rather than reshaped.
+
+There is deliberately no `archive` route kind. A listing is a block inside an
+ordinary page rather than a route of its own, so nothing in a built page
+identifies one — and a guess would be worse than an absence, because
+stylesheets would be written against it.
