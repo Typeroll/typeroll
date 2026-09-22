@@ -7,33 +7,18 @@
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../lib/api-auth';
-import { vstore } from '../../../../../../../lib/version-store';
-import type { Block } from '@typeroll/shared';
-
-function blocksContainType(blocks: Block[] | undefined, typeId: string): boolean {
-  if (!Array.isArray(blocks)) return false;
-  for (const b of blocks) {
-    if (b.type === typeId) return true;
-    if (b.children && blocksContainType(b.children, typeId)) return true;
-    if (Array.isArray(b.slots)) {
-      for (const slot of b.slots) {
-        if (blocksContainType(slot, typeId)) return true;
-      }
-    }
-  }
-  return false;
-}
+import { getBlockTypeUsage } from '../../../../../../../lib/block-type-usage';
+import { pathParam } from '../../../../../../../lib/path-param';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const typeId = params.typeId;
+  const typeId = pathParam(params.typeId);
   if (!typeId) return apiError('Missing typeId');
 
-  const pages = await vstore.pages(ctx.orgId, ctx.siteId, ctx.versionId);
-  const matches = pages
-    .filter((p) => p.content_mode === 'blocks' && blocksContainType(p.blocks, typeId))
-    .map((p) => ({ page_id: p.id, title: p.title, slug: p.slug, status: p.status }));
-  return apiResponse(ctx, { type_id: typeId, pages: matches });
+  // Every surface that can hold a block, because "is this used" must not
+  // depend on where it is used. Pages only was the original defect.
+  const usage = await getBlockTypeUsage(ctx.orgId, ctx.siteId, ctx.versionId, typeId);
+  return apiResponse(ctx, { type_id: typeId, ...usage });
 };

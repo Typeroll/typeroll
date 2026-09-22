@@ -19,6 +19,7 @@ import {
 import { blockTreeWarnings, ensureBlockIds } from '@typeroll/shared';
 import type { Partial as PartialDoc } from '@typeroll/shared';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
+import { pathParam } from '../../../../../../lib/path-param';
 
 const WRITABLE: Array<keyof PartialDoc> = ['name', 'kind', 'html_content', 'status', 'blocks'];
 
@@ -85,7 +86,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const partialId = params.partialId;
+  const partialId = pathParam(params.partialId);
   if (!partialId) return apiError('Missing partialId');
   const view = await draftView(ctx, partialId);
   if (!view) return apiError('Not found', 404);
@@ -96,7 +97,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const partialId = params.partialId;
+  const partialId = pathParam(params.partialId);
   if (!partialId) return apiError('Missing partialId');
   const existing = await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, partialId);
   if (!existing) return apiError('Not found', 404);
@@ -130,7 +131,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const partialId = params.partialId;
+  const partialId = pathParam(params.partialId);
   if (!partialId) return apiError('Missing partialId');
   const body = (await request.json().catch(() => null)) as (Partial<PartialDoc> & { save?: boolean }) | null;
   if (!body) return apiError('Invalid JSON body');
@@ -159,7 +160,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const partialId = params.partialId;
+  const partialId = pathParam(params.partialId);
   if (!partialId) return apiError('Missing partialId');
   if (partialId === 'header' || partialId === 'footer') {
     return apiError('header and footer can be PATCHed/PUT but not deleted — they are layout blocks', 400);

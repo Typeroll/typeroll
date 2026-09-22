@@ -61,6 +61,11 @@ async function seedPartial(id: string, doc: Record<string, unknown>): Promise<vo
   });
 }
 
+async function seedDoc(path: string, doc: Record<string, unknown>): Promise<void> {
+  const { getStore } = await import('../../lib/datastore');
+  await getStore().setDoc(path, doc);
+}
+
 async function seedPage(id: string, doc: Record<string, unknown>): Promise<void> {
   const { getStore } = await import('../../lib/datastore');
   await getStore().setDoc(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/${id}`, {
@@ -259,6 +264,63 @@ describe('block-types endpoints', () => {
     );
     const body = await res.json() as { block_types: unknown[] };
     expect(Array.isArray(body.block_types)).toBe(true);
+  });
+
+  it('finds a block type used only by a page template', async () => {
+    // The original test seeded an HTML-mode page and asserted emptiness, so it
+    // could only ever pass. Nothing asserted a match, and the endpoint could
+    // not produce one: the typeId was never URL-decoded, so every core/* type
+    // was unreachable and answered 200 with an empty list.
+    const { token } = await setup();
+    await seedPage('home', { content_mode: 'html' });
+    await seedDoc(`${paths.pageTemplates(ORG, SITE, MAIN_VERSION_ID)}/article`,
+      { id: 'article', name: 'Article', blocks: [{ type: 'core/embed' }] });
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/block-types/[typeId]/usage'),
+      'GET',
+      `http://localhost/api/v1/sites/${SITE}/block-types/core%2Fembed/usage`,
+      { siteId: SITE, typeId: 'core%2Fembed' },
+      { headers: bearer(token) },
+    );
+    const body = await res.json() as { type_id: string; templates: Array<{ template_id: string }>; pages: unknown[] };
+    // Decoded, so the comparison is against the id the site actually stores.
+    expect(body.type_id).toBe('core/embed');
+    expect(body.templates.map((t) => t.template_id)).toEqual(['article']);
+    expect(body.pages).toEqual([]);
+  });
+
+  it('refuses to delete a block type a template still uses', async () => {
+    // The destructive half: read usage, see zero, delete. The report could not
+    // return non-zero, so the careful procedure certified the worst outcome.
+    const { token } = await setup();
+    await seedDoc(`${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/promo`, { id: 'promo', name: 'Promo' });
+    await seedDoc(`${paths.pageTemplates(ORG, SITE, MAIN_VERSION_ID)}/article`,
+      { id: 'article', name: 'Article', blocks: [{ type: 'promo' }] });
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/block-types/[typeId]'),
+      'DELETE',
+      `http://localhost/api/v1/sites/${SITE}/block-types/promo`,
+      { siteId: SITE, typeId: 'promo' },
+      { headers: bearer(token) },
+    );
+    expect(res.status).toBe(409);
+    const { getStore } = await import('../../lib/datastore');
+    expect(await getStore().getDoc(`${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/promo`)).not.toBeNull();
+  });
+
+  it('refuses a core block type by name, with the guard rather than a missed lookup', async () => {
+    // Core types used to survive deletion only because the undecoded lookup
+    // missed them; the 403 guard compared the same encoded string and never
+    // fired. Decoding at the lookup alone would have made them deletable.
+    const { token } = await setup();
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/block-types/[typeId]'),
+      'DELETE',
+      `http://localhost/api/v1/sites/${SITE}/block-types/core%2Fembed`,
+      { siteId: SITE, typeId: 'core%2Fembed' },
+      { headers: bearer(token) },
+    );
+    expect(res.status).toBe(403);
   });
 
   it('GET /{typeId}/usage returns empty for HTML-mode-only sites', async () => {

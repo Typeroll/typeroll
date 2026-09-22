@@ -11,6 +11,8 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { vstore } from '../../../../../../lib/version-store';
 import { SCRIPT_WRITE_NOTICE } from '../../../../../../lib/block-script-gate';
 import { CORE_BLOCK_TYPES, type BlockType } from '@typeroll/shared';
+import { pathParam } from '../../../../../../lib/path-param';
+import { getBlockTypeUsage, usageCount } from '../../../../../../lib/block-type-usage';
 
 const WRITABLE = new Set<keyof BlockType>([
   'name', 'label', 'icon', 'category', 'container', 'slot_count', 'slot_labels',
@@ -46,7 +48,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const typeId = params.typeId;
+  const typeId = pathParam(params.typeId);
   if (!typeId) return apiError('Missing typeId');
 
   // Core block types ship in code, not the datastore — look there first.
@@ -62,7 +64,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const typeId = params.typeId;
+  const typeId = pathParam(params.typeId);
   if (!typeId) return apiError('Missing typeId');
   if (CORE_BLOCK_TYPES.some((b) => b.id === typeId)) {
     return apiError('Core block types are managed in code, not editable via API', 403);
@@ -94,7 +96,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const typeId = params.typeId;
+  const typeId = pathParam(params.typeId);
   if (!typeId) return apiError('Missing typeId');
   if (CORE_BLOCK_TYPES.some((b) => b.id === typeId)) {
     return apiError('Core block types are managed in code, not removable via API', 403);
@@ -102,6 +104,18 @@ export const DELETE: APIRoute = async ({ request, params }) => {
 
   const existing = await vstore.blockType(ctx.orgId, ctx.siteId, ctx.versionId, typeId);
   if (!existing) return apiError('Not found', 404);
+
+  // A caller who checks usage first and then deletes was, until 2026-09-22,
+  // following a procedure that certified the destructive outcome: the usage
+  // report could not return a match, so it always answered "not used". The
+  // check belongs here, where the deletion happens, rather than in the caller.
+  const usage = await getBlockTypeUsage(ctx.orgId, ctx.siteId, ctx.versionId, typeId);
+  if (usageCount(usage) > 0) {
+    return apiError(
+      `In use by ${usage.pages.length} page(s), ${usage.templates.length} template(s) and ${usage.partials.length} partial(s). Remove those uses first.`,
+      409,
+    );
+  }
 
   await vstore.deleteBlockType(ctx.orgId, ctx.siteId, ctx.versionId, typeId);
   return apiResponse(ctx, { ok: true });

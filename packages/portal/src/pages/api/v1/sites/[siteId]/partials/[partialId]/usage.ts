@@ -8,12 +8,13 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../lib/api-auth';
 import { getBlockUsage } from '../../../../../../../lib/partials-usage';
 import { vstore } from '../../../../../../../lib/version-store';
+import { pathParam } from '../../../../../../../lib/path-param';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const partialId = params.partialId;
+  const partialId = pathParam(params.partialId);
   if (!partialId) return apiError('Missing partialId');
 
   if (partialId === 'header' || partialId === 'footer') {
