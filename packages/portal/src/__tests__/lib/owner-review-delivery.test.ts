@@ -4,6 +4,7 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { answerRevision, submitOwnerProposal, readOwnerProposal, proposalPath, reviewSettingsPath } from '../../lib/owner-proposals';
 import { notifyOwnerReviewer } from '../../lib/owner-review-notifications';
+import { displayAnswer, ownerReviewMessage } from '../../lib/owner-review-message';
 import { handleOwnerReviewAdmin } from '../../lib/owner-review-http';
 import { decryptSecret } from '../../lib/secret-crypto';
 import { GET, POST } from '../../pages/api/owner-review';
@@ -73,5 +74,32 @@ describe('private review delivery and HTTP contract', () => {
     expect((await admin('Provider confirmed the earlier dispatch failed')).status).toBe(200);
     expect((await getStore().getDoc<any>(proposalPath(scope, id)))?.notification_recovery.actor_id).toBe('synthetic-admin');
     await notifyOwnerReviewer(scope, id, 'https://cms.example.test', true); expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('reviewer-readable answers', () => {
+  it('renders a multi-option answer as prose, not as storage shape', () => {
+    // A reviewer reading on a phone should learn that the company offers
+    // training and does not send catalogues, without parsing JSON.
+    const message = ownerReviewMessage({
+      title: 'Sarris Candies', labels: { sales_support_answers: 'Sales support offered' },
+      before: {}, changes: { sales_support_answers: { printed_catalog: false, training: true } },
+      url: 'https://example.test/review#t', expiresAt: 0,
+    });
+    expect(message.text).toContain('Printed catalog: No');
+    expect(message.text).toContain('Training: Yes');
+    expect(message.text).not.toContain('{');
+  });
+
+  it('distinguishes unanswered from asserting no facts', () => {
+    expect(displayAnswer(null)).toBe('Unanswered');
+    expect(displayAnswer({})).toBe('None specified');
+    expect(displayAnswer([])).toBe('None');
+    // An owner's explicit clear inside an answer object stays unknown.
+    expect(displayAnswer({ training: null })).toContain('Training: Unanswered');
+  });
+
+  it('stops recursing before a reviewer stops reading', () => {
+    expect(displayAnswer({ a: { b: { c: { d: 1 } } } })).toContain('[see review]');
   });
 });

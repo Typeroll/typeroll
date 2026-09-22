@@ -7,6 +7,7 @@ Astro.response.headers.set('Content-Security-Policy', "default-src 'none'; scrip
 <body><main id="owner-review"><h1>Review proposed changes</h1><p role="status">Loading this private review…</p></main>
 <script>
   import { editControl, sameAnswer, type EditField } from '../../lib/answer-controls';
+  import { displayAnswer } from '../../lib/owner-review-message';
   const root = document.querySelector<HTMLElement>('#owner-review')!;
   const url = new URL(location.href);
   const token = url.hash.slice(1);
@@ -24,7 +25,7 @@ Astro.response.headers.set('Content-Security-Policy', "default-src 'none'; scrip
     for (const [name, value] of Object.entries(proposal.changes)) {
       const section = node('section'); const field = proposal.fields.find((item: EditField) => item.name === name);
       section.append(node('h2', field?.label ?? name));
-      section.append(node('p', 'Previously accepted')); const before = node('pre', proposal.before[name] == null ? 'Unanswered' : typeof proposal.before[name] === 'boolean' ? proposal.before[name] ? 'Yes' : 'No' : JSON.stringify(proposal.before[name], null, 2)); section.append(before);
+      section.append(node('p', 'Previously accepted')); const before = node('pre', displayAnswer(proposal.before[name])); section.append(before);
       const control = editControl({ ...field, name, label: 'Proposed answer — edit if needed', value }, () => {});
       controls.set(name, control); section.append(control.element); root.append(section);
     }
