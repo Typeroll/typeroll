@@ -1,5 +1,5 @@
 import { getStore } from './datastore';
-import { decideOwnerProposal, ownerFieldDescriptor, ownerEditorFields, readOwnerProposal, proposalCollection, proposalPath, reviewSettingsPath,
+import { decideOwnerProposal, ownerFieldDescriptor, ownerEditorFields, ownerReviewReady, readOwnerProposal, proposalCollection, proposalPath, reviewSettingsPath,
   validateReviewSettings, checkedPatch, ProposalError, type ProposalScope, type OwnerProposal, type ReviewSettings } from './owner-proposals';
 import { notifyOwnerReviewer, ownerNotificationStatus } from './owner-review-notifications';
 import { decryptSecret, encryptSecret } from './secret-crypto';
@@ -22,7 +22,13 @@ export async function handleOwnerReviewAdmin(scope: ProposalScope, actorId: stri
     const url = new URL(request.url), store = getStore();
     if (request.method === 'GET') {
       const proposals = await store.listDocs<OwnerProposal>(proposalCollection(scope), { filters: [{ field: 'version_id', op: '==', value: scope.versionId }], limit: 100, startAfterId: url.searchParams.get('cursor') ?? '' });
-      return json({ settings: await store.getDoc<ReviewSettings>(reviewSettingsPath(scope)),
+      // `ready` rather than only the stored document. Whether review actually
+      // works depends on the document being valid AND on server-side secret
+      // crypto, and that combination was reachable only from inside a redeemed
+      // owner session — which is exactly what an operator cannot obtain while
+      // they are still trying to find out why review is not working.
+      return json({ ready: await ownerReviewReady(scope),
+        settings: await store.getDoc<ReviewSettings>(reviewSettingsPath(scope)),
         proposals: await Promise.all(proposals.map(async ({ id, title, page_id, status, created_at, notification }) => ({ id, title, page_id, status, created_at, notification: await ownerNotificationStatus(scope, notification) }))),
         next_cursor: proposals.length === 100 ? proposals.at(-1)!.id : null });
     }

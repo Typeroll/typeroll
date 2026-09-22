@@ -110,3 +110,27 @@ describe('pending owner proposals', () => {
   });
 
 });
+
+describe('what a rejected proposal tells the caller', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  it('names which requirement is missing, and which was never the caller to send', async () => {
+    // These were reported together. An integrator saw that something was
+    // missing and could not tell which — including guessing at a subject they
+    // could never have supplied, because the installation derives it from the
+    // verified owner session rather than accepting one from the request.
+    const { page } = await setup();
+    const base = answerRevision(page);
+
+    const tooShort = await submitOwnerProposal(scope, 'company', identity,
+      { changes: { online: false }, base_revision: base, request_id: 'short' }).catch((e) => e);
+    expect(tooShort.message).toMatch(/request_id must contain 16-100/);
+    // And it says what the value is for, because choosing it wrongly is silent:
+    // the proposal is derived from it, so a replay updates rather than duplicates.
+    expect(tooShort.message).toMatch(/replaying the same value/);
+
+    const noSubject = await submitOwnerProposal(scope, 'company', { ...identity, subjectId: '' },
+      { changes: { online: false }, base_revision: base, request_id: rid('valid') }).catch((e) => e);
+    expect(noSubject.message).toMatch(/not sent by the caller/);
+    expect(noSubject.message).not.toMatch(/request_id must contain/);
+  });
+});

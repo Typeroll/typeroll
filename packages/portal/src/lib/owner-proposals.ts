@@ -122,7 +122,17 @@ export async function ownerEditorFields(scope: ProposalScope, page: Page, fields
 export async function submitOwnerProposal(scope: ProposalScope, pageId: string, identity: { installationId: string; subjectId: string }, input: {
   changes: unknown; base_revision: string; request_id: string;
 }) {
-  if (!/^[A-Za-z0-9_-]{16,100}$/.test(input.request_id ?? '') || !/^[a-f0-9]{64}$/.test(identity.subjectId)) throw new ProposalError('A verified subject and request ID are required');
+  // Reported separately, because only one of the two is ever the caller's to
+  // send. Naming both together told an integrator that something was missing
+  // and left them guessing which — including guessing at a subject they could
+  // not have supplied, since the installation derives it from the verified
+  // owner session rather than accepting one.
+  if (!/^[A-Za-z0-9_-]{16,100}$/.test(input.request_id ?? '')) {
+    throw new ProposalError('request_id must contain 16-100 letters, digits, underscores or hyphens. Choose it yourself and keep it: the proposal is derived from it, so replaying the same value updates the same proposal rather than creating a second.');
+  }
+  if (!/^[a-f0-9]{64}$/.test(identity.subjectId)) {
+    throw new ProposalError('This installation supplied no verified owner subject. It is derived from the owner session, not sent by the caller, so request a new verification link rather than adding a field.');
+  }
   const store = getStore();
   const settings = await store.getDoc<ReviewSettings>(reviewSettingsPath(scope));
   if (!settings || !await ownerReviewReady(scope)) throw new ProposalError('Owner-change review is not configured for this site', 409);
