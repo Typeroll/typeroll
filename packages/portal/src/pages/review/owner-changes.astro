@@ -7,7 +7,7 @@ Astro.response.headers.set('Content-Security-Policy', "default-src 'none'; scrip
 <body><main id="owner-review"><h1>Review proposed changes</h1><p role="status">Loading this private review…</p></main>
 <script>
   import { editControl, sameAnswer, type EditField } from '../../lib/answer-controls';
-  import { displayAnswer } from '../../lib/owner-review-message';
+  import { displayAnswer, reviewOutcomeMessage } from '../../lib/owner-review-message';
   const root = document.querySelector<HTMLElement>('#owner-review')!;
   const url = new URL(location.href);
   const token = url.hash.slice(1);
@@ -33,8 +33,25 @@ Astro.response.headers.set('Content-Security-Policy', "default-src 'none'; scrip
       const actions = node('div'); actions.className = 'actions';
       const approve = node('button', 'Approve changes'), reject = node('button', 'Reject changes');
       const notice = node('p'); notice.setAttribute('role', 'status');
+      // Focusable so the decision's outcome can receive focus once the buttons
+      // that held it are removed, and hidden until there is something to say.
+      notice.tabIndex = -1; notice.hidden = true;
       actions.append(approve, reject); root.append(actions, notice, node('p', 'Approval updates the accepted CMS content. Publishing is a separate action. Your edits are recorded separately from the owner’s original submission.'));
       let requestId = crypto.randomUUID(); let lastInput = '';
+      /**
+       * A confirmation the reviewer cannot see is the same as none.
+       *
+       * Approving is irreversible from here, it is the last step of a flow
+       * whose whole premise is that a person decided deliberately, and the
+       * page is long enough that the reviewer is at the bottom when they
+       * submit. Removing the buttons also destroys keyboard focus, so the
+       * outcome takes it.
+       */
+      const announce = () => {
+        notice.hidden = false;
+        notice.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        notice.focus();
+      };
       const decide = async (action: 'approve' | 'reject') => {
         const adjustments = action === 'approve' ? Object.fromEntries([...controls].filter(([name, control]) => !sameAnswer(control.read(), proposal.changes[name])).map(([name, control]) => [name, control.read()])) : {};
         const fingerprint = JSON.stringify({ action, adjustments });
@@ -43,8 +60,19 @@ Astro.response.headers.set('Content-Security-Policy', "default-src 'none'; scrip
         try {
           const result = await fetch(endpoint, { method: 'POST', headers, credentials: 'omit', body: JSON.stringify({ action, adjustments, request_id: requestId }) });
           const body = await result.json(); if (!result.ok) throw Error(body.error);
-          status.textContent = `This proposal is ${body.status}.`; notice.textContent = `Proposal ${body.status}. No website has been published.`; actions.remove();
-        } catch (error) { notice.textContent = error instanceof Error ? error.message : 'Unable to record the decision'; }
+          status.textContent = `This proposal is ${body.status}.`;
+          // What happened, not that something happened. The reviewer's live
+          // question at this moment is whether approving made the profile
+          // public, and the page answers that before they act; going quiet on
+          // it exactly when it starts to matter is the wrong time to stop.
+          notice.textContent = reviewOutcomeMessage(body.status, Object.keys(adjustments).length);
+          notice.className = 'notice done'; actions.remove();
+          announce();
+        } catch (error) {
+          notice.textContent = error instanceof Error ? error.message : 'Unable to record the decision';
+          notice.className = 'notice failed';
+          announce();
+        }
         finally { approve.disabled = reject.disabled = false; }
       };
       approve.addEventListener('click', () => decide('approve')); reject.addEventListener('click', () => decide('reject'));
@@ -52,5 +80,5 @@ Astro.response.headers.set('Content-Security-Policy', "default-src 'none'; scrip
   } catch (error) { status.textContent = error instanceof Error ? error.message : 'Review link unavailable'; }
 </script>
 <style is:global>
-  body{margin:0;background:#f4f5f7;color:#17212d;font:17px/1.55 system-ui,sans-serif}main{max-width:760px;margin:auto;padding:1.5rem}h1{font-size:clamp(1.6rem,5vw,2.2rem)}section{background:white;border:1px solid #d7dce2;border-radius:.6rem;padding:1.25rem;margin:1.25rem 0}h2{font-size:1.15rem;margin-top:0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f7;padding:.75rem}button{font:inherit;min-height:44px;padding:.6rem 1rem;border:1px solid #64748b;border-radius:.35rem;background:white;cursor:pointer}.actions{display:flex;flex-wrap:wrap;gap:.75rem}.actions button:first-child{background:#142c45;color:white}input,select,textarea{font:inherit;width:100%;box-sizing:border-box}input[type=radio]{width:auto}fieldset{min-width:0}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #2679c4;outline-offset:3px}
+  body{margin:0;background:#f4f5f7;color:#17212d;font:17px/1.55 system-ui,sans-serif}main{max-width:760px;margin:auto;padding:1.5rem}h1{font-size:clamp(1.6rem,5vw,2.2rem)}section{background:white;border:1px solid #d7dce2;border-radius:.6rem;padding:1.25rem;margin:1.25rem 0}h2{font-size:1.15rem;margin-top:0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f7;padding:.75rem}.notice{border-radius:.6rem;padding:1rem 1.25rem;margin:1.25rem 0;font-weight:600;border:1px solid}.notice:focus-visible{outline:3px solid #2679c4;outline-offset:3px}.notice.done{background:#e8f4ec;border-color:#2f7d4f;color:#17422c}.notice.failed{background:#fdeceb;border-color:#a3342c;color:#6d211b}button{font:inherit;min-height:44px;padding:.6rem 1rem;border:1px solid #64748b;border-radius:.35rem;background:white;cursor:pointer}.actions{display:flex;flex-wrap:wrap;gap:.75rem}.actions button:first-child{background:#142c45;color:white}input,select,textarea{font:inherit;width:100%;box-sizing:border-box}input[type=radio]{width:auto}fieldset{min-width:0}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #2679c4;outline-offset:3px}
 </style></body></html>

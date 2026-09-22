@@ -54,3 +54,19 @@ export function ownerReviewMessage(input: { title: string; before: Record<string
   return { subject: 'Profile changes awaiting review',
     text: `${input.title}\n\nA verified owner submitted these changes. Nothing has been published.\n\n${bounded}\n\nReview, edit or reject:\n${input.url}\n\nOpening the link does not approve changes. The link expires ${new Date(input.expiresAt).toUTCString()}.` };
 }
+
+/**
+ * What a reviewer is told once their decision is recorded.
+ *
+ * Says what happened rather than that something happened: approving is
+ * irreversible from the reviewer's side, and their live question at that
+ * moment is whether it made the profile public. The review page answers that
+ * before they act, so it should not go quiet on it afterwards.
+ */
+export function reviewOutcomeMessage(status: string, adjustments = 0): string {
+  if (status === 'approved')
+    return `Approved${adjustments ? ' with your edits' : ''}. The profile now shows these changes, and nothing has been published — publishing is a separate action.`;
+  if (status === 'rejected')
+    return 'Rejected. The proposed changes were discarded and nothing has been published.';
+  return `This proposal is ${status}. Nothing has been published.`;
+}

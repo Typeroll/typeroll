@@ -4,7 +4,7 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { answerRevision, submitOwnerProposal, readOwnerProposal, proposalPath, reviewSettingsPath } from '../../lib/owner-proposals';
 import { notifyOwnerReviewer } from '../../lib/owner-review-notifications';
-import { displayAnswer, ownerReviewMessage } from '../../lib/owner-review-message';
+import { displayAnswer, ownerReviewMessage, reviewOutcomeMessage } from '../../lib/owner-review-message';
 import { handleOwnerReviewAdmin } from '../../lib/owner-review-http';
 import { decryptSecret } from '../../lib/secret-crypto';
 import { GET, POST } from '../../pages/api/owner-review';
@@ -122,5 +122,29 @@ describe('reviewer-readable answers', () => {
 
   it('stops recursing before a reviewer stops reading', () => {
     expect(displayAnswer({ a: { b: { c: { d: 1 } } } })).toContain('[see review]');
+  });
+});
+
+describe('what a reviewer is told after deciding', () => {
+  it('names the outcome and answers the question they are actually asking', () => {
+    // Approving is irreversible from the reviewer's side, and their live
+    // question is whether it made the profile public. The page tells them
+    // before they act; it must not go quiet on it afterwards.
+    const approved = reviewOutcomeMessage('approved');
+    expect(approved).toMatch(/^Approved\./);
+    expect(approved).toContain('nothing has been published');
+    expect(reviewOutcomeMessage('rejected')).toMatch(/^Rejected\./);
+    expect(reviewOutcomeMessage('rejected')).toContain('nothing has been published');
+  });
+
+  it('distinguishes approving as submitted from approving after editing', () => {
+    // Edit-and-approve is a different act, and the reviewer should see that
+    // their edits were part of what was recorded.
+    expect(reviewOutcomeMessage('approved', 0)).not.toContain('your edits');
+    expect(reviewOutcomeMessage('approved', 1)).toContain('with your edits');
+  });
+
+  it('still says nothing was published for a status it does not recognize', () => {
+    expect(reviewOutcomeMessage('superseded')).toContain('Nothing has been published');
   });
 });
