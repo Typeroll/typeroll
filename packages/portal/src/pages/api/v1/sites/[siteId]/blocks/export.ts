@@ -1,4 +1,7 @@
-// GET /api/v1/sites/{siteId}/blocks/export?ids=&name=&version=
+// GET /api/v1/sites/{siteId}/blocks/export?ids=&name=&version=&version_branch=
+//
+// `version` is the package's own semver (it lands in the manifest);
+// `version_branch` selects the site version to export from.
 //
 // Public API mirror of /api/sites/{siteId}/blocks/export. Always returns
 // JSON with zip_base64; the agent can decode and save locally if it wants

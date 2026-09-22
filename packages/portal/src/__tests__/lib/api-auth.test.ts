@@ -126,22 +126,53 @@ describe('requireApiKey', () => {
     if (r.ok) expect(r.value.versionId).toBe('feature');
   });
 
-  it('falls back to main for an unknown branch id', async () => {
+  // The fabricated-version control from M40.1: a branch id nobody ever
+  // created must not come back as main's content under a 200.
+  it('404s a well-formed branch id that does not exist, instead of serving main', async () => {
     const { token } = await setup();
     const { requireApiKey } = await import('../../lib/api-auth');
-    const req = makeRequest(`https://api.example/v1/sites/${SITE}/pages?version=nope`, {
+    const req = makeRequest(
+      `https://api.example/v1/sites/${SITE}/pages?version=definitely-not-a-version`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    const r = await requireApiKey(req, SITE);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.response.status).toBe(404);
+      expect(await r.response.json()).toEqual({
+        error: 'Unknown version "definitely-not-a-version"',
+      });
+    }
+  });
+
+  it('404s a write naming a version that does not exist, without reaching the handler', async () => {
+    const { token } = await setup();
+    const { requireApiKey } = await import('../../lib/api-auth');
+    const req = makeRequest(
+      `https://api.example/v1/sites/${SITE}/pages?version=definitely-not-a-version`,
+      { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: '{}' },
+    );
+    const r = await requireApiKey(req, SITE);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.response.status).toBe(404);
+  });
+
+  it('404s malformed branch ids without hitting the store', async () => {
+    const { token } = await setup();
+    const { requireApiKey } = await import('../../lib/api-auth');
+    // path traversal-style input — refused, not silently replaced, not 5xx.
+    const req = makeRequest(`https://api.example/v1/sites/${SITE}/pages?version=../etc/passwd`, {
       headers: { authorization: `Bearer ${token}` },
     });
     const r = await requireApiKey(req, SITE);
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value.versionId).toBe(MAIN_VERSION_ID);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.response.status).toBe(404);
   });
 
-  it('rejects malformed branch ids without hitting the store', async () => {
+  it('treats an explicit ?version=main and an absent one alike', async () => {
     const { token } = await setup();
     const { requireApiKey } = await import('../../lib/api-auth');
-    // path traversal-style input — should be ignored, not 5xx.
-    const req = makeRequest(`https://api.example/v1/sites/${SITE}/pages?version=../etc/passwd`, {
+    const req = makeRequest(`https://api.example/v1/sites/${SITE}/pages?version=main`, {
       headers: { authorization: `Bearer ${token}` },
     });
     const r = await requireApiKey(req, SITE);

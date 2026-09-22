@@ -5,8 +5,6 @@ const handle: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const requestedVersion = new URL(request.url).searchParams.get('version');
-  if (requestedVersion && requestedVersion !== ctx.versionId) return apiError('Version not found', 404);
   if (ctx.permission !== 'admin' || ctx.extensionIdentity) return apiError('Site administrator access is required', 403);
   // Delegated, so the identity is stamped on the way out rather than built in.
   return withApiIdentity(ctx, await handleOwnerReviewAdmin(ctx, ctx.keyPrefix, request));

@@ -13,8 +13,13 @@ it('does not read source when the caller lacks site access', async () => {
   mocks.guard.mockResolvedValue({ ok: false, response: new Response(null, { status: 404 }) });
   expect((await call()).status).toBe(404); expect(mocks.preview).not.toHaveBeenCalled();
 });
-it('never silently compares main when an explicitly requested version is unavailable', async () => {
-  expect((await call('?version=missing')).status).toBe(404); expect(mocks.preview).not.toHaveBeenCalled();
+// requireApiKey now owns ?version= and refuses an unknown one with 404 before
+// any route runs (api-auth.test.ts pins that). What this route still owns is
+// comparing exactly the version the guard resolved, never one re-read from the
+// query — so a query and a resolved version can no longer disagree here.
+it('compares only the version the guard resolved', async () => {
+  expect(await (await call('?version=missing')).json()).toMatchObject({ version_id: 'branch' });
+  expect(mocks.preview).toHaveBeenCalledWith('owner', 'site', 'branch');
 });
 it('does not reflect internal source data from a comparison failure', async () => {
   mocks.preview.mockRejectedValue(Error('private source payload'));

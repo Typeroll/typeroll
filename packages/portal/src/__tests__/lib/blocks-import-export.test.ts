@@ -168,6 +168,76 @@ describe('GET /v1/.../blocks/export', () => {
   });
 });
 
+// `?version=` means two different things on this route's neighbours, so the
+// site version travels as `?version_branch=` here. Both directions matter:
+// a package semver must not be read as a branch, and a branch must not be
+// swallowed by the package name.
+describe('GET /v1/.../blocks/export — package version vs site version', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('treats ?version= as the package semver, not a branch that does not exist', async () => {
+    const { token } = await setup();
+    await seedBlock('packaged');
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/blocks/export'),
+      'GET',
+      `http://localhost/api/v1/sites/${SITE}/blocks/export?name=trip&version=1.4.2`,
+      { siteId: SITE },
+      { headers: bearer(token) },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json() as { manifest: { name: string; version: string } };
+    expect(body.manifest).toMatchObject({ name: 'trip', version: '1.4.2' });
+  });
+
+  it('exports from the branch named by ?version_branch=', async () => {
+    const { token } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.version(ORG, SITE, 'spring'), {
+      name: 'Spring', kind: 'branch', base_version_id: MAIN_VERSION_ID,
+      created_at: new Date().toISOString(), robots_blocked: false,
+    } satisfies Partial<SiteVersion>);
+    await seedBlock('on-main');
+    await getStore().setDoc(`${paths.blockTypes(ORG, SITE, 'spring')}/on-spring`, {
+      id: 'on-spring', name: 'on_spring', label: 'on-spring', category: 'content',
+      container: false, schema: [], template: '<p>spring</p>', origin: 'user',
+      created_at: '2026-05-22T10:00:00Z',
+    } satisfies BlockType);
+
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/blocks/export'),
+      'GET',
+      `http://localhost/api/v1/sites/${SITE}/blocks/export?version=1.0.0&version_branch=spring`,
+      { siteId: SITE },
+      { headers: bearer(token) },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      manifest: { version: string; blocks: unknown[] }; block_count: number;
+    };
+    // The branch selected the content; the package kept its own version.
+    expect(body.manifest.version).toBe('1.0.0');
+    expect(body.block_count).toBe(1);
+    // The manifest lists block names: the branch's block, not main's.
+    expect(JSON.stringify(body.manifest.blocks)).toContain('on_spring');
+    expect(JSON.stringify(body.manifest.blocks)).not.toContain('on_main');
+  });
+
+  it('404s a ?version_branch= that does not exist instead of exporting main', async () => {
+    const { token } = await setup();
+    await seedBlock('on-main');
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/blocks/export'),
+      'GET',
+      `http://localhost/api/v1/sites/${SITE}/blocks/export?version_branch=definitely-not-a-version`,
+      { siteId: SITE },
+      { headers: bearer(token) },
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Unknown version "definitely-not-a-version"' });
+  });
+});
+
 describe('POST /v1/.../blocks/import', () => {
   beforeEach(async () => { await resetDatastore(); });
 

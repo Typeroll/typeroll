@@ -47,12 +47,7 @@ export async function requireFullSession(cookies: AstroCookies): Promise<GuardRe
 }
 
 /**
- * Resolve the active version for a site, falling back to main if the requested
- * id doesn't exist on this site. Used by requireSiteAccess so every guard
- * yields a trusted `versionId` that callers can pass straight into
- * paths.pages/etc.
- *
- * Defense-in-depth: the requested id is rejected unless it matches the
+ * Defense-in-depth: a requested id is rejected unless it matches the
  * branch-id grammar enforced at create time (kebab-case ASCII, max 64).
  * Today the fixtures store's `path.resolve()` guard and Firestore's literal-
  * segment semantics would already contain any traversal-shaped input — but
@@ -60,16 +55,56 @@ export async function requireFullSession(cookies: AstroCookies): Promise<GuardRe
  */
 const VERSION_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
+export type VersionResolution =
+  | { ok: true; versionId: string }
+  | { ok: false; requested: string };
+
+/**
+ * Resolve a version id the caller asked for *explicitly* — a `?version=<id>`
+ * query parameter on an API request. An id that doesn't name a version of this
+ * site is refused, never replaced.
+ *
+ * The replacement is what this exists to prevent: a request names a branch,
+ * gets a 200, and is answered about main. The caller cannot tell, and on a
+ * write it means a mistyped or stale branch name silently mutates production
+ * main. Callers turn `ok: false` into a 404 that names the version.
+ *
+ * `undefined`, an empty string and `main` all resolve to main — asking for
+ * nothing is not asking for something that doesn't exist.
+ */
+export async function resolveRequestedVersion(
+  orgId: string,
+  siteId: string,
+  requested: string | undefined | null,
+): Promise<VersionResolution> {
+  const id = (requested ?? '').trim();
+  if (!id || id === MAIN_VERSION_ID) return { ok: true, versionId: MAIN_VERSION_ID };
+  if (!VERSION_ID_RE.test(id)) return { ok: false, requested: id };
+  const doc = await getStore().getDoc<SiteVersion>(paths.version(orgId, siteId, id));
+  return doc ? { ok: true, versionId: id } : { ok: false, requested: id };
+}
+
+/** The one 404 body for a version that doesn't exist on this site. */
+export function unknownVersionResponse(requested: string): Response {
+  return json({ error: `Unknown version "${requested}"` }, 404);
+}
+
+/**
+ * Resolve the *advisory* active version for a site, falling back to main if
+ * the requested id doesn't exist on this site. Used by requireSiteAccess and
+ * the app shell, whose input is the site-agnostic `typeroll_version` cookie:
+ * a cookie set on one site legitimately names a branch a sibling site never
+ * had, and the portal must render main there rather than 404. The shell shows
+ * which version answered, so the substitution is visible to the person making
+ * it — unlike the API path, which must use resolveRequestedVersion.
+ */
 export async function resolveVersionId(
   orgId: string,
   siteId: string,
   requested: string | undefined,
 ): Promise<string> {
-  const id = (requested ?? MAIN_VERSION_ID).trim() || MAIN_VERSION_ID;
-  if (id === MAIN_VERSION_ID) return MAIN_VERSION_ID;
-  if (!VERSION_ID_RE.test(id)) return MAIN_VERSION_ID;
-  const doc = await getStore().getDoc<SiteVersion>(paths.version(orgId, siteId, id));
-  return doc ? id : MAIN_VERSION_ID;
+  const resolved = await resolveRequestedVersion(orgId, siteId, requested);
+  return resolved.ok ? resolved.versionId : MAIN_VERSION_ID;
 }
 
 /**

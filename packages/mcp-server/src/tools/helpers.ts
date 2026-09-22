@@ -95,4 +95,4 @@ export function withErrorBoundary<T extends z.ZodRawShape | undefined>(
 export const versionParam = z
   .string()
   .optional()
-  .describe('Branch id to target. Omit for main.');
+  .describe('Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead.');

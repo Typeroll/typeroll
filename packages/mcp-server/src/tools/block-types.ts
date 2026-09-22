@@ -40,7 +40,7 @@ export const blockTypeTools: ToolDef[] = [
     inputSchema: {
       ids: z.array(z.string()).optional().describe('Specific block-type ids to include. Omit to export every user-created block.'),
       name: z.string().optional().describe('Package name (default: {site}-blocks).'),
-      version: z.string().optional().describe('Package version (default: 1.0.0).'),
+      version: z.string().optional().describe('Package version written into the manifest (default: 1.0.0). This is the package semver, not a Site version — use version_branch for that.'),
       version_branch: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -48,7 +48,10 @@ export const blockTypeTools: ToolDef[] = [
       if (args.ids?.length) query.ids = args.ids.join(',');
       if (args.name) query.name = args.name;
       if (args.version) query.version = args.version;
-      if (args.version_branch) query.version = args.version_branch;
+      // Distinct parameters: `version` is the package semver, `version_branch`
+      // selects the site version. Sending both on `version` made the branch
+      // silently overwrite the package name.
+      if (args.version_branch) query.version_branch = args.version_branch;
       const res = await client.get(siteId, 'blocks/export', query);
       return ok(res);
     }),

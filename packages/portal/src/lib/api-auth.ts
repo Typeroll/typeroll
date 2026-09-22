@@ -10,18 +10,17 @@
 //      legitimate token only ever talks to its own site — cross-site reach
 //      is not in the v1 scope.
 //   4. Loads the Site doc so callers can use site.id + site.name.
-//   5. Resolves the optional ?version=<id> query into a trusted versionId
-//      (falls back to main if the requested branch doesn't exist on this
-//      site — same forgiveness model as the in-portal version resolver).
+//   5. Resolves the optional ?version=<id> query into a trusted versionId,
+//      refusing with 404 when the id doesn't name a version of this site.
 //   6. Fires a non-blocking recordKeyUse so the UI shows last-used info.
 //
 // Any failure returns a 401/403 Response. Routes call this and short-circuit
 // the same way they do for requireSiteAccess.
 
 import { paths, MAIN_VERSION_ID, ARCHIVED_SITE_MESSAGE, isArchivedSite } from '@typeroll/shared';
-import type { ExtensionScope, Site, SharePermission, SiteVersion } from '@typeroll/shared';
+import type { ExtensionScope, Site, SharePermission } from '@typeroll/shared';
 import { getStore } from './datastore';
-import { json } from './access';
+import { json, resolveRequestedVersion, unknownVersionResponse } from './access';
 import { recordKeyUse, verifyApiToken } from './api-keys';
 import { rateLimit } from './rate-limit';
 import { recordAudit, previewBody, shouldAudit } from './api-audit';
@@ -109,12 +108,25 @@ const WINDOW_MS = 60_000;
 
 export type GuardResult<T> = { ok: true; value: T } | { ok: false; response: Response };
 
-const VERSION_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
-
 function getBearer(request: Request): string | null {
   const h = request.headers.get('authorization') ?? '';
   if (!h.toLowerCase().startsWith('bearer ')) return null;
   return h.slice(7).trim() || null;
+}
+
+/**
+ * Which query parameter names the *site* version on this route.
+ *
+ * `?version=` means the block package's semver on the blocks export route —
+ * `?name=trip&version=2` packs a package, it does not select a branch. There
+ * the site version travels as `?version_branch=`, the name the MCP tool has
+ * always shown its callers. Everywhere else `?version=` is the site version.
+ *
+ * One parameter with two meanings is the defect this guard exists to stop, so
+ * the two are separated on the wire rather than guessed apart by shape.
+ */
+function siteVersionParam(pathname: string): 'version' | 'version_branch' {
+  return /\/blocks\/export\/?$/.test(pathname) ? 'version_branch' : 'version';
 }
 
 export function extensionScopeForApiRequest(pathname: string, method: string): ExtensionScope | null {
@@ -165,12 +177,14 @@ async function requireExtensionApiCredential(
   }
   const site = await getStore().getDoc<Site>(paths.site(ownerOrgId, urlSiteId));
   if (!site) return { ok: false, response: json({ error: 'Invalid or revoked token' }, 401) };
-  const requestedVersion = (new URL(request.url).searchParams.get('version') ?? '').trim();
-  let versionId: string = MAIN_VERSION_ID;
-  if (requestedVersion && requestedVersion !== MAIN_VERSION_ID && VERSION_ID_RE.test(requestedVersion)) {
-    const version = await getStore().getDoc<SiteVersion>(paths.version(ownerOrgId, urlSiteId, requestedVersion));
-    if (version) versionId = requestedVersion;
+  const resolvedVersion = await resolveRequestedVersion(
+    ownerOrgId, urlSiteId,
+    new URL(request.url).searchParams.get(siteVersionParam(pathname)),
+  );
+  if (!resolvedVersion.ok) {
+    return { ok: false, response: unknownVersionResponse(resolvedVersion.requested) };
   }
+  const versionId = resolvedVersion.versionId;
   const isWrite = request.method !== 'GET' && request.method !== 'HEAD';
   // An archived site is inspectable but frozen, for an installation exactly
   // as for a person. Refused before the rate-limit bucket: a write that can
@@ -354,20 +368,20 @@ export async function requireApiKey(
   const declaredMismatch = organizationMismatch(request, ownerOrgId);
   if (declaredMismatch) return { ok: false, response: declaredMismatch };
 
-  const store = getStore();
-  // ?version=<id> support, parallel to resolveVersionId in lib/access. The
-  // allowlist regex bounces obvious malformed input; for unknown branch ids
-  // we fall back to main rather than 404 so an agent that doesn't know
-  // about versions Just Works.
+  // ?version=<id> resolves through the one resolver in lib/access. An id that
+  // doesn't name a version of this site is refused with 404 rather than
+  // answered about main: 98 v1 routes come through here and 70 of them write,
+  // so a lenient fallback turns a stale branch name into a silent write to
+  // production main. The advisory cookie path keeps its fallback; an explicit
+  // query parameter does not.
   const url = new URL(request.url);
-  const requestedVersion = (url.searchParams.get('version') ?? '').trim();
-  let versionId: string = MAIN_VERSION_ID;
-  if (requestedVersion && requestedVersion !== MAIN_VERSION_ID && VERSION_ID_RE.test(requestedVersion)) {
-    const v = await store.getDoc<SiteVersion>(
-      paths.version(ownerOrgId, urlSiteId, requestedVersion),
-    );
-    if (v) versionId = requestedVersion;
+  const resolvedVersion = await resolveRequestedVersion(
+    ownerOrgId, urlSiteId, url.searchParams.get(siteVersionParam(url.pathname)),
+  );
+  if (!resolvedVersion.ok) {
+    return { ok: false, response: unknownVersionResponse(resolvedVersion.requested) };
   }
+  const versionId = resolvedVersion.versionId;
 
   // Block writes through a read-only share before any rate-limit work —
   // a write rejected at the share level shouldn't even consume the write

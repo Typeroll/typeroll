@@ -8,8 +8,6 @@ const handle: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const requestedVersion = new URL(request.url).searchParams.get('version');
-  if (requestedVersion && requestedVersion !== ctx.versionId) return apiError('Version not found', 404);
   if (!ctx.extensionIdentity?.scopes.includes('content:owner')) return apiError('An owner-authorized installation credential is required', 403);
   if (!params.pageId) return apiError('Missing Page ID', 400);
   try {

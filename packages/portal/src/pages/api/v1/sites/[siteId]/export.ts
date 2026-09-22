@@ -13,8 +13,6 @@
 import type { APIRoute } from 'astro';
 import { apiError, requireApiKey, withApiIdentity } from '../../../../../lib/api-auth';
 import { buildContentExport } from '../../../../../lib/export';
-import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
-import { getStore } from '../../../../../lib/datastore';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -22,16 +20,9 @@ export const GET: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   if (ctx.permission !== 'admin') return apiError('Insufficient permission (admin required)', 403);
 
-  const url = new URL(request.url);
-  let versionId = url.searchParams.get('version') ?? MAIN_VERSION_ID;
-  if (versionId !== MAIN_VERSION_ID) {
-    const version = await getStore().getDoc(paths.version(ctx.orgId, ctx.siteId, versionId));
-    if (!version) return apiError(`Unknown version "${versionId}"`, 404);
-  } else {
-    versionId = MAIN_VERSION_ID;
-  }
-
-  const { zip, filename } = await buildContentExport(ctx.orgId, ctx.siteId, versionId);
+  // ?version=<id> is already resolved — and an unknown one already refused —
+  // by requireApiKey.
+  const { zip, filename } = await buildContentExport(ctx.orgId, ctx.siteId, ctx.versionId);
   // An export is the one response someone files away and reads back later,
   // out of context, so naming the site it came from matters most here.
   return withApiIdentity(ctx, new Response(new Uint8Array(zip), {
