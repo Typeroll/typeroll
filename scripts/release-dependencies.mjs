@@ -1,10 +1,16 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BWRAP_URL, BWRAP_SHA, responseBytes } from '../packages/portal/src/lib/builds/executor.mjs';
+import { BWRAP_SOURCES, BWRAP_SHA, responseBytes } from '../packages/portal/src/lib/builds/executor.mjs';
 import { APPARMOR_URL, APPARMOR_SHA } from '../packages/portal/src/lib/builds/github-sandbox.mjs';
 import { digest } from './release-artifact.mjs';
+// One entry per source: the gate verifies that EVERY source still serves the
+// pinned bytes, rather than stopping at the first that answers. A mirror that
+// has drifted is worth knowing about before a build discovers it.
 export const dependencies = [
-  { name: 'bubblewrap', url: BWRAP_URL, sha256: BWRAP_SHA, limit: 100000 },
+  ...BWRAP_SOURCES.map((url, index) => ({
+    name: index === 0 ? 'bubblewrap (upstream)' : 'bubblewrap (fallback mirror)',
+    url, sha256: BWRAP_SHA, limit: 100000,
+  })),
   { name: 'apparmor-profile', url: APPARMOR_URL, sha256: APPARMOR_SHA, limit: 16384 },
 ];
 /**

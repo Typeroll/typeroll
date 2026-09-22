@@ -8,7 +8,30 @@ import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, reta
 import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, MAX_SEO_REPORT_BYTES, decodeSource, decodeArtifact, encodeArtifact, sha256, assertFilePath, renderReport, seoReport, outputDigest } from './contract.mjs';
 
 // The rolling package pool removes superseded packages; retain this exact verified binary.
-export const BWRAP_URL = 'https://snapshot.ubuntu.com/ubuntu/20260918T000000Z/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb';
+/**
+ * Where the sandbox binary comes from, in order: upstream, then our mirror.
+ *
+ * Every publication build downloads this and runs the customer's build inside
+ * it, so whoever serves it is a hard availability dependency for publishing —
+ * not just for releases. On 2026-09-22 snapshot.ubuntu.com returned 5xx for
+ * hours and no customer site could be published.
+ *
+ * Upstream stays first deliberately. A mirror that is tried first becomes the
+ * normal path for every build including self-hosted ones, so a mistake in our
+ * bucket — wrong object, changed access, misconfiguration — would land on
+ * everyone's ordinary case. Reached only after upstream has already failed,
+ * its blast radius is exactly the outage it exists for.
+ *
+ * Neither source is trusted. BWRAP_SHA is verified against whichever answered,
+ * and a source serving different bytes throws rather than falling through to
+ * one that agrees: an outage may be retried past, a substitution must not be.
+ */
+export const BWRAP_SOURCES = [
+  'https://snapshot.ubuntu.com/ubuntu/20260918T000000Z/pool/main/b/bubblewrap/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb',
+  'https://pub-5c1272ea84a340b9b7893579653e34ab.r2.dev/ubuntu/20260918T000000Z/bubblewrap_0.9.0-1ubuntu0.1_amd64.deb',
+];
+/** Canonical upstream, kept exported for anything naming a single origin. */
+export const BWRAP_URL = BWRAP_SOURCES[0];
 export const BWRAP_SHA = '1b506492bd9c7fd0cdb4f02ac822f1d3e336b0aead5113c1239baf8db5db562a';
 
 export function mediaCheckpointPolicy(kind, progress, startedAt, deadline, now = Date.now()) {
@@ -174,11 +197,24 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     // events: the first is somebody else's server, the second is the bytes at
     // a pinned URL having changed. A publication that reports only an exit
     // code makes an operator read the build path to tell them apart.
-    const sandboxResponse = await fetchImpl(BWRAP_URL, { redirect: 'error', signal: AbortSignal.timeout(30000) })
-      .catch((error) => { throw Error(`sandbox_unavailable: ${BWRAP_URL} (${error.message})`); });
-    if (!sandboxResponse.ok) throw Error(`sandbox_unavailable: ${BWRAP_URL} (HTTP ${sandboxResponse.status})`);
-    const deb = await responseBytes(sandboxResponse, 100000);
-    if (sha256(deb) !== BWRAP_SHA) throw Error('sandbox_integrity_failed');
+    let deb;
+    const sandboxFailures = [];
+    for (const source of BWRAP_SOURCES) {
+      try {
+        const response = await fetchImpl(source, { redirect: 'error', signal: AbortSignal.timeout(30000) });
+        if (!response.ok) { sandboxFailures.push(`${source} (HTTP ${response.status})`); continue; }
+        const bytes = await responseBytes(response, 100000);
+        // A source that answers with different bytes is a substitution, not an
+        // outage, and must not be retried past to a source that agrees.
+        if (sha256(bytes) !== BWRAP_SHA) throw Error(`sandbox_integrity_failed: ${source}`);
+        deb = bytes;
+        break;
+      } catch (error) {
+        if (String(error.message).startsWith('sandbox_integrity_failed')) throw error;
+        sandboxFailures.push(`${source} (${error.message})`);
+      }
+    }
+    if (!deb) throw Error(`sandbox_unavailable: no source served the pinned artifact — ${sandboxFailures.join('; ')}`);
     await fs.writeFile(path.join(temp, 'sandbox.deb'), deb);
     await command('dpkg-deb', ['-x', path.join(temp, 'sandbox.deb'), path.join(temp, 'sandbox')], 30000);
     const binary = await sandboxBinary(path.join(temp, 'sandbox/usr/bin/bwrap'));
