@@ -52,13 +52,16 @@ async function makeKey(siteId: string | null): Promise<string> {
   return token;
 }
 
-async function listSites(token: string): Promise<{
+async function listSites(token: string, declaredOrg?: string): Promise<{
   status: number;
   sites: Array<{ id: string; organization_id: string; name: string; domain?: string; urls: Record<string, unknown> }>;
 }> {
   const mod = await import('../../pages/api/v1/sites/index') as { GET: APIRoute };
   const req = new Request('https://api.example/api/v1/sites', {
-    headers: { authorization: `Bearer ${token}` },
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...(declaredOrg ? { 'Typeroll-Organization': declaredOrg } : {}),
+    },
   });
   const res = await mod.GET({
     request: req, params: {}, cookies: { get: () => undefined } as any, locals: {} as any,
@@ -70,6 +73,26 @@ async function listSites(token: string): Promise<{
 describe('GET /api/v1/sites', () => {
   beforeEach(async () => {
     await resetDatastore();
+  });
+
+  it('refuses a request that declares an organization the key is not on', async () => {
+    // The damage case at Moveria: a caller meant one organization, the key was
+    // on another holding a site with the same id, and the request succeeded
+    // against the wrong site without anything saying so. Declaring the
+    // intended organization turns that into a refusal.
+    await setup();
+    const token = await makeKey(null);
+    const { status } = await listSites(token, OTHER_ORG);
+    expect(status).toBe(409);
+  });
+
+  it('is unchanged when no organization is declared, and passes when it matches', async () => {
+    // Optional forever: an existing caller that sends nothing behaves exactly
+    // as before, so adopting this breaks no one.
+    await setup();
+    const token = await makeKey(null);
+    expect((await listSites(token)).status).toBe(200);
+    expect((await listSites(token, ORG)).status).toBe(200);
   });
 
   it('names the owning organization per site, including a shared-in one', async () => {

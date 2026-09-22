@@ -211,6 +211,40 @@ function clientIp(request: Request): string | undefined {
  * the /v1/sites listing endpoint — every other route should use
  * requireApiKey which also enforces "URL site == token site".
  */
+/**
+ * An optional declaration of the organization the caller believes it is
+ * addressing, checked against the one the key actually resolves to.
+ *
+ * A site id is unique within an organization and not across them. `moveria-se`
+ * exists in two, and on 2026-09-21 a shared key resolved it to the wrong one,
+ * succeeded, and produced an internally coherent measurement of a different
+ * site that refuted a correct bug report. Nothing in the request or the
+ * response said which organization had been reached.
+ *
+ * Carried in a header rather than the path, because the path is not changing:
+ * not API routes, not media URLs. Absent, behaviour is exactly as before, so
+ * no existing caller breaks. Present and wrong, the request fails instead of
+ * quietly doing the right thing to the wrong site.
+ *
+ * 409 rather than 403: the caller is authorized and the request is well
+ * formed. What conflicts is its belief about where it is pointed.
+ */
+export const ORGANIZATION_HEADER = 'Typeroll-Organization';
+
+export function organizationMismatch(request: Request, resolvedOrgId: string): Response | null {
+  const declared = request.headers.get(ORGANIZATION_HEADER)?.trim();
+  if (!declared || declared === resolvedOrgId) return null;
+  return json(
+    {
+      error: `This key resolves to organization "${resolvedOrgId}", not the declared "${declared}". `
+        + 'A site id is unique within an organization and not across them, so the same id may name a different site here.',
+      declared_organization: declared,
+      resolved_organization: resolvedOrgId,
+    },
+    409,
+  );
+}
+
 export async function requireAnyApiKey(request: Request): Promise<GuardResult<ApiContext>> {
   const token = getBearer(request);
   if (!token) {
@@ -229,6 +263,11 @@ export async function requireAnyApiKey(request: Request): Promise<GuardResult<Ap
   if (!verified) {
     return { ok: false, response: json({ error: 'Invalid or revoked token' }, 401) };
   }
+  // Checked against the token's own organization here: with no site in the
+  // URL, "which organization am I on" is a question about the key itself, and
+  // it is the question a caller listing sites is usually asking.
+  const declaredMismatch = organizationMismatch(request, verified.orgId);
+  if (declaredMismatch) return { ok: false, response: declaredMismatch };
 
   // For org-scoped tokens we have no specific site yet — return a context
   // where site fields are placeholders; the listing route branches on
@@ -312,6 +351,8 @@ export async function requireApiKey(
     return { ok: false, response: json({ error: 'Invalid or revoked token' }, 401) };
   }
   const { ownerOrgId, permission, site } = resolved;
+  const declaredMismatch = organizationMismatch(request, ownerOrgId);
+  if (declaredMismatch) return { ok: false, response: declaredMismatch };
 
   const store = getStore();
   // ?version=<id> support, parallel to resolveVersionId in lib/access. The

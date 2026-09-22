@@ -266,6 +266,23 @@ describe('block-types endpoints', () => {
     expect(Array.isArray(body.block_types)).toBe(true);
   });
 
+  it('refuses a site-scoped request that declares the wrong organization', async () => {
+    // The site route resolves an owner before it does anything; the check sits
+    // there, so every v1 site route inherits it rather than opting in.
+    const { token } = await setup();
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/block-types/index'),
+      'GET',
+      `http://localhost/api/v1/sites/${SITE}/block-types`,
+      { siteId: SITE },
+      { headers: { ...bearer(token), 'Typeroll-Organization': 'some-other-org' } },
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json() as { resolved_organization: string; declared_organization: string };
+    expect(body.resolved_organization).toBe(ORG);
+    expect(body.declared_organization).toBe('some-other-org');
+  });
+
   it('finds a block type used only by a page template', async () => {
     // The original test seeded an HTML-mode page and asserted emptiness, so it
     // could only ever pass. Nothing asserted a match, and the endpoint could
