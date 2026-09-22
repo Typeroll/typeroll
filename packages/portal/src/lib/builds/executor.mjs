@@ -170,7 +170,14 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       } catch { previousAssets = undefined; reusableFiles = {}; console.log('TYPEROLL_MEDIA_CACHE unavailable; downloading required media'); }
     }
     stage = 'sandbox';
-    const deb = await responseBytes(await fetchImpl(BWRAP_URL, { redirect: 'error', signal: AbortSignal.timeout(30000) }), 100000);
+    // `sandbox_unavailable` and `sandbox_integrity_failed` are different
+    // events: the first is somebody else's server, the second is the bytes at
+    // a pinned URL having changed. A publication that reports only an exit
+    // code makes an operator read the build path to tell them apart.
+    const sandboxResponse = await fetchImpl(BWRAP_URL, { redirect: 'error', signal: AbortSignal.timeout(30000) })
+      .catch((error) => { throw Error(`sandbox_unavailable: ${BWRAP_URL} (${error.message})`); });
+    if (!sandboxResponse.ok) throw Error(`sandbox_unavailable: ${BWRAP_URL} (HTTP ${sandboxResponse.status})`);
+    const deb = await responseBytes(sandboxResponse, 100000);
     if (sha256(deb) !== BWRAP_SHA) throw Error('sandbox_integrity_failed');
     await fs.writeFile(path.join(temp, 'sandbox.deb'), deb);
     await command('dpkg-deb', ['-x', path.join(temp, 'sandbox.deb'), path.join(temp, 'sandbox')], 30000);

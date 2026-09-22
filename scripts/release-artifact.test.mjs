@@ -36,7 +36,38 @@ test('only successful exact-source main push qualification can supply docs', () 
 test('dependency preflight fails on missing, oversized and changed pinned downloads', async () => {
   const dependency = { name: 'sandbox', url: 'https://example.invalid/file', sha256: digest('ok'), limit: 2 };
   assert.equal((await verifyDependency(dependency, async (_, options) => { assert.equal(options.redirect, 'error'); return new Response('ok'); })).bytes, 2);
-  await assert.rejects(verifyDependency(dependency, async () => new Response('', { status: 404 })), /sandbox: HTTP 404/);
-  await assert.rejects(verifyDependency(dependency, async () => new Response('no')), /SHA-256 mismatch/);
-  await assert.rejects(verifyDependency(dependency, async () => new Response('too long')), /sandbox:/);
+  await assert.rejects(verifyDependency(dependency, async () => new Response('', { status: 404 })), /UNAVAILABLE/);
+  await assert.rejects(verifyDependency(dependency, async () => new Response('no')), /INTEGRITY/);
+  await assert.rejects(verifyDependency(dependency, async () => new Response('too long')), /sandbox/);
+});
+
+test('an unreachable host and a substituted artifact are not the same failure', async () => {
+  // They call for opposite responses. A host that is down means retry when it
+  // is back; bytes that changed at a pinned URL is a supply-chain event that
+  // must never be retried away. On 2026-09-22 snapshot.ubuntu.com returned 503
+  // for hours and the message was shaped exactly like the dangerous one.
+  const dependency = { name: 'sandbox', url: 'https://example.invalid/file', sha256: digest('ok'), limit: 64 };
+
+  for (const response of [
+    async () => new Response('', { status: 503 }),
+    async () => new Response('', { status: 502 }),
+    async () => { throw Error('network unreachable'); },
+  ]) {
+    await assert.rejects(verifyDependency(dependency, response), (error) => {
+      assert.match(error.message, /^UNAVAILABLE:/);
+      assert.doesNotMatch(error.message, /INTEGRITY/);
+      assert.match(error.message, /its host is/);
+      return true;
+    });
+  }
+
+  await assert.rejects(verifyDependency(dependency, async () => new Response('substituted')), (error) => {
+    assert.match(error.message, /^INTEGRITY:/);
+    assert.doesNotMatch(error.message, /UNAVAILABLE/);
+    // Both hashes present, so the reader can tell what it got from what it wanted.
+    assert.match(error.message, new RegExp(digest('substituted')));
+    assert.match(error.message, new RegExp(dependency.sha256));
+    assert.match(error.message, /Do not retry/);
+    return true;
+  });
 });
