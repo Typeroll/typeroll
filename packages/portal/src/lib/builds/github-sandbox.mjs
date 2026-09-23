@@ -25,9 +25,25 @@ export async function prepareGithubSandbox() {
     try { await fs.lstat(override); throw Error('existing_apparmor_override'); }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
+  // Same two events as the shared executor, and the same requirement: an
+  // unreachable host and a substituted artifact must not report identically.
+  // An integrity failure already had its own code; an outage fell through as
+  // whatever fetch threw, which the runner's sanitizer turns into the generic
+  // `github_build_failed` — the same code a build gets for failing to compile.
   const get = async (url, digest, limit) => {
-    const bytes = await responseBytes(await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(30000) }), limit);
-    if (sha256(bytes) !== digest) throw Error('github_sandbox_integrity_failed');
+    let bytes;
+    try {
+      bytes = await responseBytes(await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(30000) }), limit);
+    } catch (error) {
+      console.error(`TYPEROLL_SANDBOX_UNAVAILABLE ${url} could not be fetched (${error.message}). ` +
+        'The pinned artifact is not in question; its host is. Retry when the host recovers.');
+      throw Error('github_sandbox_unavailable');
+    }
+    if (sha256(bytes) !== digest) {
+      console.error(`TYPEROLL_SANDBOX_INTEGRITY ${url} served bytes hashing to ${sha256(bytes)}, pinned ${digest}. ` +
+        'The bytes at a pinned URL changed. Do not retry; establish why before publishing anything.');
+      throw Error('github_sandbox_integrity_failed');
+    }
     return bytes;
   };
   const [deb, profile] = await Promise.all([get(BWRAP_URL, BWRAP_SHA, 100000), get(APPARMOR_URL, APPARMOR_SHA, 16384)]);

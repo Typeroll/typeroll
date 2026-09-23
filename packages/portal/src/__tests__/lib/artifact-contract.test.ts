@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { BUILD_RUNTIME, MAX_ARTIFACT_BYTES, encodeArtifact, decodeArtifact, sha256, type BuildIdentity } from '../../lib/builds/contract.mjs';
-import { artifactFailureCode } from '../../lib/builds/executor.mjs';
+import { artifactFailureCode, acquireSandbox } from '../../lib/builds/executor.mjs';
 
 const identity: BuildIdentity = { protocol: 1, org_id: 'org', site_id: 'site', version_id: 'main', job_id: 'job', publication_id: 'a'.repeat(64), source_sha256: 'b'.repeat(64), commit: 'c'.repeat(40), branch: 'main', node_version: BUILD_RUNTIME };
 const marker = { '.well-known/typeroll/publication.json': Buffer.from(JSON.stringify({ id: identity.publication_id })) };
@@ -44,4 +44,42 @@ it('keeps provider diagnostics specific without exposing arbitrary error text', 
   expect(artifactFailureCode('Static artifact exceeds the size limit')).toBe('static_output_size_limit');
   expect(artifactFailureCode('Invalid build file path')).toBe('invalid_static_path');
   expect(artifactFailureCode('request failed with private credential value')).toBe('build_failed');
+});
+
+it('keeps an outage and a substitution distinguishable after sanitization', () => {
+  // The sanitizer is correct and stays: a message carrying a URL must not
+  // reach reported state. But that is exactly why the sandbox codes have to be
+  // bare — attaching the source to them meant an outage and a supply-chain
+  // event both arrived at the operator as `build_failed`, which is the defect,
+  // not the guard.
+  expect(artifactFailureCode('unavailable')).toBe('unavailable');
+  expect(artifactFailureCode('integrity_failed')).toBe('integrity_failed');
+  expect(artifactFailureCode('integrity_failed: https://snapshot.ubuntu.com/ubuntu/pool/b/bubblewrap.deb')).toBe('build_failed');
+});
+
+it('reports an outage and a substitution as codes that survive sanitization', async () => {
+  const sources = ['https://upstream.example/bwrap.deb', 'https://mirror.example/bwrap.deb'];
+  const pinned = sha256(Buffer.from('pinned sandbox'));
+  const reported = async (impl: any) => {
+    const log: string[] = [];
+    try { await acquireSandbox(impl, sources, pinned, (m: string) => log.push(m)); return { code: null, log }; }
+    // What reaches the operator is the sanitized code, not the thrown message.
+    catch (error: any) { return { code: artifactFailureCode(error.message), log }; }
+  };
+
+  const outage = await reported(async () => new Response('', { status: 503 }));
+  expect(outage.code).toBe('unavailable');
+  expect(outage.log[0]).toContain('upstream.example');
+  expect(outage.log[0]).toContain('mirror.example');
+
+  // A source serving different bytes must not be skipped in favour of one that
+  // agrees: that is how a substitution gets published.
+  const substituted = await reported(async (url: string) =>
+    url === sources[0] ? new Response('substituted', { status: 200 }) : new Response('pinned sandbox', { status: 200 }));
+  expect(substituted.code).toBe('integrity_failed');
+  expect(substituted.log[0]).toContain('Do not retry');
+
+  const healthy = await reported(async (url: string) =>
+    url === sources[0] ? new Response('', { status: 503 }) : new Response('pinned sandbox', { status: 200 }));
+  expect(healthy.code).toBeNull();
 });

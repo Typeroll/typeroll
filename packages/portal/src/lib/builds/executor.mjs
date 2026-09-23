@@ -98,6 +98,53 @@ async function readSeoReport(work, publicationId) {
   return seoReport(JSON.parse(await fs.readFile(file, 'utf8')), publicationId);
 }
 
+/**
+ * Fetch the pinned build sandbox, and fail in a way that says which of two
+ * opposite things happened.
+ *
+ * `unavailable` is somebody else's server and should be retried. `integrity_failed`
+ * is the bytes at a pinned URL having changed, which must never be retried — a
+ * retry is how a substitution gets accepted on the attempt where a source that
+ * agrees happens to answer. For the same reason a substituted source is not
+ * skipped in favour of the next one.
+ *
+ * The thrown codes are bare, and that is the whole point rather than a style
+ * choice. `artifactFailureCode` reduces any message that is not plain
+ * snake_case to `build_failed`, which is right — it keeps URLs, paths and
+ * credentials out of reported state — but it meant a code carrying its source
+ * URL reached the operator as `build_failed` whichever event had happened. The
+ * distinction was being drawn here and discarded one function later. The detail
+ * belongs on the build log, where a human reads it; the code belongs in
+ * reported state, where it is matched.
+ *
+ * Extracted from `executeBuild` so this is reachable from a test. It was not,
+ * and the sanitizer's behaviour could be pinned while its caller quietly
+ * stopped satisfying it.
+ */
+export async function acquireSandbox(fetchImpl, sources = BWRAP_SOURCES, digest = BWRAP_SHA, log = console.error) {
+  const failures = [];
+  for (const source of sources) {
+    try {
+      const response = await fetchImpl(source, { redirect: 'error', signal: AbortSignal.timeout(30000) });
+      if (!response.ok) { failures.push(`${source} (HTTP ${response.status})`); continue; }
+      const bytes = await responseBytes(response, 100000);
+      const actual = sha256(bytes);
+      if (actual !== digest) {
+        log(`TYPEROLL_SANDBOX_INTEGRITY ${source} served bytes hashing to ${actual}, pinned ${digest}. ` +
+          'The bytes at a pinned URL changed. Do not retry; establish why before publishing anything.');
+        throw Error('integrity_failed');
+      }
+      return bytes;
+    } catch (error) {
+      if (error.message === 'integrity_failed') throw error;
+      failures.push(`${source} (${error.message})`);
+    }
+  }
+  log(`TYPEROLL_SANDBOX_UNAVAILABLE no source served the pinned build sandbox — ${failures.join('; ')}. ` +
+    'The pinned artifact is not in question; its hosts are. Retry when a host recovers.');
+  throw Error('unavailable');
+}
+
 export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
   if (process.platform !== 'linux' || process.arch !== 'x64' || process.versions.node !== BUILD_RUNTIME) throw Error('unsupported_build_runtime');
   const origin = new URL(config.origin);
@@ -193,28 +240,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       } catch { previousAssets = undefined; reusableFiles = {}; console.log('TYPEROLL_MEDIA_CACHE unavailable; downloading required media'); }
     }
     stage = 'sandbox';
-    // `sandbox_unavailable` and `sandbox_integrity_failed` are different
-    // events: the first is somebody else's server, the second is the bytes at
-    // a pinned URL having changed. A publication that reports only an exit
-    // code makes an operator read the build path to tell them apart.
-    let deb;
-    const sandboxFailures = [];
-    for (const source of BWRAP_SOURCES) {
-      try {
-        const response = await fetchImpl(source, { redirect: 'error', signal: AbortSignal.timeout(30000) });
-        if (!response.ok) { sandboxFailures.push(`${source} (HTTP ${response.status})`); continue; }
-        const bytes = await responseBytes(response, 100000);
-        // A source that answers with different bytes is a substitution, not an
-        // outage, and must not be retried past to a source that agrees.
-        if (sha256(bytes) !== BWRAP_SHA) throw Error(`sandbox_integrity_failed: ${source}`);
-        deb = bytes;
-        break;
-      } catch (error) {
-        if (String(error.message).startsWith('sandbox_integrity_failed')) throw error;
-        sandboxFailures.push(`${source} (${error.message})`);
-      }
-    }
-    if (!deb) throw Error(`sandbox_unavailable: no source served the pinned artifact — ${sandboxFailures.join('; ')}`);
+    const deb = await acquireSandbox(fetchImpl);
     await fs.writeFile(path.join(temp, 'sandbox.deb'), deb);
     await command('dpkg-deb', ['-x', path.join(temp, 'sandbox.deb'), path.join(temp, 'sandbox')], 30000);
     const binary = await sandboxBinary(path.join(temp, 'sandbox/usr/bin/bwrap'));

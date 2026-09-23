@@ -5,6 +5,27 @@ import { buildInputPath, readEngineConfiguration, type BuildInput } from './stat
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { githubBuildClient, readGithubDispatch } from './github';
 
+/**
+ * What to tell the reader, given the reported code.
+ *
+ * Every failure used to end in "retry publishing", which is right for almost
+ * all of them and wrong for exactly one: `sandbox_integrity_failed` means the
+ * bytes at a pinned URL changed, and retrying is how a substitution gets
+ * accepted on the attempt where it happens to be served by a source that
+ * agrees. An outage and a substitution must not read the same, and the
+ * difference is only useful if it survives into the sentence an operator
+ * reads.
+ */
+export function buildFailureMessage(code: string): string {
+  if (code === 'sandbox_integrity_failed')
+    return 'The build sandbox downloaded from a pinned URL did not match its pinned checksum. This is not a transient failure and must not be retried: the bytes at that URL changed. Check the build log for the source and the checksum it served, and establish why before publishing anything.';
+  if (code === 'sandbox_unavailable')
+    return 'No source served the pinned build sandbox. The pinned artifact is not in question; its hosts are unreachable. Check the build log for which sources failed, then retry publishing when a host recovers.';
+  if (code === 'build_connection_lost')
+    return 'The build engine stopped reporting progress and this attempt can no longer finish. Check the build log, then retry publishing. No replacement build was started.';
+  return 'The build engine reported a failed or cancelled attempt. Check the build log, then retry publishing.';
+}
+
 /** Report a revoked execution on demand; never dispatch a replacement build. */
 export async function refreshBuildFailure(org: string, site: string, job: DeployJob): Promise<DeployJob> {
   if (!['queued', 'running'].includes(job.status)) return job;
@@ -43,9 +64,7 @@ export async function refreshBuildFailure(org: string, site: string, job: Deploy
   if (!task || !['failed', 'cancelled'].includes(task.status)) return job;
   const code = task.error_code ?? 'shared_build_failed';
   const patch = { status: 'failed', finished_at: new Date(now).toISOString(),
-    error: code === 'build_connection_lost'
-      ? 'The build engine stopped reporting progress and this attempt can no longer finish. Check the build log, then retry publishing. No replacement build was started.'
-      : 'The build engine reported a failed or cancelled attempt. Check the build log, then retry publishing.',
+    error: buildFailureMessage(code),
     failure: { stage: job.phase ?? 'building', code } };
   await store.compareAndUpdateDoc<any>(paths.deploy(org, site, job.id), current => ['queued', 'running'].includes(current.status) &&
     (current.git_publication?.verification_task_key ?? current.git_publication?.build_task_key) === key, patch);

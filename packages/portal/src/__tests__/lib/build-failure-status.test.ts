@@ -2,7 +2,7 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { paths } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
-import { refreshBuildFailure } from '../../lib/builds/failure-status';
+import { refreshBuildFailure, buildFailureMessage } from '../../lib/builds/failure-status';
 const jobPath = paths.deploy('org','site','job'), taskPath = 'organizations/org/build_tasks/task';
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore();
@@ -32,4 +32,18 @@ it('does not overwrite a completion that wins the status-read race', async () =>
 it('does not mistake an explicitly queued continuation for a failed initial dispatch', async () => {
   await getStore().updateDoc(taskPath,{status:'queued',attempt:2,lease_until:0});
   expect(await refreshBuildFailure('org','site',(await getStore().getDoc<any>(jobPath))!)).toMatchObject({status:'running'});
+});
+
+it('tells an operator to retry an outage and never to retry a substitution', () => {
+  const outage = buildFailureMessage('sandbox_unavailable');
+  const substitution = buildFailureMessage('sandbox_integrity_failed');
+  expect(outage).not.toBe(substitution);
+  expect(outage).toMatch(/retry publishing when a host recovers/);
+  // The one case where "check the log, then retry" is active misdirection: a
+  // retry is how a substituted artifact gets accepted on the attempt where a
+  // source that agrees happens to answer.
+  expect(substitution).toMatch(/must not be retried/);
+  expect(substitution).not.toMatch(/retry publishing/);
+  expect(buildFailureMessage('build_connection_lost')).toMatch(/No replacement build was started/);
+  expect(buildFailureMessage('shared_build_failed')).toMatch(/failed or cancelled attempt/);
 });
