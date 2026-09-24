@@ -235,11 +235,12 @@ describe('Convert HTML → blocks via /v1', () => {
     expect(page!.blocks ?? []).toHaveLength(0);
   });
 
-  it('dry_run=false with switch_mode=true flips the page to blocks', async () => {
+  it('refuses to apply a conversion, including a link-wrapped card', async () => {
     const { token } = await setup();
+    const card = '<a class="area-card" href="/podd/"><span class="area-media"><picture><img src="/cover.jpg" alt=""></picture></span><span class="area-body"><h3>Episode title</h3><p>The description that must survive.</p></span></a>';
     await seedPage('about', {
       content_mode: 'html',
-      html_content: '<h1>About</h1>',
+      html_content: card,
     });
 
     const res = await callRoute(
@@ -249,16 +250,16 @@ describe('Convert HTML → blocks via /v1', () => {
       { siteId: SITE, pageId: 'about' },
       { headers: bearer(token), body: { dry_run: false, switch_mode: true } },
     );
-    const body = await res.json() as { applied: boolean; switched_mode: boolean };
-    expect(body.applied).toBe(true);
-    expect(body.switched_mode).toBe(true);
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toContain('does not change a page');
 
     const { getStore } = await import('../../lib/datastore');
     const page = await getStore().getDoc<Page>(
       `${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/about`,
     );
-    expect(page!.content_mode).toBe('blocks');
-    expect((page!.blocks ?? []).length).toBeGreaterThan(0);
+    expect(page).toMatchObject({ content_mode: 'html', html_content: card });
+    expect(page!.blocks ?? []).toHaveLength(0);
   });
 
   it('empty html_content returns 200 with empty proposal', async () => {

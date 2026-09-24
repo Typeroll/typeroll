@@ -208,6 +208,14 @@ describe('raw WordPress content order', () => {
     expect(result.blocks[4].data.anchor_id).toBe('related');
     expect(result.blocks[5].data.html).toContain('href="/quote"');
   });
+  it('reports text discarded from a link-wrapped card', () => {
+    const result = htmlToBlocks('<a class="area-card" href="/podd/"><span class="area-media"><picture><img src="/cover.jpg" alt=""></picture></span><span class="area-body"><h3>Episode title</h3><p>The description that must survive.</p></span></a>');
+    expect(result.blocks.map(block => block.type)).toEqual(['core/image']);
+    expect(JSON.stringify(result.blocks)).not.toContain('The description that must survive.');
+    expect(result.unconverted.map(item => item.source).join('\n')).toContain('The description that must survive.');
+    expect(result.unconverted.map(item => item.source).join('\n')).toContain('area-card');
+    expect(result.notes.join('\n')).toContain('The description that must survive.');
+  });
   it('keeps linked image-only headings as native media, not textual headings or TOC entries', () => {
     const result=htmlToBlocks('<p>Intro</p><h2><a href="/photo.jpg"><img src="/photo.jpg" alt="Photo"></a></h2><h2>Related</h2>');
     expect(result.blocks.map(b=>b.type)).toEqual(['core/prose','core/image','core/heading']);

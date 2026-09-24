@@ -3,9 +3,8 @@
 // (override with `version`).
 //
 // The AI agent uses these to author block-mode pages directly. For
-// HTML-mode pages, `convert_page_to_blocks` is the bridge — call with
-// `dry_run: true` first to preview, then `dry_run: false, switch_mode:
-// true` to commit.
+// HTML-mode pages, `convert_page_to_blocks` returns a preview only.
+// It never writes. A person accepts that preview in the page editor.
 
 import { z } from 'zod';
 import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
@@ -207,18 +206,17 @@ export const pageBlockTools: ToolDef[] = [
   {
     name: 'set_page_mode',
     description:
-      'Safely switch a page\'s content_mode between "blocks" and "html". Always snapshots a revision before the flip so the previous state is restorable. HTML → blocks with `convert: true` also runs the heuristic converter so the page starts with a populated tree. Blocks → HTML drops the block tree (the revision retains it). Prefer this over `update_page patch={content_mode}` because that bypasses snapshotting.',
+      'Safely switch a page\'s content_mode between "blocks" and "html". Always snapshots a revision before the flip so the previous state is restorable. HTML → blocks does not convert or rewrite the body. Blocks → HTML drops the block tree (the revision retains it). Prefer this over `update_page patch={content_mode}` because that bypasses snapshotting. Automatic HTML-to-blocks conversion is preview-only; a person accepts it in the page editor.',
     inputSchema: {
       page_id: z.string(),
       to: z.enum(['blocks', 'html']).describe('Target mode.'),
-      convert: z.boolean().optional().describe('When going to blocks: run the htmlToBlocks heuristic on html_content. Ignored for blocks → html.'),
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.post(
         siteId,
         `pages/${encodeURIComponent(args.page_id)}/mode`,
-        { to: args.to, convert: args.convert ?? false },
+        { to: args.to },
         v(args.version),
       );
       return ok(res);
@@ -227,21 +225,16 @@ export const pageBlockTools: ToolDef[] = [
   {
     name: 'convert_page_to_blocks',
     description:
-      'Heuristically convert a page\'s html_content into a block tree. By default runs as dry_run and returns the proposed blocks without writing. Pass dry_run: false to apply, and switch_mode: true to flip content_mode to "blocks" so the renderer uses the new tree. For a safer one-call switch with revision snapshot, use `set_page_mode` with `convert: true` instead.',
+      'Preview a heuristic conversion of a page\'s html_content into a block tree. Always returns the proposal, including unconverted text, classes and markup, and does not write. A person accepts the preview in the page editor. This tool cannot change content_mode or replace the body.',
     inputSchema: {
       page_id: z.string(),
-      dry_run: z.boolean().optional().describe('Default true. When true, returns the proposed tree without writing.'),
-      switch_mode: z.boolean().optional().describe('When applying (dry_run=false), flip content_mode to "blocks". Default false.'),
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.post(
         siteId,
         `pages/${encodeURIComponent(args.page_id)}/blocks/convert`,
-        {
-          dry_run: args.dry_run ?? true,
-          switch_mode: args.switch_mode ?? false,
-        },
+        { dry_run: true },
         v(args.version),
       );
       return ok(res);
