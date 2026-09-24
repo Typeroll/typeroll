@@ -34,15 +34,17 @@ it('loads bubblewrap through the shared fallback and keeps a bad digest from fal
   const body = Buffer.from('pinned sandbox');
   const pinned = sha256(body);
   const quiet = () => {};
-  await expect(acquireGithubBubblewrap(async (url: string) => (
+  const urlOf = (input: RequestInfo | URL) => input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
+  const fetchAt = (respond: (url: string) => Response) => async (input: RequestInfo | URL, _init?: RequestInit) => respond(urlOf(input));
+  await expect(acquireGithubBubblewrap(fetchAt(url => (
     url === sources[0] ? new Response('', { status: 503 }) : new Response(body)
-  ), sources, pinned, quiet)).resolves.toEqual(body);
-  await expect(acquireGithubBubblewrap(async () => new Response('', { status: 503 }), sources, pinned, quiet)).rejects.toThrow('github_sandbox_unavailable');
+  )), sources, pinned, quiet)).resolves.toEqual(body);
+  await expect(acquireGithubBubblewrap(fetchAt(() => new Response('', { status: 503 })), sources, pinned, quiet)).rejects.toThrow('github_sandbox_unavailable');
   let mirrorFetches = 0;
-  await expect(acquireGithubBubblewrap(async (url: string) => {
+  await expect(acquireGithubBubblewrap(fetchAt(url => {
     if (url === sources[1]) mirrorFetches += 1;
     return url === sources[0] ? new Response('substituted') : new Response(body);
-  }, sources, pinned, quiet)).rejects.toThrow('github_sandbox_integrity_failed');
+  }), sources, pinned, quiet)).rejects.toThrow('github_sandbox_integrity_failed');
   expect(mirrorFetches).toBe(0);
 });
 it('pins the sandbox archive to a dated official Ubuntu snapshot', () => {
