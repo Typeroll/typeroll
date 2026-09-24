@@ -335,8 +335,10 @@ For migrated legacy pages or a hand-crafted one-off, `content_mode:
 - HTML-mode bodies are container-constrained; full-bleed requires the
   negative-margin escape (`margin-left: calc(50% - 50vw); width: 100vw`)
   — never combine with `overflow-x: clip` on a wrapper.
-- `set_page_mode` flips a page between modes;
-  `convert_page_to_blocks` does a heuristic HTML→blocks conversion.
+- `set_page_mode` flips a page between modes and does not convert HTML.
+  `convert_page_to_blocks` previews a heuristic conversion, including
+  what it could not convert, and does not write. A person accepts that
+  preview in the page editor.
 
 ## Pitfalls
 

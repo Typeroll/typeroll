@@ -1,6 +1,6 @@
 ---
 title: WordPress Migration
-description: A complete guide to migrating a WordPress site to Typeroll with shared categories, editable blocks and a reviewed presentation.
+description: A complete guide to migrating a WordPress site to Typeroll with shared categories, preserved HTML and a reviewed presentation.
 ---
 
 import { Steps, Aside } from "@astrojs/starlight/components";
@@ -23,7 +23,7 @@ The migration workflow imports accessible WordPress content (pages, posts and su
 - Maps custom post types to Typeroll content types
 - Generates URL redirects
 - Imports categories and tags once as Pages with their own Content types; articles store references
-- Preserves content without automatic AI rewriting
+- Preserves cleaned HTML without automatic AI rewriting or HTML-to-blocks conversion
 - Leaves imported content in Review before going live
 
 **What it doesn't do:**
@@ -149,7 +149,9 @@ table of contents as a generated block in a Page template, never a copied field
 on each article. Test forms and Extensions separately; a rendered shell does not
 prove that the integration works.
 
-Conversion exceptions are included in the workflow review. Use an HTML block
+Imported pages stay in HTML mode. Automatic HTML-to-blocks conversion is not applied. A person can preview a conversion in the page editor; the preview lists text, classes and markup it could not represent and writes nothing until that person accepts it.
+
+Conversion notes are included in the workflow review. Use an HTML block
 only for an uncommon source-specific exception; recurring requirements belong
 in reusable blocks or templates. Missing native features must be resolved before
 converting the remaining pages. Source styles and interactive scripts are not
@@ -291,6 +293,8 @@ Astro and multisite work; its coverage starts unverified and requires no uncover
 surfaces or unexplained regressions before visual signoff.
 
 ### Preserve media positions when converting HTML
+
+Import does not turn that HTML into blocks. The preview converter is separate, and a person has to accept it before a page changes.
 
 Core 0.2.35+ applies browser-compatible HTML tree construction to the **raw source**
 before restoring lazy media or sanitizing markup. Do not parse and serialize a
