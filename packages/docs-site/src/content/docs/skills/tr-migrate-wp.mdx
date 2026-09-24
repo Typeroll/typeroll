@@ -14,14 +14,14 @@ and support the same workflow as a managed service.
 
 The migration workflow runs in stages:
 
-| Stage               | What happens                                                                                      |
-| ------------------- | ------------------------------------------------------------------------------------------------- |
-| **Discover**        | Verifies the WP REST API is reachable, probes for the helper plugin                               |
-| **Inventory**       | Walks the sitemap + REST API to build a complete URL list                                         |
-| **Custom types**    | ACF/CPT schemas inferred; each becomes a Typeroll content type whose records are Pages            |
+| Stage               | What happens                                                                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Discover**        | Verifies the WP REST API is reachable, probes for the helper plugin                                                                          |
+| **Inventory**       | Walks the sitemap + REST API to build a complete URL list                                                                                    |
+| **Custom types**    | ACF/CPT schemas inferred; each becomes a Typeroll content type whose records are Pages                                                       |
 | **Extract content** | Cleaned HTML is kept in HTML mode. Automatic HTML-to-blocks conversion is not applied. Shared terms are referenced and media is copied to R2 |
-| **Redirects**       | Old WordPress URLs mapped to new Typeroll slugs                                                   |
-| **Review**          | Paused for review of URLs, conversion exceptions, shared data and desktop/mobile fidelity         |
+| **Redirects**       | Old WordPress URLs mapped to new Typeroll slugs                                                                                              |
+| **Review**          | Paused for review of URLs, conversion exceptions, shared data and desktop/mobile fidelity                                                    |
 
 All imported pages start with `status: "review"`. You sign off before anything goes live.
 
