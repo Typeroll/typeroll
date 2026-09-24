@@ -592,22 +592,21 @@ Use `set_page_mode` — it snapshots a revision before flipping, so the
 previous state is restorable:
 
 ```
-# Convert an HTML-mode page to blocks with auto-heuristic conversion:
-set_page_mode page_id=about to=blocks convert=true
-
-# Or just switch the mode without converting (empty blocks):
+# Switch the mode without converting the HTML body:
 set_page_mode page_id=about to=blocks
 
 # Switch back to HTML (drops the block tree; revision retains it):
 set_page_mode page_id=about to=html
 ```
 
-The heuristic converter recognises `<h1-4>` → heading, `<img>` → image,
-`<a.btn>` → button, `grid-cols-2` → two-column, `<section>` / hero divs
-→ section. Anything it can't classify becomes a `core/prose` block,
-which preserves the raw HTML losslessly. Run with `convert_page_to_blocks
-dry_run=true` first if you want to inspect the proposal before
-committing.
+`convert_page_to_blocks` previews a heuristic conversion and lists
+`unconverted` text, classes, and markup. It does not write, and
+`set_page_mode` does not apply that preview. A person accepts the
+preview in the page editor. The heuristic recognises `<h1-4>` →
+heading, `<img>` → image, `<a.btn>` → button, `grid-cols-2` →
+two-column, `<section>` / hero divs → section. Link-wrapped card text
+and author classes are reported as unconverted rather than discarded
+silently.
 
 ### "Build a directory or migrate a content family"
 
