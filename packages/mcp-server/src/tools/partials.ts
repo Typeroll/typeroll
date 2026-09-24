@@ -71,18 +71,17 @@ export const partialTools: ToolDef[] = [
   {
     name: 'set_partial_mode',
     description:
-      'Switch a header, footer, or free partial between HTML and native blocks through the revision-safe mode endpoint. To author a native partial deterministically: update_partial with blocks + save:true, then set_partial_mode to="blocks", then read_partial and verify the returned mode/tree. Set convert:true only for heuristic HTML-to-block conversion.',
+      'Switch a header, footer, or free partial between HTML and native blocks through the revision-safe mode endpoint. To author a native partial deterministically: update_partial with blocks + save:true, then set_partial_mode to="blocks", then read_partial and verify the returned mode/tree. This does not convert HTML into blocks.',
     inputSchema: {
       partial_id: z.string(),
       to: z.enum(['blocks', 'html']),
-      convert: z.boolean().optional(),
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.post(
         siteId,
         `partials/${encodeURIComponent(args.partial_id)}/mode`,
-        { to: args.to, convert: args.convert ?? false },
+        { to: args.to },
         v(args.version),
       );
       return ok(res);

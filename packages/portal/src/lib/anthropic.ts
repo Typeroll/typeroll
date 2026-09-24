@@ -468,13 +468,12 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'set_page_mode',
     description:
-      "Switch a page's content_mode between 'blocks' and 'html'. Snapshots a revision first, so the previous state is restorable from /pages/{id}/revisions. With convert=true, going html→blocks runs the heuristic converter so the page starts with a populated tree instead of empty. Blocks→html drops the tree (revision retains it).",
+      "Switch a page's content_mode between 'blocks' and 'html'. Snapshots a revision first, so the previous state is restorable from /pages/{id}/revisions. Going html→blocks does not convert or rewrite the body. Blocks→html drops the tree (revision retains it). Do not pass convert; automatic HTML-to-blocks conversion does not write.",
     input_schema: {
       type: 'object',
       properties: {
         page_id: { type: 'string' },
         to: { type: 'string', enum: ['blocks', 'html'] },
-        convert: { type: 'boolean', description: 'Only matters for html→blocks. Default false.' },
       },
       required: ['page_id', 'to'],
     },
@@ -482,7 +481,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'convert_page_to_blocks',
     description:
-      "Run the heuristic HTML→blocks converter on a page's html_content and return the proposed block tree without writing. Use this to inspect what set_page_mode(convert=true) would produce. Tags it recognises: <h1-4>→heading, <img>/<figure>→image, <a class='btn'>→button, grid-cols-2→columns, hero/section divs→section. Unrecognised content becomes core/prose blocks (lossless raw HTML wrapper).",
+      "Preview the heuristic HTML→blocks converter for a page's html_content. Returns the proposed block tree, notes, and unconverted losses. Does not write. A person accepts the preview in the page editor. Tags it recognises: <h1-4>→heading, <img>/<figure>→image, <a class='btn'>→button, grid-cols-2→columns, hero/section divs→section. Link-wrapped card text, author classes, and unsupported markup are listed in unconverted instead of being discarded silently.",
     input_schema: {
       type: 'object',
       properties: { page_id: { type: 'string' } },
@@ -948,9 +947,9 @@ When you edit an HTML-mode page, you must provide the FULL new HTML body via \`u
 
 ### Switching modes
 
-\`set_page_mode page_id=foo to=blocks convert=true\` flips an HTML page to blocks-mode and runs the heuristic converter. It snapshots a revision first so the previous state is restorable. The converter recognises common patterns (headings, images, buttons, two-column grids, sections); anything else lands as a \`core/prose\` block preserving the raw HTML losslessly.
+\`set_page_mode page_id=foo to=blocks\` flips content_mode and does not convert or rewrite the HTML body. It snapshots a revision first. Automatic HTML-to-blocks conversion is not available from this tool.
 
-Use \`convert_page_to_blocks page_id=foo\` to preview the proposed conversion without writing — useful before committing on a long page.
+Use \`convert_page_to_blocks page_id=foo\` to preview a proposed conversion, including an \`unconverted\` list of text, classes, and markup the heuristic would drop. The preview does not write. A person accepts it in the page editor.
 
 ### Templates
 
@@ -1705,6 +1704,9 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       if (page.content_mode === to) {
         return { result: { ok: true, unchanged: true, content_mode: to } };
       }
+      if (input.convert) {
+        return { result: { error: 'Automatic HTML-to-blocks conversion does not write. Call convert_page_to_blocks for a preview, including what it could not convert. A person accepts that preview in the page editor.' } };
+      }
       await snapshotRevision({
         orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId,
         kind: 'page', resourceIds: [pageId],
@@ -1713,21 +1715,15 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
         note: `Pre-mode-switch: ${page.content_mode} → ${to}`,
       });
       const update: Partial<Page> = { content_mode: to };
-      let converted = false;
       if (to === 'blocks') {
-        if (input.convert && page.html_content) {
-          update.blocks = htmlToBlocks(page.html_content).blocks;
-          converted = true;
-        } else {
-          update.blocks = page.blocks ?? [];
-        }
+        update.blocks = page.blocks ?? [];
       } else {
         update.blocks = [];
         update.html_content = page.html_content ?? '';
       }
       await vstore.writePage(ctx.orgId, ctx.siteId, ctx.versionId, pageId, update);
       return {
-        result: { ok: true, content_mode: to, converted },
+        result: { ok: true, content_mode: to, converted: false },
         action: {
           type: 'update_page',
           description: `Switched ${page.title} to ${to}-mode.`,
@@ -1745,7 +1741,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
         return { result: { blocks: [], notes: ['Page has no html_content to convert.'] } };
       }
       const result = htmlToBlocks(page.html_content);
-      return { result };
+      return { result: { ...result, applied: false } };
     }
 
     case 'list_block_types': {

@@ -133,8 +133,8 @@ Content-Type: application/json
 ```
 
 The MCP equivalent is `update_partial` followed by `set_partial_mode`.
-Setting `convert: true` is available only for the supported HTML-to-blocks
-conversion; inspect the returned tree before publishing.
+`convert: true` is refused. Automatic HTML-to-blocks conversion does not
+write; preview it and accept the result in the page editor.
 
 Native cookie consent is configured through `PATCH /settings` or
 `update_site_settings` under `cookie_consent`. The nested object is

@@ -2,15 +2,14 @@
 //   body: { to: 'blocks' | 'html', convert?: boolean }
 //
 // Public API mirror of /api/sites/.../mode for MCP/agent use. Always
-// snapshots a revision before flipping content_mode. HTML → blocks
-// optionally runs the heuristic converter (convert=true) so the page
-// starts with a populated tree.
+// snapshots a revision before flipping content_mode. convert=true is
+// refused: this route never rewrites an HTML body into blocks.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../../lib/version-store';
 import { snapshotRevision } from '../../../../../../../lib/revisions';
-import { htmlToBlocks } from '../../../../../../../lib/html-to-blocks';
+import { AUTOMATIC_CONVERSION_REFUSAL } from '../../../../../../../lib/html-to-blocks';
 import type { Page } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, params }) => {
@@ -27,6 +26,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!body?.to || (body.to !== 'blocks' && body.to !== 'html')) {
     return apiError('body.to must be "blocks" or "html"');
   }
+  if (body.convert) return apiError(AUTOMATIC_CONVERSION_REFUSAL, 400);
 
   const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
   if (!page) return apiError('Not found', 404);
@@ -46,15 +46,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   });
 
   const update: Partial<Page> = { content_mode: body.to };
-  let converted = false;
   if (body.to === 'blocks') {
-    if (body.convert && page.html_content) {
-      const result = htmlToBlocks(page.html_content);
-      update.blocks = result.blocks;
-      converted = true;
-    } else {
-      update.blocks = page.blocks ?? [];
-    }
+    update.blocks = page.blocks ?? [];
   } else {
     update.blocks = [];
     update.html_content = page.html_content ?? '';
@@ -64,6 +57,6 @@ export const POST: APIRoute = async ({ request, params }) => {
   return apiResponse(ctx, {
     ok: true,
     content_mode: body.to,
-    converted,
+    converted: false,
   });
 };

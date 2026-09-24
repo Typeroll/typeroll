@@ -19,7 +19,6 @@ import { cleanWordPressHtml } from '../wp/clean-html';
 import { extractGlobals } from '../wp/globals';
 import { WPMediaTransfer, buildMediaMap, mediaTransferAvailability } from '../wp/media';
 import { planTaxonomyImport, type TaxonomySource } from '../wp/taxonomy-import';
-import { htmlToBlocks } from '../html-to-blocks';
 import { inferContentType, projectItemFields } from '../wp/custom-types';
 import { fetchRendered, extractMainContent } from '../wp/page-fetcher';
 import { extractImageUrls } from '../wp/extract-image-urls';
@@ -527,15 +526,17 @@ export const migrationWorkflow: WorkflowDef = {
             const source = taxonomySources.find(value => value.taxonomy.slug && `wp_taxonomy_${value.taxonomy.slug.replace(/-/g, '_')}` === page.content_type)!;
             const term = source.terms.find(value => `wp-term-${source.taxonomy.slug}-${value.id}` === id)!;
             const { mediaMap } = await moveImagesAndBuildMap(term.description ?? '', null, '', term.link);
-            const converted = htmlToBlocks(cleanWordPressHtml(term.description ?? '', { mediaMap, sourceOrigin, mediaBaseUrl: term.link, collapseWhitespace: true }));
+            const cleanedDescription = cleanWordPressHtml(term.description ?? '', { mediaMap, sourceOrigin, mediaBaseUrl: term.link, collapseWhitespace: true }).trim();
             for (const field of taxonomyPlan.contentTypes.find(type => type.name === page.content_type)!.fields) {
               if (field.type === 'image' && typeof doc.fields?.[field.name] === 'string' && doc.fields[field.name]) {
                 const image = await transfer.ensureUrl(doc.fields[field.name] as string, '');
                 doc.fields[field.name] = image.cdnUrl;
               }
             }
-            doc.blocks = [page.blocks![0], ...converted.blocks, page.blocks![page.blocks!.length - 1]];
-            if (converted.notes.length) conversionReview.push({ page_id: id, notes: converted.notes, html_blocks: converted.summary.find(entry => entry.block_type === 'core/html')?.count ?? 0 });
+            const descriptionBlocks = cleanedDescription
+              ? [{ id: 'taxonomy-description', type: 'core/prose', data: { html: cleanedDescription, max_width: 'normal' } }]
+              : [];
+            doc.blocks = [page.blocks![0], ...descriptionBlocks, page.blocks![page.blocks!.length - 1]];
             await ctx.store.createDocIfMissing(paths.page(ctx.orgId, ctx.siteId, id, migrationVersion(ctx)), doc);
           }
           await addInventoryUrl(ctx.store, ctx.orgId, ctx.siteId, { path: page.path!, full_url: page.old_wp_url!, source: 'taxonomy' });
@@ -634,10 +635,12 @@ export const migrationWorkflow: WorkflowDef = {
             : featuredImage?.url;
 
           const path = isHome ? '/' : pathFromUrl(item.link, sourceOrigin) ?? `/${rawSlug}`;
-          const useBlocks = String(ctx.config.target_content_mode ?? 'blocks') !== 'html';
-          const converted = htmlToBlocks(cleaned);
-          if (/<(?:form|script|object|embed)\b/i.test(rawHtml)) converted.notes.push('Source contains interactive markup. Recreate and test the corresponding Form or Extension; imported content alone does not activate it.');
-          if (converted.notes.length) conversionReview.push({ page_id: pageId, notes: converted.notes, html_blocks: converted.summary.find(entry => entry.block_type === 'core/html')?.count ?? 0 });
+          const notes: string[] = [];
+          if (String(ctx.config.target_content_mode ?? 'blocks') !== 'html') {
+            notes.push('Automatic HTML-to-blocks conversion was not applied. The page stays in HTML mode until a person accepts a preview.');
+          }
+          if (/<(?:form|script|object|embed)\b/i.test(rawHtml)) notes.push('Source contains interactive markup. Recreate and test the corresponding Form or Extension; imported content alone does not activate it.');
+          if (notes.length) conversionReview.push({ page_id: pageId, notes, html_blocks: 0 });
           const fieldSchema = targetTypes.get(contentType)?.fields ?? [];
           const fields = { ...projectItemFields(item, fieldSchema, featuredImage?.url), ...taxonomyPlan.valuesFor(item, sourceType) };
           // Existing article types may use hero_image; retain their declared mapping.
@@ -654,8 +657,8 @@ export const migrationWorkflow: WorkflowDef = {
             fields,
             parent: item.parent ? parentIds.get(`${sourceType}:${item.parent}`) : taxonomyPlan.parentFor(item, sourceType),
             sort_order: item.menu_order,
-            content_mode: useBlocks ? 'blocks' : 'html',
-            ...(useBlocks ? { blocks: converted.blocks } : { html_content: cleaned }),
+            content_mode: 'html',
+            html_content: cleaned,
             seo_title: seoTitle, seo_description: seoDesc, og_image: ogImage, canonical_url: seoCanon, noindex,
             kind: sourceType === 'page' ? 'page' : 'article', status: 'review',
             old_wp_url: item.link, ai_generated: false,

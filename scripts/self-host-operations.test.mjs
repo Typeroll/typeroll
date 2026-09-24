@@ -354,7 +354,10 @@ test('offline migration resumes its original encrypted backup after an interrupt
   services.firestore.compareAndWrite = compareAndWrite;
   await applySelfHostMigrations({ services, verifiedBackup, writersStopped: true });
   assert.equal(state.documents.get(SELF_HOST_INSTALLATION_PATH).data_schema_version, 2);
-  assert.ok(state.documents.get(`${prefix}versions/main/pages/news`).blocks.length > 0);
+  const news = state.documents.get(`${prefix}versions/main/pages/news`);
+  assert.equal(news.content_mode, 'html');
+  assert.match(news.html_content, /<h2>Heading<\/h2>/);
+  assert.equal(news.blocks, undefined);
 });
 
 test('changed content and a second backup cannot be silently accepted on migration retry', async t => {

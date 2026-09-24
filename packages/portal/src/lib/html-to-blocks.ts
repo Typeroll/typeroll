@@ -31,6 +31,12 @@ function parseRawHtml(html: string): Node[] {
   return parseFragment(html, { scriptingEnabled: false }).childNodes.flatMap(adapt);
 }
 
+/** Markup the heuristic could not represent. A preview must show this before a person accepts it. */
+export interface UnconvertedMarkup {
+  reason: string;
+  source: string;
+}
+
 export interface ConvertResult {
   blocks: Block[];
   /** Summary of recognized patterns, useful for the dry-run preview. */
@@ -38,7 +44,45 @@ export interface ConvertResult {
   /** Free-form notes — fallbacks taken, content that couldn't be classified
    *  cleanly. Surfaced in the UI's confirmation dialog. */
   notes: string[];
+  /** Losses a person has to see. Conversion must not write these away on its own. */
+  unconverted: UnconvertedMarkup[];
 }
+
+interface ConversionRecord {
+  notes: string[];
+  unconverted: UnconvertedMarkup[];
+}
+
+/** Classes the heuristic actually uses. Anything else is reported, not silently dropped. */
+const HONORED_CLASS = /^(?:text-(?:center|left|right)|align(?:left|right|center)|w-full|full-width|w-wide|w-narrow|btn|button|primary|secondary|ghost|outline)$/i;
+
+function loss(record: ConversionRecord, reason: string, source: string, alsoNote = false): void {
+  const clipped = source.length > 280 ? `${source.slice(0, 277)}...` : source;
+  record.unconverted.push({ reason, source: clipped });
+  if (alsoNote) record.notes.push(`${reason} ${clipped}`);
+}
+
+function reportUnusedClass(node: Node, record: ConversionRecord): void {
+  const value = node.attribs?.class?.trim();
+  if (!value) return;
+  const unused = value.split(/\s+/).filter(token => !HONORED_CLASS.test(token) && !/btn|button/i.test(token));
+  if (!unused.length) return;
+  loss(record, `Author CSS class on <${node.name ?? 'element'}> is not kept by the block.`, unused.join(' '));
+}
+
+/** Text that is not the image, its caption, or a media fallback. */
+function textOutsideMedia(node: Node): string {
+  const skip = new Set(['img', 'picture', 'source', 'figcaption', 'iframe', 'noscript', 'svg']);
+  const walk = (current: Node): string => {
+    if (current.type === 'text') return current.data ?? '';
+    if (skip.has((current.name ?? '').toLowerCase())) return '';
+    return (current.children ?? []).map(walk).join('');
+  };
+  return walk(node).replace(/\s+/g, ' ').trim();
+}
+
+export const AUTOMATIC_CONVERSION_REFUSAL =
+  'Automatic HTML-to-blocks conversion does not change a page. Preview the result and accept it in the page editor after reviewing what could not be converted.';
 
 /**
  * Convert an HTML body string to a Block[]. The HTML is treated as the
@@ -49,9 +93,9 @@ export function htmlToBlocks(html: string): ConvertResult {
   const dom = parseRawHtml(html ?? '');
   const blocks: Block[] = [];
   const counts = new Map<string, number>();
-  const notes: string[] = [];
+  const record: ConversionRecord = { notes: [], unconverted: [] };
 
-  blocks.push(...convertNodes(normalizeLazyMedia(unwrapTopLevel(dom)), notes));
+  blocks.push(...convertNodes(normalizeLazyMedia(unwrapTopLevel(dom)), record));
   const coalesced = coalesceProse(blocks, counts);
   const countTree = (tree: Block[]) => {
     for (const block of tree) {
@@ -65,7 +109,8 @@ export function htmlToBlocks(html: string): ConvertResult {
   return {
     blocks: coalesced,
     summary: Array.from(counts.entries()).map(([block_type, count]) => ({ block_type, count })),
-    notes,
+    notes: record.notes,
+    unconverted: record.unconverted,
   };
 }
 
@@ -106,30 +151,30 @@ function normalizeLazyMedia(nodes: Node[]): Node[] {
   });
 }
 
-function convertNodes(nodes: Node[], notes: string[]): Block[] {
+function convertNodes(nodes: Node[], record: ConversionRecord): Block[] {
   return nodes.flatMap(node => {
     const name = node.name?.toLowerCase();
     // Keep meaningful wrapper attributes and semantics while making every
     // child independently editable. Unstyled divs can be flattened safely.
-    if (node.type === 'tag' && ['html', 'body'].includes(name ?? '')) return convertNodes(node.children ?? [], notes);
+    if (node.type === 'tag' && ['html', 'body'].includes(name ?? '')) return convertNodes(node.children ?? [], record);
     if (node.type === 'tag' && ['div', 'section', 'article', 'main', 'header', 'footer', 'aside', 'nav'].includes(name ?? '')) {
       const attributes = node.attribs ?? {};
       const heuristic = /^(?:grid |grid-cols-2|hero|banner|section|cols?-2)/i.test(attributes.class ?? '') && !attributes.style && !attributes.id;
       if (!heuristic && (Object.keys(attributes).length || !['div', 'section'].includes(name!))) {
         const unknown = Object.keys(attributes).filter(key => !['class', 'id', 'style', 'aria-label'].includes(key));
-        if (unknown.some(key => !/^(?:data-[a-z0-9_-]+|aria-[a-z0-9_-]+|role|itemscope|itemtype|itemprop|lang|dir|hidden|title)$/.test(key))) return [exception(node, notes)];
+        if (unknown.some(key => !/^(?:data-[a-z0-9_-]+|aria-[a-z0-9_-]+|role|itemscope|itemtype|itemprop|lang|dir|hidden|title)$/.test(key))) return [exception(node, record)];
         return [mkContainer('core/container', {
           tag: name, layout: 'flow', css_class: attributes.class ?? '', html_id: attributes.id ?? '',
           inline_style: attributes.style ?? '', aria_label: attributes['aria-label'] ?? '',
           attributes: unknown.map(name => ({ name, value: attributes[name] })),
-        }, { children: convertNodes(node.children ?? [], notes) })];
+        }, { children: convertNodes(node.children ?? [], record) })];
       }
-      if (name === 'div' && !heuristic) return convertNodes(node.children ?? [], notes);
+      if (name === 'div' && !heuristic) return convertNodes(node.children ?? [], record);
     }
     // Image-only heading wrappers are formatting debris, not semantic headings.
     // Keep their position (and any incoming anchor) without inventing a TOC entry.
     if (/^h[1-6]$/.test(name ?? '') && !collectText(node).trim() && (findFirst(node, 'img') || findFirst(node, 'iframe'))) {
-      const media = convertNodes(node.children ?? [], notes);
+      const media = convertNodes(node.children ?? [], record);
       if (node.attribs?.id && media[0]) media[0].style_overrides = { ...media[0].style_overrides, html_id: node.attribs.id };
       return media;
     }
@@ -143,13 +188,13 @@ function convertNodes(nodes: Node[], notes: string[]): Block[] {
       };
       for (const child of node.children ?? []) {
         if (['img', 'iframe'].includes(child.name ?? '') || (child.name === 'a' && findFirst(child, 'img'))) {
-          flush(); output.push(...convertNodes([child], notes));
+          flush(); output.push(...convertNodes([child], record));
         } else inline.push(child);
       }
       flush();
       return output;
     }
-    const block = nodeToBlock(node, notes);
+    const block = nodeToBlock(node, record);
     if (block && node.attribs?.id && !name?.match(/^h[1-6]$/)) {
       block.style_overrides = { ...block.style_overrides, html_id: node.attribs.id };
     }
@@ -169,43 +214,48 @@ function unwrapTopLevel(nodes: Node[]): Node[] {
   return nodes.filter((n) => !(n.type === 'text' && (n.data ?? '').trim() === ''));
 }
 
-function nodeToBlock(node: Node, notes: string[]): Block | null {
+function nodeToBlock(node: Node, record: ConversionRecord): Block | null {
   if (node.type === 'text') {
     const txt = (node.data ?? '').trim();
     if (!txt) return null;
     return prose(`<p>${escapeHtml(txt)}</p>`);
   }
 
-  if (node.type === 'script' || node.type === 'style') return exception(node, notes);
+  if (node.type === 'script' || node.type === 'style') return exception(node, record);
   if (node.type !== 'tag' || !node.name) return null;
   const name = node.name.toLowerCase();
 
   switch (name) {
-    case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
+    case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6': {
+      reportUnusedClass(node, record);
       return (node.children ?? []).some(child => child.type === 'tag')
         ? mkBlock('core/rich_heading', { html: innerHtml(node), level: name, anchor_id: node.attribs?.id ?? '', align: classToAlign(node) ?? 'left' })
         : heading(node, name);
+    }
 
     case 'img':
+      reportUnusedClass(node, record);
       return image(node);
 
     case 'a':
-      if (findFirst(node, 'img')) { const b = figure(node, notes)!; b.data.link = node.attribs?.href ?? ''; return b; }
-      return tryButton(node, notes) ?? prose(serializeInline(node));
+      if (findFirst(node, 'img')) { const b = figure(node, record)!; b.data.link = node.attribs?.href ?? ''; return b; }
+      return tryButton(node, record) ?? prose(serializeInline(node));
 
     case 'figure': case 'picture':
-      return figure(node, notes);
+      return figure(node, record);
 
     case 'ul': case 'ol':
+      reportUnusedClass(node, record);
       return mkBlock('core/list', { ordered: name === 'ol', start: Number(node.attribs?.start ?? 1),
         items: (node.children ?? []).filter(n => n.name === 'li').map(n => ({ html: innerHtml(n) })) });
     case 'table':
+      reportUnusedClass(node, record);
       return table(node);
     case 'iframe': {
       const src = node.attribs?.src ?? '';
       if (/^https?:\/\/(www\.)?(youtube(-nocookie)?\.com|player\.vimeo\.com)\//.test(src))
         return mkBlock('core/video', { video_url: src, source: src.includes('vimeo') ? 'vimeo' : 'youtube', aspect_ratio: '16:9', title: node.attribs?.title ?? 'Video' });
-      return exception(node, notes);
+      return exception(node, record);
     }
     case 'span': case 'strong': case 'em': case 'b': case 'i': case 'small': case 'br': case 'u':
     case 'p':
@@ -218,7 +268,7 @@ function nodeToBlock(node: Node, notes: string[]): Block | null {
 
     case 'section':
     case 'div':
-      return divOrSection(node, name, notes);
+      return divOrSection(node, name, record);
     case 'article':
     case 'main':
     case 'header':
@@ -228,12 +278,12 @@ function nodeToBlock(node: Node, notes: string[]): Block | null {
       // Unwrap structural tags — we don't have a 1:1 core block for them
       // and they're usually decorative. Their children get classified
       // individually.
-      notes.push(`Unwrapped <${name}> — children classified individually.`);
+      record.notes.push(`Unwrapped <${name}> — children classified individually.`);
       return null;
 
     default:
       // Unknown tag: dump as prose with the inner HTML preserved.
-      return exception(node, notes);
+      return exception(node, record);
   }
 }
 
@@ -264,21 +314,22 @@ function image(node: Node): Block {
   });
 }
 
-function figure(node: Node, notes: string[]): Block | null {
+function figure(node: Node, record: ConversionRecord): Block | null {
   const embeddedTable = findFirst(node, 'table');
   if (embeddedTable && (node.children ?? []).every(child => child.type === 'text' || child === embeddedTable || child.name === 'figcaption')) {
     const block = table(embeddedTable);
     const caption = findFirst(node, 'figcaption');
     if (caption) block.data.source = innerHtml(caption);
+    reportUnusedClass(node, record);
     return block;
   }
   const images = (current: Node): number => (current.name === 'img' ? 1 : 0) + (current.children ?? []).reduce((sum, child) => sum + images(child), 0);
-  if (images(node) > 1) return exception(node, notes);
+  if (images(node) > 1) return exception(node, record);
   const img = findFirst(node, 'img');
   const caption = findFirst(node, 'figcaption');
   if (!img) {
     const video = findFirst(node, 'iframe');
-    return video ? nodeToBlock(video, notes) : exception(node, notes);
+    return video ? nodeToBlock(video, record) : exception(node, record);
   }
   const block = image(img);
   block.data.caption = caption ? collectText(caption) : '';
@@ -287,14 +338,20 @@ function figure(node: Node, notes: string[]): Block | null {
   block.data.link = imageLink(node)?.attribs?.href ?? '';
   const source = findFirst(node, 'source');
   if (source?.attribs?.media?.includes('max-width')) block.data.mobile_src = source.attribs.srcset?.split(/[ ,]/)[0] ?? '';
+  const discarded = textOutsideMedia(node);
+  if (discarded) {
+    loss(record, 'Link-wrapped or figure content was reduced to an image. Text inside it was not converted.', discarded, true);
+  }
+  reportUnusedClass(node, record);
   return block;
 }
 
 function innerHtml(node: Node): string { return (node.children ?? []).map(serialize).join(''); }
 
-function exception(node: Node, notes: string[]): Block {
+function exception(node: Node, record: ConversionRecord): Block {
   const reason = `Review <${node.name ?? 'unknown'}> integration or unsupported markup before publishing.`;
-  notes.push(reason);
+  record.notes.push(reason);
+  loss(record, reason, serialize(node));
   return { ...mkBlock('core/html', { html: serialize(node) }), name: `Imported ${node.name ?? 'HTML'} — review` };
 }
 
@@ -315,7 +372,7 @@ function table(node: Node): Block {
   });
 }
 
-function tryButton(node: Node, _notes: string[]): Block | null {
+function tryButton(node: Node, record: ConversionRecord): Block | null {
   const a = node.attribs ?? {};
   const cls = (a.class ?? '').toLowerCase();
   if (cls.includes('btn') || cls.includes('button')) {
@@ -323,6 +380,7 @@ function tryButton(node: Node, _notes: string[]): Block | null {
       cls.includes('secondary') ? 'secondary'
       : cls.includes('ghost') || cls.includes('outline') ? 'ghost'
       : 'primary';
+    reportUnusedClass(node, record);
     return mkBlock('core/button', {
       label: collectText(node) || 'Learn more',
       href: a.href ?? '#',
@@ -334,7 +392,7 @@ function tryButton(node: Node, _notes: string[]): Block | null {
   return null;
 }
 
-function divOrSection(node: Node, name: string, notes: string[]): Block | null {
+function divOrSection(node: Node, name: string, record: ConversionRecord): Block | null {
   const a = node.attribs ?? {};
   const cls = (a.class ?? '').toLowerCase();
   const children = (node.children ?? []).filter(
@@ -343,7 +401,7 @@ function divOrSection(node: Node, name: string, notes: string[]): Block | null {
 
   // Heuristic: two-column grid → core/columns
   if (cls.includes('grid-cols-2') || cls.match(/\bcol(umn)?s?-2\b/)) {
-    const slots = splitIntoSlots(children, 2, notes);
+    const slots = splitIntoSlots(children, 2, record);
     return mkContainer('core/columns', { ratio: '1-1', gap: 'md', align: 'start' }, {
       slots,
     });
@@ -357,7 +415,7 @@ function divOrSection(node: Node, name: string, notes: string[]): Block | null {
     cls.includes('banner');
 
   if (isSection) {
-    const inner = convertNodes(children, notes);
+    const inner = convertNodes(children, record);
     return mkContainer('core/section', {
       width: 'normal',
       padding_y: 'none',
@@ -376,11 +434,11 @@ function divOrSection(node: Node, name: string, notes: string[]): Block | null {
   return prose(serialize(node));
 }
 
-function splitIntoSlots(nodes: Node[], slotCount: number, notes: string[]): Block[][] {
+function splitIntoSlots(nodes: Node[], slotCount: number, record: ConversionRecord): Block[][] {
   const slots: Block[][] = Array.from({ length: slotCount }, () => []);
   let cursor = 0;
   for (const n of nodes) {
-    const blocks = convertNodes([n], notes);
+    const blocks = convertNodes([n], record);
     if (!blocks.length) continue;
     slots[Math.min(cursor, slotCount - 1)].push(...blocks);
     cursor = (cursor + 1) % slotCount;

@@ -72,18 +72,19 @@ describe('POST /v1/.../pages/{id}/mode — bearer auth', () => {
     expect(revs[0].note).toContain('html → blocks');
   });
 
-  it('switches HTML → blocks with auto-convert', async () => {
+  it('refuses convert=true without rewriting a link-wrapped card', async () => {
     const { token } = await setup();
-    await seedPage({});
+    const card = '<a class="area-card" href="/podd/"><span class="area-media"><picture><img src="/cover.jpg" alt=""></picture></span><span class="area-body"><h3>Episode title</h3><p>The description that must survive.</p></span></a>';
+    await seedPage({ html_content: card });
     const res = await call(token, { to: 'blocks', convert: true });
-    expect(res.status).toBe(200);
-    const body = await res.json() as { converted: boolean };
-    expect(body.converted).toBe(true);
+    expect(res.status).toBe(400);
+    const body = await res.json() as { error: string };
+    expect(body.error).toContain('does not change a page');
 
     const { getStore } = await import('../../lib/datastore');
     const page = await getStore().getDoc<Page>(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`);
-    expect((page!.blocks ?? []).length).toBeGreaterThan(0);
-    expect(page!.blocks![0].type).toBe('core/heading');
+    expect(page).toMatchObject({ content_mode: 'html', html_content: card });
+    expect(page!.blocks ?? []).toHaveLength(0);
   });
 
   it('switches blocks → HTML (drops tree, retains in revision)', async () => {

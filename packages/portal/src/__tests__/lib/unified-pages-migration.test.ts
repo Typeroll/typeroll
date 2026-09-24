@@ -26,7 +26,10 @@ describe('unified page migration', () => {
     expect(article.id).not.toBe('about');
     expect(variant.pages.find(p => p.slug === 'article')?.id).toBe(article.id);
     expect(article.fields?.related).toBe('second');
-    expect(article.blocks?.[0].data.anchor_id).toBe('old');
+    expect(article.content_mode).toBe('html');
+    expect(article.html_content).toContain('id="old"');
+    expect(article.html_content).toContain('Title');
+    expect(article).not.toHaveProperty('blocks');
     expect(article).not.toHaveProperty('body');
     expect(article.fields).not.toHaveProperty('body');
     expect(contentPagePath(article, output.contentTypes.find(t => t.id === 'articles')!)).toBe('/articles/article');
@@ -43,14 +46,16 @@ describe('unified page migration', () => {
     const output = migrateContentSnapshot(source, unifiedPageIds([source]), '2026-01-01');
     expect(output.blockTypes[0].template).toBe('<main class="article" style="max-width:700px"><h1>{{page.title}}</h1>{{children}}</main>');
     expect(output.templates[0].blocks[0].children?.[0].type).toBe('template_content_slot');
-    expect(output.pages[1].blocks?.[0].type).toBe('core/heading');
+    expect(output.pages[1].content_mode).toBe('html');
+    expect(output.pages[1].html_content).toContain('<h2 id="old">Title</h2>');
     expect(output).toEqual(migrateContentSnapshot(source, unifiedPageIds([source]), '2026-01-01'));
   });
-  it('converts normal HTML pages too and preserves the existing homepage URL', () => {
+  it('preserves HTML pages instead of converting them, including the homepage URL', () => {
     const source = input(); Object.assign(source.pages[0], { slug: 'home', content_mode: 'html', html_content: '<h2 id="section">Heading</h2><p>Body</p>' });
     const output = migrateContentSnapshot(source, unifiedPageIds([source]), '2026-01-01');
-    expect(output.pages[0]).toMatchObject({ content_type: 'page', content_mode: 'blocks', path: '/', blocks: [{ type: 'core/heading', data: { anchor_id: 'section' } }, { type: 'core/prose' }] });
-    expect(output.pages[0]).not.toHaveProperty('html_content');
+    expect(output.pages[0]).toMatchObject({ content_type: 'page', content_mode: 'html', path: '/', html_content: '<h2 id="section">Heading</h2><p>Body</p>' });
+    expect(output.pages[0].blocks ?? []).toHaveLength(0);
+    expect(output.warnings.some(warning => warning.page === 'about' && warning.message.includes('not applied'))).toBe(true);
   });
   it('does not rewrite prose or repeater item bindings when changing template namespaces', () => {
     expect(migrateTemplateTokens('An item.example. {{item.title}} {{collection.label_plural}}')).toBe('An item.example. {{page.title}} {{content_type.label_plural}}');
@@ -87,8 +92,9 @@ it('separates custom Page template bindings from the same block used by a repeat
   const output = migrateContentSnapshot(source, unifiedPageIds([source]), '2026-01-01');
   const registry = buildCoreBlockRegistry(); for (const type of output.blockTypes) registry.set(type.id, type);
   const page = output.pages.find(page => page.slug === 'article')!;
-  const context = { page: { ...pageContentValues(page), ...pageBodyContext('<h2 id="old">Title</h2><p>Body</p>') } };
-  const html = renderBlocks(composePageWithTemplate(output.templates[0].blocks, page.blocks!), { registry, context });
+  expect(page.html_content).toContain('<h2 id="old">Title</h2>');
+  const context = { page: { ...pageContentValues(page), ...pageBodyContext(page.html_content ?? '') } };
+  const html = renderBlocks(composePageWithTemplate(output.templates[0].blocks, page.blocks ?? []), { registry, context });
   expect(html).toContain('<aside>Article');
   expect(html).toContain('href="#old"');
   expect(html).toContain('original-body');

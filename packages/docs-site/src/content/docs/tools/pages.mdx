@@ -61,16 +61,16 @@ Create a page titled "Tjänster" at slug "tjanster" with three service sections.
 
 ## `set_page_mode`
 
-Switches a page between `"html"` and `"blocks"` modes. Snapshots a revision first. With `convert: true` (only meaningful for `html → blocks`), runs the heuristic converter so the page starts with a populated block tree rather than empty.
+Switches a page between `"html"` and `"blocks"` modes. Snapshots a revision first. Switching to blocks does not convert or rewrite the HTML body.
 
 ```
-Convert the About page to blocks mode.
-  → set_page_mode page_id=about to=blocks convert=true
+Switch the About page to blocks mode without converting its HTML.
+  → set_page_mode page_id=about to=blocks
 ```
 
 ## `convert_page_to_blocks`
 
-Dry-run preview of the heuristic HTML→blocks converter. Returns the proposed tree without writing. Useful before committing the flip on a long page.
+Preview of the heuristic HTML→blocks converter. Returns the proposed tree and an `unconverted` list of text, classes, and markup it could not represent. It does not write. A person reviews that list in the page editor and accepts the preview there. Agents cannot apply the conversion.
 
 ## `update_page`
 

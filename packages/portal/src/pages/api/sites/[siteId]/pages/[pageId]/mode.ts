@@ -2,15 +2,15 @@
 //   body: { to: 'blocks' | 'html', convert?: boolean }
 //
 // Switch a page's content_mode. Always snapshots a revision before the
-// flip so the previous state survives. When going HTML → blocks and
-// `convert: true`, runs the heuristic converter so the page starts with
-// a populated tree instead of empty.
+// flip so the previous state survives. `convert: true` is refused:
+// HTML-to-blocks is a preview a person accepts, and this route never
+// rewrites the body.
 
 import type { APIRoute } from 'astro';
 import { json, requireSiteAccess, requirePermission } from '../../../../../../lib/access';
 import { vstore } from '../../../../../../lib/version-store';
 import { snapshotRevision } from '../../../../../../lib/revisions';
-import { htmlToBlocks } from '../../../../../../lib/html-to-blocks';
+import { AUTOMATIC_CONVERSION_REFUSAL } from '../../../../../../lib/html-to-blocks';
 import type { Page } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
@@ -29,6 +29,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!body?.to || (body.to !== 'blocks' && body.to !== 'html')) {
     return json({ error: 'body.to must be "blocks" or "html"' }, 400);
   }
+  if (body.convert) return json({ error: AUTOMATIC_CONVERSION_REFUSAL }, 400);
 
   const page = await vstore.page(owner_org_id, site.id, versionId, pageId);
   if (!page) return json({ error: 'Not found' }, 404);
@@ -51,13 +52,9 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const update: Partial<Page> = { content_mode: body.to };
 
   if (body.to === 'blocks') {
-    // HTML → blocks. Optionally seed via heuristic converter.
-    if (body.convert && page.html_content) {
-      const result = htmlToBlocks(page.html_content);
-      update.blocks = result.blocks;
-    } else {
-      update.blocks = page.blocks ?? [];
-    }
+    // HTML → blocks does not rewrite the body. Existing blocks stay;
+    // html_content remains as a backup the blocks renderer ignores.
+    update.blocks = page.blocks ?? [];
     // Keep html_content as a backup until the user explicitly clears it;
     // the renderer ignores it when content_mode='blocks'.
   } else {

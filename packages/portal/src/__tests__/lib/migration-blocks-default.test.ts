@@ -39,14 +39,22 @@ it.each(['blocks', 'html'])('imports both WordPress pages and posts through the 
   expect(result).toMatchObject({ state: { imported_count: 2 } });
   const pages = await store.listDocs(paths.pages('org', 'site', 'redesign'));
   expect(pages).toHaveLength(2);
-  expect(pages.find(page => page.id === 'wp-page-1')).toMatchObject({ content_type: 'page', path: '/about', content_mode: mode, status: 'review' });
+  expect(pages.find(page => page.id === 'wp-page-1')).toMatchObject({ content_type: 'page', path: '/about', content_mode: 'html', status: 'review' });
   const post = pages.find(page => page.id === 'wp-post-2');
-  expect(post).toMatchObject({ content_type: 'posts', path: '/news/article', content_mode: mode, status: 'review' });
+  expect(post).toMatchObject({ content_type: 'posts', path: '/news/article', content_mode: 'html', status: 'review' });
+  expect(post).toHaveProperty('html_content');
+  expect(JSON.stringify(post)).toContain('<table>');
+  expect(JSON.stringify(pages)).toContain('Welcome');
+  expect(JSON.stringify(post)).not.toContain('core/table');
   if (mode === 'blocks') {
-    expect(post).not.toHaveProperty('html_content');
-    expect(JSON.stringify(post)).toContain('core/table');
-    expect(JSON.stringify(pages)).toContain('welcome');
-  } else expect(post).toHaveProperty('html_content');
+    expect(result).toMatchObject({
+      state: {
+        conversion_review: expect.arrayContaining([
+          expect.objectContaining({ notes: [expect.stringContaining('not applied')] }),
+        ]),
+      },
+    });
+  }
   expect(await store.getDoc(paths.page('org', 'site', 'main-only', 'main'))).toMatchObject({ title: 'Keep main unchanged', html_content: '<p>Main</p>' });
   expect(await store.listDocs(paths.contentTypes('org', 'site', 'main'))).toHaveLength(0);
   expect(await store.listDocs(paths.contentTypes('org', 'site', 'redesign'))).toHaveLength(2);
@@ -124,7 +132,7 @@ it('uses the same body, custom-field and SEO rules for custom post types', async
   expect(result).toMatchObject({ state: { imported_count: 3 } });
   expect(await store.getDoc(paths.page('org', 'site', 'wp-news-3'))).toMatchObject({
     content_type: 'news', fields: { promoted: true }, seo_title: 'Custom SEO', seo_description: 'Original description', noindex: true, sort_order: 7,
-    content_mode: 'blocks', status: 'review',
+    content_mode: 'html', status: 'review',
   });
   expect(reconstructPage).not.toHaveBeenCalled();
 });

@@ -2,7 +2,6 @@ import { CONFIGURABLE_PAGE_FIELDS, PAGE_BUILTIN_FIELDS } from '@typeroll/shared'
 import { createHash } from 'node:crypto';
 import { contentPagePath, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
 import type { Block, BlockType, ContentType, FieldDefinition, Page, PageTemplate, Partial as PartialDoc } from '@typeroll/shared';
-import { htmlToBlocks } from '../html-to-blocks';
 
 /** Legacy shapes are confined to the offline migration, never the new runtime. */
 export interface LegacyContentType {
@@ -49,16 +48,6 @@ export function migrateTemplateTokens(input: string, itemContext = false, bareFi
     if (bareFields && !name.includes('.') && name !== 'children') return `${open}page.${fieldName(name)}${close}`;
     return match;
   });
-}
-
-function stableBlocks(blocks: Block[], identity: string): Block[] {
-  let index = 0;
-  const visit = (tree: Block[]): Block[] => tree.map(block => ({ ...block,
-    id: `m-${createHash('sha256').update(`${identity}:${index++}`).digest('hex').slice(0, 20)}`,
-    ...(block.children ? { children: visit(block.children) } : {}),
-    ...(block.slots ? { slots: block.slots.map(visit) } : {}),
-  }));
-  return visit(blocks);
 }
 
 /** Names and template identities must agree across branches, including name collisions. */
@@ -183,16 +172,19 @@ export function migrateContentSnapshot(snapshot: LegacyContentSnapshot, ids: Map
       ? `content_type:${typeName(String(template.applies_to).slice(11), ids)}` as const : template.applies_to,
     blocks: migrateBlocks(template.blocks),
   })));
-  const convertBody = (body: string, identity: string): Block[] => {
-    const conversion = htmlToBlocks(body);
-    for (const message of conversion.notes) warnings.push({ page: identity, message });
-    return stableBlocks(conversion.blocks, identity);
+  const preserveHtml = (body: string, identity: string): string => {
+    const html = migrateTemplateTokens(body);
+    if (html.trim()) warnings.push({ page: identity, message: 'Preserved the HTML body. Automatic HTML-to-blocks conversion is not applied.' });
+    return html;
   };
   const pages: Page[] = snapshot.pages.map(page => {
-    const { html_content, ...rest } = page;
+    const { html_content, blocks, ...rest } = page;
+    const blocksMode = page.content_mode === 'blocks';
     return { ...rest, path: page.path || (['', 'home', 'index'].includes(page.slug) ? '/' : `/${page.slug}`),
-      content_type: 'page', fields: page.fields ?? {}, content_mode: 'blocks',
-      blocks: migrateBlocks(page.content_mode === 'blocks' ? page.blocks ?? [] : convertBody(html_content ?? '', page.id)),
+      content_type: 'page', fields: page.fields ?? {}, content_mode: blocksMode ? 'blocks' : 'html',
+      ...(blocksMode
+        ? { blocks: migrateBlocks(blocks ?? []) }
+        : { html_content: preserveHtml(html_content ?? '', page.id) }),
     };
   });
   const partials = (snapshot.partials ?? []).map(partial => ({ ...partial,
@@ -250,14 +242,15 @@ export function migrateContentSnapshot(snapshot: LegacyContentSnapshot, ids: Map
       if (!id) throw new Error(`Missing ID mapping for ${definition.name}`);
       const custom = migrateValues(Object.fromEntries(Object.entries(item).filter(([field]) => !systemFields.has(field) && !field.startsWith('_'))), definition.fields);
       const body = string(item.body);
-      const bodyBlocks = item.content_mode === 'blocks' && Array.isArray(item.blocks)
-        ? item.blocks as Block[] : convertBody(body, id);
+      const blockBody = item.content_mode === 'blocks' && Array.isArray(item.blocks);
       const status = string(item.status, 'draft');
       if (!['draft', 'review', 'unlisted', 'published'].includes(status)) throw new Error(`Invalid status for page ${id}`);
       const page: Page = {
         id, title: string(item.title, string(item.name, definition.label_singular)),
         slug: string(item[definition.slug_field ?? 'slug']), content_type: typeId, fields: custom,
-        content_mode: 'blocks', blocks: migrateBlocks(bodyBlocks), status: status as Page['status'],
+        content_mode: blockBody ? 'blocks' : 'html',
+        ...(blockBody ? { blocks: migrateBlocks(item.blocks as Block[]) } : { html_content: preserveHtml(body, id) }),
+        status: status as Page['status'],
         date_updated: string(item.date_updated, string(item.updated_at, now)), date_published: string(item.date_published, string(item.published_at, string(item.created_at, now))),
         ...(item._provenance ? { _provenance: item._provenance as Page['_provenance'] } : {}),
         ...Object.fromEntries(['publish_at', 'unpublish_at', 'seo_title', 'seo_description', 'og_image', 'noindex', 'canonical_url', 'append_seo_suffix', 'seo_image_alt', 'author', 'old_wp_url', 'language', 'custom_css', 'alternates', 'path', 'parent', 'sort_order', 'json_ld', 'schema_type', 'service', 'lastmod_override', 'image_sizes_default'].filter(field => item[field] !== undefined).map(field => [field, item[field]])),
