@@ -103,8 +103,6 @@ function previewJson(value: unknown, max = TOOL_PREVIEW_MAX): string {
 }
 
 export async function getAnthropic(_orgId: string): Promise<Anthropic | null> {
-  // TODO: load org-level BYOT key from organizations/{orgId} before falling
-  // back to the platform default. For now, only the platform default.
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
   return new Anthropic({ apiKey: key });
