@@ -246,7 +246,7 @@ describe('partials tools', () => {
     expect(calls[0]).toMatchObject({
       method: 'POST',
       url: 'https://example.test/api/v1/sites/mysite/partials/header/mode',
-      body: JSON.stringify({ to: 'blocks', convert: false }),
+      body: JSON.stringify({ to: 'blocks' }),
     });
   });
 });
