@@ -1,4 +1,4 @@
-import { publicationContentFiles } from '../../../../../scripts/fixtures/static-publication/content.mjs';
+import { publicationContentFiles, stableJson } from '../../../../../scripts/fixtures/static-publication/content.mjs';
 import { mapPublicationParts } from './parallel';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -42,7 +42,7 @@ async function templateFor(coreCommit: string): Promise<PublicationTemplate> {
 /** No package resolution or Astro build runs on the CMS publication request. */
 export async function publicationSourceTree(publication: any): Promise<Record<string, string>> {
   const template = await templateFor(publication.core_commit);
-  const content = template.files['scripts/content.mjs'] ? publicationContentFiles(publication) : { 'publication.json': `${JSON.stringify(publication, null, 2)}\n` };
+  const content = template.files['scripts/content.mjs'] ? publicationContentFiles(publication) : { 'publication.json': stableJson(publication) };
   const files = { ...template.files, ...content };
   const manifest = { format_version: 1, files: Object.fromEntries(Object.entries(files).sort(([a], [b]) => a < b ? -1 : 1).map(([name, content]) => [name, digest(content)])) };
   return { ...files, 'publication-manifest.json': `${JSON.stringify(manifest, null, 2)}\n` };
