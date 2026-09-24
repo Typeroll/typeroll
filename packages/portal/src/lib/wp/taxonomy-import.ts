@@ -2,7 +2,6 @@ import type { Block, ContentType, FieldDefinition, Page } from '@typeroll/shared
 import type { WPItem, WPTaxonomy, WPTerm } from './client';
 import { inferContentType, projectItemFields } from './custom-types';
 import { normalizeWordPressPlainText } from './plain-text';
-import { htmlToBlocks } from '../html-to-blocks';
 import { pathFromUrl } from './url-inventory';
 
 export interface TaxonomySource { taxonomy: WPTaxonomy; terms: WPTerm[] }
@@ -57,7 +56,10 @@ export function planTaxonomyImport(sources: TaxonomySource[], origin: string, no
       }
       const path = pathFromUrl(term.link, origin);
       if (!path) throw new Error(`Missing local archive URL for ${taxonomy.slug}:${term.id}`);
-      const converted = htmlToBlocks(term.description ?? '');
+      const description = (term.description ?? '').trim();
+      const descriptionBlocks: Block[] = description
+        ? [{ id: 'taxonomy-description', type: 'core/prose', data: { html: description, max_width: 'normal' } }]
+        : [];
       const listing: Block = { id: 'taxonomy-pages', type: 'core/repeater', data: {
         source_type: 'backlinks', item_block: 'core/post_card', cols: { mobile: 1, tablet: 2, desktop: 3 },
         limit: 0,
@@ -65,7 +67,7 @@ export function planTaxonomyImport(sources: TaxonomySource[], origin: string, no
       } };
       pages.push({ id: taxonomyPageId(taxonomy.slug, term.id), title: normalizeWordPressPlainText(term.name),
         slug: term.slug, path, content_type: name, status: 'review', content_mode: 'blocks',
-        blocks: [{ id: 'taxonomy-title', type: 'template/page_title', data: { level: 'h1', size: 'theme' } }, ...converted.blocks, listing],
+        blocks: [{ id: 'taxonomy-title', type: 'template/page_title', data: { level: 'h1', size: 'theme' } }, ...descriptionBlocks, listing],
         parent: term.parent ? taxonomyPageId(taxonomy.slug, term.parent) : undefined,
         fields: projectItemFields(term as unknown as WPItem, [...fields.values()], undefined),
         old_wp_url: term.link, date_published: now, date_updated: now });
