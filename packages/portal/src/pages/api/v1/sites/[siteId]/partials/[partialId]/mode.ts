@@ -5,7 +5,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../../lib/version-store';
 import { snapshotRevision } from '../../../../../../../lib/revisions';
-import { htmlToBlocks } from '../../../../../../../lib/html-to-blocks';
+import { AUTOMATIC_CONVERSION_REFUSAL } from '../../../../../../../lib/html-to-blocks';
 import type { Partial as PartialDoc } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, params }) => {
@@ -18,6 +18,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!body?.to || (body.to !== 'blocks' && body.to !== 'html')) {
     return apiError('body.to must be "blocks" or "html"', 400);
   }
+  if (body.convert) return apiError(AUTOMATIC_CONVERSION_REFUSAL, 400);
 
   const partial = await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, partialId);
   if (!partial) return apiError('Not found', 404);
@@ -37,14 +38,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   });
 
   const update: Partial<PartialDoc> = { content_mode: body.to };
-  let converted = false;
   if (body.to === 'blocks') {
-    if (body.convert && partial.html_content) {
-      update.blocks = htmlToBlocks(partial.html_content).blocks;
-      converted = true;
-    } else {
-      update.blocks = partial.blocks ?? [];
-    }
+    update.blocks = partial.blocks ?? [];
   } else {
     update.html_content = partial.html_content ?? '';
   }
@@ -54,6 +49,6 @@ export const POST: APIRoute = async ({ request, params }) => {
     ok: true,
     content_mode: saved?.content_mode,
     blocks: saved?.content_mode === 'blocks' ? saved.blocks ?? [] : undefined,
-    converted,
+    converted: false,
   });
 };
