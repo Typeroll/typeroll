@@ -41,7 +41,8 @@ npm run self-host:migrate -- --env-file /secure/typeroll.env --backup /secure/ba
 ```
 
 The migration converts every site's Pages, content types, templates, references,
-working copies and history. It preserves version inheritance and public URLs.
+working copies and history. HTML bodies stay HTML. Automatic HTML-to-blocks
+conversion is not applied. It preserves version inheritance and public URLs.
 Media objects and authentication accounts are not moved by this operation.
 Shared storage connections and site settings are retained.
 
