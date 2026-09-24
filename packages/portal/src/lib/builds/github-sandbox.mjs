@@ -3,12 +3,23 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { BWRAP_URL, BWRAP_SHA, responseBytes, sandboxBinary } from './executor.mjs';
+import { BWRAP_SOURCES, BWRAP_SHA, acquireSandbox, responseBytes, sandboxBinary } from './executor.mjs';
 import { sha256 } from './contract.mjs';
 
 // Upstream's stacked child profile denies capabilities after bwrap creates the sandbox.
 export const APPARMOR_URL = 'https://gitlab.com/apparmor/apparmor/-/raw/v4.0.2/profiles/apparmor/profiles/extras/bwrap-userns-restrict';
 export const APPARMOR_SHA = 'a964037f6cf0df1099f14226b037eaedde6237c86e715188e93eb460b30be859';
+
+/** Publication builds and this bootstrap share one ordered fetch. Integrity does not fall through. */
+export async function acquireGithubBubblewrap(fetchImpl = fetch, sources = BWRAP_SOURCES, digest = BWRAP_SHA, log = console.error) {
+  try {
+    return await acquireSandbox(fetchImpl, sources, digest, log);
+  } catch (error) {
+    if (error.message === 'integrity_failed') throw Error('github_sandbox_integrity_failed');
+    if (error.message === 'unavailable') throw Error('github_sandbox_unavailable');
+    throw error;
+  }
+}
 
 export function assertGithubBootstrapEnvironment(env, platform, architecture, uid) {
   if (platform !== 'linux' || architecture !== 'x64' || uid !== 0 || env.GITHUB_ACTIONS !== 'true' || env.RUNNER_ENVIRONMENT !== 'github-hosted') {
@@ -27,8 +38,10 @@ export async function prepareGithubSandbox() {
   }
   // Same two events as the shared executor, and the same requirement: an
   // unreachable host and a substituted artifact must not report identically.
-  // An integrity failure already had its own code; an outage fell through as
-  // whatever fetch threw, which the runner's sanitizer turns into the generic
+  // Bubblewrap goes through acquireSandbox so this path uses the same ordered
+  // sources as publication builds (upstream, then the R2 mirror). An integrity
+  // failure already had its own code; an outage fell through as whatever fetch
+  // threw, which the runner's sanitizer turns into the generic
   // `github_build_failed` — the same code a build gets for failing to compile.
   const get = async (url, digest, limit) => {
     let bytes;
@@ -46,7 +59,10 @@ export async function prepareGithubSandbox() {
     }
     return bytes;
   };
-  const [deb, profile] = await Promise.all([get(BWRAP_URL, BWRAP_SHA, 100000), get(APPARMOR_URL, APPARMOR_SHA, 16384)]);
+  const [deb, profile] = await Promise.all([
+    acquireGithubBubblewrap(fetch),
+    get(APPARMOR_URL, APPARMOR_SHA, 16384),
+  ]);
   const temp = await fs.mkdtemp(path.join(tmpdir(), 'typeroll-github-sandbox-'));
   try {
     await fs.writeFile(path.join(temp, 'sandbox.deb'), deb, { mode: 0o600 });
