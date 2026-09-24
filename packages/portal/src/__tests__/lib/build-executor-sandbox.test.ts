@@ -28,12 +28,13 @@ describe('sandbox binary sources', () => {
     expect(new Set(BWRAP_SOURCES).size).toBe(BWRAP_SOURCES.length);
   });
 
-  it('names every source in the release dependency list', async () => {
+  it('checks bubblewrap once, in source order, instead of requiring every mirror', async () => {
     const { dependencies } = await import('../../../../../scripts/release-dependencies.mjs');
-    const urls = dependencies.map((d: { url: string }) => d.url);
-    for (const source of BWRAP_SOURCES) expect(urls).toContain(source);
-    // Every source is checked rather than the first that answers, so a mirror
-    // that has drifted is caught before a build finds it.
-    expect(dependencies.filter((d: { sha256: string }) => d.sha256 === BWRAP_SHA)).toHaveLength(BWRAP_SOURCES.length);
+    const bubblewrap = dependencies.filter((d: { sha256: string, urls?: string[] }) => d.sha256 === BWRAP_SHA);
+    // CI must not block on a single host outage when a verified fallback exists.
+    // One entry tries BWRAP_SOURCES in order, the same rule as acquireSandbox.
+    expect(bubblewrap).toHaveLength(1);
+    expect(bubblewrap[0].urls).toEqual([...BWRAP_SOURCES]);
+    expect(dependencies.some((d: { name: string }) => d.name === 'apparmor-profile')).toBe(true);
   });
 });

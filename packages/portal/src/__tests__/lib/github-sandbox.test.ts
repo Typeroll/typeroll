@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { BWRAP_URL, sandboxBinary } from '../../lib/builds/executor.mjs';
-import { assertGithubBootstrapEnvironment } from '../../lib/builds/github-sandbox.mjs';
+import { sha256 } from '../../lib/builds/contract.mjs';
+import { acquireGithubBubblewrap, assertGithubBootstrapEnvironment } from '../../lib/builds/github-sandbox.mjs';
 
 function disk(change: Record<string, unknown> = {}, bytes = 'pinned binary') {
   return { lstat: vi.fn(async (name: string) => ({ uid: 0, mode: 0o755, isSymbolicLink: () => false, isFile: () => name.endsWith('bwrap'), isDirectory: () => !name.endsWith('bwrap'), ...(name === '/usr/bin/bwrap' ? change : {}) })), readFile: vi.fn(async (name: string) => Buffer.from(name === '/usr/bin/bwrap' ? bytes : 'pinned binary')) };
@@ -28,6 +29,22 @@ it('limits privileged bootstrap to explicitly identified ephemeral GitHub Linux 
 });
 
 // A pinned package version can disappear from Ubuntu's rolling package pool.
+it('loads bubblewrap through the shared fallback and keeps a bad digest from falling through', async () => {
+  const sources = ['https://upstream.example/bwrap.deb', 'https://mirror.example/bwrap.deb'];
+  const body = Buffer.from('pinned sandbox');
+  const pinned = sha256(body);
+  const quiet = () => {};
+  await expect(acquireGithubBubblewrap(async (url: string) => (
+    url === sources[0] ? new Response('', { status: 503 }) : new Response(body)
+  ), sources, pinned, quiet)).resolves.toEqual(body);
+  await expect(acquireGithubBubblewrap(async () => new Response('', { status: 503 }), sources, pinned, quiet)).rejects.toThrow('github_sandbox_unavailable');
+  let mirrorFetches = 0;
+  await expect(acquireGithubBubblewrap(async (url: string) => {
+    if (url === sources[1]) mirrorFetches += 1;
+    return url === sources[0] ? new Response('substituted') : new Response(body);
+  }, sources, pinned, quiet)).rejects.toThrow('github_sandbox_integrity_failed');
+  expect(mirrorFetches).toBe(0);
+});
 it('pins the sandbox archive to a dated official Ubuntu snapshot', () => {
   const url = new URL(BWRAP_URL);
   expect(url.origin).toBe('https://snapshot.ubuntu.com');

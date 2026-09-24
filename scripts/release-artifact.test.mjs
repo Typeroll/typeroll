@@ -4,7 +4,9 @@ import { mkdtempSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { sealArtifact, verifyArtifact, digest } from './release-artifact.mjs';
-import { verifyDependency } from './release-dependencies.mjs';
+import { BWRAP_SOURCES, BWRAP_SHA } from '../packages/portal/src/lib/builds/executor.mjs';
+import { APPARMOR_URL, APPARMOR_SHA } from '../packages/portal/src/lib/builds/github-sandbox.mjs';
+import { dependencies, verifyDependency } from './release-dependencies.mjs';
 import { qualifiedRun } from './qualified-docs.mjs';
 
 test('qualified files cannot be substituted, added, removed or rebound to another source', t => {
@@ -70,4 +72,66 @@ test('an unreachable host and a substituted artifact are not the same failure', 
     assert.match(error.message, /Do not retry/);
     return true;
   });
+});
+
+test('bubblewrap CI gate accepts a verified fallback and still fails closed on a bad digest', async () => {
+  // Same availability rule as acquireSandbox. CI must not block on a single
+  // host outage when a verified fallback exists. A reachable source that
+  // serves different bytes is INTEGRITY, not an outage to skip past.
+  const sources = ['https://upstream.example/bubblewrap.deb', 'https://mirror.example/bubblewrap.deb'];
+  const body = 'pinned sandbox';
+  const bubblewrap = { name: 'bubblewrap', urls: sources, sha256: digest(body) };
+  const profile = { name: 'apparmor-profile', url: 'https://apparmor.example/profile', sha256: digest('profile'), limit: 64 };
+  const fetchFrom = (upstream) => async (url, options) => {
+    assert.equal(options.redirect, 'error');
+    if (url === profile.url) return new Response('profile');
+    if (url === sources[0]) return upstream();
+    if (url === sources[1]) return new Response(body);
+    throw Error(`unexpected ${url}`);
+  };
+
+  const passed = [
+    await verifyDependency(bubblewrap, fetchFrom(() => new Response('', { status: 503 }))),
+    await verifyDependency(profile, fetchFrom(() => new Response('', { status: 503 }))),
+  ];
+  assert.equal(passed[0].name, 'bubblewrap');
+  assert.equal(passed[0].sha256, bubblewrap.sha256);
+  assert.equal(passed[0].bytes, body.length);
+  assert.equal(passed[1].name, 'apparmor-profile');
+
+  await assert.rejects(
+    verifyDependency(bubblewrap, async (url) => {
+      assert.ok(sources.includes(url));
+      return new Response('', { status: 503 });
+    }),
+    (error) => {
+      assert.match(error.message, /^UNAVAILABLE:/);
+      assert.doesNotMatch(error.message, /INTEGRITY/);
+      assert.match(error.message, /upstream\.example/);
+      assert.match(error.message, /mirror\.example/);
+      return true;
+    },
+  );
+
+  let mirrorFetches = 0;
+  await assert.rejects(verifyDependency(bubblewrap, async (url) => {
+    if (url === sources[1]) mirrorFetches += 1;
+    if (url === sources[0]) return new Response('substituted');
+    return new Response(body);
+  }), (error) => {
+    assert.match(error.message, /^INTEGRITY:/);
+    assert.doesNotMatch(error.message, /UNAVAILABLE/);
+    assert.match(error.message, new RegExp(digest('substituted')));
+    assert.match(error.message, new RegExp(bubblewrap.sha256));
+    assert.equal(mirrorFetches, 0);
+    return true;
+  });
+});
+
+test('the release gate lists upstream first and still pins apparmor on its own', () => {
+  assert.equal(dependencies.filter(dependency => dependency.sha256 === BWRAP_SHA).length, 1);
+  assert.deepEqual(dependencies[0].urls, BWRAP_SOURCES);
+  assert.match(dependencies[0].urls[0], /snapshot\.ubuntu\.com/);
+  assert.equal(dependencies[1].url, APPARMOR_URL);
+  assert.equal(dependencies[1].sha256, APPARMOR_SHA);
 });
