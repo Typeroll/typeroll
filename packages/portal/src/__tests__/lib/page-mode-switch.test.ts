@@ -9,6 +9,7 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
 import type { Page, Revision, Site, SiteVersion } from '@typeroll/shared';
+import { runTool } from '../../lib/anthropic';
 
 const ORG = 'orgone';
 const SITE = 'mysite';
@@ -88,16 +89,19 @@ describe('POST /pages/{id}/mode — HTML → blocks', () => {
     expect(page!.html_content).toContain('Hello');
   });
 
-  it('runs the converter when convert=true', async () => {
-    await seedPage({});
+  it('refuses convert=true and leaves a link-wrapped card untouched', async () => {
+    const card = '<a class="area-card" href="/podd/"><span class="area-media"><picture><img src="/cover.jpg" alt=""></picture></span><span class="area-body"><h3>Episode title</h3><p>The description that must survive.</p></span></a>';
+    await seedPage({ html_content: card });
     const res = await call({ to: 'blocks', convert: true });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
 
     const { getStore } = await import('../../lib/datastore');
     const page = await getStore().getDoc<Page>(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`);
-    expect(page!.content_mode).toBe('blocks');
-    expect((page!.blocks ?? []).length).toBeGreaterThan(0);
-    expect(page!.blocks![0].type).toBe('core/heading');
+    expect(page!.content_mode).toBe('html');
+    expect(page!.html_content).toBe(card);
+    expect(page!.blocks ?? []).toHaveLength(0);
+    const revs = await getStore().listDocs(paths.revisions(ORG, SITE, 'home', MAIN_VERSION_ID));
+    expect(revs).toHaveLength(0);
   });
 
   it('writes a revision before the flip', async () => {
@@ -147,6 +151,74 @@ describe('POST /pages/{id}/mode — no-op', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { unchanged?: boolean };
     expect(body.unchanged).toBe(true);
+  });
+});
+
+const CARD = '<a class="area-card" href="/podd/"><span class="area-media"><picture><img src="/cover.jpg" alt=""></picture></span><span class="area-body"><h3>Episode title</h3><p>The description that must survive.</p></span></a>';
+
+describe('HTML-to-blocks preview acceptance', () => {
+  beforeEach(async () => { await setup(); });
+
+  async function convert(body: unknown): Promise<Response> {
+    const mod = await import('../../pages/api/sites/[siteId]/pages/[pageId]/blocks/convert');
+    const req = new Request('http://localhost/api/sites/mysite/pages/home/blocks/convert', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return (mod.POST as APIRoute)({
+      request: req,
+      params: { siteId: SITE, pageId: 'home' },
+      cookies: { get: () => undefined } as any,
+      locals: {} as any,
+    } as any) as Promise<Response>;
+  }
+
+  it('previews a link-wrapped card without writing, then writes only after acceptance', async () => {
+    await seedPage({ html_content: CARD });
+    const previewRes = await convert({});
+    expect(previewRes.status).toBe(200);
+    const preview = await previewRes.json() as { applied: boolean; fingerprint: string; unconverted: Array<{ source: string }> };
+    expect(preview.applied).toBe(false);
+    expect(preview.unconverted.map(item => item.source).join('\n')).toContain('The description that must survive.');
+
+    const { getStore } = await import('../../lib/datastore');
+    const before = await getStore().getDoc<Page>(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`);
+    expect(before).toMatchObject({ content_mode: 'html', html_content: CARD });
+
+    const stale = await convert({ accept: 'not-the-preview' });
+    expect(stale.status).toBe(409);
+    expect(await getStore().getDoc<Page>(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`)).toMatchObject({ content_mode: 'html', html_content: CARD });
+
+    const accepted = await convert({ accept: preview.fingerprint });
+    expect(accepted.status).toBe(200);
+    const after = await getStore().getDoc<Page>(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`);
+    expect(after!.content_mode).toBe('blocks');
+    expect(after!.html_content).toBe(CARD);
+    expect(JSON.stringify(after!.blocks)).not.toContain('The description that must survive.');
+  });
+
+  it('does not let the chat tools write a link-wrapped card conversion', async () => {
+    await seedPage({ html_content: CARD });
+    const ctx = {
+      orgId: ORG,
+      siteId: SITE,
+      versionId: MAIN_VERSION_ID,
+      site: { id: SITE, name: 'My Site', hosting_adapter: 'cloudflare', status: 'live', created_at: '' },
+      version: null,
+      portalOrigin: 'http://localhost',
+    };
+    const preview = await runTool('convert_page_to_blocks', { page_id: 'home' }, ctx as never);
+    const result = preview.result as { applied: boolean; unconverted: Array<{ source: string }> };
+    expect(result.applied).toBe(false);
+    expect(result.unconverted.map(item => item.source).join('\n')).toContain('The description that must survive.');
+    const refused = await runTool('set_page_mode', { page_id: 'home', to: 'blocks', convert: true }, ctx as never);
+    expect(refused.result).toMatchObject({ error: expect.stringContaining('does not write') });
+
+    const { getStore } = await import('../../lib/datastore');
+    const page = await getStore().getDoc<Page>(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`);
+    expect(page).toMatchObject({ content_mode: 'html', html_content: CARD });
+    expect(page!.blocks ?? []).toHaveLength(0);
   });
 });
 

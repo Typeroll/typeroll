@@ -26,7 +26,7 @@ describe('offline unified site migration plan', () => {
     expect(plan).toEqual(planUnifiedSiteMigration(input, '2026-01-01'));
     expect(plan.versions).toMatchObject([{ id: 'main', pages: 3 }, { id: 'draft', pages: 2 }]);
     expect(Object.keys(plan.documents).some(path => path.includes('/collections/'))).toBe(false);
-    expect(plan.documents['versions/main/pages/about']).toMatchObject({ content_type: 'page', content_mode: 'blocks', path: '/about' });
+    expect(plan.documents['versions/main/pages/about']).toMatchObject({ content_type: 'page', content_mode: 'html', path: '/about', html_content: '<p>About</p>' });
   });
   it('retains inheritance and migrates branch deletions rather than resurrecting records', () => {
     const plan = planUnifiedSiteMigration(source(), '2026-01-01');
@@ -39,8 +39,8 @@ describe('offline unified site migration plan', () => {
     const plan = planUnifiedSiteMigration(source(), '2026-01-01');
     const id = plan.mappings.find(mapping => mapping.item === 'about')!.page;
     expect(id).not.toBe('about');
-    expect(plan.documents[`versions/main/pages/${id}/revisions/first`]).toMatchObject({ kind: 'page', resource_id: id, created_by: 'editor', doc: { title: 'Previous title', content_mode: 'blocks' } });
-    expect(plan.documents[`versions/draft/working_copies/page--${id}`]).toMatchObject({ kind: 'page', target_id: id, fields: { title: 'Unsaved title', blocks: [{ type: 'core/prose', data: { html: '<p>Unsaved body</p>' } }] } });
+    expect(plan.documents[`versions/main/pages/${id}/revisions/first`]).toMatchObject({ kind: 'page', resource_id: id, created_by: 'editor', doc: { title: 'Previous title', content_mode: 'html', html_content: '<p>Earlier content</p>' } });
+    expect(plan.documents[`versions/draft/working_copies/page--${id}`]).toMatchObject({ kind: 'page', target_id: id, fields: { title: 'Unsaved title', html_content: '<p>Unsaved body</p>' } });
     expect(plan.documents[`versions/draft/working_copies/page--${id}`]).not.toHaveProperty('collection');
     expect(plan.documents['edit_grants/grant']).toMatchObject({ content_type: 'articles', page_id: id, token_hash: 'test-hash' });
   });
