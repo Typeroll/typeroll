@@ -1,5 +1,10 @@
 # Changelog
 
+## Core 0.2.54 / MCP 0.45.41
+
+- Stop automatic HTML-to-blocks conversion from rewriting a page. Mode switches, agent tools, WordPress import, and the unified Pages migration keep HTML bodies intact.
+- Offer the heuristic only as a preview that lists text, classes, and markup it could not convert. A person accepts that preview in the page editor.
+
 ## Core 0.2.40 / MCP 0.45.33
 
 - Add provider-independent navigation inputs with same-origin, bounded tab defaults and explicit receiver fields; preserve safe navigation without storage or JavaScript.
