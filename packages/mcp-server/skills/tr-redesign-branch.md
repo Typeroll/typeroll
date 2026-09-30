@@ -232,9 +232,11 @@ link for your own verification:
   stakeholder link to the built output, or a final pre-merge check): deploy
   the branch once (`trigger_deploy version="<branch>"`) and share its stable
   address: `deploy_url` from `list_versions` / `read_version` once the deploy
-  has succeeded (with organization publishing a `https://v-….sites.<domain>`
-  host). Do not construct a `<branch>.<project>.pages.dev` alias; it only
-  exists on legacy Pages deploys. Branch deploys are `robots_blocked`, so the
+  has succeeded. The publishing setup decides the host: under a Hosting Group
+  it is a `v-…` host under that group's site address base (which need not be
+  the site's own domain); otherwise it is the address the host reported. Never
+  construct it yourself, and do not guess a `<branch>.<project>.pages.dev`
+  alias. Branch deploys are `robots_blocked`, so the
   address won't be indexed. A per-deploy `<hash>.pages.dev` URL in the job
   details is for your own one-off checks (a new hash each deploy).
 

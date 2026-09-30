@@ -984,8 +984,9 @@ design as perfect/approved off a glance or a partial pass.
 
 Preview shows DB state (drafts included). Live (`get_site → urls.production`)
 shows the most recent deploy. Branch deploys live at
-`read_version → deploy_url` (with organization publishing a `https://v-….sites.<domain>`
-host; never guess a `pages.dev` alias).
+`read_version → deploy_url`. The publishing setup decides that host (under a
+Hosting Group, a `v-…` host under the group's site address base); never
+construct it or guess a `pages.dev` alias.
 
 ## Branches
 
