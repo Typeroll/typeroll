@@ -1,5 +1,14 @@
 # Changelog
 
+## Core 0.2.56 / MCP 0.45.42
+
+- Make preview match the published page: same head CSS order (template base CSS after site and page CSS), shared theme and webfont fallback rules, and media URLs rewritten for every media id format.
+- Search page content in block data, HTML bodies and text fields.
+- Let a container render as a link (`tag: a` with a safe `href`) and let headings inherit their container's alignment.
+- Add an optional form `success_redirect_url` (path or http(s) URL) and render the success message as sanitized HTML for visitors without JavaScript.
+- List, read and restore page revisions through the API and MCP; restore uses the draft path and keeps publication state.
+- Point branch documentation at each version's reported `deploy_url`.
+
 ## Core 0.2.54 / MCP 0.45.41
 
 - Stop automatic HTML-to-blocks conversion from rewriting a page. Mode switches, agent tools, WordPress import, and the unified Pages migration keep HTML bodies intact.
