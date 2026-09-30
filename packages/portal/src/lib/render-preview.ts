@@ -21,7 +21,7 @@ import type {
 } from '@typeroll/shared';
 import { vstore } from './version-store';
 import {
-  CONTENT_WELL_CSS, fontFamilyCss, isSystemFont,
+  CONTENT_WELL_CSS, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS,
   pageRobots,
   breadcrumbJsonLd,
   applyTrailingSlash,
@@ -58,6 +58,11 @@ import {
 import { getStore } from './datastore';
 import { paths } from '@typeroll/shared';
 import { sanitizeBody } from './sanitize';
+// The published page's base stylesheets, inlined by Astro at the end of <head>.
+import siteResetCss from '../../../site-template/src/styles/reset.css?raw';
+import siteGlobalCss from '../../../site-template/src/styles/global.css?raw';
+
+const SITE_BASE_CSS = `${siteResetCss}\n${siteGlobalCss}`;
 import { listWorkingCopies, overlayWorkingCopy } from './working-copy';
 import { editorCanvasBridgeScript } from './editor-canvas-bridge';
 
@@ -481,24 +486,17 @@ function buildHtml(args: {
   banner: BannerArgs | null;
 }): string {
   const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, robotsBlocked, banner } = args;
-  // Merge with hardcoded defaults so optional fields (surface, text_light,
-  // size_base) never produce "undefined" / "undefinedpx" in CSS when a site's
-  // settings object was created before those fields were added, or when only
-  // some nested fields were patched. Spread first, then per-field defaults
-  // (TypeScript ts(2783) flags duplicate literal keys around a spread).
-  const c = {
-    ...settings.colors,
-    surface: settings.colors?.surface ?? '#f8fafc',
-    text_light: settings.colors?.text_light ?? '#64748b',
-  };
   const f = {
-    ...settings.fonts,
     heading: settings.fonts?.heading ?? 'Inter',
     body: settings.fonts?.body ?? 'Inter',
-    size_base: settings.fonts?.size_base ?? 16,
   };
   const fontUrl = buildFontUrl(f.heading, f.body);
   const robots = pageRobots(page, settings, robotsBlocked);
+
+  // Head CSS mirrors the published page (site-template BaseLayout): theme
+  // tokens, content well, webfont fallback, block CSS, site and page CSS, then
+  // the template's reset.css + global.css, which Astro inlines at the end of
+  // <head>. Same sources in the same order, so preview matches the built site.
 
   return `<!doctype html>
 <html lang="${escapeAttr(page.language || settings.language || 'en')}">
@@ -512,6 +510,8 @@ ${args.seoHead ?? ''}
 ${settings.favicon ? `<link rel="icon" href="${escapeAttr(settings.favicon)}" />` : ''}
 ${settings.apple_touch_icon ? `<link rel="apple-touch-icon" sizes="180x180" href="${escapeAttr(settings.apple_touch_icon)}" />` : ''}
 ${settings.icon_192 ? `<link rel="icon" type="image/png" sizes="192x192" href="${escapeAttr(settings.icon_192)}" />` : ''}
+<style>${siteThemeCss(settings)}</style>
+<style>${CONTENT_WELL_CSS}</style>
 ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>${
       // The async-CSS pattern flips rel from preload to stylesheet in an
       // inline onload handler. The editor canvas serves `script-src 'none'`,
@@ -523,64 +523,12 @@ ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link re
       allowScripts
         ? `<link rel="preload" as="style" href="${escapeAttr(fontUrl)}" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="${escapeAttr(fontUrl)}"></noscript>`
         : `<link rel="stylesheet" href="${escapeAttr(fontUrl)}">`
-    }<style>@font-face{font-family:'tr-fallback';src:local('Arial');size-adjust:107%;ascent-override:90%;descent-override:22%;line-gap-override:0%}</style>` : ''}
-<style>
-:root{
-  --color-primary:${c.primary};
-  --color-secondary:${c.secondary};
-  --color-accent:${c.accent};
-  --color-background:${c.background};
-  --color-surface:${c.surface};
-  --color-text:${c.text};
-  --color-text-light:${c.text_light};
-  --font-heading:${fontFamilyCss(f.heading)};
-  --font-body:${fontFamilyCss(f.body)};
-  --font-size-base:${f.size_base}px;
-  --spacing-xs:0.25rem; --spacing-sm:0.5rem; --spacing-md:1rem;
-  --spacing-lg:2rem;   --spacing-xl:4rem;
-  --radius-sm:0.25rem; --radius-md:0.5rem; --radius-lg:1rem;
-  --container-medium:1080px;
-  /* Mirror site-template responsive baseline — keep in lockstep with
-     packages/site-template/src/styles/global.css or the editor preview
-     will drift from the live site. */
-  --tr-bp-xs:540px; --tr-bp-sm:720px; --tr-bp-md:900px; --tr-bp-lg:1000px;
-  --tr-container:1140px; --tr-container-narrow:820px; --tr-container-pad-x:20px;
-}
-@media (max-width:1000px){:root{--tr-container-pad-x:36px}}
-@media (max-width:720px){:root{--tr-container-pad-x:20px}}
-.tr-container{width:min(var(--tr-container),calc(100% - var(--tr-container-pad-x)*2));margin-inline:auto}
-.tr-container-narrow{width:min(var(--tr-container-narrow),calc(100% - var(--tr-container-pad-x)*2));margin-inline:auto}
-.tr-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:2rem}
-.tr-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:2rem}
-.tr-grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem}
-@media (max-width:1000px){.tr-grid-2.stack-lg,.tr-grid-3.stack-lg,.tr-grid-4.stack-lg,.tr-grid-4:not(.stack-sm):not(.stack-md){grid-template-columns:1fr}}
-@media (max-width:900px){.tr-grid-2.stack-md,.tr-grid-3.stack-md,.tr-grid-3:not(.stack-sm):not(.stack-lg){grid-template-columns:1fr}}
-@media (max-width:720px){.tr-grid-2.stack-sm,.tr-grid-2:not(.stack-md):not(.stack-lg),.tr-grid-3.stack-sm,.tr-grid-4.stack-sm{grid-template-columns:1fr}}
-.tr-grid-prose-sidebar{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.5fr);gap:2rem}
-@media (max-width:720px){.tr-grid-prose-sidebar{grid-template-columns:1fr}}
-.tr-card-image-left{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:stretch}
-.tr-card-image-left > .tr-card-image{width:100%;aspect-ratio:1;object-fit:cover}
-@media (max-width:900px){.tr-card-image-left{grid-template-columns:150px minmax(0,1fr)}}
-@media (max-width:470px){.tr-card-image-left{grid-template-columns:1fr}}
-.tr-card.has-stroke,.tr-callout.has-stroke{border-radius:0}
-*,*::before,*::after{box-sizing:border-box}
-*{margin:0}
-html{height:100%}body{min-height:100%}
-html{font-size:var(--font-size-base)}
-body{font-family:var(--font-body),-apple-system,BlinkMacSystemFont,sans-serif;color:var(--color-text);background:var(--color-background);line-height:1.5;-webkit-font-smoothing:antialiased}
-img,svg,video{display:block;max-width:100%;height:auto}
-h1,h2,h3,h4,h5,h6{font-family:var(--font-heading),sans-serif;line-height:1.2}
-a{color:var(--color-primary)}
-${CONTENT_WELL_CSS}
-/* Mirror site-template/global.css — descendant typography defaults at
-   specificity 0 so user class rules win. */
-:where(.page-content) > * + *{margin-top:var(--spacing-md)}
-:where(.page-content) h1{font-size:var(--type-h1);margin-top:var(--spacing-lg)}
-:where(.page-content) h2{font-size:var(--type-h2);margin-top:var(--spacing-lg)}
-:where(.page-content) h3{font-size:var(--type-h3);margin-top:var(--spacing-md)}
-:where(.page-content) img{border-radius:var(--radius-md);margin:var(--spacing-md) 0}
-:where(.page-content) ul,:where(.page-content) ol{padding-left:1.5rem}
-:where(.page-content) blockquote{border-left:3px solid var(--color-accent);padding-left:var(--spacing-md);color:var(--color-text-light);font-style:italic}
+    }<style>${WEBFONT_FALLBACK_CSS}</style>` : ''}
+${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
+${settings.custom_css ? `<style data-site-css="1">${settings.custom_css}</style>` : ''}
+${page.custom_css ? `<style data-page-css="1">${page.custom_css}</style>` : ''}
+<style data-site-base-css="1">${SITE_BASE_CSS}</style>
+<style data-preview-ui="1">
 .tr-banner{
   position:sticky;top:0;z-index:1000;
   display:flex;align-items:center;gap:1rem;
@@ -600,9 +548,6 @@ ${CONTENT_WELL_CSS}
 }
 .tr-banner a.tr-banner__btn:hover{background:#fff;color:#1f1f23}
 </style>
-${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
-${settings.custom_css ? `<style data-site-css="1">${settings.custom_css}</style>` : ''}
-${page.custom_css ? `<style data-page-css="1">${page.custom_css}</style>` : ''}
 ${cookieConsentHtml ? `<script data-cookie-consent-early="1">${buildConsentEarlyPaintRuntime()}</script>` : ''}
 </head>
 <body>
@@ -645,7 +590,7 @@ function renderBanner(b: BannerArgs): string {
 }
 
 function buildFontUrl(heading: string, body: string): string | null {
-  const fams = Array.from(new Set([heading, body].filter(value => value && !isSystemFont(value))));
+  const fams = webFontFamilies(heading, body);
   if (!fams.length) return null;
   return `https://fonts.googleapis.com/css2?${fams
     .map((fam) => `family=${encodeURIComponent(fam)}:wght@400;500;600;700`)

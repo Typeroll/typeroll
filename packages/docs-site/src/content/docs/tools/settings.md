@@ -108,6 +108,17 @@ inside the portal does not expose them, so a normal editor conversation cannot
 inject JavaScript. Review these values like deployed code and redeploy after a
 change.
 
+### Where `custom_css` loads
+
+Published pages and previews load head CSS in the same order: theme tokens,
+content-well rules, block CSS, `custom_css`, the page's own custom CSS, and
+then the site template's base stylesheet (reset and global rules). The base
+stylesheet defines `:root` tokens such as `--container-narrow`, spacing and
+radius values, and the default `body` font and line-height. Because it loads
+last, a bare `:root { … }` or `body { … }` rule in `custom_css` does not override
+those values; use a more specific selector such as `html:root { … }` or a class
+on your own markup.
+
 ## `get_site` / `list_sites`
 
 `get_site` returns site metadata (ID, name, domain, creation date) plus a `urls`

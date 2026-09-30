@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { fontFamilyCss, isSystemFont, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import { siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -106,43 +106,15 @@ const analyticsBeacon = (apps?.apps?.analytics?.enabled
   ? String(apps.apps.analytics.config.beacon_token)
   : null;
 
-// Merge with inline defaults so optional fields (surface, text_light, size_base)
-// never produce "undefined" / "undefinedpx" in CSS for sites whose settings doc
-// predates these fields or used a partial PATCH. Spread first, then per-field
-// nullish-coalescing — avoids TS ts(2783) "specified more than once".
-const c = {
-  ...settings.colors,
-  surface: settings.colors?.surface ?? '#f8fafc',
-  text_light: settings.colors?.text_light ?? '#64748b',
-};
+// Theme tokens and webfont handling are shared with the portal preview so an
+// editor or agent preview renders the same head CSS as the published page.
 const f = {
-  ...settings.fonts,
   heading: settings.fonts?.heading ?? 'Inter',
   body: settings.fonts?.body ?? 'Inter',
-  size_base: settings.fonts?.size_base ?? 16,
 };
+const themeStyle = siteThemeCss(settings);
 
-// Inline CSS variables — these are the runtime values for the design tokens
-// the rest of the stylesheet (and any template blocks) reference.
-const themeStyle = `:root{
-  --color-primary:${c.primary};
-  --color-secondary:${c.secondary};
-  --color-accent:${c.accent};
-  --color-background:${c.background};
-  --color-surface:${c.surface};
-  --color-text:${c.text};
-  --color-text-light:${c.text_light};
-  --font-heading:${fontFamilyCss(f.heading)};
-  --font-body:${fontFamilyCss(f.body)};
-  --font-size-base:${f.size_base}px;
-}`;
-
-const googleFontFamilies = (() => {
-  const fams = new Set<string>();
-  if (f.heading && !isSystemFont(f.heading)) fams.add(f.heading);
-  if (f.body && !isSystemFont(f.body)) fams.add(f.body);
-  return Array.from(fams);
-})();
+const googleFontFamilies = webFontFamilies(f.heading, f.body);
 const googleFontUrl = googleFontFamilies.length
   ? `https://fonts.googleapis.com/css2?${googleFontFamilies
       .map((fam) => `family=${encodeURIComponent(fam)}:wght@400;500;600;700`)
@@ -156,9 +128,7 @@ const googleFontUrl = googleFontFamilies.length
 // Inter's (the platform default). Sites that use a wildly different
 // font still get *some* shift, but the average case drops from CLS
 // ~0.2 (autopilot.se field report) to <0.05.
-const fontFallbackStyle = googleFontFamilies.length
-  ? `@font-face{font-family:'tr-fallback';src:local('Arial');size-adjust:107%;ascent-override:90%;descent-override:22%;line-gap-override:0%}body{font-family:var(--font-body),'tr-fallback',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}h1,h2,h3,h4,h5,h6{font-family:var(--font-heading),'tr-fallback',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}`
-  : null;
+const fontFallbackStyle = googleFontFamilies.length ? WEBFONT_FALLBACK_CSS : null;
 ---
 <!doctype html>
 <html lang={page.language || settings.language || 'en'}>
