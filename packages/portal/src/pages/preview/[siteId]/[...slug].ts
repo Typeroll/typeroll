@@ -13,6 +13,7 @@ import type { APIRoute } from 'astro';
 import { randomUUID } from 'node:crypto';
 import { renderPreviewBySlug } from '../../../lib/render-preview';
 import { verifyActivePreviewToken } from '../../../lib/preview-signing';
+import { rewritePreviewMediaUrls } from '../../../lib/preview-media';
 import { rateLimit } from '../../../lib/rate-limit';
 import { isolatedPreviewHeaders, publicRequestOrigin } from '../../../lib/preview-headers';
 import {
@@ -102,11 +103,7 @@ export const GET: APIRoute = async ({ params, request }) => {
   }
   // Private original references stay stable in CMS content. Only this expiring
   // response carries the preview capability; it is never persisted in content or Git.
-  const mediaBase = `${(process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '')}/api/sites/${encodeURIComponent(siteId)}/media/`;
-  const escapedBase = mediaBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const withMedia = html.replace(new RegExp(`${escapedBase}([a-f0-9-]{36})/content`, 'g'),
-    (_match, mediaId) => `/preview/${encodeURIComponent(siteId)}/media/${mediaId}?token=${encodeURIComponent(token!)}`);
-  return plain(withMedia, 200);
+  return plain(rewritePreviewMediaUrls(html, siteId, token!), 200);
 };
 
 function escapeHtml(s: string): string {
