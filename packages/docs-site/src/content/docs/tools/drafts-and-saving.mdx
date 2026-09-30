@@ -94,3 +94,21 @@ through the draft layer.
 Commit always runs through one code path, so every surface behaves identically:
 revision snapshot, SEO transform, HTML sanitisation, and redirect hygiene
 (including an automatic 301 when a page's URL changes).
+
+## History and restore
+
+Every save keeps the page as it was before the save, up to 100 saved states
+per page on each version. The HTML page editor shows them under **History**;
+agents and scripts use:
+
+- `list_page_revisions` — the saved states, newest first
+  (`GET /api/v1/sites/{siteId}/pages/{pageId}/revisions`).
+- `read_page_revision` — one saved state with its full content
+  (`GET …/revisions/{revisionId}`).
+- `restore_page_revision` — put that content back as a draft, or save it at
+  once with `save: true` (`POST …/revisions/{revisionId}/restore`).
+
+A restore keeps the page's publication status and schedule. Saving it snapshots
+the current page first, so a restore can be undone the same way. A state saved
+in the other content mode (blocks or HTML) is refused until the page is
+switched to that mode.

@@ -8,6 +8,7 @@
 //   commit_working_copy                    →  SAVE (same op as the editor's
 //                                              Save button)
 //   discard_working_copy                   →  throw the draft away
+//   list/read/restore_page_revision        →  saved-state history (undo)
 //
 // The portal editor shows any agent-written draft as "Unsaved changes", so
 // the human can also Save or Discard it from the UI.
@@ -82,6 +83,60 @@ export const workingCopyTools: ToolDef[] = [
       const res = await client.get(
         siteId,
         `pages/${encodeURIComponent(args.page_id)}/changes`,
+        v(args.version),
+      );
+      return ok(res);
+    }),
+  },
+  {
+    name: 'list_page_revisions',
+    description:
+      "Saved-state history of a page on this version, newest first. Every save snapshots the page as it was BEFORE the save, so each entry is a state you can go back to. Returns { revisions: [{ id, created_at, created_by, note, title, content_mode, date_updated }], total }. Use read_page_revision for the full document and restore_page_revision to undo.",
+    inputSchema: {
+      page_id: z.string(),
+      limit: z.number().int().min(1).max(100).optional().describe('Newest N entries (default 50).'),
+      version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const query: Record<string, string | undefined> = { ...(v(args.version) ?? {}) };
+      if (args.limit) query.limit = String(args.limit);
+      const res = await client.get(siteId, `pages/${encodeURIComponent(args.page_id)}/revisions`, query);
+      return ok(res);
+    }),
+  },
+  {
+    name: 'read_page_revision',
+    description:
+      'Read one page revision with the full saved document (title, blocks or html_content, SEO fields, fields, …) — compare it with read_page before restoring.',
+    inputSchema: {
+      page_id: z.string(),
+      revision_id: z.string(),
+      version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const res = await client.get(
+        siteId,
+        `pages/${encodeURIComponent(args.page_id)}/revisions/${encodeURIComponent(args.revision_id)}`,
+        v(args.version),
+      );
+      return ok(res);
+    }),
+  },
+  {
+    name: 'restore_page_revision',
+    description:
+      "Restore a page revision's content into the page's DRAFT (replacing the current draft, like replace_page). Pass save:true to save it at once; the save snapshots the current page first, so the restore is itself undoable. Publication status and schedule are kept. A revision from the other content mode is refused (409) — switch mode first. Returns { restored_revision, saved, has_unsaved_changes, staged_fields, … }.",
+    inputSchema: {
+      page_id: z.string(),
+      revision_id: z.string(),
+      save: z.boolean().optional().describe('Save immediately (default false: leave it as an unsaved draft to preview).'),
+      version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const res = await client.post(
+        siteId,
+        `pages/${encodeURIComponent(args.page_id)}/revisions/${encodeURIComponent(args.revision_id)}/restore`,
+        { save: args.save === true },
         v(args.version),
       );
       return ok(res);

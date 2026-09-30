@@ -240,6 +240,9 @@ the full reference + concrete operation recipes.
   on the write call; inspect/discard with `read_working_copy` /
   `discard_working_copy`. Status changes and structural operations apply
   immediately.
+- **History** — `list_page_revisions`, `read_page_revision` and
+  `restore_page_revision` (to a draft, or saved with `save: true`) undo page
+  changes from earlier saves.
 
 ## Direct REST API access
 
