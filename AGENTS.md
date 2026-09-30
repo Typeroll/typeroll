@@ -1,5 +1,16 @@
 # Typeroll open-source development
 
+## Local preview address
+
+- The permanent `Typeroll Portal` DevGlow entry points to this checkout and
+  serves loopback 4323 with `PORTAL_PUBLIC_URL=https://typeroll-dev.tail5f1646.ts.net`.
+- Its command is `npm run dev --workspace=@typeroll/portal -- --host 127.0.0.1 --port 4323 --allowed-hosts typeroll-dev.tail5f1646.ts.net`.
+- Reuse Tailscale Service `svc:typeroll-dev` (HTTPS 443) for that port. Verify
+  the local data configuration before startup; this address does not select
+  a staging or production backend. Preserve the legacy machine route on 8444.
+
+## Development rules
+
 - Use Node.js 22 or later.
 - Run focused local tests first. Main CI must pass the complete source gate,
   independent browser tests and pinned external dependency probes for the exact
