@@ -910,6 +910,9 @@ function defaultMissingType(typeId: string, _block: Block): string {
 const SAFE_TAG_NAMES = new Set([
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'p', 'div', 'span',
+  // Link containers (core/container tag=a). The href is added separately and
+  // validated in prepareArticleBlockData; a bare <a> without href is inert.
+  'a',
   'section', 'article', 'aside', 'nav',
   'header', 'footer', 'main',
   'figure', 'figcaption',

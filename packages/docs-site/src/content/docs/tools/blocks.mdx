@@ -56,7 +56,12 @@ The AI agent calls `list_block_types` first to see what's available on the curre
 ### Layout primitives
 
 - `core/section` — outer container with width + padding + bg
-- `core/container` — flex container (direction / wrap / gap / align)
+- `core/container` — flex container (direction / wrap / gap / align). With
+  `layout: "flow"` it renders one plain element (`tag`: div, section, article,
+  aside, nav, header, footer, main, figure or `a`) with your `css_class`. Set
+  `tag: "a"` and `href` to make the whole container one link, such as a
+  clickable card; only http(s), relative, `#`, `mailto:` and `tel:` targets are
+  kept.
 - `core/grid` — N-column grid that wraps automatically
 - `core/columns` — 2-slot Left/Right container for asymmetric layouts
 - `core/spacer`, `core/divider`
@@ -1047,6 +1052,8 @@ Breadcrumbs retain an ordered list and the current-page indicator, but flow inli
 a long current title continues in the remaining line space and wraps naturally.
 Use `breadcrumb_label` only when a shorter label is editorially appropriate.
 Heading alignment is responsive in the editor, preview and static publication.
+`align: "match-parent"` (Inherit from container) follows the surrounding text
+alignment instead of forcing left, for headings inside centred cards.
 
 ### Recognizable text links (Core 0.2.36+)
 

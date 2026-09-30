@@ -247,7 +247,10 @@ const heading: BlockType = {
       name: 'align',
       type: 'select',
       label: 'Alignment',
-      options: ['left', 'center', 'right'],
+      // match-parent follows the surrounding container's text-align (for
+      // headings inside centred cards); the default stays explicit left.
+      options: ['left', 'center', 'right', 'match-parent'],
+      option_labels: ['Left', 'Center', 'Right', 'Inherit from container'],
       default: 'left',
       responsive: true,
     },
