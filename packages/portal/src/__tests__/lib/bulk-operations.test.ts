@@ -62,6 +62,39 @@ describe('findPagesMatching', () => {
     await expect(findPagesMatching(ORG, SITE, MAIN_VERSION_ID, {})).rejects.toThrow();
   });
 
+  it('searches block-mode page content and content-type text fields', async () => {
+    await setup();
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    await store.setDoc(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/blocks`, {
+      title: 'Blocks', slug: 'blocks', status: 'published', content_mode: 'blocks',
+      blocks: [{ id: 'b1', type: 'core/container', data: { css_class: 'hero' }, children: [
+        { id: 'b2', type: 'core/prose', data: { html: '<p>Boka ett utforskande samtal</p>' } },
+      ] }],
+    });
+    await store.setDoc(paths.contentType(ORG, SITE, 'posts', MAIN_VERSION_ID), {
+      name: 'posts', label_singular: 'Post', label_plural: 'Posts',
+      fields: [{ name: 'description', label: 'Description', type: 'richtext' }],
+      created_at: new Date().toISOString(),
+    });
+    await store.setDoc(paths.page(ORG, SITE, 'one', MAIN_VERSION_ID), {
+      content_type: 'posts', title: 'One', slug: 'one', status: 'published', content_mode: 'blocks', blocks: [],
+      fields: { description: '<p>Ett utforskande samtal om AI</p>' },
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+
+    const { findPagesMatching } = await import('../../lib/bulk-operations');
+    const r = await findPagesMatching(ORG, SITE, MAIN_VERSION_ID, { contains: 'utforskande samtal' });
+    const byId = Object.fromEntries(r.matches.map(m => [m.page_id, m]));
+    expect(Object.keys(byId).sort()).toEqual(['blocks', 'one']);
+    expect(byId.blocks.field).toBe('blocks');
+    expect(byId.blocks.excerpt).toContain('utforskande samtal');
+    expect(byId.one.field).toBe('fields.description');
+    // Block ids and block types are structure, not content, and never match.
+    const structural = await findPagesMatching(ORG, SITE, MAIN_VERSION_ID, { contains: 'core/prose' });
+    expect(structural.total).toBe(0);
+  });
+
   it('caps results at the requested limit', async () => {
     await setup();
     for (let i = 0; i < 5; i++) await seedPage(`p${i}`, '<p>match</p>');

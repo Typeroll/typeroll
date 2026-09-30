@@ -26,6 +26,8 @@ export interface SearchHit {
   title: string;
   slug: string;
   status: Page['status'];
+  /** Where the first hit is: `blocks`, `html_content`, or `fields.<name>`. */
+  field: string;
   excerpt: string;
 }
 
@@ -72,18 +74,53 @@ export async function findPagesMatching(
   }
 
   const pages = await vstore.pages(orgId, siteId, versionId);
+  const types = await vstore.contentTypes(orgId, siteId, versionId);
   const matches: SearchHit[] = [];
   for (const p of pages) {
-    const html = typeof p.html_content === 'string' ? p.html_content : '';
-    const idx = firstIndex(html);
-    if (idx < 0) continue;
-    const start = Math.max(0, idx - 40);
-    const end = Math.min(html.length, idx + 80);
-    const excerpt = `${start > 0 ? '…' : ''}${html.slice(start, end).replace(/\s+/g, ' ').trim()}${end < html.length ? '…' : ''}`;
-    matches.push({ page_id: p.id, title: p.title, slug: p.slug, status: p.status, excerpt });
+    const type = types.find(entry => entry.id === (p.content_type ?? 'page'));
+    for (const { field, text } of searchableText(p, type)) {
+      const idx = firstIndex(text);
+      if (idx < 0) continue;
+      const start = Math.max(0, idx - 40);
+      const end = Math.min(text.length, idx + 80);
+      const excerpt = `${start > 0 ? '…' : ''}${text.slice(start, end).replace(/\s+/g, ' ').trim()}${end < text.length ? '…' : ''}`;
+      matches.push({ page_id: p.id, title: p.title, slug: p.slug, status: p.status, field, excerpt });
+      break;
+    }
     if (matches.length >= limit) break;
   }
   return { matches, total: matches.length };
+}
+
+/** The same editorial text a bulk replacement edits: the active body (block
+ * data values in blocks mode, html_content in HTML mode) and the content
+ * type's text fields. Ids, block types and structure are never searched. */
+function searchableText(page: Page, type: ContentType | undefined): Array<{ field: string; text: string }> {
+  const out: Array<{ field: string; text: string }> = [];
+  if (page.content_mode === 'blocks') {
+    const strings: string[] = [];
+    const collect = (value: unknown): void => {
+      if (typeof value === 'string') strings.push(value);
+      else if (Array.isArray(value)) value.forEach(collect);
+      else if (value && typeof value === 'object') Object.values(value).forEach(collect);
+    };
+    const walk = (block: Block): void => {
+      collect(block.data);
+      block.children?.forEach(walk);
+      block.slots?.forEach(slot => slot.forEach(walk));
+    };
+    (page.blocks ?? []).forEach(walk);
+    for (const text of strings) out.push({ field: 'blocks', text });
+  } else if (typeof page.html_content === 'string') {
+    out.push({ field: 'html_content', text: page.html_content });
+  }
+  for (const field of type?.fields ?? []) {
+    const value = page.fields?.[field.name];
+    if (['text', 'textarea', 'richtext', 'html'].includes(field.type) && typeof value === 'string') {
+      out.push({ field: `fields.${field.name}`, text: value });
+    }
+  }
+  return out;
 }
 
 export interface ReplaceOptions {

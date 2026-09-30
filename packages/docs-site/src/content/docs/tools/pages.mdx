@@ -131,7 +131,12 @@ returned as it was last saved, not as it currently reads in the editor — so us
 
 ## `search_pages`
 
-Finds pages containing a substring in their HTML content:
+Finds pages whose saved content contains a substring (`contains`) or matches a
+regular expression (`regex`). It searches the same editorial text that
+`bulk_replace_text` edits: block data in block-mode pages, `html_content` in
+HTML-mode pages, and the content type's text fields. Block ids and block types
+are not searched. Each match reports `field` (`blocks`, `html_content` or
+`fields.<name>`) and an excerpt around the first hit:
 
 ```
 search_pages contains="<h1"        ← pages with an H1
