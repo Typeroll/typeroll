@@ -30,7 +30,7 @@
 
 import type { APIRoute } from 'astro';
 import { getStore } from '../../../lib/datastore';
-import { paths } from '@typeroll/shared';
+import { paths, safeFormRedirectUrl } from '@typeroll/shared';
 import type { Form } from '@typeroll/shared';
 import {
   verifyFormToken,
@@ -254,6 +254,17 @@ function safeReferer(referer: string | null): string | null {
   return null;
 }
 
+// The submit endpoint is not the site's origin, so a root-relative redirect
+// resolves against the page the visitor came from; without one it is skipped
+// and the confirmation page shows instead.
+function noScriptRedirect(target: string | undefined, backUrl: string | null): string | null {
+  const safe = safeFormRedirectUrl(target);
+  if (!safe) return null;
+  if (!safe.startsWith('/')) return safe;
+  if (!backUrl) return null;
+  try { return new URL(safe, backUrl).href; } catch { return null; }
+}
+
 // Minimal self-contained confirmation/error page for no-JS form posts. The
 // visitor language is whatever the customer wrote in success_message /
 // field labels; our chrome (the back link) stays language-neutral.
@@ -289,7 +300,10 @@ function htmlPage(
 <body>
 <main>
   <div class="mark">${heading}</div>
-  ${lines.map((l) => `<p>${escapeHtml(l)}</p>`).join('\n  ')}
+  ${ok
+    // success_message is authored rich text, rendered like the scripted path.
+    ? `<div>${sanitizeBody(lines[0])}</div>`
+    : lines.map((l) => `<p>${escapeHtml(l)}</p>`).join('\n  ')}
   ${back}
 </main>
 </body>
@@ -456,6 +470,8 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
       console.error('Form actions failed:', e);
     }
     if (ctx.wantsHtml && !ctx.wantsProtocol) {
+      const redirect = noScriptRedirect(form.success_redirect_url, ctx.backUrl);
+      if (redirect) return new Response(null, { status: 303, headers: { Location: redirect, 'Cache-Control': 'no-store', ...corsHeaders } });
       return respond(true, { success: true, message: form.success_message ?? 'Thanks!' }, 200, ctx.backUrl);
     }
     return protocolJson({ ok: true, done: true });

@@ -46,6 +46,17 @@ The AI agent fetches this when embedding the form on a page.
 Updates the definition — add or remove fields, reorder steps, change the success
 message or recipient.
 
+## After a submission
+
+`success_message` is shown in place of the form when the last step is sent. It
+accepts basic formatting and links (for example a booking link), and is
+sanitized the same way as page text.
+
+Set `success_redirect_url` to send the visitor on instead — a path on the site
+(`/tack/`) or an `https://` address such as a booking page. Other schemes are
+rejected, and an empty string clears it. Visitors without JavaScript are
+redirected too; a path is resolved against the page the form was on.
+
 ## `list_forms`
 
 Returns all forms defined for this site.

@@ -32,6 +32,7 @@ interface InitialForm {
   name: string;
   submit_text: string;
   success_message: string;
+  success_redirect_url: string;
   partial_ttl_days: number;
   has_steps: boolean;
   actions: FormAction[];
@@ -80,6 +81,7 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
           name: form.name,
           submit_text: form.submit_text,
           success_message: form.success_message,
+          success_redirect_url: form.success_redirect_url,
           partial_ttl_days: form.partial_ttl_days,
           ...(canManageActions ? { actions: form.actions } : {}),
           ...(fieldsEditable ? { fields } : {}),
@@ -186,6 +188,10 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
             </label>
             <label className="field"><span>Success message</span>
               <input value={form.success_message} disabled={!canWrite} onChange={(e) => patch('success_message', e.target.value)} />
+            </label>
+            <label className="field"><span>Redirect after submit (optional)</span>
+              <input value={form.success_redirect_url} disabled={!canWrite} placeholder="https://… or /thank-you/"
+                onChange={(e) => patch('success_redirect_url', e.target.value)} />
             </label>
             {form.has_steps && (
               <label className="field"><span>Partial submission retention (days)</span>

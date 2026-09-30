@@ -35,6 +35,11 @@ shell or paste a token into page HTML.
 }
 ```
 
+`success_message` may contain basic sanitized HTML, such as a link to the next
+step. To send the visitor somewhere after the final step instead, set
+`success_redirect_url` to a root-relative path (`/tack/`) or an `http(s)` URL,
+for example a booking page. Other schemes are rejected; `""` clears it.
+
 Field names must match `[a-z][a-z0-9_-]*`. Labels may be localized. Supported
 simple types include `text`, `email`, `tel`, `url`, `number`, `textarea`,
 `select`, `radio`, `checkbox`, `hidden`, and `gdpr_consent`.

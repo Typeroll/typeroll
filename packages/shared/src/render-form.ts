@@ -16,6 +16,23 @@ export interface FormEmbed {
   submit_token: string | null;
 }
 
+/**
+ * Where a completed form may send the visitor: an absolute http(s) URL or a
+ * root-relative path. Protocol-relative, scriptable and other schemes are
+ * refused so a stored setting can never become a javascript: navigation.
+ */
+export function safeFormRedirectUrl(value: unknown): string {
+  const url = typeof value === 'string' ? value.trim() : '';
+  if (!url || /[\u0000-\u0020]/.test(url)) return '';
+  if (/^\/(?![/\\])/.test(url)) return url;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : '';
+  } catch {
+    return '';
+  }
+}
+
 export interface RenderFormOptions {
   registry: RenderBlocksOptions['registry'];
   /** Proof-of-work difficulty in leading zero bits. 0 disables. */
@@ -34,6 +51,8 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
   const submitLabel = opts.submit_label ?? form.submit_text ?? (sv ? 'Skicka' : 'Send');
   const failMsg = sv ? 'Något gick fel — försök igen.' : 'Something went wrong — please try again.';
   const doneMsg = form.success_message ?? (sv ? 'Tack!' : 'Thanks!');
+  // Optional: navigate to a thank-you or booking page after the final step.
+  const redirect = safeFormRedirectUrl(form.success_redirect_url);
 
   const stepHtml = steps
     .map((step, i) => {
@@ -58,7 +77,7 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
     : '';
 
   return `<div data-tr-form="${escapeHtml(form.id)}"${hydrate}${sessionParam} data-tr-context-params="${escapeHtml(JSON.stringify(form.target?.context_params ?? []))}">
-${styles}<form data-tr-form-el method="POST" action="${escapeHtml(embed.submit_url)}" data-pow-bits="${opts.pow_bits ?? 0}" data-msg-fail="${escapeHtml(failMsg)}" data-msg-done="${escapeHtml(doneMsg)}">
+${styles}<form data-tr-form-el method="POST" action="${escapeHtml(embed.submit_url)}" data-pow-bits="${opts.pow_bits ?? 0}" data-msg-fail="${escapeHtml(failMsg)}" data-msg-done="${escapeHtml(doneMsg)}"${redirect ? ` data-redirect="${escapeHtml(redirect)}"` : ''}>
 <input type="hidden" name="_token" value="${escapeHtml(embed.submit_token ?? '')}" />
 <input type="hidden" name="_state" value="" />
 <input type="hidden" name="_form_id" value="${escapeHtml(form.id)}" />

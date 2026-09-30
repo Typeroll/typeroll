@@ -97,7 +97,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   }).sort((a, b) => a.id.localeCompare(b.id));
   const typeIndex = new Map(sourceTypes.map(type => [type.id, type]));
   const forms = (input.publicRuntime?.forms ?? []).map(form => {
-    const projected = assertIdentity(projectStrings(form, ['id', 'name', 'kind', 'submit_text', 'success_message', 'styles', 'submit_url', 'submit_token', 'session_param', 'hydrate_url']));
+    const projected = assertIdentity(projectStrings(form, ['id', 'name', 'kind', 'submit_text', 'success_message', 'success_redirect_url', 'styles', 'submit_url', 'submit_token', 'session_param', 'hydrate_url']));
     Object.assign(projected, projectNumbers(form, ['pow_bits']));
     projected.steps = (form.steps ?? []).map(step => ({ ...projectStrings(step, ['id', 'title', 'render', 'next']), blocks: projectPublicationBlocks(step.blocks ?? [], definitions) }));
     return projected;

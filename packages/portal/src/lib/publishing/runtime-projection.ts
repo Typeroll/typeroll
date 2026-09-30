@@ -22,7 +22,7 @@ export async function publicationRuntime(orgId: string, siteId: string) {
     const endpoint = await resolveAppFormEndpoint(form, { orgId, siteId, portalUrl: (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '') }) ||
       { ...formEmbedInfo(orgId, siteId, form.id), pow_bits: POW_BITS };
     parsePublicHttpsUrl(endpoint.submit_url);
-    return { id: form.id, name: form.name, kind: form.kind, submit_text: form.submit_text, success_message: form.success_message,
+    return { id: form.id, name: form.name, kind: form.kind, submit_text: form.submit_text, success_message: form.success_message, success_redirect_url: form.success_redirect_url,
       styles: form.styles, steps: form.steps, target: form.target, ...endpoint };
   }));
   const dependencies = [
