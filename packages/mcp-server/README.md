@@ -226,8 +226,8 @@ the full reference + concrete operation recipes.
   `verify_migration_urls` (successful rows omitted unless requested), plus
   `repair_migration_plain_text` for dry-run-first cleanup of legacy WordPress
   entities and markup in allowlisted plain-text fields.
-- **Branches** — create, read, delete, merge. Branch deploys get their
-  own URL at `{branch}.{project}.pages.dev`.
+- **Branches** — create, read, delete, merge. A deployed branch gets its own
+  stable address, reported as `deploy_url` by `list_versions` / `read_version`.
 - **Deploy** — trigger (with `dry_run` to build without publishing), list, get
   status. A finished job reports `cost`: what the build consumed in server
   time, broken down per phase. Estimates from a rate card, not billing records.

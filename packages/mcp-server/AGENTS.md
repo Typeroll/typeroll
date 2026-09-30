@@ -315,7 +315,7 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   everything you write through `?version=<branch-id>` lives on the
   branch until you `merge_branch` it back to main. Branches default
   `robots_blocked: true` so a half-finished redesign can't be indexed,
-  and deploys land at a stable `{branch}.{project}.pages.dev` URL. That
+  and deploys land at a stable address (`deploy_url` on the version). That
   branch deploy renders the site's full inherited brand (settings, fonts,
   favicon, header/footer — everything not overridden on the branch), so
   it's a faithful preview of what merging to main will look like, not just
@@ -404,7 +404,7 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   direct PATCH attempts and points at the mode endpoint.
   **Before `trigger_deploy`: commit.** Deploys build saved content only —
   an uncommitted draft silently stays behind.
-- **Deploys / `{branch}.{project}.pages.dev` are the STATIC BUILD**, refreshed
+- **Deploys / the branch `deploy_url` are the STATIC BUILD**, refreshed
   only by `trigger_deploy`. Reach for them when you want the real compiled
   output: publishing, a stakeholder link to the built site, or a faithful
   pre-merge check. The branch alias is permanent across re-deploys; the
@@ -984,7 +984,8 @@ design as perfect/approved off a glance or a partial pass.
 
 Preview shows DB state (drafts included). Live (`get_site → urls.production`)
 shows the most recent deploy. Branch deploys live at
-`get_version → deploy_url` (`{branch}.{project}.pages.dev`).
+`read_version → deploy_url` (with organization publishing a `https://v-….sites.<domain>`
+host; never guess a `pages.dev` alias).
 
 ## Branches
 
@@ -1000,7 +1001,7 @@ the live site until you `merge_branch`.
 
 Branches default `robots_blocked: true`. While iterating, preview the branch
 with a reused `get_preview_link` (DB-live, no build). Deploys to a branch land
-at a stable URL (`{branch}.{project}.pages.dev`) — that's the compiled static
+at a stable URL (`deploy_url` on the version) — that's the compiled static
 build, for sharing the finished result / stakeholder review, not per-edit
 preview.
 
