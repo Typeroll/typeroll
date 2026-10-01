@@ -33,6 +33,8 @@ import {
   composePageWithTemplate,
   defaultSiteSettings,
   resolveRenderVersion,
+  siteStylesCss,
+  resolveBreakpointWidths,
   expandExtensionIncludes,
   expandFormIncludes,
   expandIncludes,
@@ -494,6 +496,7 @@ function buildHtml(args: {
   banner: BannerArgs | null;
 }): string {
   const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, robotsBlocked, banner } = args;
+  const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {} });
   const f = {
     heading: settings.fonts?.heading ?? 'Inter',
     body: settings.fonts?.body ?? 'Inter',
@@ -533,6 +536,7 @@ ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link re
         : `<link rel="stylesheet" href="${escapeAttr(fontUrl)}">`
     }<style>${WEBFONT_FALLBACK_CSS}</style>` : ''}
 ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
+${siteStyles ? `<style data-site-styles="1">${siteStyles}</style>` : ''}
 ${settings.custom_css ? `<style data-site-css="1">${settings.custom_css}</style>` : ''}
 ${page.custom_css ? `<style data-page-css="1">${page.custom_css}</style>` : ''}
 <style data-site-base-css="1">${SITE_BASE_CSS}</style>

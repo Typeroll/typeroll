@@ -362,6 +362,11 @@ export interface SiteSettings {
    */
   render_version?: number;
   /**
+   * Named style library (site-styles.ts). Element roles (body, h1–h6, link)
+   * style every matching element; other styles are chosen per block.
+   */
+  styles?: import('./site-styles.js').SiteStyle[];
+  /**
    * Optional cookie-consent banner. When `enabled`, the renderer injects a
    * blocking modal that asks the visitor to accept/reject before any scripts
    * placed in `scripts_optional` run. `scripts_necessary` run unconditionally
@@ -899,12 +904,15 @@ export type FieldType =
   | 'page_ref'
   | 'page_ref_list'
   // Added by Forms 2.0 (form/* field blocks):
+  | 'style'           // a named style from SiteSettings.styles (see style_target)
   | 'choices';         // array of {value,label}; renderer derives
                        // {name}_options_html per FieldDefinition.choices_markup
 
 export interface FieldDefinition {
   /** Optional inspector grouping; values and API write semantics are unchanged. */
   editor_group?: 'content' | 'appearance' | 'advanced';
+  /** For `type: 'style'`: which kind of style the field lists. */
+  style_target?: import('./site-styles.js').StyleTarget;
   name: string;
   type: FieldType;
   label: string;
@@ -1006,6 +1014,11 @@ export interface BlockPackageRef {
 }
 
 export interface BlockType {
+  /**
+   * Class of the element that receives a selected style (`data.style_id`), when
+   * it is not the block's root, e.g. the `<h2>` inside a heading block.
+   */
+  style_element_class?: string;
   id: string;
   name: string;
   label: string;

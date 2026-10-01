@@ -10,7 +10,7 @@
 @media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
 
 /* Text links remain recognizable without changing card, image, button or navigation links. */
-:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: underline; text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
 :is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 /* Archive pager (repeater paginate) */
@@ -83,18 +83,18 @@
 [data-presentation="core%2Fprose"]{--font_size_px:initial;--line_height:initial;--paragraph_spacing_px:initial}
 
 /* core/prose */
-[data-block="prose"] { min-width: 0; line-height: var(--line_height, var(--page-body-line-height, 1.65)); font-size: var(--font_size_px, var(--page-body-font-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem))); text-align:var(--text_align,inherit); font-weight:var(--font_weight,inherit); overflow-wrap: anywhere; }
+[data-block="prose"] { min-width: 0; line-height: var(--line_height, var(--page-body-line-height, var(--body-leading-text, 1.65))); font-size: var(--font_size_px, var(--page-body-font-size, var(--body-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem)))); text-align:var(--text_align,inherit); font-weight:var(--font_weight,inherit); overflow-wrap: anywhere; }
 [data-block="prose"][data-w="narrow"] { max-width: 38rem; margin-inline: auto; }
 [data-block="prose"][data-w="wide"] { max-width: 60rem; margin-inline: auto; }
 [data-block="prose"] p { margin: 0 0 var(--paragraph_spacing_px,var(--page-body-paragraph-spacing, 1em)); }
 [data-block="prose"][data-font="body"] { font-family:var(--font-body,inherit); }
 [data-block="prose"][data-font="heading"] { font-family:var(--font-heading,inherit); }
-[data-block="prose"] h1 { margin: 1.5em 0 0.5em; font-size: clamp(1.75rem, 1rem + 3.5vw, 3.5rem); line-height: 1.15; }
-[data-block="prose"] h2 { margin: 1.5em 0 0.5em; font-size: clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem); line-height: 1.2; }
-[data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: clamp(1.25rem, 0.75rem + 2vw, 1.75rem); line-height: 1.25; }
-[data-block="prose"] h4 { margin: 1.5em 0 0.5em; font-size: clamp(1.125rem, 0.75rem + 1vw, 1.375rem); line-height: 1.3; }
+[data-block="prose"] h1 { margin: 1.5em 0 0.5em; font-size: var(--h1-size, clamp(1.75rem, 1rem + 3.5vw, 3.5rem)); line-height: var(--h1-leading, 1.15); }
+[data-block="prose"] h2 { margin: 1.5em 0 0.5em; font-size: var(--h2-size, clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem)); line-height: var(--h2-leading, 1.2); }
+[data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: var(--h3-size, clamp(1.25rem, 0.75rem + 2vw, 1.75rem)); line-height: var(--h3-leading, 1.25); }
+[data-block="prose"] h4 { margin: 1.5em 0 0.5em; font-size: var(--h4-size, clamp(1.125rem, 0.75rem + 1vw, 1.375rem)); line-height: var(--h4-leading, 1.3); }
 [data-block="prose"] ul, [data-block="prose"] ol { margin: 0 0 1em 1.5em; }
-[data-block="prose"] a { color: var(--color-primary, currentColor); overflow-wrap: anywhere; text-decoration:underline; text-underline-offset:.15em; }
+[data-block="prose"] a { color: var(--link-color, var(--color-primary, currentColor)); overflow-wrap: anywhere; text-decoration:var(--link-decoration, underline); text-underline-offset:.15em; }
 [data-block="prose"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
 [data-block="prose"] img { max-width: 100%; height: auto; }
 [data-block="prose"] table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }

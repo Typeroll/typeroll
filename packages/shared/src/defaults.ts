@@ -5,7 +5,7 @@ export const defaultSiteSettings: SiteSettings = {
   site_name: 'New Site',
   tagline: '',
   colors: {
-    primary: '#3b82f6',
+    primary: '#2563eb',
     secondary: '#1e293b',
     accent: '#f59e0b',
     background: '#ffffff',

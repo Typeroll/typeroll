@@ -15,6 +15,31 @@ const stringFields = {
   media: ['id', 'filename', 'cdn_url', 'alt_text', 'title', 'caption', 'mime_type'],
 };
 
+// Mirrors SiteStyle (packages/shared/src/site-styles.ts): only known keys and
+// primitive values travel; the renderer validates every value again.
+const STYLE_PROP_KEYS = ['font', 'size', 'weight', 'line_height', 'letter_spacing', 'transform', 'italic', 'color', 'background', 'align', 'decoration', 'space_before', 'space_after', 'padding', 'max_width', 'radius'];
+function projectStyleProps(value) {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid public style properties');
+  const output = {};
+  for (const key of STYLE_PROP_KEYS) {
+    if (value[key] === undefined) continue;
+    if (!['string', 'number', 'boolean'].includes(typeof value[key])) throw new Error(`Invalid public style property: ${key}`);
+    output[key] = value[key];
+  }
+  if (value.border !== undefined) output.border = projectStrings(value.border, ['width', 'style', 'color', 'sides']);
+  return output;
+}
+function projectStyle(style) {
+  if (!style || typeof style !== 'object' || Array.isArray(style)) throw new Error('Invalid public style');
+  const output = projectStrings(style, ['id', 'name', 'role', 'description', 'css']);
+  output.targets = projectStringArray(style.targets ?? [], 'style.targets');
+  output.base = projectStyleProps(style.base ?? {});
+  if (style.at !== undefined) output.at = Object.fromEntries(['tablet', 'laptop', 'desktop', 'wide'].filter(bp => style.at?.[bp] !== undefined).map(bp => [bp, projectStyleProps(style.at[bp])]));
+  if (style.hover !== undefined) output.hover = projectStyleProps(style.hover);
+  return output;
+}
+
 function projectStrings(value, fields) {
   const output = {};
   for (const field of fields) {
@@ -126,6 +151,13 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   };
   settings.colors = projectStrings(input.settings?.colors, ['primary', 'secondary', 'accent', 'background', 'surface', 'text', 'text_light']);
   settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
+  // Site-specific responsive widths drive block responsive fields and styles.
+  if (input.settings?.responsive_breakpoints) settings.responsive_breakpoints = projectNumbers(input.settings.responsive_breakpoints, ['tablet', 'laptop', 'desktop', 'wide']);
+  // The site's style library: structured values, re-validated at render.
+  if (input.settings?.styles !== undefined) {
+    if (!Array.isArray(input.settings.styles)) throw new Error('Invalid public settings: styles');
+    settings.styles = input.settings.styles.map(projectStyle);
+  }
   // The render version selects platform output; without it a build would render version 1.
   Object.assign(settings, projectNumbers(input.settings, ['render_version']));
   settings.sitewide_nofollow = input.settings?.sitewide_nofollow === true;

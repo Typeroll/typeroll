@@ -125,7 +125,7 @@ test('native text links reach frozen output and renderer changes invalidate cach
   const html=await fs.readFile(path.join(harness.destination,'dist/index.html'),'utf8');
   for(const text of ['List reference','Table reference','Image credit']) assert.match(html,new RegExp(`href="/"[^>]*>${text}</a>`));
   assert.match(html,/\.block-image-caption/);
-  assert.match(html,/a\[href\][^{]*\{[^}]*text-decoration:\s*underline/);
+  assert.match(html,/a\[href\][^{]*\{[^}]*text-decoration:\s*(?:underline|var\(--link-decoration,\s*underline\))/);
   assert.match(html,/a\[href\]:focus-visible/);
   assert.equal((await harness.run()).report.reused,1);
   await fs.appendFile(path.join(harness.destination,'packages/shared/src/render-blocks.ts'),'\n// Native text-link renderer cache qualification.\n');

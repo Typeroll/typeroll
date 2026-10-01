@@ -26,12 +26,12 @@ export const CONTENT_WELL_CSS = `
 /* Low-specificity defaults let block settings and site styles win. */
 :where(.page-content) { line-height:var(--body-leading); }
 :where(.page-content) :is(h1,h2,h3,h4,h5,h6) { font-weight:600; overflow-wrap:anywhere; }
-:where(.page-content) h1 { font-size:var(--type-h1); line-height:1.2; }
-:where(.page-content) h2 { font-size:var(--type-h2); line-height:1.25; }
-:where(.page-content) h3 { font-size:var(--type-h3); line-height:1.3; }
-:where(.page-content) h4 { font-size:var(--type-h4); line-height:1.35; }
-:where(.page-content) h5 { font-size:var(--type-h5); line-height:1.4; }
-:where(.page-content) h6 { font-size:var(--type-h6); line-height:1.4; }
+:where(.page-content) h1 { font-size:var(--type-h1); line-height:var(--h1-leading,1.2); font-weight:var(--h1-weight,600); letter-spacing:var(--h1-tracking); text-transform:var(--h1-transform); font-style:var(--h1-style); }
+:where(.page-content) h2 { font-size:var(--type-h2); line-height:var(--h2-leading,1.25); font-weight:var(--h2-weight,600); letter-spacing:var(--h2-tracking); text-transform:var(--h2-transform); font-style:var(--h2-style); }
+:where(.page-content) h3 { font-size:var(--type-h3); line-height:var(--h3-leading,1.3); font-weight:var(--h3-weight,600); letter-spacing:var(--h3-tracking); text-transform:var(--h3-transform); font-style:var(--h3-style); }
+:where(.page-content) h4 { font-size:var(--type-h4); line-height:var(--h4-leading,1.35); font-weight:var(--h4-weight,600); letter-spacing:var(--h4-tracking); text-transform:var(--h4-transform); font-style:var(--h4-style); }
+:where(.page-content) h5 { font-size:var(--type-h5); line-height:var(--h5-leading,1.4); font-weight:var(--h5-weight,600); letter-spacing:var(--h5-tracking); text-transform:var(--h5-transform); font-style:var(--h5-style); }
+:where(.page-content) h6 { font-size:var(--type-h6); line-height:var(--h6-leading,1.4); font-weight:var(--h6-weight,600); letter-spacing:var(--h6-tracking); text-transform:var(--h6-transform); font-style:var(--h6-style); }
 .page-content .block-section-inner { --section-child-gap:var(--content_gap_px,var(--block-gap)); }
 .block-section-inner > :not(style,script) ~ :not(style,script) { margin-block-start:var(--section-child-gap,var(--block-gap)); }
 .block-section-inner > :first-child { margin-block-start:0; }

@@ -53,6 +53,7 @@ import { prepareHeadingOutline } from './heading-outline.js';
 import { comparePageValues, pageSort } from './page-options.js';
 import { countBlockH1s, demoteBodyH1s, normalizePageH1s } from './page-heading-policy.js';
 import { renderFieldList } from './field-list.js';
+import { STYLE_ID_PATTERN, styleClassName } from './site-styles.js';
 
 /**
  * Render context — values exposed to templates via the dotted-path
@@ -287,6 +288,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
       );
     }
     html = applyVisibility(html, effectiveBlock, options);
+    html = applySiteStyle(html, effectiveBlock, blockType);
     html = applyStyleOverrides(html, effectiveBlock);
     return html;
   }
@@ -517,6 +519,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
 
   if (columnThreshold !== null) html += `<style data-bid="${bid}">${columnStackCss(columnThreshold, `[data-block="columns"][data-bid="${bid}"]`)}</style>`;
   html = applyVisibility(html, effectiveBlock, options);
+  html = applySiteStyle(html, effectiveBlock, blockType);
   html = applyStyleOverrides(html, effectiveBlock);
 
   return html;
@@ -1270,6 +1273,22 @@ function renderChoicesHtml(
     .join('\n');
 }
 
+/**
+ * Put the class of a selected site style (`data.style_id`) on the block's
+ * semantic element: the element carrying `style_element_class`, else the root.
+ */
+function applySiteStyle(html: string, block: Block, blockType: BlockType): string {
+  if (!blockType.schema?.some(field => field.type === 'style' && field.name === 'style_id')) return html;
+  const id = block.data?.style_id;
+  if (typeof id !== 'string' || !STYLE_ID_PATTERN.test(id)) return html;
+  const cls = styleClassName(id);
+  if (blockType.style_element_class) {
+    const target = new RegExp(`(\\sclass="(?:[^"]*\\s)?${blockType.style_element_class.replace(/[^\w-]/g, '')}(?:\\s[^"]*)?)"`);
+    if (target.test(html)) return html.replace(target, `$1 ${cls}"`);
+  }
+  return mergeAttrsIntoFirstTag(html, { class: cls }) ?? html;
+}
+
 function applyStyleOverrides(html: string, block: Block): string {
   const so = block.style_overrides;
   if (!so) return html;
@@ -1652,7 +1671,7 @@ export const BLOCKS_RUNTIME_CSS = `
 @media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
 
 /* Text links remain recognizable without changing card, image, button or navigation links. */
-:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: underline; text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
 :is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 /* Archive pager (repeater paginate) */

@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { resolveRenderVersion, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import { resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -129,6 +129,8 @@ const googleFontUrl = googleFontFamilies.length
 // font still get *some* shift, but the average case drops from CLS
 // ~0.2 (autopilot.se field report) to <0.05.
 const fontFallbackStyle = googleFontFamilies.length ? WEBFONT_FALLBACK_CSS : null;
+// The site's style library; empty for a site without styles.
+const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {} });
 ---
 <!doctype html>
 <html lang={page.language || settings.language || 'en'} data-tr-render={resolveRenderVersion(settings.render_version)}>
@@ -172,6 +174,7 @@ const fontFallbackStyle = googleFontFamilies.length ? WEBFONT_FALLBACK_CSS : nul
     {fontFallbackStyle && <style set:html={fontFallbackStyle} />}
 
     {blockCss && <style set:html={blockCss} />}
+    {siteStyles && <style data-site-styles set:html={siteStyles} />}
     {settings.custom_css && <style set:html={settings.custom_css} />}
     {/* Page-level CSS after site CSS so a page can override the site theme. */}
     {page.custom_css && <style set:html={page.custom_css} />}
