@@ -110,12 +110,15 @@ export async function deleteStyle(ctx: StyleCtx, id: string): Promise<void> {
  * `overwrite`, standard roles are reset to the platform defaults; styles
  * without a standard role are never touched.
  */
-export async function applyStandardStyles(ctx: StyleCtx, opts: { overwrite?: boolean } = {}): Promise<{ added: string[]; replaced: string[]; styles: SiteStyle[] }> {
+export async function applyStandardStyles(ctx: StyleCtx, opts: { overwrite?: boolean } = {}): Promise<{ added: string[]; replaced: string[]; adjusted: string[]; styles: SiteStyle[] }> {
   const { styles, colors } = await readStyles(ctx);
   const added: string[] = [];
   const replaced: string[] = [];
+  const adjusted: string[] = [];
   const next = [...styles];
-  for (const standard of STANDARD_STYLES) {
+  for (const original of STANDARD_STYLES) {
+    const standard = readableOnPalette(original, colors);
+    if (standard !== original) adjusted.push(original.id);
     const index = next.findIndex(style => style.role === standard.role);
     if (index >= 0) {
       if (!opts.overwrite) continue;
@@ -130,7 +133,19 @@ export async function applyStandardStyles(ctx: StyleCtx, opts: { overwrite?: boo
     added.push(id);
   }
   await save(ctx, next, colors);
-  return { added, replaced, styles: next };
+  return { added, replaced, adjusted, styles: next };
+}
+
+/**
+ * A standard style whose palette colour is unreadable on this site's
+ * background falls back to the body text colour, so the standard set can
+ * always be added. Links keep their underline, so they stay recognisable.
+ */
+function readableOnPalette(style: SiteStyle, colors: Record<string, string>): SiteStyle {
+  if (!styleContrastErrors(style, colors).length) return style;
+  const swap = (props: StyleProps | undefined) => props && props.color && !['text', 'on_primary', 'on_secondary', 'on_accent'].includes(props.color) ? { ...props, color: 'text' } : props;
+  const at = style.at ? Object.fromEntries(Object.entries(style.at).map(([bp, props]) => [bp, swap(props)])) : undefined;
+  return { ...style, base: swap(style.base)!, ...(at ? { at } : {}) };
 }
 
 export function isElementRole(style: SiteStyle): boolean {

@@ -1,9 +1,12 @@
-import { useEffect, useId, useState } from 'react';
-import type { Breakpoint, FieldDefinition, ResponsiveBreakpoints } from '@typeroll/shared';
-import { BREAKPOINTS, BREAKPOINTS_ABOVE_MOBILE, resolveBreakpointWidths, responsiveBreakpointsError } from '@typeroll/shared';
+import { createContext, useContext, useEffect, useId, useState } from 'react';
+import type { Breakpoint, FieldDefinition, ResponsiveBreakpoints, SiteStyle } from '@typeroll/shared';
+import { BREAKPOINTS, BREAKPOINTS_ABOVE_MOBILE, resolveBreakpointWidths, responsiveBreakpointsError, stylesForTarget } from '@typeroll/shared';
 import { Monitor } from 'lucide-react';
 import RichTextInput from './RichTextInput';
 import ContentReferenceInput from './ContentReferenceInput';
+
+/** The site's style library, for `type: 'style'` fields. Null when no editor provides it. */
+export const SiteStylesContext = createContext<SiteStyle[] | null>(null);
 
 export default function FieldInput({
   siteId, field, value, onChange, responsive, activeBp, hasOwn, triState = false, siteWidths,
@@ -28,7 +31,23 @@ export default function FieldInput({
     </label>
   );
   const v = (value ?? '') as string;
+  const siteStyles = useContext(SiteStylesContext);
   switch (field.type) {
+    case 'style': {
+      const options = stylesForTarget(siteStyles ?? [], field.style_target ?? 'text');
+      const missing = v && !options.some(style => style.id === v);
+      return (
+        <div style={fieldGroup}>
+          {label}
+          <select id={fieldId} aria-label={field.label} value={v} onChange={(e) => onChange(e.target.value || undefined)} style={selectInput}>
+            <option value="">Default look</option>
+            {options.map(style => <option key={style.id} value={style.id}>{style.name}</option>)}
+            {missing && <option value={v}>{v} (missing style)</option>}
+          </select>
+          {siteId && <a href={`/app/sites/${siteId}/styles`} target="_blank" rel="noopener" style={{ fontSize: '.75rem', color: '#a5b4fc' }}>Manage styles</a>}
+        </div>
+      );
+    }
     case 'page_ref':
     case 'page_ref_list':
     case 'content_type_ref':

@@ -1,0 +1,30 @@
+---
+import AppLayout from '../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../lib/version-store';
+import { loadSiteContext } from '../../../../lib/access';
+import { readStyles } from '../../../../lib/site-styles-store';
+import { CONTENT_WELL_CSS, defaultSiteSettings, resolveBreakpointWidths, siteThemeCss } from '@typeroll/shared';
+import StyleLibrary from '../../../../components/StyleLibrary';
+import siteResetCss from '../../../../../../site-template/src/styles/reset.css?raw';
+import siteGlobalCss from '../../../../../../site-template/src/styles/global.css?raw';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, versionId, owner_org_id: orgId } = ctx;
+const settings = (await vstore.settings(orgId, site.id, versionId)) ?? defaultSiteSettings;
+const { styles, colors } = await readStyles({ orgId, siteId: site.id, versionId });
+// The preview renders with the site's own tokens and base CSS, in the same order as a page.
+const baseCss = [siteThemeCss({ ...settings, colors }), CONTENT_WELL_CSS, siteResetCss, siteGlobalCss].join('\n');
+const canEdit = ctx.permission !== 'read';
+---
+<AppLayout title={`Styles — ${site.name}`} siteId={site.id}>
+  <div class="app-header">
+    <h1>Styles</h1>
+  </div>
+  <p class="muted" style="max-width: 760px; margin-bottom: 1.5rem;">
+    Named styles define how text, headings, buttons and sections look across the site. Body text, headings and links apply
+    everywhere automatically; other styles are chosen per block under <em>Style</em>. Change a style once and every page using it
+    follows. Text must stay readable: styles below WCAG AA contrast cannot be saved.
+  </p>
+  <StyleLibrary client:load siteId={site.id} initialStyles={styles} colors={colors} breakpoints={resolveBreakpointWidths(settings.responsive_breakpoints)} baseCss={baseCss} canEdit={canEdit} />
+</AppLayout>

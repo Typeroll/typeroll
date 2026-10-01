@@ -14,7 +14,7 @@
 // across containers is a Phase 2.5 polish.
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import type { Block, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType } from '@typeroll/shared';
+import type { Block, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType, SiteStyle } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES, resolveResponsive, isResponsiveValue, resolveBreakpointWidths, breakpointPreviewWidth, type ResponsiveBreakpoints } from '@typeroll/shared';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
@@ -37,10 +37,12 @@ import ContentModeSwitcher from './ContentModeSwitcher';
 import TemplatePicker from './TemplatePicker';
 import PageContentTypePicker from './PageContentTypePicker';
 import './BlockPageEditor.css';
-import FieldInput, { fieldGroup, fieldLabel, textInput, textareaInput } from './FieldInput';
+import FieldInput, { fieldGroup, fieldLabel, SiteStylesContext, textInput, textareaInput } from './FieldInput';
 
 interface Props {
   responsiveBreakpoints?: ResponsiveBreakpoints | null;
+  /** The site's style library, offered by `style` fields. */
+  siteStyles?: SiteStyle[];
   siteId: string;
   page: Page;
   contentType?: ContentType;
@@ -95,7 +97,7 @@ export const ICONS: Record<string, IconCmp> = {
 
 // ─── Top-level component ────────────────────────────────────────────────
 
-export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints }: Props) {
+export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles }: Props) {
   // The editor edits the working-copy view of the page: canonical doc with
   // any unsaved (autosaved) fields overlaid. All edits autosave to the
   // working copy; the deliberate Save in the Publish menu promotes them.
@@ -684,6 +686,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   }
 
   return (
+    <SiteStylesContext.Provider value={siteStyles ?? []}>
     <div className="block-editor" data-mobile-pane={mobilePane}>
       <header className="block-editor__topbar">
         <div className="block-editor__identity">
@@ -875,6 +878,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
         <DragOverlay dropAnimation={null}>{dnd.overlay}</DragOverlay>
       </DndContext>
     </div>
+    </SiteStylesContext.Provider>
   );
 }
 
