@@ -8,7 +8,7 @@
 // to the customer's new CDN.
 
 import sanitizeHtml from 'sanitize-html';
-import { normalizeImportedMediaHtml } from '../html-to-blocks';
+import { normalizeImportedMediaHtml } from '../imported-media-html';
 
 export interface CleanOptions {
   /** Map of old WP media URL → new CDN URL. Applied to <img src> and srcset. */

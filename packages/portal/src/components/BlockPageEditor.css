@@ -87,8 +87,6 @@
 .rich-text-editor h2 { font-size: 1.25rem; margin: .75rem 0 .25rem; }
 .rich-text-editor h3 { font-size: 1.1rem; margin: .75rem 0 .25rem; }
 .rich-text-editor h4 { font-size: 1rem; margin: .75rem 0 .25rem; }
-.prose-convert { border: 1px solid #4338ca; background: #1a1a3d; color: #fafafa; border-radius: 6px; padding: 12px; margin-bottom: 1rem; font-size: .85rem; display: grid; gap: 8px; }
-.prose-convert ul { margin: 0; padding-left: 1.25rem; }
 
 /* Block library: templates and global blocks. */
 .block-library__hint { font-size: .75rem; color: #a1a1aa; margin: 0 0 .5rem; }

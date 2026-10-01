@@ -1,5 +1,12 @@
 # Changelog
 
+## Core 0.2.58 / MCP 0.45.44
+
+- Remove HTML-to-blocks conversion. A heuristic conversion cannot reproduce designed pages faithfully.
+  - Gone: the page-level conversion preview, the text-block **Convert into blocks** action, their API routes, and the MCP and chat tools `convert_page_to_blocks` and `convert_prose_block`.
+  - HTML pages stay HTML. Switching a page to blocks starts an empty block tree and keeps the HTML as a revision; the content is then built with blocks.
+- WordPress import keeps its lazy-media clean-up, now in its own module.
+
 ## Core 0.2.57 / MCP 0.45.43
 
 - Add render versions. Each site keeps its rendering until someone previews and upgrades it in Settings → Rendering or through the API and MCP. New sites start on the latest version, and reference snapshots guard every released version.

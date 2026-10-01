@@ -6,7 +6,7 @@ import RichTextInput from './RichTextInput';
 import ContentReferenceInput from './ContentReferenceInput';
 
 import { GlobalBlocksContext, SiteStylesContext } from './editor-context';
-export { fieldAvailable, GlobalBlocksContext, ProseConvertContext, RenderVersionContext, SiteStylesContext } from './editor-context';
+export { fieldAvailable, GlobalBlocksContext, RenderVersionContext, SiteStylesContext } from './editor-context';
 
 export default function FieldInput({
   siteId, field, value, onChange, responsive, activeBp, hasOwn, triState = false, siteWidths,

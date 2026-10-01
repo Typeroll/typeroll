@@ -38,7 +38,7 @@ import {
   ContainerError,
   type BlockContainerTarget,
 } from './block-containers';
-import { htmlToBlocks } from './html-to-blocks';
+import { AUTOMATIC_CONVERSION_REFUSAL } from './html-mode';
 import { snapshotRevision } from './revisions';
 import { applyContentWrite } from './content-write';
 import {
@@ -476,16 +476,6 @@ const tools: Anthropic.Tool[] = [
         to: { type: 'string', enum: ['blocks', 'html'] },
       },
       required: ['page_id', 'to'],
-    },
-  },
-  {
-    name: 'convert_page_to_blocks',
-    description:
-      "Preview the heuristic HTML→blocks converter for a page's html_content. Returns the proposed block tree, notes, and unconverted losses. Does not write. A person accepts the preview in the page editor. Tags it recognises: <h1-4>→heading, <img>/<figure>→image, <a class='btn'>→button, grid-cols-2→columns, hero/section divs→section. Link-wrapped card text, author classes, and unsupported markup are listed in unconverted instead of being discarded silently.",
-    input_schema: {
-      type: 'object',
-      properties: { page_id: { type: 'string' } },
-      required: ['page_id'],
     },
   },
   {
@@ -947,9 +937,7 @@ When you edit an HTML-mode page, you must provide the FULL new HTML body via \`u
 
 ### Switching modes
 
-\`set_page_mode page_id=foo to=blocks\` flips content_mode and does not convert or rewrite the HTML body. It snapshots a revision first. Automatic HTML-to-blocks conversion is not available from this tool.
-
-Use \`convert_page_to_blocks page_id=foo\` to preview a proposed conversion, including an \`unconverted\` list of text, classes, and markup the heuristic would drop. The preview does not write. A person accepts it in the page editor.
+\`set_page_mode page_id=foo to=blocks\` flips content_mode and does not convert or rewrite the HTML body. It snapshots a revision first. Typeroll never converts HTML into blocks: to move a page to blocks, build its content with blocks.
 
 ### Templates
 
@@ -1705,7 +1693,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
         return { result: { ok: true, unchanged: true, content_mode: to } };
       }
       if (input.convert) {
-        return { result: { error: 'Automatic HTML-to-blocks conversion does not write. Call convert_page_to_blocks for a preview, including what it could not convert. A person accepts that preview in the page editor.' } };
+        return { result: { error: AUTOMATIC_CONVERSION_REFUSAL } };
       }
       await snapshotRevision({
         orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId,
@@ -1733,16 +1721,6 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       };
     }
 
-    case 'convert_page_to_blocks': {
-      const pageId = String(input.page_id ?? '');
-      const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
-      if (!page) return { result: { error: 'Page not found' } };
-      if (!page.html_content) {
-        return { result: { blocks: [], notes: ['Page has no html_content to convert.'] } };
-      }
-      const result = htmlToBlocks(page.html_content);
-      return { result: { ...result, applied: false } };
-    }
 
     case 'list_block_types': {
       // Returns core + custom block types in one list so the model

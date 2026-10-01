@@ -38,7 +38,7 @@ import TemplatePicker from './TemplatePicker';
 import PageContentTypePicker from './PageContentTypePicker';
 import './BlockPageEditor.css';
 import CustomCssEditor from './CustomCssEditor';
-import FieldInput, { fieldAvailable, fieldGroup, fieldLabel, GlobalBlocksContext, ProseConvertContext, RenderVersionContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
+import FieldInput, { fieldAvailable, fieldGroup, fieldLabel, GlobalBlocksContext, RenderVersionContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
 import type { GlobalBlockSummary } from './editor-context';
 
 interface Props {
@@ -326,29 +326,6 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
 
   const fieldFlush = useRef<(() => Promise<void>) | null>(null);
   const blockWrite = useRef<Promise<void>>(Promise.resolve());
-  const proseConversion: ProseConversionApi = {
-    async preview(blockId) {
-      const res = await fetch(`${resourceUrl}/blocks/convert-prose`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ block_id: blockId }) });
-      const body = await res.json().catch(() => ({})) as ProseConversionPreview & { error?: string };
-      if (!res.ok) throw new Error(body.error ?? `Preview failed (${res.status})`);
-      return body;
-    },
-    async accept(blockId, fingerprint) {
-      await fieldFlush.current?.();
-      await blockWrite.current.catch(() => {});
-      const res = await fetch(`${resourceUrl}/blocks/convert-prose`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ block_id: blockId, accept: fingerprint }) });
-      const body = await res.json().catch(() => ({})) as { blocks?: Block[]; converted?: Block[]; error?: string };
-      if (!res.ok || !body.blocks) throw new Error(body.error ?? `Conversion failed (${res.status})`);
-      setDraft((d) => ({ ...d, blocks: body.blocks }));
-      setHasWc(true);
-      historyRef.current?.record(body.blocks, `convert:${blockId}`);
-      bumpHist();
-      reloadPreview();
-      const first = body.converted?.[0]?.id;
-      setSelectedId(first ?? null);
-    },
-  };
-
   // Reusable blocks: global block references and block templates.
   async function callReusable(body: Record<string, unknown>): Promise<{ blocks?: Block[]; added_ids?: string[]; reference_id?: string; global_block?: GlobalBlockSummary }> {
     await blockWrite.current.catch(() => {});
@@ -962,7 +939,6 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               activeBp={activeBp}
               onChange={(data) => handleUpdateData(selected.block.id, data)}
               onStyleOverrides={(overrides) => handleUpdateOverrides(selected.block.id, overrides)}
-              proseConversion={proseConversion}
               reuse={reuseActions(selected.block)}
             />
           ) : (
@@ -1560,10 +1536,8 @@ function cssClassHints(styles: SiteStyle[] | null, blocks: Block[]): Array<{ cla
 }
 
 export function BlockFieldForm({
-  siteId, block, blockType, activeBp = DEFAULT_BP, onChange, onStyleOverrides, proseConversion, reuse, flushRef, onDirty, responsiveBreakpoints,
+  siteId, block, blockType, activeBp = DEFAULT_BP, onChange, onStyleOverrides, reuse, flushRef, onDirty, responsiveBreakpoints,
 }: {
-  /** Converts a text block into separate blocks (preview first). Omitted where the editor cannot. */
-  proseConversion?: ProseConversionApi;
   /** Make global, detach, save as template. Omitted where the editor cannot. */
   reuse?: ReuseActions;
   /** Save the block's class and anchor (Block.style_overrides). Omitted where they cannot be edited. */
@@ -1579,14 +1553,6 @@ export function BlockFieldForm({
 }) {
   const [local, setLocal] = useState<Record<string, unknown>>(block.data ?? {});
   const renderVersion = useContext(RenderVersionContext);
-  const [conversion, setConversion] = useState<ProseConversionPreview | null>(null);
-  const [conversionError, setConversionError] = useState<string | null>(null);
-  const [converting, setConverting] = useState(false);
-  const startConversion = proseConversion && block.type === 'core/prose' ? () => {
-    setConversionError(null);
-    setConverting(true);
-    void flush().then(() => proseConversion.preview(block.id)).then(setConversion, (e: Error) => setConversionError(e.message)).finally(() => setConverting(false));
-  } : null;
   const saveTimer = useRef<number | null>(null);
   const pending = useRef<Record<string, unknown>>({});
   const changeRef = useRef(onChange);
@@ -1652,26 +1618,6 @@ export function BlockFieldForm({
     <div>
       <h3 style={{ marginTop: 0, fontSize: '0.95rem' }}>{blockType.label}</h3>
       <p style={{ fontSize: '.75rem', opacity: 0.6, marginTop: 0, marginBottom: '1rem' }}>{blockType.id}</p>
-      {(conversion || conversionError || converting) && <div className="prose-convert" role="region" aria-label="Convert into blocks">
-        {converting && <p>Preparing a preview…</p>}
-        {conversionError && <p role="alert" className="block-field-error">{conversionError}</p>}
-        {conversion && <>
-          <p><strong>This text becomes {conversion.converted.length} {conversion.converted.length === 1 ? 'block' : 'blocks'}:</strong> {conversion.summary.map(item => `${item.count} × ${item.block_type.replace(/^core\//, '')}`).join(', ') || 'nothing'}. Nothing has been changed yet.</p>
-          {conversion.notes.length > 0 && <ul>{conversion.notes.map((note, i) => <li key={i}>{note}</li>)}</ul>}
-          {conversion.unconverted.length > 0 && <>
-            <p>Kept as HTML because no block matches:</p>
-            <ul>{conversion.unconverted.map((item, i) => <li key={i}>{item.reason}</li>)}</ul>
-          </>}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn--primary" disabled={converting} onClick={() => {
-              setConverting(true);
-              proseConversion!.accept(block.id, conversion.fingerprint).then(() => setConversion(null), (e: Error) => setConversionError(e.message)).finally(() => setConverting(false));
-            }}>Convert</button>
-            <button type="button" className="btn btn--secondary" onClick={() => { setConversion(null); setConversionError(null); }}>Cancel</button>
-          </div>
-        </>}
-      </div>}
-      <ProseConvertContext.Provider value={startConversion}>
       <form onSubmit={(e) => e.preventDefault()}>
         {(['content', 'appearance', 'advanced'] as const).map(group => {
           const fields = blockType.schema.filter(field => (field.editor_group ?? 'content') === group && fieldAvailable(field, renderVersion));
@@ -1712,7 +1658,6 @@ export function BlockFieldForm({
           </details>;
         })}
       </form>
-      </ProseConvertContext.Provider>
       {reuse && <ReusePanel key={block.id} block={block} actions={reuse} />}
     </div>
   );
@@ -1774,19 +1719,6 @@ function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions })
       {message && <p role="status">{message}</p>}
     </details>
   );
-}
-
-export interface ProseConversionPreview {
-  converted: Block[];
-  summary: Array<{ block_type: string; count: number }>;
-  notes: string[];
-  unconverted: Array<{ reason: string; source?: string }>;
-  fingerprint: string;
-}
-
-export interface ProseConversionApi {
-  preview(blockId: string): Promise<ProseConversionPreview>;
-  accept(blockId: string, fingerprint: string): Promise<void>;
 }
 
 const CLASS_TOKEN = /^-?[A-Za-z_][\w-]*$/;

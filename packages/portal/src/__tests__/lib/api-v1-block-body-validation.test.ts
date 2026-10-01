@@ -228,17 +228,4 @@ describe('body validation — sibling block routes', () => {
     expect(error).toContain('values');
   });
 
-  it('convert with unknown key → 400', async () => {
-    const { token } = await setup();
-    await seedPage('home', { content_mode: 'html', html_content: '<h1>Hi</h1>' });
-    const res = await callRoute(
-      import('../../pages/api/v1/sites/[siteId]/pages/[pageId]/blocks/convert'),
-      'POST', `${pagesUrl}/convert`, pagesParams,
-      { headers: bearer(token), body: { dryRun: true } },
-    );
-    expect(res.status).toBe(400);
-    const { error } = await res.json() as { error: string };
-    expect(error).toContain('dryRun');
-    expect(error).toContain('dry_run');
-  });
 });

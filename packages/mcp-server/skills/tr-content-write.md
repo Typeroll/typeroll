@@ -45,9 +45,9 @@ setting one-off values; ask first when it changes the site's look.
 A small label above a heading is the heading block's `eyebrow`, and a line
 below it is its `subtitle` (render version 2), each with its own style field.
 Never write them as separate text blocks with classed HTML. In text blocks,
-style whole paragraphs with site text styles (`<p class="s-lead">`); a text
-block that needs other classes, images or headings with parts is better split
-with `convert_prose_block`.
+style whole paragraphs with site text styles (`<p class="s-lead">`). Content
+that needs headings with parts, images or buttons belongs in their own blocks,
+not in a text block's HTML.
 
 `list_block_templates` and `list_partials` too. Start a common section from a
 block template (`insert_block_template`, then edit the copy). Use a global

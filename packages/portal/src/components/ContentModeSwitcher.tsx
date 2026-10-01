@@ -3,8 +3,8 @@
 // Switching is destructive in one direction (blocks → HTML loses the
 // block tree because we don't have a block-to-HTML serializer; the
 // rendered output stays on the live site until the next deploy but the
-// editor draft is gone). HTML → blocks is a preview. Nothing is written
-// until a person accepts it after seeing what could not be converted.
+// editor draft is gone). HTML → blocks starts an empty block tree; Typeroll
+// never converts HTML into blocks. Both directions save a revision first.
 //
 // Lives in its own component so both editors can mount it without
 // duplicating the API call + confirmation logic.
@@ -12,13 +12,6 @@
 import { useState } from 'react';
 import { ArrowLeftRight, AlertTriangle } from 'lucide-react';
 
-interface Unconverted { reason: string; source: string }
-interface Preview {
-  fingerprint: string;
-  unconverted: Unconverted[];
-  summary: Array<{ block_type: string; count: number }>;
-  notes: string[];
-}
 interface Props {
   siteId: string;
   pageId: string;
@@ -28,40 +21,21 @@ interface Props {
 export default function ContentModeSwitcher({ siteId, pageId, currentMode }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<Preview | null>(null);
 
   async function switchToBlocks() {
+    if (!confirm('Switch to blocks? The page starts with no blocks and you build its content with blocks. Typeroll does not convert the HTML; it is kept as a revision you can restore.')) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/sites/${siteId}/pages/${pageId}/blocks/convert`, {
+      const res = await fetch(`/api/sites/${siteId}/pages/${pageId}/mode`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ to: 'blocks' }),
       });
-      const body = await res.json().catch(() => ({})) as Preview & { error?: string };
-      if (!res.ok) throw new Error(body.error ?? `Preview failed (${res.status})`);
-      setPreview(body);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function acceptPreview() {
-    if (!preview) return;
-    if (!confirm('Accept this preview and replace the page body with the proposed blocks? The original HTML is saved as a revision first.')) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/sites/${siteId}/pages/${pageId}/blocks/convert`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ accept: preview.fingerprint }),
-      });
-      const body = await res.json().catch(() => ({})) as { error?: string };
-      if (!res.ok) throw new Error(body.error ?? `Accept failed (${res.status})`);
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(j.error ?? `Switch failed (${res.status})`);
+      }
       window.location.reload();
     } catch (e) {
       setError((e as Error).message);
@@ -106,29 +80,10 @@ export default function ContentModeSwitcher({ siteId, pageId, currentMode }: Pro
       </p>
       {currentMode === 'html' ? (
         <div>
+          <p style={muted}>Typeroll does not convert HTML into blocks. Switching starts an empty block page; the HTML stays in the page history.</p>
           <button type="button" onClick={switchToBlocks} disabled={busy} style={primaryBtn}>
-            {busy && !preview ? 'Preparing preview…' : 'Preview conversion'}
+            {busy ? 'Switching…' : 'Switch to blocks'}
           </button>
-          {preview && (
-            <div style={previewBox}>
-              <p style={muted}>
-                Proposed blocks: {preview.summary.map(item => `${item.count} ${item.block_type}`).join(', ') || 'none'}.
-                Nothing has been written.
-              </p>
-              {preview.unconverted.length ? (
-                <ul style={lossList}>
-                  {preview.unconverted.map((item, index) => (
-                    <li key={index}><strong>{item.reason}</strong> {item.source}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p style={muted}>The preview did not report unconverted markup. Review the page after accepting.</p>
-              )}
-              <button type="button" onClick={acceptPreview} disabled={busy} style={primaryBtn}>
-                {busy ? 'Saving…' : 'Accept conversion'}
-              </button>
-            </div>
-          )}
         </div>
       ) : (
         <div>
@@ -176,9 +131,4 @@ const warningBox: React.CSSProperties = {
 };
 const errorMsg: React.CSSProperties = {
   marginTop: 8, color: '#ef4444', fontSize: '.85rem',
-};
-const previewBox: React.CSSProperties = { marginTop: 10 };
-const lossList: React.CSSProperties = {
-  margin: '0 0 .75rem', paddingLeft: '1.1rem', fontSize: '.8rem',
-  color: 'var(--color-text, #e4e4e7)',
 };

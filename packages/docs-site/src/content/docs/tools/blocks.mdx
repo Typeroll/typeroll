@@ -422,9 +422,8 @@ Origin is auto-stamped `'ai'` so the portal UI can visually flag AI-authored blo
 | `remove_block`         | Remove a block + its subtree                                           |
 | `duplicate_block`      | Clone a block + insert the copy right after                            |
 | `set_block_responsive` | Set per-breakpoint values on a responsive field                        |
-| `convert_prose_block`  | Preview, then turn one text block into separate blocks (pages only)    |
 
-All accept `target: { kind, id }` or the `page_id` shorthand, except `convert_prose_block`.
+All accept `target: { kind, id }` or the `page_id` shorthand.
 
 ### Headings with an eyebrow and subtitle
 
@@ -450,19 +449,16 @@ custom CSS. From render version 2 it lands on the meaningful element (the
 heading or the button link) instead of the block wrapper. For a look that
 recurs, create a [named style](../styles/) instead.
 
-### Text blocks: paragraph styles and conversion
+### Text blocks: paragraph styles
 
 The text editor applies **paragraph styles** like a word processor: Paragraph,
 Heading 2–4 or any of the site's text styles (such as Lead or Small text). The
 style class (`s-<id>`) is stored on the paragraph.
 
 Text that holds HTML the visual editor cannot keep (other classes, images,
-tables) opens in the source editor, with **Convert into blocks…**. The
-conversion previews the blocks it would create: headings (a classed label
-above a heading becomes its eyebrow), paragraphs, lists, images and buttons.
-Nothing changes until you confirm. Agents call `convert_prose_block` without
-`accept` to preview, then with `accept` set to the preview's `fingerprint`; the
-REST route is `POST /api/v1/sites/{siteId}/pages/{pageId}/blocks/convert-prose`.
+tables) opens in the source editor. To make such content editable, rebuild it
+with heading, text, image and button blocks. Typeroll does not convert HTML
+into blocks.
 
 ### BlockType tools
 
