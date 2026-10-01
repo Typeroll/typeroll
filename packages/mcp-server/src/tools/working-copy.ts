@@ -14,7 +14,7 @@
 // the human can also Save or Discard it from the UI.
 
 import { z } from 'zod';
-import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
+import { ok, withErrorBoundary, versionParam, writeAuthority, type ToolDef } from './helpers.js';
 
 function v(version?: string): Record<string, string | undefined> | undefined {
   return version ? { version } : undefined;
@@ -51,10 +51,11 @@ export const workingCopyTools: ToolDef[] = [
       'SAVE a doc\'s unsaved draft: promote it onto the saved doc through the canonical write path (revision snapshot, SEO transform, redirect hygiene) and delete the draft. Identical to the Save button in the portal editor. Returns { committed, seo_warnings, auto_redirects, retired_redirects }. Never changes publish status. Deploys only ship saved content, so commit before trigger_deploy. Equivalent shortcut: save:true on the write tools.',
     inputSchema: {
       target: wcTargetSchema,
+      ...writeAuthority,
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
-      const res = await client.post(siteId, wcPath(args.target), {}, v(args.version));
+      const res = await client.post(siteId, wcPath(args.target), { ...(args.override_reason ? { override_reason: args.override_reason } : {}) }, v(args.version));
       return ok(res);
     }),
   },
@@ -130,13 +131,14 @@ export const workingCopyTools: ToolDef[] = [
       page_id: z.string(),
       revision_id: z.string(),
       save: z.boolean().optional().describe('Save immediately (default false: leave it as an unsaved draft to preview).'),
+      ...writeAuthority,
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.post(
         siteId,
         `pages/${encodeURIComponent(args.page_id)}/revisions/${encodeURIComponent(args.revision_id)}/restore`,
-        { save: args.save === true },
+        { save: args.save === true, ...(args.override_reason ? { override_reason: args.override_reason } : {}) },
         v(args.version),
       );
       return ok(res);

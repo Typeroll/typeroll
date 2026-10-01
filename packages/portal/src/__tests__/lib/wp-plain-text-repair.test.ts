@@ -76,7 +76,7 @@ describe('repairWordPressPlainText', () => {
       name: 'services',
       label_singular: 'Service',
       label_plural: 'Services',
-      page_field_rules: { seo_description: { writable_by: ['portal'] } },
+      page_field_rules: { seo_description: { writable_by: ['app'] } },
       route_template: '/{slug}',
       fields: [
         { name: 'excerpt', label: 'Excerpt', type: 'textarea' },

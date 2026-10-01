@@ -381,7 +381,7 @@ export async function bulkReplaceText(
         fields: candidate.contentType.fields,
         incoming: changes.fields as Record<string, unknown>,
         existing: candidate.original,
-        actor: 'agent',
+        actor: 'api',
         actorId: updatedBy,
       });
       if (authority.rejected.length > 0) {
@@ -426,7 +426,7 @@ export async function bulkReplaceText(
           { orgId, siteId, versionId },
           candidate.target,
           updatedBy,
-          'agent',
+          'api',
         );
         if (commit.committed) saved++;
       }

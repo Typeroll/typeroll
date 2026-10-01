@@ -92,6 +92,14 @@ export function withErrorBoundary<T extends z.ZodRawShape | undefined>(
 }
 
 /** Shared zod fragment for the optional `version` parameter. */
+/**
+ * MCP writes Page field values with the same authority as an editor in the
+ * portal. Only a value the listed business set itself needs a stated reason.
+ */
+export const writeAuthority = {
+  override_reason: z.string().max(500).optional().describe('Why a value the listed business set itself (through its edit link) is being replaced. Required only for those values, as in the portal; the write otherwise returns 409 naming the field.'),
+};
+
 export const versionParam = z
   .string()
   .optional()

@@ -13,6 +13,7 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../../../..
 import { vstore } from '../../../../../../../../../lib/version-store';
 import { getRevision } from '../../../../../../../../../lib/revisions';
 import { applyContentWrite } from '../../../../../../../../../lib/content-write';
+import { apiWriteAuthority } from '../../../../../../../../../lib/field-authority';
 import { readWorkingCopy, WorkingCopyError } from '../../../../../../../../../lib/working-copy';
 import { pickWritable, REPLACEABLE } from '../../../../../../../../../lib/page-writable';
 import type { Page } from '@typeroll/shared';
@@ -27,6 +28,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!pageId || !revId) return apiError('Missing pageId or revId');
   const body = (await request.json().catch(() => ({}))) as { save?: unknown } | null;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body');
+  const authority = apiWriteAuthority(body);
+  if ('error' in authority) return apiError(authority.error);
 
   const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
   if (!existing) return apiError('Page not found', 404);
@@ -53,7 +56,7 @@ export const POST: APIRoute = async ({ request, params }) => {
 
   try {
     const save = body.save === true;
-    const result = await applyContentWrite(ctx, { kind: 'page', id: pageId }, update, { save, updatedBy: `api-key:${ctx.keyPrefix}` });
+    const result = await applyContentWrite(ctx, { kind: 'page', id: pageId }, update, { save, updatedBy: `api-key:${ctx.keyPrefix}`, ...authority });
     const unsaved = !!(await readWorkingCopy(ctx, { kind: 'page', id: pageId }));
     return apiResponse(ctx, {
       restored_revision: revId,

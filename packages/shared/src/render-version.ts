@@ -38,6 +38,16 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Text on primary-coloured buttons and badges is black or white, whichever reads better on the primary colour, instead of always white.',
     ],
   },
+  {
+    version: 3,
+    core_version: '0.2.58',
+    title: 'Palette-derived theme tokens',
+    changes: [
+      'Subtle panel backgrounds (table headers, code, placeholders, tabs) use the site\'s Surface colour instead of a fixed light grey.',
+      'Borders are derived from the text and background colours instead of a fixed grey, so they stay visible on dark backgrounds.',
+      'Text on secondary-coloured buttons is black or white, whichever reads better on the secondary colour.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

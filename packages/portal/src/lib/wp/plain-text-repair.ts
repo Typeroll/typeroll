@@ -172,7 +172,7 @@ export async function repairWordPressPlainText(
         fields: pageAuthorityFields(candidate.contentType),
         incoming: changes,
         existing: candidate.original,
-        actor: 'agent',
+        actor: 'api',
         actorId: updatedBy,
       });
       if (authority.rejected.length > 0) {
@@ -205,7 +205,7 @@ export async function repairWordPressPlainText(
           { orgId, siteId, versionId },
           candidate.target as WcTarget,
           updatedBy,
-          'agent',
+          'api',
         );
         if (result.committed) saved++;
       }

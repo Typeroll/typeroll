@@ -50,13 +50,16 @@ specific use case.
 
 Accepted submissions are stored for the site's submissions inbox. A form can
 also run configured actions, such as sending an email notification. Email
-credentials are configured separately under the site's email settings, stored
-encrypted, and kept off the agent-readable surface.
+credentials are configured separately under the site's email settings and
+stored encrypted.
 
 ## Agent and API surface
 
 Agents can create, read, update, list, and delete forms. They can also list and
-delete submissions. A caller may provide a flat field list for a simple form;
+delete submissions. With an admin API key they read and set a form's email
+notifications and webhooks (`actions`), exactly as the portal's Forms editor
+does; webhook secrets are masked in every response. The chat assistant inside
+the portal does not manage notifications or read submissions. A caller may provide a flat field list for a simple form;
 Typeroll converts it to a one-step definition. Multi-step flows use explicit
 steps.
 

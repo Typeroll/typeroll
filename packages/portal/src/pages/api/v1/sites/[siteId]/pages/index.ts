@@ -9,6 +9,7 @@ import { pageSort, comparePageValues, pageContentValues, DEFAULT_CONTENT_TYPE, t
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
 import { createPage } from '../../../../../../lib/page-create';
+import { apiWriteAuthority } from '../../../../../../lib/field-authority';
 import { pageAddress } from '../../../../../../lib/page-fields';
 import { WorkingCopyError } from '../../../../../../lib/working-copy';
 
@@ -120,8 +121,11 @@ export const POST: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body', 400);
+  const authority = apiWriteAuthority(body);
+  if ('error' in authority) return apiError(authority.error, 400);
+  const { override_reason: _reason, ...input } = body as Record<string, unknown>;
   try {
-    const result = await createPage(ctx, body, 'agent', `api-key:${ctx.keyPrefix}`);
+    const result = await createPage(ctx, input, authority.actor, `api-key:${ctx.keyPrefix}`);
     return apiResponse(ctx, { ...result, page: { ...projectPage(result.page, true), url: await pageAddress(ctx, result.page) } }, 201, body);
   } catch (error) {
     if (error instanceof WorkingCopyError) return apiError(error.message, error.status);

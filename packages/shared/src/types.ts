@@ -532,7 +532,7 @@ export interface Page {
   content_type?: string;
   fields?: Record<string, unknown>;
   /** Internal editorial provenance. Excluded from rendered context and exports. */
-  _provenance?: Record<string, { source: 'portal' | 'owner' | 'agent' | 'app' | 'import'; actor: string; updated_at: string; source_url?: string; import_run_id?: string; override_reason?: string }>;
+  _provenance?: Record<string, { source: 'portal' | 'api' | 'owner' | 'agent' | 'app' | 'import'; actor: string; updated_at: string; source_url?: string; import_run_id?: string; override_reason?: string }>;
   title: string;
   /**
    * Single URL path segment used to derive the live URL when `path` is

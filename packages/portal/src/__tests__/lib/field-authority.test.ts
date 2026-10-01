@@ -52,6 +52,32 @@ describe('writable_by defaults', () => {
   });
 });
 
+describe('API and MCP writes', () => {
+  it('rank with the portal editor: each replaces the other', () => {
+    const fromPortal = itemWith({ description: { source: 'portal', actor: 'editor@example.com', updated_at: 'T' } });
+    expect(applyFieldAuthority({ fields: FIELDS, incoming: { description: 'x' }, existing: fromPortal, actor: 'api', actorId: 'api-key:abc' }).rejected).toEqual([]);
+    const fromApi = itemWith({ description: { source: 'api', actor: 'api-key:abc', updated_at: 'T' } });
+    expect(applyFieldAuthority({ fields: FIELDS, incoming: { description: 'y' }, existing: fromApi, actor: 'portal', actorId: 'editor@example.com' }).rejected).toEqual([]);
+  });
+
+  it('are admitted wherever writable_by admits the portal or agents', () => {
+    const fields = [f('ui', { writable_by: ['portal'] }), f('agents', { writable_by: ['agent'] }), f('billing', { writable_by: ['app'] })];
+    const r = applyFieldAuthority({ fields, incoming: { ui: 1, agents: 2, billing: 3 }, existing: undefined, actor: 'api', actorId: 'api-key:abc' });
+    expect(r.update).toEqual({ ui: 1, agents: 2 });
+    expect(r.rejected).toEqual([{ field: 'billing', reason: 'not_writable' }]);
+  });
+
+  it('outrank machine passes, and need a reason to replace the owner', () => {
+    const fromApi = itemWith({ description: { source: 'api', actor: 'api-key:abc', updated_at: 'T' } });
+    expect(applyFieldAuthority({ fields: FIELDS, incoming: { description: 'z' }, existing: fromApi, actor: 'agent', actorId: 'chat-ai' }).rejected[0])
+      .toMatchObject({ reason: 'lower_precedence', current_source: 'api' });
+    const fromOwner = itemWith({ phone: { source: 'owner', actor: 'owner', updated_at: 'T' } });
+    expect(applyFieldAuthority({ fields: FIELDS, incoming: { phone: '1' }, existing: fromOwner, actor: 'api', actorId: 'api-key:abc' }).rejected[0])
+      .toMatchObject({ reason: 'override_required' });
+    expect(applyFieldAuthority({ fields: FIELDS, incoming: { phone: '1' }, existing: fromOwner, actor: 'api', actorId: 'api-key:abc', overrideReason: 'Moved office' }).rejected).toEqual([]);
+  });
+});
+
 describe('exclusivity', () => {
   it('refuses an agent write to an app-only field', () => {
     const r = applyFieldAuthority({

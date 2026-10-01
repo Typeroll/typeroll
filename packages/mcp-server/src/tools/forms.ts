@@ -1,4 +1,5 @@
-// Forms — agents can create/update/delete forms, and read submissions.
+// Forms — agents can create/update/delete forms, manage their email
+// notifications and webhooks, and read submissions, like the portal.
 // The customer-facing submit endpoint is HMAC-signed and lives at
 // /api/forms/submit. Agents place forms by reference: core/form in block mode,
 // or <x-form id="…" /> in HTML mode. Preview/build expands either reference
@@ -38,6 +39,19 @@ const targetSchema = z.object({
   installation_id: z.string(), path: z.string(), hydrate: z.boolean().optional(), session_param: z.string().optional(),
 }).optional().describe('Admin-only: bind to a declared POST route of an enabled app installation. Read its authenticated guide first.');
 
+// Actions run after a successful submission: email notifications, signed
+// webhooks and app-provided action types. Same validation as the portal's
+// Forms editor; admin permission required, as in the portal.
+const actionSchema = z.object({
+  id: z.string().optional().describe('Keep an existing action\'s id to update it in place (webhooks keep their stored secret).'),
+  type: z.string().describe('"email", "webhook", or an action type provided by an installed app.'),
+  config: z.record(z.string(), z.unknown()).describe(
+    'email: { to, subject, body, cc?, bcc?, reply_to?, include_all?, format?: "html"|"text" } — to/subject/body may use {{field}} placeholders, e.g. to: "{{email}}" for a confirmation to the visitor. ' +
+    'webhook: { url (https), fields: ["name","email"] (only these values are sent), secret (signing secret; send "••••••••" to keep the stored one) }.',
+  ),
+});
+const actionsDescription = 'The complete list of actions after a submission (replaces the current list): email notifications, webhooks, app actions. Read the form first and send back the actions you keep. Requires admin permission, like the portal.';
+
 export const formTools: ToolDef[] = [
   {
     name: 'list_forms',
@@ -50,7 +64,7 @@ export const formTools: ToolDef[] = [
   {
     name: 'read_form',
     description:
-      'Read one form by id, including fields/steps, submit_text, and success_message. Place it with a `core/form` block using data.form_id on a block-mode page, or `<x-form id="…" />` in HTML mode. Both references are expanded server-side with validation, signed token, initial state, and the shared runtime.',
+      'Read one form by id, including fields/steps, submit_text, success_message and, for admins, its actions (email notifications and webhooks; secrets masked). Place it with a `core/form` block using data.form_id on a block-mode page, or `<x-form id="…" />` in HTML mode. Both references are expanded server-side with validation, signed token, initial state, and the shared runtime.',
     inputSchema: { form_id: z.string() },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.get(siteId, `forms/${encodeURIComponent(args.form_id)}`);
@@ -69,6 +83,7 @@ export const formTools: ToolDef[] = [
       submit_text: z.string().optional(),
       success_message: z.string().optional().describe('Shown after the final step. May contain basic HTML (links, emphasis); it is sanitized.'),
       success_redirect_url: z.string().optional().describe('After the final step, send the visitor to this absolute http(s) URL or root-relative path (for example a booking or thank-you page) instead of showing success_message. Pass an empty string to clear.'),
+      actions: z.array(actionSchema).optional().describe(actionsDescription),
       target: targetSchema,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -82,7 +97,7 @@ export const formTools: ToolDef[] = [
   {
     name: 'update_form',
     description:
-      'Patch a form. Provide only what you want to change. Passing `steps` replaces the whole step list; passing `fields` (sugar for simple forms) replaces the whole step list with ONE static step built from them. The existing form_id is immutable.',
+      'Patch a form. Provide only what you want to change. Passing `steps` replaces the whole step list; passing `fields` (sugar for simple forms) replaces the whole step list with ONE static step built from them. Passing `actions` replaces the email notifications and webhooks (admin). The existing form_id is immutable.',
     inputSchema: {
       form_id: z.string(),
       patch: z.object({
@@ -92,7 +107,8 @@ export const formTools: ToolDef[] = [
         submit_text: z.string().optional(),
         success_message: z.string().optional().describe('Shown after the final step. May contain basic HTML (links, emphasis); it is sanitized.'),
         success_redirect_url: z.string().optional().describe('After the final step, send the visitor to this absolute http(s) URL or root-relative path (for example a booking or thank-you page) instead of showing success_message. Pass an empty string to clear.'),
-      target: targetSchema,
+        actions: z.array(actionSchema).optional().describe(actionsDescription),
+        target: targetSchema,
       }),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {

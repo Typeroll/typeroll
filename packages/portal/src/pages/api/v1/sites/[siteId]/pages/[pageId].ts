@@ -23,6 +23,7 @@ import { vstore } from '../../../../../../lib/version-store';
 import { pageUrlFromDoc } from '../../../../../../lib/page-paths';
 import { removeAutoRedirectsTargeting } from '../../../../../../lib/redirect-hygiene';
 import { applyContentWrite } from '../../../../../../lib/content-write';
+import { apiWriteAuthority, type ApiWriteAuthority } from '../../../../../../lib/field-authority';
 import {
   discardWorkingCopy,
   overlayWorkingCopy,
@@ -99,14 +100,15 @@ async function handleWrite(
   pageId: string,
   fields: Record<string, unknown>,
   save: boolean,
-  answerSources?: unknown,
+  answerSources: unknown,
+  authority: ApiWriteAuthority,
 ): Promise<Record<string, unknown>> {
   validateAnswerSources(answerSources);
   const result = await applyContentWrite(
     ctx,
     { kind: 'page', id: pageId },
     fields,
-    { save, updatedBy: `api-key:${ctx.keyPrefix}`, answerSources: answerSources as Record<string, { source_url?: string; import_run_id?: string }> | undefined },
+    { save, updatedBy: `api-key:${ctx.keyPrefix}`, ...authority, answerSources: answerSources as Record<string, { source_url?: string; import_run_id?: string }> | undefined },
   );
   const view = await draftView(ctx, pageId);
   return {
@@ -147,9 +149,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // caller sent so stored tags are uniform.
   if (alt.present) update.alternates = alt.value;
   if (Object.keys(update).length === 0) return apiError('No writable fields in body');
+  const authority = apiWriteAuthority(body);
+  if ('error' in authority) return apiError(authority.error);
 
   try {
-    const payload = await handleWrite(ctx, pageId, update, body.save === true, body.answer_sources);
+    const payload = await handleWrite(ctx, pageId, update, body.save === true, body.answer_sources, authority);
     // Reported, not rejected: the write is otherwise fine and the caller has
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.
@@ -190,9 +194,11 @@ export const PUT: APIRoute = async ({ request, params }) => {
   }
   update.fields = { ...Object.fromEntries(Object.keys(existing.fields ?? {}).map(key => [key, null])), ...(body.fields ?? {}) };
   if (body.slug !== undefined) update.slug = body.slug;
+  const authority = apiWriteAuthority(body);
+  if ('error' in authority) return apiError(authority.error);
 
   try {
-    const payload = await handleWrite(ctx, pageId, update, body.save === true, body.answer_sources);
+    const payload = await handleWrite(ctx, pageId, update, body.save === true, body.answer_sources, authority);
     // Reported, not rejected: the write is otherwise fine and the caller has
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.

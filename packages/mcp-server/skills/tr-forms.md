@@ -6,8 +6,8 @@ description: Use when the user wants to add a contact form, newsletter signup, b
 # Add a form to a Typeroll site
 
 Typeroll forms are server-backed. The platform renders the form shell, accepts
-signed submissions, validates declared fields, stores submissions, and can run
-admin-configured email or webhook actions.
+signed submissions, validates declared fields, stores submissions, and runs
+email and webhook actions configured in the portal or through MCP/API.
 
 ## Choose the placement
 
@@ -97,9 +97,23 @@ actions in the form editor:
   `X-Typeroll-Signature`, sends an idempotency key, retries transient failures,
   and stores delivery status.
 
-Actions are deliberately excluded from MCP/API-key writes and reads because
-they can exfiltrate submitted data. Direct the user to the portal form editor
-to configure them.
+Agents manage the same actions with `read_form` (actions with secrets masked)
+and `update_form patch={ actions: [...] }`, with admin permission as in the
+portal. `actions` replaces the whole list: read the form, change what you need
+and send the list back. Examples:
+
+```
+update_form form_id=contact patch={ actions: [
+  { type: "email", config: { to: "hello@example.com", subject: "New lead: {{name}}",
+    body: "<p>{{message}}</p>", include_all: true, reply_to: "{{email}}" } },
+  { type: "email", config: { to: "{{email}}", subject: "Thanks, {{name}}",
+    body: "<p>We will get back to you within a day.</p>" } }
+] }
+```
+
+A webhook needs `url` (https), an explicit `fields` allowlist and a signing
+`secret`; send the masked value back to keep a stored secret. `list_form_submissions`
+reads what visitors sent.
 
 ## Verify
 
@@ -143,7 +157,7 @@ Booking request:
 
 - Do not hand-write a form, token, honeypot, or submit script.
 - Do not put a raw `<script>` in page HTML; the sanitizer removes it.
-- Do not expose action configuration through agent surfaces.
+- Do not drop existing actions by accident: `actions` replaces the list.
 - Do not send every submitted field to a webhook by default; choose the
   smallest allowlist the external register needs.
 - `submit_token` is stable until the platform rotates its form-signing secret;

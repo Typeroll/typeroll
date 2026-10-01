@@ -11,6 +11,7 @@ import { paths, fieldsToSteps, safeFormRedirectUrl } from '@typeroll/shared';
 import type { Form, FormField } from '@typeroll/shared';
 
 import { validateFields, validSteps } from '../../../../../../lib/forms-admin';
+import { formActionsPermission, formActionsView, validateFormActionsInput } from '../../../../../../lib/form-actions-api';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -23,7 +24,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   // submit_token + submit_url are what an agent needs to embed a working
   // form: hidden `_token` input + absolute action URL. The token is stable
   // until FORMS_HMAC_SECRET rotates, so baking it into static HTML is fine.
-  return apiResponse(ctx, { form: { ...doc, actions: [] }, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, doc) });
+  return apiResponse(ctx, { form: { ...doc, actions: formActionsView(doc, formActionsPermission(ctx)) }, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, doc) });
 };
 
 export const PATCH: APIRoute = async ({ request, params }) => {
@@ -56,11 +57,18 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (body.success_redirect_url && !redirect) return apiError('success_redirect_url must be an http(s) URL or a path starting with /');
     update.success_redirect_url = redirect;
   }
-  // `actions` (email notifications) are admin-only — the API-key / MCP write
-  // path can't add, change, or remove them. They survive untouched here.
   if (body.steps !== undefined) {
     if (!validSteps(body.steps)) return apiError('steps must be a non-empty array of { id, blocks?, render?: static|dynamic, next? } with unique ids');
     update.steps = body.steps;
+  }
+  // Email notifications, webhooks and app actions: admins only, validated
+  // exactly as in the portal's Forms editor. Secret values may be sent as the
+  // mask to keep the stored secret.
+  if (body.actions !== undefined) {
+    if (formActionsPermission(ctx) !== 'admin') return apiError('Admin permission required to change form actions', 403);
+    const actions = await validateFormActionsInput(body.actions, existing.actions, update.steps ?? existing.steps);
+    if (typeof actions === 'string') return apiError(actions, 400);
+    update.actions = actions;
   }
   if (body.styles !== undefined) update.styles = String(body.styles);
   if (body.kind !== undefined) update.kind = String(body.kind);
@@ -81,7 +89,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     { ...existing, ...update },
   );
   const fresh = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`);
-  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: [] } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!) }, 200, body);
+  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: formActionsView(fresh, formActionsPermission(ctx)) } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!) }, 200, body);
 };
 
 export const DELETE: APIRoute = async ({ request, params }) => {

@@ -375,7 +375,7 @@ export interface SiteStylesCssOptions {
   breakpoints: BreakpointWidths;
   /** Site palette, used to derive the on_* text colours. */
   colors: SiteColors;
-  /** Site render version (render-version.ts); version 2 adds role defaults and a readable --color-primary-fg. */
+  /** Site render version (render-version.ts); version 2 adds role defaults and a readable --color-primary-fg, version 3 palette-derived theme tokens. */
   renderVersion?: number;
 }
 
@@ -429,8 +429,11 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
   const root: string[] = [];
   pushRoot('base', ON_COLOR_TOKENS.map(token => `--color-${token.replace('_', '-')}:${onColor(opts.colors[token.slice(3) as keyof SiteColors])}`));
   if (rootByBp.get('base')?.length) root.push(`:root{${rootByBp.get('base')!.join(';')}}`);
-  // Zero specificity, so a site's own --color-primary-fg still wins.
+  // Zero specificity, so a site's own values still win.
   if (v2) root.push(`:where(:root){--color-primary-fg:var(--color-on-primary)}`);
+  // Version 3: theme tokens blocks reference but no version defined, derived
+  // from the palette instead of each block's hard-coded fallback grey.
+  if ((opts.renderVersion ?? 1) >= 3) root.push(`:where(:root){--color-bg:var(--color-background);--color-bg-subtle:var(--color-surface);--color-border:color-mix(in srgb,var(--color-text) 18%,var(--color-background));--color-secondary-fg:var(--color-on-secondary)}`);
   for (const bp of STYLE_BREAKPOINTS) if (rootByBp.get(bp)?.length) root.push(`${media(bp)}{:root{${rootByBp.get(bp)!.join(';')}}}`);
   return [...root, ...rules].join('\n');
 }

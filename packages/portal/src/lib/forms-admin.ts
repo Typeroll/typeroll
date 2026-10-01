@@ -2,11 +2,11 @@
 // the cookie-auth admin routes, so the two auth surfaces can't drift on what a
 // valid form looks like.
 //
-// Email `actions` are deliberately NOT part of the generic form-write path:
-// they carry recipient addresses + templates that read raw submission data,
-// so they're a prompt-injection exfiltration vector. They are writable ONLY
-// through the cookie-auth admin route (validateEmailActions below); the v1 /
-// MCP write paths drop `actions` entirely.
+// Email `actions` carry recipient addresses and templates that read raw
+// submission data, so only site admins write them: through the portal's Forms
+// editor (cookie-auth admin route) or an admin API key / MCP
+// (form-actions-api.ts). Both validate with validateEmailActions below. The
+// portal chat assistant has no tool for them.
 
 import crypto from 'node:crypto';
 import type { FormField, FormStep, FormAction, EmailActionConfig } from '@typeroll/shared';
