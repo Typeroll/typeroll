@@ -6,6 +6,12 @@
   - Gone: the page-level conversion preview, the text-block **Convert into blocks** action, their API routes, and the MCP and chat tools `convert_page_to_blocks` and `convert_prose_block`.
   - HTML pages stay HTML. Switching a page to blocks starts an empty block tree and keeps the HTML as a revision; the content is then built with blocks.
 - WordPress import keeps its lazy-media clean-up, now in its own module.
+- API and MCP can do what the portal can with forms:
+  - Read and write a form's email notifications and webhooks (`actions`, admin keys; webhook secrets are masked and kept when unchanged).
+  - The chat can read a form, set its notifications and list submissions.
+- Page writes over the API and MCP accept `authority: "editor"` to write with the same authority as an editor in the portal (with `override_reason` for a value the listed business set). The default stays agent authority, so automated passes keep human corrections; the 409 names the way through.
+- Render version 3: the theme tokens blocks reference (`--color-bg`, `--color-bg-subtle`, `--color-border`, `--color-secondary-fg`) come from the site palette instead of fixed greys. Versions 1 and 2 render unchanged.
+- Update devalue to 5.9.4 for new security advisories.
 
 ## Core 0.2.57 / MCP 0.45.43
 

@@ -40,7 +40,7 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
   },
   {
     version: 3,
-    core_version: '0.2.59',
+    core_version: '0.2.58',
     title: 'Palette-derived theme tokens',
     changes: [
       'Subtle panel backgrounds (table headers, code, placeholders, tabs) use the site\'s Surface colour instead of a fixed light grey.',
