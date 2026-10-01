@@ -5,7 +5,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../../lib/version-store';
 import { snapshotRevision } from '../../../../../../../lib/revisions';
-import { AUTOMATIC_CONVERSION_REFUSAL } from '../../../../../../../lib/html-to-blocks';
+import { AUTOMATIC_CONVERSION_REFUSAL } from '../../../../../../../lib/html-mode';
 import type { Partial as PartialDoc } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, params }) => {

@@ -61,16 +61,12 @@ Create a page titled "Tjänster" at slug "tjanster" with three service sections.
 
 ## `set_page_mode`
 
-Switches a page between `"html"` and `"blocks"` modes. Snapshots a revision first. Switching to blocks does not convert or rewrite the HTML body.
+Switches a page between `"html"` and `"blocks"` modes. Snapshots a revision first. Typeroll does not convert HTML into blocks: switching to blocks starts an empty block tree and keeps the HTML in the page history. Build the content with blocks afterwards.
 
 ```
-Switch the About page to blocks mode without converting its HTML.
+Switch the About page to blocks mode and rebuild it with blocks.
   → set_page_mode page_id=about to=blocks
 ```
-
-## `convert_page_to_blocks`
-
-Preview of the heuristic HTML→blocks converter. Returns the proposed tree and an `unconverted` list of text, classes, and markup it could not represent. It does not write. A person reviews that list in the page editor and accepts the preview there. Agents cannot apply the conversion.
 
 ## `update_page`
 

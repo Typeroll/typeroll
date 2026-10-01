@@ -7,7 +7,7 @@ const root = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default
 const pageFile = path.join(root, 'pages/render-v2.json');
 const settingsFile = path.join(root, 'settings/default.json');
 
-test('render version 2: heading parts with styles, class on the element, paragraph styles and text conversion', async ({ page }, info) => {
+test('render version 2: heading parts with styles, class on the element and paragraph styles', async ({ page }, info) => {
   const originalSettings = readFileSync(settingsFile, 'utf8');
   mkdirSync(path.dirname(pageFile), { recursive: true });
   writeFileSync(pageFile, JSON.stringify({
@@ -56,17 +56,10 @@ test('render version 2: heading parts with styles, class on the element, paragra
     await page.getByLabel('Paragraph style', { exact: true }).selectOption({ label: 'Lead' });
     await expect(preview.locator('p.s-lead')).toHaveText('One day to a plan.');
 
-    // Unknown markup opens the source editor with a preview-first conversion.
+    // Unknown markup is edited as source; there is no conversion into blocks.
     await page.getByRole('button', { name: 'Edit Legacy text', exact: true }).click();
-    await page.getByRole('button', { name: 'Convert into blocks…' }).click();
-    const panel = page.getByRole('region', { name: 'Convert into blocks' });
-    await expect(panel).toContainText('This text becomes 2 blocks');
-    await expect(panel).toContainText('Folded eyebrow');
-    await panel.getByRole('button', { name: 'Convert', exact: true }).click();
-    await expect(preview.locator('hgroup', { hasText: 'Three steps' }).locator('.block-heading-eyebrow')).toHaveText('How it works');
-    await expect(page.getByRole('button', { name: 'Edit Legacy text', exact: true })).toHaveCount(0);
-    await page.waitForTimeout(1500);
-    await page.screenshot({ path: info.outputPath('converted-1440.png') });
+    await expect(page.getByText('so it is edited as source')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Convert/ })).toHaveCount(0);
   } finally {
     rmSync(pageFile, { force: true });
     writeFileSync(settingsFile, originalSettings);

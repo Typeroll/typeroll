@@ -599,14 +599,9 @@ set_page_mode page_id=about to=blocks
 set_page_mode page_id=about to=html
 ```
 
-`convert_page_to_blocks` previews a heuristic conversion and lists
-`unconverted` text, classes, and markup. It does not write, and
-`set_page_mode` does not apply that preview. A person accepts the
-preview in the page editor. The heuristic recognises `<h1-4>` →
-heading, `<img>` → image, `<a.btn>` → button, `grid-cols-2` →
-two-column, `<section>` / hero divs → section. Link-wrapped card text
-and author classes are reported as unconverted rather than discarded
-silently.
+Typeroll does not convert HTML into blocks. `set_page_mode to=blocks`
+keeps the HTML as a revision and starts an empty block tree; build the
+content with blocks.
 
 ### "Build a directory or migrate a content family"
 
@@ -1031,7 +1026,7 @@ preview.
 | **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics; conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |
 | **Pages — reads** | `list_pages`, `read_page`, `batch_read_pages` |
 | **Pages — writes** | `create_page`, `update_page`, `replace_page`, `batch_update_pages`, `delete_page`, `clone_page` |
-| **Pages — blocks** | `get_page_blocks`, `add_block`, `update_block`, `move_block`, `remove_block`, `duplicate_block`, `set_block_responsive`, `set_page_mode`, `convert_page_to_blocks` (preview only), `convert_prose_block` (preview, then `accept`) |
+| **Pages — blocks** | `get_page_blocks`, `add_block`, `update_block`, `move_block`, `remove_block`, `duplicate_block`, `set_block_responsive`, `set_page_mode` (never converts HTML into blocks) |
 | **Pages — meta** | `get_page_preview` |
 | **Global blocks (partials)** | `list_partials` (summary by default), `read_partial`, `create_free_block` (`blocks` or `html_content`), `update_partial`, `replace_partial`, `set_partial_mode`, `delete_partial`, `find_pages_using_block`, `make_block_global`, `detach_global_block`. Block pages reference a global block with `core/global_block` (`global_block_id`); HTML pages use `<x-include>`. |
 | **Block templates** | `list_block_templates`, `read_block_template`, `save_block_template` (from `blocks` or `from: { page_id, block_id }`), `update_block_template`, `delete_block_template`, `insert_block_template` (copies with new ids). Per site, not per branch. |

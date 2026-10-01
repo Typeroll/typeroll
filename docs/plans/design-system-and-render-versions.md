@@ -115,8 +115,9 @@ publication validation.
   element (declared per block type), and the inspector shows them under
   Advanced.
 - The rich-text editor applies styles per paragraph, like document paragraph
-  styles. Only unknown markup falls back to source, with an offer to convert
-  it into blocks.
+  styles. Only unknown markup falls back to source. There is no HTML-to-blocks
+  conversion: it cannot reproduce designed pages faithfully (removed in Core
+  0.2.58); such content is rebuilt with blocks.
 
 ### Phase 3 as built (render version 2, Core 0.2.57)
 
@@ -134,10 +135,10 @@ publication validation.
   `html_id` stays on the block root: it is an anchor target, and headings
   already have `anchor_id` for the heading element.
 - v2 defines `--color-primary-fg` as the readable on-primary colour.
-- Rich text keeps H2–H4 and `s-<id>` classes, applies paragraph styles, and
-  offers a preview-first `convert_prose_block` for other markup. HTML import
-  folds classed eyebrow/subtitle paragraphs into the heading, and block-tree
-  writes warn (`heading_part_as_text`) when a label is written as text.
+- Rich text keeps H2–H4 and `s-<id>` classes and applies paragraph styles.
+  Block-tree writes warn (`heading_part_as_text`) when a label is written as
+  text. (0.2.57 also shipped a prose-to-blocks conversion; Core 0.2.58 removed
+  it together with the page-level HTML-to-blocks preview.)
 
 ## Phase 4: custom CSS fields
 

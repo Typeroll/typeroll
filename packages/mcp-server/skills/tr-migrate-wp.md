@@ -1,6 +1,6 @@
 ---
 name: tr-migrate-wp
-description: Use when the user asks to migrate a WordPress site to Typeroll, mentions wp-json, or names a WP source URL. Walks the WP REST API, preserves cleaned HTML and shared references, transfers media, sets redirects, and leaves everything as drafts for human review. Do not apply automatic HTML-to-blocks conversion.
+description: Use when the user asks to migrate a WordPress site to Typeroll, mentions wp-json, or names a WP source URL. Walks the WP REST API, preserves cleaned HTML and shared references, transfers media, sets redirects, and leaves everything as drafts for human review. Typeroll does not convert HTML into blocks.
 ---
 
 # Migrate from WordPress to Typeroll
@@ -145,7 +145,7 @@ c. Migrate referenced images with `upload_media_from_url`. The customer's
    media reference only after verification. Stop and report a failed required
    transfer; do not silently hotlink the WordPress source.
 
-The managed importer stores cleaned HTML and does not run HTML-to-blocks conversion. Do not call `convert_page_to_blocks` or `set_page_mode` to rewrite that HTML. A person previews and accepts a conversion in the page editor.
+The managed importer stores cleaned HTML. Typeroll does not convert HTML into blocks, and `set_page_mode` never rewrites HTML. Pages move to blocks only when someone rebuilds them with blocks.
 
 d. Preserve exact text, headings, anchors, links, media and semantic structure with native blocks first. Read the
    available block types and map headings, prose, images, buttons and layout

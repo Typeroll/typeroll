@@ -1,6 +1,5 @@
 import { expect, it } from 'vitest';
 import { cleanWordPressHtml } from '../../lib/wp/clean-html';
-import { htmlToBlocks } from '../../lib/html-to-blocks';
 
 it('restores lazy source media before cleaning and does not import its noscript duplicate', () => {
   const html = cleanWordPressHtml('<img src="placeholder.gif" data-lazy-src="https://old.example/photo.jpg" alt="Packing"><noscript><img src="https://old.example/photo.jpg" alt="Packing"></noscript>', {
@@ -9,7 +8,6 @@ it('restores lazy source media before cleaning and does not import its noscript 
   expect(html.match(/<img/g)).toHaveLength(1);
   expect(html).toContain('src="https://media.example/photo.jpg"');
   expect(html).not.toContain('placeholder');
-  expect(JSON.stringify(htmlToBlocks(html).blocks)).toContain('https://media.example/photo.jpg');
 });
 
 it('preserves lazy video embeds and rewrites picture sources as well as fallback images', () => {

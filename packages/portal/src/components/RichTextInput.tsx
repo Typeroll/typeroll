@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { STYLE_ID_PATTERN, styleClassName, stylesForTarget } from '@typeroll/shared';
-import { ProseConvertContext, SiteStylesContext } from './editor-context';
+import { SiteStylesContext } from './editor-context';
 
 const STYLED_TAGS = new Set(['P', 'H2', 'H3', 'H4', 'LI', 'UL', 'OL', 'BLOCKQUOTE']);
 const isStyleClass = (token: string) => token.startsWith('s-') && STYLE_ID_PATTERN.test(token.slice(2));
@@ -46,7 +46,6 @@ export default function RichTextInput({ id, label, required, value, onChange }: 
   const [sourceMode, setSourceMode] = useState(false);
   const [blockStyle, setBlockStyle] = useState('p');
   const textStyles = stylesForTarget(useContext(SiteStylesContext) ?? [], 'text');
-  const convert = useContext(ProseConvertContext);
   const dirty = useRef(false);
   useEffect(() => {
     const original = document.createElement('template'), editable = document.createElement('template');
@@ -106,8 +105,7 @@ export default function RichTextInput({ id, label, required, value, onChange }: 
     emit();
   };
   if (sourceMode) return <div>
-    <p style={{ fontSize: '0.875rem' }}>This text uses HTML the visual editor cannot keep, such as custom classes, images or tables. Edit the source below{convert ? ', or turn it into separate blocks that use headings and named styles' : ''}.</p>
-    {convert && <button type="button" className="btn btn--secondary" style={{ margin: '0 0 8px' }} onClick={convert}>Convert into blocks…</button>}
+    <p style={{ fontSize: '0.875rem' }}>This text uses HTML the visual editor cannot keep, such as custom classes, images or tables, so it is edited as source. To make it editable, rebuild it with headings, text, image and button blocks.</p>
     <textarea id={id} aria-label={label} aria-required={required || undefined} value={value} onChange={event => onChange(event.target.value)} rows={10} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', fontFamily: 'monospace', padding: 12, background: '#19191f', color: '#eee', border: '1px solid #3a3a42', borderRadius: 6 }} />
   </div>;
   return <div style={{ border: '1px solid #3a3a42', borderRadius: 6, overflow: 'hidden' }}>

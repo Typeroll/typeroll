@@ -1,5 +1,5 @@
 import { decodeHTMLAttribute } from 'entities';
-import { normalizeImportedMediaHtml } from '../html-to-blocks';
+import { normalizeImportedMediaHtml } from '../imported-media-html';
 
 // Extract every image URL referenced by an HTML fragment.
 //

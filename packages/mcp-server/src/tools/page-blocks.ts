@@ -1,10 +1,8 @@
-// Page-block mutation tools. Five primitives (get/add/update/move/remove)
-// plus a one-shot HTML→blocks converter. All target the active version
-// (override with `version`).
+// Page-block mutation tools: get/add/update/move/remove and friends. All
+// target the active version (override with `version`).
 //
-// The AI agent uses these to author block-mode pages directly. For
-// HTML-mode pages, `convert_page_to_blocks` returns a preview only.
-// It never writes. A person accepts that preview in the page editor.
+// The AI agent uses these to author block-mode pages directly. Typeroll does
+// not convert HTML into blocks; block pages are built with blocks.
 
 import { z } from 'zod';
 import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
@@ -206,7 +204,7 @@ export const pageBlockTools: ToolDef[] = [
   {
     name: 'set_page_mode',
     description:
-      'Safely switch a page\'s content_mode between "blocks" and "html". Always snapshots a revision before the flip so the previous state is restorable. HTML → blocks does not convert or rewrite the body. Blocks → HTML drops the block tree (the revision retains it). Prefer this over `update_page patch={content_mode}` because that bypasses snapshotting. Automatic HTML-to-blocks conversion is preview-only; a person accepts it in the page editor.',
+      'Safely switch a page\'s content_mode between "blocks" and "html". Always snapshots a revision before the flip so the previous state is restorable. HTML → blocks does not convert or rewrite the body. Blocks → HTML drops the block tree (the revision retains it). Prefer this over `update_page patch={content_mode}` because that bypasses snapshotting. Typeroll does not convert HTML into blocks: after switching to blocks, build the content with blocks.',
     inputSchema: {
       page_id: z.string(),
       to: z.enum(['blocks', 'html']).describe('Target mode.'),
@@ -217,44 +215,6 @@ export const pageBlockTools: ToolDef[] = [
         siteId,
         `pages/${encodeURIComponent(args.page_id)}/mode`,
         { to: args.to },
-        v(args.version),
-      );
-      return ok(res);
-    }),
-  },
-  {
-    name: 'convert_page_to_blocks',
-    description:
-      'Preview a heuristic conversion of a page\'s html_content into a block tree. Always returns the proposal, including unconverted text, classes and markup, and does not write. A person accepts the preview in the page editor. This tool cannot change content_mode or replace the body.',
-    inputSchema: {
-      page_id: z.string(),
-      version: versionParam,
-    },
-    handler: withErrorBoundary(async (args, { client, siteId }) => {
-      const res = await client.post(
-        siteId,
-        `pages/${encodeURIComponent(args.page_id)}/blocks/convert`,
-        { dry_run: true },
-        v(args.version),
-      );
-      return ok(res);
-    }),
-  },
-  {
-    name: 'convert_prose_block',
-    description:
-      'Turn one text block (core/prose) into separate blocks: headings (a classed label above a heading becomes its eyebrow), paragraphs, lists, images and buttons. Use it when a text block holds headings, classed HTML or media that should be editable and styled with named styles. Call without `accept` to preview (nothing is written); review `converted`, `notes` and `unconverted`, then call again with `accept` set to the preview\'s `fingerprint`. Writes the page draft (working copy) like other block edits. Pages only.',
-    inputSchema: {
-      page_id: z.string(),
-      block_id: z.string(),
-      accept: z.string().optional().describe('The fingerprint from a preview of this same block. Omit to preview.'),
-      version: versionParam,
-    },
-    handler: withErrorBoundary(async (args, { client, siteId }) => {
-      const res = await client.post(
-        siteId,
-        `pages/${encodeURIComponent(args.page_id)}/blocks/convert-prose`,
-        { block_id: args.block_id, ...(args.accept ? { accept: args.accept } : {}) },
         v(args.version),
       );
       return ok(res);

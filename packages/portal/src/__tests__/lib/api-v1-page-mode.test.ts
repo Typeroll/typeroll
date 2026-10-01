@@ -79,7 +79,7 @@ describe('POST /v1/.../pages/{id}/mode — bearer auth', () => {
     const res = await call(token, { to: 'blocks', convert: true });
     expect(res.status).toBe(400);
     const body = await res.json() as { error: string };
-    expect(body.error).toContain('does not change a page');
+    expect(body.error).toContain('does not convert HTML into blocks');
 
     const { getStore } = await import('../../lib/datastore');
     const page = await getStore().getDoc<Page>(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`);

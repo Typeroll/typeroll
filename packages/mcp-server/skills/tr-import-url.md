@@ -61,8 +61,8 @@ small label directly above a heading is an eyebrow style, not a heading of its
 own: put it in the heading block's `eyebrow` field (and a line under the
 heading in `subtitle`). Never carry classed raw HTML into text blocks to keep a
 look: the editor cannot edit it, and the next render version may not keep it.
-A text block that already holds such markup can be split with
-`convert_prose_block` (preview, then `accept`).
+Build such sections with heading, text, image and button blocks; Typeroll does
+not convert HTML into blocks.
 
 ### 2. Measure the source and protect existing target work
 

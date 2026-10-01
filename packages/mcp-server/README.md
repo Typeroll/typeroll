@@ -154,7 +154,7 @@ the full reference + concrete operation recipes.
   `read_site_settings`, `update_site_settings`.
 - **Pages** — list, read, batch-read, create, update (PATCH), replace
   (PUT), batch-update, delete, clone, get-preview, `set_page_mode`
-  (flip between blocks/html), `convert_page_to_blocks`, `convert_prose_block`.
+  (flip between blocks/html; HTML is never converted into blocks).
 - **Blocks (instances)** — `get_page_blocks`, `add_block`,
   `update_block`, `move_block`, `remove_block`, `duplicate_block`,
   `set_block_responsive`. All take a `target` (page, partial, page
