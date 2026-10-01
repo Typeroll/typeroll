@@ -5,8 +5,8 @@ import { ok, withErrorBoundary, versionParam, writeAuthority, type ToolDef } fro
 
 const answerSources = z.record(z.object({ source_url: z.string().url().optional(), import_run_id: z.string().max(200).optional() }).strict()).optional().describe('Evidence per schema leaf path. Actor and timestamp are always assigned by the server; unchanged answers are not confirmed.');
 
-function authorityBody(args: { authority?: string; override_reason?: string }): Record<string, string> {
-  return { ...(args.authority ? { authority: args.authority } : {}), ...(args.override_reason ? { override_reason: args.override_reason } : {}) };
+function authorityBody(args: { override_reason?: string }): Record<string, string> {
+  return args.override_reason ? { override_reason: args.override_reason } : {};
 }
 
 function v(version?: string): Record<string, string | undefined> | undefined {

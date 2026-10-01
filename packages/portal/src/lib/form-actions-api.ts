@@ -11,6 +11,16 @@ export function formActionsView(form: Pick<Form, 'actions'>, permission: string)
   return permission === 'admin' ? maskFormActionsForAdmin(form.actions) : [];
 }
 
+/**
+ * The permission that governs a v1 caller's access to form actions. A
+ * person's API key carries its site permission. An app installation
+ * credential (forms:read / forms:write) never reads or writes actions: they
+ * hold recipients and webhook targets that belong to the site's administrators.
+ */
+export function formActionsPermission(ctx: { permission: string; extensionIdentity?: unknown }): string {
+  return ctx.extensionIdentity ? 'read' : ctx.permission;
+}
+
 /** Validate incoming actions against the action registry and the form's own fields. */
 export async function validateFormActionsInput(input: unknown, existing: FormAction[] | undefined, steps: Form['steps']): Promise<FormAction[] | string> {
   const { actionRegistry } = await import('./forms/actions');

@@ -123,7 +123,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body', 400);
   const authority = apiWriteAuthority(body);
   if ('error' in authority) return apiError(authority.error, 400);
-  const { authority: _authority, override_reason: _reason, ...input } = body as Record<string, unknown>;
+  const { override_reason: _reason, ...input } = body as Record<string, unknown>;
   try {
     const result = await createPage(ctx, input, authority.actor, `api-key:${ctx.keyPrefix}`);
     return apiResponse(ctx, { ...result, page: { ...projectPage(result.page, true), url: await pageAddress(ctx, result.page) } }, 201, body);

@@ -9,7 +9,8 @@
 - API and MCP can do what the portal can with forms:
   - Read and write a form's email notifications and webhooks (`actions`, admin keys; webhook secrets are masked and kept when unchanged).
   - Docs and agent instructions no longer say notifications are hidden from agents. The portal chat assistant still has no notification or submission tools.
-- Page writes over the API and MCP accept `authority: "editor"` to write with the same authority as an editor in the portal (with `override_reason` for a value the listed business set). The default stays agent authority, so automated passes keep human corrections; the 409 names the way through.
+- API keys and MCP write Page fields with the same authority as an editor in the portal. They may write every field open to the portal or agents, and portal, API and MCP edits replace each other; the latest edit wins. Machine passes inside Typeroll (the portal chat assistant, AI workflows) still never replace an editor's value. Replacing a value the listed business set needs `override_reason`, in the portal and the API alike.
+- App installation credentials never read or write form actions.
 - Render version 3: the theme tokens blocks reference (`--color-bg`, `--color-bg-subtle`, `--color-border`, `--color-secondary-fg`) come from the site palette instead of fixed greys. Versions 1 and 2 render unchanged.
 - Update devalue to 5.9.4 for new security advisories.
 

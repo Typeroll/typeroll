@@ -3,19 +3,23 @@ import { isDeepStrictEqual } from 'node:util';
 import type { FieldDefinition } from '@typeroll/shared';
 
 /**
- * `import` is bulk seeding (registry dumps, migrations) — deliberately the
- * weakest, since it's the one most likely to run again over hand-corrected
- * data.
+ * `portal` is the editor UI and `api` an API key or MCP: the same editor
+ * authority through two surfaces. `agent` is a machine pass inside Typeroll
+ * (the portal chat assistant, AI workflows). `import` is bulk seeding
+ * (registry dumps, migrations) — deliberately the weakest, since it's the one
+ * most likely to run again over hand-corrected data.
  */
-export type WriteActor = 'portal' | 'owner' | 'agent' | 'app' | 'import';
+export type WriteActor = 'portal' | 'api' | 'owner' | 'agent' | 'app' | 'import';
 
 /**
  * Higher wins. A write is allowed when the writer ranks at least as high as
- * the field's current source — so an actor can always overwrite itself, and
- * a human correction survives every later machine pass.
+ * the field's current source — so an actor can always overwrite itself, the
+ * editor UI and the API overwrite each other, and an editor's value survives
+ * every later machine pass.
  */
 const RANK: Record<WriteActor, number> = {
   portal: 4,
+  api: 4,
   owner: 3,
   app: 2,
   agent: 1,
@@ -59,6 +63,15 @@ export interface FieldAuthorityResult {
   provenance: ProvenanceMap;
   /** Fields refused, with why. A non-empty list should surface as 409. */
   rejected: RejectedWrite[];
+}
+
+/**
+ * Whether `writable_by` admits an actor. `writable_by` names surfaces in the
+ * schema (`portal`, `agent`, …); an API or MCP write is admitted wherever the
+ * editor UI or agents are, because it carries the same editor authority.
+ */
+export function admits(allowed: readonly WriteActor[], actor: WriteActor): boolean {
+  return allowed.includes(actor) || (actor === 'api' && (allowed.includes('portal') || allowed.includes('agent')));
 }
 
 export function writableBy(field: FieldDefinition): readonly WriteActor[] {
@@ -132,7 +145,7 @@ export function applyFieldAuthority(args: {
           Date.parse(transferred.updated_at) > Date.parse(prior.updated_at)))) stamp(path);
       return true;
     }
-    if (!allowed.includes(actor)) { rejected.push({ field: path, reason: 'not_writable' }); return false; }
+    if (!admits(allowed, actor)) { rejected.push({ field: path, reason: 'not_writable' }); return false; }
     if (prior && RANK[actor] < RANK[prior.source]) {
       rejected.push({ field: path, reason: 'lower_precedence', current_source: prior.source }); return false;
     }
@@ -140,7 +153,7 @@ export function applyFieldAuthority(args: {
         !Number.isFinite(Date.parse(transferred.updated_at)) || Date.parse(prior.updated_at) > Date.parse(transferred.updated_at))) {
       rejected.push({ field: path, reason: 'stale_source', current_source: prior.source }); return false;
     }
-    if (prior?.source === 'owner' && actor === 'portal' && !(transferred?.override_reason ?? args.overrideReason)?.trim()) {
+    if (prior?.source === 'owner' && (actor === 'portal' || actor === 'api') && !(transferred?.override_reason ?? args.overrideReason)?.trim()) {
       rejected.push({ field: path, reason: 'override_required', current_source: prior.source }); return false;
     }
     stamp(path); return true;
@@ -224,33 +237,26 @@ export function conflictResponse(rejected: RejectedWrite[]): {
   return { error: `Some fields were not written — ${parts.join('; ')}`, rejected_fields: rejected };
 }
 
-/** How a public API or MCP write ranks against earlier values. */
+/** An API or MCP write: editor authority, plus the reason for replacing an owner's value. */
 export interface ApiWriteAuthority { actor: WriteActor; overrideReason?: string }
 
 /**
- * Read `authority` and `override_reason` from an API request body. Writes
- * default to `agent`, so an automated pass never overwrites a person's
- * correction by accident; `authority: "editor"` writes with the portal
- * editor's authority, exactly what a signed-in editor can do in the UI. A
- * value the listed business set itself also needs `override_reason`, as in
- * the portal.
+ * API keys and MCP write with the same authority as an editor in the portal.
+ * Replacing a value the listed business set itself needs `override_reason`
+ * in the request body, as the portal asks for one.
  */
 export function apiWriteAuthority(body: unknown): ApiWriteAuthority | { error: string } {
   const input = body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {};
-  const authority = input.authority ?? 'agent';
-  if (authority !== 'agent' && authority !== 'editor') return { error: 'authority must be "agent" (default) or "editor"' };
   const reason = input.override_reason;
   if (reason !== undefined && reason !== null && (typeof reason !== 'string' || reason.length > 500)) return { error: 'override_reason must be text up to 500 characters' };
-  return { actor: authority === 'editor' ? 'portal' : 'agent', ...(typeof reason === 'string' && reason.trim() ? { overrideReason: reason.trim() } : {}) };
+  return { actor: 'api', ...(typeof reason === 'string' && reason.trim() ? { overrideReason: reason.trim() } : {}) };
 }
 
-/** The 409 text for an API write, naming how to write with editor authority. */
-export function apiConflictMessage(rejected: RejectedWrite[], actor: WriteActor): string {
+/** The 409 text for a write, naming override_reason when that is what is missing. */
+export function apiConflictMessage(rejected: RejectedWrite[]): string {
   const message = conflictResponse(rejected).error;
-  if (actor === 'agent' && rejected.some(item => item.reason === 'lower_precedence' || item.reason === 'not_writable'))
-    return `${message}. To overwrite with the same authority as an editor in the portal, send authority: "editor".`;
   if (rejected.some(item => item.reason === 'override_required'))
-    return `${message}. Send override_reason with authority: "editor" to replace a value the listed business set.`;
+    return `${message}. Send override_reason to replace a value the listed business set.`;
   return message;
 }
 

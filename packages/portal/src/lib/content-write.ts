@@ -123,7 +123,7 @@ export async function applyContentWrite(
     if (!type) throw new WorkingCopyError('Content type not found', 400);
     const authority = applyFieldAuthority({ fields: pageAuthorityFields(type), incoming: { ...fields, ...(fields.fields as Record<string, unknown> ?? {}) },
       existing: page, actor: opts.actor ?? 'agent', actorId: opts.updatedBy, overrideReason: opts.overrideReason });
-    if (authority.rejected.length) throw new WorkingCopyError(apiConflictMessage(authority.rejected, opts.actor ?? 'agent'), 409);
+    if (authority.rejected.length) throw new WorkingCopyError(apiConflictMessage(authority.rejected), 409);
   }
 
   // Content → working copy (whitelisted per kind).

@@ -11,7 +11,7 @@ import { paths, fieldsToSteps, safeFormRedirectUrl } from '@typeroll/shared';
 import type { Form, FormField } from '@typeroll/shared';
 
 import { validateFields, validSteps } from '../../../../../../lib/forms-admin';
-import { formActionsView, validateFormActionsInput } from '../../../../../../lib/form-actions-api';
+import { formActionsPermission, formActionsView, validateFormActionsInput } from '../../../../../../lib/form-actions-api';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -24,7 +24,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   // submit_token + submit_url are what an agent needs to embed a working
   // form: hidden `_token` input + absolute action URL. The token is stable
   // until FORMS_HMAC_SECRET rotates, so baking it into static HTML is fine.
-  return apiResponse(ctx, { form: { ...doc, actions: formActionsView(doc, ctx.permission) }, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, doc) });
+  return apiResponse(ctx, { form: { ...doc, actions: formActionsView(doc, formActionsPermission(ctx)) }, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, doc) });
 };
 
 export const PATCH: APIRoute = async ({ request, params }) => {
@@ -65,7 +65,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // exactly as in the portal's Forms editor. Secret values may be sent as the
   // mask to keep the stored secret.
   if (body.actions !== undefined) {
-    if (ctx.permission !== 'admin') return apiError('Admin permission required to change form actions', 403);
+    if (formActionsPermission(ctx) !== 'admin') return apiError('Admin permission required to change form actions', 403);
     const actions = await validateFormActionsInput(body.actions, existing.actions, update.steps ?? existing.steps);
     if (typeof actions === 'string') return apiError(actions, 400);
     update.actions = actions;
@@ -89,7 +89,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     { ...existing, ...update },
   );
   const fresh = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`);
-  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: formActionsView(fresh, ctx.permission) } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!) }, 200, body);
+  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: formActionsView(fresh, formActionsPermission(ctx)) } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!) }, 200, body);
 };
 
 export const DELETE: APIRoute = async ({ request, params }) => {

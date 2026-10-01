@@ -247,14 +247,15 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
       API key may write are excluded by default: a gap you can't close is
       noise.
     - **Per-field write authority.** A content type field can declare
-      `writable_by` (`portal | owner | agent | app | import`). A write you're
-      not permitted, or one that would overwrite a higher-precedence writer
-      (a human correction, the listed business's own edit), comes back as
-      **409 with the losing field names** — never a silent no-op. In an
-      automated pass, treat that as "already handled" and record it. When the
-      user asked for the change, write again with `authority: "editor"` (the
-      same authority an editor has in the portal); a value the listed business
-      set also needs `override_reason`.
+      `writable_by` (`portal | owner | agent | app | import`); your API key may
+      write every field open to `portal` or `agent`. A write you're not
+      permitted, or one that would replace the listed business's own edit
+      without a reason, comes back as
+      **409 with the losing field names** — never a silent no-op. Your writes
+      carry the same authority as an editor in the portal: you may replace a
+      value someone set in the portal, as they may replace yours. Only a value
+      the listed business set itself needs `override_reason`; send one only
+      when the user asked for the change.
     - **Item references.** `page_ref` / `page_ref_list` fields point at items
       in another content type (`ref_content_type`). The reverse direction is
       computed at render time — don't try to maintain backlinks yourself.

@@ -12,7 +12,7 @@
 // nothing would tell you it had gone stale.
 
 import type { ContentType, Page, FieldDefinition } from '@typeroll/shared';
-import { readProvenance, writableBy, type WriteActor } from './field-authority';
+import { admits, readProvenance, writableBy, type WriteActor } from './field-authority';
 
 export interface FieldGap {
   field: string;
@@ -86,7 +86,7 @@ function labelFor(item: Page): string {
  * noise it can never clear.
  */
 function scorableFields(coll: Pick<ContentType, 'fields'>, agentOnly: boolean): FieldDefinition[] {
-  return (coll.fields ?? []).filter((f) => !agentOnly || writableBy(f).includes('agent'));
+  return (coll.fields ?? []).filter((f) => !agentOnly || admits(writableBy(f), 'api'));
 }
 
 export function analyzeCompleteness(

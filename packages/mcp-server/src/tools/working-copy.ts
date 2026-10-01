@@ -55,7 +55,7 @@ export const workingCopyTools: ToolDef[] = [
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
-      const res = await client.post(siteId, wcPath(args.target), { ...(args.authority ? { authority: args.authority } : {}), ...(args.override_reason ? { override_reason: args.override_reason } : {}) }, v(args.version));
+      const res = await client.post(siteId, wcPath(args.target), { ...(args.override_reason ? { override_reason: args.override_reason } : {}) }, v(args.version));
       return ok(res);
     }),
   },
@@ -138,7 +138,7 @@ export const workingCopyTools: ToolDef[] = [
       const res = await client.post(
         siteId,
         `pages/${encodeURIComponent(args.page_id)}/revisions/${encodeURIComponent(args.revision_id)}/restore`,
-        { save: args.save === true, ...(args.authority ? { authority: args.authority } : {}), ...(args.override_reason ? { override_reason: args.override_reason } : {}) },
+        { save: args.save === true, ...(args.override_reason ? { override_reason: args.override_reason } : {}) },
         v(args.version),
       );
       return ok(res);

@@ -79,12 +79,13 @@ field from reaching public rendering. `writable_by` can restrict edits to
 HTTP 409. `page_field_rules` configures write authority for supported common
 metadata, including title, author and SEO fields.
 
-API and MCP writes count as `agent` by default, so an automated pass never
-replaces a value a person set in the portal. Send `authority: "editor"` on a
-Page write (create, update, replace, batch entry, save of a working copy,
-revision restore or content type change) to write with the same authority as an
-editor in the portal. Replacing a value the listed business set itself also
-needs `override_reason`, as in the portal.
+API keys and MCP write with the same authority as an editor in the portal. They
+may write every field that `writable_by` opens to `portal` or `agent`, and a
+value written through the portal, the API or MCP can be replaced through any of
+them; the latest edit wins. `agent` also covers machine passes inside Typeroll,
+such as the portal chat assistant and AI workflows: they never replace a value
+an editor set. Replacing a value the listed business set itself through its edit
+link needs `override_reason` on the write, in the portal and the API alike.
 
 ## Shared templates
 

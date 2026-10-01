@@ -249,7 +249,7 @@ describe('bulkReplaceText', () => {
     const store = getStore();
     await store.setDoc(paths.contentType(ORG, SITE, 'locked', MAIN_VERSION_ID), {
       name: 'locked', label_singular: 'Entry', label_plural: 'Entries',
-      fields: [{ name: 'description', label: 'Description', type: 'text', writable_by: ['portal'] }],
+      fields: [{ name: 'description', label: 'Description', type: 'text', writable_by: ['app'] }],
       created_at: new Date().toISOString(),
     });
     await store.setDoc(paths.page(ORG, SITE, 'one', MAIN_VERSION_ID), {

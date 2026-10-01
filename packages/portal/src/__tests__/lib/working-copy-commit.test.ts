@@ -292,7 +292,7 @@ it('keeps keyed import evidence in batch writes and cannot replace owner answers
   }),params:{siteId:SITE}} as any);
   expect((await (await write({[path]:{source_url:'https://example.org/program',import_run_id:'migration-2026'}})).json()).results[0].ok).toBe(true);
   const page=await getPage('source');
-  expect(page?._provenance?.[path]).toMatchObject({source:'agent',source_url:'https://example.org/program',import_run_id:'migration-2026'});
+  expect(page?._provenance?.[path]).toMatchObject({source:'api',source_url:'https://example.org/program',import_run_id:'migration-2026'});
   expect((await (await write({[path]:{source:'owner'}})).json()).results[0].ok).toBe(false);
   await store.updateDoc(paths.page(ORG,SITE,'source'),{fields:{programs:[{program_id:'stable/a',online:false}]},_provenance:{[path]:{source:'owner',actor:'verified-owner',updated_at:new Date().toISOString()}}});
   expect((await (await write({[path]:{source_url:'https://example.org/research'}})).json()).results[0].ok).toBe(false);
