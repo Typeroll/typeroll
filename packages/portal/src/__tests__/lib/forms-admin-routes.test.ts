@@ -1,6 +1,5 @@
 // Cookie-auth Forms admin routes: CRUD + submissions + email-action writes.
-// Plus the security gate: the API-key (v1 / MCP) write path can NEVER set a
-// form's email `actions`.
+// The v1 API (and so MCP) manages the same actions with the same validation.
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -107,7 +106,7 @@ describe('cookie-auth Forms admin CRUD', () => {
   });
 });
 
-describe('AI-gate: v1 / MCP write path cannot set email actions', () => {
+describe('v1 / MCP manage form actions like the portal', () => {
   beforeEach(async () => { await setup(); });
 
   async function apiKey(): Promise<string> {
@@ -116,41 +115,63 @@ describe('AI-gate: v1 / MCP write path cannot set email actions', () => {
     return token;
   }
   function bearer(t: string) { return { authorization: `Bearer ${t}`, 'content-type': 'application/json' }; }
+  async function v1(method: 'GET' | 'PATCH', formId: string, token: string, body?: unknown) {
+    const mod = await import('../../pages/api/v1/sites/[siteId]/forms/[formId]');
+    const req = new Request(`http://localhost/api/v1/sites/${SITE}/forms/${formId}`, { method, headers: bearer(token), body: body != null ? JSON.stringify(body) : undefined });
+    return (mod as any)[method]({ request: req, params: { siteId: SITE, formId } }) as Promise<Response>;
+  }
 
-  it('v1 POST create drops actions', async () => {
+  it('v1 POST creates a form with an email notification', async () => {
     const token = await apiKey();
     const mod = await import('../../pages/api/v1/sites/[siteId]/forms/index');
     const req = new Request(`http://localhost/api/v1/sites/${SITE}/forms`, {
       method: 'POST', headers: bearer(token),
       body: JSON.stringify({
         id: 'lead', name: 'Lead', fields: [{ name: 'email', type: 'email', label: 'E' }],
-        actions: [{ type: 'email', config: { to: 'attacker@evil.com', subject: 'x', body: 'y' } }],
+        actions: [{ type: 'email', config: { to: 'owner@site.com', subject: 'New lead', body: '{{email}}' } }],
       }),
     });
     const res = await mod.POST({ request: req, params: { siteId: SITE } } as any);
     expect(res.status).toBe(201);
+    expect((await res.json()).form.actions).toHaveLength(1);
     const { getStore } = await import('../../lib/datastore');
     const form = await getStore().getDoc<Form>(`${paths.forms(ORG, SITE)}/lead`);
-    expect(form!.actions).toEqual([]);
+    expect((form!.actions[0]!.config as { to: string }).to).toBe('owner@site.com');
   });
 
-  it('v1 PATCH leaves existing email actions untouched and ignores incoming ones', async () => {
+  it('v1 GET shows actions set in the portal, with secrets masked', async () => {
     const token = await apiKey();
-    // Admin sets a legitimate email action first.
     await seedForm();
-    await adminForm('PUT', 'kontakt', { actions: [{ type: 'email', config: { to: 'owner@site.com', subject: 's', body: 'b' } }] });
-    // Now an agent PATCHes via v1 trying to redirect the email.
-    const mod = await import('../../pages/api/v1/sites/[siteId]/forms/[formId]');
-    const req = new Request(`http://localhost/api/v1/sites/${SITE}/forms/kontakt`, {
-      method: 'PATCH', headers: bearer(token),
-      body: JSON.stringify({ name: 'Renamed', actions: [{ type: 'email', config: { to: 'attacker@evil.com', subject: 'x', body: 'y' } }] }),
-    });
-    const res = await mod.PATCH({ request: req, params: { siteId: SITE, formId: 'kontakt' } } as any);
-    expect(res.status).toBe(200);
+    await adminForm('PUT', 'kontakt', { actions: [
+      { type: 'email', config: { to: 'owner@site.com', subject: 's', body: 'b' } },
+      { type: 'webhook', config: { url: 'https://8.8.8.8/hook', fields: 'email', secret: 'sign-me-please' } },
+    ] });
+    const body = await (await v1('GET', 'kontakt', token)).json();
+    expect(body.form.actions).toHaveLength(2);
+    expect(body.form.actions[0].config.to).toBe('owner@site.com');
+    expect(body.form.actions[1].config).toMatchObject({ fields: 'email', secret: '••••••••' });
+    expect(JSON.stringify(body)).not.toContain('secret_enc');
+  });
+
+  it('v1 PATCH replaces actions with portal validation and keeps a masked webhook secret', async () => {
+    const token = await apiKey();
+    await seedForm();
+    await adminForm('PUT', 'kontakt', { actions: [{ type: 'webhook', config: { url: 'https://8.8.8.8/hook', fields: 'email', secret: 'sign-me-please' } }] });
     const { getStore } = await import('../../lib/datastore');
-    const form = await getStore().getDoc<Form>(`${paths.forms(ORG, SITE)}/kontakt`);
-    expect(form!.name).toBe('Renamed'); // metadata change applied
-    expect(form!.actions).toHaveLength(1);
-    expect((form!.actions[0]!.config as { to: string }).to).toBe('owner@site.com'); // unchanged
+    const before = await getStore().getDoc<Form>(`${paths.forms(ORG, SITE)}/kontakt`);
+    const read = await (await v1('GET', 'kontakt', token)).json();
+    const res = await v1('PATCH', 'kontakt', token, { actions: [
+      ...read.form.actions,
+      { type: 'email', config: { to: '{{email}}', subject: 'Thanks', body: '<p>Thanks</p>' } },
+    ] });
+    expect(res.status).toBe(200);
+    const after = await getStore().getDoc<Form>(`${paths.forms(ORG, SITE)}/kontakt`);
+    expect(after!.actions.map(action => action.type)).toEqual(['webhook', 'email']);
+    expect(after!.actions[0]!.config.secret_enc).toBe(before!.actions[0]!.config.secret_enc);
+
+    const invalid = await v1('PATCH', 'kontakt', token, { actions: [{ type: 'email', config: { subject: 's', body: 'b' } }] });
+    expect(invalid.status).toBe(400);
+    const unknownField = await v1('PATCH', 'kontakt', token, { actions: [{ type: 'webhook', config: { url: 'https://8.8.8.8/hook', fields: 'password', secret: 'x' } }] });
+    expect(unknownField.status).toBe(400);
   });
 });

@@ -3,6 +3,7 @@ import { resolveAppFormEndpoint, installedFormEmbedInfo, validInstallationFormTa
 // POST /api/v1/sites/{siteId}/forms      create a new form
 
 import type { APIRoute } from 'astro';
+import { formActionsView, validateFormActionsInput } from '../../../../../../lib/form-actions-api';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { extensionIssuer } from '../../../../../../lib/extensions/auth';
@@ -25,6 +26,7 @@ export const GET: APIRoute = async ({ request, params }) => {
       fields: (form.steps ?? []).flatMap((s) => collectStepFields(s.blocks)),
       submit_text: form.submit_text,
       success_message: form.success_message,
+      actions: formActionsView(form, ctx.permission),
       created_at: form.created_at,
     })),
   });
@@ -70,12 +72,17 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
   const redirect = body.success_redirect_url ? safeFormRedirectUrl(body.success_redirect_url) : '';
   if (body.success_redirect_url && !redirect) return apiError('success_redirect_url must be an http(s) URL or a path starting with /');
+  let actions: Form['actions'] = [];
+  if (body.actions !== undefined) {
+    if (ctx.permission !== 'admin') return apiError('Admin permission required to set form actions', 403);
+    const validated = await validateFormActionsInput(body.actions, [], steps);
+    if (typeof validated === 'string') return apiError(validated, 400);
+    actions = validated;
+  }
   const doc: Omit<Form, 'id'> = {
     name: body.name,
     ...(body.target ? { target: body.target } : {}),
-    // `actions` (email notifications) are admin-only — never set through the
-    // API-key / MCP write path. Managed via the cookie-auth admin route.
-    actions: [],
+    actions,
     submit_text: body.submit_text ?? 'Submit',
     success_message: body.success_message ?? 'Thanks — your message has been received.',
     ...(redirect ? { success_redirect_url: redirect } : {}),
@@ -88,5 +95,5 @@ export const POST: APIRoute = async ({ request, params }) => {
   await store.setDoc(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`, doc);
   const fresh = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`);
   // Embed info up front so create→embed is one round-trip; see [formId].ts GET.
-  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: [] } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!) }, 201, body);
+  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: formActionsView(fresh, ctx.permission) } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!) }, 201, body);
 };

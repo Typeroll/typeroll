@@ -89,6 +89,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const startedAt = Date.now();
   try {
     const result = await runChatTurn({
+      permission: guard.value.permission,
       orgId: owner_org_id,
       siteId,
       versionId,

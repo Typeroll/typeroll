@@ -70,12 +70,31 @@ Deletes a form. Any embed referencing it stops accepting submissions.
 `list_form_submissions` reads what visitors sent; `delete_form_submission`
 removes a single entry (useful for clearing spam or a test submission).
 
-## Email notifications
+## Email notifications and webhooks
 
-A form can email you on every submission. Connect a provider (Postmark or plain
-SMTP) per site under **Settings → Email** in the portal. Credentials are
-encrypted at rest and deliberately kept off the agent surface — the AI agent can author
-the form and its email action, but cannot read or set your provider credentials.
+A form can email you, send the visitor a confirmation, or post selected fields
+to a webhook after every submission. These are the form's `actions`, the same
+list the portal's Forms editor manages. Admins read them with `read_form`
+(webhook secrets are masked) and set them with `create_form` or
+`update_form patch={ actions: [...] }`. The list replaces the current one, so
+read the form first and send back every action you keep.
+
+```
+update_form form_id=contact patch={ actions: [
+  { type: "email", config: { to: "hello@example.com", subject: "New lead: {{name}}",
+    body: "<p>{{message}}</p>", include_all: true, reply_to: "{{email}}" } },
+  { type: "email", config: { to: "{{email}}", subject: "Thanks, {{name}}",
+    body: "<p>We will get back to you within a day.</p>" } }
+] }
+```
+
+| Type      | Config                                                                                                                            |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `email`   | `to`, `subject`, `body` (required; `{{field}}` placeholders), `cc`, `bcc`, `reply_to`, `include_all`, `format` (`html` or `text`) |
+| `webhook` | `url` (https), `fields` (the field names sent), `secret` (signing secret; send the masked value to keep it)                       |
+
+Emails go through the site's email provider (Postmark or SMTP), connected under
+**Settings → Email**.
 
 ## Rendering
 

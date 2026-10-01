@@ -39,6 +39,8 @@ import {
   type BlockContainerTarget,
 } from './block-containers';
 import { AUTOMATIC_CONVERSION_REFUSAL } from './html-mode';
+import { formActionsView, validateFormActionsInput } from './form-actions-api';
+import type { Form, FormSubmission } from '@typeroll/shared';
 import { snapshotRevision } from './revisions';
 import { applyContentWrite } from './content-write';
 import {
@@ -754,6 +756,25 @@ const tools: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'read_form',
+    description: "Read one form: steps and fields, texts and, for admins, its actions (email notifications and webhooks after a submission; secrets masked).",
+    input_schema: { type: 'object', properties: { form_id: { type: 'string' } }, required: ['form_id'] },
+  },
+  {
+    name: 'set_form_actions',
+    description: "Replace a form's actions (admin): email notifications and webhooks run after each submission. Read the form first and send back every action to keep. email config: { to, subject, body, cc?, bcc?, reply_to?, include_all?, format? }; {{field}} placeholders work, e.g. to: \"{{email}}\" for a confirmation to the visitor. webhook config: { url (https), fields: [allowed field names], secret (send the masked value to keep the stored one) }.",
+    input_schema: {
+      type: 'object',
+      properties: { form_id: { type: 'string' }, actions: { type: 'array', items: { type: 'object' } } },
+      required: ['form_id', 'actions'],
+    },
+  },
+  {
+    name: 'list_form_submissions',
+    description: 'List what visitors submitted through a form, newest first (up to 50).',
+    input_schema: { type: 'object', properties: { form_id: { type: 'string' }, limit: { type: 'number' } }, required: ['form_id'] },
+  },
+  {
     name: 'get_form_embed',
     description:
       'Get the HTML-mode authoring directive for a form. Paste the returned <x-form> reference into page HTML; preview and static generation replace it server-side with the complete form shell, signed token, and initial state.',
@@ -1069,6 +1090,8 @@ export async function runChatTurn(args: {
   site: Site;
   version: SiteVersion | null;
   portalOrigin: string;
+  /** The signed-in user's permission on the site; admin-only tools follow the portal's rules. */
+  permission: string;
   message: string;
   history: ChatMessageInput[];
   activePage?: ActivePageContext | null;
@@ -1130,6 +1153,7 @@ export async function runChatTurn(args: {
           site: args.site,
           version: args.version,
           portalOrigin: args.portalOrigin,
+          permission: args.permission,
         });
         if (out.action) actions.push(out.action);
         toolCalls.push({
@@ -1178,6 +1202,8 @@ export interface ToolContext {
   site: Site;
   version: SiteVersion | null;
   portalOrigin: string;
+  /** The signed-in user's permission on the site ('read' | 'write' | 'admin'). */
+  permission?: string;
 }
 
 function absolutePreviewUrl(ctx: ToolContext, page: Parameters<typeof pagePreviewUrl>[1]): string {
@@ -2108,6 +2134,36 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
     }
 
     // ─── Forms ─────────────────────────────────────────────────────────────
+    case 'read_form': {
+      const formId = String(input.form_id ?? '');
+      const form = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`);
+      if (!form) return { result: { error: 'Form not found' } };
+      return { result: { ...form, id: formId, actions: formActionsView(form, ctx.permission ?? 'write') } };
+    }
+
+    case 'set_form_actions': {
+      if (ctx.permission !== 'admin') return { result: { error: 'Admin permission required to change form actions' } };
+      const formId = String(input.form_id ?? '');
+      const formPath = `${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`;
+      const form = await store.getDoc<Form>(formPath);
+      if (!form) return { result: { error: 'Form not found' } };
+      const actions = await validateFormActionsInput(input.actions, form.actions, form.steps);
+      if (typeof actions === 'string') return { result: { error: actions } };
+      await store.updateDoc(formPath, { actions });
+      return { result: { ok: true, actions: formActionsView({ actions }, 'admin') } };
+    }
+
+    case 'list_form_submissions': {
+      const formId = String(input.form_id ?? '');
+      if (!await store.getDoc(`${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`)) return { result: { error: 'Form not found' } };
+      const limit = Math.max(1, Math.min(50, Number(input.limit) || 20));
+      const submissions = (await store.listDocs<FormSubmission>(paths.submissions(ctx.orgId, ctx.siteId)))
+        .filter((submission) => submission.form_id === formId)
+        .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+        .slice(0, limit);
+      return { result: { form_id: formId, submissions } };
+    }
+
     case 'list_forms': {
       const list = await store.listDocs(paths.forms(ctx.orgId, ctx.siteId));
       return {
