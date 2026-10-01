@@ -229,9 +229,9 @@ const heading: BlockType = {
   container: false,
   style_element_class: 'block-heading-text',
   schema: [
-    { name: 'style_id', type: 'style', label: 'Style', style_target: 'heading', editor_group: 'content' },
+    { name: 'eyebrow', type: 'text', label: 'Eyebrow', placeholder: 'Short label above the heading' },
+    { name: 'eyebrow_style_id', type: 'style', label: 'Eyebrow style', style_target: 'text', style_default_role: 'eyebrow', min_render_version: 2 },
     { name: 'text', type: 'text', label: 'Heading text', required: true },
-    { name: 'anchor_id', type: 'text', label: 'Anchor ID' },
     {
       name: 'level',
       type: 'select',
@@ -239,6 +239,10 @@ const heading: BlockType = {
       options: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
       default: 'h2',
     },
+    { name: 'style_id', type: 'style', label: 'Heading style', style_target: 'heading', editor_group: 'content' },
+    { name: 'subtitle', type: 'text', label: 'Subtitle', placeholder: 'Line below the heading', min_render_version: 2 },
+    { name: 'subtitle_style_id', type: 'style', label: 'Subtitle style', style_target: 'text', style_default_role: 'lead', min_render_version: 2 },
+    { name: 'anchor_id', type: 'text', label: 'Anchor ID' },
     {
       name: 'size',
       type: 'select',
@@ -261,7 +265,6 @@ const heading: BlockType = {
     { name: 'font_weight', type: 'select', label: 'Font weight', options: ['400', '500', '600', '700', '800'] },
     ...typographyFields,
     { name: 'color', type: 'color', label: 'Text color' },
-    { name: 'eyebrow', type: 'text', label: 'Eyebrow', placeholder: 'small label above heading' },
   ],
   // {{=level}} substitutes a validated tag name (h1..h6). The renderer
   // falls back to div if level is missing/invalid, so the output is
@@ -270,7 +273,27 @@ const heading: BlockType = {
   <span class="block-heading-eyebrow">{{eyebrow}}</span>
   <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>
 </div>`,
-  styles: `
+  // Version 2: eyebrow and subtitle belong to the heading (<hgroup>), are
+  // omitted when empty and take a site style instead of fixed, faded text.
+  render_versions: [{
+    from: 2,
+    template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);{{#color}}--heading-color:{{color}}{{/color}}">{{#heading_group}}<hgroup class="block-heading-group">{{/heading_group}}{{#eyebrow}}
+  <p class="block-heading-eyebrow {{eyebrow_class}}">{{eyebrow}}</p>{{/eyebrow}}
+  <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>{{#subtitle}}
+  <p class="block-heading-subtitle {{subtitle_class}}">{{subtitle}}</p>{{/subtitle}}{{#heading_group}}</hgroup>{{/heading_group}}
+</div>`,
+    styles: headingStyles(`[data-block="heading"] .block-heading-group { margin: 0; }
+[data-block="heading"] .block-heading-eyebrow { font-size: 0.875rem; font-weight: 600; line-height: 1.3; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.5rem; }
+[data-block="heading"] .block-heading-subtitle { font-size: 1.125rem; line-height: 1.5; margin: 0.5rem 0 0; }`),
+  }],
+  styles: headingStyles(`[data-block="heading"] .block-heading-eyebrow { display: block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.25rem; }
+[data-block="heading"] .block-heading-eyebrow:empty { display: none; }`),
+  origin: 'core',
+  created_at: ISO_EPOCH,
+};
+
+function headingStyles(eyebrowCss: string): string {
+  return `
 [data-block="heading"] { --heading-fs: clamp(1.75rem, 1rem + 3.5vw, 3.5rem); min-width:0;max-width:100%;overflow-wrap:anywhere; }
 [data-block="heading"] .block-heading-text { color:var(--heading-color,var(--heading-role-color,inherit)); letter-spacing:var(--heading-role-tracking); text-transform:var(--heading-role-transform); font-style:var(--heading-role-style); }
 [data-block="heading"][data-level="h1"] { --heading-role-color:var(--h1-color); --heading-role-tracking:var(--h1-tracking); --heading-role-transform:var(--h1-transform); --heading-role-style:var(--h1-style); --heading-role-weight:var(--h1-weight,700); }
@@ -279,8 +302,7 @@ const heading: BlockType = {
 [data-block="heading"][data-level="h4"] { --heading-role-color:var(--h4-color); --heading-role-tracking:var(--h4-tracking); --heading-role-transform:var(--h4-transform); --heading-role-style:var(--h4-style); --heading-role-weight:var(--h4-weight,700); }
 [data-block="heading"][data-level="h5"] { --heading-role-color:var(--h5-color); --heading-role-tracking:var(--h5-tracking); --heading-role-transform:var(--h5-transform); --heading-role-style:var(--h5-style); --heading-role-weight:var(--h5-weight,700); }
 [data-block="heading"][data-level="h6"] { --heading-role-color:var(--h6-color); --heading-role-tracking:var(--h6-tracking); --heading-role-transform:var(--h6-transform); --heading-role-style:var(--h6-style); --heading-role-weight:var(--h6-weight,700); }
-[data-block="heading"] .block-heading-eyebrow { display: block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.25rem; }
-[data-block="heading"] .block-heading-eyebrow:empty { display: none; }
+${eyebrowCss}
 [data-block="heading"]:not([data-size="theme"]) .block-heading-text { font-weight: var(--heading-role-weight, 700); line-height: 1.15; margin: 0; font-size: var(--heading-fs); }
 
 [data-block="heading"][data-font-weight="400"] .block-heading-text { font-weight:400; }
@@ -318,10 +340,8 @@ ${[1,2,3,4,5,6].map(level => `[data-block="heading"][data-level="h${level}"]:not
 [data-block="heading"][data-size="auto"][data-level="h6"] { --heading-fs: var(--type-h6, .875rem); }
 [data-block="heading"][style*="--font_size_px:"] .block-heading-text { font-size:var(--font_size_px, var(--heading-fs)); }
 [data-block="heading"][data-level][style*="--line_height:"] .block-heading-text { line-height:var(--line_height,1.2); }
-`.trim(),
-  origin: 'core',
-  created_at: ISO_EPOCH,
-};
+`.trim();
+}
 
 /**
  * `image` — single image with optional caption + link. Wraps in <figure>

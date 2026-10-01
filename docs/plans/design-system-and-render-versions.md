@@ -118,6 +118,27 @@ publication validation.
   styles. Only unknown markup falls back to source, with an offer to convert
   it into blocks.
 
+### Phase 3 as built (render version 2, Core 0.2.57)
+
+- `BlockType.render_versions` holds a newer `template`/`styles` per version;
+  `blockOutputForVersion()` picks them, so older sites keep byte-identical
+  output (reference snapshots in `__render-reference__/v1` and `v2`).
+- `core/heading`: eyebrow, heading and subtitle in one `<hgroup>`, parts
+  omitted when empty, no opacity. Part style fields (`eyebrow_style_id`,
+  `subtitle_style_id`) declare `style_default_role`; without a choice the
+  part gets `tr-role-<role>`, which `siteStylesCss` maps to the site's first
+  style with that role.
+- `FieldDefinition.min_render_version` hides fields that an older site would
+  not render.
+- `style_overrides.custom_class` moves to the `style_element_class` element.
+  `html_id` stays on the block root: it is an anchor target, and headings
+  already have `anchor_id` for the heading element.
+- v2 defines `--color-primary-fg` as the readable on-primary colour.
+- Rich text keeps H2–H4 and `s-<id>` classes, applies paragraph styles, and
+  offers a preview-first `convert_prose_block` for other markup. HTML import
+  folds classed eyebrow/subtitle paragraphs into the heading, and block-tree
+  writes warn (`heading_part_as_text`) when a label is written as text.
+
 ## Phase 4: custom CSS fields
 
 Site and page custom CSS get managed fields in UI, API and MCP: a code editor,

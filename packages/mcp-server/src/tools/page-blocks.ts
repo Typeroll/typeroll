@@ -98,7 +98,7 @@ export const pageBlockTools: ToolDef[] = [
   {
     name: 'update_block',
     description:
-      'Update a block\'s data fields (shallow merge), style overrides, or responsive settings. Works on pages, partials, and page templates — use `target` to address non-page containers. Does not modify children or slots; use move/add/remove for structural changes.',
+      'Update a block\'s data fields (shallow merge), style overrides, or responsive settings. Works on pages, partials, and page templates — use `target` to address non-page containers. Does not modify children or slots; use move/add/remove for structural changes. For appearance, prefer a named style (`data.style_id`, see list_styles) over custom_class or custom_css. From render version 2, custom_class lands on the heading or button link element itself instead of the block wrapper.',
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),
@@ -235,6 +235,26 @@ export const pageBlockTools: ToolDef[] = [
         siteId,
         `pages/${encodeURIComponent(args.page_id)}/blocks/convert`,
         { dry_run: true },
+        v(args.version),
+      );
+      return ok(res);
+    }),
+  },
+  {
+    name: 'convert_prose_block',
+    description:
+      'Turn one text block (core/prose) into separate blocks: headings (a classed label above a heading becomes its eyebrow), paragraphs, lists, images and buttons. Use it when a text block holds headings, classed HTML or media that should be editable and styled with named styles. Call without `accept` to preview (nothing is written); review `converted`, `notes` and `unconverted`, then call again with `accept` set to the preview\'s `fingerprint`. Writes the page draft (working copy) like other block edits. Pages only.',
+    inputSchema: {
+      page_id: z.string(),
+      block_id: z.string(),
+      accept: z.string().optional().describe('The fingerprint from a preview of this same block. Omit to preview.'),
+      version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const res = await client.post(
+        siteId,
+        `pages/${encodeURIComponent(args.page_id)}/blocks/convert-prose`,
+        { block_id: args.block_id, ...(args.accept ? { accept: args.accept } : {}) },
         v(args.version),
       );
       return ok(res);

@@ -122,3 +122,50 @@ describe('block style_id', () => {
     expect(renderBlocks([{ id: 't', type: 'core/testimonial', data: { quote: 'q', style: 'card', style_id: 'lead' } }], { registry })).not.toContain('s-lead');
   });
 });
+
+describe('render version 2', () => {
+  const registry = buildCoreBlockRegistry();
+  const heading = { id: 'h', type: 'core/heading', data: { text: 'Title', level: 'h2', eyebrow: 'For leaders', subtitle: 'In one day', eyebrow_style_id: 'kicker' } };
+
+  it('keeps version 1 heading markup', () => {
+    const html = renderBlocks([heading], { registry });
+    expect(html).toContain('<span class="block-heading-eyebrow">For leaders</span>');
+    expect(html).not.toContain('In one day');
+    expect(html).not.toContain('<hgroup');
+  });
+
+  it('groups eyebrow, heading and subtitle and styles each part', () => {
+    const html = renderBlocks([heading], { registry, renderVersion: 2 });
+    expect(html).toMatch(/<hgroup class="block-heading-group">\s*<p class="block-heading-eyebrow s-kicker">For leaders<\/p>\s*<h2 class="block-heading-text">Title<\/h2>\s*<p class="block-heading-subtitle tr-role-lead">In one day<\/p><\/hgroup>/);
+  });
+
+  it('omits the group and empty parts for a plain heading', () => {
+    const html = renderBlocks([{ id: 'h', type: 'core/heading', data: { text: 'Title', level: 'h3' } }], { registry, renderVersion: 2 });
+    expect(html).not.toContain('hgroup');
+    expect(html).not.toContain('eyebrow');
+  });
+
+  it('puts a custom class on the heading element itself', () => {
+    const block = { ...heading, style_overrides: { custom_class: 'eyebrow-like', html_id: 'intro' } };
+    expect(renderBlocks([block], { registry })).toMatch(/<div data-block="heading"[^>]*id="intro" class="eyebrow-like"/);
+    const html = renderBlocks([block], { registry, renderVersion: 2 });
+    expect(html).toContain('<h2 class="block-heading-text eyebrow-like">');
+    expect(html).toMatch(/<div data-block="heading"[^>]*id="intro"/);
+  });
+
+  it('styles default eyebrow and subtitle with the first style of that role', () => {
+    const styles = [{ ...eyebrow, role: 'eyebrow' }, { ...eyebrow, id: 'eyebrow-2', role: 'eyebrow' }, STANDARD_STYLES.find(style => style.role === 'lead')!];
+    expect(siteStylesCss(styles, opts)).not.toContain('tr-role');
+    const css = siteStylesCss(styles, { ...opts, renderVersion: 2 });
+    expect(css).toContain('.s-eyebrow:not(#\\#),.tr-role-eyebrow:not(#\\#){');
+    expect(css).not.toContain('.s-eyebrow-2:not(#\\#),.tr-role-eyebrow');
+    expect(css).toContain('.s-lead:not(#\\#),.tr-role-lead:not(#\\#){');
+  });
+
+  it('derives a readable --color-primary-fg, even without styles', () => {
+    expect(siteStylesCss([], opts)).toBe('');
+    const css = siteStylesCss([], { ...opts, renderVersion: 2, colors: { ...colors, primary: '#facc15' } });
+    expect(css).toContain(':where(:root){--color-primary-fg:var(--color-on-primary)}');
+    expect(css).toContain('--color-on-primary:#111827');
+  });
+});

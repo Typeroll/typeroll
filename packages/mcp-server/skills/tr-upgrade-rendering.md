@@ -47,6 +47,11 @@ comparison first.
    "section gap 8px larger"). Link each change to the version note that
    explains it. Say plainly when a change looks like a regression.
 
+   Before screenshots, read the site and page custom CSS for selectors a
+   version note names. Version 2 moves a heading's or button's custom class
+   onto the `<h2>` or link, so `.my-class .block-heading-text` stops
+   matching; propose the rewrite (`.my-class`) or a named style.
+
 7. **Ask before upgrading.** Never upgrade on your own. If the user wants to
    keep a specific old look, solve it with a site style or page CSS first and
    compare again.

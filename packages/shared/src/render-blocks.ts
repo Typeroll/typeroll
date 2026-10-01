@@ -54,6 +54,7 @@ import { comparePageValues, pageSort } from './page-options.js';
 import { countBlockH1s, demoteBodyH1s, normalizePageH1s } from './page-heading-policy.js';
 import { renderFieldList } from './field-list.js';
 import { STYLE_ID_PATTERN, styleClassName } from './site-styles.js';
+import { blockOutputForVersion, resolveRenderVersion } from './render-version.js';
 
 /**
  * Render context — values exposed to templates via the dotted-path
@@ -289,7 +290,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     }
     html = applyVisibility(html, effectiveBlock, options);
     html = applySiteStyle(html, effectiveBlock, blockType);
-    html = applyStyleOverrides(html, effectiveBlock);
+    html = applyStyleOverrides(html, effectiveBlock, blockType, options.renderVersion);
     return html;
   }
 
@@ -305,7 +306,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     return effectiveBlock.children ? renderBlocks(effectiveBlock.children, options) : '';
   }
 
-  let template = blockType.template ?? '';
+  let template = blockOutputForVersion(blockType, options.renderVersion).template;
   // Inline-edit stamping happens on the TEMPLATE (before substitution) so
   // the wrapper always encloses exactly the field's own token.
   if (options.editable && block.id) {
@@ -421,6 +422,18 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     }
   }
 
+  // Style fields for a block part (`<part>_style_id`) derive `<part>_class`:
+  // the chosen style, else the site's style with the field's standard role
+  // (see siteStylesCss).
+  for (const field of blockType.schema ?? []) {
+    if (field.type !== 'style' || !field.style_default_role || !field.name.endsWith('_style_id')) continue;
+    const value = compiled.flatData[field.name];
+    compiled.flatData[field.name.replace(/_style_id$/, '_class')] = typeof value === 'string' && STYLE_ID_PATTERN.test(value) ? styleClassName(value) : `tr-role-${field.style_default_role}`;
+  }
+  if (effectiveBlock.type === 'core/heading') {
+    const d = compiled.flatData;
+    d.heading_group = Boolean(String(d.eyebrow ?? '').trim() || String(d.subtitle ?? '').trim());
+  }
   if (['core/heading', 'core/rich_heading'].includes(effectiveBlock.type)) compiled.flatData.heading_anchor_attr = compiled.flatData.anchor_id ? ` id="${escapeHtml(compiled.flatData.anchor_id)}"` : '';
   if (effectiveBlock.type === 'core/image') {
     const d = compiled.flatData;
@@ -520,7 +533,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   if (columnThreshold !== null) html += `<style data-bid="${bid}">${columnStackCss(columnThreshold, `[data-block="columns"][data-bid="${bid}"]`)}</style>`;
   html = applyVisibility(html, effectiveBlock, options);
   html = applySiteStyle(html, effectiveBlock, blockType);
-  html = applyStyleOverrides(html, effectiveBlock);
+  html = applyStyleOverrides(html, effectiveBlock, blockType, options.renderVersion);
 
   return html;
 }
@@ -1282,16 +1295,25 @@ function applySiteStyle(html: string, block: Block, blockType: BlockType): strin
   const id = block.data?.style_id;
   if (typeof id !== 'string' || !STYLE_ID_PATTERN.test(id)) return html;
   const cls = styleClassName(id);
-  if (blockType.style_element_class) {
-    const target = new RegExp(`(\\sclass="(?:[^"]*\\s)?${blockType.style_element_class.replace(/[^\w-]/g, '')}(?:\\s[^"]*)?)"`);
-    if (target.test(html)) return html.replace(target, `$1 ${cls}"`);
-  }
-  return mergeAttrsIntoFirstTag(html, { class: cls }) ?? html;
+  return addClassToSemanticElement(html, blockType, cls) ?? mergeAttrsIntoFirstTag(html, { class: cls }) ?? html;
 }
 
-function applyStyleOverrides(html: string, block: Block): string {
+/** Add a class to the element carrying `style_element_class`; null when the block has none. */
+function addClassToSemanticElement(html: string, blockType: BlockType, cls: string): string | null {
+  if (!blockType.style_element_class) return null;
+  const target = new RegExp(`(\\sclass="(?:[^"]*\\s)?${blockType.style_element_class.replace(/[^\w-]/g, '')}(?:\\s[^"]*)?)"`);
+  return target.test(html) ? html.replace(target, (_m, attr: string) => `${attr} ${escapeHtml(cls)}"`) : null;
+}
+
+function applyStyleOverrides(html: string, block: Block, blockType: BlockType, renderVersion: number | undefined): string {
   const so = block.style_overrides;
   if (!so) return html;
+  // Render version 2 puts a custom class on the meaningful element (the <h2>,
+  // the button link), so `.my-class` styles it directly.
+  if (so.custom_class && resolveRenderVersion(renderVersion) >= 2) {
+    const moved = addClassToSemanticElement(html, blockType, so.custom_class);
+    if (moved !== null) return applyStyleOverrides(moved, { ...block, style_overrides: { ...so, custom_class: undefined } }, blockType, renderVersion);
+  }
 
   const inlineStyleParts: string[] = [];
   if (so.spacing_before) inlineStyleParts.push(`margin-top:${cssValue(so.spacing_before)}`);
@@ -1818,7 +1840,8 @@ export function collectBlockAssets(
     used.push(id);
     const numericFields = bt.schema.filter(field => field.css_unit && /^[a-z][a-z0-9_]*$/.test(field.name));
     if (numericFields.length) css.push(`[data-presentation="${encodeURIComponent(bt.id)}"]{${numericFields.map(field => `--${field.name}:${/^(?:h[1-6]_size_px|heading_(?:before|after)_px)$/.test(field.name) ? 'inherit' : 'initial'}`).join(';')}}`);
-    if (bt.styles) css.push(`/* ${id} */\n${bt.styles}`);
+    const btStyles = blockOutputForVersion(bt, opts?.renderVersion).styles;
+    if (btStyles) css.push(`/* ${id} */\n${btStyles}`);
     if (bt.script) js.push(`/* ${id} */\n${bt.script}`);
   }
 

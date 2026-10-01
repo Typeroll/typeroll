@@ -1,12 +1,12 @@
-import { createContext, useContext, useEffect, useId, useState } from 'react';
+import { useContext, useEffect, useId, useState } from 'react';
 import type { Breakpoint, FieldDefinition, ResponsiveBreakpoints, SiteStyle } from '@typeroll/shared';
 import { BREAKPOINTS, BREAKPOINTS_ABOVE_MOBILE, resolveBreakpointWidths, responsiveBreakpointsError, stylesForTarget } from '@typeroll/shared';
 import { Monitor } from 'lucide-react';
 import RichTextInput from './RichTextInput';
 import ContentReferenceInput from './ContentReferenceInput';
 
-/** The site's style library, for `type: 'style'` fields. Null when no editor provides it. */
-export const SiteStylesContext = createContext<SiteStyle[] | null>(null);
+import { SiteStylesContext } from './editor-context';
+export { fieldAvailable, ProseConvertContext, RenderVersionContext, SiteStylesContext } from './editor-context';
 
 export default function FieldInput({
   siteId, field, value, onChange, responsive, activeBp, hasOwn, triState = false, siteWidths,
@@ -36,11 +36,12 @@ export default function FieldInput({
     case 'style': {
       const options = stylesForTarget(siteStyles ?? [], field.style_target ?? 'text');
       const missing = v && !options.some(style => style.id === v);
+      const roleDefault = field.style_default_role ? (siteStyles ?? []).find(style => style.role === field.style_default_role) : undefined;
       return (
         <div style={fieldGroup}>
           {label}
           <select id={fieldId} aria-label={field.label} value={v} onChange={(e) => onChange(e.target.value || undefined)} style={selectInput}>
-            <option value="">Default look</option>
+            <option value="">{roleDefault ? `Site default (${roleDefault.name})` : 'Default look'}</option>
             {options.map(style => <option key={style.id} value={style.id}>{style.name}</option>)}
             {missing && <option value={v}>{v} (missing style)</option>}
           </select>

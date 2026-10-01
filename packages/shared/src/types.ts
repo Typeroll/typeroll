@@ -913,6 +913,17 @@ export interface FieldDefinition {
   editor_group?: 'content' | 'appearance' | 'advanced';
   /** For `type: 'style'`: which kind of style the field lists. */
   style_target?: import('./site-styles.js').StyleTarget;
+  /**
+   * For `type: 'style'` fields named `<part>_style_id`: the standard role used
+   * when no style is chosen (render version 2). The renderer derives
+   * `<part>_class` (`s-<id>` or `tr-role-<role>`) for the template.
+   */
+  style_default_role?: import('./site-styles.js').StyleClassRole;
+  /**
+   * First render version that renders this field. Editors hide it for sites
+   * on an older version, where it would have no visible effect.
+   */
+  min_render_version?: number;
   name: string;
   type: FieldType;
   label: string;
@@ -1019,6 +1030,12 @@ export interface BlockType {
    * it is not the block's root, e.g. the `<h2>` inside a heading block.
    */
   style_element_class?: string;
+  /**
+   * Output for newer render versions. The newest entry whose `from` is at or
+   * below the site's render version replaces `template` and/or `styles`;
+   * older sites keep the base output unchanged.
+   */
+  render_versions?: Array<{ from: number; template?: string; styles?: string }>;
   id: string;
   name: string;
   label: string;

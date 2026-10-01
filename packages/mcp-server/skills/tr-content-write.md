@@ -42,6 +42,13 @@ list, button and section blocks) for eyebrows, leads, quotes and buttons. If a
 treatment you need could recur and no style fits, create one rather than
 setting one-off values; ask first when it changes the site's look.
 
+A small label above a heading is the heading block's `eyebrow`, and a line
+below it is its `subtitle` (render version 2), each with its own style field.
+Never write them as separate text blocks with classed HTML. In text blocks,
+style whole paragraphs with site text styles (`<p class="s-lead">`); a text
+block that needs other classes, images or headings with parts is better split
+with `convert_prose_block`.
+
 ### 2. Ask for the brief
 
 If the user hasn't told you, ask:

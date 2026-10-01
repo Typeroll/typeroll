@@ -4,7 +4,7 @@ import AppLayout from '../../../../../layouts/AppLayout.astro';
 import TemplateEditor from '../../../../../components/TemplateEditor.tsx';
 import { loadSiteContext } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
-import { paths } from '@typeroll/shared';
+import { paths, resolveRenderVersion } from '@typeroll/shared';
 import type { PageTemplate, Site } from '@typeroll/shared';
 
 const ctx = await loadSiteContext(Astro);
@@ -19,7 +19,8 @@ const template = await store.getDoc<PageTemplate>(
   paths.pageTemplate(orgId, siteId, templateId, versionId),
 );
 if (!template) return Astro.redirect(`/app/sites/${siteId}/templates`);
+const templateSettings = await vstore.settings(orgId, siteId, versionId);
 ---
-<AppLayout title={`${template.label} — Mall — ${site.name}`} siteId={siteId} bare>
-  <TemplateEditor responsiveBreakpoints={(await vstore.settings(orgId, siteId, versionId))?.responsive_breakpoints} client:load siteId={siteId} template={template} />
+<AppLayout title={`${template.label} — Template — ${site.name}`} siteId={siteId} bare>
+  <TemplateEditor responsiveBreakpoints={templateSettings?.responsive_breakpoints} siteStyles={templateSettings?.styles ?? []} renderVersion={resolveRenderVersion(templateSettings?.render_version)} client:load siteId={siteId} template={template} />
 </AppLayout>

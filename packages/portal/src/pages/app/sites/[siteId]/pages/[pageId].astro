@@ -7,7 +7,7 @@ import { loadSiteContext } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
 import { pagePreviewUrl, pageLiveUrl } from '../../../../../lib/site-urls';
 import { readWorkingCopy } from '../../../../../lib/working-copy';
-import { paths } from '@typeroll/shared';
+import { paths, resolveRenderVersion } from '@typeroll/shared';
 import type { Page, SiteVersion } from '@typeroll/shared';
 
 const ctx = await loadSiteContext(Astro);
@@ -45,7 +45,7 @@ const editorSettings = await vstore.settings(orgId, siteId, versionId);
 ---
 <AppLayout title={`${page.title} — ${site.name}`} siteId={siteId} bare>
   {page.content_mode === 'blocks' ? (
-    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   ) : (
     <HtmlPageEditor client:load siteId={siteId} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   )}

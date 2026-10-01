@@ -54,8 +54,24 @@ function sampleBlock(type: BlockType): Block {
   return block;
 }
 
-function render(type: BlockType, renderVersion: number): string {
-  const block = sampleBlock(type);
+/** Extra samples for parts of a block that the default sample leaves empty. */
+const EXTRA_SAMPLES: Array<{ name: string; block: Block }> = [
+  {
+    name: 'core__heading--grouped',
+    block: {
+      id: 'ref', type: 'core/heading',
+      data: { text: 'Sample heading', level: 'h2', eyebrow: 'Sample eyebrow', subtitle: 'Sample subtitle', subtitle_style_id: 'lead' },
+      style_overrides: { custom_class: 'custom-heading', html_id: 'sample-anchor' },
+    },
+  },
+  {
+    name: 'core__button--classed',
+    block: { id: 'ref', type: 'core/button', data: { label: 'Sample', href: '/sample' }, style_overrides: { custom_class: 'custom-button' } },
+  },
+];
+
+function render(type: BlockType, renderVersion: number, sample?: Block): string {
+  const block = sample ?? sampleBlock(type);
   let html: string;
   try {
     html = renderBlocks([block], { registry, renderVersion });
@@ -86,6 +102,14 @@ for (const { version } of RENDER_VERSIONS) {
       it(`keeps ${type.id}`, async () => {
         await expect(render(type, version)).toMatchFileSnapshot(
           `./__render-reference__/v${version}/${type.id.replace('/', '__')}.html`,
+        );
+      });
+    }
+
+    for (const { name, block } of EXTRA_SAMPLES) {
+      it(`keeps ${name}`, async () => {
+        await expect(render(registry.get(block.type)!, version, block)).toMatchFileSnapshot(
+          `./__render-reference__/v${version}/${name}.html`,
         );
       });
     }

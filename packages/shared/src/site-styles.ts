@@ -375,7 +375,16 @@ export interface SiteStylesCssOptions {
   breakpoints: BreakpointWidths;
   /** Site palette, used to derive the on_* text colours. */
   colors: SiteColors;
+  /** Site render version (render-version.ts); version 2 adds role defaults and a readable --color-primary-fg. */
+  renderVersion?: number;
 }
+
+/**
+ * Class roles a block part uses by default when no style is chosen (render
+ * version 2): a heading's eyebrow and subtitle get `tr-role-eyebrow` and
+ * `tr-role-lead`, styled by the site's first style with that role.
+ */
+export const STYLE_DEFAULT_ROLE_CLASSES: readonly StyleClassRole[] = ['eyebrow', 'lead'];
 
 /**
  * CSS for a site's style library. Empty for a site without styles. Class
@@ -385,7 +394,9 @@ export interface SiteStylesCssOptions {
 export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteStylesCssOptions): string {
   // Re-validate: stored data is rendered into a <style> element.
   const styles = (Array.isArray(input) ? input : []).flatMap(value => validateSiteStyle(value).style ?? []);
-  if (!styles.length) return '';
+  const v2 = (opts.renderVersion ?? 1) >= 2;
+  if (!styles.length && !v2) return '';
+  const defaultRoles = new Set<string>();
   const rootByBp = new Map<string, string[]>();
   const rules: string[] = [];
   const media = (bp: StyleBreakpoint) => `@media (min-width:${opts.breakpoints[bp]}px)`;
@@ -397,7 +408,12 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
       for (const bp of STYLE_BREAKPOINTS) if (style.at?.[bp]) pushRoot(bp, roleVariables(role, style.at[bp]!));
       continue;
     }
-    const selector = `.${styleClassName(style.id)}:not(#\\#)`;
+    const selectors = [`.${styleClassName(style.id)}:not(#\\#)`];
+    if (v2 && role && (STYLE_DEFAULT_ROLE_CLASSES as readonly string[]).includes(role) && !defaultRoles.has(role)) {
+      defaultRoles.add(role);
+      selectors.push(`.tr-role-${role}:not(#\\#)`);
+    }
+    const selector = selectors.join(',');
     const base = declarations(style.base);
     if (base.length) rules.push(`${selector}{${base.join(';')}}`);
     for (const bp of STYLE_BREAKPOINTS) {
@@ -406,13 +422,15 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
     }
     if (style.hover) {
       const hover = declarations(style.hover);
-      if (hover.length) rules.push(`${selector}:hover{${hover.join(';')}}`);
+      if (hover.length) rules.push(`${selectors.map(one => `${one}:hover`).join(",")}{${hover.join(";")}}`);
     }
-    if (style.css) rules.push(scopedCss(style.css, selector));
+    if (style.css) for (const one of selectors) rules.push(scopedCss(style.css, one));
   }
   const root: string[] = [];
   pushRoot('base', ON_COLOR_TOKENS.map(token => `--color-${token.replace('_', '-')}:${onColor(opts.colors[token.slice(3) as keyof SiteColors])}`));
   if (rootByBp.get('base')?.length) root.push(`:root{${rootByBp.get('base')!.join(';')}}`);
+  // Zero specificity, so a site's own --color-primary-fg still wins.
+  if (v2) root.push(`:where(:root){--color-primary-fg:var(--color-on-primary)}`);
   for (const bp of STYLE_BREAKPOINTS) if (rootByBp.get(bp)?.length) root.push(`${media(bp)}{:root{${rootByBp.get(bp)!.join(';')}}}`);
   return [...root, ...rules].join('\n');
 }

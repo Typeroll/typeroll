@@ -13,7 +13,7 @@
 // cross-slot moves use a "Move into…" button on each tree node — drag
 // across containers is a Phase 2.5 polish.
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Block, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType, SiteStyle } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES, resolveResponsive, isResponsiveValue, resolveBreakpointWidths, breakpointPreviewWidth, type ResponsiveBreakpoints } from '@typeroll/shared';
 import {
@@ -37,12 +37,14 @@ import ContentModeSwitcher from './ContentModeSwitcher';
 import TemplatePicker from './TemplatePicker';
 import PageContentTypePicker from './PageContentTypePicker';
 import './BlockPageEditor.css';
-import FieldInput, { fieldGroup, fieldLabel, SiteStylesContext, textInput, textareaInput } from './FieldInput';
+import FieldInput, { fieldAvailable, fieldGroup, fieldLabel, ProseConvertContext, RenderVersionContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
 
 interface Props {
   responsiveBreakpoints?: ResponsiveBreakpoints | null;
   /** The site's style library, offered by `style` fields. */
   siteStyles?: SiteStyle[];
+  /** The site's render version; fields of newer versions are hidden. */
+  renderVersion?: number;
   siteId: string;
   page: Page;
   contentType?: ContentType;
@@ -97,7 +99,7 @@ export const ICONS: Record<string, IconCmp> = {
 
 // ─── Top-level component ────────────────────────────────────────────────
 
-export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles }: Props) {
+export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion }: Props) {
   // The editor edits the working-copy view of the page: canonical doc with
   // any unsaved (autosaved) fields overlaid. All edits autosave to the
   // working copy; the deliberate Save in the Publish menu promotes them.
@@ -313,6 +315,37 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
 
   const fieldFlush = useRef<(() => Promise<void>) | null>(null);
   const blockWrite = useRef<Promise<void>>(Promise.resolve());
+  const proseConversion: ProseConversionApi = {
+    async preview(blockId) {
+      const res = await fetch(`${resourceUrl}/blocks/convert-prose`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ block_id: blockId }) });
+      const body = await res.json().catch(() => ({})) as ProseConversionPreview & { error?: string };
+      if (!res.ok) throw new Error(body.error ?? `Preview failed (${res.status})`);
+      return body;
+    },
+    async accept(blockId, fingerprint) {
+      await blockWrite.current.catch(() => {});
+      const res = await fetch(`${resourceUrl}/blocks/convert-prose`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ block_id: blockId, accept: fingerprint }) });
+      const body = await res.json().catch(() => ({})) as { blocks?: Block[]; converted?: Block[]; error?: string };
+      if (!res.ok || !body.blocks) throw new Error(body.error ?? `Conversion failed (${res.status})`);
+      setDraft((d) => ({ ...d, blocks: body.blocks }));
+      setHasWc(true);
+      historyRef.current?.record(body.blocks, `convert:${blockId}`);
+      bumpHist();
+      reloadPreview();
+      const first = body.converted?.[0]?.id;
+      setSelectedId(first ?? null);
+    },
+  };
+
+  function handleUpdateOverrides(blockId: string, overrides: Block['style_overrides']): Promise<void> {
+    const write = blockWrite.current.catch(() => {}).then(async () => {
+      const result = await callMutation({ method: 'PATCH', body: { block_id: blockId, style_overrides: overrides ?? {} }, histSig: `overrides:${blockId}` });
+      if (!result) throw new Error('Could not save the block draft. Retry the edit before saving.');
+    });
+    blockWrite.current = write;
+    return write;
+  }
+
   function handleUpdateData(blockId: string, data: Record<string, unknown>): Promise<void> {
     // Serialize edits so a slower response cannot overwrite a newer block tree.
     const sig = `patch:${blockId}:${Object.keys(data).sort().join(',')}`;
@@ -687,6 +720,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
 
   return (
     <SiteStylesContext.Provider value={siteStyles ?? []}>
+    <RenderVersionContext.Provider value={renderVersion ?? null}>
     <div className="block-editor" data-mobile-pane={mobilePane}>
       <header className="block-editor__topbar">
         <div className="block-editor__identity">
@@ -862,6 +896,8 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               blockType={registry.get(selected.block.type) ?? null}
               activeBp={activeBp}
               onChange={(data) => handleUpdateData(selected.block.id, data)}
+              onStyleOverrides={(overrides) => handleUpdateOverrides(selected.block.id, overrides)}
+              proseConversion={proseConversion}
             />
           ) : (
             <MetaPanel
@@ -878,6 +914,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
         <DragOverlay dropAnimation={null}>{dnd.overlay}</DragOverlay>
       </DndContext>
     </div>
+    </RenderVersionContext.Provider>
     </SiteStylesContext.Provider>
   );
 }
@@ -1395,8 +1432,12 @@ function MetaPanel({
 }
 
 export function BlockFieldForm({
-  siteId, block, blockType, activeBp = DEFAULT_BP, onChange, flushRef, onDirty, responsiveBreakpoints,
+  siteId, block, blockType, activeBp = DEFAULT_BP, onChange, onStyleOverrides, proseConversion, flushRef, onDirty, responsiveBreakpoints,
 }: {
+  /** Converts a text block into separate blocks (preview first). Omitted where the editor cannot. */
+  proseConversion?: ProseConversionApi;
+  /** Save the block's class and anchor (Block.style_overrides). Omitted where they cannot be edited. */
+  onStyleOverrides?: (overrides: Block['style_overrides']) => Promise<void>;
   siteId?: string;
   block: Block;
   blockType: BlockType | null;
@@ -1407,6 +1448,15 @@ export function BlockFieldForm({
   onDirty?: () => void;
 }) {
   const [local, setLocal] = useState<Record<string, unknown>>(block.data ?? {});
+  const renderVersion = useContext(RenderVersionContext);
+  const [conversion, setConversion] = useState<ProseConversionPreview | null>(null);
+  const [conversionError, setConversionError] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
+  const startConversion = proseConversion && block.type === 'core/prose' ? () => {
+    setConversionError(null);
+    setConverting(true);
+    void flush().then(() => proseConversion.preview(block.id)).then(setConversion, (e: Error) => setConversionError(e.message)).finally(() => setConverting(false));
+  } : null;
   const saveTimer = useRef<number | null>(null);
   const pending = useRef<Record<string, unknown>>({});
   const changeRef = useRef(onChange);
@@ -1472,10 +1522,33 @@ export function BlockFieldForm({
     <div>
       <h3 style={{ marginTop: 0, fontSize: '0.95rem' }}>{blockType.label}</h3>
       <p style={{ fontSize: '.75rem', opacity: 0.6, marginTop: 0, marginBottom: '1rem' }}>{blockType.id}</p>
+      {(conversion || conversionError || converting) && <div className="prose-convert" role="region" aria-label="Convert into blocks">
+        {converting && <p>Preparing a preview…</p>}
+        {conversionError && <p role="alert" className="block-field-error">{conversionError}</p>}
+        {conversion && <>
+          <p><strong>This text becomes {conversion.converted.length} {conversion.converted.length === 1 ? 'block' : 'blocks'}:</strong> {conversion.summary.map(item => `${item.count} × ${item.block_type.replace(/^core\//, '')}`).join(', ') || 'nothing'}. Nothing has been changed yet.</p>
+          {conversion.notes.length > 0 && <ul>{conversion.notes.map((note, i) => <li key={i}>{note}</li>)}</ul>}
+          {conversion.unconverted.length > 0 && <>
+            <p>Kept as HTML because no block matches:</p>
+            <ul>{conversion.unconverted.map((item, i) => <li key={i}>{item.reason}</li>)}</ul>
+          </>}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn--primary" disabled={converting} onClick={() => {
+              setConverting(true);
+              proseConversion!.accept(block.id, conversion.fingerprint).then(() => setConversion(null), (e: Error) => setConversionError(e.message)).finally(() => setConverting(false));
+            }}>Convert</button>
+            <button type="button" className="btn btn--secondary" onClick={() => { setConversion(null); setConversionError(null); }}>Cancel</button>
+          </div>
+        </>}
+      </div>}
+      <ProseConvertContext.Provider value={startConversion}>
       <form onSubmit={(e) => e.preventDefault()}>
         {(['content', 'appearance', 'advanced'] as const).map(group => {
-          const fields = blockType.schema.filter(field => (field.editor_group ?? 'content') === group);
-          if (!fields.length) return null;
+          const fields = blockType.schema.filter(field => (field.editor_group ?? 'content') === group && fieldAvailable(field, renderVersion));
+          const classAndAnchor = group === 'advanced' && onStyleOverrides
+            ? <ClassAndAnchor key={block.id} block={block} onSave={onStyleOverrides} onElement={!!blockType.style_element_class && (renderVersion ?? 1) >= 2} showAnchor={!blockType.schema.some(field => field.name === 'anchor_id')} />
+            : null;
+          if (!fields.length && !classAndAnchor) return null;
           const inputs = fields.map((f) => {
             const raw = local[f.name];
             const responsive = !!(f as { responsive?: boolean }).responsive;
@@ -1505,9 +1578,72 @@ export function BlockFieldForm({
             <summary>{group === 'appearance' ? 'Appearance' : 'Advanced settings'}</summary>
             <p>{group === 'appearance' ? 'Defaults follow the block and Site theme.' : 'Exact measurements and component-specific overrides.'}</p>
             {inputs}
+            {classAndAnchor}
           </details>;
         })}
       </form>
+      </ProseConvertContext.Provider>
+    </div>
+  );
+}
+
+export interface ProseConversionPreview {
+  converted: Block[];
+  summary: Array<{ block_type: string; count: number }>;
+  notes: string[];
+  unconverted: Array<{ reason: string; source?: string }>;
+  fingerprint: string;
+}
+
+export interface ProseConversionApi {
+  preview(blockId: string): Promise<ProseConversionPreview>;
+  accept(blockId: string, fingerprint: string): Promise<void>;
+}
+
+const CLASS_TOKEN = /^-?[A-Za-z_][\w-]*$/;
+const ANCHOR_ID = /^[A-Za-z][\w-]*$/;
+
+/**
+ * A block's custom class and anchor id (Block.style_overrides). The class is
+ * for site or page custom CSS; a named style is the better choice for a look
+ * that recurs.
+ */
+function ClassAndAnchor({ block, onSave, onElement, showAnchor }: { block: Block; onSave: (overrides: Block['style_overrides']) => Promise<void>; onElement: boolean; showAnchor: boolean }) {
+  const [cls, setCls] = useState(block.style_overrides?.custom_class ?? '');
+  const [anchor, setAnchor] = useState(block.style_overrides?.html_id ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const classId = useId();
+  const anchorId = useId();
+
+  async function save(nextClass: string, nextAnchor: string) {
+    const classValue = nextClass.trim().split(/\s+/).filter(Boolean).join(' ');
+    const anchorValue = nextAnchor.trim().replace(/^#/, '');
+    if (classValue && !classValue.split(' ').every(token => CLASS_TOKEN.test(token))) { setError('Classes are words of letters, digits, - and _, separated by spaces.'); return; }
+    if (anchorValue && !ANCHOR_ID.test(anchorValue)) { setError('An anchor starts with a letter and contains letters, digits, - and _.'); return; }
+    setError(null);
+    const current = block.style_overrides ?? {};
+    if ((current.custom_class ?? '') === classValue && (current.html_id ?? '') === anchorValue) return;
+    const next: NonNullable<Block['style_overrides']> = { ...current };
+    if (classValue) next.custom_class = classValue; else delete next.custom_class;
+    if (anchorValue) next.html_id = anchorValue; else delete next.html_id;
+    try { await onSave(next); } catch (e) { setError((e as Error).message); }
+  }
+
+  return (
+    <div className="block-class-anchor">
+      <div style={fieldGroup}>
+        <label htmlFor={classId} style={fieldLabel}>CSS class</label>
+        <input id={classId} style={textInput} value={cls} placeholder="e.g. pricing-note" spellCheck={false}
+          onChange={e => setCls(e.target.value)} onBlur={() => void save(cls, anchor)} />
+        <p className="block-field-help">{onElement ? 'Added to the heading or link element itself.' : 'Added to the block’s outer element.'} Use it in site or page custom CSS. For a look that recurs, create a named style instead.</p>
+      </div>
+      {(showAnchor || anchor) && <div style={fieldGroup}>
+        <label htmlFor={anchorId} style={fieldLabel}>{showAnchor ? 'Anchor id' : 'Block anchor id'}</label>
+        <input id={anchorId} style={textInput} value={anchor} placeholder="e.g. pricing" spellCheck={false}
+          onChange={e => setAnchor(e.target.value)} onBlur={() => void save(cls, anchor)} />
+        <p className="block-field-help">Link to this block with <code>#{anchor || 'id'}</code>.</p>
+      </div>}
+      {error && <p role="alert" className="block-field-error">{error}</p>}
     </div>
   );
 }

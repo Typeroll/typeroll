@@ -130,7 +130,7 @@ const googleFontUrl = googleFontFamilies.length
 // ~0.2 (autopilot.se field report) to <0.05.
 const fontFallbackStyle = googleFontFamilies.length ? WEBFONT_FALLBACK_CSS : null;
 // The site's style library; empty for a site without styles.
-const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {} });
+const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
 ---
 <!doctype html>
 <html lang={page.language || settings.language || 'en'} data-tr-render={resolveRenderVersion(settings.render_version)}>

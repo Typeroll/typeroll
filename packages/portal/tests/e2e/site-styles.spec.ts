@@ -42,7 +42,7 @@ test('style library: add standard styles, edit one, refuse low contrast, and app
     await page.goto('/app/sites/default/pages/styled-heading', { waitUntil: 'networkidle' });
     await page.getByRole('button', { name: 'Structure', exact: true }).click();
     await page.getByRole('button', { name: 'Edit For leadership teams', exact: true }).click();
-    await page.getByLabel('Style', { exact: true }).selectOption({ label: 'Eyebrow' });
+    await page.getByLabel('Heading style', { exact: true }).selectOption({ label: 'Eyebrow' });
     const heading = page.frameLocator('iframe[title="Preview"]').getByRole('heading', { name: 'For leadership teams' });
     await expect(heading).toHaveCSS('text-transform', 'uppercase');
     await expect(heading).toHaveCSS('font-size', '14px');

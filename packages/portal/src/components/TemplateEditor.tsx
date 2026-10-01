@@ -14,11 +14,12 @@
 //     a template
 
 import { useEffect, useMemo, useState } from 'react';
-import type { Block, BlockType, PageTemplate } from '@typeroll/shared';
+import type { Block, BlockType, PageTemplate, SiteStyle } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES, TEMPLATE_CONTENT_SLOT_TYPE_ID } from '@typeroll/shared';
 import { Plus, GripVertical, Save, ArrowLeft } from 'lucide-react';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { BlockLibrary, BlockTree, BlockFieldForm, DeviceToggle, DEFAULT_BP, ICONS } from './BlockPageEditor';
+import { RenderVersionContext, SiteStylesContext } from './FieldInput';
 import { useBlockDnd } from './block-dnd';
 import type { Breakpoint } from '@typeroll/shared';
 
@@ -26,6 +27,8 @@ interface Props {
   responsiveBreakpoints?: import('@typeroll/shared').ResponsiveBreakpoints | null;
   siteId: string;
   template: PageTemplate;
+  siteStyles?: SiteStyle[];
+  renderVersion?: number;
 }
 
 type LeftTab = 'add' | 'structure';
@@ -111,6 +114,15 @@ function updateBlockData(blocks: Block[], id: string, data: Record<string, unkno
   return tree;
 }
 
+function setStyleOverrides(blocks: Block[], id: string, overrides: Block['style_overrides']): Block[] {
+  const tree = clone(blocks);
+  const found = findIn(tree, id);
+  if (!found) return tree;
+  if (overrides && Object.keys(overrides).length) found.block.style_overrides = overrides;
+  else delete found.block.style_overrides;
+  return tree;
+}
+
 function setBlockName(blocks: Block[], id: string, name: string): Block[] {
   const tree = clone(blocks);
   const found = findIn(tree, id);
@@ -143,7 +155,7 @@ function moveBlockTo(
   return addBlock(without, moved, parentId, slotIdx, position).tree;
 }
 
-export default function TemplateEditor({ siteId, template, responsiveBreakpoints }: Props) {
+export default function TemplateEditor({ siteId, template, responsiveBreakpoints, siteStyles, renderVersion }: Props) {
   const [draft, setDraft] = useState<PageTemplate>(template);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
@@ -251,6 +263,12 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
     void persist(tree);
   }
 
+  async function handleStyleOverrides(id: string, overrides: Block['style_overrides']): Promise<void> {
+    const tree = setStyleOverrides(draft.blocks ?? [], id, overrides);
+    setDraft({ ...draft, blocks: tree });
+    await persist(tree);
+  }
+
   function handleRename(id: string, name: string): void {
     const tree = setBlockName(draft.blocks ?? [], id, name);
     setDraft({ ...draft, blocks: tree });
@@ -309,6 +327,8 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
   }, [draft.blocks]);
 
   return (
+    <SiteStylesContext.Provider value={siteStyles ?? []}>
+    <RenderVersionContext.Provider value={renderVersion ?? null}>
     <div style={shell}>
       <header style={topBar}>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -420,11 +440,12 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
                 blockType={registry.get(selected.block.type) ?? null}
                 activeBp={activeBp}
                 onChange={(data) => handleUpdateData(selected.block.id, data)}
+                onStyleOverrides={(overrides) => handleStyleOverrides(selected.block.id, overrides)}
               />
             )
           ) : (
             <div style={emptyHint}>
-              <p style={{ marginTop: 0 }}>Inget block markerat.</p>
+              <p style={{ marginTop: 0 }}>No block selected.</p>
               <p style={{ fontSize: '.85rem', opacity: 0.7 }}>
                 Add a content slot first, then build blocks around it.
               </p>
@@ -435,6 +456,8 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
         <DragOverlay dropAnimation={null}>{dnd.overlay}</DragOverlay>
       </DndContext>
     </div>
+    </RenderVersionContext.Provider>
+    </SiteStylesContext.Provider>
   );
 }
 

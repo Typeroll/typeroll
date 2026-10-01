@@ -496,7 +496,7 @@ function buildHtml(args: {
   banner: BannerArgs | null;
 }): string {
   const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, robotsBlocked, banner } = args;
-  const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {} });
+  const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
   const f = {
     heading: settings.fonts?.heading ?? 'Inter',
     body: settings.fonts?.body ?? 'Inter',

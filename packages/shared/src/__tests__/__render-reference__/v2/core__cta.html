@@ -1,0 +1,55 @@
+<section data-block="cta" data-image-pos="none" style="--align:center;--bg:;--bg-image:url()">
+  <div class="block-cta-inner">
+    <span class="block-cta-eyebrow"></span>
+    <h2 class="block-cta-heading"></h2>
+    <div class="block-cta-sub"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div>
+    <div class="block-cta-actions">
+      <a class="block-btn block-btn-primary" href=""></a>
+      <a class="block-btn block-btn-secondary" href=""></a>
+    </div>
+  </div>
+</section>
+
+/* css */
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+/* core/cta */
+[data-block="cta"] {
+  padding: 4rem 1.5rem; background: var(--bg, var(--color-primary, #111));
+  color: var(--color-primary-fg, white); text-align: var(--align, center);
+}
+[data-block="cta"][data-image-pos="background"] { background-image: var(--bg-image); background-size: cover; background-position: center; }
+[data-block="cta"] .block-cta-inner { max-width: 48rem; margin-inline: auto; }
+[data-block="cta"][style*="--align:left"] .block-cta-inner { margin-inline: 0; max-width: 65rem; }
+[data-block="cta"] .block-cta-eyebrow { display: inline-block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.5rem; }
+[data-block="cta"] .block-cta-eyebrow:empty { display: none; }
+[data-block="cta"] .block-cta-heading { font-size: clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem); margin: 0 0 1rem; font-weight: 700; line-height: 1.2; }
+[data-block="cta"] .block-cta-sub     { margin-bottom: 1.5rem; opacity: 0.85; }
+[data-block="cta"] .block-cta-actions { display: flex; gap: 0.75rem; justify-content: var(--align-actions, center); flex-wrap: wrap; }
+[data-block="cta"][style*="--align:left"] .block-cta-actions { justify-content: flex-start; }
+[data-block="cta"] .block-btn { display: inline-block; padding: 0.75rem 1.75rem; border-radius: 999px; font-weight: 600; text-decoration: none; }
+[data-block="cta"] .block-btn-primary { background: var(--color-primary-fg, #fff); color: var(--color-primary, #111); }
+[data-block="cta"] .block-btn-secondary { background: transparent; color: inherit; box-shadow: inset 0 0 0 2px currentColor; }
+[data-block="cta"] .block-btn:empty { display: none; }

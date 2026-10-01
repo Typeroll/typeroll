@@ -188,6 +188,11 @@ sites start on the latest version.
 The preview reflects the change at once; the live site changes at the next
 deploy. Sites created before render versions existed render with version 1.
 
+| Version | What changes                                                                                                                                                                                                                                                                                                                       |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1       | Baseline: block markup and platform CSS as in Core 0.2.56.                                                                                                                                                                                                                                                                         |
+| 2       | Heading eyebrow and subtitle are grouped with the heading (`<hgroup>`), take named styles and are never faded. A custom class on a heading or button block lands on the `<h2>` or link itself, so `.my-class .block-heading-text` becomes `.my-class`. Text on primary-coloured buttons is black or white, whichever reads better. |
+
 ## Site-specific responsive widths (Core 0.2.28)
 
 The five names stay the same, but their widths can be set in **Site settings →
