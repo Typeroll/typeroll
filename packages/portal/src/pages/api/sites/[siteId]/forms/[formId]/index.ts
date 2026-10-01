@@ -1,8 +1,8 @@
 // Cookie-auth admin: read / update / delete one form for the portal Forms UI.
 //
-// This is the ONLY surface that may write a form's `actions` (email
-// notifications). The API-key v1 + MCP write paths drop `actions` entirely, so
-// recipient addresses + templates can never be set through an agent surface.
+// Admins write a form's `actions` (email notifications, webhooks) here or
+// through an admin API key / MCP (lib/form-actions-api.ts), with the same
+// validation. The portal chat assistant has no tool for them.
 
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, requirePermission, json } from '../../../../../../lib/access';

@@ -8,7 +8,7 @@
 - WordPress import keeps its lazy-media clean-up, now in its own module.
 - API and MCP can do what the portal can with forms:
   - Read and write a form's email notifications and webhooks (`actions`, admin keys; webhook secrets are masked and kept when unchanged).
-  - The chat can read a form, set its notifications and list submissions.
+  - Docs and agent instructions no longer say notifications are hidden from agents. The portal chat assistant still has no notification or submission tools.
 - Page writes over the API and MCP accept `authority: "editor"` to write with the same authority as an editor in the portal (with `override_reason` for a value the listed business set). The default stays agent authority, so automated passes keep human corrections; the 409 names the way through.
 - Render version 3: the theme tokens blocks reference (`--color-bg`, `--color-bg-subtle`, `--color-border`, `--color-secondary-fg`) come from the site palette instead of fixed greys. Versions 1 and 2 render unchanged.
 - Update devalue to 5.9.4 for new security advisories.

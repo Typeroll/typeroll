@@ -206,8 +206,9 @@ the full reference + concrete operation recipes.
 - **Forms** — list, read, create, update, delete, list submissions.
   Place forms with `core/form` blocks or an HTML-mode `<x-form id="…" />`
   reference; preview/build expands both server-side to the same complete,
-  signed form shell. Admins configure email and allowlisted, signed webhooks
-  in the portal; action configuration stays off agent surfaces.
+  signed form shell. With an admin key, `read_form` returns the form's email
+  notifications and allowlisted, signed webhooks (`actions`, secrets masked)
+  and `create_form`/`update_form` set them, as the portal's Forms editor does.
 - **Extension installations** — list/read installed Extensions and update
   manifest-defined installation config through the API key with
   `update_extension_installation_config`; omitted and masked secrets are
