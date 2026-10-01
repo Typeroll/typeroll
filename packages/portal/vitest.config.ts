@@ -8,6 +8,8 @@ export default defineConfig({
     // Avoid running the Playwright spec files (separate runner).
     exclude: ['**/node_modules/**', 'tests/e2e/**'],
     environment: 'node',
+    // Preview inlines site-template base CSS with `?raw`; keep those imports real.
+    css: { include: [/site-template\/src\/styles\/.*\.css/] },
     setupFiles: ['./vitest.setup.ts'],
     // The fixtures-backed datastore writes to a per-test temp dir, so we
     // can run tests in parallel safely.

@@ -51,6 +51,7 @@ const hasConnector = Boolean(integrations?.email);
         name: form.name,
         submit_text: form.submit_text ?? '',
         success_message: form.success_message ?? '',
+        success_redirect_url: form.success_redirect_url ?? '',
         partial_ttl_days: form.partial_ttl_days ?? 30,
         has_steps: Array.isArray(form.steps) && form.steps.length > 0,
         // ALL actions, not just email. Filtering here used to be harmless

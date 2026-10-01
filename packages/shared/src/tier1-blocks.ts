@@ -37,7 +37,10 @@ const container: BlockType = {
   container: true,
   schema: [
     ...articleHeadingFields,
-    { name: 'tag', type: 'select', label: 'HTML element', options: ['div', 'section', 'article', 'aside', 'nav', 'header', 'footer', 'main', 'figure'], default: 'div' },
+    { name: 'tag', type: 'select', label: 'HTML element', options: ['div', 'section', 'article', 'aside', 'nav', 'header', 'footer', 'main', 'figure', 'a'], option_labels: ['div', 'section', 'article', 'aside', 'nav', 'header', 'footer', 'main', 'figure', 'a (link)'], default: 'div' },
+    // Only used when the element is `a`: turns the whole container into one link
+    // (a clickable card). http(s), relative, #, mailto: and tel: targets only.
+    { name: 'href', type: 'text', label: 'Link URL (element a)' },
     { name: 'css_class', type: 'text', label: 'CSS classes' },
     { name: 'html_id', type: 'text', label: 'Anchor ID' },
     { name: 'inline_style', type: 'textarea', label: 'Inline CSS' },

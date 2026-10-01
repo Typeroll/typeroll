@@ -7,7 +7,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { extensionIssuer } from '../../../../../../lib/extensions/auth';
-import { paths, fieldsToSteps } from '@typeroll/shared';
+import { paths, fieldsToSteps, safeFormRedirectUrl } from '@typeroll/shared';
 import type { Form, FormField } from '@typeroll/shared';
 
 import { validateFields, validSteps } from '../../../../../../lib/forms-admin';
@@ -50,6 +50,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (body.name !== undefined) update.name = String(body.name);
   if (body.submit_text !== undefined) update.submit_text = String(body.submit_text);
   if (body.success_message !== undefined) update.success_message = String(body.success_message);
+  if (body.success_redirect_url !== undefined) {
+    // Empty or null clears the redirect; anything else must be http(s) or root-relative.
+    const redirect = body.success_redirect_url ? safeFormRedirectUrl(body.success_redirect_url) : '';
+    if (body.success_redirect_url && !redirect) return apiError('success_redirect_url must be an http(s) URL or a path starting with /');
+    update.success_redirect_url = redirect;
+  }
   // `actions` (email notifications) are admin-only — the API-key / MCP write
   // path can't add, change, or remove them. They survive untouched here.
   if (body.steps !== undefined) {

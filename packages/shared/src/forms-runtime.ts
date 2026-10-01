@@ -155,6 +155,8 @@ function init(form){
       if(out.state&&form.elements._state)form.elements._state.value=out.state;
       powP=null;if(bits>0)powStart();
       if(out.done){
+        var redirect=form.getAttribute("data-redirect")||"";
+        if(/^(https?:\/\/|\/(?![\/\\]))/i.test(redirect)){location.assign(redirect);return}
         var region=form.closest("[data-tr-form]")||form;
         if(out.message){region.replaceChildren();var message=document.createElement("div");message.className="form-done";message.setAttribute("role","status");message.textContent=out.message;region.append(message)}else if(out.html){region.innerHTML=out.html}else{region.innerHTML='<div class="form-done" role="status">'+(form.getAttribute("data-msg-done")||"Thanks!")+"</div>"}
         return;

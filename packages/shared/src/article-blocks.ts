@@ -19,7 +19,7 @@ export const ARTICLE_BLOCK_TYPES: BlockType[] = [
       { name: 'html', type: 'richtext', label: 'Heading', required: true },
       { name: 'level', type: 'select', label: 'Level', options: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], default: 'h2' },
       { name: 'anchor_id', type: 'text', label: 'Anchor ID' },
-      { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center', 'right'], default: 'left', responsive: true },
+      { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center', 'right', 'match-parent'], option_labels: ['Left', 'Center', 'Right', 'Inherit from container'], default: 'left', responsive: true },
       ...typographyFields,
       { name: 'font_weight', type: 'select', label: 'Weight', options: ['400', '500', '600', '700', '800'], default: '600', responsive: true },
       { name: 'font', type: 'select', label: 'Font', options: ['heading', 'body', 'inherit'], default: 'heading' },
@@ -72,6 +72,18 @@ const color = (value: unknown): string => /^(#[\da-f]{3,8}|[a-z]+|rgba?\([\d.,%\
 const dimension = (value: unknown): string => /^\d+(\.\d+)?(px|rem|em|%)$/.test(text(value)) ? text(value) : '';
 const span = (value: unknown): number => Math.max(1, Math.min(100, Math.trunc(Number(value)) || 1));
 
+/** Link targets a container may point at: http(s), protocol-relative,
+ * relative paths, fragments/queries, mailto: and tel:. Anything with another
+ * scheme (javascript:, data:, vbscript: …) is dropped. Browsers ignore ASCII
+ * whitespace and control characters inside a scheme, so the check does too. */
+export function safeLinkHref(value: unknown): string {
+  const href = text(value).trim();
+  if (!href) return '';
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(href.replace(/[\u0000-\u0020]/g, ''));
+  if (scheme && !['http', 'https', 'mailto', 'tel'].includes(scheme[1].toLowerCase())) return '';
+  return href;
+}
+
 /** Raw rich text follows the same final customer-HTML sanitizer as prose. */
 export function prepareArticleBlockData(type: string, data: Record<string, unknown>): void {
   if (type === 'core/container') {
@@ -80,6 +92,8 @@ export function prepareArticleBlockData(type: string, data: Record<string, unkno
     const escape = (value: unknown) => text(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
     data.container_attributes_html = records(data.attributes).filter(attribute => /^(?:data-[a-z0-9_-]+|aria-[a-z0-9_-]+|role|itemscope|itemtype|itemprop|lang|dir|hidden|title)$/.test(text(attribute.name)))
       .map(attribute => `${text(attribute.name)}="${escape(attribute.value)}"`).join(' ');
+    const href = data.tag === 'a' ? safeLinkHref(data.href) : '';
+    if (href) data.container_attributes_html = `href="${escape(href)}" ${data.container_attributes_html}`.trim();
   }
   if (type === 'core/table') {
     data.table_caption_html = data.caption ? `<caption>${text(data.caption)}</caption>` : '';

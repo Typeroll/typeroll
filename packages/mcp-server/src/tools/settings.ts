@@ -58,7 +58,7 @@ export const settingsTools: ToolDef[] = [
       // Scriptable surfaces. Trusted because the caller has an API key.
       scripts_head: z.string().optional().describe('Raw HTML injected into <head> on every page. Use for analytics, fonts, third-party CSS links.'),
       scripts_body_end: z.string().optional().describe('Raw HTML injected just before </body> on every page. Use for chat widgets, deferred analytics.'),
-      custom_css: z.string().optional().describe('Global CSS shipped in <style> at the end of <head>. Lets you define site-wide design tokens (CSS variables, @media queries, :hover states) without inlining on every element.'),
+      custom_css: z.string().optional().describe('Global CSS in a <style> in <head>, after block CSS and before the page\'s own custom CSS and the template base stylesheet (reset + global). Base rules for :root tokens (spacing, radius, container widths), body font and line-height load after it, so override those with a more specific selector (for example html:root or body.page) rather than a bare :root/body rule. Preview uses the same order. Lets you define site-wide design tokens (CSS variables, @media queries, :hover states) without inlining on every element.'),
       colors: z.record(z.string()).optional(),
       fonts: z.record(z.unknown()).optional(),
       contact: z

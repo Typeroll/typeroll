@@ -6,7 +6,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { extensionIssuer } from '../../../../../../lib/extensions/auth';
-import { paths, collectStepFields, fieldsToSteps } from '@typeroll/shared';
+import { paths, collectStepFields, fieldsToSteps, safeFormRedirectUrl } from '@typeroll/shared';
 import type { Form, FormStep } from '@typeroll/shared';
 import { FORM_ID_RE as ID_RE, validateFields, validSteps } from '../../../../../../lib/forms-admin';
 
@@ -68,6 +68,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     try { await resolveAppFormEndpoint({ target: body.target }, { orgId: ctx.orgId, siteId: ctx.siteId, portalUrl: extensionIssuer() }); }
     catch { return apiError('The target must be a declared endpoint on an enabled installation'); }
   }
+  const redirect = body.success_redirect_url ? safeFormRedirectUrl(body.success_redirect_url) : '';
+  if (body.success_redirect_url && !redirect) return apiError('success_redirect_url must be an http(s) URL or a path starting with /');
   const doc: Omit<Form, 'id'> = {
     name: body.name,
     ...(body.target ? { target: body.target } : {}),
@@ -76,6 +78,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     actions: [],
     submit_text: body.submit_text ?? 'Submit',
     success_message: body.success_message ?? 'Thanks — your message has been received.',
+    ...(redirect ? { success_redirect_url: redirect } : {}),
     steps,
     ...(typeof body.styles === 'string' ? { styles: body.styles } : {}),
     ...(typeof body.kind === 'string' ? { kind: body.kind } : {}),

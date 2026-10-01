@@ -9,7 +9,7 @@ export const searchTools: ToolDef[] = [
   {
     name: 'search_pages',
     description:
-      'Search page bodies by literal substring or regex. Returns up to 500 matches each with an excerpt around the first hit. Use this to scope a redesign or a bulk replacement before running it. ' +
+      'Search saved page content by literal substring or regex: block data in block-mode pages, html_content in HTML-mode pages, and content-type text fields (the same text bulk_replace_text edits). Returns up to 500 matches, each with the matching field (blocks, html_content or fields.<name>) and an excerpt around the first hit. Use this to scope a redesign or a bulk replacement before running it. ' +
       'Pass either "contains" (case-insensitive literal) or "regex" (JS regex source without slashes) — not both. ' +
       'Example: search_pages({"contains": "kontakta oss"}) finds every page mentioning that phrase. ' +
       'Example: search_pages({"regex": "\\\\d{3}-\\\\d{3}"}) finds pages with phone-number patterns.',

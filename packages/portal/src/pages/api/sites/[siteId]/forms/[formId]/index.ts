@@ -7,7 +7,7 @@
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, requirePermission, json } from '../../../../../../lib/access';
 import { getStore } from '../../../../../../lib/datastore';
-import { paths, fieldsToSteps, collectStepFields } from '@typeroll/shared';
+import { paths, fieldsToSteps, collectStepFields, safeFormRedirectUrl } from '@typeroll/shared';
 import type { Form, FormField } from '@typeroll/shared';
 import { validateFields, validateEmailActions, maskFormActionsForAdmin } from '../../../../../../lib/forms-admin';
 
@@ -45,6 +45,12 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
   if (body.name !== undefined) update.name = String(body.name);
   if (body.submit_text !== undefined) update.submit_text = String(body.submit_text);
   if (body.success_message !== undefined) update.success_message = String(body.success_message);
+  if (body.success_redirect_url !== undefined) {
+    // Empty or null clears the redirect; anything else must be http(s) or root-relative.
+    const redirect = body.success_redirect_url ? safeFormRedirectUrl(body.success_redirect_url) : '';
+    if (body.success_redirect_url && !redirect) return json({ error: 'success_redirect_url must be an http(s) URL or a path starting with /' }, 400);
+    update.success_redirect_url = redirect;
+  }
   if (body.partial_ttl_days !== undefined) update.partial_ttl_days = Number(body.partial_ttl_days);
   // Flat `fields` is authoring sugar — it replaces the step list with one
   // static step (steps are the only stored model).

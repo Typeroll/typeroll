@@ -6,6 +6,44 @@ import { prepareHeadingOutline } from '../heading-outline.js';
 import { getPageTemplateStarter } from '../page-template-starters.js';
 const registry = buildCoreBlockRegistry();
 
+describe('link containers and inherited heading alignment', () => {
+  const container = (data: Record<string, unknown>) => renderBlock({ id: 'c', type: 'core/container', data: { layout: 'flow', css_class: 'card', ...data }, children: [
+    { id: 'p', type: 'core/prose', data: { html: '<p>Read more</p>' } },
+  ] }, { registry });
+
+  it('renders a container as one link when the element is a', () => {
+    const html = container({ tag: 'a', href: '/ai-planen/' });
+    expect(html).toMatch(/^<a class="card"[^>]* href="\/ai-planen\/"/);
+    expect(html.trimEnd()).toMatch(/<\/a>$/);
+    expect(html).toContain('<p>Read more</p>');
+  });
+
+  it('accepts relative, fragment, http(s), mailto and tel targets', () => {
+    for (const href of ['kontakt/', '#kontakt', '?a=1', '//cdn.example/x', 'https://example.com/a?b=1&c=2', 'mailto:a@example.com', 'tel:+4610']) {
+      expect(container({ tag: 'a', href })).toContain(`href="${href.replace(/&/g, '&amp;')}"`);
+    }
+  });
+
+  it('drops script and data targets, including obfuscated schemes', () => {
+    for (const href of ['javascript:alert(1)', ' JavaScript:alert(1)', 'java\tscript:alert(1)', 'data:text/html,<b>x</b>', 'vbscript:x']) {
+      const html = container({ tag: 'a', href });
+      expect(html.startsWith('<a ')).toBe(true);
+      expect(html).not.toContain('href=');
+    }
+  });
+
+  it('never adds href to non-link containers', () => {
+    expect(container({ tag: 'div', href: '/x' })).not.toContain('href=');
+  });
+
+  it('lets headings inherit the container alignment', () => {
+    const html = renderBlock({ id: 'h', type: 'core/heading', data: { text: 'Thomas', level: 'h3', align: 'match-parent', size: 'theme' } }, { registry });
+    expect(html).toContain('--align:match-parent');
+    const rich = renderBlock({ id: 'r', type: 'core/rich_heading', data: { html: 'Thomas', level: 'h3', align: 'match-parent' } }, { registry });
+    expect(rich).toContain('--align:match-parent');
+  });
+});
+
 describe('article content blocks', () => {
   it('renders table cells, spans, credits and validated presentation', () => {
     const html = renderBlock({ id: 'table', type: 'core/table', data: {

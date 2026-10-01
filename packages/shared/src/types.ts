@@ -1261,6 +1261,12 @@ export interface Form {
   actions: FormAction[];
   submit_text?: string;
   success_message?: string;
+  /**
+   * After the final step, send the visitor here (for example a booking or
+   * thank-you page) instead of showing success_message. Absolute http(s) or
+   * root-relative only; see safeFormRedirectUrl.
+   */
+  success_redirect_url?: string;
   created_at: string;
   /** Forms 2.0: 'form' (default). Apps register their own kinds (quiz, …). */
   kind?: string;

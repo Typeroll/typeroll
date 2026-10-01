@@ -4,7 +4,7 @@
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, requirePermission, json } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
-import { paths, collectStepFields, fieldsToSteps } from '@typeroll/shared';
+import { paths, collectStepFields, fieldsToSteps, safeFormRedirectUrl } from '@typeroll/shared';
 import type { Form } from '@typeroll/shared';
 import { FORM_ID_RE, validateFields } from '../../../../../lib/forms-admin';
 
@@ -54,12 +54,15 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (await store.getDoc(`${paths.forms(owner_org_id, site.id)}/${id}`)) {
     return json({ error: `Form "${id}" already exists` }, 409);
   }
+  const redirect = body.success_redirect_url ? safeFormRedirectUrl(body.success_redirect_url) : '';
+  if (body.success_redirect_url && !redirect) return json({ error: 'success_redirect_url must be an http(s) URL or a path starting with /' }, 400);
   const doc: Omit<Form, 'id'> = {
     name: body.name,
     steps: fieldsToSteps(fields),
     actions: [],
     submit_text: body.submit_text ?? 'Submit',
     success_message: body.success_message ?? 'Thanks — your message has been received.',
+    ...(redirect ? { success_redirect_url: redirect } : {}),
     created_at: new Date().toISOString(),
   };
   await store.setDoc(`${paths.forms(owner_org_id, site.id)}/${id}`, doc);

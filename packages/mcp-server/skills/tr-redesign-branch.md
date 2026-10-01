@@ -230,11 +230,15 @@ link for your own verification:
   yourself) see a change.
 - **When they want the COMPILED static site** (a permanent bookmark, a
   stakeholder link to the built output, or a final pre-merge check): deploy
-  the branch once (`trigger_deploy version="<branch>"`) and share the stable
-  alias `https://<branch>.<project>.pages.dev` (the `<project>` is the part
-  after the hash in the returned `deploy_url`). Branch deploys are
-  `robots_blocked`, so it won't be indexed. The immutable per-deploy
-  `<hash>.pages.dev` is for your own one-off checks (a new hash each deploy).
+  the branch once (`trigger_deploy version="<branch>"`) and share its stable
+  address: `deploy_url` from `list_versions` / `read_version` once the deploy
+  has succeeded. The publishing setup decides the host: under a Hosting Group
+  it is a `v-…` host under that group's site address base (which need not be
+  the site's own domain); otherwise it is the address the host reported. Never
+  construct it yourself, and do not guess a `<branch>.<project>.pages.dev`
+  alias. Branch deploys are `robots_blocked`, so the
+  address won't be indexed. A per-deploy `<hash>.pages.dev` URL in the job
+  details is for your own one-off checks (a new hash each deploy).
 
 Default: review/iterate on the reused DB-live preview; deploy only for the
 compiled output or merge. Wait for an explicit "looks good, ship it."
