@@ -9,7 +9,7 @@
 // A new seed step belongs here, not duplicated in a route.
 
 import { randomBytes } from 'node:crypto';
-import { defaultSiteSettings, paths, slugify } from '@typeroll/shared';
+import { defaultSiteSettings, newSiteStyles, paths, slugify } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 import { getStore, generateDocId } from './datastore';
 import { randomMediaId } from './media-keys';
@@ -96,6 +96,7 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
   await store.updateDoc(paths.site(input.orgId, siteId), site);
   await store.setDoc(paths.settings(input.orgId, siteId), {
     ...defaultSiteSettings,
+    styles: newSiteStyles(),
     site_name: name,
   });
 

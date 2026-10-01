@@ -447,3 +447,8 @@ export const STANDARD_STYLES: readonly SiteStyle[] = [
   { id: 'button-secondary', name: 'Secondary button', role: 'button_secondary', targets: ['button'], description: 'Secondary action next to a primary button.', base: { background: 'transparent', color: 'primary', weight: 600, padding: '0.6875rem 1.1875rem', radius: '0.5rem', decoration: 'none', border: { width: '1px', style: 'solid', color: 'primary' } } },
   { id: 'section', name: 'Section', role: 'section', targets: ['container'], description: 'Vertical rhythm for a page section.', base: { padding: '3rem 0' }, at: { tablet: { padding: '4rem 0' }, desktop: { padding: '6rem 0' } } },
 ];
+
+/** The style library a newly created site starts with. */
+export function newSiteStyles(): SiteStyle[] {
+  return STANDARD_STYLES.map(style => structuredClone(style));
+}

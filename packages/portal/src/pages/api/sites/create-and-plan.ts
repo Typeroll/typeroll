@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { requireFullSession } from '../../../lib/access';
 import { getStore } from '../../../lib/datastore';
-import { defaultSiteSettings, paths } from '@typeroll/shared';
+import { defaultSiteSettings, newSiteStyles, paths } from '@typeroll/shared';
 import { reserveSite } from '../../../lib/site-create';
 import type { Site } from '@typeroll/shared';
 import { WorkflowEngine } from '../../../lib/workflows/engine';
@@ -45,7 +45,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     created_at: new Date().toISOString(),
   };
   await store.updateDoc(paths.site(session.orgId, siteId), site);
-  await store.setDoc(paths.settings(session.orgId, siteId), { ...defaultSiteSettings, site_name: name });
+  await store.setDoc(paths.settings(session.orgId, siteId), { ...defaultSiteSettings, styles: newSiteStyles(), site_name: name });
 
   const engine = new WorkflowEngine();
   const workflowId = await engine.create({

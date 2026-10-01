@@ -142,7 +142,7 @@ export function extensionScopeForApiRequest(pathname: string, method: string): E
   if (/\/forms\/[^/]+\/actions\/?$/.test(pathname) && method === 'POST') return 'forms:execute';
   if (/\/forms(?:\/|$)/.test(pathname)) return write ? 'forms:write' : 'forms:read';
   if (/\/media(?:\/|$)/.test(pathname)) return write ? 'media:write' : 'media:read';
-  if (/\/(?:pages|content-types|partials|block-types|blocks|templates|settings)(?:\/|$)/.test(pathname)) {
+  if (/\/(?:pages|content-types|partials|block-types|blocks|templates|settings|styles)(?:\/|$)/.test(pathname)) {
     return write ? 'content:write' : 'content:read';
   }
   return null;

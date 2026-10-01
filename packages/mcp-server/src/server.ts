@@ -18,6 +18,7 @@ import { contentTypeTools } from './tools/content-types.js';
 import { pageTemplateTools } from './tools/page-templates.js';
 import { mediaTools } from './tools/media.js';
 import { redirectTools } from './tools/redirects.js';
+import { styleTools } from './tools/styles.js';
 import { migrationTools } from './tools/migration.js';
 import { formTools } from './tools/forms.js';
 import { searchTools } from './tools/search.js';
@@ -174,6 +175,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
     ...pageTemplateTools,
     ...mediaTools,
     ...redirectTools,
+    ...styleTools,
     ...migrationTools,
     ...formTools,
     ...settingsTools,
