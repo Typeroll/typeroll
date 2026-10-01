@@ -1,4 +1,9 @@
-.block-editor { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-width: 0; background: #0f0f12; color: #e4e4e7; }
+.block-editor { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-width: 0; background: #0f0f12; color: #e4e4e7; color-scheme: dark; }
+/* Controls inherit the light editor text colour, so one rendered with the
+   browser's white default background becomes unreadable. Give every control
+   a dark surface unless it styles itself (inline styles still win). */
+.block-editor :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), textarea, select) { background-color: #1f1f23; color: #fafafa; border: 1px solid #3a3a42; }
+.block-editor :where(input, textarea)::placeholder { color: #a1a1aa; opacity: 1; }
 .block-editor__topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; padding: 8px 16px; border-bottom: 1px solid #2a2a30; flex-shrink: 0; }
 .block-editor__identity { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; flex: 1; }
 .block-editor__exit { flex-shrink: 0; white-space: nowrap; }

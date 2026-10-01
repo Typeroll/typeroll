@@ -56,7 +56,7 @@ export default function RichTextInput({ id, label, required, value, onChange }: 
   };
   if (sourceMode) return <div>
     <p style={{ fontSize: '0.875rem' }}>This field contains HTML formatting that needs the source editor to preserve it.</p>
-    <textarea id={id} aria-label={label} aria-required={required || undefined} value={value} onChange={event => onChange(event.target.value)} rows={10} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', fontFamily: 'monospace' }} />
+    <textarea id={id} aria-label={label} aria-required={required || undefined} value={value} onChange={event => onChange(event.target.value)} rows={10} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', fontFamily: 'monospace', padding: 12, background: '#19191f', color: '#eee', border: '1px solid #3a3a42', borderRadius: 6 }} />
   </div>;
   return <div style={{ border: '1px solid #3a3a42', borderRadius: 6, overflow: 'hidden' }}>
     <div role="toolbar" aria-label="Text formatting" style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: 6 }}>
