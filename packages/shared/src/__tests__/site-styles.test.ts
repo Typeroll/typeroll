@@ -168,4 +168,13 @@ describe('render version 2', () => {
     expect(css).toContain(':where(:root){--color-primary-fg:var(--color-on-primary)}');
     expect(css).toContain('--color-on-primary:#111827');
   });
+
+  it('defines the theme tokens blocks reference from the palette in version 3', () => {
+    const tokens = '--color-bg:var(--color-background);--color-bg-subtle:var(--color-surface)';
+    expect(siteStylesCss([], { ...opts, renderVersion: 2 })).not.toContain(tokens);
+    const css = siteStylesCss([], { ...opts, renderVersion: 3 });
+    expect(css).toContain(`:where(:root){${tokens};--color-border:color-mix(`);
+    expect(css).toContain('--color-secondary-fg:var(--color-on-secondary)');
+    expect(css).toContain('--color-on-secondary:');
+  });
 });
