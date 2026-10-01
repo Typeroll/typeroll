@@ -91,7 +91,8 @@ evidence, never permission to impersonate another writer:
 Owner answers, including No and deliberate clears, outrank later imports and
 agent updates. Portal corrections retain higher priority. An administrator
 replacing an owner answer must provide an explicit override reason through the
-review administration API. Conflicts return 409; do not retry the same overwrite.
+review administration API, or send `authority: "editor"` with `override_reason`
+on a Page write. Conflicts return 409; do not retry the same overwrite.
 Separate nonconflicting updates when an entire submitted field is rejected.
 `rendered: false` controls public output independently of write authority.
 

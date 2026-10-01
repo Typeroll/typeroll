@@ -79,6 +79,13 @@ field from reaching public rendering. `writable_by` can restrict edits to
 HTTP 409. `page_field_rules` configures write authority for supported common
 metadata, including title, author and SEO fields.
 
+API and MCP writes count as `agent` by default, so an automated pass never
+replaces a value a person set in the portal. Send `authority: "editor"` on a
+Page write (create, update, replace, batch entry, save of a working copy,
+revision restore or content type change) to write with the same authority as an
+editor in the portal. Replacing a value the listed business set itself also
+needs `override_reason`, as in the portal.
+
 ## Shared templates
 
 Use **Templates → New template** or `create_page_template`. Choose a starting

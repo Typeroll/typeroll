@@ -250,8 +250,11 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
       `writable_by` (`portal | owner | agent | app | import`). A write you're
       not permitted, or one that would overwrite a higher-precedence writer
       (a human correction, the listed business's own edit), comes back as
-      **409 with the losing field names** — never a silent no-op. Treat that
-      as "already handled" and record it; retrying will lose again.
+      **409 with the losing field names** — never a silent no-op. In an
+      automated pass, treat that as "already handled" and record it. When the
+      user asked for the change, write again with `authority: "editor"` (the
+      same authority an editor has in the portal); a value the listed business
+      set also needs `override_reason`.
     - **Item references.** `page_ref` / `page_ref_list` fields point at items
       in another content type (`ref_content_type`). The reverse direction is
       computed at render time — don't try to maintain backlinks yourself.

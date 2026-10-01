@@ -1,9 +1,13 @@
 // Pages tools. Read + write + batch + blocks-view + preview.
 
 import { z } from 'zod';
-import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
+import { ok, withErrorBoundary, versionParam, writeAuthority, type ToolDef } from './helpers.js';
 
 const answerSources = z.record(z.object({ source_url: z.string().url().optional(), import_run_id: z.string().max(200).optional() }).strict()).optional().describe('Evidence per schema leaf path. Actor and timestamp are always assigned by the server; unchanged answers are not confirmed.');
+
+function authorityBody(args: { authority?: string; override_reason?: string }): Record<string, string> {
+  return { ...(args.authority ? { authority: args.authority } : {}), ...(args.override_reason ? { override_reason: args.override_reason } : {}) };
+}
 
 function v(version?: string): Record<string, string | undefined> | undefined {
   return version ? { version } : undefined;
@@ -118,6 +122,7 @@ export const pageTools: ToolDef[] = [
       template: z.string().nullable().optional().describe('Allowed Page template ID; null uses the content type default.'),
       image_sizes_default: z.string().optional().describe('Per-page default `sizes` for responsive images (e.g. "(max-width: 640px) 360px, 560px"). Overrides the site setting; a per-<img> `sizes` attr still wins. Set when this page\'s images render narrower than the generic default so the browser stops over-fetching.'),
       custom_css: z.string().optional().describe('Per-page CSS, injected into <head> as a <style> AFTER the site-level custom_css (so it overrides site styling). This is the RIGHT home for page-specific styling — page metadata, not content. Put a page\'s <style> here instead of stuffing it into a core/html block (which is opaque and un-editable in the visual editor). Syntax errors refuse the write; target s-<style> classes or block custom_class rather than [data-block]/.block-* platform markup.'),
+      ...writeAuthority,
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -183,6 +188,7 @@ export const pageTools: ToolDef[] = [
         })
         .passthrough(),
       answer_sources: answerSources,
+      ...writeAuthority,
       save: z.boolean().optional().describe(
         'Also SAVE (commit) the draft in the same call — use for pre-approved or batch changes. Without it, changes stay in the unsaved draft until commit_working_copy.',
       ),
@@ -192,7 +198,7 @@ export const pageTools: ToolDef[] = [
       const res = await client.patch(
         siteId,
         `pages/${encodeURIComponent(args.page_id)}`,
-        { ...args.patch, ...(args.answer_sources ? { answer_sources: args.answer_sources } : {}), ...(args.save ? { save: true } : {}) },
+        { ...args.patch, ...(args.answer_sources ? { answer_sources: args.answer_sources } : {}), ...authorityBody(args), ...(args.save ? { save: true } : {}) },
         v(args.version),
       );
       return ok(res);
@@ -206,6 +212,7 @@ export const pageTools: ToolDef[] = [
       page_id: z.string(),
       page: z.object({ title: z.string().min(1) }).passthrough(),
       answer_sources: answerSources,
+      ...writeAuthority,
       save: z.boolean().optional().describe(
         'Also SAVE (commit) the draft in the same call — use for pre-approved or batch changes. Without it, changes stay in the unsaved draft until commit_working_copy.',
       ),
@@ -215,7 +222,7 @@ export const pageTools: ToolDef[] = [
       const res = await client.put(
         siteId,
         `pages/${encodeURIComponent(args.page_id)}`,
-        { ...args.page, ...(args.answer_sources ? { answer_sources: args.answer_sources } : {}), ...(args.save ? { save: true } : {}) },
+        { ...args.page, ...(args.answer_sources ? { answer_sources: args.answer_sources } : {}), ...authorityBody(args), ...(args.save ? { save: true } : {}) },
         v(args.version),
       );
       return ok(res);
@@ -233,6 +240,7 @@ export const pageTools: ToolDef[] = [
             patch: z.record(z.unknown()),
             save: z.boolean().optional(),
             answer_sources: answerSources,
+            ...writeAuthority,
           }),
         )
         .min(1)

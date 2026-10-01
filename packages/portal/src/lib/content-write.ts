@@ -13,7 +13,7 @@
 
 import { pageAuthorityFields, type Page } from '@typeroll/shared';
 import { vstore } from './version-store';
-import { applyFieldAuthority, conflictResponse, type WriteActor } from './field-authority';
+import { apiConflictMessage, applyFieldAuthority, type WriteActor } from './field-authority';
 import { pageAddress, pageContentType } from './page-fields';
 import { markSiteDirty } from './auto-deploy';
 import { sanitizeBody } from './sanitize';
@@ -59,7 +59,7 @@ export async function applyContentWrite(
   ctx: WcCtx,
   target: WcTarget,
   rawFields: Record<string, unknown>,
-  opts: { save?: boolean; updatedBy: string; actor?: WriteActor; answerSources?: Record<string, { source_url?: string; import_run_id?: string }> },
+  opts: { save?: boolean; updatedBy: string; actor?: WriteActor; overrideReason?: string; answerSources?: Record<string, { source_url?: string; import_run_id?: string }> },
 ): Promise<ContentWriteResult> {
   const result: ContentWriteResult = {
     staged: [],
@@ -122,8 +122,8 @@ export async function applyContentWrite(
     const type = await pageContentType(ctx, page);
     if (!type) throw new WorkingCopyError('Content type not found', 400);
     const authority = applyFieldAuthority({ fields: pageAuthorityFields(type), incoming: { ...fields, ...(fields.fields as Record<string, unknown> ?? {}) },
-      existing: page, actor: opts.actor ?? 'agent', actorId: opts.updatedBy });
-    if (authority.rejected.length) throw new WorkingCopyError(conflictResponse(authority.rejected).error, 409);
+      existing: page, actor: opts.actor ?? 'agent', actorId: opts.updatedBy, overrideReason: opts.overrideReason });
+    if (authority.rejected.length) throw new WorkingCopyError(apiConflictMessage(authority.rejected, opts.actor ?? 'agent'), 409);
   }
 
   // Content → working copy (whitelisted per kind).
@@ -140,7 +140,7 @@ export async function applyContentWrite(
   }
 
   if (opts.save) {
-    const commit = await commitWorkingCopy(ctx, target, opts.updatedBy, opts.actor ?? 'agent');
+    const commit = await commitWorkingCopy(ctx, target, opts.updatedBy, opts.actor ?? 'agent', opts.overrideReason);
     result.committed = commit.committed;
     result.seo_warnings = commit.seo_warnings;
     result.auto_redirects = [...result.auto_redirects, ...commit.auto_redirects];

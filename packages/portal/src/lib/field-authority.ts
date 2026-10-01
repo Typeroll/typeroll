@@ -224,6 +224,36 @@ export function conflictResponse(rejected: RejectedWrite[]): {
   return { error: `Some fields were not written — ${parts.join('; ')}`, rejected_fields: rejected };
 }
 
+/** How a public API or MCP write ranks against earlier values. */
+export interface ApiWriteAuthority { actor: WriteActor; overrideReason?: string }
+
+/**
+ * Read `authority` and `override_reason` from an API request body. Writes
+ * default to `agent`, so an automated pass never overwrites a person's
+ * correction by accident; `authority: "editor"` writes with the portal
+ * editor's authority, exactly what a signed-in editor can do in the UI. A
+ * value the listed business set itself also needs `override_reason`, as in
+ * the portal.
+ */
+export function apiWriteAuthority(body: unknown): ApiWriteAuthority | { error: string } {
+  const input = body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {};
+  const authority = input.authority ?? 'agent';
+  if (authority !== 'agent' && authority !== 'editor') return { error: 'authority must be "agent" (default) or "editor"' };
+  const reason = input.override_reason;
+  if (reason !== undefined && reason !== null && (typeof reason !== 'string' || reason.length > 500)) return { error: 'override_reason must be text up to 500 characters' };
+  return { actor: authority === 'editor' ? 'portal' : 'agent', ...(typeof reason === 'string' && reason.trim() ? { overrideReason: reason.trim() } : {}) };
+}
+
+/** The 409 text for an API write, naming how to write with editor authority. */
+export function apiConflictMessage(rejected: RejectedWrite[], actor: WriteActor): string {
+  const message = conflictResponse(rejected).error;
+  if (actor === 'agent' && rejected.some(item => item.reason === 'lower_precedence' || item.reason === 'not_writable'))
+    return `${message}. To overwrite with the same authority as an editor in the portal, send authority: "editor".`;
+  if (rejected.some(item => item.reason === 'override_required'))
+    return `${message}. Send override_reason with authority: "editor" to replace a value the listed business set.`;
+  return message;
+}
+
 /**
  * Provenance for a set of fields that have ALREADY been authorised and
  * written — the commit-time half of the pair. `applyFieldAuthority` decides

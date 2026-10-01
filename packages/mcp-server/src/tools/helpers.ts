@@ -92,6 +92,16 @@ export function withErrorBoundary<T extends z.ZodRawShape | undefined>(
 }
 
 /** Shared zod fragment for the optional `version` parameter. */
+/**
+ * Write authority for Page field values. The default `agent` never replaces a
+ * value a person or the listed business set; `editor` writes exactly as a
+ * signed-in editor can in the portal.
+ */
+export const writeAuthority = {
+  authority: z.enum(['agent', 'editor']).optional().describe('How this write ranks against earlier values. Default "agent": a value a person set in the portal, or the listed business set, is kept and reported as a 409 conflict. "editor": write with the same authority as an editor in the portal, replacing those values. Use it when the user asked for the change.'),
+  override_reason: z.string().max(500).optional().describe('With authority "editor": why a value the listed business set itself is being replaced (the portal asks for the same reason).'),
+};
+
 export const versionParam = z
   .string()
   .optional()

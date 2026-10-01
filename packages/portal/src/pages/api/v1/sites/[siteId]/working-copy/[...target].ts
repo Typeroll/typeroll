@@ -12,6 +12,7 @@
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
+import { apiWriteAuthority } from '../../../../../../lib/field-authority';
 import {
   commitWorkingCopy,
   discardWorkingCopy,
@@ -75,8 +76,10 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (ctx.permission === 'read') return apiError('Write permission required', 403);
   const target = parseWcTarget(params.target);
   if (!target) return apiError('Bad working-copy target — use page/{id}, partial/{id}', 400);
+  const authority = apiWriteAuthority(await request.json().catch(() => ({})));
+  if ('error' in authority) return apiError(authority.error, 400);
   try {
-    const result = await commitWorkingCopy(ctx, target, `api-key:${ctx.keyPrefix}`, 'agent');
+    const result = await commitWorkingCopy(ctx, target, `api-key:${ctx.keyPrefix}`, authority.actor, authority.overrideReason);
     return apiResponse(ctx, { ok: true, ...result }, 200, {});
   } catch (e) {
     if (e instanceof WorkingCopyError) return apiError(e.message, e.status);

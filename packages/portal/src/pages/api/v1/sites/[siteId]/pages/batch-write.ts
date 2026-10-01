@@ -15,6 +15,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
 import { applyContentWrite } from '../../../../../../lib/content-write';
+import { apiWriteAuthority } from '../../../../../../lib/field-authority';
 import { checkAlternates } from '../../../../../../lib/page-alternates';
 import { blockTreeWarnings, ensureBlockIds, type Page } from '@typeroll/shared';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
@@ -43,6 +44,8 @@ interface Item {
   patch?: unknown;
   save?: unknown;
   answer_sources?: unknown;
+  authority?: unknown;
+  override_reason?: unknown;
 }
 
 export const POST: APIRoute = async ({ request, params }) => {
@@ -63,6 +66,8 @@ export const POST: APIRoute = async ({ request, params }) => {
       if (!pageId) return { page_id: String(item.page_id ?? ''), ok: false, error: 'page_id required' };
       try {
         validateAnswerSources(item.answer_sources);
+        const authority = apiWriteAuthority(item);
+        if ('error' in authority) return { page_id: pageId, ok: false, error: authority.error };
         if (item.patch && typeof item.patch === 'object' && 'answer_sources' in item.patch) return { page_id: pageId, ok: false, error: 'Set answer_sources on the batch entry, beside patch' };
         const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);
         if (!existing) return { page_id: pageId, ok: false, error: 'not found' };
@@ -88,7 +93,7 @@ export const POST: APIRoute = async ({ request, params }) => {
         }
         const result = await applyContentWrite(
           ctx, { kind: 'page', id: pageId }, patch,
-          { save: item.save === true, updatedBy: `api-key:${ctx.keyPrefix}`, answerSources: item.answer_sources },
+          { save: item.save === true, updatedBy: `api-key:${ctx.keyPrefix}`, ...authority, answerSources: item.answer_sources },
         );
         // Per entry, beside its own result: a sweep of 200 pages must say
         // which page carried the inert key, not that one of them did.

@@ -268,6 +268,8 @@ export async function commitWorkingCopy(
   /** Which surface is publishing — drives per-field provenance on items.
    *  Defaults to 'portal' (the editors' Save). */
   actor?: WriteActor,
+  /** Administrative reason for replacing a value the listed business set. */
+  overrideReason?: string,
 ): Promise<CommitResult> {
   const wc = await readWorkingCopy(ctx, target);
   if (!wc || !wc.fields || Object.keys(wc.fields).length === 0) {
@@ -287,7 +289,7 @@ export async function commitWorkingCopy(
       const type = await pageContentType(ctx, existing);
       if (!type) throw new WorkingCopyError('Content type not found', 400);
       const authority = applyFieldAuthority({ fields: pageAuthorityFields(type),
-        incoming: { ...update, ...(update.fields as Record<string, unknown> ?? {}) }, existing, actor: actor ?? 'portal', actorId: createdBy, now, sources: wc.answer_sources });
+        incoming: { ...update, ...(update.fields as Record<string, unknown> ?? {}) }, existing, actor: actor ?? 'portal', actorId: createdBy, now, sources: wc.answer_sources, overrideReason });
       if (authority.rejected.length) throw new WorkingCopyError(conflictResponse(authority.rejected).error, 409);
       if (update.fields) update.fields = { ...existing.fields, ...Object.fromEntries(Object.entries(authority.update).filter(([name]) => type.fields.some(field => field.name === name))) };
       update[PROVENANCE_KEY] = authority.provenance;
@@ -313,7 +315,7 @@ export async function commitWorkingCopy(
       kind: 'page', resourceIds: [target.id],
       doc: existing as unknown as Record<string, unknown>, createdBy,
     });
-    await vstore.writePage(ctx.orgId, ctx.siteId, ctx.versionId, target.id, update as Partial<Page>, { actor: actor ?? 'portal', actorId: createdBy, expected: existing, sources: wc.answer_sources });
+    await vstore.writePage(ctx.orgId, ctx.siteId, ctx.versionId, target.id, update as Partial<Page>, { actor: actor ?? 'portal', actorId: createdBy, expected: existing, sources: wc.answer_sources, overrideReason });
 
     let auto_redirects: CommitResult['auto_redirects'] = [];
     let retired_redirects: CommitResult['retired_redirects'] = [];

@@ -173,6 +173,33 @@ describe('content types and native Pages', () => {
     await createType(token, { ...definition(), fields: [{ name: 'managed', label: 'Managed', type: 'text', writable_by: ['app'] }] } as never);
     expect((await createPage(token, { fields: { managed: 'Unauthorized' } })).status).toBe(409);
   });
+  it('writes with editor authority when asked, as the portal can', async () => {
+    await createType(token, { ...definition(), fields: [{ name: 'managed', label: 'Managed', type: 'text', writable_by: ['portal'] }, { name: 'summary', label: 'Summary', type: 'text' }] } as never);
+    expect((await createPage(token, { fields: { managed: 'Agent' } })).status).toBe(409);
+    const created = await createPage(token, { fields: { managed: 'Editor' }, authority: 'editor' });
+    expect(created.status).toBe(201);
+    const { page } = await created.json();
+    const { getStore } = await import('../../lib/datastore');
+    // A value a person set in the portal is kept from a default write, which names the way through.
+    await getStore().updateDoc(paths.page(ORG, SITE, page.id), { _provenance: { summary: { source: 'portal', actor: 'editor@example.com', updated_at: '2026-01-01T00:00:00Z' } } });
+    const patch = (body: Record<string, unknown>) => callRoute(pageRoute(), 'PATCH', `${root}/pages/${page.id}`, { siteId: SITE, pageId: page.id }, { headers: bearer(token), body });
+    const refused = await patch({ fields: { summary: 'From the agent' }, save: true });
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toContain('authority: "editor"');
+    expect((await patch({ fields: { summary: 'x' }, authority: 'owner' })).status).toBe(400);
+    expect((await patch({ fields: { summary: 'From the agent' }, save: true, authority: 'editor' })).status).toBe(200);
+    const saved = await getStore().getDoc<Record<string, any>>(paths.page(ORG, SITE, page.id));
+    expect(saved?.fields.summary).toBe('From the agent');
+    expect(saved?._provenance.summary).toMatchObject({ source: 'portal' });
+    expect(saved?._provenance.summary.actor).toMatch(/^api-key:/);
+    // A value the listed business set needs a reason, exactly as in the portal.
+    await getStore().updateDoc(paths.page(ORG, SITE, page.id), { _provenance: { ...saved?._provenance, summary: { source: 'owner', actor: 'owner@example.com', updated_at: '2026-01-02T00:00:00Z' } } });
+    const needsReason = await patch({ fields: { summary: 'Corrected' }, save: true, authority: 'editor' });
+    expect(needsReason.status).toBe(409);
+    expect((await needsReason.json()).error).toContain('override_reason');
+    expect((await patch({ fields: { summary: 'Corrected' }, save: true, authority: 'editor', override_reason: 'Outdated opening hours' })).status).toBe(200);
+    expect(await getStore().getDoc(paths.page(ORG, SITE, page.id))).toMatchObject({ fields: { summary: 'Corrected' }, _provenance: { summary: { source: 'portal', override_reason: 'Outdated opening hours' } } });
+  });
   it('refuses deleting an in-use or default type, allows an unused type', async () => {
     await createType(token); const remove = (name: string) => callRoute(detailRoute(), 'DELETE', `${root}/content-types/${name}`, { siteId: SITE, name }, { headers: bearer(token) });
     expect((await remove('page')).status).toBe(400);
