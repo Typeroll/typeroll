@@ -905,6 +905,7 @@ export type FieldType =
   | 'page_ref_list'
   // Added by Forms 2.0 (form/* field blocks):
   | 'style'           // a named style from SiteSettings.styles (see style_target)
+  | 'global_block'    // id of a free partial (global block), see reusable-blocks.ts
   | 'choices';         // array of {value,label}; renderer derives
                        // {name}_options_html per FieldDefinition.choices_markup
 
@@ -1778,6 +1779,11 @@ export const paths = {
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/block_types`,
   blockType: (orgId: string, siteId: string, blockTypeId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/block_types/${blockTypeId}`,
+  /** Block templates (copy-in section starters). Site-wide, not versioned: an authoring library, not published content. */
+  blockTemplates: (orgId: string, siteId: string) =>
+    `organizations/${orgId}/sites/${siteId}/block_templates`,
+  blockTemplate: (orgId: string, siteId: string, templateId: string) =>
+    `organizations/${orgId}/sites/${siteId}/block_templates/${templateId}`,
   pageTemplates: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/page_templates`,
   pageTemplate: (orgId: string, siteId: string, templateId: string, versionId: string = MAIN_VERSION_ID) =>

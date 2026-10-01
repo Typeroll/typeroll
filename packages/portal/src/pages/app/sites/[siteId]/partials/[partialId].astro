@@ -2,11 +2,12 @@
 import AppLayout from '../../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../../lib/version-store';
 import PartialEditor from '../../../../../components/PartialEditor.tsx';
+import TemplateEditor from '../../../../../components/TemplateEditor.tsx';
 import { loadSiteContext } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
 import { readWorkingCopy } from '../../../../../lib/working-copy';
-import { paths } from '@typeroll/shared';
-import type { Partial as PartialDoc, Site, SiteVersion } from '@typeroll/shared';
+import { paths, resolveRenderVersion } from '@typeroll/shared';
+import type { PageTemplate, Partial as PartialDoc, Site, SiteVersion } from '@typeroll/shared';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
@@ -28,6 +29,7 @@ const defaultDoc: PartialDoc = partial ?? {
   status: 'draft',
   html_content: '',
 };
+const editorSettings = defaultDoc.content_mode === 'blocks' ? await vstore.settings(orgId, siteId, versionId) : null;
 const kindLabel = defaultDoc.kind === 'free' ? 'Free block' : defaultDoc.kind === 'header' ? 'Header' : 'Footer';
 const workingCopy = await readWorkingCopy(
   { orgId, siteId, versionId },
@@ -36,14 +38,18 @@ const workingCopy = await readWorkingCopy(
 const versionDoc = await store.getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
 // Compare edits with the build snapshot, not its later completion time.
 const lastDeployedAt = versionDoc?.last_deployed_content_at ?? versionDoc?.last_deployed_at ?? null;
+const globalBlockSummaries = (await vstore.partials(orgId, siteId, versionId)).filter(partial => partial.kind === 'free')
+  .map(partial => ({ id: partial.id, name: partial.name, status: partial.status, content_mode: partial.content_mode }));
 ---
-<AppLayout title={`${defaultDoc.name} — ${site.name}`} siteId={siteId}>
-  <div class="app-header">
+<AppLayout title={`${defaultDoc.name} — ${site.name}`} siteId={siteId} bare={defaultDoc.content_mode === 'blocks'}>
+  {defaultDoc.content_mode !== 'blocks' && <div class="app-header">
     <div>
       <a href={`/app/sites/${siteId}/partials`} class="muted text-sm">← Global blocks</a>
       <h1>{defaultDoc.name}</h1>
       <p class="muted">{kindLabel}</p>
     </div>
-  </div>
-  <PartialEditor client:load siteId={siteId} partial={defaultDoc} workingCopy={workingCopy} lastDeployedAt={lastDeployedAt} />
+  </div>}
+  {defaultDoc.content_mode === 'blocks'
+    ? <TemplateEditor globalBlocks={globalBlockSummaries} client:load kind="global_block" siteId={siteId} responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} template={{ id: defaultDoc.id, name: defaultDoc.id, label: defaultDoc.name, status: defaultDoc.status, blocks: defaultDoc.blocks ?? [] } as unknown as PageTemplate} />
+    : <PartialEditor client:load siteId={siteId} partial={defaultDoc} workingCopy={workingCopy} lastDeployedAt={lastDeployedAt} />}
 </AppLayout>

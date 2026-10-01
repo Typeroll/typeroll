@@ -89,3 +89,16 @@
 .rich-text-editor h4 { font-size: 1rem; margin: .75rem 0 .25rem; }
 .prose-convert { border: 1px solid #4338ca; background: #1a1a3d; color: #fafafa; border-radius: 6px; padding: 12px; margin-bottom: 1rem; font-size: .85rem; display: grid; gap: 8px; }
 .prose-convert ul { margin: 0; padding-left: 1.25rem; }
+
+/* Block library: templates and global blocks. */
+.block-library__hint { font-size: .75rem; color: #a1a1aa; margin: 0 0 .5rem; }
+.block-library__reusable { display: grid; gap: 6px; }
+.block-library__item { display: grid; gap: 2px; text-align: left; padding: .5rem .65rem; border-radius: 6px; border: 1px solid #3a3a42; background: #1f1f23; color: #fafafa; cursor: pointer; font-size: .85rem; }
+.block-library__item span { font-size: .75rem; color: #a1a1aa; }
+.block-library__item:hover, .block-library__item:focus-visible { border-color: #818cf8; }
+.block-reuse p { font-size: .8rem; color: #d4d4d8; }
+.block-reuse__form { display: grid; gap: 6px; margin-top: .75rem; }
+
+/* Rich text toolbar: readable controls on the dark editor. */
+.block-editor [role="toolbar"][aria-label="Text formatting"] button { background: #2a2a30; color: #fafafa; border: 1px solid #3f3f46; border-radius: 4px; cursor: pointer; }
+.block-editor [role="toolbar"][aria-label="Text formatting"] button:hover { border-color: #818cf8; }

@@ -1,4 +1,5 @@
 ---
+import { listBlockTemplates } from '../../../../../lib/block-templates-store';
 import AppLayout from '../../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../../lib/version-store';
 import HtmlPageEditor from '../../../../../components/HtmlPageEditor.tsx';
@@ -42,10 +43,14 @@ const lastDeployedAt = versionDoc?.last_deployed_content_at ?? versionDoc?.last_
 // Only expose saved content known to be included in the last live deploy.
 const liveUrl = pageLiveUrl(site, versionDoc ?? null, page);
 const editorSettings = await vstore.settings(orgId, siteId, versionId);
+const globalBlocks = (await vstore.partials(orgId, siteId, versionId)).filter(partial => partial.kind === 'free')
+  .map(partial => ({ id: partial.id, name: partial.name, status: partial.status, content_mode: partial.content_mode }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+const blockTemplates = await listBlockTemplates({ orgId, siteId });
 ---
 <AppLayout title={`${page.title} — ${site.name}`} siteId={siteId} bare>
   {page.content_mode === 'blocks' ? (
-    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} globalBlocks={globalBlocks} blockTemplates={blockTemplates} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   ) : (
     <HtmlPageEditor client:load siteId={siteId} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   )}

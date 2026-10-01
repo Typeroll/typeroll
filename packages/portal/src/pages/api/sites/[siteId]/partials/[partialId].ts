@@ -1,3 +1,5 @@
+import { blockTreeInputError } from '../../../../../lib/block-tree-input';
+import { ensureBlockIds } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, json, requirePermission } from '../../../../../lib/access';
 import { vstore } from '../../../../../lib/version-store';
@@ -29,11 +31,18 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
 
   const existing = await vstore.partial(owner_org_id, site.id, versionId, partialId);
 
-  // Default the kind from the id if creating a new block.
+  // Default the kind from the id if creating a new block; keep an existing
+  // block's mode when the body leaves it out (a blocks-only save must not
+  // turn a block global block into an empty HTML one).
   if (!update.kind) {
-    update.kind = partialId === 'header' || partialId === 'footer' ? partialId : 'free';
+    update.kind = existing?.kind ?? (partialId === 'header' || partialId === 'footer' ? partialId : 'free');
   }
-  if (!update.content_mode) update.content_mode = 'html';
+  if (!update.content_mode) update.content_mode = existing?.content_mode ?? (update.blocks ? 'blocks' : 'html');
+  if (update.blocks !== undefined) {
+    const error = blockTreeInputError(update.blocks);
+    if (error) return json({ error }, 400);
+    update.blocks = ensureBlockIds(update.blocks);
+  }
   if (!update.name && !existing) {
     update.name = body.name ?? partialId;
   }

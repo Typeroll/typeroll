@@ -56,6 +56,7 @@ import { renderFieldList } from './field-list.js';
 import { STYLE_ID_PATTERN, styleClassName } from './site-styles.js';
 import { blockOutputForVersion, resolveRenderVersion } from './render-version.js';
 import { styleElementText } from './custom-css.js';
+import { GLOBAL_BLOCK_MAX_DEPTH, GLOBAL_BLOCK_TYPE_ID, withGlobalBlockContent, type GlobalBlockSource } from './reusable-blocks.js';
 
 /**
  * Render context — values exposed to templates via the dotted-path
@@ -184,6 +185,10 @@ export interface RenderBlocksOptions {
    * alter existing pages are gated on this. Defaults to the baseline.
    */
   renderVersion?: number;
+  /** Resolves `core/global_block` references (reusable-blocks.ts). Without it they render nothing. */
+  globalBlockSource?: GlobalBlockSource;
+  /** Internal: global blocks being rendered, outermost first, to stop cycles. */
+  globalBlockStack?: string[];
 }
 
 const HTML_ESCAPES: Record<string, string> = {
@@ -252,6 +257,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     return fallback(block.type, block);
   }
   const { block: effectiveBlock, blockType } = expanded;
+
+  // (1a) A global block reference renders the referenced blocks in place.
+  if (effectiveBlock.type === GLOBAL_BLOCK_TYPE_ID) return renderGlobalBlockRef(block, effectiveBlock, options);
 
   // (1b) Forms 2.0: core/form delegates to the caller's formSource —
   // token minting and step prerendering live outside the pure renderer.
@@ -537,6 +545,37 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   html = applyStyleOverrides(html, effectiveBlock, blockType, options.renderVersion);
 
   return html;
+}
+
+/**
+ * Inline a global block's published content. No wrapper element: the blocks
+ * render exactly as if they were on the page, so layout rules for direct
+ * children still apply. In the editor each top-level element is annotated
+ * with the reference block, so a click selects the reference, not the
+ * global block's inner blocks (those are edited in the global block).
+ */
+function renderGlobalBlockRef(block: Block, effectiveBlock: Block, options: RenderBlocksOptions): string {
+  const id = String(effectiveBlock.data?.global_block_id ?? '').trim();
+  const stack = options.globalBlockStack ?? [];
+  const content = id && !stack.includes(id) && stack.length < GLOBAL_BLOCK_MAX_DEPTH ? options.globalBlockSource?.(id) : undefined;
+  const marker: Record<string, string> = { 'data-global-block': id };
+  if (options.annotate && block.id) { marker['data-block-id'] = block.id; marker['data-block-type'] = block.type; }
+  if (options.provenance && block.id) { marker['data-source-block-id'] = block.id; marker['data-source-block-type'] = block.type; }
+  if (!content || (!content.blocks?.length && !content.html?.trim())) {
+    const reason = !id ? 'No global block chosen' : stack.includes(id) ? `Global block "${id}" includes itself` : `Global block "${id}" is missing or not published`;
+    return options.annotate
+      ? injectAttrsIntoFirstTag(`<div data-block="global_block" data-missing="true" style="padding:1rem;border:2px dashed #b45309;color:#78350f;background:#fffbeb;font:14px/1.4 system-ui,sans-serif">${escapeHtml(reason)}</div>`, marker)
+      : `<!-- ${escapeHtml(reason).replace(/--/g, '- -')} -->`;
+  }
+  if (content.html !== undefined && !content.blocks) {
+    const html = content.html.trim();
+    return /^<[a-zA-Z]/.test(html) ? injectAttrsIntoFirstTag(html, marker) : html;
+  }
+  const inner: RenderBlocksOptions = { ...options, annotate: false, editable: false, provenance: false, globalBlockStack: [...stack, id] };
+  return (content.blocks ?? []).map(child => {
+    const html = renderBlock(child, inner);
+    return /^<[a-zA-Z]/.test(html) ? injectAttrsIntoFirstTag(html, marker) : html;
+  }).join('\n');
 }
 
 /**
@@ -1818,6 +1857,8 @@ export interface CollectAssetsOptions {
   includeScripts?: boolean;
   /** Platform render version; gates shared CSS changes like RenderBlocksOptions.renderVersion. */
   renderVersion?: number;
+  /** Includes the assets of referenced global blocks, like RenderBlocksOptions.globalBlockSource. */
+  globalBlockSource?: GlobalBlockSource;
 }
 
 export function collectBlockAssets(
@@ -1825,6 +1866,7 @@ export function collectBlockAssets(
   registry: RenderBlocksOptions['registry'],
   opts?: CollectAssetsOptions,
 ): BlockAssetBundle {
+  blocks = withGlobalBlockContent(blocks, opts?.globalBlockSource);
   const ids = [...collectBlockAssetTypeIds(blocks, registry)].sort();
   const css: string[] = [];
   const js: string[] = [];

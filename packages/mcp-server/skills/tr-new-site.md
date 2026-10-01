@@ -292,16 +292,22 @@ Known limitations (honest list — don't fight them):
   client-side without the icon pipeline). Text labels only.
 
 Theming: block primitives render neutral. Brand color/typography comes
-from settings (step 2). For page-specific polish (e.g. a colored card
-treatment), a single `core/html` block with a small `<style>` scoped to
-`[data-bid]`/section selectors is acceptable — keep it minimal and note
-it in your log.
+from settings (step 2) and named styles (step 2b). For page-specific polish
+(e.g. a colored card treatment) that no style covers, give the block a
+`custom_class` and write the rule in the page's `custom_css`. Never put a
+`<style>` in a `core/html` block or target `[data-bid]`/`[data-block]`.
 
 ### 5. Inner pages
 
 Same pattern: `create_page` with `content_mode: "blocks"` and a section
 tree. Standard set: Om oss, Tjänster, Kontakt — or what the brief says.
 Default new pages to `status: "draft"`; publish after review.
+
+Sections that repeat across pages: a call to action or contact strip that
+must stay identical becomes a global block (`make_block_global`, then
+`core/global_block` on the other pages). A section shape you will reuse with
+different content (a pricing row, a feature trio) becomes a block template
+(`save_block_template`, then `insert_block_template`).
 
 ### 5b. If the legacy site is still live, scrape canonical content
 

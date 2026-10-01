@@ -116,11 +116,12 @@ export const partialTools: ToolDef[] = [
   {
     name: 'create_free_block',
     description:
-      'Create a new free (reusable) global block. Use a kebab-case id and embed it on pages with <x-include name="block-id" />.',
+      'Create a new global block: one shared source that every page using it shows, so an edit updates them all. Pass `blocks` for a block global block, referenced from block pages with a `core/global_block` block (data: { global_block_id }); or `html_content` for HTML pages, embedded with <x-include name="block-id" />. To turn an existing page block into a global block, use make_block_global. For a starter that is copied and then edited per page, use save_block_template instead.',
     inputSchema: {
       id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
       name: z.string().optional(),
-      html_content: z.string(),
+      blocks: z.array(z.record(z.unknown())).optional().describe('Block tree for a block global block.'),
+      html_content: z.string().optional().describe('HTML for <x-include> in HTML pages. Send blocks or html_content.'),
       status: z.enum(['draft', 'published']).optional(),
       version: versionParam,
     },

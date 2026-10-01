@@ -14,3 +14,8 @@ export const ProseConvertContext = createContext<(() => void) | null>(null);
 export function fieldAvailable(field: FieldDefinition, renderVersion: number | null): boolean {
   return renderVersion === null || (field.min_render_version ?? 1) <= renderVersion;
 }
+
+export interface GlobalBlockSummary { id: string; name: string; status: 'draft' | 'published'; content_mode: 'blocks' | 'html' }
+
+/** The site's global blocks (free partials), for `type: 'global_block'` fields and the block library. */
+export const GlobalBlocksContext = createContext<{ siteId: string; blocks: GlobalBlockSummary[] } | null>(null);

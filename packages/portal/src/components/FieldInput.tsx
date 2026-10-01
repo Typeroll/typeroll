@@ -5,8 +5,8 @@ import { Monitor } from 'lucide-react';
 import RichTextInput from './RichTextInput';
 import ContentReferenceInput from './ContentReferenceInput';
 
-import { SiteStylesContext } from './editor-context';
-export { fieldAvailable, ProseConvertContext, RenderVersionContext, SiteStylesContext } from './editor-context';
+import { GlobalBlocksContext, SiteStylesContext } from './editor-context';
+export { fieldAvailable, GlobalBlocksContext, ProseConvertContext, RenderVersionContext, SiteStylesContext } from './editor-context';
 
 export default function FieldInput({
   siteId, field, value, onChange, responsive, activeBp, hasOwn, triState = false, siteWidths,
@@ -32,7 +32,24 @@ export default function FieldInput({
   );
   const v = (value ?? '') as string;
   const siteStyles = useContext(SiteStylesContext);
+  const globalBlocks = useContext(GlobalBlocksContext);
   switch (field.type) {
+    case 'global_block': {
+      const options = globalBlocks?.blocks ?? [];
+      const current = options.find(block => block.id === v);
+      return (
+        <div style={fieldGroup}>
+          {label}
+          <select id={fieldId} aria-label={field.label} value={v} onChange={(e) => onChange(e.target.value || undefined)} style={selectInput}>
+            <option value="">Choose a global block…</option>
+            {options.map(block => <option key={block.id} value={block.id}>{block.name}{block.status === 'draft' ? ' (draft, not shown)' : ''}</option>)}
+            {v && !current && <option value={v}>{v} (missing)</option>}
+          </select>
+          {current?.status === 'draft' && <p role="alert" style={{ fontSize: '.8rem', color: '#fcd34d', margin: '.25rem 0 0' }}>Draft global blocks are not shown on pages. Publish it in the global block's editor.</p>}
+          {v && globalBlocks && <a href={`/app/sites/${globalBlocks.siteId}/partials/${encodeURIComponent(v)}`} target="_blank" rel="noopener" style={{ fontSize: '.8rem', color: '#a5b4fc' }}>Edit this global block (changes every page using it)</a>}
+        </div>
+      );
+    }
     case 'style': {
       const options = stylesForTarget(siteStyles ?? [], field.style_target ?? 'text');
       const missing = v && !options.some(style => style.id === v);

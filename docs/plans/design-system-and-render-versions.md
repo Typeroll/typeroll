@@ -169,3 +169,24 @@ Two distinct concepts:
   into the page; later edits affect only that page.
 
 Both work in the UI, API and MCP, and both use styles rather than raw HTML.
+
+### Phase 5 as built (Core 0.2.57)
+
+- Global blocks are free partials. Block pages reference one with
+  `core/global_block` (`global_block_id`); `renderGlobalBlockRef` inlines the
+  published blocks with no wrapper (layout rules for direct children still
+  apply), annotates them with the reference in the editor, and stops cycles
+  (max depth 4). `withGlobalBlockContent` adds referenced content to asset
+  collection and client capabilities. The build, the preview and partial
+  rendering all pass `globalBlockSource`.
+- `make_global` moves a block into a new published global block and leaves a
+  reference; `detach` replaces a reference with a copy (new ids). Usage counts
+  saved pages and page drafts.
+- Block templates are stored per site (`block_templates`), not per version:
+  an authoring library, not published content, so branch promotion is
+  unchanged. Inserting copies blocks with new ids.
+- UI: block library sections (Templates, Global blocks), a Reuse panel in the
+  inspector, block-mode global blocks open in the block-tree editor, and the
+  Global blocks page lists usage and templates. API: `make-global`, `detach`,
+  `insert-template`, `/block-templates`. MCP: matching tools.
+

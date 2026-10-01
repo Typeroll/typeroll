@@ -496,8 +496,31 @@ const templateContentSlot: BlockType = {
  * grouping (layout → content → media). The editor MAY re-sort by category;
  * the renderer doesn't care about order here.
  */
+/**
+ * `global_block` — a reference to a global block (a free partial). The
+ * renderer inlines the global block's published blocks in place, with no
+ * wrapper, so editing the global block updates every page using it. See
+ * reusable-blocks.ts; the template only shows when nothing resolves.
+ */
+const globalBlock: BlockType = {
+  id: 'core/global_block',
+  name: 'global_block',
+  label: 'Global block',
+  icon: 'repeat',
+  category: 'layout',
+  container: false,
+  schema: [
+    { name: 'global_block_id', type: 'global_block', label: 'Global block', required: true },
+  ],
+  template: '<!-- global block {{global_block_id}} is missing or not published -->',
+  styles: '',
+  origin: 'core',
+  created_at: ISO_EPOCH,
+};
+
 export const CORE_BLOCK_TYPES: readonly BlockType[] = [
   section,
+  globalBlock,
   columns,
   prose,
   heading,

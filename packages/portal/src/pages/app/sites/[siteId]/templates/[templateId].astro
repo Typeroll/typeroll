@@ -20,7 +20,9 @@ const template = await store.getDoc<PageTemplate>(
 );
 if (!template) return Astro.redirect(`/app/sites/${siteId}/templates`);
 const templateSettings = await vstore.settings(orgId, siteId, versionId);
+const globalBlockSummaries = (await vstore.partials(orgId, siteId, versionId)).filter(partial => partial.kind === 'free')
+  .map(partial => ({ id: partial.id, name: partial.name, status: partial.status, content_mode: partial.content_mode }));
 ---
 <AppLayout title={`${template.label} — Template — ${site.name}`} siteId={siteId} bare>
-  <TemplateEditor responsiveBreakpoints={templateSettings?.responsive_breakpoints} siteStyles={templateSettings?.styles ?? []} renderVersion={resolveRenderVersion(templateSettings?.render_version)} client:load siteId={siteId} template={template} />
+  <TemplateEditor globalBlocks={globalBlockSummaries} responsiveBreakpoints={templateSettings?.responsive_breakpoints} siteStyles={templateSettings?.styles ?? []} renderVersion={resolveRenderVersion(templateSettings?.render_version)} client:load siteId={siteId} template={template} />
 </AppLayout>

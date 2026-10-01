@@ -16,7 +16,8 @@ function slugify(s: string): string {
 /**
  * Creates a new free global block. Header and footer are special cases handled
  * by [partialId].ts (their ids are reserved). This endpoint is for everything
- * else — announcement bars, CTAs, reusable HTML you reference via <x-include>.
+ * else — announcement bars, CTAs. Block mode (the default) is referenced from
+ * block pages; HTML mode is embedded with <x-include>.
  */
 export const POST: APIRoute = async ({ request, cookies, params, redirect, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -41,13 +42,12 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   let n = 2;
   while (taken.has(id)) id = `${baseId}-${n++}`;
 
-  const doc: Omit<PartialDoc, 'id'> = {
-    name,
-    kind: 'free',
-    content_mode: 'html',
-    html_content: '',
-    status: 'draft',
-  };
+  // Block global blocks are referenced from block pages (core/global_block);
+  // HTML ones are embedded in HTML pages with <x-include>.
+  const blocksMode = form.get('content_mode') !== 'html';
+  const doc: Omit<PartialDoc, 'id'> = blocksMode
+    ? { name, kind: 'free', content_mode: 'blocks', blocks: [], status: 'published' }
+    : { name, kind: 'free', content_mode: 'html', html_content: '', status: 'draft' };
   await getStore().setDoc(paths.partial(owner_org_id, site.id, id, versionId), doc);
   return redirect(`/app/sites/${site.id}/partials/${id}`);
 };

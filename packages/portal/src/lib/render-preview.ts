@@ -39,6 +39,7 @@ import {
   expandExtensionIncludes,
   expandFormIncludes,
   expandIncludes,
+  globalBlockSourceFromPartials,
   MAIN_VERSION_ID,
   renderBlocks,
   renderCookieConsent,
@@ -170,6 +171,7 @@ export async function renderPreview(
   const header = partials.find((p) => p.kind === 'header' && p.status === 'published');
   const footer = partials.find((p) => p.kind === 'footer' && p.status === 'published');
   const freeBlocks = partials.filter((p) => p.kind === 'free');
+  const globalBlockSource = globalBlockSourceFromPartials(freeBlocks);
 
   // The preview iframe mirrors the static build's robots stance so users see
   // their branch's noindex banner before deploy.
@@ -253,7 +255,7 @@ export async function renderPreview(
     if (!p) return '';
     if (p.content_mode === 'blocks' && p.blocks?.length) {
       return sanitizeBody(
-        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, pageSource, onMissingType, renderVersion }),
+        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, pageSource, onMissingType, renderVersion, globalBlockSource }),
         settings.iframe_allowed_hosts,
       );
     }
@@ -285,7 +287,7 @@ export async function renderPreview(
     renderCtx.page = { ...renderCtx.page, blocks: pageBlocks };
     // Normalize before deriving the outline so demoted headings retain TOC links.
     renderCtx.page = { ...renderCtx.page, ...pageBodyContext(normalizePageH1s(sanitizeBody(renderBlocks(pageBlocks, {
-      registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType, renderVersion,
+      registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType, renderVersion, globalBlockSource,
     }), settings.iframe_allowed_hosts), !countBlockH1s(templateBlocks))) };
     const effectiveBlocks = templateBlocks.length
       ? composePageWithTemplate(templateBlocks, pageBlocks) : pageBlocks;
@@ -301,6 +303,7 @@ export async function renderPreview(
       // stamping them would produce dead editing affordances.
       editable: opts.editable,
       renderVersion,
+      globalBlockSource,
     }), settings.iframe_allowed_hosts));
     assetBlocks.push(...effectiveBlocks);
     blocksBody = true;
@@ -316,6 +319,7 @@ export async function renderPreview(
   const assets = collectBlockAssets(assetBlocks, blockRegistry, {
     includeScripts: opts.allowScripts === true,
     renderVersion,
+    globalBlockSource,
   });
   blockCss = assets.css;
   blockJs = assets.js;

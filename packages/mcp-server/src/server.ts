@@ -19,6 +19,7 @@ import { pageTemplateTools } from './tools/page-templates.js';
 import { mediaTools } from './tools/media.js';
 import { redirectTools } from './tools/redirects.js';
 import { styleTools } from './tools/styles.js';
+import { reusableBlockTools } from './tools/reusable-blocks.js';
 import { migrationTools } from './tools/migration.js';
 import { formTools } from './tools/forms.js';
 import { searchTools } from './tools/search.js';
@@ -149,7 +150,11 @@ The full playbook ships with this server — use it:
    classed raw HTML. Text must meet WCAG AA contrast. A heading's small label
    is its eyebrow field. For what styles cannot express, use page or site
    custom_css on s-<style> or block custom_class selectors, not [data-block].
-7. No site yet? With an org-scoped key, create_site bootstraps one.
+7. Reuse: content that must stay identical on many pages is a global block
+   (make_block_global; core/global_block references it). A section people
+   start from and then adapt is a block template (list_block_templates,
+   insert_block_template copies it). Never duplicate shared content by hand.
+8. No site yet? With an org-scoped key, create_site bootstraps one.
 
 If anything here conflicts with what a tool returns, trust the tool. Every
 tool's own description carries its specifics.
@@ -182,6 +187,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
     ...mediaTools,
     ...redirectTools,
     ...styleTools,
+    ...reusableBlockTools,
     ...migrationTools,
     ...formTools,
     ...settingsTools,

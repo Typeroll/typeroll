@@ -52,4 +52,5 @@ export * from './seo-policy.js';
 export * from './fonts.js';
 export * from './render-version.js';
 export * from './custom-css.js';
+export * from './reusable-blocks.js';
 export * from './site-styles.js';
