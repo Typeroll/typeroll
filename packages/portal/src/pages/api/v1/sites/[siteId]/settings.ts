@@ -13,6 +13,7 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-aut
 import { vstore } from '../../../../../lib/version-store';
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
 import { libraryProblems, readStyles } from '../../../../../lib/site-styles-store';
+import { customCssWarnings, customCssWriteError } from '../../../../../lib/custom-css-write';
 import { responsiveBreakpointsError, seoReviewError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, LATEST_RENDER_VERSION, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
@@ -56,6 +57,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (body.render_version !== undefined && !isRenderVersion(body.render_version)) {
     return apiError(`render_version must be an integer from 1 to ${LATEST_RENDER_VERSION}`, 400);
   }
+  { const error = customCssWriteError(body.custom_css); if (error) return apiError(error, 400); }
   if (body.iframe_allowed_hosts !== undefined) {
     const checked = normalizeIframeAllowedHosts(body.iframe_allowed_hosts);
     if (checked.invalid.length) return apiError(`Invalid iframe hostnames: ${checked.invalid.join(', ')}`, 400);
@@ -115,6 +117,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const { styles, colors } = await readStyles(ctx);
     warnings.push(...libraryProblems(styles, colors).map(problem => `Style contrast with the new colours: ${problem}`));
   }
+  warnings.push(...customCssWarnings(update.custom_css).map(problem => `Custom CSS line ${problem.line}: ${problem.message}`));
   if (warnings.length) resp.warnings = warnings;
   return apiResponse(ctx, resp, 200, body);
 };

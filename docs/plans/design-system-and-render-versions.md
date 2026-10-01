@@ -145,6 +145,20 @@ Site and page custom CSS get managed fields in UI, API and MCP: a code editor,
 syntax validation, warnings for selectors that target platform internals
 (`[data-block]`, `.block-*`) instead of styles or classes, and live preview.
 
+### Phase 4 as built (Core 0.2.57)
+
+- `checkCustomCss()` (shared) reports errors (syntax, script-capable
+  constructs, `</style`, size) and warnings (platform selectors, `@import`)
+  with line numbers. Every write path refuses errors: v1 settings, the Site
+  CSS route, page create, page PUT/PATCH and working-copy writes. v1 returns
+  warnings (`warnings`, `css_warnings`).
+- `styleElementText()` escapes `</style` on every output path (site, page and
+  block-instance CSS), so stored CSS cannot end its element. This is an
+  ungated fix: valid CSS renders identically.
+- Site CSS moved from the Settings form to Styles → Site CSS (admins); page
+  CSS is in the block editor's page settings and the HTML page editor. Both
+  use `CustomCssEditor` with live checks and class hints.
+
 ## Phase 5: reusable blocks
 
 Two distinct concepts:

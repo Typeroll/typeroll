@@ -37,6 +37,7 @@ import ContentModeSwitcher from './ContentModeSwitcher';
 import TemplatePicker from './TemplatePicker';
 import PageContentTypePicker from './PageContentTypePicker';
 import './BlockPageEditor.css';
+import CustomCssEditor from './CustomCssEditor';
 import FieldInput, { fieldAvailable, fieldGroup, fieldLabel, ProseConvertContext, RenderVersionContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
 
 interface Props {
@@ -1315,6 +1316,7 @@ function MetaPanel({
   hasUnsaved: boolean;
   onChange: <K extends keyof Page>(key: K, value: Page[K]) => void;
 }) {
+  const siteStyles = useContext(SiteStylesContext);
   return (
     <div>
       <h3 style={{ margin: '0 0 0.25rem', fontSize: '0.95rem', color: '#fafafa' }}>Page metadata</h3>
@@ -1427,8 +1429,34 @@ function MetaPanel({
         <TemplatePicker siteId={siteId} pageId={page.id} currentTemplate={draft.template} contentType={page.content_type} defaultTemplate={contentType?.template} onChange={value => onChange('template', value)} />
         <ContentModeSwitcher siteId={siteId} pageId={page.id} currentMode="blocks" />
       </div>
+
+      <details className="block-field-settings" open={!!draft.custom_css}>
+        <summary>Page CSS</summary>
+        <CustomCssEditor
+          label="CSS for this page only"
+          value={draft.custom_css ?? ''}
+          onValid={css => onChange('custom_css', css.trim() ? css : undefined)}
+          classHints={cssClassHints(siteStyles, draft.blocks ?? [])}
+          help={<>Loaded after the site CSS. Target named styles (<code>.s-…</code>) or a block's CSS class from its Advanced settings. Changes save with the page draft.</>}
+        />
+      </details>
     </div>
   );
+}
+
+/** Classes worth targeting from custom CSS: named styles and classes set on blocks. */
+function cssClassHints(styles: SiteStyle[] | null, blocks: Block[]): Array<{ className: string; label: string }> {
+  const hints = new Map<string, string>();
+  for (const style of styles ?? []) if (!['body', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'link'].includes(style.role ?? '')) hints.set(`s-${style.id}`, `Style: ${style.name}`);
+  const visit = (list: Block[]) => {
+    for (const block of list) {
+      for (const token of (block.style_overrides?.custom_class ?? '').split(/\s+/)) if (token) hints.set(token, `Class on ${block.name ?? block.type}`);
+      visit(block.children ?? []);
+      for (const slot of block.slots ?? []) visit(slot);
+    }
+  };
+  visit(blocks);
+  return [...hints].slice(0, 30).map(([className, label]) => ({ className, label }));
 }
 
 export function BlockFieldForm({

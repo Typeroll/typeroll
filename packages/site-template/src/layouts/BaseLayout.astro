@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import { resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -175,9 +175,9 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
 
     {blockCss && <style set:html={blockCss} />}
     {siteStyles && <style data-site-styles set:html={siteStyles} />}
-    {settings.custom_css && <style set:html={settings.custom_css} />}
+    {settings.custom_css && <style set:html={styleElementText(settings.custom_css)} />}
     {/* Page-level CSS after site CSS so a page can override the site theme. */}
-    {page.custom_css && <style set:html={page.custom_css} />}
+    {page.custom_css && <style set:html={styleElementText(page.custom_css)} />}
     {settings.scripts_head && <Fragment set:html={settings.scripts_head} />}
     {integrationsHead && <Fragment set:html={integrationsHead} />}
     {capabilityHead && <Fragment set:html={capabilityHead} />}

@@ -55,6 +55,7 @@ import { countBlockH1s, demoteBodyH1s, normalizePageH1s } from './page-heading-p
 import { renderFieldList } from './field-list.js';
 import { STYLE_ID_PATTERN, styleClassName } from './site-styles.js';
 import { blockOutputForVersion, resolveRenderVersion } from './render-version.js';
+import { styleElementText } from './custom-css.js';
 
 /**
  * Render context — values exposed to templates via the dotted-path
@@ -1846,7 +1847,7 @@ export function collectBlockAssets(
   }
 
   for (const block of collectInstanceStyles(blocks)) {
-    css.push(`/* instance ${sanitizeCssId(block.id)} */\n${block.style_overrides!.custom_css}`);
+    css.push(`/* instance ${sanitizeCssId(block.id)} */\n${styleElementText(block.style_overrides!.custom_css!)}`);
   }
 
   // Per-INSTANCE scripts, for block types that declare code fields

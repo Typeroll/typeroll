@@ -1,3 +1,4 @@
+import { customCssWriteError } from './custom-css-write';
 import { isDeepStrictEqual } from 'node:util';
 import { ensureBlockIds, type Block } from '@typeroll/shared';
 import { blockTreeInputError } from './block-tree-input';
@@ -98,6 +99,8 @@ export async function filterWcFields(
     if (error) throw new WorkingCopyError(error, 400);
     fields = { ...fields, blocks: ensureBlockIds(structuredClone(blocks) as Block[]) };
   }
+  const cssError = customCssWriteError(fields.custom_css);
+  if (cssError) throw new WorkingCopyError(cssError, 400);
   let allowed: Set<string>;
   if (target.kind === 'page') {
     allowed = new Set<string>([...PAGE_WC_FIELDS, 'fields']);

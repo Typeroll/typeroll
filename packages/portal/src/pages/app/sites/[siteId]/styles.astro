@@ -5,6 +5,7 @@ import { loadSiteContext } from '../../../../lib/access';
 import { readStyles } from '../../../../lib/site-styles-store';
 import { CONTENT_WELL_CSS, defaultSiteSettings, resolveBreakpointWidths, siteThemeCss } from '@typeroll/shared';
 import StyleLibrary from '../../../../components/StyleLibrary';
+import SiteCssEditor from '../../../../components/SiteCssEditor';
 import siteResetCss from '../../../../../../site-template/src/styles/reset.css?raw';
 import siteGlobalCss from '../../../../../../site-template/src/styles/global.css?raw';
 
@@ -16,6 +17,7 @@ const { styles, colors } = await readStyles({ orgId, siteId: site.id, versionId 
 // The preview renders with the site's own tokens and base CSS, in the same order as a page.
 const baseCss = [siteThemeCss({ ...settings, colors }), CONTENT_WELL_CSS, siteResetCss, siteGlobalCss].join('\n');
 const canEdit = ctx.permission !== 'read';
+const canEditCss = ctx.permission === 'admin';
 ---
 <AppLayout title={`Styles — ${site.name}`} siteId={site.id}>
   <div class="app-header">
@@ -27,4 +29,5 @@ const canEdit = ctx.permission !== 'read';
     follows. Text must stay readable: styles below WCAG AA contrast cannot be saved.
   </p>
   <StyleLibrary client:load siteId={site.id} initialStyles={styles} colors={colors} breakpoints={resolveBreakpointWidths(settings.responsive_breakpoints)} baseCss={baseCss} canEdit={canEdit} />
+  <SiteCssEditor client:load siteId={site.id} initialCss={settings.custom_css ?? ''} styles={styles} canEdit={canEditCss} />
 </AppLayout>

@@ -1,3 +1,4 @@
+import { customCssWriteError } from './custom-css-write';
 import { paths, slugify, escapeHtml, pageAuthorityFields, ensureBlockIds, contentPagePath, DEFAULT_CONTENT_TYPE, type Page, type Media } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { vstore } from './version-store';
@@ -49,6 +50,8 @@ export async function createPage(ctx: WcCtx, input: Partial<Page>, actor: WriteA
   if (path.path) page.path = path.path;
   else delete page.path;
   if (alternate.present) page.alternates = alternate.value ?? [];
+  const cssError = customCssWriteError(page.custom_css);
+  if (cssError) throw new WorkingCopyError(cssError, 400);
   const presentationError = await validatePagePresentation(ctx, type, page);
   if (presentationError) throw new WorkingCopyError(presentationError, 400);
   const pages = await vstore.pages(ctx.orgId, ctx.siteId, ctx.versionId);

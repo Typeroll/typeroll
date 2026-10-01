@@ -88,6 +88,30 @@ CSS reads. Other styles are classes (`s-<class>`). Write custom CSS against
 those classes instead of platform internals such as `[data-block]` or
 `.block-*`, which can change between render versions.
 
+## Site CSS and page CSS
+
+For what styles cannot express, there are two managed CSS fields:
+
+- **Site CSS** (Styles → Site CSS, admins) loads on every page after the
+  styles. Through MCP or the API it is `custom_css` in `update_site_settings`.
+- **Page CSS** (page editor → page settings → Page CSS) loads after the site
+  CSS on that page only, and saves with the page draft. Through MCP or the API
+  it is `custom_css` on `update_page`.
+
+Both editors check the CSS as you type and show line numbers:
+
+- **Errors** prevent saving: unbalanced braces, an unclosed comment or string,
+  declarations outside a rule, `expression()`, `javascript:` URLs and anything
+  that would end the stylesheet early. The API refuses the same writes.
+- **Warnings** allow saving: selectors on platform markup such as
+  `[data-block]` or `.block-…`, which can change between render versions, and
+  `@import`, which delays the page. The API returns them as `warnings`
+  (settings) or `css_warnings` (pages).
+
+The editors offer the site's style classes and the CSS classes set on the
+page's blocks as selectors to insert. Prefer them: `.s-eyebrow` or
+`.pricing-note` keeps working when platform markup changes.
+
 ## Through MCP and the API
 
 | Tool                    | REST                                          | Purpose                                          |

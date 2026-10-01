@@ -1,3 +1,4 @@
+import { customCssWarnings } from '../../../../../../lib/custom-css-write';
 import { validateAnswerSources } from '../../../../../../lib/answer-source-input';
 import { pageAddress } from '../../../../../../lib/page-fields';
 // /api/v1/sites/{siteId}/pages/{pageId}
@@ -153,7 +154,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.
     const warnings = blockTreeWarnings(body.blocks);
-    return apiResponse(ctx, warnings.length ? { ...payload, warnings } : payload, 200, body);
+    const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
+    return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
   } catch (e) {
     if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
     throw e;
@@ -195,7 +197,8 @@ export const PUT: APIRoute = async ({ request, params }) => {
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.
     const warnings = blockTreeWarnings(body.blocks);
-    return apiResponse(ctx, warnings.length ? { ...payload, warnings } : payload, 200, body);
+    const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
+    return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
   } catch (e) {
     if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
     throw e;

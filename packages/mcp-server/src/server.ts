@@ -146,7 +146,9 @@ The full playbook ships with this server — use it:
 6. Appearance lives in named styles: list_styles before styling, reuse a
    style through a block's style_id, and create_style for any look that could
    recur. Use one-off block values only for something clearly unique, never
-   classed raw HTML. Text must meet WCAG AA contrast.
+   classed raw HTML. Text must meet WCAG AA contrast. A heading's small label
+   is its eyebrow field. For what styles cannot express, use page or site
+   custom_css on s-<style> or block custom_class selectors, not [data-block].
 7. No site yet? With an org-scoped key, create_site bootstraps one.
 
 If anything here conflicts with what a tool returns, trust the tool. Every

@@ -318,7 +318,7 @@ const domainBlocksArchiving =
       </div>
       <div class="field">
         <label>Custom CSS</label>
-        <textarea name="custom_css" rows="4" style="font-family: var(--font-mono);">{settings.custom_css ?? ''}</textarea>
+        <p class="muted">Site CSS is edited with syntax checks under <a href={`/app/sites/${site.id}/styles#site-css-title`}>Styles → Site CSS</a>.</p>
       </div>
       <div class="field">
         <label>robots.txt (leave blank for default)</label>
