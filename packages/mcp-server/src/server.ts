@@ -79,7 +79,6 @@ function effectFor(name: string): ToolEffect {
     || name === 'install_extension'
     || name === 'set_extension_installation_status'
     || name === 'uninstall_extension'
-    || name === 'rotate_extension_credential'
     || name === 'pair_extension_issuer'
     || name === 'read_extension_diagnostics'
     // Branch lifecycle on main is site administration in the portal too.
@@ -88,21 +87,17 @@ function effectFor(name: string): ToolEffect {
     || name === 'delete_branch'
     || name === 'reset_version'
     // Developer-organization administration (org admin in the portal).
-    || name === 'create_developer_extension'
     || name === 'update_developer_extension'
     || name === 'save_extension_version'
     || name === 'publish_extension_version'
     || name === 'set_extension_version_lifecycle'
-    || name === 'rotate_extension_client_secret'
     // Access and credential management: API keys, sharing, membership invites
     // and organization publishing connections need admin, as in the portal.
-    || name === 'create_api_key'
     || name === 'revoke_api_key'
     || name === 'list_site_shares'
     || name === 'share_site'
     || name === 'update_site_share'
     || name === 'revoke_site_share'
-    || name === 'create_organization_api_key'
     || name === 'revoke_organization_api_key'
     || name === 'create_organization_invite'
     || name === 'disconnect_organization_publishing_provider'

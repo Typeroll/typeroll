@@ -40,18 +40,15 @@ const cases: Array<[string, Record<string, unknown>, string, string, unknown?]> 
   ['install_extension', { extension_id: 'se.vendor.quotes', version: '1.0.0', granted_scopes: ['content:read'] }, 'POST', '/api/v1/sites/site/extensions', { extension_id: 'se.vendor.quotes', version: '1.0.0', granted_scopes: ['content:read'] }],
   ['set_extension_installation_status', { installation_id: 'inst/1', status: 'disabled' }, 'PATCH', '/api/v1/sites/site/extensions/inst%2F1', { status: 'disabled' }],
   ['uninstall_extension', { installation_id: 'inst-1' }, 'DELETE', '/api/v1/sites/site/extensions/inst-1'],
-  ['rotate_extension_credential', { installation_id: 'inst-1', grace_seconds: 60 }, 'POST', '/api/v1/sites/site/extensions/inst-1/rotate-credential', { grace_seconds: 60 }],
   ['pair_extension_issuer', { installation_id: 'inst-1' }, 'POST', '/api/v1/sites/site/extensions/inst-1/pair'],
   ['read_extension_diagnostics', { installation_id: 'inst-1' }, 'GET', '/api/v1/sites/site/extensions/inst-1/diagnostics'],
   ['launch_extension_admin_page', { installation_id: 'inst-1', page_id: 'quotes' }, 'POST', '/api/v1/sites/site/extensions/inst-1/launch', { page_id: 'quotes' }],
   ['list_developer_extensions', {}, 'GET', '/api/developer/extensions'],
   ['read_developer_extension', { extension_id: 'se.vendor.quotes' }, 'GET', '/api/developer/extensions/se.vendor.quotes'],
-  ['create_developer_extension', { id: 'se.vendor.quotes', name: 'Quotes' }, 'POST', '/api/developer/extensions', { id: 'se.vendor.quotes', name: 'Quotes' }],
   ['update_developer_extension', { extension_id: 'se.vendor.quotes', status: 'suspended' }, 'PATCH', '/api/developer/extensions/se.vendor.quotes', { status: 'suspended' }],
   ['save_extension_version', { extension_id: 'se.vendor.quotes', manifest: { id: 'se.vendor.quotes' } }, 'POST', '/api/developer/extensions/se.vendor.quotes/versions', { manifest: { id: 'se.vendor.quotes' } }],
   ['publish_extension_version', { extension_id: 'se.vendor.quotes', version: '1.0.0' }, 'POST', '/api/developer/extensions/se.vendor.quotes/versions/1.0.0/publish'],
   ['set_extension_version_lifecycle', { extension_id: 'se.vendor.quotes', version: '1.0.0', status: 'revoked', reason: 'Broken' }, 'PATCH', '/api/developer/extensions/se.vendor.quotes/versions/1.0.0', { status: 'revoked', reason: 'Broken' }],
-  ['rotate_extension_client_secret', { extension_id: 'se.vendor.quotes' }, 'POST', '/api/developer/extensions/se.vendor.quotes/credentials/rotate'],
   ['list_developer_extension_installations', { extension_id: 'se.vendor.quotes', owner_org_id: 'customer', site_id: 'shop' }, 'GET', '/api/developer/extensions/se.vendor.quotes/installations?owner_org_id=customer&site_id=shop'],
 ];
 
@@ -75,8 +72,8 @@ describe('branch, revision and Extension tools', () => {
     for (const name of ['restore_partial_revision', 'launch_extension_admin_page']) expect(await effect(name)).toBe('write');
     for (const name of [
       'create_branch', 'reset_version', 'merge_branch', 'delete_branch', 'install_extension', 'set_extension_installation_status',
-      'uninstall_extension', 'rotate_extension_credential', 'pair_extension_issuer', 'read_extension_diagnostics',
-      'publish_extension_version', 'rotate_extension_client_secret',
+      'uninstall_extension', 'pair_extension_issuer', 'read_extension_diagnostics',
+      'publish_extension_version',
     ]) expect(await effect(name)).toBe('admin');
   });
 

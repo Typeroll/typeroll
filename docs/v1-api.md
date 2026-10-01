@@ -77,7 +77,7 @@ All site routes below start with `/sites/{siteId}`.
 | Search and bulk | `GET /search`, `POST /bulk-replace`, `GET /internal-links` |
 | Migration | preflight, URL inventory routes, imports and deployed parity verification described below |
 | Insights | site insights and first-party Analytics event reporting |
-| API keys | `GET/POST /api-keys`, `DELETE /api-keys/{keyId}` (site keys; create/revoke need site admin) |
+| API keys | `GET /api-keys`, `DELETE /api-keys/{keyId}` (site keys; revoking needs site admin; keys are created in the portal) |
 | Sharing | `GET/POST /shares`, `PATCH/DELETE /shares/{shareId}` (site admin) |
 | Workflows | `GET/POST /workflows`, `GET /workflows/{workflowId}`, `POST /workflows/{workflowId}/approve` |
 
@@ -86,7 +86,7 @@ Organization routes need an organization-scoped key; a site-scoped key gets
 
 | Resource | Routes |
 |---|---|
-| Organization API keys | `GET/POST /organization/api-keys`, `DELETE /organization/api-keys/{keyId}` |
+| Organization API keys | `GET /organization/api-keys`, `DELETE /organization/api-keys/{keyId}` (keys are created in the portal) |
 | Invites | `POST /organization/invites` |
 | Publishing connections | `GET /publishing/connections`, `POST /publishing/connections/cloudflare`, `DELETE /publishing/connections/{provider}` |
 | Publishing builds, domains, Hosting Groups, media migration | `/publishing/builds`, `/publishing/domains`, `/publishing/zones`, `/publishing/hosting-groups`, `/publishing/media-migration`, `/publishing/github-permissions` |
@@ -138,7 +138,7 @@ installation credentials. Actors are recorded as `api:{keyPrefix}`.
 | Enable or disable | `PATCH /{installationId}` | `{ "status": "enabled" \| "disabled" }` |
 | Uninstall | `DELETE /{installationId}` | Revokes the installation and its credentials; page instances remain as placeholders. Returns `redeploy_required: true`. |
 | Diagnostics | `GET /{installationId}/diagnostics` | Status, health, release resolution, credential metadata (no secrets), latest audit events and event deliveries. |
-| Rotate server credential | `POST /{installationId}/rotate-credential` | `{ grace_seconds? }` (default 300). Returns the new `credential` once, with `Cache-Control: no-store`. |
+| Rotate server credential | `POST /{installationId}/rotate-credential` | Refused with `403`: credentials are rotated in the portal, so a new secret never passes through an agent. |
 | Pair issuer | `POST /{installationId}/pair` | Contacts the manifest's `auth.pairing_url`; `409` when none is declared. |
 | Launch admin page | `POST /{installationId}/launch` | `{ page_id }`. Returns a single-use launch `code`, `launch_url` and the `form` fields to POST there before `expires_at`. The page's `minimum_permission` applies; the provider sees `api-key:{prefix}`. |
 
@@ -150,10 +150,13 @@ is its API equivalent.
 The developer side (register Extensions, save and publish releases, set
 release lifecycle, rotate the OAuth client secret, list installation metadata)
 is the bearer-authenticated `/api/developer/extensions/**` API used by the
-`typeroll extension` CLI. It requires an organization-scoped key and is exposed
-in MCP as the `*_developer_extension*`, `save_extension_version`,
-`publish_extension_version`, `set_extension_version_lifecycle` and
-`rotate_extension_client_secret` tools.
+`typeroll extension` CLI. It requires an organization-scoped key. MCP exposes
+the parts that return no secret (`list_developer_extensions`,
+`read_developer_extension`, `update_developer_extension`,
+`save_extension_version`, `publish_extension_version`,
+`set_extension_version_lifecycle`, `list_developer_extension_installations`);
+registering an Extension and rotating its client secret stay in the portal and
+the CLI.
 
 ## Branch review and reset
 
@@ -476,14 +479,13 @@ default to stable IDs. See the public Content types guide for editor steps.
 
 ## Organization administration and workflows
 
-These routes apply the portal's permission checks, and a key never creates a
-key or share that reaches further than itself.
+These routes apply the portal's permission checks, and a share never reaches
+further than the caller. Nothing here returns a new secret.
 
-- **API keys.** Create bodies are `{ "name": "…" }` (1–80 characters) and return
-  `201 { key, token }`. The token is returned once only. Lists return metadata,
-  never hashes. A site key manages keys for its own site only and cannot reach
-  `/organization/api-keys`. Keys created through the API record `created_by` as
-  `api-key:{prefix}`.
+- **API keys.** `GET` lists metadata, never hashes, and `DELETE …/{prefix}`
+  revokes. `POST` is refused with `403`: keys are created only in the portal, so
+  a new secret never passes through an agent conversation or log. A site key
+  manages keys for its own site only and cannot reach `/organization/api-keys`.
 - **Sharing.** `POST /shares` takes `org_id` or `org_slug`, `permission`
   (`read`, `write` default, `admin`) and `label`; one active share per
   Organization (`409` otherwise). All share routes need site admin.

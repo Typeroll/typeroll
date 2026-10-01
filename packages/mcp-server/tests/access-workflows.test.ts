@@ -37,7 +37,6 @@ describe('site access tools', () => {
     try {
       for (const [name, args] of [
         ['list_api_keys', {}],
-        ['create_api_key', { name: 'CI' }],
         ['revoke_api_key', { key_id: 'abcdefabcdef' }],
         ['list_site_shares', {}],
         ['share_site', { org_slug: 'client', permission: 'read' }],
@@ -48,23 +47,21 @@ describe('site access tools', () => {
       }
       expect(s.calls.map(c => `${c.method} ${c.url.replace('https://example.test/api/v1/', '')}`)).toEqual([
         'GET sites/site/api-keys',
-        'POST sites/site/api-keys',
         'DELETE sites/site/api-keys/abcdefabcdef',
         'GET sites/site/shares',
         'POST sites/site/shares',
         'PATCH sites/site/shares/share-1',
         'DELETE sites/site/shares/share-1',
       ]);
-      expect(s.calls[1]!.body).toEqual({ name: 'CI' });
-      expect(s.calls[5]!.body).toEqual({ permission: 'write' });
+      expect(s.calls[4]!.body).toEqual({ permission: 'write' });
     } finally { await s.close(); }
   });
 
   it('refuses key and sharing management on a write-only share before any request', async () => {
     const s = await session([{ siteId: 'site', permission: 'write' }]);
     try {
-      for (const name of ['create_api_key', 'revoke_api_key', 'list_site_shares', 'share_site', 'revoke_site_share']) {
-        const args = name === 'create_api_key' ? { name: 'x' } : name === 'revoke_api_key' ? { key_id: 'abcdefabcdef' } : name === 'revoke_site_share' ? { share_id: 's' } : { org_id: 'o' };
+      for (const name of ['revoke_api_key', 'list_site_shares', 'share_site', 'revoke_site_share']) {
+        const args = name === 'revoke_api_key' ? { key_id: 'abcdefabcdef' } : name === 'revoke_site_share' ? { share_id: 's' } : { org_id: 'o' };
         const result = await s.call(name, { ...args, site_id: 'site' });
         expect(result.isError, name).toBe(true);
         expect(JSON.stringify(result.content)).toContain('requires admin permission');
@@ -75,12 +72,23 @@ describe('site access tools', () => {
   });
 });
 
+describe('new secrets', () => {
+  it('are never minted through MCP, so they stay out of agent conversations', async () => {
+    const s = await session();
+    try {
+      const { tools } = await s.client.listTools();
+      for (const name of ['create_api_key', 'create_organization_api_key', 'rotate_extension_credential', 'create_developer_extension', 'rotate_extension_client_secret'])
+        expect(tools.find(t => t.name === name), name).toBeUndefined();
+    } finally { await s.close(); }
+  });
+});
+
 describe('organization access tools', () => {
   it('manage organization keys and invites without a site', async () => {
     const s = await session();
     try {
       const { tools } = await s.client.listTools();
-      for (const name of ['list_organization_api_keys', 'create_organization_api_key', 'revoke_organization_api_key', 'create_organization_invite',
+      for (const name of ['list_organization_api_keys', 'revoke_organization_api_key', 'create_organization_invite',
         'create_site_and_migrate', 'create_site_and_plan', 'read_organization_publishing_connections',
         'disconnect_organization_publishing_provider', 'connect_organization_cloudflare', 'prepare_organization_media_storage', 'save_organization_media_access']) {
         const tool = tools.find(t => t.name === name);
@@ -88,20 +96,19 @@ describe('organization access tools', () => {
         expect(tool!.inputSchema.properties ?? {}, name).not.toHaveProperty('site_id');
       }
       await s.call('list_organization_api_keys');
-      await s.call('create_organization_api_key', { name: 'Hosted connector' });
       await s.call('revoke_organization_api_key', { key_id: 'abcdefabcdef' });
       await s.call('create_organization_invite', { ttl_days: 14 });
       expect(s.calls.map(c => `${c.method} ${c.url.replace('https://example.test/api/v1/', '')}`)).toEqual([
-        'GET organization/api-keys', 'POST organization/api-keys', 'DELETE organization/api-keys/abcdefabcdef', 'POST organization/invites',
+        'GET organization/api-keys', 'DELETE organization/api-keys/abcdefabcdef', 'POST organization/invites',
       ]);
-      expect(s.calls[3]!.body).toEqual({ ttl_days: 14 });
+      expect(s.calls[2]!.body).toEqual({ ttl_days: 14 });
     } finally { await s.close(); }
   });
 
   it('surfaces the 403 a site-scoped key receives', async () => {
     const s = await session([], 403);
     try {
-      const result = await s.call('create_organization_api_key', { name: 'x' });
+      const result = await s.call('list_organization_api_keys');
       expect(result.isError).toBe(true);
       expect(JSON.stringify(result.content)).toContain('403');
     } finally { await s.close(); }

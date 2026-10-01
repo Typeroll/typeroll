@@ -144,19 +144,18 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   `install_extension` (grant only the scopes the user approved),
   `set_extension_installation_status` (enable/disable), `uninstall_extension`
   (revokes the installation and its credentials; page blocks become
-  placeholders), `rotate_extension_credential` (returns the new `tri_…` server
-  credential once — hand it over, never write it into content),
-  `pair_extension_issuer`, `read_extension_diagnostics`, and
+  placeholders), `pair_extension_issuer`, `read_extension_diagnostics`, and
   `launch_extension_admin_page` (a single-use launch grant whose `form` fields
   a browser tool POSTs to `launch_url`; for approved native pages use
-  `call_extension_admin`). None of them deploys.
+  `call_extension_admin`). None of them deploys. Server credentials are
+  rotated in the portal, never through MCP, so they stay out of conversations.
 - **Extension development.** With an organization-scoped key,
   `list_developer_extensions`, `read_developer_extension`,
-  `create_developer_extension`, `update_developer_extension`,
-  `save_extension_version`, `publish_extension_version`,
-  `set_extension_version_lifecycle`, `rotate_extension_client_secret` and
+  `update_developer_extension`, `save_extension_version`,
+  `publish_extension_version`, `set_extension_version_lifecycle` and
   `list_developer_extension_installations` drive the same developer API as the
-  `typeroll extension` CLI. Client secrets are returned once. Publishing a
+  `typeroll extension` CLI. Registering an Extension and rotating its client
+  secret return a secret, so they stay in the portal and the CLI. Publishing a
   release reaches every compatible installation, so get explicit approval.
 
 - **Page templates.** A `PageTemplate` is a Block[] tree that wraps a
@@ -963,12 +962,12 @@ is created).
 
 ### "Give someone access" (keys, sharing, invites)
 
-- **API keys:** `list_api_keys` / `create_api_key` / `revoke_api_key` for this
-  site (create/revoke need site admin); `list_organization_api_keys` /
-  `create_organization_api_key` / `revoke_organization_api_key` with an
-  organization key. A new token is returned once: hand it to the user or the
-  secret store they name, never into site content, a repository or logs. A site
-  key can never mint an organization key.
+- **API keys:** `list_api_keys` / `revoke_api_key` for this site (revoking
+  needs site admin); `list_organization_api_keys` /
+  `revoke_organization_api_key` with an organization key. New keys are created
+  only in the portal (Site or Organization settings → API keys), so the secret
+  is shown once to the person and never passes through your conversation. When
+  someone needs a key, tell them where to create it.
 - **Another Organization:** `share_site` (`org_id` or `org_slug`, permission
   `read` | `write` | `admin`), `update_site_share`, `revoke_site_share`,
   `list_site_shares`. Site admin. Confirm the recipient first: a share gives
@@ -1138,7 +1137,7 @@ preview.
 | **Discovery** | `get_site`, `create_site`, `create_site_and_migrate`, `create_site_and_plan` (org-scoped key only — see below), `update_site` (incl. `ai_scripts_enabled`, admin), `list_versions`, `read_site_settings` |
 | **Site lifecycle** | `archive_site`, `restore_site`, `purge_site_media` (archived sites only, irreversible). Owner-organization admin, as in the portal. |
 | **Workflows** | `list_workflows`, `start_workflow` (write; `rebuild_deploy` admin), `get_workflow`, `approve_workflow` (only `paused_for_review`, with the user's consent) |
-| **Access** | `list_api_keys`, `create_api_key`, `revoke_api_key` (site admin), `list_organization_api_keys`, `create_organization_api_key`, `revoke_organization_api_key` (organization key), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite` (organization key) |
+| **Access** | `list_api_keys`, `revoke_api_key` (site admin), `list_organization_api_keys`, `revoke_organization_api_key` (organization key; new keys are created only in the portal), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite` (organization key) |
 | **Organization publishing** | `read_organization_publishing_connections`, `disconnect_organization_publishing_provider`, `connect_organization_cloudflare`, `prepare_organization_media_storage`, `save_organization_media_access`, plus builds, Hosting Groups, domains and media migration tools (organization key) |
 | **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics; conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |
 | **Pages — reads** | `list_pages`, `read_page`, `batch_read_pages` |

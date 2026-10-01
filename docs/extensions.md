@@ -61,16 +61,17 @@ then trigger one deploy after the final update.
 
 Every other installation action in the portal is also available to a site
 administrator API key and MCP: install, enable/disable, uninstall,
-diagnostics, credential rotation, issuer pairing and admin-page launch grants
+diagnostics, issuer pairing and admin-page launch grants
 (`install_extension`, `set_extension_installation_status`,
-`uninstall_extension`, `read_extension_diagnostics`,
-`rotate_extension_credential`, `pair_extension_issuer`,
-`launch_extension_admin_page`). The developer API the CLI uses is exposed as
+`uninstall_extension`, `read_extension_diagnostics`, `pair_extension_issuer`,
+`launch_extension_admin_page`). Actions that show a new secret (rotating the
+server credential) stay in the portal. The developer API the CLI uses is exposed as
 MCP tools for organization-scoped keys (`list_developer_extensions`,
-`read_developer_extension`, `create_developer_extension`,
-`update_developer_extension`, `save_extension_version`,
-`publish_extension_version`, `set_extension_version_lifecycle`,
-`rotate_extension_client_secret`, `list_developer_extension_installations`).
+`read_developer_extension`, `update_developer_extension`,
+`save_extension_version`, `publish_extension_version`,
+`set_extension_version_lifecycle`, `list_developer_extension_installations`);
+registering an Extension and rotating its client secret stay in the portal and
+the CLI.
 Routes are listed in [`v1-api.md`](./v1-api.md#extension-installation-lifecycle).
 
 ## Frontend contract

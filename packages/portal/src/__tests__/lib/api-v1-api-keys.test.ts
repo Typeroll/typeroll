@@ -1,8 +1,8 @@
 // Public-API management of API keys:
 //   /api/v1/sites/{siteId}/api-keys[/{prefix}]   — site-scoped keys
 //   /api/v1/organization/api-keys[/{prefix}]     — org-scoped keys
-// Same rules as the settings UI, and a key can never mint a key that reaches
-// further than it does.
+// Listing and revoking follow the settings UI; creating a key happens only in
+// the portal, so a new secret never passes through an agent.
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { APIRoute } from 'astro';
@@ -51,77 +51,66 @@ async function call(route: string, method: Method, token: string | null, params:
 }
 
 describe('site-scoped key management', () => {
-  it('lets a site key list, create and revoke keys for its own site only', async () => {
+  it('never mints a key through the API, so no secret reaches an agent conversation', async () => {
     const token = await key(ORG, SITE);
-    const created = await call('site', 'POST', token, { siteId: SITE }, { name: 'CI deploy' });
-    expect(created.status).toBe(201);
-    expect(created.json.token).toMatch(/^typeroll_live_[a-f0-9]{12}_[a-f0-9]{48}$/);
-    expect(created.json.key.created_by).toMatch(/^api-key:[a-f0-9]{12}$/);
-    expect(created.headers.get('cache-control')).toBe('no-store');
+    const refused = await call('site', 'POST', token, { siteId: SITE }, { name: 'CI deploy' });
+    expect(refused.status).toBe(403);
+    expect(refused.json.error).toContain('created in the portal');
+    expect(JSON.stringify(refused.json)).not.toContain('typeroll_live_');
+    const org = await call('org', 'POST', await key(ORG, null), {}, { name: 'Hosted connector' });
+    expect(org.status).toBe(403);
+    expect((await call('site', 'POST', null, { siteId: SITE }, { name: 'x' })).status).toBe(401);
+    const { listApiKeys } = await import('../../lib/api-keys');
+    expect((await listApiKeys(ORG, SITE)).map(k => k.name)).toEqual(['seed']);
+  });
 
-    const { verifyApiToken } = await import('../../lib/api-keys');
-    expect(await verifyApiToken(created.json.token)).toMatchObject({ orgId: ORG, siteId: SITE });
-
+  it('lets a site key list and revoke keys for its own site only', async () => {
+    const token = await key(ORG, SITE);
+    const other = await key(ORG, SITE);
     const listed = await call('site', 'GET', token, { siteId: SITE });
     expect(listed.status).toBe(200);
-    expect(listed.json.keys.map((k: { name: string }) => k.name).sort()).toEqual(['CI deploy', 'seed']);
+    expect(listed.json.keys).toHaveLength(2);
     expect(JSON.stringify(listed.json)).not.toContain('key_hash');
 
-    const revoked = await call('site-key', 'DELETE', token, { siteId: SITE, prefix: created.json.key.id });
-    expect(revoked.status).toBe(200);
-    expect(await verifyApiToken(created.json.token)).toBeNull();
+    const prefix = other.split('_')[2]!;
+    expect((await call('site-key', 'DELETE', token, { siteId: SITE, prefix })).status).toBe(200);
+    const { verifyApiToken } = await import('../../lib/api-keys');
+    expect(await verifyApiToken(other)).toBeNull();
 
     // Another site of the same organization is out of reach.
-    expect((await call('site', 'POST', token, { siteId: SECOND }, { name: 'x' })).status).toBe(401);
     expect((await call('site', 'GET', token, { siteId: SECOND })).status).toBe(401);
   });
 
   it('refuses organization key management with a site key', async () => {
     const token = await key(ORG, SITE);
     expect((await call('org', 'GET', token, {})).status).toBe(403);
-    const created = await call('org', 'POST', token, {}, { name: 'escalate' });
-    expect(created.status).toBe(403);
-    const { listApiKeys } = await import('../../lib/api-keys');
-    expect(await listApiKeys(ORG, null)).toEqual([]);
   });
 
-  it('requires admin on a shared-in site and creates the key in the owning organization', async () => {
+  it('requires admin on a shared-in site to revoke', async () => {
     await share(SITE, 'write');
     const partner = await key(OTHER, null);
+    const target = await key(ORG, SITE);
+    const prefix = target.split('_')[2]!;
     expect((await call('site', 'GET', partner, { siteId: SITE })).status).toBe(200);
-    expect((await call('site', 'POST', partner, { siteId: SITE }, { name: 'nope' })).status).toBe(403);
-
-    const { getStore } = await import('../../lib/datastore');
-    await getStore().updateDoc(paths.share(ORG, SITE, 'share-write'), { permission: 'admin' });
-    await getStore().updateDoc(paths.sharesWithOrgEntry(OTHER, 'share-write'), { permission: 'admin' });
-    const created = await call('site', 'POST', partner, { siteId: SITE }, { name: 'partner key' });
-    expect(created.status).toBe(201);
-    const { verifyApiToken } = await import('../../lib/api-keys');
-    expect(await verifyApiToken(created.json.token)).toMatchObject({ orgId: ORG, siteId: SITE });
+    expect((await call('site-key', 'DELETE', partner, { siteId: SITE, prefix })).status).toBe(403);
   });
 
-  it('validates names and unknown keys', async () => {
+  it('validates unknown keys', async () => {
     const token = await key(ORG, SITE);
-    expect((await call('site', 'POST', token, { siteId: SITE }, { name: '' })).status).toBe(400);
-    expect((await call('site', 'POST', token, { siteId: SITE }, { name: 'x'.repeat(81) })).status).toBe(400);
     expect((await call('site-key', 'DELETE', token, { siteId: SITE, prefix: '../../x' })).status).toBe(404);
     expect((await call('site-key', 'DELETE', token, { siteId: SITE, prefix: 'abcdefabcdef' })).status).toBe(404);
   });
 });
 
 describe('organization key management', () => {
-  it('lets an organization key list, create and revoke organization keys', async () => {
+  it('lets an organization key list and revoke organization keys', async () => {
     const token = await key(ORG, null);
-    const created = await call('org', 'POST', token, {}, { name: 'Hosted connector' });
-    expect(created.status).toBe(201);
-    const { verifyApiToken } = await import('../../lib/api-keys');
-    expect(await verifyApiToken(created.json.token)).toMatchObject({ orgId: ORG, siteId: null });
-
+    const other = await key(ORG, null);
     const listed = await call('org', 'GET', token, {});
-    expect(listed.json.keys.map((k: { name: string }) => k.name).sort()).toEqual(['Hosted connector', 'seed']);
-
-    expect((await call('org-key', 'DELETE', token, { prefix: created.json.key.id })).status).toBe(200);
-    expect(await verifyApiToken(created.json.token)).toBeNull();
+    expect(listed.json.keys).toHaveLength(2);
+    expect((await call('org-key', 'DELETE', token, { prefix: other.split('_')[2]! })).status).toBe(200);
+    const { verifyApiToken } = await import('../../lib/api-keys');
+    expect(await verifyApiToken(other)).toBeNull();
   });
 
   it('cannot revoke a site key through the organization route', async () => {

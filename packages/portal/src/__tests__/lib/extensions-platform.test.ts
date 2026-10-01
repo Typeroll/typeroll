@@ -1110,7 +1110,7 @@ describe('Extension installation lifecycle over the public API', () => {
     });
   }
 
-  it('reads diagnostics, rotates credentials, launches admin pages, disables and uninstalls with admin keys only', async () => {
+  it('reads diagnostics, launches admin pages, disables and uninstalls with admin keys only, never rotates credentials', async () => {
     const { installation } = await registeredInstallation();
     const { admin, writer } = await apiKeys();
     const route = '../../pages/api/v1/sites/[siteId]/extensions/[installationId]';
@@ -1125,11 +1125,11 @@ describe('Extension installation lifecycle over the public API', () => {
     expect(diagnostics.status).toBe(200);
     expect(await diagnostics.json()).toMatchObject({ status: 'enabled', current_version: '1.0.0' });
 
+    // A new credential is issued only in the portal, never to an API caller.
     const rotated = await call(`${route}/rotate-credential`, 'POST', installation.id, admin, '/rotate-credential', { grace_seconds: 0 });
-    expect(rotated.status).toBe(200);
-    expect(rotated.headers.get('cache-control')).toContain('no-store');
-    const { credential } = await rotated.json() as { credential: string };
-    await expect(authenticateInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, credential })).resolves.toBeTruthy();
+    expect(rotated.status).toBe(403);
+    expect(JSON.stringify(await rotated.json())).toContain('rotated in the portal');
+    const { credential } = await rotateInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, actorId: 'admin', graceSeconds: 0 });
     const listed = await (await call(`${route}/diagnostics`, 'GET', installation.id, admin, '/diagnostics')).json() as { credentials: Array<Record<string, unknown>> };
     expect(listed.credentials.length).toBeGreaterThan(0);
     expect(JSON.stringify(listed.credentials)).not.toContain('secret_hash');

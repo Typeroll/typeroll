@@ -16,9 +16,10 @@ Everything the portal can do is now available through the authenticated API and 
 - Branches, history and Extensions:
   - `diff_version` and `reset_version`. Creating, merging, deleting and resetting branches needs admin, as in the portal.
   - Partial (header, footer, global block) revisions: list, read, restore. `preview_page_revision` renders an earlier saved state.
-  - Install, enable or disable, uninstall, rotate credentials, pair, diagnose and launch Extensions; Extension developer tools for organization keys.
+  - Install, enable or disable, uninstall, pair, diagnose and launch Extensions; Extension developer tools for organization keys.
 - Organization administration and workflows:
-  - Site and organization API keys, site sharing and invites (`list_api_keys`, `create_api_key`, `share_site`, `create_organization_invite`, …). A key never creates a key or share that reaches further than itself.
+  - List and revoke site and organization API keys, share a site and create invites (`list_api_keys`, `revoke_api_key`, `share_site`, `create_organization_invite`, …). A share never reaches further than the caller.
+  - New secrets stay in the portal: creating API keys, rotating Extension server credentials and registering an Extension or rotating its client secret are not available through the API or MCP, so a secret never lands in an agent conversation or log.
   - Workflows: start, read and approve (`start_workflow`, `get_workflow`, `approve_workflow`), and `create_site_and_migrate` / `create_site_and_plan`. Rebuild & deploy needs admin; workflow reads no longer expose the WordPress helper key.
   - Organization publishing connections: status, Cloudflare token connect, media storage, disconnect.
 - Global blocks:

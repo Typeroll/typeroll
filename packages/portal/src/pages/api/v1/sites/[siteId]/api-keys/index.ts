@@ -1,16 +1,12 @@
 // GET  /api/v1/sites/{siteId}/api-keys — list the site's API keys (metadata only).
-// POST /api/v1/sites/{siteId}/api-keys — create a site-scoped key; the token is
-//                                        returned once and never again.
+// POST /api/v1/sites/{siteId}/api-keys — refused: keys are created in the portal.
 //
-// Same rules as the settings UI (/api/sites/{siteId}/api-keys): any caller that
-// reaches the site may list, creating needs admin on the site. A site-scoped
-// key reaches only its own site, so it can mint keys for that site and no
-// other. The new key is bound to the same single site, so no caller can mint
-// a key that reaches further than it already does.
+// Any caller that reaches the site may list, as in the settings UI. Revoke
+// with DELETE /api/v1/sites/{siteId}/api-keys/{prefix}.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
-import { apiKeySummary, createApiKey, createdApiKeyResponse, listApiKeys, parseApiKeyName } from '../../../../../../lib/api-keys';
+import { CREATE_KEY_IN_PORTAL, apiKeySummary, listApiKeys } from '../../../../../../lib/api-keys';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -20,24 +16,11 @@ export const GET: APIRoute = async ({ request, params }) => {
   return apiResponse(ctx, { keys: keys.map(apiKeySummary) });
 };
 
+// New secrets are shown only in the portal, so they never land in an agent's
+// conversation or a tool log. Listing and revoking stay available here.
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  if (ctx.permission !== 'admin') return apiError('Managing API keys requires admin permission on the site.', 403, ctx);
-
-  let body: unknown;
-  try { body = await request.json(); } catch { return apiError('Invalid JSON body. Expected { name }.', 400, ctx); }
-  const parsed = parseApiKeyName(body);
-  if ('error' in parsed) return apiError(parsed.error, 400, ctx);
-
-  const result = await createApiKey({
-    orgId: ctx.orgId,
-    siteId: ctx.siteId,
-    name: parsed.name,
-    createdBy: `api-key:${ctx.keyPrefix}`,
-  });
-  const response = apiResponse(ctx, createdApiKeyResponse(result), 201, { name: parsed.name });
-  response.headers.set('Cache-Control', 'no-store');
-  return response;
+  return apiError(CREATE_KEY_IN_PORTAL, 403, ctx);
 };

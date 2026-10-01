@@ -7,7 +7,6 @@ import { z } from 'zod';
 import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 const keyId = z.string().regex(/^[a-f0-9]{12}$/).describe('Key id (the 12-hex prefix) from list_api_keys / list_organization_api_keys.');
-const ONCE = 'The response contains the full token exactly once; it cannot be read again. Hand it to the user or the secret store they name, never into site content, files in a repository or logs.';
 
 export const accessTools: ToolDef[] = [
   {
@@ -15,12 +14,6 @@ export const accessTools: ToolDef[] = [
     description: 'List this Site\'s site-scoped API keys: id (prefix), name, created_at/created_by, last_used_at/last_used_ip and revoked_at. Never returns secrets or hashes. Any key that reaches the Site may list, as in Site settings → API keys.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'api-keys'))),
-  },
-  {
-    name: 'create_api_key',
-    description: `Create a site-scoped API key for this Site (admin permission on the Site). The new key reaches only this Site, so no caller can widen its own reach this way; a site-scoped key can create keys for its own Site only. ${ONCE}`,
-    inputSchema: { name: z.string().min(1).max(80).describe('Human label, e.g. "CI deploys". Max 80 characters.') },
-    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'api-keys', { name: args.name }))),
   },
   {
     name: 'revoke_api_key',
@@ -67,13 +60,6 @@ export const accessTools: ToolDef[] = [
     description: 'List the Organization\'s organization-scoped API keys (metadata only, never secrets). Requires an organization API key; site-scoped keys get 403. Site-scoped keys are listed per Site with list_api_keys.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('organization/api-keys'))),
-  },
-  {
-    name: 'create_organization_api_key',
-    noSite: true,
-    description: `Create an organization-scoped API key: admin on every Site the Organization owns plus its shared-in Sites at their share permission. Requires an organization API key — a site-scoped key can never mint one. ${ONCE}`,
-    inputSchema: { name: z.string().min(1).max(80).describe('Human label, e.g. "Hosted connector". Max 80 characters.') },
-    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('organization/api-keys', { name: args.name }))),
   },
   {
     name: 'revoke_organization_api_key',

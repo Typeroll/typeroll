@@ -19,23 +19,18 @@ site key gets `403`.
 | Action                     | MCP tool                      | API route below `/api/v1`                | Permission             |
 | -------------------------- | ----------------------------- | ---------------------------------------- | ---------------------- |
 | List a Site's keys         | `list_api_keys`               | `GET /sites/{site}/api-keys`             | Any access to the Site |
-| Create a site key          | `create_api_key`              | `POST /sites/{site}/api-keys`            | Admin on the Site      |
 | Revoke a site key          | `revoke_api_key`              | `DELETE /sites/{site}/api-keys/{key_id}` | Admin on the Site      |
 | List organization keys     | `list_organization_api_keys`  | `GET /organization/api-keys`             | Organization key       |
-| Create an organization key | `create_organization_api_key` | `POST /organization/api-keys`            | Organization key       |
 | Revoke an organization key | `revoke_organization_api_key` | `DELETE /organization/api-keys/{key_id}` | Organization key       |
 
-Creating a key takes `{ "name": "CI deploys" }` (at most 80 characters) and
-returns `201` with `key` metadata and `token`. As in **Settings → API keys**,
-the token is shown exactly once and cannot be read again; store it where the
-person asked for it. Lists return metadata only: id, name, creation, last use
-and revocation. Keys created through the API record `created_by` as
-`api-key:{prefix}` of the key that created them.
+New API keys are created only in the portal (**Site settings → API keys** or
+**Organization settings → API keys**), where the token is shown once to the
+person creating it. The API and MCP do not create keys, so a secret never lands
+in an agent's conversation, a tool log or a chat history; `POST` to these routes
+returns `403` saying where to create one. Lists return metadata only: id, name,
+creation, last use and revocation.
 
-A site key can create and revoke keys for its own Site only, and never an
-organization key. An organization key with admin permission on a shared-in Site
-can create a site key for that Site; the new key belongs to the owning
-Organization's Site and reaches nothing else. Revoking a key stops it
+A site key can revoke keys for its own Site only. Revoking a key stops it
 authenticating immediately, including the key making the call. Revoked keys
 stay listed for audit.
 

@@ -115,19 +115,6 @@ export const extensionTools: ToolDef[] = [
     }),
   },
   {
-    name: 'rotate_extension_credential',
-    description:
-      'Issue a new installation server credential (tri_…) for the provider backend. The plaintext `credential` is returned ONCE: hand it to the user or the provider\'s secret store, never write it into site content or a repository. Earlier credentials keep working for grace_seconds (default 300). Admin permission required.',
-    inputSchema: {
-      installation_id: z.string().min(1),
-      grace_seconds: z.number().int().min(0).optional(),
-    },
-    handler: withErrorBoundary(async (args, { client, siteId }) => {
-      const body = args.grace_seconds === undefined ? {} : { grace_seconds: args.grace_seconds };
-      return ok(await client.post(siteId, `extensions/${encodeURIComponent(args.installation_id)}/rotate-credential`, body));
-    }),
-  },
-  {
     name: 'pair_extension_issuer',
     description:
       'Pair this Typeroll instance\'s token issuer with the Extension provider (manifest auth.pairing_url), the portal\'s "secure connection" action. Contacts the provider. Returns the trusted issuer record. Admin permission required.',
@@ -177,19 +164,6 @@ export const developerExtensionTools: ToolDef[] = [
     handler: withErrorBoundary(async (args, { client }) => ok(await client.developer('GET', ext(args.extension_id)))),
   },
   {
-    name: 'create_developer_extension', noSite: true,
-    description: 'Register a new Extension for your organization. Returns the extension and its OAuth client_secret ONCE — give it to the user for the provider backend; never store it in site content. Requires an organization API key.',
-    inputSchema: {
-      id: z.string().min(1).describe('Reverse-DNS Extension id, matching manifest.id.'),
-      name: z.string().min(1),
-      distribution: z.enum(['private', 'unlisted', 'public']).optional(),
-      trusted_origins: z.array(z.string()).optional().describe('HTTPS origins the manifest may use for scripts, APIs and admin pages.'),
-      allowed_org_ids: z.array(z.string()).optional(),
-      allowed_site_ids: z.array(z.string()).optional(),
-    },
-    handler: withErrorBoundary(async (args, { client }) => ok(await client.developer('POST', 'extensions', args))),
-  },
-  {
     name: 'update_developer_extension', noSite: true,
     description: 'Update an Extension\'s name, status (active/suspended), distribution (only while every release is a draft), trusted origins or private allow-lists. Requires an organization API key.',
     inputSchema: {
@@ -234,12 +208,6 @@ export const developerExtensionTools: ToolDef[] = [
       const { extension_id, version, ...body } = args;
       return ok(await client.developer('PATCH', `${ext(extension_id)}/versions/${encodeURIComponent(version)}`, body));
     }),
-  },
-  {
-    name: 'rotate_extension_client_secret', noSite: true,
-    description: 'Rotate the Extension\'s OAuth client secret used to exchange admin launch codes. The new client_secret is returned ONCE and the old one stops working immediately: coordinate with the provider backend first. Requires an organization API key.',
-    inputSchema: { extension_id: z.string().min(1) },
-    handler: withErrorBoundary(async (args, { client }) => ok(await client.developer('POST', `${ext(args.extension_id)}/credentials/rotate`))),
   },
   {
     name: 'list_developer_extension_installations', noSite: true,

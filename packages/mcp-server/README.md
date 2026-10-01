@@ -53,11 +53,12 @@ under the hood.
   hand to a customer for a self-managed site.
 
 Both look like `typeroll_live_…`; revoke either from the portal and any
-client using it stops working immediately. Keys can also be listed, created
-and revoked through MCP (`list_api_keys`, `create_api_key`, `revoke_api_key`,
-and the `*_organization_api_key` tools) with the portal's permission rules: a
-site key manages keys for its own site only and can never mint an
-organization key.
+client using it stops working immediately. Keys can also be listed and
+revoked through MCP (`list_api_keys`, `revoke_api_key`,
+`list_organization_api_keys`, `revoke_organization_api_key`). New keys and
+other new credentials are created only in the portal, so a secret is shown
+once to the person creating it and never lands in an agent conversation or
+log.
 
 ## Stdio quick start
 
@@ -163,14 +164,14 @@ the full reference + concrete operation recipes.
 - **Site lifecycle** — `archive_site`, `restore_site` and `purge_site_media`
   (media of an archived site; irreversible). Owner-organization admin, as in
   the portal.
-- **Access** — site API keys (`list_api_keys`, `create_api_key`,
-  `revoke_api_key`; create/revoke need site admin), organization API keys
-  (`list_organization_api_keys`, `create_organization_api_key`,
-  `revoke_organization_api_key`), cross-organization sharing
-  (`list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share`;
-  site admin) and `create_organization_invite` (editor invite link). New tokens
-  are returned once. A key never creates a key or share that reaches further
-  than itself.
+- **Access** — list and revoke site API keys (`list_api_keys`,
+  `revoke_api_key`; revoking needs site admin) and organization API keys
+  (`list_organization_api_keys`, `revoke_organization_api_key`),
+  cross-organization sharing (`list_site_shares`, `share_site`,
+  `update_site_share`, `revoke_site_share`; site admin) and
+  `create_organization_invite` (editor invite link). A share never reaches
+  further than the caller. New API keys are created only in the portal, so the
+  secret never passes through an agent conversation.
 - **Workflows** — `list_workflows`, `start_workflow` (migration, site planning,
   SEO/link/performance audits, content generation and improvement, schema
   markup, URL parity, rebuild & deploy), `get_workflow`, `approve_workflow`.
@@ -250,17 +251,18 @@ the full reference + concrete operation recipes.
   when batching changes and deploy once afterwards. The same admin key also
   covers the rest of the portal's installation actions: `install_extension`,
   `set_extension_installation_status` (enable/disable), `uninstall_extension`,
-  `rotate_extension_credential` (the new `tri_…` credential is returned once),
   `pair_extension_issuer`, `read_extension_diagnostics`, and
   `launch_extension_admin_page` (a single-use launch grant to POST to the
   page's `launch_url`; approved native pages use `call_extension_admin`).
+  Installation server credentials are rotated in the portal, so the new
+  credential is never shown to an agent.
 - **Extension development** — with an organization-scoped key:
   `list_developer_extensions`, `read_developer_extension`,
-  `create_developer_extension`, `update_developer_extension`,
-  `save_extension_version`, `publish_extension_version`,
-  `set_extension_version_lifecycle`, `rotate_extension_client_secret` (returned
-  once) and `list_developer_extension_installations` — the same developer API
-  as the `typeroll extension` CLI.
+  `update_developer_extension`, `save_extension_version`,
+  `publish_extension_version`, `set_extension_version_lifecycle` and
+  `list_developer_extension_installations` — the same developer API as the
+  `typeroll extension` CLI. Registering an Extension and rotating its client
+  secret return a secret, so they stay in the portal and the CLI.
 - **Settings** — read + patch, including shallow-merged `cookie_consent`,
   `scripts_head` / `scripts_body_end` / `custom_css` (trusted because the caller holds an
   API key; the in-portal chat AI does NOT get these).

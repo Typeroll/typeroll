@@ -308,3 +308,10 @@ export async function recordKeyUse(
     /* swallow */
   }
 }
+
+/**
+ * Creating a key (or any other new secret) happens only in the portal: the
+ * token is shown once there and never passes through an agent conversation,
+ * MCP transcript or tool log. The API and MCP can list and revoke keys.
+ */
+export const CREATE_KEY_IN_PORTAL = 'API keys are created in the portal (Site settings → API keys, or Organization settings → API keys), so a new key is shown only to the person creating it and never lands in an agent conversation or log. Listing and revoking keys work through the API and MCP.';
