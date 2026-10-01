@@ -29,7 +29,7 @@ export const reusableBlockTools: ToolDef[] = [
   {
     name: 'detach_global_block',
     description:
-      'Replace a core/global_block reference on a page with an editable copy of the global block\'s blocks. Later edits to the global block no longer reach this page. Writes the page draft.',
+      'Replace a core/global_block reference on a page with an editable copy of the global block\'s blocks. Copies the global block\'s unsaved draft on this version when it has one (what the editors show), otherwise the saved global block; `copied_from` says which. Later edits to the global block no longer reach this page. Writes the page draft.',
     inputSchema: {
       page_id: z.string(),
       block_id: z.string().describe('The id of the core/global_block reference block.'),

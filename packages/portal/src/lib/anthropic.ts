@@ -498,9 +498,12 @@ const tools: Anthropic.Tool[] = [
   // ─── BlockType authoring — create / update / delete ───────────────────
   // These three tools manage *types* (the schema definitions). Distinct
   // from add_block/update_block/etc. which manage *instances* of blocks
-  // on a page. The `script` field is intentionally absent — AI cannot
-  // ship custom JS to visitors. Origin is stamped 'ai' so the portal UI
-  // can visually flag AI-authored types for audit.
+  // on a page. `script` is accepted only when the site has enabled
+  // "Allow AI to write block scripts" (Site.ai_scripts_enabled); otherwise
+  // the chat handler strips it with a warning (lib/block-script-gate.ts).
+  // This gate is specific to the in-portal chat — API keys and MCP write
+  // block JS under their own authority. Origin is stamped 'ai' so the
+  // portal UI can visually flag AI-authored types for audit.
   {
     name: 'create_block_type',
     description:
@@ -605,13 +608,13 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'list_blocks_with_usage',
     description:
-      'List all global blocks together with how many pages embed each one. Use this when deciding whether to extract a reusable block — it shows what is already composable and what is duplicated. Header/footer are reported as auto-injected (count = total pages).',
+      'List all global blocks together with how many pages embed each one, and how many page templates and other global blocks (header, footer, nesting global blocks) reference it. Use this when deciding whether to extract a reusable block — it shows what is already composable and what is duplicated. Header/footer are reported as auto-injected (count = total pages).',
     input_schema: { type: 'object', properties: {} },
   },
   {
     name: 'find_pages_using_block',
     description:
-      'List pages that embed a given free block via <x-include name="…">. Use this before suggesting an edit to a shared block so you can tell the user how many pages will change. The header and footer are auto-injected on every page — calling this for partial_id="header" or "footer" returns the full page list.',
+      'List what references a given free block: pages (core/global_block or <x-include name="…">), page templates, and other global blocks including the header and footer, saved or in a draft. Use this before suggesting an edit to a shared block so you can tell the user what will change; a header or footer reference means every page. The header and footer are auto-injected on every page — calling this for partial_id="header" or "footer" returns the full page list.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1778,7 +1781,8 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       }
       // Whitelist input keys — never trust the model to honour the schema.
       // `script` is gated on the per-site opt-in (Site.ai_scripts_enabled,
-      // human-set in the portal); without it the field is dropped and a
+      // set by a site admin in the portal or through the API/MCP — never
+      // by the chat itself); without it the field is dropped and a
       // warning surfaces in the result.
       const { gateBlockScript } = await import('./block-script-gate');
       const siteDoc = await store.getDoc<Site>(paths.site(ctx.orgId, ctx.siteId));
@@ -1919,7 +1923,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       return {
         result: list.map((p) => {
           const autoInjected = p.kind === 'header' || p.kind === 'footer';
-          const usedOn = autoInjected ? totalPages : usage.get(p.id)?.length ?? 0;
+          const usedOn = autoInjected ? totalPages : usage.get(p.id)?.pages.length ?? 0;
           return {
             id: p.id,
             name: p.name,
@@ -1927,6 +1931,8 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
             status: p.status,
             auto_injected: autoInjected,
             used_on_pages: usedOn,
+            used_in_templates: autoInjected ? 0 : usage.get(p.id)?.templates.length ?? 0,
+            used_in_global_blocks: autoInjected ? 0 : usage.get(p.id)?.global_blocks.length ?? 0,
           };
         }),
       };
@@ -1960,6 +1966,8 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
             partial_id: partialId,
             auto_injected: true,
             pages: pages.map((p) => ({ page_id: p.id, title: p.title, slug: p.slug })),
+            templates: [],
+            global_blocks: [],
           },
         };
       }
@@ -1968,7 +1976,9 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
         result: {
           partial_id: partialId,
           auto_injected: false,
-          pages: matches.map((p) => ({ page_id: p.page_id, title: p.title, slug: p.slug })),
+          pages: matches.pages.map((p) => ({ page_id: p.page_id, title: p.title, slug: p.slug })),
+          templates: matches.templates.map((t) => ({ template_id: t.template_id, label: t.label })),
+          global_blocks: matches.global_blocks.map((b) => ({ partial_id: b.partial_id, name: b.name, kind: b.kind })),
         },
       };
     }

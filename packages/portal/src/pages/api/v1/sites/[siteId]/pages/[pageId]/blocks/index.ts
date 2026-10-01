@@ -17,14 +17,8 @@ import {
   updateBlock,
   moveBlock,
   removeBlock,
-  findBlock,
   BlockMutationError,
 } from '../../../../../../../../lib/block-mutations';
-import {
-  SCRIPT_WRITE_NOTICE,
-  blockDataCarriesScript,
-  resolveScriptFields,
-} from '../../../../../../../../lib/block-script-gate';
 import {
   mergeWorkingCopy,
   overlayWorkingCopy,
@@ -92,12 +86,6 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!draft) return apiError('Page not found', 404);
 
   try {
-    // Bearer authority allows executable block-data fields; the notice is
-    // what makes the stored JS visible. See lib/block-script-gate.ts.
-    const warnings = blockDataCarriesScript(
-      body.block.data,
-      await resolveScriptFields(ctx.orgId, ctx.siteId, ctx.versionId, body.block.type),
-    ) ? [SCRIPT_WRITE_NOTICE] : [];
     const result = addBlock(draft.tree, {
       block: { id: '', data: {}, ...body.block } as Block,
       parent_id: body.parent_id,
@@ -107,7 +95,6 @@ export const POST: APIRoute = async ({ request, params }) => {
     await persistDraft(ctx, pageId, result.blocks);
     return apiResponse(ctx, {
       added_id: result.added_id, blocks: result.blocks,
-      ...(warnings.length ? { warnings } : {}),
     });
   } catch (e) {
     return mutError(e);
@@ -137,11 +124,6 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const draft = await loadDraft(ctx, pageId);
   if (!draft) return apiError('Page not found', 404);
   try {
-    const found = findBlock(draft.tree, body.block_id);
-    const warnings = blockDataCarriesScript(
-      body.data,
-      await resolveScriptFields(ctx.orgId, ctx.siteId, ctx.versionId, found?.block.type),
-    ) ? [SCRIPT_WRITE_NOTICE] : [];
     const blocks = updateBlock(draft.tree, {
       block_id: body.block_id,
       data: body.data,
@@ -152,7 +134,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // The caller cannot read our logs, so it travels in the body.
     const overrideWarnings = styleOverrideWarnings(body.style_overrides, body.block_id);
     return apiResponse(ctx, {
-      ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}), blocks, ...(warnings.length ? { warnings } : {}) });
+      ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}), blocks });
   } catch (e) {
     return mutError(e);
   }

@@ -7,9 +7,82 @@
 // index then re-fetch the canonical record so a stale or half-written
 // index entry can't grant access.
 
+import { randomUUID } from 'node:crypto';
 import { paths } from '@typeroll/shared';
 import type { Organization, Site, SiteShare, SharePermission } from '@typeroll/shared';
 import { getStore } from './datastore';
+
+export const SHARE_PERMISSIONS: SharePermission[] = ['read', 'write', 'admin'];
+
+export type ShareResult = { ok: true; share: SiteShare } | { ok: false; error: string; status: number };
+
+/**
+ * Grant another organization access to a site. The one implementation behind
+ * the settings UI (/api/sites/{siteId}/shares) and the public API
+ * (/api/v1/sites/{siteId}/shares). Callers gate on admin permission on the
+ * site first; the grant itself can never exceed `admin`, which is what an
+ * admin caller already holds.
+ */
+export async function createSiteShare(input: {
+  ownerOrgId: string;
+  siteId: string;
+  createdBy: string;
+  body: unknown;
+}): Promise<ShareResult> {
+  const body = (input.body && typeof input.body === 'object' ? input.body : {}) as {
+    org_id?: unknown; org_slug?: unknown; permission?: unknown; label?: unknown;
+  };
+  const permission = (body.permission ?? 'write') as SharePermission;
+  if (!SHARE_PERMISSIONS.includes(permission)) {
+    return { ok: false, error: `permission must be one of: ${SHARE_PERMISSIONS.join(', ')}`, status: 400 };
+  }
+  const target = await resolveTargetOrg({
+    org_id: typeof body.org_id === 'string' ? body.org_id : undefined,
+    org_slug: typeof body.org_slug === 'string' ? body.org_slug : undefined,
+  });
+  if ('error' in target) return { ok: false, error: target.error, status: 400 };
+
+  // Sharing with yourself is meaningless — the owning org already has
+  // implicit admin access.
+  if (target.orgId === input.ownerOrgId) {
+    return { ok: false, error: 'Cannot share a site with its owning organization', status: 400 };
+  }
+
+  // Avoid duplicate active shares to the same recipient. An admin can update
+  // an existing share; creating a second one just confuses the listing view.
+  const existing = await listSharesForSite(input.ownerOrgId, input.siteId);
+  if (existing.some((s) => s.shared_with_org_id === target.orgId && !s.revoked_at)) {
+    return { ok: false, error: 'This organization already has access to this site', status: 409 };
+  }
+
+  const label = typeof body.label === 'string' ? body.label.trim() : '';
+  const share: SiteShare = {
+    id: randomUUID(),
+    site_id: input.siteId,
+    owner_org_id: input.ownerOrgId,
+    shared_with_org_id: target.orgId,
+    permission,
+    created_at: Date.now(),
+    created_by: input.createdBy,
+    label: label || undefined,
+  };
+  await writeShare(share);
+  return { ok: true, share };
+}
+
+/** Validate a share change: a new permission level and/or label. */
+export function parseShareUpdate(
+  body: unknown,
+): { permission?: SharePermission; label?: string } | { error: string } {
+  const input = (body && typeof body === 'object' ? body : {}) as { permission?: unknown; label?: unknown };
+  const permission = input.permission as SharePermission | undefined;
+  if (permission !== undefined && !SHARE_PERMISSIONS.includes(permission)) {
+    return { error: `permission must be one of: ${SHARE_PERMISSIONS.join(', ')}` };
+  }
+  if (input.label !== undefined && typeof input.label !== 'string') return { error: 'label must be a string' };
+  if (!permission && input.label === undefined) return { error: 'permission or label required' };
+  return { permission, label: input.label as string | undefined };
+}
 
 /**
  * Write both the canonical share record and the flat-index mirror. The two

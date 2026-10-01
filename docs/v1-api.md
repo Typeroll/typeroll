@@ -58,10 +58,10 @@ All site routes below start with `/sites/{siteId}`.
 
 | Resource | Routes |
 |---|---|
-| Sites | `GET /sites`, `POST /sites`, `GET/PATCH /sites/{siteId}`, `GET /sites/{siteId}/capabilities` |
+| Sites | `GET /sites`, `POST /sites`, `POST /sites/create-and-migrate`, `POST /sites/create-and-plan`, `GET/PATCH /sites/{siteId}`, `GET /sites/{siteId}/capabilities` |
 | Settings | `GET/PATCH /settings` |
-| Pages | `GET/POST /pages`, `GET/PATCH/PUT/DELETE /pages/{pageId}`, `POST /pages/batch-read`, `PATCH /pages/batch`, clone, mode conversion, preview and block-container routes |
-| Partials | `GET/POST /partials`, `GET/PATCH/PUT/DELETE /partials/{partialId}`, `POST /partials/{partialId}/mode`, usage and block-container routes |
+| Pages | `GET/POST /pages`, `GET/PATCH/PUT/DELETE /pages/{pageId}`, `POST /pages/batch-read`, `PATCH /pages/batch`, clone, mode conversion, preview and block-container routes; history under `/pages/{pageId}/revisions` (list, read, `GET …/{revId}/preview`, `POST …/{revId}/restore`) |
+| Partials | `GET/POST /partials`, `GET/PATCH/PUT/DELETE /partials/{partialId}`, `POST /partials/{partialId}/mode`, usage and block-container routes; history under `/partials/{partialId}/revisions` (list, read, `POST …/{revId}/restore`) |
 | Page templates | `GET/POST /page-templates`, `GET/PATCH/DELETE /page-templates/{templateId}`. Create accepts `starter` or `blocks`. |
 | Content types | `GET/POST /content-types`, `GET/PATCH/DELETE /content-types/{name}`, `GET /content-types/{name}/completeness` |
 | Composition starters | `GET /composition-starters?kind=profile` returns one native editable tree without saving. Supports Page starters, header/footer and archive (requires `content_type`, optional `title`). |
@@ -70,13 +70,26 @@ All site routes below start with `/sites/{siteId}`.
 | Media | list/create/read/update/delete, upload URL, finalize, bulk finalize, variant generation and alt-text context under `/media` |
 | Redirects | `GET/POST /redirects`, `DELETE /redirects/{redirectId}` |
 | Forms | list/create/read/update/delete and submission routes under `/forms` |
-| Apps and Extensions | list/read/update app config; list/read/update Extension installation config |
-| Versions | list/create/read/delete/merge under `/versions` |
+| Apps and Extensions | list/read/update app config; install (`POST /extensions`), read, update, enable/disable and uninstall (`DELETE /extensions/{installationId}`) Extension installations, plus `diagnostics`, `rotate-credential`, `pair`, `launch` and `admin-request` under `/extensions/{installationId}` |
+| Versions | list/create/read/delete under `/versions`; `GET /versions/{versionId}/diff`, `POST /versions/{versionId}/merge` and `POST /versions/{versionId}/reset` |
 | Deploys | list/create/read under `/deploys`; deploy jobs include non-blocking `warnings[]` such as unresolved internal links |
 | Preview | signed preview-link creation under `/preview-link` |
 | Search and bulk | `GET /search`, `POST /bulk-replace`, `GET /internal-links` |
 | Migration | preflight, URL inventory routes, imports and deployed parity verification described below |
 | Insights | site insights and first-party Analytics event reporting |
+| API keys | `GET /api-keys`, `DELETE /api-keys/{keyId}` (site keys; revoking needs site admin; keys are created in the portal) |
+| Sharing | `GET/POST /shares`, `PATCH/DELETE /shares/{shareId}` (site admin) |
+| Workflows | `GET/POST /workflows`, `GET /workflows/{workflowId}`, `POST /workflows/{workflowId}/approve` |
+
+Organization routes need an organization-scoped key; a site-scoped key gets
+`403`:
+
+| Resource | Routes |
+|---|---|
+| Organization API keys | `GET /organization/api-keys`, `DELETE /organization/api-keys/{keyId}` (keys are created in the portal) |
+| Invites | `POST /organization/invites` |
+| Publishing connections | `GET /publishing/connections`, `POST /publishing/connections/cloudflare`, `DELETE /publishing/connections/{provider}` |
+| Publishing builds, domains, Hosting Groups, media migration | `/publishing/builds`, `/publishing/domains`, `/publishing/zones`, `/publishing/hosting-groups`, `/publishing/media-migration`, `/publishing/github-permissions` |
 
 The API route source under `packages/portal/src/pages/api/v1` is exhaustive;
 the index above groups specialized subroutes rather than hiding them behind a
@@ -111,6 +124,76 @@ into the static site. A successful update therefore returns
 `POST /sites/{siteId}/deploy`. The `typeroll extension configure` CLI command
 and `update_extension_installation_config` MCP tool perform that production
 deploy step by default; both provide an explicit opt-out for batching.
+
+## Extension installation lifecycle
+
+Every installation action in the portal's Extension settings has a route
+relative to `/sites/{siteId}/extensions`. All require site administrator
+permission (an owned site, a site-scoped key, or an admin share) and refuse
+installation credentials. Actors are recorded as `api:{keyPrefix}`.
+
+| Action | Route | Notes |
+|---|---|---|
+| Install | `POST /` | `{ extension_id, version, granted_scopes?, config?, developer_org_id? }`. Returns `201`. |
+| Enable or disable | `PATCH /{installationId}` | `{ "status": "enabled" \| "disabled" }` |
+| Uninstall | `DELETE /{installationId}` | Revokes the installation and its credentials; page instances remain as placeholders. Returns `redeploy_required: true`. |
+| Diagnostics | `GET /{installationId}/diagnostics` | Status, health, release resolution, credential metadata (no secrets), latest audit events and event deliveries. |
+| Rotate server credential | `POST /{installationId}/rotate-credential` | Refused with `403`: credentials are rotated in the portal, so a new secret never passes through an agent. |
+| Pair issuer | `POST /{installationId}/pair` | Contacts the manifest's `auth.pairing_url`; `409` when none is declared. |
+| Launch admin page | `POST /{installationId}/launch` | `{ page_id }`. Returns a single-use launch `code`, `launch_url` and the `form` fields to POST there before `expires_at`. The page's `minimum_permission` applies; the provider sees `api-key:{prefix}`. |
+
+Approved native admin pages are called server-side with
+`POST /{installationId}/admin-request` instead of a launch. The portal's
+browser-only `admin-session` token has no separate API route; `admin-request`
+is its API equivalent.
+
+The developer side (register Extensions, save and publish releases, set
+release lifecycle, rotate the OAuth client secret, list installation metadata)
+is the bearer-authenticated `/api/developer/extensions/**` API used by the
+`typeroll extension` CLI. It requires an organization-scoped key. MCP exposes
+the parts that return no secret (`list_developer_extensions`,
+`read_developer_extension`, `update_developer_extension`,
+`save_extension_version`, `publish_extension_version`,
+`set_extension_version_lifecycle`, `list_developer_extension_installations`);
+registering an Extension and rotating its client secret stay in the portal and
+the CLI.
+
+## Branch review and reset
+
+```http
+GET  /sites/{siteId}/versions/{versionId}/diff
+POST /sites/{siteId}/versions/{versionId}/reset
+```
+
+`diff` returns `{ version_id, base_version_id: "main", diff }`, where `diff`
+lists added, modified and deleted ids for `pages`, `partials`, `redirects`,
+`contentTypes`, `pageTemplates` and `blockTypes`, plus `settings` and
+`totalChanges`. It needs read access. `reset` discards every override and
+tombstone on the branch and returns the cleared diff; the branch, its deploy
+address and its revision history remain. Creating, merging, resetting and deleting
+branches require admin permission on the site, matching the portal. Main can be neither diffed nor
+reset.
+
+## Revision history
+
+Every save snapshots the previous saved state (up to 100 per document and
+version). Pages and partials expose the same history:
+
+```http
+GET  /sites/{siteId}/pages/{pageId}/revisions?limit=50
+GET  /sites/{siteId}/pages/{pageId}/revisions/{revId}
+GET  /sites/{siteId}/pages/{pageId}/revisions/{revId}/preview?annotate=true
+POST /sites/{siteId}/pages/{pageId}/revisions/{revId}/restore      { "save": true }
+GET  /sites/{siteId}/partials/{partialId}/revisions?limit=50
+GET  /sites/{siteId}/partials/{partialId}/revisions/{revId}
+POST /sites/{siteId}/partials/{partialId}/revisions/{revId}/restore { "save": true }
+```
+
+The page preview returns `rendered_html` for the revision laid over the current
+page with the current header, footer and settings, the same document the
+editor's History panel shows. Restores write the draft (or save with
+`save: true`), keep publication status, and refuse a revision saved in the other
+content mode with `409`.
 
 ## Partial modes and site consent
 
@@ -393,3 +476,37 @@ is the manual numeric order; null clears it. Missing sort values come last and
 IDs break ties. Explicit ID lists keep their order. Typed `list_pages` queries
 inherit type sorting and accept `sort_by`/`sort_order`; unfiltered API lists
 default to stable IDs. See the public Content types guide for editor steps.
+
+## Organization administration and workflows
+
+These routes apply the portal's permission checks, and a share never reaches
+further than the caller. Nothing here returns a new secret.
+
+- **API keys.** `GET` lists metadata, never hashes, and `DELETE …/{prefix}`
+  revokes. `POST` is refused with `403`: keys are created only in the portal, so
+  a new secret never passes through an agent conversation or log. A site key
+  manages keys for its own site only and cannot reach `/organization/api-keys`.
+- **Sharing.** `POST /shares` takes `org_id` or `org_slug`, `permission`
+  (`read`, `write` default, `admin`) and `label`; one active share per
+  Organization (`409` otherwise). All share routes need site admin.
+- **Invites.** `POST /organization/invites` takes optional `ttl_days` (1–30,
+  default 7) and returns `{ invite_url, expires_at, ttl_days, role: "editor" }`.
+  Redemption requires the invited person to sign in. Self-hosted portals need
+  `FORMS_HMAC_SECRET`; without it the route returns `503`.
+- **Workflows.** `POST /workflows` takes `{ type, config? }` and returns `202
+  { workflow_id }`; the run continues in the background. `rebuild_deploy` needs
+  site admin, every other type needs write. `migration` returns
+  `409 import_storage_required` until organization import storage is verified.
+  Run responses omit internal step state and mask `helper_api_key`. Approving
+  works only for a run with status `paused_for_review` (`409` otherwise).
+- **Sites with a first workflow.** `POST /sites/create-and-migrate`
+  (`{ name, wp_url, helper_api_key? }`) and `POST /sites/create-and-plan`
+  (`{ name, business_description }`) need an organization key and return
+  `201 { site, workflow }`.
+- **Publishing connections.** `GET /publishing/connections` returns connection
+  summaries with `revision` and `connect_urls` for the browser-only OAuth steps.
+  `POST /publishing/connections/cloudflare` accepts `action` `connect`
+  (`revision`, `account_id`, `bucket`, `api_token`, `access_key_id`,
+  `secret_access_key`), `prepare_media` (`revision`) or `save_media`
+  (`revision`, `access_key_id`, `secret_access_key`). `DELETE
+  /publishing/connections/{provider}` takes `{ revision, hosting_group_id? }`.

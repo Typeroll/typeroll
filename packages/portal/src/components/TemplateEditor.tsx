@@ -23,6 +23,7 @@ import { GlobalBlocksContext, RenderVersionContext, SiteStylesContext } from './
 import type { GlobalBlockSummary } from './editor-context';
 import { useBlockDnd } from './block-dnd';
 import type { Breakpoint } from '@typeroll/shared';
+import { blockUsageCount, describeBlockUsage, type BlockUsage } from '../lib/block-usage-summary';
 
 interface Props {
   responsiveBreakpoints?: import('@typeroll/shared').ResponsiveBreakpoints | null;
@@ -31,13 +32,16 @@ interface Props {
   siteStyles?: SiteStyle[];
   renderVersion?: number;
   /**
-   * What the tree belongs to. A global block (a block-mode partial) saves to
-   * the partial routes and has no content slot.
+   * What the tree belongs to. A global block (a block-mode partial, including
+   * a block-mode header or footer) saves to the partial routes and has no
+   * content slot.
    */
   kind?: 'page_template' | 'global_block';
+  /** For a global block: header and footer appear on every page; free blocks where placed. */
+  partialKind?: 'header' | 'footer' | 'free';
   /** Global blocks a core/global_block field can choose. */
   globalBlocks?: GlobalBlockSummary[];
-  /** A global block has an unsaved draft (e.g. written by an agent); it must be saved or discarded before editing here. */
+  /** A global block, header or footer has an unsaved draft (e.g. written by an agent); it must be saved or discarded before editing here. */
   pendingDraft?: boolean;
 }
 
@@ -165,16 +169,21 @@ function moveBlockTo(
   return addBlock(without, moved, parentId, slotIdx, position).tree;
 }
 
-export default function TemplateEditor({ siteId, template, responsiveBreakpoints, siteStyles, renderVersion, kind = 'page_template', globalBlocks = [], pendingDraft = false }: Props) {
+type UsageResponse = Partial<BlockUsage> & { auto_injected?: boolean };
+
+export default function TemplateEditor({ siteId, template, responsiveBreakpoints, siteStyles, renderVersion, kind = 'page_template', partialKind = 'free', globalBlocks = [], pendingDraft = false }: Props) {
   const [draftPending, setDraftPending] = useState(pendingDraft);
   const isGlobal = kind === 'global_block';
-  const [usage, setUsage] = useState<Array<{ page_id: string; title: string }> | null>(null);
+  const isLayout = isGlobal && partialKind !== 'free';
+  const noun = !isGlobal ? 'template' : partialKind === 'header' ? 'header' : partialKind === 'footer' ? 'footer' : 'global block';
+  const [usage, setUsage] = useState<(BlockUsage & { auto_injected: boolean }) | null>(null);
   useEffect(() => {
     if (!isGlobal) return;
+    const empty = { pages: [], templates: [], global_blocks: [], auto_injected: false };
     fetch(`/api/sites/${siteId}/partials/${encodeURIComponent(template.id)}/usage`)
-      .then(r => r.ok ? r.json() as Promise<{ pages?: Array<{ page_id: string; title: string }> }> : { pages: [] })
-      .then(j => setUsage(j.pages ?? []))
-      .catch(() => setUsage([]));
+      .then(r => r.ok ? r.json() as Promise<UsageResponse> : {})
+      .then(j => setUsage({ ...empty, ...j }))
+      .catch(() => setUsage(empty));
   }, [isGlobal, siteId, template.id]);
   const [draft, setDraft] = useState<PageTemplate>(template);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -406,9 +415,9 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
       </header>
 
       {isGlobal && draftPending && <div role="alert" style={{ padding: '10px 16px', background: '#422006', color: '#fef3c7', borderBottom: '1px solid #92400e', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span>This global block has a draft that isn't saved yet, for example from an agent. It is shown below. Save or discard it before editing here.</span>
+        <span>This {noun} has a draft that isn't saved yet, for example from an agent. It is shown below. Save or discard it before editing here.</span>
         <button type="button" onClick={() => void resolveDraft('save')} style={{ padding: '4px 10px', background: '#fef3c7', color: '#422006', border: 0, borderRadius: 4, cursor: 'pointer' }}>Save draft</button>
-        <button type="button" onClick={() => { if (confirm('Discard the draft? The saved global block stays as it is.')) void resolveDraft('discard'); }} style={{ padding: '4px 10px', background: 'transparent', color: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 4, cursor: 'pointer' }}>Discard draft</button>
+        <button type="button" onClick={() => { if (confirm(`Discard the draft? The saved ${noun} stays as it is.`)) void resolveDraft('discard'); }} style={{ padding: '4px 10px', background: 'transparent', color: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 4, cursor: 'pointer' }}>Discard draft</button>
       </div>}
       <DndContext {...dnd.contextProps}>
       <div style={threeCol}>
@@ -458,17 +467,35 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
         </aside>
 
         <main style={centerPanel}>
-          {isGlobal ? <div style={previewCard}>
+          {isLayout ? <div style={previewCard}>
+            <h3 style={{ marginTop: 0, fontSize: '1rem' }}>{partialKind === 'header' ? 'Header' : 'Footer'}</h3>
+            <p style={muted}>
+              Every page shows the {noun}. Changes save as you edit and reach every page while the {noun} is
+              {' '}<strong>Published</strong>; the live site updates at the next deploy.
+            </p>
+            <p style={muted}>
+              {usage === null ? 'Counting pages…' : `Shown on every page (${usage.pages.length} ${usage.pages.length === 1 ? 'page' : 'pages'}).`}
+            </p>
+          </div> : isGlobal ? <div style={previewCard}>
             <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Global block</h3>
             <p style={muted}>
               Every page that uses this global block shows these blocks. Changes save as you edit and reach those pages
               while the block is <strong>Published</strong>; the live site updates at the next deploy.
             </p>
             <h4 style={{ fontSize: '.9rem', margin: '1rem 0 .5rem' }}>Used on</h4>
-            {usage === null ? <p style={muted}>Loading…</p> : usage.length === 0 ? <p style={muted}>No pages use it yet. Add it from a page's block library under Global blocks.</p> : (
-              <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#e4e4e7' }}>
-                {usage.map(page => <li key={page.page_id}><a style={{ color: '#a5b4fc' }} href={`/app/sites/${siteId}/pages/${encodeURIComponent(page.page_id)}`}>{page.title || page.page_id}</a></li>)}
-              </ul>
+            {usage === null ? <p style={muted}>Loading…</p> : blockUsageCount(usage) === 0 ? <p style={muted}>No pages use it yet. Add it from a page's block library under Global blocks.</p> : (
+              <div data-testid="global-block-usage">
+                <p style={muted}>{capitalize(describeBlockUsage(usage))}.</p>
+                {usage.pages.length > 0 && <UsageGroup title="Pages">
+                  {usage.pages.map(page => <li key={page.page_id}><a style={usageLink} href={`/app/sites/${siteId}/pages/${encodeURIComponent(page.page_id)}`}>{page.title || page.page_id}</a>{page.status !== 'published' && <span style={usageNote}> · {page.status}</span>}</li>)}
+                </UsageGroup>}
+                {usage.templates.length > 0 && <UsageGroup title="Page templates">
+                  {usage.templates.map(t => <li key={t.template_id}><a style={usageLink} href={`/app/sites/${siteId}/templates/${encodeURIComponent(t.template_id)}`}>{t.label || t.template_id}</a><span style={usageNote}> · pages using this template show it</span></li>)}
+                </UsageGroup>}
+                {usage.global_blocks.length > 0 && <UsageGroup title="Global blocks">
+                  {usage.global_blocks.map(b => <li key={b.partial_id}><a style={usageLink} href={`/app/sites/${siteId}/partials/${encodeURIComponent(b.partial_id)}`}>{b.name || b.partial_id}</a><span style={usageNote}> · {b.kind === 'free' ? 'wherever that global block is used' : `${b.kind}, every page`}</span></li>)}
+                </UsageGroup>}
+              </div>
             )}
           </div> : <div style={previewCard}>
             <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Template preview</h3>
@@ -508,8 +535,8 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
           ) : (
             <div style={emptyHint}>
               <p style={{ marginTop: 0 }}>No block selected.</p>
-              <p style={{ fontSize: '.85rem', opacity: 0.7 }}>
-                Add a content slot first, then build blocks around it.
+              <p style={{ fontSize: '.85rem' }}>
+                {isGlobal ? 'Select a block under Structure to edit it, or add one.' : 'Add a content slot first, then build blocks around it.'}
               </p>
             </div>
           )}
@@ -524,7 +551,23 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
   );
 }
 
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function UsageGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <>
+      <h5 style={{ fontSize: '.8rem', margin: '.75rem 0 .35rem', color: '#d4d4d8' }}>{title}</h5>
+      <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#e4e4e7' }}>{children}</ul>
+    </>
+  );
+}
+
 // ─── Styles (copied from BlockPageEditor to keep visual parity) ─────────
+
+const usageLink: React.CSSProperties = { color: '#a5b4fc' };
+const usageNote: React.CSSProperties = { color: '#a1a1aa', fontSize: '.8rem' };
 
 const shell: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', height: '100vh',

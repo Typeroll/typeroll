@@ -103,3 +103,46 @@ describe('requireSiteLifecycleChange', () => {
     expect(requireSiteLifecycleChange(ctx({}, { permission: 'write' })).ok).toBe(false);
   });
 });
+
+describe('POST /api/sites/{siteId}/lifecycle (portal session)', () => {
+  // Runs as the development session (org `default`, user `dev-user`). The
+  // rules are shared with the v1 route through lib/site-lifecycle.ts.
+  beforeEach(async () => {
+    makeTmpFixtures();
+    await resetDatastore();
+  });
+
+  async function post(body: Record<string, unknown> | FormData) {
+    const { POST } = await import('../../pages/api/sites/[siteId]/lifecycle');
+    const request = body instanceof FormData
+      ? new Request('http://localhost/api/sites/s/lifecycle', { method: 'POST', body })
+      : new Request('http://localhost/api/sites/s/lifecycle', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      });
+    return POST({ request, params: { siteId: 's' }, cookies: { get: () => undefined } as never, locals: {} as never } as never) as Promise<Response>;
+  }
+
+  it('archives from the settings form with the user as actor, then restores', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    const { paths } = await import('@typeroll/shared');
+    await getStore().setDoc(paths.site('default', 's'), { name: 'S', created_at: '2026-01-01T00:00:00Z' });
+    const form = new FormData();
+    form.set('action', 'archive');
+    form.set('reason', 'Done');
+    const archivedRes = await post(form);
+    expect(archivedRes.status).toBe(200);
+    const doc = await getStore().getDoc<{ lifecycle?: { archived_by: string; reason?: string } }>(paths.site('default', 's'));
+    expect(doc?.lifecycle?.archived_by).toBe('dev-user');
+    expect(doc?.lifecycle?.reason).toBe('Done');
+
+    const restored = await post({ action: 'restore' });
+    expect(await restored.json()).toEqual({ status: 'active', site: 's' });
+  });
+
+  it('rejects an unknown action', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    const { paths } = await import('@typeroll/shared');
+    await getStore().setDoc(paths.site('default', 's'), { name: 'S', created_at: '2026-01-01T00:00:00Z' });
+    expect((await post({ action: 'destroy' })).status).toBe(400);
+  });
+});

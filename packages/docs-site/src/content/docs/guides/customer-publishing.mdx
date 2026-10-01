@@ -563,19 +563,33 @@ Site API keys need admin permission for domain writes. Organization settings
 require an organization API key. An external agent can use its own Cloudflare
 access to configure DNS and R2 rules, then ask Typeroll to verify them.
 
-| Action                           | MCP tool                               | API route below `/api/v1`                 |
-| -------------------------------- | -------------------------------------- | ----------------------------------------- |
-| Check setup                      | `read_publishing_readiness`            | `GET /sites/{site}/publishing`            |
-| Read site hosts                  | `read_publishing_domains`              | `GET /sites/{site}/publishing/domains`    |
-| Save future hosts                | `set_publishing_domains`               | `PUT /sites/{site}/publishing/domains`    |
-| Prepare last public snapshot     | `prepare_publishing_domain_change`     | `POST /sites/{site}/publishing/prepare`   |
-| Approve verified traffic switch  | `approve_publishing_domain_cutover`    | `POST /sites/{site}/publishing/cutover`   |
-| Read organization domain         | `read_organization_publishing_domains` | `GET /publishing/domains`                 |
-| Save organization domain         | `set_organization_publishing_domains`  | `PUT /publishing/domains`                 |
-| Read media migration             | `read_organization_media_migration`    | `GET /publishing/media-migration`         |
-| Retry media migration            | `retry_organization_media_migration`   | `POST /publishing/media-migration`        |
-| Read a private image temporarily | `read_private_media_url`               | `GET /sites/{site}/media/{media}/content` |
-| Revoke a preview                 | `revoke_preview_link`                  | `POST /sites/{site}/preview-link/revoke`  |
+| Action                             | MCP tool                                      | API route below `/api/v1`                   |
+| ---------------------------------- | --------------------------------------------- | ------------------------------------------- |
+| Check setup                        | `read_publishing_readiness`                   | `GET /sites/{site}/publishing`              |
+| Read GitHub/Cloudflare connections | `read_organization_publishing_connections`    | `GET /publishing/connections`               |
+| Disconnect GitHub or Cloudflare    | `disconnect_organization_publishing_provider` | `DELETE /publishing/connections/{provider}` |
+| Connect Cloudflare with a token    | `connect_organization_cloudflare`             | `POST /publishing/connections/cloudflare`   |
+| Prepare media buckets              | `prepare_organization_media_storage`          | `POST /publishing/connections/cloudflare`   |
+| Save R2 media keys                 | `save_organization_media_access`              | `POST /publishing/connections/cloudflare`   |
+| Read site hosts                    | `read_publishing_domains`                     | `GET /sites/{site}/publishing/domains`      |
+| Save future hosts                  | `set_publishing_domains`                      | `PUT /sites/{site}/publishing/domains`      |
+| Prepare last public snapshot       | `prepare_publishing_domain_change`            | `POST /sites/{site}/publishing/prepare`     |
+| Approve verified traffic switch    | `approve_publishing_domain_cutover`           | `POST /sites/{site}/publishing/cutover`     |
+| Read organization domain           | `read_organization_publishing_domains`        | `GET /publishing/domains`                   |
+| Save organization domain           | `set_organization_publishing_domains`         | `PUT /publishing/domains`                   |
+| Read media migration               | `read_organization_media_migration`           | `GET /publishing/media-migration`           |
+| Retry media migration              | `retry_organization_media_migration`          | `POST /publishing/media-migration`          |
+| Read a private image temporarily   | `read_private_media_url`                      | `GET /sites/{site}/media/{media}/content`   |
+| Revoke a preview                   | `revoke_preview_link`                         | `POST /sites/{site}/preview-link/revoke`    |
+
+Connection changes use the `revision` from the connections status. Signing in to
+GitHub, installing the GitHub App and Cloudflare OAuth sign-in need a person in a
+browser: the status returns `connect_urls`, links to the provider cards on the
+**Publishing** page, where an organization owner or admin completes the step.
+Everything after that — Cloudflare with a customer API token, media buckets, R2
+keys, builds, domains and disconnecting — works through the API and MCP. The
+connection routes need an organization API key, matching the owner/admin rule of
+the **Publishing** page; a site key gets 403 there and uses the site routes above.
 
 Domain writes include the current `revision`. Cutover also includes `candidate_id`.
 A stale revision returns 409. Use the normal deploy-status API to inspect build

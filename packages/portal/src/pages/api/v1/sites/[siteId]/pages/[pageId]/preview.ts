@@ -9,20 +9,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../../lib/version-store';
 import { renderPreview } from '../../../../../../../lib/render-preview';
-
-function extractInternalLinks(html: string, siteOrigin: string): string[] {
-  if (!html) return [];
-  const links = new Set<string>();
-  const re = /<a\s[^>]*href=(?:"([^"]+)"|'([^']+)')/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) {
-    const href = (m[1] ?? m[2] ?? '').trim();
-    if (!href) continue;
-    if (href.startsWith('/') && !href.startsWith('//')) links.add(href);
-    else if (siteOrigin && href.startsWith(siteOrigin)) links.add(href.slice(siteOrigin.length) || '/');
-  }
-  return Array.from(links);
-}
+import { extractInternalLinks } from '../../../../../../../lib/preview-links';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -45,6 +32,12 @@ export const GET: APIRoute = async ({ request, params }) => {
   const html = await renderPreview(ctx.orgId, ctx.siteId, pageId, ctx.versionId, {
     annotate,
     includeWorkingCopies,
+    // Same output as the portal's Preview (and the signed preview links):
+    // block JS, the Extension runtime and the cookie-consent banner are part
+    // of the page. The editor canvas leaves them out only because it runs on
+    // the portal's origin; this response is JSON text that never executes
+    // there, so there is nothing to protect by dropping them.
+    allowScripts: true,
   });
   if (!html) return apiError('Page could not be rendered', 500);
 

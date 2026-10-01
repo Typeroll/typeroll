@@ -171,7 +171,7 @@ export async function runMigrationPreflight(
           detail:
             `${forms.length} form(s) exist but no email connector is configured. Submissions are stored ` +
             'and nobody is notified — which looks fine in testing and loses enquiries in production.',
-          fix: 'Configure an email connector in Settings → Integrations (admin only — this is deliberately not writable from an API key or the chat AI).',
+          fix: 'Configure an email connector in Settings → Email & notifications, or with set_email_settings / PUT /api/v1/sites/{siteId}/integrations/email (admin permission), then send a test with send_test_email.',
         });
   }
 

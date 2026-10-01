@@ -12,6 +12,7 @@
  * unset).
  */
 import { test, expect } from '@playwright/test';
+import { waitForHydration } from './helpers/ready';
 
 test('editor autosave → deliberate Save via Publish menu', async ({ page }) => {
   await page.goto('/app/sites/default');
@@ -30,7 +31,7 @@ test('editor autosave → deliberate Save via Publish menu', async ({ page }) =>
   // Wait for the React editor to hydrate — filling before hydration gets
   // silently reverted when React mounts with the server-rendered title.
   await expect(page.getByLabel('Page title', { exact: true })).toBeVisible();
-  await page.waitForLoadState('networkidle');
+  await waitForHydration(page);
 
   // Edit the title. The debounced autosave (~800ms) writes the working
   // copy, so the indicator lands in the unsaved-changes state — the

@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { gotoReady, reloadReady } from './helpers/ready';
 
 const siteRoot = path.join(tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default');
 
@@ -27,7 +28,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
         status: index % 2 === 0 ? 'published' : 'draft',
       })));
       await page.setViewportSize({ width, height });
-      await page.goto('/app/sites/default/pages/deploy-visibility', { waitUntil: 'networkidle' });
+      await gotoReady(page, '/app/sites/default/pages/deploy-visibility');
       expect(pageErrors, 'The editor must hydrate without recovering from a rendering mismatch').toEqual([]);
       await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveCount(0);
@@ -73,13 +74,13 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
 
       // A successful live deployment makes this saved page eligible.
       writeFileSync(versionFile, JSON.stringify({ ...version, last_deployed_at: '2020-01-02T12:00:00.000Z', last_deployed_content_at: '2020-01-02T11:00:00.000Z' }));
-      await page.reload({ waitUntil: 'networkidle' });
+      await reloadReady(page);
       await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveAttribute('href', 'https://test-site.example.com/deploy-visibility');
       await expect(page.locator('.pmenu__change-details summary')).toContainText('Changes since last deploy');
       await page.goto('/app/sites/default/pages');
       await expect(page.getByRole('row').filter({ hasText: 'Deploy visibility' }).getByTitle('Open live URL')).toHaveCount(1);
-      await page.goto('/app/sites/default/pages/deploy-visibility', { waitUntil: 'networkidle' });
+      await gotoReady(page, '/app/sites/default/pages/deploy-visibility');
       await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await page.locator('.pmenu__body select').first().selectOption('draft');
       await expect(page.locator('.pmenu__body select').first()).toBeEnabled();
@@ -91,7 +92,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
 
       // Content changed while the build ran is not proven live by its completion time.
       writeFileSync(pageFile, JSON.stringify({ ...content, date_updated: '2020-01-02T11:30:00.000Z' }));
-      await page.goto('/app/sites/default/pages/deploy-visibility', { waitUntil: 'networkidle' });
+      await gotoReady(page, '/app/sites/default/pages/deploy-visibility');
       await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveCount(0);
       await page.goto('/app/sites/default/pages');

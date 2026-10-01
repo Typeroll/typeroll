@@ -105,10 +105,23 @@ agents and scripts use:
   (`GET /api/v1/sites/{siteId}/pages/{pageId}/revisions`).
 - `read_page_revision` — one saved state with its full content
   (`GET …/revisions/{revisionId}`).
+- `preview_page_revision` — render that saved state as the full preview
+  document, with the current header, footer and settings, exactly as the
+  History panel shows it (`GET …/revisions/{revisionId}/preview`, returns
+  `rendered_html`).
 - `restore_page_revision` — put that content back as a draft, or save it at
   once with `save: true` (`POST …/revisions/{revisionId}/restore`).
 
-A restore keeps the page's publication status and schedule. Saving it snapshots
-the current page first, so a restore can be undone the same way. A state saved
-in the other content mode (blocks or HTML) is refused until the page is
-switched to that mode.
+The header, footer and global blocks keep the same history:
+
+- `list_partial_revisions`
+  (`GET /api/v1/sites/{siteId}/partials/{partialId}/revisions`).
+- `read_partial_revision` (`GET …/revisions/{revisionId}`).
+- `restore_partial_revision` — restore the name and HTML or block content as
+  a draft, or save it with `save: true` (`POST …/revisions/{revisionId}/restore`).
+
+A restore keeps publication status (and, for pages, the schedule). Saving it
+snapshots the current state first, so a restore can be undone the same way. A
+state saved in the other content mode (blocks or HTML) is refused until the
+page or partial is switched to that mode. Reading history needs read access;
+restoring needs write access, as in the editor.

@@ -44,13 +44,13 @@ const targetSchema = z.object({
 // Forms editor; admin permission required, as in the portal.
 const actionSchema = z.object({
   id: z.string().optional().describe('Keep an existing action\'s id to update it in place (webhooks keep their stored secret).'),
-  type: z.string().describe('"email", "webhook", or an action type provided by an installed app.'),
+  type: z.string().describe('"email", "webhook", or an action type provided by an installed app (see get_form_capabilities).'),
   config: z.record(z.string(), z.unknown()).describe(
     'email: { to, subject, body, cc?, bcc?, reply_to?, include_all?, format?: "html"|"text" } — to/subject/body may use {{field}} placeholders, e.g. to: "{{email}}" for a confirmation to the visitor. ' +
     'webhook: { url (https), fields: ["name","email"] (only these values are sent), secret (signing secret; send "••••••••" to keep the stored one) }.',
   ),
 });
-const actionsDescription = 'The complete list of actions after a submission (replaces the current list): email notifications, webhooks, app actions. Read the form first and send back the actions you keep. Requires admin permission, like the portal.';
+const actionsDescription = 'The complete list of actions after a submission (replaces the current list): email notifications, webhooks, app actions (get_form_capabilities lists the types and their config). Read the form first and send back the actions you keep. Emails send through the provider set with set_email_settings. Requires admin permission, like the portal.';
 
 export const formTools: ToolDef[] = [
   {
@@ -60,6 +60,12 @@ export const formTools: ToolDef[] = [
       const res = await client.get(siteId, 'forms');
       return ok(res);
     }),
+  },
+  {
+    name: 'get_form_capabilities',
+    description:
+      'List the action types a form can run after a submission (core "email" and "webhook" plus types provided by installed apps) and the prefill sources, each with its config field schema — the same choices as the portal\'s Forms editor. Read this before writing `actions` with create_form/update_form. Admin permission required.',
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'form-capabilities'))),
   },
   {
     name: 'read_form',
@@ -140,7 +146,7 @@ export const formTools: ToolDef[] = [
   {
     name: 'list_form_submissions',
     description:
-      'List submissions received for a form, newest first, cursor-paginated (cap 200 per page). Use this to help a customer triage inbound contact / lead submissions.',
+      'List submissions received for a form, newest first, cursor-paginated (cap 200 per page). Admins also see each submission\'s webhook delivery status. Use this to help a customer triage inbound contact / lead submissions; read_form_submission reads one.',
     inputSchema: {
       form_id: z.string(),
       limit: z.number().int().min(1).max(200).optional(),
@@ -152,6 +158,22 @@ export const formTools: ToolDef[] = [
         siteId,
         `forms/${encodeURIComponent(form_id)}/submissions`,
         query,
+      );
+      return ok(res);
+    }),
+  },
+  {
+    name: 'read_form_submission',
+    description:
+      'Read one submission of a form by id (from list_form_submissions): the submitted values, status (partial or complete), step and timestamps. Admins also see its webhook delivery status, as in the portal.',
+    inputSchema: {
+      form_id: z.string(),
+      submission_id: z.string(),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const res = await client.get(
+        siteId,
+        `forms/${encodeURIComponent(args.form_id)}/submissions/${encodeURIComponent(args.submission_id)}`,
       );
       return ok(res);
     }),

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { gotoReady } from './helpers/ready';
 
 for (const width of [390, 1280]) test(`retries the same failed verification twice at ${width}px`, async ({ page }, info) => {
   let attempts = 0, polls = 0, ready = false;
@@ -16,7 +17,7 @@ for (const width of [390, 1280]) test(`retries the same failed verification twic
     return route.fulfill({ json: attempts === 1 ? failed : { id: 'retry-test', status: ready ? 'succeeded' : 'running', phase: ready ? 'live' : 'retrying public verification' } });
   });
   await page.setViewportSize({ width, height: 900 });
-  await page.goto('/app/sites/default', { waitUntil: 'networkidle' });
+  await gotoReady(page, '/app/sites/default');
   const retry = page.getByRole('button', { name: 'Retry verification', exact: true });
   await expect(retry).toBeVisible();
   await retry.scrollIntoViewIfNeeded();

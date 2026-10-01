@@ -9,7 +9,6 @@
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
-import { SCRIPT_WRITE_NOTICE } from '../../../../../../lib/block-script-gate';
 import { CORE_BLOCK_TYPES, type BlockType } from '@typeroll/shared';
 import { pathParam } from '../../../../../../lib/path-param';
 import { getBlockTypeUsage, usageCount } from '../../../../../../lib/block-type-usage';
@@ -79,17 +78,16 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const existing = await vstore.blockType(ctx.orgId, ctx.siteId, ctx.versionId, typeId);
   if (!existing) return apiError('Not found', 404);
 
-  // `script` through an API key is allowed under the key holder's authority
-  // (same trust level as scripts_head). The write is audit-logged by
-  // apiResponse; the notice makes the stored JS visible to the operator.
-  const warnings = clean.script !== undefined ? [SCRIPT_WRITE_NOTICE] : [];
+  // `script` through an API key is accepted under the key holder's authority
+  // (same trust level as scripts_head and as a person in the portal). The
+  // write is audit-logged by apiResponse. See lib/block-script-gate.ts.
 
   // Schema overrides replace wholesale (not deep-merged) — half-merged
   // schema arrays would silently corrupt blocks. Same goes for template
   // / styles. Everything else is shallow-merged.
   const merged: BlockType = { ...existing, ...clean };
   await vstore.writeBlockType(ctx.orgId, ctx.siteId, ctx.versionId, typeId, merged);
-  return apiResponse(ctx, { ...merged, ...(warnings.length ? { warnings } : {}) });
+  return apiResponse(ctx, merged);
 };
 
 export const DELETE: APIRoute = async ({ request, params }) => {

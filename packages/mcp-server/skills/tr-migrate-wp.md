@@ -19,9 +19,13 @@ Its shared evidence record is required for visual acceptance.
 > `trigger_deploy`. Preview your drafts with `include_working_copy: true`.
 
 
-The platform's in-portal migration workflow is the "managed" path for
-customers who want one-click. This skill is the "power-user" path: you
-do it locally, mix data sources freely, and the user reviews each step in their terminal.
+The platform's migration workflow is the "managed" path for customers who
+want one-click. It runs on the server and is also available to you:
+`start_workflow type="migration" config={ wp_url }` on an existing site, or
+`create_site_and_migrate` (organization key) for a new one; poll `get_workflow`
+and approve its review gate only with the user's consent. This skill is the
+"power-user" path: you do it locally, mix data sources freely, and the user
+reviews each step in their terminal.
 
 ## Preconditions
 

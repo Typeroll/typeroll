@@ -89,6 +89,19 @@ The AI agent will:
 5. Generate redirects
 6. Show you a coverage report
 
+### Server-side migration workflow
+
+The portal can also run the migration on the server: **New site → Migrate from
+WordPress** creates a Site and starts it, and an existing Site runs it from
+**Workflows**. The same workflow is available to agents and scripts. With an
+organization API key, `create_site_and_migrate` (`POST
+/api/v1/sites/create-and-migrate`) creates the Site and starts the run;
+`start_workflow` with `type: "migration"` runs it on an existing Site (write
+permission). Poll `get_workflow` and approve its review step with
+`approve_workflow` once you have checked it. Own storage must be verified
+first in both the portal and the API. See
+[Organization, access and workflow tools](../../tools/organization/#workflows).
+
 ## Reviewing the migration
 
 After the content is imported, the AI agent shows a coverage report:

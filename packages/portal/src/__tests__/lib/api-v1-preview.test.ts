@@ -311,3 +311,33 @@ describe('working-copy previews for agents', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('GET /v1 page preview matches the portal Preview', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('includes block JavaScript and the cookie-consent banner', async () => {
+    const { token } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/ticker`, {
+      name: 'ticker', label: 'Ticker', schema: [], origin: 'user', created_at: new Date().toISOString(),
+      template: '<div data-block="ticker">Tick</div>', script: 'window.__tickerLoaded = true;',
+    });
+    await seedPage('about', { content_mode: 'blocks', html_content: '', blocks: [{ id: 'b1', type: 'ticker', data: {} }] });
+    const { vstore } = await import('../../lib/version-store');
+    await vstore.writeSettings(ORG, SITE, MAIN_VERSION_ID, {
+      cookie_consent: { enabled: true, text: 'We use cookies.', scripts_necessary: '<script>window.__necessary = 1</script>' },
+    });
+
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/pages/[pageId]/preview'),
+      'GET',
+      `http://localhost/api/v1/sites/${SITE}/pages/about/preview`,
+      { siteId: SITE, pageId: 'about' },
+      { headers: bearer(token) },
+    );
+    expect(res.status).toBe(200);
+    const { rendered_html: html } = await res.json() as { rendered_html: string };
+    expect(html).toContain('window.__tickerLoaded = true;');
+    expect(html).toContain('data-tr-consent-action');
+  });
+});

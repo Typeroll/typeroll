@@ -1,42 +1,16 @@
 import type { APIRoute } from 'astro';
-import { usesPrivateMedia } from '../../../../../lib/publishing/media-policy';
 import { requireSiteAccess, json } from '../../../../../lib/access';
+import { mediaUploadStatus } from '../../../../../lib/media/upload-status';
 
 /**
  * Lightweight pre-flight for the media library. Returns whether uploads can
- * actually go through (i.e. whether R2 is configured server-side) so the UI
- * can surface a banner instead of leaving the user to discover the failure
- * by trying to upload.
+ * actually go through (organization storage connected, or platform R2
+ * configured server-side) so the UI can surface a banner instead of leaving
+ * the user to discover the failure by trying to upload. The API equivalent is
+ * GET /api/v1/sites/{siteId}/media/upload-status.
  */
 export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-
-  if (await usesPrivateMedia(guard.value.owner_org_id, guard.value.site)) {
-    const { mediaUploadAvailability } = await import('../../../../../lib/publishing/media-storage');
-    try { return json(await mediaUploadAvailability(guard.value.owner_org_id)); }
-    catch (error) { return json({ enabled: false, reason: error instanceof Error ? error.message : 'Media storage is unavailable. Open Publishing to check the connection.', settings_url: '/app/settings/publishing' }); }
-  }
-  const accountId = process.env.R2_ACCOUNT_ID;
-  const bucket = process.env.R2_BUCKET;
-  const publicBase = process.env.R2_PUBLIC_BASE_URL;
-  const accessKey = process.env.R2_ACCESS_KEY_ID;
-  const secretKey = process.env.R2_SECRET_ACCESS_KEY;
-
-  const missing = [
-    !accountId && 'R2_ACCOUNT_ID',
-    !bucket && 'R2_BUCKET',
-    !publicBase && 'R2_PUBLIC_BASE_URL',
-    !accessKey && 'R2_ACCESS_KEY_ID',
-    !secretKey && 'R2_SECRET_ACCESS_KEY',
-  ].filter(Boolean) as string[];
-
-  if (missing.length > 0) {
-    return json({
-      enabled: false,
-      reason: `Media uploads require Cloudflare R2 credentials. Missing on the server: ${missing.join(', ')}.`,
-      missing,
-    });
-  }
-  return json({ enabled: true });
+  return json(await mediaUploadStatus(guard.value.owner_org_id, guard.value.site));
 };

@@ -59,6 +59,21 @@ deploy by default so the new build-time config becomes visible. Use
 `--no-deploy` in the CLI or `deploy: false` in MCP only when batching changes;
 then trigger one deploy after the final update.
 
+Every other installation action in the portal is also available to a site
+administrator API key and MCP: install, enable/disable, uninstall,
+diagnostics, issuer pairing and admin-page launch grants
+(`install_extension`, `set_extension_installation_status`,
+`uninstall_extension`, `read_extension_diagnostics`, `pair_extension_issuer`,
+`launch_extension_admin_page`). Actions that show a new secret (rotating the
+server credential) stay in the portal. The developer API the CLI uses is exposed as
+MCP tools for organization-scoped keys (`list_developer_extensions`,
+`read_developer_extension`, `update_developer_extension`,
+`save_extension_version`, `publish_extension_version`,
+`set_extension_version_lifecycle`, `list_developer_extension_installations`);
+registering an Extension and rotating its client secret stay in the portal and
+the CLI.
+Routes are listed in [`v1-api.md`](./v1-api.md#extension-installation-lifecycle).
+
 ## Frontend contract
 
 A bundled component exports:

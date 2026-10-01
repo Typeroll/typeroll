@@ -384,17 +384,29 @@ When the library doesn't fit, the AI agent creates a custom type with `create_bl
 ```
 
 <Aside type="caution">
-  **Custom JavaScript is not available through the AI agent.** Block-level JS
-  runs in every visitor's browser with full DOM access — that's a trust decision
-  a human takes. To add a script to a custom block, open it in the portal's
-  block-type editor, toggle "Activate JS", and accept the warning.
+  **Block JavaScript runs in every visitor's browser.** Through MCP and the API,
+  `create_block_type` and `update_block_type` accept a `script` field, and
+  `core/embed` accepts `js`, under your API key's authority — the same
+  authority that lets the key write `scripts_head` and `custom_css`, and the
+  same thing a site editor can do in the portal's block-type editor ("Activate
+  JS"). The write is stored as sent and recorded in the API audit log like any
+  other change. Review scripts like deployed code, and never paste script you
+  copied from untrusted content without reading it first. A `<script>` tag in
+  page or block markup is still removed by the sanitizer, whichever credential
+  wrote it.
 </Aside>
+
+The in-portal chat assistant is the one exception: it writes block JavaScript
+only when the site has **Allow AI to write block scripts** enabled. A site admin
+sets that in **Settings → Custom code**, or with `update_site`
+(`ai_scripts_enabled: true`) / `PATCH /api/v1/sites/{siteId}`. The setting has
+no effect on API keys or MCP.
 
 Origin is auto-stamped `'ai'` so the portal UI can visually flag AI-authored blocks for audit.
 
 ## Editing existing types
 
-`update_block_type` patches fields on an existing custom or third-party block type. Core blocks (id starts with `core/`) are managed in platform code and can't be changed via tool. Schema, template, and styles **replace wholesale** when included — don't send them unless you want to overwrite. The script field is silently dropped even on updates.
+`update_block_type` patches fields on an existing custom or third-party block type. Core blocks (id starts with `core/`) are managed in platform code and can't be changed via tool. Schema, template, and styles **replace wholesale** when included — don't send them unless you want to overwrite. `script` follows the same rule as on create: accepted under your key's authority.
 
 ```
 "Make the testimonial block default to bordered style instead of card."
@@ -466,8 +478,8 @@ into blocks.
 | ------------------------------------------- | ------------------------------------------------- |
 | `list_block_types`                          | Every type usable on this site                    |
 | `read_block_type`                           | Full schema + template + styles for one type      |
-| `create_block_type`                         | New custom type (origin=ai, no script)            |
-| `update_block_type`                         | Patch a custom or third-party type (no script)    |
+| `create_block_type`                         | New custom type (origin=ai, optional `script`)    |
+| `update_block_type`                         | Patch a custom or third-party type                |
 | `delete_block_type`                         | Remove a custom/third-party type (core protected) |
 | `find_pages_using_block_type`               | Reverse-index: which pages reference this type?   |
 | `export_block_types` / `import_block_types` | `.tcblocks` package format for portability        |

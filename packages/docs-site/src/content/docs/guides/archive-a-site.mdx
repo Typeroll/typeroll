@@ -36,6 +36,30 @@ access you were granted.
 Open the site's **Settings** and select **Restore this site**. It returns to the
 dashboard and accepts changes again immediately.
 
+## Through the API or an AI agent
+
+The same actions are available to an API key and to MCP agents, with the same
+rules: an admin of the organization that owns the site, never through a share.
+
+- MCP: `archive_site` (optional `reason`), `restore_site`, and `get_site`, whose
+  `lifecycle.status` reads `active` or `archived`.
+- REST: `POST /api/v1/sites/{siteId}/lifecycle` with
+  `{ "action": "archive", "reason": "…" }` or `{ "action": "restore" }`;
+  `GET /api/v1/sites/{siteId}/lifecycle` returns the current state.
+
+While a site is archived, every other write through the API or MCP is answered
+with HTTP 409. Restoring is the exception, which is what makes it possible.
+
+## Removing an archived site's media
+
+Once a site is archived, its media can be deleted from your organization's
+storage — the step before retiring the site for good. This is irreversible and
+requires the same owner-organization admin permission. Use the MCP tool
+`purge_site_media` or `POST /api/v1/sites/{siteId}/media/purge`. Objects that
+cannot be removed are reported and kept on record; run it again to retry them.
+Your Git repository and hosting project are not touched. See
+[Media tools](../../tools/media/#purge_site_media).
+
 ## If the site still has a domain
 
 Archiving is refused while a custom domain is live or verified on the site.

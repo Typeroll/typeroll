@@ -1,6 +1,8 @@
 // Cookie-auth, admin-only: list every Typeroll app with this site's
 // enabled/config state (masked). Powers the Apps settings page and the
-// sidebar's conditional Insights link. NOT on the AI/MCP surface.
+// sidebar's conditional Insights link. API keys use the admin-only
+// /api/v1/sites/{siteId}/apps (MCP `list_apps`); the in-portal chat
+// assistant has no app tools.
 
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, requirePermission, json } from '../../../../../lib/access';

@@ -335,9 +335,21 @@ export async function requireAnyApiKey(request: Request): Promise<GuardResult<Ap
   };
 }
 
+export interface RequireApiKeyOptions {
+  /**
+   * Let a write through on an archived site. Only for the routes that act on
+   * the lifecycle itself — restoring, and purging media of a retired site —
+   * which then gate on `requireApiSiteLifecycleChange`. Mirrors the session
+   * side, where those routes use requireSiteLifecycleChange instead of
+   * requirePermission. Extension credentials are never let through.
+   */
+  allowArchivedWrites?: boolean;
+}
+
 export async function requireApiKey(
   request: Request,
   urlSiteId: string | undefined,
+  options: RequireApiKeyOptions = {},
 ): Promise<GuardResult<ApiContext>> {
   if (!urlSiteId) {
     return { ok: false, response: json({ error: 'Missing siteId' }, 400) };
@@ -393,7 +405,7 @@ export async function requireApiKey(
   // Same rule as the session API: archived means frozen, not hidden. Without
   // this an API key or an MCP agent would keep writing to a site the portal
   // no longer shows anyone.
-  if (isWrite && isArchivedSite(site)) {
+  if (isWrite && isArchivedSite(site) && !options.allowArchivedWrites) {
     return { ok: false, response: json({ error: ARCHIVED_SITE_MESSAGE }, 409) };
   }
   // Rate limit per key. Reads and writes share separate buckets so a
@@ -444,6 +456,25 @@ export async function requireApiKey(
       path: new URL(request.url).pathname,
     },
   };
+}
+
+/**
+ * API-key counterpart of lib/access.ts → requireSiteLifecycleChange, for
+ * archiving, restoring and purging a retired site's media.
+ *
+ * Owner-organization admins only, exactly as in the portal: an org-scoped key
+ * of the owning organization or a site-scoped key (both resolve to `admin`).
+ * A key that reaches the site through a cross-org share is refused however
+ * privileged the share, and so is an Extension installation credential.
+ */
+export function requireApiSiteLifecycleChange(ctx: ApiContext): GuardResult<ApiContext> {
+  if (ctx.extensionIdentity || ctx.orgId !== ctx.tokenOrgId) {
+    return { ok: false, response: apiError('Only the owning organization can change a site lifecycle', 403, ctx) };
+  }
+  if (ctx.permission !== 'admin') {
+    return { ok: false, response: apiError('Insufficient permission (admin required)', 403, ctx) };
+  }
+  return { ok: true, value: ctx };
 }
 
 /**

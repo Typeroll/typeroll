@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { gotoReady } from './helpers/ready';
 
 test('style library: add standard styles, edit one, refuse low contrast, and apply it to a heading', async ({ page }, info) => {
   const file = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/pages/styled-heading.json');
@@ -9,7 +10,7 @@ test('style library: add standard styles, edit one, refuse low contrast, and app
   writeFileSync(file, JSON.stringify({ id: 'styled-heading', title: 'Styled', slug: 'styled-heading', status: 'draft', content_mode: 'blocks', blocks: [{ id: 'kicker', type: 'core/heading', data: { text: 'For leadership teams', level: 'h2' } }] }));
   try {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto('/app/sites/default/styles', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/app/sites/default/styles');
     await page.getByRole('button', { name: 'Add standard styles' }).click();
     await expect(page.getByRole('status')).toContainText(/Added \d+ standard styles|already here/);
 
@@ -39,7 +40,7 @@ test('style library: add standard styles, edit one, refuse low contrast, and app
     await page.screenshot({ path: info.outputPath('styles-390.png') });
     await page.setViewportSize({ width: 1440, height: 1000 });
 
-    await page.goto('/app/sites/default/pages/styled-heading', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/app/sites/default/pages/styled-heading');
     await page.getByRole('button', { name: 'Structure', exact: true }).click();
     await page.getByRole('button', { name: 'Edit For leadership teams', exact: true }).click();
     await page.getByLabel('Heading style', { exact: true }).selectOption({ label: 'Eyebrow' });

@@ -97,10 +97,24 @@ batch_update_pages updates=[
 OG image dimensions: 1200×630px ideal. The platform doesn't resize —
 use a correctly-sized source image.
 
+For pages without their own image, set a site-wide fallback and the X/Twitter
+handle (admin permission, as in the portal Settings form):
+
+```
+update_site_settings default_og_image="<cdn_url>" twitter_handle="@acmestudio"
+```
+
 ### 5. Add structured data (JSON-LD)
 
 Typeroll auto-generates Article and Page schema, but you can override or
 extend with custom JSON-LD per page. Example: LocalBusiness on the homepage.
+
+The site-wide Organization schema comes from settings — set it once instead of
+repeating it on every page (`null` clears it):
+
+```
+update_site_settings organization={"name":"Acme Studio","logo":"<cdn_url>","same_as":["https://www.linkedin.com/company/acme"]}
+```
 
 ```
 update_page page_id="home" patch={

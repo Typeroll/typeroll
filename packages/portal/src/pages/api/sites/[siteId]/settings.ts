@@ -4,6 +4,7 @@ import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
 import { responsiveBreakpointsError, seoReviewError, defaultSiteSettings, normalizeIframeAllowedHosts, paths } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
+import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
 
 export const POST: APIRoute = async ({ request, cookies, params, redirect, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -21,28 +22,19 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   const colors = { ...existing.colors };
   const fonts = { ...existing.fonts };
 
-  // sameAs is one URL per line in the textarea — split and trim.
-  const sameAsRaw = String(form.get('organization.same_as') ?? '');
-  const sameAs = sameAsRaw
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  const orgName = String(form.get('organization.name') ?? '').trim();
-  const orgLogo = String(form.get('organization.logo') ?? '').trim();
-  const organization =
-    orgName || orgLogo || sameAs.length > 0
-      ? {
-          name: orgName || undefined,
-          logo: orgLogo || undefined,
-          same_as: sameAs,
-        }
-      : undefined;
+  // sameAs is one URL per line in the textarea.
+  const organization = normalizeOrganization({
+    name: String(form.get('organization.name') ?? ''),
+    logo: String(form.get('organization.logo') ?? ''),
+    same_as: String(form.get('organization.same_as') ?? '').split(/\r?\n/),
+  });
 
   // Cookie consent — gated on the enabled checkbox. When unchecked we drop
   // the whole block so the renderer's `cookie_consent?.enabled === true`
   // check short-circuits. Script content is trusted like scripts_head:
-  // admin-only via requirePermission('admin') above, never exposed to the
-  // chat AI's update_site_settings tool surface.
+  // admin-only via requirePermission('admin') above (the v1 settings PATCH
+  // applies the same check), never exposed to the chat AI's
+  // update_site_settings tool surface.
   const ccEnabled = form.get('cookie_consent.enabled') === 'on';
   const cookie_consent = ccEnabled
     ? {
@@ -92,7 +84,7 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     image_sizes_default: String(form.get('image_sizes_default') ?? '') || undefined,
     default_og_image: String(form.get('default_og_image') ?? '') || undefined,
     language: String(form.get('language') ?? 'en') || 'en',
-    twitter_handle: String(form.get('twitter_handle') ?? '').replace(/^@/, '') || undefined,
+    twitter_handle: normalizeTwitterHandle(String(form.get('twitter_handle') ?? '')),
     organization,
     scripts_head: String(form.get('scripts_head') ?? '') || undefined,
     scripts_body_end: String(form.get('scripts_body_end') ?? '') || undefined,
@@ -125,10 +117,7 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   // endpoint is silently ignored. See docs/domain-lifecycle-plan.md.
   const siteUpdate: Record<string, unknown> = {};
   const stagingRaw = form.get('staging_url');
-  if (typeof stagingRaw === 'string') {
-    const cleaned = stagingRaw.trim().replace(/\/+$/, '');
-    siteUpdate.staging_url = cleaned || null;
-  }
+  if (typeof stagingRaw === 'string') siteUpdate.staging_url = normalizeStagingUrl(stagingRaw);
   if (Object.keys(siteUpdate).length > 0) {
     await store.updateDoc(paths.site(owner_org_id, site.id), siteUpdate);
   }

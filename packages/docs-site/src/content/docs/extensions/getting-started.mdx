@@ -74,6 +74,57 @@ published version. You may change `distribution` while every saved version is
 still a draft; Typeroll updates those draft manifests and hashes together. Once
 any version has been published or submitted for review, distribution is locked.
 
+## Develop with MCP tools
+
+The same developer API is available to agents as MCP tools when the MCP
+connection uses an organization-scoped key: `list_developer_extensions`,
+`read_developer_extension`, `update_developer_extension`,
+`save_extension_version`, `publish_extension_version`,
+`set_extension_version_lifecycle` and `list_developer_extension_installations`.
+Over REST these are the `/api/developer/extensions/**` routes the CLI calls,
+authenticated with `Authorization: Bearer` and an organization-scoped key; a
+site-scoped key is refused. Registering an Extension and rotating its client
+secret return the `client_secret` once, so they are done in the portal or the
+CLI and never through MCP, where the secret would land in the agent's
+conversation. Publishing a release makes it available to every compatible
+installation, so publish only after review.
+
+## Manage installations from the API and MCP
+
+Everything a site administrator can do under **Settings → Extensions** is also
+available with a site administrator API key (an owned Site, a site-scoped key
+or an admin share) and through MCP. Paths are relative to
+`/api/v1/sites/{siteId}/extensions`.
+
+| Action                            | MCP tool                                                      | REST route                               |
+| --------------------------------- | ------------------------------------------------------------- | ---------------------------------------- |
+| List and read installations       | `list_extension_installations`, `read_extension_installation` | `GET /`, `GET /{installationId}`         |
+| Install                           | `install_extension`                                           | `POST /`                                 |
+| Update configuration              | `update_extension_installation_config`                        | `PATCH /{installationId}` with `config`  |
+| Activate a pending release        | `activate_extension_release`                                  | `PATCH /{installationId}` with `version` |
+| Enable or disable                 | `set_extension_installation_status`                           | `PATCH /{installationId}` with `status`  |
+| Uninstall                         | `uninstall_extension`                                         | `DELETE /{installationId}`               |
+| Diagnostics                       | `read_extension_diagnostics`                                  | `GET /{installationId}/diagnostics`      |
+| Pair the token issuer             | `pair_extension_issuer`                                       | `POST /{installationId}/pair`            |
+| Open an admin page                | `launch_extension_admin_page`                                 | `POST /{installationId}/launch`          |
+| Call an approved native admin API | `call_extension_admin`                                        | `POST /{installationId}/admin-request`   |
+
+Notes:
+
+- `install_extension` grants only the `granted_scopes` you pass; each must be
+  requested by the manifest. Install, enable, disable and uninstall do not
+  deploy. Deploy afterwards to publish the change.
+- The server credential is rotated in the portal (**Settings → Extensions**),
+  which shows the new `tri_…` credential once. It is not available through the
+  API or MCP, so a new credential never lands in an agent's conversation or a
+  log.
+- `launch_extension_admin_page` returns a single-use launch code with the
+  `launch_url` and the `form` fields to POST there before `expires_at`, for
+  example from a browser automation tool. The provider sees the caller as
+  `api-key:{prefix}`, and the page's `minimum_permission` applies. Approved
+  native admin pages are called directly with `call_extension_admin` instead.
+- Installation credentials cannot use these routes.
+
 ## Add the component to a page
 
 After installation, the component appears in the editor's block picker. In

@@ -2,13 +2,12 @@
 //
 // PATCH  — change permission level and/or label.
 // DELETE — revoke (soft-deletes canonical, hard-deletes index entry).
+//
+// The public-API equivalent is /api/v1/sites/{siteId}/shares/{shareId}.
 
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, requirePermission, json } from '../../../../../lib/access';
-import { revokeShare, updateShare } from '../../../../../lib/shares';
-import type { SharePermission } from '@typeroll/shared';
-
-const VALID_PERMISSIONS: SharePermission[] = ['read', 'write', 'admin'];
+import { parseShareUpdate, revokeShare, updateShare } from '../../../../../lib/shares';
 
 export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -19,24 +18,10 @@ export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
   const { shareId } = params;
   if (!shareId) return json({ error: 'Missing shareId' }, 400);
 
-  const body = (await request.json().catch(() => ({}))) as {
-    permission?: string;
-    label?: string;
-  };
+  const patch = parseShareUpdate(await request.json().catch(() => ({})));
+  if ('error' in patch) return json({ error: patch.error }, 400);
 
-  const permission = body.permission as SharePermission | undefined;
-  if (permission !== undefined && !VALID_PERMISSIONS.includes(permission)) {
-    return json({ error: `permission must be one of: ${VALID_PERMISSIONS.join(', ')}` }, 400);
-  }
-
-  if (!permission && body.label === undefined) {
-    return json({ error: 'permission or label required' }, 400);
-  }
-
-  const updated = await updateShare(owner_org_id, site.id, shareId, {
-    permission,
-    label: body.label,
-  });
+  const updated = await updateShare(owner_org_id, site.id, shareId, patch);
   if (!updated) return json({ error: 'Share not found' }, 404);
   return json({ share: updated });
 };

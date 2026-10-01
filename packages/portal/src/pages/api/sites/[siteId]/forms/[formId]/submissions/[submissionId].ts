@@ -1,10 +1,10 @@
-// Cookie-auth admin: read / delete a single form submission.
+// Cookie-auth: read / delete a single form submission. Shares
+// lib/form-submissions with the v1 API and MCP (read_form_submission,
+// delete_form_submission).
 
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, requirePermission, json } from '../../../../../../../lib/access';
-import { getStore } from '../../../../../../../lib/datastore';
-import { paths } from '@typeroll/shared';
-import type { FormSubmission } from '@typeroll/shared';
+import { deleteFormSubmission, readFormSubmission } from '../../../../../../../lib/form-submissions';
 
 export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -12,11 +12,9 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const { site, owner_org_id } = guard.value;
   const { formId, submissionId } = params;
   if (!formId || !submissionId) return json({ error: 'Missing id' }, 400);
-  const sub = await getStore().getDoc<FormSubmission>(
-    `${paths.submissions(owner_org_id, site.id)}/${submissionId}`,
-  );
-  if (!sub || sub.form_id !== formId) return json({ error: 'Not found' }, 404);
-  return json({ submission: sub });
+  const submission = await readFormSubmission(owner_org_id, site.id, formId, submissionId, guard.value.permission === 'admin');
+  if (!submission) return json({ error: 'Not found' }, 404);
+  return json({ submission });
 };
 
 export const DELETE: APIRoute = async ({ cookies, params, locals }) => {
@@ -27,19 +25,6 @@ export const DELETE: APIRoute = async ({ cookies, params, locals }) => {
   const { site, owner_org_id } = guard.value;
   const { formId, submissionId } = params;
   if (!formId || !submissionId) return json({ error: 'Missing id' }, 400);
-  const store = getStore();
-  const sub = await store.getDoc<FormSubmission>(
-    `${paths.submissions(owner_org_id, site.id)}/${submissionId}`,
-  );
-  if (!sub || sub.form_id !== formId) return json({ error: 'Not found' }, 404);
-  const deliveries = await store.listDocs<{ id: string; submission_id?: string }>(
-    paths.formWebhookDeliveries(owner_org_id, site.id),
-  );
-  for (const delivery of deliveries) {
-    if (delivery.submission_id === submissionId) {
-      await store.deleteDoc(`${paths.formWebhookDeliveries(owner_org_id, site.id)}/${delivery.id}`);
-    }
-  }
-  await store.deleteDoc(`${paths.submissions(owner_org_id, site.id)}/${submissionId}`);
+  if (!(await deleteFormSubmission(owner_org_id, site.id, formId, submissionId))) return json({ error: 'Not found' }, 404);
   return json({ ok: true });
 };

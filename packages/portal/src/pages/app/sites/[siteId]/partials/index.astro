@@ -6,7 +6,7 @@ import { getStore } from '../../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { Partial as PartialDoc, Site } from '@typeroll/shared';
 import { listBlockTemplates } from '../../../../../lib/block-templates-store';
-import { getAllBlockUsage } from '../../../../../lib/partials-usage';
+import { describeBlockUsage, emptyBlockUsage, getAllBlockUsage } from '../../../../../lib/partials-usage';
 import BlockTemplateList from '../../../../../components/BlockTemplateList';
 
 const ctx = await loadSiteContext(Astro);
@@ -80,7 +80,7 @@ const canEdit = ctx.permission !== 'read';
           <a href={`/app/sites/${siteId}/partials/${b.id}`} class="card gb-card">
             <div class="gb-card__icon">◈</div>
             <h3 class="gb-card__title">{b.name}</h3>
-            <p class="text-sm gb-card__meta">{b.content_mode === 'blocks' ? 'Blocks' : 'HTML'} · {b.status === 'published' ? 'Published' : 'Draft'} · used on {(usage.get(b.id) ?? []).length} {(usage.get(b.id) ?? []).length === 1 ? 'page' : 'pages'}</p>
+            <p class="text-sm gb-card__meta">{b.content_mode === 'blocks' ? 'Blocks' : 'HTML'} · {b.status === 'published' ? 'Published' : 'Draft'} · {describeBlockUsage(usage.get(b.id) ?? emptyBlockUsage())}</p>
             <p class="text-sm gb-card__meta"><code class="inline-code">{b.id}</code></p>
           </a>
         ))}

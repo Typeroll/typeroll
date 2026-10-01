@@ -7,6 +7,7 @@ import type { APIRoute } from 'astro';
 import { apiError, requireApiKey, apiResponse } from '../../../../../lib/api-auth';
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
 import { getStore } from '../../../../../lib/datastore';
+import { siteLifecycleState } from '../../../../../lib/site-lifecycle';
 import {
   needsFallbackProvisioning,
   reprovisionFallbackSubdomain,
@@ -23,6 +24,10 @@ function project(site: Site & { id: string }, versionId: string): Record<string,
     slug: (site as { slug?: string }).slug,
     domain: (site as { domain?: string }).domain,
     language: (site as { language?: string }).language,
+    // "Allow AI to write block scripts" — gates only the in-portal chat
+    // assistant; API keys and MCP write block JS under their own authority.
+    ai_scripts_enabled: site.ai_scripts_enabled === true,
+    lifecycle: siteLifecycleState(site),
     version_id: versionId,
     urls: publicUrlsFor(site),
   };
@@ -37,7 +42,9 @@ export const GET: APIRoute = async ({ request, params }) => {
 
 /**
  * Edit Site-level fields (separate from per-version settings). v1 allows
- * the agent to set name, slug, and domain. slug is uniqueness-checked
+ * the agent to set name, slug, domain, language and ai_scripts_enabled
+ * ("Allow AI to write block scripts", admin only — the same check as the
+ * portal's Settings → Custom code toggle). slug is uniqueness-checked
  * across the org so two sites can't claim the same fallback URL. Changing
  * slug reprovisions the fallback DNS and Cloudflare Pages attachment. The
  * response reports `dns_note` on success or `dns_warning` when the slug was
@@ -84,6 +91,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       if (clash) return apiError(`Slug "${slug}" is already used by another site in this organization`, 409);
     }
     update.slug = slug || undefined;
+  }
+
+  if (body.ai_scripts_enabled !== undefined) {
+    if (ctx.permission !== 'admin') return apiError('Insufficient permission (admin required)', 403, ctx);
+    if (typeof body.ai_scripts_enabled !== 'boolean') return apiError('ai_scripts_enabled must be boolean');
+    update.ai_scripts_enabled = body.ai_scripts_enabled;
   }
 
   if (Object.keys(update).length === 0) return apiError('No writable fields in body');

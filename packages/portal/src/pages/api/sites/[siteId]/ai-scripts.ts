@@ -1,9 +1,9 @@
-// Toggle Site.ai_scripts_enabled — the per-site human opt-in that lets
-// agent surfaces (MCP tools, chat AI, API-key writes) author the `script`
-// field on custom BlockTypes. See lib/block-script-gate.ts for the threat
-// model. Deliberately a cookie-auth, admin-only, form-POST route: the flag
-// must never be settable through any agent surface, or the gate would be
-// self-defeating.
+// Toggle Site.ai_scripts_enabled ("Allow AI to write block scripts") from the
+// portal Settings form. The flag lets the in-portal chat assistant author
+// block JavaScript; API keys and MCP are not gated by it (see
+// lib/block-script-gate.ts). Site admins can set the same flag through
+// PATCH /api/v1/sites/{siteId} (MCP `update_site`), with the same admin
+// permission check as this route.
 
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';

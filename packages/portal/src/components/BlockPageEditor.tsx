@@ -1693,7 +1693,7 @@ function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions })
       {isReference ? <>
         <p>This is a global block: its content is shared. Edit the global block to change it everywhere, or detach it to change it on this page only.</p>
         <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => {
-          if (confirm('Replace the global block with a copy on this page? Later changes to the global block will not reach this page.')) run(() => actions.detach(), 'Detached: this page now has its own copy.');
+          if (confirm('Replace the global block with a copy on this page? The copy matches what the editor shows, including an unsaved draft of the global block. Later changes to the global block will not reach this page.')) run(() => actions.detach(), 'Detached: this page now has its own copy.');
         }}>Detach (edit on this page only)</button>
       </> : <>
         <p><strong>Global block:</strong> one shared source; every page using it shows the same content. <strong>Template:</strong> a starting point; each insert is a copy.</p>

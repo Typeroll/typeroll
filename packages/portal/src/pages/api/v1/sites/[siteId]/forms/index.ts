@@ -15,7 +15,16 @@ export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const forms = await getStore().listDocs<Form>(paths.forms(ctx.orgId, ctx.siteId));
+  const store = getStore();
+  const forms = await store.listDocs<Form>(paths.forms(ctx.orgId, ctx.siteId));
+  // Submission counts, as the portal's forms list shows them. Not for an
+  // installation credential, whose forms:read scope does not cover submissions.
+  const counts = new Map<string, number>();
+  if (!ctx.extensionIdentity) {
+    for (const submission of await store.listDocs<{ form_id?: string }>(paths.submissions(ctx.orgId, ctx.siteId))) {
+      if (submission.form_id) counts.set(submission.form_id, (counts.get(submission.form_id) ?? 0) + 1);
+    }
+  }
   return apiResponse(ctx, {
     forms: forms.map((form) => ({
       id: form.id,
@@ -27,6 +36,7 @@ export const GET: APIRoute = async ({ request, params }) => {
       submit_text: form.submit_text,
       success_message: form.success_message,
       actions: formActionsView(form, formActionsPermission(ctx)),
+      ...(ctx.extensionIdentity ? {} : { submission_count: counts.get(form.id) ?? 0 }),
       created_at: form.created_at,
     })),
   });

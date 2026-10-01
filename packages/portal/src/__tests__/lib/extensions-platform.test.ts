@@ -1079,3 +1079,93 @@ describe('Extension assets and direct provider API', () => {
     expect(fakeFetch).toHaveBeenCalledOnce();
   });
 });
+
+describe('Extension installation lifecycle over the public API', () => {
+  beforeEach(async () => {
+    makeTmpFixtures(); await resetDatastore();
+    process.env.INTEGRATIONS_SECRET_KEY = 'integration-secret-key-longer-than-thirty-two-characters';
+    process.env.PORTAL_PUBLIC_URL = 'https://admin.customer.example';
+    delete process.env.EXTENSION_SIGNING_PRIVATE_JWK;
+  });
+
+  async function apiKeys() {
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.site(OWNER_ORG, SITE), { name: 'Customer site', hosting_adapter: 'cloudflare', created_at: new Date().toISOString() });
+    const { writeShare } = await import('../../lib/shares');
+    await writeShare({ id: 'share-write', site_id: SITE, owner_org_id: OWNER_ORG, shared_with_org_id: 'partner', permission: 'write', created_at: Date.now(), created_by: 'owner' });
+    const { createApiKey } = await import('../../lib/api-keys');
+    const admin = (await createApiKey({ orgId: OWNER_ORG, siteId: SITE, name: 'admin', createdBy: 'customer-admin' })).token;
+    const writer = (await createApiKey({ orgId: 'partner', siteId: null, name: 'writer', createdBy: 'partner-admin' })).token;
+    return { admin, writer };
+  }
+
+  async function call(modPath: string, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', installationId: string, token: string, suffix = '', body?: unknown): Promise<Response> {
+    const mod = await import(/* @vite-ignore */ modPath) as Record<string, (ctx: unknown) => Promise<Response>>;
+    return mod[method]!({
+      request: new Request(`https://portal.example/api/v1/sites/${SITE}/extensions/${installationId}${suffix}`, {
+        method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+      params: { siteId: SITE, installationId },
+    });
+  }
+
+  it('reads diagnostics, launches admin pages, disables and uninstalls with admin keys only, never rotates credentials', async () => {
+    const { installation } = await registeredInstallation();
+    const { admin, writer } = await apiKeys();
+    const route = '../../pages/api/v1/sites/[siteId]/extensions/[installationId]';
+
+    // Site administration, as in the portal: a write share is refused everywhere.
+    expect((await call(`${route}/diagnostics`, 'GET', installation.id, writer, '/diagnostics')).status).toBe(403);
+    expect((await call(`${route}/rotate-credential`, 'POST', installation.id, writer, '/rotate-credential', {})).status).toBe(403);
+    expect((await call(`${route}/pair`, 'POST', installation.id, writer, '/pair')).status).toBe(403);
+    expect((await call(route, 'DELETE', installation.id, writer)).status).toBe(403);
+
+    const diagnostics = await call(`${route}/diagnostics`, 'GET', installation.id, admin, '/diagnostics');
+    expect(diagnostics.status).toBe(200);
+    expect(await diagnostics.json()).toMatchObject({ status: 'enabled', current_version: '1.0.0' });
+
+    // A new credential is issued only in the portal, never to an API caller.
+    const rotated = await call(`${route}/rotate-credential`, 'POST', installation.id, admin, '/rotate-credential', { grace_seconds: 0 });
+    expect(rotated.status).toBe(403);
+    expect(JSON.stringify(await rotated.json())).toContain('rotated in the portal');
+    const { credential } = await rotateInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, actorId: 'admin', graceSeconds: 0 });
+    const listed = await (await call(`${route}/diagnostics`, 'GET', installation.id, admin, '/diagnostics')).json() as { credentials: Array<Record<string, unknown>> };
+    expect(listed.credentials.length).toBeGreaterThan(0);
+    expect(JSON.stringify(listed.credentials)).not.toContain('secret_hash');
+
+    // The installed manifest declares no pairing endpoint.
+    expect((await call(`${route}/pair`, 'POST', installation.id, admin, '/pair')).status).toBe(409);
+
+    const launch = await call(`${route}/launch`, 'POST', installation.id, admin, '/launch', { page_id: 'quotes' });
+    expect(launch.status).toBe(200);
+    const grant = await launch.json() as { code: string; launch_url: string; form: Record<string, string> };
+    expect(grant.launch_url).toBe('https://vendor.example/launch');
+    expect(grant.form).toMatchObject({ code: grant.code, installation_id: installation.id, page_id: 'quotes' });
+    expect((await call(`${route}/launch`, 'POST', installation.id, admin, '/launch', { page_id: 'missing' })).status).toBe(404);
+
+    const { getStore } = await import('../../lib/datastore');
+    expect((await call(route, 'PATCH', installation.id, admin, '', { status: 'disabled' })).status).toBe(200);
+    expect(await getStore().getDoc(paths.extensionInstallation(OWNER_ORG, SITE, installation.id))).toMatchObject({ status: 'disabled' });
+
+    const removed = await call(route, 'DELETE', installation.id, admin);
+    expect(removed.status).toBe(200);
+    expect(await removed.json()).toMatchObject({ ok: true, redeploy_required: true });
+    expect(await getStore().getDoc(paths.extensionInstallation(OWNER_ORG, SITE, installation.id))).toMatchObject({ status: 'revoked' });
+    await expect(authenticateInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, credential })).rejects.toBeTruthy();
+  });
+
+  it('refuses installation credentials on installation management routes', async () => {
+    const { installation } = await registeredInstallation();
+    await apiKeys();
+    const { credential } = await rotateInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, actorId: 'admin' });
+    const mod = await import('../../pages/api/v1/sites/[siteId]/extensions/[installationId]/diagnostics');
+    const response = await mod.GET({
+      request: new Request(`https://portal.example/api/v1/sites/${SITE}/extensions/${installation.id}/diagnostics`, {
+        headers: { Authorization: `Bearer ${credential}`, 'X-Typeroll-Organization-Id': OWNER_ORG, 'X-Typeroll-Installation-Id': installation.id },
+      }),
+      params: { siteId: SITE, installationId: installation.id },
+    } as never) as Response;
+    expect(response.status).toBe(403);
+  });
+});

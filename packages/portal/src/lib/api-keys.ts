@@ -181,14 +181,64 @@ export async function listApiKeys(
   });
 }
 
+/**
+ * The only projection of a key that leaves the server. The hash stays
+ * inside even though it is already a hash: no client needs it, and exposing
+ * it offers nothing. Shared by the session routes and the public API.
+ */
+export function apiKeySummary(k: SiteApiKey) {
+  return {
+    id: k.id,
+    name: k.name,
+    created_at: k.created_at,
+    created_by: k.created_by,
+    last_used_at: k.last_used_at,
+    last_used_ip: k.last_used_ip,
+    revoked_at: k.revoked_at,
+  };
+}
+
+/** Validate the human label for a new key. Same rule for UI and API. */
+export function parseApiKeyName(body: unknown): { name: string } | { error: string } {
+  const raw = (body as { name?: unknown } | null)?.name;
+  const name = typeof raw === 'string' ? raw.trim() : '';
+  if (!name) return { error: 'name required' };
+  if (name.length > 80) return { error: 'name too long (max 80 chars)' };
+  return { name };
+}
+
+/** A key id as generateNewKey mints it. Anything else cannot name a key. */
+export function isApiKeyPrefix(value: string | undefined): value is string {
+  return typeof value === 'string' && /^[a-f0-9]{12}$/.test(value);
+}
+
+/** Create-response shape: metadata plus the plaintext token, exactly once. */
+export function createdApiKeyResponse(result: CreateKeyResult) {
+  return {
+    key: {
+      id: result.key.id,
+      name: result.key.name,
+      created_at: result.key.created_at,
+      created_by: result.key.created_by,
+    },
+    token: result.token,
+  };
+}
+
+/**
+ * Revoke a key. Returns false when no key with this id exists in the given
+ * scope (org + site, or org-scoped when siteId is null); true when it is
+ * revoked now or was revoked already.
+ */
 export async function revokeApiKey(
   orgId: string,
   siteId: string | null,
   prefix: string,
-): Promise<void> {
+): Promise<boolean> {
   const store = getStore();
   const existing = await store.getDoc<SiteApiKey>(metaPath(orgId, siteId, prefix));
-  if (!existing || existing.revoked_at) return;
+  if (!existing) return false;
+  if (existing.revoked_at) return true;
   const revokedAt = new Date().toISOString();
   // Mark both. Revoke the lookup FIRST so the key stops authing the moment
   // the user clicks revoke; the metadata write afterwards is just UI state.
@@ -197,6 +247,7 @@ export async function revokeApiKey(
     await store.setDoc(paths.apiKeyLookupEntry(prefix), { ...lookup, revoked_at: revokedAt });
   }
   await store.setDoc(metaPath(orgId, siteId, prefix), { ...existing, revoked_at: revokedAt });
+  return true;
 }
 
 export interface VerifiedKey {
@@ -257,3 +308,10 @@ export async function recordKeyUse(
     /* swallow */
   }
 }
+
+/**
+ * Creating a key (or any other new secret) happens only in the portal: the
+ * token is shown once there and never passes through an agent conversation,
+ * MCP transcript or tool log. The API and MCP can list and revoke keys.
+ */
+export const CREATE_KEY_IN_PORTAL = 'API keys are created in the portal (Site settings → API keys, or Organization settings → API keys), so a new key is shown only to the person creating it and never lands in an agent conversation or log. Listing and revoking keys work through the API and MCP.';

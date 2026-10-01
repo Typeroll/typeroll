@@ -35,10 +35,12 @@ You don't need to configure these — they work out of the box:
 ### Open Graph images
 
 - Uploads images via CDN and sets `og_image` on homepage and key landing pages
+- Sets the site-wide fallback `default_og_image` and `twitter_handle` with `update_site_settings`
 - OG images should be 1200×630px — Typeroll doesn't resize
 
 ### Structured data
 
+- Sets the site-wide `organization` (name, logo, `same_as` profiles) with `update_site_settings`
 - Adds `LocalBusiness` or `Organization` JSON-LD to the homepage
 - Adds `ContactPage` to contact pages
 - `json_ld` field takes the schema as a JSON string (not a nested object)

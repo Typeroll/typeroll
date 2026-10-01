@@ -2,14 +2,15 @@
 //
 // Generates a signed invite URL that another user can redeem at /onboarding
 // to join the caller's org. Requires a full session (user must already be
-// in an org — only existing members can invite others).
+// in an org — only existing members can invite others). The public-API
+// equivalent is POST /api/v1/organization/invites.
 //
 // Body: { ttlDays?: number }  (default 7, max 30)
 // Returns: { inviteUrl: string }
 
 import type { APIRoute } from 'astro';
 import { json, requireSession } from '../../../../lib/access';
-import { generateInviteToken } from '../../../../lib/invite';
+import { createInviteUrl, parseInviteTtlDays } from '../../../../lib/invite';
 import { isFormsSigningConfigured } from '../../../../lib/forms-signing';
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -26,20 +27,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return json({ error: 'FORMS_HMAC_SECRET is not configured on this server.' }, 500);
   }
 
-  let ttlDays = 7;
-  try {
-    const body = (await request.json()) as { ttlDays?: unknown };
-    if (typeof body.ttlDays === 'number' && body.ttlDays > 0) {
-      ttlDays = Math.min(Math.round(body.ttlDays), 30);
-    }
-  } catch {
-    // Body is optional — defaults are fine.
-  }
-
-  const token = generateInviteToken(session.orgId, ttlDays * 24 * 60 * 60 * 1000);
-
-  const baseUrl = (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '');
-  const inviteUrl = `${baseUrl}/onboarding?invite=${encodeURIComponent(token)}`;
-
+  // Body is optional — defaults are fine.
+  const ttlDays = parseInviteTtlDays(await request.json().catch(() => ({})));
+  const { inviteUrl } = createInviteUrl(session.orgId, ttlDays);
   return json({ inviteUrl });
 };

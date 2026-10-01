@@ -30,14 +30,8 @@ import {
   updateBlock,
   moveBlock,
   removeBlock,
-  findBlock,
   BlockMutationError,
 } from '../../../../../../../../../lib/block-mutations';
-import {
-  SCRIPT_WRITE_NOTICE,
-  blockDataCarriesScript,
-  resolveScriptFields,
-} from '../../../../../../../../../lib/block-script-gate';
 import type { Block } from '@typeroll/shared';
 import { styleOverrideWarnings } from '@typeroll/shared';
 
@@ -100,13 +94,6 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (shapeError) return apiError(shapeError, 400);
   try {
     const loaded = await loadContainer(t.target, ctx);
-    // Executable block-data fields are allowed under the key holder's
-    // authority (same trust level as scripts_head) — the notice is what
-    // makes the stored JS visible to the operator. See block-script-gate.ts.
-    const warnings = blockDataCarriesScript(
-      body.block.data,
-      await resolveScriptFields(ctx.orgId, ctx.siteId, ctx.versionId, body.block.type),
-    ) ? [SCRIPT_WRITE_NOTICE] : [];
     const result = addBlock(loaded.blocks, {
       block: { id: '', data: {}, ...body.block } as Block,
       parent_id: body.parent_id,
@@ -116,7 +103,6 @@ export const POST: APIRoute = async ({ request, params }) => {
     await writeContainer(t.target, result.blocks, ctx, loaded.raw);
     return apiResponse(ctx, {
       added_id: result.added_id, blocks: result.blocks,
-      ...(warnings.length ? { warnings } : {}),
     });
   } catch (e) {
     return mutError(e);
@@ -145,12 +131,6 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (shapeError) return apiError(shapeError, 400);
   try {
     const loaded = await loadContainer(t.target, ctx);
-    // The patch carries only data, so the type comes from the tree.
-    const found = findBlock(loaded.blocks, body.block_id);
-    const warnings = blockDataCarriesScript(
-      body.data,
-      await resolveScriptFields(ctx.orgId, ctx.siteId, ctx.versionId, found?.block.type),
-    ) ? [SCRIPT_WRITE_NOTICE] : [];
     const blocks = updateBlock(loaded.blocks, {
       block_id: body.block_id,
       data: body.data,
@@ -161,7 +141,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // The caller cannot read our logs, so it travels in the body.
     const overrideWarnings = styleOverrideWarnings(body.style_overrides, body.block_id);
     return apiResponse(ctx, {
-      ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}), blocks, ...(warnings.length ? { warnings } : {}) });
+      ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}), blocks });
   } catch (e) {
     return mutError(e);
   }

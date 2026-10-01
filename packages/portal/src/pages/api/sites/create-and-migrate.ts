@@ -1,70 +1,31 @@
-import { requireImportStorage } from '../../../lib/media/import-policy';
+// "Migrate from WordPress" on the New site page. The public-API equivalent is
+// POST /api/v1/sites/create-and-migrate; both use lib/workflows/create-site.
+
 import { connectionFailure } from '../../../lib/publishing/http';
+import { ConnectionError } from '../../../lib/publishing/connections';
 import type { APIRoute } from 'astro';
 import { requireFullSession } from '../../../lib/access';
-import { getStore } from '../../../lib/datastore';
-import { defaultSiteSettings, newSiteStyles, paths } from '@typeroll/shared';
-import { reserveSite } from '../../../lib/site-create';
-import type { Site } from '@typeroll/shared';
-import { WorkflowEngine } from '../../../lib/workflows/engine';
-import { migrationWorkflow } from '../../../lib/workflows/migration';
+import { createSiteWithWorkflow, parseSiteWorkflowRequest, SiteWorkflowInputError } from '../../../lib/workflows/create-site';
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const guard = await requireFullSession(cookies);
   if (!guard.ok) return guard.response;
   const session = guard.value;
 
-  try { await requireImportStorage(session.orgId); }
-  catch (error) { return connectionFailure(error); }
-
   const form = await request.formData();
-  const name = String(form.get('name') ?? '').trim();
-  const wp_url = String(form.get('wp_url') ?? '').trim();
-  if (!name || !wp_url) return new Response('name and wp_url are required', { status: 400 });
-
-  const store = getStore();
-  const { siteId, site: reservedSite } = await reserveSite(session.orgId, name);
-
-  let hostingConfig: Site['hosting_config'] | undefined;
+  let parsed;
   try {
-    const { provisionSiteHosting } = await import('../../../lib/hosting/site-provisioning');
-    const result = await provisionSiteHosting(session.orgId, siteId);
-    if (result) {
-      hostingConfig = {
-        pages_project: result.pagesProject,
-        fallback_subdomain: result.fallbackSubdomain ?? undefined,
-      };
-    }
-  } catch (e) {
-    console.error(`[create-and-migrate] CF provisioning failed for ${siteId}:`, e);
+    parsed = parseSiteWorkflowRequest('migration', { name: String(form.get('name') ?? ''), wp_url: String(form.get('wp_url') ?? '') });
+  } catch (error) {
+    if (error instanceof SiteWorkflowInputError) return new Response(error.message, { status: 400 });
+    throw error;
   }
 
-  const site: Omit<Site, 'id'> = {
-    ...reservedSite,
-    name,
-    hosting_adapter: 'cloudflare',
-    hosting_config: hostingConfig,
-    staging_url: hostingConfig?.fallback_subdomain
-      ? `https://${hostingConfig.fallback_subdomain}`
-      : undefined,
-    source_wp_url: wp_url,
-    created_at: new Date().toISOString(),
-  };
-  await store.updateDoc(paths.site(session.orgId, siteId), site);
-  await store.setDoc(paths.settings(session.orgId, siteId), { ...defaultSiteSettings, styles: newSiteStyles(), site_name: name });
-
-  const engine = new WorkflowEngine();
-  const workflowId = await engine.create({
-    orgId: session.orgId,
-    siteId,
-    def: migrationWorkflow,
-    config: { wp_url },
-    triggeredBy: 'manual',
-    createdBy: session.userId,
-  });
-  engine.start(session.orgId, workflowId, migrationWorkflow).catch((err) => {
-    console.error(`[migration ${workflowId}] failed:`, err);
-  });
-
-  return redirect(`/app/sites/${siteId}/workflows/${workflowId}`);
+  try {
+    const { siteId, workflowId } = await createSiteWithWorkflow({ orgId: session.orgId, request: parsed, createdBy: session.userId });
+    return redirect(`/app/sites/${siteId}/workflows/${workflowId}`);
+  } catch (error) {
+    if (error instanceof ConnectionError) return connectionFailure(error);
+    throw error;
+  }
 };

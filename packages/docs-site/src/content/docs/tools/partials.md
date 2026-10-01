@@ -80,3 +80,11 @@ Create a "cookie-banner" global block with a GDPR notice.
 See [Global blocks and block templates](../reusable-blocks/) for making a page
 section global, detaching a copy, and block templates that are copied into a
 page instead.
+
+## History
+
+Every save of a partial keeps the previous saved state. `list_partial_revisions`,
+`read_partial_revision` and `restore_partial_revision` list, read and restore
+them (`/api/v1/sites/{siteId}/partials/{partialId}/revisions`). A restore puts
+the earlier name and content back as a draft, or saves it with `save: true`.
+See [History and restore](../drafts-and-saving/#history-and-restore).

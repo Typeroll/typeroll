@@ -1,16 +1,9 @@
 import { useEffect, useState } from 'react';
+import { blockUsageCount, describeBlockUsage, type BlockUsage as Usage } from '../lib/block-usage-summary';
 
-interface UsagePage {
-  page_id: string;
-  title: string;
-  slug: string;
-  status: string;
-}
-
-interface UsageResponse {
+interface UsageResponse extends Usage {
   partial_id: string;
   auto_injected: boolean;
-  pages: UsagePage[];
 }
 
 interface Props {
@@ -43,7 +36,7 @@ export default function BlockUsage({ siteId, partialId, kind }: Props) {
           setError('error' in j ? j.error : `Lookup failed (${res.status})`);
           return;
         }
-        setData(j);
+        setData({ ...j, templates: j.templates ?? [], global_blocks: j.global_blocks ?? [] });
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Lookup failed');
       }
@@ -60,16 +53,17 @@ export default function BlockUsage({ siteId, partialId, kind }: Props) {
     return <div className="block-usage block-usage--loading">Counting pages that use this block…</div>;
   }
 
-  const count = data.pages.length;
   const auto = data.auto_injected;
+  const count = auto ? data.pages.length : blockUsageCount(data);
+  const summary = describeBlockUsage(data);
   const label = auto
     ? `Auto-injected on every page (${count})`
-    : `Used on ${count} page${count === 1 ? '' : 's'}`;
+    : summary.charAt(0).toUpperCase() + summary.slice(1);
   const calloutCopy = auto
     ? `Every page on the site shows this ${kind}. Edits here update them all.`
     : count === 0
     ? `No pages embed this block yet. Add <x-include name="${partialId}" /> to any page to start using it.`
-    : `Edits here will update ${count} page${count === 1 ? '' : 's'}.`;
+    : `Edits here change everything listed${data.global_blocks.some(b => b.kind !== 'free') ? ', including every page through the header or footer' : ''}.`;
 
   return (
     <div className="block-usage">
@@ -87,13 +81,29 @@ export default function BlockUsage({ siteId, partialId, kind }: Props) {
       {open && count > 0 && (
         <ul className="block-usage__list">
           {data.pages.map((p) => (
-            <li key={p.page_id}>
+            <li key={`page-${p.page_id}`}>
               <a href={`/app/sites/${siteId}/pages/${p.page_id}`} target="_blank" rel="noopener">
                 {p.title || p.slug || p.page_id}
                 <span className="block-usage__slug">/{p.slug}</span>
                 {p.status && p.status !== 'published' && (
                   <span className="block-usage__status">{p.status}</span>
                 )}
+              </a>
+            </li>
+          ))}
+          {!auto && data.templates.map((t) => (
+            <li key={`template-${t.template_id}`}>
+              <a href={`/app/sites/${siteId}/templates/${encodeURIComponent(t.template_id)}`} target="_blank" rel="noopener">
+                {t.label || t.template_id}
+                <span className="block-usage__status">Template</span>
+              </a>
+            </li>
+          ))}
+          {!auto && data.global_blocks.map((b) => (
+            <li key={`partial-${b.partial_id}`}>
+              <a href={`/app/sites/${siteId}/partials/${encodeURIComponent(b.partial_id)}`} target="_blank" rel="noopener">
+                {b.name || b.partial_id}
+                <span className="block-usage__status">{b.kind === 'free' ? 'Global block' : `${b.kind === 'header' ? 'Header' : 'Footer'}, every page`}</span>
               </a>
             </li>
           ))}

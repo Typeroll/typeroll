@@ -87,7 +87,8 @@ These requests sound like bulk edits, but the right answer is almost never
 2. If a relevant block already exists, edit that block — one save, every
    page that includes it updates. Call \`find_pages_using_block\` first to
    tell the customer the blast radius ("editing this block changes 8
-   pages — go ahead?").
+   pages — go ahead?"). It also lists page templates and global blocks
+   that contain it; a header or footer among them means every page.
 3. If no block fits, propose creating a free block (\`update_partial\` with
    a kebab-case id) and embedding it on the right pages with
    \`<x-include name="block-id" />\`. Don't paste the same HTML into

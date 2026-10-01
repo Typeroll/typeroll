@@ -13,6 +13,9 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  // Same rule as the portal's promote action: merging onto main is a site
+  // administration action, not an ordinary content write.
+  if (ctx.permission !== 'admin') return apiError('Merging a branch requires admin permission on the site', 403, ctx);
   const versionId = params.versionId;
   if (!versionId) return apiError('Missing versionId');
   if (versionId === MAIN_VERSION_ID) {

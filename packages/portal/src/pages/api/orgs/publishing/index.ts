@@ -1,20 +1,17 @@
-import { transferServiceStatus } from '../../../../lib/media/transfer-service';
 import type { APIRoute } from 'astro';
-import { connectionSummary, getConnection } from '../../../../lib/publishing/connections';
-import { githubSetup, githubChoices, githubNextStep } from '../../../../lib/publishing/github-connection';
-import { isSecretCryptoConfigured } from '../../../../lib/secret-crypto';
+import { githubChoices, githubNextStep } from '../../../../lib/publishing/github-connection';
 import { connectionFailure, privateJson, publishingAdmin } from '../../../../lib/publishing/http';
-import { cloudflareChoices, cloudflareSetup } from '../../../../lib/publishing/cloudflare-oauth';
-import { mediaMigrationStatus } from '../../../../lib/publishing/media-migration';
+import { cloudflareChoices } from '../../../../lib/publishing/cloudflare-oauth';
+import { organizationConnectionsStatus } from '../../../../lib/publishing/organization-connections';
 
+// The shared status is also served by GET /api/v1/publishing/connections.
+// Choices and next steps belong to the signed-in person's own OAuth flow.
 export const GET: APIRoute = async (context) => {
   const guard = await publishingAdmin(context);
   if (!guard.ok) return guard.response;
   try {
-    const orgId = guard.value.orgId;
-    return privateJson({ media_transfer: await transferServiceStatus(orgId), media_migration: await mediaMigrationStatus(orgId), github: connectionSummary(await getConnection(orgId, 'github')),
-      cloudflare: connectionSummary(await getConnection(orgId, 'cloudflare')),
-      cloudflare_choices: await cloudflareChoices(guard.value), cloudflare_setup: cloudflareSetup(),
-      github_next_step: await githubNextStep(guard.value), github_choices: await githubChoices(guard.value), github_setup: githubSetup(), encryption_available: isSecretCryptoConfigured() });
+    return privateJson({ ...await organizationConnectionsStatus(guard.value.orgId),
+      cloudflare_choices: await cloudflareChoices(guard.value),
+      github_next_step: await githubNextStep(guard.value), github_choices: await githubChoices(guard.value) });
   } catch (error) { return connectionFailure(error); }
 };

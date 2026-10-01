@@ -1,10 +1,10 @@
-// Settings tools. scripts_head, scripts_body_end, and custom_css ARE
-// writable via the public API (as of mcp-server 0.4.x) — the v1 route
-// accepts them and they round-trip through read_site_settings. Same
-// trust model as user-authored block-type JS: a bearer-token caller
-// takes responsibility for what they ship. The portal chat AI still
-// doesn't expose these fields, so conversation-driven assistants can't
-// smuggle scripts in.
+// Settings tools. update_site_settings accepts every field the portal
+// Settings form does — including scripts_head, scripts_body_end,
+// custom_css, cookie-consent scripts, default_og_image, twitter_handle,
+// organization (JSON-LD) and staging_url — with the same admin permission
+// the portal requires. A bearer-token caller takes responsibility for what
+// it ships, exactly as a site admin in the portal does. (The in-portal chat
+// assistant has its own, narrower settings tool; that is unrelated to MCP.)
 
 import { z } from 'zod';
 import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
@@ -17,7 +17,7 @@ export const settingsTools: ToolDef[] = [
   {
     name: 'read_site_settings',
     description:
-      "Read every site setting: name, tagline, logo, favicon/app icons, colors, fonts, contact info, social links, URL trailing-slash policy, iframe host allowlist, default SEO suffix/description, language, robots_txt, image_sizes_default, plus the scriptable surfaces scripts_head, scripts_body_end, and custom_css, and `render` (the site's platform render version, the latest version and what upgrading would change). Pass `version` to read a branch's settings (with copy-on-write chain-fallback to main for fields the branch hasn't overridden).",
+      "Read every site setting: name, tagline, logo, favicon/app icons, colors, fonts, contact info, social links, URL trailing-slash policy, iframe host allowlist, default SEO suffix/description, default_og_image, twitter_handle, organization (JSON-LD), language, robots_txt, image_sizes_default, cookie_consent, plus the scriptable surfaces scripts_head, scripts_body_end, and custom_css, `urls` (including `urls.staging`, the site's staging_url) and `render` (the site's platform render version, the latest version and what upgrading would change). Pass `version` to read a branch's settings (with copy-on-write chain-fallback to main for fields the branch hasn't overridden).",
     inputSchema: {
       version: versionParam,
     },
@@ -29,12 +29,14 @@ export const settingsTools: ToolDef[] = [
   {
     name: 'update_site_settings',
     description:
-      'Patch site settings, including responsive breakpoints for block layouts and visibility. Only the fields you pass change. ' +
+      'Patch site settings, including responsive breakpoints for block layouts and visibility. Accepts everything the portal Settings form does. Requires admin permission on the site, as in the portal. Only the fields you pass change. ' +
       'Pass fields at the TOP LEVEL of the object — do NOT wrap in a "settings" key. ' +
       'Example: {"site_name": "Acme", "colors": {"primary": "#ff0"}} not {"settings": {...}}. ' +
       'Nested objects (colors, fonts, contact, social) are shallow-merged into the existing value. ' +
       'Unknown top-level keys return a 400 error listing the valid fields. ' +
-      'scripts_head / scripts_body_end / custom_css ARE writable here — useful for a global stylesheet across all pages. ' +
+      'scripts_head / scripts_body_end / custom_css and cookie_consent scripts ARE writable here — useful for a global stylesheet or analytics tag across all pages. ' +
+      'Social sharing and structured data: default_og_image, twitter_handle, organization ({name, logo, same_as[]}, replaced as a whole; null clears). ' +
+      'staging_url is stored on the Site (not per version), so it applies whichever `version` you pass. ' +
       'Pass `version` to scope the write to a branch (copy-on-write) instead of main — the right way to brand/recolor a site inside a redesign branch (colors, fonts, logo, custom_css) without touching the live settings. Omit it to write main.',
     inputSchema: {
       version: versionParam,
@@ -59,6 +61,14 @@ export const settingsTools: ToolDef[] = [
       scripts_head: z.string().optional().describe('Raw HTML injected into <head> on every page. Use for analytics, fonts, third-party CSS links.'),
       scripts_body_end: z.string().optional().describe('Raw HTML injected just before </body> on every page. Use for chat widgets, deferred analytics.'),
       custom_css: z.string().optional().describe('Global CSS in a <style> in <head>, after block CSS and before the page\'s own custom CSS and the template base stylesheet (reset + global). Base rules for :root tokens (spacing, radius, container widths), body font and line-height load after it, so override those with a more specific selector (for example html:root or body.page) rather than a bare :root/body rule. Preview uses the same order. Lets you define site-wide design tokens (CSS variables, @media queries, :hover states) without inlining on every element. Prefer named styles (create_style) for anything a style can express. Syntax errors (unbalanced braces, unclosed comments or strings, expression()/javascript:) refuse the write; selectors on platform markup ([data-block], .block-*) come back as warnings because they can change between render versions — target s-<style> classes or block custom_class instead.'),
+      default_og_image: z.string().optional().describe('Site-wide fallback og:image URL for pages without their own social image. Empty string clears.'),
+      twitter_handle: z.string().optional().describe('Twitter/X handle for twitter:site, with or without the leading @ (stored without it). Empty string clears.'),
+      organization: z.object({
+        name: z.string().optional(),
+        logo: z.string().optional().describe('Absolute logo URL for the Organization JSON-LD.'),
+        same_as: z.array(z.string()).max(50).optional().describe('Profile URLs (LinkedIn, X, Facebook, …) emitted as sameAs.'),
+      }).strict().nullable().optional().describe('Organization schema.org JSON-LD emitted on every page. Replaces the stored value as a whole; null (or all-empty) clears it.'),
+      staging_url: z.string().nullable().optional().describe('URL of a staging environment for this site, reported as urls.staging. Stored on the Site, not per version. Trailing slashes are dropped; empty string or null clears.'),
       render_version: z.number().int().min(1).optional().describe('Platform render version. Platform output changes ship as new versions so existing sites never change look on their own. Upgrade only after previewing (get_preview_link render_version) and with the user\'s approval; the tr-upgrade-rendering skill compares every page. Lowering it returns to an earlier version.'),
       colors: z.record(z.string()).optional(),
       fonts: z.record(z.unknown()).optional(),

@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { gotoReady, reloadReady } from './helpers/ready';
 
 test.use({ hasTouch: true });
 
@@ -26,7 +27,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       status: 'draft', content_mode: 'blocks', blocks: [{ id: 'mobile-heading', type: 'core/heading', data: { text: 'Original heading', level: 'h1' } }] }));
     try {
       await page.setViewportSize({ width, height });
-      await page.goto(`/app/sites/default/pages/${id}`, { waitUntil: 'networkidle' });
+      await gotoReady(page, `/app/sites/default/pages/${id}`);
       await fits(page, '.pmenu__trigger');
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       const panels = page.getByRole('navigation', { name: 'Editor panels' });
@@ -65,7 +66,6 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       const preview = page.frameLocator('iframe[title="Preview"]');
       await expect(preview.getByRole('heading', { name: 'Edited on mobile', level: 2, exact: true })).toBeVisible();
       await expect(preview.getByText('Added with touch', { exact: true })).toBeVisible();
-      await page.waitForLoadState('networkidle');
       await expect(page.locator('.block-editor__status')).toContainText('Saved · draft');
       await page.screenshot({ path: testInfo.outputPath(`mobile-preview-${width}.png`) });
       // A larger screen restores simultaneous panels without losing editor state.
@@ -74,7 +74,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await expect(page.locator('.block-editor__fields')).toBeVisible();
       await expect(page.locator('.block-editor__preview')).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`desktop-restored-${width}.png`) });
-      await page.reload({ waitUntil: 'networkidle' });
+      await reloadReady(page);
       await expect(page.locator('.block-editor__status')).toContainText('Saved · draft');
       await expect(page.getByLabel('Page title', { exact: true })).toHaveValue('Mobile draft title');
       await expect(page.frameLocator('iframe[title="Preview"]').getByRole('heading', { name: 'Edited on mobile', level: 2, exact: true })).toBeVisible();
@@ -88,7 +88,7 @@ test('HTML editor fits a phone and switches between editing and preview', async 
     path: '/mobile-html-editor/', status: 'draft', content_mode: 'html', html_content: '<h1>HTML mobile preview</h1>' }));
   try {
     await page.setViewportSize({ width: 320, height: 568 });
-    await page.goto('/app/sites/default/pages/mobile-html-editor', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/app/sites/default/pages/mobile-html-editor');
     await fits(page, '.pmenu__trigger');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
     const panels = page.getByRole('navigation', { name: 'Editor panels' });

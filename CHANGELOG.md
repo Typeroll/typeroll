@@ -1,5 +1,33 @@
 # Changelog
 
+## Core 0.2.59 / MCP 0.45.45
+
+Everything the portal can do is now available through the authenticated API and MCP, with the same permission checks. The portal chat assistant keeps its narrower tool set.
+
+- Settings and sites:
+  - `update_site_settings` takes every field the Settings form takes (`default_og_image`, `twitter_handle`, `organization`, `staging_url`) and, like the form, needs admin.
+  - `update_site` sets `ai_scripts_enabled` (admin). API block and block type writes no longer carry a script notice.
+  - Archive and restore a site (`archive_site`, `restore_site`), purge an archived site's media (`purge_site_media`), and read upload status (`get_media_upload_status`).
+  - The API page preview renders block scripts, the Extension runtime and the cookie banner, like the portal preview.
+- Email and forms:
+  - Outgoing email provider: `get_email_settings`, `set_email_settings`, `delete_email_settings`, `send_test_email` (admin; secrets are write-only). The portal gains Disconnect.
+  - Incoming email through MCP (`get_incoming_email_settings`, `set_incoming_email_forwarding`, `read_incoming_email_receipt`); portal and API share one implementation.
+  - `get_form_capabilities` lists core and app-provided action types; `read_form_submission` reads one entry. Admins see webhook delivery status, and deleting submissions removes their delivery records.
+- Branches, history and Extensions:
+  - `diff_version` and `reset_version`. Creating, merging, deleting and resetting branches needs admin, as in the portal.
+  - Partial (header, footer, global block) revisions: list, read, restore. `preview_page_revision` renders an earlier saved state.
+  - Install, enable or disable, uninstall, pair, diagnose and launch Extensions; Extension developer tools for organization keys.
+- Organization administration and workflows:
+  - List and revoke site and organization API keys, share a site and create invites (`list_api_keys`, `revoke_api_key`, `share_site`, `create_organization_invite`, …). A share never reaches further than the caller.
+  - New secrets stay in the portal: creating API keys, rotating Extension server credentials and registering an Extension or rotating its client secret are not available through the API or MCP, so a secret never lands in an agent conversation or log.
+  - Workflows: start, read and approve (`start_workflow`, `get_workflow`, `approve_workflow`), and `create_site_and_migrate` / `create_site_and_plan`. Rebuild & deploy needs admin; workflow reads no longer expose the WordPress helper key.
+  - Organization publishing connections: status, Cloudflare token connect, media storage, disconnect.
+- Global blocks:
+  - Usage covers page templates, header and footer and other global blocks, saved or in a draft.
+  - Detach copies the draft the editor shows when there is one.
+  - Block-mode header and footer use the block-tree editor with Save draft / Discard draft.
+- End-to-end tests wait for visible UI state instead of network idle.
+
 ## Core 0.2.58 / MCP 0.45.44
 
 - Remove HTML-to-blocks conversion. A heuristic conversion cannot reproduce designed pages faithfully.

@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { gotoReady } from './helpers/ready';
 
 const root = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main');
 const pageFile = path.join(root, 'pages/css-page.json');
@@ -16,7 +17,7 @@ test('site and page CSS are checked, saved and applied', async ({ page }, info) 
   }));
   try {
     await page.setViewportSize({ width: 1280, height: 1000 });
-    await page.goto('/app/sites/default/styles', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/app/sites/default/styles');
     const siteCss = page.getByLabel('CSS for every page');
     await siteCss.fill('.pricing-note { color: #b91c1c;\n');
     await expect(page.getByRole('alert').filter({ hasText: 'is not closed' })).toBeVisible();
@@ -28,7 +29,7 @@ test('site and page CSS are checked, saved and applied', async ({ page }, info) 
     expect(JSON.parse(readFileSync(settingsFile, 'utf8')).custom_css).toContain('.pricing-note');
     await page.screenshot({ path: info.outputPath('site-css-1280.png'), fullPage: true });
 
-    await page.goto('/app/sites/default/pages/css-page', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/app/sites/default/pages/css-page');
     const preview = page.frameLocator('iframe[title="Preview"]');
     const heading = preview.getByRole('heading', { name: 'Pricing note' });
     await expect(heading).toHaveCSS('color', 'rgb(185, 28, 28)');

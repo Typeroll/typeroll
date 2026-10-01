@@ -245,6 +245,15 @@ compiled output or merge. Wait for an explicit "looks good, ship it."
 
 ### 7. Merge + deploy
 
+Before asking for sign-off, summarise exactly what will land:
+
+```
+diff_version version_id="<branch>"        # added / modified / deleted per collection
+```
+
+Then, once approved (creating and merging branches need site admin
+permission):
+
 ```
 merge_branch version_id="<branch>"        # branch's diffs land on main
 trigger_deploy
@@ -274,7 +283,12 @@ disk cost is tiny.)
   the DB, reflects edits on reload); deploy only for the compiled static
   output or merge (steps 6–7).
 - **Auto-merge.** Don't `merge_branch` without explicit user sign-off.
-  Once merged, the only undo is another branch + reverse edits.
+  Once merged, the only undo is another branch + reverse edits (or
+  restoring individual saved states with `restore_page_revision` /
+  `restore_partial_revision` on main).
+- **Starting over.** To abandon a direction but keep the branch and its
+  address, `reset_version version_id="<branch>"` discards every change on it
+  (check `diff_version` and ask first); `delete_branch` removes it entirely.
 - **Header rewrites that drop the brand block.** Even when the
   redesign is dramatic, preserve the brand mark + the nav skeleton
   unless the user said to redo them.
