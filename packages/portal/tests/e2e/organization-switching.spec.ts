@@ -3,6 +3,7 @@ import { rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { authenticatePersona } from './helpers/auth';
+import { gotoReady } from './helpers/ready';
 
 const origin = 'http://127.0.0.1:4322';
 const fixtureRoot = path.join(os.tmpdir(), 'typeroll-e2e-fixtures');
@@ -86,7 +87,7 @@ test('a new account recovers its organization after logout and a fresh login wit
 test('sign out stays visible in the minimum mobile navigation viewport', async ({ page }, testInfo) => {
   await authenticatePersona(page, 'owner');
   await page.setViewportSize({ width: 320, height: 568 });
-  await page.goto('/app', { waitUntil: 'networkidle' });
+  await gotoReady(page, '/app');
   await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('organization-navigation-320.png'), animations: 'disabled' });

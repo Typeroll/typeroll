@@ -1,92 +1,112 @@
-// Reverse index: for each global block (partial), which pages embed it via
-// <x-include name="…" /> (HTML pages) or a core/global_block block (block
-// pages, saved or in their draft). Read at request time, never stored — the source of
-// truth is the page bodies themselves, and a stored index would inevitably
-// drift on the first missed write. Cheap (~50ms for 300 pages).
+// Reverse index: for each global block (free partial), what references it:
 //
-// Header and footer are excluded from this index: they're auto-injected on
-// every page by the renderer (not via <x-include>), so "which pages use them"
-// is trivially "all of them." Callers that care about that case should ask
-// for the page list directly.
+// - pages, via <x-include name="…" /> (HTML pages) or a core/global_block
+//   block (block pages), in the saved page or its draft;
+// - page templates, via a core/global_block block anywhere in the tree;
+// - other partials: header, footer and other global blocks (nesting), via a
+//   core/global_block block in the saved partial or its draft, or an
+//   <x-include> in an HTML header/footer (the renderer expands those there).
+//
+// Read at request time, never stored — the source of truth is the documents
+// themselves, and a stored index would inevitably drift on the first missed
+// write. Cheap (~50ms for 300 pages).
+//
+// Only direct references are listed: a block used inside another global
+// block lists that global block, whose own usage shows where it appears.
+// Header and footer themselves are never the target of a reference: they're
+// auto-injected on every page by the renderer, so "which pages use them" is
+// trivially "all of them." Callers that care about that case should ask for
+// the page list directly.
 
 import { vstore } from './version-store';
 import { listWorkingCopies } from './working-copy';
-import { globalBlockRefs, type Page } from '@typeroll/shared';
+import { globalBlockRefs, type Block, type WorkingCopy } from '@typeroll/shared';
+import { emptyBlockUsage, type BlockUsage, type BlockUsagePage } from './block-usage-summary';
 
-export interface BlockUsagePage {
-  page_id: string;
-  title: string;
-  slug: string;
-  status: Page['status'];
-}
+export type { BlockUsage, BlockUsageGlobalBlock, BlockUsagePage, BlockUsageTemplate } from './block-usage-summary';
+export { blockUsageCount, describeBlockUsage, emptyBlockUsage } from './block-usage-summary';
 
-/** Global block ids a page references in its saved blocks or its draft. */
-async function draftRefs(orgId: string, siteId: string, versionId: string): Promise<Map<string, string[]>> {
+const INCLUDE_TAG_GLOBAL = /<x-include\s+name=(?:"([^"]+)"|'([^']+)')\s*(?:\/>|>\s*<\/x-include>)/gi;
+
+/** Global block ids a draft's block tree references, keyed by `kind--target_id`. */
+function draftRefs(workingCopies: WorkingCopy[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
-  for (const wc of await listWorkingCopies({ orgId, siteId, versionId })) {
-    if (wc.kind === 'page' && Array.isArray(wc.fields?.blocks)) out.set(wc.target_id, globalBlockRefs(wc.fields.blocks as Page['blocks']));
+  for (const wc of workingCopies) {
+    if (Array.isArray(wc.fields?.blocks)) out.set(`${wc.kind}--${wc.target_id}`, globalBlockRefs(wc.fields.blocks as Block[]));
   }
   return out;
 }
 
-const INCLUDE_TAG_GLOBAL = /<x-include\s+name=(?:"([^"]+)"|'([^']+)')\s*(?:\/>|>\s*<\/x-include>)/gi;
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function draftHtml(workingCopies: WorkingCopy[], kind: string, id: string): string | undefined {
+  const html = workingCopies.find(wc => wc.kind === kind && wc.target_id === id)?.fields?.html_content;
+  return typeof html === 'string' ? html : undefined;
 }
 
-/** Pages that include the given free block. Empty list for unknown ids or
- *  blocks that aren't free (header/footer don't show up as <x-include>). */
+/**
+ * One pass over pages, templates and partials; returns block id → usage.
+ * Use this when you need usage for every block at once (the partials list
+ * page, the AI's list_blocks_with_usage).
+ */
+export async function getAllBlockUsage(
+  orgId: string,
+  siteId: string,
+  versionId: string,
+): Promise<Map<string, BlockUsage>> {
+  const ctx = { orgId, siteId, versionId };
+  const [pages, templates, partials, workingCopies] = await Promise.all([
+    vstore.pages(orgId, siteId, versionId),
+    vstore.pageTemplates(orgId, siteId, versionId),
+    vstore.partials(orgId, siteId, versionId),
+    listWorkingCopies(ctx),
+  ]);
+  const drafts = draftRefs(workingCopies);
+  const out = new Map<string, BlockUsage>();
+  const entry = (id: string): BlockUsage => {
+    let usage = out.get(id);
+    if (!usage) out.set(id, usage = emptyBlockUsage());
+    return usage;
+  };
+
+  for (const p of pages) {
+    const ids = new Set([...globalBlockRefs(p.blocks), ...(drafts.get(`page--${p.id}`) ?? [])]);
+    for (const html of [p.html_content, draftHtml(workingCopies, 'page', p.id)]) {
+      for (const id of listBlocksUsedInHtml(typeof html === 'string' ? html : '')) ids.add(id);
+    }
+    const ref: BlockUsagePage = { page_id: p.id, title: p.title, slug: p.slug, status: p.status };
+    for (const id of ids) entry(id).pages.push(ref);
+  }
+
+  for (const t of templates) {
+    for (const id of globalBlockRefs(t.blocks)) {
+      entry(id).templates.push({ template_id: t.id, label: t.label || t.name || t.id, status: t.status });
+    }
+  }
+
+  for (const partial of partials) {
+    const ids = new Set([...globalBlockRefs(partial.blocks), ...(drafts.get(`partial--${partial.id}`) ?? [])]);
+    // <x-include> is expanded in header and footer HTML only.
+    if (partial.kind === 'header' || partial.kind === 'footer') {
+      for (const html of [partial.html_content, draftHtml(workingCopies, 'partial', partial.id)]) {
+        for (const id of listBlocksUsedInHtml(html ?? '')) ids.add(id);
+      }
+    }
+    ids.delete(partial.id);
+    for (const id of ids) {
+      entry(id).global_blocks.push({ partial_id: partial.id, name: partial.name, kind: partial.kind, status: partial.status });
+    }
+  }
+  return out;
+}
+
+/** What references the given free block. Empty for unknown ids. */
 export async function getBlockUsage(
   orgId: string,
   siteId: string,
   versionId: string,
   partialId: string,
-): Promise<BlockUsagePage[]> {
-  if (!partialId) return [];
-  const re = new RegExp(
-    `<x-include\\s+name=(?:"${escapeRegex(partialId)}"|'${escapeRegex(partialId)}')\\s*(?:/>|>\\s*</x-include>)`,
-    'i',
-  );
-  const pages = await vstore.pages(orgId, siteId, versionId);
-  const drafts = await draftRefs(orgId, siteId, versionId);
-  return pages
-    .filter((p) => (typeof p.html_content === 'string' && re.test(p.html_content)) || globalBlockRefs(p.blocks).includes(partialId) || !!drafts.get(p.id)?.includes(partialId))
-    .map((p) => ({ page_id: p.id, title: p.title, slug: p.slug, status: p.status }));
-}
-
-/** One pass over all pages, returns block-id → embedding pages.
- *  Use this when you need usage counts for every block at once (e.g. the
- *  partials list page, the AI's list_blocks_with_usage). */
-export async function getAllBlockUsage(
-  orgId: string,
-  siteId: string,
-  versionId: string,
-): Promise<Map<string, BlockUsagePage[]>> {
-  const pages = await vstore.pages(orgId, siteId, versionId);
-  const out = new Map<string, BlockUsagePage[]>();
-  const drafts = await draftRefs(orgId, siteId, versionId);
-  for (const p of pages) {
-    const seenOnPage = new Set<string>();
-    for (const id of new Set([...globalBlockRefs(p.blocks), ...(drafts.get(p.id) ?? [])])) {
-      seenOnPage.add(id);
-      out.set(id, [...(out.get(id) ?? []), { page_id: p.id, title: p.title, slug: p.slug, status: p.status }]);
-    }
-    const html = typeof p.html_content === 'string' ? p.html_content : '';
-    if (!html || !html.includes('<x-include')) continue;
-    // Per-page reset: stateful exec() reuses lastIndex across calls.
-    INCLUDE_TAG_GLOBAL.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = INCLUDE_TAG_GLOBAL.exec(html)) !== null) {
-      const id = (m[1] ?? m[2] ?? '').trim();
-      if (!id || seenOnPage.has(id)) continue;
-      seenOnPage.add(id);
-      const list = out.get(id) ?? [];
-      list.push({ page_id: p.id, title: p.title, slug: p.slug, status: p.status });
-      out.set(id, list);
-    }
-  }
-  return out;
+): Promise<BlockUsage> {
+  if (!partialId) return emptyBlockUsage();
+  return (await getAllBlockUsage(orgId, siteId, versionId)).get(partialId) ?? emptyBlockUsage();
 }
 
 /** Parse a single page body and return the ids of every block it embeds. */

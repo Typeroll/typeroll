@@ -13,7 +13,12 @@ Returns all current site settings.
 
 ## `update_site_settings`
 
-Updates site settings. Pass only the fields you want to change.
+Updates site settings. Pass only the fields you want to change. It accepts every
+field the portal's **Settings** form does and, like that form, requires admin
+permission on the site: a site API key, an organization key for a site your
+organization owns, or a share with admin permission. A key with write or read
+permission receives HTTP 403. Over REST this is
+`PATCH /api/v1/sites/{siteId}/settings`.
 
 ### Top-level fields
 
@@ -28,6 +33,10 @@ Updates site settings. Pass only the fields you want to change.
 | `icon_192`                 | string   | 192px application icon                                           |
 | `default_seo_suffix`       | string   | Appended to page titles in `<title>`: `" — Acme Studio"`         |
 | `default_meta_description` | string   | Site-wide description fallback                                   |
+| `default_og_image`         | string   | Fallback `og:image` URL for pages without their own              |
+| `twitter_handle`           | string   | X/Twitter handle for `twitter:site`; a leading `@` is removed    |
+| `organization`             | object   | Organization JSON-LD; see [`organization`](#organization-object) |
+| `staging_url`              | string   | Staging environment URL, reported as `urls.staging`              |
 | `trailing_slash`           | string   | `always`, `never`, or `ignore`                                   |
 | `iframe_allowed_hosts`     | string[] | Exact hosts allowed in embedded content                          |
 | `image_sizes_default`      | string   | Default responsive-image `sizes` hint                            |
@@ -37,6 +46,33 @@ Updates site settings. Pass only the fields you want to change.
 | `scripts_body_end`         | string   | Trusted markup/scripts inserted before `</body>`                 |
 | `custom_css`               | string   | Site-wide CSS                                                    |
 | `render_version`           | integer  | Platform render version; see [Render versions](#render-versions) |
+
+An empty string clears `default_og_image`, `twitter_handle` and `staging_url`;
+`null` does too. `staging_url` is stored on the site rather than in versioned
+settings, so a branch cannot reroute it: it is written the same way whichever
+`version` you pass, and trailing slashes are dropped.
+
+### `organization` object
+
+Site-wide Organization structured data, emitted as JSON-LD on every page. The
+object replaces the stored value as a whole; send `null` (or empty values) to
+remove it.
+
+| Field     | Type     | Description                                         |
+| --------- | -------- | --------------------------------------------------- |
+| `name`    | string   | Organization name                                   |
+| `logo`    | string   | Absolute logo URL                                   |
+| `same_as` | string[] | Profile URLs (LinkedIn, X, Facebook, …) as `sameAs` |
+
+```json
+{
+  "organization": {
+    "name": "Acme Studio",
+    "logo": "https://media.example.com/logo.png",
+    "same_as": ["https://www.linkedin.com/company/acme"]
+  }
+}
+```
 
 ### `colors` object
 
@@ -103,11 +139,11 @@ uses the normal `tr_consent` cookie.
 ## Trusted scriptable fields
 
 `scripts_head`, `scripts_body_end`, `custom_css`, and the consent script fields
-are readable and writable through v1/MCP for a caller holding the site's API
-key. They are deliberately trusted, audit-logged surfaces. The chat assistant
-inside the portal does not expose them, so a normal editor conversation cannot
-inject JavaScript. Review these values like deployed code and redeploy after a
-change.
+are readable and writable through v1/MCP for a caller with admin permission on
+the site — the same people who can change them in the portal. They are
+deliberately trusted, audit-logged surfaces. The chat assistant inside the
+portal does not expose them, so a normal editor conversation cannot inject
+JavaScript. Review these values like deployed code and redeploy after a change.
 
 ### Where `custom_css` loads
 
@@ -122,8 +158,10 @@ on your own markup.
 
 ## `get_site` / `list_sites`
 
-`get_site` returns site metadata (ID, name, domain, creation date) plus a `urls`
-object. `list_sites` returns all sites in your account.
+`get_site` returns site metadata (ID, name, slug, domain, language,
+`ai_scripts_enabled`, `lifecycle`) plus a `urls` object. `lifecycle.status` is
+`active` or `archived`; see [Archive and restore](#archive_site--restore_site).
+`list_sites` returns all sites in your account.
 
 The AI agent uses these to confirm which site it's working on before making changes.
 
@@ -150,12 +188,54 @@ Requires an **org-scoped** API key. A site-scoped key can only reach the one sit
 it was issued for, which is the point of the distinction — see
 [Install the MCP Server](../../getting-started/mcp-server/).
 
+To start from a WordPress migration or an AI site plan instead of a blank Site,
+use `create_site_and_migrate` or `create_site_and_plan` — the other two options
+on the portal's **New site** page. See
+[Organization, access and workflow tools](../organization/#create-a-site-with-its-first-workflow).
+
 ## `update_site`
 
-Changes a site's name, slug or domain. The slug is uniqueness-checked because it
+Changes a site's name, slug, domain, language or `ai_scripts_enabled`. Over REST
+this is `PATCH /api/v1/sites/{siteId}`. The slug is uniqueness-checked because it
 determines the fallback subdomain. Resubmitting the current slug is idempotent
 and repairs missing fallback hosting coordinates, including the Pages project
 and DNS record, when the hosting provider is configured.
+
+### Allow AI to write block scripts
+
+`ai_scripts_enabled` is the portal's **Settings → Custom code → Allow AI to write
+block scripts** toggle. It decides whether the in-portal chat assistant may write
+block JavaScript (`script` on a custom block type, `js` on `core/embed`). Setting
+it requires admin permission, exactly as in the portal:
+
+```json
+{ "ai_scripts_enabled": true }
+```
+
+The toggle does not limit API keys or MCP. Those always write block JavaScript
+under the key's own authority, as a site editor can in the portal's block-type
+editor, and every write is recorded in the API audit log. See
+[Blocks](../blocks/).
+
+## `archive_site` / `restore_site`
+
+Archive a site you are finished with, or bring an archived site back — the same
+actions as **Settings → Archive this site** and **Restore this site** in the
+portal. See [Archive a site](../../guides/archive-a-site/) for what archiving
+does.
+
+- `archive_site` takes an optional `reason`. It is refused with HTTP 409 while a
+  custom domain is live or verified on the site.
+- `restore_site` makes the site accept changes and publishing again.
+- Both are idempotent and require an admin of the organization that owns the
+  site: a site API key, or an organization key of the owning organization. A key
+  that reaches the site through a share is refused, however much access the
+  share grants.
+
+Over REST: `POST /api/v1/sites/{siteId}/lifecycle` with
+`{ "action": "archive", "reason": "…" }` or `{ "action": "restore" }`, and
+`GET /api/v1/sites/{siteId}/lifecycle` for the current state. The archiving
+key is recorded as `api-key:{prefix}`.
 
 ## Exporting your content
 

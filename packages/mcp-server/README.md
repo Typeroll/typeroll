@@ -45,7 +45,7 @@ under the hood.
 ## Key scopes
 
 - **Org-scoped key** (created at `/app/settings/api-keys`) — one
-  credential covers every site in your org *and* every site shared into
+  credential covers every site in your org _and_ every site shared into
   your org. Suitable for hosted multi-site connections. Stdio works too
   if you set `TYPEROLL_SITE_ID` so the install binds to one site.
 - **Site-scoped key** (created at `/app/sites/{siteId}/settings/api-keys`) —
@@ -53,7 +53,11 @@ under the hood.
   hand to a customer for a self-managed site.
 
 Both look like `typeroll_live_…`; revoke either from the portal and any
-client using it stops working immediately.
+client using it stops working immediately. Keys can also be listed, created
+and revoked through MCP (`list_api_keys`, `create_api_key`, `revoke_api_key`,
+and the `*_organization_api_key` tools) with the portal's permission rules: a
+site key manages keys for its own site only and can never mint an
+organization key.
 
 ## Stdio quick start
 
@@ -101,11 +105,11 @@ client using it stops working immediately.
 
 ## Environment variables (stdio)
 
-| Var             | Required | Description |
-|-----------------|----------|-------------|
-| `TYPEROLL_API_URL`  | yes      | Base URL of your Typeroll portal. |
-| `TYPEROLL_API_KEY`  | yes      | A `typeroll_live_…` bearer token. |
-| `TYPEROLL_SITE_ID`  | sometimes | Pin to a specific site. Required when the key can access multiple sites; each stdio process targets one site. A single accessible site is auto-detected. |
+| Var                | Required  | Description                                                                                                                                              |
+| ------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TYPEROLL_API_URL` | yes       | Base URL of your Typeroll portal.                                                                                                                        |
+| `TYPEROLL_API_KEY` | yes       | A `typeroll_live_…` bearer token.                                                                                                                        |
+| `TYPEROLL_SITE_ID` | sometimes | Pin to a specific site. Required when the key can access multiple sites; each stdio process targets one site. A single accessible site is auto-detected. |
 
 ## Extension developer CLI
 
@@ -150,8 +154,35 @@ the full reference + concrete operation recipes.
   loads one. All pure local reads — no API key or site context — so they
   work identically on the hosted connector and over stdio.
 - **Discovery** — `get_site`, `create_site` (bootstrap a new site — org-scoped
-  key only), `update_site` (name/slug/domain), `list_versions`,
-  `read_site_settings`, `update_site_settings`.
+  key only), `create_site_and_migrate` / `create_site_and_plan` (new site plus a
+  WordPress migration or AI site plan — org-scoped key only), `update_site`
+  (name/slug/domain/language, and `ai_scripts_enabled` for admins),
+  `list_versions`, `read_site_settings`, `update_site_settings` (admin; every
+  field the portal Settings form accepts, including `default_og_image`,
+  `twitter_handle`, `organization` JSON-LD and `staging_url`).
+- **Site lifecycle** — `archive_site`, `restore_site` and `purge_site_media`
+  (media of an archived site; irreversible). Owner-organization admin, as in
+  the portal.
+- **Access** — site API keys (`list_api_keys`, `create_api_key`,
+  `revoke_api_key`; create/revoke need site admin), organization API keys
+  (`list_organization_api_keys`, `create_organization_api_key`,
+  `revoke_organization_api_key`), cross-organization sharing
+  (`list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share`;
+  site admin) and `create_organization_invite` (editor invite link). New tokens
+  are returned once. A key never creates a key or share that reaches further
+  than itself.
+- **Workflows** — `list_workflows`, `start_workflow` (migration, site planning,
+  SEO/link/performance audits, content generation and improvement, schema
+  markup, URL parity, rebuild & deploy), `get_workflow`, `approve_workflow`.
+  Starting needs write; `rebuild_deploy` publishes and needs admin. Approve a
+  review gate only with the user's consent.
+- **Organization publishing connections** —
+  `read_organization_publishing_connections` (status, revisions and
+  `connect_urls` for the browser-only OAuth steps),
+  `disconnect_organization_publishing_provider`,
+  `connect_organization_cloudflare` (customer API token),
+  `prepare_organization_media_storage`, `save_organization_media_access`.
+  Organization key only.
 - **Pages** — list, read, batch-read, create, update (PATCH), replace
   (PUT), batch-update, delete, clone, get-preview, `set_page_mode`
   (flip between blocks/html; HTML is never converted into blocks).
@@ -172,9 +203,10 @@ the full reference + concrete operation recipes.
   `template/site_logo` + `core/navigation` recipe in `tr-header-footer`.
 - **Block types** — list, read, create, update, delete,
   find-pages-using-block-type, plus `.tcblocks` export/import. Custom
-  client-side JS (`script`) is honoured only when the site has enabled
-  "Allow AI to write block scripts" (a human-set portal setting) —
-  otherwise it's stripped with a warning.
+  client-side JS (`script`) is accepted under your API key's authority and
+  audit-logged, like the portal's block-type editor. The site's "Allow AI to
+  write block scripts" setting (`update_site ai_scripts_enabled`) governs only
+  the in-portal chat assistant, never API keys or MCP.
 - **Content types** — `list_content_types`, `read_content_type`,
   `create_content_type`, `update_content_type`, `delete_content_type`.
   Every record is a Page; `list_pages` filters by `content_type`.
@@ -183,7 +215,8 @@ the full reference + concrete operation recipes.
 - **Page templates** — list/read/create/update/delete reusable block layouts,
   including article/checklist starters. Set a default per content type or an
   override per Page. The body remains the Page's own editable block tree.
-- **Media** — `get_import_readiness`, list/read, signed upload URLs,
+- **Media** — `get_import_readiness`, `get_media_upload_status` (the portal's
+  upload pre-flight), list/read, signed upload URLs,
   `upload_media_from_url`, `upload_media_batch_from_urls` (1–50 sources, max
   25 MiB each, with partial-success results), `upload_media_inline`, metadata
   updates and deletion. Imports require verified Organization storage. With
@@ -214,7 +247,20 @@ the full reference + concrete operation recipes.
   `update_extension_installation_config`; omitted and masked secrets are
   preserved. Use this for frontend config such as consent copy and policy
   links. It queues a production deploy by default; pass `deploy: false` only
-  when batching changes and deploy once afterwards.
+  when batching changes and deploy once afterwards. The same admin key also
+  covers the rest of the portal's installation actions: `install_extension`,
+  `set_extension_installation_status` (enable/disable), `uninstall_extension`,
+  `rotate_extension_credential` (the new `tri_…` credential is returned once),
+  `pair_extension_issuer`, `read_extension_diagnostics`, and
+  `launch_extension_admin_page` (a single-use launch grant to POST to the
+  page's `launch_url`; approved native pages use `call_extension_admin`).
+- **Extension development** — with an organization-scoped key:
+  `list_developer_extensions`, `read_developer_extension`,
+  `create_developer_extension`, `update_developer_extension`,
+  `save_extension_version`, `publish_extension_version`,
+  `set_extension_version_lifecycle`, `rotate_extension_client_secret` (returned
+  once) and `list_developer_extension_installations` — the same developer API
+  as the `typeroll extension` CLI.
 - **Settings** — read + patch, including shallow-merged `cookie_consent`,
   `scripts_head` / `scripts_body_end` / `custom_css` (trusted because the caller holds an
   API key; the in-portal chat AI does NOT get these).
@@ -233,8 +279,11 @@ the full reference + concrete operation recipes.
   `verify_migration_urls` (successful rows omitted unless requested), plus
   `repair_migration_plain_text` for dry-run-first cleanup of legacy WordPress
   entities and markup in allowlisted plain-text fields.
-- **Branches** — create, read, delete, merge. A deployed branch gets its own
-  stable address, reported as `deploy_url` by `list_versions` / `read_version`.
+- **Branches** — create, read, delete, merge, `diff_version` (what a branch
+  adds, modifies and deletes relative to main) and `reset_version` (discard all
+  of a branch's changes, keeping the branch). Creating, merging, deleting
+  and resetting need site admin permission, as in the portal. A deployed branch gets its own stable
+  address, reported as `deploy_url` by `list_versions` / `read_version`.
 - **Deploy** — trigger (with `dry_run` to build without publishing), list, get
   status. A finished job reports `cost`: what the build consumed in server
   time, broken down per phase. Estimates from a rate card, not billing records.
@@ -249,7 +298,10 @@ the full reference + concrete operation recipes.
   immediately.
 - **History** — `list_page_revisions`, `read_page_revision` and
   `restore_page_revision` (to a draft, or saved with `save: true`) undo page
-  changes from earlier saves.
+  changes from earlier saves; `preview_page_revision` renders a saved state as
+  the full preview document first. `list_partial_revisions`,
+  `read_partial_revision` and `restore_partial_revision` do the same for the
+  header, footer and global blocks.
 
 ## Direct REST API access
 
@@ -271,6 +323,10 @@ documented in [`docs/v1-api.md`](../../docs/v1-api.md).
   enforced server-side. A site-scoped key cannot touch any other site;
   an org-scoped key reaches the org's own sites plus sites explicitly
   shared into the org, with the share's permission level applied.
+- Managing keys, shares, invites, workflows and publishing connections uses the
+  same permission checks as the portal. A key can never create a key or share
+  that reaches further than itself; organization-level routes refuse
+  site-scoped keys.
 - All write calls (`POST`, `PUT`, `PATCH`, `DELETE`) are **audit-logged**
   with the key prefix, IP, method, path, and status. Reads are not
   logged (cost vs. value).
@@ -282,9 +338,14 @@ documented in [`docs/v1-api.md`](../../docs/v1-api.md).
   are deliberate exceptions, and all of them are writable with an API key
   under the key holder's own authority: `scripts_*` and `custom_css` on
   the site settings, `script` on a block type, and the `js` field of a
-  `core/embed` block instance. Those writes are audit-logged and the
-  response carries a notice naming the stored JS. Only the in-portal chat
-  assistant is additionally gated, on a per-site opt-in.
+  `core/embed` block instance. Those writes are audit-logged like every
+  API write. Only the in-portal chat assistant is additionally gated, on a
+  per-site opt-in (`ai_scripts_enabled`) that site admins can set in the
+  portal or with `update_site`.
+- **Same permissions as the portal.** Each tool applies the role the
+  corresponding portal action requires: settings, the AI-scripts toggle,
+  apps, publishing and domains need admin; archiving, restoring and purging
+  media need an admin of the organization that owns the site.
 - Keys can be **revoked** at any time from the portal. Revocation takes
   effect on the next request (no in-flight requests get cancelled, but
   the next one returns 401).

@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildCoreBlockRegistry, collectBlockAssets, renderBlocks, type Block } from '@typeroll/shared';
+import { gotoReady } from './helpers/ready';
 
 const registry = buildCoreBlockRegistry();
 const links = Array.from({ length: 12 }, (_, index) => ({ label: `Moving guide ${index + 1}`, href: '#content' }));
@@ -94,7 +95,7 @@ test('native inspector edits and resets a gradient in the real page preview', as
   }]}));
   try {
     await page.setViewportSize({width:1440,height:1000});
-    await page.goto('/app/sites/default/pages/surface-editor',{waitUntil:'networkidle'});
+    await gotoReady(page, '/app/sites/default/pages/surface-editor');
     await page.getByRole('button',{name:'Structure',exact:true}).click();
     await page.getByRole('button',{name:'Edit Surface',exact:true}).click();
     await page.getByText('Appearance',{exact:true}).click();

@@ -235,14 +235,16 @@ export interface Site {
    */
   language?: string;
   /**
-   * Allows agent surfaces (MCP tools, chat AI, API-key writes) to author
-   * the `script` field on custom BlockTypes for this site. OFF by default:
-   * an agent that reads untrusted content (migrated pages, web research)
-   * can be prompt-injected into shipping malicious JS to every visitor —
-   * a human author can't. Flipping this is an explicit, per-site human
-   * decision made in the portal (Settings → Custom code), same consent
-   * model as the BlockTypeEditor's "Activate JS" toggle. When off,
-   * agent-surface writes silently strip `script` and surface a warning.
+   * "Allow AI to write block scripts": lets the in-portal chat assistant
+   * author block JavaScript (`BlockType.script` and declared
+   * `script_fields`) for this site. OFF by default, because the chat reads
+   * page content in the same loop and is often driven by editors without a
+   * review habit. When off, chat writes strip the code and return a warning.
+   *
+   * The flag does not gate API keys or MCP: those write block JS under the
+   * key holder's own authority. Site admins set it in the portal
+   * (Settings → Custom code), through `PATCH /api/v1/sites/{siteId}` or the
+   * MCP `update_site` tool, with the same admin permission check on each.
    */
   ai_scripts_enabled?: boolean;
   r2_path_prefix?: string;
@@ -288,7 +290,8 @@ export interface Site {
   lifecycle?: {
     status: 'archived';
     archived_at: string;
-    /** User id that archived it — the operator shows this before destroying anything. */
+    /** Who archived it — a user id, or `api-key:<prefix>` when an API key or
+     *  MCP connection did. The operator shows this before destroying anything. */
     archived_by: string;
     /** Free text shown in the portal, so a future reader knows why it was retired. */
     reason?: string;
@@ -1101,8 +1104,9 @@ export interface BlockType {
    *
    * Declaring a field here puts it under the same trust ladder as `script`
    * (see lib/block-script-gate.ts): the chat AI is gated on
-   * `Site.ai_scripts_enabled`, bearer keys write freely but get an audit-log
-   * entry and SCRIPT_WRITE_NOTICE, portal-cookie humans are trusted.
+   * `Site.ai_scripts_enabled`; API keys (REST and MCP) and portal-cookie
+   * humans write it under their own authority, and API writes are
+   * audit-logged.
    *
    * Why declarative: block *instance* writes (add_block/update_block) do not
    * pass through the per-type script gate, so a block type that carried code
@@ -1241,9 +1245,9 @@ export interface FormAction {
  * values: `{{field_name}}` (HTML-escaped) or `{{{field_name}}}` (raw). The
  * recipient `to` is templated too — e.g. `{{email}}` for an autoresponder.
  *
- * Email actions are ADMIN-ONLY: they are never writable through the chat AI
- * or MCP surfaces (a recipient address would otherwise be a prompt-injection
- * exfiltration vector). Only the cookie-auth admin form routes persist them.
+ * Email actions are ADMIN-ONLY: reading or writing them requires admin
+ * permission on the site, in the portal, the v1 API and MCP alike, with the
+ * same validation on every surface.
  */
 export interface EmailActionConfig {
   /** Recipient(s). Templated, then validated as email(s). */
@@ -1815,7 +1819,8 @@ export const paths = {
   integrations: (orgId: string, siteId: string) =>
     `organizations/${orgId}/sites/${siteId}/integrations/default`,
   // Optional per-site apps (analytics, …) opt-in state + config. Single
-  // unversioned doc; secrets encrypted; admin-only, off the AI surface.
+  // unversioned doc; secrets encrypted; admin-only on every surface (portal,
+  // v1 API and MCP); not exposed to the in-portal chat assistant.
   // Materialize writes a PUBLIC projection into build snapshots.
   apps: (orgId: string, siteId: string) =>
     `organizations/${orgId}/sites/${siteId}/apps/default`,

@@ -1,9 +1,9 @@
 // Script policy across agent surfaces (decided 2026-06-11):
 //  - Bearer API keys (v1 REST, and MCP which wraps it) write `script`
 //    FREELY — same trust level as scripts_head, which the same token
-//    already authorises. Mitigation is visibility: the response carries
-//    SCRIPT_WRITE_NOTICE and the write is audit-logged. The old
-//    ai_scripts_enabled flag has NO effect on bearer paths.
+//    already authorises, and as a person in the portal. The write is
+//    audit-logged like every API write and answered without a warning.
+//    The ai_scripts_enabled flag has NO effect on bearer paths.
 //  - The in-portal chat AI stays gated on Site.ai_scripts_enabled —
 //    covered by gateBlockScript unit tests here and the chat-path tests
 //    in anthropic-tools.test.ts (which assert script never persists).
@@ -60,10 +60,10 @@ const CREATE_BODY = {
   script: 'console.log("hi")',
 };
 
-describe('BlockType script via bearer key — accepted + noticed', () => {
+describe('BlockType script via bearer key — accepted like any write', () => {
   beforeEach(async () => { await resetDatastore(); });
 
-  it('POST persists script and carries the write notice (no site flag needed)', async () => {
+  it('POST persists script without a warning (no site flag needed)', async () => {
     const { token } = await setup(); // ai_scripts_enabled NOT set
     const res = await callRoute(
       import('../../pages/api/v1/sites/[siteId]/block-types/index'),
@@ -75,7 +75,7 @@ describe('BlockType script via bearer key — accepted + noticed', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { script?: string; warnings?: string[] };
     expect(body.script).toBe('console.log("hi")');
-    expect(body.warnings?.[0]).toContain('visitor-executed JavaScript');
+    expect(body.warnings).toBeUndefined();
 
     const { getStore } = await import('../../lib/datastore');
     const stored = await getStore().getDoc<BlockType>(
@@ -84,7 +84,7 @@ describe('BlockType script via bearer key — accepted + noticed', () => {
     expect(stored?.script).toBe('console.log("hi")');
   });
 
-  it('PATCH persists script with notice; ai_scripts_enabled=false has no effect', async () => {
+  it('PATCH persists script; ai_scripts_enabled=false has no effect', async () => {
     const { token } = await setup({ ai_scripts_enabled: false } as Partial<Site>);
     const { getStore } = await import('../../lib/datastore');
     await getStore().setDoc(`${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/fancy_widget`, {
@@ -100,10 +100,10 @@ describe('BlockType script via bearer key — accepted + noticed', () => {
     const body = await res.json() as { label: string; script?: string; warnings?: string[] };
     expect(body.label).toBe('New');
     expect(body.script).toBe('console.log("upd")');
-    expect(body.warnings?.length).toBe(1);
+    expect(body.warnings).toBeUndefined();
   });
 
-  it('script-free writes carry no notice', async () => {
+  it('script-free writes carry no warning either', async () => {
     const { token } = await setup();
     const { script: _omit, ...noScript } = CREATE_BODY;
     const res = await callRoute(
@@ -115,6 +115,29 @@ describe('BlockType script via bearer key — accepted + noticed', () => {
     );
     const body = await res.json() as { warnings?: string[] };
     expect(body.warnings).toBeUndefined();
+  });
+});
+
+describe('Block instance code via bearer key — accepted like any write', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('core/embed js is stored and the response carries no warning', async () => {
+    const { token } = await setup({ ai_scripts_enabled: false } as Partial<Site>);
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`, {
+      title: 'Home', slug: 'home', status: 'published', content_mode: 'blocks', blocks: [], html_content: '',
+    });
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/pages/[pageId]/blocks/index'),
+      'POST',
+      `http://localhost/api/v1/sites/${SITE}/pages/home/blocks`,
+      { siteId: SITE, pageId: 'home' },
+      { headers: bearer(token), body: { block: { type: 'core/embed', data: { html: '<div></div>', js: 'el.dataset.on = "1";' } } } },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json() as { added_id: string; blocks: Array<{ id: string; data: Record<string, unknown> }>; warnings?: string[] };
+    expect(body.warnings).toBeUndefined();
+    expect(body.blocks.find((b) => b.id === body.added_id)?.data.js).toBe('el.dataset.on = "1";');
   });
 });
 

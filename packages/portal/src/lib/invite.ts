@@ -94,3 +94,33 @@ export function extractTokenFromInput(input: string): string {
   }
   return trimmed;
 }
+
+export const DEFAULT_INVITE_TTL_DAYS = 7;
+export const MAX_INVITE_TTL_DAYS = 30;
+
+/** Read the optional `ttlDays` (or `ttl_days`) from a request body. Same
+ *  default and clamp for the session route and the public API. */
+export function parseInviteTtlDays(body: unknown): number {
+  const input = (body && typeof body === 'object' ? body : {}) as { ttlDays?: unknown; ttl_days?: unknown };
+  const value = input.ttlDays ?? input.ttl_days;
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.max(1, Math.min(Math.round(value), MAX_INVITE_TTL_DAYS));
+  }
+  return DEFAULT_INVITE_TTL_DAYS;
+}
+
+/**
+ * Mint an invite link to `orgId`. Redeeming it at /onboarding, signed in as
+ * a person, adds that person to the organization as an editor. Throws when
+ * the signing secret is missing; callers check isFormsSigningConfigured()
+ * first to return a clear error.
+ */
+export function createInviteUrl(orgId: string, ttlDays: number): { inviteUrl: string; expiresAt: string } {
+  const ttlMs = ttlDays * 24 * 60 * 60 * 1000;
+  const token = generateInviteToken(orgId, ttlMs);
+  const baseUrl = (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '');
+  return {
+    inviteUrl: `${baseUrl}/onboarding?invite=${encodeURIComponent(token)}`,
+    expiresAt: new Date(Date.now() + ttlMs).toISOString(),
+  };
+}

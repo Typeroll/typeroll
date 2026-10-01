@@ -38,6 +38,9 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  // Same rule as the portal's version picker: creating a branch is site
+  // administration.
+  if (ctx.permission !== 'admin') return apiError('Creating a branch requires admin permission on the site', 403, ctx);
   const body = (await request.json().catch(() => null)) as { name?: string; base?: string } | null;
   if (!body) return apiError('Invalid JSON body');
   const name = (body.name ?? '').trim();

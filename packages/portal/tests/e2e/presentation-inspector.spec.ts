@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { gotoReady } from './helpers/ready';
 
 test('inspector keeps content visible, collapses presentation, and resets an exact size', async ({page}, info) => {
   const file=path.join(os.tmpdir(),'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/pages/presentation-inspector.json');
@@ -9,7 +10,7 @@ test('inspector keeps content visible, collapses presentation, and resets an exa
   writeFileSync(file,JSON.stringify({id:'presentation-inspector',title:'Inspector',slug:'presentation-inspector',status:'draft',content_mode:'blocks',blocks:[{id:'h',type:'core/heading',data:{text:'Inspector heading',level:'h2',font_size_px:24}}]}));
   try {
     await page.setViewportSize({width:1440,height:1000});
-    await page.goto('/app/sites/default/pages/presentation-inspector',{waitUntil:'networkidle'});
+    await gotoReady(page, '/app/sites/default/pages/presentation-inspector');
     await page.getByRole('button',{name:'Structure',exact:true}).click();
     await page.getByRole('button',{name:'Edit Inspector heading',exact:true}).click();
     await expect(page.getByLabel('Heading text',{exact:true})).toBeVisible();
@@ -38,7 +39,7 @@ test('image framing is editable in the native inspector and updates the real pre
   await page.route('https://media.example.test/inspector.svg',r=>r.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="600" height="150"><rect width="600" height="150" fill="#cde5df"/></svg>'}));
   try {
     await page.setViewportSize({width:1440,height:1000});
-    await page.goto('/app/sites/default/pages/framing-inspector',{waitUntil:'networkidle'});
+    await gotoReady(page, '/app/sites/default/pages/framing-inspector');
     await page.getByRole('button',{name:'Structure',exact:true}).click();
     await page.getByRole('button',{name:'Edit inspector.svg',exact:true}).click();
     await page.getByText('Advanced settings',{exact:true}).click();

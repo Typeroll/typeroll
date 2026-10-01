@@ -45,6 +45,7 @@ export default defineConfig({
           items: [
             { label: 'Edit pages', slug: 'guides/the-editor' },
             { label: 'Drafts, saving and review', slug: 'tools/drafts-and-saving' },
+            { label: 'Versions and branches', slug: 'tools/versions' },
             { label: 'Blocks and templates', slug: 'tools/blocks' },
           ],
         },
@@ -126,10 +127,13 @@ export default defineConfig({
             { label: 'Global blocks and templates', slug: 'tools/reusable-blocks' },
             { label: 'Content types & templates', slug: 'tools/content-types' },
             { label: 'Forms', slug: 'tools/forms' },
+            { label: 'Email', slug: 'tools/email' },
             { label: 'Media', slug: 'tools/media' },
             { label: 'Redirects', slug: 'tools/redirects' },
             { label: 'Migration URLs', slug: 'tools/migration-urls' },
             { label: 'Deploy', slug: 'tools/deploy' },
+            { label: 'Versions and branches', slug: 'tools/versions' },
+            { label: 'Organization, access & workflows', slug: 'tools/organization' },
           ],
         },
         {

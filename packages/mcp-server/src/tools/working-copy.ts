@@ -9,6 +9,8 @@
 //                                              Save button)
 //   discard_working_copy                   →  throw the draft away
 //   list/read/restore_page_revision        →  saved-state history (undo)
+//   preview_page_revision                  →  render a saved state
+//   list/read/restore_partial_revision     →  the same for partials
 //
 // The portal editor shows any agent-written draft as "Unsaved changes", so
 // the human can also Save or Discard it from the UI.
@@ -139,6 +141,81 @@ export const workingCopyTools: ToolDef[] = [
         siteId,
         `pages/${encodeURIComponent(args.page_id)}/revisions/${encodeURIComponent(args.revision_id)}/restore`,
         { save: args.save === true, ...(args.override_reason ? { override_reason: args.override_reason } : {}) },
+        v(args.version),
+      );
+      return ok(res);
+    }),
+  },
+  {
+    name: 'preview_page_revision',
+    description:
+      'Render one saved page revision as the whole preview document (header, body, footer, site CSS and block scripts), exactly what the editor\'s History panel shows before a restore. Read-only. The revision\'s fields are laid over the current page; the current header, footer and settings give context. Returns { page_id, revision_id, slug, title, rendered_html, internal_links }. Pass annotate:true to tag block roots with data-block-id + data-block-type. Compare with get_page_preview before restore_page_revision.',
+    inputSchema: {
+      page_id: z.string(),
+      revision_id: z.string(),
+      annotate: z.boolean().optional(),
+      version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const query: Record<string, string | undefined> = { ...(v(args.version) ?? {}) };
+      if (args.annotate) query.annotate = 'true';
+      const res = await client.get(
+        siteId,
+        `pages/${encodeURIComponent(args.page_id)}/revisions/${encodeURIComponent(args.revision_id)}/preview`,
+        query,
+      );
+      return ok(res);
+    }),
+  },
+  {
+    name: 'list_partial_revisions',
+    description:
+      "Saved-state history of a partial (header, footer or global block) on this version, newest first. Every save snapshots the partial as it was BEFORE the save. Returns { revisions: [{ id, created_at, created_by, note, name, content_mode, date_updated }], total }. Use read_partial_revision for the full document and restore_partial_revision to undo.",
+    inputSchema: {
+      partial_id: z.string(),
+      limit: z.number().int().min(1).max(100).optional().describe('Newest N entries (default 50).'),
+      version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const query: Record<string, string | undefined> = { ...(v(args.version) ?? {}) };
+      if (args.limit) query.limit = String(args.limit);
+      const res = await client.get(siteId, `partials/${encodeURIComponent(args.partial_id)}/revisions`, query);
+      return ok(res);
+    }),
+  },
+  {
+    name: 'read_partial_revision',
+    description:
+      'Read one partial revision with the full saved document (name, kind, html_content or blocks, status) — compare it with read_partial before restoring.',
+    inputSchema: {
+      partial_id: z.string(),
+      revision_id: z.string(),
+      version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const res = await client.get(
+        siteId,
+        `partials/${encodeURIComponent(args.partial_id)}/revisions/${encodeURIComponent(args.revision_id)}`,
+        v(args.version),
+      );
+      return ok(res);
+    }),
+  },
+  {
+    name: 'restore_partial_revision',
+    description:
+      "Restore a partial revision's name and content (HTML or block tree) into the partial's DRAFT, replacing the current draft. Pass save:true to save it at once; the save snapshots the current partial first, so the restore is itself undoable. Status and kind are kept. A revision from the other content mode is refused (409) — switch mode first. Returns { restored_revision, saved, has_unsaved_changes, staged_fields, sanitization_warnings }.",
+    inputSchema: {
+      partial_id: z.string(),
+      revision_id: z.string(),
+      save: z.boolean().optional().describe('Save immediately (default false: leave it as an unsaved draft to preview).'),
+      version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const res = await client.post(
+        siteId,
+        `partials/${encodeURIComponent(args.partial_id)}/revisions/${encodeURIComponent(args.revision_id)}/restore`,
+        { save: args.save === true },
         v(args.version),
       );
       return ok(res);

@@ -81,6 +81,24 @@ describe('page revisions over the v1 API', () => {
     expect(after.revisions.map(r => r.title)).toEqual(['Andra', 'Första']);
   });
 
+  it('renders a saved revision as the full preview document without changing the page', async () => {
+    expect((await patchPage({ title: 'Andra', html_content: '<p>Två</p>', save: true })).status).toBe(200);
+    const listed = await (await listRevs()).json() as { revisions: Array<{ id: string }> };
+    const revId = listed.revisions[0]!.id;
+
+    const res = await call('../../pages/api/v1/sites/[siteId]/pages/[pageId]/revisions/[revId]/preview', 'GET', `${base}/revisions/${revId}/preview`, { pageId: 'om', revId });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { page_id: string; revision_id: string; title: string; rendered_html: string; internal_links: string[] };
+    expect(body).toMatchObject({ page_id: 'om', revision_id: revId, title: 'Första' });
+    expect(body.rendered_html).toContain('Ett');
+    expect(body.rendered_html).not.toContain('Två');
+    expect(Array.isArray(body.internal_links)).toBe(true);
+    expect((await savedPage()).title).toBe('Andra');
+
+    const missing = await call('../../pages/api/v1/sites/[siteId]/pages/[pageId]/revisions/[revId]/preview', 'GET', `${base}/revisions/missing/preview`, { pageId: 'om', revId: 'missing' });
+    expect(missing.status).toBe(404);
+  });
+
   it('refuses a revision from another content mode and unknown ids', async () => {
     const { getStore } = await import('../../lib/datastore');
     await getStore().setDoc(`${paths.revisions(ORG, SITE, 'om', MAIN_VERSION_ID)}/1-blocks`, {

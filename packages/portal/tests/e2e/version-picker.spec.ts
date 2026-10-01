@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import os from 'node:os';
 import path from 'node:path';
 import { authenticatePersona } from './helpers/auth';
+import { gotoReady } from './helpers/ready';
 
 test('site navigation handles a published virtual Main alongside a branch', async ({ page }, testInfo) => {
   await authenticatePersona(page, 'owner');
@@ -16,7 +17,7 @@ test('site navigation handles a published virtual Main alongside a branch', asyn
   try {
     for (const width of [375, 1280]) {
       await page.setViewportSize({ width, height: 900 });
-      const response = await page.goto('/app/sites/e2e-core-site', { waitUntil: 'networkidle' });
+      const response = await gotoReady(page, '/app/sites/e2e-core-site');
       expect(response?.status()).toBe(200);
       await expect(page.getByRole('heading', { name: 'Typeroll E2E Core Site', exact: true })).toBeVisible();
       if (width < 768) await page.getByRole('button', { name: 'Open navigation', exact: true }).click();

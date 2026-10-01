@@ -10,6 +10,7 @@ import { getStore } from '../../../../../../lib/datastore';
 import { paths, fieldsToSteps, collectStepFields, safeFormRedirectUrl } from '@typeroll/shared';
 import type { Form, FormField } from '@typeroll/shared';
 import { validateFields, validateEmailActions, maskFormActionsForAdmin } from '../../../../../../lib/forms-admin';
+import { deleteAllFormSubmissions } from '../../../../../../lib/form-submissions';
 
 function formView(form: Form, isAdmin: boolean): Form {
   return { ...form, actions: isAdmin ? maskFormActionsForAdmin(form.actions) : [] };
@@ -93,22 +94,7 @@ export const DELETE: APIRoute = async ({ request, cookies, params, locals }) => 
   }
   const url = new URL(request.url);
   if (url.searchParams.get('delete_submissions') === 'true') {
-    const subs = await store.listDocs<{ id: string; form_id?: string }>(paths.submissions(owner_org_id, site.id));
-    const deletedSubmissionIds = new Set<string>();
-    for (const s of subs) {
-      if (s.form_id === formId) {
-        deletedSubmissionIds.add(s.id);
-        await store.deleteDoc(`${paths.submissions(owner_org_id, site.id)}/${s.id}`);
-      }
-    }
-    const deliveries = await store.listDocs<{ id: string; submission_id?: string }>(
-      paths.formWebhookDeliveries(owner_org_id, site.id),
-    );
-    for (const delivery of deliveries) {
-      if (delivery.submission_id && deletedSubmissionIds.has(delivery.submission_id)) {
-        await store.deleteDoc(`${paths.formWebhookDeliveries(owner_org_id, site.id)}/${delivery.id}`);
-      }
-    }
+    await deleteAllFormSubmissions(owner_org_id, site.id, formId);
   }
   await store.deleteDoc(`${paths.forms(owner_org_id, site.id)}/${formId}`);
   return json({ ok: true });

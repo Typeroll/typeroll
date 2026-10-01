@@ -150,7 +150,7 @@ export const partialTools: ToolDef[] = [
   {
     name: 'find_pages_using_block',
     description:
-      'Pages that embed a given block via <x-include name="…">. For partial_id "header" or "footer" returns the full page list (they are auto-injected on every page). Use this to know the blast radius before editing a shared block.',
+      'What references a global block, saved or in a draft: `pages` (core/global_block or <x-include name="…">), `templates` (page templates) and `global_blocks` (header, footer and other global blocks that nest it; a header or footer means every page). For partial_id "header" or "footer" returns the full page list (they are auto-injected on every page). Use this to know the blast radius before editing a shared block.',
     inputSchema: {
       partial_id: z.string(),
       version: versionParam,

@@ -1,11 +1,9 @@
+// "Plan a new site with AI" on the New site page. The public-API equivalent is
+// POST /api/v1/sites/create-and-plan; both use lib/workflows/create-site.
+
 import type { APIRoute } from 'astro';
 import { requireFullSession } from '../../../lib/access';
-import { getStore } from '../../../lib/datastore';
-import { defaultSiteSettings, newSiteStyles, paths } from '@typeroll/shared';
-import { reserveSite } from '../../../lib/site-create';
-import type { Site } from '@typeroll/shared';
-import { WorkflowEngine } from '../../../lib/workflows/engine';
-import { sitePlanningWorkflow } from '../../../lib/workflows/site-planning';
+import { createSiteWithWorkflow, parseSiteWorkflowRequest, SiteWorkflowInputError } from '../../../lib/workflows/create-site';
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const guard = await requireFullSession(cookies);
@@ -13,52 +11,17 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const session = guard.value;
 
   const form = await request.formData();
-  const name = String(form.get('name') ?? '').trim();
-  const business_description = String(form.get('business_description') ?? '').trim();
-  if (!name || !business_description) return new Response('name and business_description required', { status: 400 });
-
-  const store = getStore();
-  const { siteId, site: reservedSite } = await reserveSite(session.orgId, name);
-
-  let hostingConfig: Site['hosting_config'] | undefined;
+  let parsed;
   try {
-    const { provisionSiteHosting } = await import('../../../lib/hosting/site-provisioning');
-    const result = await provisionSiteHosting(session.orgId, siteId);
-    if (result) {
-      hostingConfig = {
-        pages_project: result.pagesProject,
-        fallback_subdomain: result.fallbackSubdomain ?? undefined,
-      };
-    }
-  } catch (e) {
-    console.error(`[create-and-plan] CF provisioning failed for ${siteId}:`, e);
+    parsed = parseSiteWorkflowRequest('site_planning', {
+      name: String(form.get('name') ?? ''),
+      business_description: String(form.get('business_description') ?? ''),
+    });
+  } catch (error) {
+    if (error instanceof SiteWorkflowInputError) return new Response(error.message, { status: 400 });
+    throw error;
   }
 
-  const site: Omit<Site, 'id'> = {
-    ...reservedSite,
-    name,
-    hosting_adapter: 'cloudflare',
-    hosting_config: hostingConfig,
-    staging_url: hostingConfig?.fallback_subdomain
-      ? `https://${hostingConfig.fallback_subdomain}`
-      : undefined,
-    created_at: new Date().toISOString(),
-  };
-  await store.updateDoc(paths.site(session.orgId, siteId), site);
-  await store.setDoc(paths.settings(session.orgId, siteId), { ...defaultSiteSettings, styles: newSiteStyles(), site_name: name });
-
-  const engine = new WorkflowEngine();
-  const workflowId = await engine.create({
-    orgId: session.orgId,
-    siteId,
-    def: sitePlanningWorkflow,
-    config: { business_description },
-    triggeredBy: 'manual',
-    createdBy: session.userId,
-  });
-  engine.start(session.orgId, workflowId, sitePlanningWorkflow).catch((err) => {
-    console.error(`[site_planning ${workflowId}] failed:`, err);
-  });
-
+  const { siteId, workflowId } = await createSiteWithWorkflow({ orgId: session.orgId, request: parsed, createdBy: session.userId });
   return redirect(`/app/sites/${siteId}/workflows/${workflowId}`);
 };

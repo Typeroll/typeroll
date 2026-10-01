@@ -1,6 +1,7 @@
 import { getHostingGroup, hostingGroupId } from '../../../../lib/publishing/hosting-groups';
 import type { APIRoute } from 'astro';
-import { ConnectionError, disconnect } from '../../../../lib/publishing/connections';
+import { ConnectionError } from '../../../../lib/publishing/connections';
+import { disconnectOrganizationProvider, isPublishingProvider } from '../../../../lib/publishing/organization-connections';
 import { connectCloudflare, prepareCloudflareMedia, connectCloudflareMedia } from '../../../../lib/publishing/cloudflare-connection';
 import { GITHUB_COOKIE, startGithubConnection, startGithubInstallation, selectGithubOrganization } from '../../../../lib/publishing/github-connection';
 import { connectionBody, connectionFailure, privateJson, publishingAdmin } from '../../../../lib/publishing/http';
@@ -50,13 +51,8 @@ export const DELETE: APIRoute = async (context) => {
   const guard = await publishingAdmin(context);
   if (!guard.ok) return guard.response;
   try {
-    const provider = context.params.provider;
-    if (provider !== 'github' && provider !== 'cloudflare') throw new ConnectionError('Unknown publishing provider', 404);
-    const body = await connectionBody(context.request) as { revision?: unknown; hosting_group_id?: unknown };
-    if (typeof body?.revision !== 'string') throw new ConnectionError('Connection revision is required');
-    const groupId = hostingGroupId(body.hosting_group_id ?? 'default');
-    await getHostingGroup(guard.value.orgId, groupId);
-    await disconnect(guard.value.orgId, provider, body.revision, groupId);
-    return privateJson({ disconnected: true });
+    if (!isPublishingProvider(context.params.provider)) throw new ConnectionError('Unknown publishing provider', 404);
+    const body = await connectionBody(context.request) as Record<string, unknown>;
+    return privateJson(await disconnectOrganizationProvider(guard.value.orgId, context.params.provider, body));
   } catch (error) { return connectionFailure(error); }
 };

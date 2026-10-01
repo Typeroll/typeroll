@@ -59,7 +59,7 @@ describe('reusable blocks API', () => {
     const { getStore } = await import('../../lib/datastore');
     await getStore().setDoc(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/about`, { title: 'about', slug: 'about', content_mode: 'blocks', status: 'published', blocks: [{ id: 'r', type: 'core/global_block', data: { global_block_id: 'book-a-call' } }] });
     // The saved reference on about and the draft reference on home both count.
-    expect((await getBlockUsage(ORG, SITE, MAIN_VERSION_ID, 'book-a-call')).map(page => page.page_id).sort()).toEqual(['about', 'home']);
+    expect((await getBlockUsage(ORG, SITE, MAIN_VERSION_ID, 'book-a-call')).pages.map(page => page.page_id).sort()).toEqual(['about', 'home']);
 
     const { renderPreview } = await import('../../lib/render-preview');
     const html = (await renderPreview(ORG, SITE, 'about', MAIN_VERSION_ID))!;
@@ -69,10 +69,70 @@ describe('reusable blocks API', () => {
 
     const detached = await call('pages/[pageId]/blocks/detach', 'POST', { pageId: 'about' }, { block_id: 'r' });
     expect(detached.status).toBe(200);
+    expect(await detached.json()).toMatchObject({ copied_from: 'saved' });
     const about = await draftBlocks('about');
     expect(about[0].type).toBe('core/section');
     expect(about[0].id).not.toBe('cta');
     expect((await call('pages/[pageId]/blocks/detach', 'POST', { pageId: 'about' }, { block_id: about[0].id })).status).toBe(400);
+  });
+
+  it('detaches the global block draft the editors show, and the saved block once it is discarded', async () => {
+    await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.partials(ORG, SITE, MAIN_VERSION_ID)}/promo`, { name: 'Promo', kind: 'free', status: 'published', content_mode: 'blocks', blocks: [{ id: 'saved-h', type: 'core/heading', data: { text: 'Saved promo' } }] });
+    const reference = (id: string): Block => ({ id, type: 'core/global_block', data: { global_block_id: 'promo' } });
+    await getStore().setDoc(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/about`, { title: 'about', slug: 'about', content_mode: 'blocks', status: 'published', blocks: [reference('r1'), reference('r2')] });
+    const ctx = { orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID };
+    const { discardWorkingCopy, mergeWorkingCopy } = await import('../../lib/working-copy');
+    await mergeWorkingCopy(ctx, { kind: 'partial', id: 'promo' }, { blocks: [{ id: 'draft-h', type: 'core/heading', data: { text: 'Draft promo' } }] });
+
+    const first = await call('pages/[pageId]/blocks/detach', 'POST', { pageId: 'about' }, { block_id: 'r1' });
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({ copied_from: 'draft' });
+    let about = await draftBlocks('about');
+    expect(about[0]).toMatchObject({ type: 'core/heading', data: { text: 'Draft promo' } });
+    expect(about[0].id).not.toBe('draft-h');
+
+    await discardWorkingCopy(ctx, { kind: 'partial', id: 'promo' });
+    const second = await call('pages/[pageId]/blocks/detach', 'POST', { pageId: 'about' }, { block_id: 'r2' });
+    expect(await second.json()).toMatchObject({ copied_from: 'saved' });
+    about = await draftBlocks('about');
+    expect(about.map(block => block.data.text)).toEqual(['Draft promo', 'Saved promo']);
+  });
+
+  it('sanitizes an HTML global block draft when detaching it', async () => {
+    await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.partials(ORG, SITE, MAIN_VERSION_ID)}/notice`, { name: 'Notice', kind: 'free', status: 'published', content_mode: 'html', html_content: '<p>Saved</p>' });
+    await getStore().setDoc(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/about`, { title: 'about', slug: 'about', content_mode: 'blocks', status: 'published', blocks: [{ id: 'r', type: 'core/global_block', data: { global_block_id: 'notice' } }] });
+    const { mergeWorkingCopy } = await import('../../lib/working-copy');
+    await mergeWorkingCopy({ orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID }, { kind: 'partial', id: 'notice' }, { html_content: '<p>Draft</p><script>alert(1)</script>' });
+    expect((await call('pages/[pageId]/blocks/detach', 'POST', { pageId: 'about' }, { block_id: 'r' })).status).toBe(200);
+    const [copy] = await draftBlocks('about');
+    expect(copy.type).toBe('core/html');
+    expect(copy.data.html).toContain('<p>Draft</p>');
+    expect(copy.data.html).not.toContain('<script');
+  });
+
+  it('reports template and nested global block usage through the usage API', async () => {
+    await setup();
+    const { getStore } = await import('../../lib/datastore');
+    const reference: Block = { id: 'r', type: 'core/global_block', data: { global_block_id: 'promo' } };
+    await getStore().setDoc(`${paths.partials(ORG, SITE, MAIN_VERSION_ID)}/promo`, { name: 'Promo', kind: 'free', status: 'published', content_mode: 'blocks', blocks: [{ id: 'h', type: 'core/heading', data: { text: 'Promo' } }] });
+    await getStore().setDoc(`${paths.partials(ORG, SITE, MAIN_VERSION_ID)}/banner`, { name: 'Banner', kind: 'free', status: 'published', content_mode: 'blocks', blocks: [reference] });
+    await getStore().setDoc(`${paths.pageTemplates(ORG, SITE, MAIN_VERSION_ID)}/landing`, { name: 'landing', label: 'Landing', status: 'draft', created_at: new Date().toISOString(), blocks: [reference] });
+    const res = await call('partials/[partialId]/usage', 'GET', { partialId: 'promo' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      partial_id: 'promo',
+      auto_injected: false,
+      pages: [],
+      templates: [{ template_id: 'landing', label: 'Landing', status: 'draft' }],
+      global_blocks: [{ partial_id: 'banner', name: 'Banner', kind: 'free', status: 'published' }],
+    });
+    const header = await (await call('partials/[partialId]/usage', 'GET', { partialId: 'header' })).json() as { auto_injected: boolean; pages: unknown[]; templates: unknown[] };
+    expect(header).toMatchObject({ auto_injected: true, templates: [], global_blocks: [] });
+    expect(header.pages).toHaveLength(2);
   });
 
   it('creates global blocks with block content through the partials API', async () => {

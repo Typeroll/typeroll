@@ -423,6 +423,58 @@ describe('settings tools — branch (version) support', () => {
     expect(calls[0].url).toBe('https://example.test/api/v1/sites/mysite/settings');
     expect(JSON.parse(calls[0].body!)).toEqual({ site_name: 'Acme' });
   });
+
+  it('update_site_settings forwards the portal-form fields (social, JSON-LD, staging_url)', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ ok: true }));
+    const args = {
+      default_og_image: 'https://cdn.example.com/og.png',
+      twitter_handle: '@acme',
+      organization: { name: 'Acme', same_as: ['https://x.com/acme'] },
+      staging_url: 'https://staging.example.com',
+    };
+    const tool = find(settingsTools, 'update_site_settings');
+    const schema = z.object(tool.inputSchema as z.ZodRawShape);
+    expect(schema.parse(args)).toEqual(args);
+    expect(schema.parse({ organization: null, staging_url: null })).toEqual({ organization: null, staging_url: null });
+    expect(() => schema.parse({ organization: { name: 'Acme', url: 'x' } })).toThrow();
+    await tool.handler(args as never, { client, siteId });
+    expect(calls[0]).toEqual({ method: 'PATCH', url: 'https://example.test/api/v1/sites/mysite/settings', body: JSON.stringify(args) });
+  });
+});
+
+describe('site admin tools', () => {
+  it('update_site sets ai_scripts_enabled on the Site', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ id: 'mysite', ai_scripts_enabled: true }));
+    await find(siteTools, 'update_site').handler({ ai_scripts_enabled: true } as never, { client, siteId });
+    expect(calls).toEqual([{ method: 'PATCH', url: 'https://example.test/api/v1/sites/mysite/', body: JSON.stringify({ ai_scripts_enabled: true }) }]);
+  });
+
+  it('archive_site and restore_site post the lifecycle action', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ status: 'archived', site: 'mysite' }));
+    await find(siteTools, 'archive_site').handler({ reason: 'Retired' } as never, { client, siteId });
+    await find(siteTools, 'archive_site').handler({} as never, { client, siteId });
+    await find(siteTools, 'restore_site').handler({} as never, { client, siteId });
+    expect(calls).toEqual([
+      { method: 'POST', url: 'https://example.test/api/v1/sites/mysite/lifecycle', body: JSON.stringify({ action: 'archive', reason: 'Retired' }) },
+      { method: 'POST', url: 'https://example.test/api/v1/sites/mysite/lifecycle', body: JSON.stringify({ action: 'archive' }) },
+      { method: 'POST', url: 'https://example.test/api/v1/sites/mysite/lifecycle', body: JSON.stringify({ action: 'restore' }) },
+    ]);
+  });
+
+  it('purge_site_media treats a 207 partial purge as a result, not an error', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ records: 2, records_removed: 1, records_retained: 1, failed: [{ media_id: 'm' }] }, 207));
+    const result = await find(mediaTools, 'purge_site_media').handler({} as never, { client, siteId });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain('records_retained');
+    expect(calls[0].method).toBe('POST');
+    expect(calls[0].url).toBe('https://example.test/api/v1/sites/mysite/media/purge');
+  });
+
+  it('get_media_upload_status reads the upload pre-flight', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ enabled: false, reason: 'Not connected' }));
+    await find(mediaTools, 'get_media_upload_status').handler({} as never, { client, siteId });
+    expect(calls).toEqual([{ method: 'GET', url: 'https://example.test/api/v1/sites/mysite/media/upload-status', body: null }]);
+  });
 });
 
 it('retries verification with the same job and version without requesting a build', async () => {

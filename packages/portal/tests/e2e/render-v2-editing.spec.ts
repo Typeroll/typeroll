@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { gotoReady } from './helpers/ready';
 
 const root = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main');
 const pageFile = path.join(root, 'pages/render-v2.json');
@@ -21,11 +22,11 @@ test('render version 2: heading parts with styles, class on the element and para
   writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(originalSettings), render_version: 2 }));
   try {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto('/app/sites/default/styles', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/app/sites/default/styles');
     await page.getByRole('button', { name: 'Add standard styles' }).click();
     await expect(page.getByRole('status')).toContainText(/Added \d+ standard styles|already here/);
 
-    await page.goto('/app/sites/default/pages/render-v2', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/app/sites/default/pages/render-v2');
     const preview = page.frameLocator('iframe[title="Preview"]');
     await page.getByRole('button', { name: 'Structure', exact: true }).click();
 

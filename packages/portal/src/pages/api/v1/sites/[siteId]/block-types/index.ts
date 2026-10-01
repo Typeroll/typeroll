@@ -17,7 +17,6 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { vstore } from '../../../../../../lib/version-store';
-import { SCRIPT_WRITE_NOTICE } from '../../../../../../lib/block-script-gate';
 import {
   CORE_BLOCK_TYPES, paths,
   type BlockOrigin, type BlockType, type FieldDefinition,
@@ -93,10 +92,9 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (err) return apiError(err, 400);
   if (!clean.name) return apiError('name is required', 400);
 
-  // `script` through an API key is allowed under the key holder's authority
-  // (same trust level as scripts_head). The write is audit-logged by
-  // apiResponse; the notice makes the stored JS visible to the operator.
-  const warnings = clean.script !== undefined ? [SCRIPT_WRITE_NOTICE] : [];
+  // `script` through an API key is accepted under the key holder's authority
+  // (same trust level as scripts_head and as a person in the portal). The
+  // write is audit-logged by apiResponse. See lib/block-script-gate.ts.
 
   // Origin: 'ai' when the AI surface is the caller (tool definition
   // attaches ?origin=ai), 'user' otherwise. Either way the type lands
@@ -129,5 +127,5 @@ export const POST: APIRoute = async ({ request, params }) => {
     created_at: new Date().toISOString(),
   };
   await getStore().setDoc(docPath, doc);
-  return apiResponse(ctx, { ...doc, ...(warnings.length ? { warnings } : {}) });
+  return apiResponse(ctx, doc);
 };

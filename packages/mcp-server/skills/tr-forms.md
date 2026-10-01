@@ -112,8 +112,19 @@ update_form form_id=contact patch={ actions: [
 ```
 
 A webhook needs `url` (https), an explicit `fields` allowlist and a signing
-`secret`; send the masked value back to keep a stored secret. `list_form_submissions`
-reads what visitors sent.
+`secret`; send the masked value back to keep a stored secret.
+`get_form_capabilities` lists every action type the site offers, including
+types from installed apps, with the config fields each one takes.
+
+Email actions send through the site's email provider. Check it with
+`get_email_settings`; if `email` is null, connect one with `set_email_settings`
+(for example `type: "postmark"`, `from`, `config: { server_token }`) and confirm
+with `send_test_email`. Without a provider, submissions are stored but nobody is
+notified. These tools need admin permission, like Settings → Email & notifications.
+
+`list_form_submissions` reads what visitors sent, `read_form_submission` reads
+one entry (admins also see webhook delivery status) and `delete_form_submission`
+removes one.
 
 ## Verify
 
@@ -121,8 +132,11 @@ reads what visitors sent.
 2. Preview the page and confirm the authoring reference has expanded to a form
    with `data-tr-form-el`, a signed token, and the platform runtime.
 3. Submit a test entry and confirm it appears in Forms → Submissions.
-4. If a webhook is configured, confirm its delivery status and the receiving
-   system's idempotency key before deploying.
+4. If a webhook is configured, confirm its delivery status
+   (`read_form_submission`) and the receiving system's idempotency key before
+   deploying.
+5. If an email action is configured, confirm `get_email_settings` shows a
+   provider and the test message arrived.
 
 ## Common patterns
 

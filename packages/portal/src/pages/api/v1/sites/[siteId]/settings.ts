@@ -1,12 +1,17 @@
 // GET   /api/v1/sites/{siteId}/settings
 // PATCH /api/v1/sites/{siteId}/settings
 //
-// PATCH whitelists the editable fields. As of the agent-feedback round,
-// `scripts_head`, `scripts_body_end`, and `custom_css` are writable here:
-// the trust model is the same as user-authored block-type JS — an
-// authenticated API caller (Bearer token) takes responsibility for what
-// they ship. The chat AI in lib/anthropic.ts continues to NOT expose
-// these fields, so a model conversation can't smuggle scripts in.
+// PATCH whitelists the editable fields and accepts everything the portal's
+// Settings form does (/api/sites/{siteId}/settings), with the same admin
+// permission. `scripts_head`, `scripts_body_end`, `custom_css` and the
+// cookie-consent scripts are writable here: an authenticated API caller
+// (Bearer token) takes responsibility for what they ship, exactly as a site
+// admin does in the portal. The chat AI in lib/anthropic.ts does not expose
+// these fields.
+//
+// `staging_url` is stored on the Site document, not in versioned settings, so
+// a branch cannot reroute it; it is written the same way whichever `?version=`
+// the request names.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
@@ -14,15 +19,23 @@ import { vstore } from '../../../../../lib/version-store';
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
 import { libraryProblems, readStyles } from '../../../../../lib/site-styles-store';
 import { customCssWarnings, customCssWriteError } from '../../../../../lib/custom-css-write';
-import { responsiveBreakpointsError, seoReviewError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, LATEST_RENDER_VERSION, type SiteSettings } from '@typeroll/shared';
+import { getStore } from '../../../../../lib/datastore';
+import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
+import { responsiveBreakpointsError, seoReviewError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, LATEST_RENDER_VERSION, paths, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
   'default_meta_description', 'language', 'robots_txt', 'image_sizes_default',
   'sitewide_noindex', 'sitewide_nofollow', 'seo_review', 'render_version',
+  // Social sharing + Organization JSON-LD, as in the portal Settings form.
+  'default_og_image', 'twitter_handle', 'organization',
   // Scriptable surfaces. Trusted because the caller has an API key.
   'scripts_head', 'scripts_body_end', 'custom_css',
 ]);
+/** Fields stored on the Site document rather than in versioned settings. */
+const SITE_LEVEL = new Set(['staging_url']);
+/** Optional string fields where an empty string clears the value. */
+const CLEARABLE_STRINGS = ['default_og_image', 'twitter_handle'] as const;
 const NESTED = new Set(['colors', 'fonts', 'contact', 'social', 'cookie_consent']);
 const COOKIE_CONSENT_FIELDS = new Set([
   'enabled', 'text', 'privacy_policy_url', 'scripts_necessary',
@@ -43,8 +56,30 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  // Same role as the portal Settings form, render-version and custom-CSS routes.
+  if (ctx.permission !== 'admin') return apiError('Insufficient permission (admin required)', 403, ctx);
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return apiError('Invalid JSON body');
+  for (const key of CLEARABLE_STRINGS) {
+    if (body[key] === undefined) continue;
+    if (body[key] !== null && typeof body[key] !== 'string') return apiError(`${key} must be a string`, 400);
+    const value = String(body[key] ?? '').trim();
+    // An empty value clears the field, as in the portal form. null keeps the
+    // key present so it is reported in updated_fields.
+    body[key] = (key === 'twitter_handle' ? normalizeTwitterHandle(value) : value || undefined) ?? null;
+  }
+  if (body.organization !== undefined) {
+    const parsed = parseOrganizationInput(body.organization);
+    if (!parsed.ok) return apiError(parsed.error, 400);
+    body.organization = parsed.organization ?? null;
+  }
+  let stagingUrl: string | null | undefined;
+  if (body.staging_url !== undefined) {
+    if (body.staging_url !== null && typeof body.staging_url !== 'string') {
+      return apiError('staging_url must be a URL string, or null to clear it', 400);
+    }
+    stagingUrl = normalizeStagingUrl(String(body.staging_url ?? ''));
+  }
   if (body.responsive_breakpoints !== undefined) { const error = responsiveBreakpointsError(body.responsive_breakpoints); if (error) return apiError(error, 400); }
   if (body.trailing_slash !== undefined && !['always', 'never', 'ignore'].includes(String(body.trailing_slash))) {
     return apiError('trailing_slash must be one of: always, never, ignore', 400);
@@ -92,24 +127,35 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       const before = (existing[k] as Record<string, unknown> | undefined) ?? {};
       update[k] = { ...before, ...(v as Record<string, unknown>) };
     } else if (TOP_LEVEL.has(k)) {
-      update[k] = v;
+      // null clears an optional field; the store drops undefined values.
+      update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization').includes(k) ? undefined : v;
+    } else if (SITE_LEVEL.has(k)) {
+      continue;
     } else {
       unknown_keys.push(k);
     }
   }
-  if (unknown_keys.length > 0 && Object.keys(update).length === 0) {
+  if (unknown_keys.length > 0 && Object.keys(update).length === 0 && stagingUrl === undefined) {
     // All keys were unknown — almost certainly a schema mistake (e.g. the
     // caller wrapped their fields in {"settings": {...}}). Return 400 so the
     // error is visible instead of silently saving nothing.
     return apiError(
       `No recognized fields in body. Unknown keys: ${unknown_keys.join(', ')}. ` +
-      `Top-level fields: ${[...TOP_LEVEL].join(', ')}. ` +
+      `Top-level fields: ${[...TOP_LEVEL, ...SITE_LEVEL].join(', ')}. ` +
       `Nested objects: ${[...NESTED].join(', ')}.`,
       400,
     );
   }
-  await vstore.writeSettings(ctx.orgId, ctx.siteId, ctx.versionId, update as Partial<SiteSettings>);
-  const resp: Record<string, unknown> = { ok: true, updated_fields: Object.keys(update) };
+  if (Object.keys(update).length > 0) {
+    await vstore.writeSettings(ctx.orgId, ctx.siteId, ctx.versionId, update as Partial<SiteSettings>);
+  }
+  if (stagingUrl !== undefined) {
+    await getStore().updateDoc(paths.site(ctx.orgId, ctx.siteId), { staging_url: stagingUrl });
+  }
+  const resp: Record<string, unknown> = {
+    ok: true,
+    updated_fields: [...Object.keys(update), ...(stagingUrl !== undefined ? ['staging_url'] : [])],
+  };
   const warnings: string[] = [];
   if (unknown_keys.length > 0) warnings.push(`Unrecognized keys were ignored: ${unknown_keys.join(', ')}`);
   // A palette change can make existing styles unreadable; say so instead of failing the palette write.

@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { gotoReady, reloadReady, waitForHydration } from './helpers/ready';
 
 const root = path.join(tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default');
 for (const surface of ['editor', 'overview', 'pages']) {
@@ -28,17 +29,19 @@ for (const surface of ['editor', 'overview', 'pages']) {
       await page.route('**/api/sites/default/deploys/availability-test', route => route.fulfill({ json: job() }));
       await page.setViewportSize({ width: 390, height: 844 });
       const url = surface === 'editor' ? '/app/sites/default/pages/availability' : surface === 'pages' ? '/app/sites/default/pages' : '/app/sites/default';
-      await page.goto(url, { waitUntil: 'networkidle' });
+      await gotoReady(page, url);
       if (surface === 'editor') await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expect(page.getByRole('status').filter({ hasText: 'Distributing' })).toBeVisible();
       await expect(page.locator('a[href^="https://available.example.com"]')).toHaveCount(0);
       await page.screenshot({ path: testInfo.outputPath(`${surface}-distributing-mobile.png`) });
       // An explicit reload must resume the same job without another deploy.
-      await page.reload({ waitUntil: 'networkidle' });
+      await reloadReady(page);
       const before = navigations;
       writeFileSync(versionFile, JSON.stringify(version));
       ready = true;
       await expect.poll(() => navigations, { timeout: 12_000 }).toBeGreaterThan(before);
+      // The page reloaded itself; act on it once the new document has hydrated.
+      await waitForHydration(page);
       if (surface === 'editor') await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expect(page.locator('a[href^="https://available.example.com"]')).toHaveCount(1);
       await page.screenshot({ path: testInfo.outputPath(`${surface}-ready-mobile.png`) });

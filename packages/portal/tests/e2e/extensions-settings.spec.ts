@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { waitForHydration } from './helpers/ready';
 
 test('extension settings hydrates without React errors', async ({ page }) => {
   const hydrationErrors: string[] = [];
@@ -20,7 +21,9 @@ test('extension settings hydrates without React errors', async ({ page }) => {
   await expect(
     page.getByRole('heading', { name: 'Extensions', exact: true }),
   ).toBeVisible();
-  await page.waitForLoadState('networkidle');
+  // React reports hydration mismatches while hydrating, so they are all in
+  // by the time every island has hydrated.
+  await waitForHydration(page);
 
   expect(hydrationErrors).toEqual([]);
 });

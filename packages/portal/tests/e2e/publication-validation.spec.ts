@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { authenticatePersona } from './helpers/auth';
+import { gotoReady } from './helpers/ready';
 
 for (const width of [375, 1280]) test(`publication diagnostics remain actionable after reload at ${width}px`, async ({ page }, info) => {
   await authenticatePersona(page, 'owner');
@@ -13,7 +14,7 @@ for (const width of [375, 1280]) test(`publication diagnostics remain actionable
       source: { file: 'companies/long-company-profile/index.html', line: 3, field: 'seo_description' },
     }] },
   } } }));
-  await page.goto('/app/sites/e2e-core-site/pages/home', { waitUntil: 'networkidle' });
+  await gotoReady(page, '/app/sites/e2e-core-site/pages/home');
   await page.getByRole('button', { name: 'Publish', exact: true }).click();
   const summary = page.getByText('Publication checks: 0 errors · 1 editorial warnings', { exact: true });
   await summary.click();
@@ -24,7 +25,7 @@ for (const width of [375, 1280]) test(`publication diagnostics remain actionable
   await report.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath(`publication-report-${width}.png`) });
   expect(errors).toEqual([]);
-  await page.goto('/app/sites/e2e-core-site/settings', { waitUntil: 'networkidle' });
+  await gotoReady(page, '/app/sites/e2e-core-site/settings');
   await page.getByText('Editorial publication checks', { exact: true }).click();
   await expect(page.getByLabel('Internal phrases to flag (one per line)')).toBeVisible();
   await page.getByLabel('Internal phrases to flag (one per line)').fill('internal research note');

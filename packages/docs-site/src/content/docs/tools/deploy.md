@@ -106,6 +106,17 @@ The preview link is valid for 24 hours and renders saved database state, not
 the last deploy. Pass `include_working_copy: true` when the reviewer should also
 see unsaved drafts; that choice is signed into the link.
 
+## `get_page_preview`
+
+Returns one page rendered as a single HTML document in the response body
+(`rendered_html`) together with its `internal_links`, without deploying. The
+output matches the portal's **Preview**: header and footer, settings CSS, block
+CSS, block JavaScript, installed Extension components and the cookie-consent
+banner are all included. Pass `annotate: true` to tag each block's root element
+with its block id and type, and `include_working_copy: true` to include unsaved
+drafts. Over REST: `GET /api/v1/sites/{siteId}/pages/{pageId}/preview` with
+`?annotate=true` and `?working_copy=true`.
+
 ## How customer publishing works
 
 1. Typeroll freezes the selected Site Version and its saved content.

@@ -5,13 +5,14 @@
 import type { APIRoute } from 'astro';
 import { paths, type ExtensionInstallation, type ExtensionScope } from '@typeroll/shared';
 import { json } from '../../../../../../lib/access';
-import { requireApiKey, withApiIdentity } from '../../../../../../lib/api-auth';
+import { apiResponse, requireApiKey, withApiIdentity } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { maskExtensionConfig } from '../../../../../../lib/extensions/config';
 import { resolveExtensionVersion } from '../../../../../../lib/extensions/resolution';
 import {
   ExtensionRegistryError,
   setExtensionInstallationStatus,
+  uninstallExtension,
   updateExtensionInstallation,
 } from '../../../../../../lib/extensions/registry';
 
@@ -90,5 +91,29 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   } catch (error) {
     if (error instanceof ExtensionRegistryError) return withApiIdentity(guard.value, json({ error: error.message }, error.status));
     return withApiIdentity(guard.value, json({ error: 'Failed to update Extension installation' }, 500));
+  }
+};
+
+// Uninstall: revokes the installation and its credentials and removes its
+// provisioned block definitions. Page instances stay as unavailable
+// placeholders, as in the portal. Publishing stays explicit.
+export const DELETE: APIRoute = async ({ request, params }) => {
+  const guard = await requireApiKey(request, params.siteId);
+  if (!guard.ok) return guard.response;
+  if (guard.value.permission !== 'admin' || guard.value.extensionIdentity) {
+    return withApiIdentity(guard.value, json({ error: 'Admin permission required' }, 403));
+  }
+  if (!params.installationId) return withApiIdentity(guard.value, json({ error: 'Missing installationId' }, 400));
+  try {
+    await uninstallExtension({
+      ownerOrgId: guard.value.orgId,
+      siteId: guard.value.siteId,
+      installationId: params.installationId,
+      actorId: `api:${guard.value.keyPrefix}`,
+    });
+    return apiResponse(guard.value, { ok: true, affects_build: true, redeploy_required: true });
+  } catch (error) {
+    if (error instanceof ExtensionRegistryError) return withApiIdentity(guard.value, json({ error: error.message }, error.status));
+    return withApiIdentity(guard.value, json({ error: 'Failed to uninstall Extension' }, 500));
   }
 };

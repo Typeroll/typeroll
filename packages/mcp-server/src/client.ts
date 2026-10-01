@@ -55,7 +55,7 @@ export class TyperollClient {
     return url.toString();
   }
 
-  /** Top-level URL (no siteId prefix) — used by GET /v1/sites only. */
+  /** Top-level URL (no siteId prefix) — /v1/sites, /v1/organization/*, /v1/publishing/*. */
   private rootUrl(path: string, query?: Record<string, string | number | undefined>): string {
     const cleanPath = path.replace(/^\/+/, '');
     const url = new URL(`${this.baseUrl}/api/v1/${cleanPath}`);
@@ -118,5 +118,25 @@ export class TyperollClient {
   }
   rootPut<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('PUT', this.rootUrl(path), body);
+  }
+
+  // ── Extension developer API ────────────────────────────────────────────
+  /** `/api/developer/{path}` — the Extension developer API used by the
+   *  `typeroll extension` CLI. Requires an organization-scoped key. */
+  developer<T>(
+    method: 'GET' | 'POST' | 'PATCH',
+    path: string,
+    body?: unknown,
+    query?: Record<string, string | number | undefined>,
+  ): Promise<T> {
+    const url = new URL(`${this.baseUrl}/api/developer/${path.replace(/^\/+/, '')}`);
+    for (const [k, v] of Object.entries(query ?? {})) {
+      if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+    }
+    return this.request<T>(method, url.toString(), body);
+  }
+
+  rootDelete<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>('DELETE', this.rootUrl(path), body);
   }
 }

@@ -326,7 +326,7 @@ export const pageTools: ToolDef[] = [
   {
     name: 'get_page_preview',
     description:
-      "Get the WHOLE page rendered as one self-contained HTML document — header partial + block-rendered body + footer partial, with the site's settings CSS variables, global styles, and the tree-shaken block-CSS bundle all inlined, exactly as deployed. This is the single artifact for UNDERSTANDING what a page looks like and how its CSS actually cascades (get_page_blocks gives the editable block tree; this gives the rendered result). Returns { rendered_html, internal_links[] }. Pass annotate:true to tag every element with data-block-id + data-block-type so you can map the rendered HTML back to the block to edit. For a clickable preview URL use get_preview_link instead.",
+      "Get the WHOLE page rendered as one self-contained HTML document — header partial + block-rendered body + footer partial, with the site's settings CSS variables, global styles, the tree-shaken block-CSS bundle, block JavaScript, the Extension runtime and the cookie-consent banner all included, exactly as the portal Preview shows it. This is the single artifact for UNDERSTANDING what a page looks like and how its CSS actually cascades (get_page_blocks gives the editable block tree; this gives the rendered result). Returns { rendered_html, internal_links[] }. Pass annotate:true to tag every element with data-block-id + data-block-type so you can map the rendered HTML back to the block to edit. For a clickable preview URL use get_preview_link instead.",
     inputSchema: {
       page_id: z.string(),
       annotate: z

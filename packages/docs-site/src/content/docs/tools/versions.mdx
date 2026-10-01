@@ -1,0 +1,76 @@
+---
+title: Versions and branches
+description: Create, review, merge, reset and delete Site Versions (branches) from the editor, the API or MCP.
+---
+
+A Site Version is a copy-on-write branch of a Site. `main` is the live version.
+A branch starts with no content of its own: it reads everything from its base
+until you change something on it, and its changes reach the live site only when
+you merge it. Use a branch for redesigns, multi-page edits and anything you
+want reviewed before it ships.
+
+The portal's version picker, the authenticated API and the MCP tools offer the
+same actions with the same permissions.
+
+| Action           | MCP tool        | REST route (relative to `/api/v1/sites/{siteId}`) | Permission |
+| ---------------- | --------------- | ------------------------------------------------- | ---------- |
+| List versions    | `list_versions` | `GET /versions`                                   | Read       |
+| Create a branch  | `create_branch` | `POST /versions` with `{ name, base? }`           | Admin      |
+| Read one version | `read_version`  | `GET /versions/{versionId}`                       | Read       |
+| Review changes   | `diff_version`  | `GET /versions/{versionId}/diff`                  | Read       |
+| Merge into main  | `merge_branch`  | `POST /versions/{versionId}/merge`                | Admin      |
+| Reset to main    | `reset_version` | `POST /versions/{versionId}/reset`                | Admin      |
+| Delete a branch  | `delete_branch` | `DELETE /versions/{versionId}`                    | Admin      |
+
+Admin permission means an owned Site, a site-scoped API key, or an admin share.
+A write share can edit content on an existing branch, but creating, merging,
+resetting and deleting branches are refused with `403`, as in the portal.
+
+## Working on a branch
+
+Pass the branch ID as `version` on every MCP call, or as `?version=<id>` on
+REST routes. An ID that does not name a version of the Site is refused with
+`404`; it never falls back to `main`. Branches are excluded from indexing, and a
+deployed branch gets its own stable address, reported as `deploy_url` by
+`list_versions` and `read_version`.
+
+## Review a branch before merging
+
+`diff_version` returns what the branch adds, modifies and deletes relative to
+`main`, per collection:
+
+```json
+{
+  "version_id": "home-redesign",
+  "base_version_id": "main",
+  "diff": {
+    "pages": { "added": ["pricing"], "modified": ["home"], "deleted": [] },
+    "partials": { "added": [], "modified": ["header"], "deleted": [] },
+    "redirects": { "added": [], "modified": [], "deleted": [] },
+    "contentTypes": { "added": [], "modified": [], "deleted": [] },
+    "pageTemplates": { "added": [], "modified": [], "deleted": [] },
+    "blockTypes": { "added": [], "modified": [], "deleted": [] },
+    "settings": "unchanged",
+    "totalChanges": 3
+  }
+}
+```
+
+This is exactly what `merge_branch` lands on `main`. Merging snapshots each
+replaced document on `main` first, so individual pages and partials can be
+restored from their history afterwards. The branch stays in place after a
+merge.
+
+## Reset or delete
+
+`reset_version` discards every change on the branch so it reads straight
+through to `main` again. The branch, its deploy address and its revision history
+are kept, and the response lists what was cleared. `delete_branch` removes the
+branch with its changes and history. Neither can be undone, so review the diff
+and confirm before calling either. `main` cannot be reset or deleted.
+
+## Cloud and self-hosting
+
+Versions behave the same on Typeroll Cloud and self-hosted installations.
+Where a branch deploy is published depends on the Site's publishing setup; see
+[Deploy and preview tools](../deploy/#deploy-urls).

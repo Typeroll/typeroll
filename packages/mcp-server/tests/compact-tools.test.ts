@@ -76,8 +76,9 @@ for (const mode of ['compact', 'full'] as const) it(`preserves presentation fiel
     : (await client.listTools()).tools.find(tool => tool.name === name)!.inputSchema;
   expect((await schema('update_site_settings')).properties.responsive_breakpoints).toBeDefined();
   expect((await schema('update_page')).properties.patch.properties.breadcrumb_label).toBeDefined();
+  // Settings are an admin action, as in the portal; page edits are writes.
   const call = (name: string, args: Record<string, unknown>) => client.callTool(mode === 'compact'
-    ? { name: 'call_write_tool', arguments: { name, arguments: args } }
+    ? { name: name === 'update_site_settings' ? 'call_admin_tool' : 'call_write_tool', arguments: { name, arguments: args } }
     : { name, arguments: args });
   const widths = { tablet: 576, laptop: 769, desktop: 1024, wide: 1280 };
   expect((await call('update_site_settings', { responsive_breakpoints: widths, version: 'redesign' })).isError).not.toBe(true);

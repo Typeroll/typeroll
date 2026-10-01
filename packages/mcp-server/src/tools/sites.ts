@@ -1,4 +1,6 @@
-// Sites tools — discovery + Site-level identity edits.
+// Sites tools — discovery, Site-level identity edits and the site lifecycle
+// (archive / restore). Each maps to a v1 route with the same permission
+// check as the corresponding portal action.
 
 import { z } from 'zod';
 import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
@@ -34,7 +36,7 @@ export const siteTools: ToolDef[] = [
   {
     name: 'get_site',
     description:
-      'Read this site\'s metadata (id, name, slug, domain, active version) + a urls object covering the production / fallback / preview_base URLs. Useful as a first call to confirm the key is wired up and to learn what URLs the site is reachable at.',
+      'Read this site\'s metadata (id, name, slug, domain, language, ai_scripts_enabled, lifecycle {status: active|archived}, active version) + a urls object covering the production / fallback / preview_base / staging URLs. Useful as a first call to confirm the key is wired up and to learn what URLs the site is reachable at.',
     handler: withErrorBoundary(async (_args, { client, siteId }) => {
       const res = await client.get(siteId, '');
       return ok(res);
@@ -73,15 +75,37 @@ export const siteTools: ToolDef[] = [
   {
     name: 'update_site',
     description:
-      'Edit Site-level identity fields: name (display), slug (drives the {slug}.typeroll-fallback subdomain — kebab-case, 3-48 chars, unique across the org), domain (the customer\'s real hostname; pass "" to clear). For colors / fonts / contact info / tagline use update_site_settings instead.',
+      'Edit Site-level fields: name (display), slug (drives the {slug}.typeroll-fallback subdomain — kebab-case, 3-48 chars, unique across the org), domain (the customer\'s real hostname; pass "" to clear), language, and ai_scripts_enabled (the portal\'s "Allow AI to write block scripts" toggle; requires admin permission, as in the portal). For colors / fonts / contact info / tagline / staging_url use update_site_settings instead.',
     inputSchema: {
       name: z.string().min(1).optional(),
       slug: z.string().optional().describe('Kebab-case identifier, 3-48 chars [a-z0-9-]. Empty string clears.'),
       domain: z.string().optional().describe('Bare hostname e.g. "example.com". Empty string clears.'),
       language: z.string().optional().describe('Default content language as a BCP-47 tag (e.g. "en", "sv", "en-GB"). Drives <html lang> and the default for alt-text generation. Empty string clears.'),
+      ai_scripts_enabled: z.boolean().optional().describe('"Allow AI to write block scripts": lets the in-portal chat assistant author block JavaScript for this site. API keys and MCP are not gated by it — they can always write block `script` and core/embed `js`. Requires admin permission.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.patch(siteId, '', args);
+      return ok(res);
+    }),
+  },
+  {
+    name: 'archive_site',
+    description:
+      'Archive (retire) this site, the same action as Settings → Archive site in the portal. An archived site stays readable but refuses every write and publish until restored; the last published output keeps serving. Refused with 409 while a custom domain is still live or verified — move or remove the domain first. Requires an admin key of the organization that OWNS the site (a site-scoped key or the owner organization\'s org key); a key that reaches the site through a share is refused. Idempotent. Confirm with the user before calling.',
+    inputSchema: {
+      reason: z.string().max(500).optional().describe('Why the site is retired; shown in the portal.'),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const res = await client.post(siteId, 'lifecycle', { action: 'archive', ...(args.reason ? { reason: args.reason } : {}) });
+      return ok(res);
+    }),
+  },
+  {
+    name: 'restore_site',
+    description:
+      'Restore an archived site so it accepts writes and publishing again, the same action as Restore in the portal. Same permission as archive_site (owner-organization admin). Idempotent: restoring an active site succeeds without change.',
+    handler: withErrorBoundary(async (_args, { client, siteId }) => {
+      const res = await client.post(siteId, 'lifecycle', { action: 'restore' });
       return ok(res);
     }),
   },

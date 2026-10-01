@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { gotoReady, reloadReady, waitForHydration } from './helpers/ready';
 
 const version = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main');
 for (const width of [390, 1440]) test(`one Page list and editor support content type changes at ${width}px`, async ({ page }, testInfo) => {
@@ -14,7 +15,7 @@ for (const width of [390, 1440]) test(`one Page list and editor support content 
   writeFileSync(file, JSON.stringify({ id, title: 'Unified test article', slug: id, content_type: typeId, fields: { summary: 'Original summary' }, status: 'draft', content_mode: 'blocks', blocks: [{ id: 'heading', type: 'core/heading', data: { text: 'Preserved body', level: 'h1' } }] }));
   try {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/app/sites/default/pages', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/app/sites/default/pages');
     await expect(page.getByRole('link', { name: 'Unified test article', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Collections', exact: true })).toHaveCount(0);
     await page.getByLabel('Filter by content type').selectOption(typeId);
@@ -23,7 +24,8 @@ for (const width of [390, 1440]) test(`one Page list and editor support content 
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     await page.screenshot({ path: testInfo.outputPath(`pages-${width}.png`), fullPage: true });
     await page.getByRole('link', { name: 'Unified test article', exact: true }).click();
-    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(new RegExp(`/pages/${id}(?:[?#]|$)`));
+    await waitForHydration(page);
     if (width < 800) await page.getByRole('navigation', { name: 'Editor panels' }).getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page.getByLabel('Content type', { exact: true })).toHaveValue(typeId);
     await page.getByLabel('Content type', { exact: true }).selectOption('page');
@@ -37,7 +39,7 @@ for (const width of [390, 1440]) test(`one Page list and editor support content 
     expect(saved.blocks[0].data.text).toBe('Preserved body');
     expect(saved.status).toBe('draft');
     expect(saved.fields ?? {}).not.toHaveProperty('summary');
-    await page.reload({ waitUntil: 'networkidle' });
+    await reloadReady(page);
     if (width < 800) await page.getByRole('navigation', { name: 'Editor panels' }).getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page.getByLabel('Content type', { exact: true })).toHaveValue('page');
     await page.getByLabel('Content type', { exact: true }).selectOption(typeId);
@@ -70,7 +72,7 @@ for (const width of [390, 1440]) test(`Page template choices and manual order sa
   };
   try {
     await page.setViewportSize({ width, height: 1000 });
-    await page.goto(`/app/sites/default/content-types/${typeId}`, { waitUntil: 'networkidle' });
+    await gotoReady(page, `/app/sites/default/content-types/${typeId}`);
     await page.getByLabel('Default sort field').selectOption('sort_order');
     await page.getByLabel('Default sort direction').selectOption('asc');
     await page.getByLabel('Limit the templates editors can choose').check();
@@ -80,7 +82,7 @@ for (const width of [390, 1440]) test(`Page template choices and manual order sa
     expect(JSON.parse(readFileSync(typeFile, 'utf8'))).toMatchObject({ sort_field: 'sort_order', sort_dir: 'asc', allowed_templates: templateIds.slice(0, 2) });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     await page.screenshot({ path: testInfo.outputPath(`type-options-${width}.png`), fullPage: true });
-    await page.goto(`/app/sites/default/pages/${id}`, { waitUntil: 'networkidle' });
+    await gotoReady(page, `/app/sites/default/pages/${id}`);
     await metadata();
     await expect(page.getByLabel('Page template').locator('option')).toHaveCount(3);
     await page.getByLabel('Page template').selectOption(templateIds[1]);
@@ -94,7 +96,7 @@ for (const width of [390, 1440]) test(`Page template choices and manual order sa
     const preview = await page.request.get(`/api/sites/default/preview/${id}`);
     expect(preview.ok()).toBe(true);
     expect(await preview.text()).toContain(templateIds[1]);
-    await page.reload({ waitUntil: 'networkidle' }); await metadata();
+    await reloadReady(page); await metadata();
     await page.getByLabel('Page template').selectOption('');
     await page.getByLabel('Page order', { exact: true }).fill('');
     await save();

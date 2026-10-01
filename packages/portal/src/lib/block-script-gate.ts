@@ -3,13 +3,14 @@
 // Custom-block JS runs in every visitor's browser on the published site.
 // The trust boundary is the CREDENTIAL, not the code shape:
 //
-// - **Bearer API keys (MCP + v1 REST)** may write `script` freely. The key
-//   holder performed an explicit key ceremony, holds admin/write authority,
-//   and the same token already authorises `scripts_head`/`custom_css` —
-//   gating one JS path while others stay open was security theater
-//   (decided 2026-06-11). Mitigation is VISIBILITY, not a lock: every
-//   script-bearing write is audit-logged (api-audit) and the response
-//   carries SCRIPT_WRITE_NOTICE so the operator sees what was stored.
+// - **Bearer API keys (MCP + v1 REST)** may write `script` freely, exactly
+//   like a person in the portal. The key holder performed an explicit key
+//   ceremony, holds write/admin authority on the site, and the same token
+//   already authorises `scripts_head`/`custom_css` — gating one JS path
+//   while others stay open was security theater (decided 2026-06-11). API
+//   calls are not treated as potentially hijacked: the write is accepted
+//   and answered like any other, and every API write is audit-logged
+//   (api-audit) like the rest of the v1 surface.
 //
 // - **The in-portal chat AI (cookie session)** stays gated behind
 //   `Site.ai_scripts_enabled`: its operators are often non-technical
@@ -30,11 +31,6 @@ export const SCRIPT_GATE_WARNING =
   'block type editor, or ship it via an API key (MCP/REST), where script ' +
   'writes are allowed and audit-logged.';
 
-export const SCRIPT_WRITE_NOTICE =
-  'This write stored visitor-executed JavaScript (script field). It was ' +
-  'accepted under your API key\'s authority and audit-logged. Review it in ' +
-  'the block type editor before the next deploy if you did not intend this.';
-
 export function aiScriptsEnabled(site: Pick<Site, 'ai_scripts_enabled'> | Record<string, unknown>): boolean {
   return (site as { ai_scripts_enabled?: unknown }).ai_scripts_enabled === true;
 }
@@ -43,7 +39,7 @@ export function aiScriptsEnabled(site: Pick<Site, 'ai_scripts_enabled'> | Record
  * CHAT-ONLY: strips `script` from a chat-tool write payload unless the site
  * has opted in. Mutates `payload`; returns warnings to surface in the
  * response (empty when nothing was stripped). Bearer-key surfaces must NOT
- * call this — they attach SCRIPT_WRITE_NOTICE instead.
+ * call this — they accept the write as is.
  */
 export function gateBlockScript(
   payload: { script?: unknown },
@@ -120,8 +116,8 @@ export function blockDataCarriesScript(
  * block-instance write unless the site has opted in. Mutates `data`; returns
  * warnings to surface in the tool result (empty when nothing was stripped).
  *
- * Bearer-key surfaces must NOT call this — they accept the write and attach
- * SCRIPT_WRITE_NOTICE instead, per the credential-is-the-boundary rule above.
+ * Bearer-key surfaces must NOT call this — they accept the write as is, per
+ * the credential-is-the-boundary rule above.
  */
 export function gateBlockInstanceScript(
   data: Record<string, unknown> | undefined,

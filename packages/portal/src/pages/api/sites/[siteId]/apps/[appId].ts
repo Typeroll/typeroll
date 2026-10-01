@@ -1,7 +1,9 @@
 // Cookie-auth, admin-only: read + write one Typeroll app's per-site state
 // (enabled + config). Mirrors integrations/email.ts — schema-driven
-// encryption/masking, secrets never returned in plaintext. This is the
-// ONLY writer of app state and is NOT exposed on any AI/MCP surface.
+// encryption/masking, secrets never returned in plaintext. Writes go through
+// lib/apps/manage.ts → saveAppState, shared with the admin-only public API
+// route /api/v1/sites/{siteId}/apps/{appId} (MCP `read_app` / `update_app`).
+// The in-portal chat assistant has no app tools.
 //
 // On enabling the analytics app we best-effort auto-provision a Cloudflare
 // Web Analytics site (when CF creds + a site domain exist) so the owner

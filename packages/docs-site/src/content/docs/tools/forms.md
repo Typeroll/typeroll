@@ -3,7 +3,8 @@ title: Forms Tools
 description: Server-backed contact, booking and multi-step forms — HMAC-protected, rate-limited, honeypot-guarded.
 ---
 
-These tools wrap `/api/v1/sites/{siteId}/forms`, with `/{formId}`, `/{formId}/actions` and `/{formId}/submissions` beneath it.
+These tools wrap `/api/v1/sites/{siteId}/forms`, with `/{formId}`, `/{formId}/actions` and `/{formId}/submissions` beneath it,
+and `/api/v1/sites/{siteId}/form-capabilities`.
 The same API key works over REST; see
 [calling the same operations over REST](../overview/#calling-the-same-operations-over-rest).
 
@@ -67,8 +68,21 @@ Deletes a form. Any embed referencing it stops accepting submissions.
 
 ## Submissions
 
-`list_form_submissions` reads what visitors sent; `delete_form_submission`
-removes a single entry (useful for clearing spam or a test submission).
+| Tool                     | REST                                                                      |
+| ------------------------ | ------------------------------------------------------------------------- |
+| `list_form_submissions`  | `GET /api/v1/sites/{siteId}/forms/{formId}/submissions`                   |
+| `read_form_submission`   | `GET /api/v1/sites/{siteId}/forms/{formId}/submissions/{submissionId}`    |
+| `delete_form_submission` | `DELETE /api/v1/sites/{siteId}/forms/{formId}/submissions/{submissionId}` |
+
+`list_form_submissions` reads what visitors sent, newest first, up to 200 per
+page (pass `next_cursor` back as `cursor` for the next page).
+`read_form_submission` reads one entry. For admins, both also include each
+submission's webhook delivery status (`webhook_deliveries`: status, attempts,
+response status, last error), as the portal shows it. `delete_form_submission`
+removes a single entry (useful for clearing spam or a test submission) together
+with its webhook delivery records. `list_forms` includes each form's
+`submission_count`. Reading submissions works with read permission; deleting
+needs write permission.
 
 ## Email notifications and webhooks
 
@@ -93,8 +107,25 @@ update_form form_id=contact patch={ actions: [
 | `email`   | `to`, `subject`, `body` (required; `{{field}}` placeholders), `cc`, `bcc`, `reply_to`, `include_all`, `format` (`html` or `text`) |
 | `webhook` | `url` (https), `fields` (the field names sent), `secret` (signing secret; send the masked value to keep it)                       |
 
-Emails go through the site's email provider (Postmark or SMTP), connected under
-**Settings → Email**.
+Reading and writing actions needs admin permission, as in the portal. With
+other permissions `read_form` returns `actions: []` and a write that includes
+`actions` is refused with `403`.
+
+### `get_form_capabilities`
+
+Lists every action type the site can use, with the config fields each one
+takes: the core `email` and `webhook` types and any type an installed app
+provides. It also lists the prefill sources. This is the same list the portal's
+Forms editor offers; read it before writing an app-provided action. Admin
+permission (`GET /api/v1/sites/{siteId}/form-capabilities`).
+
+### Email provider
+
+Emails go through the site's email provider (Postmark, SMTP or SES), connected
+under **Settings → Email & notifications** or with the [email tools](../email/):
+`get_email_settings` shows whether one is connected, `set_email_settings`
+connects it and `send_test_email` checks it. Without a provider, form email
+actions are skipped.
 
 ## Rendering
 

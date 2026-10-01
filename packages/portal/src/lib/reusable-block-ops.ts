@@ -4,7 +4,9 @@
 // - makeGlobal: move a block (with its subtree) into a new global block and
 //   leave a core/global_block reference in its place.
 // - detach: replace a reference with a local copy of the global block's
-//   blocks, so this page can change them on its own.
+//   blocks, so this page can change them on its own. The copy is what the
+//   editors show for the global block: its unsaved draft (working copy) on
+//   this site version when there is one, otherwise the saved global block.
 // - insertTemplate: copy a block template's blocks into the tree.
 
 import {
@@ -16,6 +18,8 @@ import {
 } from '@typeroll/shared';
 import { addBlock, findBlock, newBlockId } from './block-mutations';
 import { vstore } from './version-store';
+import { overlayWorkingCopy, readWorkingCopy } from './working-copy';
+import { sanitizeBody } from './sanitize';
 
 export class ReusableBlockError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
@@ -57,19 +61,32 @@ export async function makeGlobal(ctx: Ctx, tree: Block[], blockId: string, input
   return { blocks: replaceBlock(tree, blockId, [reference]), partial, reference_id: reference.id };
 }
 
-/** Replace a global block reference with an editable local copy of its content. */
-export async function detachGlobalBlock(ctx: Ctx, tree: Block[], blockId: string): Promise<{ blocks: Block[]; added_ids: string[] }> {
+/**
+ * Replace a global block reference with an editable local copy of its content.
+ *
+ * Copies what the global block editor and the page editor preview show: the
+ * global block's draft (its working copy on this site version, shared by
+ * everyone editing that version) when it has one, otherwise the saved
+ * global block. `copied_from` says which.
+ */
+export async function detachGlobalBlock(ctx: Ctx, tree: Block[], blockId: string): Promise<{ blocks: Block[]; added_ids: string[]; copied_from: 'draft' | 'saved' }> {
   const found = findBlock(tree, blockId);
   if (!found) throw new ReusableBlockError(`Block "${blockId}" not found`, 404);
   if (found.block.type !== GLOBAL_BLOCK_TYPE_ID) throw new ReusableBlockError('Only global block references can be detached', 400);
   const id = String(found.block.data?.global_block_id ?? '');
-  const partial = id ? await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, id) : null;
-  if (!partial || partial.kind !== 'free') throw new ReusableBlockError(`Global block "${id}" not found`, 404);
+  const saved = id ? await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, id) : null;
+  if (!saved || saved.kind !== 'free') throw new ReusableBlockError(`Global block "${id}" not found`, 404);
+  const draft = await readWorkingCopy(ctx, { kind: 'partial', id });
+  const partial = overlayWorkingCopy(saved, draft);
+  // Saved HTML is sanitized at save; a draft's HTML is not yet.
+  const html = draft && typeof draft.fields?.html_content === 'string'
+    ? sanitizeBody(partial.html_content ?? '', (await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId))?.iframe_allowed_hosts)
+    : partial.html_content ?? '';
   const copy: Block[] = partial.content_mode === 'blocks'
     ? copyBlocksWithNewIds(partial.blocks ?? [])
-    : [{ id: newBlockId(), type: 'core/html', data: { html: partial.html_content ?? '' } }];
+    : [{ id: newBlockId(), type: 'core/html', data: { html } }];
   if (!copy.length) throw new ReusableBlockError(`Global block "${id}" is empty`, 400);
-  return { blocks: replaceBlock(tree, blockId, copy), added_ids: copy.map(block => block.id) };
+  return { blocks: replaceBlock(tree, blockId, copy), added_ids: copy.map(block => block.id), copied_from: draft ? 'draft' : 'saved' };
 }
 
 /** Insert copies of blocks (a template's) at a position. */

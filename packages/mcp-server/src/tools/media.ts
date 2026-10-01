@@ -37,6 +37,12 @@ export const mediaTools: ToolDef[] = [
     handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'media/import'))),
   },
   {
+    name: 'get_media_upload_status',
+    description: 'Pre-flight for uploads: whether media uploads can go through for this site right now (organization storage connected, or platform storage configured), with the reason and a settings_url when they cannot. Same check as the banner in the portal media library. Requires site read access.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'media/upload-status'))),
+  },
+  {
     name: 'read_private_media_url',
     description: 'Get a 60-second read URL for a private media original. Use it for authorized image inspection; never store it in page content or generated source. Use the stable media URL or ID in content.',
     inputSchema: { media_id: z.string() },
@@ -266,6 +272,12 @@ export const mediaTools: ToolDef[] = [
       );
       return ok(res);
     }),
+  },
+  {
+    name: 'purge_site_media',
+    description: 'Permanently delete every media object and record of an ARCHIVED site (archive_site first; an active site returns 409). Irreversible — the step before retiring a site for good, same as the portal action. Requires an admin key of the organization that owns the site; shared access is refused. Returns counts; HTTP 207 with `failed` lists objects that could not be removed (their records are kept) — call again to retry exactly those. Confirm with the user before calling.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.post(siteId, 'media/purge'))),
   },
   {
     name: 'delete_media',

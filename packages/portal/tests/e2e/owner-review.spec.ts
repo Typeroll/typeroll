@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { paths } from '@typeroll/shared';
 import { ownerReviewMessage } from '../../src/lib/owner-review-message';
 import { authenticatePersona } from './helpers/auth';
+import { gotoReady } from './helpers/ready';
 const org = 'e2e-core', site = 'e2e-core-site';
 const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)])) : value;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
@@ -36,7 +37,7 @@ for (const width of [375, 1280]) test(`private review and admin queue at ${width
   await page.locator('pre').evaluate((node, text) => { node.textContent = text; }, message.text);
   await page.screenshot({ path: info.outputPath(`review-email-${width}.png`), fullPage: true });
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-  await page.goto(`/review/owner-changes?${query}#${token}`, { waitUntil: 'networkidle' });
+  await gotoReady(page, `/review/owner-changes?${query}#${token}`);
   await expect(page.getByRole('heading', { name: 'Review Synthetic Company' })).toBeVisible();
   expect(new URL(page.url()).hash).toBe('');
   await expect(page.getByLabel('No', { exact: true })).toBeChecked();

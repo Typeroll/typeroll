@@ -112,6 +112,12 @@ Site administrators can use:
   change destinations. The setting is site-wide, not version-specific.
 - `GET /api/v1/sites/{siteId}/delivery/inbound/{receipt_id}` for a known receipt.
 
+MCP agents with an admin key use the same operations through
+`get_incoming_email_settings`, `set_incoming_email_forwarding` and
+`read_incoming_email_receipt`; see [Email tools](/docs/tools/email/). They
+follow the same rules as the portal: an agent can enable or disable an approved
+route, but not create one or change where it forwards.
+
 An enabled app may request the separate, administrator-approved
 `email:inbound:status` scope. It can read only routes and receipt metadata bound to
 its own installation; forwarding destination addresses are omitted. `email:send`

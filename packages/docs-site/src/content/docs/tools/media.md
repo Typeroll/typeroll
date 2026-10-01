@@ -78,6 +78,18 @@ The AI agent uses this when importing content from external sources (WordPress, 
 
 Uploads an image provided as a base64-encoded string. Useful when the image is generated locally or provided as a data URI.
 
+## `get_media_upload_status`
+
+The same pre-flight the portal media library uses for its banner: whether
+uploads can go through for this site right now. Returns `enabled`, and when
+uploads are unavailable a `reason` plus either `settings_url` (Organization
+storage needs attention) or `missing` (self-hosted platform storage variables
+absent on the server). Read access is enough. Over REST:
+`GET /api/v1/sites/{siteId}/media/upload-status`.
+
+Use [`get_import_readiness`](#get_import_readiness) before an import; it applies
+the stricter import prerequisite.
+
 ## `list_media`
 
 Returns this site’s media assets with stable media URLs, filenames and sizes. A stable URL can identify a private original; it is not necessarily a public delivery URL.
@@ -151,3 +163,21 @@ the same original image is still included unchanged in the website. This does
 not block publication when the image recipe changes. New pages use the new
 variants. Removing or replacing the original still requires the corresponding
 public removal checks to pass; this is not a general exception for deleted media.
+
+## `purge_site_media`
+
+Permanently deletes every media object and record of an **archived** site, from
+the organization's storage — the media step of retiring a site for good. It is
+irreversible, so it has two preconditions:
+
+- The site must be archived first (`archive_site`, see
+  [Archive a site](../../guides/archive-a-site/)). An active site returns HTTP 409.
+- The caller must be an admin of the organization that owns the site: a site API
+  key or an organization key of the owning organization. Shared access is
+  refused.
+
+The response counts `records`, `objects_deleted`, `records_removed` and
+`records_retained`. When some objects cannot be removed the call answers HTTP 207
+and lists them in `failed`; their records are kept so nothing becomes
+untraceable, and calling again retries exactly those. Over REST:
+`POST /api/v1/sites/{siteId}/media/purge`.

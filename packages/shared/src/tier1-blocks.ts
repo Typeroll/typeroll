@@ -1597,8 +1597,8 @@ const htmlBlock: BlockType = {
  *
  * `js` is listed in `script_fields`, which is what puts it under the platform
  * script gate (lib/block-script-gate.ts): the chat AI is gated on
- * `Site.ai_scripts_enabled`, API keys write it under their own authority with
- * an audit entry and a notice, portal humans are trusted. `html` is an
+ * `Site.ai_scripts_enabled`; API keys write it under their own authority with
+ * an audit entry, and portal humans are trusted. `html` is an
  * ordinary markup field and stays fully sanitized — a `<script>` tag typed in
  * there is still stripped, which is the point of separating the two.
  *

@@ -105,8 +105,8 @@ describe('gateBlockInstanceScript (chat surface)', () => {
   });
 });
 
-describe('blockDataCarriesScript (bearer surfaces)', () => {
-  it('detects a declared code field so the route can attach the notice', async () => {
+describe('blockDataCarriesScript (chat gate helper)', () => {
+  it('detects a declared code field', async () => {
     const { blockDataCarriesScript } = await import('../../lib/block-script-gate');
     expect(blockDataCarriesScript({ js: 'x' }, ['js'])).toBe(true);
     expect(blockDataCarriesScript({ html: 'x' }, ['js'])).toBe(false);

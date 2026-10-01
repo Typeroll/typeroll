@@ -9,6 +9,9 @@
 // organization's media sits in that organization's own R2, reachable through
 // the publishing connection and its encrypted credentials, which the operator
 // deliberately cannot read.
+//
+// API keys use POST /api/v1/sites/{siteId}/media/purge (MCP
+// `purge_site_media`) with the same preconditions.
 import type { APIRoute } from 'astro';
 import { ARCHIVED_SITE_MESSAGE, isArchivedSite } from '@typeroll/shared';
 import { requireSiteAccess, requireSiteLifecycleChange, json } from '../../../../../lib/access';

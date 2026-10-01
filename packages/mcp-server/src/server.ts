@@ -22,6 +22,7 @@ import { styleTools } from './tools/styles.js';
 import { reusableBlockTools } from './tools/reusable-blocks.js';
 import { migrationTools } from './tools/migration.js';
 import { formTools } from './tools/forms.js';
+import { emailTools } from './tools/email.js';
 import { searchTools } from './tools/search.js';
 import { bulkTools } from './tools/bulk.js';
 import { versionTools } from './tools/versions.js';
@@ -34,8 +35,10 @@ import { settingsTools } from './tools/settings.js';
 import { siteTools } from './tools/sites.js';
 import { domainTools } from './tools/domain.js';
 import { appTools } from './tools/apps.js';
-import { extensionTools } from './tools/extensions.js';
+import { extensionTools, developerExtensionTools } from './tools/extensions.js';
 import { skillTools } from './tools/skills.js';
+import { accessTools } from './tools/access.js';
+import { workflowTools } from './tools/workflows.js';
 import { fail, type ToolDef, type ToolDeps } from './tools/helpers.js';
 import { VERSION } from './version.js';
 import { compactTools, COMPACT_INSTRUCTIONS, type CallableTool, type ToolEffect } from './compact-tools.js';
@@ -67,7 +70,51 @@ function effectFor(name: string): ToolEffect {
     || name === 'read_extension_installation'
     || name === 'update_extension_installation_config'
     || name === 'activate_extension_release'
+    // Same role as the portal: Settings, lifecycle and media purge are
+    // admin actions (the v1 routes enforce it as well).
+    || name === 'update_site_settings'
+    || name === 'archive_site'
+    || name === 'restore_site'
+    || name === 'purge_site_media'
+    || name === 'install_extension'
+    || name === 'set_extension_installation_status'
+    || name === 'uninstall_extension'
+    || name === 'rotate_extension_credential'
+    || name === 'pair_extension_issuer'
+    || name === 'read_extension_diagnostics'
+    // Branch lifecycle on main is site administration in the portal too.
+    || name === 'create_branch'
+    || name === 'merge_branch'
+    || name === 'delete_branch'
+    || name === 'reset_version'
+    // Developer-organization administration (org admin in the portal).
+    || name === 'create_developer_extension'
+    || name === 'update_developer_extension'
+    || name === 'save_extension_version'
+    || name === 'publish_extension_version'
+    || name === 'set_extension_version_lifecycle'
+    || name === 'rotate_extension_client_secret'
+    // Access and credential management: API keys, sharing, membership invites
+    // and organization publishing connections need admin, as in the portal.
+    || name === 'create_api_key'
+    || name === 'revoke_api_key'
+    || name === 'list_site_shares'
+    || name === 'share_site'
+    || name === 'update_site_share'
+    || name === 'revoke_site_share'
+    || name === 'create_organization_api_key'
+    || name === 'revoke_organization_api_key'
+    || name === 'create_organization_invite'
+    || name === 'disconnect_organization_publishing_provider'
+    || name === 'connect_organization_cloudflare'
+    || name === 'prepare_organization_media_storage'
+    || name === 'save_organization_media_access'
+    || name === 'set_email_settings'
+    || name === 'delete_email_settings'
+    || name === 'send_test_email'
+    || name === 'set_incoming_email_forwarding'
   ) return 'admin';
+  if (name === 'diff_version') return 'read';
   if (
     name.startsWith('list_') ||
     name.startsWith('read_') ||
@@ -190,15 +237,19 @@ export function buildServer(options: BuildServerOptions): McpServer {
     ...reusableBlockTools,
     ...migrationTools,
     ...formTools,
+    ...emailTools,
     ...settingsTools,
     ...appTools,
     ...extensionTools,
+    ...developerExtensionTools,
     ...searchTools,
     ...bulkTools,
     ...versionTools,
     ...deployTools,
     ...previewTools,
     ...domainTools,
+    ...workflowTools,
+    ...accessTools,
   ];
 
   // SDK's registerTool has deeply-nested generics we can't unify across a

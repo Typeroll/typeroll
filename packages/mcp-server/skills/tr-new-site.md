@@ -32,7 +32,9 @@ wrapper. Load only the relevant guide section and recipe. Discover site apps wit
 read_app_documentation when needed; do not bundle private app guides locally.
 
 No Site yet? Use hosted MCP with an Organization key and create_site, or create it
-in the portal. Read back its ID before editing. Use one explicit Site/Version for
+in the portal. To start from an AI site plan instead of a blank Site, use
+create_site_and_plan, poll get_workflow and approve its structure review only
+with the user's consent. Read back its ID before editing. Use one explicit Site/Version for
 related operations. Larger changes to an existing site should use a branch.
 
 Before importing content or a media library, require get_import_readiness to pass.

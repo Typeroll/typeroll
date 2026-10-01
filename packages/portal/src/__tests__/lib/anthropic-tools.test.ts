@@ -143,7 +143,22 @@ describe('list_blocks_with_usage', () => {
     const byId = Object.fromEntries(r.map((x) => [x.id, x]));
     expect(byId.header).toMatchObject({ auto_injected: true, used_on_pages: 2 });
     expect(byId.footer).toMatchObject({ auto_injected: true, used_on_pages: 2 });
-    expect(byId.cta).toMatchObject({ auto_injected: false, used_on_pages: 1 });
+    expect(byId.cta).toMatchObject({ auto_injected: false, used_on_pages: 1, used_in_templates: 0, used_in_global_blocks: 0 });
+  });
+
+  it('counts template and global block references, and find_pages_using_block lists them', async () => {
+    const { ctx, runTool } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    const reference = { id: 'r', type: 'core/global_block', data: { global_block_id: 'cta' } };
+    await store.setDoc(`${paths.partials(ORG, SITE, MAIN_VERSION_ID)}/cta`, { name: 'CTA', kind: 'free', status: 'published', content_mode: 'blocks', blocks: [] });
+    await store.setDoc(`${paths.partials(ORG, SITE, MAIN_VERSION_ID)}/footer`, { name: 'Footer', kind: 'footer', status: 'published', content_mode: 'blocks', blocks: [reference] });
+    await store.setDoc(`${paths.pageTemplates(ORG, SITE, MAIN_VERSION_ID)}/landing`, { name: 'landing', label: 'Landing', status: 'published', created_at: new Date().toISOString(), blocks: [reference] });
+
+    const list = (await runTool('list_blocks_with_usage', {}, ctx)).result as Array<{ id: string; used_in_templates: number; used_in_global_blocks: number }>;
+    expect(list.find(x => x.id === 'cta')).toMatchObject({ used_on_pages: 0, used_in_templates: 1, used_in_global_blocks: 1 });
+    const found = (await runTool('find_pages_using_block', { partial_id: 'cta' }, ctx)).result;
+    expect(found).toMatchObject({ pages: [], templates: [{ template_id: 'landing', label: 'Landing' }], global_blocks: [{ partial_id: 'footer', kind: 'footer' }] });
   });
 });
 

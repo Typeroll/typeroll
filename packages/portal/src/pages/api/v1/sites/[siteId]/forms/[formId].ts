@@ -12,6 +12,7 @@ import type { Form, FormField } from '@typeroll/shared';
 
 import { validateFields, validSteps } from '../../../../../../lib/forms-admin';
 import { formActionsPermission, formActionsView, validateFormActionsInput } from '../../../../../../lib/form-actions-api';
+import { deleteAllFormSubmissions } from '../../../../../../lib/form-submissions';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -103,16 +104,10 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   if (!existing) return apiError('Not found', 404);
   // Existing submissions stay — they're a record of customer interactions
   // that survive a form being retired. Pass ?delete_submissions=true to
-  // also drop them.
+  // also drop them (with their webhook delivery records, as in the portal).
   const url = new URL(request.url);
   if (url.searchParams.get('delete_submissions') === 'true') {
-    const subs = await store.listDocs(paths.submissions(ctx.orgId, ctx.siteId));
-    for (const s of subs) {
-      const sub = s as { form_id?: string };
-      if (sub.form_id === formId) {
-        await store.deleteDoc(`${paths.submissions(ctx.orgId, ctx.siteId)}/${(s as { id: string }).id}`);
-      }
-    }
+    await deleteAllFormSubmissions(ctx.orgId, ctx.siteId, formId);
   }
   await store.deleteDoc(`${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`);
   return apiResponse(ctx, { ok: true });

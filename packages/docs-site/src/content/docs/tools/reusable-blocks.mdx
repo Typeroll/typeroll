@@ -28,11 +28,22 @@ places them.
   moves into the global block and the page keeps a reference in its place.
 - **Add to a page:** in the block library, under **Global blocks**. The page
   stores a `core/global_block` block with `global_block_id`.
-- **Edit:** open it from Global blocks. The page shows where it is used,
-  including page drafts. Changes reach every page while the global block is
-  **Published**; the live site updates at the next deploy.
+- **Edit:** open it from Global blocks. The editor lists where it is used:
+  pages (including page drafts), page templates, and other global blocks that
+  contain it, including the header and footer. The Global blocks list shows the
+  same count, for example "used on 2 pages and 1 template". Changes reach every
+  page while the global block is **Published**; the live site updates at the
+  next deploy.
 - **Detach:** select the reference and choose **Reuse → Detach**. The page gets
-  an editable copy and no longer follows the global block.
+  an editable copy and no longer follows the global block. The copy is what the
+  editors show: the global block's unsaved draft on this version when it has
+  one, otherwise the saved global block.
+
+A header or footer in block mode opens in the same block editor. Changes save as
+you edit and appear on every page while it is **Published**. When a global
+block, header or footer has an unsaved draft, for example from an agent, the
+editor shows the draft and asks you to **Save draft** or **Discard draft**
+before you edit it.
 
 The global block renders in place, with no extra wrapper element, so spacing
 and full-width sections behave as if the blocks were on the page. A draft or
@@ -81,5 +92,10 @@ add_block page_id=… block={ type: "core/global_block", data: { global_block_id
 
 Edit a global block's blocks with the block tools and
 `target: { kind: "partial", id: "call-to-action" }`. `find_pages_using_block`
-lists the pages that use it. Page block writes go to the page draft, like other
-block edits.
+(`GET /api/v1/sites/{siteId}/partials/{partialId}/usage`) returns what uses it,
+saved or in a draft: `pages`, `templates` (page templates) and `global_blocks`
+(the header, footer and other global blocks that contain it; a header or footer
+means every page). Only direct references are listed; open a containing global
+block's usage to follow it further. `detach_global_block` reports `copied_from`:
+`draft` or `saved`. Page block writes go to the page draft, like other block
+edits.

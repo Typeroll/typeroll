@@ -31,6 +31,39 @@ export const domainTools: ToolDef[] = [
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/managed-migration', args))),
   },
   {
+    name: 'read_organization_publishing_connections', noSite: true,
+    description: 'Read the Organization\'s GitHub and Cloudflare publishing connections: status, revision (needed to change or disconnect), account identity, media_ready, media migration, and connect_urls. Requires an organization API key; never returns credentials. GitHub sign-in/App installation and Cloudflare OAuth need a person in a browser: give the user the matching connect_urls link (an organization owner or admin completes it), then read again.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/connections'))),
+  },
+  {
+    name: 'disconnect_organization_publishing_provider', noSite: true,
+    description: 'Disconnect the Organization\'s GitHub or Cloudflare publishing connection at the revision from read_organization_publishing_connections. Erases stored credentials; does not delete repositories, buckets, media, DNS or published sites, but publishing through that provider stops until reconnected. Requires an organization API key and the user\'s explicit go-ahead.',
+    inputSchema: { provider: z.enum(['github', 'cloudflare']), revision: z.string(), hosting_group_id: z.string().optional().describe('Omit for the organization (Default) connection.') },
+    handler: withErrorBoundary(async ({ provider, ...body }, { client }) => ok(await client.rootDelete(`publishing/connections/${provider}`, body))),
+  },
+  {
+    name: 'connect_organization_cloudflare', noSite: true,
+    description: 'Connect the Organization\'s default Cloudflare account without a browser, using a customer Cloudflare API token plus R2 access keys for an existing private bucket. Verifies the account, Pages access and the bucket before saving; credentials are encrypted and never returned. Requires an organization API key and the current revision. Reconnecting must keep the same account and bucket. For additional Hosting Groups use connect_hosting_group.',
+    inputSchema: {
+      revision: z.string(), account_id: z.string().regex(/^[a-f0-9]{32}$/), bucket: z.string(),
+      api_token: z.string(), access_key_id: z.string(), secret_access_key: z.string(),
+    },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/connections/cloudflare', { ...args, action: 'connect' }))),
+  },
+  {
+    name: 'prepare_organization_media_storage', noSite: true,
+    description: 'Create or reuse the Organization\'s private and public R2 media buckets in the connected Cloudflare account and configure upload CORS and lifecycle rules. Run after Cloudflare is connected and before save_organization_media_access. Requires an organization API key and the current Cloudflare revision. Idempotent.',
+    inputSchema: { revision: z.string() },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/connections/cloudflare', { ...args, action: 'prepare_media' }))),
+  },
+  {
+    name: 'save_organization_media_access', noSite: true,
+    description: 'Save and verify the Cloudflare R2 Access Key ID and Secret Access Key for the prepared media buckets (not the Cloudflare API token). Marks media storage ready, which imports require, and queues media migration. Requires an organization API key and the current Cloudflare revision. Keys are encrypted and never returned.',
+    inputSchema: { revision: z.string(), access_key_id: z.string(), secret_access_key: z.string() },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/connections/cloudflare', { ...args, action: 'save_media' }))),
+  },
+  {
     name: 'check_organization_github_permissions', noSite: true,
     description: 'Check live GitHub build permissions without disconnecting or reconnecting. Requires an organization API key. Distinguishes an update the organization owner can approve from permissions Typeroll has not requested yet. Returns the existing installation approval URL only when actionable; does not enable a build engine.',
     inputSchema: {},

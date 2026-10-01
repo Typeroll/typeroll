@@ -46,9 +46,10 @@ export interface FormActionDef {
    */
   config_fields?: AppConfigField[];
   /**
-   * Admin-only actions are never writable through the chat AI or MCP — an
-   * action carrying a recipient address is an exfiltration vector if a model
-   * can set it. `email` is the reason this flag exists.
+   * Marks an action that carries a recipient address or external target.
+   * Reading or writing a form's actions requires admin permission in the
+   * portal, the v1 API and MCP; the flag is shown in form capabilities so an
+   * editor can say so. `email` is the reason this flag exists.
    */
   admin_only?: boolean;
   /**
@@ -143,7 +144,7 @@ export function _resetActionRegistryForTests(): void {
   registry = null;
 }
 
-/** Action types a non-admin surface (chat, MCP) may write. */
+/** Action types not flagged admin_only, for a surface that must not write admin-only actions (the portal chat assistant). */
 export async function agentWritableActionTypes(): Promise<string[]> {
   return [...(await actionRegistry()).values()]
     .filter((a) => !a.admin_only).map((a) => a.type);
