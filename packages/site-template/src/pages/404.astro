@@ -3,7 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import { getAllPages, getBlockRegistry, getExtensionsPublic, getPartials, getSiteSettings } from '../lib/content';
-import { collectBlockAssets, siteContext } from '@typeroll/shared';
+import { collectBlockAssets, globalBlockSourceFromPartials, resolveRenderVersion, siteContext } from '@typeroll/shared';
 import type { Block, Page, RenderContext } from '@typeroll/shared';
 
 const settings = await getSiteSettings();
@@ -30,6 +30,7 @@ const partialBlocks: Block[] = [
 const { css: blockCss, js: blockJs } = collectBlockAssets(
   partialBlocks,
   blockRegistry,
+  { renderVersion: resolveRenderVersion(settings.render_version), globalBlockSource: globalBlockSourceFromPartials(freeBlocks) },
 );
 
 // The 404 has no real page, but partials may bind {{site.*}}, so they still

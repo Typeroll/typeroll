@@ -1,3 +1,4 @@
+import CustomCssEditor from './CustomCssEditor';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Page, WorkingCopy } from '@typeroll/shared';
 import { Monitor, Tablet, Smartphone, ExternalLink, Copy, Check } from 'lucide-react';
@@ -512,21 +513,13 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
                 <label>Slug</label>
                 <input value={draft.slug} onChange={(e) => update('slug', e.target.value)} />
               </div>
-              <div className="field">
-                <label>Page CSS</label>
-                <textarea
-                  value={draft.custom_css ?? ''}
-                  onChange={(e) => update('custom_css', e.target.value)}
-                  placeholder={'/* CSS just for this page — injected after the site CSS.\n   Put page-specific styling here instead of a <style> in an HTML block. */'}
-                  spellCheck={false}
-                  style={{ fontFamily: 'ui-monospace, "SF Mono", Consolas, monospace', minHeight: '60vh', resize: 'vertical', width: '100%' }}
-                />
-                <p className="muted text-sm">
-                  Scoped to this page, injected into <code>&lt;head&gt;</code> after the
-                  site-wide CSS so it can override the theme. This is page metadata —
-                  keep styling here, not inside a content block.
-                </p>
-              </div>
+              <CustomCssEditor
+                theme="light"
+                label="Page CSS"
+                value={draft.custom_css ?? ''}
+                onValid={css => update('custom_css', css)}
+                help={<>Scoped to this page and loaded after the site CSS, so it can override it. Keep page styling here, not inside the HTML body.</>}
+              />
               <label>Page order<input type="number" step="any" value={draft.sort_order ?? ''} onChange={e => update('sort_order', e.target.value === '' ? null : Number(e.target.value))} /></label>
               <p className="muted text-sm">Lower numbers come first when sorting by page order. Empty values come last.</p>
               <TemplatePicker

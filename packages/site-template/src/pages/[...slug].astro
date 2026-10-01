@@ -36,12 +36,15 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
   expandExtensionIncludes,
   expandFormIncludes,
   expandIncludes,
+  globalBlockSourceFromPartials,
+  withGlobalBlockContent,
   renderBlocks,
   siteContext,
   transformBodyForSeo,
   pageIdentityAttributes,
 } from '@typeroll/shared';
 import type { Block, RenderContext } from '@typeroll/shared';
+import { resolveRenderVersion } from '@typeroll/shared';
 import { getPageTemplate } from '../lib/content';
 
 import { getChangedSiteRoutes, type PageProps } from '../lib/routes';
@@ -51,10 +54,13 @@ export const getStaticPaths = getChangedSiteRoutes;
 const props = Astro.props as Props;
 const settings = await getSiteSettings();
 const iframeAllowedHosts = settings.iframe_allowed_hosts ?? [];
+const renderVersion = resolveRenderVersion(settings.render_version);
 const appsPublic = await getAppsPublic();
 const derived = await getDerived();
 const extensionsPublic = await getExtensionsPublic();
 const { header, footer, freeBlocks } = await getPartials();
+// Block-mode pages reference global blocks with core/global_block.
+const globalBlockSource = globalBlockSourceFromPartials(freeBlocks);
 
 // Inline <x-include name="…" /> references before sanitization. The sanitizer
 // would otherwise strip the unknown tag; the inlined block bodies are already
@@ -162,7 +168,7 @@ let formsRuntimeTag = '';
     renderCtx.page = { ...renderCtx.page, blocks: pageBlocks };
     // Derive the outline from the same heading levels used in the final body.
     renderCtx.page = { ...renderCtx.page, ...pageBodyContext(normalizePageH1s(sanitizeBody(renderBlocks(pageBlocks, {
-      registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType,
+      registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType, renderVersion, globalBlockSource,
     }), iframeAllowedHosts), !countBlockH1s(templateBlocks))) };
     const effectiveBlocks: Block[] = templateBlocks.length
       ? composePageWithTemplate(templateBlocks, pageBlocks) : pageBlocks;
@@ -173,6 +179,8 @@ let formsRuntimeTag = '';
       pageSource,
       formSource,
       onMissingType,
+      renderVersion,
+      globalBlockSource,
     }), iframeAllowedHosts);
     bodyBlocks = effectiveBlocks;
     blocksBody = true;
@@ -191,10 +199,10 @@ let formsRuntimeTag = '';
     ...(header?.content_mode === 'blocks' ? header.blocks ?? [] : []),
     ...(footer?.content_mode === 'blocks' ? footer.blocks ?? [] : []),
   ];
-  const assets = collectBlockAssets([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks], blockRegistry);
+  const assets = collectBlockAssets([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks], blockRegistry, { renderVersion, globalBlockSource });
   // Same tree as the asset pass — a header banner and a footer banner both
   // asking for addresses must produce one loader, not two.
-  clientCapabilities = [...collectClientCapabilities([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks])];
+  clientCapabilities = [...collectClientCapabilities(withGlobalBlockContent([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks], globalBlockSource))];
   blockCss = assets.css;
   blockJs = assets.js;
 }

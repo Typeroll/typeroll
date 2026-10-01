@@ -53,6 +53,10 @@ import { prepareHeadingOutline } from './heading-outline.js';
 import { comparePageValues, pageSort } from './page-options.js';
 import { countBlockH1s, demoteBodyH1s, normalizePageH1s } from './page-heading-policy.js';
 import { renderFieldList } from './field-list.js';
+import { STYLE_ID_PATTERN, styleClassName } from './site-styles.js';
+import { blockOutputForVersion, resolveRenderVersion } from './render-version.js';
+import { styleElementText } from './custom-css.js';
+import { GLOBAL_BLOCK_MAX_DEPTH, GLOBAL_BLOCK_TYPE_ID, withGlobalBlockContent, type GlobalBlockSource } from './reusable-blocks.js';
 
 /**
  * Render context — values exposed to templates via the dotted-path
@@ -176,6 +180,15 @@ export interface RenderBlocksOptions {
    * stored value there). Off everywhere except the editor iframe preview.
    */
   editable?: boolean;
+  /**
+   * Platform render version (render-version.ts). Output changes that would
+   * alter existing pages are gated on this. Defaults to the baseline.
+   */
+  renderVersion?: number;
+  /** Resolves `core/global_block` references (reusable-blocks.ts). Without it they render nothing. */
+  globalBlockSource?: GlobalBlockSource;
+  /** Internal: global blocks being rendered, outermost first, to stop cycles. */
+  globalBlockStack?: string[];
 }
 
 const HTML_ESCAPES: Record<string, string> = {
@@ -245,6 +258,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   }
   const { block: effectiveBlock, blockType } = expanded;
 
+  // (1a) A global block reference renders the referenced blocks in place.
+  if (effectiveBlock.type === GLOBAL_BLOCK_TYPE_ID) return renderGlobalBlockRef(block, effectiveBlock, options);
+
   // (1b) Forms 2.0: core/form delegates to the caller's formSource —
   // token minting and step prerendering live outside the pure renderer.
   if (effectiveBlock.type === 'core/form' && options.formSource) {
@@ -282,7 +298,8 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
       );
     }
     html = applyVisibility(html, effectiveBlock, options);
-    html = applyStyleOverrides(html, effectiveBlock);
+    html = applySiteStyle(html, effectiveBlock, blockType);
+    html = applyStyleOverrides(html, effectiveBlock, blockType, options.renderVersion);
     return html;
   }
 
@@ -298,7 +315,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     return effectiveBlock.children ? renderBlocks(effectiveBlock.children, options) : '';
   }
 
-  let template = blockType.template ?? '';
+  let template = blockOutputForVersion(blockType, options.renderVersion).template;
   // Inline-edit stamping happens on the TEMPLATE (before substitution) so
   // the wrapper always encloses exactly the field's own token.
   if (options.editable && block.id) {
@@ -414,6 +431,20 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     }
   }
 
+  // Style fields for a block part (`<part>_style_id`) derive `<part>_class`:
+  // the chosen style, else the site's style with the field's standard role
+  // (see siteStylesCss).
+  for (const field of blockType.schema ?? []) {
+    if (field.type !== 'style' || !field.style_default_role || !field.name.endsWith('_style_id')) continue;
+    const value = compiled.flatData[field.name];
+    compiled.flatData[field.name.replace(/_style_id$/, '_class')] = typeof value === 'string' && STYLE_ID_PATTERN.test(value) ? styleClassName(value) : `tr-role-${field.style_default_role}`;
+  }
+  if (effectiveBlock.type === 'core/heading') {
+    const d = compiled.flatData;
+    // Whitespace-only parts render nothing, like empty ones.
+    for (const part of ['eyebrow', 'subtitle']) if (typeof d[part] === 'string' && !(d[part] as string).trim()) d[part] = '';
+    d.heading_group = Boolean(d.eyebrow || d.subtitle);
+  }
   if (['core/heading', 'core/rich_heading'].includes(effectiveBlock.type)) compiled.flatData.heading_anchor_attr = compiled.flatData.anchor_id ? ` id="${escapeHtml(compiled.flatData.anchor_id)}"` : '';
   if (effectiveBlock.type === 'core/image') {
     const d = compiled.flatData;
@@ -512,9 +543,41 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
 
   if (columnThreshold !== null) html += `<style data-bid="${bid}">${columnStackCss(columnThreshold, `[data-block="columns"][data-bid="${bid}"]`)}</style>`;
   html = applyVisibility(html, effectiveBlock, options);
-  html = applyStyleOverrides(html, effectiveBlock);
+  html = applySiteStyle(html, effectiveBlock, blockType);
+  html = applyStyleOverrides(html, effectiveBlock, blockType, options.renderVersion);
 
   return html;
+}
+
+/**
+ * Inline a global block's published content. No wrapper element: the blocks
+ * render exactly as if they were on the page, so layout rules for direct
+ * children still apply. In the editor each top-level element is annotated
+ * with the reference block, so a click selects the reference, not the
+ * global block's inner blocks (those are edited in the global block).
+ */
+function renderGlobalBlockRef(block: Block, effectiveBlock: Block, options: RenderBlocksOptions): string {
+  const id = String(effectiveBlock.data?.global_block_id ?? '').trim();
+  const stack = options.globalBlockStack ?? [];
+  const content = id && !stack.includes(id) && stack.length < GLOBAL_BLOCK_MAX_DEPTH ? options.globalBlockSource?.(id) : undefined;
+  const marker: Record<string, string> = { 'data-global-block': id };
+  if (options.annotate && block.id) { marker['data-block-id'] = block.id; marker['data-block-type'] = block.type; }
+  if (options.provenance && block.id) { marker['data-source-block-id'] = block.id; marker['data-source-block-type'] = block.type; }
+  if (!content || (!content.blocks?.length && !content.html?.trim())) {
+    const reason = !id ? 'No global block chosen' : stack.includes(id) ? `Global block "${id}" includes itself` : `Global block "${id}" is missing or not published`;
+    return options.annotate
+      ? injectAttrsIntoFirstTag(`<div data-block="global_block" data-missing="true" style="padding:1rem;border:2px dashed #b45309;color:#78350f;background:#fffbeb;font:14px/1.4 system-ui,sans-serif">${escapeHtml(reason)}</div>`, marker)
+      : `<!-- ${escapeHtml(reason).replace(/--/g, '- -')} -->`;
+  }
+  if (content.html !== undefined && !content.blocks) {
+    const html = content.html.trim();
+    return /^<[a-zA-Z]/.test(html) ? injectAttrsIntoFirstTag(html, marker) : html;
+  }
+  const inner: RenderBlocksOptions = { ...options, annotate: false, editable: false, provenance: false, globalBlockStack: [...stack, id] };
+  return (content.blocks ?? []).map(child => {
+    const html = renderBlock(child, inner);
+    return /^<[a-zA-Z]/.test(html) ? injectAttrsIntoFirstTag(html, marker) : html;
+  }).join('\n');
 }
 
 /**
@@ -1265,9 +1328,34 @@ function renderChoicesHtml(
     .join('\n');
 }
 
-function applyStyleOverrides(html: string, block: Block): string {
+/**
+ * Put the class of a selected site style (`data.style_id`) on the block's
+ * semantic element: the element carrying `style_element_class`, else the root.
+ */
+function applySiteStyle(html: string, block: Block, blockType: BlockType): string {
+  if (!blockType.schema?.some(field => field.type === 'style' && field.name === 'style_id')) return html;
+  const id = block.data?.style_id;
+  if (typeof id !== 'string' || !STYLE_ID_PATTERN.test(id)) return html;
+  const cls = styleClassName(id);
+  return addClassToSemanticElement(html, blockType, cls) ?? mergeAttrsIntoFirstTag(html, { class: cls }) ?? html;
+}
+
+/** Add a class to the element carrying `style_element_class`; null when the block has none. */
+function addClassToSemanticElement(html: string, blockType: BlockType, cls: string): string | null {
+  if (!blockType.style_element_class) return null;
+  const target = new RegExp(`(\\sclass="(?:[^"]*\\s)?${blockType.style_element_class.replace(/[^\w-]/g, '')}(?:\\s[^"]*)?)"`);
+  return target.test(html) ? html.replace(target, (_m, attr: string) => `${attr} ${escapeHtml(cls)}"`) : null;
+}
+
+function applyStyleOverrides(html: string, block: Block, blockType: BlockType, renderVersion: number | undefined): string {
   const so = block.style_overrides;
   if (!so) return html;
+  // Render version 2 puts a custom class on the meaningful element (the <h2>,
+  // the button link), so `.my-class` styles it directly.
+  if (so.custom_class && resolveRenderVersion(renderVersion) >= 2) {
+    const moved = addClassToSemanticElement(html, blockType, so.custom_class);
+    if (moved !== null) return applyStyleOverrides(moved, { ...block, style_overrides: { ...so, custom_class: undefined } }, blockType, renderVersion);
+  }
 
   const inlineStyleParts: string[] = [];
   if (so.spacing_before) inlineStyleParts.push(`margin-top:${cssValue(so.spacing_before)}`);
@@ -1647,7 +1735,7 @@ export const BLOCKS_RUNTIME_CSS = `
 @media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
 
 /* Text links remain recognizable without changing card, image, button or navigation links. */
-:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: underline; text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
 :is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 /* Archive pager (repeater paginate) */
@@ -1769,6 +1857,10 @@ export interface CollectAssetsOptions {
    * origin, so foreign JS there would run with the viewer's portal session.
    */
   includeScripts?: boolean;
+  /** Platform render version; gates shared CSS changes like RenderBlocksOptions.renderVersion. */
+  renderVersion?: number;
+  /** Includes the assets of referenced global blocks, like RenderBlocksOptions.globalBlockSource. */
+  globalBlockSource?: GlobalBlockSource;
 }
 
 export function collectBlockAssets(
@@ -1776,6 +1868,7 @@ export function collectBlockAssets(
   registry: RenderBlocksOptions['registry'],
   opts?: CollectAssetsOptions,
 ): BlockAssetBundle {
+  blocks = withGlobalBlockContent(blocks, opts?.globalBlockSource);
   const ids = [...collectBlockAssetTypeIds(blocks, registry)].sort();
   const css: string[] = [];
   const js: string[] = [];
@@ -1792,12 +1885,13 @@ export function collectBlockAssets(
     used.push(id);
     const numericFields = bt.schema.filter(field => field.css_unit && /^[a-z][a-z0-9_]*$/.test(field.name));
     if (numericFields.length) css.push(`[data-presentation="${encodeURIComponent(bt.id)}"]{${numericFields.map(field => `--${field.name}:${/^(?:h[1-6]_size_px|heading_(?:before|after)_px)$/.test(field.name) ? 'inherit' : 'initial'}`).join(';')}}`);
-    if (bt.styles) css.push(`/* ${id} */\n${bt.styles}`);
+    const btStyles = blockOutputForVersion(bt, opts?.renderVersion).styles;
+    if (btStyles) css.push(`/* ${id} */\n${styleElementText(btStyles)}`);
     if (bt.script) js.push(`/* ${id} */\n${bt.script}`);
   }
 
   for (const block of collectInstanceStyles(blocks)) {
-    css.push(`/* instance ${sanitizeCssId(block.id)} */\n${block.style_overrides!.custom_css}`);
+    css.push(`/* instance ${sanitizeCssId(block.id)} */\n${styleElementText(block.style_overrides!.custom_css!)}`);
   }
 
   // Per-INSTANCE scripts, for block types that declare code fields

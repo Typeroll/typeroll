@@ -32,3 +32,8 @@ test('allows only an exact configured iframe host', () => {
   assert.match(configured, /src="https:\/\/player\.vendor\.example\/embed\/42"/);
   assert.doesNotMatch(subdomain, /src=/);
 });
+
+test('keeps render version 2 heading groups, style classes and global block markers', () => {
+  const html = '<div data-block="heading" data-level="h2"><hgroup class="block-heading-group"><p class="block-heading-eyebrow s-eyebrow">For leaders</p><h2 class="block-heading-text hero-title">Plan</h2><p class="block-heading-subtitle tr-role-lead">In a day</p></hgroup></div><section data-block="section" data-global-block="call-to-action">Shared</section>';
+  assert.equal(sanitizeBody(html), html);
+});

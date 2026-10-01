@@ -1,4 +1,9 @@
-.block-editor { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-width: 0; background: #0f0f12; color: #e4e4e7; }
+.block-editor { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-width: 0; background: #0f0f12; color: #e4e4e7; color-scheme: dark; --color-text-muted: #a1a1aa; }
+/* Controls inherit the light editor text colour, so one rendered with the
+   browser's white default background becomes unreadable. Give every control
+   a dark surface unless it styles itself (inline styles still win). */
+.block-editor :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), textarea, select) { background-color: #1f1f23; color: #fafafa; border: 1px solid #3a3a42; }
+.block-editor :where(input, textarea)::placeholder { color: #a1a1aa; opacity: 1; }
 .block-editor__topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; padding: 8px 16px; border-bottom: 1px solid #2a2a30; flex-shrink: 0; }
 .block-editor__identity { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; flex: 1; }
 .block-editor__exit { flex-shrink: 0; white-space: nowrap; }
@@ -72,3 +77,28 @@
 .block-field-settings > summary { cursor: pointer; font-weight: 600; padding-block: .5rem; }
 .block-field-settings > p { font-size: .8rem; color: var(--color-text-muted); margin-block: .5rem 1rem; }
 .block-field-settings .block-field-reset { margin-bottom: .75rem; background: none; border: 0; color: var(--color-primary); font-size: .8rem; padding: .25rem 0; cursor: pointer; text-decoration: underline; }
+.block-editor .block-field-settings .block-field-reset { color: #93c5fd; }
+.block-class-anchor .block-field-help { font-size: .8rem; color: var(--color-text-muted); margin: .375rem 0 0; }
+.block-class-anchor .block-field-help code { font-size: .8rem; }
+.block-class-anchor .block-field-error { font-size: .85rem; color: #fca5a5; margin: .25rem 0 .75rem; }
+
+/* Rich text: show which paragraphs carry a named style; the preview shows the look. */
+.rich-text-editor :is(p, li, blockquote)[class*="s-"] { border-left: 3px solid #818cf8; padding-left: 8px; }
+.rich-text-editor h2 { font-size: 1.25rem; margin: .75rem 0 .25rem; }
+.rich-text-editor h3 { font-size: 1.1rem; margin: .75rem 0 .25rem; }
+.rich-text-editor h4 { font-size: 1rem; margin: .75rem 0 .25rem; }
+.prose-convert { border: 1px solid #4338ca; background: #1a1a3d; color: #fafafa; border-radius: 6px; padding: 12px; margin-bottom: 1rem; font-size: .85rem; display: grid; gap: 8px; }
+.prose-convert ul { margin: 0; padding-left: 1.25rem; }
+
+/* Block library: templates and global blocks. */
+.block-library__hint { font-size: .75rem; color: #a1a1aa; margin: 0 0 .5rem; }
+.block-library__reusable { display: grid; gap: 6px; }
+.block-library__item { display: grid; gap: 2px; text-align: left; padding: .5rem .65rem; border-radius: 6px; border: 1px solid #3a3a42; background: #1f1f23; color: #fafafa; cursor: pointer; font-size: .85rem; }
+.block-library__item span { font-size: .75rem; color: #a1a1aa; }
+.block-library__item:hover, .block-library__item:focus-visible { border-color: #818cf8; }
+.block-reuse p { font-size: .8rem; color: #d4d4d8; }
+.block-reuse__form { display: grid; gap: 6px; margin-top: .75rem; }
+
+/* Rich text toolbar: readable controls on the dark editor. */
+.block-editor [role="toolbar"][aria-label="Text formatting"] button { background: #2a2a30; color: #fafafa; border: 1px solid #3f3f46; border-radius: 4px; cursor: pointer; }
+.block-editor [role="toolbar"][aria-label="Text formatting"] button:hover { border-color: #818cf8; }

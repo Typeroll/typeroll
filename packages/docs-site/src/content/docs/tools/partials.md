@@ -66,12 +66,17 @@ The site's navigation is part of the `header` partial — not in any individual 
 </style>
 ```
 
-## Custom partials
+## Custom partials (global blocks)
 
-You can create any number of custom partials. The AI agent can embed them in page HTML or use them as standalone components:
+Custom partials are global blocks: one shared source shown wherever a page
+places it. Block-mode pages reference one with a `core/global_block` block;
+HTML-mode pages embed it with `<x-include name="cookie-banner" />`. Editing it
+changes every page that uses it.
 
 ```
-Create a "cookie-banner" partial with a GDPR notice.
+Create a "cookie-banner" global block with a GDPR notice.
 ```
 
-Custom partial IDs can be any lowercase string. Reference them in page HTML as static content — there is no template include syntax in HTML-mode pages; the AI agent copies the partial's HTML where needed.
+See [Global blocks and block templates](../reusable-blocks/) for making a page
+section global, detaching a copy, and block templates that are copied into a
+page instead.

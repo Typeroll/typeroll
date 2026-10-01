@@ -96,7 +96,6 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     organization,
     scripts_head: String(form.get('scripts_head') ?? '') || undefined,
     scripts_body_end: String(form.get('scripts_body_end') ?? '') || undefined,
-    custom_css: String(form.get('custom_css') ?? '') || undefined,
     robots_txt: String(form.get('robots_txt') ?? '') || undefined,
     sitewide_noindex: form.get('sitewide_noindex') === 'on',
     seo_review,

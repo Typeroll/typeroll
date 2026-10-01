@@ -1,9 +1,12 @@
-import { useEffect, useId, useState } from 'react';
-import type { Breakpoint, FieldDefinition, ResponsiveBreakpoints } from '@typeroll/shared';
-import { BREAKPOINTS, BREAKPOINTS_ABOVE_MOBILE, resolveBreakpointWidths, responsiveBreakpointsError } from '@typeroll/shared';
+import { useContext, useEffect, useId, useState } from 'react';
+import type { Breakpoint, FieldDefinition, ResponsiveBreakpoints, SiteStyle } from '@typeroll/shared';
+import { BREAKPOINTS, BREAKPOINTS_ABOVE_MOBILE, resolveBreakpointWidths, responsiveBreakpointsError, stylesForTarget } from '@typeroll/shared';
 import { Monitor } from 'lucide-react';
 import RichTextInput from './RichTextInput';
 import ContentReferenceInput from './ContentReferenceInput';
+
+import { GlobalBlocksContext, SiteStylesContext } from './editor-context';
+export { fieldAvailable, GlobalBlocksContext, ProseConvertContext, RenderVersionContext, SiteStylesContext } from './editor-context';
 
 export default function FieldInput({
   siteId, field, value, onChange, responsive, activeBp, hasOwn, triState = false, siteWidths,
@@ -28,7 +31,41 @@ export default function FieldInput({
     </label>
   );
   const v = (value ?? '') as string;
+  const siteStyles = useContext(SiteStylesContext);
+  const globalBlocks = useContext(GlobalBlocksContext);
   switch (field.type) {
+    case 'global_block': {
+      const options = globalBlocks?.blocks ?? [];
+      const current = options.find(block => block.id === v);
+      return (
+        <div style={fieldGroup}>
+          {label}
+          <select id={fieldId} aria-label={field.label} value={v} onChange={(e) => onChange(e.target.value || undefined)} style={selectInput}>
+            <option value="">Choose a global block…</option>
+            {options.map(block => <option key={block.id} value={block.id}>{block.name}{block.status === 'draft' ? ' (draft, not shown)' : ''}</option>)}
+            {v && !current && <option value={v}>{v} (missing)</option>}
+          </select>
+          {current?.status === 'draft' && <p role="alert" style={{ fontSize: '.8rem', color: '#fcd34d', margin: '.25rem 0 0' }}>Draft global blocks are not shown on pages. Publish it in the global block's editor.</p>}
+          {v && globalBlocks && <a href={`/app/sites/${globalBlocks.siteId}/partials/${encodeURIComponent(v)}`} target="_blank" rel="noopener" style={{ fontSize: '.8rem', color: '#a5b4fc' }}>Edit this global block (changes every page using it)</a>}
+        </div>
+      );
+    }
+    case 'style': {
+      const options = stylesForTarget(siteStyles ?? [], field.style_target ?? 'text');
+      const missing = v && !options.some(style => style.id === v);
+      const roleDefault = field.style_default_role ? (siteStyles ?? []).find(style => style.role === field.style_default_role) : undefined;
+      return (
+        <div style={fieldGroup}>
+          {label}
+          <select id={fieldId} aria-label={field.label} value={v} onChange={(e) => onChange(e.target.value || undefined)} style={selectInput}>
+            <option value="">{roleDefault ? `Site default (${roleDefault.name})` : 'Default look'}</option>
+            {options.map(style => <option key={style.id} value={style.id}>{style.name}</option>)}
+            {missing && <option value={v}>{v} (missing style)</option>}
+          </select>
+          {siteId && <a href={`/app/sites/${siteId}/styles`} target="_blank" rel="noopener" style={{ fontSize: '.75rem', color: '#a5b4fc' }}>Manage styles</a>}
+        </div>
+      );
+    }
     case 'page_ref':
     case 'page_ref_list':
     case 'content_type_ref':

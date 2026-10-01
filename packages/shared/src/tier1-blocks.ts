@@ -36,6 +36,7 @@ const container: BlockType = {
   category: 'layout',
   container: true,
   schema: [
+    { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
     ...articleHeadingFields,
     { name: 'tag', type: 'select', label: 'HTML element', options: ['div', 'section', 'article', 'aside', 'nav', 'header', 'footer', 'main', 'figure', 'a'], option_labels: ['div', 'section', 'article', 'aside', 'nav', 'header', 'footer', 'main', 'figure', 'a (link)'], default: 'div' },
     // Only used when the element is `a`: turns the whole container into one link

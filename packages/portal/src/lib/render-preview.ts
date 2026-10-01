@@ -32,9 +32,14 @@ import {
   collectBlockAssets,
   composePageWithTemplate,
   defaultSiteSettings,
+  resolveRenderVersion,
+  siteStylesCss,
+  styleElementText,
+  resolveBreakpointWidths,
   expandExtensionIncludes,
   expandFormIncludes,
   expandIncludes,
+  globalBlockSourceFromPartials,
   MAIN_VERSION_ID,
   renderBlocks,
   renderCookieConsent,
@@ -131,6 +136,9 @@ export interface PreviewOptions {
   /** Connects an opaque, navigable preview document to its inert parent shell
    * for site navigation and tab-scoped Extension storage. */
   extensionPreviewBridge?: { id: string; parentOrigin: string };
+  /** Render with this platform render version instead of the site's own,
+   *  to preview an upgrade before saving it. */
+  renderVersion?: number;
 }
 
 export async function renderPreview(
@@ -144,7 +152,9 @@ export async function renderPreview(
   let page = opts.pageOverride ?? (await vstore.page(orgId, siteId, versionId, pageId));
   if (!page) return null;
 
-  const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
+  const storedSettings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
+  const renderVersion = resolveRenderVersion(opts.renderVersion ?? storedSettings.render_version);
+  const settings: SiteSettings = { ...storedSettings, render_version: renderVersion };
   let partials = await vstore.partials(orgId, siteId, versionId);
   if (opts.includeWorkingCopies) {
     const wcs = await listWorkingCopies({ orgId, siteId, versionId });
@@ -161,6 +171,7 @@ export async function renderPreview(
   const header = partials.find((p) => p.kind === 'header' && p.status === 'published');
   const footer = partials.find((p) => p.kind === 'footer' && p.status === 'published');
   const freeBlocks = partials.filter((p) => p.kind === 'free');
+  const globalBlockSource = globalBlockSourceFromPartials(freeBlocks);
 
   // The preview iframe mirrors the static build's robots stance so users see
   // their branch's noindex banner before deploy.
@@ -244,7 +255,7 @@ export async function renderPreview(
     if (!p) return '';
     if (p.content_mode === 'blocks' && p.blocks?.length) {
       return sanitizeBody(
-        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, pageSource, onMissingType }),
+        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, pageSource, onMissingType, renderVersion, globalBlockSource }),
         settings.iframe_allowed_hosts,
       );
     }
@@ -276,7 +287,7 @@ export async function renderPreview(
     renderCtx.page = { ...renderCtx.page, blocks: pageBlocks };
     // Normalize before deriving the outline so demoted headings retain TOC links.
     renderCtx.page = { ...renderCtx.page, ...pageBodyContext(normalizePageH1s(sanitizeBody(renderBlocks(pageBlocks, {
-      registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType,
+      registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType, renderVersion, globalBlockSource,
     }), settings.iframe_allowed_hosts), !countBlockH1s(templateBlocks))) };
     const effectiveBlocks = templateBlocks.length
       ? composePageWithTemplate(templateBlocks, pageBlocks) : pageBlocks;
@@ -291,6 +302,8 @@ export async function renderPreview(
       // blocks aren't reachable through the page's blocks route, so
       // stamping them would produce dead editing affordances.
       editable: opts.editable,
+      renderVersion,
+      globalBlockSource,
     }), settings.iframe_allowed_hosts));
     assetBlocks.push(...effectiveBlocks);
     blocksBody = true;
@@ -305,6 +318,8 @@ export async function renderPreview(
   const footerHtml = rewriteIf(renderPartial(footer));
   const assets = collectBlockAssets(assetBlocks, blockRegistry, {
     includeScripts: opts.allowScripts === true,
+    renderVersion,
+    globalBlockSource,
   });
   blockCss = assets.css;
   blockJs = assets.js;
@@ -486,6 +501,7 @@ function buildHtml(args: {
   banner: BannerArgs | null;
 }): string {
   const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, robotsBlocked, banner } = args;
+  const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
   const f = {
     heading: settings.fonts?.heading ?? 'Inter',
     body: settings.fonts?.body ?? 'Inter',
@@ -499,7 +515,7 @@ function buildHtml(args: {
   // <head>. Same sources in the same order, so preview matches the built site.
 
   return `<!doctype html>
-<html lang="${escapeAttr(page.language || settings.language || 'en')}">
+<html lang="${escapeAttr(page.language || settings.language || 'en')}" data-tr-render="${resolveRenderVersion(settings.render_version)}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -525,8 +541,9 @@ ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link re
         : `<link rel="stylesheet" href="${escapeAttr(fontUrl)}">`
     }<style>${WEBFONT_FALLBACK_CSS}</style>` : ''}
 ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
-${settings.custom_css ? `<style data-site-css="1">${settings.custom_css}</style>` : ''}
-${page.custom_css ? `<style data-page-css="1">${page.custom_css}</style>` : ''}
+${siteStyles ? `<style data-site-styles="1">${siteStyles}</style>` : ''}
+${settings.custom_css ? `<style data-site-css="1">${styleElementText(settings.custom_css)}</style>` : ''}
+${page.custom_css ? `<style data-page-css="1">${styleElementText(page.custom_css)}</style>` : ''}
 <style data-site-base-css="1">${SITE_BASE_CSS}</style>
 <style data-preview-ui="1">
 .tr-banner{

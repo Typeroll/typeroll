@@ -1,10 +1,11 @@
 import type { SiteSettings } from './types.js';
+import { LATEST_RENDER_VERSION } from './render-version.js';
 
 export const defaultSiteSettings: SiteSettings = {
   site_name: 'New Site',
   tagline: '',
   colors: {
-    primary: '#3b82f6',
+    primary: '#2563eb',
     secondary: '#1e293b',
     accent: '#f59e0b',
     background: '#ffffff',
@@ -21,6 +22,7 @@ export const defaultSiteSettings: SiteSettings = {
   default_seo_suffix: '',
   trailing_slash: 'always',
   robots_txt: 'User-agent: *\nAllow: /\n',
+  render_version: LATEST_RENDER_VERSION,
 };
 
 /**

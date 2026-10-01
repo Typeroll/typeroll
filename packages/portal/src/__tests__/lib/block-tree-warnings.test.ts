@@ -91,3 +91,16 @@ describe('a single-block write', () => {
       expect(styleOverrideWarnings(value, 'blk_1')).toEqual([]);
   });
 });
+
+describe('heading parts written as text', () => {
+  it('flags a classed label prose block directly above a heading', () => {
+    const warnings = blockTreeWarnings([
+      { id: 'label', type: 'core/prose', data: { html: '<p class="eyebrow">For leadership teams</p>' } },
+      { id: 'title', type: 'core/heading', data: { text: 'AI partner' } },
+      { id: 'body', type: 'core/prose', data: { html: '<p class="lead">Long intro</p>' } },
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ code: 'heading_part_as_text', block_id: 'label', path: 'blocks[0]' });
+    expect(warnings[0]!.message).toContain('eyebrow field');
+  });
+});

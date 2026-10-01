@@ -36,6 +36,7 @@ const section: BlockType = {
   category: 'layout',
   container: true,
   schema: [
+    { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
     {
       name: 'width',
       type: 'select',
@@ -170,6 +171,7 @@ const prose: BlockType = {
   category: 'content',
   container: false,
   schema: [
+    { name: 'style_id', type: 'style', label: 'Style', style_target: 'text', editor_group: 'content' },
     { name: 'html', type: 'richtext', label: 'Content' },
     ...typographyFields,
     pixels('paragraph_spacing_px', 'Paragraph spacing (px)', 0, 160),
@@ -183,18 +185,18 @@ const prose: BlockType = {
   // och desktop utan media queries. Behåller läsbarhet på små skärmar
   // utan att gå för stort på desktop.
   styles: `
-[data-block="prose"] { min-width: 0; line-height: var(--line_height, var(--page-body-line-height, 1.65)); font-size: var(--font_size_px, var(--page-body-font-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem))); text-align:var(--text_align,inherit); font-weight:var(--font_weight,inherit); overflow-wrap: anywhere; }
+[data-block="prose"] { min-width: 0; line-height: var(--line_height, var(--page-body-line-height, var(--body-leading-text, 1.65))); font-size: var(--font_size_px, var(--page-body-font-size, var(--body-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem)))); text-align:var(--text_align,inherit); font-weight:var(--font_weight,inherit); overflow-wrap: anywhere; }
 [data-block="prose"][data-w="narrow"] { max-width: 38rem; margin-inline: auto; }
 [data-block="prose"][data-w="wide"] { max-width: 60rem; margin-inline: auto; }
 [data-block="prose"] p { margin: 0 0 var(--paragraph_spacing_px,var(--page-body-paragraph-spacing, 1em)); }
 [data-block="prose"][data-font="body"] { font-family:var(--font-body,inherit); }
 [data-block="prose"][data-font="heading"] { font-family:var(--font-heading,inherit); }
-[data-block="prose"] h1 { margin: 1.5em 0 0.5em; font-size: clamp(1.75rem, 1rem + 3.5vw, 3.5rem); line-height: 1.15; }
-[data-block="prose"] h2 { margin: 1.5em 0 0.5em; font-size: clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem); line-height: 1.2; }
-[data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: clamp(1.25rem, 0.75rem + 2vw, 1.75rem); line-height: 1.25; }
-[data-block="prose"] h4 { margin: 1.5em 0 0.5em; font-size: clamp(1.125rem, 0.75rem + 1vw, 1.375rem); line-height: 1.3; }
+[data-block="prose"] h1 { margin: 1.5em 0 0.5em; font-size: var(--h1-size, clamp(1.75rem, 1rem + 3.5vw, 3.5rem)); line-height: var(--h1-leading, 1.15); }
+[data-block="prose"] h2 { margin: 1.5em 0 0.5em; font-size: var(--h2-size, clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem)); line-height: var(--h2-leading, 1.2); }
+[data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: var(--h3-size, clamp(1.25rem, 0.75rem + 2vw, 1.75rem)); line-height: var(--h3-leading, 1.25); }
+[data-block="prose"] h4 { margin: 1.5em 0 0.5em; font-size: var(--h4-size, clamp(1.125rem, 0.75rem + 1vw, 1.375rem)); line-height: var(--h4-leading, 1.3); }
 [data-block="prose"] ul, [data-block="prose"] ol { margin: 0 0 1em 1.5em; }
-[data-block="prose"] a { color: var(--color-primary, currentColor); overflow-wrap: anywhere; text-decoration:underline; text-underline-offset:.15em; }
+[data-block="prose"] a { color: var(--link-color, var(--color-primary, currentColor)); overflow-wrap: anywhere; text-decoration:var(--link-decoration, underline); text-underline-offset:.15em; }
 [data-block="prose"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
 [data-block="prose"] img { max-width: 100%; height: auto; }
 [data-block="prose"] table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
@@ -225,9 +227,11 @@ const heading: BlockType = {
   icon: 'heading',
   category: 'content',
   container: false,
+  style_element_class: 'block-heading-text',
   schema: [
+    { name: 'eyebrow', type: 'text', label: 'Eyebrow', placeholder: 'Short label above the heading' },
+    { name: 'eyebrow_style_id', type: 'style', label: 'Eyebrow style', style_target: 'text', style_default_role: 'eyebrow', min_render_version: 2 },
     { name: 'text', type: 'text', label: 'Heading text', required: true },
-    { name: 'anchor_id', type: 'text', label: 'Anchor ID' },
     {
       name: 'level',
       type: 'select',
@@ -235,6 +239,10 @@ const heading: BlockType = {
       options: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
       default: 'h2',
     },
+    { name: 'style_id', type: 'style', label: 'Heading style', style_target: 'heading', editor_group: 'content' },
+    { name: 'subtitle', type: 'text', label: 'Subtitle', placeholder: 'Line below the heading', min_render_version: 2 },
+    { name: 'subtitle_style_id', type: 'style', label: 'Subtitle style', style_target: 'text', style_default_role: 'lead', min_render_version: 2 },
+    { name: 'anchor_id', type: 'text', label: 'Anchor ID' },
     {
       name: 'size',
       type: 'select',
@@ -257,21 +265,45 @@ const heading: BlockType = {
     { name: 'font_weight', type: 'select', label: 'Font weight', options: ['400', '500', '600', '700', '800'] },
     ...typographyFields,
     { name: 'color', type: 'color', label: 'Text color' },
-    { name: 'eyebrow', type: 'text', label: 'Eyebrow', placeholder: 'small label above heading' },
   ],
   // {{=level}} substitutes a validated tag name (h1..h6). The renderer
   // falls back to div if level is missing/invalid, so the output is
   // always well-formed.
-  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);--heading-color:{{color}}">
+  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);{{#color}}--heading-color:{{color}}{{/color}}">
   <span class="block-heading-eyebrow">{{eyebrow}}</span>
   <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>
 </div>`,
-  styles: `
+  // Version 2: eyebrow and subtitle belong to the heading (<hgroup>), are
+  // omitted when empty and take a site style instead of fixed, faded text.
+  render_versions: [{
+    from: 2,
+    template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);{{#color}}--heading-color:{{color}}{{/color}}">{{#heading_group}}<hgroup class="block-heading-group">{{/heading_group}}{{#eyebrow}}
+  <p class="block-heading-eyebrow {{eyebrow_class}}">{{eyebrow}}</p>{{/eyebrow}}
+  <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>{{#subtitle}}
+  <p class="block-heading-subtitle {{subtitle_class}}">{{subtitle}}</p>{{/subtitle}}{{#heading_group}}</hgroup>{{/heading_group}}
+</div>`,
+    styles: headingStyles(`[data-block="heading"] .block-heading-group { margin: 0; }
+[data-block="heading"] .block-heading-eyebrow { font-size: 0.875rem; font-weight: 600; line-height: 1.3; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.5rem; }
+[data-block="heading"] .block-heading-subtitle { font-size: 1.125rem; line-height: 1.5; margin: 0.5rem 0 0; }`),
+  }],
+  styles: headingStyles(`[data-block="heading"] .block-heading-eyebrow { display: block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.25rem; }
+[data-block="heading"] .block-heading-eyebrow:empty { display: none; }`),
+  origin: 'core',
+  created_at: ISO_EPOCH,
+};
+
+function headingStyles(eyebrowCss: string): string {
+  return `
 [data-block="heading"] { --heading-fs: clamp(1.75rem, 1rem + 3.5vw, 3.5rem); min-width:0;max-width:100%;overflow-wrap:anywhere; }
-[data-block="heading"] .block-heading-text { color:var(--heading-color,inherit); }
-[data-block="heading"] .block-heading-eyebrow { display: block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.25rem; }
-[data-block="heading"] .block-heading-eyebrow:empty { display: none; }
-[data-block="heading"]:not([data-size="theme"]) .block-heading-text { font-weight: 700; line-height: 1.15; margin: 0; font-size: var(--heading-fs); }
+[data-block="heading"] .block-heading-text { color:var(--heading-color,var(--heading-role-color,inherit)); letter-spacing:var(--heading-role-tracking); text-transform:var(--heading-role-transform); font-style:var(--heading-role-style); }
+[data-block="heading"][data-level="h1"] { --heading-role-color:var(--h1-color); --heading-role-tracking:var(--h1-tracking); --heading-role-transform:var(--h1-transform); --heading-role-style:var(--h1-style); --heading-role-weight:var(--h1-weight,700); }
+[data-block="heading"][data-level="h2"] { --heading-role-color:var(--h2-color); --heading-role-tracking:var(--h2-tracking); --heading-role-transform:var(--h2-transform); --heading-role-style:var(--h2-style); --heading-role-weight:var(--h2-weight,700); }
+[data-block="heading"][data-level="h3"] { --heading-role-color:var(--h3-color); --heading-role-tracking:var(--h3-tracking); --heading-role-transform:var(--h3-transform); --heading-role-style:var(--h3-style); --heading-role-weight:var(--h3-weight,700); }
+[data-block="heading"][data-level="h4"] { --heading-role-color:var(--h4-color); --heading-role-tracking:var(--h4-tracking); --heading-role-transform:var(--h4-transform); --heading-role-style:var(--h4-style); --heading-role-weight:var(--h4-weight,700); }
+[data-block="heading"][data-level="h5"] { --heading-role-color:var(--h5-color); --heading-role-tracking:var(--h5-tracking); --heading-role-transform:var(--h5-transform); --heading-role-style:var(--h5-style); --heading-role-weight:var(--h5-weight,700); }
+[data-block="heading"][data-level="h6"] { --heading-role-color:var(--h6-color); --heading-role-tracking:var(--h6-tracking); --heading-role-transform:var(--h6-transform); --heading-role-style:var(--h6-style); --heading-role-weight:var(--h6-weight,700); }
+${eyebrowCss}
+[data-block="heading"]:not([data-size="theme"]) .block-heading-text { font-weight: var(--heading-role-weight, 700); line-height: 1.15; margin: 0; font-size: var(--heading-fs); }
 
 [data-block="heading"][data-font-weight="400"] .block-heading-text { font-weight:400; }
 [data-block="heading"][data-font-weight="500"] .block-heading-text { font-weight:500; }
@@ -279,9 +311,12 @@ const heading: BlockType = {
 [data-block="heading"][data-font-weight="700"] .block-heading-text { font-weight:700; }
 [data-block="heading"][data-font-weight="800"] .block-heading-text { font-weight:800; }
 [data-block="heading"][data-size="auto"] .block-heading-text { line-height:1.25; }
-[data-block="heading"][data-size="auto"][data-level="h1"] .block-heading-text { line-height:1.2; }
-[data-block="heading"][data-size="auto"][data-level="h3"] .block-heading-text { line-height:1.3; }
-[data-block="heading"][data-size="auto"][data-level="h4"] .block-heading-text { line-height:1.35; }
+[data-block="heading"][data-size="auto"][data-level="h1"] .block-heading-text { line-height:var(--h1-leading,1.2); }
+[data-block="heading"][data-size="auto"][data-level="h2"] .block-heading-text { line-height:var(--h2-leading,1.25); }
+[data-block="heading"][data-size="auto"][data-level="h3"] .block-heading-text { line-height:var(--h3-leading,1.3); }
+[data-block="heading"][data-size="auto"][data-level="h4"] .block-heading-text { line-height:var(--h4-leading,1.35); }
+[data-block="heading"][data-size="auto"][data-level="h5"] .block-heading-text { line-height:var(--h5-leading,1.25); }
+[data-block="heading"][data-size="auto"][data-level="h6"] .block-heading-text { line-height:var(--h6-leading,1.25); }
 /* Explicit visual size — wins over auto */
 [data-block="heading"][data-size="3xl"] { --heading-fs: clamp(2rem,    1rem      + 5vw,   4rem); }
 [data-block="heading"][data-size="2xl"] { --heading-fs: clamp(1.75rem, 1rem      + 3.5vw, 3.5rem); }
@@ -305,10 +340,8 @@ ${[1,2,3,4,5,6].map(level => `[data-block="heading"][data-level="h${level}"]:not
 [data-block="heading"][data-size="auto"][data-level="h6"] { --heading-fs: var(--type-h6, .875rem); }
 [data-block="heading"][style*="--font_size_px:"] .block-heading-text { font-size:var(--font_size_px, var(--heading-fs)); }
 [data-block="heading"][data-level][style*="--line_height:"] .block-heading-text { line-height:var(--line_height,1.2); }
-`.trim(),
-  origin: 'core',
-  created_at: ISO_EPOCH,
-};
+`.trim();
+}
 
 /**
  * `image` — single image with optional caption + link. Wraps in <figure>
@@ -390,7 +423,9 @@ const button: BlockType = {
   icon: 'mouse-pointer-click',
   category: 'content',
   container: false,
+  style_element_class: 'block-button-link',
   schema: [
+    { name: 'style_id', type: 'style', label: 'Style', style_target: 'button', editor_group: 'content' },
     { name: 'label', type: 'text', label: 'Button text', required: true, default: 'Learn more' },
     { name: 'href', type: 'url', label: 'Link to', required: true },
     { name: 'variant', type: 'select', label: 'Style', options: ['primary', 'secondary', 'ghost'], default: 'primary' },
@@ -461,8 +496,31 @@ const templateContentSlot: BlockType = {
  * grouping (layout → content → media). The editor MAY re-sort by category;
  * the renderer doesn't care about order here.
  */
+/**
+ * `global_block` — a reference to a global block (a free partial). The
+ * renderer inlines the global block's published blocks in place, with no
+ * wrapper, so editing the global block updates every page using it. See
+ * reusable-blocks.ts; the template only shows when nothing resolves.
+ */
+const globalBlock: BlockType = {
+  id: 'core/global_block',
+  name: 'global_block',
+  label: 'Global block',
+  icon: 'repeat',
+  category: 'layout',
+  container: false,
+  schema: [
+    { name: 'global_block_id', type: 'global_block', label: 'Global block', required: true },
+  ],
+  template: '<!-- global block {{global_block_id}} is missing or not published -->',
+  styles: '',
+  origin: 'core',
+  created_at: ISO_EPOCH,
+};
+
 export const CORE_BLOCK_TYPES: readonly BlockType[] = [
   section,
+  globalBlock,
   columns,
   prose,
   heading,

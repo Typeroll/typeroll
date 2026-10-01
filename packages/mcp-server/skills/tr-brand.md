@@ -159,6 +159,16 @@ replace_partial partial_id="header" html_content="<updated HTML>"
 
 Same for footer.
 
+## Step 5b — Express the typography as styles
+
+Colours and fonts are only half the brand. Put the type scale, weights,
+spacing and recurring treatments into the site's named styles (`list_styles`,
+`update_style`, `create_style`): body text and H1–H6 apply everywhere; the
+eyebrow, lead, quote, buttons and section rhythm are chosen per block with
+`style_id`. Set phone values in `base` and grow them in `at.tablet` and
+`at.desktop`. Prefer this to custom CSS: editors can see and change styles,
+and every page follows.
+
 ## Step 6 — Custom CSS for advanced tokens (optional)
 
 If the brand needs things beyond the 7 base tokens — e.g. a gradient,

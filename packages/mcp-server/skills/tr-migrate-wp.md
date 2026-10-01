@@ -122,6 +122,11 @@ The managed importer preserves existing imported Pages on retry and refuses
 URL/identity conflicts or dangling term references. An older flattened import
 requires a separately reviewed mapping repair; do not re-import over edits.
 
+**Styles.** Recurring source treatments (theme classes for eyebrows, leads,
+button variants, highlighted sections) become named site styles
+(`create_style`) applied with `style_id`, so editors can change them in one
+place. Do not preserve them as classed raw HTML in text blocks.
+
 ### 4. Import one page at a time, draft status
 
 For each source URL:

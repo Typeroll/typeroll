@@ -14,11 +14,13 @@
 //     a template
 
 import { useEffect, useMemo, useState } from 'react';
-import type { Block, BlockType, PageTemplate } from '@typeroll/shared';
+import type { Block, BlockType, PageTemplate, SiteStyle } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES, TEMPLATE_CONTENT_SLOT_TYPE_ID } from '@typeroll/shared';
 import { Plus, GripVertical, Save, ArrowLeft } from 'lucide-react';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { BlockLibrary, BlockTree, BlockFieldForm, DeviceToggle, DEFAULT_BP, ICONS } from './BlockPageEditor';
+import { GlobalBlocksContext, RenderVersionContext, SiteStylesContext } from './FieldInput';
+import type { GlobalBlockSummary } from './editor-context';
 import { useBlockDnd } from './block-dnd';
 import type { Breakpoint } from '@typeroll/shared';
 
@@ -26,6 +28,17 @@ interface Props {
   responsiveBreakpoints?: import('@typeroll/shared').ResponsiveBreakpoints | null;
   siteId: string;
   template: PageTemplate;
+  siteStyles?: SiteStyle[];
+  renderVersion?: number;
+  /**
+   * What the tree belongs to. A global block (a block-mode partial) saves to
+   * the partial routes and has no content slot.
+   */
+  kind?: 'page_template' | 'global_block';
+  /** Global blocks a core/global_block field can choose. */
+  globalBlocks?: GlobalBlockSummary[];
+  /** A global block has an unsaved draft (e.g. written by an agent); it must be saved or discarded before editing here. */
+  pendingDraft?: boolean;
 }
 
 type LeftTab = 'add' | 'structure';
@@ -111,6 +124,15 @@ function updateBlockData(blocks: Block[], id: string, data: Record<string, unkno
   return tree;
 }
 
+function setStyleOverrides(blocks: Block[], id: string, overrides: Block['style_overrides']): Block[] {
+  const tree = clone(blocks);
+  const found = findIn(tree, id);
+  if (!found) return tree;
+  if (overrides && Object.keys(overrides).length) found.block.style_overrides = overrides;
+  else delete found.block.style_overrides;
+  return tree;
+}
+
 function setBlockName(blocks: Block[], id: string, name: string): Block[] {
   const tree = clone(blocks);
   const found = findIn(tree, id);
@@ -143,7 +165,17 @@ function moveBlockTo(
   return addBlock(without, moved, parentId, slotIdx, position).tree;
 }
 
-export default function TemplateEditor({ siteId, template, responsiveBreakpoints }: Props) {
+export default function TemplateEditor({ siteId, template, responsiveBreakpoints, siteStyles, renderVersion, kind = 'page_template', globalBlocks = [], pendingDraft = false }: Props) {
+  const [draftPending, setDraftPending] = useState(pendingDraft);
+  const isGlobal = kind === 'global_block';
+  const [usage, setUsage] = useState<Array<{ page_id: string; title: string }> | null>(null);
+  useEffect(() => {
+    if (!isGlobal) return;
+    fetch(`/api/sites/${siteId}/partials/${encodeURIComponent(template.id)}/usage`)
+      .then(r => r.ok ? r.json() as Promise<{ pages?: Array<{ page_id: string; title: string }> }> : { pages: [] })
+      .then(j => setUsage(j.pages ?? []))
+      .catch(() => setUsage([]));
+  }, [isGlobal, siteId, template.id]);
   const [draft, setDraft] = useState<PageTemplate>(template);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
@@ -177,21 +209,39 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
     return findIn(draft.blocks ?? [], selectedId);
   }, [draft.blocks, selectedId]);
 
+  async function resolveDraft(action: 'save' | 'discard'): Promise<void> {
+    const res = await fetch(`/api/sites/${siteId}/working-copy/partial/${encodeURIComponent(template.id)}`, { method: action === 'save' ? 'POST' : 'DELETE' });
+    if (!res.ok) { setError(`Could not ${action} the draft (${res.status})`); setStatus('error'); return; }
+    setDraftPending(false);
+    window.location.reload();
+  }
+
   async function persist(nextBlocks: Block[]): Promise<void> {
+    if (isGlobal && draftPending) {
+      setError('Save or discard the pending draft before editing.');
+      setStatus('error');
+      setDraft(template);
+      return;
+    }
     setStatus('saving');
     setError(null);
     try {
-      const res = await fetch(`/api/sites/${siteId}/templates?id=${encodeURIComponent(template.id)}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ blocks: nextBlocks }),
-      });
+      const res = isGlobal
+        ? await fetch(`/api/sites/${siteId}/partials/${encodeURIComponent(template.id)}`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ blocks: nextBlocks, content_mode: 'blocks' }),
+        })
+        : await fetch(`/api/sites/${siteId}/templates?id=${encodeURIComponent(template.id)}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ blocks: nextBlocks }),
+        });
       if (!res.ok) {
         const j = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(j.error ?? `Save failed (${res.status})`);
       }
-      const body = await res.json() as PageTemplate;
-      setDraft(body);
+      if (!isGlobal) setDraft(await res.json() as PageTemplate);
       setStatus('saved');
       window.setTimeout(() => setStatus('idle'), 1200);
     } catch (e) {
@@ -251,6 +301,12 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
     void persist(tree);
   }
 
+  async function handleStyleOverrides(id: string, overrides: Block['style_overrides']): Promise<void> {
+    const tree = setStyleOverrides(draft.blocks ?? [], id, overrides);
+    setDraft({ ...draft, blocks: tree });
+    await persist(tree);
+  }
+
   function handleRename(id: string, name: string): void {
     const tree = setBlockName(draft.blocks ?? [], id, name);
     setDraft({ ...draft, blocks: tree });
@@ -285,6 +341,13 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
   });
 
   async function setStatus_(s: 'draft' | 'published'): Promise<void> {
+    if (isGlobal) {
+      const res = await fetch(`/api/sites/${siteId}/partials/${encodeURIComponent(template.id)}`, {
+        method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: s, content_mode: 'blocks' }),
+      });
+      if (res.ok) setDraft({ ...draft, status: s });
+      return;
+    }
     const res = await fetch(`/api/sites/${siteId}/templates?id=${encodeURIComponent(template.id)}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -309,11 +372,14 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
   }, [draft.blocks]);
 
   return (
+    <SiteStylesContext.Provider value={siteStyles ?? []}>
+    <RenderVersionContext.Provider value={renderVersion ?? null}>
+    <GlobalBlocksContext.Provider value={{ siteId, blocks: globalBlocks.filter(block => !(isGlobal && block.id === template.id)) }}>
     <div style={shell}>
       <header style={topBar}>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <a href={`/app/sites/${siteId}/templates`} style={backLink}>
-            <ArrowLeft size={14} /> Templates
+          <a href={isGlobal ? `/app/sites/${siteId}/partials` : `/app/sites/${siteId}/templates`} style={backLink}>
+            <ArrowLeft size={14} /> {isGlobal ? 'Global blocks' : 'Templates'}
           </a>
           <strong style={{ fontSize: '0.9rem' }}>{draft.label}</strong>
           <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>{draft.name}</span>
@@ -322,9 +388,9 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
           {status === 'error' && <span style={{ color: '#ef4444', fontSize: '.85rem' }}>{error}</span>}
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          {!hasContentSlot && (draft.blocks ?? []).length > 0 && (
+          {!isGlobal && !hasContentSlot && (draft.blocks ?? []).length > 0 && (
             <span style={warnPill} title="This template has no template_content_slot — page content will render at the end">
-              ⚠ Ingen content-slot
+              ⚠ No content slot
             </span>
           )}
           <select
@@ -332,13 +398,18 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
             onChange={(e) => void setStatus_(e.target.value as 'draft' | 'published')}
             style={statusSelect}
           >
-            <option value="draft">Utkast</option>
+            <option value="draft">Draft</option>
             <option value="published">Published</option>
           </select>
           <DeviceToggle responsiveBreakpoints={(selected?.block.data.responsive_breakpoints as import('@typeroll/shared').ResponsiveBreakpoints | null | undefined) ?? responsiveBreakpoints} activeBp={activeBp} onChange={setActiveBp} />
         </div>
       </header>
 
+      {isGlobal && draftPending && <div role="alert" style={{ padding: '10px 16px', background: '#422006', color: '#fef3c7', borderBottom: '1px solid #92400e', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span>This global block has a draft that isn't saved yet, for example from an agent. It is shown below. Save or discard it before editing here.</span>
+        <button type="button" onClick={() => void resolveDraft('save')} style={{ padding: '4px 10px', background: '#fef3c7', color: '#422006', border: 0, borderRadius: 4, cursor: 'pointer' }}>Save draft</button>
+        <button type="button" onClick={() => { if (confirm('Discard the draft? The saved global block stays as it is.')) void resolveDraft('discard'); }} style={{ padding: '4px 10px', background: 'transparent', color: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 4, cursor: 'pointer' }}>Discard draft</button>
+      </div>}
       <DndContext {...dnd.contextProps}>
       <div style={threeCol}>
         <aside style={leftPanel}>
@@ -353,17 +424,17 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
           <div style={leftBody}>
             {leftTab === 'add' && (
               <>
-                <div style={slotShelf}>
+                {!isGlobal && <div style={slotShelf}>
                   <button type="button" onClick={handleAddSlot} style={slotButton}>
                     <Plus size={14} />
                     <div style={{ textAlign: 'left' }}>
                       <strong style={{ fontSize: '.85rem' }}>Content slot</strong>
-                      <div style={{ fontSize: '.7rem', opacity: 0.7 }}>
-                        Markerar var sidans egna block renderas
+                      <div style={{ fontSize: '.75rem', color: '#d4d4d8' }}>
+                        Marks where the page's own blocks render
                       </div>
                     </div>
                   </button>
-                </div>
+                </div>}
                 <BlockLibrary
                   registry={registry}
                   customTypes={customTypes}
@@ -387,7 +458,19 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
         </aside>
 
         <main style={centerPanel}>
-          <div style={previewCard}>
+          {isGlobal ? <div style={previewCard}>
+            <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Global block</h3>
+            <p style={muted}>
+              Every page that uses this global block shows these blocks. Changes save as you edit and reach those pages
+              while the block is <strong>Published</strong>; the live site updates at the next deploy.
+            </p>
+            <h4 style={{ fontSize: '.9rem', margin: '1rem 0 .5rem' }}>Used on</h4>
+            {usage === null ? <p style={muted}>Loading…</p> : usage.length === 0 ? <p style={muted}>No pages use it yet. Add it from a page's block library under Global blocks.</p> : (
+              <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#e4e4e7' }}>
+                {usage.map(page => <li key={page.page_id}><a style={{ color: '#a5b4fc' }} href={`/app/sites/${siteId}/pages/${encodeURIComponent(page.page_id)}`}>{page.title || page.page_id}</a></li>)}
+              </ul>
+            )}
+          </div> : <div style={previewCard}>
             <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Template preview</h3>
             <p style={muted}>
               Templates don't render on their own — they wrap a page. Open a page that uses
@@ -398,7 +481,7 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
               <code style={{ background: '#1f1f23', padding: '0 .3rem', borderRadius: 3 }}>template_content_slot</code>
               are replaced by the page's own blocks at render time.
             </p>
-          </div>
+          </div>}
         </main>
 
         <aside style={rightPanel}>
@@ -407,8 +490,7 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
               <div>
                 <h3 style={{ marginTop: 0, fontSize: '.95rem' }}>Content slot</h3>
                 <p style={muted}>
-                  Detta block markerar var den konsumerande sidans egna block
-                  renders. It has no fields of its own.
+                  Marks where the blocks of a page using this template render. It has no fields of its own.
                 </p>
               </div>
             ) : (
@@ -420,11 +502,12 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
                 blockType={registry.get(selected.block.type) ?? null}
                 activeBp={activeBp}
                 onChange={(data) => handleUpdateData(selected.block.id, data)}
+                onStyleOverrides={(overrides) => handleStyleOverrides(selected.block.id, overrides)}
               />
             )
           ) : (
             <div style={emptyHint}>
-              <p style={{ marginTop: 0 }}>Inget block markerat.</p>
+              <p style={{ marginTop: 0 }}>No block selected.</p>
               <p style={{ fontSize: '.85rem', opacity: 0.7 }}>
                 Add a content slot first, then build blocks around it.
               </p>
@@ -435,6 +518,9 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
         <DragOverlay dropAnimation={null}>{dnd.overlay}</DragOverlay>
       </DndContext>
     </div>
+    </GlobalBlocksContext.Provider>
+    </RenderVersionContext.Provider>
+    </SiteStylesContext.Provider>
   );
 }
 

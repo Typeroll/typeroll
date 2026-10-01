@@ -170,6 +170,10 @@ const initials = (session.displayName ?? session.email ?? 'U')
                 <span class="app-sidebar__link-icon" aria-hidden><Icon name="Component" /></span>
                 <span>Global blocks</span>
               </a>
+              <a href={`/app/sites/${siteId}/styles`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/styles`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Palette" /></span>
+                <span>Styles</span>
+              </a>
               <a href={`/app/sites/${siteId}/blocks`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/blocks`) && "app-sidebar__link--active"]}>
                 <span class="app-sidebar__link-icon" aria-hidden><Icon name="Box" /></span>
                 <span>Block types</span>

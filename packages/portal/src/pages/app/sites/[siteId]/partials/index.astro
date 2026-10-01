@@ -5,6 +5,9 @@ import { loadSiteContext } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { Partial as PartialDoc, Site } from '@typeroll/shared';
+import { listBlockTemplates } from '../../../../../lib/block-templates-store';
+import { getAllBlockUsage } from '../../../../../lib/partials-usage';
+import BlockTemplateList from '../../../../../components/BlockTemplateList';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
@@ -17,17 +20,27 @@ const partials = await vstore.partials(orgId, siteId, versionId);
 const header = partials.find((p) => p.kind === 'header');
 const footer = partials.find((p) => p.kind === 'footer');
 const freeBlocks = partials.filter((p) => p.kind === 'free').sort((a, b) => a.name.localeCompare(b.name));
+const usage = await getAllBlockUsage(orgId, siteId, versionId);
+const blockTemplates = await listBlockTemplates({ orgId, siteId });
+const canEdit = ctx.permission !== 'read';
 ---
 <AppLayout title={`Global blocks — ${site.name}`} siteId={siteId}>
   <div class="app-header">
     <div>
       <h1>Global blocks</h1>
-      <p class="muted">Reusable HTML — header &amp; footer auto-render on every page, free blocks insert via <code class="inline-code">&lt;x-include name=&quot;…&quot; /&gt;</code>.</p>
+      <p class="muted" style="max-width: 760px;">
+        <strong>Global blocks</strong> are shared: edit one and every page that uses it changes.{' '}
+        <strong>Block templates</strong>{' '}are starting points: inserting one copies its blocks into a page, and that page's copy is then its own.
+      </p>
     </div>
-    <form method="POST" action={`/api/sites/${siteId}/partials/create`} class="row app-header__create-form">
-      <input name="name" required placeholder="Block name" style="padding: 0.5rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md);" />
-      <button type="submit" class="btn">+ New block</button>
-    </form>
+    {canEdit && <form method="POST" action={`/api/sites/${siteId}/partials/create`} class="row app-header__create-form">
+      <input name="name" required aria-label="Global block name" placeholder="Global block name" style="padding: 0.5rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md);" />
+      <select name="content_mode" aria-label="Content" style="padding: 0.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+        <option value="blocks">Blocks</option>
+        <option value="html">HTML (for HTML pages)</option>
+      </select>
+      <button type="submit" class="btn">+ New global block</button>
+    </form>}
   </div>
 
   <section class="gb-section">
@@ -51,15 +64,14 @@ const freeBlocks = partials.filter((p) => p.kind === 'free').sort((a, b) => a.na
 
   <section class="gb-section">
     <div class="gb-section__head">
-      <h2>Free blocks</h2>
-      <span class="gb-section__hint">{freeBlocks.length} defined · embed with <code class="inline-code">&lt;x-include&gt;</code></span>
+      <h2>Shared blocks</h2>
+      <span class="gb-section__hint">Add to a page from the block library under Global blocks. HTML pages use <code class="inline-code">&lt;x-include name="…" /&gt;</code>.</span>
     </div>
     {freeBlocks.length === 0 ? (
       <div class="card gb-empty">
         <p class="muted" style="max-width: 520px; margin: 0 auto;">
-          Create a free block for things you'll reuse across pages — announcement bars, newsletter CTAs, cookie banners.
-          Then drop <code class="inline-code">&lt;x-include name="block-id" /&gt;</code> anywhere in a page's HTML and the
-          renderer expands it at build time.
+          Create a global block for content that must be identical on several pages, such as a call to action or an
+          announcement. Or select a section in the page editor and choose <strong>Make global block</strong>.
         </p>
       </div>
     ) : (
@@ -68,14 +80,23 @@ const freeBlocks = partials.filter((p) => p.kind === 'free').sort((a, b) => a.na
           <a href={`/app/sites/${siteId}/partials/${b.id}`} class="card gb-card">
             <div class="gb-card__icon">◈</div>
             <h3 class="gb-card__title">{b.name}</h3>
-            <p class="muted text-sm gb-card__meta">{b.status} · <code class="inline-code">{b.id}</code></p>
+            <p class="text-sm gb-card__meta">{b.content_mode === 'blocks' ? 'Blocks' : 'HTML'} · {b.status === 'published' ? 'Published' : 'Draft'} · used on {(usage.get(b.id) ?? []).length} {(usage.get(b.id) ?? []).length === 1 ? 'page' : 'pages'}</p>
+            <p class="text-sm gb-card__meta"><code class="inline-code">{b.id}</code></p>
           </a>
         ))}
       </div>
     )}
   </section>
 
-  <style>
+  <section class="gb-section">
+    <div class="gb-section__head">
+      <h2>Block templates</h2>
+      <span class="gb-section__hint">Copied into a page when inserted; later edits stay on that page.</span>
+    </div>
+    <BlockTemplateList client:load siteId={siteId} initial={blockTemplates} canEdit={canEdit} />
+  </section>
+
+  <style is:global>
     .gb-section + .gb-section { margin-top: 2.5rem; }
     .gb-section__head {
       display: flex;
@@ -92,9 +113,8 @@ const freeBlocks = partials.filter((p) => p.kind === 'free').sort((a, b) => a.na
       color: var(--color-text-muted);
     }
     .gb-section__hint {
-      font-size: 0.78rem;
+      font-size: 0.8rem;
       color: var(--color-text-muted);
-      opacity: 0.75;
     }
     .gb-grid {
       display: grid;

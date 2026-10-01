@@ -37,6 +37,23 @@ Read the actual HTML of an existing page. Note:
 - Length conventions (do existing pages run 200 words or 2000?)
 - Whether internal links use absolute or relative URLs
 
+`list_styles` too: use the site's named styles (`style_id` on heading, text,
+list, button and section blocks) for eyebrows, leads, quotes and buttons. If a
+treatment you need could recur and no style fits, create one rather than
+setting one-off values; ask first when it changes the site's look.
+
+A small label above a heading is the heading block's `eyebrow`, and a line
+below it is its `subtitle` (render version 2), each with its own style field.
+Never write them as separate text blocks with classed HTML. In text blocks,
+style whole paragraphs with site text styles (`<p class="s-lead">`); a text
+block that needs other classes, images or headings with parts is better split
+with `convert_prose_block`.
+
+`list_block_templates` and `list_partials` too. Start a common section from a
+block template (`insert_block_template`, then edit the copy). Use a global
+block (`core/global_block`) for content that must stay identical on every
+page, such as a shared call to action; don't paste copies of it.
+
 ### 2. Ask for the brief
 
 If the user hasn't told you, ask:

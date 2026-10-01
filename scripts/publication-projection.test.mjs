@@ -60,3 +60,24 @@ test('a browser key in ordinary page content still fails the credential guard', 
     partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], blockTypes: [], redirects: [],
   }, identity), /Credential-like value/);
 });
+
+test('publication carries the site render version so builds keep its output', () => {
+  const base = { site: { name: 'Example' }, pages: [], partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], blockTypes: [], redirects: [] };
+  assert.equal(projectStaticPublication({ ...base, settings: { render_version: 2 } }, identity).settings.render_version, 2);
+  assert.equal(projectStaticPublication({ ...base, settings: {} }, identity).settings.render_version, undefined);
+  assert.throws(() => projectStaticPublication({ ...base, settings: { render_version: '2' } }, identity), /render_version/);
+});
+
+test('publication carries the site style library with structured values only', () => {
+  const base = { site: { name: 'Example' }, pages: [], partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], blockTypes: [], redirects: [] };
+  const style = { id: 'eyebrow', name: 'Eyebrow', targets: ['text'], base: { size: '0.8rem', weight: 700, border: { width: '1px', color: 'primary' }, secret: 'x' }, at: { desktop: { size: '1rem' } }, private_note: 'x' };
+  const projected = projectStaticPublication({ ...base, settings: { styles: [style] } }, identity).settings.styles[0];
+  assert.deepEqual(projected, { id: 'eyebrow', name: 'Eyebrow', targets: ['text'], base: { size: '0.8rem', weight: 700, border: { width: '1px', color: 'primary' } }, at: { desktop: { size: '1rem' } } });
+  assert.throws(() => projectStaticPublication({ ...base, settings: { styles: {} } }, identity), /styles/);
+});
+
+test('publication carries site-specific responsive widths', () => {
+  const base = { site: { name: 'Example' }, pages: [], partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], blockTypes: [], redirects: [] };
+  const widths = { tablet: 576, laptop: 769, desktop: 1024, wide: 1280 };
+  assert.deepEqual(projectStaticPublication({ ...base, settings: { responsive_breakpoints: widths } }, identity).settings.responsive_breakpoints, widths);
+});

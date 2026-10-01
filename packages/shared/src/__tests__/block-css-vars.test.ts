@@ -11,11 +11,15 @@
 //   3. BLOCKS_RUNTIME_CSS
 //   4. site-shell theme tokens (--color-*, --font-*, --container-*,
 //      --spacing-*, --radius-* — defined by BaseLayout/render-preview)
+//   5. site style role tokens (--h1-* … --h6-*, --body-*, --link-*), set
+//      by SiteSettings.styles. They are deliberately optional and only used
+//      on inherited longhands, where an unset value inherits as before.
 import { describe, it, expect } from 'vitest';
 import { buildCoreBlockRegistry } from '../core-blocks.js';
 import { BLOCKS_RUNTIME_CSS } from '../render-blocks.js';
 
 const SHELL_TOKEN = /^--(color|font|container|spacing|radius)-/;
+const SITE_STYLE_TOKEN = /^--(h[1-6]|body|link)-/;
 
 describe('block styles never reference undefined CSS variables without fallback', () => {
   const registry = buildCoreBlockRegistry();
@@ -29,7 +33,7 @@ describe('block styles never reference undefined CSS variables without fallback'
       // var(--x) with no comma before the closing paren = no fallback
       for (const m of styles.matchAll(/var\(\s*(--[\w-]+)\s*\)/g)) {
         const name = m[1];
-        if (SHELL_TOKEN.test(name)) continue;
+        if (SHELL_TOKEN.test(name) || SITE_STYLE_TOKEN.test(name)) continue;
         const definedInTemplate = template.includes(`${name}:`);
         const definedInStyles = new RegExp(`${name}\\s*:`).test(styles.replace(m[0], ''));
         const definedInRuntime = BLOCKS_RUNTIME_CSS.includes(`${name}:`);

@@ -1,5 +1,28 @@
 # Changelog
 
+## Core 0.2.57 / MCP 0.45.43
+
+- Add render versions. Each site keeps its rendering until someone previews and upgrades it in Settings → Rendering or through the API and MCP. New sites start on the latest version, and reference snapshots guard every released version.
+- Render version 2:
+  - A heading's eyebrow and new subtitle are grouped in `<hgroup>`, take named styles and are never faded.
+  - A block's custom class lands on the heading or button link itself.
+  - Text on primary-coloured buttons is black or white, whichever reads better.
+- Add named styles. Sites get a style library with element roles (body, H1–H6, links) and class styles chosen per block.
+  - Values are set per breakpoint, there is a standard set for new sites, and text below WCAG AA contrast is refused.
+  - The library is available in the UI, the API and MCP (`list_styles`, `create_style`, `update_style`, `delete_style`, `apply_standard_styles`).
+- Improve the text editor:
+  - Paragraph styles: Heading 2–4 and the site's text styles.
+  - Preview-first conversion of unsupported markup into blocks (`convert_prose_block`).
+  - HTML import folds a classed eyebrow or subtitle into its heading.
+  - Block writes warn when a heading label is written as a text block.
+- Manage site and page CSS with line numbers and live checks. Syntax errors and script-capable CSS are refused; selectors on platform markup produce a warning. Stored CSS can no longer close its `<style>` element.
+- Show CSS class and anchor under a block's Advanced settings.
+- Add reusable blocks:
+  - Global blocks are referenced from block pages (`core/global_block`) and render in place. A section can be made global or detached.
+  - Block templates are saved section starters that are copied into a page.
+  - Both are available in the UI, the API and MCP.
+- Fix low-contrast text in the editor and admin, and keep a block global block's mode when it is saved.
+
 ## Core 0.2.56 / MCP 0.45.42
 
 - Make preview match the published page: same head CSS order (template base CSS after site and page CSS), shared theme and webfont fallback rules, and media URLs rewritten for every media id format.

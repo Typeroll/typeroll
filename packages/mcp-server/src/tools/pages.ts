@@ -117,7 +117,7 @@ export const pageTools: ToolDef[] = [
       sort_order: z.number().finite().optional().describe('Manual Page order; lower numbers come first in ascending lists. Content types and listings choose how to sort.'),
       template: z.string().nullable().optional().describe('Allowed Page template ID; null uses the content type default.'),
       image_sizes_default: z.string().optional().describe('Per-page default `sizes` for responsive images (e.g. "(max-width: 640px) 360px, 560px"). Overrides the site setting; a per-<img> `sizes` attr still wins. Set when this page\'s images render narrower than the generic default so the browser stops over-fetching.'),
-      custom_css: z.string().optional().describe('Per-page CSS, injected into <head> as a <style> AFTER the site-level custom_css (so it overrides site styling). This is the RIGHT home for page-specific styling — page metadata, not content. Put a page\'s <style> here instead of stuffing it into a core/html block (which is opaque and un-editable in the visual editor).'),
+      custom_css: z.string().optional().describe('Per-page CSS, injected into <head> as a <style> AFTER the site-level custom_css (so it overrides site styling). This is the RIGHT home for page-specific styling — page metadata, not content. Put a page\'s <style> here instead of stuffing it into a core/html block (which is opaque and un-editable in the visual editor). Syntax errors refuse the write; target s-<style> classes or block custom_class rather than [data-block]/.block-* platform markup.'),
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {

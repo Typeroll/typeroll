@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import { resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -129,9 +129,11 @@ const googleFontUrl = googleFontFamilies.length
 // font still get *some* shift, but the average case drops from CLS
 // ~0.2 (autopilot.se field report) to <0.05.
 const fontFallbackStyle = googleFontFamilies.length ? WEBFONT_FALLBACK_CSS : null;
+// The site's style library; empty for a site without styles.
+const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
 ---
 <!doctype html>
-<html lang={page.language || settings.language || 'en'}>
+<html lang={page.language || settings.language || 'en'} data-tr-render={resolveRenderVersion(settings.render_version)}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -172,9 +174,10 @@ const fontFallbackStyle = googleFontFamilies.length ? WEBFONT_FALLBACK_CSS : nul
     {fontFallbackStyle && <style set:html={fontFallbackStyle} />}
 
     {blockCss && <style set:html={blockCss} />}
-    {settings.custom_css && <style set:html={settings.custom_css} />}
+    {siteStyles && <style data-site-styles set:html={siteStyles} />}
+    {settings.custom_css && <style set:html={styleElementText(settings.custom_css)} />}
     {/* Page-level CSS after site CSS so a page can override the site theme. */}
-    {page.custom_css && <style set:html={page.custom_css} />}
+    {page.custom_css && <style set:html={styleElementText(page.custom_css)} />}
     {settings.scripts_head && <Fragment set:html={settings.scripts_head} />}
     {integrationsHead && <Fragment set:html={integrationsHead} />}
     {capabilityHead && <Fragment set:html={capabilityHead} />}

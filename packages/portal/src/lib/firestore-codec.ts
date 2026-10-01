@@ -45,6 +45,7 @@ const BLOCK_PATHS: Record<string, string[]> = {
   pages: ['blocks'],
   partials: ['blocks'],
   page_templates: ['blocks'],
+  block_templates: ['blocks'],
   // A draft stores the tree one level down, under its `fields` envelope. That
   // envelope is what pushed an at-the-ceiling document over: it is a real
   // Firestore level, so exempting it from the depth check would only move the

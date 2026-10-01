@@ -247,7 +247,7 @@ const styles = `
 }
 .summary__value { font-size: 1.75rem; font-weight: 600; margin-top: 4px; }
 .summary[data-tone="success"] .summary__value { color: var(--color-success); }
-.summary[data-tone="info"]    .summary__value { color: #3b82f6; }
+.summary[data-tone="info"]    .summary__value { color: #1d4ed8; }
 .summary[data-tone="danger"]  .summary__value { color: var(--color-danger); }
 .summary[data-tone="muted"]   .summary__value { color: var(--color-text-muted); }
 
@@ -295,7 +295,7 @@ const styles = `
   font-weight: 600;
 }
 .status--migrated   { background: rgba(22,163,74,0.12);  color: var(--color-success); }
-.status--redirected { background: rgba(59,130,246,0.12); color: #3b82f6; }
+.status--redirected { background: rgba(59,130,246,0.12); color: #1d4ed8; }
 .status--excluded   { background: rgba(120,113,108,0.12); color: var(--color-text-muted); }
 .status--unhandled  { background: rgba(220,38,38,0.12);  color: var(--color-danger); }
 `;

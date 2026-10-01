@@ -1,5 +1,6 @@
 // Reverse index: for each global block (partial), which pages embed it via
-// <x-include name="…" />. Read at request time, never stored — the source of
+// <x-include name="…" /> (HTML pages) or a core/global_block block (block
+// pages, saved or in their draft). Read at request time, never stored — the source of
 // truth is the page bodies themselves, and a stored index would inevitably
 // drift on the first missed write. Cheap (~50ms for 300 pages).
 //
@@ -9,13 +10,23 @@
 // for the page list directly.
 
 import { vstore } from './version-store';
-import type { Page } from '@typeroll/shared';
+import { listWorkingCopies } from './working-copy';
+import { globalBlockRefs, type Page } from '@typeroll/shared';
 
 export interface BlockUsagePage {
   page_id: string;
   title: string;
   slug: string;
   status: Page['status'];
+}
+
+/** Global block ids a page references in its saved blocks or its draft. */
+async function draftRefs(orgId: string, siteId: string, versionId: string): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  for (const wc of await listWorkingCopies({ orgId, siteId, versionId })) {
+    if (wc.kind === 'page' && Array.isArray(wc.fields?.blocks)) out.set(wc.target_id, globalBlockRefs(wc.fields.blocks as Page['blocks']));
+  }
+  return out;
 }
 
 const INCLUDE_TAG_GLOBAL = /<x-include\s+name=(?:"([^"]+)"|'([^']+)')\s*(?:\/>|>\s*<\/x-include>)/gi;
@@ -38,8 +49,9 @@ export async function getBlockUsage(
     'i',
   );
   const pages = await vstore.pages(orgId, siteId, versionId);
+  const drafts = await draftRefs(orgId, siteId, versionId);
   return pages
-    .filter((p) => typeof p.html_content === 'string' && re.test(p.html_content))
+    .filter((p) => (typeof p.html_content === 'string' && re.test(p.html_content)) || globalBlockRefs(p.blocks).includes(partialId) || !!drafts.get(p.id)?.includes(partialId))
     .map((p) => ({ page_id: p.id, title: p.title, slug: p.slug, status: p.status }));
 }
 
@@ -53,12 +65,17 @@ export async function getAllBlockUsage(
 ): Promise<Map<string, BlockUsagePage[]>> {
   const pages = await vstore.pages(orgId, siteId, versionId);
   const out = new Map<string, BlockUsagePage[]>();
+  const drafts = await draftRefs(orgId, siteId, versionId);
   for (const p of pages) {
+    const seenOnPage = new Set<string>();
+    for (const id of new Set([...globalBlockRefs(p.blocks), ...(drafts.get(p.id) ?? [])])) {
+      seenOnPage.add(id);
+      out.set(id, [...(out.get(id) ?? []), { page_id: p.id, title: p.title, slug: p.slug, status: p.status }]);
+    }
     const html = typeof p.html_content === 'string' ? p.html_content : '';
     if (!html || !html.includes('<x-include')) continue;
     // Per-page reset: stateful exec() reuses lastIndex across calls.
     INCLUDE_TAG_GLOBAL.lastIndex = 0;
-    const seenOnPage = new Set<string>();
     let m: RegExpExecArray | null;
     while ((m = INCLUDE_TAG_GLOBAL.exec(html)) !== null) {
       const id = (m[1] ?? m[2] ?? '').trim();

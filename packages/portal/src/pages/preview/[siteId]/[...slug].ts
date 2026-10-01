@@ -87,6 +87,8 @@ export const GET: APIRoute = async ({ params, request }) => {
       // Only tokens explicitly minted with include_working_copy render
       // unsaved editor edits — the flag is HMAC-signed into the ticket.
       includeWorkingCopies: ticket.wc === true,
+      // Upgrade previews carry the target render version in the signed ticket.
+      ...(typeof ticket.rv === 'number' ? { renderVersion: ticket.rv } : {}),
       // Safe despite there being no viewer identity to check: this response
       // carries the opaque-origin sandbox, so its JS has no portal access to
       // abuse. Keeping scripts on means an agent's preview matches the

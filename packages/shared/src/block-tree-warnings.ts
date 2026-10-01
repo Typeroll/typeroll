@@ -17,13 +17,13 @@
 import { STYLE_OVERRIDE_KEYS } from './types.js';
 
 export interface BlockTreeWarning {
-  code: 'unknown_style_override';
+  code: 'unknown_style_override' | 'heading_part_as_text';
   /** The block's id where it has one; a tree may be written before ids exist. */
   block_id?: string;
   /** Path to the offending key, e.g. `blocks[0].style_overrides.class`. */
   path: string;
-  /** The key that will be stored and never read. */
-  key: string;
+  /** The key that will be stored and never read (unknown_style_override). */
+  key?: string;
   message: string;
 }
 
@@ -61,6 +61,17 @@ export function blockTreeWarnings(value: unknown, root = 'blocks'): BlockTreeWar
           });
         }
       }
+      const next = node[index + 1] as { type?: unknown } | undefined;
+      const label = headingLabelHtml(block as { type?: unknown; data?: { html?: unknown } });
+      if (label && next && typeof next === 'object' && (next.type === 'core/heading' || next.type === 'core/rich_heading')) {
+        const id = (block as { id?: unknown }).id;
+        warnings.push({
+          code: 'heading_part_as_text',
+          ...(typeof id === 'string' && id ? { block_id: id } : {}),
+          path: at,
+          message: `This text block only holds the label "${label}" above a heading. Put it in the heading block's eyebrow field and give it a named style instead of classed HTML.`,
+        });
+      }
       const children = (block as { children?: unknown }).children;
       if (children !== undefined) visit(children, `${at}.children`);
       const slots = (block as { slots?: unknown }).slots;
@@ -70,6 +81,13 @@ export function blockTreeWarnings(value: unknown, root = 'blocks'): BlockTreeWar
 
   visit(value, root);
   return warnings;
+}
+
+/** The text of a prose block that is just one short, classed label element. */
+function headingLabelHtml(block: { type?: unknown; data?: { html?: unknown } }): string | null {
+  if (block.type !== 'core/prose' || typeof block.data?.html !== 'string') return null;
+  const match = block.data.html.trim().match(/^<(p|span|div|small|strong)\b[^>]*\bclass="[^"]+"[^>]*>([^<]{1,80})<\/\1>$/i);
+  return match ? match[2].trim() || null : null;
 }
 
 /**

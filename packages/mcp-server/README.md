@@ -154,15 +154,21 @@ the full reference + concrete operation recipes.
   `read_site_settings`, `update_site_settings`.
 - **Pages** — list, read, batch-read, create, update (PATCH), replace
   (PUT), batch-update, delete, clone, get-preview, `set_page_mode`
-  (flip between blocks/html), `convert_page_to_blocks`.
+  (flip between blocks/html), `convert_page_to_blocks`, `convert_prose_block`.
 - **Blocks (instances)** — `get_page_blocks`, `add_block`,
   `update_block`, `move_block`, `remove_block`, `duplicate_block`,
   `set_block_responsive`. All take a `target` (page, partial, page
   template), so one tool family edits
   every block container.
 - **Global blocks (partials)** — list (summary mode by default), read,
-  create free block, update, replace, delete, `set_partial_mode`,
-  find-pages-using-block. New header/footer work should use the native
+  create free block (blocks or HTML), update, replace, delete,
+  `set_partial_mode`, find-pages-using-block, `make_block_global`,
+  `detach_global_block`. Block pages reference one with `core/global_block`.
+- **Block templates** — `list_block_templates`, `read_block_template`,
+  `save_block_template`, `update_block_template`, `delete_block_template`,
+  `insert_block_template` (inserts an independent copy).
+- **Styles** — `list_styles`, `create_style`, `update_style`,
+  `delete_style`, `apply_standard_styles`. New header/footer work should use the native
   `template/site_logo` + `core/navigation` recipe in `tr-header-footer`.
 - **Block types** — list, read, create, update, delete,
   find-pages-using-block-type, plus `.tcblocks` export/import. Custom

@@ -122,6 +122,8 @@ export default defineConfig({
             { label: 'Blocks', slug: 'tools/blocks' },
             { label: 'Partials', slug: 'tools/partials' },
             { label: 'Settings', slug: 'tools/settings' },
+            { label: 'Styles', slug: 'tools/styles' },
+            { label: 'Global blocks and templates', slug: 'tools/reusable-blocks' },
             { label: 'Content types & templates', slug: 'tools/content-types' },
             { label: 'Forms', slug: 'tools/forms' },
             { label: 'Media', slug: 'tools/media' },

@@ -13,9 +13,9 @@
 // cross-slot moves use a "Move into…" button on each tree node — drag
 // across containers is a Phase 2.5 polish.
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import type { Block, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType } from '@typeroll/shared';
-import { CORE_BLOCK_TYPES, resolveResponsive, isResponsiveValue, resolveBreakpointWidths, breakpointPreviewWidth, type ResponsiveBreakpoints } from '@typeroll/shared';
+import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import type { Block, BlockTemplate, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType, SiteStyle } from '@typeroll/shared';
+import { CORE_BLOCK_TYPES, GLOBAL_BLOCK_TYPE_ID, resolveResponsive, isResponsiveValue, resolveBreakpointWidths, breakpointPreviewWidth, type ResponsiveBreakpoints } from '@typeroll/shared';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
 } from '@dnd-kit/core';
@@ -37,10 +37,20 @@ import ContentModeSwitcher from './ContentModeSwitcher';
 import TemplatePicker from './TemplatePicker';
 import PageContentTypePicker from './PageContentTypePicker';
 import './BlockPageEditor.css';
-import FieldInput, { fieldGroup, fieldLabel, textInput, textareaInput } from './FieldInput';
+import CustomCssEditor from './CustomCssEditor';
+import FieldInput, { fieldAvailable, fieldGroup, fieldLabel, GlobalBlocksContext, ProseConvertContext, RenderVersionContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
+import type { GlobalBlockSummary } from './editor-context';
 
 interface Props {
   responsiveBreakpoints?: ResponsiveBreakpoints | null;
+  /** The site's style library, offered by `style` fields. */
+  siteStyles?: SiteStyle[];
+  /** The site's render version; fields of newer versions are hidden. */
+  renderVersion?: number;
+  /** Global blocks (free partials) a page can reference. */
+  globalBlocks?: GlobalBlockSummary[];
+  /** Block templates (copy-in section starters). */
+  blockTemplates?: BlockTemplate[];
   siteId: string;
   page: Page;
   contentType?: ContentType;
@@ -95,7 +105,9 @@ export const ICONS: Record<string, IconCmp> = {
 
 // ─── Top-level component ────────────────────────────────────────────────
 
-export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints }: Props) {
+export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [] }: Props) {
+  const [globalBlocks, setGlobalBlocks] = useState(initialGlobalBlocks);
+  const [blockTemplates, setBlockTemplates] = useState(initialTemplates);
   // The editor edits the working-copy view of the page: canonical doc with
   // any unsaved (autosaved) fields overlaid. All edits autosave to the
   // working copy; the deliberate Save in the Publish menu promotes them.
@@ -278,6 +290,8 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     parentId: string | null = null,
     slotIndex?: number,
     position?: number,
+    extraData?: Record<string, unknown>,
+    name?: string,
   ): Promise<void> {
     const bt = registry.get(typeId);
     const data: Record<string, unknown> = {};
@@ -286,10 +300,11 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
         if (f.default !== undefined) data[f.name] = f.default;
       }
     }
+    Object.assign(data, extraData);
     const result = await callMutation({
       method: 'POST',
       body: {
-        block: { type: typeId, data },
+        block: { type: typeId, data, ...(name ? { name } : {}) },
         parent_id: parentId,
         slot_index: slotIndex,
         position,
@@ -311,6 +326,89 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
 
   const fieldFlush = useRef<(() => Promise<void>) | null>(null);
   const blockWrite = useRef<Promise<void>>(Promise.resolve());
+  const proseConversion: ProseConversionApi = {
+    async preview(blockId) {
+      const res = await fetch(`${resourceUrl}/blocks/convert-prose`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ block_id: blockId }) });
+      const body = await res.json().catch(() => ({})) as ProseConversionPreview & { error?: string };
+      if (!res.ok) throw new Error(body.error ?? `Preview failed (${res.status})`);
+      return body;
+    },
+    async accept(blockId, fingerprint) {
+      await fieldFlush.current?.();
+      await blockWrite.current.catch(() => {});
+      const res = await fetch(`${resourceUrl}/blocks/convert-prose`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ block_id: blockId, accept: fingerprint }) });
+      const body = await res.json().catch(() => ({})) as { blocks?: Block[]; converted?: Block[]; error?: string };
+      if (!res.ok || !body.blocks) throw new Error(body.error ?? `Conversion failed (${res.status})`);
+      setDraft((d) => ({ ...d, blocks: body.blocks }));
+      setHasWc(true);
+      historyRef.current?.record(body.blocks, `convert:${blockId}`);
+      bumpHist();
+      reloadPreview();
+      const first = body.converted?.[0]?.id;
+      setSelectedId(first ?? null);
+    },
+  };
+
+  // Reusable blocks: global block references and block templates.
+  async function callReusable(body: Record<string, unknown>): Promise<{ blocks?: Block[]; added_ids?: string[]; reference_id?: string; global_block?: GlobalBlockSummary }> {
+    await blockWrite.current.catch(() => {});
+    await fieldFlush.current?.();
+    const res = await fetch(`${resourceUrl}/blocks/reusable`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const result = await res.json().catch(() => ({})) as { blocks?: Block[]; added_ids?: string[]; reference_id?: string; global_block?: GlobalBlockSummary; error?: string };
+    if (!res.ok || !result.blocks) throw new Error(result.error ?? `Request failed (${res.status})`);
+    setDraft((d) => ({ ...d, blocks: result.blocks }));
+    setHasWc(true);
+    historyRef.current?.record(result.blocks, `reusable:${String(body.action)}:${Date.now()}`);
+    bumpHist();
+    reloadPreview();
+    return result;
+  }
+
+  const insertTarget = (): { parent_id: string | null; position?: number } =>
+    selected?.block.children !== undefined || selected?.block.slots !== undefined ? { parent_id: selected!.block.id, position: 0 } : { parent_id: null };
+
+  async function insertTemplate(templateId: string): Promise<void> {
+    try {
+      const result = await callReusable({ action: 'insert_template', template_id: templateId, ...insertTarget() });
+      if (result.added_ids?.[0]) selectBlock(result.added_ids[0]);
+    } catch (e) { setError((e as Error).message); setStatus('error'); }
+  }
+
+  function addGlobalBlock(globalBlockId: string): void {
+    const target = insertTarget();
+    const name = globalBlocks.find(block => block.id === globalBlockId)?.name;
+    void handleAddBlock(GLOBAL_BLOCK_TYPE_ID, target.parent_id, target.parent_id ? 0 : undefined, target.position, { global_block_id: globalBlockId }, name);
+  }
+
+  const reuseActions = (block: Block): ReuseActions => ({
+    async makeGlobal(name) {
+      const result = await callReusable({ action: 'make_global', block_id: block.id, name });
+      if (result.global_block) setGlobalBlocks(list => [...list, { ...result.global_block!, content_mode: 'blocks' }]);
+      if (result.reference_id) selectBlock(result.reference_id);
+    },
+    async detach() {
+      const result = await callReusable({ action: 'detach', block_id: block.id });
+      if (result.added_ids?.[0]) selectBlock(result.added_ids[0]);
+    },
+    async saveTemplate(name, description) {
+      await fieldFlush.current?.();
+      await blockWrite.current.catch(() => {});
+      const res = await fetch(`/api/sites/${siteId}/block-templates`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, ...(description ? { description } : {}), from: { page_id: page.id, block_id: block.id } }) });
+      const body = await res.json().catch(() => ({})) as { block_template?: BlockTemplate; error?: string };
+      if (!res.ok || !body.block_template) throw new Error(body.error ?? `Could not save the template (${res.status})`);
+      setBlockTemplates(list => [...list, body.block_template!].sort((a, b) => a.name.localeCompare(b.name)));
+    },
+  });
+
+  function handleUpdateOverrides(blockId: string, overrides: Block['style_overrides']): Promise<void> {
+    const write = blockWrite.current.catch(() => {}).then(async () => {
+      const result = await callMutation({ method: 'PATCH', body: { block_id: blockId, style_overrides: overrides ?? {} }, histSig: `overrides:${blockId}` });
+      if (!result) throw new Error('Could not save the block draft. Retry the edit before saving.');
+    });
+    blockWrite.current = write;
+    return write;
+  }
+
   function handleUpdateData(blockId: string, data: Record<string, unknown>): Promise<void> {
     // Serialize edits so a slower response cannot overwrite a newer block tree.
     const sig = `patch:${blockId}:${Object.keys(data).sort().join(',')}`;
@@ -684,6 +782,9 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   }
 
   return (
+    <SiteStylesContext.Provider value={siteStyles ?? []}>
+    <RenderVersionContext.Provider value={renderVersion ?? null}>
+    <GlobalBlocksContext.Provider value={{ siteId, blocks: globalBlocks }}>
     <div className="block-editor" data-mobile-pane={mobilePane}>
       <header className="block-editor__topbar">
         <div className="block-editor__identity">
@@ -798,6 +899,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               <BlockLibrary
                 registry={registry}
                 customTypes={customTypes}
+                reusable={{ globalBlocks, templates: blockTemplates, onAddGlobal: addGlobalBlock, onInsertTemplate: (id) => void insertTemplate(id) }}
                 onAdd={(typeId) => {
                   if (selected?.block.children !== undefined || selected?.block.slots !== undefined) {
                     handleAddBlock(typeId, selected.block.id, 0);
@@ -859,6 +961,9 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               blockType={registry.get(selected.block.type) ?? null}
               activeBp={activeBp}
               onChange={(data) => handleUpdateData(selected.block.id, data)}
+              onStyleOverrides={(overrides) => handleUpdateOverrides(selected.block.id, overrides)}
+              proseConversion={proseConversion}
+              reuse={reuseActions(selected.block)}
             />
           ) : (
             <MetaPanel
@@ -875,6 +980,9 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
         <DragOverlay dropAnimation={null}>{dnd.overlay}</DragOverlay>
       </DndContext>
     </div>
+    </GlobalBlocksContext.Provider>
+    </RenderVersionContext.Provider>
+    </SiteStylesContext.Provider>
   );
 }
 
@@ -884,16 +992,26 @@ export function BlockLibrary({
   registry,
   customTypes,
   onAdd,
+  reusable,
 }: {
   registry: Map<string, BlockType>;
   customTypes: BlockType[];
   onAdd: (typeId: string) => void;
+  /** Global blocks and block templates, offered above the block types (page editor). */
+  reusable?: {
+    globalBlocks: GlobalBlockSummary[];
+    templates: BlockTemplate[];
+    onAddGlobal: (id: string) => void;
+    onInsertTemplate: (id: string) => void;
+  };
 }) {
   const [filter, setFilter] = useState('');
+  const matches = (text: string) => !filter || text.toLowerCase().includes(filter.toLowerCase());
   const grouped = useMemo(() => {
     const m: Record<string, BlockType[]> = { layout: [], content: [], media: [], custom: [] };
     for (const bt of registry.values()) {
       if (bt.id === 'template_content_slot') continue; // Hide reserved type
+      if (bt.id === GLOBAL_BLOCK_TYPE_ID && reusable) continue; // Offered by name under Global blocks
       if (filter && !bt.label.toLowerCase().includes(filter.toLowerCase())) continue;
       const cat = customTypes.find((c) => c.id === bt.id) ? 'custom' : bt.category;
       (m[cat] ||= []).push(bt);
@@ -910,6 +1028,30 @@ export function BlockLibrary({
         onChange={(e) => setFilter(e.target.value)}
         style={searchInput}
       />
+      {reusable && (() => {
+        const templates = reusable.templates.filter(template => matches(`${template.name} ${template.description ?? ''}`));
+        const globals = reusable.globalBlocks.filter(block => block.content_mode === 'blocks' && matches(block.name));
+        return <>
+          {templates.length > 0 && <div style={{ marginTop: '1rem' }}>
+            <h4 style={catHeading}>Templates</h4>
+            <p className="block-library__hint">Inserts a copy you can change on this page.</p>
+            <div className="block-library__reusable">
+              {templates.map(template => <button key={template.id} type="button" className="block-library__item" onClick={() => reusable.onInsertTemplate(template.id)} title={template.description}>
+                <strong>{template.name}</strong>{template.description && <span>{template.description}</span>}
+              </button>)}
+            </div>
+          </div>}
+          {globals.length > 0 && <div style={{ marginTop: '1rem' }}>
+            <h4 style={catHeading}>Global blocks</h4>
+            <p className="block-library__hint">Shared: the same content on every page that uses it.</p>
+            <div className="block-library__reusable">
+              {globals.map(block => <button key={block.id} type="button" className="block-library__item" onClick={() => reusable.onAddGlobal(block.id)}>
+                <strong>{block.name}</strong>{block.status === 'draft' && <span>Draft, not shown on pages</span>}
+              </button>)}
+            </div>
+          </div>}
+        </>;
+      })()}
       {(['layout', 'content', 'media', 'custom'] as const).map((cat) => {
         const items = grouped[cat] ?? [];
         if (!items.length) return null;
@@ -1274,6 +1416,7 @@ function MetaPanel({
   hasUnsaved: boolean;
   onChange: <K extends keyof Page>(key: K, value: Page[K]) => void;
 }) {
+  const siteStyles = useContext(SiteStylesContext);
   return (
     <div>
       <h3 style={{ margin: '0 0 0.25rem', fontSize: '0.95rem', color: '#fafafa' }}>Page metadata</h3>
@@ -1386,13 +1529,45 @@ function MetaPanel({
         <TemplatePicker siteId={siteId} pageId={page.id} currentTemplate={draft.template} contentType={page.content_type} defaultTemplate={contentType?.template} onChange={value => onChange('template', value)} />
         <ContentModeSwitcher siteId={siteId} pageId={page.id} currentMode="blocks" />
       </div>
+
+      <details className="block-field-settings" open={!!draft.custom_css}>
+        <summary>Page CSS</summary>
+        <CustomCssEditor
+          label="CSS for this page only"
+          value={draft.custom_css ?? ''}
+          onValid={css => onChange('custom_css', css.trim() ? css : '')}
+          classHints={cssClassHints(siteStyles, draft.blocks ?? [])}
+          help={<>Loaded after the site CSS. Target named styles (<code>.s-…</code>) or a block's CSS class from its Advanced settings. Changes save with the page draft.</>}
+        />
+      </details>
     </div>
   );
 }
 
+/** Classes worth targeting from custom CSS: named styles and classes set on blocks. */
+function cssClassHints(styles: SiteStyle[] | null, blocks: Block[]): Array<{ className: string; label: string }> {
+  const hints = new Map<string, string>();
+  for (const style of styles ?? []) if (!['body', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'link'].includes(style.role ?? '')) hints.set(`s-${style.id}`, `Style: ${style.name}`);
+  const visit = (list: Block[]) => {
+    for (const block of list) {
+      for (const token of (block.style_overrides?.custom_class ?? '').split(/\s+/)) if (token) hints.set(token, `Class on ${block.name ?? block.type}`);
+      visit(block.children ?? []);
+      for (const slot of block.slots ?? []) visit(slot);
+    }
+  };
+  visit(blocks);
+  return [...hints].slice(0, 30).map(([className, label]) => ({ className, label }));
+}
+
 export function BlockFieldForm({
-  siteId, block, blockType, activeBp = DEFAULT_BP, onChange, flushRef, onDirty, responsiveBreakpoints,
+  siteId, block, blockType, activeBp = DEFAULT_BP, onChange, onStyleOverrides, proseConversion, reuse, flushRef, onDirty, responsiveBreakpoints,
 }: {
+  /** Converts a text block into separate blocks (preview first). Omitted where the editor cannot. */
+  proseConversion?: ProseConversionApi;
+  /** Make global, detach, save as template. Omitted where the editor cannot. */
+  reuse?: ReuseActions;
+  /** Save the block's class and anchor (Block.style_overrides). Omitted where they cannot be edited. */
+  onStyleOverrides?: (overrides: Block['style_overrides']) => Promise<void>;
   siteId?: string;
   block: Block;
   blockType: BlockType | null;
@@ -1403,6 +1578,15 @@ export function BlockFieldForm({
   onDirty?: () => void;
 }) {
   const [local, setLocal] = useState<Record<string, unknown>>(block.data ?? {});
+  const renderVersion = useContext(RenderVersionContext);
+  const [conversion, setConversion] = useState<ProseConversionPreview | null>(null);
+  const [conversionError, setConversionError] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
+  const startConversion = proseConversion && block.type === 'core/prose' ? () => {
+    setConversionError(null);
+    setConverting(true);
+    void flush().then(() => proseConversion.preview(block.id)).then(setConversion, (e: Error) => setConversionError(e.message)).finally(() => setConverting(false));
+  } : null;
   const saveTimer = useRef<number | null>(null);
   const pending = useRef<Record<string, unknown>>({});
   const changeRef = useRef(onChange);
@@ -1468,10 +1652,33 @@ export function BlockFieldForm({
     <div>
       <h3 style={{ marginTop: 0, fontSize: '0.95rem' }}>{blockType.label}</h3>
       <p style={{ fontSize: '.75rem', opacity: 0.6, marginTop: 0, marginBottom: '1rem' }}>{blockType.id}</p>
+      {(conversion || conversionError || converting) && <div className="prose-convert" role="region" aria-label="Convert into blocks">
+        {converting && <p>Preparing a preview…</p>}
+        {conversionError && <p role="alert" className="block-field-error">{conversionError}</p>}
+        {conversion && <>
+          <p><strong>This text becomes {conversion.converted.length} {conversion.converted.length === 1 ? 'block' : 'blocks'}:</strong> {conversion.summary.map(item => `${item.count} × ${item.block_type.replace(/^core\//, '')}`).join(', ') || 'nothing'}. Nothing has been changed yet.</p>
+          {conversion.notes.length > 0 && <ul>{conversion.notes.map((note, i) => <li key={i}>{note}</li>)}</ul>}
+          {conversion.unconverted.length > 0 && <>
+            <p>Kept as HTML because no block matches:</p>
+            <ul>{conversion.unconverted.map((item, i) => <li key={i}>{item.reason}</li>)}</ul>
+          </>}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn--primary" disabled={converting} onClick={() => {
+              setConverting(true);
+              proseConversion!.accept(block.id, conversion.fingerprint).then(() => setConversion(null), (e: Error) => setConversionError(e.message)).finally(() => setConverting(false));
+            }}>Convert</button>
+            <button type="button" className="btn btn--secondary" onClick={() => { setConversion(null); setConversionError(null); }}>Cancel</button>
+          </div>
+        </>}
+      </div>}
+      <ProseConvertContext.Provider value={startConversion}>
       <form onSubmit={(e) => e.preventDefault()}>
         {(['content', 'appearance', 'advanced'] as const).map(group => {
-          const fields = blockType.schema.filter(field => (field.editor_group ?? 'content') === group);
-          if (!fields.length) return null;
+          const fields = blockType.schema.filter(field => (field.editor_group ?? 'content') === group && fieldAvailable(field, renderVersion));
+          const classAndAnchor = group === 'advanced' && onStyleOverrides
+            ? <ClassAndAnchor key={block.id} block={block} onSave={onStyleOverrides} onElement={!!blockType.style_element_class && (renderVersion ?? 1) >= 2} showAnchor={!blockType.schema.some(field => field.name === 'anchor_id')} />
+            : null;
+          if (!fields.length && !classAndAnchor) return null;
           const inputs = fields.map((f) => {
             const raw = local[f.name];
             const responsive = !!(f as { responsive?: boolean }).responsive;
@@ -1501,9 +1708,131 @@ export function BlockFieldForm({
             <summary>{group === 'appearance' ? 'Appearance' : 'Advanced settings'}</summary>
             <p>{group === 'appearance' ? 'Defaults follow the block and Site theme.' : 'Exact measurements and component-specific overrides.'}</p>
             {inputs}
+            {classAndAnchor}
           </details>;
         })}
       </form>
+      </ProseConvertContext.Provider>
+      {reuse && <ReusePanel key={block.id} block={block} actions={reuse} />}
+    </div>
+  );
+}
+
+export interface ReuseActions {
+  makeGlobal(name: string): Promise<void>;
+  detach(): Promise<void>;
+  saveTemplate(name: string, description: string): Promise<void>;
+}
+
+/**
+ * Reuse a block: as a global block (shared, every page shows the same
+ * content) or as a template (a starting point copied into pages).
+ */
+function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions }) {
+  const [mode, setMode] = useState<'global' | 'template' | null>(null);
+  const [name, setName] = useState(block.name ?? '');
+  const [description, setDescription] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const nameId = useId();
+  const descriptionId = useId();
+  const run = (work: () => Promise<void>, done: string) => {
+    setBusy(true);
+    setMessage(null);
+    work().then(() => { setMessage(done); setMode(null); }, (e: Error) => setMessage(e.message)).finally(() => setBusy(false));
+  };
+  const isReference = block.type === GLOBAL_BLOCK_TYPE_ID;
+  return (
+    <details className="block-field-settings block-reuse">
+      <summary>Reuse</summary>
+      {isReference ? <>
+        <p>This is a global block: its content is shared. Edit the global block to change it everywhere, or detach it to change it on this page only.</p>
+        <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => {
+          if (confirm('Replace the global block with a copy on this page? Later changes to the global block will not reach this page.')) run(() => actions.detach(), 'Detached: this page now has its own copy.');
+        }}>Detach (edit on this page only)</button>
+      </> : <>
+        <p><strong>Global block:</strong> one shared source; every page using it shows the same content. <strong>Template:</strong> a starting point; each insert is a copy.</p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn--secondary" aria-pressed={mode === 'global'} onClick={() => setMode(mode === 'global' ? null : 'global')}>Make global block…</button>
+          <button type="button" className="btn btn--secondary" aria-pressed={mode === 'template'} onClick={() => setMode(mode === 'template' ? null : 'template')}>Save as template…</button>
+        </div>
+        {mode && <form className="block-reuse__form" onSubmit={e => {
+          e.preventDefault();
+          if (!name.trim()) return;
+          if (mode === 'global') run(() => actions.makeGlobal(name.trim()), 'Now a global block. Other pages can add it from the block library.');
+          else run(() => actions.saveTemplate(name.trim(), description.trim()), 'Saved as a template. Insert it from the block library.');
+        }}>
+          <label htmlFor={nameId} style={fieldLabel}>{mode === 'global' ? 'Global block name' : 'Template name'}</label>
+          <input id={nameId} style={textInput} value={name} required onChange={e => setName(e.target.value)} />
+          {mode === 'template' && <>
+            <label htmlFor={descriptionId} style={fieldLabel}>When to use it</label>
+            <input id={descriptionId} style={textInput} value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Pricing row with three plans" />
+          </>}
+          <button type="submit" className="btn" disabled={busy || !name.trim()}>{mode === 'global' ? 'Make global block' : 'Save template'}</button>
+        </form>}
+      </>}
+      {message && <p role="status">{message}</p>}
+    </details>
+  );
+}
+
+export interface ProseConversionPreview {
+  converted: Block[];
+  summary: Array<{ block_type: string; count: number }>;
+  notes: string[];
+  unconverted: Array<{ reason: string; source?: string }>;
+  fingerprint: string;
+}
+
+export interface ProseConversionApi {
+  preview(blockId: string): Promise<ProseConversionPreview>;
+  accept(blockId: string, fingerprint: string): Promise<void>;
+}
+
+const CLASS_TOKEN = /^-?[A-Za-z_][\w-]*$/;
+const ANCHOR_ID = /^[A-Za-z][\w-]*$/;
+
+/**
+ * A block's custom class and anchor id (Block.style_overrides). The class is
+ * for site or page custom CSS; a named style is the better choice for a look
+ * that recurs.
+ */
+function ClassAndAnchor({ block, onSave, onElement, showAnchor }: { block: Block; onSave: (overrides: Block['style_overrides']) => Promise<void>; onElement: boolean; showAnchor: boolean }) {
+  const [cls, setCls] = useState(block.style_overrides?.custom_class ?? '');
+  const [anchor, setAnchor] = useState(block.style_overrides?.html_id ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const classId = useId();
+  const anchorId = useId();
+
+  async function save(nextClass: string, nextAnchor: string) {
+    const classValue = nextClass.trim().split(/\s+/).filter(Boolean).join(' ');
+    const anchorValue = nextAnchor.trim().replace(/^#/, '');
+    if (classValue && !classValue.split(' ').every(token => CLASS_TOKEN.test(token))) { setError('Classes are words of letters, digits, - and _, separated by spaces.'); return; }
+    if (anchorValue && !ANCHOR_ID.test(anchorValue)) { setError('An anchor starts with a letter and contains letters, digits, - and _.'); return; }
+    setError(null);
+    const current = block.style_overrides ?? {};
+    if ((current.custom_class ?? '') === classValue && (current.html_id ?? '') === anchorValue) return;
+    const next: NonNullable<Block['style_overrides']> = { ...current };
+    if (classValue) next.custom_class = classValue; else delete next.custom_class;
+    if (anchorValue) next.html_id = anchorValue; else delete next.html_id;
+    try { await onSave(next); } catch (e) { setError((e as Error).message); }
+  }
+
+  return (
+    <div className="block-class-anchor">
+      <div style={fieldGroup}>
+        <label htmlFor={classId} style={fieldLabel}>CSS class</label>
+        <input id={classId} style={textInput} value={cls} placeholder="e.g. pricing-note" spellCheck={false}
+          onChange={e => setCls(e.target.value)} onBlur={() => void save(cls, anchor)} />
+        <p className="block-field-help">{onElement ? 'Added to the heading or link element itself.' : 'Added to the block’s outer element.'} Use it in site or page custom CSS. For a look that recurs, create a named style instead.</p>
+      </div>
+      {(showAnchor || anchor) && <div style={fieldGroup}>
+        <label htmlFor={anchorId} style={fieldLabel}>{showAnchor ? 'Anchor id' : 'Block anchor id'}</label>
+        <input id={anchorId} style={textInput} value={anchor} placeholder="e.g. pricing" spellCheck={false}
+          onChange={e => setAnchor(e.target.value)} onBlur={() => void save(cls, anchor)} />
+        <p className="block-field-help">Link to this block with <code>#{anchor || 'id'}</code>.</p>
+      </div>}
+      {error && <p role="alert" className="block-field-error">{error}</p>}
     </div>
   );
 }

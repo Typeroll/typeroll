@@ -129,6 +129,23 @@ the built-in YouTube/Vimeo/Google Maps/Calendly set. Values are exact domain
 hostnames, never URLs or wildcards. Read the setting back before deciding that
 an iframe cannot be represented.
 
+### 2b. Styles before pages
+
+Set the site's look as named styles before building any page:
+
+1. `list_styles`. New sites already have the standard set (body, H1–H6, link,
+   lead, eyebrow, small, quote, buttons, section). If roles are missing,
+   `apply_standard_styles`.
+2. Adjust them to the brand with `update_style`: the font, the type scale and
+   spacing for `base` (phones) and `at.tablet`/`at.desktop`, and colours from
+   palette tokens. Keep text at WCAG AA contrast; failing styles are refused.
+3. Add a named style for every look the design repeats: a card title, a price
+   note, a highlighted section, a CTA button variant. Use the site's language
+   for names.
+
+Pages then choose styles with each block's `style_id` field. A per-block
+font size, colour or class is only for something clearly unique.
+
 ### 3. Header + footer partials
 
 **Start from the native preset — don't hand-roll navigation.** Read
@@ -275,16 +292,22 @@ Known limitations (honest list — don't fight them):
   client-side without the icon pipeline). Text labels only.
 
 Theming: block primitives render neutral. Brand color/typography comes
-from settings (step 2). For page-specific polish (e.g. a colored card
-treatment), a single `core/html` block with a small `<style>` scoped to
-`[data-bid]`/section selectors is acceptable — keep it minimal and note
-it in your log.
+from settings (step 2) and named styles (step 2b). For page-specific polish
+(e.g. a colored card treatment) that no style covers, give the block a
+`custom_class` and write the rule in the page's `custom_css`. Never put a
+`<style>` in a `core/html` block or target `[data-bid]`/`[data-block]`.
 
 ### 5. Inner pages
 
 Same pattern: `create_page` with `content_mode: "blocks"` and a section
 tree. Standard set: Om oss, Tjänster, Kontakt — or what the brief says.
 Default new pages to `status: "draft"`; publish after review.
+
+Sections that repeat across pages: a call to action or contact strip that
+must stay identical becomes a global block (`make_block_global`, then
+`core/global_block` on the other pages). A section shape you will reuse with
+different content (a pricing row, a feature trio) becomes a block template
+(`save_block_template`, then `insert_block_template`).
 
 ### 5b. If the legacy site is still live, scrape canonical content
 

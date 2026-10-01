@@ -16,6 +16,7 @@ export const ARTICLE_BLOCK_TYPES: BlockType[] = [
   {
     id: 'core/rich_heading', name: 'rich_heading', label: 'Formatted heading', icon: 'heading', category: 'content', container: false,
     schema: [
+      { name: 'style_id', type: 'style', label: 'Style', style_target: 'heading', editor_group: 'content' },
       { name: 'html', type: 'richtext', label: 'Heading', required: true },
       { name: 'level', type: 'select', label: 'Level', options: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'], default: 'h2' },
       { name: 'anchor_id', type: 'text', label: 'Anchor ID' },
@@ -54,6 +55,7 @@ ${['h1','h2','h3','h4','h5','h6'].map(level => `[data-block="rich_heading"][data
   {
     id: 'core/list', name: 'list', label: 'List', icon: 'list', category: 'content', container: false,
     schema: [
+      { name: 'style_id', type: 'style', label: 'Style', style_target: 'list', editor_group: 'content' },
       { name: 'marker', type: 'select', label: 'List marker', options: ['auto', 'none', 'check'], option_labels: ['Bullet or number', 'Custom / no marker', 'Checkmark'], default: 'auto' },
       { name: 'ordered', type: 'boolean', label: 'Numbered list', default: false },
       { name: 'start', type: 'number', label: 'Start number', default: 1 },

@@ -1,0 +1,130 @@
+---
+title: Styles
+description: Named, reusable styles for text, headings, buttons and sections — set once, used everywhere, with readable contrast enforced.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+A site's look is a library of **named styles**. You create them, name them in
+your own words ("Överrubrik", "Hero title", "Price note") and reuse them. Change
+a style once and every page using it follows.
+
+There are two kinds:
+
+- **Site-wide styles** for body text, Heading 1–6 and links. They apply to every
+  matching element automatically, on every page.
+- **Styles chosen per block**, such as an eyebrow, a lead paragraph, a quote, a
+  button or section spacing. Pick them in a block's **Style** field.
+
+## Start with the standard styles
+
+New sites start with a considered standard set: body text, Heading 1–6, link,
+lead, eyebrow, small text, quote, primary and secondary button, and section
+spacing. Sizes and spacing are set for phones, tablets and desktops.
+
+Setting these to match the brand is the natural first step of a new site,
+before building pages. For an existing site, **Styles → Add standard styles**
+adds the ones it is missing and never changes styles you already have.
+
+## Edit a style
+
+Open **Styles** in the site menu. Each style has:
+
+- **Name** and **When to use it**, which editors and AI agents see.
+- **Class**, a stable id (`s-<class>`) for custom CSS. It cannot change later.
+- **Can be chosen for**: text, headings, lists, buttons, or sections and
+  containers.
+- **Values per screen size.** **Mobile** applies everywhere. **Tablet**,
+  **Laptop**, **Desktop** and **Wide** override from that width up. An empty
+  field keeps the smaller screen's value, shown as a hint.
+- Font, size, weight, line height, letter spacing, case, italic, text and
+  background colour, alignment, underline, spacing before and after, padding,
+  max width, corner radius and border.
+- **Advanced CSS**, scoped to the style: bare declarations, or rules where `&`
+  stands for the style, such as `&::before { content: "—" }`.
+
+The preview shows the style at the selected screen width with the site's own
+colours. Fonts load on the site itself.
+
+Colours are best chosen from the palette (primary, secondary, accent,
+background, surface, text, text light). A palette change then flows through
+every style. `on primary`, `on secondary` and `on accent` pick black or white
+text, whichever reads better on that colour.
+
+## Readable text is enforced
+
+A style cannot be saved when its text fails WCAG AA contrast against its
+background: 4.5:1, or 3:1 for large text (24px, or 18.7px bold). This is
+checked at every screen size, including hover colours. Light grey on white is
+never accepted.
+
+When standard styles are added to a site whose palette colour is too light to
+read on the background, those styles use the body text colour instead, and the
+result says which ones.
+
+## Apply a style to a block
+
+Heading, formatted heading, text, list, button, section and container blocks
+have a **Style** field (**Heading style** on a heading) listing the styles made
+for that kind of block. Choose **Default look** to use the block's own
+appearance. A heading's eyebrow and subtitle have their own style fields; left
+on **Site default**, they use the site's Eyebrow and Lead styles (render
+version 2).
+
+The style is applied to the meaningful element: the `<h2>` in a heading block,
+the link in a button. A chosen style wins over the block's own default
+appearance for the properties it sets.
+
+<Aside>
+  A heading's level (H1–H6) describes the document structure. Its look comes
+  from a style. A small label above a heading is usually an **Eyebrow** style,
+  not a heading of its own.
+</Aside>
+
+## Styles and custom CSS
+
+Site-wide body, heading and link styles set variables that the platform's own
+CSS reads. Other styles are classes (`s-<class>`). Write custom CSS against
+those classes instead of platform internals such as `[data-block]` or
+`.block-*`, which can change between render versions.
+
+## Site CSS and page CSS
+
+For what styles cannot express, there are two managed CSS fields:
+
+- **Site CSS** (Styles → Site CSS, admins) loads on every page after the
+  styles. Through MCP or the API it is `custom_css` in `update_site_settings`.
+- **Page CSS** (page editor → page settings → Page CSS) loads after the site
+  CSS on that page only, and saves with the page draft. Through MCP or the API
+  it is `custom_css` on `update_page`.
+
+Both editors check the CSS as you type and show line numbers:
+
+- **Errors** prevent saving: unbalanced braces, an unclosed comment or string,
+  declarations outside a rule, `expression()`, `javascript:` URLs and anything
+  that would end the stylesheet early. The API refuses the same writes.
+- **Warnings** allow saving: selectors on platform markup such as
+  `[data-block]` or `.block-…`, which can change between render versions, and
+  `@import`, which delays the page. The API returns them as `warnings`
+  (settings) or `css_warnings` (pages).
+
+The editors offer the site's style classes and the CSS classes set on the
+page's blocks as selectors to insert. Prefer them: `.s-eyebrow` or
+`.pricing-note` keeps working when platform markup changes.
+
+## Through MCP and the API
+
+| Tool                    | REST                                          | Purpose                                          |
+| ----------------------- | --------------------------------------------- | ------------------------------------------------ |
+| `list_styles`           | `GET /api/v1/sites/{siteId}/styles`           | The library, missing standard roles and problems |
+| `create_style`          | `POST /api/v1/sites/{siteId}/styles`          | Create a style                                   |
+| `update_style`          | `PATCH /api/v1/sites/{siteId}/styles/{id}`    | Update; properties merge, `null` removes one     |
+| `delete_style`          | `DELETE /api/v1/sites/{siteId}/styles/{id}`   | Delete; blocks fall back to their default look   |
+| `apply_standard_styles` | `POST /api/v1/sites/{siteId}/styles/standard` | Add missing standard styles (`overwrite` resets) |
+
+Set a block's style with its `style_id` field, for example
+`update_block … data: { style_id: "eyebrow" }`. Styles are versioned with the
+site settings, so a branch can try new styles without changing the live site.
+
+AI agents follow the same rule as people: a look that could recur becomes a
+named style, and only a clearly unique one-off uses block settings.

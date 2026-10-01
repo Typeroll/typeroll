@@ -19,6 +19,18 @@ Changes to public contracts need tests and documentation. This includes Forms,
 Extension manifests and tokens, REST/MCP tools, datastore paths, and generated
 site output.
 
+## Rendered output and render versions
+
+Existing sites must not change appearance on a Core update. A change to block
+markup or shared platform CSS that alters an existing page goes behind the next
+render version: add it to `RENDER_VERSIONS` in
+`packages/shared/src/render-version.ts` with a user-facing description, and
+branch on `renderVersion` in the renderer or on `[data-tr-render]` in CSS.
+`render-version-reference.test.ts` compares every core block and the shared CSS
+with stored references per version and fails on unplanned output changes. Update
+a reference (`vitest -u`) only for a genuine fix that restores intended output,
+and say so in the changelog. Design: `docs/plans/design-system-and-render-versions.md`.
+
 ## Releases
 
 Core and MCP are independently versioned but published by one ordered train.

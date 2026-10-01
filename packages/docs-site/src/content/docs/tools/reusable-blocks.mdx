@@ -1,0 +1,85 @@
+---
+title: Global blocks and block templates
+description: Reuse content two ways — global blocks stay identical everywhere, block templates are copied into a page and then edited there.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+There are two ways to reuse blocks, and they behave differently on purpose:
+
+|                     | Global block                                                                  | Block template                                                  |
+| ------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| What a page holds   | A reference                                                                   | Its own copy                                                    |
+| Editing the source  | Changes every page that uses it                                               | Changes only future inserts                                     |
+| Editing on the page | Not possible; detach to get a copy                                            | Edit freely                                                     |
+| Use for             | A call to action, an announcement, a contact strip that must match everywhere | A pricing row, a feature trio, a FAQ section you adapt per page |
+
+Both use [named styles](../styles/) rather than raw HTML, so a reused section
+still follows the site's look.
+
+## Global blocks
+
+A global block is one shared source. Header and footer are global blocks that
+appear on every page automatically; other global blocks appear where a page
+places them.
+
+- **Create:** Global blocks → **New global block** (Blocks), or in the page
+  editor select a section and choose **Reuse → Make global block**. The section
+  moves into the global block and the page keeps a reference in its place.
+- **Add to a page:** in the block library, under **Global blocks**. The page
+  stores a `core/global_block` block with `global_block_id`.
+- **Edit:** open it from Global blocks. The page shows where it is used,
+  including page drafts. Changes reach every page while the global block is
+  **Published**; the live site updates at the next deploy.
+- **Detach:** select the reference and choose **Reuse → Detach**. The page gets
+  an editable copy and no longer follows the global block.
+
+The global block renders in place, with no extra wrapper element, so spacing
+and full-width sections behave as if the blocks were on the page. A draft or
+missing global block renders nothing on the site and a warning in the editor.
+
+<Aside>
+  HTML-mode pages embed HTML global blocks with `<x-include name="id" />
+  `. Block-mode pages use `core/global_block`. A global block can reference
+  another one, up to four levels, but never itself.
+</Aside>
+
+## Block templates
+
+A block template is a saved section starter. Inserting one copies its blocks,
+with new ids, into the page; the copy is then the page's own.
+
+- **Save:** in the page editor select a block and choose **Reuse → Save as
+  template**, with a name and when to use it.
+- **Insert:** in the block library, under **Templates**. With a section or
+  column selected, the copy goes inside it.
+- **Manage:** Global blocks → Block templates: rename or delete. Deleting a
+  template never changes pages.
+
+Templates belong to the site, not to a branch, so they are available in every
+version.
+
+## Through MCP and the API
+
+| Tool                    | REST                                                                | Purpose                                                |
+| ----------------------- | ------------------------------------------------------------------- | ------------------------------------------------------ |
+| `make_block_global`     | `POST /api/v1/sites/{siteId}/pages/{pageId}/blocks/make-global`     | Move a block into a new global block, keep a reference |
+| `detach_global_block`   | `POST /api/v1/sites/{siteId}/pages/{pageId}/blocks/detach`          | Replace a reference with an editable copy              |
+| `create_free_block`     | `POST /api/v1/sites/{siteId}/partials`                              | New global block from `blocks` or `html_content`       |
+| `list_block_templates`  | `GET /api/v1/sites/{siteId}/block-templates`                        | Templates with name, description and block count       |
+| `read_block_template`   | `GET /api/v1/sites/{siteId}/block-templates/{id}`                   | One template with its blocks                           |
+| `save_block_template`   | `POST /api/v1/sites/{siteId}/block-templates`                       | Save from `blocks` or `from: { page_id, block_id }`    |
+| `update_block_template` | `PATCH /api/v1/sites/{siteId}/block-templates/{id}`                 | Rename, describe or replace blocks                     |
+| `delete_block_template` | `DELETE /api/v1/sites/{siteId}/block-templates/{id}`                | Delete; pages keep their copies                        |
+| `insert_block_template` | `POST /api/v1/sites/{siteId}/pages/{pageId}/blocks/insert-template` | Insert a copy at `parent_id`/`slot_index`/`position`   |
+
+Add a reference with `add_block`:
+
+```
+add_block page_id=… block={ type: "core/global_block", data: { global_block_id: "call-to-action" } }
+```
+
+Edit a global block's blocks with the block tools and
+`target: { kind: "partial", id: "call-to-action" }`. `find_pages_using_block`
+lists the pages that use it. Page block writes go to the page draft, like other
+block edits.

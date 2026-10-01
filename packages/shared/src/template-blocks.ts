@@ -36,7 +36,7 @@ const pageTitle: BlockType = {
     { name: 'font_weight', type: 'select', label: 'Font weight', options: ['400', '500', '600', '700', '800'] },
     { name: 'fallback_text', type: 'text', label: 'Fallback (when no page)', default: 'Page title' },
   ],
-  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);--heading-color:{{color}}">
+  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);{{#color}}--heading-color:{{color}}{{/color}}">
   <{{=level}} class="block-heading-text">{{page.title}}</{{=level}}>
 </div>`,
   origin: 'core',

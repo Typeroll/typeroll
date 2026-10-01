@@ -33,6 +33,7 @@ instructions. Read the relevant recipe when the task calls for it.
 | `tr-new-site.md`       | "create a new site", "bootstrap a site for…"        | Settings → header/footer partials → homepage → inner pages → deploy. Full setup recipe. |
 | `tr-brand.md`          | "create a brand", "choose colors", "design the look"| Palette recipes by mood, typography pairings, CSS variable setup, preview. |
 | `tr-redesign-branch.md`| "redesign", "modernize", anything site-wide-design   | Branch-isolated work with preview links, merge when approved. |
+| `tr-upgrade-rendering.md` | "upgrade rendering", render version behind latest | Screenshot-compares every page at the current and target render version, reports differences, upgrades with approval. |
 | `tr-content-write.md`  | "write a page about…", "draft copy for…"            | Discovery first (settings + sample pages), then drafts in the site's voice, previews, iterates. |
 | `tr-images.md`         | "make an image / hero / illustration", media uploads | Generates locally → signed upload URL → metadata patch → embed. |
 

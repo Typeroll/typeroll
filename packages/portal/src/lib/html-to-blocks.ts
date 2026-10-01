@@ -151,8 +151,50 @@ function normalizeLazyMedia(nodes: Node[]): Node[] {
   });
 }
 
+const EYEBROW_CLASS = /(?:^|[\s_-])(?:eyebrow|kicker|overline|pre-?title|pre-?heading|supertitle)(?:$|[\s_-])/i;
+const SUBTITLE_CLASS = /(?:^|[\s_-])(?:subtitle|sub-title|subheading|sub-heading)(?:$|[\s_-])/i;
+/** Eyebrow and subtitle text folded into the plain heading they belong to. */
+const headingParts = new WeakMap<Node, { eyebrow?: string; subtitle?: string }>();
+
+/** A short, text-only paragraph whose class marks it as a heading part. */
+function headingPartText(node: Node | undefined, pattern: RegExp): string | null {
+  if (!node || node.type !== 'tag' || !['p', 'span', 'div'].includes(node.name?.toLowerCase() ?? '')) return null;
+  if (!pattern.test(node.attribs?.class ?? '') || node.attribs?.id) return null;
+  if ((node.children ?? []).some(child => child.type === 'tag' && !['span', 'strong', 'em', 'b', 'i'].includes(child.name ?? ''))) return null;
+  const text = collectText(node).replace(/\s+/g, ' ').trim();
+  return text && text.length <= 160 ? text : null;
+}
+
+const isPlainHeading = (node: Node | undefined) => !!node && node.type === 'tag' && /^h[1-6]$/i.test(node.name ?? '')
+  && !(node.children ?? []).some(child => child.type === 'tag') && !!collectText(node).trim();
+
+/**
+ * A classed label right before a heading ("eyebrow") or a classed line right
+ * after it ("subtitle") becomes part of that heading block instead of a
+ * separate text block with raw HTML.
+ */
+function foldHeadingParts(nodes: Node[], record: ConversionRecord): Node[] {
+  const tags = nodes.filter(node => !(node.type === 'text' && !(node.data ?? '').trim()));
+  const removed = new Set<Node>();
+  tags.forEach((node, index) => {
+    if (!isPlainHeading(node)) return;
+    const parts: { eyebrow?: string; subtitle?: string } = {};
+    const before = tags[index - 1];
+    const eyebrow = removed.has(before) ? null : headingPartText(before, EYEBROW_CLASS);
+    if (eyebrow) { parts.eyebrow = eyebrow; removed.add(before); }
+    const after = tags[index + 1];
+    const subtitle = headingPartText(after, SUBTITLE_CLASS);
+    if (subtitle && !isPlainHeading(after)) { parts.subtitle = subtitle; removed.add(after); }
+    if (parts.eyebrow || parts.subtitle) {
+      headingParts.set(node, parts);
+      record.notes.push(`Folded ${[parts.eyebrow && 'eyebrow', parts.subtitle && 'subtitle'].filter(Boolean).join(' and ')} into the heading "${collectText(node).trim().slice(0, 60)}". Give it a named style instead of the source class.`);
+    }
+  });
+  return removed.size ? nodes.filter(node => !removed.has(node)) : nodes;
+}
+
 function convertNodes(nodes: Node[], record: ConversionRecord): Block[] {
-  return nodes.flatMap(node => {
+  return foldHeadingParts(nodes, record).flatMap(node => {
     const name = node.name?.toLowerCase();
     // Keep meaningful wrapper attributes and semantics while making every
     // child independently editable. Unstyled divs can be flattened safely.
@@ -295,7 +337,8 @@ function heading(node: Node, level: string): Block {
     anchor_id: node.attribs?.id ?? '',
     level,
     align: classToAlign(node) ?? 'left',
-    eyebrow: '',
+    eyebrow: headingParts.get(node)?.eyebrow ?? '',
+    ...(headingParts.get(node)?.subtitle ? { subtitle: headingParts.get(node)!.subtitle } : {}),
   });
 }
 

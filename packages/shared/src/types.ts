@@ -356,6 +356,17 @@ export interface SiteSettings {
   scripts_body_end?: string;
   custom_css?: string;
   /**
+   * Platform render version (see render-version.ts). Missing means 1, the
+   * output when versions were introduced. New sites start at the latest
+   * version; upgrading is an explicit, previewable change.
+   */
+  render_version?: number;
+  /**
+   * Named style library (site-styles.ts). Element roles (body, h1–h6, link)
+   * style every matching element; other styles are chosen per block.
+   */
+  styles?: import('./site-styles.js').SiteStyle[];
+  /**
    * Optional cookie-consent banner. When `enabled`, the renderer injects a
    * blocking modal that asks the visitor to accept/reject before any scripts
    * placed in `scripts_optional` run. `scripts_necessary` run unconditionally
@@ -893,12 +904,27 @@ export type FieldType =
   | 'page_ref'
   | 'page_ref_list'
   // Added by Forms 2.0 (form/* field blocks):
+  | 'style'           // a named style from SiteSettings.styles (see style_target)
+  | 'global_block'    // id of a free partial (global block), see reusable-blocks.ts
   | 'choices';         // array of {value,label}; renderer derives
                        // {name}_options_html per FieldDefinition.choices_markup
 
 export interface FieldDefinition {
   /** Optional inspector grouping; values and API write semantics are unchanged. */
   editor_group?: 'content' | 'appearance' | 'advanced';
+  /** For `type: 'style'`: which kind of style the field lists. */
+  style_target?: import('./site-styles.js').StyleTarget;
+  /**
+   * For `type: 'style'` fields named `<part>_style_id`: the standard role used
+   * when no style is chosen (render version 2). The renderer derives
+   * `<part>_class` (`s-<id>` or `tr-role-<role>`) for the template.
+   */
+  style_default_role?: import('./site-styles.js').StyleClassRole;
+  /**
+   * First render version that renders this field. Editors hide it for sites
+   * on an older version, where it would have no visible effect.
+   */
+  min_render_version?: number;
   name: string;
   type: FieldType;
   label: string;
@@ -1000,6 +1026,17 @@ export interface BlockPackageRef {
 }
 
 export interface BlockType {
+  /**
+   * Class of the element that receives a selected style (`data.style_id`), when
+   * it is not the block's root, e.g. the `<h2>` inside a heading block.
+   */
+  style_element_class?: string;
+  /**
+   * Output for newer render versions. The newest entry whose `from` is at or
+   * below the site's render version replaces `template` and/or `styles`;
+   * older sites keep the base output unchanged.
+   */
+  render_versions?: Array<{ from: number; template?: string; styles?: string }>;
   id: string;
   name: string;
   label: string;
@@ -1742,6 +1779,11 @@ export const paths = {
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/block_types`,
   blockType: (orgId: string, siteId: string, blockTypeId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/block_types/${blockTypeId}`,
+  /** Block templates (copy-in section starters). Site-wide, not versioned: an authoring library, not published content. */
+  blockTemplates: (orgId: string, siteId: string) =>
+    `organizations/${orgId}/sites/${siteId}/block_templates`,
+  blockTemplate: (orgId: string, siteId: string, templateId: string) =>
+    `organizations/${orgId}/sites/${siteId}/block_templates/${templateId}`,
   pageTemplates: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/page_templates`,
   pageTemplate: (orgId: string, siteId: string, templateId: string, versionId: string = MAIN_VERSION_ID) =>

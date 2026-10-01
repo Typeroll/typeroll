@@ -54,6 +54,16 @@ Parse `<a href>` links to discover internal pages. Build a list:
 Exclude private/session/admin URLs deliberately. Inventory public pagination and
 query routes; decide preservation or retirement from their actual purpose.
 
+**Map source styling to named styles.** A class the source uses for a
+recurring treatment (`.eyebrow`, `.lead`, `.btn-outline`, `.section-dark`)
+becomes a site style with `create_style` and is applied with `style_id`. A
+small label directly above a heading is an eyebrow style, not a heading of its
+own: put it in the heading block's `eyebrow` field (and a line under the
+heading in `subtitle`). Never carry classed raw HTML into text blocks to keep a
+look: the editor cannot edit it, and the next render version may not keep it.
+A text block that already holds such markup can be split with
+`convert_prose_block` (preview, then `accept`).
+
 ### 2. Measure the source and protect existing target work
 
 ```

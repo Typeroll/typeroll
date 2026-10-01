@@ -222,3 +222,21 @@ describe('raw WordPress content order', () => {
     expect(result.blocks[1].data.link).toBe('/photo.jpg');
   });
 });
+
+describe('htmlToBlocks — heading parts', () => {
+  it('folds a classed eyebrow and subtitle into the heading block', () => {
+    const r = htmlToBlocks('<p class="eyebrow">For leadership teams</p><h1>AI partner</h1><p class="hero-subtitle">One day to a plan</p><p>Body text.</p>');
+    expect(r.blocks[0]).toMatchObject({ type: 'core/heading', data: { level: 'h1', text: 'AI partner', eyebrow: 'For leadership teams', subtitle: 'One day to a plan' } });
+    expect(r.blocks).toHaveLength(2);
+    expect(r.blocks[1].type).toBe('core/prose');
+    expect(r.notes.join(' ')).toContain('Folded eyebrow and subtitle');
+  });
+
+  it('folds inside containers and leaves unclassed or long paragraphs alone', () => {
+    const r = htmlToBlocks('<section id="hero"><span class="kicker">New</span><h2>Title</h2></section><p>Intro</p><h2>Next</h2>');
+    expect(r.blocks[0].children?.[0]).toMatchObject({ type: 'core/heading', data: { eyebrow: 'New', text: 'Title' } });
+    expect(r.blocks.find(block => block.data.text === 'Next')?.data.eyebrow).toBe('');
+    const long = htmlToBlocks(`<p class="eyebrow">${'x'.repeat(200)}</p><h2>Title</h2>`);
+    expect(long.blocks[0].type).toBe('core/prose');
+  });
+});

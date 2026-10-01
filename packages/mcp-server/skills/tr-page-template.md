@@ -34,7 +34,7 @@ default template, and an individual Page can override it.
 Prefer native image, table, list, heading and content blocks. A rare specialized
 widget can use a reviewed HTML/embed block. Reusable custom behavior belongs in
 one custom block type rather than repeated HTML bodies. Existing HTML-mode pages
-may share fragments through partials and `<x-include>`, but use block templates
+may share fragments through partials and `<x-include>`, but use block-based page templates
 for new content families.
 
 Header/footer partials are global and remain separate from content types. Keep

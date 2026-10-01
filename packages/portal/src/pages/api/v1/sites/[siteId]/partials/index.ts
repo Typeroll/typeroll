@@ -7,7 +7,8 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
 import { sanitizeBody } from '../../../../../../lib/sanitize';
-import type { Partial as PartialDoc } from '@typeroll/shared';
+import { ensureBlockIds, type Partial as PartialDoc } from '@typeroll/shared';
+import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 
 function project(p: PartialDoc, summary: boolean): Record<string, unknown> {
   const base = {
@@ -21,6 +22,7 @@ function project(p: PartialDoc, summary: boolean): Record<string, unknown> {
   // Summary mode drops html_content + content size hint so the agent's
   // context isn't blown by listing 30 partials each carrying 2 KB of HTML.
   // Use read_partial / GET /partials/{id} to fetch the full content.
+  if (p.content_mode === 'blocks') return summary ? { ...base, block_count: (p.blocks ?? []).length } : { ...base, blocks: p.blocks ?? [] };
   return summary
     ? { ...base, html_content_bytes: (p.html_content ?? '').length }
     : { ...base, html_content: p.html_content };
@@ -52,15 +54,23 @@ export const POST: APIRoute = async ({ request, params }) => {
   const existing = await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, id);
   if (existing) return apiError(`Block ${id} already exists; use PUT/PATCH`, 409);
 
+  // Block content makes a global block that block-mode pages reference with
+  // core/global_block; HTML content is for <x-include> in HTML pages.
+  if (body.blocks !== undefined) {
+    const error = blockTreeInputError(body.blocks);
+    if (error || !Array.isArray(body.blocks) || !body.blocks.length) return apiError(error ?? 'blocks must be a non-empty block tree', 400);
+    if (body.html_content !== undefined) return apiError('Send either blocks or html_content, not both', 400);
+  }
+  if (body.status !== undefined && !['draft', 'published'].includes(String(body.status))) return apiError('status must be draft or published', 400);
   const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
-  const html = sanitizeBody(String(body.html_content ?? ''), settings?.iframe_allowed_hosts);
   const doc: Partial<PartialDoc> = {
     name: body.name ? String(body.name) : id,
     kind: 'free',
-    content_mode: 'html',
     status: (body.status as PartialDoc['status']) ?? 'published',
-    html_content: html,
     date_updated: new Date().toISOString(),
+    ...(body.blocks !== undefined
+      ? { content_mode: 'blocks' as const, blocks: ensureBlockIds(body.blocks) }
+      : { content_mode: 'html' as const, html_content: sanitizeBody(String(body.html_content ?? ''), settings?.iframe_allowed_hosts) }),
   };
   await vstore.writePartial(ctx.orgId, ctx.siteId, ctx.versionId, id, doc);
   const fresh = await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, id);

@@ -30,6 +30,14 @@ export const previewTools: ToolDef[] = [
         .describe(
           'Render unsaved drafts (working copies) too — yours AND the editor\'s. Off by default (saved content only). Signed into the token, so a draft link needs its own mint. Use this for your own iteration loop; use a plain link when the user wants to see exactly what a deploy would ship.',
         ),
+      render_version: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe(
+          'Render with this platform render version instead of the site\'s own, to preview an upgrade before applying it (read_site_settings returns render.version, render.latest and what each upgrade changes). Signed into the token. Compare against a plain link to see exactly what would change; apply with update_site_settings render_version.',
+        ),
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
