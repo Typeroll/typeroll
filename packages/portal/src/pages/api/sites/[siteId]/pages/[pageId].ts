@@ -72,7 +72,7 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
   // `image_sizes_default` even when this PUT only touches the body.
   const existing = await vstore.page(owner_org_id, site.id, versionId, pageId);
   if (!existing) return json({ error: 'Page not found' }, 404);
-  const cssError = customCssWriteError(update.custom_css);
+  const cssError = (update.custom_css ?? '') === (existing.custom_css ?? '') ? null : customCssWriteError(update.custom_css);
   if (cssError) return json({ error: cssError }, 400);
 
   const type = await pageContentType({ orgId: owner_org_id, siteId: site.id, versionId }, existing);

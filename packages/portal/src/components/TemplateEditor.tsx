@@ -37,6 +37,8 @@ interface Props {
   kind?: 'page_template' | 'global_block';
   /** Global blocks a core/global_block field can choose. */
   globalBlocks?: GlobalBlockSummary[];
+  /** A global block has an unsaved draft (e.g. written by an agent); it must be saved or discarded before editing here. */
+  pendingDraft?: boolean;
 }
 
 type LeftTab = 'add' | 'structure';
@@ -163,7 +165,8 @@ function moveBlockTo(
   return addBlock(without, moved, parentId, slotIdx, position).tree;
 }
 
-export default function TemplateEditor({ siteId, template, responsiveBreakpoints, siteStyles, renderVersion, kind = 'page_template', globalBlocks = [] }: Props) {
+export default function TemplateEditor({ siteId, template, responsiveBreakpoints, siteStyles, renderVersion, kind = 'page_template', globalBlocks = [], pendingDraft = false }: Props) {
+  const [draftPending, setDraftPending] = useState(pendingDraft);
   const isGlobal = kind === 'global_block';
   const [usage, setUsage] = useState<Array<{ page_id: string; title: string }> | null>(null);
   useEffect(() => {
@@ -206,7 +209,20 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
     return findIn(draft.blocks ?? [], selectedId);
   }, [draft.blocks, selectedId]);
 
+  async function resolveDraft(action: 'save' | 'discard'): Promise<void> {
+    const res = await fetch(`/api/sites/${siteId}/working-copy/partial/${encodeURIComponent(template.id)}`, { method: action === 'save' ? 'POST' : 'DELETE' });
+    if (!res.ok) { setError(`Could not ${action} the draft (${res.status})`); setStatus('error'); return; }
+    setDraftPending(false);
+    window.location.reload();
+  }
+
   async function persist(nextBlocks: Block[]): Promise<void> {
+    if (isGlobal && draftPending) {
+      setError('Save or discard the pending draft before editing.');
+      setStatus('error');
+      setDraft(template);
+      return;
+    }
     setStatus('saving');
     setError(null);
     try {
@@ -389,6 +405,11 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
         </div>
       </header>
 
+      {isGlobal && draftPending && <div role="alert" style={{ padding: '10px 16px', background: '#422006', color: '#fef3c7', borderBottom: '1px solid #92400e', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span>This global block has a draft that isn't saved yet, for example from an agent. It is shown below. Save or discard it before editing here.</span>
+        <button type="button" onClick={() => void resolveDraft('save')} style={{ padding: '4px 10px', background: '#fef3c7', color: '#422006', border: 0, borderRadius: 4, cursor: 'pointer' }}>Save draft</button>
+        <button type="button" onClick={() => { if (confirm('Discard the draft? The saved global block stays as it is.')) void resolveDraft('discard'); }} style={{ padding: '4px 10px', background: 'transparent', color: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 4, cursor: 'pointer' }}>Discard draft</button>
+      </div>}
       <DndContext {...dnd.contextProps}>
       <div style={threeCol}>
         <aside style={leftPanel}>

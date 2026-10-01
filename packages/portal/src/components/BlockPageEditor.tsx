@@ -334,6 +334,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
       return body;
     },
     async accept(blockId, fingerprint) {
+      await fieldFlush.current?.();
       await blockWrite.current.catch(() => {});
       const res = await fetch(`${resourceUrl}/blocks/convert-prose`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ block_id: blockId, accept: fingerprint }) });
       const body = await res.json().catch(() => ({})) as { blocks?: Block[]; converted?: Block[]; error?: string };
@@ -1534,7 +1535,7 @@ function MetaPanel({
         <CustomCssEditor
           label="CSS for this page only"
           value={draft.custom_css ?? ''}
-          onValid={css => onChange('custom_css', css.trim() ? css : undefined)}
+          onValid={css => onChange('custom_css', css.trim() ? css : '')}
           classHints={cssClassHints(siteStyles, draft.blocks ?? [])}
           help={<>Loaded after the site CSS. Target named styles (<code>.s-…</code>) or a block's CSS class from its Advanced settings. Changes save with the page draft.</>}
         />

@@ -29,7 +29,10 @@ const defaultDoc: PartialDoc = partial ?? {
   status: 'draft',
   html_content: '',
 };
-const editorSettings = defaultDoc.content_mode === 'blocks' ? await vstore.settings(orgId, siteId, versionId) : null;
+// Free global blocks in block mode open in the block-tree editor; header and
+// footer keep their own editor.
+const useBlockEditor = defaultDoc.kind === 'free' && defaultDoc.content_mode === 'blocks';
+const editorSettings = useBlockEditor ? await vstore.settings(orgId, siteId, versionId) : null;
 const kindLabel = defaultDoc.kind === 'free' ? 'Free block' : defaultDoc.kind === 'header' ? 'Header' : 'Footer';
 const workingCopy = await readWorkingCopy(
   { orgId, siteId, versionId },
@@ -41,7 +44,7 @@ const lastDeployedAt = versionDoc?.last_deployed_content_at ?? versionDoc?.last_
 const globalBlockSummaries = (await vstore.partials(orgId, siteId, versionId)).filter(partial => partial.kind === 'free')
   .map(partial => ({ id: partial.id, name: partial.name, status: partial.status, content_mode: partial.content_mode }));
 ---
-<AppLayout title={`${defaultDoc.name} — ${site.name}`} siteId={siteId} bare={defaultDoc.content_mode === 'blocks'}>
+<AppLayout title={`${defaultDoc.name} — ${site.name}`} siteId={siteId} bare={useBlockEditor}>
   {defaultDoc.content_mode !== 'blocks' && <div class="app-header">
     <div>
       <a href={`/app/sites/${siteId}/partials`} class="muted text-sm">← Global blocks</a>
@@ -49,7 +52,7 @@ const globalBlockSummaries = (await vstore.partials(orgId, siteId, versionId)).f
       <p class="muted">{kindLabel}</p>
     </div>
   </div>}
-  {defaultDoc.content_mode === 'blocks'
-    ? <TemplateEditor globalBlocks={globalBlockSummaries} client:load kind="global_block" siteId={siteId} responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} template={{ id: defaultDoc.id, name: defaultDoc.id, label: defaultDoc.name, status: defaultDoc.status, blocks: defaultDoc.blocks ?? [] } as unknown as PageTemplate} />
+  {useBlockEditor
+    ? <TemplateEditor globalBlocks={globalBlockSummaries} client:load kind="global_block" siteId={siteId} responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} template={{ id: defaultDoc.id, name: defaultDoc.id, label: defaultDoc.name, status: defaultDoc.status, blocks: (workingCopy?.fields?.blocks as PartialDoc['blocks']) ?? defaultDoc.blocks ?? [] } as unknown as PageTemplate} pendingDraft={!!workingCopy} />
     : <PartialEditor client:load siteId={siteId} partial={defaultDoc} workingCopy={workingCopy} lastDeployedAt={lastDeployedAt} />}
 </AppLayout>

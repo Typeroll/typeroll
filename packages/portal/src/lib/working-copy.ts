@@ -99,8 +99,16 @@ export async function filterWcFields(
     if (error) throw new WorkingCopyError(error, 400);
     fields = { ...fields, blocks: ensureBlockIds(structuredClone(blocks) as Block[]) };
   }
-  const cssError = customCssWriteError(fields.custom_css);
-  if (cssError) throw new WorkingCopyError(cssError, 400);
+  // Check custom CSS only when it changes: an autosave that echoes a page's
+  // existing CSS must not fail over problems the author did not touch.
+  if (fields.custom_css !== undefined && target.kind === 'page') {
+    const stored = (await readWorkingCopy(ctx, target))?.fields?.custom_css
+      ?? (await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id))?.custom_css;
+    if ((fields.custom_css ?? '') !== (stored ?? '')) {
+      const cssError = customCssWriteError(fields.custom_css);
+      if (cssError) throw new WorkingCopyError(cssError, 400);
+    }
+  }
   let allowed: Set<string>;
   if (target.kind === 'page') {
     allowed = new Set<string>([...PAGE_WC_FIELDS, 'fields']);

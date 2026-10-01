@@ -441,7 +441,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   }
   if (effectiveBlock.type === 'core/heading') {
     const d = compiled.flatData;
-    d.heading_group = Boolean(String(d.eyebrow ?? '').trim() || String(d.subtitle ?? '').trim());
+    // Whitespace-only parts render nothing, like empty ones.
+    for (const part of ['eyebrow', 'subtitle']) if (typeof d[part] === 'string' && !(d[part] as string).trim()) d[part] = '';
+    d.heading_group = Boolean(d.eyebrow || d.subtitle);
   }
   if (['core/heading', 'core/rich_heading'].includes(effectiveBlock.type)) compiled.flatData.heading_anchor_attr = compiled.flatData.anchor_id ? ` id="${escapeHtml(compiled.flatData.anchor_id)}"` : '';
   if (effectiveBlock.type === 'core/image') {
@@ -1884,7 +1886,7 @@ export function collectBlockAssets(
     const numericFields = bt.schema.filter(field => field.css_unit && /^[a-z][a-z0-9_]*$/.test(field.name));
     if (numericFields.length) css.push(`[data-presentation="${encodeURIComponent(bt.id)}"]{${numericFields.map(field => `--${field.name}:${/^(?:h[1-6]_size_px|heading_(?:before|after)_px)$/.test(field.name) ? 'inherit' : 'initial'}`).join(';')}}`);
     const btStyles = blockOutputForVersion(bt, opts?.renderVersion).styles;
-    if (btStyles) css.push(`/* ${id} */\n${btStyles}`);
+    if (btStyles) css.push(`/* ${id} */\n${styleElementText(btStyles)}`);
     if (bt.script) js.push(`/* ${id} */\n${bt.script}`);
   }
 
