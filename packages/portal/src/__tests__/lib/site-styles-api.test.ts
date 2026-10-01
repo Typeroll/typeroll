@@ -94,3 +94,17 @@ describe('style library API', () => {
     expect(reset.replaced).toContain('eyebrow');
   });
 });
+
+describe('palette changes', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('warns when a new palette makes an existing style unreadable', async () => {
+    await setup();
+    await call('index', 'POST', '', {}, eyebrow);
+    const mod = (await import('../../pages/api/v1/sites/[siteId]/settings')) as Partial<Record<string, APIRoute>>;
+    const req = new Request(`http://localhost/api/v1/sites/${SITE}/settings`, { method: 'PATCH', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ colors: { primary: '#d4d4d8' } }) });
+    const res = await mod.PATCH!({ request: req, params: { siteId: SITE }, cookies: { get: () => undefined }, locals: {} } as never) as Response;
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { warnings: string[] }).warnings.join()).toMatch(/Överrubrik.*contrast/);
+  });
+});

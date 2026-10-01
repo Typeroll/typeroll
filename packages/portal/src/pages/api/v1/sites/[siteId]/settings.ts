@@ -12,6 +12,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
 import { vstore } from '../../../../../lib/version-store';
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
+import { libraryProblems, readStyles } from '../../../../../lib/site-styles-store';
 import { responsiveBreakpointsError, seoReviewError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, LATEST_RENDER_VERSION, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
@@ -107,8 +108,13 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   }
   await vstore.writeSettings(ctx.orgId, ctx.siteId, ctx.versionId, update as Partial<SiteSettings>);
   const resp: Record<string, unknown> = { ok: true, updated_fields: Object.keys(update) };
-  if (unknown_keys.length > 0) {
-    resp.warnings = [`Unrecognized keys were ignored: ${unknown_keys.join(', ')}`];
+  const warnings: string[] = [];
+  if (unknown_keys.length > 0) warnings.push(`Unrecognized keys were ignored: ${unknown_keys.join(', ')}`);
+  // A palette change can make existing styles unreadable; say so instead of failing the palette write.
+  if (update.colors) {
+    const { styles, colors } = await readStyles(ctx);
+    warnings.push(...libraryProblems(styles, colors).map(problem => `Style contrast with the new colours: ${problem}`));
   }
+  if (warnings.length) resp.warnings = warnings;
   return apiResponse(ctx, resp, 200, body);
 };
