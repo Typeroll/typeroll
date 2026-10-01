@@ -1,0 +1,52 @@
+<div data-block="team_member" data-layout="card">
+  <a href="" class="block-team-link">
+    <img class="block-team-photo" src="" alt="Sample name" />
+    <div class="block-team-body">
+      <h3 class="block-team-name">Sample name</h3>
+      <span class="block-team-role"></span>
+      <div class="block-team-bio"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div>
+      <div class="block-team-socials" data-socials=""></div>
+    </div>
+  </a>
+</div>
+
+/* css */
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: underline; text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+/* core/team_member */
+[data-block="team_member"] { text-align: center; }
+[data-block="team_member"] .block-team-link { color: inherit; text-decoration: none; display: block; }
+[data-block="team_member"] .block-team-link[href=""] { pointer-events: none; }
+[data-block="team_member"] .block-team-photo { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 0.5rem; margin-bottom: 0.75rem; background: var(--color-bg-subtle, #f3f4f6); }
+[data-block="team_member"] .block-team-photo[src=""] { display: none; }
+[data-block="team_member"] .block-team-name { margin: 0 0 0.125rem; font-size: 1.125rem; font-weight: 600; }
+[data-block="team_member"] .block-team-role { display: block; opacity: 0.65; font-size: 0.875rem; margin-bottom: 0.5rem; }
+[data-block="team_member"] .block-team-bio { font-size: 0.875rem; line-height: 1.5; opacity: 0.85; }
+[data-block="team_member"][data-layout="minimal"] .block-team-bio    { display: none; }
+[data-block="team_member"][data-layout="overlay"] { position: relative; }
+[data-block="team_member"][data-layout="overlay"] .block-team-body  {
+  position: absolute; inset: auto 0 0 0; padding: 1rem; background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  color: white; text-align: left;
+}

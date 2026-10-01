@@ -60,3 +60,10 @@ test('a browser key in ordinary page content still fails the credential guard', 
     partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], blockTypes: [], redirects: [],
   }, identity), /Credential-like value/);
 });
+
+test('publication carries the site render version so builds keep its output', () => {
+  const base = { site: { name: 'Example' }, pages: [], partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], blockTypes: [], redirects: [] };
+  assert.equal(projectStaticPublication({ ...base, settings: { render_version: 2 } }, identity).settings.render_version, 2);
+  assert.equal(projectStaticPublication({ ...base, settings: {} }, identity).settings.render_version, undefined);
+  assert.throws(() => projectStaticPublication({ ...base, settings: { render_version: '2' } }, identity), /render_version/);
+});

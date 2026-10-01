@@ -17,7 +17,7 @@ export const settingsTools: ToolDef[] = [
   {
     name: 'read_site_settings',
     description:
-      "Read every site setting: name, tagline, logo, favicon/app icons, colors, fonts, contact info, social links, URL trailing-slash policy, iframe host allowlist, default SEO suffix/description, language, robots_txt, image_sizes_default, plus the scriptable surfaces scripts_head, scripts_body_end, and custom_css. Pass `version` to read a branch's settings (with copy-on-write chain-fallback to main for fields the branch hasn't overridden).",
+      "Read every site setting: name, tagline, logo, favicon/app icons, colors, fonts, contact info, social links, URL trailing-slash policy, iframe host allowlist, default SEO suffix/description, language, robots_txt, image_sizes_default, plus the scriptable surfaces scripts_head, scripts_body_end, and custom_css, and `render` (the site's platform render version, the latest version and what upgrading would change). Pass `version` to read a branch's settings (with copy-on-write chain-fallback to main for fields the branch hasn't overridden).",
     inputSchema: {
       version: versionParam,
     },
@@ -59,6 +59,7 @@ export const settingsTools: ToolDef[] = [
       scripts_head: z.string().optional().describe('Raw HTML injected into <head> on every page. Use for analytics, fonts, third-party CSS links.'),
       scripts_body_end: z.string().optional().describe('Raw HTML injected just before </body> on every page. Use for chat widgets, deferred analytics.'),
       custom_css: z.string().optional().describe('Global CSS in a <style> in <head>, after block CSS and before the page\'s own custom CSS and the template base stylesheet (reset + global). Base rules for :root tokens (spacing, radius, container widths), body font and line-height load after it, so override those with a more specific selector (for example html:root or body.page) rather than a bare :root/body rule. Preview uses the same order. Lets you define site-wide design tokens (CSS variables, @media queries, :hover states) without inlining on every element.'),
+      render_version: z.number().int().min(1).optional().describe('Platform render version. Platform output changes ship as new versions so existing sites never change look on their own. Upgrade only after previewing (get_preview_link render_version) and with the user\'s approval; the tr-upgrade-rendering skill compares every page. Lowering it returns to an earlier version.'),
       colors: z.record(z.string()).optional(),
       fonts: z.record(z.unknown()).optional(),
       contact: z

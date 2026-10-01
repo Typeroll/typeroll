@@ -10,7 +10,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
 import { vstore } from '../../../../../lib/version-store';
 import { signPreviewTicket, isPreviewSigningConfigured } from '../../../../../lib/preview-signing';
-import { contentPagePath, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
+import { contentPagePath, DEFAULT_CONTENT_TYPE, isRenderVersion, LATEST_RENDER_VERSION } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -26,7 +26,12 @@ export const POST: APIRoute = async ({ request, params }) => {
     /** Render editor working copies (unsaved autosaved edits) too. Signed
      *  into the token, so it can't be toggled on an existing link. */
     include_working_copy?: boolean;
+    /** Preview with this platform render version (an upgrade preview). */
+    render_version?: number;
   };
+  if (body.render_version !== undefined && !isRenderVersion(body.render_version)) {
+    return apiError(`render_version must be an integer from 1 to ${LATEST_RENDER_VERSION}`, 400);
+  }
 
   let targetSlug = body.slug?.trim() ?? '';
   if (body.page_id) {
@@ -47,6 +52,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     versionId: ctx.versionId,
     ttlSeconds: body.ttl_seconds,
     includeWorkingCopies: body.include_working_copy === true,
+    renderVersion: body.render_version,
   });
 
   // Astro's Node adapter on Cloud Run drops X-Forwarded-Host and reports
@@ -63,5 +69,6 @@ export const POST: APIRoute = async ({ request, params }) => {
     expires_at: expiresAt,
     version_id: ctx.versionId,
     include_working_copy: body.include_working_copy === true,
+    ...(body.render_version !== undefined ? { render_version: body.render_version } : {}),
   }, 200, body);
 };

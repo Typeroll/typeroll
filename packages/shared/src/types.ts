@@ -356,6 +356,12 @@ export interface SiteSettings {
   scripts_body_end?: string;
   custom_css?: string;
   /**
+   * Platform render version (see render-version.ts). Missing means 1, the
+   * output when versions were introduced. New sites start at the latest
+   * version; upgrading is an explicit, previewable change.
+   */
+  render_version?: number;
+  /**
    * Optional cookie-consent banner. When `enabled`, the renderer injects a
    * blocking modal that asks the visitor to accept/reject before any scripts
    * placed in `scripts_optional` run. `scripts_necessary` run unconditionally

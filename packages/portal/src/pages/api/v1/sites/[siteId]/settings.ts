@@ -12,12 +12,12 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
 import { vstore } from '../../../../../lib/version-store';
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
-import { responsiveBreakpointsError, seoReviewError, normalizeIframeAllowedHosts, type SiteSettings } from '@typeroll/shared';
+import { responsiveBreakpointsError, seoReviewError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, LATEST_RENDER_VERSION, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
   'default_meta_description', 'language', 'robots_txt', 'image_sizes_default',
-  'sitewide_noindex', 'sitewide_nofollow', 'seo_review',
+  'sitewide_noindex', 'sitewide_nofollow', 'seo_review', 'render_version',
   // Scriptable surfaces. Trusted because the caller has an API key.
   'scripts_head', 'scripts_body_end', 'custom_css',
 ]);
@@ -34,7 +34,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const s = (await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? {};
   // Return all fields, including scripts_* and custom_css. An authenticated
   // API caller authoring CSS/JS needs to read back what they wrote.
-  return apiResponse(ctx, { settings: s, urls: publicUrlsFor(ctx.site) });
+  return apiResponse(ctx, { settings: s, urls: publicUrlsFor(ctx.site), render: renderVersionStatus((s as SiteSettings).render_version) });
 };
 
 export const PATCH: APIRoute = async ({ request, params }) => {
@@ -52,6 +52,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   }
   if (body.sitewide_nofollow !== undefined && typeof body.sitewide_nofollow !== 'boolean') return apiError('sitewide_nofollow must be boolean', 400);
   if (body.seo_review !== undefined) { const error = seoReviewError(body.seo_review); if (error) return apiError(error, 400); }
+  if (body.render_version !== undefined && !isRenderVersion(body.render_version)) {
+    return apiError(`render_version must be an integer from 1 to ${LATEST_RENDER_VERSION}`, 400);
+  }
   if (body.iframe_allowed_hosts !== undefined) {
     const checked = normalizeIframeAllowedHosts(body.iframe_allowed_hosts);
     if (checked.invalid.length) return apiError(`Invalid iframe hostnames: ${checked.invalid.join(', ')}`, 400);

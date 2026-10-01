@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import { resolveRenderVersion, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -131,7 +131,7 @@ const googleFontUrl = googleFontFamilies.length
 const fontFallbackStyle = googleFontFamilies.length ? WEBFONT_FALLBACK_CSS : null;
 ---
 <!doctype html>
-<html lang={page.language || settings.language || 'en'}>
+<html lang={page.language || settings.language || 'en'} data-tr-render={resolveRenderVersion(settings.render_version)}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

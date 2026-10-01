@@ -3,7 +3,8 @@ import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, paths, isArchivedSite } from '@typeroll/shared';
+import { defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, paths, isArchivedSite, renderVersionStatus, RENDER_VERSIONS } from '@typeroll/shared';
+import RenderVersionSettings from '../../../../components/RenderVersionSettings';
 import type { Site, SiteSettings } from '@typeroll/shared';
 import DomainManager from '../../../../components/DomainManager.tsx';
 import { SiteHostingGroup } from '../../../../components/HostingGroups';
@@ -22,6 +23,9 @@ const canManagePublishing = membership?.role === 'owner' || membership?.role ===
 
 const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
 const archived = isArchivedSite(site);
+const render = renderVersionStatus(settings.render_version);
+// Same gate as POST /api/sites/{siteId}/render-version.
+const canChangeRendering = ctx.permission === 'admin' && !archived;
 // Archiving refuses a site that is still answering on a customer domain, so
 // the page says that up front instead of offering a button that 409s.
 const domainBlocksArchiving =
@@ -326,6 +330,10 @@ const domainBlocksArchiving =
       <button type="submit" class="btn">Save settings</button>
     </div>
   </form>
+
+  <div style="max-width: 720px; margin-top: 2rem;">
+    <RenderVersionSettings client:load siteId={siteId} version={render.version} latest={render.latest} versions={[...RENDER_VERSIONS]} canChange={canChangeRendering} />
+  </div>
 
   <div style="max-width: 720px; margin-top: 2rem;">
     <div class="card stack">

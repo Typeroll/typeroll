@@ -176,6 +176,11 @@ export interface RenderBlocksOptions {
    * stored value there). Off everywhere except the editor iframe preview.
    */
   editable?: boolean;
+  /**
+   * Platform render version (render-version.ts). Output changes that would
+   * alter existing pages are gated on this. Defaults to the baseline.
+   */
+  renderVersion?: number;
 }
 
 const HTML_ESCAPES: Record<string, string> = {
@@ -1769,6 +1774,8 @@ export interface CollectAssetsOptions {
    * origin, so foreign JS there would run with the viewer's portal session.
    */
   includeScripts?: boolean;
+  /** Platform render version; gates shared CSS changes like RenderBlocksOptions.renderVersion. */
+  renderVersion?: number;
 }
 
 export function collectBlockAssets(

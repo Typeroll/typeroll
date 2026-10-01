@@ -38,6 +38,9 @@ export interface PreviewTicket {
    * Absent = false (saved content only), which keeps old tokens valid.
    */
   wc?: boolean;
+  /** Render with this platform render version instead of the site's own
+   *  (previewing an upgrade). Signed, so a link can't be retargeted. */
+  rv?: number;
   id?: string;
 }
 
@@ -63,6 +66,7 @@ export function signPreviewTicket(args: {
   versionId: string;
   ttlSeconds?: number;
   includeWorkingCopies?: boolean;
+  renderVersion?: number;
 }): { token: string; expiresAt: string } {
   const ttl = Math.max(60, Math.min(MAX_TTL_SECONDS, args.ttlSeconds ?? DEFAULT_TTL_SECONDS));
   const ticket: PreviewTicket = {
@@ -72,6 +76,7 @@ export function signPreviewTicket(args: {
     version_id: args.versionId,
     exp: Math.floor(Date.now() / 1000) + ttl,
     ...(args.includeWorkingCopies ? { wc: true } : {}),
+    ...(args.renderVersion !== undefined ? { rv: args.renderVersion } : {}),
   };
   const payload = Buffer.from(JSON.stringify(ticket), 'utf8').toString('base64url');
   const sig = crypto.createHmac('sha256', getSecret()).update(payload).digest('base64url');

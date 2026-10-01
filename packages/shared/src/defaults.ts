@@ -1,4 +1,5 @@
 import type { SiteSettings } from './types.js';
+import { LATEST_RENDER_VERSION } from './render-version.js';
 
 export const defaultSiteSettings: SiteSettings = {
   site_name: 'New Site',
@@ -21,6 +22,7 @@ export const defaultSiteSettings: SiteSettings = {
   default_seo_suffix: '',
   trailing_slash: 'always',
   robots_txt: 'User-agent: *\nAllow: /\n',
+  render_version: LATEST_RENDER_VERSION,
 };
 
 /**

@@ -452,8 +452,10 @@ export async function renderPartialHtml(
       // passes both to partials, so without them a header bound to
       // {{site.name}} or a footer listing recent posts previewed correctly
       // and shipped empty.
+      const { resolveRenderVersion } = await import('@typeroll/shared');
       return sanitizeBody(renderBlocks(partial.blocks, {
         provenance: true,
+        renderVersion: resolveRenderVersion((await getSiteSettings()).render_version),
         registry: await getBlockRegistry(),
         context,
         pageSource: await buildPageSource(),

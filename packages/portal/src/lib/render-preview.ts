@@ -32,6 +32,7 @@ import {
   collectBlockAssets,
   composePageWithTemplate,
   defaultSiteSettings,
+  resolveRenderVersion,
   expandExtensionIncludes,
   expandFormIncludes,
   expandIncludes,
@@ -131,6 +132,9 @@ export interface PreviewOptions {
   /** Connects an opaque, navigable preview document to its inert parent shell
    * for site navigation and tab-scoped Extension storage. */
   extensionPreviewBridge?: { id: string; parentOrigin: string };
+  /** Render with this platform render version instead of the site's own,
+   *  to preview an upgrade before saving it. */
+  renderVersion?: number;
 }
 
 export async function renderPreview(
@@ -144,7 +148,9 @@ export async function renderPreview(
   let page = opts.pageOverride ?? (await vstore.page(orgId, siteId, versionId, pageId));
   if (!page) return null;
 
-  const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
+  const storedSettings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
+  const renderVersion = resolveRenderVersion(opts.renderVersion ?? storedSettings.render_version);
+  const settings: SiteSettings = { ...storedSettings, render_version: renderVersion };
   let partials = await vstore.partials(orgId, siteId, versionId);
   if (opts.includeWorkingCopies) {
     const wcs = await listWorkingCopies({ orgId, siteId, versionId });
@@ -244,7 +250,7 @@ export async function renderPreview(
     if (!p) return '';
     if (p.content_mode === 'blocks' && p.blocks?.length) {
       return sanitizeBody(
-        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, pageSource, onMissingType }),
+        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, pageSource, onMissingType, renderVersion }),
         settings.iframe_allowed_hosts,
       );
     }
@@ -276,7 +282,7 @@ export async function renderPreview(
     renderCtx.page = { ...renderCtx.page, blocks: pageBlocks };
     // Normalize before deriving the outline so demoted headings retain TOC links.
     renderCtx.page = { ...renderCtx.page, ...pageBodyContext(normalizePageH1s(sanitizeBody(renderBlocks(pageBlocks, {
-      registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType,
+      registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType, renderVersion,
     }), settings.iframe_allowed_hosts), !countBlockH1s(templateBlocks))) };
     const effectiveBlocks = templateBlocks.length
       ? composePageWithTemplate(templateBlocks, pageBlocks) : pageBlocks;
@@ -291,6 +297,7 @@ export async function renderPreview(
       // blocks aren't reachable through the page's blocks route, so
       // stamping them would produce dead editing affordances.
       editable: opts.editable,
+      renderVersion,
     }), settings.iframe_allowed_hosts));
     assetBlocks.push(...effectiveBlocks);
     blocksBody = true;
@@ -305,6 +312,7 @@ export async function renderPreview(
   const footerHtml = rewriteIf(renderPartial(footer));
   const assets = collectBlockAssets(assetBlocks, blockRegistry, {
     includeScripts: opts.allowScripts === true,
+    renderVersion,
   });
   blockCss = assets.css;
   blockJs = assets.js;
@@ -499,7 +507,7 @@ function buildHtml(args: {
   // <head>. Same sources in the same order, so preview matches the built site.
 
   return `<!doctype html>
-<html lang="${escapeAttr(page.language || settings.language || 'en')}">
+<html lang="${escapeAttr(page.language || settings.language || 'en')}" data-tr-render="${resolveRenderVersion(settings.render_version)}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />

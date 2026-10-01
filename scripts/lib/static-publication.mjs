@@ -126,6 +126,8 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   };
   settings.colors = projectStrings(input.settings?.colors, ['primary', 'secondary', 'accent', 'background', 'surface', 'text', 'text_light']);
   settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
+  // The render version selects platform output; without it a build would render version 1.
+  Object.assign(settings, projectNumbers(input.settings, ['render_version']));
   settings.sitewide_nofollow = input.settings?.sitewide_nofollow === true;
   settings.sitewide_noindex = versionId !== 'main' || noindex || input.settings?.sitewide_noindex === true;
   const pages = input.pages.filter((page) => ['published', 'unlisted'].includes(page.status)).map((page) => {

@@ -1,0 +1,84 @@
+<section data-block="hero" data-height="auto" style="--layout:centered;--bg:;--overlay:0%;--bg-image:url()">
+  <div class="block-hero-inner">
+    <div class="block-hero-text">
+      <span class="block-hero-eyebrow"></span>
+      <h1 class="block-hero-heading"></h1>
+      <div class="block-hero-sub"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div>
+      <div class="block-hero-actions">
+        <a class="block-btn block-btn-primary" href=""></a>
+        <a class="block-btn block-btn-secondary" href=""></a>
+      </div>
+    </div>
+    <div class="block-hero-media">
+      <img src="" alt="" loading="eager" />
+    </div>
+  </div>
+  <div class="block-hero-overlay" aria-hidden="true"></div>
+</section>
+
+/* css */
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: underline; text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+/* core/hero */
+[data-block="hero"] {
+  position: relative; padding: var(--section-padding, 3rem) var(--content-gutter, 1.25rem); background: var(--bg, transparent); overflow: hidden;
+}
+[data-block="hero"][data-height="half-screen"] { min-height: 50vh; display: flex; align-items: center; }
+[data-block="hero"][data-height="screen"]      { min-height: 100vh; display: flex; align-items: center; }
+[data-block="hero"] .block-hero-inner {
+  width:100%; min-width:0; max-width: 65rem; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: center;
+  position: relative; z-index: 2;
+}
+[data-block="hero"][style*="--layout:centered"] .block-hero-inner { grid-template-columns: 1fr; text-align: center; }
+[data-block="hero"][style*="--layout:centered"] .block-hero-media,
+[data-block="hero"][style*="--layout:full-image"] .block-hero-media { grid-column: 1 / -1; }
+[data-block="hero"][style*="--layout:split-right"] .block-hero-text  { order: 2; }
+[data-block="hero"][style*="--layout:split-right"] .block-hero-media { order: 1; }
+[data-block="hero"][style*="--layout:full-image"] {
+  background-size: cover; background-position: center;
+}
+[data-block="hero"][style*="--layout:full-image"]:not([style*="--bg-image:url()"]) { background-image: var(--bg-image); color: white; }
+[data-block="hero"][style*="--layout:full-image"] .block-hero-text  { max-width: 36rem; }
+[data-block="hero"][style*="--layout:full-image"] .block-hero-media { display: none; }
+[data-block="hero"] .block-hero-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.5); opacity: var(--overlay, 0); z-index: 1; }
+[data-block="hero"] .block-hero-eyebrow {
+  display: inline-block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em;
+  opacity: 0.7; margin-bottom: 0.5rem;
+}
+[data-block="hero"] .block-hero-eyebrow:empty { display: none; }
+[data-block="hero"] .block-hero-heading { font-size: var(--type-h1, 1.75rem); margin: 0 0 var(--block-gap-tight, .75rem); font-weight: 700; line-height: 1.2; }
+[data-block="hero"] .block-hero-sub     { font-size: var(--type-lead, 1.125rem); line-height: 1.5; opacity: 0.85; margin-bottom: 1.5rem; }
+[data-block="hero"] .block-hero-media img { display:block; width: 100%; height: auto; object-fit:contain; border-radius: 0.5rem; }
+[data-block="hero"] .block-hero-media:has(img[src=""]) { display: none; }
+@media (max-width: 767px) {
+  [data-block="hero"] .block-hero-inner { grid-template-columns: 1fr; gap: 2rem; }
+  [data-block="hero"] .block-hero-media { order: 2 !important; }
+  [data-block="hero"] .block-hero-text  { order: 1 !important; }
+}
+[data-block="hero"] .block-hero-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+[data-block="hero"] .block-btn { display: inline-block; padding: 0.75rem 1.75rem; border-radius: 999px; font-weight: 600; text-decoration: none; }
+[data-block="hero"] .block-btn-primary { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); }
+[data-block="hero"] .block-btn-secondary { background: transparent; color: var(--color-primary, #111); box-shadow: inset 0 0 0 2px currentColor; }
+[data-block="hero"] .block-btn:empty { display: none; }
