@@ -87,6 +87,25 @@ classes to styles instead of keeping classed raw HTML.
 Contrast is checked when a style, design value or block colour is saved and in
 publication validation.
 
+### Phase 2 as built (Core 0.2.57)
+
+- Styles are stored in `SiteSettings.styles`, so they travel through every
+  publication path and are versioned per branch with the settings. API and
+  MCP still address them one by one (`/styles/{id}`).
+- Element roles (body, h1–h6, link) emit CSS custom properties (`--type-hN`,
+  `--hN-weight`, `--hN-leading`, `--hN-tracking`, `--hN-color`, `--body-*`,
+  `--link-*`) that platform CSS reads with its previous values as fallbacks.
+  A site without styles has identical computed output (verified in Chromium).
+- Class styles are `.s-<id>:not(#\#)`: the id-level boost makes a chosen
+  style win over the block's default appearance without `!important`.
+- Blocks select a style with `style_id` (field type `style`, filtered by
+  `style_target`). `BlockType.style_element_class` puts the class on the
+  semantic element; `style` was already a variant field on other blocks.
+- Derived `on_primary`, `on_secondary`, `on_accent` text colours pick black or
+  white for contrast. The default primary became `#2563eb`; `#3b82f6` fails AA.
+- Adding standard styles adapts a palette colour that is unreadable on the
+  site background to the body text colour instead of failing.
+
 ## Phase 3: semantics in core blocks (render version 2)
 
 - `core/heading`: an optional kicker (eyebrow) and subtitle, each with its own

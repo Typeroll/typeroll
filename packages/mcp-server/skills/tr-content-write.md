@@ -37,6 +37,11 @@ Read the actual HTML of an existing page. Note:
 - Length conventions (do existing pages run 200 words or 2000?)
 - Whether internal links use absolute or relative URLs
 
+`list_styles` too: use the site's named styles (`style_id` on heading, text,
+list, button and section blocks) for eyebrows, leads, quotes and buttons. If a
+treatment you need could recur and no style fits, create one rather than
+setting one-off values; ask first when it changes the site's look.
+
 ### 2. Ask for the brief
 
 If the user hasn't told you, ask:

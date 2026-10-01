@@ -129,6 +129,23 @@ the built-in YouTube/Vimeo/Google Maps/Calendly set. Values are exact domain
 hostnames, never URLs or wildcards. Read the setting back before deciding that
 an iframe cannot be represented.
 
+### 2b. Styles before pages
+
+Set the site's look as named styles before building any page:
+
+1. `list_styles`. New sites already have the standard set (body, H1–H6, link,
+   lead, eyebrow, small, quote, buttons, section). If roles are missing,
+   `apply_standard_styles`.
+2. Adjust them to the brand with `update_style`: the font, the type scale and
+   spacing for `base` (phones) and `at.tablet`/`at.desktop`, and colours from
+   palette tokens. Keep text at WCAG AA contrast; failing styles are refused.
+3. Add a named style for every look the design repeats: a card title, a price
+   note, a highlighted section, a CTA button variant. Use the site's language
+   for names.
+
+Pages then choose styles with each block's `style_id` field. A per-block
+font size, colour or class is only for something clearly unique.
+
 ### 3. Header + footer partials
 
 **Start from the native preset — don't hand-roll navigation.** Read

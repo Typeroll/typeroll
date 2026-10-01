@@ -143,7 +143,11 @@ The full playbook ships with this server — use it:
 5. Pages default to block mode. Build with add_block/update_block; make layouts
    responsive per breakpoint with set_block_responsive (grid columns, icon-box
    layout, … take { mobile, tablet, laptop, desktop, wide } values).
-6. No site yet? With an org-scoped key, create_site bootstraps one.
+6. Appearance lives in named styles: list_styles before styling, reuse a
+   style through a block's style_id, and create_style for any look that could
+   recur. Use one-off block values only for something clearly unique, never
+   classed raw HTML. Text must meet WCAG AA contrast.
+7. No site yet? With an org-scoped key, create_site bootstraps one.
 
 If anything here conflicts with what a tool returns, trust the tool. Every
 tool's own description carries its specifics.
