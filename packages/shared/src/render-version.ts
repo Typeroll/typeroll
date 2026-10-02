@@ -62,7 +62,7 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
   },
   {
     version: 5,
-    core_version: '0.2.64',
+    core_version: '0.2.65',
     title: 'Multi-step form navigation',
     changes: [
       'In a multi-step form the button reads "Continue" ("Fortsätt" on Swedish sites) on every step but the last; the last step keeps the form\'s submit text. A step\'s own button label applies on every render version.',
