@@ -1,21 +1,23 @@
 // GET /api/sites/{siteId}/blocks/export?ids=a,b,c&name=foo&version=1.0.0
 //
 // Stream a .tcblocks zip of the specified block-type ids. When `ids` is
-// omitted, every BlockType with `origin: 'user'` is included (i.e. the
-// site's own custom blocks). Optional `format=json` returns a JSON
-// payload with the zip base64-encoded — used by the MCP server so the
-// agent doesn't have to fish bytes out of a Response stream.
+// omitted, every site block type is included (made in the portal, by an
+// agent or imported), read through the version chain so a branch exports
+// what it inherits. The package keeps every property (composition, CSS
+// scope, field help …). Optional `format=json` returns a JSON payload with
+// the zip base64-encoded — used by the MCP server so the agent doesn't have
+// to fish bytes out of a Response stream.
 
 import type { APIRoute } from 'astro';
 import { json, requireSiteAccess } from '../../../../../lib/access';
-import { getStore } from '../../../../../lib/datastore';
-import { paths, type BlockType } from '@typeroll/shared';
+import { vstore } from '../../../../../lib/version-store';
 import { packBlockTypes } from '../../../../../lib/block-packages';
+import { exportableBlockTypes } from '../../../../../lib/block-type-write';
 
 export const GET: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const { session, site, versionId, owner_org_id } = guard.value;
+  const { site, versionId, owner_org_id } = guard.value;
 
   const url = new URL(request.url);
   const idsParam = url.searchParams.get('ids');
@@ -24,13 +26,8 @@ export const GET: APIRoute = async ({ request, cookies, params, locals }) => {
   const pkgVersion = url.searchParams.get('version') ?? '1.0.0';
   const format = url.searchParams.get('format') ?? 'zip';
 
-  const store = getStore();
-  const basePath = paths.blockTypes(owner_org_id, site.id, versionId);
-  const all = await store.listDocs<BlockType>(basePath);
-
-  const filtered = wantedIds
-    ? all.filter((bt) => wantedIds.includes(bt.id))
-    : all.filter((bt) => (bt.origin ?? bt.created_by) === 'user');
+  const all = await vstore.blockTypes(owner_org_id, site.id, versionId);
+  const filtered = exportableBlockTypes(all, wantedIds);
 
   if (filtered.length === 0) {
     // 200 with empty payload (matches the v1 endpoint behaviour) — lets

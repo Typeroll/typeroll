@@ -32,7 +32,7 @@ export function compactTools(catalog: CallableTool[]): CallableTool[] {
     }),
     ...(['read', 'write', 'admin'] as const).map(effect => ({
       name: `call_${effect}_tool`, effect,
-      description: effect === 'read' ? 'Call a discovered read-only tool with its exact arguments. Does not accept write/admin tools.' : `Call a discovered ${effect} tool. May ${effect === 'admin' ? 'change app or email configuration, send a test email or activate releases' : 'save, delete, publish or otherwise change state'}. Inspect describe_tool first and follow the user’s authorization.`,
+      description: effect === 'read' ? 'Call a discovered read-only tool with its exact arguments. Does not accept write/admin tools.' : `Call a discovered ${effect} tool. May ${effect === 'admin' ? 'change app, email or block type configuration, send a test email or activate releases' : 'save, delete, publish or otherwise change state'}. Inspect describe_tool first and follow the user’s authorization.`,
       schema: { name: z.string().max(100), arguments: z.record(z.unknown()).default({}) },
       invoke: async (args: Record<string, unknown>) => {
         const tool = byName.get(String(args.name));
