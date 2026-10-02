@@ -87,6 +87,13 @@ update_form form_id=ansokan patch={steps:[
 Submissions accumulate in one partial record and become complete on the final
 step. Abandoned partials use `partial_ttl_days` (default 30).
 
+Navigation: a step may set `submit_label`; otherwise (render version 5+) every
+step but the last reads "Continue"/"Fortsätt" and the last uses `submit_text`.
+`allow_back` (default on from render version 5) shows a Back button that keeps
+the answers; `show_progress: true | "text" | "bar"` shows "Step X of Y" or a
+bar. Give a step a `title` or a leading `form/heading`, not both; the write
+returns a `warnings` entry when a step has both.
+
 ## Storage and integrations
 
 Completed submissions appear in Forms → Submissions. Admins can configure

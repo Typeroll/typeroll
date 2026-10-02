@@ -54,6 +54,7 @@ import {
   renderBlocks,
   MAIN_VERSION_ID,
 } from '@typeroll/shared';
+import { formStepBodyHtml, formStepPath, resolveRenderVersion } from '@typeroll/shared';
 import type { BlockType, FormStep } from '@typeroll/shared';
 import { sanitizeBody } from '../../../lib/sanitize';
 
@@ -384,9 +385,11 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
     }
   }
 
-  const current: FormStep | undefined = state
-    ? (() => { const prev = getStep(form, state!.step); return prev ? nextStep(form, prev) : undefined; })()
-    : getStep(form, undefined);
+  // The step this POST answers: the one after the continuation's step, or
+  // the first. With Back the runtime names the step (`_step`), and a visitor
+  // may send an earlier step of the same submission again; it updates that
+  // partial submission instead of starting a new one.
+  const current = postedStep(form, state?.step, data._step);
   if (!current) {
     return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: 'Session expired — reload the page.' }] }, 409);
   }
@@ -511,9 +514,31 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
       const custom = await store.listDocs<BlockType>(paths.blockTypes(orgId, siteId, MAIN_VERSION_ID));
       for (const bt of custom) registry.set(bt.id, bt);
     } catch { /* core-only */ }
-    const title = next.title ? `<h3 class="form-step-title">${escapeHtml(next.title)}</h3>` : '';
-    const html = sanitizeBody(`${title}${renderBlocks(next.blocks ?? [], { registry })}`);
-    return protocolJson({ ok: true, html, state: newState });
+    // The page's render version arrives with the post (`_rv`); it only
+    // decides whether a step starting with a heading also shows its title.
+    const html = sanitizeBody(formStepBodyHtml(next, registry, resolveRenderVersion(Number(data._rv))));
+    // The runtime labels the button: the step's own label, else "Continue"
+    // or the final label, which the page carries.
+    return protocolJson({ ok: true, html, state: newState, step: next.id, submit_label: next.submit_label?.trim() || null, final: !nextStep(form, next) });
   }
   return protocolJson({ ok: true, next_step: next.id, state: newState });
+}
+
+/**
+ * Resolve the step a POST answers. Without `_step` (no-JS posts, forms
+ * without Back): the step after the continuation's, or the first step. With
+ * it: that step, which must be the next one or a step the visitor already
+ * passed on the form's path (Back, then send again). Anything else is a
+ * stale or forged continuation.
+ */
+export function postedStep(form: Form, completedStep: string | undefined, requested: unknown): FormStep | undefined {
+  const forward = completedStep
+    ? (() => { const prev = getStep(form, completedStep); return prev ? nextStep(form, prev) : undefined; })()
+    : getStep(form, undefined);
+  if (typeof requested !== 'string' || !requested || requested === forward?.id) return forward;
+  if (!completedStep) return undefined;
+  const path = formStepPath(form);
+  const reached = path.findIndex((step) => step.id === completedStep);
+  const index = path.findIndex((step) => step.id === requested);
+  return index >= 0 && reached >= 0 && index <= reached ? path[index] : undefined;
 }

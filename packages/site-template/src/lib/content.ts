@@ -539,6 +539,7 @@ export async function buildFormSource(
   registry: Map<string, import('@typeroll/shared').BlockType>,
   lang?: string,
   onRender?: (blocks: Block[]) => void,
+  renderVersion?: number,
 ): Promise<(formId: string) => string | undefined> {
   const { renderFormHtml } = await import('@typeroll/shared');
   type EnrichedForm = import('@typeroll/shared').Form & {
@@ -561,7 +562,7 @@ export async function buildFormSource(
     return renderFormHtml(
       form,
       { submit_url: form.submit_url ?? '/api/forms/submit', submit_token: form.submit_token ?? null },
-      { registry, pow_bits: form.pow_bits ?? 0, lang },
+      { registry, pow_bits: form.pow_bits ?? 0, lang, renderVersion },
     );
   };
 }

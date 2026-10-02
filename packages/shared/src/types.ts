@@ -1312,6 +1312,12 @@ export interface FormStep {
   render?: 'static' | 'dynamic';
   /** Next step id. Default: next in list. Last step with no next → done. */
   next?: string;
+  /**
+   * The submit button's text on this step. Default: from render version 5
+   * "Continue" ("Fortsätt") on every step but the last, the form's
+   * submit_text on the last; before it, the form's submit_text everywhere.
+   */
+  submit_label?: string;
   /** v2 app hooks — reserved, never executed in v1. */
   actions?: FormStepAction[];
 }
@@ -1395,6 +1401,18 @@ export interface Form {
   styles?: string;
   /** Days a partial submission survives before cleanup. Default 30. */
   partial_ttl_days?: number;
+  /**
+   * Multi-step forms: a "Back" button returns to the previous step in the
+   * browser, keeping the entered values. Default: true from render version
+   * 5, false before it.
+   */
+  allow_back?: boolean;
+  /**
+   * Multi-step forms: show progress. `true` or `'text'` renders "Step X of
+   * Y", `'bar'` a slim progress bar (with the same text for screen
+   * readers). Off by default.
+   */
+  show_progress?: boolean | 'text' | 'bar';
 }
 
 export interface FormSubmission {

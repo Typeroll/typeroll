@@ -2,7 +2,7 @@
 import AppLayout from '../../../../../layouts/AppLayout.astro';
 import { loadSiteContext } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
-import { paths, collectStepFields } from '@typeroll/shared';
+import { paths, collectStepFields, formStepWarnings } from '@typeroll/shared';
 import type { Form, FormField, SiteIntegrations } from '@typeroll/shared';
 import FormEditor from '../../../../../components/FormEditor.tsx';
 import { maskFormActionsForAdmin } from '../../../../../lib/forms-admin';
@@ -54,6 +54,9 @@ const hasConnector = Boolean(integrations?.email);
         success_redirect_url: form.success_redirect_url ?? '',
         partial_ttl_days: form.partial_ttl_days ?? 30,
         has_steps: Array.isArray(form.steps) && form.steps.length > 0,
+        steps: (form.steps ?? []).map((step) => ({ id: step.id, title: step.title ?? '', submit_label: step.submit_label ?? '' })),
+        allow_back: typeof form.allow_back === 'boolean' ? form.allow_back : null,
+        show_progress: form.show_progress === 'bar' ? 'bar' : form.show_progress ? 'text' : false,
         // ALL actions, not just email. Filtering here used to be harmless
         // because the editor only understood email; now it would silently
         // drop an app-contributed action on the next save.
@@ -72,6 +75,7 @@ const hasConnector = Boolean(integrations?.email);
         options: f.options ?? [],
       }))}
       fieldsEditable={fieldsEditable}
+      stepWarnings={formStepWarnings(form.steps)}
       hasConnector={hasConnector}
       canWrite={permission !== 'read'}
       canManageActions={permission === 'admin'}

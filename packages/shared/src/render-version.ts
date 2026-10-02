@@ -60,6 +60,16 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'A container set to link but without an address renders as a plain container.',
     ],
   },
+  {
+    version: 5,
+    core_version: '0.2.64',
+    title: 'Multi-step form navigation',
+    changes: [
+      'In a multi-step form the button reads "Continue" ("Fortsätt" on Swedish sites) on every step but the last; the last step keeps the form\'s submit text. A step\'s own button label applies on every render version.',
+      'Multi-step forms show a "Back" ("Tillbaka") button from the second step. It returns to the previous step with the entered values kept; set the form\'s "allow_back" to false to hide it.',
+      'A step that starts with a form heading block no longer also shows the step title above it.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

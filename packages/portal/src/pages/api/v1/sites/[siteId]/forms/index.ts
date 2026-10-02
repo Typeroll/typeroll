@@ -7,9 +7,9 @@ import { formActionsPermission, formActionsView, validateFormActionsInput } from
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { extensionIssuer } from '../../../../../../lib/extensions/auth';
-import { paths, collectStepFields, fieldsToSteps, safeFormRedirectUrl } from '@typeroll/shared';
+import { paths, collectStepFields, fieldsToSteps, formStepWarnings, safeFormRedirectUrl } from '@typeroll/shared';
 import type { Form, FormStep } from '@typeroll/shared';
-import { FORM_ID_RE as ID_RE, validateFields, validSteps } from '../../../../../../lib/forms-admin';
+import { FORM_ID_RE as ID_RE, applyFormNavigation, STEPS_ERROR, validateFields, validateFormNavigation, validSteps } from '../../../../../../lib/forms-admin';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -56,7 +56,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!body.name || typeof body.name !== 'string') return apiError('name required');
 
   if (body.steps !== undefined && !validSteps(body.steps)) {
-    return apiError('steps must be a non-empty array of { id, blocks?, render?: static|dynamic, next? } with unique ids');
+    return apiError(STEPS_ERROR);
   }
   // Steps are the only stored model. A flat `fields` list is authoring
   // sugar for simple forms: validate it, then convert to a single static
@@ -82,6 +82,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
   const redirect = body.success_redirect_url ? safeFormRedirectUrl(body.success_redirect_url) : '';
   if (body.success_redirect_url && !redirect) return apiError('success_redirect_url must be an http(s) URL or a path starting with /');
+  const navigation = validateFormNavigation(body as Record<string, unknown>);
+  if (typeof navigation === 'string') return apiError(navigation);
   let actions: Form['actions'] = [];
   if (body.actions !== undefined) {
     if (formActionsPermission(ctx) !== 'admin') return apiError('Admin permission required to set form actions', 403);
@@ -102,8 +104,9 @@ export const POST: APIRoute = async ({ request, params }) => {
     ...(typeof body.partial_ttl_days === 'number' ? { partial_ttl_days: body.partial_ttl_days } : {}),
     created_at: new Date().toISOString(),
   };
-  await store.setDoc(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`, doc);
+  await store.setDoc(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`, applyFormNavigation(doc, navigation));
   const fresh = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`);
+  const warnings = formStepWarnings(steps);
   // Embed info up front so create→embed is one round-trip; see [formId].ts GET.
-  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: formActionsView(fresh, formActionsPermission(ctx)) } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!) }, 201, body);
+  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: formActionsView(fresh, formActionsPermission(ctx)) } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!), ...(warnings.length ? { warnings } : {}) }, 201, body);
 };

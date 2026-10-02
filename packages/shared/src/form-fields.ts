@@ -77,6 +77,41 @@ export function nextStep(form: Form, current: FormStep): FormStep | undefined {
   return i >= 0 ? steps[i + 1] : undefined;
 }
 
+/**
+ * The steps a visitor passes through, in order: the first step, then
+ * nextStep until the form completes. `next` links are static, so the path
+ * is the same for every visitor. Steps no `next` leads to are left out.
+ */
+export function formStepPath(form: Form): FormStep[] {
+  const path: FormStep[] = [];
+  let step = getStep(form, undefined);
+  while (step && !path.includes(step) && path.length < (form.steps?.length ?? 0)) {
+    path.push(step);
+    step = nextStep(form, step);
+  }
+  return path;
+}
+
+/**
+ * Whether a step renders its title. From render version 5 a step that starts
+ * with a form/heading block shows that heading only, not the title as well.
+ */
+export function showsStepTitle(step: FormStep, renderVersion: number): boolean {
+  if (!step.title) return false;
+  return !(renderVersion >= 5 && step.blocks?.[0]?.type === 'form/heading');
+}
+
+/**
+ * Authoring hints for a form's steps, returned by the form write APIs. A
+ * step with a title that starts with a form/heading block shows the same
+ * heading twice before render version 5.
+ */
+export function formStepWarnings(steps: FormStep[] | undefined): string[] {
+  return (steps ?? [])
+    .filter((step) => step.title && step.blocks?.[0]?.type === 'form/heading')
+    .map((step) => `Step "${step.id}" has a title and starts with a form/heading block. From render version 5 only the heading shows; on earlier render versions both do. Keep one of them.`);
+}
+
 export interface FieldError {
   field: string;
   code: 'required' | 'invalid_email' | 'pattern' | 'min' | 'max' | 'invalid_boolean';

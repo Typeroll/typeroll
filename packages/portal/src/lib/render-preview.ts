@@ -741,6 +741,7 @@ async function previewFormSource(orgId: string, siteId: string, blockRegistry: R
       return renderFormHtml(form, { submit_url: formSubmitUrl(), submit_token: null, preview: true }, {
         registry: blockRegistry,
         lang: (settings as { language?: string }).language,
+        renderVersion: resolveRenderVersion(settings.render_version),
       });
     };
 

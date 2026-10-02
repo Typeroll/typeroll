@@ -100,3 +100,78 @@ test('a required field in step 2 does not block step 1 and is enforced in step 2
     await fs.rm(path.join(FORMS_DIR, `${formId}.json`), { force: true });
   }
 });
+
+test('render version 5: Continue, Back with kept answers and one submission', async ({ page, browserName, baseURL }) => {
+  const formId = `e2emultistepback${browserName}${Date.now()}`;
+  const form: Form = {
+    id: formId,
+    name: 'Multi-step lead',
+    actions: [],
+    created_at: new Date().toISOString(),
+    success_message: 'Thanks, we will be in touch.',
+    submit_text: 'Register interest',
+    show_progress: true,
+    steps: [
+      { id: 'contact', title: 'Contact', blocks: [
+        { id: 'email', type: 'form/email', data: { name: 'email', label: 'Email', required: true } },
+      ] },
+      { id: 'details', title: 'Details', blocks: [
+        { id: 'company', type: 'form/text', data: { name: 'company', label: 'Company', required: true } },
+      ] },
+    ],
+  };
+  const { id: _id, ...doc } = form;
+  await fs.mkdir(FORMS_DIR, { recursive: true });
+  await fs.writeFile(path.join(FORMS_DIR, `${formId}.json`), JSON.stringify(doc));
+  try {
+    const { token } = await (await page.request.get(`/api/sites/default/forms/${formId}/token`)).json() as { token: string };
+    const origin = new URL(baseURL!).origin;
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Lead</title></head><body><main>${renderFormHtml(
+      form,
+      { submit_url: `${origin}/api/forms/submit`, submit_token: token },
+      { registry: buildCoreBlockRegistry(), pow_bits: POW_BITS, lang: 'en', renderVersion: 5 },
+    )}<style>${FORM_SHELL_CSS}</style><script>${FORMS_RUNTIME_JS}</script></main></body></html>`;
+    await page.route(`${origin}/__e2e/forms/${formId}`, (route) => route.fulfill({ contentType: 'text/html', body: html }));
+    await page.setExtraHTTPHeaders({ 'x-forwarded-for': `10.251.${browserName.length}.${Date.now() % 250}` });
+    let posts = 0;
+    page.on('request', (request) => { if (request.method() === 'POST' && request.url().endsWith('/api/forms/submit')) posts++; });
+    await page.goto(`${origin}/__e2e/forms/${formId}`);
+
+    const email = page.getByLabel('Email');
+    const company = page.getByLabel('Company');
+    const back = page.getByRole('button', { name: 'Back' });
+    await expect(back).toBeHidden();
+    const progress = page.locator('.form-progress-text');
+    await expect(progress).toHaveText('Step 1 of 2');
+    await email.fill('ada@example.test');
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(company).toBeVisible();
+    // Focus moves to the new step's heading.
+    await expect(page.getByRole('heading', { name: 'Details' })).toBeFocused();
+    await expect(progress).toHaveText('Step 2 of 2');
+    // The polite live region announces the step.
+    await expect(page.locator('[aria-live="polite"]')).toHaveText('Step 2 of 2: Details');
+    await company.fill('Acme');
+
+    await back.click();
+    await expect(email).toBeVisible();
+    await expect(email).toHaveValue('ada@example.test');
+    await expect(back).toBeHidden();
+    expect(posts).toBe(1);
+
+    // Send step 1 again (updates the same submission), then finish.
+    await page.waitForTimeout(1600);
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(company).toHaveValue('Acme');
+    await page.waitForTimeout(1600);
+    await page.getByRole('button', { name: 'Register interest' }).click();
+    await expect(page.getByRole('status')).toHaveText('Thanks, we will be in touch.');
+    expect(posts).toBe(3);
+
+    const { submissions } = await (await page.request.get(`/api/sites/default/forms/${formId}/submissions`)).json() as { submissions: Array<{ status?: string; data: Record<string, unknown> }> };
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]).toMatchObject({ status: 'complete', data: { email: 'ada@example.test', company: 'Acme' } });
+  } finally {
+    await fs.rm(path.join(FORMS_DIR, `${formId}.json`), { force: true });
+  }
+});

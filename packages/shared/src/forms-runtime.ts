@@ -7,7 +7,8 @@
 //   - intercepts submit, talks the v1 JSON protocol (`_protocol=1`)
 //   - renders per-field errors into the blocks' error slots
 //   - swaps prerendered static steps locally; injects server-rendered
-//     html for dynamic steps
+//     html for dynamic steps; Back, per-step button labels, progress and
+//     step announcements (see "Step navigation" below)
 //   - promotes data-required → el.required (the template engine can't
 //     conditionally emit bare attributes)
 //   - disables the controls of hidden steps, so native validation and the
@@ -46,7 +47,35 @@ function topError(form,msg){var el=$(".form-toplevel-error",form);if(el){el.text
 // author disabled stay disabled when their step is shown.
 function setStepActive(el,on){$all("input,select,textarea,button",el).forEach(function(c){if(on){if(c.hasAttribute("data-tr-step-off")){c.removeAttribute("data-tr-step-off");c.disabled=false}}else if(!c.disabled){c.disabled=true;c.setAttribute("data-tr-step-off","")}})}
 function syncSteps(form){$all("[data-form-step], [data-form-dynamic-step]",form).forEach(function(el){setStepActive(el,!el.hidden)})}
-function showStep(form,id){var found=false;$all("[data-form-step]",form).forEach(function(el){var on=el.getAttribute("data-form-step")===id;el.hidden=!on;if(on)found=true});syncSteps(form);if(found){var h=$('[data-form-step="'+id+'"] h3, [data-form-step="'+id+'"] label',form);if(h){h.setAttribute("tabindex","-1");h.focus({preventScroll:false})}}return found}
+// ── Step navigation ─────────────────────────────────────────────────────
+// form.__trSteps is the visitor's way through the form: one entry per step
+// shown, the current one last. Back pops it and shows the previous step
+// with its values (they stay in the DOM, only disabled while hidden); it
+// sends nothing. A dynamic step's markup is kept on its entry when another
+// dynamic step replaces it. After every change the submit button takes the
+// step's label (data-submit-label), Back shows from the second step, the
+// progress indicator moves and a polite live region announces the step.
+function dynOf(form){return $("[data-form-dynamic-step]",form)}
+function focusStep(el){var h=el&&$("h1, h2, h3, h4, h5, h6, legend, label",el);if(h){if(!h.hasAttribute("tabindex"))h.setAttribute("tabindex","-1");h.focus({preventScroll:false})}}
+function showStep(form,id){var found=false;$all("[data-form-step]",form).forEach(function(el){var on=el.getAttribute("data-form-step")===id;el.hidden=!on;if(on)found=true});var dyn=dynOf(form);if(found&&dyn)dyn.hidden=true;syncSteps(form);if(found)focusStep($('[data-form-step="'+id+'"]',form));return found}
+function currentStep(form){var dyn=dynOf(form);if(dyn&&!dyn.hidden)return dyn;return $all("[data-form-step]",form).filter(function(el){return !el.hidden})[0]||null}
+function stepTrail(form){if(!form.__trSteps){var el=currentStep(form);form.__trSteps=[{id:el?el.getAttribute("data-form-step")||"":"",dyn:false}]}return form.__trSteps}
+function announcer(form){var el=form.__trLive;if(!el){el=document.createElement("div");el.className="form-step-status";el.setAttribute("aria-live","polite");el.style.cssText="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap";form.appendChild(el);form.__trLive=el}return el}
+function stepChanged(form,announce){
+  var trail=stepTrail(form),el=currentStep(form),btn=$('[type="submit"]',form);
+  if(btn){if(form.__trLabel==null)form.__trLabel=btn.textContent;var label=(el&&el.getAttribute("data-submit-label"))||form.__trLabel;if(btn.textContent!==label)btn.textContent=label}
+  var back=$("[data-form-back]",form);if(back)back.hidden=trail.length<2;
+  var text="",progress=$("[data-form-progress]",form);
+  if(progress){var total=parseInt(progress.getAttribute("data-progress-total")||"1",10)||1,n=Math.min(trail.length,total);text=(progress.getAttribute("data-progress-template")||"{n} / {total}").replace("{n}",n).replace("{total}",total);var t=$(".form-progress-text",progress),fill=$(".form-progress-fill",progress);if(t)t.textContent=text;if(fill)fill.style.width=Math.round(10000*n/total)/100+"%"}
+  if(announce){var h=el&&$("h1, h2, h3, h4, h5, h6, legend",el),l=el&&$("label",el);announcer(form).textContent=[text,h?h.textContent.trim():l?l.textContent.trim():""].filter(Boolean).join(": ")}
+}
+function goToStep(form,id){if(!showStep(form,id))return false;stepTrail(form).push({id:id,dyn:false});stepChanged(form,true);return true}
+function dynLabel(form,out){return out.submit_label||(out.final?form.getAttribute("data-label-final"):form.getAttribute("data-label-continue"))||""}
+function enterDynamic(form,dyn,entry){$all("[data-form-step]",form).forEach(function(el){el.hidden=true});dyn.hidden=false;dyn.setAttribute("data-step-id",entry.id);if(entry.label)dyn.setAttribute("data-submit-label",entry.label);else dyn.removeAttribute("data-submit-label")}
+function goToDynamic(form,html,out){var dyn=dynOf(form);if(!dyn)return;var trail=stepTrail(form),top=trail[trail.length-1];if(top&&top.dyn)top.nodes=Array.prototype.slice.call(dyn.childNodes);dyn.innerHTML=html;var entry={id:out.step||"",dyn:true,label:dynLabel(form,out)};enterDynamic(form,dyn,entry);trail.push(entry);init(form);stepChanged(form,true);focusStep(dyn)}
+function goBack(form){var trail=stepTrail(form);if(trail.length<2)return;trail.pop();var to=trail[trail.length-1],dyn=dynOf(form);clearErrors(form);
+  if(to.dyn&&dyn){if(to.nodes){dyn.replaceChildren.apply(dyn,to.nodes);to.nodes=null}enterDynamic(form,dyn,to);syncSteps(form);focusStep(dyn)}else showStep(form,to.id);
+  stepChanged(form,true)}
 // ── Remote-backed forms (prefill + session) ─────────────────────────────
 // Two generic capabilities, declared per form, that the runtime implements
 // without knowing which app asked for them:
@@ -159,7 +188,7 @@ function previewSubmit(form){
   var step=previewSteps(form).find(function(s){return s.id===id});
   var errs=previewErrors(step,new FormData(form));
   if(errs.length){errs.forEach(function(e){fieldError(form,e.field,e.message)});var first=$("[data-invalid] .form-input, [data-invalid] input",form);if(first)first.focus();return}
-  if(step&&step.next&&showStep(form,step.next))return;
+  if(step&&step.next&&goToStep(form,step.next))return;
   previewDone(form);
 }
 function init(form){
@@ -171,6 +200,8 @@ function init(form){
   // the enhancements above; listeners on the form itself bind only once, or
   // every later submit would post twice.
   if(form.__trBound)return;form.__trBound=true;
+  announcer(form);stepChanged(form,false);
+  var back=$("[data-form-back]",form);if(back)back.addEventListener("click",function(){goBack(form)});
   var wrap=wrapOf(form);
   if(wrap){try{var context=JSON.parse(wrap.getAttribute("data-tr-context-params")||"[]"),action=new URL(form.action),source=new URL(location.href);context.forEach(function(key){if(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key)&&["issuer","org_id","site_id","installation_id","session","token","grant"].indexOf(key)===-1&&key!==wrap.getAttribute("data-tr-session-param")&&source.searchParams.has(key))action.searchParams.set(key,source.searchParams.get(key))});form.action=action.href}catch(e){}}
   var preview=form.hasAttribute("data-tr-preview");
@@ -186,6 +217,10 @@ function init(form){
     var btn=$('[type="submit"]',form);if(btn)btn.disabled=true;
     try{
       var fd=new FormData(form);fd.set("_protocol","1");
+      // With Back, a visitor may send an earlier step again: name the step,
+      // so the server updates the same partial submission.
+      if(back){var trail=stepTrail(form);fd.set("_step",trail[trail.length-1].id)}
+      var renderVersion=form.getAttribute("data-render-version");if(renderVersion)fd.set("_rv",renderVersion);
       if(remote)$all('[data-block="form_checkbox_group"]',form).forEach(function(group){var input=$('input[type="checkbox"]',group);if(input&&!input.disabled&&!fd.has(input.name))fd.set(input.name,"")});
       $all('[data-block="form_boolean"]',form).forEach(function(group){var first=$("input[type=radio]",group);if(first&&!fd.has(first.name)&&form.__cleared&&form.__cleared[first.name])fd.set(first.name,"null")});
       if(remote&&form.__remoteFields){
@@ -221,10 +256,8 @@ function init(form){
         if(out.message){region.replaceChildren();var message=document.createElement("div");message.className="form-done";message.setAttribute("role","status");message.textContent=out.message;region.append(message)}else if(out.html){region.innerHTML=out.html}else{region.innerHTML='<div class="form-done" role="status">'+(form.getAttribute("data-msg-done")||"Thanks!")+"</div>"}
         return;
       }
-      if(out.html){
-        var dyn=$("[data-form-dynamic-step]",form);
-        if(dyn){dyn.innerHTML=out.html;$all("[data-form-step]",form).forEach(function(el){el.hidden=true});dyn.hidden=false;init(form)}
-      }else if(out.next_step){showStep(form,out.next_step)}
+      if(out.html)goToDynamic(form,out.html,out);
+      else if(out.next_step)goToStep(form,out.next_step);
     }catch(e){topError(form,form.getAttribute("data-msg-fail")||"Something went wrong.")}
     finally{if(btn)btn.disabled=false}
   });

@@ -9,7 +9,7 @@
 // portal chat assistant has no tool for them.
 
 import crypto from 'node:crypto';
-import type { FormField, FormStep, FormAction, EmailActionConfig } from '@typeroll/shared';
+import type { Form, FormField, FormStep, FormAction, EmailActionConfig } from '@typeroll/shared';
 import { encryptSecret, SECRET_MASK } from './secret-crypto';
 import { parseWebhookUrl } from './forms/webhook';
 
@@ -64,8 +64,63 @@ export function validSteps(steps: unknown): steps is FormStep[] {
     ids.add(id);
     const render = (st as { render?: unknown }).render;
     if (render !== undefined && render !== 'static' && render !== 'dynamic') return false;
+    const label = (st as { submit_label?: unknown }).submit_label;
+    if (label !== undefined && (typeof label !== 'string' || label.length > MAX_STEP_LABEL)) return false;
   }
   return true;
+}
+
+export const MAX_STEP_LABEL = 80;
+export const STEPS_ERROR = `steps must be a non-empty array of { id, blocks?, render?: static|dynamic, next?, submit_label? (at most ${MAX_STEP_LABEL} characters) } with unique ids`;
+
+/** Form-level step navigation options, as every write surface accepts them. */
+export interface FormNavigationInput {
+  /** null clears it (back to the render version's default). */
+  allow_back?: boolean | null;
+  /** false or null turns it off. */
+  show_progress?: Form['show_progress'] | null;
+}
+
+export function validateFormNavigation(body: Record<string, unknown>): FormNavigationInput | string {
+  const out: FormNavigationInput = {};
+  if (body.allow_back !== undefined) {
+    if (body.allow_back !== null && typeof body.allow_back !== 'boolean') return 'allow_back must be true, false or null (default)';
+    out.allow_back = body.allow_back;
+  }
+  if (body.show_progress !== undefined) {
+    const value = body.show_progress;
+    if (value !== null && typeof value !== 'boolean' && value !== 'text' && value !== 'bar') return 'show_progress must be true, "text", "bar" or false';
+    out.show_progress = value === false ? null : value;
+  }
+  return out;
+}
+
+/** Merge navigation options into a stored form; null removes the key. */
+export function applyFormNavigation<T extends Partial<Form>>(doc: T, input: FormNavigationInput): T {
+  const next: Record<string, unknown> = { ...doc };
+  for (const key of ['allow_back', 'show_progress'] as const) {
+    if (!(key in input)) continue;
+    if (input[key] === null) delete next[key];
+    else next[key] = input[key];
+  }
+  return next as T;
+}
+
+/** Portal editor: set or clear (empty string) the button label of existing steps. */
+export function applyStepLabels(steps: FormStep[], labels: unknown): FormStep[] | string {
+  if (!labels || typeof labels !== 'object' || Array.isArray(labels)) return 'step_labels must be an object of step id → label';
+  const entries = Object.entries(labels as Record<string, unknown>);
+  for (const [id, label] of entries) {
+    if (!steps.some((step) => step.id === id)) return `Unknown step "${id}"`;
+    if (typeof label !== 'string' || label.length > MAX_STEP_LABEL) return `The button label of step "${id}" must be text of at most ${MAX_STEP_LABEL} characters`;
+  }
+  const byId = new Map(entries as Array<[string, string]>);
+  return steps.map((step) => {
+    if (!byId.has(step.id)) return step;
+    const label = byId.get(step.id)!.trim();
+    const { submit_label: _previous, ...rest } = step;
+    return label ? { ...rest, submit_label: label } : rest;
+  });
 }
 
 /** Project a stored field to its known schema so legacy/server keys don't leak. */

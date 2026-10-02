@@ -32,6 +32,52 @@ then square metres and timeframe, then contact details.
 Multi-step forms save partial answers as the visitor advances, so a drop-off
 after step one still tells you something.
 
+## Multi-step forms
+
+Each step can set its own button text with `submit_label`. Without one, from
+[render version 5](../settings/#render-versions) every step but the last reads
+"Continue" ("Fortsätt" on Swedish sites) and the last step uses the form's
+`submit_text`; earlier render versions use `submit_text` on every step.
+
+Visitors can go back. A "Back" ("Tillbaka") button appears from the second step
+and shows the previous step with the answers kept. Going back sends nothing;
+sending an earlier step again updates the same partial submission. It is on by
+default from render version 5; set the form's `allow_back` to `false` to hide
+it, or `true` to show it on an earlier render version.
+
+Set `show_progress` to show where the visitor is: `true` or `"text"` shows
+"Step 2 of 3" ("Steg 2 av 3"), `"bar"` a slim progress bar that screen readers
+read as the same text. It counts the steps a visitor passes through, following
+`next`. It is off by default.
+
+Give each step either a `title` or a leading `form/heading` block, not both.
+From render version 5 a step that starts with a `form/heading` block does not
+render its title; on earlier render versions both show, and `create_form` and
+`update_form` return a warning.
+
+When a step changes, focus moves to its heading (or first label) and a polite
+live region announces it, with "Step X of Y" when progress is shown.
+
+```json
+{
+  "allow_back": true,
+  "show_progress": "text",
+  "steps": [
+    {
+      "id": "contact",
+      "title": "Kontakt",
+      "submit_label": "Nästa: företag",
+      "blocks": []
+    },
+    { "id": "company", "title": "Företag", "blocks": [] },
+    { "id": "message", "title": "Meddelande", "blocks": [] }
+  ]
+}
+```
+
+In the portal, **Forms → a form → Overview → Steps** sets the button labels,
+the Back button and progress for a multi-step form.
+
 ## `create_form`
 
 Creates a form. Give it fields and a recipient email, and the AI agent wraps them in a

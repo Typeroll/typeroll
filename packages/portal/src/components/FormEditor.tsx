@@ -28,6 +28,12 @@ interface FieldInfo {
   options: string[];
 }
 
+interface StepInfo {
+  id: string;
+  title: string;
+  submit_label: string;
+}
+
 interface InitialForm {
   name: string;
   submit_text: string;
@@ -35,6 +41,11 @@ interface InitialForm {
   success_redirect_url: string;
   partial_ttl_days: number;
   has_steps: boolean;
+  /** Multi-step navigation: per-step button labels, Back and progress. */
+  steps: StepInfo[];
+  /** null: the render version's default (on from render version 5). */
+  allow_back: boolean | null;
+  show_progress: false | 'text' | 'bar';
   actions: FormAction[];
 }
 
@@ -44,6 +55,8 @@ interface Props {
   initialForm: InitialForm;
   fields: FieldInfo[];
   fieldsEditable: boolean;
+  /** Authoring hints for the steps, such as a title that repeats a heading. */
+  stepWarnings: string[];
   hasConnector: boolean;
   canWrite: boolean;
   canManageActions: boolean;
@@ -51,7 +64,7 @@ interface Props {
 
 type Tab = 'overview' | 'email' | 'submissions';
 
-export default function FormEditor({ siteId, formId, initialForm, fields: initialFields, fieldsEditable, hasConnector, canWrite, canManageActions }: Props) {
+export default function FormEditor({ siteId, formId, initialForm, fields: initialFields, fieldsEditable, stepWarnings, hasConnector, canWrite, canManageActions }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const [form, setForm] = useState<InitialForm>(initialForm);
   const [fields, setFields] = useState<FieldInfo[]>(initialFields);
@@ -61,6 +74,10 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
 
   function patch<K extends keyof InitialForm>(key: K, value: InitialForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+  const multiStep = form.steps.length > 1;
+  function patchStepLabel(id: string, label: string) {
+    patch('steps', form.steps.map((step) => (step.id === id ? { ...step, submit_label: label } : step)));
   }
 
   function selectTab(next: Tab) {
@@ -83,6 +100,11 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
           success_message: form.success_message,
           success_redirect_url: form.success_redirect_url,
           partial_ttl_days: form.partial_ttl_days,
+          ...(multiStep ? {
+            step_labels: Object.fromEntries(form.steps.map((step) => [step.id, step.submit_label])),
+            allow_back: form.allow_back,
+            show_progress: form.show_progress,
+          } : {}),
           ...(canManageActions ? { actions: form.actions } : {}),
           ...(fieldsEditable ? { fields } : {}),
         }),
@@ -200,6 +222,40 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
               </label>
             )}
           </div>
+
+          {multiStep && (
+            <div className="card stack">
+              <h2 style={{ fontSize: '1rem' }}>Steps</h2>
+              <p className="muted text-sm">
+                Leave a button label empty for the default: “Continue” on every step but the last, and the submit button text on the last
+                (render version 5 and later; earlier render versions use the submit button text on every step).
+              </p>
+              {form.steps.map((step, i) => (
+                <label className="field" key={step.id}>
+                  <span>Step {i + 1}{step.title ? `: ${step.title}` : ''} <code className="muted">{step.id}</code> — button label</span>
+                  <input value={step.submit_label} maxLength={80} disabled={!canWrite} placeholder={i === form.steps.length - 1 ? (form.submit_text || 'Default') : 'Default'}
+                    onChange={(e) => patchStepLabel(step.id, e.target.value)} />
+                </label>
+              ))}
+              <label className="field"><span>Back button</span>
+                <select value={form.allow_back === null ? 'default' : form.allow_back ? 'on' : 'off'} disabled={!canWrite}
+                  onChange={(e) => patch('allow_back', e.target.value === 'default' ? null : e.target.value === 'on')}>
+                  <option value="default">Default (shown from render version 5)</option>
+                  <option value="on">Show</option>
+                  <option value="off">Hide</option>
+                </select>
+              </label>
+              <label className="field"><span>Progress</span>
+                <select value={form.show_progress || 'off'} disabled={!canWrite}
+                  onChange={(e) => patch('show_progress', e.target.value === 'off' ? false : e.target.value as 'text' | 'bar')}>
+                  <option value="off">Off</option>
+                  <option value="text">“Step 2 of 3”</option>
+                  <option value="bar">Progress bar</option>
+                </select>
+              </label>
+              {stepWarnings.map((warning) => <p key={warning} className="text-sm" style={{ color: 'var(--warning, #b45309)' }}>{warning}</p>)}
+            </div>
+          )}
 
           <div className="card stack">
             <h2 style={{ fontSize: '1rem' }}>Fields</h2>

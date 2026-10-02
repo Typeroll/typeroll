@@ -8,9 +8,10 @@
 // single dynamic steps via renderBlocks directly.
 
 import { renderBlocks, escapeHtml, type RenderBlocksOptions } from './render-blocks.js';
-import type { Form, FormField } from './types.js';
+import type { Form, FormField, FormStep } from './types.js';
 import { FORM_BLOCKS_CSS } from './form-blocks.js';
-import { collectStepFields, defaultErrorMessage, isCheckboxGroupField, nextStep, type FieldError } from './form-fields.js';
+import { collectStepFields, defaultErrorMessage, formStepPath, isCheckboxGroupField, nextStep, showsStepTitle, type FieldError } from './form-fields.js';
+import { resolveRenderVersion } from './render-version.js';
 
 export interface FormEmbed {
   submit_url: string;
@@ -109,6 +110,21 @@ export interface RenderFormOptions {
   pow_bits?: number;
   submit_label?: string;
   lang?: string;
+  /**
+   * The site's render version. From 5, multi-step forms default to a
+   * "Continue" label on every step but the last and a Back button, and a
+   * step starting with a form heading omits its title. Missing means 1.
+   */
+  renderVersion?: number;
+}
+
+/** "Step {n} of {total}" in the form's language. */
+function progressTemplate(sv: boolean): string {
+  return sv ? 'Steg {n} av {total}' : 'Step {n} of {total}';
+}
+
+function progressText(template: string, n: number, total: number): string {
+  return template.replace('{n}', String(n)).replace('{total}', String(total));
 }
 
 export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOptions): string {
@@ -125,17 +141,49 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
   const redirect = safeFormRedirectUrl(form.success_redirect_url);
 
   const preview = embed.preview === true;
+  const renderVersion = resolveRenderVersion(opts.renderVersion);
+  const multiStep = steps.length > 1;
+
+  // The submit button's text per step: the step's own label, else (render
+  // version 5+) "Continue" before the last step, else the form's submit text.
+  // Steps carry their label only when one differs, so a form without
+  // per-step labels renders exactly as before.
+  const continueLabel = renderVersion >= 5 ? (sv ? 'Fortsätt' : 'Continue') : submitLabel;
+  const labelFor = (step: FormStep) => step.submit_label?.trim() || (nextStep(form, step) ? continueLabel : submitLabel);
+  const perStepLabels = steps.some((step) => labelFor(step) !== submitLabel);
+  const allowBack = multiStep && (form.allow_back ?? renderVersion >= 5);
+  const progress = multiStep && form.show_progress ? (form.show_progress === 'bar' ? 'bar' : 'text') : null;
+
   const stepHtml = steps
     .map((step, i) => {
       // Dynamic steps are rendered by the forms service at submit time. A
       // preview has no forms service; their blocks render the same either
       // way (no submitted values reach them), so it prerenders them.
       if (step.render === 'dynamic' && !preview) return '';
-      const body = renderBlocks(step.blocks ?? [], { registry: opts.registry });
-      const title = step.title ? `<h3 class="form-step-title">${escapeHtml(step.title)}</h3>` : '';
-      return `<div data-form-step="${escapeHtml(step.id)}"${i === 0 ? '' : ' hidden'}>${title}${body}</div>`;
+      return `<div data-form-step="${escapeHtml(step.id)}"${perStepLabels ? ` data-submit-label="${escapeHtml(labelFor(step))}"` : ''}${i === 0 ? '' : ' hidden'}>${formStepBodyHtml(step, opts.registry, renderVersion)}</div>`;
     })
     .join('\n');
+
+  // "Step X of Y" over the steps a visitor passes through. The runtime
+  // updates it as steps change; without JS only the first step is reachable.
+  let progressHtml = '';
+  if (progress) {
+    const total = Math.max(1, formStepPath(form).length);
+    const template = progressTemplate(sv);
+    progressHtml = `<div class="form-progress" data-form-progress="${progress}" data-progress-template="${escapeHtml(template)}" data-progress-total="${total}"><span class="form-progress-text">${escapeHtml(progressText(template, 1, total))}</span><span class="form-progress-bar" aria-hidden="true"><span class="form-progress-fill" style="width:${Math.round(10000 / total) / 100}%"></span></span></div>\n`;
+  }
+  // Labels for server-rendered dynamic steps, which the markup can't carry.
+  const labelAttrs = perStepLabels
+    ? ` data-label-continue="${escapeHtml(continueLabel)}" data-label-final="${escapeHtml(submitLabel)}"`
+    : '';
+  // Dynamic steps are rendered by the submit endpoint; it needs the render
+  // version for their titles.
+  const versionAttr = renderVersion >= 5 && steps.some((step) => step.render === 'dynamic')
+    ? ` data-render-version="${renderVersion}"`
+    : '';
+  const backHtml = allowBack
+    ? `<button type="button" class="form-back" data-form-back hidden>${sv ? 'Tillbaka' : 'Back'}</button>\n`
+    : '';
 
   const styles = form.styles
     ? `<style data-form-styles="${escapeHtml(form.id)}">${String(form.styles).replace(/<\/style/gi, '<\\/style')}</style>`
@@ -161,17 +209,26 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
     : '';
 
   return `<div data-tr-form="${escapeHtml(form.id)}"${hydrate}${sessionParam} data-tr-context-params="${escapeHtml(JSON.stringify(form.target?.context_params ?? []))}">
-${styles}<form data-tr-form-el method="POST" action="${escapeHtml(embed.submit_url)}" data-pow-bits="${preview ? 0 : (opts.pow_bits ?? 0)}" data-msg-fail="${escapeHtml(failMsg)}" data-msg-done="${escapeHtml(doneMsg)}"${redirect ? ` data-redirect="${escapeHtml(redirect)}"` : ''}${previewAttrs}>
+${styles}<form data-tr-form-el method="POST" action="${escapeHtml(embed.submit_url)}" data-pow-bits="${preview ? 0 : (opts.pow_bits ?? 0)}" data-msg-fail="${escapeHtml(failMsg)}" data-msg-done="${escapeHtml(doneMsg)}"${redirect ? ` data-redirect="${escapeHtml(redirect)}"` : ''}${labelAttrs}${versionAttr}${previewAttrs}>
 ${previewHtml}<input type="hidden" name="_token" value="${escapeHtml(preview ? '' : (embed.submit_token ?? ''))}" />
 <input type="hidden" name="_state" value="" />
 <input type="hidden" name="_form_id" value="${escapeHtml(form.id)}" />
 <input type="text" name="_hp" class="form-hp" hidden tabindex="-1" autocomplete="off" aria-hidden="true" />
 <p class="form-toplevel-error form-field-error" hidden tabindex="-1"></p>
-${stepHtml}
+${progressHtml}${stepHtml}
 <div data-form-dynamic-step hidden></div>
-<button type="submit" class="form-submit">${escapeHtml(submitLabel)}</button>
+${backHtml}<button type="submit" class="form-submit">${escapeHtml(labelFor(steps[0]!))}</button>
 </form>
 </div>`;
+}
+
+/**
+ * A step's title and blocks, as the static shell and the submit endpoint
+ * (for dynamic steps) both render them.
+ */
+export function formStepBodyHtml(step: FormStep, registry: RenderBlocksOptions['registry'], renderVersion: number): string {
+  const title = showsStepTitle(step, renderVersion) ? `<h3 class="form-step-title">${escapeHtml(step.title!)}</h3>` : '';
+  return `${title}${renderBlocks(step.blocks ?? [], { registry })}`;
 }
 
 /** Shell styles shipped once per bundle (rides with the runtime include). */
@@ -188,5 +245,20 @@ ${FORM_BLOCKS_CSS}
   padding: 0.8rem 1.6rem; margin-top: 0.4rem;
 }
 [data-tr-form] .form-submit[disabled] { opacity: 0.6; cursor: progress; }
+[data-tr-form] .form-back {
+  font: inherit; cursor: pointer; background: transparent;
+  color: var(--form-accent-color, var(--color-primary, #111));
+  border: 1px solid currentColor;
+  border-radius: var(--form-field-radius, 0.5rem);
+  padding: calc(0.8rem - 1px) 1.4rem; margin: 0.4rem 0.5rem 0 0;
+}
+[data-tr-form] .form-back[hidden] { display: none; }
+[data-tr-form] .form-progress { margin: 0 0 1rem; font-size: 0.875rem; }
+[data-tr-form] .form-progress-bar { display: block; height: 0.25rem; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, currentColor 15%, transparent); }
+[data-tr-form] .form-progress-fill { display: block; height: 100%; background: var(--form-accent-color, var(--color-primary, #111)); transition: width 0.2s ease; }
+[data-tr-form] [data-form-progress="text"] .form-progress-bar { display: none; }
+[data-tr-form] [data-form-progress="bar"] .form-progress-text {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
 [data-tr-form] .form-done { padding: 1rem 0; font-weight: 600; }
 `.trim();
