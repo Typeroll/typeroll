@@ -1,5 +1,35 @@
 # Changelog
 
+## Core 0.2.60 / MCP 0.45.46
+
+Sites can define their own block types, built from existing blocks or written as markup, and edit them in a visual builder.
+
+- Site block types:
+  - Composed types (`composition`) are built from existing blocks. The schema declares the type's fields, and inner blocks bind them as `{{props.title}}`. A repeater without `item_block` renders its children once for each item of a list field (`{{item.title}}`). Composed types can contain other composed types.
+  - Template types (`template`) write their own markup. They can loop with `{{#each}}` and `{{@number}}`, test for empty values with `{{^field}}`, and link with `{{#link field class="…"}}`.
+  - New `link` field type (`{ page_id?, url?, new_tab? }`). It resolves to a safe `href`, `target` and `rel`, and a link to a page follows when the page's slug changes.
+  - A block type's stylesheet is scoped to the block (`:scope`, `css_scope: block`). Page-wide selectors such as `body {}` are refused.
+  - Starters: icon list, feature cards and numbered steps.
+- One write path for block types in the portal, the API, MCP and the chat:
+  - Every write goes through the same validator. Errors refuse the write and list every problem with its JSON path or template line; warnings are returned with the result.
+  - New endpoints `validate`, `preview` and `starters` (MCP `validate_block_type`, `preview_block_type`, `list_block_type_starters`). The preview renders an unsaved definition with the site's theme, styles and render version.
+  - **Contract change:** creating and updating a block type now responds with `{ block_type, warnings, impact? }` instead of the bare block type.
+  - Updates take `renames`, which move the data on every page, draft, template, header, footer, global block and repeater item. An update that removes or retypes fields holding data answers 409 with the affected uses, unless it sends `confirm_data_loss: true`.
+  - Usage follows compositions, repeaters, drafts and block templates. A block type cannot be deleted while it is used.
+  - `.tcblocks` export and import is lossless and takes `on_conflict`: `skip`, `rename` or `replace`.
+  - Only admins can create, change, delete or import block types. The chat writes `script` only when the site allows AI block scripts.
+  - On a site below render version 4, the write warns when an icon sits inside a linked container, because the links would nest.
+- Portal:
+  - A block type builder on the Blocks page, with the tabs Fields, Blocks (with "Bind to field"), Markup, CSS, Preview, Usage and JSON.
+  - "Turn into block type…" makes a type from a selected section and replaces the section with an instance of the type. "Detach into blocks" reverses it.
+  - In the inspector, list items can be collapsed, reordered by dragging or with Move up and Move down, duplicated and removed with undo. The inspector also gains icon, link and image pickers.
+- New `core/text` block: plain text in a chosen element. `core/container` can open its link in a new tab.
+- Render version 4:
+  - Accordion items render as expandable sections, and "Default open" opens the first item or every item.
+  - Pricing plan features and team member social links render, and excluded features are marked.
+  - An icon without a link no longer sits in an empty link.
+  - A container set to be a link renders as a plain container when it has no address, and so does a team member card without a link.
+
 ## Core 0.2.59 / MCP 0.45.45
 
 Everything the portal can do is now available through the authenticated API and MCP, with the same permission checks. The portal chat assistant keeps its narrower tool set.
