@@ -14,7 +14,7 @@ import { isSecretCryptoConfigured } from '../secret-crypto';
 import { connectCloudflare, connectCloudflareMedia, prepareCloudflareMedia } from './cloudflare-connection';
 import { cloudflareSetup } from './cloudflare-oauth';
 import { ConnectionError, connectionSummary, disconnect, getConnection, type Provider } from './connections';
-import { githubSetup } from './github-connection';
+import { githubSetup } from './github-config';
 import { getHostingGroup, hostingGroupId } from './hosting-groups';
 import { mediaMigrationStatus } from './media-migration';
 

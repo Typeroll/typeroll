@@ -2,11 +2,14 @@
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import LoginForm from '../components/LoginForm.tsx';
 import { isDevAuthEnabled, isFirebaseConfigured, getSession } from '../lib/auth';
+import { safeReturnPath } from '../lib/return-path';
 
 // If already signed in, send where they need to go.
-// Pending sessions (no org yet) go to onboarding; full sessions go to the app.
+// Pending sessions (no org yet) go to onboarding; full sessions go to the app,
+// or back to the application page that asked them to sign in again.
+const next = safeReturnPath(Astro.url.searchParams.get('next'));
 const session = await getSession(Astro.cookies);
-if (session) return Astro.redirect(session.orgId ? '/app' : '/onboarding');
+if (session) return Astro.redirect(session.orgId ? next ?? '/app' : '/onboarding');
 
 const firebaseReady = isFirebaseConfigured();
 const devAuthEnabled = isDevAuthEnabled();
@@ -16,13 +19,14 @@ const devAuthEnabled = isDevAuthEnabled();
     <div class="card stack">
       <h1 style="font-size: 1.5rem;">Sign in to Typeroll</h1>
       {firebaseReady ? (
-        <LoginForm client:load />
+        <LoginForm client:load next={next} />
       ) : devAuthEnabled ? (
         <>
           <p class="muted text-sm">
             Firebase is not configured on this server. Dev mode is enabled — click below to continue with a local dev session.
           </p>
           <form method="POST" action="/api/auth/dev-session">
+            {next && <input type="hidden" name="next" value={next} />}
             <button type="submit" class="btn" style="width: 100%; justify-content: center;">
               Continue as Dev User
             </button>

@@ -36,7 +36,8 @@ export const POST: APIRoute = async (context) => {
     }
     if (context.params.provider !== 'github') throw new ConnectionError('Unknown publishing provider', 404);
     if (typeof body.installation_id === 'string') {
-      await selectGithubOrganization(guard.value, body.installation_id);
+      await selectGithubOrganization(guard.value, body.installation_id, fetch,
+        { confirmAccountChange: typeof body.confirm_account_change === 'string' ? body.confirm_account_change : undefined });
       return privateJson({ connected: true });
     }
     const result = body.action === 'install' ? await startGithubInstallation(guard.value)

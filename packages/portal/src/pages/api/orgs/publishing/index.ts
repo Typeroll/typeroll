@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { githubChoices, githubNextStep } from '../../../../lib/publishing/github-connection';
+import { currentGithubDiagnosis } from '../../../../lib/publishing/github-diagnosis';
 import { connectionFailure, privateJson, publishingAdmin } from '../../../../lib/publishing/http';
 import { cloudflareChoices } from '../../../../lib/publishing/cloudflare-oauth';
 import { organizationConnectionsStatus } from '../../../../lib/publishing/organization-connections';
@@ -12,6 +13,7 @@ export const GET: APIRoute = async (context) => {
   try {
     return privateJson({ ...await organizationConnectionsStatus(guard.value.orgId),
       cloudflare_choices: await cloudflareChoices(guard.value),
-      github_next_step: await githubNextStep(guard.value), github_choices: await githubChoices(guard.value) });
+      github_next_step: await githubNextStep(guard.value), github_choices: await githubChoices(guard.value),
+      github_diagnosis: await currentGithubDiagnosis(guard.value.orgId, guard.value) });
   } catch (error) { return connectionFailure(error); }
 };

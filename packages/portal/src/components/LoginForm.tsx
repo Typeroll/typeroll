@@ -9,7 +9,7 @@ import { getFirebaseAuth } from '../lib/firebase-client';
 
 type Mode = 'signin' | 'signup';
 
-export default function LoginForm() {
+export default function LoginForm({ next = null }: { next?: string | null }) {
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,7 +26,7 @@ export default function LoginForm() {
       body: JSON.stringify({ idToken }),
     });
     if (!res.ok) throw new Error('Session exchange failed');
-    window.location.href = '/app';
+    window.location.href = next ?? '/app';
   }
 
   async function withFirebase<T>(fn: () => Promise<T>) {
