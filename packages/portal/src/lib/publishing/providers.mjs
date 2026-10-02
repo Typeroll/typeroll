@@ -9,13 +9,46 @@ export function digest(value) {
 }
 
 export class ProviderError extends Error {
-  constructor(provider, status, codes = []) {
+  constructor(provider, status, codes = [], { retryAfter = null, ssoUrl = null, rateLimited = false } = {}) {
     // Provider bodies can contain credentials or reflected request payloads.
     super(`${provider} request failed (HTTP ${status}); inspect access and resource status in the provider dashboard`);
     this.provider = provider;
     this.status = status;
     this.codes = codes.filter(code => Number.isSafeInteger(code));
+    // Seconds until a retry can succeed, when the provider says so.
+    this.retryAfter = Number.isSafeInteger(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 3600) : null;
+    this.ssoUrl = githubSsoUrl(ssoUrl);
+    this.rateLimited = rateLimited === true;
   }
+}
+
+/**
+ * GitHub names the SAML authorization page in X-GitHub-SSO
+ * (`required; url=https://github.com/orgs/…/sso?authorization_request=…`).
+ * Only a github.com HTTPS page may be offered to the user as a link.
+ */
+export function githubSsoUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  const match = /(?:^|;)\s*url=([^;\s]+)/i.exec(value);
+  const candidate = match ? match[1] : value.trim();
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'https:' || url.hostname !== 'github.com' || url.port || url.username || url.password) return null;
+    return url.toString();
+  } catch { return null; }
+}
+
+function githubRateLimit(response) {
+  const remaining = response.headers.get('x-ratelimit-remaining');
+  const retry = response.headers.get('retry-after');
+  const reset = Number(response.headers.get('x-ratelimit-reset'));
+  let retryAfter = null;
+  if (retry && /^\d+$/.test(retry)) retryAfter = Number(retry);
+  else if (retry && Number.isFinite(Date.parse(retry))) retryAfter = Math.ceil((Date.parse(retry) - Date.now()) / 1000);
+  else if (remaining === '0' && Number.isSafeInteger(reset)) retryAfter = Math.ceil(reset - Date.now() / 1000);
+  const rateLimited = response.status === 429 || (response.status === 403 && (remaining === '0' || Boolean(retry)));
+  if (rateLimited) return { rateLimited, retryAfter: Math.max(1, retryAfter ?? 60) };
+  return { rateLimited, retryAfter: response.status >= 500 && retryAfter > 0 ? retryAfter : null };
 }
 
 export class ProviderTransportError extends Error {
@@ -58,6 +91,9 @@ export function createProviderClient(provider, token, fetchImpl = fetch) {
           const error = await response.json();
           if (Array.isArray(error.errors)) codes = error.errors.map(item => item?.code);
         } catch { /* Never include response bodies in errors. */ }
+      }
+      if (provider === 'GitHub') {
+        throw new ProviderError(provider, response.status, codes, { ...githubRateLimit(response), ssoUrl: response.headers.get('x-github-sso') });
       }
       throw new ProviderError(provider, response.status, codes);
     }

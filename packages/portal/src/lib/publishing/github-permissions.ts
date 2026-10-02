@@ -1,4 +1,4 @@
-import { githubConfiguration } from './github-connection';
+import { githubConfiguration } from './github-config';
 import { assertInstallation, githubAppClient } from './providers.mjs';
 import { ConnectionError, getConnection } from './connections';
 

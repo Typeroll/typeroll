@@ -80,7 +80,7 @@ export async function claimAccount(orgId: string, provider: Provider, accountId:
   const path = `publishing_account_claims/${provider}-${segment(accountId)}`;
   await getStore().createDocIfMissing(path, { org_id: orgId });
   const claim = await getStore().getDoc<{ org_id: string }>(path);
-  if (claim?.org_id !== orgId) throw new ConnectionError('This account is already connected to another Typeroll organization', 409);
+  if (claim?.org_id !== orgId) throw new ConnectionError('This account is already connected to another Typeroll organization', 409, 'claimed_by_other_organization');
 }
 
 export async function saveConnection(orgId: string, provider: Provider, revision: string, data: Partial<Connection>, groupId = 'default'): Promise<void> {

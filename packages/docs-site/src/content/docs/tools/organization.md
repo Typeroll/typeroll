@@ -124,6 +124,16 @@ OAuth sign-in and GitHub App installation remain browser steps:
 `read_organization_publishing_connections` returns `connect_urls` for the person
 who completes them.
 
+When GitHub is not connected, `diagnose_organization_github_connection`
+(`GET /publishing/github-diagnosis`) explains why: the organization's outcome
+and each blocker with who must act (`you`, `github_owner`, `publisher` or
+`typeroll_admin`) and one action, plus the saved installation once connected. A
+person's unfinished attempt and their GitHub accounts stay in their GitHub card.
+Relay the message and link to the person; sign-in, installation and account
+changes happen at `connect_url`. `recheck: true` re-checks a connected installation with
+the App's own access. Every code is explained in
+[GitHub connection troubleshooting](../../guides/github-troubleshooting/).
+
 ## What stays in the portal
 
 - **Creating an Organization.** An Organization is owned by a signed-in person,

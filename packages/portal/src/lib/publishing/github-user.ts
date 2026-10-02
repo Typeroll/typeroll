@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getStore } from '../datastore';
-import { githubConfiguration } from './github-connection';
+import { githubConfiguration } from './github-config';
 import { ConnectionError, connectionPath, getConnection, openCredentials, sealCredentials, type Connection } from './connections';
 import { assertInstallation, createProviderClient, ProviderError, githubAppClient, type ProviderClient } from './providers.mjs';
 

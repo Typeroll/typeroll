@@ -11,11 +11,14 @@
 // Organization API key required, matching the organization owner/admin rule
 // of the portal Publishing page. GitHub sign-in and App installation, and
 // Cloudflare OAuth sign-in, need a browser: use connect_urls from the status.
+// POST .../github answers 409 with connect_url and the organization-level
+// GitHub diagnosis (see GET /api/v1/publishing/github-diagnosis).
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireAnyApiKey, type ApiContext } from '../../../../../lib/api-auth';
 import type { FullSession } from '../../../../../lib/access';
 import { connectionFailure, publishingJsonBody } from '../../../../../lib/publishing/http';
+import { currentGithubDiagnosis } from '../../../../../lib/publishing/github-diagnosis';
 import {
   applyCloudflareConnectionAction, disconnectOrganizationProvider, isPublishingProvider, publishingConnectUrl,
 } from '../../../../../lib/publishing/organization-connections';
@@ -41,7 +44,13 @@ export const POST: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   if (!isPublishingProvider(params.provider)) return apiError('Unknown publishing provider', 404, ctx);
   if (params.provider === 'github') {
-    return apiError(`GitHub is connected by an organization owner or admin in a browser: ${publishingConnectUrl('github')}`, 409, ctx);
+    // The organization-level diagnosis tells the caller who must do what in that browser session.
+    try {
+      const response = apiResponse(ctx, { error: `GitHub is connected by an organization owner or admin in a browser: ${publishingConnectUrl('github')}`,
+        connect_url: publishingConnectUrl('github'), diagnosis: await currentGithubDiagnosis(ctx.tokenOrgId) }, 409);
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
+    } catch (error) { return connectionFailure(error); }
   }
   try {
     const body = await publishingJsonBody(request);

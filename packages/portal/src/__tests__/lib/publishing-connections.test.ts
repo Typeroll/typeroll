@@ -5,8 +5,9 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { claimAccount, connectionPath, connectionSummary, disconnect, getConnection, openCredentials, sealCredentials } from '../../lib/publishing/connections';
 import { CLOUDFLARE_SCOPES } from '../../lib/publishing/cloudflare-oauth';
-import { finishGithubConnection, githubNextStep, startGithubInstallation, resumeGithubInstallation, githubSetup, startGithubConnection, githubChoices, selectGithubOrganization } from '../../lib/publishing/github-connection';
+import { finishGithubConnection, startGithubInstallation, resumeGithubInstallation, githubSetup, startGithubConnection, githubChoices, selectGithubOrganization } from '../../lib/publishing/github-connection';
 import { connectCloudflare, verifyR2, prepareCloudflareMedia, connectCloudflareMedia } from '../../lib/publishing/cloudflare-connection';
+import { currentGithubDiagnosis } from '../../lib/publishing/github-diagnosis';
 import { GET } from '../../pages/api/orgs/publishing/index';
 import { checkGithubPermissions } from '../../lib/publishing/github-permissions';
 import { GET as GITHUB_PERMISSIONS } from '../../pages/api/orgs/publishing/github/permissions';
@@ -99,7 +100,8 @@ describe('GitHub organization authorization', () => {
     if (kind === 'expired') await getStore().updateDoc('organizations/default/publishing_authorizations/github', { expires_at: Date.now() - 1 });
     const actor = { ...session, ...(kind === 'user' ? { userId: 'someone-else' } : {}), ...(kind === 'organization' ? { orgId: 'other' } : {}) };
     const fetcher = providerFetch();
-    await expect(finishGithubConnection(actor, input, fetcher)).rejects.toThrow('expired');
+    // A browser mismatch is reported as such, so the person knows to stay in one browser.
+    await expect(finishGithubConnection(actor, input, fetcher)).rejects.toMatchObject({ code: kind === 'browser' ? 'wrong_browser' : 'state_expired' });
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -197,18 +199,20 @@ describe('GitHub organization authorization', () => {
 
 describe('GitHub installation continuation', () => {
   const grantPath = 'organizations/default/publishing_authorizations/github';
+  // A required installation is durable: it is the primary action of the person's stored diagnosis.
+  const githubNextStep = async (actor: typeof session) => (await currentGithubDiagnosis(actor.orgId, actor)).primary_action?.kind === 'install' ? 'install' : null;
   async function requireInstallation() {
     const input = await authorization();
     await expect(finishGithubConnection(session, input, providerFetch({
       '/user/installations?per_page=100&page=1': { installations: [] },
-    }))).rejects.toMatchObject({ code: 'install_required' });
+    }))).rejects.toMatchObject({ code: 'no_installation' });
     return input;
   }
   it('persists the required step across page reloads without persisting the user token', async () => {
     await requireInstallation();
     expect(await githubNextStep(session)).toBe('install');
     const response = await call(GET, routeContext());
-    expect(await response.json()).toMatchObject({ github_next_step: 'install', github: { status: 'disconnected' } });
+    expect(await response.json()).toMatchObject({ github_diagnosis: { primary_action: { kind: 'install' } }, github: { status: 'disconnected' } });
     const stored = await getStore().getDoc<any>(grantPath);
     expect(JSON.stringify(stored)).not.toContain('synthetic-user-token');
     expect(stored.encrypted_verifier).toBeNull();
@@ -260,7 +264,7 @@ describe('GitHub installation continuation', () => {
     if (kind === 'expired') await getStore().updateDoc(grantPath, { expires_at: Date.now() - 1 });
     if (kind === 'connection') await disconnect('default', 'github', (await getConnection('default', 'github')).revision);
     const actor = { ...session, ...(kind === 'user' ? { userId: 'other' } : {}), ...(kind === 'organization' ? { orgId: 'other' } : {}) };
-    await expect(resumeGithubInstallation(actor, input)).rejects.toThrow('expired');
+    await expect(resumeGithubInstallation(actor, input)).rejects.toMatchObject({ code: kind === 'browser' ? 'wrong_browser' : 'state_expired' });
     expect((await getConnection('default', 'github')).status).toBe('disconnected');
   });
   it('consumes the installation return once and never exchanges its unbound code', async () => {
@@ -285,7 +289,7 @@ describe('GitHub installation continuation', () => {
       if (String(url).includes('/user/installations')) await startGithubConnection(session);
       return fallback(url, init);
     });
-    await expect(finishGithubConnection(session, input, fetcher)).rejects.toMatchObject({ code: 'install_required' });
+    await expect(finishGithubConnection(session, input, fetcher)).rejects.toMatchObject({ code: 'no_installation' });
     expect(await githubNextStep(session)).toBeNull();
   });
 });
@@ -572,7 +576,7 @@ describe('publishing account routes', () => {
     context.url.search = '?code=synthetic-sensitive-code&state=untrusted&installation_id=34';
     const result = await call(CALLBACK, context);
     expect(result.status).toBe(303);
-    expect(result.headers.get('location')).toBe('/app/settings/publishing?github=failed');
+    expect(result.headers.get('location')).toBe('/app/settings/publishing?github=state_expired#github');
     expect(result.headers.get('referrer-policy')).toBe('no-referrer');
     expect(context.cookies.delete).toHaveBeenCalled();
   });

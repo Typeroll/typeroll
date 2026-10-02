@@ -88,7 +88,7 @@ Organization routes need an organization-scoped key; a site-scoped key gets
 |---|---|
 | Organization API keys | `GET /organization/api-keys`, `DELETE /organization/api-keys/{keyId}` (keys are created in the portal) |
 | Invites | `POST /organization/invites` |
-| Publishing connections | `GET /publishing/connections`, `POST /publishing/connections/cloudflare`, `DELETE /publishing/connections/{provider}` |
+| Publishing connections | `GET /publishing/connections`, `GET /publishing/github-diagnosis`, `POST /publishing/connections/cloudflare`, `DELETE /publishing/connections/{provider}` |
 | Publishing builds, domains, Hosting Groups, media migration | `/publishing/builds`, `/publishing/domains`, `/publishing/zones`, `/publishing/hosting-groups`, `/publishing/media-migration`, `/publishing/github-permissions` |
 
 The API route source under `packages/portal/src/pages/api/v1` is exhaustive;
@@ -510,3 +510,27 @@ further than the caller. Nothing here returns a new secret.
   `secret_access_key`), `prepare_media` (`revision`) or `save_media`
   (`revision`, `access_key_id`, `secret_access_key`). `DELETE
   /publishing/connections/{provider}` takes `{ revision, hosting_group_id? }`.
+  `POST /publishing/connections/github` answers `409` with `error`,
+  `connect_url` and `diagnosis`, because GitHub is connected by a person in a
+  browser. `github_setup` reports `app_configured` and `encryption_available`
+  separately.
+- **GitHub connection diagnosis.** `GET /publishing/github-diagnosis` returns
+  `{ diagnosis, connect_url }` for an organization key (site keys get `403`).
+  It is the organization's state: a person's unfinished attempt (their GitHub
+  login, the other accounts their sign-in showed, single sign-on links) stays
+  in their portal session, so `attempted_by` and `github_user` are `null` and
+  `installations` lists only the installation of a saved connection.
+  `diagnosis` has `version`, `checked_at`, `revision`, `attempted_by`,
+  `github_user` (`{ id, login }` or `null`), `outcome` (`unavailable`,
+  `sign_in_required`, `action_required`, `waiting_on_owner`, `choose`,
+  `connected`, `needs_attention`, `retryable_error`), `primary_action`,
+  `blockers` and `installations` (`installation_id`, `account { login, type,
+  id }`, `usable`, `blockers`). A blocker has `code`, `who` (`you`,
+  `github_owner`, `publisher`, `typeroll_admin`), `message`, an optional
+  `action` (`kind` `link`, `sign_in`, `switch_account`, `retry`, `install`,
+  `contact_publisher` or `confirm_account_change`; `label`; `url` only for
+  `https://github.com/` or documentation pages) and, where relevant,
+  `retry_after` or `previous_account`. `?recheck=true` re-checks the connected
+  installation with the publisher App's authority and stores the result; an API
+  key cannot act as a person on GitHub, so for an unfinished connection the
+  organization's state is returned. No tokens or provider bodies are returned.
