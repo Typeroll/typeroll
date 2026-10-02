@@ -139,6 +139,11 @@ actions are skipped.
 Forms render through the `core/form` block: styled inputs, client-side
 validation, and the submit token wired in. You don't hand-write form HTML.
 
+In a multi-step form the browser checks required fields and formats only for
+the step that is showing, so a required field in a later step never blocks an
+earlier one; it is checked when its step appears. Each step posts only its own
+fields, and the server validates them again.
+
 ## Protection
 
 Every submission passes three checks before it's accepted:

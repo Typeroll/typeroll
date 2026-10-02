@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fixed: a multi-step form with a required field after step 1 could not be completed. The browser's own validation also checked the hidden later steps, so sending step 1 failed silently ("An invalid form control is not focusable"). The forms runtime now disables the fields of hidden steps, so native validation and the posted data cover the visible step only, and enables them when their step shows. The server still validates each step's fields. A form with a dynamic step no longer posts every later step twice.
+
 ## Core 0.2.64 / MCP 0.45.48
 
 Connect GitHub can no longer stop without saying what to do next after the App installation.

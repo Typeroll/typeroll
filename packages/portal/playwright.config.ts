@@ -53,6 +53,13 @@ const webServer = target.isRemote ? undefined : {
   },
 };
 
+/** Specs that also run in Firefox and WebKit (`npm run test:e2e:install` installs both). */
+const CROSS_ENGINE_TESTS = /forms-multistep-validation\.spec\.ts/;
+const CROSS_ENGINE_SPECS = [
+  { name: 'firefox', device: 'Desktop Firefox' },
+  { name: 'webkit', device: 'Desktop Safari' },
+] as const;
+
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: target.isRemote ? /target-contract\.spec\.ts/ : undefined,
@@ -77,6 +84,9 @@ export default defineConfig({
     ] : []),
   ] : [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Browser-engine-specific behaviour (native form validation) runs in
+    // every engine; the rest of the suite stays Chromium-only.
+    ...CROSS_ENGINE_SPECS.map(({ name, device }) => ({ name, testMatch: CROSS_ENGINE_TESTS, use: { ...devices[device] } })),
   ],
   webServer,
 });

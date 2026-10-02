@@ -10,6 +10,8 @@
 //     html for dynamic steps
 //   - promotes data-required → el.required (the template engine can't
 //     conditionally emit bare attributes)
+//   - disables the controls of hidden steps, so native validation and the
+//     posted FormData cover the visible step only
 //   - slider value readout; proof-of-work computation (see below)
 //
 // Anti-abuse (forms.typeroll.com is very public):
@@ -33,7 +35,16 @@ async function computePow(seed,bits){var enc=new TextEncoder();for(var nonce=0;;
 function fieldError(form,name,msg){var slot=$('[data-error-for="'+(window.CSS&&CSS.escape?CSS.escape(name):name)+'"]',form);var wrap=slot&&slot.closest(".form-field");if(slot){slot.textContent=msg;slot.hidden=!msg}if(wrap){if(msg)wrap.setAttribute("data-invalid","");else wrap.removeAttribute("data-invalid")}}
 function clearErrors(form){$all(".form-field-error",form).forEach(function(e){e.hidden=true;e.textContent=""});$all("[data-invalid]",form).forEach(function(e){e.removeAttribute("data-invalid")});var top=$(".form-toplevel-error",form);if(top){top.hidden=true;top.textContent=""}}
 function topError(form,msg){var el=$(".form-toplevel-error",form);if(el){el.textContent=msg;el.hidden=false;el.focus&&el.focus()}}
-function showStep(form,id){var found=false;$all("[data-form-step]",form).forEach(function(el){var on=el.getAttribute("data-form-step")===id;el.hidden=!on;if(on)found=true});if(found){var h=$('[data-form-step="'+id+'"] h3, [data-form-step="'+id+'"] label',form);if(h){h.setAttribute("tabindex","-1");h.focus({preventScroll:false})}}return found}
+// Native constraint validation must only see the visible step. Hidden steps
+// stay in the one <form>, so their required controls would block every
+// submit ("An invalid form control is not focusable"). Disabled controls are
+// barred from validation in every engine and are not posted; the server only
+// accepts the current step's declared fields, so nothing it expects is lost.
+// data-tr-step-off marks the controls the runtime disabled, so controls an
+// author disabled stay disabled when their step is shown.
+function setStepActive(el,on){$all("input,select,textarea,button",el).forEach(function(c){if(on){if(c.hasAttribute("data-tr-step-off")){c.removeAttribute("data-tr-step-off");c.disabled=false}}else if(!c.disabled){c.disabled=true;c.setAttribute("data-tr-step-off","")}})}
+function syncSteps(form){$all("[data-form-step], [data-form-dynamic-step]",form).forEach(function(el){setStepActive(el,!el.hidden)})}
+function showStep(form,id){var found=false;$all("[data-form-step]",form).forEach(function(el){var on=el.getAttribute("data-form-step")===id;el.hidden=!on;if(on)found=true});syncSteps(form);if(found){var h=$('[data-form-step="'+id+'"] h3, [data-form-step="'+id+'"] label',form);if(h){h.setAttribute("tabindex","-1");h.focus({preventScroll:false})}}return found}
 // ── Remote-backed forms (prefill + session) ─────────────────────────────
 // Two generic capabilities, declared per form, that the runtime implements
 // without knowing which app asked for them:
@@ -110,10 +121,15 @@ async function remoteInit(form,param){
 }
 function init(form){
   $all("[data-required]",form).forEach(function(el){el.required=el.getAttribute("data-required")==="true"});
-  $all('[data-block="form_slider"]',form).forEach(function(w){var inp=$("input[type=range]",w),out=$(".form-slider-value",w),unit=w.getAttribute("data-unit")||"";if(!inp||!out)return;var upd=function(){out.textContent=inp.value+(unit?" "+unit:"")};inp.addEventListener("input",upd);upd()});
+  $all('[data-block="form_slider"]',form).forEach(function(w){var inp=$("input[type=range]",w),out=$(".form-slider-value",w),unit=w.getAttribute("data-unit")||"";if(!inp||!out||w.__trReady)return;w.__trReady=true;var upd=function(){out.textContent=inp.value+(unit?" "+unit:"")};inp.addEventListener("input",upd);upd()});
+  $all('[data-clear-answer]',form).forEach(function(button){if(button.__trReady)return;button.__trReady=true;button.addEventListener("click",function(){var name=button.getAttribute("data-clear-answer");$all('input[type=radio]',button.parentElement).forEach(function(input){input.checked=false});form.__cleared=form.__cleared||{};form.__cleared[name]=true;form.dispatchEvent(new Event("input",{bubbles:true}))})});
+  syncSteps(form);
+  // init runs again after a dynamic step is injected so its new fields get
+  // the enhancements above; listeners on the form itself bind only once, or
+  // every later submit would post twice.
+  if(form.__trBound)return;form.__trBound=true;
   var wrap=wrapOf(form);
   if(wrap){try{var context=JSON.parse(wrap.getAttribute("data-tr-context-params")||"[]"),action=new URL(form.action),source=new URL(location.href);context.forEach(function(key){if(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key)&&["issuer","org_id","site_id","installation_id","session","token","grant"].indexOf(key)===-1&&key!==wrap.getAttribute("data-tr-session-param")&&source.searchParams.has(key))action.searchParams.set(key,source.searchParams.get(key))});form.action=action.href}catch(e){}}
-  $all('[data-clear-answer]',form).forEach(function(button){button.addEventListener("click",function(){var name=button.getAttribute("data-clear-answer");$all('input[type=radio]',button.parentElement).forEach(function(input){input.checked=false});form.__cleared=form.__cleared||{};form.__cleared[name]=true;form.dispatchEvent(new Event("input",{bubbles:true}))})});
   var sessParam=wrap?wrap.getAttribute("data-tr-session-param"):null;
   var remote=!!sessParam||!!(wrap&&wrap.hasAttribute("data-tr-hydrate"));
   if(remote&&!form.__remoteReady){form.__remoteReady=true;remoteInit(form,sessParam)}
@@ -126,7 +142,7 @@ function init(form){
     var btn=$('[type="submit"]',form);if(btn)btn.disabled=true;
     try{
       var fd=new FormData(form);fd.set("_protocol","1");
-      if(remote)$all('[data-block="form_checkbox_group"]',form).forEach(function(group){var input=$('input[type="checkbox"]',group);if(input&&!fd.has(input.name))fd.set(input.name,"")});
+      if(remote)$all('[data-block="form_checkbox_group"]',form).forEach(function(group){var input=$('input[type="checkbox"]',group);if(input&&!input.disabled&&!fd.has(input.name))fd.set(input.name,"")});
       $all('[data-block="form_boolean"]',form).forEach(function(group){var first=$("input[type=radio]",group);if(first&&!fd.has(first.name)&&form.__cleared&&form.__cleared[first.name])fd.set(first.name,"null")});
       if(remote&&form.__remoteFields){
         fd.set("_request_id",form.__requestId||crypto.randomUUID());
