@@ -109,6 +109,14 @@ describe('v1 block types: create, validate and preview', () => {
     expect(rendered.document).toContain('data-tr-render=');
   });
 
+  it('warns on create when the site renders before version 4 and an icon sits in a linked container', async () => {
+    const before = await (await call('index', 'POST', { body: iconList })).json() as { warnings: Array<{ path: string }> };
+    expect(before.warnings.map(warning => warning.path)).toContain('/composition/0/children/0/data/tag');
+    await (await store()).setDoc(paths.settings(ORG, SITE, MAIN_VERSION_ID), { render_version: 4 });
+    const after = await (await call('index', 'POST', { body: { ...iconList, name: 'icon_list_2' } })).json() as { warnings: unknown[] };
+    expect(after.warnings).toEqual([]);
+  });
+
   it('previews an unsaved template type with sample data, through the sanitizer', async () => {
     const res = await call('preview', 'POST', { body: { definition: { ...card, template: `${card.template}<img src=x onerror="alert(1)">` } } });
     const body = await res.json() as { ok: boolean; html: string; data: Record<string, unknown> };

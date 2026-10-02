@@ -97,4 +97,8 @@ A type has a composition or a template, never both.
   edit it and it skips the site's styles. Compose from real blocks.
 - Binding a text field into `core/prose`: the value becomes HTML. Use `core/text`.
 - Nesting links: an icon or button with its own link inside a linked container.
+- Linked containers on a site below render version 4: every icon sits in a
+  link of its own, so the icon list starter nests links, and an item without
+  an address is still a link. The write warns; upgrade the site's rendering
+  (`tr-upgrade-rendering`) first.
 - Writing `script` without the user's explicit request.

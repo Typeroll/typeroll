@@ -15,6 +15,7 @@
 import {
   BLOCK_TYPE_STARTERS,
   buildCoreBlockRegistry,
+  resolveRenderVersion,
   sampleBlockData,
   scopeBlockCss,
   validateBlockTypeDefinition,
@@ -99,6 +100,12 @@ export async function siteBlockTypes(ctx: BlockTypeCtx): Promise<StoredBlockType
   return vstore.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId);
 }
 
+/** The render version the site's pages use; block type warnings depend on it. */
+async function siteRenderVersion(ctx: BlockTypeCtx): Promise<number> {
+  const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
+  return resolveRenderVersion(settings?.render_version);
+}
+
 // ─── Validate ─────────────────────────────────────────────────────────────
 
 export interface DraftValidation {
@@ -117,7 +124,7 @@ export async function validateBlockTypeDraft(
   options: { typeId?: string; allowScript: boolean },
 ): Promise<WriteOutcome<DraftValidation>> {
   if (!isRecord(input)) return invalid([{ severity: 'error', path: '', message: 'The block type must be a JSON object.' }]);
-  const siteTypes = await siteBlockTypes(ctx);
+  const [siteTypes, renderVersion] = await Promise.all([siteBlockTypes(ctx), siteRenderVersion(ctx)]);
   const resolveType = blockTypeResolver(siteTypes);
   let existing: StoredBlockType | undefined;
   if (options.typeId) {
@@ -126,11 +133,11 @@ export async function validateBlockTypeDraft(
     if (!existing) return { ok: false, status: 404, body: { error: `Block type "${options.typeId}" not found` } };
   }
   if (existing) {
-    const { result, problems } = preparePatch(existing, input, siteTypes, options.allowScript);
+    const { result, problems } = preparePatch(existing, input, siteTypes, options.allowScript, renderVersion);
     return { ok: true, status: 200, body: { ok: errorsOf(problems).length === 0, problems, merged: { ...result.merged, id: existing.id } } };
   }
   const { renames: _renames, confirm_data_loss: _confirm, ...definition } = writableInput(input);
-  const result = validateBlockTypeDefinition(definition, { resolveType, allowScript: options.allowScript });
+  const result = validateBlockTypeDefinition(definition, { resolveType, allowScript: options.allowScript, renderVersion });
   const merged = { ...result.merged, id: result.merged.id || result.merged.name };
   if (merged.name && (siteTypes.some(type => type.id === merged.name) || isCoreBlockType(merged.name))) {
     result.problems.push({ severity: 'warning', path: '/name', message: `A block type named "${merged.name}" already exists; creating it again is refused.` });
@@ -151,8 +158,8 @@ export async function createSiteBlockType(
   options: CreateOptions,
 ): Promise<WriteOutcome<{ block_type: StoredBlockType; warnings: BlockTypeProblem[] }>> {
   if (!isRecord(input)) return invalid([{ severity: 'error', path: '', message: 'The block type must be a JSON object.' }]);
-  const siteTypes = await siteBlockTypes(ctx);
-  const result = validateBlockTypeDefinition(writableInput(input), { resolveType: blockTypeResolver(siteTypes), allowScript: options.allowScript });
+  const [siteTypes, renderVersion] = await Promise.all([siteBlockTypes(ctx), siteRenderVersion(ctx)]);
+  const result = validateBlockTypeDefinition(writableInput(input), { resolveType: blockTypeResolver(siteTypes), allowScript: options.allowScript, renderVersion });
   if (typeof result.value.name === 'string' && ROUTE_NAMES.includes(result.value.name)) {
     result.problems.push({ severity: 'error', path: '/name', message: `"${result.value.name}" is reserved by the block type API; choose another name.` });
   }
@@ -201,7 +208,7 @@ function parseRenames(raw: unknown): { renames: Record<string, string>; problems
  * schema change and, for a composed type whose props are renamed, rewrites
  * its own bindings unless the patch brings a new composition.
  */
-function preparePatch(existing: BlockType, input: Record<string, unknown>, siteTypes: readonly BlockType[], allowScript: boolean) {
+function preparePatch(existing: BlockType, input: Record<string, unknown>, siteTypes: readonly BlockType[], allowScript: boolean, renderVersion: number) {
   const { renames: rawRenames, confirm_data_loss: confirm, ...rest } = writableInput(input);
   const definition: Record<string, unknown> = { ...rest };
   const { renames, problems: renameProblems } = parseRenames(rawRenames);
@@ -217,7 +224,7 @@ function preparePatch(existing: BlockType, input: Record<string, unknown>, siteT
       definition.composition = renameCompositionBindings(existing.composition, plan);
     }
   }
-  const result = validateBlockTypeDefinition(definition, { partial: true, existing, resolveType: blockTypeResolver(siteTypes), allowScript });
+  const result = validateBlockTypeDefinition(definition, { partial: true, existing, resolveType: blockTypeResolver(siteTypes), allowScript, renderVersion });
   return { result, plan, problems: [...renameProblems, ...result.problems], confirm: confirm === true };
 }
 
@@ -234,11 +241,11 @@ export async function updateSiteBlockType(
 ): Promise<WriteOutcome<{ block_type: StoredBlockType; warnings: BlockTypeProblem[]; impact?: BlockTypeImpact }>> {
   if (isCoreBlockType(typeId)) return { ok: false, status: 403, body: { error: 'Core block types are managed in code and cannot be changed.' } };
   if (!isRecord(input)) return invalid([{ severity: 'error', path: '', message: 'The block type must be a JSON object.' }]);
-  const siteTypes = await siteBlockTypes(ctx);
+  const [siteTypes, renderVersion] = await Promise.all([siteBlockTypes(ctx), siteRenderVersion(ctx)]);
   const existing = siteTypes.find(type => type.id === typeId);
   if (!existing) return { ok: false, status: 404, body: { error: `Block type "${typeId}" not found` } };
 
-  const { result, plan, problems, confirm } = preparePatch(existing, input, siteTypes, options.allowScript);
+  const { result, plan, problems, confirm } = preparePatch(existing, input, siteTypes, options.allowScript, renderVersion);
   if (errorsOf(problems).length) return invalid(problems);
 
   let impact: BlockTypeImpact | undefined;
@@ -394,7 +401,7 @@ export async function importBlockTypePackage(
   blocks: ReadonlyArray<{ block_type: BlockType }>,
   options: { onConflict: ImportConflictMode; allowScript: boolean },
 ): Promise<PackageImportResult> {
-  const siteTypes = await siteBlockTypes(ctx);
+  const [siteTypes, renderVersion] = await Promise.all([siteBlockTypes(ctx), siteRenderVersion(ctx)]);
   const taken = new Set(siteTypes.map(type => type.id));
   const packageNames = new Set(blocks.map(({ block_type }) => block_type.name));
   const renamed = new Map<string, string>();
@@ -426,7 +433,7 @@ export async function importBlockTypePackage(
   const now = new Date().toISOString();
   for (const { outcome, type, replace } of definitions) {
     const input = Object.fromEntries(Object.entries(writableInput(type as unknown as Record<string, unknown>)).filter(([, value]) => value !== undefined));
-    const result = validateBlockTypeDefinition(input, { resolveType, allowScript: options.allowScript });
+    const result = validateBlockTypeDefinition(input, { resolveType, allowScript: options.allowScript, renderVersion });
     const problems = [...result.problems];
     if (ROUTE_NAMES.includes(type.name)) problems.push({ severity: 'error', path: '/name', message: `"${type.name}" is reserved by the block type API; rename the block type in the package.` });
     if (errorsOf(problems).length) {

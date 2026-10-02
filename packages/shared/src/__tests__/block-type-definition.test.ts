@@ -23,6 +23,21 @@ describe('block type definitions', () => {
     }
   });
 
+  it('warns that an icon inside a linked container nests links before render version 4', () => {
+    const iconList = BLOCK_TYPE_STARTERS.find(starter => starter.id === 'icon_list')!.definition;
+    const warnings = (renderVersion?: number) => validateBlockTypeDefinition(iconList, { resolveType, renderVersion }).problems
+      .filter(problem => problem.severity === 'warning');
+    expect(warnings(3)).toEqual([expect.objectContaining({ path: '/composition/0/children/0/data/tag', message: expect.stringContaining('render version 3') })]);
+    expect(warnings(4)).toEqual([]);
+    expect(warnings(undefined)).toEqual([]);
+    // Through a composed type nested in the linked container as well.
+    const badge: BlockType = { id: 'badge', name: 'badge', label: 'Badge', category: 'custom', container: false, schema: [], created_at: '',
+      composition: [{ id: 'i', type: 'core/icon', data: { icon: 'star' } }] };
+    const card = { name: 'card', label: 'Card', schema: [], composition: [{ id: 'a', type: 'core/container', data: { tag: 'a', href: '/x' }, children: [{ id: 'b', type: 'badge', data: {} }] }] };
+    const resolveWithBadge = (id: string) => (id === 'badge' ? badge : core.get(id));
+    expect(validateBlockTypeDefinition(card, { resolveType: resolveWithBadge, renderVersion: 1 }).problems.map(problem => problem.path)).toEqual(['/composition/0/data/tag']);
+  });
+
   it('scopes stylesheets written from now on', () => {
     expect(validateBlockTypeDefinition(BLOCK_TYPE_STARTERS[0]!.definition, { resolveType }).value.css_scope).toBe('block');
   });

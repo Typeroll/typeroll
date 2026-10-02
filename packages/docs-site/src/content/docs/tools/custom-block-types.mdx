@@ -203,6 +203,12 @@ Every write is checked before it is stored. Problems come back with a path
 The preview renders exactly as the published site does: the site's render
 version, theme, named styles and other block types.
 
+Linked items, such as those in the icon list and feature card starters, need
+render version 4 or later. Before it, an item without an address is still a
+link, and every icon renders inside a link of its own, which nests links in a
+linked item. A write that puts an icon in a linked container on such a site
+returns a warning; upgrade the site's rendering first.
+
 ## Changing a block type in use
 
 Renaming a field moves the data on every page, template, header, footer, global

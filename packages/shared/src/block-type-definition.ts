@@ -16,6 +16,7 @@ import { blockTreeError } from './block-tree-validation.js';
 import { scopeBlockCss } from './block-css-scope.js';
 import { COMPOSITION_MAX_DEPTH, walkComposition } from './composed-blocks.js';
 import { CUSTOM_CSS_MAX_LENGTH, checkCustomCss } from './custom-css.js';
+import { resolveRenderVersion } from './render-version.js';
 import { parseSections, sectionNames, type SectionNode } from './template-sections.js';
 import type { Block, BlockType, FieldDefinition, FieldType } from './types.js';
 
@@ -63,6 +64,8 @@ export interface ValidateBlockTypeOptions {
   resolveType: (id: string) => BlockType | undefined;
   /** Whether the caller may write `script` (see block-script-gate). */
   allowScript?: boolean;
+  /** The site's render version; output that differs between versions is checked against it. */
+  renderVersion?: number;
 }
 
 export interface ValidatedBlockType {
@@ -181,6 +184,7 @@ export function validateBlockTypeDefinition(input: unknown, options: ValidateBlo
     if (merged.composition?.length && merged.container) error('/container', 'A composed block type cannot hold children; use a container block inside its composition.');
     if (merged.container === 'slots' && !Number.isInteger(merged.slot_count)) error('/slot_count', 'A slots container needs slot_count (1–8).');
     if (value.composition || (value.schema && merged.composition?.length)) checkComposition(merged, id, options.resolveType, error, warn);
+    if (value.composition && options.renderVersion !== undefined) checkIconsInLinks(merged, options.resolveType, options.renderVersion, warn);
     if (value.template !== undefined || (value.schema && merged.template)) checkTemplate(merged, error, warn);
     if (value.styles !== undefined) checkStyles(merged.styles ?? '', merged.name, error, warn);
   }
@@ -305,6 +309,42 @@ function checkComposition(
   };
   visit(type.composition ?? [], '/composition', undefined);
   if (schema.some(field => field.responsive)) error('/schema', 'Fields of a composed block type cannot be responsive; set responsive values on the blocks inside it.');
+}
+
+/**
+ * Before render version 4 an icon always sits in a link of its own, even
+ * without an address. Inside a linked container that nests links, and the
+ * browser splits the container's link apart.
+ */
+function checkIconsInLinks(
+  type: BlockType,
+  resolveType: (id: string) => BlockType | undefined,
+  renderVersion: number,
+  warn: (path: string, message: string) => void,
+): void {
+  if (resolveRenderVersion(renderVersion) >= 4) return;
+  const containsIcon = (blocks: readonly Block[] | undefined, seen: Set<string>): boolean => {
+    let found = false;
+    walkComposition(blocks, block => {
+      if (found) return;
+      if (block.type === 'core/icon') { found = true; return; }
+      const inner = resolveType(block.type);
+      if (inner?.composition?.length && !seen.has(inner.id)) found = containsIcon(inner.composition, new Set([...seen, inner.id]));
+    });
+    return found;
+  };
+  const visit = (blocks: readonly Block[], path: string) => {
+    blocks.forEach((block, index) => {
+      const at = `${path}/${index}`;
+      if (block.type === 'core/container' && block.data?.tag === 'a' && containsIcon(block.children, new Set([type.id]))) {
+        warn(`${at}/data/tag`, `This site renders with render version ${resolveRenderVersion(renderVersion)}, where an icon always sits in a link of its own, so an icon inside this linked container nests links and breaks the container's link. Upgrade the site to render version 4 or later, or move the icon out of the linked container.`);
+        return;
+      }
+      if (block.children) visit(block.children, `${at}/children`);
+      block.slots?.forEach((slot, slotIndex) => visit(slot, `${at}/slots/${slotIndex}`));
+    });
+  };
+  visit(type.composition ?? [], '/composition');
 }
 
 function composedDepth(type: BlockType, resolveType: (id: string) => BlockType | undefined, path: Set<string>): number {
