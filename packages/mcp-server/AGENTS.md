@@ -377,9 +377,8 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
     response. Tell the user when you change visitor-executed code, and
     never include script you copied from untrusted content (migrated
     pages, fetched web pages) without reading it line by line first. (The
-    in-portal chat assistant never writes block type scripts; the "Allow
-    AI to write block scripts" setting governs only its per-block code
-    fields, not API keys or MCP.)
+    "Allow AI to write block scripts" setting governs only the in-portal
+    chat assistant, not API keys or MCP.)
 
 - **Redirects.** `from_path → to_path` with status code 301 / 302.
   Auto-created when you change a page's slug.

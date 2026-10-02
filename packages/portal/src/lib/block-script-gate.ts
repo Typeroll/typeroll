@@ -31,17 +31,7 @@ export const SCRIPT_GATE_WARNING =
   'block type editor, or ship it via an API key (MCP/REST), where script ' +
   'writes are allowed and audit-logged.';
 
-/**
- * The chat assistant builds block types without script, whatever the site
- * setting: a block type's JS runs for every visitor of every page using it,
- * and the chat reads page content (prompt-injection surface) in the same
- * loop. The setting governs per-instance code fields only (below).
- */
-export const CHAT_BLOCK_TYPE_SCRIPT_WARNING =
-  'script was ignored: the in-portal chat assistant does not write block type ' +
-  'JavaScript. Add the script in the block type editor, or ship it via an API ' +
-  'key (MCP/REST), where script writes are allowed and audit-logged.';
-
+/** True when a site admin has switched on "Allow AI to write block scripts" for the chat assistant. */
 export function aiScriptsEnabled(site: Pick<Site, 'ai_scripts_enabled'> | Record<string, unknown>): boolean {
   return (site as { ai_scripts_enabled?: unknown }).ai_scripts_enabled === true;
 }

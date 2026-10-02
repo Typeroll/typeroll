@@ -501,13 +501,14 @@ const tools: Anthropic.Tool[] = [
   // from add_block/update_block/etc. which manage *instances* of blocks
   // on a page. They write through lib/block-type-write.ts — the shared
   // validator and the version chain, like the portal and the API — and need
-  // admin permission on the site. The chat never writes `script`: it is
-  // dropped with a warning (lib/block-script-gate.ts). Origin is stamped
+  // admin permission on the site. The chat writes `script` only when the
+  // site allows AI block scripts; otherwise it is dropped with a warning
+  // (lib/block-script-gate.ts). Origin is stamped
   // 'ai' so the portal UI can flag AI-authored types for audit.
   {
     name: 'create_block_type',
     description:
-      "Create a block type for this site when no existing block fits and the user needs a reusable shape. Needs admin permission on the site. Prefer a COMPOSED block type: `composition` is a tree of existing blocks (core/heading, core/text, core/image, core/icon, core/button, core/container, core/grid, core/repeater …) whose data reads the block's own fields through exact bindings — a heading's text set to \"{{props.title}}\" — and a core/repeater with items \"{{props.items}}\" renders its children once per list item, where \"{{item.title}}\" reads the item. People who place the block edit only the fields in `schema`. Use a TEMPLATE type (`template`, own markup) only when existing blocks cannot express it: {{field}} escaped, {{{field}}} raw (richtext and derived …_svg only), {{#field}}…{{/field}} when set, {{^field}}…{{/field}} when empty, {{#each items}}…{{/each}} per list item (with {{@index}}, {{@first}}), {{#link field class=\"…\"}}…{{/link}} wraps in a safe link. Field types include text, textarea, richtext, image, icon, select, boolean, number, link ({ page_id | url, new_tab } — prefer page_id for pages on the site), array (a list with sub-fields, item_label, min_items, max_items) and object. `styles` is scoped to the block: selectors apply inside it, :scope is the block itself, body/html/:root are refused. Every problem comes back with a path; fix them and retry. The chat never writes `script` (it is ignored with a warning).",
+      "Create a block type for this site when no existing block fits and the user needs a reusable shape. Needs admin permission on the site. Prefer a COMPOSED block type: `composition` is a tree of existing blocks (core/heading, core/text, core/image, core/icon, core/button, core/container, core/grid, core/repeater …) whose data reads the block's own fields through exact bindings — a heading's text set to \"{{props.title}}\" — and a core/repeater with items \"{{props.items}}\" renders its children once per list item, where \"{{item.title}}\" reads the item. People who place the block edit only the fields in `schema`. Use a TEMPLATE type (`template`, own markup) only when existing blocks cannot express it: {{field}} escaped, {{{field}}} raw (richtext and derived …_svg only), {{#field}}…{{/field}} when set, {{^field}}…{{/field}} when empty, {{#each items}}…{{/each}} per list item (with {{@index}}, {{@first}}), {{#link field class=\"…\"}}…{{/link}} wraps in a safe link. Field types include text, textarea, richtext, image, icon, select, boolean, number, link ({ page_id | url, new_tab } — prefer page_id for pages on the site), array (a list with sub-fields, item_label, min_items, max_items) and object. `styles` is scoped to the block: selectors apply inside it, :scope is the block itself, body/html/:root are refused. Every problem comes back with a path; fix them and retry. `script` is written only when the site allows AI block scripts; otherwise it is ignored with a warning.",
     input_schema: {
       type: 'object',
       properties: {
@@ -541,7 +542,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'update_block_type',
     description:
-      "Update a site block type. Needs admin permission. Core blocks (id starts with 'core/') are managed in platform code and cannot be changed. schema, composition, template and styles REPLACE wholesale when set; other fields shallow-merge. To rename a field that pages already use, send the new schema with `renames` ({ \"old_name\": \"new_name\", \"items.title\": \"heading\" }) — the content moves in every page, draft, template and global block that uses the type (a composed type's own bindings follow). Removing or retyping a field that holds content is refused until you ASK THE USER and resend with confirm_data_loss: true; the refusal lists the affected pages. The result's `impact` lists every use. The chat never writes `script`.",
+      "Update a site block type. Needs admin permission. Core blocks (id starts with 'core/') are managed in platform code and cannot be changed. schema, composition, template and styles REPLACE wholesale when set; other fields shallow-merge. To rename a field that pages already use, send the new schema with `renames` ({ \"old_name\": \"new_name\", \"items.title\": \"heading\" }) — the content moves in every page, draft, template and global block that uses the type (a composed type's own bindings follow). Removing or retyping a field that holds content is refused until you ASK THE USER and resend with confirm_data_loss: true; the refusal lists the affected pages. The result's `impact` lists every use. `script` follows the site's AI block scripts setting.",
     input_schema: {
       type: 'object',
       properties: {
@@ -933,7 +934,7 @@ When a user asks for "a CTA at the top of every page", the right move is almost 
 
 These are two separate verb families — keep them straight:
 
-- **BlockType tools** (\`list_block_types\`, \`read_block_type\`, \`create_block_type\`, \`update_block_type\`, \`delete_block_type\`) manage the *schema definitions* — the things that show up in the block picker. Origin is stamped \`'ai'\` on creates; they need admin permission on the site. Prefer a composed block type (built from existing blocks with \`{{props.x}}\` / \`{{item.x}}\` bindings) over a template. You never write block type JavaScript (\`script\` is ignored with a warning) — suggest adding it in the block type editor or through an API key. Renaming a field in use goes through \`renames\`; removing one that holds content needs the user's agreement and \`confirm_data_loss\`.
+- **BlockType tools** (\`list_block_types\`, \`read_block_type\`, \`create_block_type\`, \`update_block_type\`, \`delete_block_type\`) manage the *schema definitions* — the things that show up in the block picker. Origin is stamped \`'ai'\` on creates; they need admin permission on the site. Prefer a composed block type (built from existing blocks with \`{{props.x}}\` / \`{{item.x}}\` bindings) over a template. You write block type JavaScript (\`script\`) only when the site has **Allow AI to write block scripts** on; otherwise it is ignored with a warning — suggest the block type editor or an API key. Renaming a field in use goes through \`renames\`; removing one that holds content needs the user's agreement and \`confirm_data_loss\`.
 - **Block instance tools** (\`add_block\`, \`update_block\`, \`move_block\`, \`remove_block\`, \`duplicate_block\`, \`set_block_responsive\`) manage *placements* of blocks inside a container (page/partial/template).
 
 A request like "make me a custom testimonial card with a star rating built in" is BlockType work (\`create_block_type\`); a request like "add another testimonial to the home page" is instance work (\`add_block\` or \`duplicate_block\`).
@@ -1781,7 +1782,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
         return { result: { error: 'Creating, changing and deleting block types needs admin permission on the site. Ask a site admin, or build the section from existing blocks.' } };
       }
       const writes = await import('./block-type-write');
-      const { CHAT_BLOCK_TYPE_SCRIPT_WARNING } = await import('./block-script-gate');
+      const { SCRIPT_GATE_WARNING, aiScriptsEnabled } = await import('./block-script-gate');
       const id = String(name === 'create_block_type' ? input.name ?? '' : input.id ?? '');
       if (name === 'delete_block_type') {
         const outcome = await writes.deleteSiteBlockType(wcCtx(ctx), id);
@@ -1791,12 +1792,15 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           action: { type: 'update_settings', description: `Deleted block type "${id}".`, target: id },
         };
       }
-      // The chat never writes block type JavaScript, whatever the site setting.
-      const { script, id: _id, ...definition } = input;
-      const scriptWarnings = script !== undefined && script !== '' ? [CHAT_BLOCK_TYPE_SCRIPT_WARNING] : [];
+      // The chat writes block type JavaScript only when a site admin has
+      // switched on "Allow AI to write block scripts" (block-script-gate.ts).
+      const allowScript = aiScriptsEnabled(ctx.site);
+      const { script, id: _id, ...rest } = input;
+      const definition = allowScript && script !== undefined ? { ...rest, script } : rest;
+      const scriptWarnings = !allowScript && script !== undefined && script !== '' ? [SCRIPT_GATE_WARNING] : [];
       const outcome = name === 'create_block_type'
-        ? await writes.createSiteBlockType(wcCtx(ctx), definition, { origin: 'ai', allowScript: false })
-        : await writes.updateSiteBlockType(wcCtx(ctx), id, definition, { allowScript: false, actor: 'agent', actorId: 'chat' });
+        ? await writes.createSiteBlockType(wcCtx(ctx), definition, { origin: 'ai', allowScript })
+        : await writes.updateSiteBlockType(wcCtx(ctx), id, definition, { allowScript, actor: 'agent', actorId: 'chat' });
       if (!outcome.ok) return { result: { ...outcome.body, ...(scriptWarnings.length ? { warnings: scriptWarnings } : {}) } };
       const body = outcome.body as { block_type: BlockType; warnings: unknown[]; impact?: unknown };
       return {

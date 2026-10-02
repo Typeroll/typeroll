@@ -285,29 +285,18 @@ describe('create_block_type', () => {
     expect(doc).toBeTruthy();
   });
 
-  it('NEVER persists the script field even if the model sends one, even with AI scripts enabled', async () => {
+  it('persists a block type script only when the site allows AI block scripts', async () => {
     const { ctx, runTool } = await setup();
-    const out = await runTool(
-      'create_block_type',
-      {
-        name: 'sneaky_block',
-        label: 'Sneaky',
-        schema: [],
-        template: '<div data-block="sneaky_block">hi</div>',
-        // Model attempts to inject a script — must be filtered:
-        script: 'alert(document.cookie)',
-      } as Record<string, unknown>,
-      { ...ctx, site: { ...ctx.site, ai_scripts_enabled: true } as typeof ctx.site },
-    );
-    const r = out.result as { block_type: import('@typeroll/shared').BlockType; warnings: string[] };
-    expect(r.block_type.script).toBeUndefined();
-    expect(r.warnings[0]).toMatch(/script was ignored/);
-
+    const definition = (name: string) => ({ name, label: 'Scripted', schema: [], template: `<div data-block="${name}">hi</div>`, script: 'console.log(1)' }) as Record<string, unknown>;
     const { getStore } = await import('../../lib/datastore');
-    const doc = await getStore().getDoc<import('@typeroll/shared').BlockType>(
-      `${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/sneaky_block`,
-    );
-    expect(doc?.script).toBeUndefined();
+    const stored = (name: string) => getStore().getDoc<import('@typeroll/shared').BlockType>(`${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/${name}`);
+
+    const blocked = (await runTool('create_block_type', definition('blocked_block'), ctx)).result as { warnings: string[] };
+    expect(blocked.warnings[0]).toMatch(/script/i);
+    expect((await stored('blocked_block'))?.script).toBeUndefined();
+
+    await runTool('create_block_type', definition('allowed_block'), { ...ctx, site: { ...ctx.site, ai_scripts_enabled: true } as typeof ctx.site });
+    expect((await stored('allowed_block'))?.script).toBe('console.log(1)');
   });
 
   it('validates with the shared validator and reports every problem with a path', async () => {
@@ -410,7 +399,7 @@ describe('update_block_type', () => {
       label: 'New Label',
       script: 'alert(1)',
     } as Record<string, unknown>, ctx);
-    expect((out.result as { warnings: string[] }).warnings[0]).toMatch(/script was ignored/);
+    expect((out.result as { warnings: string[] }).warnings[0]).toMatch(/script/i);
     const { getStore } = await import('../../lib/datastore');
     const doc = await getStore().getDoc<import('@typeroll/shared').BlockType>(
       `${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/note`,

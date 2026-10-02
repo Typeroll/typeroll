@@ -4,10 +4,9 @@
 //    already authorises, and as a person in the portal. The write is
 //    audit-logged like every API write and answered without a warning.
 //    The ai_scripts_enabled flag has NO effect on bearer paths.
-//  - The in-portal chat AI never writes block type `script` (2026-10-02,
-//    custom block types plan) — the chat-path tests in
-//    anthropic-tools.test.ts assert it never persists. gateBlockScript (unit
-//    tests here) remains the site-setting gate for chat-written code.
+//  - The in-portal chat AI writes block type `script` and per-block code
+//    only when the site has ai_scripts_enabled (anthropic-tools.test.ts).
+//    gateBlockScript (unit tests here) is that site-setting gate.
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
