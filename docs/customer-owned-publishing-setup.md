@@ -103,7 +103,8 @@ view. A person's own attempt on a connected organization never makes it
 `needs_attention`; only a check of the saved installation does. Callback
 results, including OAuth `error` parameters, are recorded only when `state` and
 the browser cookie match the same user's pending grant, which is then consumed;
-anything else redirects with `?github=state_expired` and records nothing. Starting
+anything else redirects with `?github=state_expired` (`installation_returned`
+or `install_requested` for a setup return with `setup_action`) and records nothing. Starting
 the App installation does not replace another user's pending grant.
 
 **Check again** (`POST /api/orgs/publishing/github/diagnosis`) re-reads
@@ -302,17 +303,52 @@ for production, staging, and local development; never copy live keys into tests.
 | `TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET` | Cloudflare OAuth client secret; secret-manager value |
 | `INTEGRATIONS_SECRET_KEY` | Existing encryption key, at least 32 characters; retain during normal redeploys |
 
-Register exactly `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback` as
-the App's OAuth callback. The implementation uses an explicit authorization
-step after installation; it does not need a setup URL or an installation webhook
-to trust the connection. Setting the App's **Setup URL** to the same callback
-path returns people to Typeroll after installing (`setup_action=install`) or
-after requesting an owner's approval (`setup_action=request`, shown as
-waiting for an owner); without it they return manually and select
-**Check again**. The `installation_id` GitHub appends is never trusted. Do not enable "Request user authorization (OAuth)
-during installation": install first, then start authorization from Typeroll.
-Keep expiring user tokens enabled. This first delivery does not consume
-webhooks; publication must revalidate installation access before each operation.
+Set these in the App's settings on GitHub (**General**):
+
+| Setting | Value |
+| --- | --- |
+| Callback URL | `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback`, exactly |
+| Setup URL (GitHub marks it optional; Typeroll needs it) | The same address, `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback` |
+| Redirect on update | Selected |
+| Request user authorization (OAuth) during installation | Not selected |
+| Expire user authorization tokens | Selected |
+
+The Setup URL is required for the installation flow: without it GitHub leaves
+people on its installation settings page after **Install the GitHub App**
+instead of returning them to Typeroll. It is not a trust anchor. Trust still
+comes from the explicit PKCE authorization that starts after the return, so no
+installation webhook is needed either. The installation link Typeroll opens is
+`https://github.com/apps/{slug}/installations/new?state=install_…`, and GitHub
+passes that `state` back to the Setup URL with `installation_id` and
+`setup_action`:
+
+- `setup_action=install` or `update` with a `state` that matches the pending
+  installation this person started in this browser: Typeroll consumes it and
+  starts the PKCE sign-in, which verifies the installation and connects it.
+- `setup_action=request`: a member asked the organization's owners to install
+  the App. The card waits for an owner.
+- No `state`, or one that matches nothing (installed or updated from GitHub
+  directly, or a link older than 10 minutes): nothing is recorded or consumed,
+  and the page opens with `?github=installation_returned` (or
+  `install_requested`). The card then runs **Check again** with the identity
+  the person proved within the hour.
+
+The `installation_id` GitHub appends is never trusted. Do not enable "Request
+user authorization (OAuth) during installation": install first, then start
+authorization from Typeroll. GitHub ignores the Setup URL while that option is
+enabled. Keep expiring user tokens enabled. This first delivery does not
+consume webhooks; publication must revalidate installation access before each
+operation.
+
+If a person opens the installation from Typeroll and Typeroll receives no
+return within two minutes, while **Check again** finds an installation on an
+account they own, the diagnosis includes `setup_url_missing` (`who: publisher`)
+as a note that does not change the outcome or the primary action. The card
+checks again on page load and when the tab regains focus, at most once per 10
+seconds, while the person's GitHub identity is trusted and the connection is
+not connected. `GET /api/orgs/publishing` returns `github_attempt`
+(`recheck_available`, `installation_started_at`) for that decision; it holds no
+identity or state values.
 
 Register `{PORTAL_PUBLIC_URL}/api/orgs/publishing/cloudflare/callback` for the
 Cloudflare client. Enable authorization-code and refresh-token grants with

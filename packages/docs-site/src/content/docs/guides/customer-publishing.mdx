@@ -7,7 +7,9 @@ This workflow applies to Typeroll Cloud and self-hosted installations with
 customer publishing enabled. Cloud users connect their own accounts; Typeroll
 operates the publisher authorization service. Self-hosting operators must first
 configure the publisher Apps, OAuth and private draft storage for their portal.
-See [Cloud and self-hosting](../../getting-started/cloud-and-self-hosting/).
+See [Cloud and self-hosting](../../getting-started/cloud-and-self-hosting/). The
+GitHub App's callback URL and Setup URL are listed under
+[GitHub connection troubleshooting](../github-troubleshooting/#setup_url_missing).
 
 ## Start editing before connecting accounts
 
@@ -70,7 +72,10 @@ manage these connections.
    reason each can or cannot be used. If the App is missing, select **Install the
    GitHub App**, choose the account that will own your repositories, select **All
    repositories**, and approve the installation. Typeroll returns automatically
-   to verify access. Choose an account if more than one is available. The card
+   to verify access. If GitHub stays on its own settings page, go back to the
+   Publishing tab: the card checks again by itself and, for your personal
+   account, offers **Connect @your-login**, which GitHub asks you to confirm
+   once. Choose an account if more than one is available. The card
    confirms **Connected** when all checks pass; signing in alone is not completion.
    No account name or ID needs to be typed. If something blocks the connection,
    see [When Connect GitHub does not finish](#when-connect-github-does-not-finish).
@@ -189,7 +194,8 @@ access token needs to be copied into Typeroll.
 ### When Connect GitHub does not finish
 
 Typeroll keeps the result of your latest GitHub attempt for 24 hours and shows
-it in the GitHub card, even after you reload. Each reason names who can fix it:
+it in the GitHub card, even after you reload. Each reason starts with **Who
+acts**, naming who can fix it:
 
 - **You** — for example sign in with another account, authorize single sign-on
   for an organization, allow **All repositories**, or install the App.
@@ -202,7 +208,8 @@ it in the GitHub card, even after you reload. Each reason names who can fix it:
 
 The button beside each reason opens the exact GitHub page or starts the right
 step. After fixing something on GitHub, return to Typeroll: the card checks
-again automatically, or select **Check again**. Checking again uses the
+again automatically when the page opens or you return to its tab, or select
+**Check again**. Checking again uses the
 publisher App's own access and the GitHub account you signed in with during the
 last hour, so you do not need to sign in again; after an hour the card asks you
 to sign in. Connecting a personal account still needs a sign-in. If you installed the App on an organization the card does

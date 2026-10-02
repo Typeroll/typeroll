@@ -1,5 +1,16 @@
 # Changelog
 
+## Core 0.2.64 / MCP 0.45.48
+
+Connect GitHub can no longer stop without saying what to do next after the App installation.
+
+- Publisher setup: the GitHub App's **Setup URL** must be `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback` with **Redirect on update** selected, and **Request user authorization (OAuth) during installation** stays off. Without the Setup URL, GitHub leaves people on its installation settings page instead of returning them to Typeroll. The setup documentation no longer says the App does not need one.
+- A return to the callback with `setup_action` but no matching `state` (installed or updated from GitHub directly, or an installation link older than 10 minutes) records and consumes nothing and never trusts `installation_id`. The card opens with `?github=installation_returned` and checks again, or explains an owner-approval request (`install_requested`).
+- The GitHub card checks again by itself when Publishing opens and when its tab regains focus, while the person's GitHub sign-in is less than an hour old and GitHub is not connected yet: at most once per 10 seconds, with the result announced in the card. A reload no longer shows a stale "not installed". While an installation started from Typeroll is pending, the card says "Back from GitHub? We check automatically — or select Check again." `GET /api/orgs/publishing` returns `github_attempt` (`recheck_available`, `installation_started_at`) for this.
+- A personal account that is ready on GitHub is connected with **Connect @login** ("GitHub asks you to confirm once; you come straight back here."), and the summary names the step ("Connect @login to finish."). "Sign in to GitHub to connect @login" is shown only when the sign-in is older than an hour. Other summaries name the next step or who must act instead of "One step below is needed."
+- Each reason shows **Who acts: …** as its own label above the sentence. "GitHub organization owner @login is not an owner of Moveria-AB" read as one garbled sentence. Reasons no longer lowercase account names ("an owner of Moveria-AB must …").
+- New blocker code `setup_url_missing` (`who: publisher`): an installation started from Typeroll found on an account the person owns, but no return to the callback within two minutes. It is a note for publishing admins that links to the App settings and changes neither the outcome nor the next step.
+
 ## Core 0.2.63 / MCP 0.45.48
 
 - Form email notifications with "Append all submitted values" (`include_all`) list the values under the field labels shown on the form, in form order, instead of the field names. Choice fields show the chosen option's label, empty hidden fields (such as `utm_*` parameters) are left out and multi-line answers keep their line breaks. Plain-text emails use `Label: value` lines with the same rules. Stored submissions, webhooks and the form and action APIs are unchanged.

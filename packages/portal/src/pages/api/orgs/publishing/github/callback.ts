@@ -13,6 +13,16 @@ const redirect = (location: string) => new Response(null, { status: 303, headers
 // parameter only tells the page that the person has just returned.
 // `state_expired` means the request matched no sign-in this person started in
 // this browser; it can come from a link on any site, so nothing is recorded.
+//
+// The publisher App's Setup URL is this callback. GitHub passes `state` back only
+// when the installation started from Typeroll's installations/new link. A setup
+// return without a matching state (installed or updated from GitHub directly, or
+// an installation link that expired) proves nothing: `installation_id` is never
+// trusted and nothing is recorded or consumed. `installation_returned` makes the
+// card run Check again with the person's own proven identity; `install_requested`
+// explains that an owner must approve the request.
+const setupReturn = (action: string | null) => action === 'request' ? 'install_requested' : 'installation_returned';
+
 export const GET: APIRoute = async (context) => {
   const guard = await publishingAdmin(context);
   if (!guard.ok) {
@@ -24,17 +34,20 @@ export const GET: APIRoute = async (context) => {
     }
     return guard.response;
   }
+  const parameters = context.url.searchParams;
+  const state = parameters.get('state') ?? '';
+  const setupAction = parameters.get('setup_action');
+  const oauthError = parameters.get('error');
+  // Leaves any pending sign-in or installation of this browser untouched.
+  if (!state && !oauthError && (setupAction !== null || parameters.has('installation_id'))) return redirect(`${SETTINGS}?github=${setupReturn(setupAction)}#github`);
   let result = 'retryable_error';
   let continuing = false;
   try {
-    const parameters = context.url.searchParams;
-    const state = parameters.get('state') ?? '';
     const browser = context.cookies.get(GITHUB_COOKIE)?.value ?? '';
-    const oauthError = parameters.get('error');
     if (oauthError) {
       result = (await recordGithubCallbackError(guard.value, { error: oauthError, state, browser }))?.outcome ?? 'state_expired';
     } else if (state.startsWith('install_')) {
-      const resumed = await resumeGithubInstallation(guard.value, { state, browser, setupAction: parameters.get('setup_action') });
+      const resumed = await resumeGithubInstallation(guard.value, { state, browser, setupAction });
       if (resumed.waiting) {
         result = resumed.diagnosis.outcome;
       } else {
@@ -54,6 +67,8 @@ export const GET: APIRoute = async (context) => {
     // Neither provider responses nor the OAuth code enter HTML, logs, or redirects.
     const diagnosis = error instanceof GithubFlowError ? error.diagnosis : await recordGithubFlowFailure(guard.value, error);
     result = diagnosis?.outcome ?? (error instanceof GithubFlowError && error.unrecorded ? 'state_expired' : 'retryable_error');
+    // An installation return that matches no installation this browser started still means the person was installing.
+    if (result === 'state_expired' && state.startsWith('install_') && setupAction !== null) result = setupReturn(setupAction);
   } finally { if (!continuing) context.cookies.delete(GITHUB_COOKIE, { path: '/api/orgs/publishing/github' }); }
   return redirect(`${SETTINGS}?github=${result}#github`);
 };

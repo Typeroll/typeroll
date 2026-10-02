@@ -51,3 +51,15 @@
 .github-connection__badge--blocked { background: #fee2e2; color: #7f1d1d; }
 .github-connection__reasons { display: grid; gap: 10px; margin: 10px 0 0; padding: 0; list-style: none; }
 .github-connection__reasons p { margin: 0 0 8px; line-height: 1.5; }
+/* Who acts is a label of its own; the reason below it is a separate sentence. */
+.github-connection__reasons > li { display: grid; gap: 8px; }
+.github-connection__reason { display: grid; gap: 4px; min-width: 0; }
+.github-connection__reason p, .github-connection__reasons .github-connection__reason p { margin: 0; line-height: 1.5; }
+.github-connection__hint { color: #1e3a8a; font-weight: 500; }
+.github-connection__note {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+}
