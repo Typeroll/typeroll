@@ -81,3 +81,16 @@ test('publication carries site-specific responsive widths', () => {
   const widths = { tablet: 576, laptop: 769, desktop: 1024, wide: 1280 };
   assert.deepEqual(projectStaticPublication({ ...base, settings: { responsive_breakpoints: widths } }, identity).settings.responsive_breakpoints, widths);
 });
+
+test('publication carries composed block types, their scoped CSS and link props', async () => {
+  const { BLOCK_TYPE_STARTERS } = await import('data:text/javascript;base64,' + Buffer.from((await build({ stdin: { contents: "export { BLOCK_TYPE_STARTERS } from './packages/shared/src/block-type-starters.ts';", resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'esm', write: false })).outputFiles[0].text).toString('base64'));
+  const iconList = { ...BLOCK_TYPE_STARTERS[0].definition, id: 'icon_list', css_scope: 'block', origin: 'user', container: false };
+  const page = { id: 'home', title: 'Home', slug: '', status: 'published', content_mode: 'blocks', blocks: [{ id: 'why', type: 'icon_list', data: { items: [{ icon: 'phone', title: 'Call', text: 'Now', link: { page_id: 'contact', new_tab: true } }] } }] };
+  const value = projectStaticPublication({ site: { name: 'Example' }, settings: {}, pages: [page], partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], redirects: [], blockTypes: [iconList] }, identity);
+  const type = value.blockTypes.find(candidate => candidate.id === 'icon_list');
+  assert.equal(type.css_scope, 'block');
+  assert.equal(type.composition[0].data.items, '{{props.items}}');
+  assert.equal(type.composition[0].children[0].data.href, '{{item.link.href}}');
+  assert.equal(type.schema[0].item_label, 'title');
+  assert.deepEqual(value.pages[0].blocks[0].data.items[0].link, { page_id: 'contact', new_tab: true });
+});

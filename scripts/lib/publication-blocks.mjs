@@ -35,6 +35,12 @@ function projectBlockData(data, definition, definitions, baseData = data) {
     if (!effective) throw new Error('Publication block alias target is missing');
   }
   if (effective.container !== 'repeater') return projected;
+  // Without an item block, the repeater's children are the item template
+  // (composed block types): its items are a binding or plain public rows.
+  if (!settings.item_block) {
+    if (Object.hasOwn(data, 'items')) projected.items = JSON.parse(JSON.stringify(data.items));
+    return projected;
+  }
   const item = definitions.find(candidate => candidate.id === settings.item_block);
   if (!item) throw new Error('Publication repeater item block is missing');
   const overrides = object(settings.item_overrides) ? settings.item_overrides : {};
@@ -111,9 +117,9 @@ export function projectPublicationSchema(schema) {
   return schema.filter(field => field.rendered !== false).map(field => {
     if (!object(field) || typeof field.name !== 'string' || !field.name || ['__proto__', 'constructor', 'prototype'].includes(field.name)) throw new Error('Invalid publication field');
     const result = { name: field.name, type: field.type };
-    for (const name of ['label', 'placeholder', 'choices_markup', 'ref_content_type']) if (typeof field[name] === 'string') result[name] = field[name];
+    for (const name of ['label', 'placeholder', 'choices_markup', 'ref_content_type', 'css_unit', 'style_target', 'style_default_role', 'item_label']) if (typeof field[name] === 'string') result[name] = field[name];
     for (const name of ['required', 'responsive']) if (typeof field[name] === 'boolean') result[name] = field[name];
-    for (const name of ['min', 'max']) if (typeof field[name] === 'number' && Number.isFinite(field[name])) result[name] = field[name];
+    for (const name of ['min', 'max', 'min_render_version']) if (typeof field[name] === 'number' && Number.isFinite(field[name])) result[name] = field[name];
     for (const name of ['options', 'option_labels']) if (field[name] !== undefined) {
       if (!Array.isArray(field[name]) || field[name].some(value => typeof value !== 'string')) throw new Error('Invalid publication field options');
       result[name] = [...field[name]];
@@ -142,9 +148,21 @@ export function projectPublicationBlockTypes(blockTypes, coreBlockTypes) {
         result.extension[field] = definition.extension[field];
       }
     }
-    for (const name of ['name', 'label', 'icon', 'category', 'template', 'styles', 'script', 'origin']) {
+    for (const name of ['name', 'label', 'icon', 'category', 'template', 'styles', 'script', 'origin', 'style_element_class']) {
       if (typeof definition[name] === 'string') result[name] = definition[name];
     }
+    if (definition.css_scope !== undefined) {
+      if (definition.css_scope !== 'block') throw new Error('Invalid publication block CSS scope');
+      result.css_scope = 'block';
+    }
+    if (definition.render_versions !== undefined) {
+      if (!Array.isArray(definition.render_versions) || definition.render_versions.some(entry => !object(entry) || !Number.isInteger(entry.from)
+        || (entry.template !== undefined && typeof entry.template !== 'string') || (entry.styles !== undefined && typeof entry.styles !== 'string'))) throw new Error('Invalid publication render versions');
+      result.render_versions = definition.render_versions.map(entry => ({ from: entry.from, ...(entry.template !== undefined ? { template: entry.template } : {}), ...(entry.styles !== undefined ? { styles: entry.styles } : {}) }));
+    }
+    // A composed block type's tree is public markup like a template; its block
+    // data crosses the boundary through the same projection as page blocks.
+    if (definition.composition !== undefined) result.composition = projectPublicationBlocks(definition.composition, definitions);
     if (definition.container !== undefined) {
       if (![true, false, 'slots', 'repeater', 'conditional'].includes(definition.container)) throw new Error('Invalid publication container kind');
       result.container = definition.container;

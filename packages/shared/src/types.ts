@@ -909,6 +909,7 @@ export type FieldType =
   // Added by Forms 2.0 (form/* field blocks):
   | 'style'           // a named style from SiteSettings.styles (see style_target)
   | 'global_block'    // id of a free partial (global block), see reusable-blocks.ts
+  | 'link'            // { page_id?, url?, new_tab? }; resolves to href/target/rel, see block-fields.ts
   | 'choices';         // array of {value,label}; renderer derives
                        // {name}_options_html per FieldDefinition.choices_markup
 
@@ -939,6 +940,13 @@ export interface FieldDefinition {
    * remain the corresponding option so labels can be localized safely. */
   option_labels?: string[];
   fields?: FieldDefinition[];
+  /** Help text shown under the field in the editor. */
+  help?: string;
+  /** For `type: 'array'`: the sub-field whose value titles a collapsed item in the editor. */
+  item_label?: string;
+  /** For `type: 'array'`: fewest and most items an editor may keep. */
+  min_items?: number;
+  max_items?: number;
   /** Stable child field identifying array/list items for answer provenance. */
   item_key?: string;
   responsive?: boolean;
@@ -1040,6 +1048,22 @@ export interface BlockType {
    * older sites keep the base output unchanged.
    */
   render_versions?: Array<{ from: number; template?: string; styles?: string }>;
+  /**
+   * A composed block type: a tree of existing blocks rendered in place of a
+   * template. `schema` declares the props people edit; inner blocks read them
+   * through exact bindings (`{{props.title}}`), and a `core/repeater` inside
+   * the tree can loop over an array prop with its children as the item
+   * template (`{{item.title}}`). See composed-blocks.ts.
+   */
+  composition?: Block[];
+  /** When to use this block type; shown to editors and agents. */
+  description?: string;
+  /**
+   * `block` scopes `styles` to this block type: every selector is prefixed
+   * with `[data-block="{name}"]` when the CSS ships (see block-css-scope.ts).
+   * Unset keeps the stylesheet global, as block types written before scoping.
+   */
+  css_scope?: 'block';
   id: string;
   name: string;
   label: string;

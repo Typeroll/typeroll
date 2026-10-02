@@ -1,6 +1,7 @@
 # Site block types: fields, markup, CSS and repeating groups
 
-Status: accepted direction (2026-10-02). Nothing here is built yet.
+Status: in progress (2026-10-02). Composed block types come first; template
+block types use the same fields, validator, preview and packaging.
 
 ## Goal
 
@@ -62,6 +63,57 @@ Site block types already exist, and the proposal builds on them:
    references.
 9. **Packaging is lossy.** Export drops `item_compatible` and `expand_to`.
    Import rejects repeater containers and overwrites same-named types.
+
+## Two kinds of site block type
+
+1. **Composed (the default).** The block type is a tree of existing blocks
+   (heading, text, image, icon, button, list, container, grid, repeater …) plus
+   its own fields, called props. Inner blocks take values from the props with
+   bindings such as `{{props.title}}`, and a repeater inside the tree loops over
+   an array prop, rendering its own children once per item with
+   `{{item.title}}`. People who place the block see only the props; the
+   structure is fixed. No HTML or CSS is needed, and everything the inner
+   blocks do (named styles, responsive settings, image handling, safe links,
+   accessibility, render versions) carries over. A small optional stylesheet,
+   scoped to the block, covers layout tweaks.
+2. **Template (advanced).** The block type has its own markup and CSS, as
+   today, with the template language below. Use it when the existing blocks
+   cannot express the markup.
+
+The icon list as a composed block type:
+
+```json
+{
+  "name": "icon_list",
+  "label": "Icon list",
+  "category": "content",
+  "schema": [
+    { "name": "items", "type": "array", "label": "Items", "item_label": "title",
+      "fields": [
+        { "name": "icon", "type": "icon", "label": "Icon" },
+        { "name": "title", "type": "text", "label": "Heading" },
+        { "name": "text", "type": "text", "label": "Text" },
+        { "name": "link", "type": "link", "label": "Link" }
+      ] }
+  ],
+  "composition": [
+    { "id": "list", "type": "core/repeater",
+      "data": { "source_type": "static", "items": "{{props.items}}", "layout": "list" },
+      "children": [
+        { "id": "card", "type": "core/container",
+          "data": { "tag": "a", "href": "{{item.link.href}}", "new_tab": "{{item.link.new_tab}}" },
+          "children": [
+            { "id": "icon", "type": "core/icon", "data": { "icon": "{{item.icon}}" } },
+            { "id": "title", "type": "core/heading", "data": { "text": "{{item.title}}", "level": "h3" } },
+            { "id": "text", "type": "core/prose", "data": { "html": "{{item.text}}" } }
+          ] }
+      ] }
+  ]
+}
+```
+
+A container set to link renders as a plain container when the item has no
+link, so linked and unlinked items mix.
 
 ## Design
 
@@ -307,30 +359,26 @@ The MCP guide gains a `tr-custom-blocks` skill covering:
 
 Each phase ships on its own and leaves existing sites unchanged.
 
-1. **Engine and validator.**
-   - `{{#each}}`, `{{^…}}` and `{{#link}}`.
-   - The `link` field, image sub-values and derived values in array items.
-   - The template parser and the shared definition validator on every write
-     path.
-   - Reference snapshots for the new syntax.
-   - Core `accordion`, `pricing_plan` and `team_member` move to `{{#each}}`
-     under render version 4.
-2. **CSS and publishing parity.** Checking, scoping and layering of block
-   type CSS; a full publication projection with a parity test; the preview
-   endpoint and tool.
+1. **Composed block types and the engine.**
+   - `composition`, props and bindings (`props.`, typed values), a repeater
+     that loops over an array prop with its children as the item template, and
+     container links that fall back to a plain container.
+   - The `link` field and derived values in array items.
+   - `{{#each}}`, `{{^…}}` and `{{#link}}` for template block types; core
+     `accordion`, `pricing_plan` and `team_member` move to `{{#each}}` under
+     render version 4.
+   - The shared definition validator on every write path, admin-only
+     authoring, block-scoped CSS for new and updated types, and a publication
+     projection that keeps every render property.
+2. **API and MCP.** Validate and preview endpoints and tools, starters,
+   renames with impact reports, usage that follows compositions and
+   `item_block`, and lossless export and import.
 3. **Page editor.** Collapsible, reorderable and duplicable array items;
    icon, media and link pickers.
-4. **Builder.** The fields builder, markup and CSS editors, preview, usage,
-   JSON view and starters.
-5. **Evolution and packaging.**
-   - Versions, renames and impact reports.
-   - The usage scan following `item_block`.
-   - Lossless export and import.
-   - Chat fixes.
-   - Docs and the `tr-custom-blocks` skill.
-
-Phases 1 and 2 already give API and MCP users the whole feature (the icon list
-above works), and the UI follows in phases 3 and 4.
+4. **Builder.** Composed mode (build with blocks, choose which fields become
+   props, or turn a section on a page into a block type), template mode
+   (markup and CSS editors), preview, usage, JSON view and starters.
+5. **Docs** and the `tr-custom-blocks` skill.
 
 ## Decisions
 

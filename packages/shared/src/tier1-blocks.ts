@@ -42,6 +42,7 @@ const container: BlockType = {
     // Only used when the element is `a`: turns the whole container into one link
     // (a clickable card). http(s), relative, #, mailto: and tel: targets only.
     { name: 'href', type: 'text', label: 'Link URL (element a)' },
+    { name: 'new_tab', type: 'boolean', label: 'Open link in a new tab', default: false },
     { name: 'css_class', type: 'text', label: 'CSS classes' },
     { name: 'html_id', type: 'text', label: 'Anchor ID' },
     { name: 'inline_style', type: 'textarea', label: 'Inline CSS' },
@@ -319,6 +320,9 @@ const icon: BlockType = {
     { name: 'link', type: 'url', label: 'Link to (optional)' },
   ],
   template: `<span data-block="icon" data-icon="{{icon}}" style="--size:{{size}};--align:{{align}};--color:{{color}}"><a href="{{link}}" class="block-icon-link">{{{icon_svg}}}</a></span>`,
+  // Version 4: no empty link around the icon, so an icon can sit inside a
+  // linked card (a composed block) without nesting links.
+  render_versions: [{ from: 4, template: `<span data-block="icon" data-icon="{{icon}}" style="--size:{{size}};--align:{{align}};--color:{{color}}">{{#link}}<a href="{{link}}" class="block-icon-link">{{{icon_svg}}}</a>{{/link}}{{^link}}{{{icon_svg}}}{{/link}}</span>` }],
   styles: `
 [data-block="icon"] { display: inline-flex; align-items: center; line-height:1; color: var(--color, currentColor); }
 [data-block="icon"][style*="--align:center"] { display: flex; justify-content: center; }
@@ -677,6 +681,19 @@ const teamMember: BlockType = {
     </div>
   </a>
 </div>`,
+  // Version 4: social links render (outside the card link, so links never
+  // nest), and the card is a link only when it has one.
+  render_versions: [{ from: 4, template: `<div data-block="team_member" data-layout="{{layout}}">
+  {{#link}}<a href="{{link}}" class="block-team-link">{{/link}}{{^link}}<div class="block-team-link">{{/link}}
+    <img class="block-team-photo" src="{{photo}}" alt="{{name}}" />
+    <div class="block-team-body">
+      <h3 class="block-team-name">{{name}}</h3>
+      <span class="block-team-role">{{role}}</span>
+      <div class="block-team-bio">{{{bio}}}</div>
+    </div>
+  {{#link}}</a>{{/link}}{{^link}}</div>{{/link}}
+  {{#socials}}<ul class="block-team-socials">{{#each socials}}<li>{{#link url class="block-team-social"}}{{network}}{{/link}}</li>{{/each}}</ul>{{/socials}}
+</div>` }],
   styles: `
 [data-block="team_member"] { text-align: center; }
 [data-block="team_member"] .block-team-link { color: inherit; text-decoration: none; display: block; }
@@ -733,6 +750,15 @@ const pricingPlan: BlockType = {
   <ul class="block-pricing-features" data-features="{{features}}"></ul>
   <a href="{{cta_href}}" class="block-pricing-cta">{{cta_label}}</a>
 </div>`,
+  // Version 4 renders the feature list; excluded features are marked.
+  render_versions: [{ from: 4, template: `<div data-block="pricing_plan" data-highlight="{{highlight}}">
+  <span class="block-pricing-badge">{{badge}}</span>
+  <h3 class="block-pricing-name">{{name}}</h3>
+  <div class="block-pricing-price"><span class="block-pricing-amount">{{price}}</span><span class="block-pricing-period">{{period}}</span></div>
+  <p class="block-pricing-description">{{description}}</p>
+  <ul class="block-pricing-features">{{#each features}}<li data-included="{{feature_included}}">{{text}}</li>{{/each}}</ul>
+  <a href="{{cta_href}}" class="block-pricing-cta">{{cta_label}}</a>
+</div>` }],
   styles: `
 [data-block="pricing_plan"] {
   padding: 2rem 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(0,0,0,0.1);
@@ -1090,10 +1116,10 @@ const accordion: BlockType = {
     { name: 'default_open', type: 'select', label: 'Default open', options: ['none', 'first', 'all'], default: 'none' },
     { name: 'icon_style', type: 'select', label: 'Icon', options: ['chevron', 'plus'], default: 'chevron' },
   ],
-  // Array rendering (`{{#each items}}…{{/each}}`) ships in Phase 4 with
-  // the repeater work. Until then, the template references the field for
-  // forward-compat and the editor surfaces the array UI.
+  // Versions 1–3 rendered no items (the template printed the array into an
+  // attribute). Version 4 renders each item as a <details> element.
   template: `<div data-block="accordion" data-style="{{style}}" data-icon="{{icon_style}}" data-default-open="{{default_open}}" data-items="{{items}}"></div>`,
+  render_versions: [{ from: 4, template: `<div data-block="accordion" data-style="{{style}}" data-icon="{{icon_style}}" data-default-open="{{default_open}}">{{#each items}}<details{{#accordion_open}} open{{/accordion_open}}><summary>{{title}}</summary><div>{{{content}}}</div></details>{{/each}}</div>` }],
   styles: `
 [data-block="accordion"] { display: flex; flex-direction: column; }
 [data-block="accordion"][data-style="bordered"]  { border: 1px solid rgba(0,0,0,0.1); border-radius: 0.5rem; }
@@ -1634,6 +1660,16 @@ const embed: BlockType = {
  * Ordered for grouping in the editor's block picker:
  * layout → content → media → forms.
  */
+// Version 4 styles for the lists that version 4 renders.
+teamMember.render_versions![0]!.styles = `${teamMember.styles}
+[data-block="team_member"] .block-team-socials { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1rem; margin: 0.75rem 0 0; padding: 0; font-size: 0.875rem; }
+[data-block="team_member"] .block-team-social { color: inherit; text-transform: capitalize; }`;
+pricingPlan.render_versions![0]!.styles = `${pricingPlan.styles}
+[data-block="pricing_plan"] .block-pricing-features li { display: flex; gap: 0.5rem; align-items: baseline; }
+[data-block="pricing_plan"] .block-pricing-features li::before { content: "✓"; color: var(--color-primary, currentColor); font-weight: 700; }
+[data-block="pricing_plan"] .block-pricing-features li[data-included="false"] { opacity: 0.55; text-decoration: line-through; }
+[data-block="pricing_plan"] .block-pricing-features li[data-included="false"]::before { content: "–"; color: inherit; }`;
+
 export const TIER1_BLOCK_TYPES: readonly BlockType[] = [
   // Layout
   container,
