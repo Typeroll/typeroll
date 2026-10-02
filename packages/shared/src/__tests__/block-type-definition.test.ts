@@ -60,6 +60,12 @@ describe('block type definitions', () => {
     expect(errors({ name: 'list', label: 'List', schema, template: '<p>{{@index}}</p>' })[0]!.message).toContain('inside {{#each}}');
   });
 
+  it('accepts the presentation properties core fields use, and needs slot_count for slots', () => {
+    const schema = [{ name: 'gap_px', type: 'number', label: 'Gap', css_unit: 'px', responsive: true, responsive_css: { a: '--x: 1;' } }];
+    expect(errors({ name: 'cols', label: 'Cols', schema, template: '<div>{{children}}</div>', container: true })).toEqual([]);
+    expect(errors({ name: 'cols', label: 'Cols', schema, template: '<div>{{slot:1}}</div>', container: 'slots' })[0]!.path).toBe('/slot_count');
+  });
+
   it('refuses a definition that is both composed and templated, or neither', () => {
     expect(errors({ name: 'x', label: 'X', schema: [] })[0]!.message).toContain('needs a composition');
     expect(errors({ ...BLOCK_TYPE_STARTERS[0]!.definition, template: '<p></p>' }).some(problem => problem.message.includes('not both'))).toBe(true);
@@ -77,6 +83,9 @@ describe('block type definitions', () => {
     const existing = { ...BLOCK_TYPE_STARTERS[0]!.definition, id: 'icon_list', created_at: '', container: false } as BlockType;
     expect(errors({ label: 'Benefits' }, { partial: true, existing })).toEqual([]);
     expect(errors({ name: 'other' }, { partial: true, existing })[0]!.message).toContain('cannot be renamed');
+    const legacy = { id: 'legacy', name: 'legacy', label: 'Legacy', category: 'custom', container: false, schema: [], created_at: '' } as BlockType;
+    expect(errors({ label: 'Renamed' }, { partial: true, existing: legacy })).toEqual([]);
+    expect(errors({ template: '' }, { partial: true, existing: legacy })[0]!.message).toContain('needs a composition');
     // Removing a field the composition reads is caught.
     expect(errors({ schema: [] }, { partial: true, existing })[0]!.message).toContain('names no field');
   });

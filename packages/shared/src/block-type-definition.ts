@@ -40,7 +40,8 @@ export const BLOCK_TYPE_FIELD_TYPES: readonly FieldType[] = [
   'page_ref_list', 'style', 'global_block', 'link', 'choices',
 ];
 const FIELD_KEYS = new Set(['name', 'type', 'label', 'help', 'required', 'default', 'placeholder', 'options', 'option_labels', 'fields',
-  'item_label', 'min_items', 'max_items', 'responsive', 'min', 'max', 'style_target', 'editor_group', 'ref_content_type', 'choices_markup']);
+  'item_label', 'min_items', 'max_items', 'responsive', 'min', 'max', 'style_target', 'editor_group', 'ref_content_type', 'choices_markup',
+  'responsive_css', 'css_unit', 'item_key', 'style_default_role', 'min_render_version']);
 /** Properties a block type definition may carry. */
 export const BLOCK_TYPE_WRITABLE = ['name', 'label', 'icon', 'category', 'container', 'slot_count', 'slot_labels', 'item_compatible',
   'expand_to', 'schema', 'template', 'styles', 'script', 'composition', 'description'] as const;
@@ -170,11 +171,15 @@ export function validateBlockTypeDefinition(input: unknown, options: ValidateBlo
   const merged = { ...(options.existing ?? empty), ...value } as BlockType;
   if (!partial || options.existing) {
     const id = merged.id || merged.name;
-    if (!merged.template && !merged.composition?.length && !merged.expand_to && merged.container !== 'repeater' && merged.container !== 'conditional') {
+    // Older stored types may have neither; only a create or a write of the
+    // template or composition itself has to leave the type renderable.
+    const needsOutput = !partial || has('template') || has('composition');
+    if (needsOutput && !merged.template && !merged.composition?.length && !merged.expand_to && merged.container !== 'repeater' && merged.container !== 'conditional') {
       error('', 'A block type needs a composition (blocks it is built from) or a template (its own markup).');
     }
     if (merged.template && merged.composition?.length) error('/composition', 'A block type has either a composition or a template, not both.');
     if (merged.composition?.length && merged.container) error('/container', 'A composed block type cannot hold children; use a container block inside its composition.');
+    if (merged.container === 'slots' && !Number.isInteger(merged.slot_count)) error('/slot_count', 'A slots container needs slot_count (1–8).');
     if (value.composition || (value.schema && merged.composition?.length)) checkComposition(merged, id, options.resolveType, error, warn);
     if (value.template !== undefined || (value.schema && merged.template)) checkTemplate(merged, error, warn);
     if (value.styles !== undefined) checkStyles(merged.styles ?? '', merged.name, error, warn);
