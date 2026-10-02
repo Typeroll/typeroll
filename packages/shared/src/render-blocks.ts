@@ -48,7 +48,7 @@ import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
-import { prepareArticleBlockData } from './article-blocks.js';
+import { prepareArticleBlockData, safeLinkHref } from './article-blocks.js';
 import { prepareHeadingOutline } from './heading-outline.js';
 import { comparePageValues, pageSort } from './page-options.js';
 import { countBlockH1s, demoteBodyH1s, normalizePageH1s } from './page-heading-policy.js';
@@ -57,6 +57,10 @@ import { STYLE_ID_PATTERN, styleClassName } from './site-styles.js';
 import { blockOutputForVersion, resolveRenderVersion } from './render-version.js';
 import { styleElementText } from './custom-css.js';
 import { GLOBAL_BLOCK_MAX_DEPTH, GLOBAL_BLOCK_TYPE_ID, withGlobalBlockContent, type GlobalBlockSource } from './reusable-blocks.js';
+import { parseSections, renderSections, usesExtendedSections } from './template-sections.js';
+import { deriveFieldValues, pageUrlResolverFromSource } from './block-fields.js';
+import { scopeBlockCss } from './block-css-scope.js';
+import { COMPOSITION_MAX_DEPTH, instanceTree, isComposedBlockType, walkComposition, withFieldDefaults } from './composed-blocks.js';
 
 /**
  * Render context — values exposed to templates via the dotted-path
@@ -73,6 +77,8 @@ export interface RenderContext {
   /** Build with `siteContext(settings)` — see the note there on `site.name`. */
   site?: Record<string, unknown>;
   item?: Record<string, unknown>;
+  /** A composed block type's own field values, with derived values (composed-blocks). */
+  props?: Record<string, unknown>;
   content_type?: Record<string, unknown>;
   /**
    * Archive pagination for a repeater with `paginate` set (collection
@@ -189,6 +195,8 @@ export interface RenderBlocksOptions {
   globalBlockSource?: GlobalBlockSource;
   /** Internal: global blocks being rendered, outermost first, to stop cycles. */
   globalBlockStack?: string[];
+  /** Internal: composed block types being rendered, outermost first, to stop cycles. */
+  compositionStack?: string[];
 }
 
 const HTML_ESCAPES: Record<string, string> = {
@@ -269,10 +277,15 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     return html ?? `<!-- core/form: unknown form_id ${escapeHtml(formId)} -->`;
   }
 
+  // (1c) A composed block type renders its block tree with the instance's
+  // props in context (composed-blocks.ts).
+  if (isComposedBlockType(blockType)) return renderComposedBlock(block, effectiveBlock, blockType, options);
+
   // (2) Repeater container. Diverge here — the regular template path
   // doesn't know how to loop over items.
   if (blockType.container === 'repeater') {
     const compiled = compileResponsiveData(effectiveBlock, blockType);
+    resolveFieldBindings(blockType, compiled.flatData, options.context);
     const responsiveBlock: Block = { ...effectiveBlock, data: compiled.flatData };
     let html = renderRepeater(responsiveBlock, blockType, options);
     // An explicit mobile baseline opts into the authored column map. Preserve
@@ -323,17 +336,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   }
   const compiled = compileResponsiveData(effectiveBlock, blockType);
 
-  // A block field may bind exactly to typed render context, e.g.
-  // core/button.href = "{{item.pdf_url}}". Resolve only exact bindings and
-  // only on inert text/URL/image fields; rich HTML remains an explicit block
-  // concern and never gains recursive template evaluation.
-  for (const field of blockType.schema ?? []) {
-    if (!['text', 'textarea', 'richtext', 'url', 'image', 'file', 'email', 'icon'].includes(field.type)) continue;
-    const value = compiled.flatData[field.name];
-    if (typeof value !== 'string') continue;
-    const match = value.match(/^\s*\{\{\s*((?:page|site|item|content_type)\.[\w.-]+)\s*\}\}\s*$/);
-    if (match) compiled.flatData[field.name] = resolveDottedToken(match[1]!, compiled.flatData, options.context) ?? '';
-  }
+  resolveFieldBindings(blockType, compiled.flatData, options.context);
 
   if (effectiveBlock.type === 'template/page_featured_image') {
     compiled.flatData.selected_page_image = options.context?.page?.[String(compiled.flatData.field ?? 'og_image')] ?? '';
@@ -474,7 +477,22 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     d.iconbox_secondary = !linked && Boolean(String(d.link ?? '').trim());
     d.link_label ||= d.heading || 'Learn more';
   }
+  if (resolveRenderVersion(options.renderVersion) >= 4) {
+    prepareListBlockItems(effectiveBlock.type, compiled.flatData);
+    // A container set to link without a usable address renders as a plain
+    // container, so linked and unlinked items of one list can share a design.
+    if (effectiveBlock.type === 'core/container' && compiled.flatData.tag === 'a' && !safeLinkHref(compiled.flatData.href)) compiled.flatData.tag = 'div';
+  }
   prepareArticleBlockData(effectiveBlock.type, compiled.flatData);
+  // Link fields resolve to href/target/rel; a template that loops gets the
+  // same derived values inside every array item (block-fields.ts).
+  const loops = usesExtendedSections(template);
+  if (loops || blockType.schema?.some(field => field.type === 'link')) {
+    const derived = deriveFieldValues(
+      (blockType.schema ?? []).filter(field => field.type === 'link' || (loops && (field.type === 'array' || field.type === 'object'))),
+      compiled.flatData, pageUrlResolverFromSource(options.pageSource));
+    Object.assign(compiled.flatData, derived);
+  }
   let html = substituteFields(template, compiled.flatData, options.context);
   const numericStyles = (blockType.schema ?? []).flatMap(field => {
     const value = numericPresentationValue(field, compiled.flatData[field.name]);
@@ -550,6 +568,42 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
 }
 
 /**
+ * Render a composed block type: its composition, with ids made unique for
+ * this instance and the instance's props (plus derived values) in context,
+ * inside one wrapper element named after the block type. Inner blocks are
+ * not annotated or inline-editable: in the editor the whole block is one
+ * selectable unit, edited through its props.
+ */
+function renderComposedBlock(block: Block, effectiveBlock: Block, blockType: BlockType, options: RenderBlocksOptions): string {
+  const stack = options.compositionStack ?? [];
+  if (stack.includes(blockType.id) || stack.length >= COMPOSITION_MAX_DEPTH) {
+    return `<!-- composed block ${escapeHtml(blockType.id)}: nested too deep -->`;
+  }
+  const compiled = compileResponsiveData(effectiveBlock, blockType);
+  resolveFieldBindings(blockType, compiled.flatData, options.context);
+  const props = deriveFieldValues(blockType.schema, withFieldDefaults(blockType.schema, compiled.flatData), pageUrlResolverFromSource(options.pageSource));
+  const innerOptions: RenderBlocksOptions = {
+    ...options,
+    annotate: false,
+    provenance: false,
+    editable: false,
+    compositionStack: [...stack, blockType.id],
+    context: { ...options.context, props },
+  };
+  const inner = instanceTree(blockType.composition!, sanitizeCssId(effectiveBlock.id || blockType.name))
+    .map(child => renderBlock(child, innerOptions)).join('');
+  const attrs: Record<string, string> = {};
+  if (options.provenance && block.id) { attrs['data-source-block-id'] = block.id; attrs['data-source-block-type'] = block.type; }
+  if (options.annotate && block.id) { attrs['data-block-id'] = block.id; attrs['data-block-type'] = block.type; }
+  const extra = Object.entries(attrs).map(([name, value]) => ` ${name}="${escapeHtml(value)}"`).join('');
+  let html = `<div data-block="${escapeHtml(blockType.name)}" class="tr-composed"${extra}>${inner}</div>`;
+  html = applyVisibility(html, effectiveBlock, options);
+  html = applySiteStyle(html, effectiveBlock, blockType);
+  html = applyStyleOverrides(html, effectiveBlock, blockType, options.renderVersion);
+  return html;
+}
+
+/**
  * Inline a global block's published content. No wrapper element: the blocks
  * render exactly as if they were on the page, so layout rules for direct
  * children still apply. In the editor each top-level element is annotated
@@ -607,7 +661,10 @@ function renderRepeater(
   const data = block.data ?? {};
   const sourceType = (data.source_type as string) || 'static';
   const itemBlockId = String(data.item_block ?? '');
-  const itemBlockType = itemBlockId ? getRegistryEntry(options.registry, itemBlockId) : undefined;
+  // Without an item_block, a repeater's children are the item template: they
+  // render once per item with `{{item.…}}` bindings (composed block types).
+  const itemTemplate = !itemBlockId && sourceType !== 'children_blocks' && block.children?.length ? block.children : undefined;
+  const itemBlockType = itemBlockId ? getRegistryEntry(options.registry, itemBlockId) : itemTemplate ? blockType : undefined;
 
   if (!itemBlockType) {
     return `<!-- repeater missing item_block: ${escapeHtml(itemBlockId)} -->`;
@@ -750,14 +807,6 @@ function renderRepeaterItems(
   const collectionName = String(data.content_type ?? '');
   const renderItems = (source: Record<string, unknown>[], offset = 0) => source
     .map((item, i) => {
-      const itemBlock: Block = {
-        id: `${block.id}__i${offset + i}`,
-        type: itemBlockType.id,
-        // Item data takes precedence over the repeater's defaults; the
-        // overrides win over BOTH (use this to lock heading levels etc.
-        // regardless of item data).
-        data: { ...item, ...overrides },
-      };
       const iterOptions: RenderBlocksOptions = {
         ...options,
         context: {
@@ -767,6 +816,19 @@ function renderRepeaterItems(
             ? { name: collectionName, ...(options.context?.content_type ?? {}) }
             : options.context?.content_type,
         },
+      };
+      const itemTemplate = !data.item_block && block.children?.length ? block.children : undefined;
+      if (itemTemplate) {
+        return instanceTree(itemTemplate, `${sanitizeCssId(block.id)}__i${offset + i}`)
+          .map(child => renderBlock(child, iterOptions)).join('');
+      }
+      const itemBlock: Block = {
+        id: `${block.id}__i${offset + i}`,
+        type: itemBlockType.id,
+        // Item data takes precedence over the repeater's defaults; the
+        // overrides win over BOTH (use this to lock heading levels etc.
+        // regardless of item data).
+        data: { ...item, ...overrides },
       };
       return renderBlock(itemBlock, iterOptions);
     })
@@ -1002,6 +1064,7 @@ function resolveDottedToken(
       case 'page':       return context?.page;
       case 'site':       return context?.site;
       case 'item':       return context?.item;
+      case 'props':      return context?.props;
       case 'content_type': return context?.content_type;
       default:           return data[head!] as Record<string, unknown> | undefined;
     }
@@ -1013,6 +1076,47 @@ function resolveDottedToken(
     cur = (cur as Record<string, unknown>)[seg];
   }
   return cur;
+}
+
+/** Per-item values the version 4 list templates of core blocks read. */
+function prepareListBlockItems(type: string, data: Record<string, unknown>): void {
+  const items = (value: unknown) => Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item)) : [];
+  if (type === 'core/accordion') {
+    const open = String(data.default_open ?? 'none');
+    data.items = items(data.items).map((item, index) => ({ ...item, accordion_open: open === 'all' || (open === 'first' && index === 0) }));
+  }
+  if (type === 'core/pricing_plan') {
+    data.features = items(data.features).map(item => ({ ...item, feature_included: item.included === false ? 'false' : 'true' }));
+  }
+}
+
+const BINDING = /^\s*\{\{\s*((?:page|site|item|props|content_type)\.[\w.-]+)\s*\}\}\s*$/;
+/** Field types whose bound value keeps its own type instead of becoming text. */
+const STRUCTURED_BINDING_TYPES = new Set(['array', 'object', 'list', 'link', 'boolean', 'number', 'page_ref_list', 'multiselect']);
+
+/**
+ * A block field may bind exactly to typed render context, e.g.
+ * core/button.href = "{{item.pdf_url}}" or a composed block's heading text =
+ * "{{props.title}}". Only a whole-value binding resolves, never a token inside
+ * other text, and the value is never evaluated as a template again. Text-like
+ * fields receive text; arrays, objects, links, booleans and numbers keep their
+ * value so a repeater can loop over `{{props.items}}`.
+ */
+function resolveFieldBindings(blockType: BlockType, data: Record<string, unknown>, context: RenderContext | undefined): void {
+  for (const field of blockType.schema ?? []) {
+    const value = data[field.name];
+    if (typeof value !== 'string') continue;
+    const match = value.match(BINDING);
+    if (!match) continue;
+    const resolved = resolveDottedToken(match[1]!, data, context);
+    if (STRUCTURED_BINDING_TYPES.has(field.type)) {
+      data[field.name] = field.type === 'boolean' ? resolved === true
+        : field.type === 'number' ? (typeof resolved === 'number' && Number.isFinite(resolved) ? resolved : undefined)
+        : resolved;
+    } else {
+      data[field.name] = resolved == null ? '' : typeof resolved === 'object' ? (typeof (resolved as { href?: unknown }).href === 'string' ? (resolved as { href: string }).href : '') : String(resolved);
+    }
+  }
 }
 
 /** True when `index` into `s` falls inside an HTML tag (between < and >). */
@@ -1054,6 +1158,25 @@ function stampEditableTextTokens(
 }
 
 function substituteFields(
+  template: string,
+  data: Record<string, unknown>,
+  context?: RenderContext,
+): string {
+  // Loops, inverted sections and link sections (template-sections.ts). Only
+  // templates that use them take this path; a structurally broken template
+  // falls back to the original passes, which leave unknown tags in place.
+  if (usesExtendedSections(template)) {
+    const parsed = parseSections(template);
+    if (parsed.nodes) {
+      return renderSections(parsed.nodes, data,
+        (text, scope) => substituteFlatFields(text, scope, context),
+        (name, scope) => resolveDottedToken(name, scope, context));
+    }
+  }
+  return substituteFlatFields(template, data, context);
+}
+
+function substituteFlatFields(
   template: string,
   data: Record<string, unknown>,
   context?: RenderContext,
@@ -1796,11 +1919,19 @@ export function collectUsedBlockTypeIds(blocks: Block[], out: Set<string> = new 
 function collectBlockAssetTypeIds(blocks: Block[], registry: RenderBlocksOptions['registry']): Set<string> {
   const used = collectUsedBlockTypeIds(blocks);
   const activeItems = new Set<object>();
+  const compositionPath = new Set<string>();
   function visit(block: Block, defaultPath = new Set<string>()): void {
     const expanded = expandBlockAlias(block, registry, used);
     // Page titles render the heading markup even when the page body contains
     // no standalone heading block. Keep its typography in that page's bundle.
     if (expanded?.block.type === 'template/page_title') used.add('core/heading');
+    // A composed block type ships the assets of the blocks it is built from.
+    if (expanded && isComposedBlockType(expanded.blockType) && !compositionPath.has(expanded.blockType.id) && compositionPath.size < COMPOSITION_MAX_DEPTH) {
+      compositionPath.add(expanded.blockType.id);
+      walkComposition(expanded.blockType.composition, inner => used.add(inner.type));
+      for (const inner of expanded.blockType.composition!) visit(inner);
+      compositionPath.delete(expanded.blockType.id);
+    }
     if (expanded?.blockType.container === 'repeater') {
       const data = compileResponsiveData(expanded.block, expanded.blockType).flatData;
       const itemType = String(data.item_block ?? '');
@@ -1885,7 +2016,9 @@ export function collectBlockAssets(
     used.push(id);
     const numericFields = bt.schema.filter(field => field.css_unit && /^[a-z][a-z0-9_]*$/.test(field.name));
     if (numericFields.length) css.push(`[data-presentation="${encodeURIComponent(bt.id)}"]{${numericFields.map(field => `--${field.name}:${/^(?:h[1-6]_size_px|heading_(?:before|after)_px)$/.test(field.name) ? 'inherit' : 'initial'}`).join(';')}}`);
-    const btStyles = blockOutputForVersion(bt, opts?.renderVersion).styles;
+    const rawStyles = blockOutputForVersion(bt, opts?.renderVersion).styles;
+    // Site block types written with block scope never style outside their blocks.
+    const btStyles = rawStyles && bt.css_scope === 'block' ? scopeBlockCss(rawStyles, bt.name).css : rawStyles;
     if (btStyles) css.push(`/* ${id} */\n${styleElementText(btStyles)}`);
     if (bt.script) js.push(`/* ${id} */\n${bt.script}`);
   }

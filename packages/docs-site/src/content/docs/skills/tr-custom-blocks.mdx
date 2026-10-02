@@ -1,0 +1,19 @@
+---
+title: tr-custom-blocks — Build a Site Block Type
+description: Build a reusable block type for one site, composed from core blocks, with fields, repeating groups and scoped CSS.
+---
+
+**Triggers on:** "make a block for…", "an icon list", "cards with a link", a section shape the core blocks lack
+
+## What it does
+
+The agent checks whether a core block or a starter already fits, then builds a
+block type from core blocks: it declares the editable fields, binds them to the
+inner blocks with `{{props.…}}`, repeats a group with a repeater and
+`{{item.…}}`, validates and previews the definition, creates it and places it
+on a page for you to review. It uses the site's named styles and keeps any CSS
+scoped to the block.
+
+Creating block types needs an admin key. See
+[Site block types](../../tools/custom-block-types/) for the fields, bindings,
+template language and API.

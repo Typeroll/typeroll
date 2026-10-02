@@ -48,6 +48,18 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Text on secondary-coloured buttons is black or white, whichever reads better on the secondary colour.',
     ],
   },
+  {
+    version: 4,
+    core_version: '0.2.60',
+    title: 'Lists in core blocks',
+    changes: [
+      'Accordion items render as expandable sections; "Default open" opens the first or every item.',
+      'Pricing plan features and team member social links render; excluded features are marked.',
+      'An icon without a link no longer sits in an empty link, so icons work inside linked cards.',
+      'A team member card is a link only when it has one.',
+      'A container set to link but without an address renders as a plain container.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

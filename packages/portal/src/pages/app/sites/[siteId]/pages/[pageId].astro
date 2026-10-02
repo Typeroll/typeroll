@@ -13,7 +13,7 @@ import type { Page, SiteVersion } from '@typeroll/shared';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
-const { session, site, versionId, owner_org_id: orgId } = ctx;
+const { session, site, versionId, owner_org_id: orgId, permission } = ctx;
 const siteId = site.id;
 const { pageId } = Astro.params;
 if (!pageId) return Astro.redirect(`/app/sites/${siteId}/pages`);
@@ -50,7 +50,7 @@ const blockTemplates = await listBlockTemplates({ orgId, siteId });
 ---
 <AppLayout title={`${page.title} — ${site.name}`} siteId={siteId} bare>
   {page.content_mode === 'blocks' ? (
-    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} globalBlocks={globalBlocks} blockTemplates={blockTemplates} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} globalBlocks={globalBlocks} blockTemplates={blockTemplates} canManageBlockTypes={permission === 'admin'} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   ) : (
     <HtmlPageEditor client:load siteId={siteId} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   )}

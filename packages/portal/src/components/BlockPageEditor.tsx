@@ -40,6 +40,10 @@ import './BlockPageEditor.css';
 import CustomCssEditor from './CustomCssEditor';
 import FieldInput, { fieldAvailable, fieldGroup, fieldLabel, GlobalBlocksContext, RenderVersionContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
 import type { GlobalBlockSummary } from './editor-context';
+import TurnIntoBlockType, { type TurnIntoBlockTypeAction } from './TurnIntoBlockType';
+import { compositionFromSelection, detachComposedInstance, propCandidates } from '../lib/block-type-builder';
+import { newBlockId, replaceBlockIn } from '../lib/block-tree-ops';
+import { loadInternalPages } from './internal-pages';
 
 interface Props {
   responsiveBreakpoints?: ResponsiveBreakpoints | null;
@@ -60,6 +64,8 @@ interface Props {
   /** Permalink on the deployed site (null when the site has no live base). */
   liveUrl?: string | null;
   lastDeployedAt: string | null;
+  /** Site admins may create block types ("Turn into block type…"). */
+  canManageBlockTypes?: boolean;
 }
 
 type Status = 'idle' | 'saving' | 'saved' | 'error';
@@ -105,7 +111,7 @@ export const ICONS: Record<string, IconCmp> = {
 
 // ─── Top-level component ────────────────────────────────────────────────
 
-export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [] }: Props) {
+export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false }: Props) {
   const [globalBlocks, setGlobalBlocks] = useState(initialGlobalBlocks);
   const [blockTemplates, setBlockTemplates] = useState(initialTemplates);
   // The editor edits the working-copy view of the page: canonical doc with
@@ -116,6 +122,8 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   const [draft, setDraft] = useState<Page>({ ...page, ...(workingCopy?.fields ?? {}) } as Page);
   const [hasWc, setHasWc] = useState<boolean>(!!workingCopy);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** A message for the block an action just put in place (e.g. a new block type instance). */
+  const [inspectorNotice, setInspectorNotice] = useState<{ blockId: string; text: string } | null>(null);
   const [mobilePane, setMobilePane] = useState<'blocks' | 'preview' | 'fields'>('blocks');
   function selectBlock(id: string | null) {
     setSelectedId(id);
@@ -375,7 +383,70 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
       if (!res.ok || !body.block_template) throw new Error(body.error ?? `Could not save the template (${res.status})`);
       setBlockTemplates(list => [...list, body.block_template!].sort((a, b) => a.name.localeCompare(b.name)));
     },
+    ...(canManageBlockTypes && !registry.get(block.type)?.composition?.length && block.type !== GLOBAL_BLOCK_TYPE_ID ? {
+      turnIntoBlockType: {
+        candidates: propCandidates(block, registry),
+        takenNames: [...registry.values()].map(type => type.name).concat(customTypes.map(type => type.id)),
+        async submit({ name, label, picks }) {
+          await blockWrite.current.catch(() => {});
+          await fieldFlush.current?.();
+          const current = findBlock(draftRef.current.blocks ?? [], block.id)?.block ?? block;
+          const { composition, schema, data } = compositionFromSelection(current, picks, registry);
+          const res = await fetch(`/api/sites/${siteId}/blocks/types`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name, label, category: 'custom', schema, composition }),
+          });
+          const body = await res.json().catch(() => ({})) as { block_type?: BlockType; error?: string; problems?: Array<{ severity: string; message: string }> };
+          if (!res.ok || !body.block_type) {
+            const problems = (body.problems ?? []).filter(problem => problem.severity === 'error').map(problem => problem.message);
+            throw new Error(problems.length ? problems.join(' ') : body.error ?? `Could not create the block type (${res.status})`);
+          }
+          const created = body.block_type;
+          setCustomTypes(list => [...list.filter(type => type.id !== created.id), created]);
+          const instance: Block = { id: newBlockId(), type: created.id, data, ...(current.name ? { name: current.name } : {}) };
+          await writeTree(replaceBlockIn(draftRef.current.blocks ?? [], current.id, [instance]), `turn-into:${created.id}`);
+          selectBlock(instance.id);
+          setInspectorNotice({ blockId: instance.id, text: `Created the block type “${created.label}”. This block is now one, and the block library offers it on every page.` });
+        },
+      } satisfies TurnIntoBlockTypeAction,
+    } : {}),
+    ...(registry.get(block.type)?.composition?.length ? {
+      async detachComposed() {
+        await blockWrite.current.catch(() => {});
+        await fieldFlush.current?.();
+        const type = registry.get(block.type)!;
+        const current = findBlock(draftRef.current.blocks ?? [], block.id)?.block ?? block;
+        const pages = await loadInternalPages(siteId).catch(() => []);
+        const blocks = detachComposedInstance(current, type, (pageId) => pages.find(candidate => candidate.id === pageId)?.url || undefined);
+        await writeTree(replaceBlockIn(draftRef.current.blocks ?? [], current.id, blocks), `detach-composed:${current.id}`);
+        selectBlock(blocks[0]?.id ?? null);
+        if (blocks[0]) setInspectorNotice({ blockId: blocks[0].id, text: `Detached: the blocks of “${type.label}” are now on this page.` });
+      },
+    } : {}),
   });
+
+  /** Replace the whole block tree in the working copy (one undo step). */
+  async function writeTree(blocks: Block[], sig: string): Promise<void> {
+    setStatus('saving');
+    setError(null);
+    const res = await fetch(workingCopyUrl, {
+      method: 'PUT', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fields: { blocks } }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({})) as { error?: string };
+      setStatus('error');
+      setError(j.error ?? `Could not save the page draft (${res.status})`);
+      throw new Error(j.error ?? `Could not save the page draft (${res.status})`);
+    }
+    setDraft((d) => ({ ...d, blocks }));
+    setHasWc(true);
+    historyRef.current?.record(blocks, `${sig}:${Date.now()}`);
+    bumpHist();
+    setStatus('saved');
+    window.setTimeout(() => setStatus('idle'), 1200);
+    reloadPreview();
+  }
 
   function handleUpdateOverrides(blockId: string, overrides: Block['style_overrides']): Promise<void> {
     const write = blockWrite.current.catch(() => {}).then(async () => {
@@ -927,6 +998,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
 
         {/* Right: field form */}
         <aside id="block-editor-fields" className="block-editor__fields">
+          {selected && inspectorNotice?.blockId === selected.block.id && <p role="status" className="block-composed-note">{inspectorNotice.text}</p>}
           {selected ? (
             <BlockFieldForm
                 responsiveBreakpoints={responsiveBreakpoints}
@@ -940,6 +1012,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               onChange={(data) => handleUpdateData(selected.block.id, data)}
               onStyleOverrides={(overrides) => handleUpdateOverrides(selected.block.id, overrides)}
               reuse={reuseActions(selected.block)}
+              blockTypeHref={canManageBlockTypes && registry.get(selected.block.type)?.origin === 'user' ? `/app/sites/${siteId}/blocks?type=${encodeURIComponent(selected.block.type)}` : undefined}
             />
           ) : (
             <MetaPanel
@@ -1239,7 +1312,8 @@ function BlockNodeInner({
   const Icon = bt ? (ICONS[bt.name] ?? Square) : Square;
   const isSelected = selectedId === block.id;
   const hasChildren = bt?.container === true || bt?.container === false && (block.children?.length ?? 0) > 0;
-  const isContainer = bt?.container === true;
+  // A repeater without an item block repeats its children once per item.
+  const isContainer = bt?.container === true || (bt?.container === 'repeater' && Array.isArray(block.children) && !block.data?.item_block);
   const isSlotContainer = bt?.container === 'slots';
   const expandable = isContainer || isSlotContainer
     || (block.children?.length ?? 0) > 0 || (block.slots?.length ?? 0) > 0;
@@ -1536,10 +1610,17 @@ function cssClassHints(styles: SiteStyle[] | null, blocks: Block[]): Array<{ cla
 }
 
 export function BlockFieldForm({
-  siteId, block, blockType, activeBp = DEFAULT_BP, onChange, onStyleOverrides, reuse, flushRef, onDirty, responsiveBreakpoints,
+  siteId, block, blockType, activeBp = DEFAULT_BP, onChange, onStyleOverrides, reuse, flushRef, onDirty, responsiveBreakpoints, fieldDecorator, blockTypeHref,
 }: {
   /** Make global, detach, save as template. Omitted where the editor cannot. */
   reuse?: ReuseActions;
+  /**
+   * Wraps each field's control, e.g. the block type builder's "Bind to
+   * field" control. Receives the stored value and a setter.
+   */
+  fieldDecorator?: (field: FieldDefinition, value: unknown, set: (value: unknown) => void, control: React.ReactNode) => React.ReactNode;
+  /** Where a composed block's type is edited (admins only). */
+  blockTypeHref?: string;
   /** Save the block's class and anchor (Block.style_overrides). Omitted where they cannot be edited. */
   onStyleOverrides?: (overrides: Block['style_overrides']) => Promise<void>;
   siteId?: string;
@@ -1614,10 +1695,16 @@ export function BlockFieldForm({
     );
   }
 
+  const composedCount = blockType.composition?.length ? countBlocks(blockType.composition) : 0;
   return (
     <div>
       <h3 style={{ marginTop: 0, fontSize: '0.95rem' }}>{blockType.label}</h3>
-      <p style={{ fontSize: '.75rem', opacity: 0.6, marginTop: 0, marginBottom: '1rem' }}>{blockType.id}</p>
+      <p style={{ fontSize: '.75rem', color: '#a1a1aa', marginTop: 0, marginBottom: '1rem' }}>{blockType.id}</p>
+      {blockType.description && <p className="block-type-description">{blockType.description}</p>}
+      {composedCount > 0 && <p className="block-composed-note">
+        Built from {composedCount} {composedCount === 1 ? 'block' : 'blocks'}. Edit its fields here; its layout is set in the block type.
+        {blockTypeHref && <> <a href={blockTypeHref}>Edit the block type</a></>}
+      </p>}
       <form onSubmit={(e) => e.preventDefault()}>
         {(['content', 'appearance', 'advanced'] as const).map(group => {
           const fields = blockType.schema.filter(field => (field.editor_group ?? 'content') === group && fieldAvailable(field, renderVersion));
@@ -1634,18 +1721,21 @@ export function BlockFieldForm({
             const value = responsive ? resolveResponsive(raw ?? f.default, activeBp) : (raw ?? f.default);
             const hasOwn = responsive && isResponsiveValue(raw)
               && (raw as Partial<Record<Breakpoint, unknown>>)[activeBp] !== undefined;
+            const control = (
+              <FieldInput
+                siteId={siteId}
+                field={f}
+                siteWidths={responsiveBreakpoints}
+                value={value}
+                responsive={responsive}
+                activeBp={activeBp}
+                hasOwn={hasOwn}
+                onChange={(v) => set(f.name, v, responsive, f.default)}
+              />
+            );
             return (
               <div key={f.name}>
-                <FieldInput
-                  siteId={siteId}
-                  field={f}
-                  siteWidths={responsiveBreakpoints}
-                  value={value}
-                  responsive={responsive}
-                  activeBp={activeBp}
-                  hasOwn={hasOwn}
-                  onChange={(v) => set(f.name, v, responsive, f.default)}
-                />
+                {fieldDecorator ? fieldDecorator(f, raw, (v) => commit(f.name, v), control) : control}
                 {group !== 'content' && raw != null && <button type="button" className="block-field-reset" onClick={() => commit(f.name, f.default)}>Reset {f.label.toLowerCase()}</button>}
               </div>
             );
@@ -1663,10 +1753,18 @@ export function BlockFieldForm({
   );
 }
 
+function countBlocks(blocks: readonly Block[]): number {
+  return blocks.reduce((sum, block) => sum + 1 + countBlocks(block.children ?? []) + (block.slots ?? []).reduce((n, slot) => n + countBlocks(slot), 0), 0);
+}
+
 export interface ReuseActions {
   makeGlobal(name: string): Promise<void>;
   detach(): Promise<void>;
   saveTemplate(name: string, description: string): Promise<void>;
+  /** Admins: make a block type from this block and its children (TurnIntoBlockType). */
+  turnIntoBlockType?: TurnIntoBlockTypeAction;
+  /** A placed composed block: replace it with the blocks it is made of. */
+  detachComposed?: () => Promise<void>;
 }
 
 /**
@@ -1674,7 +1772,7 @@ export interface ReuseActions {
  * content) or as a template (a starting point copied into pages).
  */
 function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions }) {
-  const [mode, setMode] = useState<'global' | 'template' | null>(null);
+  const [mode, setMode] = useState<'global' | 'template' | 'block_type' | null>(null);
   const [name, setName] = useState(block.name ?? '');
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1696,12 +1794,21 @@ function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions })
           if (confirm('Replace the global block with a copy on this page? The copy matches what the editor shows, including an unsaved draft of the global block. Later changes to the global block will not reach this page.')) run(() => actions.detach(), 'Detached: this page now has its own copy.');
         }}>Detach (edit on this page only)</button>
       </> : <>
-        <p><strong>Global block:</strong> one shared source; every page using it shows the same content. <strong>Template:</strong> a starting point; each insert is a copy.</p>
+        <p><strong>Global block:</strong> one shared source; every page using it shows the same content. <strong>Template:</strong> a starting point; each insert is a copy.{actions.turnIntoBlockType && <> <strong>Block type:</strong> a new kind of block whose chosen fields people fill in on any page.</>}</p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" className="btn btn--secondary" aria-pressed={mode === 'global'} onClick={() => setMode(mode === 'global' ? null : 'global')}>Make global block…</button>
           <button type="button" className="btn btn--secondary" aria-pressed={mode === 'template'} onClick={() => setMode(mode === 'template' ? null : 'template')}>Save as template…</button>
+          {actions.turnIntoBlockType && <button type="button" className="btn btn--secondary" aria-pressed={mode === 'block_type'} onClick={() => setMode(mode === 'block_type' ? null : 'block_type')}>Turn into block type…</button>}
         </div>
-        {mode && <form className="block-reuse__form" onSubmit={e => {
+        {actions.detachComposed && <>
+          <p>This block is built from other blocks. Detach it to edit those blocks on this page; it stops following changes to its block type.</p>
+          <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => {
+            if (confirm('Replace this block with the blocks it is made of? Its current field values are kept.')) run(() => actions.detachComposed!(), 'Detached: the blocks are now on this page.');
+          }}>Detach into blocks</button>
+        </>}
+        {mode === 'block_type' && actions.turnIntoBlockType && <TurnIntoBlockType block={block} action={actions.turnIntoBlockType}
+          onDone={(label) => { setMode(null); setMessage(`Created the block type “${label}”. This block is now one, and it is in the block library.`); }} />}
+        {(mode === 'global' || mode === 'template') && <form className="block-reuse__form" onSubmit={e => {
           e.preventDefault();
           if (!name.trim()) return;
           if (mode === 'global') run(() => actions.makeGlobal(name.trim()), 'Now a global block. Other pages can add it from the block library.');

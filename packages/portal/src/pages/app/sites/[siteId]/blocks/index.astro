@@ -1,18 +1,39 @@
 ---
 import AppLayout from '../../../../../layouts/AppLayout.astro';
 import BlockTypeManager from '../../../../../components/BlockTypeManager.tsx';
-import { getStore } from '../../../../../lib/datastore';
-import { paths } from '@typeroll/shared';
-import type { Site } from '@typeroll/shared';
 import { loadSiteContext } from '../../../../../lib/access';
+import { vstore } from '../../../../../lib/version-store';
+import { resolveRenderVersion } from '@typeroll/shared';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
-const { session, site, owner_org_id: orgId } = ctx;
+const { site, versionId, owner_org_id: orgId, permission } = ctx;
 const siteId = site.id;
-
-const store = getStore();
+// Creating and changing block types needs admin permission on the Site;
+// editors place block types on pages and edit their fields there.
+const isAdmin = permission === 'admin';
+const settings = isAdmin ? await vstore.settings(orgId, siteId, versionId) : null;
+const globalBlocks = isAdmin
+  ? (await vstore.partials(orgId, siteId, versionId)).filter(partial => partial.kind === 'free')
+    .map(partial => ({ id: partial.id, name: partial.name, status: partial.status, content_mode: partial.content_mode }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  : [];
 ---
-<AppLayout title={`Block — ${site.name}`} siteId={siteId}>
-  <BlockTypeManager client:load siteId={siteId} />
+<AppLayout title={`Block types — ${site.name}`} siteId={siteId}>
+  {isAdmin ? (
+    <BlockTypeManager client:load siteId={siteId} siteStyles={settings?.styles ?? []} renderVersion={resolveRenderVersion(settings?.render_version)} globalBlocks={globalBlocks} />
+  ) : (
+    <section class="block-types-denied" aria-labelledby="block-types-denied-title">
+      <h1 id="block-types-denied-title">Block types</h1>
+      <p>Only Site admins can create and change block types. You can place this Site's block types on pages and fill in their fields in the page editor.</p>
+      <p><a href={`/app/sites/${siteId}/pages`}>Go to pages</a></p>
+    </section>
+  )}
 </AppLayout>
+
+<style>
+  .block-types-denied { max-width: 40rem; margin: 3rem auto; padding: 0 1rem; }
+  .block-types-denied h1 { font-size: 1.5rem; margin-bottom: .75rem; }
+  .block-types-denied p { color: var(--color-text); margin-bottom: .75rem; }
+  .block-types-denied a { text-decoration: underline; }
+</style>

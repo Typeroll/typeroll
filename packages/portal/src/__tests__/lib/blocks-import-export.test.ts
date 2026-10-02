@@ -217,10 +217,22 @@ describe('GET /v1/.../blocks/export — package version vs site version', () => 
     };
     // The branch selected the content; the package kept its own version.
     expect(body.manifest.version).toBe('1.0.0');
-    expect(body.block_count).toBe(1);
-    // The manifest lists block names: the branch's block, not main's.
+    // Read through the version chain: the branch's own block and the one it
+    // inherits from main.
+    expect(body.block_count).toBe(2);
     expect(JSON.stringify(body.manifest.blocks)).toContain('on_spring');
-    expect(JSON.stringify(body.manifest.blocks)).not.toContain('on_main');
+    expect(JSON.stringify(body.manifest.blocks)).toContain('on_main');
+
+    // Main does not see the branch's block.
+    const main = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/blocks/export'),
+      'GET',
+      `http://localhost/api/v1/sites/${SITE}/blocks/export?version=1.0.0`,
+      { siteId: SITE },
+      { headers: bearer(token) },
+    );
+    const mainBody = await main.json() as { manifest: { blocks: unknown[] } };
+    expect(JSON.stringify(mainBody.manifest.blocks)).not.toContain('on_spring');
   });
 
   it('404s a ?version_branch= that does not exist instead of exporting main', async () => {
@@ -320,20 +332,20 @@ describe('POST /v1/.../blocks/import', () => {
     );
     const exported = await exportRes.json() as { zip_base64: string };
 
-    // First import: id collides with the seeded original → counts as update.
-    // Second: same again. We assert both are updates (the contract is
-    // "id-collision = update").
-    for (let i = 0; i < 2; i++) {
+    // A name collision is skipped by default and replaced on request.
+    const importWith = async (onConflict?: string) => {
       const res = await callRoute(
         import('../../pages/api/v1/sites/[siteId]/blocks/import'),
         'POST',
         `http://localhost/api/v1/sites/${SITE}/blocks/import`,
         { siteId: SITE },
-        { headers: bearer(token), body: { zip_base64: exported.zip_base64 } },
+        { headers: bearer(token), body: { zip_base64: exported.zip_base64, ...(onConflict ? { on_conflict: onConflict } : {}) } },
       );
-      const body = await res.json() as { created: number; updated: number };
-      expect(body.created).toBe(0);
-      expect(body.updated).toBe(1);
+      return await res.json() as { created: number; updated: number; skipped: number; results: Array<{ name: string; action: string }> };
+    };
+    expect(await importWith()).toMatchObject({ created: 0, updated: 0, skipped: 1, results: [{ name: 'source', action: 'skipped' }] });
+    for (let i = 0; i < 2; i++) {
+      expect(await importWith('replace')).toMatchObject({ created: 0, updated: 1, results: [{ name: 'source', action: 'replaced' }] });
     }
   });
 });

@@ -3,6 +3,9 @@
 // `version` is the package's own semver (it lands in the manifest);
 // `version_branch` selects the site version to export from.
 //
+// Exports every site block type by default (made in the portal, by an agent
+// or imported), read through the version chain; `ids` narrows it.
+//
 // Public API mirror of /api/sites/{siteId}/blocks/export. Always returns
 // JSON with zip_base64; the agent can decode and save locally if it wants
 // the raw bytes. (Streaming the zip body via base64 is plenty efficient at
@@ -10,9 +13,9 @@
 
 import type { APIRoute } from 'astro';
 import { apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
-import { getStore } from '../../../../../../lib/datastore';
-import { paths, type BlockType } from '@typeroll/shared';
+import { vstore } from '../../../../../../lib/version-store';
 import { packBlockTypes } from '../../../../../../lib/block-packages';
+import { exportableBlockTypes } from '../../../../../../lib/block-type-write';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -24,13 +27,11 @@ export const GET: APIRoute = async ({ request, params }) => {
   const pkgName = url.searchParams.get('name') ?? `${ctx.siteId}-blocks`;
   const pkgVersion = url.searchParams.get('version') ?? '1.0.0';
 
-  const store = getStore();
-  const basePath = paths.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId);
-  const all = await store.listDocs<BlockType>(basePath);
-
-  const filtered = wantedIds
-    ? all.filter((bt) => wantedIds.includes(bt.id))
-    : all.filter((bt) => (bt.origin ?? bt.created_by) === 'user');
+  // Through the version chain, so a branch exports the types it inherits.
+  // Every site block type is included by default (portal, agent and
+  // imported), with every property the definition carries.
+  const all = await vstore.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId);
+  const filtered = exportableBlockTypes(all, wantedIds);
 
   // Empty-export case: return an empty-but-valid response (block_count
   // 0, zip_base64 null) instead of 404. Lets agents build idempotent

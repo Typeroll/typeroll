@@ -29,10 +29,10 @@ test('key admin surfaces fit a 320px viewport', async ({ page }) => {
   await expectInsideViewport(page, '.app-header__create-form');
 
   await page.goto('/app/sites/default/blocks');
-  const blockManager = page.locator('.block-type-manager');
+  const blockManager = page.locator('.block-builder');
   await expect(blockManager).toBeVisible();
   expect((await blockManager.evaluate((element) => getComputedStyle(element).gridTemplateColumns)).split(' ')).toHaveLength(1);
-  await expectInsideViewport(page, '.block-type-manager');
+  await expectInsideViewport(page, '.block-builder');
 
   await page.goto('/app/sites/default/ai');
   await expect(page.getByRole('heading', { name: 'AI chat' })).toBeVisible();

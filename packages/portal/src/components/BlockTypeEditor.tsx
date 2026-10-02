@@ -1,538 +1,431 @@
-// Editor for a single custom BlockType.
+// One site block type in the builder. Tabs:
+//   Fields  — the schema (BlockTypeFieldsEditor)
+//   Blocks  — composed types: the block tree and its bindings (BlockTypeCompositionEditor)
+//   Markup  — template types: the template (BlockTypeMarkupEditor)
+//   CSS     — the block's own stylesheet, scoped to the block
+//   Preview — the server preview at three widths, with editable sample content
+//   Usage   — pages, templates and global blocks placing it
+//   JSON    — the full definition as the API takes it
 //
-// Five sections:
-//   1. Metadata — name, label, icon, category, container, item_compatible
-//   2. Schema — field-definition list (name/type/label/required/options/
-//      default/responsive)
-//   3. Template — HTML markup with {{field}} / {{=tag}} / {{children}} /
-//      {{slot:NAME}} / {{page.*}} / {{site.*}} placeholders. Warnings
-//      surface for tokens that don't match the schema.
-//   4. Styles — block-scoped CSS. Warning if any selector escapes the
-//      block's `[data-block="…"]` scope.
-//   5. Script — client-side JS, GATED behind an explicit consent toggle.
-//
-// The script section can only be edited after the user clicks "Aktivera JS"
-// and confirms the warning. Scripts run with full DOM access on every
-// visitor's browser — the user is taking on that responsibility.
+// The shared validator (via the validate endpoint) checks the draft as it
+// changes; saving validates again, and errors block the save. Removing or
+// renaming fields that placed blocks use answers 409; the impact panel then
+// maps old fields to new ones or confirms the data loss.
 
 import { useEffect, useMemo, useState } from 'react';
-import type { BlockType, FieldDefinition, FieldType } from '@typeroll/shared';
-import { Trash2, Plus, AlertTriangle, Save } from 'lucide-react';
+import type { BlockType, BlockTypeProblem, FieldDefinition } from '@typeroll/shared';
+import { AlertTriangle, Save, Trash2 } from 'lucide-react';
+import BlockTypeFieldsEditor from './BlockTypeFieldsEditor';
+import BlockTypeCompositionEditor from './BlockTypeCompositionEditor';
+import BlockTypeMarkupEditor from './BlockTypeMarkupEditor';
 import BlockTypePreview from './BlockTypePreview';
+import CustomCssEditor from './CustomCssEditor';
+import {
+  blockTypeMode, compositionCssHints, detectRenames, renameBindings, schemaChanges, siblingPaths, suggestTypeName, templateCssHints, writableDefinition,
+} from '../lib/block-type-builder';
+import type { BlockTypeUsage } from '../lib/block-type-usage';
+import type { BlockTypeImpact, ImpactUsage } from '../lib/block-type-migration';
+
+type Tab = 'fields' | 'blocks' | 'markup' | 'css' | 'preview' | 'usage' | 'json';
+const CATEGORIES = [['content', 'Content'], ['layout', 'Layout'], ['media', 'Media'], ['custom', 'Custom']] as const;
 
 interface Props {
   siteId: string;
-  blockType: BlockType | null; // null = create new
-  onSaved: (bt: BlockType) => void;
-  onDeleted?: (id: string) => void;
+  /** The saved type, or null while creating one. */
+  saved: BlockType | null;
+  /** The starting definition while creating. */
+  initial: Partial<BlockType>;
+  /** Core and site block types, for the composition and its library. */
+  registry: Map<string, BlockType>;
+  renderVersion?: number;
+  /** A message to start with, e.g. after the type was created. */
+  notice?: string;
+  onSaved: (type: BlockType) => void;
+  onDeleted: (id: string) => void;
 }
 
-const CATEGORIES = ['layout', 'content', 'media', 'custom'] as const;
-const FIELD_TYPES: FieldType[] = [
-  'text', 'textarea', 'richtext', 'image', 'file', 'color',
-  'select', 'boolean', 'number', 'url', 'email', 'date', 'datetime',
-  'list', 'list_simple',
-  // Phase 5 additions — the editor handler for these falls back to text
-  // input for now; the new types are recognised so the schema can declare
-  // them and the renderer / future editor improvements honour them.
-  'icon', 'array', 'object', 'block_type_ref', 'content_type_ref', 'page_ref', 'page_ref_list',
-];
+interface Impact {
+  error: string;
+  /** Places whose data the change would drop (from the server's impact report). */
+  usages: ImpactUsage[];
+  /** Old field paths that no longer exist, or changed type. */
+  removed: string[];
+  retyped: string[];
+  /** New field paths, offered as rename targets. */
+  added: string[];
+}
 
-export default function BlockTypeEditor({ siteId, blockType, onSaved, onDeleted }: Props) {
-  const isNew = !blockType;
-  const [draft, setDraft] = useState<Partial<BlockType>>(() =>
-    blockType ?? {
-      name: '', label: '', icon: '', category: 'custom', container: false,
-      schema: [], template: '', styles: '', script: '',
-    },
-  );
-  const [jsEnabled, setJsEnabled] = useState(!!blockType?.script);
-  const [showJsWarning, setShowJsWarning] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [error, setError] = useState<string | null>(null);
+function tabFor(path: string): Tab | null {
+  if (path.startsWith('/schema') || path.startsWith('/renames')) return 'fields';
+  if (path.startsWith('/composition')) return 'blocks';
+  if (path.startsWith('/template')) return 'markup';
+  if (path.startsWith('/styles')) return 'css';
+  return null;
+}
+
+const USAGE_KIND_LABELS: Record<ImpactUsage['kind'], string> = {
+  page: 'Page', page_draft: 'Page draft', page_template: 'Page template', partial: 'Global block', partial_draft: 'Global block draft',
+  block_template: 'Block template', block_type: 'Block type',
+};
+
+function usageHref(siteId: string, usage: ImpactUsage): string | null {
+  const id = encodeURIComponent(usage.id);
+  if (usage.kind === 'page' || usage.kind === 'page_draft') return `/app/sites/${siteId}/pages/${id}`;
+  if (usage.kind === 'partial' || usage.kind === 'partial_draft') return `/app/sites/${siteId}/partials/${id}`;
+  if (usage.kind === 'page_template') return `/app/sites/${siteId}/templates/${id}`;
+  if (usage.kind === 'block_type') return `/app/sites/${siteId}/blocks?type=${id}`;
+  return null;
+}
+
+export default function BlockTypeEditor({ siteId, saved, initial, registry, renderVersion, notice, onSaved, onDeleted }: Props) {
+  const isNew = !saved;
+  const [draft, setDraft] = useState<Partial<BlockType>>(() => structuredClone(saved ?? initial));
+  const mode = blockTypeMode(draft);
+  const [tab, setTab] = useState<Tab>(isNew ? (mode === 'composed' ? 'blocks' : 'markup') : 'fields');
+  const [problems, setProblems] = useState<BlockTypeProblem[]>([]);
+  const [status, setStatus] = useState<{ kind: 'idle' | 'saving' | 'saved' | 'error'; message?: string }>(notice ? { kind: 'saved', message: notice } : { kind: 'idle' });
+  const [impact, setImpact] = useState<Impact | null>(null);
+  const [renames, setRenames] = useState<Record<string, string>>({});
+  const [jsEnabled, setJsEnabled] = useState(!!saved?.script);
+  const [usage, setUsage] = useState<BlockTypeUsage | null>(null);
+  const [jsonText, setJsonText] = useState('');
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const [nameTouched, setNameTouched] = useState(!isNew);
+
+  const set = <K extends keyof BlockType>(key: K, value: BlockType[K] | undefined) => setDraft(current => {
+    const next = { ...current, [key]: value };
+    if (value === undefined) delete next[key];
+    return next;
+  });
+  const definition = useMemo(() => {
+    const out = writableDefinition(jsEnabled ? draft : { ...draft, script: undefined });
+    // Clearing a saved script must reach the server.
+    if (!isNew && saved?.script && !out.script) out.script = '';
+    return out;
+  }, [draft, jsEnabled, isNew, saved?.script]);
+  const definitionKey = JSON.stringify(definition);
+
+  // Live validation through the shared validator.
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/sites/${siteId}/blocks/types/validate${saved ? `?type_id=${encodeURIComponent(saved.id)}` : ''}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: definitionKey, signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const body = await res.json() as { problems?: BlockTypeProblem[] };
+        setProblems(body.problems ?? []);
+      } catch { /* aborted or offline: keep the last report */ }
+    }, 400);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [siteId, saved?.id, definitionKey]);
 
   useEffect(() => {
-    if (blockType) {
-      setDraft(blockType);
-      setJsEnabled(!!blockType.script);
-    }
-  }, [blockType?.id]);
+    if (tab !== 'usage' || !saved) return;
+    fetch(`/api/sites/${siteId}/blocks/types/usage?id=${encodeURIComponent(saved.id)}`)
+      .then(res => res.ok ? res.json() as Promise<BlockTypeUsage> : null)
+      .then(body => setUsage(body ?? { pages: [], templates: [], partials: [], block_templates: [], block_types: [] }))
+      .catch(() => setUsage({ pages: [], templates: [], partials: [], block_templates: [], block_types: [] }));
+  }, [tab, saved?.id, siteId]);
 
-  function set<K extends keyof BlockType>(k: K, v: BlockType[K] | undefined) {
-    setDraft((d) => ({ ...d, [k]: v }));
-  }
+  useEffect(() => {
+    if (tab === 'json') { setJsonText(JSON.stringify(definition, null, 2)); setJsonError(null); }
+  }, [tab]);
 
-  function addField() {
-    const schema = (draft.schema ?? []).slice();
-    schema.push({ name: 'field_' + (schema.length + 1), type: 'text', label: 'New field' });
-    set('schema', schema);
-  }
+  const errors = problems.filter(problem => problem.severity === 'error');
+  const warnings = problems.filter(problem => problem.severity === 'warning');
+  const countFor = (target: Tab) => errors.filter(problem => tabFor(problem.path) === target).length;
+  /** Messages for one field card: its own path and its properties, not its sub-fields (they have their own cards). */
+  const problemsAt = (prefix: string) => (pointer: string) => problems.filter(problem => {
+    const base = `${prefix}${pointer}`;
+    if (problem.path === base) return true;
+    return problem.path.startsWith(`${base}/`) && !problem.path.slice(base.length + 1).startsWith('fields/');
+  }).map(problem => problem.message);
 
-  function updateField(idx: number, patch: Partial<FieldDefinition>) {
-    const schema = (draft.schema ?? []).slice();
-    schema[idx] = { ...schema[idx], ...patch };
-    set('schema', schema);
-  }
-
-  function removeField(idx: number) {
-    const schema = (draft.schema ?? []).slice();
-    schema.splice(idx, 1);
-    set('schema', schema);
-  }
-
-  async function save() {
-    setStatus('saving');
-    setError(null);
-    const url = isNew
-      ? `/api/sites/${siteId}/blocks/types`
-      : `/api/sites/${siteId}/blocks/types?id=${encodeURIComponent(blockType!.id)}`;
-    const method = isNew ? 'POST' : 'PATCH';
+  async function save(extra: { renames?: Record<string, string>; confirm_data_loss?: boolean } = {}) {
+    setStatus({ kind: 'saving' });
     try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...draft, script: jsEnabled ? draft.script : '' }),
+      const check = await fetch(`/api/sites/${siteId}/blocks/types/validate${saved ? `?type_id=${encodeURIComponent(saved.id)}` : ''}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(definition),
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(j.error ?? `${method} failed (${res.status})`);
+      if (check.ok) {
+        const report = await check.json() as { problems?: BlockTypeProblem[] };
+        setProblems(report.problems ?? []);
+        const blocking = (report.problems ?? []).filter(problem => problem.severity === 'error');
+        if (blocking.length) {
+          setStatus({ kind: 'error', message: `Fix ${blocking.length} ${blocking.length === 1 ? 'error' : 'errors'} before saving.` });
+          const first = tabFor(blocking[0]!.path);
+          if (first && (first !== 'blocks' || mode === 'composed') && (first !== 'markup' || mode === 'template')) setTab(first);
+          return;
+        }
       }
-      const saved = await res.json() as BlockType;
-      setStatus('saved');
-      onSaved(saved);
-      window.setTimeout(() => setStatus('idle'), 1200);
+      const res = await fetch(saved ? `/api/sites/${siteId}/blocks/types?id=${encodeURIComponent(saved.id)}` : `/api/sites/${siteId}/blocks/types`, {
+        method: saved ? 'PATCH' : 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...definition, ...extra }),
+      });
+      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+      if (res.status === 409 && saved && body.impact) {
+        const report = body.impact as BlockTypeImpact;
+        const changes = schemaChanges(saved.schema ?? [], (draft.schema ?? []) as FieldDefinition[]);
+        setImpact({
+          error: String(body.error ?? 'This change affects blocks already placed.'),
+          usages: report.usages ?? [],
+          removed: report.removed ?? changes.removed,
+          retyped: (report.retyped ?? []).map(entry => entry.path),
+          added: changes.added,
+        });
+        // Fields renamed in place are offered as renames, so their data moves.
+        const detected = detectRenames(saved.schema ?? [], (draft.schema ?? []) as FieldDefinition[]);
+        setRenames(Object.fromEntries(Object.entries(detected).filter(([from]) => (report.removed ?? changes.removed).includes(from))));
+        setStatus({ kind: 'idle' });
+        return;
+      }
+      if (!res.ok) {
+        if (Array.isArray(body.problems)) setProblems(body.problems as BlockTypeProblem[]);
+        throw new Error(String(body.error ?? `Save failed (${res.status})`));
+      }
+      const result = body as { block_type?: BlockType; warnings?: BlockTypeProblem[]; impact?: BlockTypeImpact };
+      if (!result.block_type) throw new Error('The server did not return the saved block type.');
+      setImpact(null);
+      const moved = result.impact?.renamed?.length ? ` Moved the data of ${result.impact.renamed.length} renamed ${result.impact.renamed.length === 1 ? 'field' : 'fields'}.` : '';
+      setStatus({ kind: 'saved', message: isNew ? 'Created. Add it to pages from the block library.' : `Saved. Pages using it show the change; the live site updates at the next deploy.${moved}` });
+      if (result.warnings) setProblems(result.warnings);
+      onSaved(result.block_type);
     } catch (e) {
-      setError((e as Error).message);
-      setStatus('error');
+      setStatus({ kind: 'error', message: (e as Error).message });
     }
   }
 
-  async function del() {
-    if (!blockType) return;
-    if (!confirm(`Delete the block type "${blockType.label}"? Pages using it must be updated manually.`)) return;
-    const res = await fetch(`/api/sites/${siteId}/blocks/types?id=${encodeURIComponent(blockType.id)}`, {
-      method: 'DELETE',
-    });
-    if (res.ok) onDeleted?.(blockType.id);
+  async function remove() {
+    if (!saved || !confirm(`Delete the block type “${saved.label}”? This cannot be undone.`)) return;
+    const res = await fetch(`/api/sites/${siteId}/blocks/types?id=${encodeURIComponent(saved.id)}`, { method: 'DELETE' });
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    if (res.ok) onDeleted(saved.id);
+    else setStatus({ kind: 'error', message: body.error ?? `Delete failed (${res.status})` });
   }
+
+  function applyJson() {
+    try {
+      const parsed = JSON.parse(jsonText) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('The definition must be a JSON object.');
+      const next = parsed as Partial<BlockType>;
+      if (saved && next.name !== undefined && next.name !== saved.name) throw new Error('A block type cannot be renamed. Create a new one instead.');
+      setDraft({ ...(saved ? { id: saved.id, origin: saved.origin, created_at: saved.created_at } : {}), ...next });
+      if (next.script) setJsEnabled(true);
+      setJsonError(null);
+      setStatus({ kind: 'idle', message: 'JSON applied. Save to keep it.' });
+    } catch (e) {
+      setJsonError((e as Error).message);
+    }
+  }
+
+  const schema = (draft.schema ?? []) as FieldDefinition[];
+  const otherTypes = useMemo(() => {
+    const out = new Map(registry);
+    if (draft.name) out.delete(draft.name);
+    if (saved) out.delete(saved.id);
+    return out;
+  }, [registry, draft.name, saved?.id]);
+  const cssHints = mode === 'composed' ? compositionCssHints(draft.composition ?? [], registry) : templateCssHints(draft.template ?? '');
+  const tabs: Array<[Tab, string]> = [
+    ['fields', 'Fields'],
+    mode === 'composed' ? ['blocks', 'Blocks'] : ['markup', 'Markup'],
+    ['css', 'CSS'], ['preview', 'Preview'], ['usage', 'Usage'], ['json', 'JSON'],
+  ];
 
   return (
-    <div style={shell}>
-      <header style={header}>
+    <div className="bb-shell">
+      <header className="bb-header">
         <div>
-          <h2 style={{ margin: 0, fontSize: '1.05rem' }}>
-            {isNew ? 'Ny blocktyp' : blockType!.label}
-          </h2>
-          <p style={{ margin: '2px 0 0', fontSize: '.75rem', opacity: 0.6 }}>
-            {isNew ? 'Create a reusable block for this site.' : `id: ${blockType!.id}`}
-          </p>
+          <h2>{draft.label || (isNew ? 'New block type' : saved!.label)}</h2>
+          <p>{isNew ? 'Not saved yet.' : <>Name <code>{saved!.id}</code></>} · {mode === 'composed' ? 'Built from blocks' : 'Own markup'}</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {status === 'saving' && <span style={muted}>Saving…</span>}
-          {status === 'saved' && <span style={{ color: '#22c55e', fontSize: '.85rem' }}>Saved</span>}
-          {status === 'error' && <span style={{ color: '#ef4444', fontSize: '.85rem' }}>{error}</span>}
-          {!isNew && (
-            <button type="button" onClick={del} style={dangerBtn} title="Delete">
-              <Trash2 size={14} /> Delete
-            </button>
-          )}
-          <button type="button" onClick={save} style={primaryBtn}>
-            <Save size={14} /> Save
-          </button>
+        <div className="bb-actions">
+          {status.kind === 'saving' && <span className="bb-status" role="status">Saving…</span>}
+          {status.kind === 'saved' && <span className="bb-status bb-status--ok" role="status">{status.message}</span>}
+          {status.kind === 'error' && <span className="bb-status bb-status--error" role="alert">{status.message}</span>}
+          {status.kind === 'idle' && status.message && <span className="bb-status" role="status">{status.message}</span>}
+          {!isNew && <button type="button" className="bb-btn bb-btn--danger" onClick={() => void remove()}><Trash2 size={14} aria-hidden="true" /> Delete</button>}
+          <button type="button" className="bb-btn bb-btn--primary" disabled={status.kind === 'saving'} onClick={() => void save()}><Save size={14} aria-hidden="true" /> {isNew ? 'Create block type' : 'Save'}</button>
         </div>
       </header>
 
-      <section style={section}>
-        <h3 style={sectionH}>Metadata</h3>
-        <div style={fieldGrid}>
-          <Labeled label="Namn (id-suffix, kebab/underscore)">
-            <input
-              value={(draft.name as string) ?? ''}
-              onChange={(e) => set('name', e.target.value as BlockType['name'])}
-              style={input}
-              placeholder="fancy_card"
-            />
-          </Labeled>
-          <Labeled label="Etikett (visas i biblioteket)">
-            <input
-              value={(draft.label as string) ?? ''}
-              onChange={(e) => set('label', e.target.value as BlockType['label'])}
-              style={input}
-              placeholder="Fancy Card"
-            />
-          </Labeled>
-          <Labeled label="Kategori">
-            <select
-              value={(draft.category as string) ?? 'custom'}
-              onChange={(e) => set('category', e.target.value as BlockType['category'])}
-              style={input}
-            >
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </Labeled>
-          <Labeled label="Container">
-            <select
-              value={
-                draft.container === true ? 'true'
-                : draft.container === 'slots' ? 'slots'
-                : draft.container === 'repeater' ? 'repeater'
-                : draft.container === 'conditional' ? 'conditional'
-                : 'false'
-              }
-              onChange={(e) => {
-                const v = e.target.value;
-                let val: BlockType['container'];
-                if (v === 'true') val = true;
-                else if (v === 'slots') val = 'slots';
-                else if (v === 'repeater') val = 'repeater';
-                else if (v === 'conditional') val = 'conditional';
-                else val = false;
-                set('container', val);
-              }}
-              style={input}
-            >
-              <option value="false">Inget (kan inte ha barn)</option>
-              <option value="true">Ja (en lista av barn)</option>
-              <option value="slots">Slot-baserad (flera namngivna slots)</option>
-              <option value="repeater">Repeater (loopar items[])</option>
-              <option value="conditional">Conditional (visas vid villkor)</option>
-            </select>
-          </Labeled>
-          {draft.container === 'slots' && (
-            <>
-              <Labeled label="Antal slots (1-8)">
-                <input
-                  type="number"
-                  min={1} max={8}
-                  value={draft.slot_count ?? 2}
-                  onChange={(e) => set('slot_count', Number(e.target.value))}
-                  style={input}
-                />
-              </Labeled>
-              <Labeled label="Slot-etiketter (komma-separerat)">
-                <input
-                  value={(draft.slot_labels ?? []).join(', ')}
-                  onChange={(e) => set('slot_labels', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
-                  style={input}
-                  placeholder="Left, Right"
-                />
-              </Labeled>
-            </>
-          )}
-          <Labeled label="Usable as a repeater item">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.85rem' }}>
-              <input
-                type="checkbox"
-                checked={!!draft.item_compatible}
-                onChange={(e) => set('item_compatible', e.target.checked || undefined)}
-              />
-              <span style={muted}>Offered as an option in the repeater item picker</span>
-            </label>
-          </Labeled>
-        </div>
-      </section>
-
-      <section style={section}>
-        <h3 style={sectionH}>
-          Fields
-          <button type="button" onClick={addField} style={smallBtn}>
-            <Plus size={12} /> Add
-          </button>
-        </h3>
-        {(draft.schema ?? []).length === 0 && (
-          <p style={muted}>No fields yet. Add the fields an editor should fill in.</p>
-        )}
-        {(draft.schema ?? []).map((f, i) => (
-          <div key={i} style={fieldRow}>
-            <input
-              value={f.name}
-              onChange={(e) => updateField(i, { name: e.target.value })}
-              style={{ ...input, flex: '0 0 140px' }}
-              placeholder="field_name"
-            />
-            <select
-              value={f.type}
-              onChange={(e) => updateField(i, { type: e.target.value as FieldType })}
-              style={{ ...input, flex: '0 0 130px' }}
-            >
-              {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-            <input
-              value={f.label}
-              onChange={(e) => updateField(i, { label: e.target.value })}
-              style={{ ...input, flex: 1 }}
-              placeholder="Label"
-            />
-            <label style={checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={!!f.required}
-                onChange={(e) => updateField(i, { required: e.target.checked })}
-              /> required
-            </label>
-            <label style={checkboxLabel} title="Allow per-breakpoint values in the editor">
-              <input
-                type="checkbox"
-                checked={!!f.responsive}
-                onChange={(e) => updateField(i, { responsive: e.target.checked || undefined })}
-              /> responsive
-            </label>
-            <button type="button" onClick={() => removeField(i)} style={iconBtn} title="Delete">
-              <Trash2 size={12} />
-            </button>
+      {impact && saved && (
+        <section className="bb-impact" aria-labelledby="bb-impact-title">
+          <h3 id="bb-impact-title"><AlertTriangle size={16} aria-hidden="true" style={{ display: 'inline', verticalAlign: '-3px' }} /> Placed blocks use the fields you changed</h3>
+          <p>{impact.error}</p>
+          {impact.usages.length > 0 && <ul>{impact.usages.map((usage, i) => {
+            const href = usageHref(siteId, usage);
+            return <li key={i}>{USAGE_KIND_LABELS[usage.kind]}: {href ? <a href={href}>{usage.title || usage.id}</a> : usage.title || usage.id}
+              {' '}({usage.instances} {usage.instances === 1 ? 'block' : 'blocks'}{usage.data_loss.length ? `; data in ${usage.data_loss.join(', ')}` : ''})</li>;
+          })}</ul>}
+          {[...impact.removed, ...impact.retyped].map(path => {
+            const retyped = impact.retyped.includes(path);
+            const choices = retyped ? [] : [...new Set([...siblingPaths(impact.added, path), ...(renames[path] ? [renames[path]!] : [])])];
+            return (
+              <div key={path} className="bb-impact__row">
+                <span><code>{path}</code> {retyped ? 'changed type' : 'was removed or renamed'}</span>
+                <select aria-label={`What happens to the data in ${path}`} value={renames[path] ?? ''} onChange={e => setRenames(current => ({ ...current, [path]: e.target.value }))}>
+                  <option value="">Delete its data</option>
+                  {choices.map(choice => <option key={choice} value={choice}>Move it to {choice}</option>)}
+                </select>
+              </div>
+            );
+          })}
+          <div className="bb-actions" style={{ marginTop: '.75rem' }}>
+            <button type="button" className="bb-btn bb-btn--primary" onClick={() => {
+              // The API takes old dotted paths mapped to the field's new name.
+              const mapped = Object.fromEntries(Object.entries(renames).filter(([, to]) => to).map(([from, to]) => [from, to.slice(to.lastIndexOf('.') + 1)]));
+              const losesData = [...impact.removed, ...impact.retyped].some(path => !mapped[path]);
+              void save({ ...(Object.keys(mapped).length ? { renames: mapped } : {}), ...(losesData ? { confirm_data_loss: true } : {}) });
+            }}>Apply and save</button>
+            <button type="button" className="bb-btn" onClick={() => setImpact(null)}>Keep editing</button>
           </div>
+        </section>
+      )}
+
+      <details className="bb-details" open={isNew}>
+        <summary>Name and settings</summary>
+        <div className="bb-grid">
+          <label className="bb-field"><span>Label</span>
+            <input value={draft.label ?? ''} required maxLength={120} placeholder="Icon list" onChange={e => {
+              const label = e.target.value;
+              setDraft(current => ({ ...current, label, ...(isNew && !nameTouched ? { name: label.trim() ? suggestTypeName(label, [...registry.values()].map(type => type.name)) : '' } : {}) }));
+            }} /><small>Shown in the block library.</small></label>
+          <label className="bb-field"><span>Name</span>
+            <input value={draft.name ?? ''} disabled={!isNew} spellCheck={false} placeholder="icon_list" onChange={e => { setNameTouched(true); set('name', e.target.value); }} />
+            <small>{isNew ? 'Used by the API and agents. It cannot change later.' : 'Names cannot change.'}</small></label>
+          <label className="bb-field"><span>Category</span>
+            <select value={draft.category ?? 'custom'} onChange={e => set('category', e.target.value as BlockType['category'])}>
+              {CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select></label>
+          <label className="bb-field"><span>Library icon</span><input value={draft.icon ?? ''} placeholder="e.g. list" onChange={e => set('icon', e.target.value || undefined)} /></label>
+        </div>
+        <label className="bb-field" style={{ marginBottom: '.9rem' }}><span>When to use it</span>
+          <input value={draft.description ?? ''} maxLength={500} placeholder="Shown to editors and agents" onChange={e => set('description', e.target.value || undefined)} /></label>
+        {mode === 'template' && (
+          <div className="bb-grid">
+            <label className="bb-field"><span>Holds other blocks</span>
+              <select value={String(draft.container ?? false)} onChange={e => {
+                const value = e.target.value;
+                set('container', value === 'true' ? true : value === 'false' ? false : value as BlockType['container']);
+                // Slot containers need a slot count; start with two.
+                if (value === 'slots' && !draft.slot_count) set('slot_count', 2);
+              }}>
+                <option value="false">No</option>
+                <option value="true">Yes: a list of child blocks ({'{{children}}'})</option>
+                <option value="slots">Yes: named slots ({'{{slot:name}}'})</option>
+                <option value="repeater">Repeater: repeats an item block</option>
+                <option value="conditional">Conditional: shown when a condition holds</option>
+              </select></label>
+            {draft.container === 'slots' && <>
+              <label className="bb-field"><span>Number of slots</span><input type="number" min={1} max={8} value={draft.slot_count ?? 2} onChange={e => set('slot_count', Number(e.target.value))} /></label>
+              <label className="bb-field"><span>Slot labels</span><input value={(draft.slot_labels ?? []).join(', ')} placeholder="Left, Right" onChange={e => set('slot_labels', e.target.value.split(',').map(label => label.trim()).filter(Boolean))} /></label>
+            </>}
+          </div>
+        )}
+        <label className="bb-check" style={{ marginBottom: '.9rem' }}>
+          <input type="checkbox" checked={!!draft.item_compatible} onChange={e => set('item_compatible', e.target.checked ? true : undefined)} />
+          Offer it as the item of a repeater
+        </label>
+        {draft.expand_to && <p className="bb-help">Expands to <code>{draft.expand_to.target}</code>. Edit <code>expand_to</code> in the JSON tab.</p>}
+        {mode === 'template' && (
+          <div style={{ paddingBottom: '.9rem' }}>
+            {jsEnabled ? (
+              <label className="bb-field"><span>Script</span>
+                <textarea rows={6} value={draft.script ?? ''} spellCheck={false} style={{ fontFamily: 'var(--font-mono)' }}
+                  placeholder={`window.TyperollBlocks.register('${draft.name || 'my_block'}', function (el, data) {\n  // runs for every instance on page load\n});`}
+                  onChange={e => set('script', e.target.value)} />
+                <small>Runs in every visitor's browser with full access to the page. It is not sanitized.</small></label>
+            ) : (
+              <button type="button" className="bb-btn bb-btn--small" onClick={() => {
+                if (confirm('Block scripts run in every visitor’s browser with full access to the page, and are not sanitized. You are responsible for their security and performance. Add a script?')) setJsEnabled(true);
+              }}>Add a script (advanced)…</button>
+            )}
+          </div>
+        )}
+      </details>
+
+      {(errors.length > 0 || warnings.length > 0) && (
+        <ul className="bb-problems" aria-label="Problems">
+          {[...errors, ...warnings].slice(0, 12).map((problem, i) => {
+            const target = tabFor(problem.path);
+            return <li key={i} className={`is-${problem.severity}`}>
+              <strong>{problem.severity === 'error' ? 'Error' : 'Warning'}:</strong>
+              {target ? <button type="button" onClick={() => setTab(target)}>{problem.message}{problem.line ? ` (line ${problem.line})` : ''}</button> : <span>{problem.message}</span>}
+            </li>;
+          })}
+        </ul>
+      )}
+
+      <div className="bb-tabs" role="tablist" aria-label="Block type">
+        {tabs.map(([key, label]) => (
+          <button key={key} type="button" role="tab" id={`bb-tab-${key}`} aria-selected={tab === key} aria-controls="bb-tabpanel" onClick={() => setTab(key)}>
+            {label}{countFor(key) > 0 && <span className="bb-count" aria-label={`${countFor(key)} errors`}>{countFor(key)}</span>}
+          </button>
         ))}
-      </section>
+      </div>
 
-      <BlockTypePreview draft={draft} />
-
-      <section style={section}>
-        <h3 style={sectionH}>Template (HTML)</h3>
-        <p style={muted}>
-          Use <code>{'{{field_name}}'}</code> for HTML-escaped values,
-          <code>{' {{{field_name}}} '}</code> for raw HTML (richtext),
-          <code> {'{{=field}}'} </code> for tag names (h1..h6 etc.),
-          <code> {'{{children}}'} </code> for container children,
-          <code> {'{{slot:NAME}}'} </code> for slot content.
-          In template context (PageTemplate) also <code>{'{{page.title}}'}</code>,
-          <code>{' {{site.logo}}'}</code>, <code>{' {{item.field}}'}</code>.
-        </p>
-        <TemplateWarnings template={draft.template ?? ''} schema={draft.schema ?? []} />
-        <textarea
-          rows={10}
-          value={draft.template ?? ''}
-          onChange={(e) => set('template', e.target.value)}
-          style={{ ...input, fontFamily: 'ui-monospace, monospace' }}
-          placeholder={'<section data-block="' + (draft.name || 'fancy') + '"><h2>{{title}}</h2>{{{body}}}</section>'}
-        />
-      </section>
-
-      <section style={section}>
-        <h3 style={sectionH}>CSS</h3>
-        <p style={muted}>
-          Block-scoped CSS. Selectors should start with <code>[data-block="{draft.name || 'name'}"]</code> so they
-          don't leak into the rest of the site. Concatenated into the site bundle at deploy.
-        </p>
-        <CssScopeWarnings styles={draft.styles ?? ''} blockName={draft.name ?? ''} />
-        <textarea
-          rows={8}
-          value={draft.styles ?? ''}
-          onChange={(e) => set('styles', e.target.value)}
-          style={{ ...input, fontFamily: 'ui-monospace, monospace' }}
-          placeholder={'[data-block="' + (draft.name || 'fancy') + '"]{padding:1rem}'}
-        />
-      </section>
-
-      <section style={section}>
-        <h3 style={sectionH}>JavaScript (avancerat)</h3>
-        {!jsEnabled && (
-          <div style={warningBox}>
-            <AlertTriangle size={16} />
-            <div>
-              <strong>Client code runs in the visitor’s browser with full DOM access.</strong>
-              <p style={{ margin: '4px 0 0', fontSize: '.85rem' }}>
-                You take full responsibility for security and performance. Other users in the same org
-                who visit the site will execute this code. The script is not sanitised.
-              </p>
-              <button
-                type="button"
-                onClick={() => { setShowJsWarning(true); setTimeout(() => { setJsEnabled(true); setShowJsWarning(false); }, 100); }}
-                style={{ ...primaryBtn, marginTop: 8 }}
-              >
-                I understand — enable JS editing
-              </button>
+      <div id="bb-tabpanel" role="tabpanel" aria-labelledby={`bb-tab-${tab}`} className="bb-panel">
+        {tab === 'fields' && <BlockTypeFieldsEditor fields={schema} problemsAt={problemsAt('/schema')} onChange={fields => setDraft(current => {
+          // Bindings follow a field whose name was edited in place.
+          const renames = detectRenames((current.schema ?? []) as FieldDefinition[], fields);
+          return { ...current, schema: fields, ...(current.composition && Object.keys(renames).length ? { composition: renameBindings(current.composition, renames) } : {}) };
+        })} />}
+        {tab === 'blocks' && mode === 'composed' && (
+          <BlockTypeCompositionEditor siteId={siteId} composition={draft.composition ?? []} schema={schema} registry={otherTypes}
+            onChange={composition => set('composition', composition)} onSchemaChange={fields => set('schema', fields)} />
+        )}
+        {tab === 'markup' && mode === 'template' && (
+          <BlockTypeMarkupEditor value={draft.template ?? ''} schema={schema} blockName={draft.name ?? ''}
+            problems={problems.filter(problem => problem.path === '/template')} onChange={template => set('template', template)} />
+        )}
+        {tab === 'css' && (
+          <CustomCssEditor
+            label="Block CSS"
+            value={draft.styles ?? ''}
+            onText={css => set('styles', css)}
+            ignoreCodes={['platform_selector']}
+            extraProblems={problems.filter(problem => problem.path === '/styles').map(problem => ({ severity: problem.severity, message: problem.message, line: problem.line }))}
+            classHints={cssHints}
+            placeholder={':scope { display: grid; gap: 1rem; }\n.card { padding: 1rem; }'}
+            help={<>
+              Every selector is scoped to this block: <code>.card</code> ships as <code>[data-block="{draft.name || 'name'}"] .card</code>, so it never styles anything outside the block. <code>:scope</code> is the block itself. <code>:root</code>, <code>html</code> and <code>body</code> are refused. Use the Site's design values, e.g. <code>var(--color-primary)</code>.
+            </>}
+          />
+        )}
+        {tab === 'preview' && <BlockTypePreview siteId={siteId} definition={definition} schema={schema} renderVersion={renderVersion} />}
+        {tab === 'usage' && (
+          <div className="bb-card">
+            <h3>Where it is used</h3>
+            {!saved ? <p>Save the block type first; then place it on pages from the block library.</p>
+              : !usage ? <p>Loading…</p>
+              : usage.pages.length + usage.templates.length + usage.partials.length + (usage.block_templates?.length ?? 0) + (usage.block_types?.length ?? 0) === 0 ? <p>Not placed anywhere yet. Add it to a page from the block library.</p>
+              : <>
+                {usage.pages.length > 0 && <><p>Pages</p><ul>{usage.pages.map(page => <li key={page.page_id}><a href={`/app/sites/${siteId}/pages/${encodeURIComponent(page.page_id)}`}>{page.title || page.page_id}</a> <span className="bb-help">· {page.status}{page.sources?.includes('draft') && !page.sources.includes('saved') ? ', draft only' : ''}{page.via?.length ? `, through ${page.via.join(', ')}` : ''}</span></li>)}</ul></>}
+                {usage.templates.length > 0 && <><p>Page templates</p><ul>{usage.templates.map(template => <li key={template.template_id}><a href={`/app/sites/${siteId}/templates/${encodeURIComponent(template.template_id)}`}>{template.name || template.template_id}</a></li>)}</ul></>}
+                {usage.partials.length > 0 && <><p>Global blocks, header and footer</p><ul>{usage.partials.map(partial => <li key={partial.partial_id}><a href={`/app/sites/${siteId}/partials/${encodeURIComponent(partial.partial_id)}`}>{partial.name || partial.partial_id}</a> <span className="bb-help">· {partial.kind ?? 'global block'}</span></li>)}</ul></>}
+                {(usage.block_templates?.length ?? 0) > 0 && <><p>Block templates</p><ul>{usage.block_templates.map(template => <li key={template.block_template_id}>{template.name}</li>)}</ul></>}
+                {(usage.block_types?.length ?? 0) > 0 && <><p>Other block types built from it</p><ul>{usage.block_types.map(type => <li key={type.type_id}><a href={`/app/sites/${siteId}/blocks?type=${encodeURIComponent(type.type_id)}`}>{type.label}</a></li>)}</ul></>}
+              </>}
+          </div>
+        )}
+        {tab === 'json' && (
+          <div className="bb-card">
+            <h3>Definition</h3>
+            <p>Exactly what the API and MCP take. Edit it here or paste one, then apply and save.</p>
+            <textarea className="bb-json" aria-label="Block type definition (JSON)" spellCheck={false} value={jsonText} onChange={e => setJsonText(e.target.value)} />
+            {jsonError && <p role="alert" className="bb-status bb-status--error">{jsonError}</p>}
+            <div className="bb-actions" style={{ marginTop: '.5rem' }}>
+              <button type="button" className="bb-btn" onClick={applyJson}>Apply JSON</button>
+              <button type="button" className="bb-btn" onClick={() => void navigator.clipboard?.writeText(jsonText)}>Copy</button>
+              <button type="button" className="bb-btn" onClick={() => { setJsonText(JSON.stringify(definition, null, 2)); setJsonError(null); }}>Reset to the current draft</button>
             </div>
           </div>
         )}
-        {jsEnabled && (
-          <>
-            <p style={muted}>
-              Call <code>window.TyperollBlocks.register(id, init)</code> where <code>init(el, data)</code>
-              is called for every instance of the block on page load.
-            </p>
-            <textarea
-              rows={8}
-              value={draft.script ?? ''}
-              onChange={(e) => set('script', e.target.value)}
-              style={{ ...input, fontFamily: 'ui-monospace, monospace' }}
-              placeholder={`window.TyperollBlocks.register('user/${draft.name ?? 'block'}', function(el, data) {\n  // ...\n});`}
-            />
-          </>
-        )}
-      </section>
-
-      {showJsWarning && null}
+      </div>
     </div>
   );
 }
-
-function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: '.75rem', opacity: 0.7 }}>{label}</span>
-      {children}
-    </label>
-  );
-}
-
-/**
- * Surfaces template-token issues in real time. Catches:
- *   - {{field}} where field isn't in the schema (typo or removed field)
- *   - {{children}} used without `container: true`
- *   - {{slot:N}} used without `container: 'slots'`
- *   - {{=field}} pointing at a field whose values aren't valid HTML tags
- * Context namespaces (`page.*`, `site.*`, `item.*`) pass through —
- * those are template-time bindings, not block schema fields.
- */
-const CONTEXT_NAMESPACES = new Set(['page', 'site', 'item', 'content_type']);
-
-function TemplateWarnings({
-  template,
-  schema,
-}: {
-  template: string;
-  schema: FieldDefinition[];
-}) {
-  const warnings = useMemo(() => {
-    const out: string[] = [];
-    const names = new Set(schema.map((f) => f.name));
-    const tokens = [...template.matchAll(/\{\{\{?\s*=?\s*([\w.:-]+)\s*\}?\}\}/g)];
-    for (const m of tokens) {
-      const tok = m[1]!;
-      if (tok === 'children') continue;
-      if (tok.startsWith('slot:')) continue;
-      // Dotted: first segment must be a known namespace
-      if (tok.includes('.')) {
-        const head = tok.split('.')[0]!;
-        if (!CONTEXT_NAMESPACES.has(head) && !names.has(head)) {
-          out.push(`Unknown namespace or field: "${tok}". Use {{page.*}}, {{site.*}}, {{item.*}} or a schema field.`);
-        }
-        continue;
-      }
-      if (!names.has(tok)) {
-        out.push(`Token {{${tok}}} matches no schema field.`);
-      }
-    }
-    return out;
-  }, [template, schema]);
-
-  if (warnings.length === 0) return null;
-  return (
-    <div style={inlineWarn}>
-      <AlertTriangle size={14} />
-      <ul style={{ margin: 0, paddingLeft: 18 }}>
-        {warnings.map((w, i) => <li key={i}>{w}</li>)}
-      </ul>
-    </div>
-  );
-}
-
-/**
- * Warn when CSS selectors don't open with `[data-block="{name}"]`. A
- * loose selector like `h1 { … }` would leak across the whole site once
- * the block bundle is concatenated. This is a soft check (warning only,
- * not a save-blocker) because @keyframes / @media / utility-style
- * fragments are legitimately unscoped.
- */
-function CssScopeWarnings({
-  styles,
-  blockName,
-}: {
-  styles: string;
-  blockName: string;
-}) {
-  const warnings = useMemo(() => {
-    if (!styles.trim()) return [];
-    const out: string[] = [];
-    // Strip @-rules to inspect inner selectors
-    const stripped = styles
-      .replace(/@media[^{]+\{[\s\S]*?\}\s*\}/g, '')
-      .replace(/@keyframes[^{]+\{[\s\S]*?\}\s*\}/g, '')
-      .replace(/@supports[^{]+\{[\s\S]*?\}\s*\}/g, '');
-    const ruleBlocks = stripped.split('}').map((b) => b.split('{')[0]?.trim() ?? '').filter(Boolean);
-    const scopePrefix = `[data-block="${blockName}"`;
-    for (const sel of ruleBlocks) {
-      if (!sel || sel.startsWith('/*') || sel.startsWith('@')) continue;
-      // Allow multi-selector lists if every comma-separated part is scoped
-      const parts = sel.split(',').map((s) => s.trim()).filter(Boolean);
-      for (const p of parts) {
-        if (!p.includes(scopePrefix) && !p.includes('[data-block="')) {
-          out.push(`Unscoped selector: "${p}". Prefix it with ${scopePrefix}"].`);
-        }
-      }
-      if (out.length > 5) break;
-    }
-    return out;
-  }, [styles, blockName]);
-
-  if (warnings.length === 0) return null;
-  return (
-    <div style={inlineWarn}>
-      <AlertTriangle size={14} />
-      <ul style={{ margin: 0, paddingLeft: 18 }}>
-        {warnings.slice(0, 5).map((w, i) => <li key={i}>{w}</li>)}
-        {warnings.length > 5 && <li>…och {warnings.length - 5} till.</li>}
-      </ul>
-    </div>
-  );
-}
-
-const shell: React.CSSProperties = {
-  padding: '1.5rem', color: '#e4e4e7', maxWidth: 920, margin: '0 auto',
-};
-const header: React.CSSProperties = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-  marginBottom: '1.5rem', gap: '1rem',
-};
-const section: React.CSSProperties = {
-  marginBottom: '1.5rem', padding: '1rem',
-  border: '1px solid #2a2a30', borderRadius: 8, background: '#161618',
-};
-const sectionH: React.CSSProperties = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  margin: '0 0 .75rem', fontSize: '.95rem',
-};
-const fieldGrid: React.CSSProperties = {
-  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem',
-};
-const fieldRow: React.CSSProperties = {
-  display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6,
-};
-const input: React.CSSProperties = {
-  padding: '.4rem .6rem', background: '#1f1f23', color: '#fafafa',
-  border: '1px solid #2a2a30', borderRadius: 6, fontSize: '.85rem',
-  boxSizing: 'border-box', width: '100%',
-};
-const muted: React.CSSProperties = { color: '#a1a1aa', fontSize: '.85rem', margin: '0 0 .5rem' };
-const primaryBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '.4rem .8rem', background: '#6366f1', color: '#fff',
-  border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '.85rem',
-};
-const smallBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '.2rem .5rem', background: '#1f1f23', color: '#fafafa',
-  border: '1px solid #2a2a30', borderRadius: 6, cursor: 'pointer', fontSize: '.75rem',
-};
-const dangerBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '.4rem .8rem', background: 'transparent', color: '#ef4444',
-  border: '1px solid #ef4444', borderRadius: 6, cursor: 'pointer', fontSize: '.85rem',
-};
-const iconBtn: React.CSSProperties = {
-  background: 'none', border: 'none', color: '#a1a1aa', cursor: 'pointer', padding: 4,
-};
-const checkboxLabel: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 4, fontSize: '.75rem', color: '#a1a1aa',
-};
-const warningBox: React.CSSProperties = {
-  display: 'flex', gap: 12, padding: '1rem',
-  background: '#3b2410', color: '#fbbf24',
-  border: '1px solid #92400e', borderRadius: 6,
-};
-const inlineWarn: React.CSSProperties = {
-  display: 'flex', gap: 8, alignItems: 'flex-start', padding: '.5rem .75rem',
-  background: '#3b2410', color: '#fbbf24',
-  border: '1px solid #92400e', borderRadius: 6,
-  fontSize: '.8rem', marginBottom: 8,
-};

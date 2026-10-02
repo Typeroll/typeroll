@@ -95,7 +95,7 @@ export function prepareArticleBlockData(type: string, data: Record<string, unkno
     data.container_attributes_html = records(data.attributes).filter(attribute => /^(?:data-[a-z0-9_-]+|aria-[a-z0-9_-]+|role|itemscope|itemtype|itemprop|lang|dir|hidden|title)$/.test(text(attribute.name)))
       .map(attribute => `${text(attribute.name)}="${escape(attribute.value)}"`).join(' ');
     const href = data.tag === 'a' ? safeLinkHref(data.href) : '';
-    if (href) data.container_attributes_html = `href="${escape(href)}" ${data.container_attributes_html}`.trim();
+    if (href) data.container_attributes_html = `href="${escape(href)}"${data.new_tab === true ? ' target="_blank" rel="noopener"' : ''} ${data.container_attributes_html}`.trim();
   }
   if (type === 'core/table') {
     data.table_caption_html = data.caption ? `<caption>${text(data.caption)}</caption>` : '';

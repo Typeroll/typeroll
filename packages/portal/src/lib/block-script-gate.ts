@@ -31,6 +31,7 @@ export const SCRIPT_GATE_WARNING =
   'block type editor, or ship it via an API key (MCP/REST), where script ' +
   'writes are allowed and audit-logged.';
 
+/** True when a site admin has switched on "Allow AI to write block scripts" for the chat assistant. */
 export function aiScriptsEnabled(site: Pick<Site, 'ai_scripts_enabled'> | Record<string, unknown>): boolean {
   return (site as { ai_scripts_enabled?: unknown }).ai_scripts_enabled === true;
 }

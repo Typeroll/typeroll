@@ -2,15 +2,18 @@
 //
 // A .tcblocks file is a zip with:
 //   manifest.json          { name, version, blocks: [<block_dir>, …] }
-//   <block_dir>/block.json (the BlockType minus id, which the import generates)
+//   <block_dir>/block.json (the BlockType minus id, template, styles and
+//                           script: label, description, category, container,
+//                           schema, composition, item_compatible, expand_to,
+//                           css_scope …)
 //   <block_dir>/template.html
 //   <block_dir>/styles.css         (optional)
 //   <block_dir>/script.js          (optional)
 //
 // The format is intentionally human-readable: a user can unzip a package
-// and edit the files by hand. JSON Schema validation happens on the
-// manifest and on each block.json; everything else is treated as opaque
-// text and read into the corresponding BlockType field.
+// and edit the files by hand. This module checks the package structure;
+// the import validates each definition with the shared block type validator
+// (lib/block-type-write.ts → importBlockTypePackage).
 //
 // Security: this module enforces hard size + entry-count caps before any
 // content is parsed. Zip-bomb resistance: each entry's uncompressed size
@@ -88,12 +91,19 @@ export async function packBlockTypes(args: {
     const meta: Partial<BlockType> = {
       name: bt.name,
       label: bt.label,
+      description: bt.description,
       icon: bt.icon,
       category: bt.category,
       container: bt.container,
       slot_count: bt.slot_count,
       slot_labels: bt.slot_labels,
+      item_compatible: bt.item_compatible,
+      expand_to: bt.expand_to,
       schema: bt.schema,
+      composition: bt.composition,
+      // Unset means a stylesheet written before block scoping, which stays
+      // global; the import keeps it that way.
+      css_scope: bt.css_scope,
       origin: 'third_party',
     };
     // Strip undefined keys for cleaner diffs.
@@ -221,12 +231,17 @@ export async function unpackBlockPackage(
       id: blockId,
       name: meta.name,
       label: meta.label,
+      ...(meta.description !== undefined ? { description: meta.description } : {}),
       icon: meta.icon,
       category: meta.category,
       container: meta.container,
       slot_count: meta.slot_count,
       slot_labels: meta.slot_labels,
+      ...(meta.item_compatible !== undefined ? { item_compatible: meta.item_compatible } : {}),
+      ...(meta.expand_to !== undefined ? { expand_to: meta.expand_to } : {}),
       schema: meta.schema,
+      ...(meta.composition !== undefined ? { composition: meta.composition } : {}),
+      ...(meta.css_scope === 'block' ? { css_scope: 'block' as const } : {}),
       template: template || undefined,
       styles: styles || undefined,
       script: script || undefined,
@@ -298,12 +313,17 @@ function parseManifest(text: string): PackageManifest {
 function parseBlockMeta(text: string, dir: string): {
   name: string;
   label: string;
+  description?: string;
   icon?: string;
   category: BlockType['category'];
   container: BlockType['container'];
   slot_count?: number;
   slot_labels?: string[];
+  item_compatible?: boolean;
+  expand_to?: BlockType['expand_to'];
   schema: FieldDefinition[];
+  composition?: BlockType['composition'];
+  css_scope?: 'block';
 } {
   let json: unknown;
   try {
@@ -333,10 +353,10 @@ function parseBlockMeta(text: string, dir: string): {
       'invalid',
     );
   }
-  const container = m.container;
-  if (container !== true && container !== false && container !== 'slots') {
+  const container = m.container ?? false;
+  if (container !== true && container !== false && container !== 'slots' && container !== 'repeater' && container !== 'conditional') {
     throw new BlockPackageError(
-      `block.json "container" in "${dir}" must be true | false | "slots".`,
+      `block.json "container" in "${dir}" must be true | false | "slots" | "repeater" | "conditional".`,
       'invalid',
     );
   }
@@ -362,6 +382,12 @@ function parseBlockMeta(text: string, dir: string): {
       ? (m.slot_labels.filter((l) => typeof l === 'string') as string[])
       : undefined,
     schema: m.schema as FieldDefinition[],
+    // Checked by the shared validator on import; passed through as written.
+    ...(typeof m.description === 'string' ? { description: m.description } : {}),
+    ...(m.item_compatible !== undefined ? { item_compatible: m.item_compatible as boolean } : {}),
+    ...(m.expand_to !== undefined ? { expand_to: m.expand_to as BlockType['expand_to'] } : {}),
+    ...(m.composition !== undefined ? { composition: m.composition as BlockType['composition'] } : {}),
+    ...(m.css_scope === 'block' ? { css_scope: 'block' as const } : {}),
   };
 }
 

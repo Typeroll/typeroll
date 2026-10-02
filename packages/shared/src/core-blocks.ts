@@ -220,6 +220,36 @@ const prose: BlockType = {
  * per-page tuning. The plan to address "headings are too big on mobile"
  * is fluid type by default; per-breakpoint overrides come in Phase 2.
  */
+/**
+ * `text` — one line or paragraph of plain text, escaped, in a chosen element.
+ * The building block for composed block types (a card's caption, a label):
+ * unlike `prose`, its value is never HTML, so a bound value cannot inject
+ * markup.
+ */
+const text: BlockType = {
+  id: 'core/text',
+  name: 'text',
+  label: 'Text line',
+  icon: 'text',
+  category: 'content',
+  container: false,
+  schema: [
+    { name: 'text', type: 'textarea', label: 'Text' },
+    { name: 'style_id', type: 'style', label: 'Style', style_target: 'text', editor_group: 'content' },
+    { name: 'tag', type: 'select', label: 'HTML element', options: ['p', 'span', 'div', 'small', 'strong', 'em'], default: 'p' },
+    { name: 'align', type: 'select', label: 'Alignment', options: ['inherit', 'start', 'center', 'end'], default: 'inherit' },
+  ],
+  template: `<{{=tag}} data-block="text" class="block-text" data-align="{{align}}">{{text}}</{{=tag}}>`,
+  styles: `
+[data-block="text"] { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+[data-block="text"][data-align="start"] { text-align: start; }
+[data-block="text"][data-align="center"] { text-align: center; }
+[data-block="text"][data-align="end"] { text-align: end; }
+`.trim(),
+  origin: 'core',
+  created_at: ISO_EPOCH,
+};
+
 const heading: BlockType = {
   id: 'core/heading',
   name: 'heading',
@@ -523,6 +553,7 @@ export const CORE_BLOCK_TYPES: readonly BlockType[] = [
   globalBlock,
   columns,
   prose,
+  text,
   heading,
   image,
   button,

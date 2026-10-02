@@ -37,6 +37,7 @@ async function setup(): Promise<Setup> {
     site: { id: SITE, name: 'My Site' } as Site,
     version: null,
     portalOrigin: 'http://localhost:4321',
+    permission: 'admin',
   };
   return { ctx, runTool };
 }
@@ -265,7 +266,7 @@ describe('create_block_type', () => {
           { name: 'body', type: 'richtext', label: 'Body' },
         ],
         template: '<article data-block="fancy_card"><h2>{{heading}}</h2>{{{body}}}</article>',
-        styles: '[data-block="fancy_card"]{padding:1rem}',
+        styles: ':scope{padding:1rem}',
       },
       ctx,
     );
@@ -273,6 +274,7 @@ describe('create_block_type', () => {
     expect(r.ok).toBe(true);
     expect(r.block_type.id).toBe('fancy_card');
     expect(r.block_type.origin).toBe('ai');
+    expect(r.block_type.css_scope).toBe('block');
     expect(r.block_type.schema).toHaveLength(2);
 
     // Verify it's in the datastore at the expected path
@@ -283,46 +285,58 @@ describe('create_block_type', () => {
     expect(doc).toBeTruthy();
   });
 
-  it('NEVER persists the script field even if the model sends one', async () => {
+  it('persists a block type script only when the site allows AI block scripts', async () => {
     const { ctx, runTool } = await setup();
-    const out = await runTool(
-      'create_block_type',
-      {
-        name: 'sneaky_block',
-        label: 'Sneaky',
-        template: '<div data-block="sneaky_block">hi</div>',
-        // Model attempts to inject a script — must be filtered:
-        script: 'alert(document.cookie)',
-      } as Record<string, unknown>,
-      ctx,
-    );
-    const r = out.result as { block_type: import('@typeroll/shared').BlockType };
-    expect(r.block_type.script).toBeUndefined();
-
+    const definition = (name: string) => ({ name, label: 'Scripted', schema: [], template: `<div data-block="${name}">hi</div>`, script: 'console.log(1)' }) as Record<string, unknown>;
     const { getStore } = await import('../../lib/datastore');
-    const doc = await getStore().getDoc<import('@typeroll/shared').BlockType>(
-      `${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/sneaky_block`,
-    );
-    expect(doc?.script).toBeUndefined();
+    const stored = (name: string) => getStore().getDoc<import('@typeroll/shared').BlockType>(`${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/${name}`);
+
+    const blocked = (await runTool('create_block_type', definition('blocked_block'), ctx)).result as { warnings: string[] };
+    expect(blocked.warnings[0]).toMatch(/script/i);
+    expect((await stored('blocked_block'))?.script).toBeUndefined();
+
+    await runTool('create_block_type', definition('allowed_block'), { ...ctx, site: { ...ctx.site, ai_scripts_enabled: true } as typeof ctx.site });
+    expect((await stored('allowed_block'))?.script).toBe('console.log(1)');
   });
 
-  it('rejects invalid names', async () => {
+  it('validates with the shared validator and reports every problem with a path', async () => {
     const { ctx, runTool } = await setup();
-    const out = await runTool(
-      'create_block_type',
-      { name: 'Bad Name With Spaces' },
-      ctx,
-    );
-    const r = out.result as { error?: string };
+    const out = await runTool('create_block_type', {
+      name: 'Bad Name With Spaces', label: 'X', schema: [{ name: 'a', type: 'warp', label: 'A' }], template: '<p>{{b}}</p>',
+    }, ctx);
+    const r = out.result as { error?: string; problems: Array<{ path: string }> };
     expect(r.error).toMatch(/name/i);
+    expect(r.problems.map(p => p.path)).toEqual(expect.arrayContaining(['/name', '/schema/0/type']));
   });
 
   it('rejects duplicate ids', async () => {
     const { ctx, runTool } = await setup();
-    await runTool('create_block_type', { name: 'dup' }, ctx);
-    const out = await runTool('create_block_type', { name: 'dup' }, ctx);
+    const body = { name: 'dup', label: 'Dup', schema: [], template: '<p>dup</p>' };
+    await runTool('create_block_type', body, ctx);
+    const out = await runTool('create_block_type', body, ctx);
     const r = out.result as { error?: string };
     expect(r.error).toMatch(/exist/i);
+  });
+
+  it('needs admin permission on the site', async () => {
+    const { ctx, runTool } = await setup();
+    const out = await runTool('create_block_type', { name: 'x', label: 'X', schema: [], template: '<p>x</p>' }, { ...ctx, permission: 'write' });
+    expect((out.result as { error?: string }).error).toMatch(/admin/);
+  });
+
+  it('creates through the version chain, so a type deleted on a branch can be created again', async () => {
+    const { ctx, runTool } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.version(ORG, SITE, 'spring'), { name: 'Spring', kind: 'branch', base_version_id: MAIN_VERSION_ID, created_at: '', robots_blocked: true });
+    const branch = { ...ctx, versionId: 'spring' };
+    const body = { name: 'promo', label: 'Promo', schema: [], template: '<p>promo</p>' };
+    await runTool('create_block_type', body, ctx);
+    expect((await runTool('delete_block_type', { id: 'promo' }, branch)).result).toMatchObject({ ok: true });
+    expect((await runTool('read_block_type', { id: 'promo' }, branch)).result).toMatchObject({ error: expect.stringMatching(/not found/) });
+    expect((await runTool('create_block_type', { ...body, label: 'Promo 2' }, branch)).result).toMatchObject({ ok: true });
+    expect((await runTool('read_block_type', { id: 'promo' }, branch)).result).toMatchObject({ label: 'Promo 2' });
+    const list = (await runTool('list_block_types', {}, branch)).result as Array<{ id: string }>;
+    expect(list.filter(type => type.id === 'promo')).toHaveLength(1);
   });
 });
 
@@ -351,6 +365,17 @@ describe('update_block_type', () => {
     expect(r.block_type.origin).toBe('ai');           // origin not overwritten
   });
 
+  it('reads a type inherited from main on a branch', async () => {
+    const { ctx, runTool } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.version(ORG, SITE, 'spring'), { name: 'Spring', kind: 'branch', base_version_id: MAIN_VERSION_ID, created_at: '', robots_blocked: true });
+    await runTool('create_block_type', { name: 'note', label: 'Note', schema: [], template: '<p>n</p>' }, ctx);
+    const out = await runTool('update_block_type', { id: 'note', label: 'On the branch' }, { ...ctx, versionId: 'spring' });
+    expect((out.result as { ok?: boolean }).ok).toBe(true);
+    expect(await getStore().getDoc(`${paths.blockTypes(ORG, SITE, 'spring')}/note`)).toMatchObject({ label: 'On the branch' });
+    expect(await getStore().getDoc(`${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/note`)).toMatchObject({ label: 'Note' });
+  });
+
   it('refuses to edit core blocks', async () => {
     const { ctx, runTool } = await setup();
     const out = await runTool('update_block_type', {
@@ -365,13 +390,16 @@ describe('update_block_type', () => {
     const { ctx, runTool } = await setup();
     await runTool('create_block_type', {
       name: 'note',
-      template: '<p data-block="note">{{text}}</p>',
+      label: 'Note',
+      schema: [],
+      template: '<p data-block="note">note</p>',
     }, ctx);
-    await runTool('update_block_type', {
+    const out = await runTool('update_block_type', {
       id: 'note',
       label: 'New Label',
       script: 'alert(1)',
     } as Record<string, unknown>, ctx);
+    expect((out.result as { warnings: string[] }).warnings[0]).toMatch(/script/i);
     const { getStore } = await import('../../lib/datastore');
     const doc = await getStore().getDoc<import('@typeroll/shared').BlockType>(
       `${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/note`,
@@ -393,7 +421,7 @@ describe('delete_block_type', () => {
 
   it('removes a custom block type', async () => {
     const { ctx, runTool } = await setup();
-    await runTool('create_block_type', { name: 'tmp', template: '<div data-block="tmp"></div>' }, ctx);
+    await runTool('create_block_type', { name: 'tmp', label: 'Tmp', schema: [], template: '<div data-block="tmp"></div>' }, ctx);
     const out = await runTool('delete_block_type', { id: 'tmp' }, ctx);
     const r = out.result as { ok?: boolean };
     expect(r.ok).toBe(true);
@@ -403,6 +431,19 @@ describe('delete_block_type', () => {
       `${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/tmp`,
     );
     expect(doc).toBeNull();
+  });
+
+  it('refuses a type a page uses and says where', async () => {
+    const { ctx, runTool } = await setup();
+    await runTool('create_block_type', { name: 'tmp', label: 'Tmp', schema: [], template: '<div></div>' }, ctx);
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`, {
+      title: 'Home', slug: 'home', status: 'published', content_mode: 'blocks', blocks: [{ id: 'a', type: 'tmp', data: {} }],
+    });
+    const out = await runTool('delete_block_type', { id: 'tmp' }, ctx);
+    const r = out.result as { error?: string; usage?: { pages: Array<{ page_id: string }> } };
+    expect(r.error).toMatch(/in use/);
+    expect(r.usage?.pages.map(p => p.page_id)).toEqual(['home']);
   });
 
   it('refuses to delete core blocks', async () => {

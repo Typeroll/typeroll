@@ -24,6 +24,7 @@ import type { GlobalBlockSummary } from './editor-context';
 import { useBlockDnd } from './block-dnd';
 import type { Breakpoint } from '@typeroll/shared';
 import { blockUsageCount, describeBlockUsage, type BlockUsage } from '../lib/block-usage-summary';
+import { addBlockTo as addBlock, duplicateBlockIn, findBlockIn, moveBlockIn as moveBlockTo, removeBlockFrom as removeBlock, setBlockNameIn as setBlockName, setStyleOverridesIn as setStyleOverrides, updateBlockDataIn as updateBlockData } from '../lib/block-tree-ops';
 
 interface Props {
   responsiveBreakpoints?: import('@typeroll/shared').ResponsiveBreakpoints | null;
@@ -48,126 +49,9 @@ interface Props {
 type LeftTab = 'add' | 'structure';
 type Status = 'idle' | 'saving' | 'saved' | 'error';
 
-// Client-side mirror of lib/block-mutations.ts — same signatures but
-// returns the new tree directly so we can PATCH it back to the server.
-
-function newBlockId(): string {
-  return `blk_${Math.random().toString(36).slice(2, 14)}`;
-}
-
-function clone(blocks: Block[]): Block[] {
-  return structuredClone(blocks);
-}
-
-function findIn(blocks: Block[], id: string): { block: Block; parent: Block | null; slot: number | null } | null {
-  for (const b of blocks) {
-    if (b.id === id) return { block: b, parent: null, slot: null };
-    if (b.children) {
-      for (const c of b.children) {
-        if (c.id === id) return { block: c, parent: b, slot: null };
-        const deep = findIn([c], id);
-        if (deep) return deep;
-      }
-    }
-    if (b.slots) {
-      for (let i = 0; i < b.slots.length; i++) {
-        for (const c of b.slots[i]) {
-          if (c.id === id) return { block: c, parent: b, slot: i };
-          const deep = findIn([c], id);
-          if (deep) return deep;
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function removeBlock(blocks: Block[], id: string): Block[] {
-  const tree = clone(blocks);
-  function walk(list: Block[]): boolean {
-    for (let i = 0; i < list.length; i++) {
-      if (list[i].id === id) { list.splice(i, 1); return true; }
-      if (list[i].children && walk(list[i].children!)) return true;
-      if (list[i].slots) {
-        for (const slot of list[i].slots!) if (walk(slot)) return true;
-      }
-    }
-    return false;
-  }
-  walk(tree);
-  return tree;
-}
-
-function addBlock(blocks: Block[], block: Block, parentId: string | null, slotIdx?: number, position?: number): { tree: Block[]; addedId: string } {
-  const tree = clone(blocks);
-  const ensured: Block = { ...block, id: block.id || newBlockId() };
-  if (!parentId) {
-    const pos = position ?? tree.length;
-    tree.splice(Math.min(pos, tree.length), 0, ensured);
-    return { tree, addedId: ensured.id };
-  }
-  const found = findIn(tree, parentId);
-  if (!found) throw new Error(`Parent block not found: ${parentId}`);
-  if (found.block.slots) {
-    const idx = slotIdx ?? 0;
-    while (found.block.slots.length <= idx) found.block.slots.push([]);
-    const slot = found.block.slots[idx];
-    slot.splice(position ?? slot.length, 0, ensured);
-  } else {
-    if (!found.block.children) found.block.children = [];
-    found.block.children.splice(position ?? found.block.children.length, 0, ensured);
-  }
-  return { tree, addedId: ensured.id };
-}
-
-function updateBlockData(blocks: Block[], id: string, data: Record<string, unknown>): Block[] {
-  const tree = clone(blocks);
-  const found = findIn(tree, id);
-  if (!found) return tree;
-  found.block.data = { ...found.block.data, ...data };
-  return tree;
-}
-
-function setStyleOverrides(blocks: Block[], id: string, overrides: Block['style_overrides']): Block[] {
-  const tree = clone(blocks);
-  const found = findIn(tree, id);
-  if (!found) return tree;
-  if (overrides && Object.keys(overrides).length) found.block.style_overrides = overrides;
-  else delete found.block.style_overrides;
-  return tree;
-}
-
-function setBlockName(blocks: Block[], id: string, name: string): Block[] {
-  const tree = clone(blocks);
-  const found = findIn(tree, id);
-  if (!found) return tree;
-  const n = name.trim();
-  if (n) found.block.name = n;
-  else delete found.block.name;
-  return tree;
-}
-
-/** True when `descendantId` lives anywhere inside `block`'s subtree — used to
- *  refuse moving a container into its own descendant (would cycle). */
-function subtreeContains(block: Block, descendantId: string): boolean {
-  if (block.id === descendantId) return true;
-  if (block.children?.some((c) => subtreeContains(c, descendantId))) return true;
-  if (block.slots?.some((s) => s.some((c) => subtreeContains(c, descendantId)))) return true;
-  return false;
-}
-
-/** Relocate a block to a container + position: remove it, then re-insert. */
-function moveBlockTo(
-  blocks: Block[], id: string,
-  parentId: string | null, slotIdx: number | undefined, position: number,
-): Block[] {
-  const found = findIn(blocks, id);
-  if (!found) return blocks;
-  if (parentId && subtreeContains(found.block, parentId)) return blocks; // cycle guard
-  const moved = structuredClone(found.block);
-  const without = removeBlock(blocks, id);
-  return addBlock(without, moved, parentId, slotIdx, position).tree;
-}
+// Mutations happen on the in-memory tree (lib/block-tree-ops.ts); the whole
+// tree is then written back to the server.
+const findIn = findBlockIn;
 
 type UsageResponse = Partial<BlockUsage> & { auto_injected?: boolean };
 
@@ -285,22 +169,10 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
   }
 
   function handleDuplicate(id: string): void {
-    const tree = clone(draft.blocks ?? []);
-    const found = findIn(tree, id);
-    if (!found) return;
-    const reassign = (b: Block): Block => ({
-      ...b,
-      id: newBlockId(),
-      children: b.children?.map(reassign),
-      slots: b.slots?.map((slot) => slot.map(reassign)),
-    });
-    const copy = reassign(structuredClone(found.block));
-    const list = found.parent
-      ? (found.slot != null ? found.parent.slots![found.slot] : found.parent.children!)
-      : tree;
-    list.splice(list.findIndex((b) => b.id === id) + 1, 0, copy);
+    const { tree, copyId } = duplicateBlockIn(draft.blocks ?? [], id);
+    if (!copyId) return;
     setDraft({ ...draft, blocks: tree });
-    setSelectedId(copy.id);
+    setSelectedId(copyId);
     void persist(tree);
   }
 

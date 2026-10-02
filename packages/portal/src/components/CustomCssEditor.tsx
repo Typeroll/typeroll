@@ -8,16 +8,23 @@ import { checkCustomCss } from '@typeroll/shared';
  * adds an explicit Save button (site CSS).
  */
 export default function CustomCssEditor({
-  id, label, value, onValid, onSave, classHints = [], help, theme = 'dark',
+  id, label, value, onValid, onText, onSave, classHints = [], help, theme = 'dark', ignoreCodes = [], extraProblems = [], placeholder,
 }: {
   id?: string;
   label: string;
   value: string;
   onValid?: (css: string) => void;
+  /** Receives every edit, valid or not (the caller validates before saving). */
+  onText?: (css: string) => void;
+  /** Check codes that do not apply here, e.g. `platform_selector` for a block's own scoped CSS. */
+  ignoreCodes?: string[];
+  /** Problems found elsewhere (the block type validator), shown with the live check's. */
+  extraProblems?: Array<{ severity: 'error' | 'warning'; message: string; line?: number }>;
+  placeholder?: string;
   /** Saves the CSS; the live check already shows the warnings the server returns. */
   onSave?: (css: string) => Promise<unknown>;
-  /** Classes worth targeting, shown as insertable hints (named styles, block classes). */
-  classHints?: Array<{ className: string; label: string }>;
+  /** Classes worth targeting, shown as insertable hints (named styles, block classes). `selector` overrides `.className`. */
+  classHints?: Array<{ className: string; label: string; selector?: string }>;
   help?: React.ReactNode;
   theme?: 'dark' | 'light';
 }) {
@@ -29,14 +36,21 @@ export default function CustomCssEditor({
   const [saving, setSaving] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const gutter = useRef<HTMLDivElement>(null);
-  useEffect(() => { setText(value); setSaved(value); }, [value]);
-  const problems = useMemo(() => checkCustomCss(text), [text]);
+  useEffect(() => { if (value !== text) setText(value); setSaved(value); }, [value]);
+  const ignoredKey = ignoreCodes.join(',');
+  const extraKey = JSON.stringify(extraProblems);
+  const problems = useMemo(() => {
+    const own = checkCustomCss(text).filter(problem => !ignoreCodes.includes(problem.code));
+    const seen = new Set(own.map(problem => problem.message));
+    return [...own, ...extraProblems.filter(problem => !seen.has(problem.message)).map(problem => ({ ...problem, line: problem.line ?? 1 }))];
+  }, [text, ignoredKey, extraKey]);
   const errors = problems.filter(problem => problem.severity === 'error');
   const lines = text.split('\n').length;
 
   function change(next: string) {
     setText(next);
     setStatus(null);
+    onText?.(next);
     if (onValid && !checkCustomCss(next).some(problem => problem.severity === 'error')) onValid(next);
   }
 
@@ -82,7 +96,7 @@ export default function CustomCssEditor({
           rows={Math.min(24, Math.max(8, lines + 1))}
           aria-invalid={errors.length > 0 || undefined}
           aria-describedby={problems.length ? `${fieldId}-problems` : undefined}
-          placeholder={'.s-eyebrow { letter-spacing: 0.14em; }\n.pricing-note { max-width: 40ch; }'}
+          placeholder={placeholder ?? '.s-eyebrow { letter-spacing: 0.14em; }\n.pricing-note { max-width: 40ch; }'}
           onScroll={e => { if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop; }}
           onChange={e => change(e.target.value)}
           onKeyDown={e => {
@@ -101,7 +115,7 @@ export default function CustomCssEditor({
       {classHints.length > 0 && (
         <div className="custom-css-editor__hints">
           <span>Insert a selector:</span>
-          {classHints.map(hint => <button key={hint.className} type="button" title={hint.label} onClick={() => insert(`.${hint.className} {\n  \n}\n`)}>.{hint.className}</button>)}
+          {classHints.map(hint => { const selector = hint.selector ?? `.${hint.className}`; return <button key={selector} type="button" title={hint.label} onClick={() => insert(`${selector} {\n  \n}\n`)}>{selector}</button>; })}
         </div>
       )}
       {onSave && (

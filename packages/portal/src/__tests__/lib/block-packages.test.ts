@@ -149,6 +149,31 @@ describe('unpackBlockPackage — validation', () => {
   });
 });
 
+describe('lossless packages', () => {
+  it('keeps compositions, CSS scope, descriptions, aliases and field settings', async () => {
+    const composed: BlockType = {
+      id: 'icon_list', name: 'icon_list', label: 'Icon list', description: 'Benefits', category: 'content', container: false,
+      item_compatible: true, css_scope: 'block', styles: ':scope { gap: 1rem }', origin: 'ai', created_at: '',
+      schema: [{ name: 'items', type: 'array', label: 'Items', item_label: 'title', min_items: 1, max_items: 6, help: 'One per benefit',
+        fields: [{ name: 'title', type: 'text', label: 'Title' }, { name: 'link', type: 'link', label: 'Link' }] }],
+      composition: [{ id: 'list', type: 'core/repeater', data: { items: '{{props.items}}' }, children: [{ id: 't', type: 'core/text', data: { text: '{{item.title}}' } }] }],
+    };
+    const alias: BlockType = {
+      id: 'benefit_grid', name: 'benefit_grid', label: 'Benefit grid', category: 'layout', container: 'repeater', created_at: '', schema: [],
+      expand_to: { target: 'core/repeater', defaults: { item_block: 'icon_list', layout: 'grid' } },
+    };
+    const result = await unpackBlockPackage(await packBlockTypes({ manifest: { name: 'p', version: '1' }, block_types: [composed, alias] }));
+    const [first, second] = result.blocks.map(block => block.block_type);
+    expect(first).toMatchObject({ description: 'Benefits', item_compatible: true, css_scope: 'block', styles: composed.styles });
+    expect(first!.composition).toEqual(composed.composition);
+    expect(first!.schema).toEqual(composed.schema);
+    expect(second).toMatchObject({ container: 'repeater', expand_to: alias.expand_to });
+    // A stylesheet written before block scoping stays unscoped.
+    const legacy = await unpackBlockPackage(await packBlockTypes({ manifest: { name: 'p', version: '1' }, block_types: [sample] }));
+    expect(legacy.blocks[0]!.block_type.css_scope).toBeUndefined();
+  });
+});
+
 describe('Round-trip via base64 (MCP path)', () => {
   it('packs to base64 and re-unpacks correctly', async () => {
     const buf = await packBlockTypes({

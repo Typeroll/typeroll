@@ -1,0 +1,225 @@
+---
+title: Site block types
+description: Build your own block types for one site, from existing blocks or with your own markup, with editable fields, repeating groups and scoped CSS.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+When the core blocks are not enough, a site admin can create a block type for
+the site. People then place it on pages like any other block and fill in its
+fields; they never see its structure, markup or CSS.
+
+There are two kinds:
+
+|                    | Composed (recommended)                                                        | Template                                        |
+| ------------------ | ----------------------------------------------------------------------------- | ----------------------------------------------- |
+| Built from         | Existing blocks: heading, text, image, icon, button, container, repeater …    | Your own HTML                                   |
+| Fields reach it by | Bindings such as `{{props.title}}` on the inner blocks                        | Tokens such as `{{title}}` in the markup        |
+| Styling            | Named styles and settings of the inner blocks, plus optional scoped CSS       | Scoped CSS                                      |
+| Use when           | Almost always: you keep named styles, image handling, links and accessibility | The markup cannot be built from existing blocks |
+
+Both are available in the portal (**Blocks**), the API and MCP, with the same
+checks. Creating, changing, deleting and importing block types needs **admin**
+permission on the site. Editors place block types and fill in their fields.
+A changed block type reaches the live site with the next deploy.
+
+## Fields
+
+`schema` lists the fields people edit. Every field has `name`, `type` and
+`label`, and may have `help`, `required` and `default`.
+
+| Type                         | Holds                                                                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `text`, `textarea`           | Plain text, always escaped.                                                                                                                                                                                        |
+| `richtext`                   | Formatted text (sanitized HTML).                                                                                                                                                                                   |
+| `image`                      | An image from the media library or a URL.                                                                                                                                                                          |
+| `icon`                       | An icon name; `{name}_svg` is the icon itself.                                                                                                                                                                     |
+| `link`                       | `{ page_id }` for a page on the site, or `{ url }`, plus `new_tab`. It resolves to `href`, `target` and `rel`, and follows the page when its address changes. Only http, https, mailto and tel addresses are used. |
+| `select`                     | One of `options` (with optional `option_labels`).                                                                                                                                                                  |
+| `boolean`, `number`, `color` | As named.                                                                                                                                                                                                          |
+| `array`                      | A repeating group with its own `fields`. `item_label` names the field that titles each item in the editor; `min_items` and `max_items` limit the count. Groups nest three levels deep.                             |
+| `object`                     | A fixed group of `fields`.                                                                                                                                                                                         |
+
+Field names are lowercase letters, digits and `_`. Names ending in `_svg` or
+`_html` are reserved for derived values.
+
+## Composed block types
+
+A composed block type has a `composition`: a tree of blocks. Inner blocks read
+the block's fields (its props) through **bindings**, an inner field whose whole
+value is `{{props.name}}`. Bindings keep their type: a list stays a list, a
+link stays a link, `true` stays `true`.
+
+To repeat something for every item of a list field, put a **repeater** in the
+composition, bind its `items` to the list (`"{{props.items}}"`) and leave its
+item block empty. Its children are then the template for one item, and read the
+item with `{{item.title}}`, `{{item.link.href}}` and so on.
+
+A container set to link (`tag: "a"`) with `href: "{{item.link.href}}"` makes
+the whole item a link. When an item has no link, the container renders as a plain
+container instead, so linked and unlinked items share one design (render
+version 4).
+
+The icon list, with an icon, a heading and a line of text in each item, all
+wrapped in a link:
+
+```json
+{
+  "name": "icon_list",
+  "label": "Icon list",
+  "category": "content",
+  "schema": [
+    {
+      "name": "items",
+      "type": "array",
+      "label": "Items",
+      "item_label": "title",
+      "min_items": 1,
+      "fields": [
+        { "name": "icon", "type": "icon", "label": "Icon", "default": "check" },
+        { "name": "title", "type": "text", "label": "Heading" },
+        { "name": "text", "type": "text", "label": "Text" },
+        { "name": "link", "type": "link", "label": "Link" }
+      ]
+    }
+  ],
+  "composition": [
+    {
+      "id": "list",
+      "type": "core/repeater",
+      "data": {
+        "source_type": "static",
+        "items": "{{props.items}}",
+        "layout": "list"
+      },
+      "children": [
+        {
+          "id": "item",
+          "type": "core/container",
+          "data": {
+            "tag": "a",
+            "href": "{{item.link.href}}",
+            "new_tab": "{{item.link.new_tab}}",
+            "direction": "row",
+            "gap": "md",
+            "padding_y": "none",
+            "css_class": "icon-list-item"
+          },
+          "children": [
+            {
+              "id": "icon",
+              "type": "core/icon",
+              "data": { "icon": "{{item.icon}}", "size": "lg" }
+            },
+            {
+              "id": "title",
+              "type": "core/heading",
+              "data": { "text": "{{item.title}}", "level": "h3" }
+            },
+            {
+              "id": "text",
+              "type": "core/text",
+              "data": { "text": "{{item.text}}" }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "styles": ".icon-list-item { color: inherit; text-decoration: none; }"
+}
+```
+
+`core/text` holds one line or paragraph of plain text in a chosen element. Use
+it rather than a text block when a value comes from a field, so the value is
+never treated as HTML.
+
+Composed block types can use other composed block types, four levels deep,
+never in a loop. In the editor a placed composed block is one unit: you select
+it and edit its fields.
+
+<Aside>
+  In the portal you can also turn a section you built on a page into a block
+  type: select it, choose **Turn into block type…**, and tick which values
+  become fields.
+</Aside>
+
+## Template block types
+
+A template block type has its own `template` (HTML). Tokens:
+
+| Token                                  | Output                                                                                                                                                      |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{{title}}`                            | The field value, escaped.                                                                                                                                   |
+| `{{{body}}}`                           | Raw HTML, only for `richtext` fields and derived HTML (`icon_svg`).                                                                                         |
+| `{{link.href}}`                        | A sub-value of a link or object field.                                                                                                                      |
+| `{{#title}}…{{/title}}`                | Shown when the field has a value.                                                                                                                           |
+| `{{^title}}…{{/title}}`                | Shown when the field is empty.                                                                                                                              |
+| `{{#each items}}…{{/each}}`            | Repeated for every item of a list field; names resolve against the item first. `{{@index}}`, `{{@number}}`, `{{@first}}` and `{{@last}}` give the position. |
+| `{{#link link class="row"}}…{{/link}}` | Wrapped in `<a>` when the link resolves, rendered without a link otherwise.                                                                                 |
+
+The same icon list as a template:
+
+```html
+<ul class="icon-list">
+  {{#each items}}
+  <li>
+    {{#link link class="icon-list__link"}}
+    <span class="icon-list__icon">{{{icon_svg}}}</span>
+    <strong>{{title}}</strong>{{#text}} <span>{{text}}</span>{{/text}} {{/link}}
+  </li>
+  {{/each}}
+</ul>
+```
+
+Output passes through the HTML sanitizer, so a template can use links, images
+and SVG but never script.
+
+## CSS
+
+A block type's `styles` apply only to its own blocks. Typeroll prefixes every
+selector with the block, so `.icon-list-item` matches only inside an icon list.
+`:scope` is the block element itself (`:scope { display: grid }`). Selectors for
+`html`, `body` or `:root` are refused. `@media` and `@container` work as usual.
+Use the site's design values (`var(--color-primary)`) and
+[named styles](../styles/) instead of fixed colours, so the block follows the
+site's look.
+
+## Preview, validation and starters
+
+Every write is checked before it is stored. Problems come back with a path
+(`/schema/0/fields/2/name`) or a template line, and errors refuse the write.
+
+| Action                                     | MCP tool                                                      | API below `/api/v1/sites/{siteId}`                      |
+| ------------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------- |
+| List and read                              | `list_block_types`, `read_block_type`                         | `GET /block-types`, `GET /block-types/{id}`             |
+| Starters (icon list, feature cards, steps) | `list_block_type_starters`                                    | `GET /block-types/starters`                             |
+| Check a definition without saving          | `validate_block_type`                                         | `POST /block-types/validate`                            |
+| Preview an unsaved definition              | `preview_block_type`                                          | `POST /block-types/preview`                             |
+| Create, update, delete                     | `create_block_type`, `update_block_type`, `delete_block_type` | `POST /block-types`, `PATCH`/`DELETE /block-types/{id}` |
+| Where it is used                           | `find_pages_using_block_type`                                 | `GET /block-types/{id}/usage`                           |
+| Export and import                          | `export_block_types`, `import_block_types`                    | `.tcblocks` files                                       |
+
+The preview renders exactly as the published site does: the site's render
+version, theme, named styles and other block types.
+
+Linked items, such as those in the icon list and feature card starters, need
+render version 4 or later. Before it, an item without an address is still a
+link, and every icon renders inside a link of its own, which nests links in a
+linked item. A write that puts an icon in a linked container on such a site
+returns a warning; upgrade the site's rendering first.
+
+## Changing a block type in use
+
+Renaming a field moves the data on every page, template, header, footer, global
+block and draft that uses the block type: send
+`renames: { "old_name": "new_name" }` (or `"items.old": "new"` inside a group)
+with the update. Removing a field or changing its type when blocks hold values
+in it is refused with a list of where it is used, unless you send
+`confirm_data_loss: true`. A block type that is in use cannot be deleted.
+
+## Sharing between sites
+
+Export block types to a `.tcblocks` file and import it on any site, in any
+Organization or Typeroll installation. On import, a block type whose name
+already exists is skipped, renamed or replaced, as you choose.
