@@ -1,0 +1,53 @@
+.github-connection__next {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 2px solid var(--color-border);
+  border-radius: 10px;
+  scroll-margin-top: 72px;
+}
+.github-connection__next:focus-visible { outline: 3px solid #1d4ed8; outline-offset: 2px; }
+.github-connection__next[data-outcome='connected'] { border-color: #15803d; }
+.github-connection__next[data-outcome='waiting_on_owner'],
+.github-connection__next[data-outcome='choose'],
+.github-connection__next[data-outcome='needs_attention'] { border-color: #b45309; }
+.github-connection__next[data-outcome='action_required'],
+.github-connection__next[data-outcome='sign_in_required'],
+.github-connection__next[data-outcome='retryable_error'],
+.github-connection__next[data-outcome='unavailable'] { border-color: #b91c1c; }
+.github-connection__next h3, .github-connection__confirm h3 { margin: 0; font-size: 1rem; line-height: 1.4; }
+.github-connection__next p, .github-connection__confirm p { margin: 0; line-height: 1.5; }
+.github-connection__error { color: #b91c1c; font-weight: 500; }
+.github-connection__actions { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.github-connection__actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+/* Visually hidden, still announced by screen readers. */
+.github-connection__visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.github-connection__who {
+  display: inline-block;
+  margin-inline-end: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #f4f4f5;
+  color: #27272a;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.github-connection__confirm {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 2px solid #b45309;
+  border-radius: 10px;
+}
+.github-connection__accounts { display: grid; gap: 12px; list-style: none; margin: 0; padding: 0; }
+.github-connection__accounts > li { min-width: 0; padding: 12px; border: 1px solid var(--color-border); border-radius: 8px; }
+.github-connection__account { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.github-connection__badge { padding: 1px 8px; border-radius: 999px; font-size: 0.8125rem; font-weight: 600; }
+.github-connection__badge--ready { background: #dcfce7; color: #14532d; }
+.github-connection__badge--blocked { background: #fee2e2; color: #7f1d1d; }
+.github-connection__reasons { display: grid; gap: 10px; margin: 10px 0 0; padding: 0; list-style: none; }
+.github-connection__reasons p { margin: 0 0 8px; line-height: 1.5; }

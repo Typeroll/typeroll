@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { CircleCheck, CircleX, Clock3 } from 'lucide-react';
-import PublishingCard, { type PublishingState } from './PublishingCard';
-import PublishingGithubPermissions from './PublishingGithubPermissions';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import PublishingCard from './PublishingCard';
+import PublishingGithubConnection, { type GithubPublishingData } from './PublishingGithubConnection';
 
 type Connection = {
   connected_at?: string | null;
@@ -10,21 +9,8 @@ type Connection = {
   github: { owner: string; account_type?: 'Organization' | 'User'; repository_creation_state?: 'ready' | 'reconnect_required' } | null;
   cloudflare: { account_id: string; account_name: string; bucket: string; public_bucket?: string } | null;
 };
-type Connections = { media_transfer?: { state: string; code?: string; message?: string }; github_next_step?: 'install' | null; media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github_choices: Array<{ owner: string; installation_id: string; account_type?: 'Organization' | 'User' }>; github: Connection; cloudflare: Connection; github_setup: { available: boolean; install_url: string | null }; encryption_available: boolean };
+type Connections = Omit<GithubPublishingData, 'github'> & { media_transfer?: { state: string; code?: string; message?: string }; media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github: Connection; cloudflare: Connection; encryption_available: boolean };
 const API = '/api/orgs/publishing';
-
-function GithubSetupStep({ id, title, state, status, children }: {
-  id: string; title: string; state: PublishingState; status: string; children?: ReactNode;
-}) {
-  const Icon = state === 'ready' ? CircleCheck : state === 'error' ? CircleX : Clock3;
-  return <li className="publishing-setup-step" data-github-step={id} data-state={state} aria-labelledby={`github-step-${id}`}>
-    <header className="publishing-setup-step__header">
-      <span className={`publishing-card__symbol publishing-card__symbol--${state}`} aria-hidden="true"><Icon size={28} /></span>
-      <div><h3 id={`github-step-${id}`}>{title}</h3><p role="status">{status}</p></div>
-    </header>
-    {children}
-  </li>;
-}
 
 class PublishingRequestError extends Error {
   constructor(message: string, public code?: string) { super(message); }
@@ -42,6 +28,8 @@ export default function PublishingConnections() {
   const [data, setData] = useState<Connections | null>(null);
   const [disconnecting, setDisconnecting] = useState<'github' | 'cloudflare' | null>(null);
   const [connectionFeedback, setConnectionFeedback] = useState<{ provider: 'github' | 'cloudflare'; error: boolean; message: string } | null>(null);
+  // GitHub results are explained inside the GitHub card from the stored diagnosis, never in a page-level alert.
+  const [githubReturn, setGithubReturn] = useState<string | null>(null);
   const metadataGeneration = useRef(0);
   const feedbackRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
@@ -101,13 +89,7 @@ export default function PublishingConnections() {
     void refresh().catch((error: Error) => setError(error.message));
     const parameters = new URLSearchParams(window.location.search);
     const result = parameters.get('github');
-    if (result === 'connected') setConnectionFeedback({ provider: 'github', error: false, message: 'GitHub connected. Setup is complete. This account can be reused for your sites.' });
-    if (result === 'select') setNotice('Choose the GitHub account to connect below.');
-    if (result === 'install_required') setConnectionFeedback({ provider: 'github', error: false, message: 'Sign-in approved. Complete the installation step above to connect your repositories.' });
-    if (result === 'permissions_required') setError('Open the App installation settings and approve the requested permissions with All repositories access, then connect again.');
-    if (result === 'github_expiring_authorization_required') setError('The publisher must enable expiring GitHub user authorization before personal accounts can connect.');
-    if (result === 'owner_required') setError('Sign in to your personal GitHub account or as an owner of the GitHub organization you want to connect, then try again.');
-    if (result === 'failed') setError('GitHub was not connected. Install the publisher App with all-repository access and the requested permissions, then sign in to your personal account or as an organization owner. If the request expired, start again.');
+    if (result && /^[a-z_]{1,40}$/.test(result)) setGithubReturn(result);
     if (result) window.history.replaceState(null, '', window.location.pathname);
     const cloudflare = parameters.get('cloudflare');
     if (cloudflare === 'connected') setNotice('Cloudflare connected. Your account will be reused for this organization’s sites.');
@@ -116,7 +98,7 @@ export default function PublishingConnections() {
     if (cloudflare) window.history.replaceState(null, '', window.location.pathname);
   }, []);
 
-  async function submit(provider: 'github' | 'cloudflare', event: FormEvent<HTMLFormElement>) {
+  async function submit(provider: 'cloudflare', event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const values = Object.fromEntries(new FormData(form));
@@ -130,12 +112,10 @@ export default function PublishingConnections() {
       form.reset();
       await refresh();
       if (mediaAction) setMediaNotice('R2 connected. Upload access verified. Setup is complete.');
-      else if (provider === 'github') setConnectionFeedback({ provider: 'github', error: false, message: 'GitHub connected. Setup is complete. This account can be reused for your sites.' });
       else setNotice('Cloudflare connection updated. Access is encrypted and reused for your sites.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not complete setup. Check your connection and try again.';
       if (mediaAction) setMediaError({ message, code: error instanceof PublishingRequestError ? error.code : undefined });
-      else if (provider === 'github') setConnectionFeedback({ provider, error: true, message });
       else setError(message);
     }
     finally { setBusy(false); }
@@ -167,12 +147,6 @@ export default function PublishingConnections() {
     } finally { metadataGeneration.current++; setBusy(false); setDisconnecting(null); }
   }
 
-  const githubNeedsInstall = data?.github_next_step === 'install';
-  const githubNeedsChoice = (data?.github_choices?.length ?? 0) > 0;
-  const githubConnected = data?.github.status === 'connected';
-  const githubNeedsSignIn = githubConnected && data?.github.github?.repository_creation_state === 'reconnect_required';
-  const githubSignedIn = githubNeedsInstall || githubNeedsChoice || (githubConnected && !githubNeedsSignIn);
-  const githubInstallationReady = githubConnected && !githubNeedsInstall && !githubNeedsChoice;
   const mediaBucket = data?.cloudflare.cloudflare?.bucket;
   const cloudflareAccount = data?.cloudflare.cloudflare;
   const r2Overview = cloudflareAccount ? `https://dash.cloudflare.com/${cloudflareAccount.account_id}/r2/overview` : 'https://dash.cloudflare.com/';
@@ -214,56 +188,9 @@ export default function PublishingConnections() {
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {!data ? <>{['GitHub account', 'Cloudflare account', 'Media storage'].map((title, index) => <PublishingCard key={title} id={`loading-${index}`} title={title} state={error ? 'error' : 'waiting'} status={error ? 'Could not load settings' : 'Loading…'}><p className="muted">{error ? 'Reload the page to try again.' : 'Checking your organization’s settings.'}</p></PublishingCard>)}</> : <>
-      <PublishingCard id="github" title="GitHub account" state={disconnecting === 'github' || githubNeedsInstall || githubNeedsChoice ? 'waiting' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'error' : data.github.status === 'connected' ? data.github.github?.repository_creation_state === 'reconnect_required' ? 'waiting' : 'ready' : 'error'} status={disconnecting === 'github' ? 'Disconnecting…' : githubNeedsInstall ? 'Setup incomplete · Install the GitHub App' : githubNeedsChoice ? 'Setup incomplete · Choose an account' : connectionFeedback?.provider === 'github' && connectionFeedback.error ? 'Connection needs attention' : data.github.status === 'connected' ? `Connected · ${data.github.github?.owner ?? 'GitHub'}` : 'Not connected'}>
-        <p>Stores a private repository for each site and its version branches.</p>
-        {!data.github_setup.available ? <p>The publisher needs to configure its GitHub App before you can connect.</p> : <>
-          <ol className="publishing-setup-steps" aria-label="GitHub connection steps">
-            <GithubSetupStep id="sign-in" title="1. Sign in to GitHub" state={disconnecting === 'github' ? 'waiting' : githubSignedIn ? 'ready' : 'error'}
-              status={disconnecting === 'github' ? 'Disconnecting…' : githubSignedIn ? 'Complete · Sign-in approved' : githubNeedsSignIn ? 'Action required · Renew authorization' : 'Required · Sign in and approve access'}>
-              {!githubSignedIn && !githubConnected && <form onSubmit={event => void submit('github', event)}>
-                <button className="btn" disabled={busy || checkingMedia}>Connect GitHub</button>
-              </form>}
-              {githubConnected && data.github.github?.account_type === 'User' && <details open={githubNeedsSignIn}><summary>Personal account authorization</summary>
-                <p>Typeroll securely stores and renews your authorization when creating repositories. If you revoke access or leave it unused for six months, reconnect here.</p>
-                {githubNeedsSignIn && <p role="alert">Reconnect GitHub to create new repositories. Your existing repositories are kept.</p>}
-                <form onSubmit={event => void submit('github', event)}><button className="btn btn--secondary" disabled={busy || checkingMedia}>Reconnect GitHub</button></form>
-              </details>}
-            </GithubSetupStep>
-            <GithubSetupStep id="installation" title="2. Install the GitHub App" state={disconnecting === 'github' ? 'waiting' : githubInstallationReady ? 'ready' : 'waiting'}
-              status={disconnecting === 'github' ? 'Disconnecting…' : githubInstallationReady ? `Complete · Repository access verified for ${data.github.github?.owner ?? 'GitHub'}` : githubNeedsInstall ? 'Required · Install the App to connect repositories' : githubNeedsChoice ? 'Action required · Choose the repository account' : 'Waiting for sign-in'}>
-          {(data.github_choices ?? []).length > 0 && <form className="stack" onSubmit={(event) => void submit('github', event)}>
-            <div className="field"><label htmlFor="github-organization">Choose a GitHub account</label>
-              <select id="github-organization" name="installation_id" required defaultValue="">
-                <option value="" disabled>Select an account</option>
-                {data.github_choices.map(choice => <option key={choice.installation_id} value={choice.installation_id}>{choice.owner} — {choice.account_type === 'User' ? 'Personal account' : 'Organization'}</option>)}
-              </select></div>
-            <button className="btn" disabled={busy || checkingMedia} type="submit">Connect selected account</button>
-          </form>}
-          {githubNeedsInstall ? <div className="stack" aria-label="GitHub installation required">
-            <p>On GitHub, choose the personal account or organization that will own your site repositories. Select <strong>All repositories</strong>, then <strong>Install</strong>. You will return here automatically to finish connecting.</p>
-            <form onSubmit={event => void submit('github', event)}>
-              <input type="hidden" name="action" value="install" />
-              <button className="btn" disabled={busy || checkingMedia}>{busy ? 'Opening GitHub…' : 'Install and connect GitHub'}</button>
-            </form>
-            <p className="muted">If GitHub requires an organization owner’s approval, setup remains incomplete until the owner installs the App. Resume here when it has been approved.</p>
-            <form onSubmit={event => void submit('github', event)}>
-              <button className="btn btn--secondary" disabled={busy || checkingMedia}>Already installed? Check connection</button>
-            </form>
-          </div> : githubConnected && <PublishingGithubPermissions revision={data.github.revision} />}
-            </GithubSetupStep>
-          </ol>
-          <details><summary>GitHub setup instructions</summary>
-            <p>Sign in and choose your personal account or an organization you own. No account name or ID needs to be entered.</p>
-            <ol>
-              <li>Select <strong>Connect GitHub</strong> and sign in.</li>
-              <li>If installation is needed, select <strong>Install and connect GitHub</strong>. Choose your personal account or organization, select <strong>All repositories</strong>, and install the App.</li>
-              <li>Typeroll continues automatically and verifies access. If several accounts are available, choose one. Setup is complete when this card shows <strong>Connected</strong>.</li>
-            </ol>
-          </details>
-        </>}
-        {data.github.status === 'connected' && <button className="btn btn--secondary" disabled={busy || checkingMedia} onClick={() => void disconnect('github')}>{disconnecting === 'github' ? 'Disconnecting…' : 'Disconnect GitHub'}</button>}
-        {connectionFeedback?.provider === 'github' && <p ref={feedbackRef} tabIndex={-1} role={connectionFeedback.error ? 'alert' : 'status'}>{connectionFeedback.message}</p>}
-      </PublishingCard>
+      <PublishingGithubConnection data={data} disabled={busy || checkingMedia} disconnecting={disconnecting === 'github'} returned={githubReturn}
+        onRefresh={refresh} onDisconnect={() => void disconnect('github')}
+        feedback={connectionFeedback?.provider === 'github' && <p ref={feedbackRef} tabIndex={-1} role={connectionFeedback.error ? 'alert' : 'status'}>{connectionFeedback.message}</p>} />
       <PublishingCard id="cloudflare" title="Cloudflare account" state={disconnecting === 'cloudflare' ? 'waiting' : connectionFeedback?.provider === 'cloudflare' && connectionFeedback.error ? 'error' : data.cloudflare.status === 'connected' ? 'ready' : 'error'} status={disconnecting === 'cloudflare' ? 'Disconnecting…' : connectionFeedback?.provider === 'cloudflare' && connectionFeedback.error ? 'Connection needs attention' : data.cloudflare.status === 'connected' ? `Connected · ${cloudflareAccount?.account_name ?? 'Cloudflare'}` : 'Not connected'}>
         <p>Builds and hosts your sites. One account is shared by this organization’s sites.</p>
         {data.cloudflare.status === 'connected' && <details><summary>Allow Cloudflare to build from GitHub — once per organization</summary><ol>

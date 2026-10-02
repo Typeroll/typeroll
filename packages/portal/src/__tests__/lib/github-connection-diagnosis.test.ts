@@ -10,11 +10,13 @@ import {
   finishGithubConnection, githubChoices, githubSetup, resumeGithubInstallation, selectGithubOrganization,
   startGithubConnection, startGithubInstallation,
 } from '../../lib/publishing/github-connection';
-import { currentGithubDiagnosis, GITHUB_BLOCKER_CODES, githubBlocker, type GithubConnectionDiagnosis } from '../../lib/publishing/github-diagnosis';
+import { currentGithubDiagnosis, GITHUB_BLOCKER_CODES, githubBlocker, storedGithubDiagnosis, type GithubConnectionDiagnosis } from '../../lib/publishing/github-diagnosis';
 import { githubSsoUrl, ProviderError } from '../../lib/publishing/providers.mjs';
 import { GET as STATUS } from '../../pages/api/orgs/publishing/index';
 import { GET as CALLBACK } from '../../pages/api/orgs/publishing/github/callback';
 import { safeReturnPath } from '../../lib/return-path';
+import { recheckGithubDiagnosis } from '../../lib/publishing/github-recheck';
+import { GET as DIAGNOSIS, POST as RECHECK } from '../../pages/api/orgs/publishing/github/diagnosis';
 
 const session = { userId: 'dev-user', email: 'dev@typeroll.local', orgId: 'default' };
 const diagnosisPath = 'organizations/default/publishing_authorizations/github_diagnosis';
@@ -400,7 +402,7 @@ describe('GitHub connection diagnosis', () => {
     const before = await getConnection('default', 'github');
     expect(before.revision).not.toBe(revision);
     await getStore().setDoc('organizations/default/publishing_authorizations/github_selection', {
-      user_id: session.userId, github_user: { id: 78, login: 'synthetic-owner' }, revision, expires_at: Date.now() + 60_000, consumed: false,
+      user_id: session.userId, github_user: { id: 78, login: 'synthetic-owner' }, revision, identity_verified_at: Date.now(), expires_at: Date.now() + 60_000, consumed: false,
       choices: [{ owner: 'owned-org', installation_id: '34', account_id: '56', account_type: 'Organization' }] });
     await expect(selectGithubOrganization(session, '34', providerFetch())).resolves.toBeUndefined();
     expect(await getConnection('default', 'github')).toEqual(before);
@@ -415,5 +417,184 @@ describe('GitHub connection diagnosis', () => {
       expect(blocker.action, code).toBeDefined();
       if (blocker.action?.url) expect(blocker.action.url, code).toMatch(/^https:\/\/(github\.com|typeroll\.com)\//);
     }
+  });
+});
+
+describe('Check again without a new sign-in', () => {
+  const missing = () => new Response('{}', { status: 404 });
+  const appView = (overrides: Record<string, unknown> = {}) => providerFetch({
+    '/users/synthetic-owner/installation': missing(), '/orgs/member-org/installation': memberOnly, '/orgs/owned-org/installation': owned,
+    '/orgs/member-org/memberships/synthetic-owner': admin(57), ...overrides });
+
+  it('re-checks roles with App authority and offers a now-owned organization for explicit confirmation', async () => {
+    await attempt(installations(memberOnly));
+    const grant = await getStore().getDoc('organizations/default/publishing_authorizations/github');
+    const fetcher = appView();
+    const diagnosis = await recheckGithubDiagnosis(session, { person: true }, fetcher);
+    expect(diagnosis).toMatchObject({ outcome: 'choose', github_user: { login: 'synthetic-owner' }, installations: [expect.objectContaining({ installation_id: '35', usable: true, blockers: [] })] });
+    // Nothing is connected or consumed by a re-check; the person still confirms the account.
+    expect((await getConnection('default', 'github')).status).toBe('disconnected');
+    expect(await getStore().getDoc('organizations/default/publishing_authorizations/github')).toEqual(grant);
+    expect(await githubChoices(session)).toEqual([expect.objectContaining({ installation_id: '35', owner: 'member-org' })]);
+    for (const [url, init] of fetcher.mock.calls) {
+      expect(String(url)).not.toContain('/login/oauth');
+      expect((init?.headers as Record<string, string>).Authorization).not.toContain('synthetic-user-token');
+    }
+    await selectGithubOrganization(session, '35', fetcher);
+    expect((await getConnection('default', 'github')).github?.owner).toBe('member-org');
+  });
+
+  it('still reports the role when the person is not an owner yet', async () => {
+    await attempt(installations(memberOnly));
+    const diagnosis = await recheckGithubDiagnosis(session, { person: true }, appView({ '/orgs/member-org/memberships/synthetic-owner': { state: 'active', role: 'member', user: { id: 78 }, organization: { id: 57 } } }));
+    expect(diagnosis.outcome).toBe('action_required');
+    expect(blockers(diagnosis, '35')).toEqual(['not_org_owner']);
+    expect(await githubChoices(session)).toEqual([]);
+  });
+
+  it('finds an installation on an organization the person names', async () => {
+    await attempt(installations(memberOnly));
+    const diagnosis = await recheckGithubDiagnosis(session, { person: true, owner: 'owned-org' }, appView({ '/orgs/owned-org/memberships/synthetic-owner': admin(56),
+      '/orgs/member-org/memberships/synthetic-owner': { state: 'active', role: 'member', user: { id: 78 }, organization: { id: 57 } } }));
+    expect(diagnosis.outcome).toBe('choose');
+    expect(diagnosis.installations.find(item => item.installation_id === '34')?.usable).toBe(true);
+    await expect(recheckGithubDiagnosis({ ...session, orgId: 'default' }, { person: true, owner: 'not a login' })).rejects.toThrow('address name');
+  });
+
+  it('does not reveal anything about a named organization the person does not own', async () => {
+    await claimAccount('another-org', 'github', '90');
+    await attempt(installations(memberOnly));
+    const foreign = { ...owned, id: 40, account: { id: 90, login: 'foreign-org', type: 'Organization' }, repository_selection: 'selected', suspended_at: '2026-09-01', permissions: { members: 'read' } };
+    const check = async (overrides: Record<string, unknown>) => {
+      // Each check runs after the five-second throttle.
+      await getStore().updateDoc(diagnosisPath, { rechecked_at: Date.now() - 60_000 });
+      return recheckGithubDiagnosis(session, { person: true, owner: 'foreign-org' }, appView({ '/app/installations/40/access_tokens': { token: 'synthetic-installation-token' },
+        '/orgs/member-org/memberships/synthetic-owner': { state: 'active', role: 'member', user: { id: 78 }, organization: { id: 57 } }, ...overrides }));
+    };
+    const answers = [
+      await check({ '/orgs/foreign-org/installation': foreign, '/orgs/foreign-org/memberships/synthetic-owner': missing() }),
+      // A second check does not reveal it either: the hidden account is never stored as one to re-check.
+      await check({ '/orgs/foreign-org/installation': foreign, '/orgs/foreign-org/memberships/synthetic-owner': missing() }),
+      await check({ '/orgs/foreign-org/installation': { ...foreign, permissions: {} } }),
+      await check({ '/orgs/foreign-org/installation': missing() }),
+    ];
+    for (const diagnosis of answers) {
+      expect(diagnosis.installations.map(item => item.installation_id)).toEqual(['35']);
+      expect(diagnosis.blockers.map(item => item.code)).toEqual(['not_org_owner', 'no_installation']);
+      expect(diagnosis.blockers[0]).toEqual(answers[0].blockers[0]);
+      expect(JSON.stringify(diagnosis)).not.toMatch(/installation_suspended|repository_selection_limited|permissions|claimed_by_other_organization|"40"/);
+    }
+    expect(answers[0].blockers[0].message).toContain('Either the App is not installed on foreign-org or you are not an owner of it');
+    expect((await getStore().getDoc<any>(diagnosisPath)).accounts).toEqual([{ login: 'member-org', type: 'Organization', origin: 'oauth' }]);
+  });
+
+  it('explains installation settings only to a proven owner of the account', async () => {
+    await claimAccount('another-org', 'github', '57');
+    await attempt(installations({ ...memberOnly, suspended_at: '2026-09-01', repository_selection: 'selected' }));
+    expect(blockers(await stored(), '35')).toEqual(['not_org_owner']);
+    // Once the person proves they own a named organization, it is explained and re-checked like the others.
+    await getStore().updateDoc(diagnosisPath, { rechecked_at: null });
+    const diagnosis = await recheckGithubDiagnosis(session, { person: true, owner: 'owned-org' }, appView({ '/orgs/owned-org/memberships/synthetic-owner': admin(56),
+      '/orgs/member-org/installation': { ...memberOnly, suspended_at: '2026-09-01' }, '/orgs/member-org/memberships/synthetic-owner': { state: 'active', role: 'member', user: { id: 78 }, organization: { id: 57 } } }));
+    expect(blockers(diagnosis, '35')).toEqual(['not_org_owner']);
+    expect(blockers(diagnosis, '34')).toEqual([]);
+    expect((await getStore().getDoc<any>(diagnosisPath)).accounts).toContainEqual({ login: 'owned-org', type: 'Organization', origin: 'owned' });
+  });
+
+  it('asks for a sign-in when the proven identity is older than an hour or belongs to someone else', async () => {
+    await attempt(installations(memberOnly));
+    const fetcher = appView();
+    expect((await recheckGithubDiagnosis({ ...session, userId: 'other-admin' }, { person: true }, fetcher)).primary_action).toMatchObject({ kind: 'sign_in' });
+    // An API key cannot act as the person; it receives the organization's state.
+    expect(await recheckGithubDiagnosis({ ...session, userId: 'api-key:abc' }, { person: false }, fetcher))
+      .toMatchObject({ outcome: 'action_required', github_user: null, attempted_by: null, installations: [] });
+    await getStore().updateDoc(diagnosisPath, { identity_verified_at: Date.now() - 61 * 60 * 1000 });
+    const expired = await recheckGithubDiagnosis(session, { person: true }, fetcher);
+    expect(expired.primary_action).toEqual({ kind: 'sign_in', label: 'Sign in to GitHub to check again' });
+    expect(blockers(expired, '35')).toEqual(['not_org_owner']);
+    expect(fetcher).not.toHaveBeenCalled();
+    // The sign-in is what the card shows after reloading, too.
+    expect((await stored()).primary_action).toEqual({ kind: 'sign_in', label: 'Sign in to GitHub to check again' });
+  });
+
+  it('checks again after an owner approves an installation request, within the hour of the sign-in', async () => {
+    await attempt(installations());
+    const started = await startGithubInstallation(session);
+    await call(CALLBACK, routeContext(`?state=${new URL(started.url).searchParams.get('state')}&setup_action=request`, started.browser));
+    expect((await stored()).outcome).toBe('waiting_on_owner');
+    // The owner approved: GitHub now shows the installation to the App, and the person is an owner.
+    const diagnosis = await recheckGithubDiagnosis(session, { person: true, owner: 'member-org' }, appView());
+    expect(diagnosis).toMatchObject({ outcome: 'choose', installations: [expect.objectContaining({ installation_id: '35', usable: true })] });
+    expect(await stored()).toMatchObject({ outcome: 'choose' });
+  });
+
+  it('stores a re-check after the 24-hour diagnosis expiry and never reports a failed store as connected', async () => {
+    expect((await attempt()).result).toBe('connected');
+    await getStore().updateDoc(diagnosisPath, { expires_at: Date.now() - 1, sequence: 7 });
+    const suspended = providerFetch({ '/app/installations/34': { ...owned, suspended_at: '2026-09-30' } });
+    expect((await recheckGithubDiagnosis({ ...session, userId: 'api-key:abc' }, { person: false }, suspended)).outcome).toBe('needs_attention');
+    expect(await storedGithubDiagnosis('default')).toMatchObject({ outcome: 'needs_attention', sequence: 8 });
+    // A concurrent result recorded first: this check's own result is still returned.
+    await getStore().updateDoc(diagnosisPath, { rechecked_at: null });
+    vi.spyOn(getStore(), 'compareAndUpdateDoc').mockResolvedValue(null);
+    expect((await recheckGithubDiagnosis({ ...session, userId: 'api-key:abc' }, { person: false }, suspended)).outcome).toBe('needs_attention');
+  });
+
+  it('keeps a choice from Check again valid only within the hour of the sign-in', async () => {
+    await attempt(installations(memberOnly));
+    const verifiedAt = Date.now() - 59 * 60 * 1000;
+    await getStore().updateDoc(diagnosisPath, { identity_verified_at: verifiedAt });
+    expect((await recheckGithubDiagnosis(session, { person: true }, appView())).outcome).toBe('choose');
+    const selectionPath = 'organizations/default/publishing_authorizations/github_selection';
+    const selection = await getStore().getDoc<any>(selectionPath);
+    expect(selection.expires_at).toBe(verifiedAt + 60 * 60 * 1000);
+    expect((await getStore().getDoc<any>(diagnosisPath)).selection_expires_at).toBe(verifiedAt + 60 * 60 * 1000);
+    // Ownership is re-verified at save only for an identity proven within the hour.
+    await getStore().updateDoc(selectionPath, { identity_verified_at: Date.now() - 61 * 60 * 1000 });
+    await expect(selectGithubOrganization(session, '35', appView())).rejects.toMatchObject({ code: 'state_expired' });
+    expect((await getConnection('default', 'github')).status).toBe('disconnected');
+  });
+
+  it('throttles repeated checks for five seconds per organization', async () => {
+    await attempt(installations(memberOnly));
+    const first = await recheckGithubDiagnosis(session, { person: true }, appView());
+    const fetcher = appView();
+    const second = await recheckGithubDiagnosis(session, { person: true }, fetcher);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(second).toEqual(first);
+  });
+
+  it('needs a sign-in, not a selection, for a personal account found by the App', async () => {
+    await attempt(installations(memberOnly));
+    const diagnosis = await recheckGithubDiagnosis(session, { person: true }, appView({ '/users/synthetic-owner/installation': personal,
+      '/orgs/member-org/memberships/synthetic-owner': { state: 'active', role: 'member', user: { id: 78 }, organization: { id: 57 } } }));
+    expect(diagnosis.primary_action).toEqual({ kind: 'sign_in', label: 'Sign in to GitHub to connect @synthetic-owner' });
+    expect(await githubChoices(session)).toEqual([]);
+  });
+
+  it('re-checks a saved connection with App authority, also for API keys', async () => {
+    expect((await attempt()).result).toBe('connected');
+    const suspended = await recheckGithubDiagnosis({ ...session, userId: 'api-key:abc' }, { person: false }, providerFetch({ '/app/installations/34': { ...owned, suspended_at: '2026-09-30' } }));
+    expect(suspended).toMatchObject({ outcome: 'needs_attention', installations: [expect.objectContaining({ usable: false, blockers: [expect.objectContaining({ code: 'installation_suspended' })] })] });
+    // The state of a saved connection is shared with every publishing admin.
+    expect((await currentGithubDiagnosis('default', { userId: 'other-admin' })).outcome).toBe('needs_attention');
+  });
+
+  it('serves the portal re-check only to same-origin publishing admins', async () => {
+    await attempt(installations(memberOnly));
+    vi.stubGlobal('fetch', appView());
+    const request = (origin: string, body: unknown) => {
+      const context = routeContext();
+      context.request = new Request('http://localhost/api/orgs/publishing/github/diagnosis', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin }, body: JSON.stringify(body) });
+      return context;
+    };
+    expect((await call(RECHECK, request('https://elsewhere.test', { action: 'recheck' }))).status).toBe(403);
+    expect((await call(RECHECK, request('http://localhost', { action: 'other' }))).status).toBe(400);
+    const response = await call(RECHECK, request('http://localhost', { action: 'recheck' }));
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect((await response.json()).diagnosis.outcome).toBe('choose');
+    expect((await (await call(DIAGNOSIS, routeContext())).json()).diagnosis.outcome).toBe('choose');
+    await getStore().updateDoc('organizations/default/members/dev-user', { role: 'editor' });
+    expect((await call(RECHECK, request('http://localhost', { action: 'recheck' }))).status).toBe(403);
   });
 });

@@ -5,8 +5,9 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { claimAccount, connectionPath, connectionSummary, disconnect, getConnection, openCredentials, sealCredentials } from '../../lib/publishing/connections';
 import { CLOUDFLARE_SCOPES } from '../../lib/publishing/cloudflare-oauth';
-import { finishGithubConnection, githubNextStep, startGithubInstallation, resumeGithubInstallation, githubSetup, startGithubConnection, githubChoices, selectGithubOrganization } from '../../lib/publishing/github-connection';
+import { finishGithubConnection, startGithubInstallation, resumeGithubInstallation, githubSetup, startGithubConnection, githubChoices, selectGithubOrganization } from '../../lib/publishing/github-connection';
 import { connectCloudflare, verifyR2, prepareCloudflareMedia, connectCloudflareMedia } from '../../lib/publishing/cloudflare-connection';
+import { currentGithubDiagnosis } from '../../lib/publishing/github-diagnosis';
 import { GET } from '../../pages/api/orgs/publishing/index';
 import { checkGithubPermissions } from '../../lib/publishing/github-permissions';
 import { GET as GITHUB_PERMISSIONS } from '../../pages/api/orgs/publishing/github/permissions';
@@ -198,6 +199,8 @@ describe('GitHub organization authorization', () => {
 
 describe('GitHub installation continuation', () => {
   const grantPath = 'organizations/default/publishing_authorizations/github';
+  // A required installation is durable: it is the primary action of the person's stored diagnosis.
+  const githubNextStep = async (actor: typeof session) => (await currentGithubDiagnosis(actor.orgId, actor)).primary_action?.kind === 'install' ? 'install' : null;
   async function requireInstallation() {
     const input = await authorization();
     await expect(finishGithubConnection(session, input, providerFetch({
@@ -209,7 +212,7 @@ describe('GitHub installation continuation', () => {
     await requireInstallation();
     expect(await githubNextStep(session)).toBe('install');
     const response = await call(GET, routeContext());
-    expect(await response.json()).toMatchObject({ github_next_step: 'install', github: { status: 'disconnected' } });
+    expect(await response.json()).toMatchObject({ github_diagnosis: { primary_action: { kind: 'install' } }, github: { status: 'disconnected' } });
     const stored = await getStore().getDoc<any>(grantPath);
     expect(JSON.stringify(stored)).not.toContain('synthetic-user-token');
     expect(stored.encrypted_verifier).toBeNull();

@@ -10,18 +10,23 @@ it('distinguishes personal choices and exposes reconnect when repository authori
   const data = { github: { status: 'connected', revision: 'one', github: { owner: 'synthetic-person', account_type: 'User', repository_creation_state: 'reconnect_required' } },
     cloudflare: { status: 'disconnected' }, github_setup: { available: true, install_url: 'https://github.com/apps/synthetic/installations/new' },
     github_choices: [{ owner: 'synthetic-person', installation_id: '34', account_type: 'User' }, { owner: 'synthetic-company', installation_id: '35', account_type: 'Organization' }] };
-  const request = vi.fn(async (url: string) => Response.json(url.includes('/permissions') ? { revision: 'one', state: 'up_to_date', message: 'Permissions are up to date.' } : data));
+  const request = vi.fn(async (url: string, _init?: RequestInit) => Response.json(url.includes('/permissions') ? { revision: 'one', state: 'up_to_date', message: 'Permissions are up to date.' } : data));
   vi.stubGlobal('fetch', request);
   const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
   await act(async () => root.render(createElement(PublishingConnections)));
   expect(container.querySelector('label[for="github-organization"]')?.textContent).toBe('Choose a GitHub account');
   expect(container.textContent).toContain('synthetic-person — Personal account');
   expect(container.textContent).toContain('synthetic-company — Organization');
-  expect(container.querySelector('[role="alert"]')?.textContent).toContain('Reconnect GitHub to create new repositories');
-  const button = [...container.querySelectorAll('button')].find(node => node.textContent === 'Reconnect GitHub')!;
-  expect(button).toBeDefined(); expect(button.closest('details')?.open).toBe(true);
-  await act(async () => button.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
-  expect(request.mock.calls.some(([url]) => url === '/api/orgs/publishing/github')).toBe(true);
+  // Renewal is explained in the sign-in step of the card, not in a page-level alert.
+  const signIn = container.querySelector('[data-github-step="sign-in"]')!;
+  expect(signIn.getAttribute('data-state')).toBe('error');
+  expect(signIn.textContent).toContain('Renew authorization');
+  expect(signIn.querySelector('details')?.open).toBe(true);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  const button = [...signIn.querySelectorAll('button')].find(node => node.textContent === 'Reconnect GitHub')!;
+  expect(button).toBeDefined();
+  await act(async () => button.click());
+  expect(request.mock.calls.some(([url, init]) => url === '/api/orgs/publishing/github' && init?.method === 'POST')).toBe(true);
 });
 
 it('reports verified media progress and automatically shows completion without a manual refresh', async () => {

@@ -6,7 +6,7 @@ import { createProviderClient, githubAppClient, assertInstallation, ProviderErro
 import { claimAccount, ConnectionError, getConnection, openCredentials, saveConnection, sealCredentials, type Connection } from './connections';
 import { CALLBACK_PATH, githubConfiguration, githubSetup } from './github-config';
 import {
-  blockerFromError, composeDiagnosis, githubBlocker, GithubFlowError, primaryAction, recordGithubDiagnosis, synthesizedDiagnosis,
+  blockerFromError, composeDiagnosis, githubBlocker, GithubFlowError, GITHUB_IDENTITY_TRUST_MS, primaryAction, recordGithubDiagnosis, synthesizedDiagnosis,
   type BlockerContext, type GithubBlocker, type GithubConnectionDiagnosis, type GithubDiagnosisInstallation, type GithubIdentity,
 } from './github-diagnosis';
 
@@ -18,7 +18,6 @@ const nonce = () => randomBytes(32).toString('base64url');
 
 interface Authorization {
   kind?: 'authorize' | 'install';
-  next_step?: 'install';
   state_hash: string;
   browser_hash: string;
   user_id: string;
@@ -29,13 +28,6 @@ interface Authorization {
   encrypted_verifier: string | null;
 }
 const grantPath = (orgId: string) => `organizations/${orgId}/publishing_authorizations/github`;
-
-/** A required installation is durable UI state, not a transient redirect error. */
-export async function githubNextStep(session: FullSession): Promise<'install' | null> {
-  const grant = await getStore().getDoc<Authorization>(grantPath(session.orgId));
-  if (!grant || grant.user_id !== session.userId || grant.next_step !== 'install') return null;
-  return (await getConnection(session.orgId, 'github')).revision === grant.revision ? 'install' : null;
-}
 
 /**
  * Open the App installation page. Installation callbacks are navigation only
@@ -51,7 +43,7 @@ export async function startGithubInstallation(session: FullSession) {
   if (previous && !replaceable(previous)) throw othersSignIn(previous);
   const state = `install_${nonce()}`;
   const browser = nonce();
-  const grant = { kind: 'install', next_step: 'install', state_hash: hash(state), browser_hash: hash(browser), user_id: session.userId,
+  const grant = { kind: 'install', state_hash: hash(state), browser_hash: hash(browser), user_id: session.userId,
     expires_at: Date.now() + TTL_MS, consumed: false, owner: '', revision: connection.revision, encrypted_verifier: null } satisfies Authorization;
   if (previous) {
     const changed = await getStore().compareAndUpdateDoc<Authorization>(grantPath(session.orgId),
@@ -217,10 +209,28 @@ export interface InstallationEvaluation {
   choices: GithubChoice[];
   /** Whether any installation is on an account the signed-in GitHub user owns. */
   ownsAny: boolean;
+  /** Installations on accounts the signed-in GitHub user was proven to own. */
+  owned: string[];
 }
 
 const REQUIRED: Array<[string, string[]]> = [['administration', ['write']], ['contents', ['write']]];
 const grants = (value: unknown, accepted: string[]) => typeof value === 'string' && (accepted.includes(value) || (accepted.includes('read') && value === 'write'));
+
+/** Suspension, repository selection and permission problems of one installation, in a fixed order. */
+export async function installationConfigurationBlockers(installation: any, context: BlockerContext,
+  appPermissions: () => Promise<Record<string, string> | null>): Promise<GithubBlocker[]> {
+  const blockers: GithubBlocker[] = [];
+  if (installation.suspended_at) blockers.push(githubBlocker('installation_suspended', context));
+  if (installation.repository_selection !== 'all') blockers.push(githubBlocker('repository_selection_limited', context));
+  const missing = REQUIRED.filter(([name, accepted]) => !grants(installation.permissions?.[name], accepted)).map(([name]) => name);
+  if (missing.length) {
+    const app = await appPermissions();
+    const notRequested = Boolean(app) && missing.some(name => !grants(app![name], REQUIRED.find(([key]) => key === name)![1]));
+    blockers.push(githubBlocker(app && !notRequested ? 'permissions_update_pending' : 'permissions_missing',
+      { ...context, permissions: missing.map(name => `${name[0].toUpperCase()}${name.slice(1)} (write)`), notRequested }));
+  }
+  return blockers;
+}
 
 /**
  * Explain every installation of the publisher App that GitHub showed for this
@@ -238,7 +248,7 @@ export async function evaluateInstallations(input: {
   personalGrant: 'available' | 'expiring_tokens_disabled' | 'sign_in_required';
   retry: 'sign_in' | 'recheck';
 }): Promise<InstallationEvaluation> {
-  const result: InstallationEvaluation = { installations: [], choices: [], ownsAny: false };
+  const result: InstallationEvaluation = { installations: [], choices: [], ownsAny: false, owned: [] };
   const userId = String(input.user.id);
   let requested: Promise<Record<string, string> | null> | undefined;
   const seen = new Set<string>();
@@ -268,22 +278,17 @@ export async function evaluateInstallations(input: {
       // SSO, rate limits and outages affect only this installation.
       blockers.push(blockerFromError(error, context()));
     }
-    if (owner) result.ownsAny = true;
-    try {
-      if (installation.suspended_at) blockers.push(githubBlocker('installation_suspended', context()));
-      if (installation.repository_selection !== 'all') blockers.push(githubBlocker('repository_selection_limited', context()));
-      const missing = REQUIRED.filter(([name, accepted]) => !grants(installation.permissions?.[name], accepted)).map(([name]) => name);
-      if (missing.length) {
-        requested ??= input.appPermissions().catch(() => null);
-        const app = await requested;
-        const notRequested = Boolean(app) && missing.some(name => !grants(app![name], REQUIRED.find(([key]) => key === name)![1]));
-        blockers.push(githubBlocker(app && !notRequested ? 'permissions_update_pending' : 'permissions_missing',
-          { ...context(), permissions: missing.map(name => `${name[0].toUpperCase()}${name.slice(1)} (write)`), notRequested }));
-      }
-      const claim = await getStore().getDoc<{ org_id: string }>(`publishing_account_claims/github-${account.id}`);
-      if (claim && claim.org_id !== input.orgId) blockers.push(githubBlocker('claimed_by_other_organization', context()));
-      if (account.type === 'User' && owner && input.personalGrant === 'expiring_tokens_disabled') blockers.push(githubBlocker('expiring_tokens_disabled', context()));
-    } catch (error) { blockers.push(blockerFromError(error, context())); }
+    // Installation settings and claims by other Typeroll organizations are shown only to a proven owner of the account.
+    if (owner) {
+      result.ownsAny = true;
+      result.owned.push(installationId);
+      try {
+        blockers.push(...await installationConfigurationBlockers(installation, context(), () => requested ??= input.appPermissions().catch(() => null)));
+        const claim = await getStore().getDoc<{ org_id: string }>(`publishing_account_claims/github-${account.id}`);
+        if (claim && claim.org_id !== input.orgId) blockers.push(githubBlocker('claimed_by_other_organization', context()));
+        if (account.type === 'User' && input.personalGrant === 'expiring_tokens_disabled') blockers.push(githubBlocker('expiring_tokens_disabled', context()));
+      } catch (error) { blockers.push(blockerFromError(error, context())); }
+    }
     const previous = input.current.github;
     let accountChange: GithubChoice['account_change'];
     if (previous && previous.account_id !== account.id) {
@@ -336,12 +341,7 @@ export async function finishGithubConnection(session: FullSession, input: { stat
         && (!grant.owner || item.account?.login?.toLowerCase() === grant.owner.toLowerCase())));
       if (result.installations.length < 100) break;
     }
-    if (!listed.length) {
-      await getStore().compareAndUpdateDoc<Authorization>(grantPath(session.orgId),
-        current => current.state_hash === grant.state_hash && current.user_id === session.userId && current.consumed,
-        { next_step: 'install' });
-      throw new GithubFlowError(githubBlocker('no_installation'));
-    }
+    if (!listed.length) throw new GithubFlowError(githubBlocker('no_installation'));
     let personal: GithubUserGrant | undefined;
     let personalGrant: 'available' | 'expiring_tokens_disabled' = 'available';
     if (listed.some(item => item.account?.type === 'User')) {
@@ -355,6 +355,8 @@ export async function finishGithubConnection(session: FullSession, input: { stat
       appPermissions: async () => (await githubAppClient(config, fetchImpl)('/app'))?.permissions ?? null,
     });
     attempt.installations = evaluation.installations;
+    // "Check again" may re-read exactly the accounts GitHub showed this person.
+    attempt.identity.accounts = evaluation.installations.map(item => ({ login: item.account.login, type: item.account.type, origin: 'oauth' as const }));
     return await concludeEvaluation(session, attempt, evaluation, grant.revision, fetchImpl, personal);
   } catch (error) { return failed(session, attempt, error); }
 }
@@ -397,11 +399,8 @@ async function concludeEvaluation(session: FullSession, attempt: Attempt, evalua
     return 'connected';
   }
   // Store proven choices and an encrypted grant only when a personal account is offered.
-  // Selection is bound to this Typeroll user, organization, revision and short expiry.
-  const expiresAt = Date.now() + TTL_MS;
-  await getStore().setDoc(choicePath(session.orgId), { user_id: session.userId, github_user: { id: Number(attempt.githubUser!.id), login: attempt.githubUser!.login },
-    revision, expires_at: expiresAt, consumed: false, choices,
-    encrypted_tokens: personal && choices.some(choice => choice.account_type === 'User') ? sealCredentials(session.orgId, 'github', personal) : null });
+  const expiresAt = await storeGithubSelection(session, attempt.identity!, revision, choices,
+    personal && choices.some(choice => choice.account_type === 'User') ? sealCredentials(session.orgId, 'github', personal) : null);
   await recordAttempt(session, attempt, { choose: choices.length > 1, selectionExpiresAt: expiresAt });
   return 'select';
 }
@@ -418,6 +417,8 @@ async function recordConnected(session: FullSession, attempt: Attempt) {
 
 interface GithubSelection {
   user_id: string; github_user: { id: number; login: string }; revision: string;
+  /** When OAuth proved github_user. Organization ownership is re-verified for that identity at most an hour later. */
+  identity_verified_at: number;
   expires_at: number; consumed: boolean; choices: GithubChoice[]; encrypted_tokens?: string | null;
 }
 const choicePath = (orgId: string) => `organizations/${orgId}/publishing_authorizations/github_selection`;
@@ -428,10 +429,16 @@ export async function githubChoices(session: FullSession): Promise<GithubChoice[
   return selection.choices;
 }
 
-/** Bound to the same person, organization and revision as the pending choice. Used by "Check again". */
-export async function storeGithubSelection(session: FullSession, githubUser: { id: number; login: string }, revision: string, choices: GithubChoice[]) {
-  await getStore().setDoc(choicePath(session.orgId), { user_id: session.userId, github_user: githubUser, revision,
-    expires_at: Date.now() + TTL_MS, consumed: false, choices, encrypted_tokens: null });
+/**
+ * Store proven choices, bound to this Typeroll user, organization and revision. A choice expires after
+ * 10 minutes, and never later than an hour after OAuth proved the identity it was made for. Returns the expiry.
+ */
+export async function storeGithubSelection(session: Pick<FullSession, 'orgId' | 'userId'>, identity: GithubIdentity, revision: string,
+  choices: GithubChoice[], encryptedTokens: string | null = null): Promise<number> {
+  const expiresAt = Math.min(Date.now() + TTL_MS, identity.verifiedAt + GITHUB_IDENTITY_TRUST_MS);
+  await getStore().setDoc(choicePath(session.orgId), { user_id: session.userId, github_user: { id: Number(identity.user.id), login: identity.user.login },
+    revision, identity_verified_at: identity.verifiedAt, expires_at: expiresAt, consumed: false, choices, encrypted_tokens: encryptedTokens } satisfies GithubSelection);
+  return expiresAt;
 }
 
 export async function selectGithubOrganization(session: FullSession, installationId: string, fetchImpl: typeof fetch = fetch,
@@ -446,6 +453,7 @@ export async function selectGithubOrganization(session: FullSession, installatio
   try {
     const selection = await getStore().compareAndUpdateDoc<GithubSelection>(choicePath(session.orgId),
       value => !value.consumed && value.user_id === session.userId && value.expires_at > Date.now()
+        && Date.now() - value.identity_verified_at < GITHUB_IDENTITY_TRUST_MS
         && value.choices.some(choice => choice.installation_id === installationId), { consumed: true, encrypted_tokens: null });
     if (!selection) throw new GithubFlowError({ ...githubBlocker('state_expired'), message: 'Your GitHub selection expired. Connect GitHub again or select Check again.' });
     attempt.githubUser = { id: String(selection.github_user.id), login: selection.github_user.login };

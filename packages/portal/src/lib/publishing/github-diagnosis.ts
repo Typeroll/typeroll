@@ -84,8 +84,13 @@ export interface GithubConnectionDiagnosis {
   app: { slug: string | null; install_url: string | null };
 }
 type DiagnosisScope = 'attempt' | 'connection';
+/**
+ * An account whose installation "Check again" may re-read for the proven identity: one GitHub showed
+ * at sign-in (oauth), or one the person named later and proved they own (owned).
+ */
+export interface GithubCheckedAccount { login: string; type: 'Organization' | 'User'; origin: 'oauth' | 'owned' }
 /** A GitHub identity that OAuth proved for a Typeroll user. Never taken from a request or an App-only check. */
-export interface GithubIdentity { user: { id: string; login: string }; verifiedAt: number }
+export interface GithubIdentity { user: { id: string; login: string }; verifiedAt: number; accounts?: GithubCheckedAccount[] }
 export interface StoredDiagnosis extends GithubConnectionDiagnosis {
   user_id: string | null;
   expires_at: number;
@@ -94,6 +99,7 @@ export interface StoredDiagnosis extends GithubConnectionDiagnosis {
   /** The GitHub user OAuth last proved for user_id, and when. Kept while the same person records results that prove none. */
   verified_user: { id: string; login: string } | null;
   identity_verified_at: number | null;
+  accounts: GithubCheckedAccount[];
   /** Until when the account choice this diagnosis offers can be selected. */
   selection_expires_at: number | null;
   /** The organization-level state every publishing admin and organization API key may see. */
@@ -114,6 +120,8 @@ export interface BlockerContext {
   installationId?: string;
   /** The signed-in GitHub user owns `account` (personal owner or organization owner). */
   owner?: boolean;
+  /** The account was named by the person; whether the App is installed there is not revealed. */
+  unverified?: boolean;
   user?: { login: string } | null;
   ssoUrl?: string | null;
   retryAfter?: number | null;
@@ -135,6 +143,7 @@ const portalHost = () => { try { return new URL(process.env.PORTAL_PUBLIC_URL ??
 const help = (code: GithubBlockerCode) => `${GITHUB_TROUBLESHOOTING_URL}#${code.replaceAll('_', '-')}`;
 const installUrl = () => { const slug = githubAppSlug(); return slug ? `https://github.com/apps/${slug}/installations/new` : undefined; };
 const appName = () => { const slug = githubAppSlug(); return slug ? `the ${slug} GitHub App` : 'the publisher’s GitHub App'; };
+const AppName = () => { const name = appName(); return `${name[0].toUpperCase()}${name.slice(1)}`; };
 const retryAction = (context: BlockerContext, label = 'Try again'): GithubDiagnosisAction =>
   context.retry === 'recheck' ? { kind: 'retry', label } : { kind: 'sign_in', label };
 
@@ -149,6 +158,10 @@ export function githubBlocker(code: GithubBlockerCode, context: BlockerContext =
   const permissionList = (context.permissions ?? []).join(', ') || 'the requested permissions';
   switch (code) {
     case 'not_org_owner':
+      if (context.unverified) {
+        return make('github_owner', `Typeroll could not confirm that ${context.user ? `@${context.user.login}` : 'your GitHub account'} owns ${name}. Either the App is not installed on ${name} or you are not an owner of it. If you own ${name}, install the App there with All repositories access and Members (read) permission, then select Check again. Otherwise ask an owner of ${name} to select Connect GitHub here.`,
+          context.account ? { kind: 'link', label: `See who owns ${name}`, url: `https://github.com/orgs/${encodeURIComponent(context.account.login)}/people?query=role%3Aowner` } : undefined);
+      }
       return make('github_owner', `${context.user ? `@${context.user.login}` : 'Your GitHub account'} is not an owner of ${name}. Only an organization owner can connect it to Typeroll. Ask an owner of ${name} to select Connect GitHub here, or connect your personal account or an organization you own.`,
         context.account ? { kind: 'link', label: `See who owns ${name}`, url: `https://github.com/orgs/${encodeURIComponent(context.account.login)}/people?query=role%3Aowner` } : undefined);
     case 'membership_unverifiable':
@@ -165,7 +178,7 @@ export function githubBlocker(code: GithubBlockerCode, context: BlockerContext =
         settings ? { kind: 'link', label: `Review permissions for ${name}`, url: `${settings}/permissions/update` } : undefined);
     case 'permissions_missing':
       if (context.notRequested) {
-        return make('publisher', `${appName()} does not request permissions Typeroll needs (${permissionList}). The operator of this Typeroll installation must add them to the App. Then ${ownerText.toLowerCase()} accept the update.`,
+        return make('publisher', `${AppName()} does not request permissions Typeroll needs (${permissionList}). The operator of this Typeroll installation must add them to the App. Then ${ownerText.toLowerCase()} accept the update.`,
           { kind: 'contact_publisher', label: 'What the publisher must change', url: help(code) });
       }
       return make(fixer, `The App installation on ${name} is missing required permissions (${permissionList}). ${ownerText} accept them in the installation settings. If GitHub shows nothing to accept, the publisher must request them in its App.`,
@@ -189,7 +202,7 @@ export function githubBlocker(code: GithubBlockerCode, context: BlockerContext =
       return make('typeroll_admin', `${name} is already connected to another Typeroll organization. Disconnect it there, or ask your Typeroll administrator to transfer it.`,
         { kind: 'link', label: 'How account transfers work', url: help(code) });
     case 'no_installation':
-      return make('you', `${appName()} is not installed on your personal account or on an organization you own. Install it with All repositories access.`,
+      return make('you', `${AppName()} is not installed on your personal account or on an organization you own. Install it with All repositories access.`,
         { kind: 'install', label: 'Install the GitHub App', ...(installUrl() ? { url: installUrl() } : {}) });
     case 'install_request_pending':
       return make('github_owner', `Your request to install ${appName()} was sent to the organization’s owners. An owner must approve it on GitHub. Then select Check again.`,
@@ -215,7 +228,7 @@ export function githubBlocker(code: GithubBlockerCode, context: BlockerContext =
       return make('publisher', `Personal accounts need expiring user authorization, which ${appName()} does not use yet. The publisher must enable “Expire user authorization tokens” in the App settings. You can connect an organization you own instead.`,
         { kind: 'contact_publisher', label: 'What the publisher must change', url: help(code) });
     case 'publisher_app_misconfigured':
-      return make('publisher', `${appName()} is not configured correctly${context.detail ? ` (${context.detail})` : ''}. The operator of this Typeroll installation must fix it. Nothing on your GitHub account needs to change.`,
+      return make('publisher', `${AppName()} is not configured correctly${context.detail ? ` (${context.detail})` : ''}. The operator of this Typeroll installation must fix it. Nothing on your GitHub account needs to change.`,
         { kind: 'contact_publisher', label: 'What the publisher must change', url: help(code) });
     case 'encryption_unavailable':
       return make('publisher', `The publisher has not configured encrypted credential storage, so GitHub cannot be connected yet${githubAppSlug() ? ` (App: ${githubAppSlug()})` : ''}. The operator of this Typeroll installation must set it up.`,
@@ -296,11 +309,11 @@ export async function recordGithubDiagnosis(orgId: string, diagnosis: GithubConn
   const scope = meta.scope ?? 'attempt';
   const kept: GithubIdentity | null = previous && previous.user_id === meta.userId && previous.verified_user && previous.identity_verified_at
     && (!diagnosis.github_user || diagnosis.github_user.id === previous.verified_user.id)
-    ? { user: previous.verified_user, verifiedAt: previous.identity_verified_at } : null;
+    ? { user: previous.verified_user, verifiedAt: previous.identity_verified_at, accounts: previous.accounts ?? [] } : null;
   const identity = meta.identity !== undefined ? meta.identity : kept;
   const stored: StoredDiagnosis = plain({
     ...diagnosis, user_id: meta.userId, expires_at: Date.now() + DIAGNOSIS_TTL_MS, scope,
-    verified_user: identity?.user ?? null, identity_verified_at: identity?.verifiedAt ?? null,
+    verified_user: identity?.user ?? null, identity_verified_at: identity?.verifiedAt ?? null, accounts: identity?.accounts ?? [],
     selection_expires_at: meta.selectionExpiresAt ?? null,
     organization: meta.organization !== undefined ? meta.organization
       : scope === 'attempt' && CONNECTED.includes(diagnosis.outcome) ? previous?.organization ?? null : organizationView(diagnosis),
@@ -313,6 +326,11 @@ export async function recordGithubDiagnosis(orgId: string, diagnosis: GithubConn
     return store.createDocIfMissing(path, stored);
   }
   return Boolean(await store.compareAndUpdateDoc<StoredDiagnosis>(path, current => (current.sequence ?? 0) === meta.expectedSequence, stored));
+}
+
+/** Sequence of the raw document, also after its 24-hour expiry, for a compare-and-update. */
+export async function githubDiagnosisSequence(orgId: string): Promise<number> {
+  return (await getStore().getDoc<StoredDiagnosis>(diagnosisPath(orgId)))?.sequence ?? 0;
 }
 
 export async function storedGithubDiagnosis(orgId: string): Promise<StoredDiagnosis | null> {

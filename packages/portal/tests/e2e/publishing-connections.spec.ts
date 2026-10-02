@@ -85,6 +85,23 @@ test('Cloudflare connection form clears credentials after success and retains th
   await expect(page.getByLabel('R2 bucket name')).toHaveValue('agency-media');
 });
 
+// GitHub results are explained inside the GitHub card from the persisted
+// diagnosis (GET /api/orgs/publishing → github_diagnosis), never by a page alert.
+const githubSetup = { available: true, app_configured: true, encryption_available: true, app_slug: 'synthetic-publisher', install_url: 'https://github.com/apps/synthetic-publisher/installations/new' };
+const githubUser = { id: '78', login: 'synthetic-owner' };
+function diagnosis(outcome: string, extra: Record<string, unknown> = {}) {
+  return { version: 1, checked_at: '2026-10-02T00:00:00.000Z', revision: 'synthetic-revision', attempted_by: 'e2e-owner', github_user: null, outcome,
+    primary_action: null, blockers: [], installations: [], app: { slug: 'synthetic-publisher', install_url: githubSetup.install_url }, ...extra };
+}
+const notOwner = { code: 'not_org_owner', who: 'github_owner', message: '@synthetic-owner is not an owner of member-org. Only an organization owner can connect it to Typeroll.',
+  action: { kind: 'link', label: 'See who owns member-org', url: 'https://github.com/orgs/member-org/people?query=role%3Aowner' } };
+const install = { code: 'no_installation', who: 'you', message: 'The synthetic-publisher GitHub App is not installed on your personal account or on an organization you own. Install it with All repositories access.',
+  action: { kind: 'install', label: 'Install the GitHub App', url: githubSetup.install_url } };
+const memberOrg = (usable: boolean, blockers: unknown[] = usable ? [] : [notOwner]) => ({ installation_id: '35', account: { login: 'member-org', type: 'Organization', id: '57' }, usable, blockers });
+const incident = () => diagnosis('action_required', { github_user: githubUser, primary_action: install.action, blockers: [install], installations: [memberOrg(false)] });
+const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
+const noHorizontalScroll = (page: import('@playwright/test').Page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
+
 for (const accountType of ['Organization', 'User'] as const) test(`GitHub starts with sign-in and connects a verified ${accountType} account without a text field`, async ({ page }, testInfo) => {
   await authenticatePersona(page, 'owner');
   let selecting = false;
@@ -92,39 +109,43 @@ for (const accountType of ['Organization', 'User'] as const) test(`GitHub starts
   let submitted: Record<string, unknown> | undefined;
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.route('**/api/orgs/publishing', route => {
-    const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
-    return route.fulfill({ json: { github: connected ? { ...empty, status: 'connected', github: { owner: 'synthetic-selected', account_type: accountType, repository_creation_state: 'ready' } } : empty,
-      cloudflare: empty, encryption_available: true,
-      github_setup: { available: true, install_url: 'https://github.com/apps/synthetic-publisher/installations/new' },
-      github_choices: selecting && !connected ? [{ owner: 'synthetic-company', installation_id: '34', account_type: 'Organization' }, { owner: 'synthetic-selected', installation_id: '35', account_type: accountType }] : [] } });
-  });
+  const selected = { installation_id: '35', account: { login: 'synthetic-selected', type: accountType, id: '79' }, usable: true, blockers: [] };
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: {
+    github: connected ? { ...empty, status: 'connected', github: { owner: 'synthetic-selected', account_type: accountType, repository_creation_state: 'ready' } } : empty,
+    cloudflare: empty, encryption_available: true, github_setup: githubSetup,
+    github_choices: selecting && !connected ? [{ owner: 'synthetic-company', installation_id: '34', account_type: 'Organization' }, { owner: 'synthetic-selected', installation_id: '35', account_type: accountType }] : [],
+    github_diagnosis: connected ? diagnosis('connected', { github_user: githubUser, installations: [selected] })
+      : selecting ? diagnosis('choose', { github_user: githubUser, installations: [{ ...selected, installation_id: '34', account: { login: 'synthetic-company', type: 'Organization', id: '56' } }, selected] })
+      : diagnosis('sign_in_required', { primary_action: { kind: 'sign_in', label: 'Connect GitHub' } }),
+  } }));
   await page.route('**/api/orgs/publishing/github', route => {
     submitted = route.request().postDataJSON();
     if (submitted?.installation_id) { connected = true; return route.fulfill({ json: { connected: true } }); }
     selecting = true;
-    return route.fulfill({ json: { authorization_url: '/app/settings/publishing?github=select' } });
+    return route.fulfill({ json: { authorization_url: '/app/settings/publishing?github=choose' } });
   });
+  await page.route('**/api/orgs/publishing/github/permissions', route => route.fulfill({ json: { state: 'up_to_date', revision: 'synthetic-revision', message: 'GitHub permissions are up to date.', approval_url: null, missing_permissions: [] } }));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/app/settings/publishing');
-  await expect(page.getByLabel('GitHub organization name')).toHaveCount(0);
+  await expect(page.getByLabel('GitHub organization name')).not.toBeVisible();
   await page.getByRole('button', { name: 'Connect GitHub', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Choose a GitHub account' })).toBeVisible();
+  await expect(page.locator('.github-connection__next')).toBeFocused();
   expect(submitted).not.toHaveProperty('owner');
   await page.screenshot({ path: testInfo.outputPath('github-account-choice-mobile.png') });
   await page.getByRole('combobox', { name: 'Choose a GitHub account' }).selectOption('35');
   await page.getByRole('button', { name: 'Connect selected account' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'GitHub connected' })).toBeVisible();
+  await expect(page.locator('[data-github-announcement]')).toContainText('GitHub connected');
+  await expect(page.getByRole('region', { name: 'GitHub account', exact: true })).toHaveAttribute('data-state', 'ready');
   expect(submitted).toMatchObject({ installation_id: '35' });
   if (accountType === 'User') await expect(page.getByText('Personal account authorization', { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('github-account-connected-mobile.png') });
   await expect(page.getByRole('combobox', { name: 'Choose a GitHub account' })).toHaveCount(0);
-  await page.goto('/app/settings/publishing?github=owner_required');
-  await expect(page.getByRole('alert').filter({ hasText: 'Sign in to your personal GitHub account' })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
   await page.getByText('Advanced: connect with existing API and R2 keys', { exact: true }).click();
   await page.getByLabel('Cloudflare Account ID').scrollIntoViewIfNeeded();
   await expect(page.locator('#cf-account-help')).toContainText('Search → Copy account ID');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(await noHorizontalScroll(page)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('cloudflare-account-help-mobile.png') });
   expect(errors).toEqual([]);
 });
@@ -397,68 +418,211 @@ test('a delayed migration poll cannot restore a disconnected account in the brow
   await expect(page.getByRole('button', { name: 'Disconnect Cloudflare' })).toHaveCount(0);
 });
 
-for (const width of [320, 390, 1440]) test(`GitHub sign-in and installation keep separate status across reload at ${width}px`, async ({ page }, testInfo) => {
+for (const width of [320, 390, 1440]) test(`GitHub explains a member-only organization inside the card and re-checks without signing in again at ${width}px`, async ({ page }, testInfo) => {
   await authenticatePersona(page, 'owner');
   await page.setViewportSize({ width, height: 900 });
-  let phase: 'sign-in' | 'install' | 'connected' | 'renew' = 'sign-in';
-  const actions: unknown[] = [];
-  await page.route('**/api/orgs/publishing', route => {
-    const empty = { status: 'disconnected', revision: 'synthetic-revision', credentials_saved: false, github: null, cloudflare: null };
-    return route.fulfill({ json: {
-      github: phase === 'connected' || phase === 'renew' ? { ...empty, status: 'connected', github: { owner: 'Example', account_type: 'User', repository_creation_state: phase === 'renew' ? 'reconnect_required' : 'ready' } } : empty,
-      cloudflare: empty, github_next_step: phase === 'install' ? 'install' : null, github_choices: [],
-      github_setup: { available: true, install_url: 'https://github.com/apps/synthetic-publisher/installations/new' },
-      cloudflare_setup: { available: false }, encryption_available: true,
-    } });
+  let phase: 'incident' | 'choose' | 'connected' = 'incident';
+  const posts: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: {
+    github: phase === 'connected' ? { ...empty, status: 'connected', github: { owner: 'member-org', account_type: 'Organization', repository_creation_state: 'ready' } } : empty,
+    cloudflare: empty, encryption_available: true, cloudflare_setup: { available: false }, github_setup: githubSetup,
+    github_choices: phase === 'choose' ? [{ owner: 'member-org', installation_id: '35', account_type: 'Organization' }] : [],
+    github_diagnosis: phase === 'incident' ? incident() : phase === 'choose' ? diagnosis('choose', { github_user: githubUser, installations: [memberOrg(true)] })
+      : diagnosis('connected', { github_user: githubUser, installations: [memberOrg(true)] }),
+  } }));
+  await page.route('**/api/orgs/publishing/github/diagnosis', route => {
+    posts.push({ path: 'diagnosis', body: route.request().postDataJSON() });
+    phase = 'choose';
+    return route.fulfill({ json: { diagnosis: diagnosis('choose', { github_user: githubUser, installations: [memberOrg(true)] }) } });
   });
-  await page.route('**/api/orgs/publishing/github', async route => {
-    const body = route.request().postDataJSON(); actions.push(body.action ?? 'start');
-    phase = body.action === 'install' ? 'connected' : 'install';
-    await route.fulfill({ json: { authorization_url: `/app/settings/publishing?github=${phase === 'connected' ? 'connected' : 'install_required'}` } });
+  await page.route('**/api/orgs/publishing/github', route => {
+    posts.push({ path: 'github', body: route.request().postDataJSON() });
+    phase = 'connected';
+    return route.fulfill({ json: { connected: true } });
   });
-  await page.route('**/api/orgs/publishing/github/permissions', route => route.fulfill({ json: { state: 'ready', revision: 'synthetic-revision', message: 'GitHub permissions are up to date.', approval_url: null, permissions: [] } }));
-  await page.goto('/app/settings/publishing');
-  const steps = page.getByRole('list', { name: 'GitHub connection steps', exact: true });
-  const signIn = steps.locator('[data-github-step="sign-in"]');
-  const installation = steps.locator('[data-github-step="installation"]');
-  await expect(steps.getByRole('listitem')).toHaveCount(2);
-  await expect(signIn).toHaveAttribute('data-state', 'error');
-  await expect(installation).toHaveAttribute('data-state', 'waiting');
-  await page.getByRole('button', { name: 'Connect GitHub', exact: true }).click();
-  const required = page.getByRole('button', { name: 'Install and connect GitHub', exact: true });
-  await expect(required).toBeVisible();
-  await expect(signIn).toHaveAttribute('data-state', 'ready');
-  await expect(installation).toHaveAttribute('data-state', 'waiting');
-  await expect(page.getByText('Setup incomplete · Install the GitHub App', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Connect GitHub', exact: true })).toHaveCount(0);
-  await page.reload();
-  await expect(required).toBeVisible();
-  await expect(signIn).toContainText('Sign-in approved');
-  await expect(installation).toContainText('Required · Install the App');
-  await expect(page.getByLabel('GitHub installation required')).toContainText('All repositories');
-  await expect(page.getByLabel('GitHub installation required')).toContainText('return here automatically');
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath(`github-installation-${width}.png`), fullPage: true });
-  await required.click();
-  await expect(page.getByText('Connected · Example', { exact: true })).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: 'GitHub connected. Setup is complete.' })).toBeVisible();
-  await expect(required).toHaveCount(0);
-  await expect(signIn).toHaveAttribute('data-state', 'ready');
-  await expect(installation).toHaveAttribute('data-state', 'ready');
-  await expect(installation).toContainText('Repository access verified for Example');
-  await expect(page.getByText('GitHub permissions are up to date.', { exact: true })).toBeVisible();
+  await page.route('**/api/orgs/publishing/github/permissions', route => route.fulfill({ json: { state: 'up_to_date', revision: 'synthetic-revision', message: 'GitHub permissions are up to date.', approval_url: null, missing_permissions: [] } }));
+  // The person returns from GitHub after approving sign-in.
+  await page.goto('/app/settings/publishing?github=action_required');
+  const card = page.getByRole('region', { name: 'GitHub account', exact: true });
+  const next = card.locator('.github-connection__next');
+  await expect(next).toBeFocused();
+  await expect(page).toHaveURL(/\/app\/settings\/publishing$/);
+  await expect(card).toHaveAttribute('data-state', 'error');
+  await expect(card.getByText('Not connected · Action required', { exact: true })).toBeVisible();
+  await expect(next.locator('[data-github-announcement]')).toContainText('GitHub is not connected yet.');
+  await expect(card.locator('[data-github-step="sign-in"]')).toContainText('Signed in as @synthetic-owner');
+  await expect(card.locator('[data-github-step="sign-in"]').getByRole('button', { name: 'Use a different GitHub account' })).toBeVisible();
+  const row = card.getByRole('list', { name: 'Accounts with the GitHub App' }).getByRole('listitem').filter({ hasText: 'member-org' }).first();
+  await expect(row).toContainText('GitHub organization owner');
+  await expect(row).toContainText('is not an owner of member-org');
+  await expect(row.getByRole('link', { name: /See who owns member-org/ })).toHaveAttribute('href', 'https://github.com/orgs/member-org/people?query=role%3Aowner');
+  await expect(next.getByRole('button', { name: 'Install the GitHub App', exact: true })).toBeVisible();
+  await expect(next.getByRole('button', { name: 'Check again', exact: true })).toBeVisible();
+  // The old page-level banner and the old two-step "Waiting for sign-in" state are gone.
   await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(card).not.toContainText('Waiting for sign-in');
+  expect(await noHorizontalScroll(page)).toBe(true);
+  await page.evaluate(() => document.fonts.ready);
+  await card.screenshot({ path: testInfo.outputPath(`github-incident-${width}.png`) });
+  // Keyboard: the primary action is reachable from the focused result.
+  await page.keyboard.press('Tab');
+  await expect(next.getByRole('button', { name: 'Install the GitHub App', exact: true })).toBeFocused();
+  await next.getByRole('button', { name: 'Check again', exact: true }).click();
+  await expect(next.locator('[data-github-announcement]')).toContainText('Checked again.');
+  await expect(card.getByText('Setup incomplete · Choose an account', { exact: true })).toBeVisible();
+  await expect(card.getByRole('combobox', { name: 'Choose a GitHub account' })).toHaveValue('35');
+  await card.getByRole('button', { name: 'Connect selected account' }).click();
+  await expect(card.getByText('Connected · member-org', { exact: true }).first()).toBeVisible();
+  await expect(card).toHaveAttribute('data-state', 'ready');
+  await expect(card.locator('[data-github-step="connected"]')).toHaveAttribute('data-state', 'ready');
+  expect(posts).toEqual([{ path: 'diagnosis', body: { action: 'recheck' } }, { path: 'github', body: { installation_id: '35' } }]);
+  expect(await noHorizontalScroll(page)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+const blockerCases = [
+  { name: 'SSO', diagnosis: diagnosis('action_required', { github_user: githubUser, primary_action: { kind: 'link', label: 'Authorize single sign-on for owned-org', url: 'https://github.com/orgs/owned-org/sso?authorization_request=synthetic' },
+    installations: [{ installation_id: '34', account: { login: 'owned-org', type: 'Organization', id: '56' }, usable: false, blockers: [{ code: 'sso_authorization_required', who: 'you', message: 'owned-org requires SAML single sign-on. Authorize your GitHub session for owned-org, then select Check again.', action: { kind: 'link', label: 'Authorize single sign-on for owned-org', url: 'https://github.com/orgs/owned-org/sso?authorization_request=synthetic' } }] }] }),
+    status: 'Not connected · Action required', text: 'requires SAML single sign-on', link: ['Authorize single sign-on for owned-org', 'https://github.com/orgs/owned-org/sso?authorization_request=synthetic'] },
+  { name: 'repository selection', diagnosis: diagnosis('action_required', { github_user: githubUser, primary_action: { kind: 'link', label: 'Allow all repositories in owned-org', url: 'https://github.com/organizations/owned-org/settings/installations/34' },
+    installations: [{ installation_id: '34', account: { login: 'owned-org', type: 'Organization', id: '56' }, usable: false, blockers: [{ code: 'repository_selection_limited', who: 'you', message: 'The App can only access selected repositories in owned-org.', action: { kind: 'link', label: 'Allow all repositories in owned-org', url: 'https://github.com/organizations/owned-org/settings/installations/34' } }] }] }),
+    status: 'Not connected · Action required', text: 'only access selected repositories', link: ['Allow all repositories in owned-org', 'https://github.com/organizations/owned-org/settings/installations/34'] },
+  { name: 'owner approval', diagnosis: diagnosis('waiting_on_owner', { github_user: githubUser, primary_action: { kind: 'retry', label: 'Check again' },
+    blockers: [{ code: 'install_request_pending', who: 'github_owner', message: 'Your request to install the synthetic-publisher GitHub App was sent to the organization’s owners.', action: { kind: 'retry', label: 'Check again' } }] }),
+    status: 'Not connected · Waiting for an owner', text: 'was sent to the organization’s owners', link: null },
+  { name: 'rate limit', diagnosis: diagnosis('retryable_error', { github_user: githubUser, primary_action: { kind: 'sign_in', label: 'Try again' },
+    blockers: [{ code: 'github_rate_limited', who: 'you', message: 'GitHub is limiting requests right now. Nothing was changed. Try again in 42 seconds.', retry_after: 42, action: { kind: 'sign_in', label: 'Try again' } }] }),
+    status: 'Not connected · Try again', text: 'Try again in 42 seconds', link: null },
+  { name: 'missing encryption', setup: { ...githubSetup, available: false, encryption_available: false, install_url: null },
+    diagnosis: diagnosis('unavailable', { blockers: [{ code: 'encryption_unavailable', who: 'publisher', message: 'The publisher has not configured encrypted credential storage, so GitHub cannot be connected yet (App: synthetic-publisher).', action: { kind: 'contact_publisher', label: 'What the publisher must change', url: 'https://typeroll.com/docs/guides/github-troubleshooting/#encryption-unavailable' } }],
+      primary_action: { kind: 'contact_publisher', label: 'What the publisher must change', url: 'https://typeroll.com/docs/guides/github-troubleshooting/#encryption-unavailable' } }),
+    status: 'Unavailable · Publisher setup required', text: 'encrypted credential storage', link: ['What the publisher must change', 'https://typeroll.com/docs/guides/github-troubleshooting/#encryption-unavailable'] },
+];
+for (const item of blockerCases) test(`GitHub card names who fixes ${item.name} and links the fix`, async ({ page }) => {
+  await authenticatePersona(page, 'owner');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: { github: empty, cloudflare: empty, encryption_available: true,
+    github_setup: item.setup ?? githubSetup, github_choices: [], github_diagnosis: item.diagnosis } }));
+  await page.goto(`/app/settings/publishing?github=${item.diagnosis.outcome}`);
+  const card = page.getByRole('region', { name: 'GitHub account', exact: true });
+  await expect(card.getByText(item.status, { exact: true })).toBeVisible();
+  await expect(card.locator('.github-connection__next')).toBeFocused();
+  await expect(card).toContainText(item.text);
+  if (item.link) await expect(card.getByRole('link', { name: new RegExp(item.link[0]) }).first()).toHaveAttribute('href', item.link[1]);
+  if (item.name === 'missing encryption') {
+    await expect(card.locator('[data-github-step="publisher"]')).toHaveAttribute('data-state', 'error');
+    await expect(card.getByRole('button', { name: 'Check again' })).toHaveCount(0);
+  }
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(await noHorizontalScroll(page)).toBe(true);
+});
+
+test('GitHub card explains an expired Typeroll session after returning from sign-in', async ({ page }) => {
+  await authenticatePersona(page, 'owner');
+  let started = false;
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: { github: empty, cloudflare: empty, encryption_available: true,
+    github_setup: githubSetup, github_choices: [], github_diagnosis: diagnosis('sign_in_required', { primary_action: { kind: 'sign_in', label: 'Connect GitHub' } }) } }));
+  await page.route('**/api/orgs/publishing/github', route => { started = true; return route.fulfill({ json: { authorization_url: '/app/settings/publishing' } }); });
+  await page.goto('/app/settings/publishing?github=session_expired');
+  const card = page.getByRole('region', { name: 'GitHub account', exact: true });
+  await expect(card).toContainText('Your Typeroll session ended while you were on GitHub');
+  await card.getByRole('button', { name: 'Sign in to GitHub again' }).click();
+  await expect.poll(() => started).toBe(true);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('every GitHub state keeps a working next step, also when Check again needs a new sign-in', async ({ page }) => {
+  await authenticatePersona(page, 'owner');
+  let phase: 'waiting' | 'expired_choice' = 'waiting';
+  let started = 0;
+  const waiting = diagnosis('waiting_on_owner', { primary_action: { kind: 'retry', label: 'Check again' },
+    blockers: [{ code: 'install_request_pending', who: 'github_owner', message: 'Your request to install the synthetic-publisher GitHub App was sent to the organization’s owners.', action: { kind: 'retry', label: 'Check again' } }] });
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: { github: empty, cloudflare: empty, encryption_available: true, github_setup: githubSetup, github_choices: [],
+    github_diagnosis: phase === 'waiting' ? waiting : diagnosis('choose', { github_user: githubUser, installations: [memberOrg(true)] }) } }));
+  // The re-check could not use a proven identity; its answer is shown even though the stored diagnosis did not change.
+  await page.route('**/api/orgs/publishing/github/diagnosis', route => route.fulfill({ json: { diagnosis: { ...waiting, checked_at: '2026-10-02T00:01:00.000Z',
+    primary_action: { kind: 'sign_in', label: 'Sign in to GitHub to check again' } } } }));
+  // The second sign-in returns without a sign-in that this browser started (state_expired).
+  await page.route('**/api/orgs/publishing/github', route => { started++;
+    return route.fulfill({ json: { authorization_url: started === 2 ? '/app/settings/publishing?github=state_expired' : '/app/settings/publishing' } }); });
+  await page.goto('/app/settings/publishing');
+  const card = page.getByRole('region', { name: 'GitHub account', exact: true });
+  const next = card.locator('.github-connection__next');
+  await expect(card.getByText('Not connected · Waiting for an owner', { exact: true })).toBeVisible();
+  await expect(next).toContainText('was sent to the organization’s owners');
+  // Signing in is available without a previous sign-in on record.
+  await expect(card.locator('[data-github-step="sign-in"]').getByRole('button', { name: 'Sign in to GitHub', exact: true })).toBeVisible();
+  await next.getByRole('button', { name: 'Check again', exact: true }).click();
+  await next.getByRole('button', { name: 'Sign in to GitHub to check again', exact: true }).click();
+  await expect.poll(() => started).toBe(1);
+  // A choice that is no longer offered still has a way forward.
+  phase = 'expired_choice';
   await page.reload();
-  await expect(signIn).toHaveAttribute('data-state', 'ready');
-  await expect(installation).toHaveAttribute('data-state', 'ready');
+  await expect(card.getByRole('combobox', { name: 'Choose a GitHub account' })).toHaveCount(0);
+  await next.getByRole('button', { name: 'Sign in to GitHub again', exact: true }).click();
+  await expect.poll(() => started).toBe(2);
+  // A return that matched no sign-in from this browser changed nothing and says so.
+  await expect(next).toContainText('was not started in this browser or has expired, so nothing was changed');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('connecting a different GitHub account after a disconnect needs a confirmation naming the previous account', async ({ page }) => {
+  await authenticatePersona(page, 'owner');
+  let submitted: Record<string, unknown> | undefined;
+  const locked = { code: 'locked_to_account', who: 'you', previous_account: { login: 'owned-org', id: '56', type: 'Organization' },
+    message: 'This organization previously published with owned-org. You can connect second-org instead after confirming. Existing repositories stay in owned-org and are not moved.',
+    action: { kind: 'confirm_account_change', label: 'Use second-org instead of owned-org', installation_id: '35' } };
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: { github: empty, cloudflare: empty, encryption_available: true, github_setup: githubSetup,
+    github_choices: [{ owner: 'second-org', installation_id: '35', account_type: 'Organization', account_change: { from_account_id: '56', from_owner: 'owned-org' } }],
+    github_diagnosis: diagnosis('action_required', { github_user: githubUser, primary_action: locked.action,
+      installations: [{ installation_id: '35', account: { login: 'second-org', type: 'Organization', id: '57' }, usable: false, blockers: [locked] }] }) } }));
+  await page.route('**/api/orgs/publishing/github', route => { submitted = route.request().postDataJSON(); return route.fulfill({ json: { connected: true } }); });
+  await page.goto('/app/settings/publishing');
+  const card = page.getByRole('region', { name: 'GitHub account', exact: true });
+  await card.locator('.github-connection__next').getByRole('button', { name: 'Use second-org instead of owned-org' }).click();
+  const confirm = card.getByRole('group', { name: 'Connect second-org instead of owned-org?' });
+  await expect(confirm).toContainText('are not moved');
+  expect(submitted).toBeUndefined();
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  await expect(confirm).toHaveCount(0);
+  await card.locator('.github-connection__next').getByRole('button', { name: 'Use second-org instead of owned-org' }).click();
+  await card.getByRole('group', { name: 'Connect second-org instead of owned-org?' }).getByRole('button', { name: 'Connect second-org' }).click();
+  await expect.poll(() => submitted).toEqual({ installation_id: '35', confirm_account_change: '56' });
+});
+
+for (const width of [320, 1440]) test(`GitHub connected state and personal reauthorization stay in the card across reload at ${width}px`, async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  await page.setViewportSize({ width, height: 900 });
+  let phase: 'connected' | 'renew' = 'connected';
+  const actions: unknown[] = [];
+  const example = { installation_id: '34', account: { login: 'Example', type: 'User', id: '78' }, usable: true, blockers: [] };
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: {
+    github: { ...empty, status: 'connected', github: { owner: 'Example', account_type: 'User', repository_creation_state: phase === 'renew' ? 'reconnect_required' : 'ready' } },
+    cloudflare: empty, github_choices: [], github_setup: githubSetup, cloudflare_setup: { available: false }, encryption_available: true,
+    github_diagnosis: diagnosis('connected', { installations: [example] }),
+  } }));
+  await page.route('**/api/orgs/publishing/github', async route => { actions.push(route.request().postDataJSON()); await route.fulfill({ json: { authorization_url: '/app/settings/publishing?github=connected' } }); });
+  await page.route('**/api/orgs/publishing/github/permissions', route => route.fulfill({ json: { state: 'up_to_date', revision: 'synthetic-revision', message: 'GitHub permissions are up to date.', approval_url: null, missing_permissions: [] } }));
+  await page.goto('/app/settings/publishing');
+  const card = page.getByRole('region', { name: 'GitHub account', exact: true });
+  const steps = card.getByRole('list', { name: 'GitHub connection steps', exact: true });
+  await expect(steps.locator(':scope > li')).toHaveCount(5);
+  for (const step of ['publisher', 'sign-in', 'installation', 'access', 'connected']) await expect(steps.locator(`[data-github-step="${step}"]`)).toHaveAttribute('data-state', 'ready');
+  await expect(card.getByText('Connected · Example', { exact: true }).first()).toBeVisible();
+  await expect(card.getByText('GitHub permissions are up to date.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(await noHorizontalScroll(page)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath(`github-connected-${width}.png`), fullPage: true });
   phase = 'renew';
   await page.reload();
+  const signIn = steps.locator('[data-github-step="sign-in"]');
   await expect(signIn).toHaveAttribute('data-state', 'error');
   await expect(signIn).toContainText('Renew authorization');
-  await expect(signIn.getByRole('button', { name: 'Reconnect GitHub', exact: true })).toBeVisible();
-  await expect(installation).toHaveAttribute('data-state', 'ready');
-  expect(actions).toEqual(['start', 'install']);
+  await expect(card).toHaveAttribute('data-state', 'waiting');
+  await signIn.getByRole('button', { name: 'Reconnect GitHub', exact: true }).click();
+  await expect.poll(() => actions).toEqual([{}]);
 });
 
 for (const width of [320, 1440]) test(`build setup explains missing permissions and clears failed progress at ${width}px`, async ({ page }, testInfo) => {
