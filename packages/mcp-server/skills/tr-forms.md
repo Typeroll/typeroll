@@ -14,10 +14,11 @@ email and webhook actions configured in the portal or through MCP/API.
 - Block-mode page: add `{ type: 'core/form', data: { form_id } }`.
 - HTML-mode page: add `<x-form id="form-id" />` to `html_content`.
 
-Both are authoring references to the same renderer. Preview and static
-generation expand them to the complete form HTML, signed token, honeypot,
-initial step state, styles, and shared runtime. Never hand-write the `<form>`
-shell or paste a token into page HTML.
+Both are authoring references to the same renderer. Static generation expands
+them to the complete form HTML, signed token, honeypot, initial step state,
+styles, and shared runtime. Previews expand them the same way but in preview
+mode (no token, a "Preview – nothing is sent" notice). Never hand-write the
+`<form>` shell or paste a token into page HTML.
 
 ## Create a simple form
 
@@ -129,9 +130,14 @@ removes one.
 ## Verify
 
 1. `read_form form_id="newsletter"` and confirm the steps/fields.
-2. Preview the page and confirm the authoring reference has expanded to a form
-   with `data-tr-form-el`, a signed token, and the platform runtime.
-3. Submit a test entry and confirm it appears in Forms → Submissions.
+2. Preview the page (`get_preview_link` or `get_page_preview`) and confirm the
+   authoring reference has expanded to a form with `data-tr-form-el` and the
+   platform runtime. Click through every step: previews validate, advance steps
+   and show the success message (or name the redirect target) like the
+   published form, marked "Preview – nothing is sent". They store nothing and
+   run no actions, so keep the runtime in any review copy.
+3. Submit a real test entry on a deployed page and confirm it appears in
+   Forms → Submissions.
 4. If a webhook is configured, confirm its delivery status
    (`read_form_submission`) and the receiving system's idempotency key before
    deploying.

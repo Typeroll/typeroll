@@ -15,6 +15,9 @@
 //      4xx would let bot frameworks discover the trap.)
 //   4. Required-field validation against the saved form schema.
 //
+// Forms in portal previews post nothing (the runtime simulates them); a
+// request carrying their `_preview` marker is refused before any check.
+//
 // CORS: requests come from arbitrary customer domains. The HMAC token is
 // what authorizes them — the Origin header is not used for authorization
 // because customer sites legitimately live on many origins.
@@ -30,7 +33,7 @@
 
 import type { APIRoute } from 'astro';
 import { getStore } from '../../../lib/datastore';
-import { paths, safeFormRedirectUrl } from '@typeroll/shared';
+import { paths, safeFormRedirectUrl, FORM_PREVIEW_FIELD } from '@typeroll/shared';
 import type { Form } from '@typeroll/shared';
 import {
   verifyFormToken,
@@ -129,6 +132,17 @@ export const POST: APIRoute = async ({ request }) => {
     } | null;
     token = body?.token;
     data = body?.data;
+  }
+  // Forms rendered in a portal preview carry the preview marker and never a
+  // token; their runtime simulates submission and sends nothing. Refuse the
+  // marker outright, whatever else the request holds, so a preview (or a
+  // no-JS post from one) can never store a submission or run an action.
+  if (data && Object.hasOwn(data, FORM_PREVIEW_FIELD)) {
+    const message = 'This is a preview – nothing was sent.';
+    if (data._protocol === '1') {
+      return jsonCors({ v: 1, ok: false, preview: true, errors: [{ field: null, code: 'preview', message }] }, 403);
+    }
+    return respond(wantsHtml, { error: message }, 403, backUrl);
   }
   if (!token || !data) {
     return respond(wantsHtml, { error: 'token and data are required' }, 400, backUrl);

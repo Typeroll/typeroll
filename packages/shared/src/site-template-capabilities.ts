@@ -198,6 +198,15 @@ export interface SiteTemplateCapabilities {
    * preview/build time through the same renderer as `core/form`.
    */
   forms_html_directive: boolean;
+  /**
+   * 0.51.0+: every portal preview (editor canvas, preview links, page and
+   * revision previews, get_page_preview) renders forms in preview mode. The
+   * forms runtime validates, advances steps and shows the success message or
+   * the redirect target in the browser, marked "Preview – nothing is sent";
+   * nothing is stored and no action runs. Extension `forms.submit()` resolves
+   * `{ ok: true, done: true, preview: true }` there without a request.
+   */
+  forms_preview_mode: boolean;
 
   /**
    * 0.32.0+: `Page.alternates` renders as `<link rel="alternate" hreflang>`
@@ -259,11 +268,12 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.50.0',
+  template_capabilities_version: '0.51.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
   forms_html_directive: true,
+  forms_preview_mode: true,
   supports_hreflang_alternates: true,
   supports_migration_url_api: true,
   supports_migration_launch_report: true,

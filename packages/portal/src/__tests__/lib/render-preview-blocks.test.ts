@@ -241,6 +241,38 @@ describe('renderPreview — blocks mode', () => {
     expect(html).not.toContain('<x-form');
   });
 
+  it('renders every form in preview mode: no token, the preview marker and notice', async () => {
+    await seedSite();
+    process.env.FORMS_HMAC_SECRET = 'forms-secret-forms-secret-forms-secret-1234';
+    process.env.PORTAL_PUBLIC_URL = 'https://portal.example.com';
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.forms(ORG, SITE)}/lead`, {
+      name: 'Lead',
+      actions: [],
+      created_at: new Date().toISOString(),
+      steps: [
+        { id: 'one', blocks: [{ id: 'email', type: 'form/email', data: { name: 'email', label: 'Email', required: true } }] },
+        { id: 'two', render: 'dynamic', blocks: [{ id: 'company', type: 'form/text', data: { name: 'company', label: 'Company', required: true } }] },
+      ],
+    } satisfies Omit<Form, 'id'>);
+    await seedBlockPage([{ id: 'f', type: 'core/form', data: { form_id: 'lead' } }]);
+    const { signFormToken } = await import('../../lib/forms-signing');
+
+    const { renderPreview } = await import('../../lib/render-preview');
+    for (const opts of [{}, { annotate: true, editable: true }, { allowScripts: true, showBanner: true }]) {
+      const html = (await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID, opts))!;
+      expect(html).toContain('<form data-tr-form-el method="POST" action="https://portal.example.com/api/forms/submit"');
+      expect(html).toContain('data-tr-preview="');
+      expect(html).toContain('Preview – nothing is sent');
+      expect(html).toContain('name="_preview" value="1"');
+      expect(html).toMatch(/<input type="hidden" name="_token"( value="")? \/>/);
+      expect(html).not.toContain(signFormToken(ORG, SITE, 'lead'));
+      // The dynamic step is prerendered so a reviewer can reach it.
+      expect(html).toContain('name="company"');
+      expect(html).toContain('form[data-tr-form-el]');
+    }
+  });
+
   it('expands repeater aliases (gallery → image grid)', async () => {
     await seedSite();
     await seedBlockPage([

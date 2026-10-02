@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Forms work in every preview without setup: the editor's preview, Preview site, preview links, page and revision previews and `get_page_preview`. The forms runtime runs in preview mode: each step is validated with the server's rules and messages, steps advance (dynamic steps included) and the last step shows the success message; a redirect is named ("Preview – would redirect to /tack/") instead of leaving the preview. A "Preview – nothing is sent" notice ("Förhandsvisning – inget skickas" on Swedish sites) marks the form. Nothing is stored and no email, webhook or app action runs. Previews used to post real submissions.
+  - Preview forms carry no submit token and post to the core endpoint, which refuses their `_preview` marker (403, also for no-JS posts), so a preview can never create a submission. Only the portal's preview renderer emits preview mode; published pages never contain it.
+  - Extension components in previews: `forms.submit()` resolves `{ v: 1, ok: true, done: true, preview: true }` without a request instead of throwing "Extension form submissions are not configured".
+  - New template capability `forms_preview_mode` (template capabilities 0.51.0). The `get_page_preview` and `get_preview_link` descriptions and the tr-forms skill describe preview forms.
 - Fixed: a multi-step form with a required field after step 1 could not be completed. The browser's own validation also checked the hidden later steps, so sending step 1 failed silently ("An invalid form control is not focusable"). The forms runtime now disables the fields of hidden steps, so native validation and the posted data cover the visible step only, and enables them when their step shows. The server still validates each step's fields. A form with a dynamic step no longer posts every later step twice.
 
 ## Core 0.2.64 / MCP 0.45.48

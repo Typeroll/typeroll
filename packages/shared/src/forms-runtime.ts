@@ -13,6 +13,8 @@
 //   - disables the controls of hidden steps, so native validation and the
 //     posted FormData cover the visible step only
 //   - slider value readout; proof-of-work computation (see below)
+//   - preview mode (data-tr-preview): simulates the submit endpoint in the
+//     browser and sends nothing (see "Preview mode" below)
 //
 // Anti-abuse (forms.typeroll.com is very public):
 //   - Proof-of-work: the form carries data-pow-bits + the token; the
@@ -119,6 +121,47 @@ async function remoteInit(form,param){
     if(param){sessSet(form,"");topError(form,expiredMsg(form))}
   }catch(e){topError(form,form.getAttribute("data-msg-fail")||"Something went wrong.")}
 }
+// ── Preview mode ────────────────────────────────────────────────────────
+// Portal previews render the form with data-tr-preview: the step graph and
+// the submit endpoint's field rules and messages (formPreviewSteps). The
+// runtime then plays the endpoint's part in the browser: it validates the
+// visible step like the server, advances steps and completes with the
+// success message, or names the redirect target instead of leaving the
+// preview. It never sends a request. Only the portal's preview renderer
+// emits the attribute; the published site's markup never carries it.
+var EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+function previewSteps(form){try{var steps=JSON.parse(form.getAttribute("data-tr-preview")||"[]");return Array.isArray(steps)?steps:[]}catch(e){return []}}
+function previewValue(fd,f){var all=fd.getAll(f.name).map(String);if(f.list)return all.filter(function(v){return v!==""});if(!all.length)return undefined;var v=all[all.length-1];if(f.type==="boolean")return v==="true"?true:v==="false"?false:v===""||v==="null"?null:v;return v}
+function previewErrors(step,fd){var errs=[];((step&&step.fields)||[]).forEach(function(f){
+  var raw=previewValue(fd,f),str=raw==null?"":String(raw).trim(),code=null;
+  if(f.required&&str==="")code="required";
+  else if(str!==""){
+    if(f.type==="boolean"&&raw!==true&&raw!==false&&raw!=="null")code="invalid_boolean";
+    else if(f.type==="email"&&!EMAIL_RE.test(str))code="invalid_email";
+    else{
+      if(f.pattern){try{if(!new RegExp("^(?:"+f.pattern+")$").test(str))code="pattern"}catch(e){}}
+      if(!code&&f.type==="number"){var n=Number(str);if(f.min!=null&&n<f.min)code="min";else if(f.max!=null&&n>f.max)code="max"}
+      else if(!code){if(f.min!=null&&str.length<f.min)code="min";else if(f.max!=null&&str.length>f.max)code="max"}
+    }
+  }
+  if(code)errs.push({field:f.name,code:code,message:(f.messages&&f.messages[code])||code});
+});return errs}
+function previewDone(form){
+  var region=wrapOf(form)||form,notice=$(".form-preview-notice",form),redirect=form.getAttribute("data-redirect")||"";
+  var done=document.createElement("div");done.className="form-done";done.setAttribute("role","status");
+  if(redirect)done.textContent=(form.getAttribute("data-msg-redirect")||"Preview – would redirect to")+" "+redirect;
+  else done.innerHTML=form.getAttribute("data-msg-done")||"Thanks!";
+  region.replaceChildren();if(notice)region.append(notice);region.append(done);
+}
+function previewSubmit(form){
+  var visible=$all("[data-form-step]",form).filter(function(el){return !el.hidden})[0];
+  var id=visible?visible.getAttribute("data-form-step"):"";
+  var step=previewSteps(form).find(function(s){return s.id===id});
+  var errs=previewErrors(step,new FormData(form));
+  if(errs.length){errs.forEach(function(e){fieldError(form,e.field,e.message)});var first=$("[data-invalid] .form-input, [data-invalid] input",form);if(first)first.focus();return}
+  if(step&&step.next&&showStep(form,step.next))return;
+  previewDone(form);
+}
 function init(form){
   $all("[data-required]",form).forEach(function(el){el.required=el.getAttribute("data-required")==="true"});
   $all('[data-block="form_slider"]',form).forEach(function(w){var inp=$("input[type=range]",w),out=$(".form-slider-value",w),unit=w.getAttribute("data-unit")||"";if(!inp||!out||w.__trReady)return;w.__trReady=true;var upd=function(){out.textContent=inp.value+(unit?" "+unit:"")};inp.addEventListener("input",upd);upd()});
@@ -130,15 +173,16 @@ function init(form){
   if(form.__trBound)return;form.__trBound=true;
   var wrap=wrapOf(form);
   if(wrap){try{var context=JSON.parse(wrap.getAttribute("data-tr-context-params")||"[]"),action=new URL(form.action),source=new URL(location.href);context.forEach(function(key){if(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(key)&&["issuer","org_id","site_id","installation_id","session","token","grant"].indexOf(key)===-1&&key!==wrap.getAttribute("data-tr-session-param")&&source.searchParams.has(key))action.searchParams.set(key,source.searchParams.get(key))});form.action=action.href}catch(e){}}
+  var preview=form.hasAttribute("data-tr-preview");
   var sessParam=wrap?wrap.getAttribute("data-tr-session-param"):null;
-  var remote=!!sessParam||!!(wrap&&wrap.hasAttribute("data-tr-hydrate"));
+  var remote=!preview&&(!!sessParam||!!(wrap&&wrap.hasAttribute("data-tr-hydrate")));
   if(remote&&!form.__remoteReady){form.__remoteReady=true;remoteInit(form,sessParam)}
-  var bits=parseInt(form.getAttribute("data-pow-bits")||"0",10);
+  var bits=preview?0:parseInt(form.getAttribute("data-pow-bits")||"0",10);
   var token=(form.elements._token||{}).value||"";
   var powP=null,powStart=function(){if(!powP&&bits>0&&window.crypto&&crypto.subtle){var bucket=Math.floor(Date.now()/6e5);powP=computePow(token+"."+bucket,bits).then(function(n){return bucket+"."+n})}};
   form.addEventListener("focusin",powStart,{once:true});
   form.addEventListener("submit",async function(ev){
-    ev.preventDefault();clearErrors(form);if(remote&&!form.__hydrated){topError(form,"Wait for the form to load before submitting. If loading failed, reload this page.");return}powStart();
+    ev.preventDefault();clearErrors(form);if(preview){previewSubmit(form);return}if(remote&&!form.__hydrated){topError(form,"Wait for the form to load before submitting. If loading failed, reload this page.");return}powStart();
     var btn=$('[type="submit"]',form);if(btn)btn.disabled=true;
     try{
       var fd=new FormData(form);fd.set("_protocol","1");

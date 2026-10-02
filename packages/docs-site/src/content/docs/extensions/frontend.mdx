@@ -54,9 +54,11 @@ their own Forms endpoint. No Function or proxy is installed in the customer's
 static hosting project. Submissions, notifications, and configured webhooks
 behave exactly like submissions from a standard `core/form` block.
 
-The editor preview exposes binding names but intentionally rejects real
-submissions. Test writes on a deployed test page, where they appear in the
-normal Forms submission inbox.
+In previews (`context.preview` is `true`) `forms.submit()` sends nothing and
+resolves `{ v: 1, ok: true, done: true, preview: true }`, so the whole flow can
+be reviewed without creating submissions; unknown bindings and non-object data
+are still rejected. Test real writes on a deployed test page, where they appear
+in the normal Forms submission inbox.
 
 ## Navigate without changing the page path
 

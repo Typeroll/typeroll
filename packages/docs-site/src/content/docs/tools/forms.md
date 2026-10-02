@@ -144,6 +144,29 @@ the step that is showing, so a required field in a later step never blocks an
 earlier one; it is checked when its step appears. Each step posts only its own
 fields, and the server validates them again.
 
+## Forms in previews
+
+Every preview renders forms in preview mode: the editor's preview, **Preview
+site**, preview links (`get_preview_link`), page and revision previews and
+`get_page_preview`. No page or form setting is needed. A small "Preview –
+nothing is sent" notice (Swedish sites: "Förhandsvisning – inget skickas") sits
+on the form, and you can click through it as a visitor would:
+
+- each step is validated with the same rules and messages as the server, and
+  the next step follows the form's step order and `next` links (dynamic steps
+  are shown too);
+- the last step shows the success message. With `success_redirect_url` the
+  preview names the target ("Preview – would redirect to /tack/") instead of
+  leaving the preview;
+- nothing is sent: no submission or partial answer is stored, no email,
+  webhook or app action runs, and nothing counts towards the submissions inbox.
+
+Preview forms carry no submit token, and the submit endpoint refuses anything
+posted from one, so even a preview opened without JavaScript cannot create a
+submission. Published pages never contain the preview mode, whatever the URL.
+Keep the forms runtime when you build a review copy from `get_page_preview`;
+there is nothing to strip or stub. Test real submissions on a deployed page.
+
 ## Protection
 
 Every submission passes three checks before it's accepted:

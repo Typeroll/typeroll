@@ -117,6 +117,10 @@ with its block id and type, and `include_working_copy: true` to include unsaved
 drafts. Over REST: `GET /api/v1/sites/{siteId}/pages/{pageId}/preview` with
 `?annotate=true` and `?working_copy=true`.
 
+Forms in both kinds of preview run in preview mode: they validate and step
+through like the published form and show its success message, but store and
+send nothing. See [Forms in previews](../forms/#forms-in-previews).
+
 ## How customer publishing works
 
 1. Typeroll freezes the selected Site Version and its saved content.

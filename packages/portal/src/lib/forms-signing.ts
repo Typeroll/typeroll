@@ -54,13 +54,18 @@ export interface FormEmbedInfo {
   submit_url: string;
 }
 
-export function formEmbedInfo(orgId: string, siteId: string, formId: string): FormEmbedInfo {
+/** Absolute URL of the core submit endpoint. */
+export function formSubmitUrl(): string {
   // The dedicated forms service (tr-forms / forms.typeroll.com) wins when
   // configured; the portal serves the same route as fallback (same image).
   const apiBase = (process.env.FORMS_PUBLIC_URL ?? process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '');
+  return `${apiBase}/api/forms/submit`;
+}
+
+export function formEmbedInfo(orgId: string, siteId: string, formId: string): FormEmbedInfo {
   return {
     submit_token: isFormsSigningConfigured() ? signFormToken(orgId, siteId, formId) : null,
-    submit_url: `${apiBase}/api/forms/submit`,
+    submit_url: formSubmitUrl(),
   };
 }
 
