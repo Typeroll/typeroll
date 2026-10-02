@@ -1,0 +1,225 @@
+---
+title: GitHub connection troubleshooting
+description: Every reason Connect GitHub can stop, who can fix it and how, for the Publishing page, the API and MCP.
+---
+
+When **Connect GitHub** does not finish, the **GitHub account** card on the
+**Publishing** page explains why. It shows the GitHub account you signed in
+with, every account that has the Typeroll GitHub App, and for each account the
+reason it can or cannot be used. Each reason names who can fix it and has one
+button for the fix. This page lists every reason by its code. The same codes
+are returned by the [API and MCP](#api-and-mcp).
+
+This applies to Typeroll Cloud and self-hosted installations with customer
+publishing enabled. In Typeroll Cloud, the _publisher_ is Typeroll. On a
+self-hosted installation, the publisher is the operator who configured its
+GitHub App. See [Publishing with your own accounts](../customer-publishing/)
+for the normal setup. The detailed card is available in Core releases after
+0.2.60.
+
+## Who can fix it
+
+| Label in the card         | Who acts                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------ |
+| You                       | The Typeroll organization owner or admin connecting GitHub                           |
+| GitHub organization owner | An owner of the GitHub organization. Members and outside collaborators cannot        |
+| Typeroll publisher        | The operator of this Typeroll installation (Typeroll in Cloud)                       |
+| Typeroll administrator    | Whoever manages the other Typeroll Organization that already uses the GitHub account |
+
+After fixing something on GitHub, return to Typeroll. The card checks again
+when you return, or select **Check again**. Checking again uses the publisher
+App's own access and the GitHub account you signed in with during the last hour;
+you do not need to sign in again. After an hour the card asks you to sign in
+again. A personal account still needs a sign-in to connect. Typeroll keeps the
+latest result for 24 hours. Only you see the result of your own attempt; other
+owners and admins see the connection once it is saved.
+
+## A common case
+
+You are an owner of one GitHub organization and a member of another. The App
+was installed only on the organization where you are a member. After signing
+in, the card lists that organization with **GitHub organization owner** and
+[`not_org_owner`](#not_org_owner). Select **Install the GitHub App** and choose
+the organization you own, or ask an owner of the other organization to select
+**Connect GitHub** in Typeroll.
+
+## Sign-in
+
+### `oauth_cancelled`
+
+**You.** GitHub sign-in was cancelled, so nothing changed. Select **Sign in to
+GitHub** and choose **Authorize**.
+
+### `state_expired`
+
+**You.** The sign-in was older than 10 minutes, was already used, or was
+started in another tab or Typeroll Organization. Start again from the
+Publishing page of the Organization you want to connect, and finish in the same
+tab. A return that does not match a sign-in started in your browser changes
+nothing. An account choice also expires after 10 minutes; select **Check
+again** or sign in again to choose.
+
+### `wrong_browser`
+
+**You.** GitHub returned to a different browser, browser profile or address than
+the one that started sign-in. Start again in one browser, using the portal's
+usual address.
+
+### `session_expired`
+
+**You.** Your Typeroll session ended while you were on GitHub. Typeroll asks
+you to sign in and then returns you to the GitHub card. Select **Sign in to
+GitHub again**.
+
+## Accounts and ownership
+
+### `not_org_owner`
+
+**GitHub organization owner.** The GitHub account you signed in with is not an
+owner of this organization. Only an owner can let Typeroll create and manage
+repositories there. Ask an owner to connect GitHub (the card links to the
+organization's owners), or connect your personal account or an organization you
+own instead. For an organization you enter by name, Typeroll does not say
+whether the App is installed there unless you are an owner, and shows that
+organization's installation settings only to its owners.
+
+### `other_users_personal_account`
+
+**You.** The App is installed on another person's personal account. Only that
+person can connect it. Select **Use a different GitHub account** to sign in as
+them, or use your own account or an organization you own.
+
+### `membership_unverifiable`
+
+**GitHub organization owner.** GitHub did not confirm whether you own the
+organization, because the App installation there has not been granted
+**Members: Read**. An owner accepts the permission request in the installation
+settings; then select **Check again**.
+
+### `sso_authorization_required`
+
+**You.** The organization uses SAML single sign-on, and your GitHub session is
+not authorized for it. Select **Authorize single sign-on for …**, sign in with
+your identity provider, then select **Check again**. Typeroll only links to
+`https://github.com/` pages. Other organizations are still checked.
+
+### `locked_to_account`
+
+**You.** This Typeroll Organization previously published with another GitHub
+account. While that account is connected, disconnect it first. After a
+disconnect, select **Use … instead of …** and confirm. New repositories are
+created in the new account. Existing repositories stay in the previous account
+and are not moved; sites that already publish from it may need to be set up
+again.
+
+### `claimed_by_other_organization`
+
+**Typeroll administrator.** The GitHub account is already connected to another
+Typeroll Organization. A GitHub account can publish for one Typeroll
+Organization. Disconnect it there, or ask the administrator of your Typeroll
+installation to transfer it.
+
+## Installation and permissions
+
+### `no_installation`
+
+**You.** The publisher's GitHub App is not installed on your personal account or
+on an organization you own. Select **Install the GitHub App**, choose the
+account, select **All repositories** and install. Typeroll continues when you
+return. If you installed it on an organization the card does not list, open
+**Installed the App on another organization?** and enter its GitHub name.
+
+### `install_request_pending`
+
+**GitHub organization owner.** You requested the installation, and GitHub sent
+the request to the organization's owners. An owner approves it under the
+organization's **Settings → GitHub Apps**. Then select **Check again**.
+
+### `repository_selection_limited`
+
+**You** if you own the account, otherwise **GitHub organization owner**. The App
+can only access selected repositories. Typeroll creates a new repository for
+each site, so it needs **All repositories**. Select **Allow all repositories in
+…** and change repository access in the installation settings.
+
+### `permissions_update_pending`
+
+**You** or **GitHub organization owner**. The publisher's App requests
+permissions the installation has not accepted, such as **Administration** or
+**Contents** with write access. Select **Review permissions for …** and accept
+the request.
+
+### `permissions_missing`
+
+The installation lacks **Administration** or **Contents** write access. If
+GitHub offers an update, the account owner accepts it. If the App itself does
+not request the permission, the card names the **Typeroll publisher**, who must
+add it to the App.
+
+### `installation_suspended`
+
+**You** or **GitHub organization owner**. The installation is suspended. Open
+the installation settings from the card and select **Unsuspend**.
+
+## GitHub availability
+
+### `github_unavailable`
+
+**You.** GitHub did not respond as expected. Nothing was changed. Try again in a
+moment. If only one organization failed, the others are still shown.
+
+### `github_rate_limited`
+
+**You.** GitHub is limiting requests. The card shows when to try again
+(`retry_after`, in seconds, in the API).
+
+### `revision_conflict`
+
+**You.** The connection changed in another tab or session, so nothing was
+overwritten. Review the current state and try again. Saving the account that is
+already connected is not a conflict.
+
+## Publisher setup
+
+These are fixed by the operator of the Typeroll installation, not in your
+GitHub account. In Typeroll Cloud, contact Typeroll support.
+
+### `publisher_app_misconfigured`
+
+**Typeroll publisher.** The publisher's GitHub App settings are missing or
+rejected by GitHub: App ID, client ID and secret, private key, slug, or the
+callback `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback`. Self-hosting
+operators also set the App's **Setup URL** to that callback so people return to
+Typeroll after installing.
+
+### `encryption_unavailable`
+
+**Typeroll publisher.** Encrypted credential storage (`INTEGRATIONS_SECRET_KEY`)
+is not configured, so no GitHub connection can be stored. The card names the
+configured App so you can tell the operator which one.
+
+### `expiring_tokens_disabled`
+
+**Typeroll publisher.** Connecting a personal account needs expiring user
+authorization. The publisher enables **Expire user authorization tokens** in
+the App settings. Organizations can still be connected.
+
+## API and MCP
+
+An organization API key can read the same explanation:
+
+| Action                        | MCP tool                                                       | API route below `/api/v1`                       |
+| ----------------------------- | -------------------------------------------------------------- | ----------------------------------------------- |
+| Explain the GitHub connection | `diagnose_organization_github_connection`                      | `GET /publishing/github-diagnosis`              |
+| Re-check a connected account  | `diagnose_organization_github_connection` with `recheck: true` | `GET /publishing/github-diagnosis?recheck=true` |
+
+The response contains `outcome`, `blockers`, `primary_action` and, for a saved
+connection, its installation with `usable` and `blockers`. It is the
+organization's state: a person's unfinished attempt, their GitHub account and
+the other accounts their sign-in showed stay in their own GitHub card. Each
+blocker has `code`, `who` (`you`, `github_owner`, `publisher` or
+`typeroll_admin`), `message` and one `action`.
+Link actions point to `https://github.com/` or this documentation. Sign-in,
+installation, **Check again** and account changes happen in a browser at
+`connect_url`; an API key cannot act as a person on GitHub. No tokens or GitHub
+responses are returned.

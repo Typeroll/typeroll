@@ -65,13 +65,15 @@ under **Account**. On mobile, open the menu first. Organization owners and admin
 manage these connections.
 
 1. Select **Connect GitHub**, sign in to your personal account or as an owner of your GitHub organization,
-   and authorize Typeroll. If the App is missing, the GitHub card shows the orange
-   **Setup incomplete · Install the GitHub App** step. Select **Install and connect
-   GitHub**, choose the account that will own your repositories, select **All
+   and authorize Typeroll. When you return, the GitHub card shows who you are
+   signed in as and every account that has the Typeroll GitHub App, with the
+   reason each can or cannot be used. If the App is missing, select **Install the
+   GitHub App**, choose the account that will own your repositories, select **All
    repositories**, and approve the installation. Typeroll returns automatically
    to verify access. Choose an account if more than one is available. The card
    confirms **Connected** when all checks pass; signing in alone is not completion.
-   No account name or ID needs to be typed.
+   No account name or ID needs to be typed. If something blocks the connection,
+   see [When Connect GitHub does not finish](#when-connect-github-does-not-finish).
 2. Select **Connect Cloudflare**, sign in and approve the account. Optional DNS
    and URL rewrite permissions let Typeroll configure domains automatically.
    You can decline these and let your administrator or AI agent manage DNS.
@@ -103,7 +105,7 @@ you to install the publisher App and then select **Connect GitHub** again.
 Cloud production and staging use separate publisher Apps: approving one does not
 install the other. The required installation step survives reloading Publishing.
 If your GitHub organization requires an owner's approval, return after approval
-and select **Already installed? Check connection** to verify access.
+and select **Check again** to verify access without signing in again.
 
 Starting with Core 0.1.79, **Finish build setup** checks Cloudflare build access
 before creating the build project or changing build storage. A connected
@@ -128,12 +130,16 @@ On older versions, if setup shows HTTP 403, select **Refresh status** first to
 show the permission action. If setup fails, it has stopped: the card should show
 the failed step and next action, rather than a continuing preparation message.
 
-Starting with Core 0.1.79, the GitHub card always shows two separate steps:
-**1. Sign in to GitHub** and **2. Install the GitHub App**. Each has its own status
-symbol and text. Approving sign-in makes the first step green; the second stays
-orange until the App's repository access is verified. Both stay visible and
-green after connection. If a personal account needs renewed authorization,
-the first step identifies it without asking you to reinstall the App.
+In Core releases after 0.2.60, the GitHub card shows five steps, each with its
+own status symbol and text: **1. Publisher ready**, **2. Sign in to GitHub**
+(with the GitHub account you signed in as and **Use a different GitHub
+account**), **3. Account with the GitHub App** (every account GitHub showed, with
+its reason and fix), **4. Access & permissions** and **5. Connected**. One
+**Next step** box at the top names who must act and offers the one button that
+fixes the current blocker. If a personal account needs renewed authorization,
+the sign-in step identifies it without asking you to reinstall the App. Earlier
+releases show two steps, **1. Sign in to GitHub** and **2. Install the GitHub
+App**, and report problems in a banner at the top of the page.
 
 Cloudflare sign-in and R2 upload access are separate. The current OAuth connection
 can prepare storage but cannot create the S3 upload key pair. Create the keys
@@ -179,6 +185,47 @@ the App installation. If you revoke authorization or leave it unused for six
 months, open **Publishing → GitHub account → Personal account authorization**
 and select **Reconnect GitHub**. Existing repositories are kept. No personal
 access token needs to be copied into Typeroll.
+
+### When Connect GitHub does not finish
+
+Typeroll keeps the result of your latest GitHub attempt for 24 hours and shows
+it in the GitHub card, even after you reload. Each reason names who can fix it:
+
+- **You** — for example sign in with another account, authorize single sign-on
+  for an organization, allow **All repositories**, or install the App.
+- **GitHub organization owner** — you are a member but not an owner, or an
+  owner must approve the installation or a permission request.
+- **Typeroll publisher** — the operator of this Typeroll installation must
+  finish its GitHub App or encrypted credential storage settings.
+- **Typeroll administrator** — the GitHub account is already connected to
+  another Typeroll Organization.
+
+The button beside each reason opens the exact GitHub page or starts the right
+step. After fixing something on GitHub, return to Typeroll: the card checks
+again automatically, or select **Check again**. Checking again uses the
+publisher App's own access and the GitHub account you signed in with during the
+last hour, so you do not need to sign in again; after an hour the card asks you
+to sign in. Connecting a personal account still needs a sign-in. If you installed the App on an organization the card does
+not list, open **Installed the App on another organization?** and enter its
+GitHub name.
+
+A common case: you own one GitHub organization but installed the App on another
+one where you are only a member. The card lists that organization with **GitHub
+organization owner** and the reason. Install the App on the organization you own
+instead, or ask an owner of the other organization to connect GitHub.
+
+Every reason, with its fix, is listed in
+[GitHub connection troubleshooting](../github-troubleshooting/).
+
+### Connect a different GitHub account
+
+While GitHub is connected, Typeroll keeps using the same GitHub account. To move
+new sites to another account, select **Disconnect GitHub**, then
+**Connect GitHub** and sign in. The card shows the previously connected account
+and asks you to confirm the change with **Use … instead of …**. Existing
+repositories stay in the previous account and are not moved. Sites that already
+publish from the previous account may need to be set up again. An account
+connected to another Typeroll Organization cannot be connected here.
 
 ### Approve a GitHub permission update
 
@@ -567,6 +614,7 @@ access to configure DNS and R2 rules, then ask Typeroll to verify them.
 | ---------------------------------- | --------------------------------------------- | ------------------------------------------- |
 | Check setup                        | `read_publishing_readiness`                   | `GET /sites/{site}/publishing`              |
 | Read GitHub/Cloudflare connections | `read_organization_publishing_connections`    | `GET /publishing/connections`               |
+| Explain the GitHub connection      | `diagnose_organization_github_connection`     | `GET /publishing/github-diagnosis`          |
 | Disconnect GitHub or Cloudflare    | `disconnect_organization_publishing_provider` | `DELETE /publishing/connections/{provider}` |
 | Connect Cloudflare with a token    | `connect_organization_cloudflare`             | `POST /publishing/connections/cloudflare`   |
 | Prepare media buckets              | `prepare_organization_media_storage`          | `POST /publishing/connections/cloudflare`   |
@@ -587,7 +635,11 @@ GitHub, installing the GitHub App and Cloudflare OAuth sign-in need a person in 
 browser: the status returns `connect_urls`, links to the provider cards on the
 **Publishing** page, where an organization owner or admin completes the step.
 Everything after that — Cloudflare with a customer API token, media buckets, R2
-keys, builds, domains and disconnecting — works through the API and MCP. The
+keys, builds, domains and disconnecting — works through the API and MCP.
+`diagnose_organization_github_connection` explains why GitHub is not connected
+and who must act, with one link or browser step per blocker; relay it to the
+person who completes the step. `POST /publishing/connections/github` answers 409
+with `connect_url` and the same `diagnosis`. The
 connection routes need an organization API key, matching the owner/admin rule of
 the **Publishing** page; a site key gets 403 there and uses the site routes above.
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+Connect GitHub now explains every way it can stop, who must act and how, in the GitHub card, the API and MCP.
+
+- GitHub connection diagnosis:
+  - Every exit of the GitHub flow (sign-in callback, installation return, account choice, Check again) stores a diagnosis for 24 hours, bound to the person and the connection revision. It lists every account with the publisher App, whether it can be used, and each blocker with `who` (`you`, `github_owner`, `publisher`, `typeroll_admin`) and one action. No tokens or GitHub responses are stored or returned.
+  - An unfinished attempt is shown only to the person who made it. Other admins see the state of a saved connection, and the API and MCP see the organization's state without anyone's GitHub login, other accounts or single sign-on links. One person's failed or cancelled sign-in never marks a working connection as needing attention.
+  - A callback is recorded only for the sign-in that the same person started in the same browser, so a link to the callback from another site changes nothing.
+  - New blocker codes, documented in the new [GitHub connection troubleshooting](https://typeroll.com/docs/guides/github-troubleshooting/) guide: `not_org_owner`, `membership_unverifiable`, `sso_authorization_required`, `repository_selection_limited`, `permissions_update_pending`, `permissions_missing`, `installation_suspended`, `other_users_personal_account`, `locked_to_account`, `claimed_by_other_organization`, `no_installation`, `install_request_pending`, `oauth_cancelled`, `state_expired`, `session_expired`, `wrong_browser`, `github_unavailable`, `github_rate_limited`, `revision_conflict`, `expiring_tokens_disabled`, `publisher_app_misconfigured`, `encryption_unavailable`.
+- Fixes in the GitHub flow:
+  - Each installation is checked on its own. Single sign-on, a rate limit or an outage on one organization no longer aborts the others, Members write access is accepted, and a rejected installation no longer changes the reported reason (a missing permission elsewhere used to hide "not an owner").
+  - Cancelling on GitHub, an expired or reused sign-in, a return in another browser, an owner-approval request (`setup_action=request`) and GitHub errors each get their own explanation instead of `?github=failed`.
+  - A sign-in that returns after the Typeroll session ended goes to sign-in and back to the GitHub card instead of showing raw JSON. Sign-in accepts a same-origin `/app/` return path.
+  - Saving the GitHub installation that is already connected is no longer a conflict.
+  - Publisher setup reports a missing App and missing encrypted storage separately (`github_setup.app_configured`, `github_setup.encryption_available`, `github_setup.app_slug`).
+- After an explicit disconnect, an Organization can connect a different GitHub account once it confirms which account it replaces. Existing repositories are not moved. A GitHub account connected to another Typeroll Organization still cannot be connected.
+- Portal: the GitHub card is a five-step guide (publisher ready, signed in as @login, account with the App, access and permissions, connected) with one primary next action, a fix beside each reason and **Check again**. Returning from GitHub focuses and announces the result inside the card; GitHub no longer uses page-level alerts. Cloudflare is unchanged.
+- **Check again** (`POST /api/orgs/publishing/github/diagnosis`) re-checks with the publisher App's access and the GitHub identity the same person proved by sign-in within the last hour; after that it asks for a sign-in. It consumes nothing and connects nothing by itself: a usable organization becomes a choice the person confirms within 10 minutes and within the hour of the sign-in, and ownership is verified again before saving. An organization the person names but does not own gets the same answer whether or not the App is installed there.
+- Every state of the GitHub card offers a next step that works, including an expired account choice and a request waiting for an organization owner. Opening the App installation no longer interrupts another admin's sign-in in progress, and a renewed personal-account authorization is saved even if the connection changed meanwhile.
+- API and MCP:
+  - New `GET /api/v1/publishing/github-diagnosis` (`?recheck=true` re-checks a connected installation) and MCP tool `diagnose_organization_github_connection`. Organization API key required.
+  - `POST /api/v1/publishing/connections/github` answers 409 with `connect_url` and `diagnosis`.
+
 ## Core 0.2.60 / MCP 0.45.46
 
 Sites can define their own block types, built from existing blocks or written as markup, and edit them in a visual builder.

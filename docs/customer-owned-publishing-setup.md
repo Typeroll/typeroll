@@ -72,8 +72,57 @@ and [token refresh](https://docs.github.com/en/apps/creating-github-apps/authent
 
 The first connection reserves that provider account for its Typeroll
 organization. Disconnecting preserves this ownership reservation and resource
-identities. Reconnecting can rotate credentials for the original account;
-moving to another account or Typeroll organization requires a separate migration.
+identities. Reconnecting can rotate credentials for the original account.
+After an explicit disconnect, the Typeroll organization may connect a different
+GitHub account only after a confirmation that names the previous account
+(`confirm_account_change` with the previous account ID); existing repositories
+are not migrated. Moving an account to another Typeroll organization still
+requires a separate transfer, because claims survive disconnects.
+
+### Connection diagnosis
+
+Every exit of the browser flow (OAuth callback, installation return, account
+selection and **Check again**) stores a diagnosis at
+`organizations/{org}/publishing_authorizations/github_diagnosis`. It is bound to
+the Typeroll user and connection revision, expires after 24 hours and contains
+only GitHub logins and numeric IDs, fixed messages and github.com or
+documentation links: no tokens, codes, state values, verifiers or provider
+response bodies. It lists every installation of the publisher App that GitHub
+showed, whether it is usable, and blockers with `code`, `who` (`you`,
+`github_owner`, `publisher`, `typeroll_admin`) and one `action`. Each
+installation is checked independently, so an SSO, rate-limit or transport
+failure on one organization does not hide the others. `X-GitHub-SSO` links are
+accepted only for `https://github.com/`. Codes and fixes are listed in
+[GitHub connection troubleshooting](../packages/docs-site/src/content/docs/guides/github-troubleshooting.mdx).
+
+The document also holds an `organization` view without the person's GitHub
+login, Typeroll user id, other accounts or SSO links. An unfinished attempt is
+returned only to the Typeroll user who made it; other admins see the saved
+connection's state, and the public API and MCP always get the organization
+view. A person's own attempt on a connected organization never makes it
+`needs_attention`; only a check of the saved installation does. Callback
+results, including OAuth `error` parameters, are recorded only when `state` and
+the browser cookie match the same user's pending grant, which is then consumed;
+anything else redirects with `?github=state_expired` and records nothing. Starting
+the App installation does not replace another user's pending grant.
+
+**Check again** (`POST /api/orgs/publishing/github/diagnosis`) re-reads
+installations with App authority (`/users/{login}/installation`,
+`/orgs/{org}/installation`, membership through an installation token) for the
+accounts the person saw at sign-in, their personal account, organizations they
+proved they own and an optional named organization. A named organization they
+are not proven to own gets one answer whether or not the App is installed, and
+is never stored for later checks. It trusts the GitHub identity proven by OAuth
+for the same Typeroll user for at most one hour (kept across results that prove
+no identity, such as `setup_action=request`), then stores a sign-in action. It
+consumes no grant, is throttled to once per five seconds per organization and
+never connects by itself: a usable organization becomes a single-use choice that
+expires after 10 minutes and at the latest one hour after the sign-in, and
+selecting it re-verifies the identity's age and the owner role with App
+authority before saving. An expired choice is shown with Check again or a new
+sign-in. Personal accounts still need OAuth for
+the user grant. A callback without a Typeroll session redirects to sign-in with
+a same-origin `/app/` return path.
 
 ## Cloudflare Git integration
 
@@ -256,7 +305,11 @@ for production, staging, and local development; never copy live keys into tests.
 Register exactly `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback` as
 the App's OAuth callback. The implementation uses an explicit authorization
 step after installation; it does not need a setup URL or an installation webhook
-to trust the connection. Do not enable "Request user authorization (OAuth)
+to trust the connection. Setting the App's **Setup URL** to the same callback
+path returns people to Typeroll after installing (`setup_action=install`) or
+after requesting an owner's approval (`setup_action=request`, shown as
+waiting for an owner); without it they return manually and select
+**Check again**. The `installation_id` GitHub appends is never trusted. Do not enable "Request user authorization (OAuth)
 during installation": install first, then start authorization from Typeroll.
 Keep expiring user tokens enabled. This first delivery does not consume
 webhooks; publication must revalidate installation access before each operation.
@@ -271,7 +324,10 @@ The implementation adds S256 PKCE and encrypts account-bound access and refresh
 tokens. Tests use synthetic credentials, never staging or production grants.
 
 Missing App configuration disables GitHub connection in the UI. Missing
-encryption configuration disables Cloudflare credential entry. No PAT, SSH,
+encryption configuration disables Cloudflare credential entry and GitHub
+connection. The status reports them separately as
+`github_setup.app_configured` and `github_setup.encryption_available`, and the
+GitHub card names the configured App slug. No PAT, SSH,
 developer membership, or publisher-owned hosting fallback is used.
 
 ## Pilot acceptance

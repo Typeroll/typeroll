@@ -2,6 +2,7 @@
 // that names who must act and offers one action for the fix.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import type { APIRoute } from 'astro';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
@@ -407,6 +408,12 @@ describe('GitHub connection diagnosis', () => {
     await expect(selectGithubOrganization(session, '34', providerFetch())).resolves.toBeUndefined();
     expect(await getConnection('default', 'github')).toEqual(before);
     expect((await stored()).outcome).toBe('connected');
+  });
+
+  it('documents every blocker code at the anchor its help link uses', () => {
+    const guide = readFileSync(new URL('../../../../docs-site/src/content/docs/guides/github-troubleshooting.mdx', import.meta.url), 'utf8');
+    for (const code of GITHUB_BLOCKER_CODES) expect(guide, code).toContain(`### \`${code}\``);
+    expect(githubBlocker('publisher_app_misconfigured').action?.url).toBe('https://typeroll.com/docs/guides/github-troubleshooting/#publisher_app_misconfigured');
   });
 
   it('gives every blocker an owner, a message and, for the person, an action', () => {

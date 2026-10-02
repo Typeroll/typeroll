@@ -496,9 +496,9 @@ const blockerCases = [
     blockers: [{ code: 'github_rate_limited', who: 'you', message: 'GitHub is limiting requests right now. Nothing was changed. Try again in 42 seconds.', retry_after: 42, action: { kind: 'sign_in', label: 'Try again' } }] }),
     status: 'Not connected · Try again', text: 'Try again in 42 seconds', link: null },
   { name: 'missing encryption', setup: { ...githubSetup, available: false, encryption_available: false, install_url: null },
-    diagnosis: diagnosis('unavailable', { blockers: [{ code: 'encryption_unavailable', who: 'publisher', message: 'The publisher has not configured encrypted credential storage, so GitHub cannot be connected yet (App: synthetic-publisher).', action: { kind: 'contact_publisher', label: 'What the publisher must change', url: 'https://typeroll.com/docs/guides/github-troubleshooting/#encryption-unavailable' } }],
-      primary_action: { kind: 'contact_publisher', label: 'What the publisher must change', url: 'https://typeroll.com/docs/guides/github-troubleshooting/#encryption-unavailable' } }),
-    status: 'Unavailable · Publisher setup required', text: 'encrypted credential storage', link: ['What the publisher must change', 'https://typeroll.com/docs/guides/github-troubleshooting/#encryption-unavailable'] },
+    diagnosis: diagnosis('unavailable', { blockers: [{ code: 'encryption_unavailable', who: 'publisher', message: 'The publisher has not configured encrypted credential storage, so GitHub cannot be connected yet (App: synthetic-publisher).', action: { kind: 'contact_publisher', label: 'What the publisher must change', url: 'https://typeroll.com/docs/guides/github-troubleshooting/#encryption_unavailable' } }],
+      primary_action: { kind: 'contact_publisher', label: 'What the publisher must change', url: 'https://typeroll.com/docs/guides/github-troubleshooting/#encryption_unavailable' } }),
+    status: 'Unavailable · Publisher setup required', text: 'encrypted credential storage', link: ['What the publisher must change', 'https://typeroll.com/docs/guides/github-troubleshooting/#encryption_unavailable'] },
 ];
 for (const item of blockerCases) test(`GitHub card names who fixes ${item.name} and links the fix`, async ({ page }) => {
   await authenticatePersona(page, 'owner');

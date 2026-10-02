@@ -140,7 +140,7 @@ export function installationSettingsUrl(account: { login: string; type: string }
     : `https://github.com/organizations/${encodeURIComponent(account.login)}/settings/installations/${encodeURIComponent(installationId)}`;
 }
 const portalHost = () => { try { return new URL(process.env.PORTAL_PUBLIC_URL ?? '').host; } catch { return ''; } };
-const help = (code: GithubBlockerCode) => `${GITHUB_TROUBLESHOOTING_URL}#${code.replaceAll('_', '-')}`;
+const help = (code: GithubBlockerCode) => `${GITHUB_TROUBLESHOOTING_URL}#${code}`;
 const installUrl = () => { const slug = githubAppSlug(); return slug ? `https://github.com/apps/${slug}/installations/new` : undefined; };
 const appName = () => { const slug = githubAppSlug(); return slug ? `the ${slug} GitHub App` : 'the publisher’s GitHub App'; };
 const AppName = () => { const name = appName(); return `${name[0].toUpperCase()}${name.slice(1)}`; };

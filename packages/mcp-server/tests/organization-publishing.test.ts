@@ -5,7 +5,7 @@ import { TyperollClient } from '../src/client.js';
 import { buildServer } from '../src/server.js';
 
 const organizationTools = [
-  'check_organization_github_permissions',
+  'check_organization_github_permissions', 'diagnose_organization_github_connection',
   'setup_organization_build_engine', 'select_organization_build_provider', 'cancel_organization_build',
   'read_organization_build_engine', 'check_organization_build_access',
   'list_hosting_groups', 'save_hosting_group', 'connect_hosting_group',
@@ -57,6 +57,18 @@ describe('organization publishing through the MCP transport', () => {
     try {
       expect((await s.client.callTool({ name: 'check_organization_github_permissions', arguments: {} })).isError).not.toBe(true);
       expect(s.requests).toEqual(['https://example.test/api/v1/publishing/github-permissions']);
+    } finally { await s.close(); }
+  });
+
+  it('diagnoses the GitHub connection without a site and re-checks only when asked', async () => {
+    const s = await session();
+    try {
+      const { tools } = await s.client.listTools();
+      const tool = tools.find(t => t.name === 'diagnose_organization_github_connection')!;
+      for (const term of ['who must act', 'github_owner', 'publisher', 'connect_url', 'never returns credentials']) expect(tool.description).toContain(term);
+      expect((await s.client.callTool({ name: 'diagnose_organization_github_connection', arguments: {} })).isError).not.toBe(true);
+      expect((await s.client.callTool({ name: 'diagnose_organization_github_connection', arguments: { recheck: true } })).isError).not.toBe(true);
+      expect(s.requests).toEqual(['https://example.test/api/v1/publishing/github-diagnosis', 'https://example.test/api/v1/publishing/github-diagnosis?recheck=true']);
     } finally { await s.close(); }
   });
 

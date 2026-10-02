@@ -32,13 +32,13 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'read_organization_publishing_connections', noSite: true,
-    description: 'Read the Organization\'s GitHub and Cloudflare publishing connections: status, revision (needed to change or disconnect), account identity, media_ready, media migration, and connect_urls. Requires an organization API key; never returns credentials. GitHub sign-in/App installation and Cloudflare OAuth need a person in a browser: give the user the matching connect_urls link (an organization owner or admin completes it), then read again.',
+    description: 'Read the Organization\'s GitHub and Cloudflare publishing connections: status, revision (needed to change or disconnect), account identity, media_ready, media migration, github_setup (app_configured, encryption_available) and connect_urls. Requires an organization API key; never returns credentials. GitHub sign-in/App installation and Cloudflare OAuth need a person in a browser: give the user the matching connect_urls link (an organization owner or admin completes it), then read again. When GitHub is not connected, call diagnose_organization_github_connection to learn why and who must act.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/connections'))),
   },
   {
     name: 'disconnect_organization_publishing_provider', noSite: true,
-    description: 'Disconnect the Organization\'s GitHub or Cloudflare publishing connection at the revision from read_organization_publishing_connections. Erases stored credentials; does not delete repositories, buckets, media, DNS or published sites, but publishing through that provider stops until reconnected. Requires an organization API key and the user\'s explicit go-ahead.',
+    description: 'Disconnect the Organization\'s GitHub or Cloudflare publishing connection at the revision from read_organization_publishing_connections. Erases stored credentials; does not delete repositories, buckets, media, DNS or published sites, but publishing through that provider stops until reconnected. After a GitHub disconnect, an owner or admin may connect a different GitHub account in the browser only after confirming which account it replaces; existing repositories are not moved. Requires an organization API key and the user\'s explicit go-ahead.',
     inputSchema: { provider: z.enum(['github', 'cloudflare']), revision: z.string(), hosting_group_id: z.string().optional().describe('Omit for the organization (Default) connection.') },
     handler: withErrorBoundary(async ({ provider, ...body }, { client }) => ok(await client.rootDelete(`publishing/connections/${provider}`, body))),
   },
@@ -65,9 +65,15 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'check_organization_github_permissions', noSite: true,
-    description: 'Check live GitHub build permissions without disconnecting or reconnecting. Requires an organization API key. Distinguishes an update the organization owner can approve from permissions Typeroll has not requested yet. Returns the existing installation approval URL only when actionable; does not enable a build engine.',
+    description: 'Check live GitHub build permissions (Actions and Workflows) of an already connected GitHub account without disconnecting or reconnecting. Requires an organization API key. Distinguishes an update the organization owner can approve from permissions Typeroll has not requested yet. Returns the existing installation approval URL only when actionable; does not enable a build engine. For a GitHub connection that is missing or failing, use diagnose_organization_github_connection.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/github-permissions'))),
+  },
+  {
+    name: 'diagnose_organization_github_connection', noSite: true,
+    description: 'Explain why the Organization\'s GitHub publishing connection is or is not working and who must do what next. Returns the Organization\'s state: diagnosis.outcome (connected, needs_attention, choose, action_required, waiting_on_owner, sign_in_required, retryable_error or unavailable), blockers, and the saved installation once connected. A person\'s unfinished attempt and their GitHub accounts stay in their own browser session. Each blocker has a code, who must act (you = the person connecting, github_owner, publisher = operator of this Typeroll installation, typeroll_admin), a message and one action: a github.com or documentation link, or a browser step (sign_in, install, retry, confirm_account_change) completed at connect_url. Read only, except recheck: true re-checks a connected installation (suspension, repository access, permissions) with the App\'s own authority. An API key cannot sign in to GitHub; relay the message and link to the user. Requires an organization API key; never returns credentials.',
+    inputSchema: { recheck: z.boolean().optional().describe('Re-check the connected installation with the publisher App before answering.') },
+    handler: withErrorBoundary(async ({ recheck }, { client }) => ok(await client.rootGet(`publishing/github-diagnosis${recheck ? '?recheck=true' : ''}`))),
   },
   {
     name: 'setup_organization_build_engine', noSite: true,

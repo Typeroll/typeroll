@@ -180,6 +180,8 @@ the full reference + concrete operation recipes.
 - **Organization publishing connections** —
   `read_organization_publishing_connections` (status, revisions and
   `connect_urls` for the browser-only OAuth steps),
+  `diagnose_organization_github_connection` (why GitHub is not connected,
+  every account with the App, and who must act with one fix each),
   `disconnect_organization_publishing_provider`,
   `connect_organization_cloudflare` (customer API token),
   `prepare_organization_media_storage`, `save_organization_media_access`.

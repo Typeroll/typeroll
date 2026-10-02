@@ -53,6 +53,7 @@ export default defineConfig({
           label: 'Publishing',
           items: [
             { label: 'Connect your accounts', slug: 'guides/customer-publishing' },
+            { label: 'GitHub connection troubleshooting', slug: 'guides/github-troubleshooting' },
             { label: 'Cloudflare hosting and builds', slug: 'publishing/cloudflare' },
             { label: 'Website and media domains', slug: 'publishing/domains' },
             { label: 'Different generators on one website', slug: 'publishing/multiple-generators' },
