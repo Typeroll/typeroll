@@ -165,7 +165,7 @@ export const blockTypeTools: ToolDef[] = [
   {
     name: 'list_block_type_starters',
     description:
-      'Built-in starting points for a new block type: complete composed definitions (icon list, card grid, FAQ, steps, logo row, quote) with fields, composition and scoped CSS. Adapt one (rename it, change fields) and pass it to create_block_type — it is the quickest way to a valid composed type.',
+      'Built-in starting points for a new block type: complete composed definitions (icon list, feature cards, numbered steps) with fields, composition and scoped CSS. Adapt one (rename it, change fields) and pass it to create_block_type — it is the quickest way to a valid composed type.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client, siteId }) => {
       const res = await client.get(siteId, 'block-types/starters');

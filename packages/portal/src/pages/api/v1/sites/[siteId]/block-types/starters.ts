@@ -1,7 +1,7 @@
 // GET /api/v1/sites/{siteId}/block-types/starters
 //
-// Built-in starting points for a new site block type (icon list, card grid,
-// FAQ, steps, logo row, quote). Each `definition` is a complete composed
+// Built-in starting points for a new site block type (icon list, feature
+// cards, numbered steps). Each `definition` is a complete composed
 // block type: adapt it and send it to POST /block-types.
 
 import type { APIRoute } from 'astro';
