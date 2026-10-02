@@ -6,6 +6,8 @@
 // (get_form_capabilities), so agents discover the same types before writing
 // a form's `actions`.
 
+import { FORM_ABANDONED_MAX_HOURS } from '@typeroll/shared';
+
 export async function formCapabilities() {
   const { actionRegistry } = await import('./forms/actions');
   const { prefillRegistry } = await import('./forms/prefill');
@@ -19,6 +21,12 @@ export async function formCapabilities() {
       // Whether it can also veto a submit, so the editor can say so.
       has_before: typeof a.before === 'function',
     })),
+    // When actions run. Completion is the default; abandoned partials are an
+    // opt-in for email actions (lib/forms/abandoned.ts).
+    triggers: [
+      { trigger: 'complete', label: 'When the form is completed', action_types: null },
+      { trigger: 'partial_abandoned', label: 'When a started form is abandoned', action_types: ['email'], after_hours: { min: 1, max: FORM_ABANDONED_MAX_HOURS } },
+    ],
     prefill_sources: [...(await prefillRegistry()).values()].map((s) => ({
       type: s.type,
       label: s.label,

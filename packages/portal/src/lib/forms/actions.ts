@@ -157,6 +157,14 @@ export async function agentWritableActionTypes(): Promise<string[]> {
 }
 
 /**
+ * The actions that belong to a submission itself. Actions triggered by an
+ * abandoned partial submission run from lib/forms/abandoned.ts instead.
+ */
+export function completionActions(form: Pick<Form, 'actions'>): FormAction[] {
+  return (form.actions ?? []).filter((action) => (action.trigger ?? 'complete') === 'complete');
+}
+
+/**
  * Run a form's actions.
  *
  * Every failure is swallowed per-action: the thing the form was FOR has
@@ -172,7 +180,7 @@ export async function runFormActions(
   const actionCtx: ActionContext = form.steps && !ctx.form ? { ...ctx, form: { steps: form.steps } } : ctx;
   const ran: string[] = [];
   const failed: string[] = [];
-  for (const action of form.actions ?? []) {
+  for (const action of completionActions(form)) {
     const def = reg.get(action.type);
     if (!def) {
       // An action whose app was disabled, or a type from a newer release.
@@ -200,7 +208,7 @@ export async function runBeforeActions(
   ctx: ActionContext,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const reg = await actionRegistry();
-  for (const action of form.actions ?? []) {
+  for (const action of completionActions(form)) {
     const def = reg.get(action.type);
     if (!def?.before) continue;
     try {

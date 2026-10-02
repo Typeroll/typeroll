@@ -164,11 +164,40 @@ Reading and writing actions needs admin permission, as in the portal. With
 other permissions `read_form` returns `actions: []` and a write that includes
 `actions` is refused with `403`.
 
+### Follow up on abandoned multi-step forms
+
+Actions run when a form is completed. An email action can instead run when a
+visitor stops part-way: set `trigger: "partial_abandoned"` and `after_hours`
+(1–720). It is sent once for each submission that has finished at least one
+step and has not moved on for that many hours, so you hear about a lead who
+gave their contact details in step 1 but never finished. A visitor who
+continues resets the wait, a completed submission never sends it, and form
+previews never store submissions, so they never count. The email lists the
+answers given so far (`include_all`).
+
+```
+update_form form_id=lead patch={ actions: [
+  { type: "email", config: { to: "sales@example.com", subject: "New lead", body: "<p>Done.</p>", include_all: true } },
+  { type: "email", trigger: "partial_abandoned", after_hours: 2,
+    config: { to: "sales@example.com", subject: "Unfinished lead: {{email}}",
+      body: "<p>{{email}} stopped after the first step.</p>", include_all: true } }
+] }
+```
+
+In the portal, set **Send** to "When a started form is abandoned" on an email
+action of a multi-step form. The check runs on Typeroll's scheduled work, the
+same as scheduled publishing: Typeroll Cloud runs it for you, and a self-hosted
+Core needs its scheduler (Cloud Tasks and the Cloud Scheduler job that calls
+`/api/internal/publish-sweep`, see [Self-hosting](../../guides/self-hosting/)).
+Without it the email goes out on the next sweep after it is due.
+
 ### `get_form_capabilities`
 
 Lists every action type the site can use, with the config fields each one
 takes: the core `email` and `webhook` types and any type an installed app
-provides. It also lists the prefill sources. This is the same list the portal's
+provides. It also lists the prefill sources and the action `triggers`
+(`complete`, and `partial_abandoned` for email actions with its `after_hours`
+range). This is the same list the portal's
 Forms editor offers; read it before writing an app-provided action. Admin
 permission (`GET /api/v1/sites/{siteId}/form-capabilities`).
 

@@ -64,6 +64,8 @@ const hasConnector = Boolean(integrations?.email);
           id: a.id,
           type: a.type,
           config: (a.config ?? {}) as Record<string, unknown>,
+          ...(a.trigger ? { trigger: a.trigger } : {}),
+          ...(a.after_hours ? { after_hours: a.after_hours } : {}),
         })),
       }}
       fields={fields.map((f) => ({

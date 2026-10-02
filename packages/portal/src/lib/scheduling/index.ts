@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 export const WORK_COLLECTION = 'scheduled_work';
-export type WorkKind = 'page_schedule' | 'site_publish' | 'publication' | 'build_result' | 'build_continue';
+export type WorkKind = 'page_schedule' | 'site_publish' | 'publication' | 'build_result' | 'build_continue' | 'form_partial_abandoned';
 export interface ScheduledWork {
   kind: WorkKind;
   source: string;

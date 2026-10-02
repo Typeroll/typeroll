@@ -18,7 +18,14 @@ interface EmailActionConfig {
 // Config is per-type, so it can't be EmailActionConfig any more — this editor
 // now renders whatever the registry declares. The email panel narrows back to
 // EmailActionConfig where it needs to.
-interface FormAction { id?: string; type: string; config: Record<string, unknown> }
+interface FormAction {
+  id?: string;
+  type: string;
+  config: Record<string, unknown>;
+  /** Email only: run once when a started submission stops for after_hours. */
+  trigger?: 'complete' | 'partial_abandoned';
+  after_hours?: number;
+}
 interface FieldInfo {
   name: string;
   label: string;
@@ -160,6 +167,13 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
   /** Email-only patcher; the generic one is updateActionConfig above. */
   function updateAction(i: number, cfg: Partial<EmailActionConfig>) {
     patch('actions', form.actions.map((a, idx) => (idx === i ? { ...a, config: { ...a.config, ...cfg } } : a)));
+  }
+  function updateActionTrigger(i: number, trigger: FormAction['trigger'], afterHours?: number) {
+    patch('actions', form.actions.map((a, idx) => {
+      if (idx !== i) return a;
+      const { trigger: _t, after_hours: _h, ...rest } = a;
+      return trigger === 'partial_abandoned' ? { ...rest, trigger, after_hours: afterHours ?? a.after_hours ?? 2 } : rest;
+    }));
   }
   function removeAction(i: number) {
     patch('actions', form.actions.filter((_, idx) => idx !== i));
@@ -370,6 +384,26 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
               <label className="field"><span>To (recipient or {'{{field}}'})</span>
                 <input value={String(a.config.to ?? '')} disabled={!canWrite} onChange={(e) => updateAction(i, { to: e.target.value })} placeholder="you@company.com or {{email}}" />
               </label>
+              {form.steps.length > 1 && (
+                <div className="row" style={{ gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <label className="field" style={{ flex: '1 1 240px' }}><span>Send</span>
+                    <select value={a.trigger === 'partial_abandoned' ? 'partial_abandoned' : 'complete'} disabled={!canWrite}
+                      onChange={(e) => updateActionTrigger(i, e.target.value as FormAction['trigger'])}>
+                      <option value="complete">When the form is completed</option>
+                      <option value="partial_abandoned">When a started form is abandoned</option>
+                    </select>
+                  </label>
+                  {a.trigger === 'partial_abandoned' && (
+                    <label className="field" style={{ flex: '0 1 180px' }}><span>After (hours without progress)</span>
+                      <input type="number" min={1} max={720} value={a.after_hours ?? 2} disabled={!canWrite}
+                        onChange={(e) => updateActionTrigger(i, 'partial_abandoned', Number(e.target.value))} />
+                    </label>
+                  )}
+                </div>
+              )}
+              {a.trigger === 'partial_abandoned' && (
+                <p className="text-sm muted">Sent once per submission that stopped after at least one step and has not continued for this long. Never sent for completed submissions; it lists the answers given so far.</p>
+              )}
               <label className="field"><span>Subject</span>
                 <input value={String(a.config.subject ?? '')} disabled={!canWrite} onChange={(e) => updateAction(i, { subject: e.target.value })} />
               </label>

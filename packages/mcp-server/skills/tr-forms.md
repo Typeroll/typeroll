@@ -119,6 +119,11 @@ update_form form_id=contact patch={ actions: [
 ] }
 ```
 
+An email action with `trigger: "partial_abandoned"` and `after_hours: 2` is
+sent once for a multi-step submission that stopped part-way and has not moved
+on for two hours (never for completed ones) — opt-in follow-up on leads who
+left after step 1.
+
 A webhook needs `url` (https), an explicit `fields` allowlist and a signing
 `secret`; send the masked value back to keep a stored secret.
 `get_form_capabilities` lists every action type the site offers, including

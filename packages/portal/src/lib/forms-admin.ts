@@ -9,6 +9,7 @@
 // portal chat assistant has no tool for them.
 
 import crypto from 'node:crypto';
+import { FORM_ABANDONED_MAX_HOURS } from '@typeroll/shared';
 import type { Form, FormField, FormStep, FormAction, EmailActionConfig } from '@typeroll/shared';
 import { encryptSecret, SECRET_MASK } from './secret-crypto';
 import { parseWebhookUrl } from './forms/webhook';
@@ -150,6 +151,8 @@ export function validateEmailActions(
   const out: FormAction[] = [];
   for (const raw of actions) {
     const a = raw as Partial<FormAction>;
+    const trigger = validateActionTrigger(a);
+    if (typeof trigger === 'string') return trigger;
     if (a?.type === 'webhook') {
       if (knownTypes && !knownTypes.includes(a.type)) return 'Unknown action type "webhook"';
       const c = (a.config ?? {}) as Record<string, unknown>;
@@ -208,12 +211,33 @@ export function validateEmailActions(
       ...(c.include_all ? { include_all: true } : {}),
       ...(c.format ? { format: c.format } : {}),
     };
-    out.push({ ...(NON_EMPTY_STR(a.id) ? { id: a.id } : {}), type: 'email', config: config as unknown as Record<string, unknown> });
+    // An abandoned-partial email records which actions already ran on a
+    // submission by id, so it always has one.
+    const id = NON_EMPTY_STR(a.id) ? a.id : trigger.trigger ? crypto.randomUUID() : undefined;
+    out.push({ ...(id ? { id } : {}), type: 'email', config: config as unknown as Record<string, unknown>, ...trigger });
   }
   return out;
 }
 
 /** Form actions safe for the cookie-auth admin UI. Ciphertext never leaves the server. */
+/**
+ * An action's trigger. Only email actions can run for abandoned partial
+ * submissions; every other action runs when the form is completed.
+ */
+function validateActionTrigger(a: Partial<FormAction>): { trigger?: 'partial_abandoned'; after_hours?: number } | string {
+  if (a?.trigger === undefined || a.trigger === 'complete') {
+    if (a?.after_hours !== undefined) return 'after_hours applies only to trigger "partial_abandoned"';
+    return {};
+  }
+  if (a.trigger !== 'partial_abandoned') return 'trigger must be "complete" or "partial_abandoned"';
+  if (a.type !== 'email') return 'Only email actions can use trigger "partial_abandoned"';
+  const hours = a.after_hours;
+  if (typeof hours !== 'number' || !Number.isInteger(hours) || hours < 1 || hours > FORM_ABANDONED_MAX_HOURS) {
+    return `after_hours must be a whole number of hours from 1 to ${FORM_ABANDONED_MAX_HOURS}`;
+  }
+  return { trigger: 'partial_abandoned', after_hours: hours };
+}
+
 export function maskFormActionsForAdmin(actions: FormAction[] = []): FormAction[] {
   return actions.map((action) => {
     if (action.type !== 'webhook') {

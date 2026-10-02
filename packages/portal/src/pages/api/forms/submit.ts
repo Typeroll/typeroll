@@ -487,6 +487,20 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
     });
   }
 
+  // Opt-in follow-up for visitors who stop part-way: index when this partial
+  // submission's abandoned-partial actions fall due. A newer step moves it.
+  if (next && form.actions?.some((action) => action.trigger === 'partial_abandoned')) {
+    try {
+      const { scheduleAbandonedCheck } = await import('../../../lib/forms/abandoned');
+      await scheduleAbandonedCheck(orgId, siteId, submissionId, form, {
+        form_id: formId, status: 'partial', updated_at: now.toISOString(),
+        abandoned_actions_fired: (existing?.abandoned_actions_fired as string[] | undefined) ?? [],
+      });
+    } catch (e) {
+      console.error('Scheduling the abandoned-partial check failed:', e);
+    }
+  }
+
   if (!next) {
     try {
       await runFormActions(orgId, siteId, form, acceptedData, submissionId);

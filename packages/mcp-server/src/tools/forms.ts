@@ -57,6 +57,10 @@ const actionSchema = z.object({
     'email: { to, subject, body, cc?, bcc?, reply_to?, include_all?, format?: "html"|"text" } — to/subject/body may use {{field}} placeholders, e.g. to: "{{email}}" for a confirmation to the visitor. ' +
     'webhook: { url (https), fields: ["name","email"] (only these values are sent), secret (signing secret; send "••••••••" to keep the stored one) }.',
   ),
+  trigger: z.enum(['complete', 'partial_abandoned']).optional().describe(
+    'When the action runs. "complete" (default): after the final step. "partial_abandoned" (email actions only, opt-in): once per submission when a partial submission (visitor finished at least one step) has not advanced for after_hours hours; never for completed submissions. The email lists the answers given so far.',
+  ),
+  after_hours: z.number().int().min(1).max(720).optional().describe('For trigger "partial_abandoned": hours without progress before the email is sent.'),
 });
 const actionsDescription = 'The complete list of actions after a submission (replaces the current list): email notifications, webhooks, app actions (get_form_capabilities lists the types and their config). Read the form first and send back the actions you keep. Emails send through the provider set with set_email_settings. Requires admin permission, like the portal.';
 
