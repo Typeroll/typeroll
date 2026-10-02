@@ -56,7 +56,7 @@ const PERM_RANK: Record<ToolEffect, number> = { read: 0, write: 1, admin: 2 };
  * gate then checks `effect <= sitePermission`.
  *
  * Naming convention is followed by the tool modules: read paths are
- * `list_*` / `read_*` / `get_*` / `preview_*` / `search_*` / `check_*`; everything else
+ * `list_*` / `read_*` / `get_*` / `preview_*` / `search_*` / `check_*` / `find_*`; everything else
  * mutates.
  */
 function effectFor(name: string): ToolEffect {
@@ -108,7 +108,15 @@ function effectFor(name: string): ToolEffect {
     || name === 'delete_email_settings'
     || name === 'send_test_email'
     || name === 'set_incoming_email_forwarding'
+    // Block type authoring is site administration (the portal and the v1
+    // routes require admin); placing and editing blocks on pages stays write.
+    || name === 'create_block_type'
+    || name === 'update_block_type'
+    || name === 'delete_block_type'
+    || name === 'import_block_types'
   ) return 'admin';
+  // Compute an answer and write nothing, like the preview_* tools.
+  if (name === 'validate_block_type' || name.startsWith('find_')) return 'read';
   if (name === 'diff_version') return 'read';
   if (
     name.startsWith('list_') ||

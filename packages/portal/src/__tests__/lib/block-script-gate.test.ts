@@ -4,9 +4,10 @@
 //    already authorises, and as a person in the portal. The write is
 //    audit-logged like every API write and answered without a warning.
 //    The ai_scripts_enabled flag has NO effect on bearer paths.
-//  - The in-portal chat AI stays gated on Site.ai_scripts_enabled —
-//    covered by gateBlockScript unit tests here and the chat-path tests
-//    in anthropic-tools.test.ts (which assert script never persists).
+//  - The in-portal chat AI never writes block type `script` (2026-10-02,
+//    custom block types plan) — the chat-path tests in
+//    anthropic-tools.test.ts assert it never persists. gateBlockScript (unit
+//    tests here) remains the site-setting gate for chat-written code.
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -73,9 +74,9 @@ describe('BlockType script via bearer key — accepted like any write', () => {
       { headers: bearer(token), body: CREATE_BODY },
     );
     expect(res.status).toBe(200);
-    const body = await res.json() as { script?: string; warnings?: string[] };
-    expect(body.script).toBe('console.log("hi")');
-    expect(body.warnings).toBeUndefined();
+    const body = await res.json() as { block_type: { script?: string }; warnings: unknown[] };
+    expect(body.block_type.script).toBe('console.log("hi")');
+    expect(body.warnings).toEqual([]);
 
     const { getStore } = await import('../../lib/datastore');
     const stored = await getStore().getDoc<BlockType>(
@@ -88,7 +89,7 @@ describe('BlockType script via bearer key — accepted like any write', () => {
     const { token } = await setup({ ai_scripts_enabled: false } as Partial<Site>);
     const { getStore } = await import('../../lib/datastore');
     await getStore().setDoc(`${paths.blockTypes(ORG, SITE, MAIN_VERSION_ID)}/fancy_widget`, {
-      name: 'fancy_widget', label: 'Old', schema: [], origin: 'ai', created_at: new Date().toISOString(),
+      name: 'fancy_widget', label: 'Old', schema: [], template: '<div></div>', origin: 'ai', created_at: new Date().toISOString(),
     });
     const res = await callRoute(
       import('../../pages/api/v1/sites/[siteId]/block-types/[typeId]'),
@@ -97,10 +98,10 @@ describe('BlockType script via bearer key — accepted like any write', () => {
       { siteId: SITE, typeId: 'fancy_widget' },
       { headers: bearer(token), body: { label: 'New', script: 'console.log("upd")' } },
     );
-    const body = await res.json() as { label: string; script?: string; warnings?: string[] };
-    expect(body.label).toBe('New');
-    expect(body.script).toBe('console.log("upd")');
-    expect(body.warnings).toBeUndefined();
+    const body = await res.json() as { block_type: { label: string; script?: string }; warnings: unknown[] };
+    expect(body.block_type.label).toBe('New');
+    expect(body.block_type.script).toBe('console.log("upd")');
+    expect(body.warnings).toEqual([]);
   });
 
   it('script-free writes carry no warning either', async () => {
@@ -113,8 +114,8 @@ describe('BlockType script via bearer key — accepted like any write', () => {
       { siteId: SITE },
       { headers: bearer(token), body: noScript },
     );
-    const body = await res.json() as { warnings?: string[] };
-    expect(body.warnings).toBeUndefined();
+    const body = await res.json() as { warnings: unknown[] };
+    expect(body.warnings).toEqual([]);
   });
 });
 

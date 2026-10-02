@@ -344,6 +344,13 @@ export interface RequireApiKeyOptions {
    * requirePermission. Extension credentials are never let through.
    */
   allowArchivedWrites?: boolean;
+  /**
+   * A POST that only computes an answer and writes nothing (validating or
+   * previewing a block type definition). It counts as a read: a read-only
+   * share may call it, an archived site answers it, and it uses the read
+   * rate-limit bucket.
+   */
+  sideEffectFree?: boolean;
 }
 
 export async function requireApiKey(
@@ -398,7 +405,7 @@ export async function requireApiKey(
   // Block writes through a read-only share before any rate-limit work —
   // a write rejected at the share level shouldn't even consume the write
   // bucket. For site-scoped keys permission is always 'admin'.
-  const isWrite = request.method !== 'GET' && request.method !== 'HEAD';
+  const isWrite = request.method !== 'GET' && request.method !== 'HEAD' && !options.sideEffectFree;
   if (isWrite && permission === 'read') {
     return { ok: false, response: json({ error: 'This token has read-only access to this site' }, 403) };
   }

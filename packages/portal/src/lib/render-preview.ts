@@ -13,6 +13,7 @@
 import { isContentDeployed, pagePathSegment } from './site-urls';
 import type {
   Block,
+  BlockType,
   Page,
   RenderContext,
   SiteSettings,
@@ -382,6 +383,78 @@ export async function renderPreview(
       editorUrl: `/app/sites/${siteId}/pages/${page.id}`,
     } : null,
   }), orgId, siteId, opts);
+}
+
+export interface BlockTypePreviewInput {
+  /** The definition to render; need not be saved. Its id (or name) wins over a stored type. */
+  blockType: BlockType;
+  /** The block's props. */
+  data: Record<string, unknown>;
+  /** Render with this platform render version instead of the site's own. */
+  renderVersion?: number;
+}
+
+export interface BlockTypePreview {
+  /** The block's sanitized markup, exactly as a page body would carry it. */
+  html: string;
+  /** The block CSS that ships with it (scoped when the type is block-scoped). */
+  css: string;
+  /** A standalone document with the site's theme, styles and custom CSS, for an iframe. */
+  document: string;
+  render_version: number;
+}
+
+/**
+ * Preview one block of a (possibly unsaved) block type the way a page renders
+ * it: the site's render version, theme CSS, named styles and custom CSS, the
+ * other site block types (for compositions and repeaters), global blocks,
+ * page links and the sanitizer. The builder, the page editor and the API all
+ * use this, so a preview matches the published site.
+ */
+export async function renderBlockTypePreview(
+  orgId: string,
+  siteId: string,
+  versionId: string,
+  input: BlockTypePreviewInput,
+): Promise<BlockTypePreview> {
+  const storedSettings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
+  const renderVersion = resolveRenderVersion(input.renderVersion ?? storedSettings.render_version);
+  const settings: SiteSettings = { ...storedSettings, render_version: renderVersion };
+  const registry = buildCoreBlockRegistry();
+  for (const bt of await vstore.blockTypes(orgId, siteId, versionId)) registry.set(bt.id, bt);
+  const type: BlockType = { ...input.blockType, id: input.blockType.id || input.blockType.name };
+  registry.set(type.id, type);
+  const partials = await vstore.partials(orgId, siteId, versionId);
+  const globalBlockSource = globalBlockSourceFromPartials(partials.filter(p => p.kind === 'free'));
+  const contentTypes = await vstore.contentTypes(orgId, siteId, versionId);
+  const pages = await vstore.pages(orgId, siteId, versionId);
+  const pageSource = createPageSource(contentTypes, pages, settings.trailing_slash ?? 'always');
+  const block: Block = { id: 'block-preview', type: type.id, data: input.data };
+  const onMissingType = (typeId: string) =>
+    `<div data-tr-missing-block="${escapeHtml(typeId)}" role="alert">Missing block type: ${escapeHtml(typeId)}</div>`;
+  const context: RenderContext = {
+    site: siteContext(settings as unknown as Record<string, unknown>),
+    page: { title: type.label, slug: 'block-preview' },
+  };
+  const html = sanitizeBody(
+    renderBlocks([block], { registry, context, pageSource, onMissingType, renderVersion, globalBlockSource }),
+    settings.iframe_allowed_hosts,
+  );
+  const css = collectBlockAssets([block], registry, { includeScripts: false, renderVersion, globalBlockSource }).css;
+  const page = {
+    id: 'block-preview', title: `${type.label} preview`, slug: 'block-preview', status: 'draft',
+    content_mode: 'blocks', blocks: [block], noindex: true,
+  } as unknown as Page;
+  const document = buildHtml({
+    page, versionId, settings, headerHtml: '', footerHtml: '', bodyHtml: html, blocksBody: true,
+    blockCss: css, blockJs: '', allowScripts: false, robotsBlocked: true, banner: null,
+  });
+  return {
+    html: await resolvePreviewMedia(html, orgId, siteId, {}),
+    css,
+    document: await resolvePreviewMedia(document, orgId, siteId, {}),
+    render_version: renderVersion,
+  };
 }
 
 /**

@@ -24,7 +24,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!guard.ok) return guard.response;
   const writeCheck = requirePermission(guard.value, 'write');
   if (!writeCheck.ok) return writeCheck.response;
-  const { session, site, versionId, owner_org_id } = guard.value;
+  const { session, site, versionId, owner_org_id, permission } = guard.value;
   const siteId = site.id;
 
   const body = (await request.json().catch(() => ({}))) as {
@@ -99,6 +99,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
       message: modelMessage,
       history: recent,
       activePage,
+      permission,
     });
 
     await store.addDoc(paths.chat(owner_org_id, siteId, versionId), {

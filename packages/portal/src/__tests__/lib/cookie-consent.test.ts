@@ -56,6 +56,7 @@ describe('cookie consent — AI tool cannot write cookie_consent', () => {
         site: { id: SITE, name: 'My Site' } as Site,
         version: null,
         portalOrigin: 'http://localhost:4321',
+        permission: 'admin',
       },
     );
 
@@ -88,6 +89,7 @@ describe('cookie consent — AI tool cannot write cookie_consent', () => {
         site: { id: SITE, name: 'My Site' } as Site,
         version: null,
         portalOrigin: 'http://localhost:4321',
+        permission: 'admin',
       },
     );
 

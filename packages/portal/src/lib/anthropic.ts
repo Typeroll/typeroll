@@ -54,6 +54,7 @@ import type {
   Page,
   Partial as PartialDoc,
   Redirect,
+  SharePermission,
   Site,
   SiteSettings,
   SiteVersion,
@@ -498,25 +499,25 @@ const tools: Anthropic.Tool[] = [
   // ─── BlockType authoring — create / update / delete ───────────────────
   // These three tools manage *types* (the schema definitions). Distinct
   // from add_block/update_block/etc. which manage *instances* of blocks
-  // on a page. `script` is accepted only when the site has enabled
-  // "Allow AI to write block scripts" (Site.ai_scripts_enabled); otherwise
-  // the chat handler strips it with a warning (lib/block-script-gate.ts).
-  // This gate is specific to the in-portal chat — API keys and MCP write
-  // block JS under their own authority. Origin is stamped 'ai' so the
-  // portal UI can visually flag AI-authored types for audit.
+  // on a page. They write through lib/block-type-write.ts — the shared
+  // validator and the version chain, like the portal and the API — and need
+  // admin permission on the site. The chat never writes `script`: it is
+  // dropped with a warning (lib/block-script-gate.ts). Origin is stamped
+  // 'ai' so the portal UI can flag AI-authored types for audit.
   {
     name: 'create_block_type',
     description:
-      "Create a new custom block type usable on this site. Use this when none of the existing blocks fit and the user needs a reusable shape (e.g. \"a card that pairs an icon with two columns of bullet points\"). The block ships immediately to every page editor and the renderer's registry. Origin is auto-stamped 'ai'. Custom JS via `script` requires the site's \"Allow AI to write block scripts\" setting (an org admin enables it in the portal under Settings) — when it's off, the script field is ignored with a warning. If the user asks for interactivity and the warning comes back, tell them about the setting, suggest adding the script manually in the block type editor, or point them to the API/MCP route where their own key carries the authority (audit-logged).",
+      "Create a block type for this site when no existing block fits and the user needs a reusable shape. Needs admin permission on the site. Prefer a COMPOSED block type: `composition` is a tree of existing blocks (core/heading, core/text, core/image, core/icon, core/button, core/container, core/grid, core/repeater …) whose data reads the block's own fields through exact bindings — a heading's text set to \"{{props.title}}\" — and a core/repeater with items \"{{props.items}}\" renders its children once per list item, where \"{{item.title}}\" reads the item. People who place the block edit only the fields in `schema`. Use a TEMPLATE type (`template`, own markup) only when existing blocks cannot express it: {{field}} escaped, {{{field}}} raw (richtext and derived …_svg only), {{#field}}…{{/field}} when set, {{^field}}…{{/field}} when empty, {{#each items}}…{{/each}} per list item (with {{@index}}, {{@first}}), {{#link field class=\"…\"}}…{{/link}} wraps in a safe link. Field types include text, textarea, richtext, image, icon, select, boolean, number, link ({ page_id | url, new_tab } — prefer page_id for pages on the site), array (a list with sub-fields, item_label, min_items, max_items) and object. `styles` is scoped to the block: selectors apply inside it, :scope is the block itself, body/html/:root are refused. Every problem comes back with a path; fix them and retry. The chat never writes `script` (it is ignored with a warning).",
     input_schema: {
       type: 'object',
       properties: {
-        name: { type: 'string', description: 'Machine name, lowercase kebab/underscore, 1-64 chars. Becomes the block type id.' },
+        name: { type: 'string', description: 'Machine name, lowercase letters, digits, "-" and "_", 1-64 chars. Becomes the block type id.' },
         label: { type: 'string', description: 'Display label in the block picker.' },
+        description: { type: 'string', description: 'When to use this block; shown to editors.' },
         icon: { type: 'string', description: 'Lucide icon name (optional).' },
         category: { type: 'string', enum: ['layout', 'content', 'media', 'custom'], description: 'Picker category. Default custom.' },
         container: {
-          description: 'Container kind. true = ordered children, slots = named slots, repeater = loops items[], conditional = renders children if condition truthy.',
+          description: 'Template types only. true = ordered children ({{children}}), slots = named slots, repeater = loops items[], conditional = renders children if condition truthy.',
         },
         slot_count: { type: 'number', description: 'Required when container="slots" (1-8).' },
         slot_labels: { type: 'array', items: { type: 'string' } },
@@ -528,24 +529,25 @@ const tools: Anthropic.Tool[] = [
         },
         schema: {
           type: 'array',
-          description: 'FieldDefinition[]. Each field: { name, type, label, required?, default?, options?, responsive? }.',
+          description: 'FieldDefinition[]: { name, type, label, help?, required?, default?, options? (select), fields? (array/object), item_label?, min_items?, max_items? }.',
         },
-        template: { type: 'string', description: 'HTML body with {{field}}, {{{field}}}, {{=tag}}, {{children}}, {{slot:NAME}} substitutions. Outermost element should carry data-block="<name>".' },
-        styles: { type: 'string', description: 'Block-scoped CSS. Selectors should start with [data-block="<name>"] so they don\'t leak.' },
-        script: { type: 'string', description: 'Client-side JS shipped with the block (runs on the published site). Only honoured when the site has enabled AI block scripts; otherwise ignored with a warning in the result.' },
+        composition: { type: 'array', description: 'Block[] the type is built from: { id, type, data, children? }. Bind data to fields with "{{props.name}}" / "{{item.name}}" as the whole value.' },
+        template: { type: 'string', description: 'Markup for a template type (instead of composition).' },
+        styles: { type: 'string', description: 'CSS scoped to the block; use :scope for the block element itself.' },
       },
-      required: ['name'],
+      required: ['name', 'label'],
     },
   },
   {
     name: 'update_block_type',
     description:
-      "Update a custom or third-party block type. Core blocks (id starts with 'core/') are managed in platform code and cannot be changed here. Schema, template, and styles REPLACE wholesale when set — don't include them unless you want to overwrite. Other fields shallow-merge into the existing doc. The `script` field follows the same site-setting gate as create_block_type.",
+      "Update a site block type. Needs admin permission. Core blocks (id starts with 'core/') are managed in platform code and cannot be changed. schema, composition, template and styles REPLACE wholesale when set; other fields shallow-merge. To rename a field that pages already use, send the new schema with `renames` ({ \"old_name\": \"new_name\", \"items.title\": \"heading\" }) — the content moves in every page, draft, template and global block that uses the type (a composed type's own bindings follow). Removing or retyping a field that holds content is refused until you ASK THE USER and resend with confirm_data_loss: true; the refusal lists the affected pages. The result's `impact` lists every use. The chat never writes `script`.",
     input_schema: {
       type: 'object',
       properties: {
         id: { type: 'string', description: 'Block type id (must not start with "core/").' },
         label: { type: 'string' },
+        description: { type: 'string' },
         icon: { type: 'string' },
         category: { type: 'string', enum: ['layout', 'content', 'media', 'custom'] },
         container: {},
@@ -554,9 +556,11 @@ const tools: Anthropic.Tool[] = [
         item_compatible: { type: 'boolean' },
         expand_to: { type: 'object', properties: { target: { type: 'string' }, defaults: { type: 'object' } } },
         schema: { type: 'array' },
+        composition: { type: 'array' },
         template: { type: 'string' },
         styles: { type: 'string' },
-        script: { type: 'string', description: 'Only honoured when the site has enabled AI block scripts; otherwise ignored with a warning.' },
+        renames: { type: 'object', description: 'Old field path → new name, e.g. { "title": "heading", "items.text": "body" }.' },
+        confirm_data_loss: { type: 'boolean', description: 'Only after the user agreed to drop the content of removed or retyped fields.' },
       },
       required: ['id'],
     },
@@ -564,7 +568,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'delete_block_type',
     description:
-      "Remove a custom or third-party block type. Core blocks cannot be deleted. Pages that reference the deleted block render `<!-- unknown block type -->` placeholders, so call find_pages_using_block_type FIRST and ASK THE USER before deleting if any pages are affected.",
+      "Remove a site block type. Needs admin permission. Core blocks cannot be deleted. Refused while anything uses the type (pages and drafts, templates, header, footer, global blocks, block templates, other block types); the refusal lists where, so tell the user and remove those uses first.",
     input_schema: {
       type: 'object',
       properties: { id: { type: 'string' } },
@@ -929,7 +933,7 @@ When a user asks for "a CTA at the top of every page", the right move is almost 
 
 These are two separate verb families — keep them straight:
 
-- **BlockType tools** (\`list_block_types\`, \`read_block_type\`, \`create_block_type\`, \`update_block_type\`, \`delete_block_type\`) manage the *schema definitions* — the things that show up in the block picker. Origin is stamped \`'ai'\` on creates. Custom JS (\`script\`) is available only when the site has "Allow AI to write block scripts" enabled (a human-set site setting); when it's off your script is ignored and the result carries a warning — tell the user about the setting or suggest adding the script manually in the block type editor.
+- **BlockType tools** (\`list_block_types\`, \`read_block_type\`, \`create_block_type\`, \`update_block_type\`, \`delete_block_type\`) manage the *schema definitions* — the things that show up in the block picker. Origin is stamped \`'ai'\` on creates; they need admin permission on the site. Prefer a composed block type (built from existing blocks with \`{{props.x}}\` / \`{{item.x}}\` bindings) over a template. You never write block type JavaScript (\`script\` is ignored with a warning) — suggest adding it in the block type editor or through an API key. Renaming a field in use goes through \`renames\`; removing one that holds content needs the user's agreement and \`confirm_data_loss\`.
 - **Block instance tools** (\`add_block\`, \`update_block\`, \`move_block\`, \`remove_block\`, \`duplicate_block\`, \`set_block_responsive\`) manage *placements* of blocks inside a container (page/partial/template).
 
 A request like "make me a custom testimonial card with a star rating built in" is BlockType work (\`create_block_type\`); a request like "add another testimonial to the home page" is instance work (\`add_block\` or \`duplicate_block\`).
@@ -1075,6 +1079,8 @@ export async function runChatTurn(args: {
   message: string;
   history: ChatMessageInput[];
   activePage?: ActivePageContext | null;
+  /** The person's permission on the site; block type authoring needs admin. */
+  permission: SharePermission;
 }): Promise<ChatResult> {
   const client = await getAnthropic(args.orgId);
   if (!client) {
@@ -1133,6 +1139,7 @@ export async function runChatTurn(args: {
           site: args.site,
           version: args.version,
           portalOrigin: args.portalOrigin,
+          permission: args.permission,
         });
         if (out.action) actions.push(out.action);
         toolCalls.push({
@@ -1181,6 +1188,8 @@ export interface ToolContext {
   site: Site;
   version: SiteVersion | null;
   portalOrigin: string;
+  /** The person's permission on the site; block type authoring needs admin. */
+  permission: SharePermission;
 }
 
 function absolutePreviewUrl(ctx: ToolContext, page: Parameters<typeof pagePreviewUrl>[1]): string {
@@ -1726,15 +1735,10 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
 
 
     case 'list_block_types': {
-      // Returns core + custom block types in one list so the model
-      // doesn't need to know about origin to discover what's usable.
-      // Core types ship in code (origin: 'core'); custom/third-party
-      // are persisted in the datastore. Output shape is the same
-      // BlockType for both — id, label, category, container,
-      // slot_count/slot_labels, schema (fields with name/type/label).
-      // Use the schema to know what `data.X` fields each block accepts
-      // when calling add_block.
-      const custom = await store.listDocs<BlockType>(paths.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId));
+      // Returns core + site block types in one list so the model doesn't
+      // need to know about origin to discover what's usable. Site types are
+      // read through the version chain, so a branch sees what it inherits.
+      const custom = await vstore.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId);
       const merged: BlockType[] = [
         ...CORE_BLOCK_TYPES.filter((b) => b.id !== 'template_content_slot').map((b) => ({ ...b })),
         ...custom,
@@ -1745,12 +1749,14 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
         id: b.id,
         name: b.name,
         label: b.label,
+        ...(b.description ? { description: b.description } : {}),
         category: b.category,
         container: b.container,
         slot_count: b.slot_count,
         slot_labels: b.slot_labels,
         icon: b.icon,
         origin: b.origin ?? b.created_by ?? 'core',
+        ...(b.composition?.length ? { composed: true } : {}),
         field_count: b.schema?.length ?? 0,
         field_names: b.schema?.map((f) => f.name) ?? [],
       }));
@@ -1761,120 +1767,49 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       const id = String(input.id ?? '');
       const fromCore = CORE_BLOCK_TYPES.find((b) => b.id === id);
       if (fromCore) return { result: fromCore };
-      const doc = await store.getDoc<BlockType>(
-        `${paths.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId)}/${id}`,
-      );
+      const doc = await vstore.blockType(ctx.orgId, ctx.siteId, ctx.versionId, id);
       if (!doc) return { result: { error: `Block type ${id} not found` } };
-      return { result: doc };
+      return { result: { ...doc, id } };
     }
 
-    case 'create_block_type': {
-      const name = String(input.name ?? '');
-      if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(name)) {
-        return { result: { error: 'name must be lowercase kebab/underscore (1-64 chars)' } };
-      }
-      const id = name;
-      const docPath = `${paths.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId)}/${id}`;
-      const existing = await store.getDoc(docPath);
-      if (existing) {
-        return { result: { error: `Block type "${id}" already exists. Use update_block_type to change it.` } };
-      }
-      // Whitelist input keys — never trust the model to honour the schema.
-      // `script` is gated on the per-site opt-in (Site.ai_scripts_enabled,
-      // set by a site admin in the portal or through the API/MCP — never
-      // by the chat itself); without it the field is dropped and a
-      // warning surfaces in the result.
-      const { gateBlockScript } = await import('./block-script-gate');
-      const siteDoc = await store.getDoc<Site>(paths.site(ctx.orgId, ctx.siteId));
-      const scriptInput = { script: typeof input.script === 'string' ? input.script : undefined };
-      const scriptWarnings = gateBlockScript(scriptInput, siteDoc ?? {});
-      const doc: BlockType = {
-        id,
-        name,
-        label: typeof input.label === 'string' ? input.label : name,
-        icon: typeof input.icon === 'string' ? input.icon : undefined,
-        category: ['layout', 'content', 'media', 'custom'].includes(String(input.category))
-          ? (input.category as BlockType['category']) : 'custom',
-        container: input.container as BlockType['container'] ?? false,
-        slot_count: typeof input.slot_count === 'number' ? input.slot_count : undefined,
-        slot_labels: Array.isArray(input.slot_labels) ? input.slot_labels as string[] : undefined,
-        item_compatible: input.item_compatible === true ? true : undefined,
-        expand_to: input.expand_to as BlockType['expand_to'],
-        schema: Array.isArray(input.schema) ? input.schema as BlockType['schema'] : [],
-        template: typeof input.template === 'string' ? input.template : undefined,
-        styles: typeof input.styles === 'string' ? input.styles : undefined,
-        script: scriptInput.script,
-        origin: 'ai',
-        created_at: new Date().toISOString(),
-      };
-      await store.setDoc(docPath, doc);
-      return {
-        result: { ok: true, block_type: doc, ...(scriptWarnings.length ? { warnings: scriptWarnings } : {}) },
-        action: {
-          type: 'update_settings',
-          description: `Created custom block type "${id}".`,
-          target: id,
-        },
-      };
-    }
-
-    case 'update_block_type': {
-      const id = String(input.id ?? '');
-      if (id.startsWith('core/')) {
-        return { result: { error: 'Core block types are managed in platform code and cannot be edited via tool.' } };
-      }
-      const docPath = `${paths.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId)}/${id}`;
-      const existing = await store.getDoc<BlockType>(docPath);
-      if (!existing) return { result: { error: `Block type ${id} not found` } };
-
-      const patch: Partial<BlockType> = {};
-      if (typeof input.label === 'string') patch.label = input.label;
-      if (typeof input.icon === 'string') patch.icon = input.icon;
-      if (['layout', 'content', 'media', 'custom'].includes(String(input.category))) {
-        patch.category = input.category as BlockType['category'];
-      }
-      if (input.container !== undefined) patch.container = input.container as BlockType['container'];
-      if (typeof input.slot_count === 'number') patch.slot_count = input.slot_count;
-      if (Array.isArray(input.slot_labels)) patch.slot_labels = input.slot_labels as string[];
-      if (typeof input.item_compatible === 'boolean') patch.item_compatible = input.item_compatible || undefined;
-      if (input.expand_to !== undefined) patch.expand_to = input.expand_to as BlockType['expand_to'];
-      if (Array.isArray(input.schema)) patch.schema = input.schema as BlockType['schema'];
-      if (typeof input.template === 'string') patch.template = input.template;
-      if (typeof input.styles === 'string') patch.styles = input.styles;
-      // `script` is gated on the per-site opt-in — see create_block_type.
-      const { gateBlockScript } = await import('./block-script-gate');
-      const siteDoc = await store.getDoc<Site>(paths.site(ctx.orgId, ctx.siteId));
-      const scriptInput = { script: typeof input.script === 'string' ? input.script : undefined };
-      const scriptWarnings = gateBlockScript(scriptInput, siteDoc ?? {});
-      if (scriptInput.script !== undefined) patch.script = scriptInput.script;
-
-      const merged: BlockType = { ...existing, ...patch };
-      await store.setDoc(docPath, merged);
-      return {
-        result: { ok: true, block_type: merged, ...(scriptWarnings.length ? { warnings: scriptWarnings } : {}) },
-        action: {
-          type: 'update_settings',
-          description: `Updated block type "${id}".`,
-          target: id,
-        },
-      };
-    }
-
+    case 'create_block_type':
+    case 'update_block_type':
     case 'delete_block_type': {
-      const id = String(input.id ?? '');
-      if (id.startsWith('core/')) {
-        return { result: { error: 'Core block types are managed in platform code and cannot be deleted.' } };
+      // Same write path, validator and version chain as the portal and the
+      // API; admin permission, as for a person in the portal.
+      if (ctx.permission !== 'admin') {
+        return { result: { error: 'Creating, changing and deleting block types needs admin permission on the site. Ask a site admin, or build the section from existing blocks.' } };
       }
-      const docPath = `${paths.blockTypes(ctx.orgId, ctx.siteId, ctx.versionId)}/${id}`;
-      const existing = await store.getDoc(docPath);
-      if (!existing) return { result: { error: `Block type ${id} not found` } };
-      await store.deleteDoc(docPath);
+      const writes = await import('./block-type-write');
+      const { CHAT_BLOCK_TYPE_SCRIPT_WARNING } = await import('./block-script-gate');
+      const id = String(name === 'create_block_type' ? input.name ?? '' : input.id ?? '');
+      if (name === 'delete_block_type') {
+        const outcome = await writes.deleteSiteBlockType(wcCtx(ctx), id);
+        if (!outcome.ok) return { result: outcome.body };
+        return {
+          result: { ok: true },
+          action: { type: 'update_settings', description: `Deleted block type "${id}".`, target: id },
+        };
+      }
+      // The chat never writes block type JavaScript, whatever the site setting.
+      const { script, id: _id, ...definition } = input;
+      const scriptWarnings = script !== undefined && script !== '' ? [CHAT_BLOCK_TYPE_SCRIPT_WARNING] : [];
+      const outcome = name === 'create_block_type'
+        ? await writes.createSiteBlockType(wcCtx(ctx), definition, { origin: 'ai', allowScript: false })
+        : await writes.updateSiteBlockType(wcCtx(ctx), id, definition, { allowScript: false, actor: 'agent', actorId: 'chat' });
+      if (!outcome.ok) return { result: { ...outcome.body, ...(scriptWarnings.length ? { warnings: scriptWarnings } : {}) } };
+      const body = outcome.body as { block_type: BlockType; warnings: unknown[]; impact?: unknown };
       return {
-        result: { ok: true },
+        result: {
+          ok: true,
+          block_type: body.block_type,
+          ...(body.impact ? { impact: body.impact } : {}),
+          ...(body.warnings.length || scriptWarnings.length ? { warnings: [...scriptWarnings, ...body.warnings] } : {}),
+        },
         action: {
           type: 'update_settings',
-          description: `Deleted block type "${id}".`,
-          target: id,
+          description: `${name === 'create_block_type' ? 'Created' : 'Updated'} block type "${body.block_type.id}".`,
+          target: body.block_type.id,
         },
       };
     }

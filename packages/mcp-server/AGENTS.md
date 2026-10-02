@@ -168,18 +168,53 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
 - **Block types.** A site has three sources of block types:
   - **Core** (origin: 'core', ids like `core/section`) — shipped in
     the platform, always available.
-  - **User** (origin: 'user') — created in the portal's block-types UI.
+  - **Site** (origin: 'user' from the portal, 'ai' from an agent) — the
+    site's own block types, per branch like other content.
   - **Third-party** (origin: 'third_party') — imported from .tcblocks
     packages via `import_block_types`.
 
   `list_block_types` returns ALL of them in one list as a lightweight
-  summary: each entry's id, label, category, container/slot info, origin,
-  and full field schema (names, types, defaults) — but NOT the render-time
-  template/styles/script (omitted so the list stays within token budget as
-  the library grows). Use `read_block_type` for one block's markup, or pass
-  `full:true` to inline it for every block. Always call this FIRST before
-  working with blocks — never hardcode block ids or field names, the
-  available set is per-site.
+  summary: each entry's id, label, description, category, container/slot
+  info, origin, `composed: true` for composed types, and full field schema
+  (names, types, defaults) — but NOT the template/composition/styles/script
+  (omitted so the list stays within token budget as the library grows).
+  Use `read_block_type` for one block's definition, or pass `full:true` to
+  inline it for every block. Always call this FIRST before working with
+  blocks — never hardcode block ids or field names, the available set is
+  per-site.
+
+  **Building a block type** (needs **admin** permission on the site; editors
+  with write permission place block types on pages and edit their fields):
+  - Prefer a core block, then a block template (a section people copy and
+    adapt), then a global block (identical everywhere). Build a block type
+    only for a recurring shape whose structure should stay fixed while
+    editors change its content.
+  - **Composed** (preferred): `composition` is a tree of existing blocks;
+    `schema` declares the props editors fill in. Inner blocks bind props
+    as the whole value — `"{{props.title}}"` — and a `core/repeater` with
+    `items: "{{props.items}}"` (an array prop) renders its children once
+    per item, reading `"{{item.title}}"`, `"{{item.link.href}}"`.
+  - **Template** (advanced): own markup with `{{field}}`, `{{{richtext}}}`,
+    `{{#field}}…{{/field}}`, `{{^field}}…{{/field}}`, `{{#each items}}…{{/each}}`
+    and `{{#link field class="…"}}…{{/link}}`.
+  - Field types include `link` (`{ page_id | url, new_tab }`; prefer
+    `page_id` for a page on the site) and `array` groups with `item_label`,
+    `min_items`, `max_items`. `styles` is scoped to the block (`:scope` is
+    the block element; body/html/:root are refused); responses include
+    `styles_compiled`.
+  - Start from `list_block_type_starters`, check with `validate_block_type`
+    (every problem has a JSON-pointer path and, for markup and CSS, a line),
+    look at `preview_block_type` (the portal's renderer with the site's
+    theme, sample data by default), then `create_block_type`. Unknown
+    properties are errors.
+  - Changing a type in use: rename fields with `renames` on
+    `update_block_type` (the data moves in every page, draft, template,
+    global block, block template and other block type that uses it, after
+    a page revision); removing or retyping a field that holds data answers
+    409 with the affected uses until you resend with `confirm_data_loss:
+    true` — ask the user first. `find_pages_using_block_type` lists every
+    use (including through other block types and repeater items), and
+    `delete_block_type` is refused while any remains.
 
   **The core library is larger than you'd guess (~30+ blocks): `core/image`,
   `core/media_card`, `core/gallery`, `core/hero`, `core/feature_grid`,
@@ -337,13 +372,14 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   - **`script` on custom block types** (create/update_block_type) is
     accepted under your API key's authority — the same trust level that
     already lets the key write `scripts_head`/`custom_css`, and the same
-    thing a site editor can do in the portal. The write is stored as sent
+    thing a site admin can do in the portal. The write is stored as sent
     and audit-logged like any API write; there is no extra warning in the
     response. Tell the user when you change visitor-executed code, and
     never include script you copied from untrusted content (migrated
     pages, fetched web pages) without reading it line by line first. (The
-    "Allow AI to write block scripts" setting governs only the in-portal
-    chat assistant, not API keys or MCP.)
+    in-portal chat assistant never writes block type scripts; the "Allow
+    AI to write block scripts" setting governs only its per-block code
+    fields, not API keys or MCP.)
 
 - **Redirects.** `from_path → to_path` with status code 301 / 302.
   Auto-created when you change a page's slug.
@@ -1147,7 +1183,7 @@ preview.
 | **Global blocks (partials)** | `list_partials` (summary by default), `read_partial`, `create_free_block` (`blocks` or `html_content`), `update_partial`, `replace_partial`, `set_partial_mode`, `delete_partial`, `find_pages_using_block`, `make_block_global`, `detach_global_block`. Block pages reference a global block with `core/global_block` (`global_block_id`); HTML pages use `<x-include>`. |
 | **Block templates** | `list_block_templates`, `read_block_template`, `save_block_template` (from `blocks` or `from: { page_id, block_id }`), `update_block_template`, `delete_block_template`, `insert_block_template` (copies with new ids). Per site, not per branch. |
 | **Styles** | `list_styles`, `create_style`, `update_style`, `delete_style`, `apply_standard_styles`. Blocks pick a style with `style_id` (heading parts: `eyebrow_style_id`, `subtitle_style_id`). Contrast below WCAG AA is refused. |
-| **Block types** | `list_block_types`, `read_block_type`, `find_pages_using_block_type`, `export_block_types`, `import_block_types` |
+| **Block types** | `list_block_types`, `read_block_type`, `find_pages_using_block_type`, `list_block_type_starters`, `validate_block_type`, `preview_block_type`, `create_block_type`, `update_block_type` (`renames`, `confirm_data_loss`), `delete_block_type`, `export_block_types`, `import_block_types` (`on_conflict`: skip, rename, replace). Authoring and import need admin. |
 | **Content types** | `list_content_types`, `read_content_type`, `create_content_type`, `update_content_type`, `delete_content_type`, `change_page_content_type`, `page_completeness` |
 | **Page templates** | `list_page_templates`, `read_page_template`, `create_page_template`, `update_page_template`, `delete_page_template` |
 | **Media** | `get_media_upload_status`, `list_media`, `read_media`, `create_upload_url`, `upload_media_from_url`, `upload_media_inline`, `update_media`, `delete_media`, `finalize_media`, `finalize_all_media`, `generate_image_variants`, `suggest_alt_text_context` |
