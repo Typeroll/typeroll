@@ -4,6 +4,11 @@ import { BREAKPOINTS, BREAKPOINTS_ABOVE_MOBILE, resolveBreakpointWidths, respons
 import { Monitor } from 'lucide-react';
 import RichTextInput from './RichTextInput';
 import ContentReferenceInput from './ContentReferenceInput';
+import ArrayFieldInput from './ArrayFieldInput';
+import IconPicker from './IconPicker';
+import LinkFieldInput from './LinkFieldInput';
+import MediaPicker from './MediaPicker';
+import { loadInternalPages, type InternalPageOption } from './internal-pages';
 
 import { GlobalBlocksContext, SiteStylesContext } from './editor-context';
 export { fieldAvailable, GlobalBlocksContext, RenderVersionContext, SiteStylesContext } from './editor-context';
@@ -22,7 +27,11 @@ export default function FieldInput({
   triState?: boolean;
 }) {
   const fieldId = useId();
-  const label = (
+  const helpId = `${fieldId}-help`;
+  // Help text sits between the label and the control and describes the control.
+  const help = field.help ? <p id={helpId} className="field-help" style={fieldHelp}>{field.help}</p> : null;
+  const describedBy = field.help ? helpId : undefined;
+  const labelOnly = (
     <label htmlFor={fieldId} style={fieldLabel}>
       {field.label}{field.required && <span aria-hidden="true"> *</span>}
       {responsive && activeBp && (
@@ -30,6 +39,7 @@ export default function FieldInput({
       )}
     </label>
   );
+  const label = <>{labelOnly}{help}</>;
   const v = (value ?? '') as string;
   const siteStyles = useContext(SiteStylesContext);
   const globalBlocks = useContext(GlobalBlocksContext);
@@ -66,6 +76,17 @@ export default function FieldInput({
         </div>
       );
     }
+    case 'link':
+      return <div style={fieldGroup} role="group" aria-labelledby={`${fieldId}-legend`} aria-describedby={describedBy}>
+        <span id={`${fieldId}-legend`} style={fieldLabel}>{field.label}{field.required && <span aria-hidden="true"> *</span>}</span>
+        {help}
+        <LinkFieldInput id={fieldId} siteId={siteId} label={field.label} value={value} onChange={onChange} />
+      </div>;
+    case 'icon':
+      return <div style={fieldGroup}>{label}<IconPicker id={fieldId} label={field.label} value={typeof value === 'string' ? value : ''} onChange={onChange} /></div>;
+    case 'image':
+      if (!siteId) break;
+      return <div style={fieldGroup}>{label}<MediaPicker id={fieldId} siteId={siteId} theme="dark" value={typeof value === 'string' ? value : ''} onChange={onChange} /></div>;
     case 'page_ref':
     case 'page_ref_list':
     case 'content_type_ref':
@@ -85,7 +106,7 @@ export default function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <textarea id={fieldId} aria-label={field.label} aria-required={field.required || undefined}
+          <textarea id={fieldId} aria-label={field.label} aria-required={field.required || undefined} aria-describedby={describedBy}
             rows={isCode ? 24 : 4}
             value={v}
             placeholder={field.placeholder}
@@ -99,7 +120,7 @@ export default function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <select id={fieldId} aria-label={field.label} aria-required={field.required || undefined} value={v} onChange={(e) => onChange(e.target.value)} style={selectInput}>
+          <select id={fieldId} aria-label={field.label} aria-required={field.required || undefined} aria-describedby={describedBy} value={v} onChange={(e) => onChange(e.target.value)} style={selectInput}>
             {!field.required && field.default == null && <option value="">{field.editor_group ? 'Default' : 'Choose…'}</option>}
             {(field.options ?? []).map((opt, index) => (
               <option key={opt} value={opt}>{field.option_labels?.[index] ?? opt}</option>
@@ -111,6 +132,7 @@ export default function FieldInput({
       const selected = Array.isArray(value) ? value : [];
       return <fieldset style={{ ...fieldGroup, border: 0, padding: 0 }}>
         <legend style={fieldLabel}>{field.label}{field.required ? ' *' : ''}</legend>
+        {help}
         {(field.options ?? []).map((option, index) => <label key={option} style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 44 }}>
           <input type="checkbox" checked={selected.includes(option)} onChange={event => onChange(event.target.checked ? [...selected, option] : selected.filter(item => item !== option))} />
           {field.option_labels?.[index] ?? option}
@@ -132,9 +154,11 @@ export default function FieldInput({
               type="checkbox"
               checked={!!value}
               onChange={(e) => onChange(e.target.checked)}
+              aria-describedby={describedBy}
             />
             {field.label}
           </label>
+          {help}
         </div>
       );
     case 'color':
@@ -148,7 +172,7 @@ export default function FieldInput({
       return (
         <div style={fieldGroup}>
           {label}
-          <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined}
+          <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined} aria-describedby={describedBy}
             type="number"
             min={field.min}
             max={field.max}
@@ -175,14 +199,18 @@ export default function FieldInput({
       );
     case 'array':
       return (
-        <ArrayFieldInput
-          siteId={siteId}
-          triState={triState}
-          field={field}
-          value={Array.isArray(value) ? value : []}
-          onChange={onChange}
-          label={label}
-        />
+        (field.fields ?? []).some(child => child.name !== field.item_key)
+          ? <ArrayFieldInput
+            siteId={siteId}
+            triState={triState}
+            field={field}
+            value={Array.isArray(value) ? value : []}
+            onChange={onChange}
+            label={labelOnly}
+            help={help}
+            describedBy={describedBy}
+          />
+          : <JsonFieldInput value={Array.isArray(value) ? value : []} onChange={onChange} label={label} expected="array" />
       );
     case 'object':
       if (field.name === 'responsive_breakpoints') return <BlockWidthsInput value={value} siteWidths={siteWidths} onChange={onChange} />;
@@ -193,7 +221,8 @@ export default function FieldInput({
           field={field}
           value={value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}}
           onChange={onChange}
-          label={label}
+          label={field.fields?.length ? labelOnly : label}
+          help={field.fields?.length ? help : null}
         />
       );
     case 'url':
@@ -208,19 +237,20 @@ export default function FieldInput({
         />
       );
     default:
-      return (
-        <div style={fieldGroup}>
-          {label}
-          <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined}
-            type={field.type === 'email' ? 'email' : field.type === 'date' ? 'date' : field.type === 'datetime' ? 'datetime-local' : 'text'}
-            value={v}
-            placeholder={field.placeholder}
-            onChange={(e) => onChange(e.target.value)}
-            style={textInput}
-          />
-        </div>
-      );
+      break;
   }
+  return (
+    <div style={fieldGroup}>
+      {label}
+      <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined} aria-describedby={describedBy}
+        type={field.type === 'email' ? 'email' : field.type === 'date' ? 'date' : field.type === 'datetime' ? 'datetime-local' : 'text'}
+        value={v}
+        placeholder={field.placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        style={textInput}
+      />
+    </div>
+  );
 }
 
 /** Save all widths together so autosave never persists a half-edited map. */
@@ -245,13 +275,14 @@ function BlockWidthsInput({ value, siteWidths, onChange }: { value: unknown; sit
 }
 
 function ObjectFieldInput({
-  siteId, field, value, onChange, label, triState,
+  siteId, field, value, onChange, label, help, triState,
 }: {
   siteId?: string;
   field: FieldDefinition;
   value: Record<string, unknown>;
   onChange: (value: unknown) => void;
   label: React.ReactNode;
+  help?: React.ReactNode;
   triState?: boolean;
 }) {
   if (!field.fields?.length) {
@@ -260,6 +291,7 @@ function ObjectFieldInput({
   return (
     <fieldset style={{ ...fieldGroup, border: '1px solid #2a2a30', borderRadius: 6, padding: 10 }}>
       <legend style={{ padding: '0 4px' }}>{label}</legend>
+      {help}
       {(field.fields ?? []).map((child) => (
         <FieldInput
           key={child.name}
@@ -270,52 +302,6 @@ function ObjectFieldInput({
           onChange={(next) => onChange({ ...value, [child.name]: next })}
         />
       ))}
-    </fieldset>
-  );
-}
-
-function ArrayFieldInput({
-  siteId, field, value, onChange, label, triState,
-}: {
-  siteId?: string;
-  field: FieldDefinition;
-  value: unknown[];
-  onChange: (value: unknown) => void;
-  label: React.ReactNode;
-  triState?: boolean;
-}) {
-  const children = (field.fields ?? []).filter(child => child.name !== field.item_key);
-  if (children.length === 0) {
-    return <JsonFieldInput value={value} onChange={onChange} label={label} expected="array" />;
-  }
-  return (
-    <fieldset style={{ ...fieldGroup, border: '1px solid #2a2a30', borderRadius: 6, padding: 10 }}>
-      <legend style={{ padding: '0 4px' }}>{label}</legend>
-      {value.map((raw, index) => {
-        const row = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-        return (
-          <div key={index} style={{ borderBottom: '1px solid #2a2a30', marginBottom: 10, paddingBottom: 10 }}>
-            {children.map((child) => (
-              <FieldInput
-                key={child.name}
-                siteId={siteId}
-                triState={triState}
-                field={child}
-                value={row[child.name]}
-                onChange={(next) => {
-                  const rows = value.slice();
-                  rows[index] = { ...row, [child.name]: next };
-                  onChange(rows);
-                }}
-              />
-            ))}
-            <button type="button" onClick={() => onChange(value.filter((_, i) => i !== index))} style={smallActionBtn}>
-              Remove item
-            </button>
-          </div>
-        );
-      })}
-      <button type="button" onClick={() => onChange([...value, field.item_key ? { [field.item_key]: crypto.randomUUID() } : {}])} style={smallActionBtn}>+ Add item</button>
     </fieldset>
   );
 }
@@ -362,23 +348,6 @@ function JsonFieldInput({
       {error && <span role="alert" style={{ color: '#fca5a5', fontSize: '.75rem' }}>{error}</span>}
     </div>
   );
-}
-
-interface InternalPageOption { id: string; title: string; url: string }
-const internalPageRequests = new Map<string, Promise<InternalPageOption[]>>();
-
-function loadInternalPages(siteId: string): Promise<InternalPageOption[]> {
-  const existing = internalPageRequests.get(siteId);
-  if (existing) return existing;
-  const request = fetch(`/api/sites/${encodeURIComponent(siteId)}/pages`)
-    .then((response) => response.ok ? response.json() : Promise.reject(new Error('Page lookup failed')))
-    .then((payload) => Array.isArray(payload.pages) ? payload.pages as InternalPageOption[] : [])
-    .catch((error) => {
-      internalPageRequests.delete(siteId);
-      throw error;
-    });
-  internalPageRequests.set(siteId, request);
-  return request;
 }
 
 function UrlFieldInput({
@@ -448,6 +417,7 @@ function ResponsiveBadge({
 }
 
 export const fieldGroup: React.CSSProperties = { marginBottom: '0.75rem' };
+const fieldHelp: React.CSSProperties = { margin: '0 0 6px', fontSize: '.78rem', lineHeight: 1.45, color: 'var(--color-text-muted)' };
 export const fieldLabel: React.CSSProperties = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
   fontSize: '.75rem', opacity: 0.7, marginBottom: 4,

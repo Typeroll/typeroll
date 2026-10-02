@@ -1,141 +1,176 @@
-// Top-level UI for managing per-site custom block types.
-// Sidebar with list + "Ny blocktyp" button; selecting one opens
-// BlockTypeEditor in the main area.
+// The Blocks page: the Site's own block types and the builder. New types start
+// from a built-in starter, a blank composed or template type, or a copy of
+// another of the Site's types. Admins only (the page checks permission).
 
-import { useEffect, useState } from 'react';
-import type { BlockType } from '@typeroll/shared';
-import { Plus, Box } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CORE_BLOCK_TYPES, type BlockType, type BlockTypeStarter, type SiteStyle } from '@typeroll/shared';
+import { Box, Plus } from 'lucide-react';
 import BlockTypeEditor from './BlockTypeEditor';
+import { GlobalBlocksContext, RenderVersionContext, SiteStylesContext } from './editor-context';
+import type { GlobalBlockSummary } from './editor-context';
+import { blankComposedDefinition, blankTemplateDefinition, blockTypeMode, suggestTypeName } from '../lib/block-type-builder';
+import './BlockPageEditor.css';
+import './BlockTypeBuilder.css';
 
-export default function BlockTypeManager({ siteId }: { siteId: string }) {
-  const [types, setTypes] = useState<BlockType[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+type View = { kind: 'empty' } | { kind: 'choose' } | { kind: 'new'; initial: Partial<BlockType>; seq: number } | { kind: 'edit'; id: string; notice?: string };
+
+function readView(): View {
+  if (typeof window === 'undefined') return { kind: 'empty' };
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('type');
+  if (id) return { kind: 'edit', id };
+  if (params.has('new')) return { kind: 'choose' };
+  return { kind: 'empty' };
+}
+
+function writeUrl(view: View): void {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('type');
+  url.searchParams.delete('new');
+  if (view.kind === 'edit') url.searchParams.set('type', view.id);
+  if (view.kind === 'choose' || view.kind === 'new') url.searchParams.set('new', '1');
+  window.history.replaceState(null, '', url);
+}
+
+export default function BlockTypeManager({ siteId, siteStyles = [], renderVersion, globalBlocks = [] }: {
+  siteId: string;
+  siteStyles?: SiteStyle[];
+  renderVersion?: number;
+  globalBlocks?: GlobalBlockSummary[];
+}) {
+  const [types, setTypes] = useState<BlockType[] | null>(null);
+  const [view, setViewState] = useState<View>({ kind: 'empty' });
+  const setView = (next: View) => { setViewState(next); writeUrl(next); };
+  useEffect(() => setViewState(readView()), []);
 
   async function refresh(): Promise<BlockType[]> {
     const res = await fetch(`/api/sites/${siteId}/blocks/types`);
     if (!res.ok) return [];
     const body = await res.json() as { block_types: BlockType[] };
-    setTypes(body.block_types ?? []);
-    return body.block_types ?? [];
+    const list = (body.block_types ?? []).slice().sort((a, b) => a.label.localeCompare(b.label));
+    setTypes(list);
+    return list;
   }
-
   useEffect(() => { void refresh(); }, [siteId]);
 
-  const selected = creating ? null : (types.find((t) => t.id === selectedId) ?? null);
+  const registry = useMemo(() => {
+    const map = new Map<string, BlockType>();
+    for (const type of CORE_BLOCK_TYPES) map.set(type.id, type);
+    for (const type of types ?? []) map.set(type.id, type);
+    return map;
+  }, [types]);
+  const takenNames = useMemo(() => [...registry.values()].map(type => type.name).concat((types ?? []).map(type => type.id)), [registry, types]);
+  const start = (definition: Partial<BlockType>) => {
+    const initial = structuredClone(definition);
+    if (initial.name) initial.name = suggestTypeName(initial.name, takenNames);
+    setView({ kind: 'new', initial, seq: Date.now() });
+  };
+  const editing = view.kind === 'edit' ? types?.find(type => type.id === view.id) ?? null : null;
 
   return (
-    <div className="block-type-manager" style={shell}>
-      <aside className="block-type-manager__sidebar" style={sidebar}>
-        <button
-          type="button"
-          onClick={() => { setCreating(true); setSelectedId(null); }}
-          style={newBtn}
-        >
-          <Plus size={14} /> Ny blocktyp
-        </button>
-        <h3 style={listHeading}>Egna block</h3>
-        {types.length === 0 && (
-          <p style={emptyMsg}>No custom blocks yet.</p>
-        )}
-        <ul style={list}>
-          {types.map((t) => (
-            <li key={t.id}>
-              <button
-                type="button"
-                onClick={() => { setCreating(false); setSelectedId(t.id); }}
-                style={listItem(selectedId === t.id && !creating)}
-              >
-                <Box size={14} />
-                <span style={{ flex: 1, textAlign: 'left' }}>{t.label}</span>
-                {t.origin === 'third_party' && (
-                  <span style={originPill}>3rd</span>
-                )}
-              </button>
+    <SiteStylesContext.Provider value={siteStyles}>
+    <RenderVersionContext.Provider value={renderVersion ?? null}>
+    <GlobalBlocksContext.Provider value={{ siteId, blocks: globalBlocks }}>
+    <div className="block-builder">
+      <aside className="bb-sidebar" aria-label="Block types">
+        <button type="button" className="bb-new" onClick={() => setView({ kind: 'choose' })}><Plus size={14} aria-hidden="true" /> New block type</button>
+        <h2 className="bb-list-heading">This Site's block types</h2>
+        {types && types.length === 0 && <p className="bb-empty-note">None yet. Start from a starter, or turn a section on a page into one.</p>}
+        <ul className="bb-list">
+          {(types ?? []).map(type => (
+            <li key={type.id}>
+              <a href={`?type=${encodeURIComponent(type.id)}`} aria-current={view.kind === 'edit' && view.id === type.id ? 'page' : undefined}
+                onClick={event => { event.preventDefault(); setView({ kind: 'edit', id: type.id }); }}>
+                <Box size={14} aria-hidden="true" />
+                <span className="bb-list__label">{type.label}</span>
+                <span className="bb-pill">{type.origin === 'third_party' ? 'Extension' : blockTypeMode(type) === 'composed' ? 'Blocks' : 'Markup'}</span>
+              </a>
             </li>
           ))}
         </ul>
       </aside>
-
-      <main className="block-type-manager__main" style={main}>
-        {creating || selected !== null ? (
-          <BlockTypeEditor
-            siteId={siteId}
-            blockType={selected}
-            onSaved={async (saved) => {
-              const next = await refresh();
-              setCreating(false);
-              setSelectedId(saved.id);
-            }}
-            onDeleted={(id) => {
-              setSelectedId(null);
-              setCreating(false);
-              setTypes((ts) => ts.filter((t) => t.id !== id));
-            }}
-          />
-        ) : (
-          <div className="block-type-manager__empty" style={emptyState}>
-            <Box size={32} />
-            <h2 style={{ margin: '1rem 0 0' }}>Egna block</h2>
-            <p style={muted}>Create reusable blocks for this site.</p>
+      <main className="bb-main">
+        {view.kind === 'choose' && <StarterChooser siteId={siteId} types={types ?? []} onChoose={start} />}
+        {view.kind === 'new' && (
+          <BlockTypeEditor key={`new-${view.seq}`} siteId={siteId} saved={null} initial={view.initial} registry={registry} renderVersion={renderVersion}
+            onSaved={async saved => { await refresh(); setView({ kind: 'edit', id: saved.id, notice: 'Created. Add it to pages from the block library.' }); }}
+            onDeleted={() => setView({ kind: 'empty' })} />
+        )}
+        {view.kind === 'edit' && (editing
+          ? <BlockTypeEditor key={`edit-${editing.id}`} siteId={siteId} saved={editing} initial={editing} registry={registry} renderVersion={renderVersion} notice={view.notice}
+            onSaved={async () => { await refresh(); }}
+            onDeleted={id => { setTypes(list => (list ?? []).filter(type => type.id !== id)); setView({ kind: 'empty' }); }} />
+          : <div className="bb-shell"><p className="bb-help">{types ? 'This block type does not exist on this Site.' : 'Loading…'}</p></div>)}
+        {view.kind === 'empty' && (
+          <div className="bb-shell" style={{ textAlign: 'center', paddingTop: '4rem' }}>
+            <Box size={32} aria-hidden="true" style={{ margin: '0 auto' }} />
+            <h2 style={{ margin: '1rem 0 .5rem', color: '#fafafa' }}>Block types</h2>
+            <p className="bb-help" style={{ maxWidth: '36rem', margin: '0 auto 1rem' }}>
+              Block types are this Site's own blocks: built from existing blocks or with your own markup, with fields that editors fill in on any page.
+            </p>
+            <button type="button" className="bb-btn bb-btn--primary" onClick={() => setView({ kind: 'choose' })}><Plus size={14} aria-hidden="true" /> New block type</button>
           </div>
         )}
       </main>
-      <style>{managerStyles}</style>
     </div>
+    </GlobalBlocksContext.Provider>
+    </RenderVersionContext.Provider>
+    </SiteStylesContext.Provider>
   );
 }
 
-const shell: React.CSSProperties = {
-  display: 'grid', minHeight: 'calc(100vh - 64px)',
-  background: '#0f0f12', color: '#e4e4e7',
-};
-const sidebar: React.CSSProperties = {
-  padding: '1rem', borderRight: '1px solid #2a2a30', overflow: 'auto',
-};
-const newBtn: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-  width: '100%', padding: '.5rem', background: '#6366f1', color: '#fff',
-  border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '.85rem',
-};
-const listHeading: React.CSSProperties = {
-  fontSize: '.7rem', textTransform: 'uppercase', letterSpacing: '0.05em',
-  opacity: 0.55, margin: '1.5rem 0 .5rem',
-};
-const list: React.CSSProperties = { listStyle: 'none', padding: 0, margin: 0 };
-const listItem = (active: boolean): React.CSSProperties => ({
-  display: 'flex', alignItems: 'center', gap: 8,
-  width: '100%', padding: '.4rem .6rem',
-  background: active ? '#1f1f3d' : 'transparent',
-  color: '#fafafa', border: 'none', borderRadius: 4, cursor: 'pointer',
-  fontSize: '.85rem',
-});
-const originPill: React.CSSProperties = {
-  fontSize: '.65rem', padding: '0 6px', background: '#3b2410', color: '#fbbf24',
-  borderRadius: 999,
-};
-const emptyMsg: React.CSSProperties = { color: '#a1a1aa', fontSize: '.85rem' };
-const main: React.CSSProperties = { overflow: 'auto' };
-const emptyState: React.CSSProperties = {
-  textAlign: 'center', padding: '5rem 2rem', color: '#a1a1aa',
-};
-const muted: React.CSSProperties = { color: '#a1a1aa', fontSize: '.9rem' };
-
-const managerStyles = `
-.block-type-manager {
-  grid-template-columns: 260px minmax(0, 1fr);
-  min-width: 0;
+function StarterChooser({ siteId, types, onChoose }: { siteId: string; types: BlockType[]; onChoose: (definition: Partial<BlockType>) => void }) {
+  const [starters, setStarters] = useState<BlockTypeStarter[] | null>(null);
+  const [copyFrom, setCopyFrom] = useState('');
+  useEffect(() => {
+    fetch(`/api/sites/${siteId}/blocks/types/starters`)
+      .then(res => res.ok ? res.json() as Promise<{ starters: BlockTypeStarter[] }> : { starters: [] })
+      .then(body => setStarters(body.starters ?? []))
+      .catch(() => setStarters([]));
+  }, [siteId]);
+  return (
+    <div className="bb-shell">
+      <header className="bb-header"><div><h2>New block type</h2><p>Choose a starting point. You can change everything afterwards.</p></div></header>
+      <section className="bb-card" aria-labelledby="bb-start-blank">
+        <h3 id="bb-start-blank">Start empty</h3>
+        <div className="bb-starters">
+          <button type="button" className="bb-starter" onClick={() => onChoose(blankComposedDefinition())}>
+            <strong>Built from blocks</strong><span>Arrange headings, text, images, buttons and lists, then choose which of their fields editors fill in.</span><em>Recommended</em>
+          </button>
+          <button type="button" className="bb-starter" onClick={() => onChoose(blankTemplateDefinition())}>
+            <strong>Own markup</strong><span>Write the HTML template and CSS yourself, for markup the existing blocks cannot express.</span><em>Advanced</em>
+          </button>
+        </div>
+      </section>
+      <section className="bb-card" aria-labelledby="bb-start-starter">
+        <h3 id="bb-start-starter">Start from a starter</h3>
+        {!starters ? <p>Loading…</p> : (
+          <div className="bb-starters">
+            {starters.map(starter => (
+              <button key={starter.id} type="button" className="bb-starter" onClick={() => onChoose(starter.definition)}>
+                <strong>{starter.label}</strong><span>{starter.description}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+      {types.length > 0 && (
+        <section className="bb-card" aria-labelledby="bb-start-copy">
+          <h3 id="bb-start-copy">Copy one of this Site's block types</h3>
+          <div className="bb-actions">
+            <select aria-label="Block type to copy" value={copyFrom} onChange={e => setCopyFrom(e.target.value)}>
+              <option value="">Choose a block type…</option>
+              {types.map(type => <option key={type.id} value={type.id}>{type.label}</option>)}
+            </select>
+            <button type="button" className="bb-btn" disabled={!copyFrom} onClick={() => {
+              const source = types.find(type => type.id === copyFrom);
+              if (!source) return;
+              const { id: _id, origin: _origin, created_at: _created, css_scope: _scope, ...rest } = structuredClone(source) as BlockType & { updated_at?: string };
+              onChoose({ ...rest, name: `${source.name}_copy`, label: `${source.label} (copy)` });
+            }}>Copy</button>
+          </div>
+        </section>
+      )}
+    </div>
+  );
 }
-.block-type-manager__main { min-width: 0; }
-@media (max-width: 640px) {
-  .block-type-manager {
-    grid-template-columns: minmax(0, 1fr);
-    min-height: 0 !important;
-  }
-  .block-type-manager__sidebar {
-    border-right: 0 !important;
-    border-bottom: 1px solid #2a2a30;
-  }
-  .block-type-manager__empty { padding: 2.5rem 1rem !important; }
-}
-`;
