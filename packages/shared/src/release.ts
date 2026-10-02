@@ -5,7 +5,7 @@
  * capability versions. A Core release may contain several independently
  * versioned surfaces, all reported together by the portal release manifest.
  */
-export const CORE_VERSION = '0.2.60';
+export const CORE_VERSION = '0.2.61';
 
 /** Current persistent-data schema written by this Core release. */
 export const DATA_SCHEMA_VERSION = 2;

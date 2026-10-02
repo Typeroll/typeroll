@@ -5,7 +5,7 @@
 // prioritized recommendations. The findings are stored in workflow.results so
 // they can be rendered in the portal's SEO dashboard.
 
-import { paths , MAIN_VERSION_ID } from '@typeroll/shared';
+import { paths , MAIN_VERSION_ID, buildCoreBlockRegistry, composePageWithTemplate, createPageSource, pageContentValues, renderBlocks } from '@typeroll/shared';
 import { vstore } from '../version-store';
 import type { Page } from '@typeroll/shared';
 import { type WorkflowDef } from './types';
@@ -31,6 +31,7 @@ export const seoAuditWorkflow: WorkflowDef = {
         const pages = await vstore.pages(ctx.orgId, ctx.siteId, MAIN_VERSION_ID);
         const published = pages.filter((p) => p.status === 'published' || p.status === 'unlisted');
         ctx.log(`Auditing ${published.length} pages`);
+        const bodyHtml = await pageBodyRenderer(ctx.orgId, ctx.siteId, pages);
 
         const titleSet = new Map<string, number>();
         const descSet = new Map<string, number>();
@@ -52,16 +53,17 @@ export const seoAuditWorkflow: WorkflowDef = {
           if (titleSet.get(page.seo_title || page.title)! > 1) issues.push('Duplicate title across pages');
           if (page.seo_description && descSet.get(page.seo_description)! > 1) issues.push('Duplicate meta description across pages');
 
-          const bodyText = (page.html_content ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          const html = bodyHtml(page);
+          const bodyText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
           if (bodyText.length < 300) issues.push(`Thin content (${bodyText.length} chars of body text)`);
 
-          const headings = countHeadings(page.html_content ?? '');
+          const headings = countHeadings(html);
           if (headings.h1 === 0) issues.push('No H1 heading');
           if (headings.h1 > 1) issues.push('Multiple H1 headings');
 
           // Image accessibility — flag any <img> with missing alt unless
           // explicitly marked decorative.
-          const imgs = Array.from((page.html_content ?? '').matchAll(/<img\b([^>]*)\/?>/gi));
+          const imgs = Array.from(html.matchAll(/<img\b([^>]*)\/?>/gi));
           let imgMissingAlt = 0;
           for (const m of imgs) {
             const attrs = m[1];
@@ -153,5 +155,29 @@ function countHeadings(html: string): { h1: number; h2: number; h3: number } {
     h1: (html.match(/<h1\b/gi) ?? []).length,
     h2: (html.match(/<h2\b/gi) ?? []).length,
     h3: (html.match(/<h3\b/gi) ?? []).length,
+  };
+}
+
+/**
+ * Body HTML to audit: HTML pages as stored, block pages rendered with the
+ * site's block types and their page template, so headings, text and images
+ * in blocks count.
+ */
+async function pageBodyRenderer(orgId: string, siteId: string, pages: Page[]): Promise<(page: Page) => string> {
+  const types = await vstore.contentTypes(orgId, siteId, MAIN_VERSION_ID);
+  const templates = await vstore.pageTemplates(orgId, siteId, MAIN_VERSION_ID);
+  const registry = buildCoreBlockRegistry();
+  for (const type of await vstore.blockTypes(orgId, siteId, MAIN_VERSION_ID)) registry.set(type.id, type);
+  const pageSource = createPageSource(types, pages);
+  return (page) => {
+    if (page.content_mode === 'html') return page.html_content ?? '';
+    const type = types.find((t) => t.id === (page.content_type ?? 'page'));
+    const template = templates.find((t) => t.id === (page.template || type?.template));
+    const blocks = template ? composePageWithTemplate(template.blocks, page.blocks ?? []) : page.blocks ?? [];
+    try {
+      return renderBlocks(blocks, { registry, pageSource, context: { page: pageContentValues(page), content_type: type as unknown as Record<string, unknown> } });
+    } catch {
+      return page.html_content ?? '';
+    }
   };
 }
