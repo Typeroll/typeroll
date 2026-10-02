@@ -185,12 +185,41 @@ export function fieldsToSteps(fields: FormField[]): FormStep[] {
   return [{ id: 'main', blocks: fieldsToStepBlocks(fields) }];
 }
 
-/** Normalize typed wire values without coercing omitted or empty answers to No. */
+/**
+ * A checkbox group (`form/checkbox_group`) answers with a list of the ticked
+ * values. It derives as type `checkbox` with options; a choice-less
+ * `checkbox` is a single toggle, mirroring fieldsToStepBlocks.
+ */
+export function isCheckboxGroupField(field: FormField): boolean {
+  return field.type === 'multiselect' || (field.type === 'checkbox' && Array.isArray(field.options));
+}
+
+/**
+ * Normalize typed wire values without coercing omitted or empty answers to No.
+ *
+ * Checkbox groups always become a string list: a form post repeats the key
+ * once per ticked box, so one ticked box arrives as a single string and none
+ * as an absent key (or the runtime's empty marker) — both normalize to a
+ * list, the empty list when nothing is ticked. Every other field keeps a
+ * single value; a repeated key resolves to its last value.
+ */
 export function normalizeFormAnswers(fields: FormField[], input: Record<string, unknown>): Record<string, unknown> {
   const result = { ...input };
-  for (const field of fields) if (field.type === 'boolean' && Object.hasOwn(input, field.name)) {
+  for (const field of fields) {
+    const present = Object.hasOwn(input, field.name);
     const value = input[field.name];
-    result[field.name] = value === 'true' ? true : value === 'false' ? false : value === '' || value === 'null' ? null : value;
+    if (isCheckboxGroupField(field)) {
+      const list = Array.isArray(value) ? value : present && value != null ? [value] : [];
+      result[field.name] = list.map((v) => String(v)).filter((v) => v !== '');
+      continue;
+    }
+    if (!present) continue;
+    const single = Array.isArray(value) ? value[value.length - 1] : value;
+    if (field.type === 'boolean') {
+      result[field.name] = single === 'true' ? true : single === 'false' ? false : single === '' || single === 'null' ? null : single;
+    } else if (single !== value) {
+      result[field.name] = single;
+    }
   }
   return result;
 }

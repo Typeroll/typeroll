@@ -771,3 +771,54 @@ describe('update_site_settings whitelist', () => {
     expect(settings.scripts_head).toBeUndefined();
   });
 });
+
+// The chat UI links each action to the editor of what changed. Block types,
+// global blocks and templates are not pages: linking them under /pages/ 404s.
+describe('chat action editor links', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('links created and updated block types to the block type editor; deleted ones get no link', async () => {
+    const { ctx, runTool } = await setup();
+    const created = await runTool('create_block_type', { name: 'counter', label: 'Counter', schema: [], template: '<div data-block="counter"></div>' }, ctx);
+    expect(created.action).toMatchObject({ type: 'update_settings', target: 'counter', href: '/app/sites/mysite/blocks?type=counter', link_label: 'Edit block type' });
+    const updated = await runTool('update_block_type', { id: 'counter', label: 'Counter 2' }, ctx);
+    expect(updated.action).toMatchObject({ href: '/app/sites/mysite/blocks?type=counter', link_label: 'Edit block type' });
+    const deleted = await runTool('delete_block_type', { id: 'counter' }, ctx);
+    expect(deleted.action?.description).toMatch(/Deleted block type/);
+    expect(deleted.action?.href).toBeUndefined();
+  });
+
+  it('links global block edits and saves to the global block editor', async () => {
+    const { ctx, runTool } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.partials(ORG, SITE, MAIN_VERSION_ID)}/header`, {
+      id: 'header', name: 'Header', kind: 'header', content_mode: 'blocks', blocks: [], status: 'published',
+    });
+    const added = await runTool('add_block', {
+      target: { kind: 'partial', id: 'header' },
+      block: { type: 'core/heading', data: { text: 'Nav', level: 'h2', size: 'auto', align: 'left', eyebrow: '' } },
+    }, ctx);
+    expect(added.action).toMatchObject({ type: 'update_partial', href: '/app/sites/mysite/partials/header', link_label: 'Edit global block' });
+    const saved = await runTool('save_changes', { kind: 'partial', id: 'header' }, ctx);
+    expect(saved.action).toMatchObject({ type: 'update_partial', description: 'Saved partial header.', href: '/app/sites/mysite/partials/header', link_label: 'Edit global block' });
+  });
+
+  it('links template edits to the template editor and page edits to the page editor', async () => {
+    const { ctx, runTool } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.pageTemplates(ORG, SITE, MAIN_VERSION_ID)}/blog-post`, {
+      id: 'blog-post', name: 'blog-post', label: 'Blog post', applies_to: 'any', blocks: [], status: 'published', created_at: new Date().toISOString(),
+    });
+    const tpl = await runTool('add_block', {
+      target: { kind: 'template', id: 'blog-post' },
+      block: { type: 'template/page_title', data: { level: 'h1', size: 'auto', align: 'left' } },
+    }, ctx);
+    expect(tpl.action).toMatchObject({ href: '/app/sites/mysite/templates/blog-post', link_label: 'Edit template' });
+
+    await seedPage('about', '<p>Hi</p>');
+    const seo = await runTool('update_page_seo', { page_id: 'about', seo_title: 'About us' }, ctx);
+    expect(seo.action).toMatchObject({ type: 'update_page_seo', target: 'about', href: '/app/sites/mysite/pages/about', link_label: 'Edit page' });
+    const saved = await runTool('save_changes', { kind: 'page', id: 'about' }, ctx);
+    expect(saved.action).toMatchObject({ type: 'update_page', href: '/app/sites/mysite/pages/about', link_label: 'Edit page' });
+  });
+});

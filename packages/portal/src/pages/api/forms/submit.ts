@@ -111,7 +111,14 @@ export const POST: APIRoute = async ({ request }) => {
       const collected: Record<string, unknown> = {};
       fd.forEach((v, k) => {
         // Files can't be stored in a submission doc; ignore non-string values.
-        if (k !== '_token' && typeof v === 'string') collected[k] = v;
+        if (k === '_token' || typeof v !== 'string') return;
+        // A checkbox group repeats its key once per ticked box: keep every
+        // value. normalizeFormAnswers decides per field whether the answer
+        // is a list. Control keys (`_state`, `_pow`, …) stay single values.
+        const prev = collected[k];
+        collected[k] = !Object.hasOwn(collected, k) || k.startsWith('_')
+          ? v
+          : Array.isArray(prev) ? [...prev, v] : [prev, v];
       });
       data = collected;
     }
