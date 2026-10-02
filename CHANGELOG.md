@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed: hidden steps of a multi-step form showed when site CSS set a display on steps (for example `[data-form-step] { display: contents }`), so every step appeared at once. The form shell CSS keeps hidden steps and the hidden dynamic-step container hidden (`display: none !important`). The platform CSS reference changed for every render version; pages without such site CSS render as before.
 - Forms work in every preview without setup: the editor's preview, Preview site, preview links, page and revision previews and `get_page_preview`. The forms runtime runs in preview mode: each step is validated with the server's rules and messages, steps advance (dynamic steps included) and the last step shows the success message; a redirect is named ("Preview – would redirect to /tack/") instead of leaving the preview. A "Preview – nothing is sent" notice ("Förhandsvisning – inget skickas" on Swedish sites) marks the form. Nothing is stored and no email, webhook or app action runs. Previews used to post real submissions.
   - Preview forms carry no submit token and post to the core endpoint, which refuses their `_preview` marker (403, also for no-JS posts), so a preview can never create a submission. Only the portal's preview renderer emits preview mode; published pages never contain it.
   - Extension components in previews: `forms.submit()` resolves `{ v: 1, ok: true, done: true, preview: true }` without a request instead of throwing "Extension form submissions are not configured".

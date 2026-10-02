@@ -178,6 +178,7 @@ ${stepHtml}
 export const FORM_SHELL_CSS = `
 ${FORM_BLOCKS_CSS}
 [data-tr-form] .form-hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+[data-tr-form] [data-form-step][hidden], [data-tr-form] [data-form-dynamic-step][hidden] { display: none !important; }
 [data-tr-form] .form-step-title { margin: 0 0 1rem; }
 [data-tr-form] .form-submit {
   font: inherit; font-weight: 600; cursor: pointer; border: 0;
