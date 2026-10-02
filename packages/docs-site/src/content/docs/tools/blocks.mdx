@@ -362,33 +362,19 @@ Mobile-first inheritance: missing breakpoints inherit upward from the previous d
 
 `Block.hidden_on: ['mobile']` hides the entire block at a breakpoint — no BlockType opt-in needed.
 
-## Authoring custom block types
+## Site block types
 
-When the library doesn't fit, the AI agent creates a custom type with `create_block_type`. The block ships immediately to the editor + the renderer's registry — no deploy needed.
-
-```
-"Make a 'quote with avatar' block: square photo on the left, quote + name on the right."
-  → create_block_type
-       name="quote_with_avatar"
-       label="Quote with avatar"
-       schema=[{name:"photo", type:"image", label:"Photo"},
-               {name:"quote", type:"richtext", label:"Quote"},
-               {name:"name", type:"text", label:"Name"}]
-       template="<figure data-block='quote_with_avatar'>
-                   <img src='{{photo}}' alt='{{name}}' />
-                   <blockquote>{{{quote}}}</blockquote>
-                   <figcaption>— {{name}}</figcaption>
-                 </figure>"
-       styles="[data-block='quote_with_avatar']{display:flex;gap:1rem}
-               [data-block='quote_with_avatar'] img{width:6rem;border-radius:50%}"
-```
+When the library doesn't fit, a site admin builds a block type for the site:
+composed from existing blocks (recommended) or with its own markup, with
+editable fields, repeating groups and scoped CSS. See
+[Site block types](../custom-block-types/).
 
 <Aside type="caution">
   **Block JavaScript runs in every visitor's browser.** Through MCP and the API,
   `create_block_type` and `update_block_type` accept a `script` field, and
   `core/embed` accepts `js`, under your API key's authority — the same
   authority that lets the key write `scripts_head` and `custom_css`, and the
-  same thing a site editor can do in the portal's block-type editor ("Activate
+  same thing a site admin can do in the portal's block-type editor ("Activate
   JS"). The write is stored as sent and recorded in the API audit log like any
   other change. Review scripts like deployed code, and never paste script you
   copied from untrusted content without reading it first. A `<script>` tag in
@@ -402,18 +388,9 @@ sets that in **Settings → Custom code**, or with `update_site`
 (`ai_scripts_enabled: true`) / `PATCH /api/v1/sites/{siteId}`. The setting has
 no effect on API keys or MCP.
 
-Origin is auto-stamped `'ai'` so the portal UI can visually flag AI-authored blocks for audit.
-
-## Editing existing types
-
-`update_block_type` patches fields on an existing custom or third-party block type. Core blocks (id starts with `core/`) are managed in platform code and can't be changed via tool. Schema, template, and styles **replace wholesale** when included — don't send them unless you want to overwrite. `script` follows the same rule as on create: accepted under your key's authority.
-
-```
-"Make the testimonial block default to bordered style instead of card."
-  → update_block_type id="<custom-testimonial-id>" schema=[…updated schema…]
-```
-
-`delete_block_type` removes a custom type. Pages currently using it render `<!-- unknown block type -->` comments instead, so the AI agent calls `find_pages_using_block_type` first and asks before deleting when there's usage.
+Core blocks (id starts with `core/`) are managed in platform code and can't be
+changed. A block type in use cannot be deleted; `find_pages_using_block_type`
+lists where it is used.
 
 ## Reorganising blocks
 

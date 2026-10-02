@@ -43,6 +43,7 @@ instructions. Read the relevant recipe when the task calls for it.
 |---|---|---|
 | `tr-blog.md` | "add a blog", "set up news" | Articles are Pages of a content type, sharing a native template and Page listing. |
 | `tr-forms.md`             | "contact form", "add a form", "booking form"           | Form definition → embed HTML with signed token → inline JS feedback → deploy. |
+| `tr-custom-blocks.md` | "make a block for…", "icon list", a section shape the core blocks lack | Starter or composition from core blocks with fields and bindings → validate → preview → create → place. |
 | `tr-page-template.md` | Reusable Page templates: audio players, chapter lists, guest cards, image galleries — anything needing loops/nested data | Compose native blocks around `template_content_slot`; bind Page metadata, structured fields and references. |
 | `tr-seo.md`               | "SEO", "meta descriptions", "structured data"          | Audit → fix titles/descriptions → OG images → JSON-LD → robots.txt → deploy. |
 
