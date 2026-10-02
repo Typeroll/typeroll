@@ -1,6 +1,6 @@
 # Site block types: fields, markup, CSS and repeating groups
 
-Status: proposal (2026-10-02). Nothing here is built yet.
+Status: accepted direction (2026-10-02). Nothing here is built yet.
 
 ## Goal
 
@@ -271,8 +271,10 @@ reports its impact before it is applied:
   `confirm_data_loss: true`. The response lists the affected pages first.
 
 The usage scan also follows repeater `item_block` and `expand_to` references.
-Block types live on a branch like other content, so a redesign can change a
-block type on a branch and merge it.
+A change to a block type reaches the live site with the next deploy, like any
+other saved change; there is no separate publish step. Block types live on a
+branch like other content, so a larger redesign can still be made on a branch
+and merged.
 
 ### 9. API, MCP and chat
 
@@ -283,10 +285,12 @@ block type on a branch and merge it.
 | Validate and preview without saving | `POST /block-types/validate`, `POST /block-types/preview` | `validate_block_type`, `preview_block_type` |
 | Starters | `GET /block-types/starters` | `list_block_type_starters` |
 | Usage | `GET /block-types/{id}/usage` | `find_pages_using_block_type` |
-| Export, import | `.tcblocks` with every property; import asks to skip, rename or replace on conflict | `export_block_types`, `import_block_types` |
+| Export, import | `.tcblocks` file with every property; import asks to skip, rename or replace on conflict. Files move between any sites, in any Organization or Typeroll instance; there is no shared library. | `export_block_types`, `import_block_types` |
 
-Permissions match the portal: write permission on the site creates and edits
-block types, and `script` keeps its current consent rules.
+Creating, changing, deleting and importing block types needs **admin**
+permission on the site, in the portal, the API and MCP alike. Editors (write
+permission) place block types on pages and edit their fields: text, images,
+links and list items. `script` keeps its current consent rules.
 
 The chat assistant may build block types without script, through the same
 validator and the version chain. Today it reads the raw store, so it misses
@@ -328,12 +332,27 @@ Each phase ships on its own and leaves existing sites unchanged.
 Phases 1 and 2 already give API and MCP users the whole feature (the icon list
 above works), and the UI follows in phases 3 and 4.
 
+## Decisions
+
+- Only site admins create, change, delete and import block types; editors use
+  them on pages and edit their content.
+- A changed block type goes live with the next deploy. The impact report and
+  rename handling in section 8 still apply.
+- Sharing is manual export and import of `.tcblocks` files, between any sites.
+
 ## Open questions
 
-- Should creating block types need admin instead of write permission? A block
-  type changes how every page using it looks.
-- Should block type changes wait for an explicit publish, like a page draft,
-  instead of reaching the live site on the next deploy? Branches already give
-  a review path.
-- Should site block types be shareable across an Organization's sites, or
-  copied with export and import only?
+- Organization roles apply to every site the Organization owns. A person who
+  should be admin on only one site needs a per-site role, which Typeroll does
+  not have yet (see "Roles today" below).
+
+## Roles today
+
+- Organization members have one role for all of the Organization's sites:
+  owner and admin give admin permission on every site, editor gives write
+  permission.
+- Organizations created before role enforcement (`roles_enforced` unset) still
+  give every member admin permission. They must turn enforcement on before the
+  editor role means anything.
+- Per-site permission exists for a site shared with another Organization
+  (read, write or admin) and for site-scoped API keys (always admin).
