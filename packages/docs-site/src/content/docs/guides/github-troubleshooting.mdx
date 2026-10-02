@@ -19,7 +19,9 @@ for the normal setup. The detailed card is available in Core releases after
 
 ## Who can fix it
 
-| Label in the card         | Who acts                                                                             |
+Each reason starts with a **Who acts** label, followed by the reason itself.
+
+| Who acts                  | Who that is                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------------ |
 | You                       | The Typeroll organization owner or admin connecting GitHub                           |
 | GitHub organization owner | An owner of the GitHub organization. Members and outside collaborators cannot        |
@@ -27,19 +29,36 @@ for the normal setup. The detailed card is available in Core releases after
 | Typeroll administrator    | Whoever manages the other Typeroll Organization that already uses the GitHub account |
 
 After fixing something on GitHub, return to Typeroll. The card checks again
-when you return, or select **Check again**. Checking again uses the publisher
+when the Publishing page opens or you return to its tab, or select **Check
+again**. Checking again uses the publisher
 App's own access and the GitHub account you signed in with during the last hour;
 you do not need to sign in again. After an hour the card asks you to sign in
 again. A personal account still needs a sign-in to connect. Typeroll keeps the
 latest result for 24 hours. Only you see the result of your own attempt; other
 owners and admins see the connection once it is saved.
 
+## Back from GitHub without returning to Typeroll
+
+After **Install the GitHub App**, GitHub normally sends you straight back to
+Typeroll. If GitHub leaves you on its own installation settings page instead,
+go back to the Publishing tab or open it again. While you signed in to GitHub
+from Typeroll within the last hour, the card shows **Back from GitHub? We check
+automatically — or select Check again.** and checks GitHub by itself. Once your
+personal account has the App, the card offers **Connect @your-login**: GitHub
+asks you to confirm once and returns you to Typeroll, which connects the
+account. If you have not signed in during the last hour, select **Sign in to
+GitHub** instead. A return that GitHub did not start from Typeroll, for example
+after installing the App from GitHub directly, only makes the card check again;
+it never connects anything by itself. If GitHub does not send people back at
+all, the publisher's App is missing its Setup URL; see
+[`setup_url_missing`](#setup_url_missing).
+
 ## A common case
 
 You are an owner of one GitHub organization and a member of another. The App
 was installed only on the organization where you are a member. After signing
-in, the card lists that organization with **GitHub organization owner** and
-[`not_org_owner`](#not_org_owner). Select **Install the GitHub App** and choose
+in, the card lists that organization with **Who acts: GitHub organization
+owner** and [`not_org_owner`](#not_org_owner). Select **Install the GitHub App** and choose
 the organization you own, or ask an owner of the other organization to select
 **Connect GitHub** in Typeroll.
 
@@ -188,9 +207,27 @@ GitHub account. In Typeroll Cloud, contact Typeroll support.
 
 **Typeroll publisher.** The publisher's GitHub App settings are missing or
 rejected by GitHub: App ID, client ID and secret, private key, slug, or the
-callback `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback`. Self-hosting
-operators also set the App's **Setup URL** to that callback so people return to
-Typeroll after installing.
+callback URL `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback`.
+
+### `setup_url_missing`
+
+**Typeroll publisher.** You started the App installation from Typeroll and
+installed it, but GitHub did not send you back to Typeroll within two minutes.
+The publisher's App is probably missing its **Setup URL**. This does not block
+you: the card has already checked GitHub again, so continue with its next step.
+The publisher sets these in the App's settings on GitHub
+(**Settings → Developer settings → GitHub Apps → the App → General**):
+
+- **Callback URL**: `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback`
+- **Setup URL** (GitHub marks it optional; Typeroll needs it): the same address,
+  `{PORTAL_PUBLIC_URL}/api/orgs/publishing/github/callback`
+- **Redirect on update**: selected
+- **Request user authorization (OAuth) during installation**: not selected
+- **Expire user authorization tokens**: selected
+
+`{PORTAL_PUBLIC_URL}` is the portal's address, such as
+`https://app.example.com`. Production, staging and local development each use
+their own App with their own address.
 
 ### `encryption_unavailable`
 

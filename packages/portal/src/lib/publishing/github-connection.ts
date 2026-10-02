@@ -6,7 +6,8 @@ import { createProviderClient, githubAppClient, assertInstallation, ProviderErro
 import { claimAccount, ConnectionError, getConnection, openCredentials, saveConnection, sealCredentials, type Connection } from './connections';
 import { CALLBACK_PATH, githubConfiguration, githubSetup } from './github-config';
 import {
-  blockerFromError, composeDiagnosis, githubBlocker, GithubFlowError, GITHUB_IDENTITY_TRUST_MS, primaryAction, recordGithubDiagnosis, synthesizedDiagnosis,
+  blockerFromError, composeDiagnosis, githubBlocker, GithubFlowError, GITHUB_IDENTITY_TRUST_MS, primaryAction, recordGithubDiagnosis, storedGithubDiagnosis,
+  synthesizedDiagnosis, trustedGithubIdentity,
   type BlockerContext, type GithubBlocker, type GithubConnectionDiagnosis, type GithubDiagnosisInstallation, type GithubIdentity,
 } from './github-diagnosis';
 
@@ -55,6 +56,29 @@ export async function startGithubInstallation(session: FullSession) {
   const url = new URL(`https://github.com/apps/${config.slug}/installations/new`);
   url.searchParams.set('state', state);
   return { url: url.toString(), browser, maxAge: TTL_MS / 1000 };
+}
+
+/**
+ * When this person opened the App installation from Typeroll and GitHub has not returned to the callback since,
+ * or null. Only the last hour counts. Starting a sign-in replaces the installation grant.
+ */
+export async function pendingGithubInstallation(session: Pick<FullSession, 'orgId' | 'userId'>, now = Date.now()): Promise<number | null> {
+  const grant = await getStore().getDoc<Authorization>(grantPath(session.orgId));
+  if (!grant || grant.kind !== 'install' || grant.consumed || grant.user_id !== session.userId) return null;
+  if (grant.revision !== (await getConnection(session.orgId, 'github')).revision) return null;
+  const startedAt = grant.expires_at - TTL_MS;
+  return now - startedAt < GITHUB_IDENTITY_TRUST_MS ? startedAt : null;
+}
+
+/**
+ * What the Publishing page needs when the person comes back from GitHub without a callback: whether
+ * Check again can use their proven GitHub identity, and whether an installation they started is pending.
+ * Contains no identity or state values.
+ */
+export async function githubReturnState(session: Pick<FullSession, 'orgId' | 'userId'>, now = Date.now()) {
+  const trusted = Boolean(trustedGithubIdentity(await storedGithubDiagnosis(session.orgId), session.userId, now));
+  const started = await pendingGithubInstallation(session, now);
+  return { recheck_available: trusted, installation_started_at: started === null ? null : new Date(started).toISOString() };
 }
 
 function othersSignIn(grant: Authorization) {

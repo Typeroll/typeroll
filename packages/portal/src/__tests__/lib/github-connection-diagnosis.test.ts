@@ -213,9 +213,55 @@ describe('GitHub connection diagnosis', () => {
     await expect(resumeGithubInstallation(session, { state, browser: started.browser })).rejects.toMatchObject({ code: 'state_expired' });
   });
 
+  it.each([
+    ['install', 'installation_returned'], ['update', 'installation_returned'], ['request', 'install_requested'], [null, 'installation_returned'],
+  ])('trusts nothing from a setup return without a matching state (setup_action=%s)', async (setupAction, returned) => {
+    await attempt(installations());
+    const started = await startGithubInstallation(session);
+    const grantPath = 'organizations/default/publishing_authorizations/github';
+    const grant = await getStore().getDoc(grantPath);
+    const before = await getStore().getDoc(diagnosisPath);
+    const query = `installation_id=999${setupAction ? `&setup_action=${setupAction}` : ''}`;
+    // Installed from GitHub directly: no state at all.
+    const direct = routeContext(`?${query}`, started.browser);
+    expect((await call(CALLBACK, direct)).headers.get('location')).toBe(`/app/settings/publishing?github=${returned}#github`);
+    expect(direct.cookies.delete).not.toHaveBeenCalled();
+    // An installation link that matches nothing this browser started.
+    if (setupAction) {
+      const foreign = routeContext(`?${query}&state=install_${'x'.repeat(43)}`, started.browser);
+      expect((await call(CALLBACK, foreign)).headers.get('location')).toBe(`/app/settings/publishing?github=${returned}#github`);
+    }
+    // Nothing recorded or consumed: the installation started here can still return, and the card only checks again.
+    expect(await getStore().getDoc(diagnosisPath)).toEqual(before);
+    expect(await getStore().getDoc(grantPath)).toEqual(grant);
+    expect(JSON.stringify(await getStore().getDoc(diagnosisPath))).not.toContain('999');
+  });
+
+  it('tells the page whether Check again can run and an installation started here is pending', async () => {
+    const state = async () => (await (await call(STATUS, routeContext())).json()).github_attempt;
+    expect(await state()).toEqual({ recheck_available: false, installation_started_at: null });
+    await attempt(installations());
+    expect(await state()).toEqual({ recheck_available: true, installation_started_at: null });
+    const before = Date.now();
+    const started = await startGithubInstallation(session);
+    const pending = await state();
+    expect(Date.parse(pending.installation_started_at)).toBeGreaterThanOrEqual(before - 1000);
+    expect(JSON.stringify(pending)).not.toMatch(/install_|synthetic-owner|78/);
+    // Another admin sees neither this person's identity nor their installation.
+    expect(await (await import('../../lib/publishing/github-connection')).githubReturnState({ orgId: 'default', userId: 'other-admin' }))
+      .toEqual({ recheck_available: false, installation_started_at: null });
+    await getStore().updateDoc(diagnosisPath, { identity_verified_at: Date.now() - 61 * 60 * 1000 });
+    expect((await state()).recheck_available).toBe(false);
+    // GitHub returned to the Setup URL: the installation is no longer pending.
+    await call(CALLBACK, routeContext(`?state=${new URL(started.url).searchParams.get('state')}&setup_action=install&installation_id=36`, started.browser));
+    expect((await state()).installation_started_at).toBeNull();
+  });
+
   it('can open the installation page from any diagnosis, without a previous sign-in', async () => {
     const started = await startGithubInstallation(session);
     expect(new URL(started.url).origin + new URL(started.url).pathname).toBe('https://github.com/apps/synthetic-publisher/installations/new');
+    // GitHub passes this state back to the Setup URL only because the link carries it.
+    expect(new URL(started.url).searchParams.get('state')).toMatch(/^install_[\w-]{43}$/);
   });
 
   it('keeps connecting organizations when the App does not use expiring user tokens', async () => {
@@ -416,6 +462,22 @@ describe('GitHub connection diagnosis', () => {
     expect(githubBlocker('publisher_app_misconfigured').action?.url).toBe('https://typeroll.com/docs/guides/github-troubleshooting/#publisher_app_misconfigured');
   });
 
+  it('writes reasons as sentences that keep account names as GitHub spells them', () => {
+    const organization = { login: 'Moveria-AB', type: 'Organization' as const, id: '57' };
+    expect(githubBlocker('not_org_owner', { account: organization, user: { login: 'bootingbots' } }).message)
+      .toMatch(/^@bootingbots is not an owner of Moveria-AB\. Only an organization owner can connect it to Typeroll\./);
+    expect(githubBlocker('repository_selection_limited', { account: organization, installationId: '35' }).message)
+      .toContain('so an owner of Moveria-AB must change repository access');
+    expect(githubBlocker('permissions_missing', { account: organization, notRequested: true }).message).toContain('Then an owner of Moveria-AB must accept the update.');
+    expect(githubBlocker('repository_selection_limited', { account: { ...organization, type: 'User', login: 'BootingBots' }, installationId: '36' }).message)
+      .toContain('so only @BootingBots can change');
+    for (const code of GITHUB_BLOCKER_CODES) {
+      // No message starts with a name of who acts; the card shows that as its own label.
+      const message = githubBlocker(code, { account: organization, installationId: '35', user: { login: 'bootingbots' } }).message;
+      expect(message, code).not.toMatch(/^(You|GitHub organization owner|Typeroll publisher|Typeroll administrator) [a-z@]/);
+    }
+  });
+
   it('gives every blocker an owner, a message and, for the person, an action', () => {
     for (const code of GITHUB_BLOCKER_CODES) {
       const blocker = githubBlocker(code, { account: { login: 'owned-org', type: 'Organization', id: '56' }, installationId: '34', previous: { login: 'old', id: '1', type: 'Organization', connected: false } });
@@ -571,12 +633,43 @@ describe('Check again without a new sign-in', () => {
     expect(second).toEqual(first);
   });
 
-  it('needs a sign-in, not a selection, for a personal account found by the App', async () => {
+  it('names the one confirmation a ready personal account needs, not a sign-in', async () => {
     await attempt(installations(memberOnly));
     const diagnosis = await recheckGithubDiagnosis(session, { person: true }, appView({ '/users/synthetic-owner/installation': personal,
       '/orgs/member-org/memberships/synthetic-owner': { state: 'active', role: 'member', user: { id: 78 }, organization: { id: 57 } } }));
-    expect(diagnosis.primary_action).toEqual({ kind: 'sign_in', label: 'Sign in to GitHub to connect @synthetic-owner' });
+    expect(diagnosis.primary_action).toEqual({ kind: 'sign_in', label: 'Connect @synthetic-owner' });
+    expect(diagnosis.installations.find(item => item.installation_id === '36')).toMatchObject({ usable: true, account: { type: 'User' } });
     expect(await githubChoices(session)).toEqual([]);
+    expect((await stored()).primary_action).toEqual({ kind: 'sign_in', label: 'Connect @synthetic-owner' });
+    // Sign-in wording only once no GitHub identity is trusted any more.
+    await getStore().updateDoc(diagnosisPath, { identity_verified_at: Date.now() - 61 * 60 * 1000 });
+    expect((await stored()).primary_action).toEqual({ kind: 'sign_in', label: 'Sign in to GitHub to connect @synthetic-owner' });
+  });
+
+  it('adds a publisher note when an installation started here never returned to the callback', async () => {
+    await attempt(installations());
+    const started = await startGithubInstallation(session);
+    const grantPath = 'organizations/default/publishing_authorizations/github';
+    const ready = appView({ '/users/synthetic-owner/installation': personal });
+    // Within two minutes GitHub may still be returning: no note.
+    expect((await recheckGithubDiagnosis(session, { person: true }, ready)).blockers.map(item => item.code)).toEqual([]);
+    // Three minutes later, with the App installed on the person's own account and no callback, the Setup URL is probably missing.
+    await getStore().updateDoc(grantPath, { expires_at: Date.now() + 7 * 60 * 1000 });
+    await getStore().updateDoc(diagnosisPath, { rechecked_at: null });
+    const diagnosis = await recheckGithubDiagnosis(session, { person: true }, ready);
+    expect(diagnosis).toMatchObject({ outcome: 'action_required', primary_action: { kind: 'sign_in', label: 'Connect @synthetic-owner' } });
+    expect(diagnosis.blockers).toEqual([expect.objectContaining({ code: 'setup_url_missing', who: 'publisher',
+      action: { kind: 'contact_publisher', label: 'What the publisher must change', url: 'https://typeroll.com/docs/guides/github-troubleshooting/#setup_url_missing' } })]);
+    expect(diagnosis.blockers[0].message).toContain('Setup URL (http://localhost/api/orgs/publishing/github/callback, with “Redirect on update”)');
+    // Other admins and API keys see the publisher note too.
+    expect((await currentGithubDiagnosis('default')).blockers.map(item => item.code)).toEqual(['setup_url_missing']);
+    // Nothing installed on an account the person owns: no note, only the installation step.
+    await getStore().updateDoc(diagnosisPath, { rechecked_at: null });
+    expect((await recheckGithubDiagnosis(session, { person: true }, appView())).blockers.map(item => item.code)).toEqual(['no_installation']);
+    // A return to the callback consumes the installation; afterwards there is nothing to report.
+    await call(CALLBACK, routeContext(`?state=${new URL(started.url).searchParams.get('state')}&setup_action=install&installation_id=36`, started.browser));
+    await getStore().updateDoc(diagnosisPath, { rechecked_at: null });
+    expect((await recheckGithubDiagnosis(session, { person: true }, ready)).blockers).toEqual([]);
   });
 
   it('re-checks a saved connection with App authority, also for API keys', async () => {

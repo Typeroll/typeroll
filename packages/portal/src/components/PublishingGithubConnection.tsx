@@ -3,8 +3,11 @@ import { CircleCheck, CircleX, Clock3, ExternalLink } from 'lucide-react';
 import PublishingCard, { type PublishingState } from './PublishingCard';
 import PublishingGithubPermissions from './PublishingGithubPermissions';
 import type {
-  GithubBlocker, GithubBlockerWho, GithubConnectionDiagnosis, GithubDiagnosisAction, GithubDiagnosisInstallation, GithubDiagnosisOutcome,
+  GithubBlocker, GithubConnectionDiagnosis, GithubDiagnosisAction, GithubDiagnosisInstallation, GithubDiagnosisOutcome,
 } from '../lib/publishing/github-diagnosis';
+import {
+  CONFIRM_ONCE, freshReturn, isNote, nextStepSummary, personalConnection, primaryReason, returnHint, shouldAutoRecheck, SUMMARY, WHO, type GithubAttempt,
+} from './github-return';
 import './PublishingGithubConnection.css';
 
 export type GithubConnectionStatus = {
@@ -16,22 +19,10 @@ export type GithubPublishingData = {
   github_setup: { available: boolean; app_configured?: boolean; encryption_available?: boolean; app_slug?: string | null; install_url: string | null };
   github_choices?: Array<{ owner: string; installation_id: string; account_type?: 'Organization' | 'User'; account_change?: { from_account_id: string; from_owner: string } }>;
   github_diagnosis?: GithubConnectionDiagnosis;
+  github_attempt?: GithubAttempt;
 };
 
 const API = '/api/orgs/publishing/github';
-const WHO: Record<GithubBlockerWho, string> = {
-  you: 'You', github_owner: 'GitHub organization owner', publisher: 'Typeroll publisher', typeroll_admin: 'Typeroll administrator',
-};
-const SUMMARY: Record<GithubDiagnosisOutcome, string> = {
-  unavailable: 'GitHub cannot be connected until the publisher finishes setup.',
-  sign_in_required: 'Sign in to GitHub to connect this organization’s repositories.',
-  action_required: 'GitHub is not connected yet. One step below is needed.',
-  waiting_on_owner: 'Waiting for a GitHub organization owner.',
-  choose: 'Choose which GitHub account publishes this organization’s sites.',
-  connected: 'GitHub is connected.',
-  needs_attention: 'GitHub is connected but needs attention.',
-  retryable_error: 'GitHub did not respond. Nothing was changed.',
-};
 const STATUS: Record<GithubDiagnosisOutcome, string> = {
   unavailable: 'Unavailable · Publisher setup required', sign_in_required: 'Not connected', action_required: 'Not connected · Action required',
   waiting_on_owner: 'Not connected · Waiting for an owner', choose: 'Setup incomplete · Choose an account', connected: 'Connected',
@@ -75,6 +66,14 @@ function Step({ id, title, state, status, children }: { id: string; title: strin
 
 const accountName = (account: Pick<GithubDiagnosisInstallation['account'], 'login' | 'type'>) => account.type === 'User' ? `@${account.login}` : account.login;
 
+/** Who acts, as a label of its own, then the reason as a separate sentence. */
+function Reason({ blocker }: { blocker: Pick<GithubBlocker, 'who' | 'message'> }) {
+  return <div className="github-connection__reason">
+    <p className="github-connection__who-line"><span className="github-connection__who">Who acts: {WHO[blocker.who]}</span></p>
+    <p>{blocker.message}</p>
+  </div>;
+}
+
 export default function PublishingGithubConnection({ data, disabled, disconnecting, returned, onRefresh, onDisconnect, feedback }: {
   data: GithubPublishingData; disabled: boolean; disconnecting: boolean;
   /** Value of ?github= when the person just came back from GitHub. */
@@ -98,46 +97,63 @@ export default function PublishingGithubConnection({ data, disabled, disconnecti
   const sessionExpired = returned === 'session_expired' && data.github.status !== 'connected';
   const connected = data.github.status === 'connected' && Boolean(data.github.github);
   const renew = connected && data.github.github?.repository_creation_state === 'reconnect_required';
-  const blockers = sessionExpired ? [SESSION_EXPIRED] : diagnosis.blockers;
-  const all = [...blockers, ...diagnosis.installations.flatMap(item => item.blockers)];
+  const notes = sessionExpired ? [] : diagnosis.blockers.filter(isNote);
   const choices = data.github_choices ?? [];
   // A choice that is no longer offered (it expired) must still leave a way forward.
   const stalledChoice = diagnosis.outcome === 'choose' && !choices.length;
   const primaryAction: GithubDiagnosisAction | null = sessionExpired ? SESSION_EXPIRED.action! : renew && !diagnosis.primary_action
     ? { kind: 'sign_in', label: 'Reconnect GitHub' } : stalledChoice ? diagnosis.primary_action ?? SIGN_IN_AGAIN : diagnosis.primary_action;
-  const primaryBlocker = sessionExpired ? SESSION_EXPIRED : all.find(blocker => blocker.action && primaryAction && blocker.action.kind === primaryAction.kind
-    && blocker.action.url === primaryAction.url && blocker.action.installation_id === primaryAction.installation_id) ?? diagnosis.blockers[0];
+  const primaryBlocker = sessionExpired ? SESSION_EXPIRED : primaryReason(diagnosis.blockers, diagnosis.installations, primaryAction);
   const outcome: GithubDiagnosisOutcome = sessionExpired ? 'sign_in_required' : diagnosis.outcome;
+  const summary = sessionExpired ? SUMMARY[outcome] : nextStepSummary(outcome, diagnosis, primaryAction, primaryBlocker);
+  const personal = sessionExpired ? null : personalConnection(diagnosis, primaryAction);
   const unmatchedReturn = returned === 'state_expired';
   const working = disabled || Boolean(busy) || disconnecting;
+  const lastCheck = useRef<number | null>(null);
+  const autoCheck = (now = Date.now()) => shouldAutoRecheck({ available: data.github_setup.available, connected: data.github.status === 'connected',
+    outcome: diagnosis.outcome, attempt: data.github_attempt, returned, working: Boolean(busy) || disconnecting, lastCheck: lastCheck.current, now });
+  const hint = returnHint({ connected: data.github.status === 'connected', diagnosis, attempt: data.github_attempt, returned });
 
   // Coming back from GitHub: move focus to the result in this card and announce it once.
   useEffect(() => {
     if (!returned || focused.current) return;
     focused.current = true;
-    setAnnouncement(`${SUMMARY[outcome]}${primaryBlocker ? ` ${primaryBlocker.message}` : ''}`);
+    // Without a callback result the card checks again first and announces that result instead.
+    setAnnouncement(autoCheck() && !freshReturn(returned) ? 'Back from GitHub. Checking GitHub again…'
+      : `${summary}${primaryBlocker ? ` ${primaryBlocker.message}` : ''}`);
     requestAnimationFrame(() => { summaryRef.current?.focus({ preventScroll: true }); summaryRef.current?.scrollIntoView({ block: 'center', behavior: 'instant' }); });
   }, [returned]);
 
   async function recheck(owner?: string) {
+    lastCheck.current = Date.now();
     setBusy('recheck'); setError('');
     try {
       const result = await request('/diagnosis', { action: 'recheck', ...(owner ? { owner } : {}) });
       const next: GithubConnectionDiagnosis | undefined = result.diagnosis;
       // Refresh first, so a new choice and its list of accounts appear together.
       try { await onRefresh(); } finally { setChecked(next ?? null); }
-      setAnnouncement(next ? `Checked again. ${SUMMARY[next.outcome]}` : 'Checked again.');
+      setAnnouncement(next ? `Checked again. ${nextStepSummary(next.outcome, next, next.primary_action, primaryReason(next.blockers, next.installations, next.primary_action))}` : 'Checked again.');
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not check GitHub again.'); }
     finally { setBusy(''); }
   }
-  // After a fix opened on GitHub, check again when the person returns to this tab.
+  // Back from GitHub without a callback (reload, or an App without a Setup URL): check once on page load.
+  const loaded = useRef(false);
+  useEffect(() => {
+    if (loaded.current || !data.github_attempt) return;
+    loaded.current = true;
+    if (!freshReturn(returned) && autoCheck()) void recheck();
+  }, [data.github_attempt]);
+  // After a fix opened on GitHub, or while the person may still be finishing there, check again when they return to this tab.
   useEffect(() => {
     const returnedToTab = () => {
-      if (waiting.current && document.visibilityState === 'visible' && !busy) { waiting.current = false; void recheck(); }
+      if (document.visibilityState !== 'visible' || busy) return;
+      if (waiting.current) { waiting.current = false; void recheck(); return; }
+      // Focus and visibilitychange both fire on one return; the interval keeps it to one check.
+      if (autoCheck()) void recheck();
     };
     window.addEventListener('focus', returnedToTab); document.addEventListener('visibilitychange', returnedToTab);
     return () => { window.removeEventListener('focus', returnedToTab); document.removeEventListener('visibilitychange', returnedToTab); };
-  }, [busy]);
+  });
 
   async function navigate(kind: 'sign_in' | 'install') {
     setBusy(kind); setError(''); setChecked(null);
@@ -181,7 +197,7 @@ export default function PublishingGithubConnection({ data, disabled, disconnecti
   }
 
   const setup = data.github_setup;
-  const publisherBlocker = all.find(blocker => blocker.who === 'publisher' && ['publisher_app_misconfigured', 'encryption_unavailable'].includes(blocker.code));
+  const publisherBlocker = [...diagnosis.blockers, ...diagnosis.installations.flatMap(item => item.blockers)].find(blocker => blocker.who === 'publisher' && ['publisher_app_misconfigured', 'encryption_unavailable'].includes(blocker.code));
   const signedIn = Boolean(diagnosis.github_user) && !sessionExpired;
   const usable = diagnosis.installations.some(item => item.usable);
   const accessCodes = ['repository_selection_limited', 'permissions_update_pending', 'permissions_missing', 'installation_suspended', 'membership_unverifiable'];
@@ -196,16 +212,20 @@ export default function PublishingGithubConnection({ data, disabled, disconnecti
     <p>Stores a private repository for each site and its version branches.</p>
     <div ref={summaryRef} tabIndex={-1} className="github-connection__next" data-outcome={outcome} aria-labelledby="github-next-title">
       <h3 id="github-next-title">{outcome === 'connected' ? 'GitHub is ready' : outcome === 'choose' ? 'Next: choose an account' : 'Next step'}</h3>
-      <p>{SUMMARY[outcome]}</p>
-      {unmatchedReturn && <p className="github-connection__reason"><span className="github-connection__who">{WHO.you}</span> {UNMATCHED_RETURN}</p>}
+      <p data-github-summary>{summary}</p>
+      {hint && <p className="github-connection__hint" data-github-return-hint>{hint}</p>}
+      {unmatchedReturn && <Reason blocker={{ who: 'you', message: UNMATCHED_RETURN }} />}
       {/* On a working connection only the person's own failed step is explained here. */}
-      {primaryBlocker && (outcome !== 'connected' || diagnosis.blockers.includes(primaryBlocker)) && <p className="github-connection__reason">
-        <span className="github-connection__who">{WHO[primaryBlocker.who]}</span> {primaryBlocker.message}
-      </p>}
+      {primaryBlocker && (outcome !== 'connected' || diagnosis.blockers.includes(primaryBlocker)) && <Reason blocker={primaryBlocker} />}
       <div className="github-connection__actions">
         {primaryAction && (outcome !== 'choose' || stalledChoice) && actionControl(primaryAction, true)}
         {setup.available && !connected && primaryAction?.kind !== 'retry' && <button type="button" className="btn btn--secondary" disabled={working} onClick={() => void recheck()}>{busy === 'recheck' ? 'Checking GitHub…' : 'Check again'}</button>}
       </div>
+      {personal && <p className="muted" data-github-primary-hint>{CONFIRM_ONCE}</p>}
+      {notes.map(note => <div key={note.code} className="github-connection__note" data-github-note={note.code}>
+        <Reason blocker={note} />
+        {note.action && <div className="github-connection__actions">{actionControl(note.action)}</div>}
+      </div>)}
       <p className="github-connection__visually-hidden" data-github-announcement aria-live="polite" aria-atomic="true">{announcement}</p>
       {error && <p role="alert" className="github-connection__error">{error}</p>}
     </div>
@@ -246,7 +266,7 @@ export default function PublishingGithubConnection({ data, disabled, disconnecti
             </div>
             {item.blockers.length > 0 && <ul className="github-connection__reasons">
               {item.blockers.map(blocker => <li key={blocker.code}>
-                <p><span className="github-connection__who">{WHO[blocker.who]}</span> {blocker.message}</p>
+                <Reason blocker={blocker} />
                 {blocker.action && <div className="github-connection__actions">{actionControl(blocker.action)}</div>}
               </li>)}
             </ul>}

@@ -455,7 +455,7 @@ for (const width of [320, 390, 1440]) test(`GitHub explains a member-only organi
   await expect(card.locator('[data-github-step="sign-in"]')).toContainText('Signed in as @synthetic-owner');
   await expect(card.locator('[data-github-step="sign-in"]').getByRole('button', { name: 'Use a different GitHub account' })).toBeVisible();
   const row = card.getByRole('list', { name: 'Accounts with the GitHub App' }).getByRole('listitem').filter({ hasText: 'member-org' }).first();
-  await expect(row).toContainText('GitHub organization owner');
+  await expect(row.locator('.github-connection__who')).toHaveText('Who acts: GitHub organization owner');
   await expect(row).toContainText('is not an owner of member-org');
   await expect(row.getByRole('link', { name: /See who owns member-org/ })).toHaveAttribute('href', 'https://github.com/orgs/member-org/people?query=role%3Aowner');
   await expect(next.getByRole('button', { name: 'Install the GitHub App', exact: true })).toBeVisible();
@@ -479,6 +479,62 @@ for (const width of [320, 390, 1440]) test(`GitHub explains a member-only organi
   await expect(card.locator('[data-github-step="connected"]')).toHaveAttribute('data-state', 'ready');
   expect(posts).toEqual([{ path: 'diagnosis', body: { action: 'recheck' } }, { path: 'github', body: { installation_id: '35' } }]);
   expect(await noHorizontalScroll(page)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+for (const width of [390, 1440]) test(`GitHub card re-checks by itself after returning from GitHub without a callback and offers Connect @login at ${width}px`, async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  await page.setViewportSize({ width, height: 900 });
+  const posts: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const person = { id: '78', login: 'bootingbots' };
+  const moveria = { installation_id: '35', account: { login: 'Moveria-AB', type: 'Organization', id: '57' }, usable: false,
+    blockers: [{ ...notOwner, message: '@bootingbots is not an owner of Moveria-AB. Only an organization owner can connect it to Typeroll.',
+      action: { kind: 'link', label: 'See who owns Moveria-AB', url: 'https://github.com/orgs/Moveria-AB/people?query=role%3Aowner' } }] };
+  const personal = { installation_id: '36', account: { login: 'bootingbots', type: 'User', id: '78' }, usable: true, blockers: [] };
+  // The stored result from before the installation: nothing installed on an account the person owns.
+  let current = diagnosis('action_required', { github_user: person, primary_action: install.action, blockers: [install], installations: [moveria] });
+  const ready = diagnosis('action_required', { checked_at: '2026-10-02T00:05:00.000Z', github_user: person,
+    primary_action: { kind: 'sign_in', label: 'Connect @bootingbots' }, blockers: [], installations: [moveria, personal] });
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: { github: empty, cloudflare: empty, encryption_available: true,
+    cloudflare_setup: { available: false }, github_setup: githubSetup, github_choices: [], github_diagnosis: current,
+    github_attempt: { recheck_available: true, installation_started_at: '2026-10-02T00:01:00.000Z' } } }));
+  await page.route('**/api/orgs/publishing/github/diagnosis', route => {
+    posts.push({ path: 'diagnosis', body: route.request().postDataJSON() });
+    current = ready;
+    return route.fulfill({ json: { diagnosis: ready } });
+  });
+  await page.route('**/api/orgs/publishing/github', route => {
+    posts.push({ path: 'github', body: route.request().postDataJSON() });
+    return route.fulfill({ json: { authorization_url: '/app/settings/publishing?github=connected' } });
+  });
+  // GitHub left the person on its installation settings page; they open Publishing again (no ?github=).
+  await page.goto('/app/settings/publishing');
+  const card = page.getByRole('region', { name: 'GitHub account', exact: true });
+  const next = card.locator('.github-connection__next');
+  await expect(next.locator('[data-github-announcement]')).toHaveText('Checked again. GitHub is not connected yet. Connect @bootingbots to finish.');
+  expect(posts).toEqual([{ path: 'diagnosis', body: { action: 'recheck' } }]);
+  await expect(next.locator('[data-github-summary]')).toHaveText('GitHub is not connected yet. Connect @bootingbots to finish.');
+  await expect(next).not.toContainText('One step below');
+  await expect(next).not.toContainText('Sign in to GitHub to connect');
+  await expect(next.locator('[data-github-primary-hint]')).toHaveText('GitHub asks you to confirm once; you come straight back here.');
+  await expect(card.locator('[data-github-step="sign-in"]')).toContainText('Signed in as @bootingbots');
+  const own = card.getByRole('list', { name: 'Accounts with the GitHub App' }).getByRole('listitem').filter({ hasText: 'Personal account' }).first();
+  await expect(own).toContainText('Can be connected');
+  await expect(card.locator('[data-github-step="access"]')).toContainText('All repositories, Administration and Contents access granted');
+  // Who acts is a label of its own, not the start of the reason.
+  const other = card.locator('[data-installation="35"]');
+  await expect(other.locator('.github-connection__who')).toHaveText('Who acts: GitHub organization owner');
+  await expect(other).toContainText('@bootingbots is not an owner of Moveria-AB. Only an organization owner can connect it to Typeroll.');
+  await expect(other).not.toContainText('GitHub organization owner @bootingbots');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  expect(await noHorizontalScroll(page)).toBe(true);
+  await page.evaluate(() => document.fonts.ready);
+  await card.screenshot({ path: testInfo.outputPath(`github-return-connect-${width}.png`) });
+  await next.getByRole('button', { name: 'Connect @bootingbots', exact: true }).click();
+  await expect.poll(() => posts.length).toBe(2);
+  expect(posts[1]).toEqual({ path: 'github', body: {} });
   expect(errors).toEqual([]);
 });
 

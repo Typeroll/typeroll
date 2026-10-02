@@ -13,8 +13,11 @@
 
 import { getStore } from '../datastore';
 import { ConnectionError, getConnection, type Connection } from './connections';
-import { githubAppSlug, githubSetup } from './github-config';
+import { CALLBACK_PATH, githubAppSlug, githubSetup } from './github-config';
 import { ProviderError, ProviderTransportError } from './providers.mjs';
+import { connectPersonalAction, readyPersonalAccount } from './github-personal';
+
+export { connectPersonalAction, readyPersonalAccount };
 
 export const GITHUB_DIAGNOSIS_VERSION = 1;
 const DIAGNOSIS_TTL_MS = 24 * 60 * 60 * 1000;
@@ -31,14 +34,14 @@ export type GithubBlockerCode =
   | 'locked_to_account' | 'claimed_by_other_organization' | 'no_installation' | 'install_request_pending'
   | 'oauth_cancelled' | 'state_expired' | 'session_expired' | 'wrong_browser' | 'github_unavailable'
   | 'github_rate_limited' | 'revision_conflict' | 'expiring_tokens_disabled' | 'publisher_app_misconfigured'
-  | 'encryption_unavailable';
+  | 'encryption_unavailable' | 'setup_url_missing';
 export const GITHUB_BLOCKER_CODES: readonly GithubBlockerCode[] = [
   'not_org_owner', 'membership_unverifiable', 'sso_authorization_required', 'repository_selection_limited',
   'permissions_update_pending', 'permissions_missing', 'installation_suspended', 'other_users_personal_account',
   'locked_to_account', 'claimed_by_other_organization', 'no_installation', 'install_request_pending',
   'oauth_cancelled', 'state_expired', 'session_expired', 'wrong_browser', 'github_unavailable',
   'github_rate_limited', 'revision_conflict', 'expiring_tokens_disabled', 'publisher_app_misconfigured',
-  'encryption_unavailable',
+  'encryption_unavailable', 'setup_url_missing',
 ];
 
 export interface GithubDiagnosisAction {
@@ -144,6 +147,9 @@ const help = (code: GithubBlockerCode) => `${GITHUB_TROUBLESHOOTING_URL}#${code}
 const installUrl = () => { const slug = githubAppSlug(); return slug ? `https://github.com/apps/${slug}/installations/new` : undefined; };
 const appName = () => { const slug = githubAppSlug(); return slug ? `the ${slug} GitHub App` : 'the publisher’s GitHub App'; };
 const AppName = () => { const name = appName(); return `${name[0].toUpperCase()}${name.slice(1)}`; };
+const setupUrl = () => { try { return new URL(CALLBACK_PATH, process.env.PORTAL_PUBLIC_URL).toString(); } catch { return `{PORTAL_PUBLIC_URL}${CALLBACK_PATH}`; } };
+/** "An owner of Moveria-AB must" → "an owner of Moveria-AB must": only the first letter changes, never an account name. */
+const lowerFirst = (text: string) => `${text[0].toLowerCase()}${text.slice(1)}`;
 const retryAction = (context: BlockerContext, label = 'Try again'): GithubDiagnosisAction =>
   context.retry === 'recheck' ? { kind: 'retry', label } : { kind: 'sign_in', label };
 
@@ -171,14 +177,14 @@ export function githubBlocker(code: GithubBlockerCode, context: BlockerContext =
       return make('you', `${name} requires SAML single sign-on. Authorize your GitHub session for ${name}, then select Check again.`,
         { kind: 'link', label: `Authorize single sign-on for ${name}`, url: context.ssoUrl ?? (context.account ? `https://github.com/orgs/${encodeURIComponent(context.account.login)}/sso` : undefined) });
     case 'repository_selection_limited':
-      return make(fixer, `The App can only access selected repositories in ${name}. Typeroll creates a new repository for each site, so ${ownerText.toLowerCase()} change repository access to All repositories.`,
+      return make(fixer, `The App can only access selected repositories in ${name}. Typeroll creates a new repository for each site, so ${lowerFirst(ownerText)} change repository access to All repositories.`,
         settings ? { kind: 'link', label: `Allow all repositories in ${name}`, url: settings } : undefined);
     case 'permissions_update_pending':
       return make(fixer, `The App installation on ${name} has not approved the requested permissions (${permissionList}). ${ownerText} review and accept the request on GitHub.`,
         settings ? { kind: 'link', label: `Review permissions for ${name}`, url: `${settings}/permissions/update` } : undefined);
     case 'permissions_missing':
       if (context.notRequested) {
-        return make('publisher', `${AppName()} does not request permissions Typeroll needs (${permissionList}). The operator of this Typeroll installation must add them to the App. Then ${ownerText.toLowerCase()} accept the update.`,
+        return make('publisher', `${AppName()} does not request permissions Typeroll needs (${permissionList}). The operator of this Typeroll installation must add them to the App. Then ${lowerFirst(ownerText)} accept the update.`,
           { kind: 'contact_publisher', label: 'What the publisher must change', url: help(code) });
       }
       return make(fixer, `The App installation on ${name} is missing required permissions (${permissionList}). ${ownerText} accept them in the installation settings. If GitHub shows nothing to accept, the publisher must request them in its App.`,
@@ -233,6 +239,9 @@ export function githubBlocker(code: GithubBlockerCode, context: BlockerContext =
     case 'encryption_unavailable':
       return make('publisher', `The publisher has not configured encrypted credential storage, so GitHub cannot be connected yet${githubAppSlug() ? ` (App: ${githubAppSlug()})` : ''}. The operator of this Typeroll installation must set it up.`,
         { kind: 'contact_publisher', label: 'What the publisher must change', url: help(code) });
+    case 'setup_url_missing':
+      return make('publisher', `GitHub did not send you back to Typeroll after the App installation you started here. ${AppName()} may be missing its Setup URL (${setupUrl()}, with “Redirect on update”). The operator of this Typeroll installation should set it. You can continue: Typeroll checks GitHub again when you return to this page.`,
+        { kind: 'contact_publisher', label: 'What the publisher must change', url: help(code) });
   }
 }
 
@@ -247,11 +256,13 @@ const PRECEDENCE: GithubBlockerCode[] = [
   'revision_conflict', 'github_rate_limited', 'github_unavailable', 'sso_authorization_required', 'locked_to_account',
   'permissions_update_pending', 'permissions_missing', 'repository_selection_limited', 'installation_suspended',
   'membership_unverifiable', 'install_request_pending', 'no_installation', 'other_users_personal_account',
-  'expiring_tokens_disabled', 'not_org_owner', 'claimed_by_other_organization',
+  'expiring_tokens_disabled', 'not_org_owner', 'claimed_by_other_organization', 'setup_url_missing',
 ];
+/** Notes that explain a problem without blocking the person's next step; their action is never the primary one. */
+export const GITHUB_NOTE_CODES: readonly GithubBlockerCode[] = ['setup_url_missing'];
 
 export function primaryAction(blockers: GithubBlocker[]): GithubDiagnosisAction | null {
-  const ranked = blockers.filter(blocker => blocker.action)
+  const ranked = blockers.filter(blocker => blocker.action && !GITHUB_NOTE_CODES.includes(blocker.code))
     .sort((a, b) => Number(b.who === 'you') - Number(a.who === 'you') || PRECEDENCE.indexOf(a.code) - PRECEDENCE.indexOf(b.code));
   return ranked[0]?.action ?? null;
 }
@@ -426,6 +437,8 @@ function personalView(stored: StoredDiagnosis, organization: GithubConnectionDia
   }
   // Check again needs the identity OAuth proved within the hour; after that only a sign-in helps.
   if (own.primary_action?.kind === 'retry' && !identity) own.primary_action = { kind: 'sign_in', label: 'Sign in to GitHub to check again' };
+  const personal = readyPersonalAccount(own);
+  if (personal && own.primary_action?.kind === 'sign_in') own.primary_action = connectPersonalAction(personal, Boolean(identity));
   return own;
 }
 

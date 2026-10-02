@@ -16,10 +16,10 @@
 import { ConnectionError, getConnection, type Connection } from './connections';
 import { githubConfiguration } from './github-config';
 import {
-  evaluateInstallations, installationConfigurationBlockers, storeGithubSelection, type GithubChoice,
+  evaluateInstallations, installationConfigurationBlockers, pendingGithubInstallation, storeGithubSelection, type GithubChoice,
 } from './github-connection';
 import {
-  blockerFromError, composeDiagnosis, currentGithubDiagnosis, githubBlocker, githubDiagnosisSequence, organizationView, publicDiagnosis,
+  blockerFromError, composeDiagnosis, connectPersonalAction, currentGithubDiagnosis, githubBlocker, githubDiagnosisSequence, organizationView, publicDiagnosis,
   recordGithubDiagnosis, storedGithubDiagnosis, trustedGithubIdentity,
   type GithubBlocker, type GithubCheckedAccount, type GithubConnectionDiagnosis, type GithubDiagnosisInstallation, type GithubIdentity,
   type StoredDiagnosis,
@@ -27,6 +27,8 @@ import {
 import { createProviderClient, githubAppClient, type ProviderClient } from './providers.mjs';
 
 const THROTTLE_MS = 5_000;
+/** GitHub returns to the Setup URL within seconds of an installation; after this long without a callback it is likely missing. */
+export const SETUP_RETURN_GRACE_MS = 2 * 60 * 1000;
 const LOGIN = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/i;
 
 export interface GithubRecheckActor { orgId: string; userId: string }
@@ -159,6 +161,10 @@ async function checkIdentity(actor: GithubRecheckActor, connection: Connection, 
     blockers.push(githubBlocker('not_org_owner', { account: { login: owner, type: 'Organization', id: '' }, user, unverified: true }));
   }
   if (!evaluation.ownsAny && !lookupFailed) blockers.push(githubBlocker('no_installation'));
+  // The person installed the App on an account they own, but GitHub never returned to the callback for the
+  // installation they started here: the publisher's App probably has no Setup URL. The person can still continue.
+  const installStartedAt = evaluation.ownsAny ? await pendingGithubInstallation(actor) : null;
+  if (installStartedAt !== null && Date.now() - installStartedAt >= SETUP_RETURN_GRACE_MS) blockers.push(githubBlocker('setup_url_missing'));
   const shown = new Set(evaluated.map(row => row.installation_id));
   const choices = evaluation.choices.filter(choice => shown.has(choice.installation_id));
   const organizations = choices.filter(choice => choice.account_type !== 'User');
@@ -167,8 +173,8 @@ async function checkIdentity(actor: GithubRecheckActor, connection: Connection, 
   const diagnosis = composeDiagnosis({ revision: connection.revision, attemptedBy: actor.userId, githubUser: user, blockers, installations,
     choose: organizations.length > 1 || (organizations.length === 1 && !organizations[0].account_change) });
   if (!organizations.length && personal && diagnosis.outcome === 'action_required') {
-    // The personal account is ready on GitHub; connecting it needs the person's own authorization.
-    diagnosis.primary_action = { kind: 'sign_in', label: `Sign in to GitHub to connect @${personal.owner}` };
+    // The personal account is ready on GitHub; connecting it needs the person's own authorization, confirmed once on GitHub.
+    diagnosis.primary_action = connectPersonalAction(personal.owner, true);
   }
   return { diagnosis, accounts, selectionExpiresAt };
 }
