@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## Core 0.2.62 / MCP 0.45.47
 
 Connect GitHub now explains every way it can stop, who must act and how, in the GitHub card, the API and MCP.
 
@@ -22,6 +22,11 @@ Connect GitHub now explains every way it can stop, who must act and how, in the 
 - API and MCP:
   - New `GET /api/v1/publishing/github-diagnosis` (`?recheck=true` re-checks a connected installation) and MCP tool `diagnose_organization_github_connection`. Organization API key required.
   - `POST /api/v1/publishing/connections/github` answers 409 with `connect_url` and `diagnosis`.
+
+## Core 0.2.61 / MCP 0.45.46
+
+- Accordions with "Default open" open again: both sanitizers keep the `open` attribute on `<details>` (render version 4).
+- The SEO audit workflow audits block pages from their rendered blocks. It read only `html_content`, so every block page was reported as thin content without an H1.
 
 ## Core 0.2.60 / MCP 0.45.46
 
