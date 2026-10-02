@@ -98,6 +98,8 @@ const options: IOptions = {
     '*': ['id', 'class', 'style', 'data-*', 'aria-*', 'role', 'lang', 'dir', 'hidden',
       'itemscope', 'itemtype', 'itemprop', 'itemref', 'itemid'],
     a: ['href', 'target', 'rel', 'title', 'download'],
+    // An accordion's "Default open" (render version 4) opens items with <details open>.
+    details: ['open'],
     'x-include': ['name'],
     'x-form': ['id'],
     'x-extension': ['block', 'props'],
