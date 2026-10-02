@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectStepFields, validateFieldValues, getStep, nextStep } from '../form-fields.js';
+import { collectStepFields, validateFieldValues, getStep, nextStep, normalizeFormAnswers, isCheckboxGroupField } from '../form-fields.js';
 import type { Block, Form } from '../types.js';
 
 const blocks: Block[] = [
@@ -45,6 +45,40 @@ describe('validateFieldValues', () => {
   it('author-broken regex never blocks visitors', () => {
     const errs = validateFieldValues([{ name: 'x', type: 'text', label: 'X', pattern: '([' }], { x: 'anything' });
     expect(errs).toEqual([]);
+  });
+});
+
+describe('normalizeFormAnswers', () => {
+  const fields = collectStepFields([
+    { id: 'g', type: 'form/checkbox_group', data: { name: 'interests', label: 'Interests', required: true, choices: [{ value: 'seo', label: 'SEO' }, { value: 'ads', label: 'Ads' }] } },
+    { id: 't', type: 'form/toggle', data: { name: 'newsletter', label: 'Newsletter' } },
+    { id: 'n', type: 'form/text', data: { name: 'name', label: 'Name' } },
+  ]);
+
+  it('tells a checkbox group from a single toggle', () => {
+    expect(fields.map(isCheckboxGroupField)).toEqual([true, false, false]);
+  });
+
+  it('keeps every ticked value of a checkbox group as a list', () => {
+    expect(normalizeFormAnswers(fields, { interests: ['seo', 'ads'] }).interests).toEqual(['seo', 'ads']);
+  });
+
+  it('turns one ticked box posted as a single string into a list', () => {
+    expect(normalizeFormAnswers(fields, { interests: 'seo' }).interests).toEqual(['seo']);
+  });
+
+  it('answers an empty list when no box is ticked, so required still fails', () => {
+    for (const input of [{}, { interests: '' }, { interests: [] }]) {
+      const out = normalizeFormAnswers(fields, input);
+      expect(out.interests).toEqual([]);
+      expect(validateFieldValues(fields, out)).toEqual([{ field: 'interests', code: 'required' }]);
+    }
+  });
+
+  it('keeps single values for other fields; a repeated key resolves to the last value', () => {
+    const out = normalizeFormAnswers(fields, { interests: 'seo', newsletter: 'on', name: ['A', 'B'] });
+    expect(out).toEqual({ interests: ['seo'], newsletter: 'on', name: 'B' });
+    expect(normalizeFormAnswers(fields, { interests: 'seo' })).not.toHaveProperty('name');
   });
 });
 
