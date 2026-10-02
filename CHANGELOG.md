@@ -4,6 +4,7 @@
 
 - Form email notifications with "Append all submitted values" (`include_all`) list the values under the field labels shown on the form, in form order, instead of the field names. Choice fields show the chosen option's label, empty hidden fields (such as `utm_*` parameters) are left out and multi-line answers keep their line breaks. Plain-text emails use `Label: value` lines with the same rules. Stored submissions, webhooks and the form and action APIs are unchanged.
 - Fixed: a checkbox group with several ticked boxes stored only the last ticked value. A checkbox group's answer is now always the list of ticked values, with or without JavaScript and in the JSON submit API: one ticked box (also when sent as a single string) is stored as a one-item list and no ticked box as an empty list. Other fields keep a single value.
+- Fixed: action links in the portal AI chat pointed every changed item to the page editor, so block types and global blocks (header, footer, free blocks) opened a missing page. Each chat action now carries its editor link: "Edit page", "Edit global block", "Edit template" or "Edit block type", and a deleted block type has no link. Saving or discarding a global block's draft is reported as a global block change (`update_partial`) instead of a page change.
 
 ## Core 0.2.62 / MCP 0.45.47
 

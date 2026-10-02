@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Paperclip, X, Image as ImageIcon } from 'lucide-react';
+import { chatActionEditLink } from '../lib/chat-action-links';
 
 interface PageSummary {
   id: string;
@@ -29,6 +30,8 @@ interface ChatAction {
   description: string;
   target?: string;
   preview_url?: string;
+  href?: string;
+  link_label?: string;
 }
 
 /**
@@ -316,34 +319,39 @@ export default function ChatInterface({ siteId, pages, activePage, onActivePageM
               )}
               {msg.actions && msg.actions.length > 0 && (
                 <div className="chat__actions">
-                  {msg.actions.map((a, i) => (
-                    <div key={i} className="chat__action">
-                      <span className="chat__action-icon">✓</span>
-                      <span className="chat__action-desc">{a.description}</span>
-                      {a.target && (
-                        <span className="chat__action-links">
-                          {a.preview_url && (
-                            <a
-                              href={a.preview_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="chat__action-link"
-                            >
-                              Preview ↗
-                            </a>
-                          )}
-                          <a
-                            href={`/app/sites/${siteId}/pages/${a.target}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="chat__action-link"
-                          >
-                            Edit page ↗
-                          </a>
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                  {msg.actions.map((a, i) => {
+                    const edit = chatActionEditLink(a, siteId);
+                    return (
+                      <div key={i} className="chat__action">
+                        <span className="chat__action-icon">✓</span>
+                        <span className="chat__action-desc">{a.description}</span>
+                        {(a.preview_url || edit) && (
+                          <span className="chat__action-links">
+                            {a.preview_url && (
+                              <a
+                                href={a.preview_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="chat__action-link"
+                              >
+                                Preview ↗
+                              </a>
+                            )}
+                            {edit && (
+                              <a
+                                href={edit.href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="chat__action-link"
+                              >
+                                {edit.link_label} ↗
+                              </a>
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

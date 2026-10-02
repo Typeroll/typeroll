@@ -1537,6 +1537,11 @@ export interface ChatAction {
   /** When the action targets a page, the absolute preview URL — lets the
    *  chat surface a "Preview" button alongside "Edit page". */
   preview_url?: string;
+  /** Portal editor link for the changed item (a page, global block, page
+   *  template or block type). Absent for deleted items. */
+  href?: string;
+  /** Text for the `href` link, e.g. "Edit block type". */
+  link_label?: string;
 }
 
 /**

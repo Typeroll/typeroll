@@ -41,6 +41,7 @@ import {
 import { AUTOMATIC_CONVERSION_REFUSAL } from './html-mode';
 import { snapshotRevision } from './revisions';
 import { applyContentWrite } from './content-write';
+import { chatEditLink } from './chat-action-links';
 import {
   commitWorkingCopy,
   discardWorkingCopy,
@@ -73,6 +74,9 @@ export interface ChatAction {
   description: string;
   target?: string;
   preview_url?: string;
+  /** Portal editor link for the changed item (chat-action-links.ts); absent for deleted items. */
+  href?: string;
+  link_label?: string;
 }
 
 export interface ChatToolCallLog {
@@ -1209,7 +1213,8 @@ function wcCtx(ctx: ToolContext): { orgId: string; siteId: string; versionId: st
  * Compose the ChatAction payload for a block-container mutation. Page
  * mutations get a preview_url that points at the page; partial / template
  * mutations don't have a single canonical URL so the target is the
- * partial/template id and the description identifies the kind.
+ * partial/template id and the description identifies the kind. Every
+ * container gets the link to its own editor (chat-action-links.ts).
  */
 function containerAction(
   target: BlockContainerTarget,
@@ -1222,6 +1227,7 @@ function containerAction(
       type: 'update_page',
       description,
       target: target.id,
+      ...chatEditLink(ctx.siteId, 'page', target.id),
       preview_url: loaded.pageSlug != null
         ? absolutePreviewUrl(ctx, { slug: loaded.pageSlug })
         : undefined,
@@ -1231,6 +1237,7 @@ function containerAction(
     type: target.kind === 'partial' ? 'update_partial' : 'update_settings',
     description,
     target: target.id,
+    ...chatEditLink(ctx.siteId, target.kind, target.id),
   };
 }
 
@@ -1305,6 +1312,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           type: 'update_page_html',
           description: `Updated the body of "${existing.title}" (unsaved draft).`,
           target: id,
+          ...chatEditLink(ctx.siteId, 'page', id),
           preview_url: absolutePreviewUrl(ctx, existing),
         },
       };
@@ -1329,6 +1337,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           type: 'update_page_seo',
           description: `Updated SEO for "${existing.title}" (unsaved draft).`,
           target: id,
+          ...chatEditLink(ctx.siteId, 'page', id),
           preview_url: absolutePreviewUrl(ctx, existing),
         },
       };
@@ -1357,6 +1366,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           type: 'add_faq_schema',
           description: `Attached FAQ schema (${items.length} Q&A) to "${existing.title}" (unsaved draft).`,
           target: id,
+          ...chatEditLink(ctx.siteId, 'page', id),
           preview_url: absolutePreviewUrl(ctx, existing),
         },
       };
@@ -1399,6 +1409,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           type: 'add_recipe_schema',
           description: `Attached Recipe schema to "${existing.title}" (unsaved draft).`,
           target: id,
+          ...chatEditLink(ctx.siteId, 'page', id),
           preview_url: absolutePreviewUrl(ctx, existing),
         },
       };
@@ -1442,6 +1453,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           type: 'add_event_schema',
           description: `Attached Event schema to "${existing.title}" (unsaved draft).`,
           target: id,
+          ...chatEditLink(ctx.siteId, 'page', id),
           preview_url: absolutePreviewUrl(ctx, existing),
         },
       };
@@ -1468,6 +1480,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           type: 'update_page_status',
           description: `Set "${existing.title}" to ${status}.`,
           target: id,
+          ...chatEditLink(ctx.siteId, 'page', id),
           preview_url: absolutePreviewUrl(ctx, existing),
         },
       };
@@ -1486,7 +1499,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           await discardWorkingCopy(wcCtx(ctx), target);
           return {
             result: { ok: true, discarded: true },
-            action: { type: 'update_page', description: `Discarded the unsaved draft of ${kind} ${id}.`, target: id },
+            action: { type: kind === 'partial' ? 'update_partial' : 'update_page', description: `Discarded the unsaved draft of ${kind} ${id}.`, target: id, ...chatEditLink(ctx.siteId, kind, id) },
           };
         }
         const commit = await commitWorkingCopy(wcCtx(ctx), target, 'chat-ai', 'agent');
@@ -1497,7 +1510,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
             seo_warnings: commit.seo_warnings,
             note: commit.committed ? undefined : 'Nothing to save — no unsaved draft found.',
           },
-          action: { type: 'update_page', description: `Saved ${kind} ${id}.`, target: id },
+          action: { type: kind === 'partial' ? 'update_partial' : 'update_page', description: `Saved ${kind} ${id}.`, target: id, ...chatEditLink(ctx.siteId, kind, id) },
         };
       } catch (e) {
         if (e instanceof WorkingCopyError) return { result: { error: e.message } };
@@ -1511,7 +1524,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       const permitted = Object.fromEntries(inputKeys.filter(key => key in input).map(key => [key, input[key]]));
       try {
         const { page } = await createPage(ctx, permitted, 'agent', 'chat-ai');
-        return { result: { page, page_id: page.id }, action: { type: 'create_page', target: page.id, description: `Created "${page.title}".`, preview_url: absolutePreviewUrl(ctx, page) } };
+        return { result: { page, page_id: page.id }, action: { type: 'create_page', target: page.id, description: `Created "${page.title}".`, preview_url: absolutePreviewUrl(ctx, page), ...chatEditLink(ctx.siteId, 'page', page.id) } };
       } catch (error) {
         if (error instanceof WorkingCopyError) return { result: { error: error.message } };
         throw error;
@@ -1729,6 +1742,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           type: 'update_page',
           description: `Switched ${page.title} to ${to}-mode.`,
           target: pageId,
+          ...chatEditLink(ctx.siteId, 'page', pageId),
           preview_url: absolutePreviewUrl(ctx, { slug: page.slug }),
         },
       };
@@ -1814,6 +1828,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           type: 'update_settings',
           description: `${name === 'create_block_type' ? 'Created' : 'Updated'} block type "${body.block_type.id}".`,
           target: body.block_type.id,
+          ...chatEditLink(ctx.siteId, 'block_type', body.block_type.id),
         },
       };
     }
@@ -1839,6 +1854,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
             ? `Set ${page.title} to template "${templateId}".`
             : `Removed template from ${page.title}.`,
           target: pageId,
+          ...chatEditLink(ctx.siteId, 'page', pageId),
           preview_url: absolutePreviewUrl(ctx, { slug: page.slug }),
         },
       };
@@ -1956,6 +1972,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           description: existing
             ? `Updated the ${existing.kind ?? id} (unsaved draft).`
             : `Created the ${id} block (draft content — save to apply).`,
+          ...chatEditLink(ctx.siteId, 'partial', id),
         },
       };
     }
@@ -2008,7 +2025,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
     case 'update_page_fields': {
       const id = String(input.page_id);
       const result = await applyContentWrite(ctx, { kind: 'page', id }, { fields: input.fields }, { updatedBy: 'chat-ai', actor: 'agent' });
-      return { result, action: { type: 'update_page', target: id, description: 'Updated page fields (unsaved draft).' } };
+      return { result, action: { type: 'update_page', target: id, description: 'Updated page fields (unsaved draft).', ...chatEditLink(ctx.siteId, 'page', id) } };
     }
 
     // ─── Media ─────────────────────────────────────────────────────────────
