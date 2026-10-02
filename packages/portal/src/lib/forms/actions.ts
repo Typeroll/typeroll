@@ -19,7 +19,7 @@ import { paths } from '@typeroll/shared';
 import type { EmailActionConfig, EmailConnector, Form, FormAction, SiteIntegrations } from '@typeroll/shared';
 import type { AppConfigField } from '../apps/types';
 import { getStore } from '../datastore';
-import { buildEmailMessage } from '../email/render-email';
+import { buildEmailMessage, emailFieldsFromForm } from '../email/render-email';
 import { sendViaConnector } from '../email';
 
 export interface ActionContext {
@@ -31,6 +31,11 @@ export interface ActionContext {
   data: Record<string, unknown>;
   /** What the submission was about, when the action's source cares. */
   subject?: { kind: 'submission' | 'page'; content_type?: string; id?: string };
+  /**
+   * The form's steps, for actions that present the values (the email
+   * listing uses its labels). runFormActions fills it from the form it runs.
+   */
+  form?: Pick<Form, 'steps'>;
 }
 
 export interface FormActionDef {
@@ -91,6 +96,7 @@ const CORE_ACTIONS: FormActionDef[] = [
         action.config as unknown as EmailActionConfig,
         ctx.data,
         connector,
+        ctx.form ? emailFieldsFromForm(ctx.form) : undefined,
       );
       if (error || !message) {
         console.error('[form action] email not built:', error);
@@ -159,10 +165,11 @@ export async function agentWritableActionTypes(): Promise<string[]> {
  * One action failing also mustn't stop the next — they have different owners.
  */
 export async function runFormActions(
-  form: Pick<Form, 'actions'>,
+  form: Pick<Form, 'actions' | 'steps'>,
   ctx: ActionContext,
 ): Promise<{ ran: string[]; failed: string[] }> {
   const reg = await actionRegistry();
+  const actionCtx: ActionContext = form.steps && !ctx.form ? { ...ctx, form: { steps: form.steps } } : ctx;
   const ran: string[] = [];
   const failed: string[] = [];
   for (const action of form.actions ?? []) {
@@ -173,7 +180,7 @@ export async function runFormActions(
       continue;
     }
     try {
-      await def.run(action, ctx);
+      await def.run(action, actionCtx);
       ran.push(action.type);
     } catch (e) {
       failed.push(action.type);

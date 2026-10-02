@@ -1283,7 +1283,10 @@ export interface EmailActionConfig {
   subject: string;
   /** Templated body. HTML when format !== 'text'. */
   body: string;
-  /** Append an auto-rendered table/list of every submitted value. */
+  /**
+   * Append an auto-rendered table/list of every submitted value, under each
+   * field's label in form order; empty hidden fields are left out.
+   */
   include_all?: boolean;
   /** 'html' (default) or 'text'. */
   format?: 'html' | 'text';

@@ -107,6 +107,13 @@ update_form form_id=contact patch={ actions: [
 | `email`   | `to`, `subject`, `body` (required; `{{field}}` placeholders), `cc`, `bcc`, `reply_to`, `include_all`, `format` (`html` or `text`) |
 | `webhook` | `url` (https), `fields` (the field names sent), `secret` (signing secret; send the masked value to keep it)                       |
 
+`include_all` appends every submitted value to the email, one row per field
+in the order the fields appear in the form. Each row uses the field's label
+(the field name when it has none) and choice fields show the label of the
+chosen option. Hidden fields with no value, such as `utm_source` when the
+visitor did not arrive from a campaign, are left out. Multi-line answers keep
+their line breaks.
+
 Reading and writing actions needs admin permission, as in the portal. With
 other permissions `read_form` returns `actions: []` and a write that includes
 `actions` is refused with `403`.

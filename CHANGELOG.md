@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Form email notifications with "Append all submitted values" (`include_all`) list the values under the field labels shown on the form, in form order, instead of the field names. Choice fields show the chosen option's label, empty hidden fields (such as `utm_*` parameters) are left out and multi-line answers keep their line breaks. Plain-text emails use `Label: value` lines with the same rules. Stored submissions, webhooks and the form and action APIs are unchanged.
+
 ## Core 0.2.62 / MCP 0.45.47
 
 Connect GitHub now explains every way it can stop, who must act and how, in the GitHub card, the API and MCP.

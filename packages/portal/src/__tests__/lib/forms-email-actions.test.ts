@@ -87,6 +87,9 @@ describe('form email actions', () => {
     // include_all dumped the submitted message into the admin email.
     const adminMsg = sendMock.mock.calls.find((c) => (c[1] as { to: string }).to === 'admin@site.com')![1] as { html: string };
     expect(adminMsg.html).toContain('Hej');
+    // ...under the form's labels, not the field names.
+    expect(adminMsg.html).toContain('>Meddelande</th>');
+    expect(adminMsg.html).not.toContain('>message</th>');
 
     const { getStore } = await import('../../lib/datastore');
     expect(await getStore().listDocs(paths.submissions(ORG, SITE))).toHaveLength(1);
