@@ -89,8 +89,18 @@ export function evaluateAudit(audit, options = {}) {
   };
 }
 
-function run() {
-  const result = spawnSync('npm', ['audit', '--json'], { encoding: 'utf8' });
+// Workspaces whose dependencies ship in the Core image, the MCP package or
+// published sites. The documentation site is a build-time tool: its own
+// dependencies are audited and reported, but do not block a release.
+export const SHIPPED_WORKSPACES = ['@typeroll/portal', '@typeroll/shared', '@typeroll/mcp-server', '@typeroll/site-template'];
+export const BUILD_ONLY_WORKSPACES = ['@typeroll/docs-site'];
+
+export function auditArguments(workspaces, { includeRoot }) {
+  return ['audit', '--json', ...(includeRoot ? ['--include-workspace-root'] : []), ...workspaces.map((name) => `--workspace=${name}`)];
+}
+
+function readAudit(args) {
+  const result = spawnSync('npm', args, { encoding: 'utf8' });
   if (!result.stdout) {
     console.error(result.stderr || 'npm audit returned no JSON output');
     process.exit(1);
@@ -108,8 +118,17 @@ function run() {
     console.error(audit.error.summary ?? audit.error.message ?? 'npm audit failed');
     process.exit(1);
   }
+  return audit;
+}
 
-  const evaluation = evaluateAudit(audit);
+function run() {
+  const evaluation = evaluateAudit(readAudit(auditArguments(SHIPPED_WORKSPACES, { includeRoot: true })));
+  const buildOnly = evaluateAudit(readAudit(auditArguments(BUILD_ONLY_WORKSPACES, { includeRoot: false })));
+  if (!buildOnly.ok) {
+    console.warn(`Build-only dependencies (${BUILD_ONLY_WORKSPACES.join(', ')}) have advisories; they do not ship and do not block a release:`);
+    for (const failure of buildOnly.failures) console.warn(`- ${failure}`);
+  }
+
   if (!evaluation.ok) {
     console.error('Dependency security audit failed:');
     for (const failure of evaluation.failures) console.error(`- ${failure}`);
