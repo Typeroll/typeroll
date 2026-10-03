@@ -23,7 +23,7 @@ export async function publicationRuntime(orgId: string, siteId: string) {
       { ...formEmbedInfo(orgId, siteId, form.id), pow_bits: POW_BITS };
     parsePublicHttpsUrl(endpoint.submit_url);
     return { id: form.id, name: form.name, kind: form.kind, submit_text: form.submit_text, success_message: form.success_message, success_redirect_url: form.success_redirect_url,
-      styles: form.styles, steps: form.steps, target: form.target, ...endpoint };
+      styles: form.styles, steps: form.steps, target: form.target, allow_back: form.allow_back, show_progress: form.show_progress, ...endpoint };
   }));
   const dependencies = [
     ...forms.map(form => ({ kind: 'forms', id: form.id, endpoint: form.submit_url })),
