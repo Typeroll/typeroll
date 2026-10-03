@@ -15,7 +15,7 @@
 // `AppDef.actions`, which the registry picks up. Nothing needs a branch here
 // for a new action type or a new app.
 
-import { paths } from '@typeroll/shared';
+import { formMessage, paths } from '@typeroll/shared';
 import type { EmailActionConfig, EmailConnector, Form, FormAction, SiteIntegrations } from '@typeroll/shared';
 import type { AppConfigField } from '../apps/types';
 import { getStore } from '../datastore';
@@ -206,6 +206,8 @@ export async function runFormActions(
 export async function runBeforeActions(
   form: Pick<Form, 'actions'>,
   ctx: ActionContext,
+  /** Site language for the visitor-facing message of a failed check. */
+  lang?: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const reg = await actionRegistry();
   for (const action of completionActions(form)) {
@@ -216,7 +218,7 @@ export async function runBeforeActions(
       if (verdict && 'reject' in verdict) return { ok: false, reason: verdict.reject };
     } catch (e) {
       console.error(`[form action] before "${action.type}" failed:`, e);
-      return { ok: false, reason: 'This submission could not be processed. Please try again.' };
+      return { ok: false, reason: formMessage('action_failed', lang) };
     }
   }
   return { ok: true };

@@ -172,6 +172,82 @@ export function defaultErrorMessage(code: FieldError['code'], label: string, lan
 }
 
 /**
+ * Every other visitor-facing form text: the form shell's labels and the
+ * runtime's messages (rendered into the form as data attributes, so a
+ * published static page needs no request for them) and the submit
+ * endpoint's messages. Swedish for a site language starting with "sv",
+ * English otherwise, like defaultErrorMessage. Machine codes stay English.
+ */
+export type FormMessageKey =
+  // Form shell
+  | 'submit' | 'continue' | 'back' | 'progress' | 'thanks' | 'fail'
+  | 'preview_notice' | 'preview_redirect'
+  // Forms runtime, remote-backed forms (prefill and session)
+  | 'loading' | 'link_expired' | 'retry_hour' | 'retry_hours' | 'work_email' | 'work_email_limit' | 'or'
+  // Submit endpoint
+  | 'payload_too_large' | 'rate_limited' | 'form_busy' | 'preview_refused' | 'missing_token'
+  | 'not_configured' | 'invalid_token' | 'form_not_found' | 'no_steps' | 'bad_state' | 'too_fast'
+  | 'step_submitted' | 'action_failed' | 'failed' | 'page_ok' | 'page_error';
+
+const FORM_MESSAGES: Record<FormMessageKey, { en: string; sv: string }> = {
+  submit: { en: 'Send', sv: 'Skicka' },
+  continue: { en: 'Continue', sv: 'Fortsätt' },
+  back: { en: 'Back', sv: 'Tillbaka' },
+  progress: { en: 'Step {n} of {total}', sv: 'Steg {n} av {total}' },
+  thanks: { en: 'Thanks!', sv: 'Tack!' },
+  fail: { en: 'Something went wrong — please try again.', sv: 'Något gick fel — försök igen.' },
+  preview_notice: { en: 'Preview – nothing is sent', sv: 'Förhandsvisning – inget skickas' },
+  preview_redirect: { en: 'Preview – would redirect to', sv: 'Förhandsvisning – skulle skicka vidare till' },
+  loading: {
+    en: 'Wait for the form to load before submitting. If loading failed, reload this page.',
+    sv: 'Vänta tills formuläret har laddats innan du skickar. Ladda om sidan om det inte laddas.',
+  },
+  link_expired: {
+    en: 'This link is no longer valid. Please request a new one.',
+    sv: 'Länken gäller inte längre. Be om en ny länk.',
+  },
+  retry_hour: { en: 'Try again in 1 hour.', sv: 'Försök igen om en timme.' },
+  retry_hours: { en: 'Try again in {n} hours.', sv: 'Försök igen om {n} timmar.' },
+  work_email: { en: 'Use a work email on {domains}.', sv: 'Använd en jobbadress på {domains}.' },
+  work_email_limit: { en: 'Two links per profile in 24 hours.', sv: 'Högst två länkar per profil på 24 timmar.' },
+  or: { en: ' or ', sv: ' eller ' },
+  payload_too_large: { en: 'Payload too large', sv: 'Svaret är för stort för att skickas.' },
+  rate_limited: { en: 'Too many submissions. Try again later.', sv: 'För många försök. Försök igen om en stund.' },
+  form_busy: {
+    en: 'This form is receiving too many submissions right now.',
+    sv: 'Formuläret tar emot väldigt många svar just nu. Försök igen om en stund.',
+  },
+  preview_refused: { en: 'This is a preview – nothing was sent.', sv: 'Det här är en förhandsvisning – inget skickades.' },
+  missing_token: { en: 'token and data are required', sv: 'Formuläret saknar uppgifter. Ladda om sidan och försök igen.' },
+  not_configured: {
+    en: 'Form signing is not configured on this server (FORMS_HMAC_SECRET missing).',
+    sv: 'Formuläret kan inte ta emot svar just nu (FORMS_HMAC_SECRET saknas på servern).',
+  },
+  invalid_token: { en: 'Invalid token', sv: 'Formuläret är inte längre giltigt. Ladda om sidan och försök igen.' },
+  form_not_found: { en: 'Form not found', sv: 'Formuläret finns inte.' },
+  no_steps: { en: 'This form has no steps configured.', sv: 'Formuläret har inga steg.' },
+  bad_state: { en: 'Session expired — reload the page.', sv: 'Sessionen har gått ut — ladda om sidan.' },
+  too_fast: { en: 'Slow down and try again.', sv: 'Vänta en stund och försök igen.' },
+  step_submitted: {
+    en: 'This step has already been submitted — reload the page.',
+    sv: 'Det här steget är redan skickat — ladda om sidan.',
+  },
+  action_failed: {
+    en: 'This submission could not be processed. Please try again.',
+    sv: 'Det gick inte att ta emot svaret. Försök igen.',
+  },
+  failed: { en: 'Submission failed.', sv: 'Det gick inte att skicka.' },
+  page_ok: { en: 'Sent', sv: 'Skickat' },
+  page_error: { en: 'Not sent', sv: 'Inte skickat' },
+};
+
+/** A visitor-facing form text in the site's language (sv or en). */
+export function formMessage(key: FormMessageKey, lang: string | undefined): string {
+  const entry = FORM_MESSAGES[key];
+  return (lang ?? '').toLowerCase().startsWith('sv') ? entry.sv : entry.en;
+}
+
+/**
  * Convert a flat `fields[]` list into form/* field blocks — the WRITE-TIME
  * half of the "fields is just sugar" model. create_form / update_form
  * accept a flat field list for simple forms; the server stores it as a

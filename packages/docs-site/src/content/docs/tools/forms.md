@@ -219,6 +219,38 @@ the step that is showing, so a required field in a later step never blocks an
 earlier one; it is checked when its step appears. Each step posts only its own
 fields, and the server validates them again.
 
+### Visitor messages
+
+Everything a visitor reads that you did not write yourself follows the site's
+language (**Settings → Language**): Swedish on sites whose language is `sv`,
+English otherwise. That covers button defaults, validation messages, errors
+such as "Vänta en stund och försök igen." for a step sent too quickly, the
+fallback when something goes wrong and the confirmation page shown without
+JavaScript. The texts are part of the published form, so a static page needs
+no extra request for them. Refusals sent before the server knows the site,
+such as the per-IP rate limit or an invalid token, follow the visitor's browser
+language instead. Your own texts (labels, `success_message`, `error_messages`)
+are shown as written. Error `code`s in API responses stay the same in every
+language.
+
+### Campaign parameters in hidden fields
+
+A hidden field named `utm_*` (`utm_source`, `utm_medium`, `utm_campaign`,
+`utm_term`, `utm_content` or any other `utm_` name) is filled from the
+parameter of the same name in the address of the page the form is on. A visit
+to `/kontakt/?utm_source=linkedin` stores `utm_source: "linkedin"` with the
+submission and lists it in notification emails. The field's own `value` is
+sent when the address has no such parameter, so `value: "website"` on
+`utm_medium` marks visits without a campaign. Other hidden fields always send
+their own value.
+
+Only the current page address is read, and nothing is stored in the visitor's
+browser, so this needs no cookie consent. It needs JavaScript; without it the
+fields send their own values. A campaign is not carried from one page to the
+next: if visitors land on another page first, link to the form page with the
+parameters, or use an app that remembers the campaign (which stores it only
+with the visitor's consent).
+
 ## Forms in previews
 
 Every preview renders forms in preview mode: the editor's preview, **Preview

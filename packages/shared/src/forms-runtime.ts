@@ -14,6 +14,7 @@
 //   - disables the controls of hidden steps, so native validation and the
 //     posted FormData cover the visible step only
 //   - slider value readout; proof-of-work computation (see below)
+//   - fills hidden utm_* fields from the page URL (see "Campaign parameters")
 //   - preview mode (data-tr-preview): simulates the submit endpoint in the
 //     browser and sends nothing (see "Preview mode" below)
 //
@@ -38,6 +39,10 @@ async function computePow(seed,bits){var enc=new TextEncoder();for(var nonce=0;;
 function fieldError(form,name,msg){var slot=$('[data-error-for="'+(window.CSS&&CSS.escape?CSS.escape(name):name)+'"]',form);var wrap=slot&&slot.closest(".form-field");if(slot){slot.textContent=msg;slot.hidden=!msg}if(wrap){if(msg)wrap.setAttribute("data-invalid","");else wrap.removeAttribute("data-invalid")}}
 function clearErrors(form){$all(".form-field-error",form).forEach(function(e){e.hidden=true;e.textContent=""});$all("[data-invalid]",form).forEach(function(e){e.removeAttribute("data-invalid")});var top=$(".form-toplevel-error",form);if(top){top.hidden=true;top.textContent=""}}
 function topError(form,msg){var el=$(".form-toplevel-error",form);if(el){el.textContent=msg;el.hidden=false;el.focus&&el.focus()}}
+// Visitor-facing texts come from the rendered form (data-msg-*, in the
+// site's language; see formMessage); the English fallbacks only cover
+// markup that predates an attribute.
+function msg(form,key,fallback){return form.getAttribute("data-msg-"+key)||fallback}
 // Native constraint validation must only see the visible step. Hidden steps
 // stay in the one <form>, so their required controls would block every
 // submit ("An invalid form control is not focusable"). Disabled controls are
@@ -106,10 +111,11 @@ function fillFields(form,fields){form.__remoteFields=fields||[];(fields||[]).for
     else if(input.tagName==="SELECT"&&input.multiple)Array.from(input.options).forEach(function(o){o.selected=Array.isArray(f.value)&&f.value.indexOf(o.value)!==-1});
     else input.value=f.value==null?"":typeof f.value==="object"?JSON.stringify(f.value):String(f.value);
     if(f.allowed_domains&&input.type==="email"){
-      var help=document.createElement("p");help.className="form-field-help";help.textContent="Use a work email on "+f.allowed_domains.join(" or ")+". Two links per profile in 24 hours.";
+      var workEmail=msg(form,"work-email","Use a work email on {domains}.").replace("{domains}",f.allowed_domains.join(msg(form,"or"," or "))),helpText=workEmail+" "+msg(form,"work-email-limit","Two links per profile in 24 hours.");
+      var help=document.createElement("p");help.className="form-field-help";help.textContent=helpText;
       help.id="domain-"+f.name;input.insertAdjacentElement("afterend",help);input.setAttribute("aria-describedby",help.id);
       input.addEventListener("input",function(){var host="";try{host=new URL("https://"+input.value.trim().split("@").pop()).hostname.toLowerCase().replace(/\.$/,"").replace(/^www\./,"")}catch(e){}
-        var invalid=input.value&&f.allowed_domains.indexOf(host)===-1;input.setCustomValidity(invalid?"Use a work email on "+f.allowed_domains.join(" or "):"");input.setAttribute("aria-invalid",String(!!invalid));help.textContent=invalid?input.validationMessage:"Use a work email on "+f.allowed_domains.join(" or ")+". Two links per profile in 24 hours.";});
+        var invalid=input.value&&f.allowed_domains.indexOf(host)===-1;input.setCustomValidity(invalid?workEmail:"");input.setAttribute("aria-invalid",String(!!invalid));help.textContent=invalid?input.validationMessage:helpText;});
     }
   });
 });form.__remoteBaseline={};(fields||[]).forEach(function(f){form.__remoteBaseline[f.name]=JSON.stringify(readRemoteField(form,f))})}
@@ -125,7 +131,8 @@ function hydrated(form,data){fillFields(form,data.fields);form.__hydrated=true;f
   if(data.title){var title=document.createElement("p");title.textContent=data.title;form.prepend(title)}
   form.addEventListener("input",function(){form.__requestId=crypto.randomUUID()});
 }
-function expiredMsg(form){return form.getAttribute("data-msg-expired")||"This link is no longer valid. Please request a new one."}
+function expiredMsg(form){return msg(form,"expired","This link is no longer valid. Please request a new one.")}
+function retryMsg(form,seconds){var hours=Math.ceil(seconds/3600);return hours<=1?msg(form,"retry-hour","Try again in 1 hour."):msg(form,"retry-hours","Try again in {n} hours.").replace("{n}",hours)}
 async function remoteInit(form,param){
   var url=new URL(location.href);
   var one=param?url.searchParams.get(param):null;
@@ -148,7 +155,7 @@ async function remoteInit(form,param){
     var r2=await fetch(form.action,{headers:Object.assign({Accept:"application/json"},authHeaders(form))});
     if(r2.ok){var d2=await r2.json().catch(function(){return null});if(d2)hydrated(form,d2);return}
     if(param){sessSet(form,"");topError(form,expiredMsg(form))}
-  }catch(e){topError(form,form.getAttribute("data-msg-fail")||"Something went wrong.")}
+  }catch(e){topError(form,msg(form,"fail","Something went wrong."))}
 }
 // ── Preview mode ────────────────────────────────────────────────────────
 // Portal previews render the form with data-tr-preview: the step graph and
@@ -178,8 +185,8 @@ function previewErrors(step,fd){var errs=[];((step&&step.fields)||[]).forEach(fu
 function previewDone(form){
   var region=wrapOf(form)||form,notice=$(".form-preview-notice",form),redirect=form.getAttribute("data-redirect")||"";
   var done=document.createElement("div");done.className="form-done";done.setAttribute("role","status");
-  if(redirect)done.textContent=(form.getAttribute("data-msg-redirect")||"Preview – would redirect to")+" "+redirect;
-  else done.innerHTML=form.getAttribute("data-msg-done")||"Thanks!";
+  if(redirect)done.textContent=msg(form,"redirect","Preview – would redirect to")+" "+redirect;
+  else done.innerHTML=msg(form,"done","Thanks!");
   region.replaceChildren();if(notice)region.append(notice);region.append(done);
 }
 function previewSubmit(form){
@@ -191,10 +198,19 @@ function previewSubmit(form){
   if(step&&step.next&&goToStep(form,step.next))return;
   previewDone(form);
 }
+// ── Campaign parameters ─────────────────────────────────────────────────
+// A hidden field named utm_* (utm_source, utm_medium, utm_campaign, …)
+// takes the same-named query parameter of this page's URL; the field's own
+// value is the fallback for visits without it. Only the current URL is
+// read and nothing is stored in the browser, so no consent is involved.
+// Keeping a campaign across pages (first or last touch) is not Core's.
+function fillCampaign(form){var q;try{q=new URLSearchParams(location.search)}catch(e){return}
+  $all('input[type="hidden"]',form).forEach(function(el){if(!/^utm_[A-Za-z0-9_]{1,64}$/.test(el.name))return;var v=(q.get(el.name)||"").trim();if(v)el.value=v.slice(0,255)})}
 function init(form){
   $all("[data-required]",form).forEach(function(el){el.required=el.getAttribute("data-required")==="true"});
   $all('[data-block="form_slider"]',form).forEach(function(w){var inp=$("input[type=range]",w),out=$(".form-slider-value",w),unit=w.getAttribute("data-unit")||"";if(!inp||!out||w.__trReady)return;w.__trReady=true;var upd=function(){out.textContent=inp.value+(unit?" "+unit:"")};inp.addEventListener("input",upd);upd()});
   $all('[data-clear-answer]',form).forEach(function(button){if(button.__trReady)return;button.__trReady=true;button.addEventListener("click",function(){var name=button.getAttribute("data-clear-answer");$all('input[type=radio]',button.parentElement).forEach(function(input){input.checked=false});form.__cleared=form.__cleared||{};form.__cleared[name]=true;form.dispatchEvent(new Event("input",{bubbles:true}))})});
+  fillCampaign(form);
   syncSteps(form);
   // init runs again after a dynamic step is injected so its new fields get
   // the enhancements above; listeners on the form itself bind only once, or
@@ -213,7 +229,7 @@ function init(form){
   var powP=null,powStart=function(){if(!powP&&bits>0&&window.crypto&&crypto.subtle){var bucket=Math.floor(Date.now()/6e5);powP=computePow(token+"."+bucket,bits).then(function(n){return bucket+"."+n})}};
   form.addEventListener("focusin",powStart,{once:true});
   form.addEventListener("submit",async function(ev){
-    ev.preventDefault();clearErrors(form);if(preview){previewSubmit(form);return}if(remote&&!form.__hydrated){topError(form,"Wait for the form to load before submitting. If loading failed, reload this page.");return}powStart();
+    ev.preventDefault();clearErrors(form);if(preview){previewSubmit(form);return}if(remote&&!form.__hydrated){topError(form,msg(form,"loading","Wait for the form to load before submitting. If loading failed, reload this page."));return}powStart();
     var btn=$('[type="submit"]',form);if(btn)btn.disabled=true;
     try{
       var fd=new FormData(form);fd.set("_protocol","1");
@@ -240,9 +256,9 @@ function init(form){
       var hdrs=Object.assign({Accept:"application/json"},sessParam?authHeaders(form):{});
       var res=await fetch(form.action,{method:"POST",body:fd,headers:hdrs});
       var out=await res.json().catch(function(){return null});
-      if(!out){topError(form,form.getAttribute("data-msg-fail")||"Something went wrong.");return}
+      if(!out){topError(form,msg(form,"fail","Something went wrong."));return}
       if(!res.ok||out.ok===false){
-        if(out.message||out.error)topError(form,(out.message||out.error)+(out.retry_after?" Try again in "+Math.ceil(out.retry_after/3600)+" hour(s).":""));
+        if(out.message||out.error)topError(form,(out.message||out.error)+(out.retry_after?" "+retryMsg(form,out.retry_after):""));
         (out.errors||[]).forEach(function(e){if(e.field)fieldError(form,e.field,e.message);else topError(form,e.message)});
         var first=$("[data-invalid] .form-input, [data-invalid] input",form);if(first)first.focus();
         return;
@@ -253,12 +269,12 @@ function init(form){
         var redirect=form.getAttribute("data-redirect")||"";
         if(/^(https?:\/\/|\/(?![\/\\]))/i.test(redirect)){location.assign(redirect);return}
         var region=form.closest("[data-tr-form]")||form;
-        if(out.message){region.replaceChildren();var message=document.createElement("div");message.className="form-done";message.setAttribute("role","status");message.textContent=out.message;region.append(message)}else if(out.html){region.innerHTML=out.html}else{region.innerHTML='<div class="form-done" role="status">'+(form.getAttribute("data-msg-done")||"Thanks!")+"</div>"}
+        if(out.message){region.replaceChildren();var message=document.createElement("div");message.className="form-done";message.setAttribute("role","status");message.textContent=out.message;region.append(message)}else if(out.html){region.innerHTML=out.html}else{region.innerHTML='<div class="form-done" role="status">'+msg(form,"done","Thanks!")+"</div>"}
         return;
       }
       if(out.html)goToDynamic(form,out.html,out);
       else if(out.next_step)goToStep(form,out.next_step);
-    }catch(e){topError(form,form.getAttribute("data-msg-fail")||"Something went wrong.")}
+    }catch(e){topError(form,msg(form,"fail","Something went wrong."))}
     finally{if(btn)btn.disabled=false}
   });
 }

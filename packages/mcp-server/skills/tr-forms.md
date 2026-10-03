@@ -185,6 +185,21 @@ Booking request:
 ]}
 ```
 
+Campaign tracking: hidden fields named `utm_*` are filled from the same-named
+parameter in the page address (`?utm_source=linkedin`); `default` is sent when
+the parameter is missing. Only the current address is read and nothing is
+stored in the browser, so no consent is needed; the campaign is not carried
+across pages. Other hidden fields always send their `default`.
+
+```json
+{"fields":[
+  {"name":"email","type":"email","label":"E-post","required":true},
+  {"name":"utm_source","type":"hidden"},
+  {"name":"utm_medium","type":"hidden","default":"website"},
+  {"name":"utm_campaign","type":"hidden"}
+]}
+```
+
 ## Pitfalls
 
 - Do not hand-write a form, token, honeypot, or submit script.
@@ -192,5 +207,8 @@ Booking request:
 - Do not drop existing actions by accident: `actions` replaces the list.
 - Do not send every submitted field to a webhook by default; choose the
   smallest allowlist the external register needs.
+- Built-in visitor messages (button defaults, validation and error messages,
+  the no-JS confirmation page) follow the site's language, Swedish for `sv` and
+  English otherwise. Do not add `error_messages` only to translate them.
 - `submit_token` is stable until the platform rotates its form-signing secret;
   a rebuild refreshes it after rotation.

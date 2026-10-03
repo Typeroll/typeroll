@@ -10,7 +10,7 @@
 import { renderBlocks, escapeHtml, type RenderBlocksOptions } from './render-blocks.js';
 import type { Form, FormField, FormStep } from './types.js';
 import { FORM_BLOCKS_CSS } from './form-blocks.js';
-import { collectStepFields, defaultErrorMessage, formStepPath, isCheckboxGroupField, nextStep, showsStepTitle, type FieldError } from './form-fields.js';
+import { collectStepFields, defaultErrorMessage, formMessage, formStepPath, isCheckboxGroupField, nextStep, showsStepTitle, type FieldError, type FormMessageKey } from './form-fields.js';
 import { resolveRenderVersion } from './render-version.js';
 
 export interface FormEmbed {
@@ -28,6 +28,17 @@ export interface FormEmbed {
 
 // Inline so the shared shell CSS (and every published page) stays unchanged.
 const PREVIEW_NOTICE_STYLE = 'display:inline-block;margin:0 0 1rem;padding:0.2rem 0.6rem;font-size:0.8125rem;font-weight:600;line-height:1.4;border:1px dashed currentColor;border-radius:999px;opacity:0.8';
+
+/** Runtime messages of remote-backed forms: data-msg-{attribute} → text. */
+const REMOTE_MESSAGES: ReadonlyArray<readonly [string, FormMessageKey]> = [
+  ['loading', 'loading'],
+  ['expired', 'link_expired'],
+  ['retry-hour', 'retry_hour'],
+  ['retry-hours', 'retry_hours'],
+  ['work-email', 'work_email'],
+  ['work-email-limit', 'work_email_limit'],
+  ['or', 'or'],
+];
 
 /** Wire marker posted by preview forms; the submit endpoint refuses it. */
 export const FORM_PREVIEW_FIELD = '_preview';
@@ -118,11 +129,6 @@ export interface RenderFormOptions {
   renderVersion?: number;
 }
 
-/** "Step {n} of {total}" in the form's language. */
-function progressTemplate(sv: boolean): string {
-  return sv ? 'Steg {n} av {total}' : 'Step {n} of {total}';
-}
-
 function progressText(template: string, n: number, total: number): string {
   return template.replace('{n}', String(n)).replace('{total}', String(total));
 }
@@ -133,10 +139,10 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
   // steps is an empty/broken doc, not a legacy shape.
   const steps = form.steps ?? [];
   if (steps.length === 0) return `<!-- form ${escapeHtml(form.id)} has no steps -->`;
-  const sv = (opts.lang ?? '').startsWith('sv');
-  const submitLabel = opts.submit_label ?? form.submit_text ?? (sv ? 'Skicka' : 'Send');
-  const failMsg = sv ? 'Något gick fel — försök igen.' : 'Something went wrong — please try again.';
-  const doneMsg = form.success_message ?? (sv ? 'Tack!' : 'Thanks!');
+  const lang = opts.lang;
+  const submitLabel = opts.submit_label ?? form.submit_text ?? formMessage('submit', lang);
+  const failMsg = formMessage('fail', lang);
+  const doneMsg = form.success_message ?? formMessage('thanks', lang);
   // Optional: navigate to a thank-you or booking page after the final step.
   const redirect = safeFormRedirectUrl(form.success_redirect_url);
 
@@ -148,7 +154,7 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
   // version 5+) "Continue" before the last step, else the form's submit text.
   // Steps carry their label only when one differs, so a form without
   // per-step labels renders exactly as before.
-  const continueLabel = renderVersion >= 5 ? (sv ? 'Fortsätt' : 'Continue') : submitLabel;
+  const continueLabel = renderVersion >= 5 ? formMessage('continue', lang) : submitLabel;
   const labelFor = (step: FormStep) => step.submit_label?.trim() || (nextStep(form, step) ? continueLabel : submitLabel);
   const perStepLabels = steps.some((step) => labelFor(step) !== submitLabel);
   const allowBack = multiStep && (form.allow_back ?? renderVersion >= 5);
@@ -169,7 +175,7 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
   let progressHtml = '';
   if (progress) {
     const total = Math.max(1, formStepPath(form).length);
-    const template = progressTemplate(sv);
+    const template = formMessage('progress', lang);
     progressHtml = `<div class="form-progress" data-form-progress="${progress}" data-progress-template="${escapeHtml(template)}" data-progress-total="${total}"><span class="form-progress-text">${escapeHtml(progressText(template, 1, total))}</span><span class="form-progress-bar" aria-hidden="true"><span class="form-progress-fill" style="width:${Math.round(10000 / total) / 100}%"></span></span></div>\n`;
   }
   // Labels for server-rendered dynamic steps, which the markup can't carry.
@@ -182,7 +188,7 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
     ? ` data-render-version="${renderVersion}"`
     : '';
   const backHtml = allowBack
-    ? `<button type="button" class="form-back" data-form-back hidden>${sv ? 'Tillbaka' : 'Back'}</button>\n`
+    ? `<button type="button" class="form-back" data-form-back hidden>${escapeHtml(formMessage('back', lang))}</button>\n`
     : '';
 
   const styles = form.styles
@@ -196,20 +202,25 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
   const sessionParam = form.target?.session_param
     ? ` data-tr-session-param="${escapeHtml(form.target.session_param)}"`
     : '';
+  // Remote-backed forms show a few runtime messages of their own, in the
+  // site's language; ordinary forms don't carry them.
+  const remoteMsgAttrs = hydrate || sessionParam
+    ? REMOTE_MESSAGES.map(([attr, key]) => ` data-msg-${attr}="${escapeHtml(formMessage(key, lang))}"`).join('')
+    : '';
 
   // Preview: nothing to sign or prove, and the runtime needs the step graph
   // and the server's validation rules to simulate the submit endpoint.
   const previewAttrs = preview
-    ? ` data-tr-preview="${escapeHtml(JSON.stringify(formPreviewSteps(form, opts.lang)))}" data-msg-redirect="${escapeHtml(sv ? 'Förhandsvisning – skulle skicka vidare till' : 'Preview – would redirect to')}"`
+    ? ` data-tr-preview="${escapeHtml(JSON.stringify(formPreviewSteps(form, opts.lang)))}" data-msg-redirect="${escapeHtml(formMessage('preview_redirect', lang))}"`
     : '';
   const previewHtml = preview
     ? `<input type="hidden" name="${FORM_PREVIEW_FIELD}" value="1" />
-<p class="form-preview-notice" role="note" style="${PREVIEW_NOTICE_STYLE}">${sv ? 'Förhandsvisning – inget skickas' : 'Preview – nothing is sent'}</p>
+<p class="form-preview-notice" role="note" style="${PREVIEW_NOTICE_STYLE}">${escapeHtml(formMessage('preview_notice', lang))}</p>
 `
     : '';
 
   return `<div data-tr-form="${escapeHtml(form.id)}"${hydrate}${sessionParam} data-tr-context-params="${escapeHtml(JSON.stringify(form.target?.context_params ?? []))}">
-${styles}<form data-tr-form-el method="POST" action="${escapeHtml(embed.submit_url)}" data-pow-bits="${preview ? 0 : (opts.pow_bits ?? 0)}" data-msg-fail="${escapeHtml(failMsg)}" data-msg-done="${escapeHtml(doneMsg)}"${redirect ? ` data-redirect="${escapeHtml(redirect)}"` : ''}${labelAttrs}${versionAttr}${previewAttrs}>
+${styles}<form data-tr-form-el method="POST" action="${escapeHtml(embed.submit_url)}" data-pow-bits="${preview ? 0 : (opts.pow_bits ?? 0)}" data-msg-fail="${escapeHtml(failMsg)}" data-msg-done="${escapeHtml(doneMsg)}"${remoteMsgAttrs}${redirect ? ` data-redirect="${escapeHtml(redirect)}"` : ''}${labelAttrs}${versionAttr}${previewAttrs}>
 ${previewHtml}<input type="hidden" name="_token" value="${escapeHtml(preview ? '' : (embed.submit_token ?? ''))}" />
 <input type="hidden" name="_state" value="" />
 <input type="hidden" name="_form_id" value="${escapeHtml(form.id)}" />

@@ -207,6 +207,12 @@ export interface SiteTemplateCapabilities {
    * `{ ok: true, done: true, preview: true }` there without a request.
    */
   forms_preview_mode: boolean;
+  /**
+   * 0.51.0+: the forms runtime fills hidden fields named `utm_*` from the
+   * same-named query parameter of the page URL; the field's value is the
+   * fallback. Current URL only, nothing stored in the browser.
+   */
+  forms_utm_hidden_fields: boolean;
 
   /**
    * 0.32.0+: `Page.alternates` renders as `<link rel="alternate" hreflang>`
@@ -274,6 +280,7 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   forms_steps_only: true,
   forms_html_directive: true,
   forms_preview_mode: true,
+  forms_utm_hidden_fields: true,
   supports_hreflang_alternates: true,
   supports_migration_url_api: true,
   supports_migration_launch_report: true,
