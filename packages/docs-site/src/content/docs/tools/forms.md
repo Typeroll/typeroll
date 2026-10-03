@@ -32,6 +32,52 @@ then square metres and timeframe, then contact details.
 Multi-step forms save partial answers as the visitor advances, so a drop-off
 after step one still tells you something.
 
+## Multi-step forms
+
+Each step can set its own button text with `submit_label`. Without one, from
+[render version 5](../settings/#render-versions) every step but the last reads
+"Continue" ("Fortsätt" on Swedish sites) and the last step uses the form's
+`submit_text`; earlier render versions use `submit_text` on every step.
+
+Visitors can go back. A "Back" ("Tillbaka") button appears from the second step
+and shows the previous step with the answers kept. Going back sends nothing;
+sending an earlier step again updates the same partial submission. It is on by
+default from render version 5; set the form's `allow_back` to `false` to hide
+it, or `true` to show it on an earlier render version.
+
+Set `show_progress` to show where the visitor is: `true` or `"text"` shows
+"Step 2 of 3" ("Steg 2 av 3"), `"bar"` a slim progress bar that screen readers
+read as the same text. It counts the steps a visitor passes through, following
+`next`. It is off by default.
+
+Give each step either a `title` or a leading `form/heading` block, not both.
+From render version 5 a step that starts with a `form/heading` block does not
+render its title; on earlier render versions both show, and `create_form` and
+`update_form` return a warning.
+
+When a step changes, focus moves to its heading (or first label) and a polite
+live region announces it, with "Step X of Y" when progress is shown.
+
+```json
+{
+  "allow_back": true,
+  "show_progress": "text",
+  "steps": [
+    {
+      "id": "contact",
+      "title": "Kontakt",
+      "submit_label": "Nästa: företag",
+      "blocks": []
+    },
+    { "id": "company", "title": "Företag", "blocks": [] },
+    { "id": "message", "title": "Meddelande", "blocks": [] }
+  ]
+}
+```
+
+In the portal, **Forms → a form → Overview → Steps** sets the button labels,
+the Back button and progress for a multi-step form.
+
 ## `create_form`
 
 Creates a form. Give it fields and a recipient email, and the AI agent wraps them in a
@@ -118,11 +164,40 @@ Reading and writing actions needs admin permission, as in the portal. With
 other permissions `read_form` returns `actions: []` and a write that includes
 `actions` is refused with `403`.
 
+### Follow up on abandoned multi-step forms
+
+Actions run when a form is completed. An email action can instead run when a
+visitor stops part-way: set `trigger: "partial_abandoned"` and `after_hours`
+(1–720). It is sent once for each submission that has finished at least one
+step and has not moved on for that many hours, so you hear about a lead who
+gave their contact details in step 1 but never finished. A visitor who
+continues resets the wait, a completed submission never sends it, and form
+previews never store submissions, so they never count. The email lists the
+answers given so far (`include_all`).
+
+```
+update_form form_id=lead patch={ actions: [
+  { type: "email", config: { to: "sales@example.com", subject: "New lead", body: "<p>Done.</p>", include_all: true } },
+  { type: "email", trigger: "partial_abandoned", after_hours: 2,
+    config: { to: "sales@example.com", subject: "Unfinished lead: {{email}}",
+      body: "<p>{{email}} stopped after the first step.</p>", include_all: true } }
+] }
+```
+
+In the portal, set **Send** to "When a started form is abandoned" on an email
+action of a multi-step form. The check runs on Typeroll's scheduled work, the
+same as scheduled publishing: Typeroll Cloud runs it for you, and a self-hosted
+Core needs its scheduler (Cloud Tasks and the Cloud Scheduler job that calls
+`/api/internal/publish-sweep`, see [Self-hosting](../../guides/self-hosting/)).
+Without it the email goes out on the next sweep after it is due.
+
 ### `get_form_capabilities`
 
 Lists every action type the site can use, with the config fields each one
 takes: the core `email` and `webhook` types and any type an installed app
-provides. It also lists the prefill sources. This is the same list the portal's
+provides. It also lists the prefill sources and the action `triggers`
+(`complete`, and `partial_abandoned` for email actions with its `after_hours`
+range). This is the same list the portal's
 Forms editor offers; read it before writing an app-provided action. Admin
 permission (`GET /api/v1/sites/{siteId}/form-capabilities`).
 
@@ -138,6 +213,66 @@ actions are skipped.
 
 Forms render through the `core/form` block: styled inputs, client-side
 validation, and the submit token wired in. You don't hand-write form HTML.
+
+In a multi-step form the browser checks required fields and formats only for
+the step that is showing, so a required field in a later step never blocks an
+earlier one; it is checked when its step appears. Each step posts only its own
+fields, and the server validates them again.
+
+### Visitor messages
+
+Everything a visitor reads that you did not write yourself follows the site's
+language (**Settings → Language**): Swedish on sites whose language is `sv`,
+English otherwise. That covers button defaults, validation messages, errors
+such as "Vänta en stund och försök igen." for a step sent too quickly, the
+fallback when something goes wrong and the confirmation page shown without
+JavaScript. The texts are part of the published form, so a static page needs
+no extra request for them. Refusals sent before the server knows the site,
+such as the per-IP rate limit or an invalid token, follow the visitor's browser
+language instead. Your own texts (labels, `success_message`, `error_messages`)
+are shown as written. Error `code`s in API responses stay the same in every
+language.
+
+### Campaign parameters in hidden fields
+
+A hidden field named `utm_*` (`utm_source`, `utm_medium`, `utm_campaign`,
+`utm_term`, `utm_content` or any other `utm_` name) is filled from the
+parameter of the same name in the address of the page the form is on. A visit
+to `/kontakt/?utm_source=linkedin` stores `utm_source: "linkedin"` with the
+submission and lists it in notification emails. The field's own `value` is
+sent when the address has no such parameter, so `value: "website"` on
+`utm_medium` marks visits without a campaign. Other hidden fields always send
+their own value.
+
+Only the current page address is read, and nothing is stored in the visitor's
+browser, so this needs no cookie consent. It needs JavaScript; without it the
+fields send their own values. A campaign is not carried from one page to the
+next: if visitors land on another page first, link to the form page with the
+parameters, or use an app that remembers the campaign (which stores it only
+with the visitor's consent).
+
+## Forms in previews
+
+Every preview renders forms in preview mode: the editor's preview, **Preview
+site**, preview links (`get_preview_link`), page and revision previews and
+`get_page_preview`. No page or form setting is needed. A small "Preview –
+nothing is sent" notice (Swedish sites: "Förhandsvisning – inget skickas") sits
+on the form, and you can click through it as a visitor would:
+
+- each step is validated with the same rules and messages as the server, and
+  the next step follows the form's step order and `next` links (dynamic steps
+  are shown too);
+- the last step shows the success message. With `success_redirect_url` the
+  preview names the target ("Preview – would redirect to /tack/") instead of
+  leaving the preview;
+- nothing is sent: no submission or partial answer is stored, no email,
+  webhook or app action runs, and nothing counts towards the submissions inbox.
+
+Preview forms carry no submit token, and the submit endpoint refuses anything
+posted from one, so even a preview opened without JavaScript cannot create a
+submission. Published pages never contain the preview mode, whatever the URL.
+Keep the forms runtime when you build a review copy from `get_page_preview`;
+there is nothing to strip or stub. Test real submissions on a deployed page.
 
 ## Protection
 

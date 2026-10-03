@@ -133,6 +133,7 @@
 [data-block="form_consent"] .form-consent-text { font-size: 0.9rem; }
 [data-block="form_consent"] .form-consent-text p { margin: 0; }
 [data-tr-form] .form-hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+[data-tr-form] [data-form-step][hidden], [data-tr-form] [data-form-dynamic-step][hidden] { display: none !important; }
 [data-tr-form] .form-step-title { margin: 0 0 1rem; }
 [data-tr-form] .form-submit {
   font: inherit; font-weight: 600; cursor: pointer; border: 0;
@@ -142,6 +143,21 @@
   padding: 0.8rem 1.6rem; margin-top: 0.4rem;
 }
 [data-tr-form] .form-submit[disabled] { opacity: 0.6; cursor: progress; }
+[data-tr-form] .form-back {
+  font: inherit; cursor: pointer; background: transparent;
+  color: var(--form-accent-color, var(--color-primary, #111));
+  border: 1px solid currentColor;
+  border-radius: var(--form-field-radius, 0.5rem);
+  padding: calc(0.8rem - 1px) 1.4rem; margin: 0.4rem 0.5rem 0 0;
+}
+[data-tr-form] .form-back[hidden] { display: none; }
+[data-tr-form] .form-progress { margin: 0 0 1rem; font-size: 0.875rem; }
+[data-tr-form] .form-progress-bar { display: block; height: 0.25rem; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, currentColor 15%, transparent); }
+[data-tr-form] .form-progress-fill { display: block; height: 100%; background: var(--form-accent-color, var(--color-primary, #111)); transition: width 0.2s ease; }
+[data-tr-form] [data-form-progress="text"] .form-progress-bar { display: none; }
+[data-tr-form] [data-form-progress="bar"] .form-progress-text {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
 [data-tr-form] .form-done { padding: 1rem 0; font-weight: 600; }
 
 /* WEBFONT_FALLBACK_CSS */

@@ -715,7 +715,7 @@ async function resolvePreviewMedia(html: string, orgId: string, siteId: string, 
 
 async function previewFormSource(orgId: string, siteId: string, blockRegistry: ReturnType<typeof buildCoreBlockRegistry>, settings: SiteSettings, assetBlocks: Block[]) {
     const { renderFormHtml } = await import('@typeroll/shared');
-    const { formEmbedInfo, POW_BITS, isFormsSigningConfigured } = await import('./forms-signing');
+    const { formSubmitUrl } = await import('./forms-signing');
     const { resolveAppFormEndpoint } = await import('./apps/form-endpoint');
     type F = import('@typeroll/shared').Form;
     let forms: F[] = [];
@@ -729,15 +729,19 @@ async function previewFormSource(orgId: string, siteId: string, blockRegistry: R
       const form = byId.get(formId);
       if (!form || (form.steps?.length ?? 0) === 0) return undefined;
       assetBlocks.push(...form.steps!.flatMap((step) => step.blocks ?? []));
-      // Same resolver the deploy runner uses — an app-backed form must
-      // preview against the endpoint it will actually ship with.
+      // Same resolver the deploy runner uses, so an app-backed form whose
+      // app is unavailable fails here as it would on publish.
       const appEndpoint = endpoints.get(form.id);
       if (appEndpoint instanceof Error) throw appEndpoint;
-      const embed = appEndpoint ?? formEmbedInfo(orgId, siteId, formId);
-      return renderFormHtml(form, embed, {
+      // Every preview surface (editor canvas, preview links, page and
+      // revision previews, get_page_preview) renders forms in preview mode:
+      // the runtime simulates submission and sends nothing. No token is
+      // minted, and even a no-JS post goes to the core endpoint, which
+      // refuses the preview marker — never to an app's endpoint.
+      return renderFormHtml(form, { submit_url: formSubmitUrl(), submit_token: null, preview: true }, {
         registry: blockRegistry,
-        pow_bits: appEndpoint ? 0 : (isFormsSigningConfigured() ? POW_BITS : 0),
         lang: (settings as { language?: string }).language,
+        renderVersion: resolveRenderVersion(settings.render_version),
       });
     };
 

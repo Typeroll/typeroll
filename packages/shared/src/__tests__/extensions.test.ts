@@ -347,6 +347,22 @@ describe('extension URL context', () => {
     expect(listener.mock.calls).toEqual([['terms'], ['approve']]);
   });
 
+  it('simulates bound form submissions in previews without a request', async () => {
+    const runtime = buildExtensionRuntimeScript({ runtime_version: '0.38.0', protocol_version: 3, installations: [] });
+    const source = /function forms\(component,preview\)\{[\s\S]*?\n\}\n/.exec(runtime)?.[0];
+    expect(source).toBeTruthy();
+    const fetch = vi.fn();
+    const forms = new Function('fetch', `${source}; return forms;`)(fetch) as (component: unknown, preview: boolean) => {
+      submit(id: string, data: unknown): Promise<unknown>;
+    };
+    const component = { resolved_form_bindings: { lead: { id: 'lead', form_id: 'leads', submit_url: 'https://forms.example/api/forms/submit', submit_token: null, pow_bits: 0 } } };
+    await expect(forms(component, true).submit('lead', { email: 'ada@example.test' })).resolves.toEqual({ v: 1, ok: true, done: true, preview: true });
+    await expect(forms(component, true).submit('other', {})).rejects.toThrow('Unknown Extension form binding');
+    await expect(forms(component, true).submit('lead', [])).rejects.toThrow('Form data must be an object');
+    await expect(forms(component, false).submit('lead', {})).rejects.toThrow('Extension form submissions are not configured');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('ships per-mount memory navigation and embedded navigation messages', () => {
     const runtime = buildExtensionRuntimeScript({
       runtime_version: '0.38.0', protocol_version: 3, installations: [],
@@ -362,7 +378,7 @@ describe('extension URL context', () => {
     expect(runtime).toContain('frame.style.border="0"');
     expect(runtime).toContain('frame.style.display="block"');
     expect(runtime.indexOf('frame.addEventListener("load"')).toBeLessThan(runtime.indexOf('entry.el.replaceChildren(frame)'));
-    expect(runtime).toContain('forms:forms(entry.descriptor.component)');
+    expect(runtime).toContain('forms:forms(entry.descriptor.component,entry.descriptor.installation.preview===true)');
     expect(runtime).toContain('api:apiClient(entry.descriptor.installation)');
     expect(runtime).toContain('site:siteRuntime()');
     expect(runtime).toContain('storage:storageRuntime(entry)');
@@ -431,7 +447,7 @@ describe('extension scopes', () => {
 describe('extension renderer capabilities', () => {
   it('advertises the executable runtime contract', () => {
     expect(SITE_TEMPLATE_CAPABILITIES).toMatchObject({
-      template_capabilities_version: '0.50.0',
+      template_capabilities_version: '0.51.0',
       supports_responsive_image_framing: true,
       supports_shared_body_heading_scale: true,
       supports_site_responsive_breakpoints: true,

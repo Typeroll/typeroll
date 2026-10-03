@@ -31,8 +31,16 @@ const stepSchema = z.object({
   render: z.enum(['static', 'dynamic']).optional()
     .describe("Default 'static' (prerendered). 'dynamic' is reserved for app-computed steps."),
   next: z.string().optional().describe('Next step id. Default: next in list; last step submits.'),
-  blocks: z.array(z.record(z.string(), z.unknown())).optional(),
+  submit_label: z.string().max(80).optional().describe('This step\'s button text. Default: "Continue" ("Fortsätt" on Swedish sites) on every step but the last and submit_text on the last (render version 5+; earlier render versions use submit_text everywhere).'),
+  blocks: z.array(z.record(z.string(), z.unknown())).optional()
+    .describe('Field and content blocks. A step whose first block is form/heading needs no title: from render version 5 the title is not rendered then (earlier versions show both; the write returns a warning).'),
 });
+
+// Multi-step navigation options, on create_form and update_form.
+const allowBackSchema = z.boolean().nullable().optional()
+  .describe('Multi-step forms: show a Back button from the second step; it returns to the previous step in the browser with the answers kept. Default (omitted or null): on from render version 5, off before.');
+const showProgressSchema = z.union([z.boolean(), z.enum(['text', 'bar'])]).optional()
+  .describe('Multi-step forms: true or "text" shows "Step X of Y", "bar" a slim progress bar (with the same text for screen readers). Off by default; false turns it off.');
 
 const targetSchema = z.object({
   context_params: z.array(z.string()).max(8).optional().describe('Explicit URL query keys forwarded to the app hydration endpoint; reserved security keys are rejected.'),
@@ -49,6 +57,10 @@ const actionSchema = z.object({
     'email: { to, subject, body, cc?, bcc?, reply_to?, include_all?, format?: "html"|"text" } — to/subject/body may use {{field}} placeholders, e.g. to: "{{email}}" for a confirmation to the visitor. ' +
     'webhook: { url (https), fields: ["name","email"] (only these values are sent), secret (signing secret; send "••••••••" to keep the stored one) }.',
   ),
+  trigger: z.enum(['complete', 'partial_abandoned']).optional().describe(
+    'When the action runs. "complete" (default): after the final step. "partial_abandoned" (email actions only, opt-in): once per submission when a partial submission (visitor finished at least one step) has not advanced for after_hours hours; never for completed submissions. The email lists the answers given so far.',
+  ),
+  after_hours: z.number().int().min(1).max(720).optional().describe('For trigger "partial_abandoned": hours without progress before the email is sent.'),
 });
 const actionsDescription = 'The complete list of actions after a submission (replaces the current list): email notifications, webhooks, app actions (get_form_capabilities lists the types and their config). Read the form first and send back the actions you keep. Emails send through the provider set with set_email_settings. Requires admin permission, like the portal.';
 
@@ -80,7 +92,7 @@ export const formTools: ToolDef[] = [
   {
     name: 'create_form',
     description:
-      'Create a form. Steps are the ONLY stored model — a Block[] tree of form/* field blocks per step. Simple forms: pass `fields`, each { name, type, label, required?, placeholder?, options? } (allowed types: text, email, tel, url, number, textarea, select, checkbox, boolean (Yes/No/unanswered), radio, hidden, gdpr_consent) — the server converts them to a single static step; read_form returns the resulting steps. Multi-step funnels: pass `steps` directly (steps swap client-side, partial submissions persist per step). PLACING THE FORM: add a `core/form` block with data.form_id on block-mode pages, or `<x-form id="…" />` to HTML-mode page content. Both expand server-side to the same complete signed shell; never hand-write the form or add inline submit scripts.',
+      'Create a form. Steps are the ONLY stored model — a Block[] tree of form/* field blocks per step. Simple forms: pass `fields`, each { name, type, label, required?, placeholder?, options? } (allowed types: text, email, tel, url, number, textarea, select, checkbox, boolean (Yes/No/unanswered), radio, hidden, gdpr_consent) — the server converts them to a single static step; read_form returns the resulting steps. Multi-step funnels: pass `steps` directly (steps swap client-side, partial submissions persist per step; each step may set submit_label, and allow_back/show_progress control the Back button and progress indicator; `warnings` in the response flags steps whose title duplicates a leading form/heading). PLACING THE FORM: add a `core/form` block with data.form_id on block-mode pages, or `<x-form id="…" />` to HTML-mode page content. Both expand server-side to the same complete signed shell; never hand-write the form or add inline submit scripts.',
     inputSchema: {
       id: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/),
       name: z.string().min(1),
@@ -90,6 +102,8 @@ export const formTools: ToolDef[] = [
       success_message: z.string().optional().describe('Shown after the final step. May contain basic HTML (links, emphasis); it is sanitized.'),
       success_redirect_url: z.string().optional().describe('After the final step, send the visitor to this absolute http(s) URL or root-relative path (for example a booking or thank-you page) instead of showing success_message. Pass an empty string to clear.'),
       actions: z.array(actionSchema).optional().describe(actionsDescription),
+      allow_back: allowBackSchema,
+      show_progress: showProgressSchema,
       target: targetSchema,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -114,6 +128,8 @@ export const formTools: ToolDef[] = [
         success_message: z.string().optional().describe('Shown after the final step. May contain basic HTML (links, emphasis); it is sanitized.'),
         success_redirect_url: z.string().optional().describe('After the final step, send the visitor to this absolute http(s) URL or root-relative path (for example a booking or thank-you page) instead of showing success_message. Pass an empty string to clear.'),
         actions: z.array(actionSchema).optional().describe(actionsDescription),
+        allow_back: allowBackSchema,
+        show_progress: showProgressSchema,
         target: targetSchema,
       }),
     },

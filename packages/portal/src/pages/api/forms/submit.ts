@@ -15,6 +15,15 @@
 //      4xx would let bot frameworks discover the trap.)
 //   4. Required-field validation against the saved form schema.
 //
+// Forms in portal previews post nothing (the runtime simulates them); a
+// request carrying their `_preview` marker is refused before any check.
+//
+// Visitor-facing messages are in the site's language (sv or en, see
+// formMessage), read from the site settings once the token names the site.
+// Refusals before that (payload size, the per-IP limit, a missing or
+// invalid token, previews) follow the request's Accept-Language instead.
+// Machine `code`s stay English.
+//
 // CORS: requests come from arbitrary customer domains. The HMAC token is
 // what authorizes them — the Origin header is not used for authorization
 // because customer sites legitimately live on many origins.
@@ -30,7 +39,7 @@
 
 import type { APIRoute } from 'astro';
 import { getStore } from '../../../lib/datastore';
-import { paths, safeFormRedirectUrl } from '@typeroll/shared';
+import { paths, safeFormRedirectUrl, FORM_PREVIEW_FIELD, formMessage } from '@typeroll/shared';
 import type { Form } from '@typeroll/shared';
 import {
   verifyFormToken,
@@ -51,6 +60,7 @@ import {
   renderBlocks,
   MAIN_VERSION_ID,
 } from '@typeroll/shared';
+import { formStepBodyHtml, formStepPath, resolveRenderVersion } from '@typeroll/shared';
 import type { BlockType, FormStep } from '@typeroll/shared';
 import { sanitizeBody } from '../../../lib/sanitize';
 
@@ -75,10 +85,12 @@ export const OPTIONS: APIRoute = () => new Response(null, { status: 204, headers
 
 export const POST: APIRoute = async ({ request }) => {
   const ip = clientIp(request.headers);
+  // Until the token names the site, the visitor's own language stands in.
+  let lang = requestLanguage(request.headers.get('accept-language'));
 
   const len = Number(request.headers.get('content-length') ?? 0);
   if (len > MAX_BODY_BYTES) {
-    return new Response(JSON.stringify({ error: 'Payload too large' }), { status: 413, headers: corsHeaders });
+    return new Response(JSON.stringify({ error: formMessage('payload_too_large', lang) }), { status: 413, headers: corsHeaders });
   }
 
   // `wantsHtml` tracks which response format the client gets back: JSON for
@@ -92,7 +104,7 @@ export const POST: APIRoute = async ({ request }) => {
   // 1. Rate limit.
   const rl = rateLimit(`forms:${ip}`, RATE_LIMIT_PER_IP, RATE_LIMIT_WINDOW_MS);
   if (!rl.allowed) {
-    return respond(wantsHtml, { error: 'Too many submissions. Try again later.' }, 429, backUrl, {
+    return respond(wantsHtml, { error: formMessage('rate_limited', lang) }, 429, backUrl, lang, {
       'Retry-After': String(Math.ceil((rl.resetAt - Date.now()) / 1000)),
       'X-RateLimit-Limit': String(RATE_LIMIT_PER_IP),
       'X-RateLimit-Remaining': '0',
@@ -130,24 +142,32 @@ export const POST: APIRoute = async ({ request }) => {
     token = body?.token;
     data = body?.data;
   }
+  // Forms rendered in a portal preview carry the preview marker and never a
+  // token; their runtime simulates submission and sends nothing. Refuse the
+  // marker outright, whatever else the request holds, so a preview (or a
+  // no-JS post from one) can never store a submission or run an action.
+  if (data && Object.hasOwn(data, FORM_PREVIEW_FIELD)) {
+    const message = formMessage('preview_refused', lang);
+    if (data._protocol === '1') {
+      return jsonCors({ v: 1, ok: false, preview: true, errors: [{ field: null, code: 'preview', message }] }, 403);
+    }
+    return respond(wantsHtml, { error: message }, 403, backUrl, lang);
+  }
   if (!token || !data) {
-    return respond(wantsHtml, { error: 'token and data are required' }, 400, backUrl);
+    return respond(wantsHtml, { error: formMessage('missing_token', lang) }, 400, backUrl, lang);
   }
 
   // 2. HMAC token.
   if (!isFormsSigningConfigured()) {
-    return respond(
-      wantsHtml,
-      { error: 'Form signing is not configured on this server (FORMS_HMAC_SECRET missing).' },
-      503,
-      backUrl
-    );
+    return respond(wantsHtml, { error: formMessage('not_configured', lang) }, 503, backUrl, lang);
   }
   const parts = verifyFormToken(token);
   if (!parts) {
-    return respond(wantsHtml, { error: 'Invalid token' }, 403, backUrl);
+    return respond(wantsHtml, { error: formMessage('invalid_token', lang) }, 403, backUrl, lang);
   }
   const { orgId, siteId, formId } = parts;
+  const store = getStore();
+  lang = await siteLanguage(store, orgId, siteId);
 
   // 2b. Proof-of-work + per-form ceiling. A valid `_pow` (computed by the
   // forms runtime in the background) buys the normal budget; without it
@@ -156,12 +176,12 @@ export const POST: APIRoute = async ({ request }) => {
   if (!hasPow) {
     const strict = rateLimit(`forms-nopow:${ip}`, RATE_LIMIT_NO_POW, RATE_LIMIT_WINDOW_MS);
     if (!strict.allowed) {
-      return respond(wantsHtml, { error: 'Too many submissions. Try again later.' }, 429, backUrl);
+      return respond(wantsHtml, { error: formMessage('rate_limited', lang) }, 429, backUrl, lang);
     }
   }
   const perForm = rateLimit(`forms-form:${orgId}:${formId}`, RATE_LIMIT_PER_FORM, RATE_LIMIT_WINDOW_MS);
   if (!perForm.allowed) {
-    return respond(wantsHtml, { error: 'This form is receiving too many submissions right now.' }, 429, backUrl);
+    return respond(wantsHtml, { error: formMessage('form_busy', lang) }, 429, backUrl, lang);
   }
 
   const wantsProtocol =
@@ -175,21 +195,21 @@ export const POST: APIRoute = async ({ request }) => {
   // 3. Honeypot: a non-empty `_hp` field means a bot filled it. Return 200
   // so the bot thinks the submission succeeded and moves on.
   if (typeof data._hp === 'string' && data._hp.trim().length > 0) {
-    if (wantsRuntimeProtocol) return jsonCors({ ok: true, done: true, message: 'Thanks!' }, 200);
-    return respond(wantsHtml, { success: true, message: 'Thanks!' }, 200, backUrl);
+    const thanks = formMessage('thanks', lang);
+    if (wantsRuntimeProtocol) return jsonCors({ ok: true, done: true, message: thanks }, 200);
+    return respond(wantsHtml, { success: true, message: thanks }, 200, backUrl, lang);
   }
 
   // 4. Load form & dispatch. Steps are the ONLY form model — a flat
   //    fields[] input converts to a single static step at write time
   //    (fieldsToSteps), so a stored form without steps is broken/empty,
   //    not a legacy shape.
-  const store = getStore();
   const form = await store.getDoc<Form>(`${paths.forms(orgId, siteId)}/${formId}`);
-  if (!form) return respond(wantsHtml, { error: 'Form not found' }, 404, backUrl);
+  if (!form) return respond(wantsHtml, { error: formMessage('form_not_found', lang) }, 404, backUrl, lang);
   if (!Array.isArray(form.steps) || form.steps.length === 0) {
-    return respond(wantsHtml, { error: 'This form has no steps configured.' }, 422, backUrl);
+    return respond(wantsHtml, { error: formMessage('no_steps', lang) }, 422, backUrl, lang);
   }
-  return handleStepsMode({ request, form, orgId, siteId, formId, data, ip, wantsHtml, wantsProtocol, backUrl });
+  return handleStepsMode({ request, form, orgId, siteId, formId, data, ip, wantsHtml, wantsProtocol, backUrl, lang });
 };
 
 // Post-submission actions now dispatch through the shared registry in
@@ -202,9 +222,10 @@ export async function runFormGate(
   siteId: string,
   form: Form,
   data: Record<string, unknown>,
+  lang?: string,
 ): Promise<string | null> {
   const { runBeforeActions } = await import('../../../lib/forms/actions');
-  const res = await runBeforeActions(form, { orgId, siteId, data, subject: { kind: 'submission' } });
+  const res = await runBeforeActions(form, { orgId, siteId, data, subject: { kind: 'submission' } }, lang);
   return res.ok ? null : res.reason;
 }
 
@@ -242,10 +263,29 @@ function respond(
   outcome: SubmitOutcome,
   status = 200,
   backUrl: string | null = null,
+  lang = 'en',
   extra: Record<string, string> = {}
 ) {
   if (!wantsHtml) return jsonCors(outcome, status, extra);
-  return htmlPage(outcome, status, backUrl, extra);
+  return htmlPage(outcome, status, backUrl, lang, extra);
+}
+
+/** The site's language for visitor-facing messages; English when unset. */
+async function siteLanguage(store: ReturnType<typeof getStore>, orgId: string, siteId: string): Promise<string> {
+  try {
+    const site = await store.getDoc<{ language?: string }>(paths.site(orgId, siteId));
+    if (typeof site?.language === 'string' && site.language) return site.language;
+  } catch { /* en */ }
+  return 'en';
+}
+
+/**
+ * The visitor's preferred language from Accept-Language, for refusals sent
+ * before the token names the site: "sv" when Swedish is the first choice.
+ */
+export function requestLanguage(header: string | null): string {
+  const first = (header ?? '').split(',')[0]?.split(';')[0]?.trim().toLowerCase() ?? '';
+  return first.startsWith('sv') ? 'sv' : 'en';
 }
 
 // Only link back to http(s) URLs — Referer is attacker-controlled input and
@@ -272,30 +312,31 @@ function noScriptRedirect(target: string | undefined, backUrl: string | null): s
   try { return new URL(safe, backUrl).href; } catch { return null; }
 }
 
-// Minimal self-contained confirmation/error page for no-JS form posts. The
-// visitor language is whatever the customer wrote in success_message /
-// field labels; our chrome (the back link) stays language-neutral.
+// Minimal self-contained confirmation/error page for no-JS form posts, in
+// the site's language: the customer's success_message and field labels, our
+// messages and the page title. The back link shows only the site's hostname.
 function htmlPage(
   outcome: SubmitOutcome,
   status: number,
   backUrl: string | null,
+  lang: string,
   extra: Record<string, string> = {}
 ) {
   const ok = Boolean(outcome.success);
   const heading = ok ? '&#10003;' : '&#9888;';
   const lines = ok
-    ? [outcome.message ?? 'Thanks!']
-    : (outcome.errors ?? [outcome.error ?? 'Submission failed.']);
+    ? [outcome.message ?? formMessage('thanks', lang)]
+    : (outcome.errors ?? [outcome.error ?? formMessage('failed', lang)]);
   const back = backUrl
     ? `<p><a href="${escapeHtml(backUrl)}">&larr; ${escapeHtml(new URL(backUrl).hostname)}</a></p>`
     : '';
   const html = `<!doctype html>
-<html>
+<html lang="${escapeHtml(lang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>${ok ? 'OK' : 'Error'}</title>
+<title>${escapeHtml(formMessage(ok ? 'page_ok' : 'page_error', lang))}</title>
 <style>
   body{font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#f7f7f5;color:#1a1a1a}
   main{max-width:28rem;padding:2.5rem;background:#fff;border-radius:0.75rem;box-shadow:0 1px 4px rgba(0,0,0,0.08);text-align:center}
@@ -349,10 +390,12 @@ interface StepsCtx {
   wantsHtml: boolean;
   wantsProtocol: boolean;
   backUrl: string | null;
+  /** The site's language for visitor-facing messages. */
+  lang: string;
 }
 
 async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
-  const { form, orgId, siteId, formId, data } = ctx;
+  const { form, orgId, siteId, formId, data, lang } = ctx;
   const store = getStore();
   const protocolJson = (body: unknown, status = 200) =>
     jsonCors({ v: 1, ...(body as Record<string, unknown>) }, status);
@@ -362,26 +405,22 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
   if (typeof data._state === 'string' && data._state) {
     state = verifyFormState(data._state);
     if (!state || state.orgId !== orgId || state.siteId !== siteId || state.formId !== formId) {
-      return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: 'Session expired — reload the page.' }] }, 403);
+      return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: formMessage('bad_state', lang) }] }, 403);
     }
     // Faster than any human moves between steps → automated.
     if (Date.now() - state.iat < MIN_STEP_INTERVAL_MS) {
-      return protocolJson({ ok: false, errors: [{ field: null, code: 'too_fast', message: 'Slow down and try again.' }] }, 429);
+      return protocolJson({ ok: false, errors: [{ field: null, code: 'too_fast', message: formMessage('too_fast', lang) }] }, 429);
     }
   }
 
-  const current: FormStep | undefined = state
-    ? (() => { const prev = getStep(form, state!.step); return prev ? nextStep(form, prev) : undefined; })()
-    : getStep(form, undefined);
+  // The step this POST answers: the one after the continuation's step, or
+  // the first. With Back the runtime names the step (`_step`), and a visitor
+  // may send an earlier step of the same submission again; it updates that
+  // partial submission instead of starting a new one.
+  const current = postedStep(form, state?.step, data._step);
   if (!current) {
-    return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: 'Session expired — reload the page.' }] }, 409);
+    return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: formMessage('bad_state', lang) }] }, 409);
   }
-
-  let lang = 'en';
-  try {
-    const site = await store.getDoc<{ language?: string }>(paths.site(orgId, siteId));
-    if (site?.language) lang = site.language;
-  } catch { /* en */ }
 
   // Validate THIS step's fields (derived from its form/* blocks).
   const fields = collectStepFields(current.blocks);
@@ -398,7 +437,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
       return { field: e.field, code: e.code, message: custom ?? defaultErrorMessage(e.code, label, lang) };
     });
     if (ctx.wantsHtml && !ctx.wantsProtocol) {
-      return respond(true, { errors: errors.map((e) => e.message) }, 400, ctx.backUrl);
+      return respond(true, { errors: errors.map((e) => e.message) }, 400, ctx.backUrl, lang);
     }
     return protocolJson({ ok: false, errors }, 400);
   }
@@ -416,7 +455,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
     submissionId = state.submissionId;
     existing = await store.getDoc<Record<string, unknown>>(`${subsPath}/${submissionId}`);
     if (!existing || existing.form_id !== formId || existing.status !== 'partial' || existing.step !== state.step) {
-      return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: 'Session expired — reload the page.' }] }, 409);
+      return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: formMessage('bad_state', lang) }] }, 409);
     }
   } else {
     submissionId = '';
@@ -429,10 +468,10 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
     ...((existing?.data as Record<string, unknown> | undefined) ?? {}),
     ...accepted,
   };
-  const gateReason = await runFormGate(orgId, siteId, form, gateData);
+  const gateReason = await runFormGate(orgId, siteId, form, gateData, lang);
   if (gateReason) {
     if (ctx.wantsHtml && !ctx.wantsProtocol) {
-      return respond(true, { errors: [gateReason] }, 422, ctx.backUrl);
+      return respond(true, { errors: [gateReason] }, 422, ctx.backUrl, lang);
     }
     return protocolJson({ ok: false, errors: [{ field: null, code: 'action_rejected', message: gateReason }] }, 422);
   }
@@ -454,7 +493,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
       },
     );
     if (!advanced) {
-      return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: 'This step has already been submitted — reload the page.' }] }, 409);
+      return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: formMessage('step_submitted', lang) }] }, 409);
     }
   } else {
     submissionId = await store.addDoc(subsPath, {
@@ -470,6 +509,20 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
     });
   }
 
+  // Opt-in follow-up for visitors who stop part-way: index when this partial
+  // submission's abandoned-partial actions fall due. A newer step moves it.
+  if (next && form.actions?.some((action) => action.trigger === 'partial_abandoned')) {
+    try {
+      const { scheduleAbandonedCheck } = await import('../../../lib/forms/abandoned');
+      await scheduleAbandonedCheck(orgId, siteId, submissionId, form, {
+        form_id: formId, status: 'partial', updated_at: now.toISOString(),
+        abandoned_actions_fired: (existing?.abandoned_actions_fired as string[] | undefined) ?? [],
+      });
+    } catch (e) {
+      console.error('Scheduling the abandoned-partial check failed:', e);
+    }
+  }
+
   if (!next) {
     try {
       await runFormActions(orgId, siteId, form, acceptedData, submissionId);
@@ -479,7 +532,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
     if (ctx.wantsHtml && !ctx.wantsProtocol) {
       const redirect = noScriptRedirect(form.success_redirect_url, ctx.backUrl);
       if (redirect) return new Response(null, { status: 303, headers: { Location: redirect, 'Cache-Control': 'no-store', ...corsHeaders } });
-      return respond(true, { success: true, message: form.success_message ?? 'Thanks!' }, 200, ctx.backUrl);
+      return respond(true, { success: true, message: form.success_message ?? formMessage('thanks', lang) }, 200, ctx.backUrl, lang);
     }
     return protocolJson({ ok: true, done: true });
   }
@@ -488,7 +541,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
   if (ctx.wantsHtml && !ctx.wantsProtocol) {
     // No-JS visitors can't advance prerendered steps — store what we got
     // and confirm honestly (documented v1 limitation).
-    return respond(true, { success: true, message: form.success_message ?? 'Thanks!' }, 200, ctx.backUrl);
+    return respond(true, { success: true, message: form.success_message ?? formMessage('thanks', lang) }, 200, ctx.backUrl, lang);
   }
 
   if (next.render === 'dynamic') {
@@ -497,9 +550,31 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
       const custom = await store.listDocs<BlockType>(paths.blockTypes(orgId, siteId, MAIN_VERSION_ID));
       for (const bt of custom) registry.set(bt.id, bt);
     } catch { /* core-only */ }
-    const title = next.title ? `<h3 class="form-step-title">${escapeHtml(next.title)}</h3>` : '';
-    const html = sanitizeBody(`${title}${renderBlocks(next.blocks ?? [], { registry })}`);
-    return protocolJson({ ok: true, html, state: newState });
+    // The page's render version arrives with the post (`_rv`); it only
+    // decides whether a step starting with a heading also shows its title.
+    const html = sanitizeBody(formStepBodyHtml(next, registry, resolveRenderVersion(Number(data._rv))));
+    // The runtime labels the button: the step's own label, else "Continue"
+    // or the final label, which the page carries.
+    return protocolJson({ ok: true, html, state: newState, step: next.id, submit_label: next.submit_label?.trim() || null, final: !nextStep(form, next) });
   }
   return protocolJson({ ok: true, next_step: next.id, state: newState });
+}
+
+/**
+ * Resolve the step a POST answers. Without `_step` (no-JS posts, forms
+ * without Back): the step after the continuation's, or the first step. With
+ * it: that step, which must be the next one or a step the visitor already
+ * passed on the form's path (Back, then send again). Anything else is a
+ * stale or forged continuation.
+ */
+export function postedStep(form: Form, completedStep: string | undefined, requested: unknown): FormStep | undefined {
+  const forward = completedStep
+    ? (() => { const prev = getStep(form, completedStep); return prev ? nextStep(form, prev) : undefined; })()
+    : getStep(form, undefined);
+  if (typeof requested !== 'string' || !requested || requested === forward?.id) return forward;
+  if (!completedStep) return undefined;
+  const path = formStepPath(form);
+  const reached = path.findIndex((step) => step.id === completedStep);
+  const index = path.findIndex((step) => step.id === requested);
+  return index >= 0 && reached >= 0 && index <= reached ? path[index] : undefined;
 }

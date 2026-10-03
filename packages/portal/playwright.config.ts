@@ -47,11 +47,19 @@ const webServer = target.isRemote ? undefined : {
     FIREBASE_SERVICE_ACCOUNT: '',
     ANTHROPIC_API_KEY: '',
     FORMS_HMAC_SECRET: 'e2e-only-form-signing-secret-32-characters-minimum',
+    PREVIEW_HMAC_SECRET: 'e2e-only-preview-signing-secret-32-characters-minimum',
     DEPLOY_QUEUE: 'in_process',
     TYPEROLL_FIXTURES_DIR: E2E_FIXTURES_DIR,
     TYPEROLL_E2E_AUTH_SECRET: process.env.TYPEROLL_E2E_AUTH_SECRET,
   },
 };
+
+/** Specs that also run in Firefox and WebKit (`npm run test:e2e:install` installs both). */
+const CROSS_ENGINE_TESTS = /forms-multistep-validation\.spec\.ts/;
+const CROSS_ENGINE_SPECS = [
+  { name: 'firefox', device: 'Desktop Firefox' },
+  { name: 'webkit', device: 'Desktop Safari' },
+] as const;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -77,6 +85,9 @@ export default defineConfig({
     ] : []),
   ] : [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Browser-engine-specific behaviour (native form validation) runs in
+    // every engine; the rest of the suite stays Chromium-only.
+    ...CROSS_ENGINE_SPECS.map(({ name, device }) => ({ name, testMatch: CROSS_ENGINE_TESTS, use: { ...devices[device] } })),
   ],
   webServer,
 });

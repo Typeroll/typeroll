@@ -350,8 +350,8 @@ const formHidden: BlockType = {
   category: 'content',
   container: false,
   schema: [
-    { name: 'name', type: 'text', label: 'Field name (wire name)', required: true },
-    { name: 'value', type: 'text', label: 'Value' },
+    { name: 'name', type: 'text', label: 'Field name (wire name)', required: true, help: 'A utm_* name (utm_source, utm_campaign, …) is filled from the same parameter in the page address.' },
+    { name: 'value', type: 'text', label: 'Value', help: 'Sent as is, or for a utm_* field when the page address has no such parameter.' },
   ],
   template: `<input data-block="form_hidden" type="hidden" name="{{name}}" value="{{value}}" />`,
   styles: '',

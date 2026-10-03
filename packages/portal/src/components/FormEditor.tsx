@@ -18,7 +18,14 @@ interface EmailActionConfig {
 // Config is per-type, so it can't be EmailActionConfig any more — this editor
 // now renders whatever the registry declares. The email panel narrows back to
 // EmailActionConfig where it needs to.
-interface FormAction { id?: string; type: string; config: Record<string, unknown> }
+interface FormAction {
+  id?: string;
+  type: string;
+  config: Record<string, unknown>;
+  /** Email only: run once when a started submission stops for after_hours. */
+  trigger?: 'complete' | 'partial_abandoned';
+  after_hours?: number;
+}
 interface FieldInfo {
   name: string;
   label: string;
@@ -28,6 +35,12 @@ interface FieldInfo {
   options: string[];
 }
 
+interface StepInfo {
+  id: string;
+  title: string;
+  submit_label: string;
+}
+
 interface InitialForm {
   name: string;
   submit_text: string;
@@ -35,6 +48,11 @@ interface InitialForm {
   success_redirect_url: string;
   partial_ttl_days: number;
   has_steps: boolean;
+  /** Multi-step navigation: per-step button labels, Back and progress. */
+  steps: StepInfo[];
+  /** null: the render version's default (on from render version 5). */
+  allow_back: boolean | null;
+  show_progress: false | 'text' | 'bar';
   actions: FormAction[];
 }
 
@@ -44,6 +62,8 @@ interface Props {
   initialForm: InitialForm;
   fields: FieldInfo[];
   fieldsEditable: boolean;
+  /** Authoring hints for the steps, such as a title that repeats a heading. */
+  stepWarnings: string[];
   hasConnector: boolean;
   canWrite: boolean;
   canManageActions: boolean;
@@ -51,7 +71,7 @@ interface Props {
 
 type Tab = 'overview' | 'email' | 'submissions';
 
-export default function FormEditor({ siteId, formId, initialForm, fields: initialFields, fieldsEditable, hasConnector, canWrite, canManageActions }: Props) {
+export default function FormEditor({ siteId, formId, initialForm, fields: initialFields, fieldsEditable, stepWarnings, hasConnector, canWrite, canManageActions }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const [form, setForm] = useState<InitialForm>(initialForm);
   const [fields, setFields] = useState<FieldInfo[]>(initialFields);
@@ -61,6 +81,10 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
 
   function patch<K extends keyof InitialForm>(key: K, value: InitialForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+  const multiStep = form.steps.length > 1;
+  function patchStepLabel(id: string, label: string) {
+    patch('steps', form.steps.map((step) => (step.id === id ? { ...step, submit_label: label } : step)));
   }
 
   function selectTab(next: Tab) {
@@ -83,6 +107,11 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
           success_message: form.success_message,
           success_redirect_url: form.success_redirect_url,
           partial_ttl_days: form.partial_ttl_days,
+          ...(multiStep ? {
+            step_labels: Object.fromEntries(form.steps.map((step) => [step.id, step.submit_label])),
+            allow_back: form.allow_back,
+            show_progress: form.show_progress,
+          } : {}),
           ...(canManageActions ? { actions: form.actions } : {}),
           ...(fieldsEditable ? { fields } : {}),
         }),
@@ -138,6 +167,13 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
   /** Email-only patcher; the generic one is updateActionConfig above. */
   function updateAction(i: number, cfg: Partial<EmailActionConfig>) {
     patch('actions', form.actions.map((a, idx) => (idx === i ? { ...a, config: { ...a.config, ...cfg } } : a)));
+  }
+  function updateActionTrigger(i: number, trigger: FormAction['trigger'], afterHours?: number) {
+    patch('actions', form.actions.map((a, idx) => {
+      if (idx !== i) return a;
+      const { trigger: _t, after_hours: _h, ...rest } = a;
+      return trigger === 'partial_abandoned' ? { ...rest, trigger, after_hours: afterHours ?? a.after_hours ?? 2 } : rest;
+    }));
   }
   function removeAction(i: number) {
     patch('actions', form.actions.filter((_, idx) => idx !== i));
@@ -200,6 +236,40 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
               </label>
             )}
           </div>
+
+          {multiStep && (
+            <div className="card stack">
+              <h2 style={{ fontSize: '1rem' }}>Steps</h2>
+              <p className="muted text-sm">
+                Leave a button label empty for the default: “Continue” on every step but the last, and the submit button text on the last
+                (render version 5 and later; earlier render versions use the submit button text on every step).
+              </p>
+              {form.steps.map((step, i) => (
+                <label className="field" key={step.id}>
+                  <span>Step {i + 1}{step.title ? `: ${step.title}` : ''} <code className="muted">{step.id}</code> — button label</span>
+                  <input value={step.submit_label} maxLength={80} disabled={!canWrite} placeholder={i === form.steps.length - 1 ? (form.submit_text || 'Default') : 'Default'}
+                    onChange={(e) => patchStepLabel(step.id, e.target.value)} />
+                </label>
+              ))}
+              <label className="field"><span>Back button</span>
+                <select value={form.allow_back === null ? 'default' : form.allow_back ? 'on' : 'off'} disabled={!canWrite}
+                  onChange={(e) => patch('allow_back', e.target.value === 'default' ? null : e.target.value === 'on')}>
+                  <option value="default">Default (shown from render version 5)</option>
+                  <option value="on">Show</option>
+                  <option value="off">Hide</option>
+                </select>
+              </label>
+              <label className="field"><span>Progress</span>
+                <select value={form.show_progress || 'off'} disabled={!canWrite}
+                  onChange={(e) => patch('show_progress', e.target.value === 'off' ? false : e.target.value as 'text' | 'bar')}>
+                  <option value="off">Off</option>
+                  <option value="text">“Step 2 of 3”</option>
+                  <option value="bar">Progress bar</option>
+                </select>
+              </label>
+              {stepWarnings.map((warning) => <p key={warning} className="text-sm" style={{ color: 'var(--warning, #b45309)' }}>{warning}</p>)}
+            </div>
+          )}
 
           <div className="card stack">
             <h2 style={{ fontSize: '1rem' }}>Fields</h2>
@@ -314,6 +384,26 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
               <label className="field"><span>To (recipient or {'{{field}}'})</span>
                 <input value={String(a.config.to ?? '')} disabled={!canWrite} onChange={(e) => updateAction(i, { to: e.target.value })} placeholder="you@company.com or {{email}}" />
               </label>
+              {form.steps.length > 1 && (
+                <div className="row" style={{ gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <label className="field" style={{ flex: '1 1 240px' }}><span>Send</span>
+                    <select value={a.trigger === 'partial_abandoned' ? 'partial_abandoned' : 'complete'} disabled={!canWrite}
+                      onChange={(e) => updateActionTrigger(i, e.target.value as FormAction['trigger'])}>
+                      <option value="complete">When the form is completed</option>
+                      <option value="partial_abandoned">When a started form is abandoned</option>
+                    </select>
+                  </label>
+                  {a.trigger === 'partial_abandoned' && (
+                    <label className="field" style={{ flex: '0 1 180px' }}><span>After (hours without progress)</span>
+                      <input type="number" min={1} max={720} value={a.after_hours ?? 2} disabled={!canWrite}
+                        onChange={(e) => updateActionTrigger(i, 'partial_abandoned', Number(e.target.value))} />
+                    </label>
+                  )}
+                </div>
+              )}
+              {a.trigger === 'partial_abandoned' && (
+                <p className="text-sm muted">Sent once per submission that stopped after at least one step and has not continued for this long. Never sent for completed submissions; it lists the answers given so far.</p>
+              )}
               <label className="field"><span>Subject</span>
                 <input value={String(a.config.subject ?? '')} disabled={!canWrite} onChange={(e) => updateAction(i, { subject: e.target.value })} />
               </label>

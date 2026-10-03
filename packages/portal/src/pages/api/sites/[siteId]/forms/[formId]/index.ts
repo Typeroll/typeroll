@@ -9,7 +9,7 @@ import { requireSiteAccess, requirePermission, json } from '../../../../../../li
 import { getStore } from '../../../../../../lib/datastore';
 import { paths, fieldsToSteps, collectStepFields, safeFormRedirectUrl } from '@typeroll/shared';
 import type { Form, FormField } from '@typeroll/shared';
-import { validateFields, validateEmailActions, maskFormActionsForAdmin } from '../../../../../../lib/forms-admin';
+import { applyFormNavigation, applyStepLabels, validateFields, validateEmailActions, validateFormNavigation, maskFormActionsForAdmin } from '../../../../../../lib/forms-admin';
 import { deleteAllFormSubmissions } from '../../../../../../lib/form-submissions';
 
 function formView(form: Form, isAdmin: boolean): Form {
@@ -61,6 +61,16 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
     if (typeof fields === 'string') return json({ error: fields }, 400);
     update.steps = fieldsToSteps(fields);
   }
+  // Multi-step forms: per-step button labels for the existing steps, plus
+  // the form's Back and progress options.
+  const stepLabels = (body as { step_labels?: unknown }).step_labels;
+  if (stepLabels !== undefined) {
+    const steps = applyStepLabels(update.steps ?? existing.steps ?? [], stepLabels);
+    if (typeof steps === 'string') return json({ error: steps }, 400);
+    update.steps = steps;
+  }
+  const navigation = validateFormNavigation(body as Record<string, unknown>);
+  if (typeof navigation === 'string') return json({ error: navigation }, 400);
   if (body.actions !== undefined) {
     const adminCheck = requirePermission(guard.value, 'admin');
     if (!adminCheck.ok) return adminCheck.response;
@@ -72,9 +82,9 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
     if (typeof actions === 'string') return json({ error: actions }, 400);
     update.actions = actions;
   }
-  if (Object.keys(update).length === 0) return json({ error: 'No writable fields in body' }, 400);
+  if (Object.keys(update).length === 0 && Object.keys(navigation).length === 0) return json({ error: 'No writable fields in body' }, 400);
 
-  await store.setDoc(`${paths.forms(owner_org_id, site.id)}/${formId}`, { ...existing, ...update });
+  await store.setDoc(`${paths.forms(owner_org_id, site.id)}/${formId}`, applyFormNavigation({ ...existing, ...update }, navigation));
   const fresh = await store.getDoc<Form>(`${paths.forms(owner_org_id, site.id)}/${formId}`);
   return json({ form: formView(fresh!, guard.value.permission === 'admin') });
 };

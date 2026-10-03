@@ -14,10 +14,11 @@ email and webhook actions configured in the portal or through MCP/API.
 - Block-mode page: add `{ type: 'core/form', data: { form_id } }`.
 - HTML-mode page: add `<x-form id="form-id" />` to `html_content`.
 
-Both are authoring references to the same renderer. Preview and static
-generation expand them to the complete form HTML, signed token, honeypot,
-initial step state, styles, and shared runtime. Never hand-write the `<form>`
-shell or paste a token into page HTML.
+Both are authoring references to the same renderer. Static generation expands
+them to the complete form HTML, signed token, honeypot, initial step state,
+styles, and shared runtime. Previews expand them the same way but in preview
+mode (no token, a "Preview – nothing is sent" notice). Never hand-write the
+`<form>` shell or paste a token into page HTML.
 
 ## Create a simple form
 
@@ -86,6 +87,13 @@ update_form form_id=ansokan patch={steps:[
 Submissions accumulate in one partial record and become complete on the final
 step. Abandoned partials use `partial_ttl_days` (default 30).
 
+Navigation: a step may set `submit_label`; otherwise (render version 5+) every
+step but the last reads "Continue"/"Fortsätt" and the last uses `submit_text`.
+`allow_back` (default on from render version 5) shows a Back button that keeps
+the answers; `show_progress: true | "text" | "bar"` shows "Step X of Y" or a
+bar. Give a step a `title` or a leading `form/heading`, not both; the write
+returns a `warnings` entry when a step has both.
+
 ## Storage and integrations
 
 Completed submissions appear in Forms → Submissions. Admins can configure
@@ -111,6 +119,11 @@ update_form form_id=contact patch={ actions: [
 ] }
 ```
 
+An email action with `trigger: "partial_abandoned"` and `after_hours: 2` is
+sent once for a multi-step submission that stopped part-way and has not moved
+on for two hours (never for completed ones) — opt-in follow-up on leads who
+left after step 1.
+
 A webhook needs `url` (https), an explicit `fields` allowlist and a signing
 `secret`; send the masked value back to keep a stored secret.
 `get_form_capabilities` lists every action type the site offers, including
@@ -129,9 +142,14 @@ removes one.
 ## Verify
 
 1. `read_form form_id="newsletter"` and confirm the steps/fields.
-2. Preview the page and confirm the authoring reference has expanded to a form
-   with `data-tr-form-el`, a signed token, and the platform runtime.
-3. Submit a test entry and confirm it appears in Forms → Submissions.
+2. Preview the page (`get_preview_link` or `get_page_preview`) and confirm the
+   authoring reference has expanded to a form with `data-tr-form-el` and the
+   platform runtime. Click through every step: previews validate, advance steps
+   and show the success message (or name the redirect target) like the
+   published form, marked "Preview – nothing is sent". They store nothing and
+   run no actions, so keep the runtime in any review copy.
+3. Submit a real test entry on a deployed page and confirm it appears in
+   Forms → Submissions.
 4. If a webhook is configured, confirm its delivery status
    (`read_form_submission`) and the receiving system's idempotency key before
    deploying.
@@ -167,6 +185,21 @@ Booking request:
 ]}
 ```
 
+Campaign tracking: hidden fields named `utm_*` are filled from the same-named
+parameter in the page address (`?utm_source=linkedin`); `default` is sent when
+the parameter is missing. Only the current address is read and nothing is
+stored in the browser, so no consent is needed; the campaign is not carried
+across pages. Other hidden fields always send their `default`.
+
+```json
+{"fields":[
+  {"name":"email","type":"email","label":"E-post","required":true},
+  {"name":"utm_source","type":"hidden"},
+  {"name":"utm_medium","type":"hidden","default":"website"},
+  {"name":"utm_campaign","type":"hidden"}
+]}
+```
+
 ## Pitfalls
 
 - Do not hand-write a form, token, honeypot, or submit script.
@@ -174,5 +207,8 @@ Booking request:
 - Do not drop existing actions by accident: `actions` replaces the list.
 - Do not send every submitted field to a webhook by default; choose the
   smallest allowlist the external register needs.
+- Built-in visitor messages (button defaults, validation and error messages,
+  the no-JS confirmation page) follow the site's language, Swedish for `sv` and
+  English otherwise. Do not add `error_messages` only to translate them.
 - `submit_token` is stable until the platform rotates its form-signing secret;
   a rebuild refreshes it after rotation.

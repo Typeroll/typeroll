@@ -137,7 +137,7 @@ const pageSource = await buildPageSource();
 // Forms 2.0: core/form blocks resolve through this (token + steps baked
 // into fixtures by the deploy's materialize step).
 const formBlocks: Block[] = [];
-const formSource = await buildFormSource(blockRegistry, settings.language, (blocks) => formBlocks.push(...blocks));
+const formSource = await buildFormSource(blockRegistry, settings.language, (blocks) => formBlocks.push(...blocks), renderVersion);
 
 let bodyHtml: string | null = null;
 let blockCss = '';

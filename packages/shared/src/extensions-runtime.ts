@@ -162,7 +162,7 @@ async function formProof(token,bits){
     if(nonce%2000===1999)await new Promise(function(resolve){setTimeout(resolve,0);});
   }
 }
-function forms(component){
+function forms(component,preview){
   var bindings=component.resolved_form_bindings||{};
   return {
     has:function(id){return Object.prototype.hasOwnProperty.call(bindings,id);},
@@ -170,8 +170,11 @@ function forms(component){
     submit:async function(id,data){
       var binding=bindings[id];
       if(!binding)throw new Error("Unknown Extension form binding");
-      if(!binding.submit_token)throw new Error("Extension form submissions are not configured");
       if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("Form data must be an object");
+      // Previews send nothing: the submission succeeds as if accepted, so a
+      // component's whole flow can be reviewed without creating submissions.
+      if(preview)return {v:1,ok:true,done:true,preview:true};
+      if(!binding.submit_token)throw new Error("Extension form submissions are not configured");
       var payload=Object.assign({},data,{_protocol:"1",_hp:""});
       if(binding.pow_bits>0)payload._pow=await formProof(binding.submit_token,binding.pow_bits);
       var response=await fetch(binding.submit_url,{method:"POST",headers:{accept:"application/json","content-type":"application/json"},credentials:"omit",body:JSON.stringify({token:binding.submit_token,data:payload})});
@@ -186,11 +189,12 @@ function loadStyle(url){
   if(!url||styleUrls.has(url))return;styleUrls.add(url);
   var link=document.createElement("link");link.rel="stylesheet";link.href=url;link.dataset.trExtensionAsset="1";document.head.appendChild(link);
 }
+// The manifest's own message, else a default in the page's language.
 function unavailable(el,component){
-  el.replaceChildren();var message=document.createElement("p");message.className="tr-extension-unavailable";message.textContent=component.unavailable_message||"This feature is temporarily unavailable.";el.appendChild(message);
+  el.replaceChildren();var message=document.createElement("p");message.className="tr-extension-unavailable";message.textContent=component.unavailable_message||(/^sv/i.test(document.documentElement.lang||"")?"Den här funktionen är inte tillgänglig just nu.":"This feature is temporarily unavailable.");el.appendChild(message);
 }
 function contextFor(entry){
-  return {protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,preview:entry.descriptor.installation.preview===true,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,analytics:host.analytics||null,url:urlRuntime(entry.capture.values),navigation:navigation(),site:siteRuntime(),storage:storageRuntime(entry),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component)};
+  return {protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,preview:entry.descriptor.installation.preview===true,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,analytics:host.analytics||null,url:urlRuntime(entry.capture.values),navigation:navigation(),site:siteRuntime(),storage:storageRuntime(entry),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component,entry.descriptor.installation.preview===true)};
 }
 async function mountBundle(entry,context){
   var component=entry.descriptor.component;loadStyle(component.local_style_url);

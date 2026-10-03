@@ -7,10 +7,10 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { extensionIssuer } from '../../../../../../lib/extensions/auth';
-import { paths, fieldsToSteps, safeFormRedirectUrl } from '@typeroll/shared';
+import { paths, fieldsToSteps, formStepWarnings, safeFormRedirectUrl } from '@typeroll/shared';
 import type { Form, FormField } from '@typeroll/shared';
 
-import { validateFields, validSteps } from '../../../../../../lib/forms-admin';
+import { applyFormNavigation, STEPS_ERROR, validateFields, validateFormNavigation, validSteps } from '../../../../../../lib/forms-admin';
 import { formActionsPermission, formActionsView, validateFormActionsInput } from '../../../../../../lib/form-actions-api';
 import { deleteAllFormSubmissions } from '../../../../../../lib/form-submissions';
 
@@ -59,7 +59,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     update.success_redirect_url = redirect;
   }
   if (body.steps !== undefined) {
-    if (!validSteps(body.steps)) return apiError('steps must be a non-empty array of { id, blocks?, render?: static|dynamic, next? } with unique ids');
+    if (!validSteps(body.steps)) return apiError(STEPS_ERROR);
     update.steps = body.steps;
   }
   // Email notifications, webhooks and app actions: admins only, validated
@@ -83,14 +83,17 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (typeof fields === 'string') return apiError(fields);
     update.steps = fieldsToSteps(fields);
   }
-  if (Object.keys(update).length === 0) return apiError('No writable fields in body');
+  const navigation = validateFormNavigation(body as Record<string, unknown>);
+  if (typeof navigation === 'string') return apiError(navigation);
+  if (Object.keys(update).length === 0 && Object.keys(navigation).length === 0) return apiError('No writable fields in body');
 
   await store.setDoc(
     `${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`,
-    { ...existing, ...update },
+    applyFormNavigation({ ...existing, ...update }, navigation),
   );
   const fresh = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`);
-  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: formActionsView(fresh, formActionsPermission(ctx)) } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!) }, 200, body);
+  const warnings = formStepWarnings(fresh?.steps);
+  return apiResponse(ctx, { form: fresh ? { ...fresh, actions: formActionsView(fresh, formActionsPermission(ctx)) } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!), ...(warnings.length ? { warnings } : {}) }, 200, body);
 };
 
 export const DELETE: APIRoute = async ({ request, params }) => {

@@ -15,7 +15,7 @@
 // `AppDef.actions`, which the registry picks up. Nothing needs a branch here
 // for a new action type or a new app.
 
-import { paths } from '@typeroll/shared';
+import { formMessage, paths } from '@typeroll/shared';
 import type { EmailActionConfig, EmailConnector, Form, FormAction, SiteIntegrations } from '@typeroll/shared';
 import type { AppConfigField } from '../apps/types';
 import { getStore } from '../datastore';
@@ -157,6 +157,14 @@ export async function agentWritableActionTypes(): Promise<string[]> {
 }
 
 /**
+ * The actions that belong to a submission itself. Actions triggered by an
+ * abandoned partial submission run from lib/forms/abandoned.ts instead.
+ */
+export function completionActions(form: Pick<Form, 'actions'>): FormAction[] {
+  return (form.actions ?? []).filter((action) => (action.trigger ?? 'complete') === 'complete');
+}
+
+/**
  * Run a form's actions.
  *
  * Every failure is swallowed per-action: the thing the form was FOR has
@@ -172,7 +180,7 @@ export async function runFormActions(
   const actionCtx: ActionContext = form.steps && !ctx.form ? { ...ctx, form: { steps: form.steps } } : ctx;
   const ran: string[] = [];
   const failed: string[] = [];
-  for (const action of form.actions ?? []) {
+  for (const action of completionActions(form)) {
     const def = reg.get(action.type);
     if (!def) {
       // An action whose app was disabled, or a type from a newer release.
@@ -198,9 +206,11 @@ export async function runFormActions(
 export async function runBeforeActions(
   form: Pick<Form, 'actions'>,
   ctx: ActionContext,
+  /** Site language for the visitor-facing message of a failed check. */
+  lang?: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const reg = await actionRegistry();
-  for (const action of form.actions ?? []) {
+  for (const action of completionActions(form)) {
     const def = reg.get(action.type);
     if (!def?.before) continue;
     try {
@@ -208,7 +218,7 @@ export async function runBeforeActions(
       if (verdict && 'reject' in verdict) return { ok: false, reason: verdict.reject };
     } catch (e) {
       console.error(`[form action] before "${action.type}" failed:`, e);
-      return { ok: false, reason: 'This submission could not be processed. Please try again.' };
+      return { ok: false, reason: formMessage('action_failed', lang) };
     }
   }
   return { ok: true };

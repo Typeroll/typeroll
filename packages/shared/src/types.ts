@@ -1260,7 +1260,19 @@ export interface FormAction {
   id?: string;
   type: string;
   config: Record<string, unknown>;
+  /**
+   * When the action runs. 'complete' (default): after the final step.
+   * 'partial_abandoned' (email actions only): once per submission when a
+   * partial submission has not advanced for `after_hours` hours; never for
+   * completed submissions.
+   */
+  trigger?: 'complete' | 'partial_abandoned';
+  /** Hours without progress before a 'partial_abandoned' action runs (1–720). */
+  after_hours?: number;
 }
+
+/** Hours a partial submission may stand still before 'partial_abandoned' actions run. */
+export const FORM_ABANDONED_MAX_HOURS = 720;
 
 /**
  * The `config` shape for a FormAction of `type: 'email'`. Sent after a
@@ -1312,6 +1324,12 @@ export interface FormStep {
   render?: 'static' | 'dynamic';
   /** Next step id. Default: next in list. Last step with no next → done. */
   next?: string;
+  /**
+   * The submit button's text on this step. Default: from render version 5
+   * "Continue" ("Fortsätt") on every step but the last, the form's
+   * submit_text on the last; before it, the form's submit_text everywhere.
+   */
+  submit_label?: string;
   /** v2 app hooks — reserved, never executed in v1. */
   actions?: FormStepAction[];
 }
@@ -1395,6 +1413,18 @@ export interface Form {
   styles?: string;
   /** Days a partial submission survives before cleanup. Default 30. */
   partial_ttl_days?: number;
+  /**
+   * Multi-step forms: a "Back" button returns to the previous step in the
+   * browser, keeping the entered values. Default: true from render version
+   * 5, false before it.
+   */
+  allow_back?: boolean;
+  /**
+   * Multi-step forms: show progress. `true` or `'text'` renders "Step X of
+   * Y", `'bar'` a slim progress bar (with the same text for screen
+   * readers). Off by default.
+   */
+  show_progress?: boolean | 'text' | 'bar';
 }
 
 export interface FormSubmission {
