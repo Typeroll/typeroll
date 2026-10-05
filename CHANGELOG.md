@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## Core 0.2.67 / MCP 0.45.51
 
 - Extension page handoff (Extension runtime 0.43.0, template capabilities 0.52.0, `supports_extension_page_handoff`). An Extension component can receive what a visitor typed into a native `core/navigation_form` banner on the previous page: `await context.handoff.read()` resolves `{ key, source: "navigation_form", values, parts }` or `null`. `values` are the typed field values with address parts as `<field>_<part>`; `parts` groups `street`, `street_number`, `postal_code`, `locality`, `country` and `formatted` per field. Embedded apps use `typeroll.extension.handoff.read` / `typeroll.extension.handoff.result`.
   - Access needs the component's manifest declaration `page_handoff: true`, the new `page_handoff:read` permission granted by the site administrator, and the page author's binding of the block instance to the banner's defaults key (`page_handoff_key`, shown in the editor as **Prefill from navigation inputs**). Otherwise `read()` resolves `null`; so does a handoff that is absent, expired or addressed to another page. Nothing throws.
