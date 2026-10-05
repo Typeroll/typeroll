@@ -123,8 +123,12 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   const typeIndex = new Map(sourceTypes.map(type => [type.id, type]));
   const forms = (input.publicRuntime?.forms ?? []).map(form => {
     const projected = assertIdentity(projectStrings(form, ['id', 'name', 'kind', 'submit_text', 'success_message', 'success_redirect_url', 'styles', 'submit_url', 'submit_token', 'session_param', 'hydrate_url']));
-    Object.assign(projected, projectNumbers(form, ['pow_bits']));
-    projected.steps = (form.steps ?? []).map(step => ({ ...projectStrings(step, ['id', 'title', 'render', 'next']), blocks: projectPublicationBlocks(step.blocks ?? [], definitions) }));
+    Object.assign(projected, projectNumbers(form, ['pow_bits']), projectBooleans(form, ['allow_back']));
+    if (form.show_progress !== undefined && form.show_progress !== null) {
+      if (![true, false, 'text', 'bar'].includes(form.show_progress)) throw new Error('Invalid public field type: show_progress');
+      projected.show_progress = form.show_progress;
+    }
+    projected.steps = (form.steps ?? []).map(step => ({ ...projectStrings(step, ['id', 'title', 'render', 'next', 'submit_label']), blocks: projectPublicationBlocks(step.blocks ?? [], definitions) }));
     return projected;
   });
   const settings = projectStrings(input.settings, stringFields.settings);

@@ -94,3 +94,17 @@ test('publication carries composed block types, their scoped CSS and link props'
   assert.equal(type.schema[0].item_label, 'title');
   assert.deepEqual(value.pages[0].blocks[0].data.items[0].link, { page_id: 'contact', new_tab: true });
 });
+
+test('publication keeps per-step button labels and multi-step navigation options', () => {
+  const form = {
+    id: 'lead', name: 'Lead', submit_text: 'Send', submit_url: 'https://forms.example.invalid/submit', submit_token: 'public-token', allow_back: false, show_progress: 'bar',
+    steps: [{ id: 'one', title: 'Contact', submit_label: 'Next →', blocks: [] }, { id: 'two', blocks: [] }],
+  };
+  const base = { site: { name: 'Example' }, settings: {}, pages: [], partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], blockTypes: [], redirects: [] };
+  const [projected] = projectStaticPublication({ ...base, publicRuntime: { forms: [form] } }, identity).forms;
+  assert.equal(projected.allow_back, false);
+  assert.equal(projected.show_progress, 'bar');
+  assert.equal(projected.steps[0].submit_label, 'Next →');
+  assert.equal(projected.steps[1].submit_label, undefined);
+  assert.throws(() => projectStaticPublication({ ...base, publicRuntime: { forms: [{ ...form, show_progress: 'loud' }] } }, identity), /show_progress/);
+});

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { evaluateAudit } from './audit-dependencies.mjs';
+import { BUILD_ONLY_WORKSPACES, SHIPPED_WORKSPACES, auditArguments, evaluateAudit } from './audit-dependencies.mjs';
 
 const approvedUrl = 'https://example.test/approved';
 const approvals = new Map([[approvedUrl, { expires: '2027-01-01', rationale: 'Test-only approval.' }]]);
@@ -53,4 +54,12 @@ test('rejects an expired approval', () => {
 
   assert.equal(result.ok, false);
   assert.match(result.failures[0], /approval expired/);
+});
+
+test('blocks on every shipped workspace and reports the documentation build separately', () => {
+  const packages = new URL('../packages/', import.meta.url);
+  const names = readdirSync(packages).map((dir) => JSON.parse(readFileSync(new URL(`${dir}/package.json`, packages), 'utf8')).name);
+  assert.deepEqual([...SHIPPED_WORKSPACES, ...BUILD_ONLY_WORKSPACES].sort(), names.sort());
+  assert.deepEqual(auditArguments(SHIPPED_WORKSPACES, { includeRoot: true }).slice(0, 3), ['audit', '--json', '--include-workspace-root']);
+  assert.ok(!auditArguments(BUILD_ONLY_WORKSPACES, { includeRoot: false }).includes('--include-workspace-root'));
 });

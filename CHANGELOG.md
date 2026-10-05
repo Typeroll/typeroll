@@ -2,6 +2,9 @@
 
 ## Core 0.2.65 / MCP 0.45.49
 
+- Fixed: published sites lost a step's `submit_label` and the form's `allow_back` and `show_progress`; previews showed them, deploys did not.
+- Release checks block only on advisories in shipped dependencies (portal, shared, MCP, site template). Documentation-build dependencies are still audited and reported.
+- http-cache-semantics 4.3.0 (GHSA-ch52-4w7c-c8xp).
 - Opt-in follow-up on abandoned multi-step forms: an email action with `trigger: "partial_abandoned"` and `after_hours` (1–720) is sent once per partial submission that has not advanced for that long, for example to hear about a lead who left after step 1. A newer step resets the wait; completed submissions never send it; previews never store submissions. Each action is claimed on the submission (`abandoned_actions_fired`) before it runs, so it runs at most once even with repeated or concurrent deliveries. The check uses the existing scheduled-work index (`form_partial_abandoned`), delivered by Cloud Tasks, the in-process timer or the `/api/internal/publish-sweep` scheduler, so self-hosted Core needs that scheduler, as for scheduled publishing. Default unchanged: actions run on completion. Available in the API, MCP (`trigger`, `after_hours` on actions), `get_form_capabilities` (`triggers`) and the portal Forms editor (**Send**).
 - Multi-step form navigation (render version 5):
   - Per-step button labels: a step's `submit_label` sets its button text on every render version. From render version 5 every step but the last defaults to "Continue" ("Fortsätt" on Swedish sites) and the last keeps `submit_text`. **This changes existing multi-step forms when a site moves to render version 5**; earlier render versions keep `submit_text` on every step.
