@@ -341,6 +341,56 @@ describe('Extension control plane', () => {
     expect(revoked.resolved_form_bindings).toBeUndefined();
   });
 
+  it('offers the page handoff only to a declared component on a granted installation', async () => {
+    const receiver = manifest({
+      config_schema: undefined,
+      permissions: [
+        { scope: 'content:read', reason: 'Reads products.' },
+        { scope: 'page_handoff:read', reason: 'Prefills the quote form from the start page banner.' },
+      ],
+      frontend: {
+        components: [
+          {
+            id: 'lead-form', label: 'Lead form', render_mode: 'bundled_component', page_handoff: true,
+            entry: { script_url: 'https://93.184.216.34/lead.js', script_sha256: SCRIPT_DIGEST },
+          },
+          {
+            id: 'reviews', label: 'Reviews', render_mode: 'bundled_component',
+            entry: { script_url: 'https://93.184.216.34/reviews.js', script_sha256: SCRIPT_DIGEST },
+          },
+        ],
+      },
+    });
+    const created = await createExtension({
+      developerOrgId: DEV_ORG, actorId: 'developer-user', id: receiver.id,
+      name: receiver.name, trustedOrigins: ['https://vendor.example', 'https://93.184.216.34'], allowedSiteIds: [SITE],
+    });
+    await saveExtensionVersion({ developerOrgId: DEV_ORG, extensionId: created.extension.id, actorId: 'developer-user', manifest: receiver });
+    await publishExtensionVersion({ developerOrgId: DEV_ORG, extensionId: created.extension.id, version: receiver.version, verifyAssets: async () => {} });
+    const installation = await installExtension({
+      developerOrgId: DEV_ORG, ownerOrgId: OWNER_ORG, siteId: SITE,
+      actorId: 'customer-admin', extensionId: created.extension.id, version: receiver.version,
+      grantedScopes: ['content:read', 'page_handoff:read'], config: {},
+    });
+    const { getStore } = await import('../../lib/datastore');
+
+    const granted = (await buildExtensionRuntimeSnapshot(OWNER_ORG, SITE)).installations[0]!.components;
+    expect(granted.map((component) => component.page_handoff)).toEqual([true, undefined]);
+    const blockTypes = await getStore().listDocs<{ id: string; schema: Array<{ name: string }> }>(paths.blockTypes(OWNER_ORG, SITE));
+    const fieldsOf = (component: string) => blockTypes.find((type) => type.id.endsWith(`--${component}`))!.schema.map((field) => field.name);
+    expect(fieldsOf('lead-form')).toContain('page_handoff_key');
+    expect(fieldsOf('reviews')).not.toContain('page_handoff_key');
+
+    await updateExtensionInstallation({
+      ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id,
+      actorId: 'customer-admin', grantedScopes: ['content:read'], config: {},
+    });
+    const revoked = (await buildExtensionRuntimeSnapshot(OWNER_ORG, SITE)).installations[0]!.components;
+    expect(revoked.map((component) => component.page_handoff)).toEqual([undefined, undefined]);
+    const reprovisioned = await getStore().listDocs<{ id: string; schema: Array<{ name: string }> }>(paths.blockTypes(OWNER_ORG, SITE));
+    expect(reprovisioned.find((type) => type.id.endsWith('--lead-form'))!.schema.map((field) => field.name)).not.toContain('page_handoff_key');
+  });
+
   it('requires registration of native module and API origins', async () => {
     const candidate = manifest();
     candidate.admin!.pages[0]!.native = {

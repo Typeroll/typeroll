@@ -13,7 +13,8 @@ function json(value: string): string {
 /**
  * Trusted, content-free parent for a navigable preview. Customer HTML and
  * Extension code stay in the opaque child; the shell owns only tab-scoped
- * state and navigation. No stored value is copied into a URL or request.
+ * state (Extension storage and the native page handoff) and navigation. No
+ * stored value is copied into a URL or request.
  */
 export function buildExtensionPreviewShell(args: ExtensionPreviewShellArgs): string {
   return `<!doctype html>
@@ -24,8 +25,9 @@ export function buildExtensionPreviewShell(args: ExtensionPreviewShellArgs): str
 var siteId=${json(args.siteId)},bridgeId=${json(args.bridgeId)},root=${json(args.rootPath.replace(/\/$/, ''))},carriedQuery=${JSON.stringify(args.carriedQuery ?? {}).replace(/</g, '\\u003c')};
 var frame=document.getElementById("preview");
 var storageKey="typeroll:extension-preview:"+siteId+":"+${json(args.storageScope)};
-var storage={session:{},local:{}};
+var storage={session:{},local:{},handoff:{}};
 try{var saved=sessionStorage.getItem(storageKey);if(saved){var parsed=JSON.parse(saved);if(parsed&&typeof parsed==="object")storage=parsed;}}catch(_){}
+if(!storage.handoff||typeof storage.handoff!=="object")storage.handoff={};
 function persist(){try{var encoded=JSON.stringify(storage);if(encoded.length<=262144)sessionStorage.setItem(storageKey,encoded);}catch(_){}}
 function safeName(value){return typeof value==="string"&&value.length>0&&value.length<=128&&value!=="__proto__"&&value!=="constructor"&&value!=="prototype";}
 function carry(query){Object.keys(carriedQuery).forEach(function(key){query.set(key,carriedQuery[key]);});}
@@ -35,6 +37,10 @@ addEventListener("popstate",function(){frame.src=frameUrl();});
 addEventListener("message",function(event){var data=event.data;if(event.source!==frame.contentWindow||event.origin!=="null"||!data||data.channel!=="typeroll.extension-preview"||data.version!==1||data.bridge_id!==bridgeId)return;
   if(data.action==="storage.ready"){frame.contentWindow&&frame.contentWindow.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:bridgeId,action:"storage.init",storage:storage},"*");return;}
   if(data.action==="site.navigate"){navigate(data.path);return;}
+  // The page handoff of a native navigation form: one slot per tab, as on a
+  // published site, where a new handoff replaces any abandoned one.
+  if(data.action==="handoff.set"&&typeof data.key==="string"&&/^[a-zA-Z0-9_-]{1,64}$/.test(data.key)&&typeof data.value==="string"&&data.value.length<=20000){try{JSON.parse(data.value);}catch(_){return;}storage.handoff={};storage.handoff[data.key]=data.value;persist();return;}
+  if(data.action==="handoff.remove"&&typeof data.key==="string"){delete storage.handoff[data.key];persist();return;}
   if((data.action==="storage.set"||data.action==="storage.remove")&&(data.area==="session"||data.area==="local")&&safeName(data.installation_id)&&safeName(data.key)){
     var area=storage[data.area]||(storage[data.area]={});var installation=area[data.installation_id]||(area[data.installation_id]={});
     if(data.action==="storage.remove")delete installation[data.key];

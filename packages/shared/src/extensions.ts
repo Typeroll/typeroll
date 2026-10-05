@@ -1,8 +1,14 @@
 import type { FieldDefinition, SharePermission } from './types.js';
 
 export const EXTENSION_MANIFEST_SCHEMA_VERSION = 3 as const;
-export const EXTENSION_RUNTIME_VERSION = '0.42.0';
+export const EXTENSION_RUNTIME_VERSION = '0.43.0';
 export const EXTENSION_HOST_PROTOCOL_VERSION = 3 as const;
+/**
+ * Block data field in which the page author binds an Extension block instance
+ * to a navigation form's defaults key (`context.handoff`). Platform-owned: it
+ * is added to the editor schema of components that declare `page_handoff`.
+ */
+export const EXTENSION_PAGE_HANDOFF_PROP = 'page_handoff_key';
 
 export type ExtensionDistribution = 'private' | 'unlisted' | 'public';
 export type ExtensionStatus = 'active' | 'suspended';
@@ -34,7 +40,8 @@ export type ExtensionScope =
   | 'media:read'
   | 'media:write'
   | 'deploy:request'
-  | 'extension:config:read';
+  | 'extension:config:read'
+  | 'page_handoff:read';
 
 export interface ExtensionScopeDefinition {
   scope: ExtensionScope;
@@ -58,6 +65,7 @@ export const EXTENSION_SCOPE_REGISTRY: Readonly<Record<ExtensionScope, Extension
   'media:write': { scope: 'media:write', minimum_permission: 'write', sensitive: true, description: 'Upload and change media.' },
   'deploy:request': { scope: 'deploy:request', minimum_permission: 'admin', sensitive: true, description: 'Request a site deployment.' },
   'extension:config:read': { scope: 'extension:config:read', minimum_permission: 'admin', sensitive: true, description: 'Read this installation configuration.' },
+  'page_handoff:read': { scope: 'page_handoff:read', minimum_permission: 'read', sensitive: true, description: 'In the visitor\'s browser, receive the values typed into a navigation form that sent the visitor to the component\'s page, when the page author binds that form to the component.' },
 };
 
 export interface ExtensionPermissionRequest {
@@ -139,6 +147,13 @@ export interface ExtensionFrontendComponent {
   props_schema?: ExtensionObjectSchema;
   url_context?: ExtensionUrlContextDeclaration;
   form_bindings?: ExtensionFormBinding[];
+  /**
+   * Runtime 0.43.0+: the component can receive the page handoff of a native
+   * navigation form through `context.handoff`. Requires the
+   * `page_handoff:read` permission. Each block instance still has to be bound
+   * to a navigation form's defaults key by the page author.
+   */
+  page_handoff?: boolean;
   entry: ExtensionBundledEntry | ExtensionEmbeddedEntry;
   unavailable_message?: string;
 }
@@ -777,6 +792,12 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
     });
     if (formBindings.length > 0 && !requestedScopes.has('forms:submit')) {
       errors.push(`frontend component "${componentId}" requires the forms:submit permission`);
+    }
+    if (component.page_handoff !== undefined && typeof component.page_handoff !== 'boolean') {
+      errors.push(`frontend.components[${index}].page_handoff must be a boolean`);
+    }
+    if (component.page_handoff === true && !requestedScopes.has('page_handoff:read')) {
+      errors.push(`frontend component "${componentId}" requires the page_handoff:read permission`);
     }
     const entryData = asRecord(component.entry, `frontend.components[${index}].entry`, errors);
     if (mode === 'bundled_component') {

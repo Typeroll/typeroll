@@ -265,6 +265,16 @@ export interface SiteTemplateCapabilities {
   supports_extension_installation_config_api: boolean;
   /** 0.36.0+: Extension components can submit to explicitly bound Typeroll forms. */
   supports_extension_form_bindings: boolean;
+  /**
+   * 0.52.0+ (Extension runtime 0.43.0): an Extension component that declares
+   * `page_handoff`, on an installation granted `page_handoff:read`, receives
+   * the values a native navigation form collected on the previous page through
+   * `context.handoff.read()` once the page author binds the block instance to
+   * that form's defaults key (`page_handoff_key`). Works on published sites
+   * and in preview links. The native navigation form also carries its handoff
+   * through preview links.
+   */
+  supports_extension_page_handoff: boolean;
   /** Extension host protocol understood by this renderer. */
   extension_protocol_version: typeof EXTENSION_HOST_PROTOCOL_VERSION;
   /** Semver of the browser Extension runtime. */
@@ -274,7 +284,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.51.0',
+  template_capabilities_version: '0.52.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -293,6 +303,7 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_extension_storage: true,
   supports_extension_installation_config_api: true,
   supports_extension_form_bindings: true,
+  supports_extension_page_handoff: true,
   extension_protocol_version: EXTENSION_HOST_PROTOCOL_VERSION,
   extension_runtime_version: EXTENSION_RUNTIME_VERSION,
   extension_render_modes: ['bundled_component', 'embedded_app'],

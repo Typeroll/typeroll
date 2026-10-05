@@ -84,8 +84,9 @@ export async function mount(element, props, context) {}
 
 `context` contains protocol/runtime versions, installation/component ids,
 public config, the declared URL-context accessor, an in-memory navigation
-object, site navigation, installation-scoped JSON storage, `api.fetch()`, and
-`preview` (`true` only in an isolated preview).
+object, site navigation, installation-scoped JSON storage, `api.fetch()`,
+`handoff` (runtime 0.43.0+), and `preview` (`true` only in an isolated
+preview).
 Navigation is per mount:
 
 ```js
@@ -112,6 +113,20 @@ non-root-relative paths. `storage.session` and `storage.local` expose
 Published sites use Web Storage. Opaque-origin previews use storage scoped to
 the current preview tab; both preview areas have tab-session lifetime and
 survive `context.site.navigate()` without putting values in URLs or requests.
+
+A component that receives visitors from a native `core/navigation_form`
+banner reads what they typed with `await context.handoff.read()`. It resolves
+`{ key, source: "navigation_form", values, parts }` or `null`; `values` holds
+the flat field values (including address parts such as
+`address_from_postal_code`) and `parts` groups the parts per field. Access
+needs three things: the component declares `page_handoff: true`, the
+installation is granted `page_handoff:read`, and the page author binds the
+block instance to the banner's defaults key (`page_handoff_key`). The host
+checks the handoff's target page and expiry, takes it out of tab storage once
+per page load (like a native receiving form), and reads it through the preview
+shell bridge in previews. The storage key and packet format stay private to
+Core. Embedded apps use `typeroll.extension.handoff.read` /
+`typeroll.extension.handoff.result`.
 
 Embedded apps receive `typeroll.extension.init` with protocol version,
 installation/component ids, props, public config, URL context and current

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Extension page handoff (Extension runtime 0.43.0, template capabilities 0.52.0, `supports_extension_page_handoff`). An Extension component can receive what a visitor typed into a native `core/navigation_form` banner on the previous page: `await context.handoff.read()` resolves `{ key, source: "navigation_form", values, parts }` or `null`. `values` are the typed field values with address parts as `<field>_<part>`; `parts` groups `street`, `street_number`, `postal_code`, `locality`, `country` and `formatted` per field. Embedded apps use `typeroll.extension.handoff.read` / `typeroll.extension.handoff.result`.
+  - Access needs the component's manifest declaration `page_handoff: true`, the new `page_handoff:read` permission granted by the site administrator, and the page author's binding of the block instance to the banner's defaults key (`page_handoff_key`, shown in the editor as **Prefill from navigation inputs**). Otherwise `read()` resolves `null`; so does a handoff that is absent, expired or addressed to another page. Nothing throws.
+  - The handoff is taken out of tab storage once per page load, as by a native receiving form; every bound component on that page receives the same values. The storage key and packet format stay private to Core and are not part of the Extension contract.
+  - Runtime 0.43.0 is additive: releases declaring `^0.42.0` or `>=0.38.0 <1.0.0` stay compatible. A release that uses `page_handoff` should declare `>=0.43.0 <1.0.0`.
+- Preview links carry the navigation form handoff. An opaque preview has no Web Storage, so a banner's values were lost and Continue navigated the isolated frame out of the preview shell. The preview shell now keeps the handoff for the tab and the banner moves the shell to the destination, for both a native receiving form and an Extension component.
+- Fixed: a receiving `core/navigation_form` with more than four fields received no defaults, because the field-and-address-part allowlist was capped at 32 names.
+
 ## Core 0.2.66 / MCP 0.45.50
 
 Connect Cloudflare now explains every way it can stop, who must act and how, inside the Cloudflare card, each Hosting Group card, the API and MCP.

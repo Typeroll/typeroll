@@ -1,4 +1,5 @@
 import {
+  EXTENSION_PAGE_HANDOFF_PROP,
   extensionPropsToFields,
   paths,
   type BlockType,
@@ -23,6 +24,22 @@ export function extensionBlockType(
   component: NonNullable<ExtensionManifest['frontend']>['components'][number],
 ): BlockType {
   const blockId = extensionBlockTypeId(installation.id, component.id);
+  const schema = extensionPropsToFields(component.props_schema);
+  // The page author binds each instance to a navigation form's defaults key;
+  // without that binding context.handoff.read() resolves null.
+  if (
+    component.page_handoff === true
+    && installation.granted_scopes.includes('page_handoff:read')
+    && !schema.some((field) => field.name === EXTENSION_PAGE_HANDOFF_PROP)
+  ) {
+    schema.push({
+      name: EXTENSION_PAGE_HANDOFF_PROP,
+      type: 'text',
+      label: 'Prefill from navigation inputs',
+      placeholder: 'page-defaults',
+      help: 'The Defaults key of the navigation inputs that send visitors to this page. Their typed values prefill this component. Leave empty to start empty.',
+    });
+  }
   return {
     id: blockId,
     name: `${safeSegment(manifest.id)}-${safeSegment(component.id)}`,
@@ -32,7 +49,7 @@ export function extensionBlockType(
       ? component.category as BlockType['category']
       : 'custom',
     container: false,
-    schema: extensionPropsToFields(component.props_schema),
+    schema,
     template: `<div class="tr-extension-mount"><p class="tr-extension-placeholder">${escapeHtml(component.label)} loads on the published site.</p></div>`,
     styles: '.tr-extension-placeholder{padding:1rem;border:1px dashed currentColor;border-radius:.5rem;opacity:.7}',
     origin: 'third_party',
