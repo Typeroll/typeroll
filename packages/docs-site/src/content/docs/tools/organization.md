@@ -134,6 +134,16 @@ changes happen at `connect_url`. `recheck: true` re-checks a connected installat
 the App's own access. Every code is explained in
 [GitHub connection troubleshooting](../../guides/github-troubleshooting/).
 
+When Cloudflare is not connected, `diagnose_organization_cloudflare_connection`
+(`GET /publishing/cloudflare-diagnosis`) explains why for the Organization's
+connection or, with `hosting_group_id`, a Hosting Group: the outcome and each
+blocker with who must act (`you`, `cloudflare_account_admin`, `publisher` or
+`typeroll_admin`) and one action, plus the saved account once connected. A
+person's unfinished sign-in and the accounts they authorized stay in their
+Cloudflare card. `recheck: true` re-verifies a saved connection with its own
+authorization. Every code is explained in
+[Cloudflare connection troubleshooting](../../guides/cloudflare-troubleshooting/).
+
 ## What stays in the portal
 
 - **Creating an Organization.** An Organization is owned by a signed-in person,

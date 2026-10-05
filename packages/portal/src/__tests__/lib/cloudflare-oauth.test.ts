@@ -50,7 +50,7 @@ it.each(['user', 'org', 'browser', 'state', 'expiry'])('rejects a mismatched %s 
   const input = await grant(), fetcher = provider();
   if (kind === 'browser' || kind === 'state') input[kind] = 'x'.repeat(43);
   if (kind === 'expiry') await getStore().updateDoc('organizations/default/publishing_authorizations/cloudflare', { expires_at: 0 });
-  await expect(finishCloudflareConnection({ ...session, ...(kind === 'user' ? { userId: 'another' } : {}), ...(kind === 'org' ? { orgId: 'another' } : {}) }, input, fetcher)).rejects.toThrow('expired');
+  await expect(finishCloudflareConnection({ ...session, ...(kind === 'user' ? { userId: 'another' } : {}), ...(kind === 'org' ? { orgId: 'another' } : {}) }, input, fetcher)).rejects.toThrow(kind === 'browser' ? 'different browser' : 'expired');
   expect(fetcher).not.toHaveBeenCalled();
 });
 it('requires explicit selection of a proven account, bound to the same user', async () => {
@@ -73,9 +73,9 @@ it('does not reconnect after disconnect or claim another tenant account', async 
   await expect(finishCloudflareConnection(session, await grant(), provider())).rejects.toThrow('another Typeroll');
 });
 it('rejects reduced scopes and credential-reflecting provider errors', async () => {
-  await expect(finishCloudflareConnection(session, await grant(), provider([first], { ...token, scope: 'page.read' }))).rejects.toThrow('required permissions');
+  await expect(finishCloudflareConnection(session, await grant(), provider([first], { ...token, scope: 'page.read' }))).rejects.toMatchObject({ code: 'permissions_missing', blocker: { missing_permissions: ['page.write', 'workers-r2.read', 'workers-r2.write', 'offline_access', 'account-settings.read'].filter(scope => scope !== 'page.read').sort((a, b) => CLOUDFLARE_SCOPES.indexOf(a) - CLOUDFLARE_SCOPES.indexOf(b)) } });
   const fetcher = vi.fn<typeof fetch>(async () => Response.json({ error: 'synthetic-access' }, { status: 400 }));
-  await expect(finishCloudflareConnection(session, await grant(), fetcher)).rejects.toThrow('Cloudflare authorization could not be completed');
+  await expect(finishCloudflareConnection(session, await grant(), fetcher)).rejects.toThrow('Cloudflare did not respond as expected');
   expect((await getConnection('default', 'cloudflare')).status).toBe('disconnected');
 });
 async function expire() {

@@ -177,3 +177,58 @@ describe('GitHub connection diagnosis through the public API', () => {
     expect(JSON.stringify(github.json)).not.toContain('synthetic store failure');
   });
 });
+
+describe('Cloudflare connection diagnosis through the public API', () => {
+  async function diagnose(token: string, search = '') {
+    const { GET } = await import('../../pages/api/v1/publishing/cloudflare-diagnosis');
+    const res = await GET({ request: new Request(`https://portal.test/api/v1/publishing/cloudflare-diagnosis${search}`, { headers: { authorization: `Bearer ${token}` } }) } as never) as Response;
+    return { status: res.status, json: await res.json() as any, headers: res.headers };
+  }
+  const configure = () => {
+    vi.stubEnv('TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_ID', 'synthetic-client');
+    vi.stubEnv('TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET', 'synthetic-client-secret');
+  };
+
+  it('returns a Hosting Group’s diagnosis to organization keys only', async () => {
+    expect((await diagnose(await key(SITE))).status).toBe(403);
+    const token = await key(null);
+    const res = await diagnose(token);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.json.connect_url).toBe('https://portal.test/app/settings/publishing#cloudflare');
+    expect(res.json.diagnosis).toMatchObject({ version: 1, hosting_group_id: 'default', outcome: 'unavailable', blockers: [{ code: 'publisher_oauth_misconfigured', who: 'publisher' }] });
+    const { saveHostingGroup } = await import('../../lib/publishing/hosting-groups');
+    const group = await saveHostingGroup(ORG, { name: 'Hosting 2', sites_domain: null, dns_mode: 'external' });
+    configure();
+    const grouped = await diagnose(token, `?hosting_group=${group.id}`);
+    expect(grouped.json).toMatchObject({ connect_url: `https://portal.test/app/settings/publishing#hosting-${group.id}`, diagnosis: { hosting_group_id: group.id, outcome: 'sign_in_required' } });
+    expect((await diagnose(token, '?hosting_group=missing-group')).status).toBe(404);
+    expect((await diagnose(token, '?hosting_group=Not%20valid')).status).toBe(400);
+  });
+
+  it('re-checks a saved connection with its own authorization and never returns a person’s attempt', async () => {
+    configure();
+    const { getConnection, saveConnection, sealCredentials } = await import('../../lib/publishing/connections');
+    const { composeCloudflareDiagnosis, cloudflareBlocker, recordCloudflareDiagnosis } = await import('../../lib/publishing/cloudflare-diagnosis');
+    const account = { id: 'c'.repeat(32), name: 'Private personal account' };
+    await recordCloudflareDiagnosis(ORG, composeCloudflareDiagnosis({ groupId: 'default', revision: (await getConnection(ORG, 'cloudflare')).revision, attemptedBy: 'person-user-id',
+      accounts: [{ ...account, usable: false, blockers: [cloudflareBlocker('pages_access_denied', { account })] }] }), { userId: 'person-user-id', consentedAt: Date.now() });
+    const token = await key(null);
+    const attempt = (await diagnose(token)).json.diagnosis;
+    expect(attempt).toMatchObject({ outcome: 'action_required', attempted_by: null, accounts: [], recheck_available: false, blockers: [{ code: 'pages_access_denied' }] });
+    expect(JSON.stringify(attempt)).not.toMatch(/person-user-id|Private personal account|c{32}/);
+    const saved = { id: 'd'.repeat(32), name: 'Organization account' };
+    await saveConnection(ORG, 'cloudflare', (await getConnection(ORG, 'cloudflare')).revision, { status: 'connected', auth_method: 'api_token',
+      cloudflare: { account_id: saved.id, account_name: saved.name, bucket: '', endpoint: '' }, encrypted_credentials: sealCredentials(ORG, 'cloudflare', { api_token: 'synthetic-api-token' }) });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const pathname = new URL(url).pathname;
+      if (pathname === `/client/v4/accounts/${saved.id}`) return Response.json({ success: true, result: saved });
+      return Response.json({ success: false, errors: [{ code: 10000 }] }, { status: 403 });
+    }));
+    const res = await diagnose(token, '?recheck=true');
+    expect(res.json.diagnosis).toMatchObject({ outcome: 'needs_attention', attempted_by: null,
+      accounts: [{ id: saved.id, usable: false, blockers: [{ code: 'pages_access_denied', who: 'cloudflare_account_admin' }] }] });
+    expect(JSON.stringify(res.json)).not.toMatch(/synthetic-api-token|synthetic-client-secret/);
+    vi.unstubAllGlobals();
+  });
+});

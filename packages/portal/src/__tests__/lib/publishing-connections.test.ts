@@ -51,7 +51,7 @@ function providerFetch(overrides: Record<string, unknown> = {}) {
       '/app/installations/34/access_tokens': { token: 'synthetic-installation-token' },
       '/orgs/synthetic-agency': { id: 56 },
       [`/client/v4/accounts/${accountId}`]: { success: true, result: { id: accountId, name: 'Synthetic agency' } },
-      [`/client/v4/accounts/${accountId}/pages/projects?per_page=1`]: { success: true, result: [] },
+      [`/client/v4/accounts/${accountId}/pages/projects`]: { success: true, result: [] },
       [`/client/v4/accounts/${accountId}/r2/buckets/agency-media/domains/managed`]: { success: true, result: { enabled: false } },
       [`/client/v4/accounts/${accountId}/r2/buckets/agency-media/domains/custom`]: { success: true, result: { domains: [] } },
       ...overrides,
@@ -534,7 +534,7 @@ describe('publishing account routes', () => {
     const callback = routeContext('GET', 'cloudflare');
     callback.url.search = '?code=synthetic-secret-code&state=invalid';
     const result = await call(CLOUDFLARE_CALLBACK, callback);
-    expect(result.headers.get('location')).toBe('/app/settings/publishing?cloudflare=failed');
+    expect(result.headers.get('location')).toBe('/app/settings/publishing?cloudflare=state_expired#cloudflare');
     expect(result.headers.get('referrer-policy')).toBe('no-referrer');
     expect(callback.cookies.delete).toHaveBeenCalled();
   });

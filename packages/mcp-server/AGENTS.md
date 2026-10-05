@@ -1033,6 +1033,17 @@ action's link to the person; browser actions (`sign_in`, `install`, `retry`,
 `confirm_account_change`) happen at `connect_url`. Pass `recheck: true` only to
 re-check an already connected installation.
 
+When Cloudflare is not connected or "Connect Cloudflare didn't work", call
+`diagnose_organization_cloudflare_connection` (pass `hosting_group_id` for a
+Hosting Group other than Default). It returns the outcome and each blocker's
+`code`, `who` (`you`, `cloudflare_account_admin`, `publisher`,
+`typeroll_admin`) and one action: for example `oauth_cancelled`,
+`permissions_missing` (with `missing_permissions`), `pages_access_denied`,
+`account_choice_expired` or `locked_to_account`. The accounts a person
+authorized and their account choice stay in their own Cloudflare card. Relay
+the message and link; `sign_in` and `retry` happen at `connect_url`. Pass
+`recheck: true` only to re-verify a saved connection.
+
 ## Safety boundaries
 
 - **HTML is sanitized at save.** No `<script>`, no `onclick`, no
@@ -1183,7 +1194,7 @@ preview.
 | **Site lifecycle** | `archive_site`, `restore_site`, `purge_site_media` (archived sites only, irreversible). Owner-organization admin, as in the portal. |
 | **Workflows** | `list_workflows`, `start_workflow` (write; `rebuild_deploy` admin), `get_workflow`, `approve_workflow` (only `paused_for_review`, with the user's consent) |
 | **Access** | `list_api_keys`, `revoke_api_key` (site admin), `list_organization_api_keys`, `revoke_organization_api_key` (organization key; new keys are created only in the portal), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite` (organization key) |
-| **Organization publishing** | `read_organization_publishing_connections`, `diagnose_organization_github_connection`, `disconnect_organization_publishing_provider`, `connect_organization_cloudflare`, `prepare_organization_media_storage`, `save_organization_media_access`, plus builds, Hosting Groups, domains and media migration tools (organization key) |
+| **Organization publishing** | `read_organization_publishing_connections`, `diagnose_organization_github_connection`, `diagnose_organization_cloudflare_connection`, `disconnect_organization_publishing_provider`, `connect_organization_cloudflare`, `prepare_organization_media_storage`, `save_organization_media_access`, plus builds, Hosting Groups, domains and media migration tools (organization key) |
 | **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics; conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |
 | **Pages — reads** | `list_pages`, `read_page`, `batch_read_pages` |
 | **Pages — writes** | `create_page`, `update_page`, `replace_page`, `batch_update_pages`, `delete_page`, `clone_page` |

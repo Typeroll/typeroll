@@ -5,7 +5,7 @@ import type { FullSession } from '../access';
 import { isSecretCryptoConfigured } from '../secret-crypto';
 import { claimAccount, ConnectionError, getConnection, saveConnection, sealCredentials, openCredentials } from './connections';
 import { createProviderClient } from './providers.mjs';
-import { cloudflareClient, type CloudflareStoredCredentials } from './cloudflare-oauth';
+import { cloudflareClient, verifyPagesAccess, type CloudflareStoredCredentials } from './cloudflare-oauth';
 
 export interface CloudflareCredentials { api_token?: string; access_key_id: string; secret_access_key: string }
 interface CloudflareInput extends CloudflareCredentials { account_id: string; bucket: string; revision: string }
@@ -73,7 +73,7 @@ export async function connectCloudflare(session: FullSession, input: unknown, fe
   const cloudflare = createProviderClient('Cloudflare', data.api_token!, fetchImpl);
   const account = await cloudflare(`/accounts/${data.account_id}`);
   if (account.id !== data.account_id || typeof account.name !== 'string') throw new ConnectionError('Cloudflare account verification failed', 502);
-  await cloudflare(`/accounts/${data.account_id}/pages/projects?per_page=1`);
+  await verifyPagesAccess(cloudflare, data.account_id);
   await assertPrivateOriginalBucket(cloudflare, data.account_id, data.bucket);
   const credentials = { api_token: data.api_token, access_key_id: data.access_key_id, secret_access_key: data.secret_access_key };
   await verifyR2(data.account_id, data.bucket, credentials);

@@ -1,5 +1,25 @@
 # Changelog
 
+## Core 0.2.66 / MCP 0.45.50
+
+Connect Cloudflare now explains every way it can stop, who must act and how, inside the Cloudflare card, each Hosting Group card, the API and MCP.
+
+- Fixed: a Cloudflare sign-in that failed after consent showed the card unchanged ("Not connected · Connect Cloudflare") with only a page-level alert, and nothing was recorded. Every failure was reported as `?cloudflare=failed`.
+- Cloudflare connection diagnosis:
+  - Every exit of the Cloudflare flow (start, callback, account choice, Check again) stores a diagnosis for 24 hours per Organization and Hosting Group. It lists the accounts the person authorized, whether each can be used, and each blocker with `who` (`you`, `cloudflare_account_admin`, `publisher`, `typeroll_admin`) and one action. No tokens, OAuth codes, state values or Cloudflare responses are stored or returned.
+  - A callback is recorded only for the sign-in the same person started in the same browser, so a link to the callback from another site changes nothing. A sign-in that never returns from Cloudflare is explained after 10 minutes.
+  - An unfinished attempt is shown only to the person who made it. Other admins, organization API keys and MCP see the organization's state without the Typeroll user or the Cloudflare accounts that person authorized.
+  - New blocker codes, documented in the new [Cloudflare connection troubleshooting](https://typeroll.com/docs/guides/cloudflare-troubleshooting/) guide: `oauth_cancelled`, `state_expired`, `wrong_browser`, `session_expired`, `permissions_missing` (with `missing_permissions`), `no_eligible_account`, `too_many_accounts`, `account_choice_expired`, `pages_access_denied`, `revision_conflict`, `locked_to_account`, `claimed_by_other_organization`, `authorization_revoked`, `provider_unavailable`, `rate_limited`, `publisher_oauth_misconfigured`.
+- The Cloudflare card shows the result inside the card with one next action and the steps **Publisher ready → Sign in to Cloudflare → Choose account → Access verified → Connected**. Page-level Cloudflare banners are gone; a reload shows the same explanation. The callback returns with `?cloudflare=<outcome>` (`connected`, `choose`, `action_required`, `sign_in_required`, `retryable_error`, `unavailable`, `state_expired` or `session_expired`) to the Default card or `&hosting_group=<id>` to that Hosting Group's card. A callback after the Typeroll session ended goes to sign-in and back to the card.
+- Several authorized accounts are chosen in the card: each account shows whether Cloudflare Pages access was verified or why it cannot be used, the card says why it asks and until when the choice is open, and the one usable account is preselected. Typeroll never chooses among several accounts, because the connected account is claimed for the Organization and reconnects must keep it. One authorized account is connected directly, as before. An account-specific failure on selection keeps the other accounts selectable.
+- **Check again** for Cloudflare: on a saved connection it re-verifies authorization renewal, account access, Cloudflare Pages access and granted permissions (`needs_attention` when one fails). Without a connection it reuses the person's consent from the last hour to list and check the accounts again and offer a new 10-minute choice, after an expired choice, a role fix or a passing Cloudflare error. It never connects by itself.
+- Fixes in the Cloudflare flow:
+  - The Pages access check no longer sends `per_page=1`; it lists Pages projects without list options, like Wrangler's own client. Applies to OAuth, API-token and Hosting Group connections.
+  - A token response without `scope` is accepted as the requested scopes (RFC 6749 §5.1) instead of failing.
+  - When Cloudflare rejects HTTP Basic client authentication (`invalid_client`), the token request is sent once with `client_secret_post`.
+  - Token errors are told apart: an expired or used code, publisher client settings (with the reason, such as a missing refresh-token grant), rate limits and outages.
+- New `GET /api/v1/publishing/cloudflare-diagnosis` (`?hosting_group=`, `?recheck=true`) and MCP tool `diagnose_organization_cloudflare_connection` (`hosting_group_id`, `recheck`). Organization API key required. `GET /api/orgs/publishing` returns `cloudflare_diagnosis`; `GET /api/orgs/publishing/hosting-groups` returns `cloudflare_diagnosis` per group and `cloudflare_setup`. Portal route `/api/orgs/publishing/cloudflare/diagnosis` (GET, POST `recheck`).
+
 ## Core 0.2.65 / MCP 0.45.49
 
 - Fixed: published sites lost a step's `submit_label` and the form's `allow_back` and `show_progress`; previews showed them, deploys did not.
