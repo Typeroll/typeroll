@@ -3,6 +3,7 @@ import { githubChoices, githubReturnState } from '../../../../lib/publishing/git
 import { currentGithubDiagnosis } from '../../../../lib/publishing/github-diagnosis';
 import { connectionFailure, privateJson, publishingAdmin } from '../../../../lib/publishing/http';
 import { cloudflareChoices } from '../../../../lib/publishing/cloudflare-oauth';
+import { currentCloudflareDiagnosis } from '../../../../lib/publishing/cloudflare-diagnosis';
 import { organizationConnectionsStatus } from '../../../../lib/publishing/organization-connections';
 
 // The shared status is also served by GET /api/v1/publishing/connections.
@@ -13,6 +14,7 @@ export const GET: APIRoute = async (context) => {
   try {
     return privateJson({ ...await organizationConnectionsStatus(guard.value.orgId),
       cloudflare_choices: await cloudflareChoices(guard.value),
+      cloudflare_diagnosis: await currentCloudflareDiagnosis(guard.value.orgId, 'default', guard.value),
       github_choices: await githubChoices(guard.value),
       github_diagnosis: await currentGithubDiagnosis(guard.value.orgId, guard.value),
       github_attempt: await githubReturnState(guard.value) });

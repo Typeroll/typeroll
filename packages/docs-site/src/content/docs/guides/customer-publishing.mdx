@@ -82,6 +82,9 @@ manage these connections.
 2. Select **Connect Cloudflare**, sign in and approve the account. Optional DNS
    and URL rewrite permissions let Typeroll configure domains automatically.
    You can decline these and let your administrator or AI agent manage DNS.
+   If you select several accounts on Cloudflare, choose one in the card. If
+   something blocks the connection, see
+   [When Connect Cloudflare does not finish](#when-connect-cloudflare-does-not-finish).
 3. Typeroll checks R2 automatically. If activation is required, follow the
    account link to **Storage & databases → R2 object storage → Overview** and
    complete Cloudflare's subscription checkout. Return and select
@@ -223,6 +226,25 @@ instead, or ask an owner of the other organization to connect GitHub.
 
 Every reason, with its fix, is listed in
 [GitHub connection troubleshooting](../github-troubleshooting/).
+
+### When Connect Cloudflare does not finish
+
+The **Cloudflare account** card, and each Hosting Group card for its own
+account, explains every result inside the card and keeps it for 24 hours, so a
+reload shows the same explanation. Its steps are **Publisher ready**, **Sign in
+to Cloudflare**, **Choose account**, **Access verified** and **Connected**, and
+the box at the top names the one next step. Each reason starts with **Who
+acts**: **You**, a **Cloudflare account administrator** (a Super Administrator
+who can change your role, for example to allow Cloudflare Pages), the
+**Typeroll publisher** or a **Typeroll administrator**.
+
+If you authorized several accounts, the card lists them and you choose one
+within 10 minutes; Typeroll never chooses for you, because the connected account
+is reserved for this Organization. Within an hour of signing in, **Check again**
+offers an expired choice again, or finds a fixed role, without another
+sign-in. On a connected account, **Check again** re-verifies the authorization
+and Pages access. Every reason is listed in
+[Cloudflare connection troubleshooting](../cloudflare-troubleshooting/).
 
 ### Connect a different GitHub account
 
@@ -622,6 +644,7 @@ access to configure DNS and R2 rules, then ask Typeroll to verify them.
 | Check setup                        | `read_publishing_readiness`                   | `GET /sites/{site}/publishing`              |
 | Read GitHub/Cloudflare connections | `read_organization_publishing_connections`    | `GET /publishing/connections`               |
 | Explain the GitHub connection      | `diagnose_organization_github_connection`     | `GET /publishing/github-diagnosis`          |
+| Explain a Cloudflare connection    | `diagnose_organization_cloudflare_connection` | `GET /publishing/cloudflare-diagnosis`      |
 | Disconnect GitHub or Cloudflare    | `disconnect_organization_publishing_provider` | `DELETE /publishing/connections/{provider}` |
 | Connect Cloudflare with a token    | `connect_organization_cloudflare`             | `POST /publishing/connections/cloudflare`   |
 | Prepare media buckets              | `prepare_organization_media_storage`          | `POST /publishing/connections/cloudflare`   |
@@ -645,7 +668,9 @@ Everything after that — Cloudflare with a customer API token, media buckets, R
 keys, builds, domains and disconnecting — works through the API and MCP.
 `diagnose_organization_github_connection` explains why GitHub is not connected
 and who must act, with one link or browser step per blocker; relay it to the
-person who completes the step. `POST /publishing/connections/github` answers 409
+person who completes the step. `diagnose_organization_cloudflare_connection`
+does the same for the Cloudflare connection of the Organization or a Hosting
+Group (`hosting_group_id`). `POST /publishing/connections/github` answers 409
 with `connect_url` and the same `diagnosis`. The
 connection routes need an organization API key, matching the owner/admin rule of
 the **Publishing** page; a site key gets 403 there and uses the site routes above.

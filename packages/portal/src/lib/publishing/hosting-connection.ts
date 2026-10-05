@@ -1,5 +1,6 @@
 import { claimAccount, ConnectionError, connectionSummary, disconnect, getConnection, saveConnection, sealCredentials } from './connections';
 import { getHostingGroup, hostingGroupId } from './hosting-groups';
+import { verifyPagesAccess } from './cloudflare-oauth';
 import { createProviderClient } from './providers.mjs';
 
 /** API clients may bring provider credentials instead of completing browser OAuth. */
@@ -20,7 +21,7 @@ export async function updateHostingConnection(orgId: string, input: Record<strin
     const provider = createProviderClient('Cloudflare', api_token, fetchImpl);
     const account = await provider(`/accounts/${account_id}`);
     if (account.id !== account_id || typeof account.name !== 'string') throw new ConnectionError('Cloudflare account verification failed.', 502);
-    await provider(`/accounts/${account_id}/pages/projects?per_page=1`);
+    await verifyPagesAccess(provider, account_id);
     await claimAccount(orgId, 'cloudflare', account_id);
     await saveConnection(orgId, 'cloudflare', current.revision, {
       status: 'connected', auth_method: 'api_token', refresh_lease: null, connected_at: new Date().toISOString(),

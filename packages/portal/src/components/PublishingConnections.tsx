@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import PublishingCard from './PublishingCard';
 import PublishingGithubConnection, { type GithubPublishingData } from './PublishingGithubConnection';
+import PublishingCloudflareConnection, { useCloudflareClock } from './PublishingCloudflareConnection';
+import { CLOUDFLARE_STATUS, cloudflareCardState, cloudflareDiagnosisAt, fallbackCloudflareDiagnosis, readCloudflareReturn } from './cloudflare-return';
+import type { CloudflareConnectionDiagnosis } from '../lib/publishing/cloudflare-diagnosis';
 
 type Connection = {
   connected_at?: string | null;
@@ -9,7 +12,7 @@ type Connection = {
   github: { owner: string; account_type?: 'Organization' | 'User'; repository_creation_state?: 'ready' | 'reconnect_required' } | null;
   cloudflare: { account_id: string; account_name: string; bucket: string; public_bucket?: string } | null;
 };
-type Connections = Omit<GithubPublishingData, 'github'> & { media_transfer?: { state: string; code?: string; message?: string }; media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_setup?: { available: boolean }; github: Connection; cloudflare: Connection; encryption_available: boolean };
+type Connections = Omit<GithubPublishingData, 'github'> & { media_transfer?: { state: string; code?: string; message?: string }; media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_diagnosis?: CloudflareConnectionDiagnosis; cloudflare_setup?: { available: boolean }; github: Connection; cloudflare: Connection; encryption_available: boolean };
 const API = '/api/orgs/publishing';
 
 class PublishingRequestError extends Error {
@@ -28,8 +31,9 @@ export default function PublishingConnections() {
   const [data, setData] = useState<Connections | null>(null);
   const [disconnecting, setDisconnecting] = useState<'github' | 'cloudflare' | null>(null);
   const [connectionFeedback, setConnectionFeedback] = useState<{ provider: 'github' | 'cloudflare'; error: boolean; message: string } | null>(null);
-  // GitHub results are explained inside the GitHub card from the stored diagnosis, never in a page-level alert.
+  // GitHub and Cloudflare results are explained inside their cards from the stored diagnosis, never in a page-level alert.
   const [githubReturn, setGithubReturn] = useState<string | null>(null);
+  const [cloudflareReturn, setCloudflareReturn] = useState<string | null>(null);
   const metadataGeneration = useRef(0);
   const feedbackRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
@@ -87,15 +91,13 @@ export default function PublishingConnections() {
   }, [data?.cloudflare.revision, data?.cloudflare.status, data?.cloudflare.cloudflare?.bucket]);
   useEffect(() => {
     void refresh().catch((error: Error) => setError(error.message));
+    // Read (and remove) the Cloudflare return first: Hosting Groups shares it for their own cards.
+    const cloudflare = readCloudflareReturn();
+    if (cloudflare?.groupId === 'default') setCloudflareReturn(cloudflare.result);
     const parameters = new URLSearchParams(window.location.search);
     const result = parameters.get('github');
     if (result && /^[a-z_]{1,40}$/.test(result)) setGithubReturn(result);
-    if (result) window.history.replaceState(null, '', window.location.pathname);
-    const cloudflare = parameters.get('cloudflare');
-    if (cloudflare === 'connected') setNotice('Cloudflare connected. Your account will be reused for this organization’s sites.');
-    if (cloudflare === 'select') setNotice('Choose the Cloudflare account to connect below.');
-    if (cloudflare === 'failed') setError('Cloudflare was not connected. Start again and approve the requested permissions for your account.');
-    if (cloudflare) window.history.replaceState(null, '', window.location.pathname);
+    if (result) window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`);
   }, []);
 
   async function submit(provider: 'cloudflare', event: FormEvent<HTMLFormElement>) {
@@ -148,6 +150,14 @@ export default function PublishingConnections() {
   }
 
   const mediaBucket = data?.cloudflare.cloudflare?.bucket;
+  // The card's status follows the same diagnosis as the next step inside it, including a choice that closes while the page is open.
+  const cloudflareServed = data ? data.cloudflare_diagnosis && (data.cloudflare_diagnosis.outcome === 'unavailable'
+    || (data.cloudflare.status === 'connected') === ['connected', 'needs_attention'].includes(data.cloudflare_diagnosis.outcome)) ? data.cloudflare_diagnosis
+    : fallbackCloudflareDiagnosis({ groupId: 'default', available: Boolean(data.cloudflare_setup?.available), connection: data.cloudflare, choices: data.cloudflare_choices })
+    : fallbackCloudflareDiagnosis({ groupId: 'default', available: false, connection: { status: 'disconnected', revision: '', cloudflare: null } });
+  const [cloudflareNow] = useCloudflareClock(cloudflareServed);
+  const cloudflareView = cloudflareDiagnosisAt(cloudflareServed, cloudflareNow,
+    cloudflareServed.outcome === 'choose' && !(data?.cloudflare_choices ?? []).length);
   const cloudflareAccount = data?.cloudflare.cloudflare;
   const r2Overview = cloudflareAccount ? `https://dash.cloudflare.com/${cloudflareAccount.account_id}/r2/overview` : 'https://dash.cloudflare.com/';
   const mediaReady = Boolean(data?.cloudflare.status === 'connected' && data?.cloudflare.media_ready && mediaBucket && cloudflareAccount?.public_bucket);
@@ -191,7 +201,7 @@ export default function PublishingConnections() {
       <PublishingGithubConnection data={data} disabled={busy || checkingMedia} disconnecting={disconnecting === 'github'} returned={githubReturn}
         onRefresh={refresh} onDisconnect={() => void disconnect('github')}
         feedback={connectionFeedback?.provider === 'github' && <p ref={feedbackRef} tabIndex={-1} role={connectionFeedback.error ? 'alert' : 'status'}>{connectionFeedback.message}</p>} />
-      <PublishingCard id="cloudflare" title="Cloudflare account" state={disconnecting === 'cloudflare' ? 'waiting' : connectionFeedback?.provider === 'cloudflare' && connectionFeedback.error ? 'error' : data.cloudflare.status === 'connected' ? 'ready' : 'error'} status={disconnecting === 'cloudflare' ? 'Disconnecting…' : connectionFeedback?.provider === 'cloudflare' && connectionFeedback.error ? 'Connection needs attention' : data.cloudflare.status === 'connected' ? `Connected · ${cloudflareAccount?.account_name ?? 'Cloudflare'}` : 'Not connected'}>
+      <PublishingCard id="cloudflare" title="Cloudflare account" state={disconnecting === 'cloudflare' ? 'waiting' : connectionFeedback?.provider === 'cloudflare' && connectionFeedback.error ? 'error' : cloudflareCardState(cloudflareView)} status={disconnecting === 'cloudflare' ? 'Disconnecting…' : connectionFeedback?.provider === 'cloudflare' && connectionFeedback.error ? 'Connection needs attention' : cloudflareView.outcome === 'connected' ? `Connected · ${cloudflareAccount?.account_name ?? 'Cloudflare'}` : cloudflareView.outcome === 'needs_attention' ? `Connected · ${cloudflareAccount?.account_name ?? 'Cloudflare'} · Needs attention` : CLOUDFLARE_STATUS[cloudflareView.outcome]}>
         <p>Builds and hosts your sites. One account is shared by this organization’s sites.</p>
         {data.cloudflare.status === 'connected' && <details><summary>Allow Cloudflare to build from GitHub — once per organization</summary><ol>
           <li>Open Cloudflare → Workers &amp; Pages → Create application → Pages → Connect to Git.</li>
@@ -199,20 +209,14 @@ export default function PublishingConnections() {
           <li>Stop at the repository list and return here. Typeroll creates each site’s repository and Pages project.</li>
         </ol><p>This authorization is separate from installing the Typeroll GitHub App. Future sites reuse it.</p></details>}
 
-        {data.cloudflare_setup?.available ? <>
-          {(data.cloudflare_choices ?? []).length > 0 && <form className="stack" onSubmit={event => void submit('cloudflare', event)}>
-            <input type="hidden" name="action" value="select" />
-            <div className="field"><label htmlFor="cf-choice">Choose a Cloudflare account</label>
-              <select id="cf-choice" name="account_id" required defaultValue=""><option value="" disabled>Select an account</option>
-                {data.cloudflare_choices!.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
-              </select></div><button type="submit" className="btn" disabled={busy || checkingMedia}>Connect selected account</button>
-          </form>}
-          <form onSubmit={event => void submit('cloudflare', event)}><input type="hidden" name="action" value="start" />
-            {data.cloudflare.status === 'connected' ? <details><summary>Reconnect Cloudflare</summary>
-              <p>Use this if your account authorization needs to be renewed. Include the optional domain, DNS, Cache Purge and URL rewrite permissions if you want Typeroll to configure your domains automatically.</p><button type="submit" className="btn" disabled={busy || checkingMedia}>Sign in to Cloudflare again</button>
-            </details> : <button type="submit" className="btn" disabled={busy || checkingMedia}>Connect Cloudflare</button>}
-          </form>
-        </> : <p className="muted">Cloudflare sign-in is not available until the publisher finishes configuring its Cloudflare app.</p>}
+        <PublishingCloudflareConnection groupId="default" connection={data.cloudflare} diagnosis={data.cloudflare_diagnosis} choices={data.cloudflare_choices}
+          available={Boolean(data.cloudflare_setup?.available)} returned={cloudflareReturn} disabled={busy || checkingMedia || disconnecting === 'cloudflare'}
+          onRefresh={async () => { await refresh(); window.dispatchEvent(new Event('typeroll:publishing-connection-changed')); }} />
+        {data.cloudflare_setup?.available && data.cloudflare.status === 'connected' && <form onSubmit={event => void submit('cloudflare', event)}><input type="hidden" name="action" value="start" />
+          <details><summary>Reconnect Cloudflare</summary>
+            <p>Use this if your account authorization needs to be renewed. Include the optional domain, DNS, Cache Purge and URL rewrite permissions if you want Typeroll to configure your domains automatically.</p><button type="submit" className="btn" disabled={busy || checkingMedia}>Sign in to Cloudflare again</button>
+          </details>
+        </form>}
         {data.cloudflare.credentials_saved && data.cloudflare.auth_method !== 'oauth' && <p>API and R2 credentials are saved and hidden. To rotate them, open the advanced connection settings below.</p>}
         <details><summary>Advanced: connect with existing API and R2 keys</summary><div className="stack">
         <p>Use a Cloudflare token scoped to your account with Cloudflare Pages: Edit, Account Settings: Read, Workers R2 Storage: Edit, and Workers Scripts: Edit. Create an R2 bucket and Object Read &amp; Write credentials restricted to that bucket.</p>

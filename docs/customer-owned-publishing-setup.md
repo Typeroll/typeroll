@@ -358,6 +358,21 @@ Cloudflare client. Enable authorization-code and refresh-token grants with
 Verify the client URL domain and make the client public for external customers.
 The implementation adds S256 PKCE and encrypts account-bound access and refresh
 tokens. Tests use synthetic credentials, never staging or production grants.
+If Cloudflare rejects HTTP Basic for the client (`invalid_client`), Typeroll
+sends the same token request once with `client_secret_post`. A token response
+without `scope` means the requested scopes were granted (RFC 6749 §5.1).
+
+Every exit of the Cloudflare flow (start, callback, account choice, Check
+again) stores a diagnosis per Organization and Hosting Group for 24 hours. It
+names each blocker with `who` (`you`, `cloudflare_account_admin`, `publisher`,
+`typeroll_admin`) and one action, and never stores tokens, codes, state values
+or provider bodies. A callback is recorded only for the sign-in the same person
+started in the same browser. Several authorized accounts are never chosen
+automatically: the chosen account is claimed for the Organization and locked
+for reconnects. A consent's encrypted tokens are kept for at most an hour so
+**Check again** can offer an expired choice again without a new sign-in; they
+are cleared on connection, a new sign-in, or a failure that needs a new consent.
+The Pages access check lists Pages projects without list options.
 
 Missing App configuration disables GitHub connection in the UI. Missing
 encryption configuration disables Cloudflare credential entry and GitHub

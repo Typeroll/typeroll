@@ -1,0 +1,212 @@
+---
+title: Cloudflare connection troubleshooting
+description: Every reason Connect Cloudflare can stop, who can fix it and how, for the Publishing page, Hosting Groups, the API and MCP.
+---
+
+When **Connect Cloudflare** does not finish, the **Cloudflare account** card on
+the **Publishing** page explains why, inside the card. Each Hosting Group card
+does the same for its own hosting account. The card shows the Cloudflare
+accounts you authorized, whether each can be used, and for each reason who can
+fix it and one button for the fix. This page lists every reason by its code.
+The same codes are returned by the [API and MCP](#api-and-mcp).
+
+This applies to Typeroll Cloud and self-hosted installations with customer
+publishing enabled. In Typeroll Cloud, the _publisher_ is Typeroll. On a
+self-hosted installation, the publisher is the operator who configured its
+Cloudflare OAuth client. See [Publishing with your own
+accounts](../customer-publishing/) for the normal setup.
+
+## The steps in the card
+
+1. **Publisher ready**: the publisher has configured Cloudflare sign-in.
+2. **Sign in to Cloudflare**: you approve Typeroll's access on Cloudflare's
+   consent page and select the accounts it may use.
+3. **Choose account**: if you authorized one account, it is used. If you
+   authorized several, you choose one in the card.
+4. **Access verified**: Typeroll checks Cloudflare Pages access in the account,
+   because it creates each site's Pages project there.
+5. **Connected**: the account is saved for this Organization or Hosting Group.
+
+Typeroll keeps the latest result for 24 hours, so a reload shows the same
+explanation. Only you see the result of your own sign-in and the accounts you
+authorized; other owners and admins see the connection once it is saved.
+
+## Who can fix it
+
+Each reason starts with a **Who acts** label, followed by the reason itself.
+
+| Who acts                         | Who that is                                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------- |
+| You                              | The Typeroll organization owner or admin connecting Cloudflare                           |
+| Cloudflare account administrator | A Super Administrator of the Cloudflare account, who can change members' roles           |
+| Typeroll publisher               | The operator of this Typeroll installation (Typeroll in Cloud)                           |
+| Typeroll administrator           | Whoever manages the other Typeroll Organization that already uses the Cloudflare account |
+
+## Choosing between several accounts
+
+If you select more than one account on Cloudflare's consent page, the card
+lists them with their status and asks you to choose. Typeroll does not choose
+for you, even when only one of them has Pages access: the account you connect
+hosts this Organization's sites, is reserved for this Organization, and a later
+reconnect must use the same account. An account that cannot be used shows its
+reason and cannot be selected.
+
+The choice stays open for 10 minutes, and the card shows until when. After that
+it says the choice expired. Within an hour of signing in, **Check again** lists
+and checks the same accounts again and opens a new 10-minute choice, without
+another sign-in. Later, select **Connect Cloudflare again**. Check again never
+connects an account by itself.
+
+## Sign-in
+
+### `oauth_cancelled`
+
+**You.** You selected **Cancel** on Cloudflare's consent page, so nothing
+changed. Select **Connect Cloudflare again** and choose **Authorize**.
+
+### `state_expired`
+
+**You.** The sign-in was older than 10 minutes, was already used, or was
+started in another tab or Typeroll Organization. A sign-in that never returned
+from Cloudflare, for example because its page was closed or showed an error, is
+also reported this way after 10 minutes. Start again from the card and finish in
+the same browser. A return that does not match a sign-in started in your browser
+changes nothing.
+
+### `wrong_browser`
+
+**You.** Cloudflare returned to a different browser, browser profile or address
+than the one that started sign-in. Start again in one browser, using the
+portal's usual address.
+
+### `session_expired`
+
+**You.** Your Typeroll session ended while you were on Cloudflare. Typeroll
+asks you to sign in and then returns you to the Cloudflare card. Select
+**Connect Cloudflare again**.
+
+## Permissions and accounts
+
+### `permissions_missing`
+
+**You.** Cloudflare granted fewer permissions than Typeroll needs. The reason
+names the missing ones (`missing_permissions` in the API), for example
+**Cloudflare Pages: Edit** or **Workers R2 Storage: Edit**. Connect again and
+approve every requested permission. If Cloudflare does not offer them, your role
+in the account does not include them: ask a Super Administrator of the account
+to connect it, or to give you a role that does. Domain and DNS permissions are
+optional and never cause this reason. On a saved connection, **Check again**
+reports this when the saved authorization lacks a permission.
+
+### `no_eligible_account`
+
+**You.** Cloudflare did not give Typeroll access to any account. Connect again
+and select the account that should host your sites on the consent page.
+
+### `too_many_accounts`
+
+**You.** More than 1,000 accounts were authorized. Connect again and select
+only the account you want to use.
+
+### `account_choice_expired`
+
+**You.** You authorized several accounts and did not choose one within 10
+minutes. See [Choosing between several accounts](#choosing-between-several-accounts).
+
+### `locked_to_account`
+
+**You.** This Organization or Hosting Group already uses another Cloudflare
+account, and sites and media depend on it. Cloudflare authorized a different
+account, so nothing changed. Connect again and select the account the card
+names. Moving to another account needs a hosting migration; for another account
+in addition, create a Hosting Group.
+
+### `pages_access_denied`
+
+**Cloudflare account administrator.** Cloudflare refused access to Cloudflare
+Pages in the account. Typeroll creates each site's Pages project there, so your
+role in the account must include Cloudflare Pages, for example **Administrator**
+or **Cloudflare Pages Admin**. The card links to the account's members page,
+where a Super Administrator changes your role. Then select **Check again**
+within an hour of signing in, or connect again. Projects that Wrangler deployed
+as Workers with static assets do not matter: Typeroll only needs Pages access.
+
+### `claimed_by_other_organization`
+
+**Typeroll administrator.** The Cloudflare account is already connected to
+another Typeroll Organization. Disconnect it there, or ask your Typeroll
+administrator to transfer it. Account claims survive a disconnect, so an
+account cannot silently move between Organizations.
+
+### `authorization_revoked`
+
+**You.** Cloudflare no longer accepts Typeroll's authorization for a saved
+connection. It may have been revoked in Cloudflare, or not used for a long
+time. Select **Reconnect Cloudflare** and approve the same account; sites,
+media and settings are kept.
+
+## Temporary problems
+
+### `provider_unavailable`
+
+**You.** Cloudflare did not respond as expected. Nothing was changed. When
+the failure happened after you approved access, **Check again** continues
+within the hour without a new sign-in; otherwise connect again.
+
+### `rate_limited`
+
+**You.** Cloudflare is limiting requests. The reason says how long to wait
+(`retry_after` in seconds in the API).
+
+### `revision_conflict`
+
+**You.** The connection changed in another tab or session while you were
+connecting, for example a disconnect. Nothing was overwritten. Review the
+current state and try again.
+
+## Publisher setup
+
+### `publisher_oauth_misconfigured`
+
+**Typeroll publisher.** The publisher's Cloudflare sign-in is missing or
+Cloudflare rejected its settings. Nothing in your Cloudflare account needs to
+change. In Typeroll Cloud, contact Typeroll support. The operator checks the
+OAuth client in Cloudflare:
+
+- **Redirect URI**: `{PORTAL_PUBLIC_URL}/api/orgs/publishing/cloudflare/callback`
+- **Grant types**: authorization code and refresh token. Without the refresh
+  token grant Cloudflare issues no refresh token and the reason says so.
+- **Token endpoint authentication**: `client_secret_basic` is preferred;
+  Typeroll retries once with `client_secret_post` when Cloudflare rejects HTTP
+  Basic for the client.
+- **Scopes**: every scope Typeroll requests must be allowed for the client,
+  otherwise Cloudflare answers `invalid_scope` before the consent page.
+- The client ID, secret and encrypted credential storage
+  (`TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_ID`,
+  `TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET`, `INTEGRATIONS_SECRET_KEY`) and
+  an HTTPS `PORTAL_PUBLIC_URL`.
+
+## API and MCP
+
+An organization API key can read the same explanation for each Hosting Group:
+
+| Action                            | MCP tool                                                              | API route below `/api/v1`                                 |
+| --------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------- |
+| Explain the Cloudflare connection | `diagnose_organization_cloudflare_connection`                         | `GET /publishing/cloudflare-diagnosis`                    |
+| Explain a Hosting Group           | `diagnose_organization_cloudflare_connection` with `hosting_group_id` | `GET /publishing/cloudflare-diagnosis?hosting_group={id}` |
+| Re-check a saved connection       | `diagnose_organization_cloudflare_connection` with `recheck: true`    | `GET /publishing/cloudflare-diagnosis?recheck=true`       |
+
+The response contains `outcome` (`connected`, `needs_attention`, `choose`,
+`action_required`, `sign_in_pending`, `sign_in_required`, `retryable_error` or
+`unavailable`), `blockers`, `primary_action` and, for a saved connection, its
+account with `usable` and `blockers`, plus `connect_url`. It is the
+Organization's state: a person's unfinished sign-in and the accounts they
+authorized stay in their own card; a reason about such an account keeps its
+code and fix without naming the account. Each blocker has `code`, `who`
+(`you`, `cloudflare_account_admin`, `publisher` or `typeroll_admin`), `message`
+and one `action`. Link actions point to `https://dash.cloudflare.com/` or this
+documentation. Sign-in and **Check again** of an unfinished connection happen in
+a browser at `connect_url`; an API key cannot act as a person on Cloudflare.
+`recheck=true` re-verifies a saved connection with its own authorization:
+renewal, account access, Cloudflare Pages access and granted permissions. No
+tokens or Cloudflare responses are returned.

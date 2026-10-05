@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { CircleCheck, CircleX, Clock3, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import PublishingCard, { type PublishingState } from './PublishingCard';
 import PublishingGithubPermissions from './PublishingGithubPermissions';
+import PublishingSetupStep from './PublishingSetupStep';
 import type {
   GithubBlocker, GithubConnectionDiagnosis, GithubDiagnosisAction, GithubDiagnosisInstallation, GithubDiagnosisOutcome,
 } from '../lib/publishing/github-diagnosis';
@@ -53,15 +54,8 @@ function fallbackDiagnosis(data: GithubPublishingData): GithubConnectionDiagnosi
     app: { slug: data.github_setup.app_slug ?? null, install_url: data.github_setup.install_url } };
 }
 
-function Step({ id, title, state, status, children }: { id: string; title: string; state: PublishingState; status: string; children?: ReactNode }) {
-  const Icon = state === 'ready' ? CircleCheck : state === 'error' ? CircleX : Clock3;
-  return <li className="publishing-setup-step" data-github-step={id} data-state={state} aria-labelledby={`github-step-${id}`}>
-    <header className="publishing-setup-step__header">
-      <span className={`publishing-card__symbol publishing-card__symbol--${state}`} aria-hidden="true"><Icon size={28} /></span>
-      <div><h3 id={`github-step-${id}`}>{title}</h3><p>{status}</p></div>
-    </header>
-    {children}
-  </li>;
+function Step(props: { id: string; title: string; state: PublishingState; status: string; children?: ReactNode }) {
+  return <PublishingSetupStep provider="github" {...props} />;
 }
 
 const accountName = (account: Pick<GithubDiagnosisInstallation['account'], 'login' | 'type'>) => account.type === 'User' ? `@${account.login}` : account.login;

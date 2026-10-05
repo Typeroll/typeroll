@@ -12,7 +12,7 @@ import type { FullSession } from '../access';
 import { transferServiceStatus } from '../media/transfer-service';
 import { isSecretCryptoConfigured } from '../secret-crypto';
 import { connectCloudflare, connectCloudflareMedia, prepareCloudflareMedia } from './cloudflare-connection';
-import { cloudflareSetup } from './cloudflare-oauth';
+import { cloudflareSetup } from './cloudflare-config';
 import { ConnectionError, connectionSummary, disconnect, getConnection, type Provider } from './connections';
 import { githubSetup } from './github-config';
 import { getHostingGroup, hostingGroupId } from './hosting-groups';

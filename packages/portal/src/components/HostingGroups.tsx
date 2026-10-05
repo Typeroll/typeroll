@@ -1,9 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import PublishingCard from './PublishingCard';
+import PublishingCloudflareConnection from './PublishingCloudflareConnection';
+import { CLOUDFLARE_STATUS, cloudflareCardState, readCloudflareReturn } from './cloudflare-return';
+import type { CloudflareConnectionDiagnosis } from '../lib/publishing/cloudflare-diagnosis';
 
 type Group = { id: string; name: string; revision: string; sites_domain: string | null; dns_mode: string;
-  connection: { status: string; revision: string; cloudflare: { account_name: string } | null };
-  account_choices?: Array<{ id: string; name: string }> };
+  connection: { status: string; revision: string; cloudflare: { account_id?: string; account_name: string } | null };
+  account_choices?: Array<{ id: string; name: string }>; cloudflare_diagnosis?: CloudflareConnectionDiagnosis };
 async function request(path: string, method = 'GET', body?: unknown) {
   const response = await fetch(path, { method, cache: 'no-store', headers: { 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -17,8 +20,18 @@ export default function HostingGroups() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ error: boolean; text: string } | null>(null);
-  const refresh = async () => setGroups((await request(`${root}/hosting-groups`)).groups);
-  useEffect(() => { void refresh().catch(error => setFeedback({ error: true, text: error.message })); }, []);
+  // Which Hosting Group the person just came back from Cloudflare for, explained inside that group's card.
+  const [returned, setReturned] = useState<{ result: string; groupId: string } | null>(null);
+  const [setupAvailable, setSetupAvailable] = useState(true);
+  const refresh = async () => {
+    const data = await request(`${root}/hosting-groups`);
+    setGroups(data.groups);
+    if (typeof data.cloudflare_setup?.available === 'boolean') setSetupAvailable(data.cloudflare_setup.available);
+  };
+  useEffect(() => {
+    setReturned(readCloudflareReturn());
+    void refresh().catch(error => setFeedback({ error: true, text: error.message }));
+  }, []);
   async function action(work: () => Promise<unknown>, message: string) {
     setBusy(true); setFeedback(null);
     try { await work(); await refresh(); setFeedback({ error: false, text: message }); }
@@ -39,8 +52,8 @@ export default function HostingGroups() {
     {groups.map(group => {
       const connected = group.connection.status === 'connected';
       return <PublishingCard key={group.id} id={`hosting-${group.id}`} title={group.name}
-        state={group.id === 'default' ? 'neutral' : !connected ? 'error' : group.sites_domain ? 'ready' : 'waiting'}
-        status={group.id === 'default' ? 'Uses organization settings' : !connected ? 'Connect a hosting account' : `${group.connection.cloudflare?.account_name ?? 'Cloudflare connected'}${group.sites_domain ? ` · ${group.sites_domain}` : ' · Site address base not set'}`}>
+        state={group.id === 'default' ? 'neutral' : !connected ? (group.cloudflare_diagnosis ? cloudflareCardState(group.cloudflare_diagnosis) : 'error') : group.sites_domain ? 'ready' : 'waiting'}
+        status={group.id === 'default' ? 'Uses organization settings' : !connected ? (group.cloudflare_diagnosis && group.cloudflare_diagnosis.outcome !== 'sign_in_required' ? CLOUDFLARE_STATUS[group.cloudflare_diagnosis.outcome] : 'Connect a hosting account') : `${group.connection.cloudflare?.account_name ?? 'Cloudflare connected'}${group.sites_domain ? ` · ${group.sites_domain}` : ' · Site address base not set'}`}>
         {group.id === 'default' ? <p>Created automatically. Uses the Cloudflare account and site address base configured for your organization in Publishing. No separate setup is needed here.</p> : <>
           <form onSubmit={event => save(event, group)} className="stack">
             <label className="field">Group name<input name="name" defaultValue={group.name} maxLength={80} required /></label>
@@ -49,13 +62,12 @@ export default function HostingGroups() {
             <button className="btn" disabled={busy}>Save Hosting Group</button>
           </form>
           <details><summary>Setup instructions</summary><p>The site address base may use a domain managed by your organization’s main Cloudflare account. Typeroll creates each site’s DNS record there and builds the site on this group’s account. Media storage remains shared.</p></details>
-          {group.account_choices?.length ? <form onSubmit={event => {
-            event.preventDefault(); const account = new FormData(event.currentTarget).get('account_id');
-            void action(() => request(`${root}/cloudflare`, 'POST', { action: 'select', account_id: account, hosting_group_id: group.id }), 'Hosting account connected.');
-          }} className="stack"><label className="field">Cloudflare account<select name="account_id">{group.account_choices.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><button className="btn" disabled={busy}>Use this account</button></form> : <button className="btn" disabled={busy} onClick={() => void action(async () => {
+          <PublishingCloudflareConnection groupId={group.id} connection={group.connection} diagnosis={group.cloudflare_diagnosis} choices={group.account_choices}
+            available={setupAvailable} returned={returned?.groupId === group.id ? returned.result : null} disabled={busy} onRefresh={refresh} />
+          {connected && <button className="btn btn--secondary" disabled={busy} onClick={() => void action(async () => {
             const result = await request(`${root}/cloudflare`, 'POST', { action: 'start', hosting_group_id: group.id });
             window.location.assign(result.authorization_url);
-          }, 'Opening Cloudflare…')}>{connected ? 'Renew Cloudflare authorization' : 'Connect Cloudflare'}</button>}
+          }, 'Opening Cloudflare…')}>Renew Cloudflare authorization</button>}
           {connected && <details><summary>Disconnect hosting account</summary><p>Publishing will pause for sites in this group. Existing public deployments remain available.</p><button className="btn" disabled={busy} onClick={() => void action(() => request(`${root}/cloudflare`, 'DELETE', { revision: group.connection.revision, hosting_group_id: group.id }), 'Hosting account disconnected.')}>Disconnect Cloudflare</button></details>}
         </>}
       </PublishingCard>;

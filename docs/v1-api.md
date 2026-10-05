@@ -88,7 +88,7 @@ Organization routes need an organization-scoped key; a site-scoped key gets
 |---|---|
 | Organization API keys | `GET /organization/api-keys`, `DELETE /organization/api-keys/{keyId}` (keys are created in the portal) |
 | Invites | `POST /organization/invites` |
-| Publishing connections | `GET /publishing/connections`, `GET /publishing/github-diagnosis`, `POST /publishing/connections/cloudflare`, `DELETE /publishing/connections/{provider}` |
+| Publishing connections | `GET /publishing/connections`, `GET /publishing/github-diagnosis`, `GET /publishing/cloudflare-diagnosis`, `POST /publishing/connections/cloudflare`, `DELETE /publishing/connections/{provider}` |
 | Publishing builds, domains, Hosting Groups, media migration | `/publishing/builds`, `/publishing/domains`, `/publishing/zones`, `/publishing/hosting-groups`, `/publishing/media-migration`, `/publishing/github-permissions` |
 
 The API route source under `packages/portal/src/pages/api/v1` is exhaustive;
@@ -533,4 +533,32 @@ further than the caller. Nothing here returns a new secret.
   `retry_after` or `previous_account`. `?recheck=true` re-checks the connected
   installation with the publisher App's authority and stores the result; an API
   key cannot act as a person on GitHub, so for an unfinished connection the
+  organization's state is returned. No tokens or provider bodies are returned.
+- **Cloudflare connection diagnosis.** `GET /publishing/cloudflare-diagnosis`
+  returns `{ diagnosis, connect_url }` for an organization key (site keys get
+  `403`). `?hosting_group={id}` selects a Hosting Group (default `default`, the
+  organization connection; an unknown group is `404`, an invalid id `400`);
+  `connect_url` points to that group's card. It is the organization's state: a
+  person's unfinished sign-in and the Cloudflare accounts they authorized stay
+  in their portal session, so `attempted_by` is `null`, `accounts` lists only
+  the account of a saved connection, and a reason about another account keeps
+  its code and fix without naming it. `diagnosis` has `version`, `checked_at`,
+  `hosting_group_id`, `revision`, `attempted_by`, `outcome` (`unavailable`,
+  `sign_in_required`, `sign_in_pending`, `action_required`, `choose`,
+  `connected`, `needs_attention`, `retryable_error`), `primary_action`,
+  `blockers`, `accounts` (`id`, `name`, `usable`, `blockers`),
+  `selection_expires_at`, `sign_in_started_at` and `recheck_available`. A
+  blocker has `code` (`oauth_cancelled`, `state_expired`, `wrong_browser`,
+  `session_expired`, `permissions_missing`, `no_eligible_account`,
+  `too_many_accounts`, `account_choice_expired`, `pages_access_denied`,
+  `revision_conflict`, `locked_to_account`, `claimed_by_other_organization`,
+  `authorization_revoked`, `provider_unavailable`, `rate_limited`,
+  `publisher_oauth_misconfigured`), `who` (`you`, `cloudflare_account_admin`,
+  `publisher`, `typeroll_admin`), `message`, an optional `action` (`kind`
+  `link`, `sign_in`, `retry` or `contact_publisher`; `label`; `url` only for
+  `https://dash.cloudflare.com/` or documentation pages) and, where relevant,
+  `missing_permissions` (Cloudflare OAuth scopes), `retry_after`, `account` or
+  `previous_account`. `?recheck=true` re-verifies a saved connection with its
+  own authorization (renewal, account access, Cloudflare Pages access, granted
+  permissions) and stores the result; for an unfinished connection the
   organization's state is returned. No tokens or provider bodies are returned.

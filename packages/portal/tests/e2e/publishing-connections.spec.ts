@@ -202,11 +202,11 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   await page.getByRole('button', { name: 'Connect Cloudflare', exact: true }).click();
   expect(submitted[0]).toMatchObject({ action: 'start' });
   expect(submitted[0]).not.toHaveProperty('account_id');
-  const choice = page.getByRole('combobox', { name: 'Choose a Cloudflare account' });
-  await choice.selectOption('b'.repeat(32));
+  const choice = page.getByRole('group', { name: 'Choose a Cloudflare account' });
+  await choice.getByRole('radio', { name: /Selected agency with a longer account name/ }).check();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('cloudflare-account-choice-mobile.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Connect selected account' }).click();
+  await page.getByRole('button', { name: 'Connect Selected agency with a longer account name' }).click();
   const media = page.getByRole('region', { name: 'Media storage' });
   const alert = media.getByRole('alert');
   await expect(page.getByRole('region', { name: 'Cloudflare account', exact: true })).toHaveAttribute('data-state', 'ready');
@@ -738,4 +738,125 @@ test('Cloudflare callback refreshes stale build permissions after connection UI 
   await expect(card.getByRole('button', { name: 'Finish build setup', exact: true })).toBeEnabled();
   expect(checks).toBe(1);
   await card.screenshot({ path: testInfo.outputPath('cloudflare-return-build-status.png') });
+});
+
+// Cloudflare results are explained inside the Cloudflare card from the persisted
+// diagnosis (GET /api/orgs/publishing → cloudflare_diagnosis), never by a page alert.
+const staging = { id: 'a'.repeat(32), name: 'Staging Account' };
+const autopilot = { id: 'b'.repeat(32), name: 'Autopilot' };
+function cloudflareDiagnosis(outcome: string, extra: Record<string, unknown> = {}) {
+  return { version: 1, checked_at: new Date().toISOString(), hosting_group_id: 'default', revision: 'synthetic-revision', attempted_by: 'e2e-owner', outcome,
+    primary_action: null, blockers: [], accounts: [], selection_expires_at: null, sign_in_started_at: null, recheck_available: false, ...extra };
+}
+function cloudflareStatus(input: { connected?: typeof staging | null; diagnosis: unknown; choices?: unknown[] }) {
+  return { github: { ...empty, status: 'connected', github: { owner: 'synthetic-agency' } }, github_setup: { available: false, install_url: null }, github_choices: [],
+    encryption_available: true, cloudflare_setup: { available: true }, cloudflare_choices: input.choices ?? [], cloudflare_diagnosis: input.diagnosis,
+    cloudflare: input.connected ? { ...empty, status: 'connected', credentials_saved: true, auth_method: 'oauth', media_ready: true,
+      cloudflare: { account_id: input.connected.id, account_name: input.connected.name, bucket: 'agency-media', public_bucket: 'public-media' } } : empty };
+}
+
+for (const width of [320, 1440]) test(`Cloudflare offers two authorized accounts in the card and connects the chosen one at ${width}px`, async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  await page.setViewportSize({ width, height: 900 });
+  let phase: 'initial' | 'choose' | 'connected' = 'initial';
+  const submitted: Record<string, unknown>[] = [];
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const offered = [{ ...autopilot, usable: true, blockers: [] }, { ...staging, usable: true, blockers: [] }];
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: cloudflareStatus({
+    connected: phase === 'connected' ? staging : null, choices: phase === 'choose' ? [autopilot, staging] : [],
+    diagnosis: phase === 'initial' ? cloudflareDiagnosis('sign_in_required', { primary_action: { kind: 'sign_in', label: 'Connect Cloudflare' } })
+      : phase === 'choose' ? cloudflareDiagnosis('choose', { accounts: offered, recheck_available: true, selection_expires_at: new Date(Date.now() + 9 * 60_000).toISOString() })
+      : cloudflareDiagnosis('connected', { revision: 'synthetic-revision', accounts: offered, recheck_available: true }) }) }));
+  await page.route('**/api/orgs/publishing/cloudflare', route => {
+    const body = route.request().postDataJSON(); submitted.push(body);
+    if (body.action === 'start') { phase = 'choose'; return route.fulfill({ json: { authorization_url: '/app/settings/publishing?cloudflare=choose#cloudflare' } }); }
+    if (body.action === 'select') { phase = 'connected'; return route.fulfill({ json: { connected: true } }); }
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('/app/settings/publishing');
+  const card = page.getByRole('region', { name: 'Cloudflare account', exact: true });
+  await expect(card.locator('[data-cloudflare-summary]')).toContainText('Sign in to Cloudflare');
+  await card.locator('.cloudflare-connection__next').getByRole('button', { name: 'Connect Cloudflare', exact: true }).click();
+  // Back from Cloudflare: the chooser is in the card, focused, with why and until when.
+  const next = card.locator('.cloudflare-connection__next');
+  await expect(next).toBeFocused();
+  await expect(page).toHaveURL(/\/app\/settings\/publishing#cloudflare$/);
+  await expect(card).toHaveAttribute('data-state', 'waiting');
+  await expect(card.locator('.publishing-card__status')).toHaveText('Setup incomplete · Choose an account');
+  const choice = next.getByRole('group', { name: 'Choose a Cloudflare account' });
+  await expect(choice).toContainText('You authorized 2 accounts on Cloudflare. Typeroll does not pick one for you');
+  await expect(choice.locator('[data-cloudflare-expiry]')).toContainText('Choose by');
+  await expect(next.getByRole('button', { name: 'Select an account to connect' })).toBeDisabled();
+  await choice.getByRole('radio', { name: /Staging Account/ }).check();
+  await expect(card.locator('[data-cloudflare-step="account"]')).toContainText('Choose one of 2 accounts');
+  // No page-level Cloudflare banner (other cards, such as Builds, have their own alerts).
+  await expect(page.getByRole('alert').filter({ hasText: /Cloudflare/ })).toHaveCount(0);
+  await expect(card.getByRole('alert')).toHaveCount(0);
+  expect(await noHorizontalScroll(page)).toBe(true);
+  await card.screenshot({ path: testInfo.outputPath(`cloudflare-choice-${width}.png`) });
+  await next.getByRole('button', { name: 'Connect Staging Account', exact: true }).click();
+  await expect(card).toHaveAttribute('data-state', 'ready');
+  await expect(card.locator('.publishing-card__status')).toHaveText('Connected · Staging Account');
+  await expect(next.locator('h3')).toHaveText('Cloudflare is ready');
+  await expect(next.locator('[data-cloudflare-announcement]')).toContainText('Cloudflare connected');
+  await expect(next.getByRole('group', { name: 'Choose a Cloudflare account' })).toHaveCount(0);
+  expect(submitted.map(body => body.action)).toEqual(['start', 'select']);
+  expect(submitted[1]).toEqual({ action: 'select', account_id: staging.id });
+  expect(errors).toEqual([]);
+});
+
+test('Cloudflare explains a cancelled consent inside the card, also after a reload', async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  let started = false;
+  const cancelled = { code: 'oauth_cancelled', who: 'you', message: 'Cloudflare sign-in was cancelled, so nothing was connected. Connect Cloudflare again and select Authorize on Cloudflare’s consent page.',
+    action: { kind: 'sign_in', label: 'Connect Cloudflare again' } };
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: cloudflareStatus({
+    diagnosis: cloudflareDiagnosis('sign_in_required', { blockers: [cancelled], primary_action: cancelled.action }) }) }));
+  await page.route('**/api/orgs/publishing/cloudflare', route => { started = route.request().postDataJSON().action === 'start';
+    return route.fulfill({ json: { authorization_url: '/app/settings/publishing' } }); });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/app/settings/publishing?cloudflare=sign_in_required#cloudflare');
+  const card = page.getByRole('region', { name: 'Cloudflare account', exact: true });
+  const next = card.locator('.cloudflare-connection__next');
+  await expect(next).toBeFocused();
+  await expect(page).toHaveURL(/\/app\/settings\/publishing#cloudflare$/);
+  await expect(card).toHaveAttribute('data-state', 'error');
+  await expect(next.locator('.cloudflare-connection__who')).toHaveText('Who acts: You');
+  await expect(next).toContainText('Cloudflare sign-in was cancelled, so nothing was connected.');
+  await expect(card.locator('[data-cloudflare-step="sign-in"]')).toContainText('Not completed');
+  // No page-level Cloudflare banner (other cards, such as Builds, have their own alerts).
+  await expect(page.getByRole('alert').filter({ hasText: /Cloudflare/ })).toHaveCount(0);
+  await expect(card.getByRole('alert')).toHaveCount(0);
+  await card.screenshot({ path: testInfo.outputPath('cloudflare-cancelled-mobile.png') });
+  // The explanation is stored, so a reload keeps it.
+  await page.reload();
+  await expect(next).toContainText('Cloudflare sign-in was cancelled');
+  await next.getByRole('button', { name: 'Connect Cloudflare again', exact: true }).click();
+  await expect.poll(() => started).toBe(true);
+});
+
+test('Cloudflare explains an expired account choice and starts again', async ({ page }) => {
+  await authenticatePersona(page, 'owner');
+  const submitted: Record<string, unknown>[] = [];
+  const offered = [{ ...autopilot, usable: true, blockers: [] }, { ...staging, usable: true, blockers: [] }];
+  // The choice closes two seconds after the page loads, while the page stays open.
+  const expires = new Date(Date.now() + 2_000).toISOString();
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: cloudflareStatus({ choices: [autopilot, staging],
+    diagnosis: cloudflareDiagnosis('choose', { accounts: offered, selection_expires_at: expires }) }) }));
+  await page.route('**/api/orgs/publishing/cloudflare', route => { submitted.push(route.request().postDataJSON());
+    return route.fulfill({ json: { authorization_url: '/app/settings/publishing' } }); });
+  await page.goto('/app/settings/publishing');
+  const card = page.getByRole('region', { name: 'Cloudflare account', exact: true });
+  const next = card.locator('.cloudflare-connection__next');
+  await expect(next.getByRole('group', { name: 'Choose a Cloudflare account' })).toBeVisible();
+  await expect(next).toContainText('Your Cloudflare account choice expired after 10 minutes, so nothing was connected.', { timeout: 10_000 });
+  await expect(next.getByRole('group', { name: 'Choose a Cloudflare account' })).toHaveCount(0);
+  await expect(card.locator('[data-cloudflare-step="account"]')).toContainText('Choice expired');
+  await expect(card).toHaveAttribute('data-state', 'error');
+  await next.getByRole('button', { name: 'Connect Cloudflare again', exact: true }).click();
+  await expect.poll(() => submitted).toEqual([{ action: 'start' }]);
+  // No page-level Cloudflare banner (other cards, such as Builds, have their own alerts).
+  await expect(page.getByRole('alert').filter({ hasText: /Cloudflare/ })).toHaveCount(0);
+  await expect(card.getByRole('alert')).toHaveCount(0);
 });

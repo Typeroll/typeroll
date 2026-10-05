@@ -32,7 +32,7 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'read_organization_publishing_connections', noSite: true,
-    description: 'Read the Organization\'s GitHub and Cloudflare publishing connections: status, revision (needed to change or disconnect), account identity, media_ready, media migration, github_setup (app_configured, encryption_available) and connect_urls. Requires an organization API key; never returns credentials. GitHub sign-in/App installation and Cloudflare OAuth need a person in a browser: give the user the matching connect_urls link (an organization owner or admin completes it), then read again. When GitHub is not connected, call diagnose_organization_github_connection to learn why and who must act.',
+    description: 'Read the Organization\'s GitHub and Cloudflare publishing connections: status, revision (needed to change or disconnect), account identity, media_ready, media migration, github_setup (app_configured, encryption_available) and connect_urls. Requires an organization API key; never returns credentials. GitHub sign-in/App installation and Cloudflare OAuth need a person in a browser: give the user the matching connect_urls link (an organization owner or admin completes it), then read again. When GitHub is not connected, call diagnose_organization_github_connection to learn why and who must act; for Cloudflare, call diagnose_organization_cloudflare_connection.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/connections'))),
   },
@@ -74,6 +74,18 @@ export const domainTools: ToolDef[] = [
     description: 'Explain why the Organization\'s GitHub publishing connection is or is not working and who must do what next. Returns the Organization\'s state: diagnosis.outcome (connected, needs_attention, choose, action_required, waiting_on_owner, sign_in_required, retryable_error or unavailable), blockers, and the saved installation once connected. A person\'s unfinished attempt and their GitHub accounts stay in their own browser session. Each blocker has a code, who must act (you = the person connecting, github_owner, publisher = operator of this Typeroll installation, typeroll_admin), a message and one action: a github.com or documentation link, or a browser step (sign_in, install, retry, confirm_account_change) completed at connect_url. Read only, except recheck: true re-checks a connected installation (suspension, repository access, permissions) with the App\'s own authority. An API key cannot sign in to GitHub; relay the message and link to the user. Requires an organization API key; never returns credentials.',
     inputSchema: { recheck: z.boolean().optional().describe('Re-check the connected installation with the publisher App before answering.') },
     handler: withErrorBoundary(async ({ recheck }, { client }) => ok(await client.rootGet(`publishing/github-diagnosis${recheck ? '?recheck=true' : ''}`))),
+  },
+  {
+    name: 'diagnose_organization_cloudflare_connection', noSite: true,
+    description: 'Explain why a Cloudflare hosting connection (the Organization\'s Default Hosting Group, or hosting_group_id from list_hosting_groups) is or is not working and who must do what next. Returns the Organization\'s state: diagnosis.outcome (connected, needs_attention, choose, action_required, sign_in_pending, sign_in_required, retryable_error or unavailable), blockers, and the saved account once connected. A person\'s unfinished sign-in and the Cloudflare accounts they authorized stay in their own browser session. Each blocker has a code (for example oauth_cancelled, permissions_missing with missing_permissions, pages_access_denied, account_choice_expired, locked_to_account), who must act (you = the person connecting, cloudflare_account_admin, publisher = operator of this Typeroll installation, typeroll_admin), a message and one action: a dash.cloudflare.com or documentation link, or a browser step (sign_in, retry) completed at connect_url. Read only, except recheck: true re-verifies a saved connection (authorization renewal, account access, Cloudflare Pages access, granted permissions) with its own authorization. An API key cannot sign in to Cloudflare; relay the message and link to the user. Requires an organization API key; never returns credentials.',
+    inputSchema: {
+      hosting_group_id: z.string().optional().describe('Omit for the organization (Default) connection.'),
+      recheck: z.boolean().optional().describe('Re-verify a saved connection before answering.'),
+    },
+    handler: withErrorBoundary(async ({ hosting_group_id, recheck }, { client }) => {
+      const query = new URLSearchParams({ ...(hosting_group_id ? { hosting_group: hosting_group_id } : {}), ...(recheck ? { recheck: 'true' } : {}) }).toString();
+      return ok(await client.rootGet(`publishing/cloudflare-diagnosis${query ? `?${query}` : ''}`));
+    }),
   },
   {
     name: 'setup_organization_build_engine', noSite: true,
