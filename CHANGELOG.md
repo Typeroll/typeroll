@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## Core 0.2.66 / MCP 0.45.50
 
 Connect Cloudflare now explains every way it can stop, who must act and how, inside the Cloudflare card, each Hosting Group card, the API and MCP.
 
