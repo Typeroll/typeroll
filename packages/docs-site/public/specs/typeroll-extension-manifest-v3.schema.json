@@ -91,7 +91,8 @@
               "extension:config:read",
               "content:owner",
               "email:send",
-              "forms:execute"
+              "forms:execute",
+              "page_handoff:read"
             ]
           },
           "reason": {
@@ -167,6 +168,10 @@
                 "items": {
                   "$ref": "#/$defs/formBinding"
                 }
+              },
+              "page_handoff": {
+                "type": "boolean",
+                "description": "Runtime 0.43.0+: receive a native navigation form's page handoff through context.handoff. Requires the page_handoff:read permission."
               },
               "entry": {
                 "oneOf": [

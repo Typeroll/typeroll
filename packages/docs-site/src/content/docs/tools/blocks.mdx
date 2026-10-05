@@ -1191,6 +1191,17 @@ paths are rejected. A provider integration must deliberately adopt these default
 and validate them again; placing a receive block beside an unrelated form does
 not automatically populate or submit that form.
 
+An installed Extension component can adopt them instead (Extension runtime
+0.43.0, `supports_extension_page_handoff`). If the component supports it and its installation was granted
+`page_handoff:read`, the component shows a **Prefill from navigation inputs**
+field: set it to the navigation form's `handoff_key` (block data
+`page_handoff_key`). The component then receives the typed values and address
+parts through [`context.handoff`](/docs/extensions/frontend/#receive-values-from-a-navigation-form).
+
+From the same release, the handoff also works in preview links: the preview
+shell carries it to the next preview page for both a receiving navigation form
+and an Extension component.
+
 `core/tabs` accepts up to six `labels` and matching `slots`. A label without
 `href` selects its slot; a label with `href` is a normal link and ignores its
 slot. Labels support `icon`. Tab buttons precede direct links in the strip. Set `choice_flow: "continuous"`

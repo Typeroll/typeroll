@@ -2,6 +2,11 @@ import type { BlockType } from "./types.js";
 import { BREAKPOINT_ORDER, resolveBreakpointWidths } from "./breakpoints.js";
 import { pixels } from "./presentation-fields.js";
 import { surfaceColor } from "./surface-presentation.js";
+import {
+  PAGE_HANDOFF_PART_NAMES,
+  PAGE_HANDOFF_STORAGE_PREFIX,
+  parsePageHandoffPacket,
+} from "./page-handoff.js";
 
 const escape = (value: unknown) =>
   String(value ?? "").replace(
@@ -198,7 +203,7 @@ export function prepareNavigationForm(
 // that nothing registers and every field stays a plain input.
 export const NAVIGATION_FORM_RUNTIME = String.raw`
 window.TyperollBlocks.register('core/navigation_form', (el) => {
-  const prefix='typeroll:page-defaults:v1:';
+  const prefix=${JSON.stringify(PAGE_HANDOFF_STORAGE_PREFIX)};
   const key=el.dataset.handoffKey;
   const fields=Array.from(el.querySelectorAll('.navigation-input'));
   const accepted=fields.map(input=>input.name);
@@ -206,19 +211,29 @@ window.TyperollBlocks.register('core/navigation_form', (el) => {
   // beside the typed text rather than replacing it: the display string is what
   // the visitor sees and confirms, the parts are what a destination form needs.
   const parts={};
-  const PART_NAMES=['street','street_number','postal_code','locality','country','formatted'];
+  const PART_NAMES=${JSON.stringify(PAGE_HANDOFF_PART_NAMES)};
   const safeName=name=>/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(name)&&!['constructor','prototype'].includes(name.toLowerCase())&&!/password|token|secret|authorization/i.test(name);
+  // The same validation the Extension host applies to context.handoff.
+  const readPacket=${parsePageHandoffPacket.toString()};
+  // An opaque preview has no Web Storage. Inside the preview shell, the
+  // platform's preview bridge keeps the handoff for the tab and moves the
+  // shell to the next page rather than navigating the isolated frame.
+  const previewBridge=window.__TYPEROLL_PREVIEW_BRIDGE__;
+  function pick(values, acceptedFields) {
+    const result={};
+    if(!values)return result;
+    acceptedFields.filter(safeName).forEach(name=>{if(Object.prototype.hasOwnProperty.call(values,name))result[name]=values[name];});
+    return result;
+  }
   function consume(handoffKey, acceptedFields) {
-    if(!/^[a-zA-Z0-9_-]{1,64}$/.test(handoffKey)||!Array.isArray(acceptedFields)||acceptedFields.length>32)return {};
+    // A receiving form asks for every field plus its address parts.
+    if(!/^[a-zA-Z0-9_-]{1,64}$/.test(handoffKey)||!Array.isArray(acceptedFields)||acceptedFields.length>32*(PART_NAMES.length+1))return {};
     try {
       const raw=sessionStorage.getItem(prefix+handoffKey);
-      if(!raw||raw.length>20000)return {};
-      const packet=JSON.parse(raw);
-      if(packet.version!==1||packet.target!==location.pathname||!Number.isFinite(packet.expires)||packet.expires<Date.now()||packet.expires>Date.now()+900000){sessionStorage.removeItem(prefix+handoffKey);return {};}
+      if(raw===null)return {};
+      // Delivered once, valid or not: a reload must not prefill again.
       sessionStorage.removeItem(prefix+handoffKey);
-      const result={};
-      acceptedFields.filter(safeName).forEach(name=>{const value=packet.values?.[name];if(Object.prototype.hasOwnProperty.call(packet.values||{},name)&&typeof value==='string'&&value.length<=512)result[name]=value;});
-      return result;
+      return pick(readPacket(raw,location.pathname,Date.now()),acceptedFields);
     } catch{return {};}
   }
   window.TyperollPageHandoff={consume};
@@ -226,8 +241,9 @@ window.TyperollBlocks.register('core/navigation_form', (el) => {
     // A receiving field may be named for a part (address_from_postal_code) or
     // for the whole address, so both are offered to consume().
     const wanted=accepted.concat(accepted.flatMap(name=>PART_NAMES.map(part=>name+'_'+part)));
-    const defaults=consume(key,wanted);
-    fields.forEach(input=>{if(Object.prototype.hasOwnProperty.call(defaults,input.name))input.value=defaults[input.name];});
+    const apply=defaults=>fields.forEach(input=>{if(Object.prototype.hasOwnProperty.call(defaults,input.name))input.value=defaults[input.name];});
+    if(previewBridge)previewBridge.takeHandoff(key).then(raw=>apply(pick(readPacket(raw,location.pathname,Date.now()),wanted)),()=>{});
+    else apply(consume(key,wanted));
     bindSuggestions();
     return;
   }
@@ -251,11 +267,16 @@ window.TyperollBlocks.register('core/navigation_form', (el) => {
         if(typeof found.values[part]==='string'&&safeName(name))values[name]=found.values[part].slice(0,512);
       });
     });
+    const packet=JSON.stringify({version:1,target:target.pathname,expires:Date.now()+900000,values});
+    if(previewBridge){
+      previewBridge.storeHandoff(key,packet);
+      if(previewBridge.navigate(target.href))return;
+    }
     try {
       // A small fixed prefix budget avoids retaining multiple abandoned banners.
       const keys=[];for(let i=0;i<sessionStorage.length;i++){const item=sessionStorage.key(i);if(item?.startsWith(prefix))keys.push(item);}
       keys.forEach(item=>sessionStorage.removeItem(item));
-      sessionStorage.setItem(prefix+key,JSON.stringify({version:1,target:target.pathname,expires:Date.now()+900000,values}));
+      sessionStorage.setItem(prefix+key,packet);
     }catch{/* Navigation remains available when tab storage is disabled. */}
     location.assign(target.href);
   }

@@ -152,6 +152,18 @@ describe('extension manifest', () => {
     expect(validateExtensionManifest(input)).toMatchObject({ valid: true, errors: [] });
   });
 
+  it('accepts a page handoff receiver only with the page_handoff:read permission', () => {
+    const input = manifest();
+    input.frontend!.components[0]!.page_handoff = true;
+    expect(validateExtensionManifest(input).errors).toContain('frontend component "calculator" requires the page_handoff:read permission');
+
+    input.permissions.push({ scope: 'page_handoff:read', reason: 'Prefills the quote form from the start page banner.' });
+    expect(validateExtensionManifest(input)).toMatchObject({ valid: true, errors: [] });
+
+    (input.frontend!.components[0] as unknown as Record<string, unknown>).page_handoff = 'yes';
+    expect(validateExtensionManifest(input).errors).toContain('frontend.components[0].page_handoff must be a boolean');
+  });
+
   it('rejects undeclared, duplicated and unsafe form bindings', () => {
     const input = manifest();
     input.frontend!.components[0]!.form_bindings = [
@@ -191,6 +203,10 @@ describe('extension manifest', () => {
   });
 
   it('evaluates the supported compatibility range', () => {
+    // An additive runtime release keeps ranges written for earlier 0.x
+    // releases compatible, including the caret form starter apps use.
+    expect(isRuntimeCompatible('^0.42.0')).toBe(true);
+    expect(isRuntimeCompatible('>=0.38.0 <1.0.0')).toBe(true);
     expect(isRuntimeCompatible('>=0.37.0 <1.0.0', '0.37.0')).toBe(true);
     expect(isRuntimeCompatible('>=0.38.0 <1.0.0', '0.37.0')).toBe(false);
     expect(isRuntimeCompatible('not-a-range', '0.37.0')).toBe(false);
@@ -447,7 +463,7 @@ describe('extension scopes', () => {
 describe('extension renderer capabilities', () => {
   it('advertises the executable runtime contract', () => {
     expect(SITE_TEMPLATE_CAPABILITIES).toMatchObject({
-      template_capabilities_version: '0.51.0',
+      template_capabilities_version: '0.52.0',
       supports_responsive_image_framing: true,
       supports_shared_body_heading_scale: true,
       supports_site_responsive_breakpoints: true,
@@ -461,8 +477,9 @@ describe('extension renderer capabilities', () => {
       supports_extension_site_navigation: true,
       supports_extension_storage: true,
       supports_extension_form_bindings: true,
+      supports_extension_page_handoff: true,
       extension_protocol_version: 3,
-      extension_runtime_version: '0.42.0',
+      extension_runtime_version: '0.43.0',
       supports_extension_installation_config_api: true,
       supports_indexing_diagnostics: true,
       supports_migration_launch_report: true,

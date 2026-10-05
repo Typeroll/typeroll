@@ -71,6 +71,7 @@ import siteGlobalCss from '../../../site-template/src/styles/global.css?raw';
 const SITE_BASE_CSS = `${siteResetCss}\n${siteGlobalCss}`;
 import { listWorkingCopies, overlayWorkingCopy } from './working-copy';
 import { editorCanvasBridgeScript } from './editor-canvas-bridge';
+import { buildPreviewNavigationBridgeScript, rewriteInternalHrefs } from './preview-navigation-bridge';
 
 // NOTE ON APPS: this renderer deliberately does NOT read the site's apps doc,
 // so no third-party tag from the integrations app — and no analytics beacon —
@@ -491,37 +492,6 @@ export async function renderPreviewBySlug(
   return null;
 }
 
-function rewriteInternalHrefs(html: string, root: string, suffix: string): string {
-  const cleanRoot = root.replace(/\/$/, '');
-  return html.replace(
-    /href=(?:"(\/[^"]*?)"|'(\/[^']*?)')/g,
-    (m, dq, sq) => {
-      const href: string = dq ?? sq;
-      if (href.startsWith('//')) return m; // protocol-relative
-      const hashIdx = href.indexOf('#');
-      const path = hashIdx === -1 ? href : href.slice(0, hashIdx);
-      const frag = hashIdx === -1 ? '' : href.slice(hashIdx);
-      // The suffix is `?t=…`; if the href already carries a query string,
-      // join with `&` instead of producing a second `?`.
-      const joinedSuffix = path.includes('?') ? `&${suffix.replace(/^\?/, '')}` : suffix;
-      return `href="${cleanRoot}${path}${joinedSuffix}${frag}"`;
-    },
-  );
-}
-
-function buildPreviewNavigationBridgeScript(opts: PreviewOptions): string {
-  if (!opts.extensionPreviewBridge || !opts.browseRoot) return '';
-  const authQuery = Array.from(
-    new URLSearchParams((opts.embedSuffix ?? '').replace(/^\?/, '')).entries(),
-  );
-  const config = JSON.stringify({
-    root: opts.browseRoot.replace(/\/$/, ''),
-    authQuery,
-    bridge: opts.extensionPreviewBridge,
-  }).replace(/</g, '\\u003c');
-  return `(function(){"use strict";var config=${config};document.addEventListener("click",function(event){if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;var target=event.target;if(!(target instanceof Element))return;var anchor=target.closest("a[href]");if(!anchor||anchor.target&&anchor.target!=="_self"||anchor.hasAttribute("download"))return;var url;try{url=new URL(anchor.href,location.href);}catch(_){return;}if(url.origin!==location.origin||!(url.pathname===config.root||url.pathname.startsWith(config.root+"/")))return;var query=new URLSearchParams(url.search);config.authQuery.forEach(function(pair){var values=query.getAll(pair[0]),removed=false;query.delete(pair[0]);values.forEach(function(value){if(!removed&&value===pair[1])removed=true;else query.append(pair[0],value);});});var path=url.pathname.slice(config.root.length)||"/";var suffix=query.toString();event.preventDefault();parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:config.bridge.id,action:"site.navigate",path:path+(suffix?"?"+suffix:"")+url.hash},config.bridge.parentOrigin);},true);})();`;
-}
-
 function joinUrl(base: string, slug: string): string {
   const b = base.replace(/\/$/, '');
   const s = (slug ?? '').replace(/^\/+/, '');
@@ -645,10 +615,10 @@ ${banner ? renderBanner(banner) : ''}
 ${headerHtml ? (looksLikeSemanticTag(headerHtml, 'header') ? headerHtml : `<header class="site-header">${headerHtml}</header>`) : ''}
 <main class="${blocksBody ? 'page-content page-content--blocks' : 'page-content'}">${bodyHtml}</main>
 ${footerHtml ? (looksLikeSemanticTag(footerHtml, 'footer') ? footerHtml : `<footer class="site-footer">${footerHtml}</footer>`) : ''}
+${previewNavigationBridge ? `<script data-preview-navigation-bridge="1">${previewNavigationBridge}</script>` : ''}
 ${blockJs ? `<script data-blocks="1">(function(){var registry={};window.TyperollBlocks={register:function(id,init){registry[id]=init;},init:function(){Object.keys(registry).forEach(function(id){document.querySelectorAll('[data-block-type="'+id+'"]').forEach(function(el){try{registry[id](el,JSON.parse(el.getAttribute('data-block-data')||'{}'));}catch(e){console.error('[block init]',id,e);}});});}};${blockJs};window.TyperollBlocks.init();})();</script>` : ''}
 ${extensionRuntime ? `<script data-extension-runtime="1">${extensionRuntime}</script>` : ''}
 ${editorExtensionRuntime ? `<script data-editor-extension-runtime="1">${editorExtensionRuntime}</script>` : ''}
-${previewNavigationBridge ? `<script data-preview-navigation-bridge="1">${previewNavigationBridge}</script>` : ''}
 ${editorCanvasId ? `<script data-editor-canvas-bridge="1">${editorCanvasBridgeScript(editorCanvasId, editorCanvasInteractive === true)}</script>` : ''}
 ${cookieConsentHtml ?? ''}
 </body>

@@ -288,6 +288,13 @@ For a cross-page Extension flow, require both
 or personal data in query parameters. This keeps navigation inside the current
 preview and preserves state without exposing it through URLs or referrers.
 
+To prefill an Extension component from a native `core/navigation_form` banner
+on the previous page, require `supports_extension_page_handoff`, check that the
+installation grants `page_handoff:read`, and set the component block's
+`page_handoff_key` to the banner's `handoff_key`; the banner's `destination`
+must be the component's page. The component reads the values with
+`context.handoff.read()`. Do not add query parameters for this.
+
 Known limitations (honest list — don't fight them):
 
 - **`core/tabs` label icons don't render** (the tab strip is built

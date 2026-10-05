@@ -23,7 +23,9 @@ to that mount and contains:
 - installation-scoped `storage.session` and `storage.local` JSON storage;
 - `api.fetch()` for direct calls to declared provider routes;
 - `forms.has()`, `forms.list()`, and `forms.submit()` for approved form
-  bindings.
+  bindings;
+- `handoff.read()` for the values a visitor typed into a native navigation
+  form on the previous page (runtime 0.43.0+).
 
 ## Build a native lead tool on Typeroll Forms
 
@@ -104,6 +106,98 @@ browser key restricted by HTTP referrer or page origin must allow the portal's
 preview origin to work there. Prefer a separate, narrowly restricted preview
 credential; do not loosen the production key just to make preview requests
 pass.
+
+## Receive values from a navigation form
+
+A native **Navigation inputs** block (`core/navigation_form`) in navigate mode
+lets a visitor start on one page, for example by typing two addresses and a
+floor area, and continue to the page that holds your component. The values stay
+in the browser tab. Your component receives them with `context.handoff`:
+
+```ts
+const handoff = context.handoff ? await context.handoff.read() : null;
+
+render({
+  from: handoff?.values.address_from ?? "",
+  fromPostalCode: handoff?.parts.address_from?.postal_code ?? "",
+  to: handoff?.values.address_to ?? "",
+  area: handoff?.values.m2 ?? "",
+});
+```
+
+`read()` resolves `null` or an object like this:
+
+```json
+{
+  "key": "moving",
+  "source": "navigation_form",
+  "values": {
+    "address_from": "Storgatan 1, 111 22 Stockholm",
+    "address_from_street": "Storgatan",
+    "address_from_street_number": "1",
+    "address_from_postal_code": "111 22",
+    "address_from_locality": "Stockholm",
+    "address_to": "Kungsgatan 2, Uppsala",
+    "m2": "75"
+  },
+  "parts": {
+    "address_from": {
+      "street": "Storgatan",
+      "street_number": "1",
+      "postal_code": "111 22",
+      "locality": "Stockholm"
+    }
+  }
+}
+```
+
+`values` holds every field as the visitor typed it, as strings of at most 512
+characters, keyed by the navigation form's field names. When the visitor picked
+an address suggestion and did not edit it afterwards, the structured parts
+`street`, `street_number`, `postal_code`, `locality`, `country` and
+`formatted` follow as `<field>_<part>`. `parts` groups the same parts by field.
+Map the names your form needs; do not assume a field or part is present.
+
+Access needs all three of:
+
+1. the component declares `"page_handoff": true` and the manifest requests
+   `page_handoff:read`;
+2. the site administrator grants `page_handoff:read` when installing or
+   approving the release;
+3. the page author binds the block instance to the navigation form. Such
+   components get a **Prefill from navigation inputs** field (block data
+   `page_handoff_key`) that takes the navigation form's **Defaults key**. In an
+   HTML-mode page use
+   `<x-extension block="…" props='{"page_handoff_key":"moving"}' />`.
+
+The handoff must also be addressed to the current page, which is the
+navigation form's destination, and be less than 15 minutes old. Otherwise, and
+whenever nothing was handed off, `read()` resolves `null` without an error;
+render the normal empty form. `context.handoff.key` is the bound key, or `null`
+for an unbound instance.
+
+Like a native receiving form, the runtime takes the handoff out of the tab the
+first time a bound component reads it, so a reload starts empty. Every bound
+component on that page receives the same values, and repeated `read()` calls in
+a mount return them again. Keep them in `context.storage.session` if your flow
+needs them after a reload. A native receiving form with the same key on the
+same page takes the values first.
+
+It works the same in preview links, where the preview shell keeps the handoff
+for the tab instead of the browser's session storage. In the editor canvas
+`read()` resolves `null`.
+
+The stored format is private to Typeroll and may change in any Core release.
+Read handoffs only through `context.handoff`; never read Web Storage or call
+page globals for them. The values are never added to a URL, referrer,
+generated HTML, analytics event or Typeroll request. Treat them as personal
+data: do not log them or send them anywhere before the visitor submits.
+
+`context.handoff` exists from runtime 0.43.0. Declare
+`"runtime_compatibility": ">=0.43.0 <1.0.0"` in a release that uses
+`page_handoff`, because earlier runtimes reject the scope. Embedded
+applications post `typeroll.extension.handoff.read` with a unique `request_id`
+and receive `typeroll.extension.handoff.result` with the same `handoff` value.
 
 ## Receive an opaque recipient token
 

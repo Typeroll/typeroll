@@ -34,6 +34,7 @@ export * from './iframe-policy.js';
 export * from './diff-blocks.js';
 export * from './extensions.js';
 export * from './extensions-runtime.js';
+export * from './page-handoff.js';
 export * from './release.js';
 
 export * from './page-content-model.js';

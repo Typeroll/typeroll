@@ -49,6 +49,11 @@ Binding IDs are local to the component and are the names passed to
 `context.forms.submit()`. A binding can target only the fixed form ID declared
 in the immutable manifest version.
 
+From runtime 0.43.0 a component can also declare `"page_handoff": true` to
+receive the values a visitor typed into a native navigation form on the
+previous page through `context.handoff`. It requires the `page_handoff:read`
+permission; see [Receive values from a navigation form](../frontend/#receive-values-from-a-navigation-form).
+
 ## Installation configuration
 
 `config_schema` is an object schema whose properties become installation
@@ -90,6 +95,7 @@ deploy. The developer CLI and MCP tool queue that deploy by default.
 - `media:read`, `media:write`
 - `deploy:request`
 - `extension:config:read`
+- `page_handoff:read`
 
 The effective permission is the intersection of the manifest request, the
 site administrator's grant, and the current Typeroll user's permission. The
@@ -98,6 +104,13 @@ portal rejects unknown scopes and routes.
 `forms:submit` is deliberately narrower than `forms:write`: it permits a
 component to submit to its declared bindings, but cannot create or edit forms
 or read submitted data.
+
+`page_handoff:read` works only in the visitor's browser and grants no API
+access. It lets a component that declares `page_handoff` receive the values a
+native navigation form carried to the component's page, and only for block
+instances that the page author binds to that form. Visitors type personal data
+such as addresses into those forms, so grant it only to a provider whose
+privacy terms cover that data.
 
 ## Direct provider API
 

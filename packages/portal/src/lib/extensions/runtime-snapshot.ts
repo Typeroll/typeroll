@@ -40,7 +40,8 @@ export async function buildExtensionRuntimeSnapshot(
     }
     const config = buildExtensionConfig(version.manifest.config_schema, {}, installation);
     if (typeof config === 'string') throw new Error('An enabled Extension has invalid configuration for its published release');
-    const components: PublicExtensionComponent[] = (version.manifest.frontend?.components ?? []).map((component) => {
+    const handoffGranted = installation.granted_scopes.includes('page_handoff:read');
+    const components: PublicExtensionComponent[] = (version.manifest.frontend?.components ?? []).map(({ page_handoff, ...component }) => {
       const base = assetBase(installation.extension_id, version.version, component.id);
       const resolvedFormBindings = Object.fromEntries(
         (installation.granted_scopes.includes('forms:submit') ? component.form_bindings ?? [] : []).map((binding) => {
@@ -56,6 +57,9 @@ export async function buildExtensionRuntimeSnapshot(
       return {
         ...component,
         block_type_id: extensionBlockTypeId(installation.id, component.id),
+        // The browser host only offers context.handoff to a component whose
+        // declaration the site administrator approved with the scope.
+        ...(page_handoff === true && handoffGranted ? { page_handoff: true } : {}),
         ...(Object.keys(resolvedFormBindings).length > 0
           ? { resolved_form_bindings: resolvedFormBindings }
           : {}),

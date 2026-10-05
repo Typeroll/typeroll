@@ -369,6 +369,13 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
     deployed to the customer site's static hosting project. The
     installation must grant `forms:submit`; that scope does not permit form
     administration or reading submissions.
+  - **Extension page handoff** (template_capabilities_version ≥ 0.52.0): a
+    component that declares `page_handoff` on an installation granted
+    `page_handoff:read` receives what a visitor typed into a native
+    `core/navigation_form` on the previous page through
+    `context.handoff.read()`, including address parts. Bind each block
+    instance by setting its `page_handoff_key` to the banner's `handoff_key`;
+    the banner's `destination` must be that page. Works in preview links too.
   - **`script` on custom block types** (create/update_block_type) is
     accepted under your API key's authority — the same trust level that
     already lets the key write `scripts_head`/`custom_css`, and the same

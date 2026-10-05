@@ -1,4 +1,9 @@
-import type { ExtensionRuntimeHostConfig, ExtensionRuntimeSnapshot } from './extensions.js';
+import { EXTENSION_PAGE_HANDOFF_PROP, type ExtensionRuntimeHostConfig, type ExtensionRuntimeSnapshot } from './extensions.js';
+import {
+  PAGE_HANDOFF_STORAGE_PREFIX,
+  groupPageHandoffParts,
+  parsePageHandoffPacket,
+} from './page-handoff.js';
 
 /** Resolve a root-relative site path for either the published site or a
  * navigable preview. Exported so the preview-path contract has direct tests. */
@@ -42,6 +47,10 @@ export function buildExtensionRuntimeScript(
 var snapshot=${serialized};
 var host=${serializedHost};
 var resolveSiteUrl=${siteUrlResolver};
+var readHandoffPacket=${parsePageHandoffPacket.toString()};
+var groupHandoffParts=${groupPageHandoffParts.toString()};
+var handoffPrefix=${JSON.stringify(PAGE_HANDOFF_STORAGE_PREFIX)};
+var handoffs=new Map();
 var mounts=[];
 var previewBridgeReady=false;
 var previewBridgeState={session:{},local:{}};
@@ -129,6 +138,41 @@ function initializePreviewBridge(){
   if(!host.preview_bridge)return Promise.resolve(false);
   return new Promise(function(resolve){var done=false;var timer;function finish(ready){if(done)return;done=true;clearTimeout(timer);removeEventListener("message",receive);resolve(ready);}function receive(event){var data=event.data;if(event.source!==parent||event.origin!==host.preview_bridge.parent_origin||!data||data.channel!=="typeroll.extension-preview"||data.version!==1||data.bridge_id!==host.preview_bridge.id||data.action!=="storage.init")return;if(data.storage&&typeof data.storage==="object")previewBridgeState=data.storage;finish(true);}addEventListener("message",receive);timer=setTimeout(function(){console.warn("[Typeroll Extensions] Preview bridge handshake timed out; preview storage and navigation are unavailable.");finish(false);},2000);parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:host.preview_bridge.id,action:"storage.ready"},host.preview_bridge.parent_origin);});
 }
+// The page handoff written by a native navigation form on the previous page.
+// The stored format is private to the platform; components only see the
+// normalized result. A handoff is taken out of tab storage once per page load,
+// like the native receiving form does, and every authorized mount bound to the
+// same key on this page receives the same values.
+function takeHandoff(key){
+  if(handoffs.has(key))return handoffs.get(key);
+  var raw=null;
+  if(host.preview_bridge){
+    var area=previewBridgeReady&&previewBridgeState.handoff;
+    if(area&&typeof area==="object"&&Object.prototype.hasOwnProperty.call(area,key)){
+      raw=area[key];delete area[key];
+      parent.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:host.preview_bridge.id,action:"handoff.remove",key:key},host.preview_bridge.parent_origin);
+    }
+  }else{
+    try{raw=window.sessionStorage.getItem(handoffPrefix+key);if(raw!==null)window.sessionStorage.removeItem(handoffPrefix+key);}catch(_){raw=null;}
+  }
+  var values=null;
+  try{values=readHandoffPacket(raw,location.pathname,Date.now());}catch(_){values=null;}
+  handoffs.set(key,values);
+  return values;
+}
+function handoffRuntime(entry){
+  var props=entry.props&&typeof entry.props==="object"?entry.props:{};
+  var bound=entry.descriptor.component.page_handoff===true?props[${JSON.stringify(EXTENSION_PAGE_HANDOFF_PROP)}]:null;
+  var key=typeof bound==="string"&&/^[a-zA-Z0-9_-]{1,64}$/.test(bound)?bound:null;
+  function read(){
+    if(!key)return Promise.resolve(null);
+    var values=takeHandoff(key);
+    if(!values)return Promise.resolve(null);
+    var copy=Object.assign({},values);
+    return Promise.resolve({key:key,source:"navigation_form",values:copy,parts:groupHandoffParts(copy)});
+  }
+  return Object.freeze({key:key,read:read});
+}
 function apiClient(installation){
   var declaration=installation.api;var tokenPromise=null;var tokenExpiresAt=0;
   function route(path,method){return declaration.routes.some(function(rule){var match=rule.path.endsWith("/*")?path.startsWith(rule.path.slice(0,-1)):path===rule.path;return match&&rule.methods.includes(method);});}
@@ -194,7 +238,7 @@ function unavailable(el,component){
   el.replaceChildren();var message=document.createElement("p");message.className="tr-extension-unavailable";message.textContent=component.unavailable_message||(/^sv/i.test(document.documentElement.lang||"")?"Den här funktionen är inte tillgänglig just nu.":"This feature is temporarily unavailable.");el.appendChild(message);
 }
 function contextFor(entry){
-  return {protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,preview:entry.descriptor.installation.preview===true,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,analytics:host.analytics||null,url:urlRuntime(entry.capture.values),navigation:navigation(),site:siteRuntime(),storage:storageRuntime(entry),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component,entry.descriptor.installation.preview===true)};
+  return {protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,preview:entry.descriptor.installation.preview===true,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,analytics:host.analytics||null,url:urlRuntime(entry.capture.values),navigation:navigation(),site:siteRuntime(),storage:storageRuntime(entry),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component,entry.descriptor.installation.preview===true),handoff:handoffRuntime(entry)};
 }
 async function mountBundle(entry,context){
   var component=entry.descriptor.component;loadStyle(component.local_style_url);
@@ -220,6 +264,12 @@ function mountFrame(entry,context){
         frame.contentWindow&&frame.contentWindow.postMessage({type:"typeroll.extension.form.result",version:snapshot.protocol_version,installation_id:context.installation_id,component_id:context.component_id,request_id:requestId,ok:true,result:result},target.origin);
       }).catch(function(){
         frame.contentWindow&&frame.contentWindow.postMessage({type:"typeroll.extension.form.result",version:snapshot.protocol_version,installation_id:context.installation_id,component_id:context.component_id,request_id:requestId,ok:false,error:"Form submission failed"},target.origin);
+      });
+    }
+    if(event.data.type==="typeroll.extension.handoff.read"&&typeof event.data.request_id==="string"&&event.data.request_id.length<=128){
+      var handoffRequestId=event.data.request_id;
+      context.handoff.read().then(function(handoff){
+        frame.contentWindow&&frame.contentWindow.postMessage({type:"typeroll.extension.handoff.result",version:snapshot.protocol_version,installation_id:context.installation_id,component_id:context.component_id,request_id:handoffRequestId,ok:true,handoff:handoff},target.origin);
       });
     }
     if(event.data.type==="typeroll.extension.api.request"&&typeof event.data.request_id==="string"&&event.data.request_id.length<=128&&typeof event.data.path==="string"&&event.data.path.length<=2048){
