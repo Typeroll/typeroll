@@ -860,3 +860,93 @@ test('Cloudflare explains an expired account choice and starts again', async ({ 
   await expect(page.getByRole('alert').filter({ hasText: /Cloudflare/ })).toHaveCount(0);
   await expect(card.getByRole('alert')).toHaveCount(0);
 });
+
+for (const width of [320, 1440]) test(`joining a Cloudflare account another Organization uses names it and needs a confirmation at ${width}px`, async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  await page.setViewportSize({ width, height: 900 });
+  let connected = false;
+  const submitted: Record<string, unknown>[] = [];
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  // One authorized account that Company A, which this person also administers, already uses.
+  const shared = { ...staging, shared_with: ['Company A'] };
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: cloudflareStatus({
+    connected: connected ? staging : null, choices: connected ? [] : [shared],
+    diagnosis: connected ? cloudflareDiagnosis('connected', { accounts: [{ ...staging, usable: true, blockers: [] }], recheck_available: true })
+      : cloudflareDiagnosis('choose', { accounts: [{ ...shared, usable: true, blockers: [] }], recheck_available: true, selection_expires_at: new Date(Date.now() + 9 * 60_000).toISOString() }) }) }));
+  await page.route('**/api/orgs/publishing/cloudflare', route => {
+    const body = route.request().postDataJSON(); submitted.push(body);
+    if (body.action === 'select' && body.confirm_shared_account === true) { connected = true; return route.fulfill({ json: { connected: true } }); }
+    return route.fulfill({ status: 409, json: { code: 'shared_account_confirmation_required', error: 'Staging Account is also used by: Company A.', details: { shared_with: ['Company A'] } } });
+  });
+  await page.goto('/app/settings/publishing?cloudflare=choose#cloudflare');
+  const card = page.getByRole('region', { name: 'Cloudflare account', exact: true });
+  const next = card.locator('.cloudflare-connection__next');
+  const choice = next.getByRole('group', { name: 'Choose a Cloudflare account' });
+  await expect(choice).toContainText('You authorized 1 account on Cloudflare.');
+  await expect(next.locator('[data-cloudflare-summary]')).toHaveText('Confirm that this organization shares the Cloudflare account you authorized.');
+  await expect(card.locator('[data-cloudflare-step="account"]')).toContainText('Confirm Staging Account');
+  await expect(choice.locator(`[data-account="${staging.id}"]`)).toContainText('Shared');
+  const confirmation = next.locator('[data-cloudflare-shared]');
+  await expect(confirmation).toContainText('This Cloudflare account is also used by: Company A.');
+  await expect(confirmation).toContainText('Sites stay separate');
+  const connect = next.getByRole('button', { name: 'Connect Staging Account', exact: true });
+  await expect(connect).toBeDisabled();
+  expect(await noHorizontalScroll(page)).toBe(true);
+  await card.screenshot({ path: testInfo.outputPath(`cloudflare-shared-account-${width}.png`) });
+  await confirmation.getByRole('checkbox', { name: 'Use Staging Account for this Organization as well' }).check();
+  await connect.click();
+  await expect(card.locator('.publishing-card__status')).toHaveText('Connected · Staging Account');
+  expect(submitted).toEqual([{ action: 'select', account_id: staging.id, confirm_shared_account: true }]);
+  expect(errors).toEqual([]);
+});
+
+test('Cloudflare explains an account another Organization uses without naming it and links the shared-account guide', async ({ page }) => {
+  await authenticatePersona(page, 'owner');
+  const blocker = { code: 'claimed_by_other_organization', who: 'organization_admin', account: staging,
+    message: 'Staging Account is already used by another Typeroll Organization. Several Organizations may share one Cloudflare account, but only an owner or admin of an Organization that already uses it can connect it here, so that both are under common control. If you administer that Organization too, sign in to Typeroll as that person and connect it again. Otherwise ask an owner or admin of that Organization, or Typeroll support.',
+    action: { kind: 'link', label: 'How shared Cloudflare accounts work', url: 'https://typeroll.com/docs/guides/cloudflare-troubleshooting/#claimed_by_other_organization' } };
+  await page.route('**/api/orgs/publishing', route => route.fulfill({ json: cloudflareStatus({
+    diagnosis: cloudflareDiagnosis('action_required', { primary_action: blocker.action, recheck_available: true, accounts: [{ ...staging, usable: false, blockers: [blocker] }] }) }) }));
+  await page.goto('/app/settings/publishing#cloudflare');
+  const card = page.getByRole('region', { name: 'Cloudflare account', exact: true });
+  const reason = card.locator('[data-cloudflare-reason="claimed_by_other_organization"]').first();
+  await expect(reason).toContainText('Who acts: Owner or admin of the Organization that uses the account');
+  await expect(reason).toContainText('Typeroll support');
+  await expect(card.getByRole('link', { name: /How shared Cloudflare accounts work/ }).first()).toHaveAttribute('href', blocker.action.url);
+  await expect(card.locator('[data-cloudflare-step="access"]')).toContainText('Action required');
+});
+
+test('connecting with API keys asks to confirm an account another Organization uses before saving', async ({ page }) => {
+  await authenticatePersona(page, 'owner');
+  let connected = false;
+  const submitted: Record<string, unknown>[] = [];
+  await page.route('**/api/orgs/publishing', async route => {
+    await route.fulfill({ json: { github: empty, cloudflare: connected ? { ...empty, status: 'connected', credentials_saved: true, media_ready: true,
+      cloudflare: { account_id: staging.id, account_name: staging.name, bucket: 'company-b-media', public_bucket: 'company-b-public' } } : empty,
+      github_setup: { available: false, install_url: null }, encryption_available: true } });
+  });
+  await page.route('**/api/orgs/publishing/cloudflare', async route => {
+    const body = route.request().postDataJSON(); submitted.push(body);
+    if (body.confirm_shared_account !== true) return route.fulfill({ status: 409, json: { code: 'shared_account_confirmation_required',
+      error: 'Staging Account is also used by: Company A. Sites stay separate.', details: { shared_with: ['Company A'] } } });
+    connected = true;
+    return route.fulfill({ json: { connected: true } });
+  });
+  await page.goto('/app/settings/publishing');
+  await page.getByText('Advanced: connect with existing API and R2 keys', { exact: true }).click();
+  await page.getByLabel('Cloudflare Account ID').fill(staging.id);
+  await page.getByLabel('R2 bucket name').fill('company-b-media');
+  for (const [label, value] of [['Cloudflare API token', 'synthetic-token'], ['R2 Access Key ID', 'synthetic-access'], ['R2 Secret Access Key', 'synthetic-secret']]) await page.getByLabel(label).fill(value);
+  await page.getByRole('button', { name: 'Verify and save Cloudflare' }).click();
+  const confirmation = page.locator('[data-cloudflare-shared]');
+  await expect(confirmation).toContainText('This Cloudflare account is also used by: Company A.');
+  // The credentials stay in the form; nothing is saved until the person confirms.
+  await expect(page.getByLabel('Cloudflare API token')).toHaveValue('synthetic-token');
+  await confirmation.getByRole('checkbox', { name: 'Use this account for this Organization as well' }).check();
+  await page.getByRole('button', { name: 'Verify and save Cloudflare' }).click();
+  await expect(page.getByRole('status')).toContainText('Cloudflare connection updated');
+  expect(submitted).toHaveLength(2);
+  expect(submitted[0]).not.toHaveProperty('confirm_shared_account');
+  expect(submitted[1]).toMatchObject({ account_id: staging.id, bucket: 'company-b-media', confirm_shared_account: true });
+});

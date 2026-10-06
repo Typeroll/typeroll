@@ -11,7 +11,7 @@ async function handle(request: Request, write: boolean) {
   try {
     const org = guard.value.tokenOrgId;
     const input = write ? await publishingJsonBody(request) : null;
-    const result = input ? input.action ? await updateHostingConnection(org, input) : await saveHostingGroup(org, input) : { groups: await listHostingGroups(org) };
+    const result = input ? input.action ? await updateHostingConnection(org, input, fetch, { userId: `api-key:${guard.value.keyPrefix}` }) : await saveHostingGroup(org, input) : { groups: await listHostingGroups(org) };
     const response = apiResponse(guard.value, result);
     response.headers.set('Cache-Control', 'no-store');
     return response;

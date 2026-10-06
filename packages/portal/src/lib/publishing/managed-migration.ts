@@ -8,6 +8,7 @@ import { getSiteDomains, saveSiteDomains } from './domain-config';
 import { selectedBuildProvider } from '../builds/selection';
 import { readEngineConfiguration } from '../builds/state';
 import { requestMediaMigration } from './media-migration';
+import { claimCloudflareResource } from './cloudflare-account-claims';
 import type { ProviderClient } from './providers.mjs';
 
 function sourceRevision(site: Site, accountId: string, groupId: string) {
@@ -65,6 +66,8 @@ export async function migrateManagedSite(orgId: string, siteId: string, input: R
   if (domains.desired.website_host && domains.desired.website_host !== plan.binding.website_host) {
     throw new ConnectionError('Keep the existing website host for this migration. Change domains after the first verified publication.', 409, 'managed_domain_mismatch');
   }
+  // The account may be shared with other Organizations: the existing project becomes this Organization's record.
+  await claimCloudflareResource(orgId, plan.binding.account_id, 'pages_project', plan.binding.project, { siteId });
   if (!domains.desired.website_host) await saveSiteDomains(orgId, siteId, { revision: domains.revision, ...domains.desired, website_host: plan.binding.website_host, dns_mode: domains.dns_mode });
   const changed = await store.compareAndUpdateDoc<Site>(paths.site(orgId, siteId),
     site => sourceRevision(site, plan.binding.account_id, plan.binding.hosting_group_id) === plan.revision,

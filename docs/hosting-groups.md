@@ -26,6 +26,13 @@ is separate from Pages account selection. External DNS remains supported with
 structured instructions and independent verification. No new registered domain
 or transfer of root hosting is required for a group's site address base.
 
+Several Organizations may use one Cloudflare account. Joining one requires an
+owner or admin of an Organization that already uses it, and a confirmation that
+names those Organizations. Each Organization keeps its own generated resource
+names and ownership records, buckets and media hostname; disconnecting a group
+removes only that group's use of the account. See
+`docs/customer-owned-publishing-setup.md` (Shared Cloudflare accounts).
+
 Cloudflare Pages custom branch domains require proxied Cloudflare DNS. Verify
 cross-account branch routing independently; never accept a response from the
 production branch as a successful branch publication. Unsupported arrangements

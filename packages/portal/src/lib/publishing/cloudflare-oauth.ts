@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { FullSession } from '../access';
 import { getStore } from '../datastore';
-import { claimAccount, ConnectionError, connectionPath, getConnection, openCredentials, saveConnection, sealCredentials, type Connection } from './connections';
+import { ConnectionError, connectionPath, getConnection, openCredentials, saveConnection, sealCredentials, type Connection } from './connections';
 import {
   CLOUDFLARE_BUILD_SCOPES, CLOUDFLARE_CALLBACK, CLOUDFLARE_MEDIA_SCOPES, CLOUDFLARE_OPTIONAL_DNS_SCOPES, CLOUDFLARE_SCOPES, cloudflareOAuthConfiguration,
   cloudflareSetup, requiredCloudflareScopes,
@@ -12,6 +12,7 @@ import {
   type CloudflareAccountRef, type CloudflareBlocker, type CloudflareBlockerCode, type CloudflareConnectionDiagnosis, type CloudflareDiagnosisAccount,
 } from './cloudflare-diagnosis';
 import { getHostingGroup } from './hosting-groups';
+import { cloudflareAccountAccess, joinCloudflareAccount, leaveCloudflareAccount, sharedAccountConfirmation } from './cloudflare-account-claims';
 import { mapPublicationParts } from './parallel';
 import { createProviderClient, ProviderError, type ProviderClient } from './providers.mjs';
 
@@ -34,7 +35,8 @@ export interface CloudflareStoredCredentials {
   api_token?: string; oauth?: CloudflareOAuthTokens;
   access_key_id?: string; secret_access_key?: string;
 }
-interface AccountChoice { id: string; name: string; usable?: boolean }
+/** `shared_with`: other Organizations using the account that the person administers; connecting it needs their confirmation. */
+interface AccountChoice { id: string; name: string; usable?: boolean; shared_with?: string[] }
 interface Grant {
   hosting_group_id?: string;
   user_id: string; expires_at: number; consumed: boolean; revision: string;
@@ -176,7 +178,7 @@ function unrecorded(blocker: CloudflareBlocker) {
   return error;
 }
 
-/** Reasons that concern one account and that Check again can find fixed, with the same consent, once someone changes a role or claim. */
+/** Reasons that concern one account and that Check again can find fixed, with the same consent, once someone changes a role or membership. */
 const ACCOUNT_REASONS: CloudflareBlockerCode[] = ['pages_access_denied', 'claimed_by_other_organization'];
 const keepsConsent = (blocker: CloudflareBlocker) => blocker.action?.kind === 'retry' || ACCOUNT_REASONS.includes(blocker.code);
 
@@ -315,7 +317,7 @@ async function evaluateConsent(session: Actor, attempt: Attempt, tokens: Cloudfl
   const eligible = previous ? listed.filter(account => account.id === previous.id) : listed;
   if (!eligible.length) throw flow('locked_to_account', { previous, ...(listed.length === 1 ? { account: listed[0] } : {}) });
   attempt.accounts = eligible.length <= PROBE_LIMIT
-    ? await mapPublicationParts(eligible, account => probeAccount(session.orgId, provider, account), 4)
+    ? await mapPublicationParts(eligible, account => probeAccount(session, provider, account), 4)
     : eligible.map(account => ({ ...account, usable: true, blockers: [] }));
   const usable = attempt.accounts.filter(account => account.usable);
   if (!usable.length) {
@@ -325,8 +327,9 @@ async function evaluateConsent(session: Actor, attempt: Attempt, tokens: Cloudfl
     throw error;
   }
   // The consent named exactly one account (or the saved one): connecting it is what the person asked for.
-  // Several accounts are never chosen for the person; see selectCloudflareAccount.
-  if (options.automatic && eligible.length === 1) {
+  // Several accounts are never chosen for the person; see selectCloudflareAccount. An account that other
+  // Organizations use is offered as a choice too, so that the person confirms sharing it.
+  if (options.automatic && eligible.length === 1 && !attempt.accounts[0].shared_with?.length) {
     await saveAccount(session, usable[0].id, tokens, attempt.revision, fetchImpl, attempt.groupId);
     await discardSelection(session, attempt.groupId);
     attempt.consentedAt = null;
@@ -335,19 +338,19 @@ async function evaluateConsent(session: Actor, attempt: Attempt, tokens: Cloudfl
   }
   const expiresAt = Math.min(Date.now() + TTL, (attempt.consentedAt ?? Date.now()) + CLOUDFLARE_CONSENT_TRUST_MS);
   await storeSelection(session, { groupId: attempt.groupId, revision: attempt.revision, tokens, consentedAt: attempt.consentedAt ?? Date.now(), expiresAt,
-    choices: attempt.accounts.map(({ id, name, usable: ok }) => ({ id, name, usable: ok })) });
+    choices: attempt.accounts.map(({ id, name, usable: ok, shared_with }) => ({ id, name, usable: ok, ...(shared_with?.length ? { shared_with } : {}) })) });
   await recordAttempt(session, attempt, { choose: true, selectionExpiresAt: expiresAt, recheckedAt: options.recheckedAt });
   return 'select';
 }
 
-async function probeAccount(orgId: string, provider: ProviderClient, account: AccountChoice): Promise<CloudflareDiagnosisAccount> {
+async function probeAccount(session: Actor, provider: ProviderClient, account: AccountChoice): Promise<CloudflareDiagnosisAccount> {
   const blockers: CloudflareBlocker[] = [];
   const ref = { id: account.id, name: account.name };
   try { await verifyPagesAccess(provider, account.id); }
   catch (error) { blockers.push(cloudflareBlockerFromError(error, { account: ref, step: 'pages', retry: 'recheck' })); }
-  const claim = await getStore().getDoc<{ org_id: string }>(`publishing_account_claims/cloudflare-${account.id}`);
-  if (claim && claim.org_id !== orgId) blockers.push(cloudflareBlocker('claimed_by_other_organization', { account: ref }));
-  return { ...ref, usable: !blockers.length, blockers };
+  const access = await cloudflareAccountAccess(session, account.id);
+  if (access.state === 'refused') blockers.push(cloudflareBlocker('claimed_by_other_organization', { account: ref }));
+  return { ...ref, usable: !blockers.length, blockers, ...(access.confirmation_required ? { shared_with: access.shared_with.map(org => org.name) } : {}) };
 }
 
 async function recordConnected(session: Actor, attempt: Attempt) {
@@ -361,11 +364,11 @@ async function recordConnected(session: Actor, attempt: Attempt) {
 // ─── Account selection and saving ───────────────────────────────────────
 
 /** Accounts the person may choose now: theirs, for this Hosting Group and revision, within 10 minutes. */
-export async function cloudflareChoices(session: Actor, groupId = 'default'): Promise<Array<{ id: string; name: string }>> {
+export async function cloudflareChoices(session: Actor, groupId = 'default'): Promise<Array<{ id: string; name: string; shared_with?: string[] }>> {
   const selection = await getStore().getDoc<Selection>(choicePath(session.orgId));
   if (!selection || (selection.hosting_group_id ?? 'default') !== groupId || selection.consumed || selection.user_id !== session.userId || selection.expires_at <= Date.now() ||
     (await getConnection(session.orgId, 'cloudflare', groupId)).revision !== selection.revision) return [];
-  return selection.choices.filter(choice => choice.usable !== false).map(({ id, name }) => ({ id, name }));
+  return selection.choices.filter(choice => choice.usable !== false).map(({ id, name, shared_with }) => ({ id, name, ...(shared_with?.length ? { shared_with } : {}) }));
 }
 
 async function cloudflareChoiceExpiry(session: Actor, groupId: string): Promise<number | null> {
@@ -374,7 +377,19 @@ async function cloudflareChoiceExpiry(session: Actor, groupId: string): Promise<
     && selection.expires_at > Date.now() ? selection.expires_at : null;
 }
 
-export async function selectCloudflareAccount(session: FullSession, accountId: string, fetchImpl: typeof fetch = fetch, groupId = 'default') {
+/**
+ * Connect the chosen account. An account other Organizations use needs `confirmShared`: without it a
+ * `shared_account_confirmation_required` error names the Organizations this person administers, and the choice
+ * stays open.
+ */
+export async function selectCloudflareAccount(session: FullSession, accountId: string, fetchImpl: typeof fetch = fetch, groupId = 'default', options: { confirmShared?: boolean } = {}) {
+  if (!options.confirmShared && /^[a-f0-9]{32}$/.test(accountId)) {
+    const access = await cloudflareAccountAccess(session, accountId);
+    if (access.confirmation_required) {
+      const offered = (await getStore().getDoc<Selection>(choicePath(session.orgId)))?.choices.find(choice => choice.id === accountId);
+      throw sharedAccountConfirmation(access, offered?.name);
+    }
+  }
   const attempt = await newAttempt(session, groupId);
   const stored = await storedCloudflareDiagnosis(session.orgId, groupId);
   if (stored?.user_id === session.userId && stored.revision === attempt.revision) attempt.accounts = stored.accounts;
@@ -393,8 +408,14 @@ export async function selectCloudflareAccount(session: FullSession, accountId: s
     attempt.consentedAt = selection.consented_at ?? null;
     let tokens = openCredentials<CloudflareOAuthTokens>(session.orgId, 'cloudflare', selection.encrypted_tokens, groupId);
     if (tokens.expires_at <= Date.now() + 60_000) tokens = await exchange({ grant_type: 'refresh_token', refresh_token: tokens.refresh_token }, fetchImpl, { previous: tokens, groupId });
-    try { await saveAccount(session, accountId, tokens, selection.revision, fetchImpl, groupId); }
+    try { await saveAccount(session, accountId, tokens, selection.revision, fetchImpl, groupId, options.confirmShared); }
     catch (error) {
+      if (error instanceof ConnectionError && error.code === 'shared_account_confirmation_required') {
+        // Another Organization started using the account since the choice was offered: keep the choice open.
+        await getStore().compareAndUpdateDoc<Selection>(choicePath(session.orgId), value => value.id === selection.id && value.consumed,
+          { consumed: false, encrypted_tokens: sealCredentials(session.orgId, 'cloudflare', tokens, groupId) });
+        throw error;
+      }
       const blocker = cloudflareBlockerFromError(error, { account: selection.choices.find(choice => choice.id === accountId), retry: 'recheck' });
       if (ACCOUNT_REASONS.includes(blocker.code)) {
         // A reason that concerns only this account does not use up the choice: the other accounts stay selectable.
@@ -413,10 +434,14 @@ export async function selectCloudflareAccount(session: FullSession, accountId: s
     await getStore().compareAndUpdateDoc<Selection>(choicePath(session.orgId), value => value.id === selection.id, { encrypted_tokens: null });
     attempt.consentedAt = null;
     await recordConnected(session, attempt);
-  } catch (error) { return failed(session, attempt, error); }
+  } catch (error) {
+    // A missing confirmation is not a failed attempt; the person confirms and selects again.
+    if (error instanceof ConnectionError && error.code === 'shared_account_confirmation_required') throw error;
+    return failed(session, attempt, error);
+  }
 }
 
-async function saveAccount(session: Actor, accountId: string, tokens: CloudflareOAuthTokens, revision: string, fetchImpl: typeof fetch, groupId = 'default') {
+async function saveAccount(session: Actor, accountId: string, tokens: CloudflareOAuthTokens, revision: string, fetchImpl: typeof fetch, groupId = 'default', confirmShared = false) {
   const current = await getConnection(session.orgId, 'cloudflare', groupId);
   if (current.revision !== revision) throw flow('revision_conflict');
   const provider = createProviderClient('Cloudflare', tokens.access_token, fetchImpl);
@@ -431,14 +456,25 @@ async function saveAccount(session: Actor, accountId: string, tokens: Cloudflare
   try { await verifyPagesAccess(provider, accountId); }
   catch (error) { throw new CloudflareFlowError(cloudflareBlockerFromError(error, { step: 'pages', account: ref }), 403); }
   const previous = current.encrypted_credentials ? openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', current.encrypted_credentials, groupId) : {};
-  try { await claimAccount(session.orgId, 'cloudflare', accountId); }
-  catch (error) { throw new CloudflareFlowError(cloudflareBlockerFromError(error, { account: ref }), 409); }
-  await saveConnection(session.orgId, 'cloudflare', revision, { status: 'connected', auth_method: 'oauth', refresh_lease: null,
-    media_ready: Boolean(current.media_ready && previous.access_key_id && previous.secret_access_key && current.cloudflare?.bucket && current.cloudflare.public_bucket),
-    connected_at: new Date().toISOString(), connected_by: session.userId,
-    cloudflare: { ...current.cloudflare, account_id: accountId, account_name: ref.name, bucket: current.cloudflare?.bucket ?? '', endpoint: `https://${accountId}.r2.cloudflarestorage.com` },
-    encrypted_credentials: sealCredentials(session.orgId, 'cloudflare', { oauth: tokens,
-      ...(previous.access_key_id && previous.secret_access_key ? { access_key_id: previous.access_key_id, secret_access_key: previous.secret_access_key } : {}) }, groupId) }, groupId);
+  // The person's Organization roles are verified here, at the moment the account is joined.
+  let joined: Awaited<ReturnType<typeof joinCloudflareAccount>>;
+  try { joined = await joinCloudflareAccount(session, accountId, groupId, { confirmed: confirmShared, accountName: ref.name }); }
+  catch (error) {
+    if (error instanceof ConnectionError && error.code === 'shared_account_confirmation_required') throw error;
+    throw new CloudflareFlowError(cloudflareBlockerFromError(error, { account: ref }), 409);
+  }
+  try {
+    await saveConnection(session.orgId, 'cloudflare', revision, { status: 'connected', auth_method: 'oauth', refresh_lease: null,
+      media_ready: Boolean(current.media_ready && previous.access_key_id && previous.secret_access_key && current.cloudflare?.bucket && current.cloudflare.public_bucket),
+      connected_at: new Date().toISOString(), connected_by: session.userId,
+      cloudflare: { ...current.cloudflare, account_id: accountId, account_name: ref.name, bucket: current.cloudflare?.bucket ?? '', endpoint: `https://${accountId}.r2.cloudflarestorage.com` },
+      encrypted_credentials: sealCredentials(session.orgId, 'cloudflare', { oauth: tokens,
+        ...(previous.access_key_id && previous.secret_access_key ? { access_key_id: previous.access_key_id, secret_access_key: previous.secret_access_key } : {}) }, groupId) }, groupId);
+  } catch (error) {
+    // A connection that was not saved must not keep a membership this attempt added.
+    if (joined.added) await leaveCloudflareAccount(session.orgId, accountId, groupId).catch(() => undefined);
+    throw error;
+  }
 }
 
 // ─── Check again ─────────────────────────────────────────────────────────

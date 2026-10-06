@@ -12,6 +12,7 @@ import { getStore } from '../datastore';
 import { encryptSecret } from '../secret-crypto';
 import { getConnection, ConnectionError } from '../publishing/connections';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
+import { claimCloudflareResource, generatedCloudflareNames, isSharedCloudflareAccount } from '../publishing/cloudflare-account-claims';
 import { githubConfiguration } from '../publishing/github-connection';
 import { githubInstallationClient, publishTree, ProviderError } from '../publishing/providers.mjs';
 import { readBuildEngine, checkBuildEngine, enginePath } from './cloudflare';
@@ -66,7 +67,8 @@ export async function configureBuildEngine(org: string, input: Record<string, un
     await prepareBuildRetention(org);
     phase = 'Workers Scripts';
     const client = await cloudflareClient(org), base = `/accounts/${config.account_id}`;
-    const name = current.worker_name, tag = `typeroll-build-${sha256(org).slice(0, 16)}`;
+    const name = current.worker_name, tag = generatedCloudflareNames(org).build_worker_tag;
+    await claimCloudflareResource(org, config.account_id, 'worker', name);
     let worker = (await client(`${base}/workers/scripts`)).find((entry: any) => entry.id === name);
     // The earlier explicitly provisioned staging pilot has the same deterministic name.
     if (worker && !worker.tags?.includes(tag) && !worker.tags?.includes('typeroll-staging-build-qualification')) throw new ConnectionError('A different Worker already uses the generated build project name.', 409);
@@ -105,10 +107,13 @@ export async function configureBuildEngine(org: string, input: Record<string, un
     phase = 'Workers Builds';
     const tokens = await client(`${base}/builds/tokens`);
     let trigger = triggers.find((entry: any) => entry.branch_includes?.includes('main') && !entry.branch_excludes?.includes('main'));
-    const tokenId = trigger?.build_token_uuid ?? (tokens.length === 1 ? tokens[0].build_token_uuid : null);
+    // A build token belongs to the whole account. In an account other Organizations use, its one token is not
+    // assumed to be this Organization's: the token selected on this Organization's own trigger is used instead.
+    const shared = await isSharedCloudflareAccount(org, config.account_id);
+    const tokenId = trigger?.build_token_uuid ?? (tokens.length === 1 && !shared ? tokens[0].build_token_uuid : null);
     if (!tokenId) {
       await store.updateDoc(enginePath(org), { revision: randomUUID(), state: 'build_token_required', worker_found: true, account_id: config.account_id, account_name: cf.cloudflare.account_name, enabled: false,
-        issue: { code: tokens.length > 1 ? 'build_token_selection_required' : 'build_token_required', message: 'The build project is prepared. Open Cloudflare setup, connect the generated GitHub repository on branch main and create or select its API token. Then return and finish build setup.' } });
+        issue: { code: tokens.length > 1 || (shared && tokens.length) ? 'build_token_selection_required' : 'build_token_required', message: 'The build project is prepared. Open Cloudflare setup, connect the generated GitHub repository on branch main and create or select its API token. Then return and finish build setup.' } });
       await store.updateDoc(path, { ...config, status: 'disabled', setup_lease_until: 0 });
       return readBuildEngine(org);
     }

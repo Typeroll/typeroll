@@ -3,6 +3,7 @@ import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from
 import { getStore } from '../datastore';
 import { ConnectionError, getConnection, openCredentials, sealCredentials } from '../publishing/connections';
 import { cloudflareClient, type CloudflareStoredCredentials } from '../publishing/cloudflare-oauth';
+import { claimCloudflareResource, mediaTransferWorkerName } from '../publishing/cloudflare-account-claims';
 import { ProviderError } from '../publishing/providers.mjs';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -28,7 +29,7 @@ export async function customerTransferService(org: string, force = false): Promi
   if (!connection.media_ready || connection.status !== 'connected' || !connection.cloudflare || !connection.encrypted_credentials) throw new ConnectionError('Check the organization’s Media storage connection in Publishing.', 409, 'media_storage_unavailable');
   const origin = new URL(process.env.PORTAL_PUBLIC_URL ?? '').origin;
   if (!origin.startsWith('https://')) throw new ConnectionError('Media transfers require the public HTTPS address of this Typeroll server.', 503);
-  const scope = hash(`${origin}\0${org}`).slice(0, 16), name = `typeroll-media-${scope}`, tag = `typeroll-media-${scope}`;
+  const name = mediaTransferWorkerName(org, origin), tag = name;
   const store = getStore(), deadline = Date.now() + 120000;
   const unlock = (config: Configuration) => {
     const saved = openCredentials<{ origin: string; account_id: string; secret: string }>(org, 'cloudflare', config.encrypted_credentials);
@@ -52,6 +53,7 @@ export async function customerTransferService(org: string, force = false): Promi
       const credentials = openCredentials<CloudflareStoredCredentials>(org, 'cloudflare', connection.encrypted_credentials);
       if (credentials.oauth && !['workers-scripts.read', 'workers-scripts.write'].every(scope => credentials.oauth!.scope.split(/\s+/).includes(scope))) throw new ConnectionError('Allow media transfers in Publishing → Media storage. Cloudflare needs permission to create the transfer worker; your R2 keys do not need to be replaced.', 409, 'media_transfer_approval_required');
       const client = await cloudflareClient(org), base = `/accounts/${connection.cloudflare.account_id}`;
+      await claimCloudflareResource(org, connection.cloudflare.account_id, 'worker', name);
       // Expire abandoned copy staging objects without changing existing retention rules.
       const lifecyclePath = `${base}/r2/buckets/${connection.cloudflare.bucket}/lifecycle`;
       const lifecycle = await client(lifecyclePath, { missing: true });

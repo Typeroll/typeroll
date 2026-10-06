@@ -539,6 +539,19 @@ describe('publishing account routes', () => {
     expect(callback.cookies.delete).toHaveBeenCalled();
   });
 
+  it('asks the signed-in person to confirm a Cloudflare account another Organization they administer uses', async () => {
+    await getStore().setDoc('organizations/sister-company', { name: 'Sister Company' });
+    await getStore().setDoc('organizations/sister-company/members/dev-user', { role: 'admin' });
+    await getStore().setDoc(`publishing_account_claims/cloudflare-${accountId}`, { schema: 2, provider: 'cloudflare', account_id: accountId, revision: 'r',
+      members: [{ org_id: 'sister-company', hosting_groups: ['default'], joined_at: null, joined_by: null }], org_id: 'sister-company', legacy_org_id: null, releasing_until: null });
+    const unconfirmed = await call(POST, routeContext('POST', 'cloudflare', { action: 'select', account_id: accountId }));
+    expect(unconfirmed.status).toBe(409);
+    expect(await unconfirmed.json()).toMatchObject({ code: 'shared_account_confirmation_required', details: { shared_with: ['Sister Company'] } });
+    // Confirmed, the request reaches the account choice itself (none is open in this test).
+    const confirmed = await call(POST, routeContext('POST', 'cloudflare', { action: 'select', account_id: accountId, confirm_shared_account: true }));
+    expect(await confirmed.json()).toMatchObject({ code: 'account_choice_expired' });
+  });
+
   it.each([null, [], true, 'not-an-object'])('rejects non-object connection input', async body => {
     expect((await call(POST, routeContext('POST', 'cloudflare', body))).status).toBe(400);
   });

@@ -97,7 +97,7 @@ describe('Cloudflare connection diagnosis', () => {
     for (const code of CLOUDFLARE_BLOCKER_CODES) {
       const blocker = cloudflareBlocker(code, { account: staging, previous: autopilot, permissions: ['page.write'] });
       expect(blocker.code).toBe(code);
-      expect(['you', 'cloudflare_account_admin', 'publisher', 'typeroll_admin']).toContain(blocker.who);
+      expect(['you', 'cloudflare_account_admin', 'organization_admin', 'publisher', 'typeroll_admin']).toContain(blocker.who);
       expect(blocker.message.length).toBeGreaterThan(20);
       expect(blocker.action, code).toBeDefined();
     }
@@ -257,11 +257,19 @@ describe('Cloudflare connection diagnosis', () => {
     expect(await mine()).toMatchObject({ outcome: 'connected' });
   });
 
-  it('explains an account another Typeroll organization uses', async () => {
-    await getStore().setDoc(`publishing_account_claims/cloudflare-${staging.id}`, { org_id: 'another' });
+  it('explains an account another Typeroll organization uses, without naming it', async () => {
+    // A claim written before sharing, by an Organization whose connection still uses the account.
+    await getStore().setDoc(`publishing_account_claims/cloudflare-${staging.id}`, { org_id: 'hidden-org' });
+    await getStore().setDoc('organizations/hidden-org', { name: 'Hidden Company AB' });
+    await getStore().setDoc('organizations/hidden-org/publishing_connections/cloudflare', { status: 'connected', revision: 'r',
+      cloudflare: { account_id: staging.id, account_name: staging.name, bucket: 'hidden-media', endpoint: '' } });
     await attempt(cloudflare());
-    expect(await mine()).toMatchObject({ outcome: 'action_required',
-      accounts: [{ id: staging.id, usable: false, blockers: [{ code: 'claimed_by_other_organization', who: 'typeroll_admin' }] }] });
+    const diagnosis = await mine();
+    expect(diagnosis).toMatchObject({ outcome: 'action_required',
+      accounts: [{ id: staging.id, usable: false, blockers: [{ code: 'claimed_by_other_organization', who: 'organization_admin',
+        action: { kind: 'link', url: 'https://typeroll.com/docs/guides/cloudflare-troubleshooting/#claimed_by_other_organization' } }] }] });
+    expect(JSON.stringify(diagnosis)).not.toMatch(/hidden-org|Hidden Company/);
+    expect(diagnosis.accounts[0].blockers[0].message).toContain('owner or admin of an Organization that already uses it');
   });
 
   it('offers a choice inside the card for two accounts, keeps it after an account-specific failure and connects the other one', async () => {

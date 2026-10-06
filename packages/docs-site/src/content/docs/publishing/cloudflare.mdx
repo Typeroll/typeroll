@@ -76,6 +76,15 @@ under a domain managed by the Organization's DNS account while its Pages project
 live in the group's different hosting account. The group does not need its own
 root domain just because the hosting account differs.
 
+A Cloudflare account may also be used by several Organizations, for example one
+owner's companies. Only an owner or admin of an Organization that already uses
+the account can connect it to another Organization, and confirms it first. Each
+Organization keeps its own Pages projects, buckets, Workers and media hostname;
+Typeroll records which Organization owns each resource and never changes another
+Organization's. Disconnecting a Hosting Group or Organization removes only its
+own use of the account. See
+[Sharing one Cloudflare account](../../guides/cloudflare-troubleshooting/#sharing-one-cloudflare-account).
+
 ## Media and generated repositories
 
 Original images are not committed to GitHub. During a build, the engine receives

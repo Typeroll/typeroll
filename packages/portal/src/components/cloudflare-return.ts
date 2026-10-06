@@ -7,10 +7,12 @@ import type { PublishingState } from './PublishingCard';
 
 /** Who must act. Shown as its own label above the reason, never as the start of the sentence. */
 export const CLOUDFLARE_WHO: Record<CloudflareBlockerWho, string> = {
-  you: 'You', cloudflare_account_admin: 'Cloudflare account administrator', publisher: 'Typeroll publisher', typeroll_admin: 'Typeroll administrator',
+  you: 'You', cloudflare_account_admin: 'Cloudflare account administrator', organization_admin: 'Owner or admin of the Organization that uses the account',
+  publisher: 'Typeroll publisher', typeroll_admin: 'Typeroll administrator',
 };
 const MUST_ACT: Record<Exclude<CloudflareBlockerWho, 'you'>, string> = {
   cloudflare_account_admin: 'An administrator of the Cloudflare account must act first.', publisher: 'The Typeroll publisher must act first.',
+  organization_admin: 'An owner or admin of the Organization that already uses the account must act first.',
   typeroll_admin: 'A Typeroll administrator must act first.',
 };
 export const CLOUDFLARE_SUMMARY: Record<CloudflareDiagnosisOutcome, string> = {
@@ -44,6 +46,8 @@ export function cloudflarePrimaryReason(diagnosis: Pick<CloudflareConnectionDiag
 /** The summary line names the next step, or who must take it. */
 export function cloudflareNextStep(diagnosis: CloudflareConnectionDiagnosis, action: CloudflareDiagnosisAction | null, blocker: CloudflareBlocker | undefined): string {
   if (diagnosis.outcome === 'sign_in_required' && blocker && action) return `Cloudflare is not connected. Next: ${action.label}.`;
+  // A single account is offered as a choice only to confirm sharing it with other Organizations.
+  if (diagnosis.outcome === 'choose' && diagnosis.accounts.length === 1 && diagnosis.accounts[0].shared_with?.length) return 'Confirm that this organization shares the Cloudflare account you authorized.';
   if (diagnosis.outcome !== 'action_required') return CLOUDFLARE_SUMMARY[diagnosis.outcome];
   if (blocker && blocker.who !== 'you') return `Cloudflare is not connected yet. ${MUST_ACT[blocker.who]}`;
   if (action) return `Cloudflare is not connected yet. Next: ${action.label}.`;

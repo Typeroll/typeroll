@@ -18,13 +18,16 @@ export type CloudflareConnectionStatus = {
 const API = '/api/orgs/publishing/cloudflare';
 const FLOW_SIGN_IN = ['oauth_cancelled', 'state_expired', 'wrong_browser', 'session_expired'];
 
-class CloudflareRequestError extends Error {}
+class CloudflareRequestError extends Error {
+  constructor(message: string, public code?: string, public details?: { shared_with?: string[] }) { super(message); }
+}
 async function request(path: string, body: unknown) {
   const response = await fetch(`${API}${path}`, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new CloudflareRequestError(data.error || 'Could not reach Typeroll. Check your connection and try again.');
+  if (!response.ok) throw new CloudflareRequestError(data.error || 'Could not reach Typeroll. Check your connection and try again.', data.code, data.details);
   return data;
 }
+type Choice = { id: string; name: string; shared_with?: string[] };
 
 /** Who acts, as a label of its own, then the reason as a separate sentence. */
 function Reason({ blocker }: { blocker: Pick<CloudflareBlocker, 'who' | 'message' | 'code'> }) {
@@ -53,7 +56,7 @@ export function useCloudflareClock(diagnosis: Pick<CloudflareConnectionDiagnosis
  * the account chooser when several accounts were authorized, and the steps of the connection.
  */
 export default function PublishingCloudflareConnection({ groupId, connection, diagnosis: served, choices = [], available, returned, disabled, onRefresh }: {
-  groupId: string; connection: CloudflareConnectionStatus; diagnosis?: CloudflareConnectionDiagnosis; choices?: Array<{ id: string; name: string }>;
+  groupId: string; connection: CloudflareConnectionStatus; diagnosis?: CloudflareConnectionDiagnosis; choices?: Choice[];
   available: boolean;
   /** Value of ?cloudflare= when the person just came back from Cloudflare to this card. */
   returned: string | null;
@@ -64,6 +67,9 @@ export default function PublishingCloudflareConnection({ groupId, connection, di
   const [announcement, setAnnouncement] = useState('');
   const [checked, setChecked] = useState<CloudflareConnectionDiagnosis | null>(null);
   const [selected, setSelected] = useState('');
+  // Joining an account other Organizations use needs a confirmation that names those this person administers.
+  const [sharedConfirmed, setSharedConfirmed] = useState('');
+  const [sharedByServer, setSharedByServer] = useState<{ accountId: string; names: string[] } | null>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
   const focused = useRef(false);
   const connected = connection.status === 'connected' && Boolean(connection.cloudflare);
@@ -88,6 +94,10 @@ export default function PublishingCloudflareConnection({ groupId, connection, di
   const usableChoices = offered.filter(account => account.usable && selectable.has(account.id));
   const chosen = selected && usableChoices.some(account => account.id === selected) ? selected : usableChoices.length === 1 ? usableChoices[0].id : '';
   const expiresAt = formatTime(diagnosis.selection_expires_at);
+  const chosenAccount = offered.find(account => account.id === chosen);
+  const sharedWith = chosen ? (chosenAccount?.shared_with?.length ? chosenAccount.shared_with : choices.find(choice => choice.id === chosen)?.shared_with?.length
+    ? choices.find(choice => choice.id === chosen)!.shared_with! : sharedByServer?.accountId === chosen ? sharedByServer.names : []) : [];
+  const needsConfirmation = sharedWith.length > 0 && sharedConfirmed !== chosen;
 
   // Coming back from Cloudflare: move focus to the result in this card and announce it once.
   useEffect(() => {
@@ -119,10 +129,17 @@ export default function PublishingCloudflareConnection({ groupId, connection, di
   async function select(accountId: string) {
     setBusy('select'); setError(''); setChecked(null);
     try {
-      await request('', { action: 'select', account_id: accountId, ...(groupId === 'default' ? {} : { hosting_group_id: groupId }) });
+      await request('', { action: 'select', account_id: accountId, ...(groupId === 'default' ? {} : { hosting_group_id: groupId }),
+        ...(sharedWith.length && sharedConfirmed === accountId ? { confirm_shared_account: true } : {}) });
       await onRefresh();
       setAnnouncement('Cloudflare connected. This account is reused for this organization’s sites.');
     } catch (failure) {
+      if (failure instanceof CloudflareRequestError && failure.code === 'shared_account_confirmation_required') {
+        // The choice stays open: ask for the confirmation, then the person selects again.
+        setSharedByServer({ accountId, names: failure.details?.shared_with ?? [] }); setSharedConfirmed('');
+        setAnnouncement(failure.message);
+        return;
+      }
       // The stored diagnosis explains the reason in the card; keep the server's sentence for screen readers too.
       setAnnouncement(failure instanceof Error ? failure.message : 'Could not connect the selected account.');
       await onRefresh().catch(() => setError('Could not connect the selected account. Reload the page to see why.'));
@@ -161,10 +178,10 @@ export default function PublishingCloudflareConnection({ groupId, connection, di
       {outcome === 'sign_in_pending' && diagnosis.sign_in_started_at && <p className="muted">You started signing in at {formatTime(diagnosis.sign_in_started_at)}. If you closed Cloudflare’s page or it showed an error, start again.</p>}
       {/* On a working connection only the person's own failed step or a re-check finding is explained here. */}
       {primaryBlocker && !choosing && (outcome !== 'connected' || diagnosis.blockers.includes(primaryBlocker)) && <Reason blocker={primaryBlocker} />}
-      {choosing && <form className="cloudflare-connection__choice" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (chosen) void select(chosen); }}>
+      {choosing && <form className="cloudflare-connection__choice" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (chosen && !needsConfirmation) void select(chosen); }}>
         <fieldset>
           <legend>Choose a Cloudflare account</legend>
-          <p className="muted">You authorized {offered.length} accounts on Cloudflare. Typeroll does not pick one for you: the account you choose hosts this organization’s sites and stays reserved for this organization, and reconnecting later must use the same account.</p>
+          <p className="muted">You authorized {offered.length} {offered.length === 1 ? 'account' : 'accounts'} on Cloudflare. Typeroll does not pick one for you: the account you choose hosts this organization’s sites, and reconnecting later must use the same account. Organizations you administer may share one account; their sites stay separate.</p>
           {expiresAt && <p data-cloudflare-expiry>Choose by {expiresAt}. After that, check again or connect Cloudflare again.</p>}
           <ul className="cloudflare-connection__accounts" aria-label="Authorized Cloudflare accounts">
             {offered.map(account => {
@@ -174,6 +191,7 @@ export default function PublishingCloudflareConnection({ groupId, connection, di
                   <input type="radio" name={`cloudflare-account-${groupId}`} value={account.id} disabled={!enabled || working} checked={chosen === account.id} onChange={() => setSelected(account.id)} />
                   <strong>{account.name}</strong>
                   <span className={`cloudflare-connection__badge cloudflare-connection__badge--${enabled ? 'ready' : 'blocked'}`}>{enabled ? 'Pages access verified' : 'Cannot be connected'}</span>
+                  {enabled && Boolean(account.shared_with?.length) && <span className="cloudflare-connection__badge cloudflare-connection__badge--shared">Shared</span>}
                 </label>
                 {account.blockers.length > 0 && <ul className="cloudflare-connection__reasons">{account.blockers.map(blocker => <li key={blocker.code}>
                   <Reason blocker={blocker} />
@@ -183,8 +201,15 @@ export default function PublishingCloudflareConnection({ groupId, connection, di
             })}
           </ul>
         </fieldset>
+        {sharedWith.length > 0 && <div className="cloudflare-connection__shared" data-cloudflare-shared role="group" aria-labelledby={`cloudflare-shared-${groupId}`}>
+          <p id={`cloudflare-shared-${groupId}`}><strong>This Cloudflare account is also used by: {sharedWith.join(', ')}.</strong> Sites stay separate: each Organization keeps its own sites, Pages projects, media storage and settings in the account. Disconnecting later removes only this Organization.</p>
+          <label className="cloudflare-connection__confirm">
+            <input type="checkbox" checked={sharedConfirmed === chosen} disabled={working} onChange={event => setSharedConfirmed(event.currentTarget.checked ? chosen : '')} />
+            Use {chosenAccount?.name ?? 'this account'} for this Organization as well
+          </label>
+        </div>}
         <div className="cloudflare-connection__actions">
-          <button type="submit" className="btn" disabled={working || !chosen}>{busy === 'select' ? 'Connecting…'
+          <button type="submit" className="btn" disabled={working || !chosen || needsConfirmation}>{busy === 'select' ? 'Connecting…'
             : chosen ? `Connect ${offered.find(account => account.id === chosen)?.name ?? 'selected account'}` : 'Select an account to connect'}</button>
         </div>
       </form>}
@@ -207,7 +232,7 @@ export default function PublishingCloudflareConnection({ groupId, connection, di
       {step('account', '3. Choose account',
         connected ? 'ready' : choosing ? 'waiting' : choiceExpired || allBlockers.some(blocker => ['locked_to_account', 'no_eligible_account', 'too_many_accounts'].includes(blocker.code)) ? 'error'
           : diagnosis.accounts.length === 1 ? 'ready' : 'waiting',
-        connected ? `Connected · ${savedName}` : choosing ? `Choose one of ${offered.length} accounts${expiresAt ? ` by ${expiresAt}` : ''}`
+        connected ? `Connected · ${savedName}` : choosing ? `${offered.length === 1 ? `Confirm ${offered[0].name}` : `Choose one of ${offered.length} accounts`}${expiresAt ? ` by ${expiresAt}` : ''}`
           : choiceExpired ? `Choice expired${diagnosis.selection_expires_at ? ` at ${formatTime(diagnosis.selection_expires_at)}` : ''}`
           : allBlockers.some(blocker => blocker.code === 'locked_to_account') ? 'Action required · Use the original account'
           : allBlockers.some(blocker => ['no_eligible_account', 'too_many_accounts'].includes(blocker.code)) ? 'Action required · See the reason above'

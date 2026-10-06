@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { getStore } from '../datastore';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { getConnection, ConnectionError } from '../publishing/connections';
-import { ProviderError, digest, type ProviderClient } from '../publishing/providers.mjs';
+import { generatedCloudflareNames, isSharedCloudflareAccount } from '../publishing/cloudflare-account-claims';
+import { ProviderError, type ProviderClient } from '../publishing/providers.mjs';
 import { BUILD_PROTOCOL, BUILD_RUNTIME } from './contract.mjs';
 
 export const enginePath = (org: string, provider: 'cloudflare' | 'github' = 'cloudflare') => `organizations/${org}/publishing/${provider === 'github' ? 'github_build_engine' : 'build_engine'}`;
@@ -22,7 +23,7 @@ export interface BuildEngine {
   node_version: string;
 }
 export async function readBuildEngine(org: string): Promise<BuildEngine> {
-  const name = `typeroll-builder-${digest(org).slice(0, 16)}`;
+  const name = generatedCloudflareNames(org).build_worker;
   return await getStore().getDoc<BuildEngine>(enginePath(org)) ?? {
     revision: 'initial', provider: 'cloudflare', enabled: false, account_id: null, account_name: null,
     state: 'not_configured', checked_at: null, issue: null, worker_name: name, runner_repo: name,
@@ -77,7 +78,8 @@ export async function checkBuildEngine(org: string, input: Record<string, unknow
       message: 'Build permissions are approved. Cloudflare has not reported a build token for this account yet. Complete the one-time setup in Cloudflare, then check again. Reconnecting your account will not create the token.' } };
     else next = { ...next, state: 'qualification_required', issue: { code: 'build_qualification_required',
       message: 'Build access is approved. Start build setup to prepare the environment and run a test build. No live site will be published.' } };
-    if (!access.issues.length && access.build_tokens > 1 && access.worker_tag) {
+    // Several tokens, or one in an account other Organizations use: the token selected on this Organization's own trigger decides.
+    if (!access.issues.length && access.worker_tag && (access.build_tokens > 1 || (access.build_tokens === 1 && await isSharedCloudflareAccount(org, connection.cloudflare.account_id)))) {
       const triggers = await client(`/accounts/${connection.cloudflare.account_id}/builds/workers/${access.worker_tag}/triggers`);
       const selected = triggers.some((trigger: any) => trigger.branch_includes?.includes('main') && !trigger.branch_excludes?.includes('main') && trigger.build_token_uuid);
       if (!selected) next = { ...next, state: 'build_token_required', issue: { code: 'build_token_selection_required',

@@ -28,7 +28,7 @@ export const POST: APIRoute = async (context) => {
         return privateJson({ authorization_url: result.url });
       }
       if (body.action === 'select' && typeof body.account_id === 'string') {
-        await selectCloudflareAccount(guard.value, body.account_id, fetch, groupId);
+        await selectCloudflareAccount(guard.value, body.account_id, fetch, groupId, { confirmShared: body.confirm_shared_account === true });
         return privateJson({ connected: true });
       }
       await connectCloudflare(guard.value, body);

@@ -1043,10 +1043,13 @@ re-check an already connected installation.
 When Cloudflare is not connected or "Connect Cloudflare didn't work", call
 `diagnose_organization_cloudflare_connection` (pass `hosting_group_id` for a
 Hosting Group other than Default). It returns the outcome and each blocker's
-`code`, `who` (`you`, `cloudflare_account_admin`, `publisher`,
-`typeroll_admin`) and one action: for example `oauth_cancelled`,
+`code`, `who` (`you`, `cloudflare_account_admin`, `organization_admin`,
+`publisher`, `typeroll_admin`) and one action: for example `oauth_cancelled`,
 `permissions_missing` (with `missing_permissions`), `pages_access_denied`,
-`account_choice_expired` or `locked_to_account`. The accounts a person
+`account_choice_expired`, `locked_to_account` or
+`claimed_by_other_organization` (another Organization uses the account; only an
+owner or admin of that Organization can connect it here, in a browser, and no
+other Organization is named). The accounts a person
 authorized and their account choice stay in their own Cloudflare card. Relay
 the message and link; `sign_in` and `retry` happen at `connect_url`. Pass
 `recheck: true` only to re-verify a saved connection.

@@ -1,5 +1,24 @@
 # Changelog
 
+## Core 0.2.69 / MCP 0.45.52
+
+Several Typeroll Organizations may use one Cloudflare account, for example one owner with several companies kept apart so that a site can be transferred later.
+
+- Fixed: an Organization could not connect a Cloudflare account that another Organization had ever connected (`claimed_by_other_organization`). The reason told people to disconnect it there or ask for a transfer, but disconnecting kept the claim and no transfer existed.
+- Shared Cloudflare accounts:
+  - The account claim lists the Organizations and Hosting Groups that use the account. Joining an account another Organization uses requires a person who is an owner or admin of at least one Organization that already uses it. The role is read from the member documents when the account is connected, for OAuth (automatic connection and account choice), API tokens and Hosting Groups.
+  - The person confirms first: the card says **This Cloudflare account is also used by: …**, naming only the Organizations they administer, and that sites stay separate. A single authorized account that other Organizations use is offered as a choice for this confirmation instead of being connected directly. The portal routes return `409 shared_account_confirmation_required` with `details.shared_with`; the request is repeated with `confirm_shared_account: true`.
+  - Anyone else gets `claimed_by_other_organization`, now with `who: organization_admin`, a message that names no other Organization and says who can connect the account (an owner or admin of an Organization that uses it, or Typeroll support), and a link to [Sharing one Cloudflare account](https://typeroll.com/docs/guides/cloudflare-troubleshooting/#sharing-one-cloudflare-account). An organization API key (API and MCP) cannot join an account another Organization uses. An Organization whose own saved connection names the account may always reconnect it.
+  - Disconnecting removes only that Hosting Group's, and then that Organization's, use of the account. The claim is deleted when no Organization uses the account.
+  - Claims written before sharing (`{ org_id }`) keep working: they are read as that Organization's current use and upgraded on the next write. Its buckets are recorded as its own before another Organization joins.
+- Isolation inside a shared account:
+  - Generated names are unchanged and were already derived from the Organization (and Site): R2 buckets, the build Worker, the media transfer Worker, and each Site's Pages project and repository. Nothing is renamed or moved.
+  - Typeroll records which Organization owns each R2 bucket, Pages project and Worker before creating or changing it, and refuses an operation on another Organization's resource (`cloudflare_resource_owned_by_other_organization`), including a bucket typed in the API-token form that another Organization uses. Media buckets are never shared between Organizations.
+  - A hostname whose DNS points to another Organization's Pages project is never prepared for replacement (`hostname_used_by_other_organization`).
+  - The shared build engine no longer selects the account's only build token by assumption when other Organizations use the account; the token selected on the Organization's own build project is used.
+  - The organization-level diagnosis (other admins, API keys, MCP) never contains the Organizations a person administers.
+- GitHub claims are unchanged: one GitHub account still belongs to one Organization.
+
 ## Core 0.2.68 / MCP 0.45.51
 
 - Security: proxy-addr 2.0.8 (GHSA-jqcg-44mw-7w3h), source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q), smol-toml 1.9.0 (GHSA-r4xh-jqrq-34v2) and postcss-selector-parser 7.1.6 where its range allows (GHSA-rj75-hqrm-r3gf). Lockfile only.

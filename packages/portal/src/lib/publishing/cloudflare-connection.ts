@@ -1,9 +1,12 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { R2VerificationError, r2Diagnostic, type R2VerificationDiagnostic, type R2VerificationStep } from './r2-verification-error';
 import type { FullSession } from '../access';
 import { isSecretCryptoConfigured } from '../secret-crypto';
-import { claimAccount, ConnectionError, getConnection, saveConnection, sealCredentials, openCredentials } from './connections';
+import { ConnectionError, getConnection, saveConnection, sealCredentials, openCredentials } from './connections';
+import {
+  assertCloudflareResourceAvailable, claimCloudflareResource, cloudflareAccountAccess, generatedCloudflareNames, sharedAccountConfirmation, sharedAccountRefusal, withCloudflareAccountMembership,
+} from './cloudflare-account-claims';
 import { createProviderClient } from './providers.mjs';
 import { cloudflareClient, verifyPagesAccess, type CloudflareStoredCredentials } from './cloudflare-oauth';
 
@@ -74,15 +77,23 @@ export async function connectCloudflare(session: FullSession, input: unknown, fe
   const account = await cloudflare(`/accounts/${data.account_id}`);
   if (account.id !== data.account_id || typeof account.name !== 'string') throw new ConnectionError('Cloudflare account verification failed', 502);
   await verifyPagesAccess(cloudflare, data.account_id);
+  // Decide on sharing before touching any bucket: another Organization's bucket is never written to.
+  const accountName = account.name.slice(0, 200), confirmed = (input as Record<string, unknown>).confirm_shared_account === true;
+  const access = await cloudflareAccountAccess(session, data.account_id);
+  if (access.state === 'refused') throw sharedAccountRefusal(session, { id: data.account_id, name: accountName });
+  if (access.confirmation_required && !confirmed) throw sharedAccountConfirmation(access, accountName);
+  await assertCloudflareResourceAvailable(session.orgId, data.account_id, 'r2_bucket', data.bucket);
   await assertPrivateOriginalBucket(cloudflare, data.account_id, data.bucket);
   const credentials = { api_token: data.api_token, access_key_id: data.access_key_id, secret_access_key: data.secret_access_key };
   await verifyR2(data.account_id, data.bucket, credentials);
-  await claimAccount(session.orgId, 'cloudflare', data.account_id);
-  await saveConnection(session.orgId, 'cloudflare', data.revision, {
-    status: 'connected', auth_method: 'api_token', media_ready: false, connected_at: new Date().toISOString(), connected_by: session.userId,
-    cloudflare: { account_id: data.account_id, account_name: account.name.slice(0, 200), bucket: data.bucket,
-      endpoint: `https://${data.account_id}.r2.cloudflarestorage.com` },
-    encrypted_credentials: sealCredentials(session.orgId, 'cloudflare', credentials),
+  await withCloudflareAccountMembership(session, data.account_id, 'default', { confirmed, accountName }, async () => {
+    await claimCloudflareResource(session.orgId, data.account_id, 'r2_bucket', data.bucket);
+    await saveConnection(session.orgId, 'cloudflare', data.revision, {
+      status: 'connected', auth_method: 'api_token', media_ready: false, connected_at: new Date().toISOString(), connected_by: session.userId,
+      cloudflare: { account_id: data.account_id, account_name: accountName, bucket: data.bucket,
+        endpoint: `https://${data.account_id}.r2.cloudflarestorage.com` },
+      encrypted_credentials: sealCredentials(session.orgId, 'cloudflare', credentials),
+    });
   });
 }
 
@@ -101,7 +112,12 @@ export async function prepareCloudflareMedia(session: FullSession, revision: str
   // connection that supplied this client, never a concurrent reconnect.
   const authorized = await getConnection(session.orgId, 'cloudflare');
   if (authorized.revision !== provider.connectionRevision || authorized.cloudflare?.account_id !== current.cloudflare.account_id) throw new ConnectionError('The connection changed. Reload and try again.', 409);
-  const bucket = current.cloudflare.bucket || `typeroll-media-${createHash('sha256').update(session.orgId).digest('hex').slice(0, 16)}`;
+  // Both names are generated from this Organization's identity, or saved in its own connection.
+  const generated = generatedCloudflareNames(session.orgId);
+  const bucket = current.cloudflare.bucket || generated.media_bucket;
+  const publicBucket = current.cloudflare.public_bucket || generated.public_bucket;
+  // Two Organizations sharing one Cloudflare account never share a bucket.
+  for (const name of [bucket, publicBucket]) await claimCloudflareResource(session.orgId, current.cloudflare.account_id, 'r2_bucket', name);
   const root = `/accounts/${current.cloudflare.account_id}/r2/buckets`;
   let existing = await provider(`${root}/${bucket}`, { missing: true });
   if (!existing) {
@@ -110,7 +126,6 @@ export async function prepareCloudflareMedia(session: FullSession, revision: str
   }
   if (existing.name !== bucket || (existing.jurisdiction && existing.jurisdiction !== 'default')) throw new ConnectionError('The R2 bucket does not match this connection.', 409);
   await assertPrivateOriginalBucket(provider, current.cloudflare.account_id, bucket);
-  const publicBucket = current.cloudflare.public_bucket || `typeroll-public-${createHash('sha256').update(session.orgId).digest('hex').slice(0, 16)}`;
   let publicStorage = await provider(`${root}/${publicBucket}`, { missing: true });
   if (!publicStorage) {
     await provider(root, { method: 'POST', body: { name: publicBucket } });
@@ -133,6 +148,7 @@ export async function connectCloudflareMedia(session: FullSession, input: Record
   const { access_key_id, secret_access_key } = input;
   if (typeof access_key_id !== 'string' || typeof secret_access_key !== 'string' || !access_key_id || !secret_access_key ||
     access_key_id.length > 512 || secret_access_key.length > 512 || /[\s\x00-\x1f]/.test(access_key_id + secret_access_key)) throw new ConnectionError('Enter both the Access Key ID and Secret Access Key from your Cloudflare R2 token. The Cloudflare API token value is not one of these two keys.', 400, 'r2_credentials_required');
+  for (const name of [current.cloudflare.bucket, current.cloudflare.public_bucket]) await claimCloudflareResource(session.orgId, current.cloudflare.account_id, 'r2_bucket', name);
   await verifyR2(current.cloudflare.account_id, current.cloudflare.bucket, { access_key_id, secret_access_key });
   if (current.cloudflare.public_bucket) await verifyR2(current.cloudflare.account_id, current.cloudflare.public_bucket, { access_key_id, secret_access_key });
   // Refresh first, then reread credentials so saving media cannot restore a rotated token.
