@@ -1,9 +1,6 @@
 ---
 import AppLayout from '../../../layouts/AppLayout.astro';
-import PublishingBuilds from '../../../components/PublishingBuilds';
-import HostingGroups from '../../../components/HostingGroups';
-import PublishingConnections from '../../../components/PublishingConnections';
-import PublishingDomains from '../../../components/PublishingDomains';
+import PublishingTabs from '../../../components/PublishingTabs';
 import { publishingAdmin } from '../../../lib/publishing/http';
 import { organizationMembership } from '../../../lib/organization-session';
 
@@ -11,13 +8,12 @@ const guard = await publishingAdmin(Astro);
 if (!guard.ok) return guard.response;
 Astro.response.headers.set('Cache-Control', 'no-store');
 const organization = await organizationMembership(guard.value.userId, guard.value.orgId);
+// OAuth callbacks return with ?github= or ?cloudflare=; open the tab that shows the result.
+const initialTab = Astro.url.searchParams.has('cloudflare') ? 'cloudflare' : 'github';
 ---
 <AppLayout title="Publishing">
   <div class="app-header"><h1>Publishing</h1></div>
   <p>GitHub and Cloudflare connections for <strong>{organization?.name ?? 'your organization'}</strong>.</p>
   <p class="muted" style="max-width: 760px; margin-bottom: 1.5rem;">Connect once for all sites in your organization. You can edit, save and share temporary previews before completing publishing setup.</p>
-  <PublishingConnections client:load />
-  <PublishingBuilds refreshAfterCloudflareReturn={Astro.url.searchParams.get('cloudflare') === 'connected'} client:load />
-  <HostingGroups client:load />
-  <PublishingDomains client:load />
+  <PublishingTabs initialTab={initialTab} refreshAfterCloudflareReturn={Astro.url.searchParams.get('cloudflare') === 'connected'} client:load />
 </AppLayout>

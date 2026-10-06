@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,6 +9,8 @@ const connections = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/
 // These journeys exercise account connections against synthetic provider data.
 // Domain discovery has its own API and browser coverage, so keep that boundary
 // consistent with the synthetic account instead of calling Cloudflare here.
+const openTab = (page: Page, name: string) => page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
+
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/orgs/publishing/zones', route => route.fulfill({ json: { account_name: 'Example', zones: [] } }));
 });
@@ -22,7 +24,7 @@ test('organization owner sees masked account metadata and can disconnect without
     encrypted_credentials: 'synthetic-encrypted-secret-that-must-stay-on-server' }));
   try {
     await authenticatePersona(page, 'owner');
-    const response = await page.goto('/app/settings/publishing');
+    const response = await page.goto('/app/settings/publishing#cloudflare');
     expect(response?.status()).toBe(200);
     await expect(page.getByRole('heading', { name: 'Publishing' })).toBeVisible();
     await expect(page.getByText('API and R2 credentials are saved and hidden.', { exact: false })).toBeVisible();
@@ -69,7 +71,7 @@ test('Cloudflare connection form clears credentials after success and retains th
     submitted = route.request().postDataJSON(); connected = true;
     await route.fulfill({ json: { connected: true } });
   });
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#cloudflare');
   await page.getByText('Advanced: connect with existing API and R2 keys', { exact: true }).click();
   await page.getByLabel('Cloudflare Account ID').fill('a'.repeat(32));
   await page.getByLabel('R2 bucket name').fill('agency-media');
@@ -142,6 +144,7 @@ for (const accountType of ['Organization', 'User'] as const) test(`GitHub starts
   await page.screenshot({ path: testInfo.outputPath('github-account-connected-mobile.png') });
   await expect(page.getByRole('combobox', { name: 'Choose a GitHub account' })).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
+  await openTab(page, 'Cloudflare');
   await page.getByText('Advanced: connect with existing API and R2 keys', { exact: true }).click();
   await page.getByLabel('Cloudflare Account ID').scrollIntoViewIfNeeded();
   await expect(page.locator('#cf-account-help')).toContainText('Search → Copy account ID');
@@ -193,11 +196,16 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   });
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/app/settings/publishing');
-  for (const name of ['GitHub account', 'Cloudflare account', 'Media storage', 'Domains']) await expect(page.getByRole('region', { name, exact: true })).toBeVisible();
+  for (const [tab, name] of [['GitHub', 'GitHub account'], ['Cloudflare', 'Cloudflare account'], ['Media storage', 'Media storage'], ['Domains', 'Domains']]) {
+    await openTab(page, tab);
+    await expect(page.getByRole('region', { name, exact: true })).toBeVisible();
+  }
   await expect(page.locator('details[open]')).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'GitHub account', exact: true })).toHaveAttribute('data-state', 'ready');
-  await expect(page.getByRole('region', { name: 'Cloudflare account', exact: true })).toHaveAttribute('data-state', 'error');
-  await expect(page.getByRole('region', { name: 'Media storage', exact: true })).toHaveAttribute('data-state', 'error');
+  // Each tab carries the state of its cards so problems are visible without opening it.
+  await expect(page.getByRole('tab', { name: /^GitHub/ })).toHaveAttribute('data-state', 'ready');
+  await expect(page.getByRole('tab', { name: /^Cloudflare/ })).toHaveAttribute('data-state', 'error');
+  await expect(page.getByRole('tab', { name: /^Media storage/ })).toHaveAttribute('data-state', 'error');
+  await openTab(page, 'Cloudflare');
   await expect(page.getByLabel('Cloudflare Account ID')).not.toBeVisible();
   await page.getByRole('button', { name: 'Connect Cloudflare', exact: true }).click();
   expect(submitted[0]).toMatchObject({ action: 'start' });
@@ -210,9 +218,10 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   const media = page.getByRole('region', { name: 'Media storage' });
   const alert = media.getByRole('alert');
   await expect(page.getByRole('region', { name: 'Cloudflare account', exact: true })).toHaveAttribute('data-state', 'ready');
+  await expect(page.getByRole('tab', { name: /^Media storage/ })).toHaveAttribute('data-state', 'error');
+  await openTab(page, 'Media storage');
   await expect(alert).toContainText('R2 is not activated for Selected agency');
   await expect(media).toHaveAttribute('data-state', 'error');
-  await expect(alert).toBeFocused();
   await media.getByText('How to activate R2', { exact: true }).click();
   await expect(alert).toContainText('subscription checkout');
   await expect(alert).toContainText('billing details');
@@ -220,7 +229,10 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('r2-activation-error-mobile.png'), animations: 'disabled' });
   expect(submitted.filter(body => body.action === 'prepare_media')).toHaveLength(1);
+  await openTab(page, 'GitHub');
   await page.getByRole('button', { name: 'Disconnect GitHub' }).click();
+  await expect(page.getByRole('button', { name: 'Disconnect GitHub' })).toHaveCount(0);
+  await openTab(page, 'Media storage');
   await expect(alert).toContainText('R2 is not activated');
   await expect(page.getByText('R2 storage prepared', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Open R2 activation in Selected agency with a longer account name ↗' })).toHaveAttribute('href', `https://dash.cloudflare.com/${'b'.repeat(32)}/r2/overview`);
@@ -291,7 +303,7 @@ test('already active R2 is prepared automatically without activation instruction
     checks++; prepared = true;
     return route.fulfill({ json: { bucket: 'organization-media', public_bucket: 'organization-public-media' } });
   });
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#media');
   await expect(page.getByRole('heading', { name: 'Finish R2 setup' })).toBeVisible();
   expect(checks).toBe(1);
   await expect(page.getByRole('alert')).toHaveCount(0);
@@ -338,7 +350,7 @@ test('media migration progress updates automatically until completion', async ({
       cloudflare: { ...empty, status: 'connected', media_ready: true, cloudflare: { account_id: 'b'.repeat(32), account_name: 'Test organization', bucket: 'private-media', public_bucket: 'public-media' } },
       media_migration: { state: completed ? 'complete' : 'running', copied_files: emptyLibrary ? 0 : completed ? 3 : 1, pending_files: completed ? 0 : 2, error: null } } });
   });
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#media');
   await expect(page.getByText('Moving existing originals to R2: 1 file copied and verified.')).toBeVisible();
   await expect(page.getByText('The transfer continues automatically. You can close this page.', { exact: false })).toBeVisible();
   await expect(page.getByText('2 remaining.', { exact: false })).toHaveCount(0);
@@ -372,7 +384,7 @@ test('disconnect uses fresh metadata after token rotation and reports success or
   });
   await authenticatePersona(page, 'owner');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#cloudflare');
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Cloudflare account', exact: true }) });
   await expect(section.getByRole('button', { name: 'Disconnect Cloudflare' })).toBeVisible();
   revision = 'rotated';
@@ -408,7 +420,7 @@ test('a delayed migration poll cannot restore a disconnected account in the brow
   });
   await page.route('**/api/orgs/publishing/cloudflare', route => { connected = false; return route.fulfill({ json: { disconnected: true } }); });
   await authenticatePersona(page, 'owner');
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#cloudflare');
   await expect.poll(() => Boolean(releasePoll), { timeout: 10000 }).toBe(true);
   await page.getByRole('button', { name: 'Disconnect Cloudflare' }).click();
   await expect(page.getByText('Disconnected.', { exact: false })).toBeVisible();
@@ -697,7 +709,7 @@ for (const width of [320, 1440]) test(`build setup explains missing permissions 
     }
     await route.fulfill({ json: current });
   });
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#builds');
   const card = page.getByRole('region', { name: 'Builds', exact: true });
   await card.getByRole('button', { name: 'Finish build setup', exact: true }).click();
   await expect(card.getByRole('button', { name: 'Approve build permissions', exact: true })).toBeEnabled();
@@ -731,6 +743,8 @@ test('Cloudflare callback refreshes stale build permissions after connection UI 
     await route.fulfill({ json: stale });
   });
   await page.goto('/app/settings/publishing?cloudflare=connected');
+  await expect(page.getByRole('tab', { name: /^Cloudflare/ })).toHaveAttribute('aria-selected', 'true');
+  await openTab(page, 'Builds');
   const card = page.getByRole('region', { name: 'Builds', exact: true });
   await expect(card.getByRole('status')).toHaveText('Build permissions verified.');
   await expect(card).not.toContainText('Stale Cloudflare HTTP 403');
@@ -774,7 +788,7 @@ for (const width of [320, 1440]) test(`Cloudflare offers two authorized accounts
     if (body.action === 'select') { phase = 'connected'; return route.fulfill({ json: { connected: true } }); }
     return route.fulfill({ json: {} });
   });
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#cloudflare');
   const card = page.getByRole('region', { name: 'Cloudflare account', exact: true });
   await expect(card.locator('[data-cloudflare-summary]')).toContainText('Sign in to Cloudflare');
   await card.locator('.cloudflare-connection__next').getByRole('button', { name: 'Connect Cloudflare', exact: true }).click();
@@ -846,7 +860,7 @@ test('Cloudflare explains an expired account choice and starts again', async ({ 
     diagnosis: cloudflareDiagnosis('choose', { accounts: offered, selection_expires_at: expires }) }) }));
   await page.route('**/api/orgs/publishing/cloudflare', route => { submitted.push(route.request().postDataJSON());
     return route.fulfill({ json: { authorization_url: '/app/settings/publishing' } }); });
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#cloudflare');
   const card = page.getByRole('region', { name: 'Cloudflare account', exact: true });
   const next = card.locator('.cloudflare-connection__next');
   await expect(next.getByRole('group', { name: 'Choose a Cloudflare account' })).toBeVisible();
@@ -933,7 +947,7 @@ test('connecting with API keys asks to confirm an account another Organization u
     connected = true;
     return route.fulfill({ json: { connected: true } });
   });
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#cloudflare');
   await page.getByText('Advanced: connect with existing API and R2 keys', { exact: true }).click();
   await page.getByLabel('Cloudflare Account ID').fill(staging.id);
   await page.getByLabel('R2 bucket name').fill('company-b-media');

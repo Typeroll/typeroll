@@ -17,7 +17,7 @@ test('organization domain form saves the exact hostname and remains usable on mo
     await route.fulfill({ json: domain });
   });
   await authenticatePersona(page, 'owner');
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#domains');
   await page.getByText('Manual settings or external DNS', { exact: true }).click();
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Domains', exact: true }) });
   await expect(section.getByLabel('Shared media host')).toBeVisible();
@@ -47,7 +47,7 @@ test('organization domain errors stay visible without losing the entered hostnam
       : { json: { revision: 'initial', default_domain: null, dns_mode: 'automatic', verified_at: null } });
   });
   await authenticatePersona(page, 'owner');
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#domains');
   await page.getByText('Manual settings or external DNS', { exact: true }).click();
   await page.getByLabel('Shared media host').fill('https://media.example.com/path');
   await page.getByRole('button', { name: 'Save domain settings' }).click();
@@ -78,7 +78,7 @@ test('shows media status and external DNS instructions without discarding unsave
     } });
   });
   await authenticatePersona(page, 'owner');
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#domains');
   await page.getByText('Manual settings or external DNS', { exact: true }).click();
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Domains', exact: true }) });
   await expect(section.getByText('Waiting for domain activation', { exact: true })).toBeVisible();
@@ -118,7 +118,7 @@ test('configures short subdomains in one action and automatically checks activat
         message: active ? 'Cloudflare has activated the domain.' : 'Waiting for Cloudflare.', account_name: 'Example', steps: [] } } });
   });
   await authenticatePersona(page, 'owner');
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#domains');
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Domains', exact: true }) });
   await expect(section.getByLabel('Cloudflare domain')).toHaveValue(zone.id);
   await expect(section.getByLabel('Media subdomain')).toHaveValue('media');
@@ -172,7 +172,7 @@ test('refreshes newly added domains without account authorization and only asks 
   } }));
   await page.route('**/api/orgs/publishing/cloudflare', route => { authorizations++; return route.fulfill({ status: 503, json: { error: 'Synthetic approval service unavailable' } }); });
   await authenticatePersona(page, 'owner');
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#domains');
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Domains', exact: true }) });
   await expect(section.getByText('No domains were returned', { exact: false })).toBeVisible();
   await expect(section.getByRole('button', { name: 'Allow domain access' })).toHaveCount(0);
@@ -203,7 +203,7 @@ for (const allowed of [true, false]) test(`saved media hostname replacement is $
     await route.fulfill({ json: { revision: 'saved', sites_domain: 'media.example.com', media_host: 'media.example.com', dns_mode: 'external', media_host_change_allowed: allowed } });
   });
   await authenticatePersona(page, 'owner');
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#domains');
   const section = page.getByRole('region', { name: 'Domains', exact: true });
   await expect(section.getByLabel('Media subdomain')).toHaveValue('media');
   await section.getByLabel('Media subdomain').fill('media-staging');
@@ -239,7 +239,7 @@ test('confirms a saved address separately from a Cloudflare setup error, and nev
     await route.fulfill({ json: { revision: writes ? 'saved' : 'initial', sites_domain: writes ? 'sites.example.com' : null, media_host: writes ? 'media.example.com' : null, dns_mode: 'automatic', ...(writes ? { setup_error: 'Addresses saved, but Cloudflare setup could not finish. Select Configure domains to retry.' } : {}) } });
   });
   await authenticatePersona(page, 'owner');
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#domains');
   const section = page.getByRole('region', { name: 'Domains', exact: true });
   await section.getByRole('button', { name: 'Configure domains', exact: true }).click();
   await expect(section.locator('.publishing-domain-confirmation')).toContainText('Domain settings saved');
@@ -262,7 +262,7 @@ test('answers each manual domain check beside the button, including unchanged st
         message: outcome === 'active' ? 'Cloudflare has activated this media domain and its HTTPS certificate.' : outcome === 'pending' ? 'Cloudflare is still activating HTTPS. Check again shortly.' : 'Cloudflare denied access to domain status. Check the connection permissions, then try again.' } } });
   });
   await authenticatePersona(page, 'owner');
-  await page.goto('/app/settings/publishing');
+  await page.goto('/app/settings/publishing#domains');
   const section = page.getByRole('region', { name: 'Domains', exact: true });
   const button = section.getByRole('button', { name: 'Check domain status', exact: true });
   const feedback = section.locator('.publishing-domain-check');
