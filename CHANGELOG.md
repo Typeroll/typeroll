@@ -1,5 +1,9 @@
 # Changelog
 
+## Core 0.2.70 / MCP 0.45.52
+
+- Publishing is split into tabs: GitHub, Cloudflare, Media storage, Builds, Hosting Groups and Domains. Each tab shows the status symbol of its cards (ready, in progress, needs attention), so a problem stays visible from any tab. Existing links such as `/app/settings/publishing#publishing-builds` and `#media-title` open the matching tab, and returning from Cloudflare authorization opens the Cloudflare tab.
+
 ## Core 0.2.69 / MCP 0.45.52
 
 Several Typeroll Organizations may use one Cloudflare account, for example one owner with several companies kept apart so that a site can be transferred later.

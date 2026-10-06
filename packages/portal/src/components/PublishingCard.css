@@ -44,3 +44,4 @@
 .publishing-setup-step__header h3 { margin: 0; font-size: 1rem; line-height: 1.4; }
 .publishing-setup-step__header p { margin: 5px 0 0; font-size: 0.9375rem; line-height: 1.4; }
 .publishing-setup-step__header .publishing-card__symbol { width: 44px; height: 44px; }
+.publishing-card[hidden] { display: none; }

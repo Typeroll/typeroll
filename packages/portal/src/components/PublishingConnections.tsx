@@ -201,7 +201,7 @@ export default function PublishingConnections() {
   return <div style={{ maxWidth: 760 }} aria-busy={busy || checkingMedia}>
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
-    {!data ? <>{['GitHub account', 'Cloudflare account', 'Media storage'].map((title, index) => <PublishingCard key={title} id={`loading-${index}`} title={title} state={error ? 'error' : 'waiting'} status={error ? 'Could not load settings' : 'Loading…'}><p className="muted">{error ? 'Reload the page to try again.' : 'Checking your organization’s settings.'}</p></PublishingCard>)}</> : <>
+    {!data ? <>{([['github', 'GitHub account'], ['cloudflare', 'Cloudflare account'], ['media', 'Media storage']] as const).map(([key, title]) => <PublishingCard key={key} id={`loading-${key}`} title={title} state={error ? 'error' : 'waiting'} status={error ? 'Could not load settings' : 'Loading…'}><p className="muted">{error ? 'Reload the page to try again.' : 'Checking your organization’s settings.'}</p></PublishingCard>)}</> : <>
       <PublishingGithubConnection data={data} disabled={busy || checkingMedia} disconnecting={disconnecting === 'github'} returned={githubReturn}
         onRefresh={refresh} onDisconnect={() => void disconnect('github')}
         feedback={connectionFeedback?.provider === 'github' && <p ref={feedbackRef} tabIndex={-1} role={connectionFeedback.error ? 'alert' : 'status'}>{connectionFeedback.message}</p>} />
