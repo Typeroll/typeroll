@@ -9,12 +9,11 @@ import './PublishingTabs.css';
 const TABS: Array<{ id: PublishingTab; label: string }> = [
   { id: 'github', label: 'GitHub' },
   { id: 'cloudflare', label: 'Cloudflare' },
-  { id: 'media', label: 'Media storage' },
   { id: 'builds', label: 'Builds' },
   { id: 'hosting', label: 'Hosting Groups' },
   { id: 'domains', label: 'Domains' },
 ];
-const CONNECTION_TABS: PublishingTab[] = ['github', 'cloudflare', 'media'];
+const CONNECTION_TABS: PublishingTab[] = ['github', 'cloudflare'];
 const RANK: PublishingState[] = ['error', 'waiting', 'ready', 'neutral'];
 const STATUS_TEXT: Record<PublishingState, string> = { error: 'Needs attention', waiting: 'In progress', ready: 'Ready', neutral: 'No setup needed' };
 

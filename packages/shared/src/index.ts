@@ -14,6 +14,7 @@ export * from './core-blocks.js';
 export * from './form-blocks.js';
 export * from './form-fields.js';
 export * from './forms-runtime.js';
+export * from './sticky-header-runtime.js';
 export * from './render-form.js';
 export * from './page-template-starters.js';
 export * from './site-compositions.js';

@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts } from '@typeroll/shared';
+import { resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, CONTENT_WELL_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -203,6 +203,8 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
   </head>
   <body {...(Astro.props.identity ?? {})}>
     <slot />
+    {/* Before the block scripts: reserves the sticky header's height for every scroll-into-view. */}
+    <script is:inline set:html={STICKY_HEADER_RUNTIME_JS} />
     {blockJs && (
       <script set:html={`(function(){var registry={};window.TyperollBlocks={register:function(id,init){registry[id]=init;},init:function(){Object.keys(registry).forEach(function(id){document.querySelectorAll('[data-block-type="'+id+'"]').forEach(function(el){try{registry[id](el,JSON.parse(el.getAttribute('data-block-data')||'{}'));}catch(e){console.error('[block init]',id,e);}});});}};${blockJs};window.TyperollBlocks.init();})();`} />
     )}

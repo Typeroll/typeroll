@@ -108,12 +108,14 @@ a reserved two-column track, or duplicate body content for tablet/desktop.
 For a sticky site header, use an outer semantic Container (`tag: "header"`,
 `sticky: true`, optional responsive `sticky_top_px`, 0–240) outside main. Keep
 its background opaque and its containing block tall enough; do not create a
-short header wrapper or clip it with ancestor overflow. Sticky is opt-in.
+short header wrapper or clip it with ancestor overflow. Sticky is opt-in. The
+page reserves the header's height as `scroll-padding-top`, so anchors,
+`scrollIntoView()` and focused fields land below it without site CSS.
 Container `padding_top_px`/`padding_bottom_px` override `padding_y_px` per side
 and accept responsive maps. Grid/Repeater and repeater aliases expose responsive
 `gap_px` (0–240). Use these fields for exact source spacing rather than empty
-spacers or corrective CSS. TOC active-section feedback includes document scroll
-padding; remove obsolete duplicated tenant header offsets during migration.
+spacers or corrective CSS. TOC links use the same landing line; remove tenant
+`scroll-margin-top`/`scroll-padding-top` header offsets that duplicate it.
 
 
 ## Qualified composition starters (Core 0.2.32 / MCP 0.45.26 and later)
