@@ -234,7 +234,8 @@ describe('GitHub connection diagnosis', () => {
     // Nothing recorded or consumed: the installation started here can still return, and the card only checks again.
     expect(await getStore().getDoc(diagnosisPath)).toEqual(before);
     expect(await getStore().getDoc(grantPath)).toEqual(grant);
-    expect(JSON.stringify(await getStore().getDoc(diagnosisPath))).not.toContain('999');
+    // Match the injected installation id as a value, not as digits that a timestamp such as 09:52:55.999Z can contain.
+    expect(JSON.stringify(await getStore().getDoc(diagnosisPath))).not.toMatch(/"(?:id|installation_id)":"?999"?[,}]/);
   });
 
   it('tells the page whether Check again can run and an installation started here is pending', async () => {
