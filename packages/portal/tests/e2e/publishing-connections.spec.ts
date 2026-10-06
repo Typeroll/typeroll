@@ -196,7 +196,7 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   });
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/app/settings/publishing');
-  for (const [tab, name] of [['GitHub', 'GitHub account'], ['Cloudflare', 'Cloudflare account'], ['Media storage', 'Media storage'], ['Domains', 'Domains']]) {
+  for (const [tab, name] of [['GitHub', 'GitHub account'], ['Cloudflare', 'Cloudflare account'], ['Cloudflare', 'Media storage'], ['Domains', 'Domains']]) {
     await openTab(page, tab);
     await expect(page.getByRole('region', { name, exact: true })).toBeVisible();
   }
@@ -204,8 +204,10 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   // Each tab carries the state of its cards so problems are visible without opening it.
   await expect(page.getByRole('tab', { name: /^GitHub/ })).toHaveAttribute('data-state', 'ready');
   await expect(page.getByRole('tab', { name: /^Cloudflare/ })).toHaveAttribute('data-state', 'error');
-  await expect(page.getByRole('tab', { name: /^Media storage/ })).toHaveAttribute('data-state', 'error');
+  await expect(page.getByRole('tab', { name: /^Media storage/ })).toHaveCount(0);
   await openTab(page, 'Cloudflare');
+  // Media storage is the last card in the Cloudflare tab.
+  expect(await page.getByRole('tabpanel').locator('section.publishing-card:not([hidden]) h2').allTextContents()).toEqual(['Cloudflare account', 'Media storage']);
   await expect(page.getByLabel('Cloudflare Account ID')).not.toBeVisible();
   await page.getByRole('button', { name: 'Connect Cloudflare', exact: true }).click();
   expect(submitted[0]).toMatchObject({ action: 'start' });
@@ -218,10 +220,11 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   const media = page.getByRole('region', { name: 'Media storage' });
   const alert = media.getByRole('alert');
   await expect(page.getByRole('region', { name: 'Cloudflare account', exact: true })).toHaveAttribute('data-state', 'ready');
-  await expect(page.getByRole('tab', { name: /^Media storage/ })).toHaveAttribute('data-state', 'error');
-  await openTab(page, 'Media storage');
   await expect(alert).toContainText('R2 is not activated for Selected agency');
   await expect(media).toHaveAttribute('data-state', 'error');
+  await expect(alert).toBeFocused();
+  // A connected account is not enough: the tab stays red until media storage is ready.
+  await expect(page.getByRole('tab', { name: /^Cloudflare/ })).toHaveAttribute('data-state', 'error');
   await media.getByText('How to activate R2', { exact: true }).click();
   await expect(alert).toContainText('subscription checkout');
   await expect(alert).toContainText('billing details');
@@ -232,7 +235,7 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   await openTab(page, 'GitHub');
   await page.getByRole('button', { name: 'Disconnect GitHub' }).click();
   await expect(page.getByRole('button', { name: 'Disconnect GitHub' })).toHaveCount(0);
-  await openTab(page, 'Media storage');
+  await openTab(page, 'Cloudflare');
   await expect(alert).toContainText('R2 is not activated');
   await expect(page.getByText('R2 storage prepared', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Open R2 activation in Selected agency with a longer account name ↗' })).toHaveAttribute('href', `https://dash.cloudflare.com/${'b'.repeat(32)}/r2/overview`);
@@ -270,6 +273,7 @@ test('Cloudflare sign-in discovers accounts and prepares reusable media access o
   await page.getByRole('button', { name: 'Verify keys and finish setup' }).click();
   await expect(page.getByRole('region', { name: 'Media storage' }).getByText('R2 connected', { exact: true })).toBeVisible();
   await expect(media).toHaveAttribute('data-state', 'ready');
+  await expect(page.getByRole('tab', { name: /^Cloudflare/ })).toHaveAttribute('data-state', 'ready');
   await expect(page.getByRole('button', { name: 'I’ve activated R2 — check again' })).toHaveCount(0);
   await expect(page.locator('#oauth-r2-access')).not.toBeVisible();
   await expect(page.locator('#oauth-r2-secret')).not.toBeVisible();
@@ -623,8 +627,11 @@ test('every GitHub state keeps a working next step, also when Check again needs 
   // Signing in is available without a previous sign-in on record.
   await expect(card.locator('[data-github-step="sign-in"]').getByRole('button', { name: 'Sign in to GitHub', exact: true })).toBeVisible();
   await next.getByRole('button', { name: 'Check again', exact: true }).click();
+  // Wait for the sign-in redirect to land before reloading, or the reload races it.
+  const returned = page.waitForEvent('load');
   await next.getByRole('button', { name: 'Sign in to GitHub to check again', exact: true }).click();
   await expect.poll(() => started).toBe(1);
+  await returned;
   // A choice that is no longer offered still has a way forward.
   phase = 'expired_choice';
   await page.reload();

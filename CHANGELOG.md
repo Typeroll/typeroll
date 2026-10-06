@@ -1,5 +1,11 @@
 # Changelog
 
+## Core 0.2.71 / MCP 0.45.53
+
+- A top-sticky or fixed site header now reserves its own space. The page runtime measures the header's bottom edge and sets `html { scroll-padding-top }` to it plus 16px, updating when the header resizes or crosses a breakpoint. Fragment links and `:target`, `scrollIntoView()` from blocks and Extensions, and `focus()` on form fields land below the header, on the published site and in preview. Pages without a sticky header, and sites that set their own `scroll-padding-top`, are unchanged. The outline adds only clearance the page has not already reserved, so its links land on the same line. Remove tenant `scroll-margin-top` offsets that duplicate it.
+- Publishing: Media storage is the last card in the Cloudflare tab, and the Cloudflare tab turns green only when both the account and media storage are ready. Links to `#media` and `#media-title` open the Cloudflare tab.
+- MCP: `tr-page-template` describes the native header clearance.
+
 ## Core 0.2.70 / MCP 0.45.52
 
 - Publishing is split into tabs: GitHub, Cloudflare, Media storage, Builds, Hosting Groups and Domains. Each tab shows the status symbol of its cards (ready, in progress, needs attention), so a problem stays visible from any tab. Existing links such as `/app/settings/publishing#publishing-builds` and `#media-title` open the matching tab, and returning from Cloudflare authorization opens the Cloudflare tab.

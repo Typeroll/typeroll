@@ -41,6 +41,19 @@ async function seedBlockPage(blocks: Block[], over: Partial<Page> = {}): Promise
 describe('renderPreview — blocks mode', () => {
   beforeEach(async () => { await resetDatastore(); });
 
+  it('reserves the sticky header in the preview shell before block scripts run, but not in the script-free editor canvas', async () => {
+    await seedSite();
+    await seedBlockPage([{ id: 'outline', type: 'core/table_of_contents', data: {} }]);
+    const { renderPreview } = await import('../../lib/render-preview');
+    const { STICKY_HEADER_RUNTIME_JS } = await import('@typeroll/shared');
+    const shell = (await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID, { allowScripts: true }))!;
+    const runtime = shell.indexOf(`<script data-sticky-header="1">${STICKY_HEADER_RUNTIME_JS}</script>`);
+    expect(runtime).toBeGreaterThan(-1);
+    expect(runtime).toBeLessThan(shell.indexOf('<script data-blocks="1">'));
+    const canvas = (await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID))!;
+    expect(canvas).not.toContain('data-sticky-header');
+  });
+
   it('renders a heading block with HTML-escaped data', async () => {
     await seedSite();
     await seedBlockPage([

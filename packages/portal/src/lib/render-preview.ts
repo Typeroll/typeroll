@@ -60,6 +60,7 @@ import {
   DEFAULT_COOKIE_CONSENT_TEXT,
   pageBreadcrumbs,
   siteContext,
+  STICKY_HEADER_RUNTIME_JS,
 } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { paths } from '@typeroll/shared';
@@ -616,6 +617,7 @@ ${headerHtml ? (looksLikeSemanticTag(headerHtml, 'header') ? headerHtml : `<head
 <main class="${blocksBody ? 'page-content page-content--blocks' : 'page-content'}">${bodyHtml}</main>
 ${footerHtml ? (looksLikeSemanticTag(footerHtml, 'footer') ? footerHtml : `<footer class="site-footer">${footerHtml}</footer>`) : ''}
 ${previewNavigationBridge ? `<script data-preview-navigation-bridge="1">${previewNavigationBridge}</script>` : ''}
+${allowScripts ? `<script data-sticky-header="1">${STICKY_HEADER_RUNTIME_JS}</script>` : ''}
 ${blockJs ? `<script data-blocks="1">(function(){var registry={};window.TyperollBlocks={register:function(id,init){registry[id]=init;},init:function(){Object.keys(registry).forEach(function(id){document.querySelectorAll('[data-block-type="'+id+'"]').forEach(function(el){try{registry[id](el,JSON.parse(el.getAttribute('data-block-data')||'{}'));}catch(e){console.error('[block init]',id,e);}});});}};${blockJs};window.TyperollBlocks.init();})();</script>` : ''}
 ${extensionRuntime ? `<script data-extension-runtime="1">${extensionRuntime}</script>` : ''}
 ${editorExtensionRuntime ? `<script data-editor-extension-runtime="1">${editorExtensionRuntime}</script>` : ''}

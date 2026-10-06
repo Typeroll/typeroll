@@ -629,10 +629,16 @@ reaches `sticky_top_px` (default 0; optional responsive 0–240px) and uses stac
 level 100. Choose an opaque background. Keep it outside the article/main and
 avoid a short enclosing wrapper or overflow-clipping ancestor: CSS sticky is
 bounded by its containing block. Other Containers remain static by default.
-The outline measures the actual sticky header for its top clearance and anchor
-scroll margins. Its active-heading feedback also accounts for document
-`scroll-padding-top`; remove obsolete tenant offsets when they duplicate the
-native clearance, rather than adding another compensation.
+A top-sticky or fixed site header reserves its own space: the page runtime
+measures the header's bottom edge and sets `html { scroll-padding-top }` to it
+plus 16px, updating when the header changes height or the viewport crosses a
+breakpoint. Fragment links and `:target`, `scrollIntoView()` from blocks and
+Extensions, and `focus()` on form fields therefore land below the header, on the
+published site and in preview. Pages without a sticky header keep the browser
+default, and a site that sets its own `scroll-padding-top` keeps it. The outline
+uses the same landing line and adds only clearance the page has not already
+reserved. Remove tenant `scroll-margin-top` or `scroll-padding-top` offsets that
+duplicate this native clearance, rather than adding another compensation.
 
 Button `new_tab: true` opens its link in a new tab using native HTML
 `target="_blank"` with `rel="noopener noreferrer"`, even without JavaScript.

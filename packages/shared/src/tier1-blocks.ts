@@ -1542,11 +1542,12 @@ window.TyperollBlocks.register('core/table_of_contents', (el) => {
   const column = el.parentElement?.classList.contains('block-columns-col') ? el.parentElement : null;
   let scheduled = false;
   let previousTop = -1;
+  let previousMargin = -1;
   const observer = new ResizeObserver(() => schedule());
   headers.forEach(header => observer.observe(header));
   const update = () => {
     scheduled = false;
-    if (!el.isConnected) { observer.disconnect(); window.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule); return; }
+    if (!el.isConnected) { observer.disconnect(); window.removeEventListener('scroll', schedule); window.removeEventListener('resize', schedule); window.removeEventListener('typeroll:header-clearance', schedule); return; }
     const clearance = headers.reduce((bottom, header) => {
       const style = getComputedStyle(header);
       const top = parseFloat(style.top);
@@ -1555,11 +1556,16 @@ window.TyperollBlocks.register('core/table_of_contents', (el) => {
       return Math.max(bottom, style.position === 'sticky' ? Math.max(0, top + rect.height) : Math.max(0, rect.bottom));
     }, 0);
     const top = clearance + 16;
-    if (top !== previousTop) {
-      previousTop = top;
+    // The page runtime already reserves the sticky header as scroll padding;
+    // only add what it did not, so outline links land on the same line as
+    // every other anchor instead of counting the header twice.
+    const reserved = parseFloat(document.documentElement.getAttribute('data-tr-header-clearance') || '') || 0;
+    const margin = Math.max(0, top - reserved);
+    if (top !== previousTop || margin !== previousMargin) {
+      previousTop = top; previousMargin = margin;
       el.style.setProperty('--toc-top', top + 'px');
       if (column) column.style.setProperty('--toc-top', top + 'px');
-      entries.forEach(({ heading }) => { heading.style.scrollMarginTop = top + 'px'; });
+      entries.forEach(({ heading }) => { heading.style.scrollMarginTop = margin + 'px'; });
     }
     if (el.dataset.highlightActive === 'false') return;
     let current = entries[0];
@@ -1567,13 +1573,14 @@ window.TyperollBlocks.register('core/table_of_contents', (el) => {
     // scroll margin. Use that same landing line for active-section feedback.
     const scrollPadding = getComputedStyle(document.scrollingElement || document.documentElement).scrollPaddingTop;
     const padding = (parseFloat(scrollPadding) || 0) * (scrollPadding.endsWith('%') ? window.innerHeight / 100 : 1);
-    for (const entry of entries) if (entry.heading.getBoundingClientRect().top <= top + padding + 1) current = entry;
+    for (const entry of entries) if (entry.heading.getBoundingClientRect().top <= margin + padding + 1) current = entry;
     links.forEach(link => link.removeAttribute('aria-current'));
     if (current) current.link.setAttribute('aria-current', 'location');
   };
   const schedule = () => { if (!scheduled) { scheduled = true; requestAnimationFrame(update); } };
   window.addEventListener('scroll', schedule, { passive: true });
   window.addEventListener('resize', schedule);
+  window.addEventListener('typeroll:header-clearance', schedule);
   update();
 });
 `.trim(),

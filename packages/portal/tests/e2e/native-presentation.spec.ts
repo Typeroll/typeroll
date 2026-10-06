@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { test, expect } from '@playwright/test';
-import { buildCoreBlockRegistry, collectBlockAssets, CONTENT_WELL_CSS, fontFamilyCss, prepareHeadingOutline, renderBlocks, type Block } from '@typeroll/shared';
+import { buildCoreBlockRegistry, collectBlockAssets, CONTENT_WELL_CSS, fontFamilyCss, prepareHeadingOutline, renderBlocks, STICKY_HEADER_RUNTIME_JS, type Block } from '@typeroll/shared';
 const registry = buildCoreBlockRegistry();
 const reset = fs.readFileSync(new URL('../../../site-template/src/styles/reset.css', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../../../site-template/src/styles/global.css', import.meta.url), 'utf8');
@@ -219,4 +219,70 @@ test('native sticky headers preserve navigation and outline anchor feedback with
       await expect(page.locator('.block-navigation-list')).toBeHidden();
     }
   }
+});
+
+test('a sticky site header reserves scroll padding for scrollIntoView, focus, fragments and outline links', async ({ page }, info) => {
+  const body: Block[] = [heading('first', 'First section'), { id: 'spacer', type: 'core/prose', data: { html: '<p>Read the full article.</p>'.repeat(20) } }, heading('second', 'Pack electronics'), { id: 'tail', type: 'core/prose', data: { html: '<p>More article text.</p>'.repeat(30) } }];
+  const header: Block = { id: 'sticky-header', type: 'core/container', data: { tag: 'header', sticky: true, width: 'full', padding_y_px: 26.5, padding_x_px: 25, background: '#ffffff', direction: 'row', align_main: 'space-between', align_cross: 'center' }, children: [
+    { id: 'header-logo', type: 'template/site_logo', data: { height_px: 50 } },
+    { id: 'menu', type: 'core/navigation', data: { links: [{ label: 'Home', href: '/' }, { label: 'Sections', href: '#first-section' }] } },
+  ] };
+  const article: Block = { id: 'columns', type: 'core/columns', data: { right_width_px: 280, stack_below: '1024' }, slots: [body, [{ id: 'outline', type: 'core/table_of_contents', data: {} }]] };
+  const assets = collectBlockAssets([header, article], registry);
+  const render = (tree: Block[]) => prepareHeadingOutline(renderBlocks(tree, { registry, context: { site: { logo: image, name: 'Example' }, page: { content_mode: 'blocks', blocks: body } } })).html;
+  // An Extension-like component and a form field further down the page.
+  const extra = '<div id="component" style="height:320px;background:#eef">Nästan klart. Med de här uppgifterna …</div><label style="display:block;padding:8px 0">Email <input id="email"></label><div style="height:1600px"></div>';
+  const fixture = (sticky: boolean) => {
+    header.data.sticky = sticky;
+    // Same order as the site layout: page runtime, then block scripts.
+    return `<!doctype html><meta name="viewport" content="width=device-width"><style>*{box-sizing:border-box}body{margin:0}${reset}${css}${assets.css}main{max-width:1140px;margin:auto}</style>${render([header])}<main>${render([article])}${extra}</main><script>${STICKY_HEADER_RUNTIME_JS}</script>`;
+  };
+  const blockScripts = `window.TyperollBlocks={register(name,init){document.querySelectorAll(name==='core/navigation'?'[data-block="navigation"]':'[data-block="table_of_contents"]').forEach(init)}};${registry.get('core/navigation')!.script}\n${registry.get('core/table_of_contents')!.script}`;
+  const top = (selector: string) => page.locator(selector).evaluate(el => el.getBoundingClientRect().top);
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.setContent(fixture(true));
+    await page.addScriptTag({ content: blockScripts });
+    const headerHeight = await page.locator('header').evaluate(el => el.getBoundingClientRect().height);
+    if (width === 1280) expect(headerHeight).toBe(103);
+    await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-tr-header-clearance'))).toBe(String(Math.ceil(headerHeight) + 16));
+    expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollPaddingTop)).toBe(`${Math.ceil(headerHeight) + 16}px`);
+    // 1. scrollIntoView({ block: 'start' }) from a component lands below the header.
+    await page.evaluate(() => document.getElementById('component')!.scrollIntoView({ block: 'start' }));
+    await expect.poll(() => top('#component')).toBeGreaterThanOrEqual(headerHeight);
+    expect(await page.evaluate(() => { const r = document.getElementById('component')!.getBoundingClientRect(); return document.elementFromPoint(r.left + 4, r.top + 4)?.id; })).toBe('component');
+    if (width === 390) await page.screenshot({ path: info.outputPath('sticky-scroll-into-view-390.png') });
+    // 2. focus() on a field hidden under the header scrolls it into sight.
+    await page.evaluate(() => { const r = document.getElementById('email')!.getBoundingClientRect(); scrollTo(0, scrollY + r.top - 10); });
+    expect(await top('#email')).toBeLessThan(headerHeight);
+    await page.evaluate(() => document.getElementById('email')!.focus());
+    await expect.poll(() => top('#email')).toBeGreaterThanOrEqual(headerHeight);
+    // 3. A plain fragment and an outline link land below the header, the outline without counting it twice.
+    await page.evaluate(() => { scrollTo(0, 0); location.hash = '#component'; });
+    await expect.poll(() => top('#component')).toBeGreaterThanOrEqual(headerHeight);
+    expect(await top('#component')).toBeLessThanOrEqual(headerHeight + 17);
+    await page.evaluate(() => scrollTo(0, 0));
+    if (width === 1280) {
+      const link = page.locator('[data-block="table_of_contents"]').getByRole('link', { name: 'Pack electronics' });
+      await link.click();
+      await expect.poll(() => top('#pack-electronics')).toBeCloseTo(headerHeight + 16, 0);
+      await expect(link).toHaveAttribute('aria-current', 'location');
+      expect(await page.locator('#pack-electronics').evaluate(el => el.style.scrollMarginTop)).toBe('0px');
+    }
+  }
+  // The reservation follows the header when it changes height at a breakpoint.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setContent(fixture(true));
+  const wide = await page.evaluate(() => document.documentElement.getAttribute('data-tr-header-clearance'));
+  await page.setViewportSize({ width: 390, height: 800 });
+  const narrow = Math.ceil(await page.locator('header').evaluate(el => el.getBoundingClientRect().height)) + 16;
+  await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-tr-header-clearance'))).toBe(String(narrow));
+  expect(wide).toBe('119');
+  // 4. A page without a sticky header is unchanged.
+  await page.setContent(fixture(false));
+  await page.addScriptTag({ content: blockScripts });
+  expect(await page.evaluate(() => [getComputedStyle(document.documentElement).scrollPaddingTop, document.documentElement.hasAttribute('data-tr-header-clearance')])).toEqual(['auto', false]);
+  // A site that sets its own scroll padding keeps it.
+  await page.setContent(fixture(true).replace('main{max-width', 'html{scroll-padding-top:120px}main{max-width'));
+  expect(await page.evaluate(() => [getComputedStyle(document.documentElement).scrollPaddingTop, document.documentElement.hasAttribute('data-tr-header-clearance')])).toEqual(['120px', false]);
 });
