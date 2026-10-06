@@ -1,5 +1,9 @@
 # Changelog
 
+## Core 0.2.68 / MCP 0.45.51
+
+- Security: proxy-addr 2.0.8 (GHSA-jqcg-44mw-7w3h), source-map-js 1.2.2 (GHSA-68fv-2mgg-jv7q), smol-toml 1.9.0 (GHSA-r4xh-jqrq-34v2) and postcss-selector-parser 7.1.6 where its range allows (GHSA-rj75-hqrm-r3gf). Lockfile only.
+
 ## Core 0.2.67 / MCP 0.45.51
 
 - Extension page handoff (Extension runtime 0.43.0, template capabilities 0.52.0, `supports_extension_page_handoff`). An Extension component can receive what a visitor typed into a native `core/navigation_form` banner on the previous page: `await context.handoff.read()` resolves `{ key, source: "navigation_form", values, parts }` or `null`. `values` are the typed field values with address parts as `<field>_<part>`; `parts` groups `street`, `street_number`, `postal_code`, `locality`, `country` and `formatted` per field. Embedded apps use `typeroll.extension.handoff.read` / `typeroll.extension.handoff.result`.
