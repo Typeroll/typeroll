@@ -1,10 +1,15 @@
-import { claimAccount, ConnectionError, connectionSummary, disconnect, getConnection, saveConnection, sealCredentials } from './connections';
+import { ConnectionError, connectionSummary, disconnect, getConnection, saveConnection, sealCredentials } from './connections';
+import { withCloudflareAccountMembership } from './cloudflare-account-claims';
 import { getHostingGroup, hostingGroupId } from './hosting-groups';
 import { verifyPagesAccess } from './cloudflare-oauth';
 import { createProviderClient } from './providers.mjs';
 
-/** API clients may bring provider credentials instead of completing browser OAuth. */
-export async function updateHostingConnection(orgId: string, input: Record<string, unknown>, fetchImpl: typeof fetch = fetch) {
+/**
+ * API clients may bring provider credentials instead of completing browser OAuth. `actor` is who connects: an
+ * organization API key cannot prove that a person administers another Organization, so it cannot join a
+ * Cloudflare account another Organization uses (see cloudflare-account-claims.ts).
+ */
+export async function updateHostingConnection(orgId: string, input: Record<string, unknown>, fetchImpl: typeof fetch = fetch, actor: { userId: string } = { userId: 'api-key:unknown' }) {
   const id = hostingGroupId(input.hosting_group_id);
   await getHostingGroup(orgId, id);
   if (id === 'default') throw new ConnectionError('Default reuses the organization media and DNS connection. Manage that connection in organization Publishing.', 409);
@@ -22,12 +27,13 @@ export async function updateHostingConnection(orgId: string, input: Record<strin
     const account = await provider(`/accounts/${account_id}`);
     if (account.id !== account_id || typeof account.name !== 'string') throw new ConnectionError('Cloudflare account verification failed.', 502);
     await verifyPagesAccess(provider, account_id);
-    await claimAccount(orgId, 'cloudflare', account_id);
-    await saveConnection(orgId, 'cloudflare', current.revision, {
-      status: 'connected', auth_method: 'api_token', refresh_lease: null, connected_at: new Date().toISOString(),
-      cloudflare: { account_id, account_name: account.name.slice(0, 200), bucket: '', endpoint: `https://${account_id}.r2.cloudflarestorage.com` },
-      encrypted_credentials: sealCredentials(orgId, 'cloudflare', { api_token }, id),
-    }, id);
+    const accountName = account.name.slice(0, 200);
+    await withCloudflareAccountMembership({ orgId, userId: actor.userId }, account_id, id, { confirmed: input.confirm_shared_account === true, accountName }, () =>
+      saveConnection(orgId, 'cloudflare', current.revision, {
+        status: 'connected', auth_method: 'api_token', refresh_lease: null, connected_at: new Date().toISOString(),
+        cloudflare: { account_id, account_name: accountName, bucket: '', endpoint: `https://${account_id}.r2.cloudflarestorage.com` },
+        encrypted_credentials: sealCredentials(orgId, 'cloudflare', { api_token }, id),
+      }, id));
   }
   return connectionSummary(await getConnection(orgId, 'cloudflare', id));
 }

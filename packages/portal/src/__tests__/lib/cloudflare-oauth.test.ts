@@ -70,6 +70,8 @@ it('does not reconnect after disconnect or claim another tenant account', async 
   await disconnect('default', 'cloudflare', (await getConnection('default', 'cloudflare')).revision);
   await expect(finishCloudflareConnection(session, input, provider())).rejects.toThrow('changed');
   await getStore().setDoc(`publishing_account_claims/cloudflare-${first.id}`, { org_id: 'another' });
+  await getStore().setDoc('organizations/another/publishing_connections/cloudflare', { status: 'connected', revision: 'r',
+    cloudflare: { account_id: first.id, account_name: first.name, bucket: 'other-media', endpoint: '' } });
   await expect(finishCloudflareConnection(session, await grant(), provider())).rejects.toThrow('another Typeroll');
 });
 it('rejects reduced scopes and credential-reflecting provider errors', async () => {

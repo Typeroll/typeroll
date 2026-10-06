@@ -235,16 +235,33 @@ reload shows the same explanation. Its steps are **Publisher ready**, **Sign in
 to Cloudflare**, **Choose account**, **Access verified** and **Connected**, and
 the box at the top names the one next step. Each reason starts with **Who
 acts**: **You**, a **Cloudflare account administrator** (a Super Administrator
-who can change your role, for example to allow Cloudflare Pages), the
-**Typeroll publisher** or a **Typeroll administrator**.
+who can change your role, for example to allow Cloudflare Pages), an **owner or
+admin of the Organization that uses the account**, the **Typeroll publisher** or
+a **Typeroll administrator**.
 
 If you authorized several accounts, the card lists them and you choose one
-within 10 minutes; Typeroll never chooses for you, because the connected account
-is reserved for this Organization. Within an hour of signing in, **Check again**
+within 10 minutes; Typeroll never chooses for you, because sites and media are
+created in the connected account. Within an hour of signing in, **Check again**
 offers an expired choice again, or finds a fixed role, without another
 sign-in. On a connected account, **Check again** re-verifies the authorization
 and Pages access. Every reason is listed in
 [Cloudflare connection troubleshooting](../cloudflare-troubleshooting/).
+
+### Several Organizations in one Cloudflare account
+
+Several Organizations may use the same Cloudflare account, for example when one
+owner keeps each company in its own Organization so that a site can be
+transferred later. Connect the account in each Organization while signed in as
+a person who is an owner or admin of an Organization that already uses it. The
+card then shows **This Cloudflare account is also used by: …**, naming the
+Organizations you administer, and asks you to confirm. Sites stay separate:
+each Organization keeps its own Pages projects, media buckets, media hostname,
+build engine and settings, and Typeroll refuses to change a resource another
+Organization owns. Disconnecting removes only that Organization. People who do
+not administer an Organization that uses the account see that the account is in
+use, never which Organization uses it. GitHub accounts are not shared this way:
+a GitHub account still belongs to one Organization. See
+[Sharing one Cloudflare account](../cloudflare-troubleshooting/#sharing-one-cloudflare-account).
 
 ### Connect a different GitHub account
 

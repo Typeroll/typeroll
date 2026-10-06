@@ -133,10 +133,55 @@ as Workers with static assets do not matter: Typeroll only needs Pages access.
 
 ### `claimed_by_other_organization`
 
-**Typeroll administrator.** The Cloudflare account is already connected to
-another Typeroll Organization. Disconnect it there, or ask your Typeroll
-administrator to transfer it. Account claims survive a disconnect, so an
-account cannot silently move between Organizations.
+**Owner or admin of the Organization that uses the account.** Another Typeroll
+Organization already uses this Cloudflare account. Several Organizations may
+share one account, for example one owner with several companies, or companies
+kept in separate Organizations so that a site can be transferred later. To
+prove common control, only a person who is an owner or admin of at least one
+Organization that already uses the account can connect it to another
+Organization. Typeroll checks both roles when the account is connected.
+
+The reason never names the other Organization, because you may not be a member
+of it. To continue:
+
+- If you administer that Organization too, sign in to Typeroll as yourself and
+  connect the account again from this Organization. The card then names the
+  Organizations you administer and asks you to confirm sharing the account.
+- Otherwise ask an owner or admin of that Organization to connect the account
+  here (they need owner or admin access to this Organization as well), or ask
+  Typeroll support.
+
+An organization API key acts for no person, so it cannot join an account that
+another Organization uses: connect it in **Publishing** in a browser. An
+Organization whose own saved connection already uses the account can always
+reconnect it.
+
+#### Sharing one Cloudflare account
+
+When you connect an account that Organizations you administer already use, the
+card says **This Cloudflare account is also used by: …** and asks you to
+confirm. Sites stay separate:
+
+- Every Pages project, Worker and media bucket Typeroll creates gets a name
+  derived from its own Organization (and Site), and Typeroll records which
+  Organization owns it. An operation on a resource that belongs to another
+  Organization stops with `cloudflare_resource_owned_by_other_organization`;
+  nothing is changed.
+- Each Organization keeps its own private and public R2 buckets and media
+  hostname. Two Organizations never share a bucket.
+- A hostname that serves another Organization's site in the same account is
+  never prepared for replacement (`hostname_used_by_other_organization`).
+- The shared build engine never uses the account's only build token by
+  assumption when other Organizations use the account: select the token on
+  this Organization's build project in Cloudflare.
+- Disconnecting removes only this Organization (or Hosting Group). The other
+  Organizations stay connected; the account is free for anyone once no
+  Organization uses it.
+
+Cloudflare's own limits apply to the whole account, not to each Organization:
+for example the number of Pages projects, R2 buckets, Workers, custom domains
+and builds that can run at once. Zones and DNS records are visible to everyone
+with access to the account.
 
 ### `authorization_revoked`
 
@@ -203,7 +248,8 @@ account with `usable` and `blockers`, plus `connect_url`. It is the
 Organization's state: a person's unfinished sign-in and the accounts they
 authorized stay in their own card; a reason about such an account keeps its
 code and fix without naming the account. Each blocker has `code`, `who`
-(`you`, `cloudflare_account_admin`, `publisher` or `typeroll_admin`), `message`
+(`you`, `cloudflare_account_admin`, `organization_admin`, `publisher` or
+`typeroll_admin`), `message`
 and one `action`. Link actions point to `https://dash.cloudflare.com/` or this
 documentation. Sign-in and **Check again** of an unfinished connection happen in
 a browser at `connect_url`; an API key cannot act as a person on Cloudflare.

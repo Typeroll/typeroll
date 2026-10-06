@@ -1,6 +1,7 @@
 import { digest } from './providers.mjs';
 import { ConnectionError } from './connections';
 import { publicationHostname } from './domain-config';
+import { assertTrafficNotOwnedByOtherOrganization } from './cloudflare-account-claims';
 
 type Provider = (route: string, options?: { method?: string; body?: unknown; missing?: boolean }) => Promise<any>;
 export interface DnsRequirement {
@@ -39,7 +40,8 @@ function trafficRequirement(hostname: string, project: string, branch: string): 
 }
 
 /** Register the hostname after a verified build, without overwriting existing customer traffic. */
-export async function preparePagesDomain(provider: Provider, input: { accountId: string; project: string; branch: string; hostname: string; dnsMode: 'automatic' | 'external'; configureTraffic?: boolean; dnsProvider?: Provider; dnsAccountId?: string }): Promise<DomainPreparation> {
+/** `orgId` is the Organization publishing: a hostname that serves another Organization's Pages project in the same account is never prepared for replacement. */
+export async function preparePagesDomain(provider: Provider, input: { accountId: string; project: string; branch: string; hostname: string; dnsMode: 'automatic' | 'external'; configureTraffic?: boolean; dnsProvider?: Provider; dnsAccountId?: string; orgId?: string }): Promise<DomainPreparation> {
   const hostname = publicationHostname(input.hostname);
   if (!/^[a-z0-9-]{1,58}$/.test(input.project) || !/^(main|version-[a-z0-9-]+)$/.test(input.branch)) throw new ConnectionError('Invalid publishing target');
   const root = `/accounts/${input.accountId}/pages/projects/${input.project}/domains`;
@@ -66,6 +68,7 @@ export async function preparePagesDomain(provider: Provider, input: { accountId:
   const zone = await findPublishingZone(dns, input.dnsAccountId ?? input.accountId, hostname);
   const records = await dns(`/zones/${zone.id}/dns_records?name=${encodeURIComponent(hostname)}&per_page=100`);
   const addressRecords = records.filter((record: any) => ['A', 'AAAA', 'CNAME'].includes(record.type));
+  if (input.orgId) await assertTrafficNotOwnedByOtherOrganization(input.orgId, input.accountId, addressRecords);
   result.has_existing_traffic = addressRecords.length > 0;
   result.zone_id = zone.id;
   result.previous_records = addressRecords.map(({ id, type, name, content, proxied, ttl }: any) => ({ id, type, name, content, proxied, ttl }));

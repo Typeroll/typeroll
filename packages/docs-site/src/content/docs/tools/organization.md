@@ -137,8 +137,12 @@ the App's own access. Every code is explained in
 When Cloudflare is not connected, `diagnose_organization_cloudflare_connection`
 (`GET /publishing/cloudflare-diagnosis`) explains why for the Organization's
 connection or, with `hosting_group_id`, a Hosting Group: the outcome and each
-blocker with who must act (`you`, `cloudflare_account_admin`, `publisher` or
-`typeroll_admin`) and one action, plus the saved account once connected. A
+blocker with who must act (`you`, `cloudflare_account_admin`,
+`organization_admin`, `publisher` or `typeroll_admin`) and one action, plus the
+saved account once connected. An organization API key cannot join a Cloudflare
+account another Organization already uses (`claimed_by_other_organization`): an
+owner or admin of that Organization connects it in a browser and confirms
+sharing it. A
 person's unfinished sign-in and the accounts they authorized stay in their
 Cloudflare card. `recheck: true` re-verifies a saved connection with its own
 authorization. Every code is explained in

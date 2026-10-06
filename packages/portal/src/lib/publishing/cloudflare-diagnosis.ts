@@ -27,7 +27,7 @@ export const CLOUDFLARE_TROUBLESHOOTING_URL = 'https://typeroll.com/docs/guides/
 
 export type CloudflareDiagnosisOutcome = 'unavailable' | 'sign_in_required' | 'sign_in_pending' | 'action_required' | 'choose'
   | 'connected' | 'needs_attention' | 'retryable_error';
-export type CloudflareBlockerWho = 'you' | 'cloudflare_account_admin' | 'publisher' | 'typeroll_admin';
+export type CloudflareBlockerWho = 'you' | 'cloudflare_account_admin' | 'organization_admin' | 'publisher' | 'typeroll_admin';
 export type CloudflareBlockerCode =
   | 'oauth_cancelled' | 'state_expired' | 'wrong_browser' | 'session_expired' | 'permissions_missing' | 'no_eligible_account'
   | 'too_many_accounts' | 'account_choice_expired' | 'pages_access_denied' | 'revision_conflict' | 'locked_to_account'
@@ -66,6 +66,11 @@ export interface CloudflareBlocker {
 export interface CloudflareDiagnosisAccount extends CloudflareAccountRef {
   usable: boolean;
   blockers: CloudflareBlocker[];
+  /**
+   * Other Organizations that already use this account and that the person who signed in administers. Connecting
+   * it needs a confirmation naming them. Only in that person's own view; never in the organization-level view.
+   */
+  shared_with?: string[];
 }
 export interface CloudflareConnectionDiagnosis {
   version: typeof CLOUDFLARE_DIAGNOSIS_VERSION;
@@ -176,8 +181,9 @@ export function cloudflareBlocker(code: CloudflareBlockerCode, context: Cloudfla
         { kind: 'sign_in', label: `Connect ${previous} again` }, context.previous ? { previous_account: context.previous } : {});
     }
     case 'claimed_by_other_organization':
-      return make('typeroll_admin', `${name} is already connected to another Typeroll organization. Disconnect it there, or ask your Typeroll administrator to transfer it.`,
-        { kind: 'link', label: 'How account transfers work', url: help(code) });
+      // Nothing about the other Organization is named: the person may not be a member of it.
+      return make('organization_admin', `${name} is already used by another Typeroll Organization. Several Organizations may share one Cloudflare account, but only an owner or admin of an Organization that already uses it can connect it here, so that both are under common control. If you administer that Organization too, sign in to Typeroll as that person and connect it again. Otherwise ask an owner or admin of that Organization, or Typeroll support.`,
+        { kind: 'link', label: 'How shared Cloudflare accounts work', url: help(code) });
     case 'authorization_revoked':
       return make('you', `Cloudflare no longer accepts Typeroll’s authorization for ${name}. It may have been revoked on Cloudflare or not used for a long time. Reconnect Cloudflare with the same account; sites and media are kept.`,
         { kind: 'sign_in', label: 'Reconnect Cloudflare' });
@@ -301,7 +307,8 @@ export function cloudflareOrganizationView(value: CloudflareConnectionDiagnosis)
       retry: blocker.action?.kind === 'retry' ? 'recheck' : 'sign_in' });
   const blockers = [...value.blockers, ...(saved ? [] : value.accounts.flatMap(item => item.blockers))].map(anonymous)
     .filter((blocker, index, all) => all.findIndex(other => other.code === blocker.code) === index);
-  const accounts = saved ? value.accounts : [];
+  // Which other Organizations a person administers is theirs to see, not every admin's of this one.
+  const accounts = saved ? value.accounts.map(({ shared_with: _shared, ...account }) => account) : [];
   return publicCloudflareDiagnosis({ ...value, attempted_by: null, blockers, accounts, recheck_available: saved,
     primary_action: value.outcome === 'choose' ? null : value.outcome === 'sign_in_pending' ? null
       : value.outcome === 'connected' ? primaryAction(blockers) : primaryAction([...blockers, ...accounts.flatMap(item => item.blockers)])

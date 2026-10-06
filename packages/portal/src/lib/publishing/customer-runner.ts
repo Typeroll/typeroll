@@ -40,6 +40,7 @@ import { selectedBuildProvider } from '../builds/selection';
 import { enqueueBuild, completedBuild } from '../builds/jobs';
 import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from '../builds/queue';
 import { uploadStaticBuild, finalizeDirectUpload } from '../builds/upload';
+import { claimCloudflareResource, generatedCloudflareNames } from './cloudflare-account-claims';
 import { prepareStaticProject, saveStaticChecks, verifyStaticBatch, saveCustomerVerification, verifyCustomerCandidate, type CustomerVerification } from '../builds/publication';
 
 interface GitPublication extends CustomerVerification {
@@ -193,9 +194,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const priorPublication = job.source_publication ?? acquired.last_publication;
       const prior = priorPublication?.snapshot_job_id ? await readSnapshot({ ...args, jobId: priorPublication.snapshot_job_id }, priorPublication) : null;
       const contentCutoff = job.publication_intent === 'domain_prepare' ? priorPublication!.content_cutoff : new Date().toISOString();
-      const prefix = digest(`${args.orgId}\0${args.siteId}`).slice(0, 16);
+      const generated = generatedCloudflareNames(args.orgId, args.siteId);
       const host = args.versionId === 'main' && domains.desired.website_host ||
-        `${args.versionId === 'main' ? '' : `v-${digest(args.versionId).slice(0, 8)}-`}site-${prefix}.${group.sites_domain}`;
+        `${args.versionId === 'main' ? '' : `v-${digest(args.versionId).slice(0, 8)}-`}${generated.site_label}.${group.sites_domain}`;
       let frozen: Record<string, any>;
       if (job.publication_intent === 'domain_prepare') {
         if (!prior) throw new ConnectionError('The last public snapshot is missing. Publish the site before preparing domains.', 409);
@@ -265,7 +266,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${host}` });
         terminal = true; return 'ran';
       }
-      publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: `typeroll-${prefix}`, project: site?.publishing_migration?.project ?? `typeroll-${prefix}`, account_id: cfConnection.cloudflare!.account_id,
+      publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: generated.pages_project!, project: site?.publishing_migration?.project ?? generated.pages_project!, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domains.revision, website_host: host, snapshot_job_id: args.jobId, ...await saveSnapshot(args, frozen) };
       const selectedProvider = await selectedBuildProvider(args.orgId);
@@ -313,6 +314,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       return await finishPublication(publication, domains, frozen);
     }
     const projectRoot = `/accounts/${publication.account_id}/pages/projects/${publication.project}`;
+    // The account may be shared with other Organizations: operate only on a project recorded as this Organization's.
+    await claimCloudflareResource(args.orgId, publication.account_id, 'pages_project', publication.project, { siteId: args.siteId });
     if (!publication.commit) {
       const frozen = await readSnapshot(args, publication);
       const files = await publicationSourceTree(frozen);
@@ -458,7 +461,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const preparation = publication.website_preparation ?? await preparePagesDomain(cloudflare, { accountId: publication.account_id, project: publication.project,
       branch: publication.release_branch ?? publication.branch, hostname: publication.website_host,
       configureTraffic: !publication.release_branch, dnsProvider: dns?.provider, dnsAccountId: dns?.accountId,
-      dnsMode });
+      dnsMode, orgId: args.orgId });
     let mediaPreparation: import('./domain-provider').DomainPreparation | null = null;
     let mediaDns: Awaited<ReturnType<typeof hostingDns>> | null = null;
     const mediaManifest = frozen.media_manifest;
@@ -466,7 +469,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       mediaDns = domains.dns_mode === 'automatic' ? await hostingDns(args.orgId, group.id, mediaManifest.media_host) : null;
       mediaPreparation = publication.media_preparation ?? await preparePagesDomain(cloudflare, { accountId: publication.account_id, project: publication.project,
         branch: publication.release_branch ?? publication.branch, hostname: mediaManifest.media_host, dnsMode: domains.dns_mode,
-        dnsProvider: mediaDns?.provider, dnsAccountId: mediaDns?.accountId, configureTraffic: !publication.release_branch });
+        dnsProvider: mediaDns?.provider, dnsAccountId: mediaDns?.accountId, configureTraffic: !publication.release_branch, orgId: args.orgId });
     }
     if (preparation.action === 'verify' && preparation.certificate_ready) {
       publication = { ...publication, website_preparation: preparation, ...(mediaPreparation?.action === 'verify' && mediaPreparation.certificate_ready ? { media_preparation: mediaPreparation } : {}) };

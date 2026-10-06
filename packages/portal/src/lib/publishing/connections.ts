@@ -3,7 +3,8 @@ import { getStore } from '../datastore';
 import { decryptSecret, encryptSecret } from '../secret-crypto';
 
 export class ConnectionError extends Error {
-  constructor(message: string, public status = 400, public code?: string) { super(message); }
+  /** `details` is returned beside the message to the person who made the request; never secrets. */
+  constructor(message: string, public status = 400, public code?: string, public details?: Record<string, unknown>) { super(message); }
 }
 
 export type Provider = 'github' | 'cloudflare';
@@ -75,7 +76,10 @@ export function openCredentials<T>(orgId: string, provider: Provider, encrypted:
   } catch { throw new ConnectionError('Stored publishing credentials could not be opened', 503); }
 }
 
-/** Claims survive disconnects: moving an account between tenants is an explicit transfer. */
+/**
+ * GitHub claims survive disconnects: moving an account between tenants is an explicit transfer. Cloudflare
+ * accounts may be shared between Organizations; see cloudflare-account-claims.ts.
+ */
 export async function claimAccount(orgId: string, provider: Provider, accountId: string): Promise<void> {
   const path = `publishing_account_claims/${provider}-${segment(accountId)}`;
   await getStore().createDocIfMissing(path, { org_id: orgId });
@@ -93,5 +97,9 @@ export async function saveConnection(orgId: string, provider: Provider, revision
 }
 
 export async function disconnect(orgId: string, provider: Provider, revision: string, groupId = 'default'): Promise<void> {
+  const before = provider === 'cloudflare' ? await getConnection(orgId, provider, groupId) : null;
   await saveConnection(orgId, provider, revision, { status: 'disconnected', encrypted_credentials: null, refresh_lease: null }, groupId);
+  // Only this Hosting Group stops using the account. Other Organizations and Hosting Groups keep their membership.
+  const accountId = before?.status === 'connected' ? before.cloudflare?.account_id : undefined;
+  if (accountId) await (await import('./cloudflare-account-claims')).leaveCloudflareAccount(orgId, accountId, groupId);
 }

@@ -509,7 +509,18 @@ further than the caller. Nothing here returns a new secret.
   (`revision`, `account_id`, `bucket`, `api_token`, `access_key_id`,
   `secret_access_key`), `prepare_media` (`revision`) or `save_media`
   (`revision`, `access_key_id`, `secret_access_key`). `DELETE
-  /publishing/connections/{provider}` takes `{ revision, hosting_group_id? }`.
+  /publishing/connections/{provider}` takes `{ revision, hosting_group_id? }`;
+  for Cloudflare it removes only this Organization's (or Hosting Group's) use
+  of a shared account. An organization key cannot join a Cloudflare account
+  another Organization uses: `409 claimed_by_other_organization` (no other
+  Organization is named). In the portal, an owner or admin of an Organization
+  that already uses it receives `409 shared_account_confirmation_required` with
+  `details.shared_with` (the names of the Organizations they administer) and
+  repeats the request with `confirm_shared_account: true`. An operation on a
+  bucket, Pages project or Worker another Organization owns in a shared account
+  returns `409 cloudflare_resource_owned_by_other_organization`; a hostname that
+  serves another Organization's site returns `409
+  hostname_used_by_other_organization`.
   `POST /publishing/connections/github` answers `409` with `error`,
   `connect_url` and `diagnosis`, because GitHub is connected by a person in a
   browser. `github_setup` reports `app_configured` and `encryption_available`
@@ -554,7 +565,7 @@ further than the caller. Nothing here returns a new secret.
   `revision_conflict`, `locked_to_account`, `claimed_by_other_organization`,
   `authorization_revoked`, `provider_unavailable`, `rate_limited`,
   `publisher_oauth_misconfigured`), `who` (`you`, `cloudflare_account_admin`,
-  `publisher`, `typeroll_admin`), `message`, an optional `action` (`kind`
+  `organization_admin`, `publisher`, `typeroll_admin`), `message`, an optional `action` (`kind`
   `link`, `sign_in`, `retry` or `contact_publisher`; `label`; `url` only for
   `https://dash.cloudflare.com/` or documentation pages) and, where relevant,
   `missing_permissions` (Cloudflare OAuth scopes), `retry_after`, `account` or

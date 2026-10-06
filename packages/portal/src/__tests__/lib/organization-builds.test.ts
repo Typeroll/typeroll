@@ -151,6 +151,22 @@ it('keeps a project awaiting token selection when other projects have build toke
   expect(connected).toMatchObject({ state: 'qualification_required', enabled: false });
 });
 
+it('never assumes the only build token of a shared account is this Organization’s', async () => {
+  await getStore().setDoc(connectionPath('org', 'cloudflare'), { status: 'connected', revision: 'connection', cloudflare: { account_id: 'a'.repeat(32), account_name: 'Build account' }, encrypted_credentials: sealCredentials('org', 'cloudflare', { api_token: 'synthetic-token' }) });
+  await getStore().setDoc(`publishing_account_claims/cloudflare-${'a'.repeat(32)}`, { schema: 2, provider: 'cloudflare', account_id: 'a'.repeat(32), revision: 'r',
+    members: [{ org_id: 'org', hosting_groups: ['default'], joined_at: null, joined_by: null }, { org_id: 'other-org', hosting_groups: ['default'], joined_at: null, joined_by: null }],
+    org_id: 'org', legacy_org_id: null, releasing_until: null });
+  const initial = await readBuildEngine('org');
+  let selected = false;
+  const provider = vi.fn<typeof fetch>(async url => Response.json({ success: true, result: String(url).endsWith('/workers/scripts')
+    ? [{ id: initial.worker_name, tag: 'synthetic-worker-tag' }] : String(url).endsWith('/triggers')
+    ? selected ? [{ branch_includes: ['main'], build_token_uuid: 'selected-token' }] : [] : [{ build_token_uuid: 'another-organizations-token' }] }));
+  const pending = await checkBuildEngine('org', { revision: initial.revision }, provider);
+  expect(pending).toMatchObject({ state: 'build_token_required', enabled: false, issue: { code: 'build_token_selection_required' } });
+  selected = true;
+  expect(await checkBuildEngine('org', { revision: pending.revision }, provider)).toMatchObject({ state: 'qualification_required', enabled: false });
+});
+
 it('continues a 1001-file frozen build beyond three batches and rejects stale or oversized checkpoints', async () => {
   const queue = new OrganizationBuildQueue(getStore(), () => now);
   const frozen = identity('large-site', 'redesign');

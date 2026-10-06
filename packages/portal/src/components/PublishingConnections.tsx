@@ -16,14 +16,14 @@ type Connections = Omit<GithubPublishingData, 'github'> & { media_transfer?: { s
 const API = '/api/orgs/publishing';
 
 class PublishingRequestError extends Error {
-  constructor(message: string, public code?: string) { super(message); }
+  constructor(message: string, public code?: string, public details?: { shared_with?: string[] }) { super(message); }
 }
 
 async function request(path = '', method = 'GET', body?: unknown) {
   const response = await fetch(`${API}${path}`, { method, cache: 'no-store',
     headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const data = await response.json();
-  if (!response.ok) throw new PublishingRequestError(data.error || 'Could not update the publishing connection', data.code);
+  if (!response.ok) throw new PublishingRequestError(data.error || 'Could not update the publishing connection', data.code, data.details);
   return data;
 }
 
@@ -40,6 +40,8 @@ export default function PublishingConnections() {
     if (connectionFeedback) { feedbackRef.current?.focus({ preventScroll: true }); feedbackRef.current?.scrollIntoView({ block: 'center', behavior: 'instant' }); }
   }, [connectionFeedback]);
   const [busy, setBusy] = useState(false);
+  // Connecting an account other Organizations use: the Organizations this person administers, to confirm.
+  const [sharedWith, setSharedWith] = useState<string[] | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [mediaError, setMediaError] = useState<{ message: string; code?: string } | null>(null);
@@ -103,21 +105,23 @@ export default function PublishingConnections() {
   async function submit(provider: 'cloudflare', event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const values = Object.fromEntries(new FormData(form));
+    const { confirm_shared_account: confirmShared, ...values } = Object.fromEntries(new FormData(form));
     const mediaAction = provider === 'cloudflare' && values.action === 'save_media';
     setBusy(true); setError(''); setNotice('');
     setConnectionFeedback(null);
     if (provider === 'cloudflare') { setMediaError(null); setMediaNotice(''); }
     try {
-      const result = await request(`/${provider}`, 'POST', { ...values, revision: data?.[provider].revision });
+      const result = await request(`/${provider}`, 'POST', { ...values, revision: data?.[provider].revision, ...(confirmShared === 'true' ? { confirm_shared_account: true } : {}) });
       if (result.authorization_url) { window.location.assign(result.authorization_url); return; }
       form.reset();
+      setSharedWith(null);
       await refresh();
       if (mediaAction) setMediaNotice('R2 connected. Upload access verified. Setup is complete.');
       else setNotice('Cloudflare connection updated. Access is encrypted and reused for your sites.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not complete setup. Check your connection and try again.';
       if (mediaAction) setMediaError({ message, code: error instanceof PublishingRequestError ? error.code : undefined });
+      else if (error instanceof PublishingRequestError && error.code === 'shared_account_confirmation_required') setSharedWith(error.details?.shared_with ?? []);
       else setError(message);
     }
     finally { setBusy(false); }
@@ -202,7 +206,7 @@ export default function PublishingConnections() {
         onRefresh={refresh} onDisconnect={() => void disconnect('github')}
         feedback={connectionFeedback?.provider === 'github' && <p ref={feedbackRef} tabIndex={-1} role={connectionFeedback.error ? 'alert' : 'status'}>{connectionFeedback.message}</p>} />
       <PublishingCard id="cloudflare" title="Cloudflare account" state={disconnecting === 'cloudflare' ? 'waiting' : connectionFeedback?.provider === 'cloudflare' && connectionFeedback.error ? 'error' : cloudflareCardState(cloudflareView)} status={disconnecting === 'cloudflare' ? 'Disconnecting…' : connectionFeedback?.provider === 'cloudflare' && connectionFeedback.error ? 'Connection needs attention' : cloudflareView.outcome === 'connected' ? `Connected · ${cloudflareAccount?.account_name ?? 'Cloudflare'}` : cloudflareView.outcome === 'needs_attention' ? `Connected · ${cloudflareAccount?.account_name ?? 'Cloudflare'} · Needs attention` : CLOUDFLARE_STATUS[cloudflareView.outcome]}>
-        <p>Builds and hosts your sites. One account is shared by this organization’s sites.</p>
+        <p>Builds and hosts your sites. One account is shared by this organization’s sites. Organizations you administer may use the same account; their sites stay separate.</p>
         {data.cloudflare.status === 'connected' && <details><summary>Allow Cloudflare to build from GitHub — once per organization</summary><ol>
           <li>Open Cloudflare → Workers &amp; Pages → Create application → Pages → Connect to Git.</li>
           <li>Select + Add account, choose the same GitHub account as above, and authorize Cloudflare’s GitHub App with All repositories.</li>
@@ -238,12 +242,16 @@ export default function PublishingConnections() {
             <div className="field"><label htmlFor="cf-token">Cloudflare API token</label><input id="cf-token" name="api_token" type="password" required maxLength={512} autoComplete="new-password" /></div>
             <div className="field"><label htmlFor="r2-access">R2 Access Key ID</label><input id="r2-access" name="access_key_id" type="password" required maxLength={512} autoComplete="new-password" /></div>
             <div className="field"><label htmlFor="r2-secret">R2 Secret Access Key</label><input id="r2-secret" name="secret_access_key" type="password" required maxLength={512} autoComplete="new-password" /></div>
+            {sharedWith && <div role="alert" className="stack" data-cloudflare-shared style={{ padding: 12, border: '1px solid var(--color-border)', borderLeft: '4px solid #4338ca', borderRadius: 8 }}>
+              <p style={{ margin: 0, overflowWrap: 'anywhere' }}><strong>This Cloudflare account is also used by: {sharedWith.join(', ')}.</strong> Sites stay separate: each Organization keeps its own sites, Pages projects, media storage and settings in the account. Use a bucket that no other Organization uses.</p>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" name="confirm_shared_account" value="true" required /> Use this account for this Organization as well</label>
+            </div>}
             <button className="btn" disabled={busy || checkingMedia} type="submit">{busy ? 'Checking connection…' : 'Verify and save Cloudflare'}</button>
           </form>}
         </div></details>
         {data.cloudflare.status === 'connected' && <button className="btn btn--secondary" disabled={busy || checkingMedia} onClick={() => void disconnect('cloudflare')}>{disconnecting === 'cloudflare' ? 'Disconnecting…' : 'Disconnect Cloudflare'}</button>}
         {connectionFeedback?.provider === 'cloudflare' && <p ref={feedbackRef} tabIndex={-1} role={connectionFeedback.error ? 'alert' : 'status'}>{connectionFeedback.message}</p>}
-        <details><summary>About this connection</summary><p>Disconnecting removes saved Cloudflare credentials. Your repositories, deployments and media remain in your accounts. Media storage uses standard R2 buckets on the account’s global S3 endpoint.</p></details>
+        <details><summary>About this connection</summary><p>Disconnecting removes saved Cloudflare credentials. Your repositories, deployments and media remain in your accounts. Other Organizations that use the same Cloudflare account stay connected. Media storage uses standard R2 buckets on the account’s global S3 endpoint.</p></details>
       </PublishingCard>
       <PublishingCard id="media" title="Media storage"
         state={checkingMedia ? 'waiting' : mediaError || !mediaReady || data.media_migration?.state === 'failed' ? 'error' : ['queued', 'running'].includes(data.media_migration?.state ?? '') ? 'waiting' : 'ready'}

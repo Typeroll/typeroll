@@ -70,14 +70,53 @@ Existing repositories are kept. Expiring user-to-server authorization must be en
 and [token refresh](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens).
 [GitHub setup URL security](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/about-the-setup-url).
 
-The first connection reserves that provider account for its Typeroll
+The first GitHub connection reserves that GitHub account for its Typeroll
 organization. Disconnecting preserves this ownership reservation and resource
 identities. Reconnecting can rotate credentials for the original account.
 After an explicit disconnect, the Typeroll organization may connect a different
 GitHub account only after a confirmation that names the previous account
 (`confirm_account_change` with the previous account ID); existing repositories
-are not migrated. Moving an account to another Typeroll organization still
-requires a separate transfer, because claims survive disconnects.
+are not migrated. Moving a GitHub account to another Typeroll organization
+still requires a separate transfer, because GitHub claims survive disconnects.
+
+### Shared Cloudflare accounts
+
+A Cloudflare account may be used by several Typeroll Organizations, for example
+one owner with several companies. `publishing_account_claims/cloudflare-{account}`
+lists the member Organizations and, for each, the Hosting Groups whose
+connection uses the account (`schema: 2`, `members[]`, `revision`). Joining an
+account that another Organization uses requires a person who is currently an
+owner or admin (member document role, read at connect time) of at least one
+member Organization; the portal names those Organizations and requires
+`confirm_shared_account: true`. Anyone else receives
+`claimed_by_other_organization` without the other Organization's name. An
+organization API key acts for no person and cannot join. An Organization whose
+own saved connection names the account may always reconnect it. The rule applies
+to OAuth (automatic connection, account choice), API tokens and Hosting Group
+tokens.
+
+Disconnecting removes only that Hosting Group, and the Organization when none of
+its groups uses the account; the claim is deleted when no Organization uses it.
+A claim written before sharing (`{ org_id }`) is read as that Organization's
+current use, derived from its connected Default and Hosting Group connections,
+and upgraded on the next write (`legacy_org_id` keeps the original owner). Its
+buckets are recorded as its own before anyone else joins.
+
+Generated names are unchanged and already unique per Organization:
+`typeroll-media-{h(org)}`, `typeroll-public-{h(org)}` (R2),
+`typeroll-builder-{h(org)}` (build Worker, tag `typeroll-build-{h(org)}`),
+`typeroll-media-{h(origin, org)}` (transfer Worker) and
+`typeroll-{h(org, site)}` (Pages project and repository), where `h` is the first
+16 hex characters of SHA-256. `publishing_account_resources/cloudflare-{account}-{kind}-{name}`
+records the owning Organization of every bucket, Pages project and Worker before
+Core creates or changes it; a record for another Organization stops the
+operation with `cloudflare_resource_owned_by_other_organization`. Buckets named
+in another member's connection count as owned even before they are recorded. A
+DNS record that points to another Organization's Pages project is never prepared
+for replacement. In a shared account the build engine never selects the
+account's only build token by assumption. Account-level settings (the workers.dev
+subdomain, zones, zone rulesets with per-host rules) are shared by design, and
+Cloudflare's account limits apply to all member Organizations together.
 
 ### Connection diagnosis
 
@@ -364,12 +403,13 @@ without `scope` means the requested scopes were granted (RFC 6749 §5.1).
 
 Every exit of the Cloudflare flow (start, callback, account choice, Check
 again) stores a diagnosis per Organization and Hosting Group for 24 hours. It
-names each blocker with `who` (`you`, `cloudflare_account_admin`, `publisher`,
-`typeroll_admin`) and one action, and never stores tokens, codes, state values
+names each blocker with `who` (`you`, `cloudflare_account_admin`,
+`organization_admin`, `publisher`, `typeroll_admin`) and one action, and never stores tokens, codes, state values
 or provider bodies. A callback is recorded only for the sign-in the same person
 started in the same browser. Several authorized accounts are never chosen
-automatically: the chosen account is claimed for the Organization and locked
-for reconnects. A consent's encrypted tokens are kept for at most an hour so
+automatically: the chosen account is joined for the Organization and locked
+for reconnects. A single authorized account that other Organizations use is also
+offered as a choice, so that the person confirms sharing it. A consent's encrypted tokens are kept for at most an hour so
 **Check again** can offer an expired choice again without a new sign-in; they
 are cleared on connection, a new sign-in, or a failure that needs a new consent.
 The Pages access check lists Pages projects without list options.
