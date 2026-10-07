@@ -1,6 +1,6 @@
 {
   "name": "typeroll",
-  "version": "0.2.71",
+  "version": "0.2.72",
   "private": true,
   "description": "Typeroll CMS \u2013 an open-source CMS for static websites, with AI-agent workflows and a client-friendly visual editor for managing multiple client sites.",
   "workspaces": [
@@ -46,7 +46,7 @@
     "google-auth-library": "10.9.1"
   },
   "overrides": {
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "@grpc/grpc-js": "^1.14.5"
   },
   "devDependencies": {

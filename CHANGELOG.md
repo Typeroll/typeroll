@@ -1,5 +1,11 @@
 # Changelog
 
+## Core 0.2.72 / MCP 0.45.54
+
+- Security: @modelcontextprotocol/sdk 1.32.1 (GHSA-6qxp-vccf-f47h; minimum raised to ^1.31.0) and sharp 0.35.5 (GHSA-wq5f-xc86-pv6w, librsvg CVE-2026-96889).
+- Release: live documentation verification retries a page that still answers 404 at the edge for up to 30 seconds after `release.json` reports the new source, instead of failing the release on the first request. The deliberate 404 check is unchanged.
+- Tests: the GitHub setup-return test checks that the foreign installation id was not recorded, instead of searching the stored diagnosis for `999`, which also matched timestamps ending in `.999`.
+
 ## Core 0.2.71 / MCP 0.45.53
 
 - A top-sticky or fixed site header now reserves its own space. The page runtime measures the header's bottom edge and sets `html { scroll-padding-top }` to it plus 16px, updating when the header resizes or crosses a breakpoint. Fragment links and `:target`, `scrollIntoView()` from blocks and Extensions, and `focus()` on form fields land below the header, on the published site and in preview. Pages without a sticky header, and sites that set their own `scroll-padding-top`, are unchanged. The outline adds only clearance the page has not already reserved, so its links land on the same line. Remove tenant `scroll-margin-top` offsets that duplicate it.

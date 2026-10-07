@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { docsTarget } from './docs-target.mjs';
 import { agentDocuments } from './agent-docs.mjs';
-import { waitForDocsRelease } from './wait-for-docs-release.mjs';
+import { waitForDocsRelease, waitForPublished } from './wait-for-docs-release.mjs';
 
 const pages = [
   { title: 'Editor', url: 'https://typeroll.com/docs/guides/editor/' },
@@ -79,4 +79,20 @@ test('live verification waits for the deployed source and fails if it never arri
     attempts: 3,
     delay: async () => {},
   }), /do not match the deployed source/);
+});
+
+test('live verification retries a page that is still 404 at the edge, then reports it', async () => {
+  const statuses = [404, 404, 200];
+  let waits = 0;
+  const reply = (status) => ({ status, arrayBuffer: async () => new ArrayBuffer(0) });
+  const published = await waitForPublished(async () => reply(statuses.shift()), {
+    attempts: 5,
+    delay: async () => { waits++; },
+  });
+  assert.equal(published.status, 200);
+  assert.equal(waits, 2);
+  const missing = await waitForPublished(async () => reply(404), { attempts: 3, delay: async () => {} });
+  assert.equal(missing.status, 404);
+  const failing = await waitForPublished(async () => reply(500), { attempts: 3, delay: async () => { throw new Error('no retry'); } });
+  assert.equal(failing.status, 500);
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { waitForDocsRelease } from './wait-for-docs-release.mjs';
+import { waitForDocsRelease, waitForPublished } from './wait-for-docs-release.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const routes = JSON.parse(readFileSync(path.resolve(root, '../../temp/docs-migration/routes.json'), 'utf8'));
@@ -29,7 +29,7 @@ let next = 0;
 await Promise.all(Array.from({ length: 4 }, async () => {
   while (next < routes.length) {
     const route = routes[next++];
-    const response = await request(route.destination);
+    const response = await waitForPublished(() => request(route.destination));
     assert.equal(response.status, 200, route.destination);
     const html = await response.text();
     assert.ok(!html.includes('docs.typeroll.com'), 'Retired hostname in ' + route.destination);
@@ -45,7 +45,7 @@ await Promise.all(Array.from({ length: 4 }, async () => {
     assert.equal(canonical?.href, route.destination);
     assert.doesNotMatch(response.headers.get('x-robots-tag') ?? '', /noindex/i);
     assert.doesNotMatch(html, /<meta[^>]+name="robots"[^>]+content="[^"]*noindex/i);
-    const text = await request(new URL('index.txt', route.destination));
+    const text = await waitForPublished(() => request(new URL('index.txt', route.destination)));
     assert.equal(text.status, 200);
     assert.match(text.headers.get('content-type'), /text\/plain/);
     assert.ok((await text.text()).includes(`](${route.destination})`));
@@ -53,7 +53,7 @@ await Promise.all(Array.from({ length: 4 }, async () => {
   }
 }));
 for (const name of ['llms.txt', 'llms-full.txt', 'llms-small.txt']) {
-  const response = await request(`https://typeroll.com/docs/${name}`);
+  const response = await waitForPublished(() => request(`https://typeroll.com/docs/${name}`));
   assert.equal(response.status, 200);
   assert.match(response.headers.get('content-type'), /text\/plain/);
   assert.ok((await response.text()).length > 1000);
@@ -65,7 +65,7 @@ const entry = await request('https://typeroll.com/docs?via=check');
 assert.equal(entry.status, 301);
 assert.equal(entry.headers.get('location'), 'https://typeroll.com/docs/?via=check');
 const readText = async (url) => {
-  const response = await request(url);
+  const response = await waitForPublished(() => request(url));
   assert.equal(response.status, 200, url);
   const body = await response.text();
   assert.ok(!body.includes('docs.typeroll.com'), 'Retired hostname in ' + url);
