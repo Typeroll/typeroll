@@ -1,4 +1,5 @@
 import { refreshBuildFailure } from '../../../../../../lib/builds/failure-status';
+import { attachBuildFailureLog } from '../../../../../../lib/builds/failure-log';
 // GET /api/v1/sites/{siteId}/deploys/{jobId}
 //
 // One deploy job's status. queued → running → succeeded | failed. The
@@ -36,6 +37,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   let doc = await store.getDoc<DeployJob>(jobPath);
   if (!doc) return apiError('Not found', 404);
   doc = await refreshBuildFailure(ctx.orgId, ctx.siteId, doc);
+  doc = await attachBuildFailureLog(ctx.orgId, ctx.siteId, doc);
   doc = await refreshDeploymentAvailability(ctx.orgId, ctx.siteId, doc);
 
   // Compute waited-time + auto-fail if it's been queued too long.

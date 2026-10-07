@@ -718,9 +718,14 @@ the customer build immediately continues the same publication. Slow builds do
 not cause a second build to start. Duplicate result messages are safe to deliver.
 
 A reported build failure, or loss of the build engine's execution heartbeat,
-appears in the portal and deployment-status API/MCP response. Check the build log
-and retry publishing after resolving the cause. A status refresh does not start
-a replacement build. Brief distribution checks can continue after upload until
+appears in the portal and deployment-status API/MCP response. For a build on the
+Cloudflare build engine (Core 0.2.73), Typeroll reads that build's log with the
+organization's build connection and adds the most specific failure line to the
+error, for example `Build log: Error: Cannot find module …`. The deploy job's
+`failure.provider_log` keeps the last 60 lines, whether the build or the
+verification of its output failed, and the Cloudflare build ID. Values that look
+like credentials are removed; digests and commit IDs are kept. Resolve the cause,
+then retry publishing. A status refresh does not start a replacement build. Brief distribution checks can continue after upload until
 the exact static files are publicly available; the live link remains hidden
 until verification succeeds.
 
