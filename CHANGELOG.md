@@ -1,7 +1,8 @@
 # Changelog
 
-## Core 0.2.72 / MCP 0.45.53
+## Core 0.2.72 / MCP 0.45.54
 
+- Security: @modelcontextprotocol/sdk 1.32.1 (GHSA-6qxp-vccf-f47h; minimum raised to ^1.31.0) and sharp 0.35.5 (GHSA-wq5f-xc86-pv6w, librsvg CVE-2026-96889).
 - Release: live documentation verification retries a page that still answers 404 at the edge for up to 30 seconds after `release.json` reports the new source, instead of failing the release on the first request. The deliberate 404 check is unchanged.
 - Tests: the GitHub setup-return test checks that the foreign installation id was not recorded, instead of searching the stored diagnosis for `999`, which also matched timestamps ending in `.999`.
 
