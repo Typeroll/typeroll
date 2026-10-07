@@ -41,6 +41,26 @@ async function seedBlockPage(blocks: Block[], over: Partial<Page> = {}): Promise
 describe('renderPreview — blocks mode', () => {
   beforeEach(async () => { await resetDatastore(); });
 
+  it('writes the same page identity on <body> as the published build', async () => {
+    await seedSite();
+    await seedBlockPage([{ id: 'h', type: 'core/heading', data: { text: 'Home', level: 'h2' } }]);
+    const { renderPreview } = await import('../../lib/render-preview');
+    const { getStore } = await import('../../lib/datastore');
+    const { DEFAULT_CONTENT_TYPE, pageIdentityAttributes, resolveContentPage } = await import('@typeroll/shared');
+    // What the site's [...slug].astro writes for the same saved page.
+    const saved = await getStore().getDoc<Page>(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/home`);
+    const expected = pageIdentityAttributes({ page: resolveContentPage(saved!, DEFAULT_CONTENT_TYPE)!, defaultContentType: 'page' });
+    const built = `<body${Object.entries(expected).map(([name, value]) => ` ${name}="${value}"`).join('')}>`;
+    for (const opts of [{}, { allowScripts: true }]) {
+      const html = (await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID, opts))!;
+      expect(html.match(/<body[^>]*>/)![0]).toBe(built);
+    }
+    expect(built).toContain('data-route="home"');
+    expect(built).toContain('data-page="home"');
+    // Absent, not empty, when the page has no template.
+    expect(built).not.toContain('data-template');
+  });
+
   it('reserves the sticky header in the preview shell before block scripts run, but not in the script-free editor canvas', async () => {
     await seedSite();
     await seedBlockPage([{ id: 'outline', type: 'core/table_of_contents', data: {} }]);

@@ -1658,6 +1658,22 @@ export interface DeployCost {
   estimated: boolean;
 }
 
+/**
+ * The tail of a failed build's provider log, credential-shaped values removed.
+ * `summary` is the most specific failure line; `lines` are the last lines in order.
+ */
+export interface BuildFailureLog {
+  provider: 'cloudflare';
+  build_id: string;
+  /** The static build itself, or the verification of its output on the build engine. */
+  step: 'build' | 'verification';
+  error_code: string | null;
+  fetched_at: string;
+  summary: string | null;
+  lines: string[];
+  truncated: boolean;
+}
+
 export interface DeployJob {
   /** Actual HTML work reported by the frozen publication renderer, not an estimate. */
   seo_report?: { version: number; publication_id: string; artifact_sha256?: string; artifact_tree_sha256: string; source_sha256: string; configuration_sha256: string; checked_pages: number; passed: boolean; error_count: number; warning_count: number; errors: Array<{ code: string; url: string; source: { file: string; line: number; field?: string; block_id?: string; page_id?: string }; message: string; remediation: string }>; warnings: Array<{ code: string; url: string; source: { file: string; line: number; field?: string; block_id?: string; page_id?: string }; message: string; remediation: string }> };
@@ -1678,6 +1694,8 @@ export interface DeployJob {
   deploy_url?: string;
   /** Final error message on failure. */
   error?: string;
+  /** Where a failed publication stopped, and the build provider's own log when one was read. */
+  failure?: { stage: string; code: string; provider_log?: BuildFailureLog };
   /** Non-blocking preflight findings. The deploy still succeeds, but these
    *  need editorial attention before launch. */
   warnings?: string[];

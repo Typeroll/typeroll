@@ -1,5 +1,11 @@
 # Changelog
 
+## Core 0.2.73 / MCP 0.45.55
+
+- Preview writes the page identity attributes on `<body>` (`data-route`, `data-page`, `data-content-type`, `data-template`, `data-depth`), the same as the published build, so page-scoped CSS such as `body[data-route="home"] .header-banner` looks the same in both. The docs show how to vary a block in a shared partial by page with its own `custom_class`.
+- `core/image` gets `spacing_before_px` and `spacing_after_px` (0–480 px, per breakpoint). In page flow the larger of the value and the next block's own space applies; in a Container or Grid the gap is added. Unset changes nothing, so existing pages render as before: the markup is identical and the two new rules only match the attributes a set value adds, so the image CSS reference is updated for every render version instead of gating it.
+- A failed build on the Cloudflare build engine names its cause. Typeroll reads the build's log with the organization's build connection, once, and appends the most specific failure line to the deploy job's error (`Build log: …`) instead of only "Check the build log". `failure.provider_log` keeps the step (build or verification), the Cloudflare build ID and the last 60 lines, with credential-shaped values removed and digests and commit IDs kept. The portal, API and MCP `get_deploy_status` show it; an unreadable log leaves the job unchanged.
+
 ## Core 0.2.72 / MCP 0.45.54
 
 - Security: @modelcontextprotocol/sdk 1.32.1 (GHSA-6qxp-vccf-f47h; minimum raised to ^1.31.0) and sharp 0.35.5 (GHSA-wq5f-xc86-pv6w, librsvg CVE-2026-96889).

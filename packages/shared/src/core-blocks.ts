@@ -402,8 +402,11 @@ const image: BlockType = {
     { name: 'link', type: 'url', label: 'Link to (optional)' },
     { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide', 'full', 'original'], default: 'normal' },
     { name: 'radius', type: 'select', label: 'Corner radius', options: ['none', 'md', 'lg', 'xl'], default: 'none' },
+    // Unset keeps the surrounding flow's spacing; a value replaces it at that breakpoint.
+    pixels('spacing_before_px', 'Space before (px)', 0, 480),
+    pixels('spacing_after_px', 'Space after (px)', 0, 480),
   ],
-  template: `<figure data-block="image" data-fit="{{fit}}" data-aspect="{{aspect_ratio}}" data-w="{{width}}" data-align="{{align}}" data-caption-align="{{caption_align}}" data-radius="{{radius}}" style="{{image_size_style}}">
+  template: `<figure data-block="image"{{{image_spacing_attrs}}} data-fit="{{fit}}" data-aspect="{{aspect_ratio}}" data-w="{{width}}" data-align="{{align}}" data-caption-align="{{caption_align}}" data-radius="{{radius}}" style="{{image_size_style}}">
   {{{image_markup}}}
   <figcaption class="block-image-caption">{{{image_caption_html}}}</figcaption>
 </figure>`,
@@ -437,6 +440,9 @@ const image: BlockType = {
 [data-block="image"] .block-image-caption p { margin:0; }
 [data-block="image"] .block-image-caption:empty { display: none; }
 [data-block="image"] .block-image-caption { padding: 0.5rem 0; font-size: 0.875rem; opacity: 0.7; text-align: center; }
+/* Only authored spacing applies, and it wins over flow, gap and rhythm margins around the image. */
+[data-block="image"][data-spacing-before] { margin-top: var(--spacing_before_px, 0px) !important; }
+[data-block="image"][data-spacing-after] { margin-bottom: var(--spacing_after_px, 0px) !important; }
 `.trim(),
   origin: 'core',
   created_at: ISO_EPOCH,

@@ -1032,6 +1032,24 @@ content well, including centered flex layouts. Authored font sizes stay unchange
 a long word can break across lines instead of widening the page. Check the saved
 preview and republished output at your smallest supported viewport.
 
+### Space before and after an image (Core 0.2.73)
+
+`core/image.spacing_before_px` and `spacing_after_px` set the space above and
+below the image in pixels (0–480), per breakpoint like Container padding:
+
+```json
+{
+  "type": "core/image",
+  "data": { "src": "…", "spacing_after_px": { "mobile": 123, "laptop": 83 } }
+}
+```
+
+In normal page flow the distance to the next block is the larger of this value
+and that block's own space before it, as with CSS margins. In a Container or
+Grid with a gap, the gap is added. Unset leaves the surrounding spacing unchanged, so existing pages render
+as before. The px fields take precedence over `style_overrides.spacing_before`
+and `spacing_after`, which accept one value for every breakpoint.
+
 ### Image framing and shared article scales (Core 0.2.35+)
 
 Image keeps the entire original visible by default. For intentional art direction,
@@ -1250,7 +1268,8 @@ for one-line links; wrapped labels can grow. Comfortable navigation remains
 
 Every built page carries `data-*` attributes on `<body>` describing which route
 it is, so a stylesheet can vary by route without duplicating a block tree
-behind visibility branches.
+behind visibility branches. Preview writes the same attributes (Core 0.2.73), so
+a page-scoped rule looks the same in preview and on the published site.
 
 | Attribute                               | Value                                                    |
 | --------------------------------------- | -------------------------------------------------------- |
@@ -1262,7 +1281,15 @@ behind visibility branches.
 | `data-depth`                            | segments below the root: `/` is `0`, `/guides/a/` is `2` |
 | `data-page-number`                      | the slice number, only on pages after the first          |
 
+To vary a block in a shared partial by page, give that block a
+`style_overrides.custom_class` and select it under the page attribute. Do not
+mark the page content or select on `data-source-block-id` or `.block-*`; those
+are not part of this contract.
+
 ```css
+body[data-route="home"] .header-banner {
+  background: #007cba;
+}
 body[data-route="home"] .banner {
   --banner: var(--color-primary);
 }

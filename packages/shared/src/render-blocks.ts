@@ -460,6 +460,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     const frame = `<span class="block-image-frame">${picture}</span>`;
     d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link">${frame}</a>` : frame;
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
+    // Mark authored spacing so an unset field never overrides the surrounding flow.
+    const authored = (name: string) => { const value = effectiveBlock.data?.[name]; return value !== undefined && value !== null && value !== ''; };
+    d.image_spacing_attrs = `${authored('spacing_before_px') ? ' data-spacing-before' : ''}${authored('spacing_after_px') ? ' data-spacing-after' : ''}`;
   }
   const columnThreshold = effectiveBlock.type === 'core/columns' && typeof compiled.flatData.stack_below_px === 'number' && Number.isFinite(compiled.flatData.stack_below_px)
     ? Math.min(1600, Math.max(320, Math.round(compiled.flatData.stack_below_px))) : null;

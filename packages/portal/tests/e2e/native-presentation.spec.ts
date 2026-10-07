@@ -286,3 +286,39 @@ test('a sticky site header reserves scroll padding for scrollIntoView, focus, fr
   await page.setContent(fixture(true).replace('main{max-width', 'html{scroll-padding-top:120px}main{max-width'));
   expect(await page.evaluate(() => [getComputedStyle(document.documentElement).scrollPaddingTop, document.documentElement.hasAttribute('data-tr-header-clearance')])).toEqual(['120px', false]);
 });
+
+test('image spacing_after_px sets the space to the next heading per breakpoint, standalone and inside layouts, and is inert when unset', async ({ page }, info) => {
+  const picture = (id: string, data: Record<string, unknown> = {}): Block => ({ id, type: 'core/image', data: { src: image, alt: 'Cleaning offer', width: 'normal', original_width: 755, original_height: 283, ...data } });
+  const after = { spacing_after_px: { mobile: 123, laptop: 83 } };
+  const tree: Block[] = [
+    picture('flow-image', after), heading('flow-next', 'Flow heading'),
+    { id: 'box', type: 'core/container', data: { gap_px: 24 }, children: [picture('box-image', after), heading('box-next', 'Container heading')] },
+    { id: 'cols', type: 'core/columns', data: { ratio: '1-1' }, slots: [[picture('col-image', after), heading('col-next', 'Column heading')], []] },
+    picture('plain-image'), heading('plain-next', 'Unset heading'),
+  ];
+  await page.setContent(documentHtml(tree));
+  const gap = (imageAlt: number, headingText: string) => page.evaluate(([index, text]) => {
+    const img = document.querySelectorAll('[data-block="image"]')[index as number];
+    const h = [...document.querySelectorAll('h2')].find(node => node.textContent?.trim() === text)!;
+    return Math.round(h.getBoundingClientRect().top - img.getBoundingClientRect().bottom);
+  }, [imageAlt, headingText] as const);
+  // Unset: no marker, so the surrounding flow keeps its own spacing.
+  expect(await page.locator('[data-block="image"]').nth(3).evaluate(el => [el.hasAttribute('data-spacing-before'), el.hasAttribute('data-spacing-after')])).toEqual([false, false]);
+  const baseline: Record<number, number> = {};
+  for (const [width, expected] of [[390, 123], [1280, 83]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await gap(0, 'Flow heading')).toBe(expected);
+    // A Container lays children out with its own gap; the image's space comes on top of it.
+    expect(await gap(1, 'Container heading')).toBe(expected + 24);
+    expect(await gap(2, 'Column heading')).toBe(expected);
+    baseline[width] = await gap(3, 'Unset heading');
+    expect(baseline[width]).toBeLessThan(expected);
+    await page.screenshot({ path: info.outputPath(`image-spacing-${width}.png`), fullPage: true });
+  }
+  // The unset image renders exactly as it did before the field existed.
+  await page.setContent(documentHtml([picture('plain-image'), heading('plain-next', 'Unset heading')]).replace(/ data-presentation="[^"]*"/g, ''));
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await gap(0, 'Unset heading')).toBe(baseline[width]);
+  }
+});

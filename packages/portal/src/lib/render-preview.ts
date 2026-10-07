@@ -61,6 +61,7 @@ import {
   pageBreadcrumbs,
   siteContext,
   STICKY_HEADER_RUNTIME_JS,
+  pageIdentityAttributes,
 } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { paths } from '@typeroll/shared';
@@ -369,6 +370,9 @@ export async function renderPreview(
     previewNavigationBridge,
     cookieConsentHtml,
     robotsBlocked,
+    // Same call as the site's [...slug].astro, so page-scoped CSS such as
+    // body[data-route="home"] matches in preview exactly as it does when published.
+    bodyAttributes: pageIdentityAttributes({ page, defaultContentType: 'page' }),
     seoHead: (() => {
       if (!seoBase) return '';
       const pathname = applyTrailingSlash('/' + pagePathSegment(page), settings.trailing_slash ?? 'always');
@@ -543,6 +547,8 @@ function buildHtml(args: {
   robotsBlocked: boolean;
   seoHead?: string;
   banner: BannerArgs | null;
+  /** The page's identity contract on `<body>`, the same attributes the published build writes. */
+  bodyAttributes?: Record<string, string>;
 }): string {
   const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, robotsBlocked, banner } = args;
   const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
@@ -611,7 +617,7 @@ ${page.custom_css ? `<style data-page-css="1">${styleElementText(page.custom_css
 </style>
 ${cookieConsentHtml ? `<script data-cookie-consent-early="1">${buildConsentEarlyPaintRuntime()}</script>` : ''}
 </head>
-<body>
+<body${Object.entries(args.bodyAttributes ?? {}).map(([name, value]) => ` ${name}="${escapeAttr(value)}"`).join('')}>
 ${banner ? renderBanner(banner) : ''}
 ${headerHtml ? (looksLikeSemanticTag(headerHtml, 'header') ? headerHtml : `<header class="site-header">${headerHtml}</header>`) : ''}
 <main class="${blocksBody ? 'page-content page-content--blocks' : 'page-content'}">${bodyHtml}</main>
