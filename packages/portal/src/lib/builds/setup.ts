@@ -8,6 +8,7 @@ import directUpload from './direct-upload.mjs?raw';
 import executorSource from './executor.mjs?raw';
 import contractSource from './contract.mjs?raw';
 import assetsSource from './assets.mjs?raw';
+import diagnosticsSource from './diagnostics.mjs?raw';
 import { getStore } from '../datastore';
 import { encryptSecret } from '../secret-crypto';
 import { getConnection, ConnectionError } from '../publishing/connections';
@@ -22,6 +23,15 @@ import { encodeSource, sha256, BUILD_PROTOCOL, BUILD_RUNTIME } from './contract.
 import { prepareBuildRetention } from './storage';
 import { qualificationSource } from './qualification';
 import { enqueueBuild, completedBuild } from './jobs';
+import { engineSourceDigest } from './engine-source';
+
+export function cloudflareBuildFiles(origin: string, org: string, revision: string): Record<string, string> {
+  return { 'package-lock.json': uploaderLock, 'static-verifier.mjs': staticVerifier, 'direct-upload.mjs': directUpload, 'assets.mjs': assetsSource, 'executor.mjs': executorSource, 'diagnostics.mjs': diagnosticsSource, 'contract.mjs': contractSource, 'engine.json': JSON.stringify({ origin, org_id: org, revision }),
+    '.node-version': BUILD_RUNTIME + '\n', 'package.json': JSON.stringify({ ...JSON.parse(uploaderPackage), scripts: { build: 'node executor.mjs', 'qualify:artifact': 'node finalize.mjs' } }),
+    'finalize.mjs': "console.log('Typeroll build attempt finished. Static hosting is handled by the publication coordinator.');\n",
+    'README.md': '# Typeroll shared builds\n\nGenerated source only. One runner for this organization. Site repositories and version branches remain separate. Public Worker URLs are disabled. Builds are dispatched explicitly by Typeroll.\n' };
+}
+export const CLOUDFLARE_ENGINE_SOURCE = engineSourceDigest(cloudflareBuildFiles('', '', ''));
 
 export async function configureBuildEngine(org: string, input: Record<string, unknown>) {
   if (!input.action || input.action === 'check') {
@@ -54,7 +64,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
   const origin = new URL(process.env.PORTAL_PUBLIC_URL ?? '');
   if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new ConnectionError('Shared builds require the public HTTPS address of this Typeroll server.', 409);
   const revision = randomUUID(), token = randomBytes(32).toString('base64url');
-  let config: EngineConfiguration = { media_preparation: true, static_verification: true, publication_validation: 1, revision, account_id: cf.cloudflare.account_id, owner: git.github.owner, installation_id: git.github.installation_id,
+  let config: EngineConfiguration = { media_preparation: true, static_verification: true, publication_validation: 1, engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE, revision, account_id: cf.cloudflare.account_id, owner: git.github.owner, installation_id: git.github.installation_id,
     worker_tag: '', trigger_uuid: '', runner_commit: '', token_hash: sha256(token), encrypted_token: encryptSecret(JSON.stringify({ org, token })),
     status: 'preparing', setup_lease_until: Date.now() + 180000 };
   if (previous) {
@@ -98,10 +108,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
     for (const trigger of triggers) await client(`${base}/builds/triggers/${trigger.trigger_uuid}`, { method: 'PATCH', body: { path_excludes: ['*'] } });
     phase = 'GitHub repository';
     const runner = await publishTree(github, { owner: config.owner, repo: current.runner_repo,
-      files: { 'package-lock.json': uploaderLock, 'static-verifier.mjs': staticVerifier, 'direct-upload.mjs': directUpload, 'assets.mjs': assetsSource, 'executor.mjs': executorSource, 'contract.mjs': contractSource, 'engine.json': JSON.stringify({ origin: origin.origin, org_id: org, revision }),
-        '.node-version': BUILD_RUNTIME + '\n', 'package.json': JSON.stringify({ ...JSON.parse(uploaderPackage), scripts: { build: 'node executor.mjs', 'qualify:artifact': 'node finalize.mjs' } }),
-        'finalize.mjs': "console.log('Typeroll build attempt finished. Static hosting is handled by the publication coordinator.');\n",
-        'README.md': '# Typeroll shared builds\n\nGenerated source only. One runner for this organization. Site repositories and version branches remain separate. Public Worker URLs are disabled. Builds are dispatched explicitly by Typeroll.\n' },
+      files: cloudflareBuildFiles(origin.origin, org, revision),
       message: 'Update the organization static build executor' });
     config.runner_commit = runner.commit;
     phase = 'Workers Builds';

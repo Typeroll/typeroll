@@ -60,6 +60,22 @@ test('completion receipts cannot change artifact scope or silently omit variants
   }
 }, 1, true));
 
+test('media published by an earlier image encoder release is reused, not rejected or re-encoded', async t => withMediaFixture(async ({ publication, root, stored, entries: [entry] }) => {
+  await prepareMediaBatch(publication, root);
+  const completionKey = mediaReceiptKey(publication.media_manifest, entry), earlier = 'e'.repeat(64);
+  // Every receipt as a previous sharp release wrote it (Core 0.2.71 used sharp 0.35.4).
+  const rewrite = () => { for (const [key, bytes] of stored) if (key === completionKey || key.endsWith('.receipt.json')) stored.set(key, Buffer.from(JSON.stringify({ ...JSON.parse(bytes), recipe_sha256: earlier }))); };
+  rewrite();
+  t.mock.method(sharp.prototype, 'toBuffer', () => { throw Error('published variants need no encoding'); });
+  await prepareMediaBatch(publication, root);
+  assert.equal((await prepareMediaBatch(publication, root, 0, { materialize: true })).files.length, 5);
+  // Without a completion receipt every variant receipt is checked one by one.
+  stored.delete(completionKey);
+  await prepareMediaBatch(publication, root);
+  assert.equal(JSON.parse(stored.get(entry.public_key + `.v2.w320.${entry.sha256.slice(0, 16)}.webp.receipt.json`)).recipe_sha256, earlier, 'the receipt describing published bytes is kept');
+  assert.equal((await prepareMediaBatch(publication, root, 0, { materialize: true })).files.length, 5);
+}, 1, true));
+
 test('copies verified static media, preserves aliases and rejects changed immutable bytes', async () => withMediaFixture(async ({ publication, root, stored, entries: [entry] }) => {
   const files = await prepareMedia(publication, root);
   assert.equal(files.length, 5);

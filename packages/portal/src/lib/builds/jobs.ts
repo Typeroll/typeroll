@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { paths, type DeployJob } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { ConnectionError } from '../publishing/connections';
+import { buildFailureMessage } from './failure-message';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { dispatchCloudflareBuild } from './cloudflare';
 import { dispatchGithubBuild, githubBuildClient, readGithubDispatch } from './github';
@@ -86,7 +87,8 @@ export async function completedBuild(org: string, key: string) {
       throw new ConnectionError(`Publication validation failed: ${issue?.message ?? 'Invalid static output'} (${issue?.url ?? ''}). ${issue?.remediation ?? 'Review the validation report.'}`, 422, 'publication_validation_failed');
     }
     if (task.error_code === 'artifact_static_output_size_limit') throw new ConnectionError('The finished site exceeds this build engine’s static output limit or contains a file larger than 25 MiB. Reduce the published files before retrying. Prepared images are retained.', 413, task.error_code);
-    throw new ConnectionError(`The shared build stopped (${task.error_code ?? task.status}). Retry the publication. Prepared images are retained.`, 502, task.error_code ?? 'shared_build_failed');
+    const code = task.error_code ?? 'shared_build_failed', diagnostic = task.error_detail ?? undefined;
+    throw new ConnectionError(`${buildFailureMessage(code, diagnostic)} Prepared images are retained.`, 502, code, diagnostic ? { build_diagnostic: diagnostic } : undefined);
   }
   if (task.status !== 'completed') {
     const metadata = await getStore().getDoc<BuildInput>(buildInputPath(org, key));

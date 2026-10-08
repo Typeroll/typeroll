@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt, DIRECT_RECEIPT } from './direct-upload.mjs';
+import { buildDiagnostic, secretValues } from './diagnostics.mjs';
 import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, MAX_SEO_REPORT_BYTES, decodeSource, decodeArtifact, encodeArtifact, sha256, assertFilePath, renderReport, seoReport, outputDigest } from './contract.mjs';
 
 // The rolling package pool removes superseded packages; retain this exact verified binary.
@@ -145,6 +146,36 @@ export async function acquireSandbox(fetchImpl, sources = BWRAP_SOURCES, digest 
   throw Error('unavailable');
 }
 
+/**
+ * Run one build step in its own process group. A failed step rejects with its
+ * reported code and keeps the tail of what it printed on `error.output`.
+ */
+export function runStep(binary, args, { cwd, env, timeout, signal }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(binary, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    // Both streams, interleaved as printed: some tools report their error on stdout.
+    let diagnostic = '', output = '', timedOut = false, settled = false;
+    child.stdout.on('data', chunk => { output = (output + chunk.toString('utf8')).slice(-16384); });
+    child.stderr.on('data', chunk => { const text = chunk.toString('utf8'); diagnostic = (diagnostic + text).slice(-16384); output = (output + text).slice(-16384); });
+    const kill = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* Already exited. */ } };
+    const timer = setTimeout(() => { timedOut = true; kill(); }, timeout);
+    signal.addEventListener('abort', kill, { once: true });
+    const clear = () => { clearTimeout(timer); signal.removeEventListener('abort', kill); };
+    const fail = (code, detail) => { const error = Error(code); error.output = detail; return error; };
+    child.once('error', error => { if (settled) return; settled = true; clear(); reject(fail('build_process_start_failed', `${path.basename(binary)} could not start: ${error.code ?? error.message}`)); });
+    const judge = (code, exitSignal) => {
+      if (settled) return; settled = true; clear();
+      const known = diagnostic.match(/\b(ERR_SYSTEM_ERROR|ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|ERR_DLOPEN_FAILED|EACCES|ENOENT|ENOMEM|ENOSPC|media_transfer_interrupted)\b/);
+      if (code === 0 && !signal.aborted) return resolve();
+      const ended = timedOut ? 'The step was stopped after its time limit.' : signal.aborted ? 'The step was stopped because the build lost its lease.' : exitSignal ? `The step was stopped by ${exitSignal}.` : '';
+      reject(fail(timedOut ? 'build_process_timeout' : known ? (known[1] === 'media_transfer_interrupted' ? known[1] : `build_${known[1].toLowerCase()}`) : `build_process_exit_${code ?? 'terminated'}`, ended ? `${output}\n${ended}` : output));
+    };
+    // Judge the step once its last output is read, or shortly after it exits
+    // if something it started still holds the streams open.
+    child.once('exit', (code, exitSignal) => { const grace = setTimeout(() => judge(code, exitSignal), 1000); child.once('close', () => { clearTimeout(grace); judge(code, exitSignal); }); });
+  });
+}
+
 export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
   if (process.platform !== 'linux' || process.arch !== 'x64' || process.versions.node !== BUILD_RUNTIME) throw Error('unsupported_build_runtime');
   const origin = new URL(config.origin);
@@ -156,8 +187,10 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     if (!response.ok) throw Error(`coordinator_${response.status}`);
     return response.json();
   };
-  const job = await request('claim', runnerToken, { protocol: 1, media_batch_access: true, static_verification: true, render_cache: true, asset_cache: true });
+  const job = await request('claim', runnerToken, { protocol: 1, media_batch_access: true, static_verification: true, render_cache: true, asset_cache: true, diagnostics: true });
   if (!job) { console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'idle' })); return; }
+  // Exact credential values this attempt holds; removed from anything it reports.
+  const secrets = secretValues([runnerToken, job.token, job.media_access]);
   if (job.identity.org_id !== config.org_id) throw Error('build_scope_mismatch');
   const startedAt = Date.now();
   const abort = new AbortController(); let stage = 'source', heartbeatBusy = false;
@@ -171,18 +204,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
   const temp = await fs.mkdtemp(path.join(tmpdir(), 'typeroll-build-')), work = path.join(temp, 'work');
   async function command(binary, args, timeout = 720000, environment = {}, cwd = work) {
     if (abort.signal.aborted) throw Error('build_lease_lost');
-    return new Promise((resolve, reject) => {
-      const child = spawn(binary, args, { cwd, env: { PATH: process.env.PATH, HOME: temp, ...environment }, stdio: ['ignore', 'ignore', 'pipe'], detached: true });
-      let diagnostic = '', timedOut = false;
-      child.stderr.on('data', chunk => { diagnostic = (diagnostic + chunk.toString('utf8')).slice(-16384); });
-      const kill = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* Already exited. */ } };
-      const timer = setTimeout(() => { timedOut = true; kill(); }, Math.min(timeout, Math.max(1, job.deadline - Date.now())));
-      abort.signal.addEventListener('abort', kill, { once: true });
-      const clear = () => { clearTimeout(timer); abort.signal.removeEventListener('abort', kill); };
-      child.once('error', () => { clear(); reject(Error('build_process_start_failed')); });
-      child.once('exit', code => { clear(); const known = diagnostic.match(/\b(ERR_SYSTEM_ERROR|ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|ERR_DLOPEN_FAILED|EACCES|ENOENT|ENOMEM|ENOSPC|media_transfer_interrupted)\b/);
-        code === 0 && !abort.signal.aborted ? resolve() : reject(Error(timedOut ? 'build_process_timeout' : known ? (known[1] === 'media_transfer_interrupted' ? known[1] : `build_${known[1].toLowerCase()}`) : `build_process_exit_${code ?? 'terminated'}`)); });
-    });
+    return runStep(binary, args, { cwd, env: { PATH: process.env.PATH, HOME: temp, ...environment }, timeout: Math.min(timeout, Math.max(1, job.deadline - Date.now())), signal: abort.signal });
   }
   const storageUrl = value => {
     const url = new URL(value);
@@ -272,6 +294,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         await fs.writeFile(path.join(work, '.typeroll-runner/media-batch.mjs'),
           "import fs from 'node:fs/promises'; import { prepareMediaBatch } from '../scripts/media.mjs'; const publication=JSON.parse(await fs.readFile('/work/publication.json','utf8')); const progress=await prepareMediaBatch(publication,'/work'," + JSON.stringify(mediaCursor) + ", { cacheOnly: " + JSON.stringify(job.kind === 'media_preparation') + " }); await fs.writeFile('/work/.typeroll-runner/media-progress.json',JSON.stringify(progress));\n");
         const access = job.media_access_batched ? await request('media-access', job.token, { ...attempt, cursor: mediaCursor }) : job.media_access;
+        secretValues(access, secrets);
         await run(['.typeroll-runner/media-batch.mjs'], true, access ? { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(access) } : {});
         const progress = JSON.parse(await fs.readFile(path.join(work, '.typeroll-runner/media-progress.json'), 'utf8'));
         if (progress.total !== job.media_total) throw Error('media_preparation_scope_mismatch');
@@ -299,6 +322,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
           let cursor = 0;
           while (cursor < job.media_total) {
             const access = await request('media-access', job.token, { ...attempt, cursor });
+            secretValues(access, secrets);
             await fs.writeFile(path.join(work, '.typeroll-runner/materialize.mjs'),
               "import fs from 'node:fs/promises'; import { prepareMediaBatch } from '../scripts/media.mjs'; const publication=JSON.parse(await fs.readFile('/work/publication.json','utf8')); const result=await prepareMediaBatch(publication,'/work'," + cursor + ",{materialize:true,reusableFiles:JSON.parse(await fs.readFile('/work/.typeroll-runner/reusable-media.json','utf8'))}); await fs.writeFile('/work/.typeroll-runner/materialized.json',JSON.stringify(result));");
             await run(['.typeroll-runner/materialize.mjs'], true, { TYPEROLL_BUILD_MEDIA_ACCESS: JSON.stringify(access) });
@@ -336,6 +360,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     if (job.kind === 'publication' && job.direct_upload) {
       const dist = path.join(work, 'dist');
       let grant = await request('direct-upload', job.token, attempt);
+      secretValues(grant, secrets);
       let reused = reusedMediaReceipt(preparedMediaFiles, previousAssets);
       if (Object.keys(reused.files).length) {
         const available = await availablePagesAssets(reused, grant, fetchImpl);
@@ -346,6 +371,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
           stage = 'rendering'; await renderPublication();
           stage = 'artifact'; reused = reusedMediaReceipt(preparedMediaFiles, previousAssets);
           grant = await request('direct-upload', job.token, attempt);
+          secretValues(grant, secrets);
         }
       }
       const description = await describeStaticOutput(dist);
@@ -407,20 +433,39 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     let validation;
     if (job.kind === 'publication') { try { validation = await readSeoReport(work, job.identity.publication_id); } catch { /* A renderer may fail before validation. */ } }
     const code = validation && !validation.passed ? 'publication_validation_failed' : artifactFailureCode(error.message);
-    try { await reportBuildFailure(request, job.token, attempt, { code, stage, validation }); } catch { /* A cancelled or superseded attempt cannot change publication state. */ }
+    const diagnostic = failureDiagnostic(error, code, secrets);
+    // The provider's build log is the one record a reader can always open.
+    for (const line of diagnostic?.lines ?? []) console.error(`TYPEROLL_BUILD_LOG ${line}`);
+    if (diagnostic?.cause) console.error(`TYPEROLL_BUILD_CAUSE ${diagnostic.cause}`);
+    try { await reportBuildFailure(request, job.token, attempt, { code, stage, validation, diagnostic }); } catch { /* A cancelled or superseded attempt cannot change publication state. */ }
     throw Error(`${stage}_${code}`);
   } finally { clearInterval(heartbeat); abort.abort(); await fs.rm(temp, { recursive: true, force: true }); }
 }
 
 /** An explicit HTTP 413 has not committed failure state. Report it once without
- * the rejected diagnostics; never restart the build or retry arbitrary errors. */
-export async function reportBuildFailure(request, token, attempt, { code, stage, validation }) {
+ * the rejected diagnostics; never restart the build or retry arbitrary errors.
+ * @param {{ code: string, stage: string, validation?: any, diagnostic?: { cause: string | null, lines: string[] } }} report */
+export async function reportBuildFailure(request, token, attempt, report) {
+  const { code, stage, validation, diagnostic } = report;
   try {
-    await request('fail', token, { ...attempt, code, stage, ...(validation ? { seo_report: validation } : {}) });
+    await request('fail', token, { ...attempt, code, stage, ...(validation ? { seo_report: validation } : {}), ...(diagnostic ? { diagnostic } : {}) });
   } catch (error) {
-    if (!validation || error.message !== 'coordinator_413') throw error;
-    await request('fail', token, { ...attempt, code: 'publication_report_too_large', stage });
+    if ((!validation && !diagnostic) || error.message !== 'coordinator_413') throw error;
+    await request('fail', token, { ...attempt, code: validation ? 'publication_report_too_large' : code, stage, ...(diagnostic?.cause ? { diagnostic: { cause: diagnostic.cause, lines: [] } } : {}) });
   }
+}
+
+/**
+ * What the failed step printed, or the thrown message when the supervisor
+ * itself failed. A bare code says nothing the reported code does not already
+ * say, so it yields no diagnostic.
+ */
+export function failureDiagnostic(error, code, secrets = []) {
+  const output = typeof error?.output === 'string' && error.output.trim() ? error.output
+    : error?.message && error.message !== code && !/^[a-z0-9_]{1,120}$/.test(error.message) ? `${error.name ?? 'Error'}: ${error.message}` : '';
+  if (!output) return undefined;
+  const diagnostic = buildDiagnostic(output, secrets);
+  return diagnostic.cause || diagnostic.lines.length ? diagnostic : undefined;
 }
 
 /** Return only fixed diagnostics or existing safe codes, never file paths or credentials. */

@@ -9,7 +9,7 @@ export interface DeployProgress {
   phase?: string;
   verification_message?: string | null;
   error?: string;
-  failure?: { code?: string } | null;
+  failure?: Partial<NonNullable<DeployJob['failure']>> | null;
 }
 
 /** Resume an active deploy after navigation; timers and requests end on unmount. */

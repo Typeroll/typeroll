@@ -1,5 +1,14 @@
 # Changelog
 
+## Core 0.2.74 / MCP 0.45.56
+
+- Fixed: the first publication after upgrading to Core 0.2.72 or 0.2.73 failed while preparing media (`media_build_process_exit_1`) for every site with already-published images. Media receipts recorded the exact image encoder, and reuse required it to match, so the sharp 0.35.5 security update rejected every receipt written by 0.35.4 (`Invalid media completion receipt`). A receipt is now reused when its variant verifies against its own SHA-256; the encoder is still recorded, and a changed transformation still requires a new recipe version in the object key. Nothing is encoded again.
+- Every failed build now says which step failed, why and what the step printed. The build engine keeps the output of each step (both streams) instead of only matching a few system codes, removes the attempt's exact credentials and anything credential-shaped, writes the tail to its own build log (`TYPEROLL_BUILD_LOG`, `TYPEROLL_BUILD_CAUSE`) and reports the cause and the last 40 lines with the failure. The coordinator redacts it again. The deploy job's error reads, for example, "The build failed while preparing images and files: the step exited with code 1. Cause: Error: Invalid media completion receipt." with the code last; `failure.diagnostic` keeps `{ cause, lines }`, and the portal shows them under **Build output** on the deploy status and in the deploy history. This works for the Cloudflare and the GitHub engine, and for failures of the build supervisor itself.
+- Every reported failure code has a readable step and reason: dependencies, media, Extension assets, rendering, upload and verification; time limits, exit codes, missing modules, native modules that cannot load, disk and memory exhaustion, storage transfers, output limits and an engine too old for this Core.
+- **Publishing → Builds** says **Build engine update available** when a ready engine runs older generated code than the installed Core. Publishing keeps working. Update the engine to get readable build failures.
+- MCP: `get_deploy_status` describes `failure.diagnostic`.
+- Release gate: `scripts/publication-upgrade-check.mjs` publishes media prepared by each of the three previous Core releases, using that release's own media code and locked sharp and S3 client, with the release candidate. A candidate that cannot publish what an earlier release prepared, changes the bytes of a published file or prepares media again under the same recipe version does not ship. It reproduces the 0.2.72 failure against the earlier media code.
+
 ## Core 0.2.73 / MCP 0.45.55
 
 - Preview writes the page identity attributes on `<body>` (`data-route`, `data-page`, `data-content-type`, `data-template`, `data-depth`), the same as the published build, so page-scoped CSS such as `body[data-route="home"] .header-banner` looks the same in both. The docs show how to vary a block in a shared partial by page with its own `custom_class`.

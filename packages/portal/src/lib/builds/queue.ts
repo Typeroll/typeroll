@@ -2,6 +2,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { getStore, type ReadWriteStore } from '../datastore';
 import { BUILD_PROTOCOL, assertBuildIdentity, sha256, type BuildIdentity, type RenderReport, type SeoReport } from './contract.mjs';
 import { ConnectionError } from '../publishing/connections';
+import type { BuildDiagnostic } from './diagnostics.mjs';
 
 export interface BuildTask {
   identity: BuildIdentity;
@@ -22,6 +23,8 @@ export interface BuildTask {
   artifact_sha256: string | null;
   artifact_key: string | null;
   error_code: string | null;
+  /** What the failed step printed: its cause and last lines, redacted. */
+  error_detail?: BuildDiagnostic | null;
   render_report?: RenderReport;
   seo_report?: SeoReport;
 }
@@ -104,7 +107,7 @@ export class OrganizationBuildQueue {
       current.status === 'running' && current.identity.org_id === org && current.lease_id === lease && current.deadline > this.clock() &&
       current.lease_until > this.clock() && equalToken(token, current.token_hash) && current.media_cursor === task.media_cursor,
       { ...(retainLease ? { lease_until: this.clock() + LEASE_MS } : { status: 'queued' as const, token_hash: null, lease_id: null, lease_until: 0 }),
-        media_cursor: cursor, media_checkpoint_attempt: task.attempt - (retainLease ? 1 : 0), media_batches: (task.media_batches ?? 0) + (retainLease ? 0 : 1), error_code: null });
+        media_cursor: cursor, media_checkpoint_attempt: task.attempt - (retainLease ? 1 : 0), media_batches: (task.media_batches ?? 0) + (retainLease ? 0 : 1), error_code: null, error_detail: null });
     if (!won) throw rejected();
   }
   async complete(org: string, key: string, lease: string, token: string, artifact: { sha256: string; key: string; render_report?: RenderReport; seo_report?: SeoReport }) {

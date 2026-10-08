@@ -11,6 +11,8 @@ export interface AssetCachePointer extends RenderCachePointer { identity: BuildI
 
 export type BuildProvider = 'cloudflare' | 'github';
 export interface EngineConfiguration { publication_validation?: number; media_preparation?: boolean; static_verification?: boolean;
+  /** Digest of the generated engine source installed by the last setup; see engine-source.ts. */
+  engine_source_sha256?: string;
   provider?: BuildProvider;
   github?: { repository_id: string; owner_id: string; repo: string; app_bot: string; workflow_id: number };
   revision: string; account_id: string; owner: string; installation_id: string;

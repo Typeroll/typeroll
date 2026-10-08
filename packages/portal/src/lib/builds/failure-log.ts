@@ -3,6 +3,7 @@ import { getStore } from '../datastore';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { buildTasksPath, type BuildTask } from './queue';
 import { buildInputPath, readEngineConfiguration, type BuildInput } from './state';
+import { diagnosticCause, redactDiagnosticLine } from './diagnostics.mjs';
 
 /**
  * The provider's own account of a failed build, attached to the deploy job.
@@ -16,24 +17,10 @@ import { buildInputPath, readEngineConfiguration, type BuildInput } from './stat
  */
 
 const TAIL_LINES = 60;
-const MAX_LINE = 400;
 const MAX_PAGES = 20;
 
-// eslint-disable-next-line no-control-regex
-const CONTROL = /\x1b\[[0-9;?]*[A-Za-z]|[\x00-\x08\x0b-\x1f\x7f]/g;
-
 /** Remove anything credential-shaped. Hex digests and commit IDs stay: they are how a failure is traced. */
-export function redactLogLine(line: string): string {
-  return line
-    .replace(CONTROL, '')
-    .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/gi, '$1[redacted]@')
-    .replace(/([?&](?:token|access_token|sig|signature|key|x-amz-[a-z-]+)=)[^&\s'"]+/gi, '$1[redacted]')
-    .replace(/\b([A-Za-z0-9_]*(?:token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|authorization|cookie)[A-Za-z0-9_]*)(["']?\s*[:=]\s*["']?)(?:(?:bearer|basic)\s+)?[^\s'",;]+/gi, '$1$2[redacted]')
-    .replace(/\b(bearer|basic)\s+(?!\[redacted\])[^\s'"]+/gi, '$1 [redacted]')
-    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[redacted]')
-    .replace(/(?<![A-Za-z0-9_+/=-])(?=[A-Za-z0-9_+/=-]*[A-Z])(?=[A-Za-z0-9_+/=-]*[a-z])(?=[A-Za-z0-9_+/=-]*\d)[A-Za-z0-9_+/=-]{32,}/g, '[redacted]')
-    .slice(0, MAX_LINE);
-}
+export const redactLogLine = (line: string): string => redactDiagnosticLine(line);
 
 /** Cloudflare returns `[[timestamp, message], …]`; tolerate plain strings so a format change degrades to text. */
 export function logMessages(lines: unknown): string[] {
@@ -45,16 +32,8 @@ export function logMessages(lines: unknown): string[] {
     .filter(Boolean);
 }
 
-const FAILURE = /\b(?:error|errors|failed|failure|fatal|exception|cannot|could not|not found|exit code [1-9])\b|\bERR!/i;
-const GENERIC = /^(?:build failed|failed: build command exited with code|error: exit code|npm err! a complete log|exit status \d+)/i;
-
-/** The most specific failure line: the last one that names a cause rather than only reporting that the build stopped. */
-export function failureSummary(lines: string[]): string | null {
-  const failures = lines.filter(line => FAILURE.test(line));
-  const specific = failures.filter(line => !GENERIC.test(line.trim()));
-  const pick = specific.at(-1) ?? failures.at(-1);
-  return pick ? pick.trim().slice(0, 300) : null;
-}
+/** The most specific failure line: the cause the build engine named, what a step threw, or the last line that names a cause rather than only reporting that the build stopped. */
+export const failureSummary = (lines: string[]): string | null => diagnosticCause(lines);
 
 export function summarizeLog(messages: string[], meta: Omit<BuildFailureLog, 'lines' | 'summary' | 'truncated'>, truncated: boolean): BuildFailureLog {
   const clean = messages.map(redactLogLine);

@@ -475,6 +475,10 @@ Prepared drafts stay in the private R2 bucket. They are not published just becau
 an import finishes. A publication copies only the required original files and
 variants into its public output. Preparation uses image checksums and a versioned
 encoding recipe so compatible builds and branches reuse verified variants.
+From Core 0.2.74, variants made by an earlier release of the image encoder are
+reused too: each one is checked against its own SHA-256, and only a new recipe
+version encodes images again. Core 0.2.72 and 0.2.73 rejected them, so the first
+publication of a site with already-published images failed while preparing media.
 Changing a website or media hostname does not require encoding the same image again.
 Republishing does not add a second preparation entry for an unchanged current file.
 From Core 0.2.17, automatic upload preparation queues the finalized image by ID;
@@ -533,7 +537,9 @@ Git. Corruption, conflicting immutable paths and access errors stop publication;
 retry after fixing the reported problem. Verified preparation is retained.
 
 For an existing organization, after upgrading Core, go to **Publishing → Builds**
-and select **Update build engine** when no build is running. Wait for verification
+and select **Update build engine** when no build is running. From Core 0.2.74 the
+Builds card says **Build engine update available** when the engine runs older
+generated code than the installed Core; publishing keeps working until you update. Wait for verification
 before publishing again. Updating the engine does not require reconnecting GitHub
 or Cloudflare when the existing connections still have the required permissions.
 Independent `npm run build` runs reuse the same verified media; their process
@@ -718,7 +724,16 @@ the customer build immediately continues the same publication. Slow builds do
 not cause a second build to start. Duplicate result messages are safe to deliver.
 
 A reported build failure, or loss of the build engine's execution heartbeat,
-appears in the portal and deployment-status API/MCP response. For a build on the
+appears in the portal and deployment-status API/MCP response. From Core 0.2.74 the
+error names the step that failed, why, and the line the step printed as its cause,
+for example: _The build failed while preparing images and files: the step exited
+with code 1. Cause: Error: Invalid media completion receipt._ The deploy job's
+`failure.code` keeps the reported code (`media_build_process_exit_1`) and
+`failure.diagnostic` keeps the cause and the last 40 lines the step printed, with
+values that look like credentials removed. The portal shows them under **Build
+output**. Both the Cloudflare and the GitHub engine report this once they are
+updated; the engine also writes the same lines to its own build log, prefixed
+`TYPEROLL_BUILD_LOG` and `TYPEROLL_BUILD_CAUSE`. For a build on the
 Cloudflare build engine (Core 0.2.73), Typeroll reads that build's log with the
 organization's build connection and adds the most specific failure line to the
 error, for example `Build log: Error: Cannot find module …`. The deploy job's

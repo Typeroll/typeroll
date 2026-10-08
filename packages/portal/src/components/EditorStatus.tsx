@@ -17,6 +17,7 @@ import { usePublishingReadiness } from './usePublishingReadiness';
 import { PublishingRequirements } from './PublishingRequirements';
 import { useState } from 'react';
 import { useDeployProgress } from './useDeployProgress';
+import { BuildFailureDetails } from './BuildFailureDetails';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 export type PublishStatus = 'draft' | 'review' | 'unlisted' | 'published' | string;
@@ -177,6 +178,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
           {err}
         </span>
       )}
+      {err && setup?.ready && job?.status === 'failed' && <BuildFailureDetails failure={job.failure} />}
       <style>{`
         .deploy-env {
           padding: 0.25rem 0.4rem;
