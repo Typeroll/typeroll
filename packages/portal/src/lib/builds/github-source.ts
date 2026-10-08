@@ -5,12 +5,14 @@ import directUpload from './direct-upload.mjs?raw';
 import executor from './executor.mjs?raw';
 import contract from './contract.mjs?raw';
 import assets from './assets.mjs?raw';
+import diagnostics from './diagnostics.mjs?raw';
 import sandbox from './github-sandbox.mjs?raw';
 import runner from './github-runner.mjs?raw';
 import { BUILD_RUNTIME } from './contract.mjs';
+import { engineSourceDigest } from './engine-source';
 
 export function githubBuildFiles(origin: string, org: string, revision: string) {
-  return { 'package.json': uploaderPackage, 'package-lock.json': uploaderLock, 'static-verifier.mjs': staticVerifier, 'direct-upload.mjs': directUpload, 'executor.mjs': executor, 'contract.mjs': contract, 'assets.mjs': assets, 'github-sandbox.mjs': sandbox, 'github-runner.mjs': runner,
+  return { 'package.json': uploaderPackage, 'package-lock.json': uploaderLock, 'static-verifier.mjs': staticVerifier, 'direct-upload.mjs': directUpload, 'executor.mjs': executor, 'diagnostics.mjs': diagnostics, 'contract.mjs': contract, 'assets.mjs': assets, 'github-sandbox.mjs': sandbox, 'github-runner.mjs': runner,
     'engine.json': JSON.stringify({ origin, org_id: org, revision }),
     'README.md': '# Typeroll GitHub builds\n\nGenerated organization runner. Typeroll dispatches frozen site/version publications explicitly. Source commits do not trigger builds. Images and hosting credentials are never stored in Git. Edit content in Typeroll.\n',
     '.github/workflows/build.yml': `name: Typeroll static build
@@ -49,3 +51,4 @@ jobs:
         run: node github-runner.mjs
 ` };
 }
+export const GITHUB_ENGINE_SOURCE = engineSourceDigest(githubBuildFiles('', '', ''));

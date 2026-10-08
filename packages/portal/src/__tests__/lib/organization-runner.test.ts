@@ -13,6 +13,8 @@ import { qualificationFiles } from '../../lib/builds/qualification';
 const storage = vi.hoisted(() => ({ objects: new Map<string, Buffer>(), grants: vi.fn(async (key: string, write = false) => `https://storage.invalid/${key}?write=${write}`) }));
 vi.mock('../../lib/builds/storage', () => ({ buildStorage: async (_org: string, fn: any) => fn({ account: 'a'.repeat(32), read: async (key: string) => { const bytes = storage.objects.get(key); if (!bytes) throw Error('missing'); return bytes; }, grant: storage.grants }) }));
 vi.mock('../../lib/publishing/r2-build-credentials', () => ({ customerBuildMediaAccess: vi.fn() }));
+// Every test here claims; the per-organization claim limit is not what this file tests.
+vi.mock('../../lib/rate-limit', () => ({ rateLimit: () => ({ allowed: true, remaining: 1, resetAt: 0 }) }));
 const assetGrant = vi.hoisted(() => vi.fn(async () => ({ jwt: 'synthetic-asset-grant' })) );
 vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: async () => assetGrant }));
 const enqueuePublication = vi.hoisted(() => vi.fn(async () => {}));
@@ -234,6 +236,23 @@ it('does not retry integrity or rendering errors as media interruptions', async 
   const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
   expect((await request('fail', claim.token, { key, lease_id: claim.lease_id, stage: 'rendering', code: 'build_process_timeout' })).status).toBe(200);
   expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'failed' });
+});
+
+it('keeps the redacted cause a build engine reports with a failure', async () => {
+  const { key } = await prepare('publication', 1);
+  const claim = await (await request('claim', runnerToken, { protocol: 1, diagnostics: true })).json();
+  const diagnostic = { cause: 'Error: Invalid media completion receipt', lines: ['file:///work/.typeroll-runner/media-batch.mjs:1', 'Error: Invalid media completion receipt', '    at prepareEntry (file:///work/scripts/media.mjs:141:120)', 'GET https://r2.example/a?X-Amz-Signature=abc123', 7] };
+  expect((await request('fail', claim.token, { key, lease_id: claim.lease_id, stage: 'media', code: 'build_process_exit_1', diagnostic })).status).toBe(200);
+  const task = await getStore().getDoc<any>(`${buildTasksPath(org)}/${key}`);
+  expect(task).toMatchObject({ status: 'failed', error_code: 'media_build_process_exit_1', error_detail: { cause: 'Error: Invalid media completion receipt' } });
+  expect(task.error_detail.lines).toEqual(['file:///work/.typeroll-runner/media-batch.mjs:1', 'Error: Invalid media completion receipt', '    at prepareEntry (file:///work/scripts/media.mjs:141:120)', 'GET https://r2.example/a?X-Amz-Signature=[redacted]']);
+});
+
+it('stores no diagnostic from an engine that sends none or sends an invalid one', async () => {
+  const { key } = await prepare('publication', 1);
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  expect((await request('fail', claim.token, { key, lease_id: claim.lease_id, stage: 'media', code: 'build_process_exit_1', diagnostic: 'Error: not an object' })).status).toBe(200);
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'failed', error_detail: null });
 });
 
 it('finishes a small media library in the same build without an extra provider run', async () => {

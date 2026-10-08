@@ -21,6 +21,8 @@ export interface BuildEngine {
   runner_repo: string;
   protocol: number;
   node_version: string;
+  /** A ready engine runs older generated code than this Typeroll version installs. Publishing still works. */
+  update_available?: boolean;
 }
 export async function readBuildEngine(org: string): Promise<BuildEngine> {
   const name = generatedCloudflareNames(org).build_worker;

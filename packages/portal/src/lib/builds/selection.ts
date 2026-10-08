@@ -6,6 +6,8 @@ import { readBuildEngine } from './cloudflare';
 import { readGithubEngine, configureGithubEngine } from './github';
 import { configureBuildEngine } from './setup';
 import { readEngineConfiguration, assertEngineConnections, type BuildProvider } from './state';
+import { CLOUDFLARE_ENGINE_SOURCE } from './setup';
+import { GITHUB_ENGINE_SOURCE } from './github-source';
 
 export const selectionPath = (org: string) => `organizations/${org}/publishing/build_selection`;
 export interface BuildSelection { provider: BuildProvider; revision: string }
@@ -22,6 +24,8 @@ export async function readBuildSettings(org: string) {
       engines[provider] = { ...engines[provider], enabled: false, state: 'setup_required', issue: {
         code: 'build_engine_update_required', message: 'Update the build engine before publishing. Finish build setup to install and verify the required capabilities.',
       } };
+    } else if (engine?.status === 'ready' && engine.engine_source_sha256 !== (provider === 'github' ? GITHUB_ENGINE_SOURCE : CLOUDFLARE_ENGINE_SOURCE)) {
+      engines[provider] = { ...engines[provider], update_available: true };
     }
   }
   // Keep the existing top-level selected-engine fields for older API clients.

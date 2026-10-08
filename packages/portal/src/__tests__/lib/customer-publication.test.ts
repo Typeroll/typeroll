@@ -241,6 +241,16 @@ it('preserves the build failure after long media preparation instead of reportin
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'artifact_static_output_size_limit' } });
 });
 
+it('keeps the cause a failed build step printed on the failed job', async () => {
+  const key = 'd'.repeat(64), diagnostic = { cause: 'Error: Invalid media completion receipt', lines: ['Error: Invalid media completion receipt', '    at prepareEntry (file:///work/scripts/media.mjs:141:120)'] };
+  await getStore().updateDoc(jobPath, { git_publication: { build_task_key: key } });
+  await getStore().setDoc(`organizations/org/build_tasks/${key}`, { status: 'failed', error_code: 'media_build_process_exit_1', error_detail: diagnostic, deadline: Date.now() + 3600000 });
+  mocks.built.mockRejectedValueOnce(new ConnectionError('The build failed while preparing images and files: the step exited with code 1. Cause: Error: Invalid media completion receipt.', 502, 'media_build_process_exit_1', { build_diagnostic: diagnostic }));
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('Cause: Error: Invalid media completion receipt.'),
+    failure: { code: 'media_build_process_exit_1', diagnostic } });
+});
+
 it('publishes ordinary edits to main when datastore map ordering changes but hosts do not', async () => {
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), {
     active: { media_path_prefix: '', media_host: null, website_host: 'www.example.com' },

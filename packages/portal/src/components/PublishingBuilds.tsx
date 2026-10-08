@@ -148,6 +148,7 @@ export default function PublishingBuilds({ refreshAfterCloudflareReturn = false 
     {readyToSetUp && <div className="publishing-builds__setup"><h3>Next: {setupLabel.toLowerCase()}</h3><p>Click <strong>{setupLabel}</strong> below. Typeroll will prepare the build environment and run a test build automatically. The status here will update when it finishes.</p><p>This sets up builds for your organization. It does not publish or change any live site.</p></div>}
     {verifying && <p>Typeroll is running a test build. You can leave this page; setup continues in the background. The status updates automatically.</p>}
     {state === 'ready' && <p>{active ? 'Shared builds are active. New publications build in this account and upload static files to the site’s Hosting Group.' : 'This engine is ready. Select it below to use it for new publications.'}</p>}
+    {state === 'ready' && engine?.update_available && <p role="status"><strong>Build engine update available.</strong> This engine runs older code than this version of Typeroll. Publishing still works; select <strong>Update build engine</strong> when no build is running to get the newest fixes, including the cause of a failed build in the deploy status.</p>}
     {github && state !== 'ready' && <p>Set up once for this organization. Typeroll creates a private build repository and runs a verification build through the existing GitHub connection.</p>}
     {needsToken && <div className="publishing-builds__setup">
       <h3>One-time setup in Cloudflare</h3>

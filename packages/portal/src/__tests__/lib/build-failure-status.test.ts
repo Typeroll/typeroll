@@ -47,3 +47,26 @@ it('tells an operator to retry an outage and never to retry a substitution', () 
   expect(buildFailureMessage('build_connection_lost')).toMatch(/No replacement build was started/);
   expect(buildFailureMessage('shared_build_failed')).toMatch(/failed or cancelled attempt/);
 });
+
+it('names the step, the reason and the cause of every reported failure', () => {
+  const diagnostic = { cause: 'Error: Invalid media completion receipt', lines: [] };
+  expect(buildFailureMessage('media_build_process_exit_1', diagnostic)).toBe('The build failed while preparing images and files: the step exited with code 1. Cause: Error: Invalid media completion receipt. Resolve the cause, then retry publishing. (media_build_process_exit_1)');
+  expect(buildFailureMessage('media_build_process_exit_1')).toMatch(/^The build failed while preparing images and files: the step exited with code 1\. Check the build log/);
+  expect(buildFailureMessage('dependencies_build_enospc')).toMatch(/installing the site’s build dependencies: the build machine ran out of disk space/);
+  expect(buildFailureMessage('rendering_build_process_timeout')).toMatch(/rendering the static pages: the step did not finish within its time limit/);
+  expect(buildFailureMessage('extension_assets_build_err_module_not_found')).toMatch(/preparing Extension assets: a module the build imports could not be found/);
+  expect(buildFailureMessage('artifact_static_output_size_limit')).toMatch(/Reduce the published files/);
+  expect(buildFailureMessage('source_unsupported_build_runtime')).toMatch(/Update the build engine/);
+  expect(buildFailureMessage('media_media_transfer_interrupted')).toMatch(/Prepared images are kept/);
+  expect(buildFailureMessage('verification_coordinator_502')).toMatch(/answered HTTP 502/);
+  expect(buildFailureMessage('sandbox_integrity_failed', diagnostic)).toMatch(/must not be retried.*Cause: Error: Invalid media completion receipt\.$/);
+});
+
+it('reports the cause a build engine sent when a status read finds the failure', async () => {
+  const error_detail = { cause: 'Error: Invalid media completion receipt', lines: ['Error: Invalid media completion receipt'] };
+  await getStore().updateDoc(taskPath, { status: 'failed', error_code: 'media_build_process_exit_1', error_detail });
+  const result = await refreshBuildFailure('org','site',(await getStore().getDoc<any>(jobPath))!);
+  expect(result).toMatchObject({ status: 'failed', failure: { code: 'media_build_process_exit_1', diagnostic: error_detail } });
+  expect(result.error).toContain('Cause: Error: Invalid media completion receipt.');
+});
+

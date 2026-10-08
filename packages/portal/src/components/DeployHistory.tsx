@@ -5,6 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import type { DeployJob } from '@typeroll/shared';
+import { BuildFailureDetails } from './BuildFailureDetails';
 
 interface Props {
   siteId: string;
@@ -93,6 +94,7 @@ export default function DeployHistory({ siteId }: Props) {
                 {j.error}
               </div>
             )}
+            {j.status === 'failed' && <BuildFailureDetails failure={j.failure} />}
             {j.warnings?.map((warning) => (
               <div key={warning} className="text-sm" style={{ color: '#b7791f', marginTop: 2 }}>
                 Warning: {warning}

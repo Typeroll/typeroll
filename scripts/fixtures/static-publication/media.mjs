@@ -15,6 +15,16 @@ async function boundedBytes(response, limit = 25 * 1024 * 1024) {
 }
 const recipe = { version: MEDIA_RECIPE_VERSION, encoder: sharp.versions, widths: MEDIA_VARIANT_WIDTHS, include_original: true, quality: { webp: 80, avif: 60 } };
 const recipeHash = hash(JSON.stringify(recipe));
+/**
+ * Whether a receipt may be reused. The recipe hash records the exact encoder
+ * that produced the bytes, and new receipts keep recording it, but it does not
+ * decide reuse: every receipted variant is verified against its own SHA-256,
+ * and the transformation contract (widths, formats, quality) is versioned by
+ * MEDIA_RECIPE_VERSION in every object key. Requiring the current encoder made
+ * a sharp patch release (0.35.4 -> 0.35.5 in Core 0.2.72) fail every site with
+ * already-published images on its next publication.
+ */
+const knownRecipe = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 // Encoding has its own CPU gate, separate from overlapping storage transfers.
 let encoding = false; const encoders = [];
 async function encode(operation) {
@@ -138,7 +148,7 @@ export async function prepareMedia(publication, root, options = {}) {
       const media = publication.media.find(item => item.id === entry.id);
       if (completionBytes) {
         const completed = JSON.parse(completionBytes.toString());
-        if (completed.format !== 1 || completed.key !== completionKey || completed.recipe_sha256 !== recipeHash ||
+        if (completed.format !== 1 || completed.key !== completionKey || !knownRecipe(completed.recipe_sha256) ||
             !Array.isArray(completed.variants)) throw new Error('Invalid media completion receipt');
         const expected = imageTypes.has(entry.mime_type) ? mediaVariantCandidates(completed.width).flatMap(({ width }) => ['webp', 'avif'].map(format => ({ width, format }))) : [];
         if ((imageTypes.has(entry.mime_type) && (!Number.isSafeInteger(completed.width) || completed.width < 1 || !Number.isSafeInteger(completed.height) || completed.height < 1)) ||
@@ -212,15 +222,15 @@ export async function prepareMedia(publication, root, options = {}) {
             const publicPath = entry.public_path + suffix;
             const hasReceiptAccess = !grants || Boolean(grants.objects[receiptKey]);
             const receiptBytes = !options.cacheOnly && hasReceiptAccess ? await read(manifest.public_bucket, receiptKey) : null;
-            let variant, verifiedVariant;
+            let variant, verifiedVariant, variantRecipe = recipeHash;
             if (receiptBytes) {
               let receipt;
               try { receipt = JSON.parse(receiptBytes.toString()); } catch { throw new Error('Invalid media preparation receipt'); }
-              if (receipt.source_sha256 !== entry.sha256 || receipt.recipe_sha256 !== recipeHash || receipt.width !== width || receipt.format !== format ||
+              if (receipt.source_sha256 !== entry.sha256 || !knownRecipe(receipt.recipe_sha256) || receipt.width !== width || receipt.format !== format ||
                   !/^[a-f0-9]{64}$/.test(receipt.sha256) || !Number.isSafeInteger(receipt.size_bytes) || receipt.size_bytes < 1) throw new Error('Media preparation recipe changed. Prepare a new versioned media path.');
               variant = await read(manifest.public_bucket, key);
               if (variant && (hash(variant) !== receipt.sha256 || variant.length !== receipt.size_bytes)) throw new Error('Prepared media failed byte verification');
-              verifiedVariant = variant;
+              verifiedVariant = variant; if (variant) variantRecipe = receipt.recipe_sha256;
             }
             const preparedKey = `private/${manifest.site_prefix}/prepared/${MEDIA_RECIPE_VERSION}/${entry.sha256}/${slot}.${format}`;
             const cachedGrant = grants?.prepared?.[preparedKey], cachedReceiptGrant = grants?.prepared?.[preparedKey + '.receipt.json'];
@@ -229,12 +239,12 @@ export async function prepareMedia(publication, root, options = {}) {
               const response = await request(cachedReceiptGrant.get);
               if (response.ok) {
                 cachedReceipt = JSON.parse((await boundedBytes(response.body, 8192)).toString());
-                if (cachedReceipt.source_sha256 === entry.sha256 && cachedReceipt.recipe_sha256 === recipeHash && cachedReceipt.width === width && cachedReceipt.format === format) {
+                if (cachedReceipt.source_sha256 === entry.sha256 && knownRecipe(cachedReceipt.recipe_sha256) && cachedReceipt.width === width && cachedReceipt.format === format) {
                   // A public variant may already be verified. Read its private
                   // receipt too, so warm builds do not repeat conditional PUTs.
                   if (!variant) {
                     const cached = await request(cachedGrant.get);
-                    if (cached.ok) variant = await boundedBytes(cached.body);
+                    if (cached.ok) { variant = await boundedBytes(cached.body); variantRecipe = cachedReceipt.recipe_sha256; }
                     else { await cached.body?.cancel(); if (cached.status !== 404) throw new Error('media_transfer_interrupted'); }
                   }
                   if (variant && (hash(variant) !== cachedReceipt.sha256 || variant.length !== cachedReceipt.size_bytes)) throw new Error('Prepared media failed byte verification');
@@ -249,14 +259,15 @@ export async function prepareMedia(publication, root, options = {}) {
               if (!saved.ok && saved.status !== 412) throw new Error('media_transfer_interrupted');
               const verified = await request(cachedGrant.get);
               if (!verified.ok || hash(await boundedBytes(verified.body)) !== hash(variant)) throw new Error('Prepared media failed byte verification');
-              const body = JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: recipeHash, width, format, sha256: hash(variant), size_bytes: variant.length });
+              const body = JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: variantRecipe, width, format, sha256: hash(variant), size_bytes: variant.length });
               const savedReceipt = await request(cachedReceiptGrant.put, { method: 'PUT', headers: cachedReceiptGrant.headers, body });
               await savedReceipt.body?.cancel();
               if (!savedReceipt.ok && savedReceipt.status !== 412) throw new Error('media_transfer_interrupted');
             }
             if (options.cacheOnly) continue;
             await store(variant, key, `image/${format}`, publicPath, true, verifiedVariant);
-            const receipt = Buffer.from(JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: recipeHash, width, format, sha256: hash(variant), size_bytes: variant.length }));
+            // A reused variant keeps the receipt, and the encoder, that describe its bytes.
+            const receipt = verifiedVariant && receiptBytes ? receiptBytes : Buffer.from(JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: variantRecipe, width, format, sha256: hash(variant), size_bytes: variant.length }));
             if (hasReceiptAccess && !options.materializeOnly) await store(receipt, receiptKey, 'application/json', '', false, receiptBytes);
             for (const alias of options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(variant, alias.key + suffix, `image/${format}`, new URL(alias.url).pathname + suffix, false);
             media.variants.push({ width, format, size_bytes: variant.length, cdn_url: entry.cdn_url + suffix });

@@ -12,7 +12,7 @@ import { buildTasksPath, buildTaskKey, type BuildTask } from './queue';
 import { BUILD_PROTOCOL, BUILD_RUNTIME, encodeSource, sha256 } from './contract.mjs';
 import { qualificationSource } from './qualification';
 import { prepareBuildRetention } from './storage';
-import { githubBuildFiles } from './github-source';
+import { githubBuildFiles, GITHUB_ENGINE_SOURCE } from './github-source';
 
 export async function readGithubEngine(org: string): Promise<BuildEngine> {
   return await getStore().getDoc<BuildEngine>(enginePath(org, 'github')) ?? {
@@ -133,7 +133,7 @@ export async function configureGithubEngine(org: string, input: Record<string, u
   const pending = await store.listDocs<BuildTask>(buildTasksPath(org), { filters: [{ field: 'status', op: 'in', value: ['queued', 'running'] }], limit: 100 });
   if (previous && pending.some(task => task.engine_revision === previous.revision)) throw new ConnectionError('Wait for current GitHub builds to finish before updating this engine.', 409);
   const revision = randomUUID();
-  let config: EngineConfiguration = { media_preparation: true, static_verification: true, publication_validation: 1, provider: 'github', revision, owner: connection.github.owner, installation_id: connection.github.installation_id,
+  let config: EngineConfiguration = { media_preparation: true, static_verification: true, publication_validation: 1, engine_source_sha256: GITHUB_ENGINE_SOURCE, provider: 'github', revision, owner: connection.github.owner, installation_id: connection.github.installation_id,
     account_id: cf.cloudflare.account_id, worker_tag: '', trigger_uuid: '', runner_commit: '', token_hash: '', encrypted_token: '', status: 'preparing', setup_lease_until: Date.now() + 180000 };
   if (previous) {
     if (!await store.compareAndUpdateDoc<EngineConfiguration>(path, value => value.revision === previous.revision && value.setup_lease_until <= Date.now(), config)) throw new ConnectionError('GitHub build settings changed.', 409);
