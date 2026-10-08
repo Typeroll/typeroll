@@ -7,6 +7,7 @@
 - Every reported failure code has a readable step and reason: dependencies, media, Extension assets, rendering, upload and verification; time limits, exit codes, missing modules, native modules that cannot load, disk and memory exhaustion, storage transfers, output limits and an engine too old for this Core.
 - **Publishing → Builds** says **Build engine update available** when a ready engine runs older generated code than the installed Core. Publishing keeps working. Update the engine to get readable build failures.
 - MCP: `get_deploy_status` describes `failure.diagnostic`.
+- Release gate: `scripts/publication-upgrade-check.mjs` publishes media prepared by each of the three previous Core releases, using that release's own media code and locked sharp and S3 client, with the release candidate. A candidate that cannot publish what an earlier release prepared, changes the bytes of a published file or prepares media again under the same recipe version does not ship. It reproduces the 0.2.72 failure against the earlier media code.
 
 ## Core 0.2.73 / MCP 0.45.55
 

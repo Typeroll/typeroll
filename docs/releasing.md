@@ -33,6 +33,21 @@ and all workspace builds. The release plan includes committed, staged,
 unstaged, and new files. It fails when product files changed after an existing
 tag without the corresponding version bump.
 
+### Upgrade from earlier releases
+
+`scripts/publication-upgrade-check.mjs` runs after the tests. Media preparation
+leaves variants and receipts in each customer's R2 bucket, and every later
+release must read them. For the three newest earlier `core-v*` tags, the check
+prepares and publishes a small media library with that release's media code and
+its own locked `sharp` and S3 client (installed into a temporary cache when they
+differ), then publishes the same library with this source. It fails when the
+upgrade cannot publish, when a published file changes bytes, or when media is
+prepared again under the same `MEDIA_RECIPE_VERSION`. A deliberate recipe change
+bumps that version; it is then prepared again under new keys and still passes.
+Core 0.2.72 would have failed it: the sharp 0.35.5 update rejected every receipt
+0.2.71 had written. Check a specific release with `--from core-v0.2.71`. The
+check needs the tags and network access to install an earlier release's runtime.
+
 ## Parallel publication
 
 After the exact `main` commit passes `Tests`, the release workflow runs these
