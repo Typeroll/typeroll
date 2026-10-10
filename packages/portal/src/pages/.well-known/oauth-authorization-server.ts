@@ -24,10 +24,9 @@ export const GET: APIRoute = async ({ request }) => {
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
       code_challenge_methods_supported: ['S256'],
-      token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
+      token_endpoint_auth_methods_supported: ['none'],
       scopes_supported: ['mcp'],
-      // We accept any client redirect (per the OAuth shim design) — the
-      // DCR endpoint just records what the caller registered.
+      // Public clients use PKCE. DCR validates and signs exact callbacks.
     }),
     {
       status: 200,

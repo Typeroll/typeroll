@@ -35,6 +35,17 @@ async function setupSiteAndKey(): Promise<{ apiKey: string }> {
 }
 
 describe('OAuth shim — DCR', () => {
+  it('advertises only the supported public client method and refuses secret authentication', async () => {
+    const metadata = await import('../../pages/.well-known/oauth-authorization-server');
+    const response = await metadata.GET({ request: new Request('https://portal.test/.well-known/oauth-authorization-server') } as any) as Response;
+    expect((await response.json()).token_endpoint_auth_methods_supported).toEqual(['none']);
+    const register = await import('../../pages/api/mcp/oauth/register');
+    const denied = await register.POST({ request: new Request('https://portal.test/api/mcp/oauth/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ redirect_uris: ['https://client.test/callback'], token_endpoint_auth_method: 'client_secret_post' }),
+    }) } as any) as Response;
+    expect(denied.status).toBe(400);
+    expect((await denied.json()).error).toBe('invalid_client_metadata');
+  });
   it('returns a signed client_id binding redirect_uris', async () => {
     const mod = await import('../../pages/api/mcp/oauth/register');
     const req = new Request('https://portal.test/api/mcp/oauth/register', {

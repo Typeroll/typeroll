@@ -17,6 +17,7 @@ export const prerender = false;
 interface RegisterRequest {
   redirect_uris?: string[];
   client_name?: string;
+  token_endpoint_auth_method?: string;
   // …other RFC 7591 fields tolerated but ignored
 }
 
@@ -33,6 +34,9 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     return json({ error: 'invalid_request', error_description: 'Body must be JSON' }, 400);
   }
 
+  if (body?.token_endpoint_auth_method && body.token_endpoint_auth_method !== 'none') {
+    return json({ error: 'invalid_client_metadata', error_description: 'Only public clients using PKCE and token_endpoint_auth_method none are supported.' }, 400);
+  }
   const redirectUris = Array.isArray(body?.redirect_uris)
     ? body.redirect_uris.filter((u): u is string => typeof u === 'string')
     : [];
@@ -80,10 +84,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     {
       client_id: clientId,
       client_id_issued_at: now,
-      // No secret — we run as a public client with PKCE per the MCP auth
-      // spec. Confidential-client support would mean storing secrets we
-      // don't actually verify against, since the OAuth shim trusts only
-      // the user's pasted API key (validated at /authorize).
+      // Public clients authenticate the code exchange with PKCE, not a secret.
       token_endpoint_auth_method: 'none',
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
