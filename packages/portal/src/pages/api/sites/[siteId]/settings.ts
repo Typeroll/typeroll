@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { responsiveBreakpointsError, seoReviewError, defaultSiteSettings, normalizeIframeAllowedHosts, paths } from '@typeroll/shared';
+import { responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
 
@@ -54,6 +54,12 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   }
 
   const lines = (key: string) => String(form.get(key) ?? '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const external_routes = form.has('external_routes') ? lines('external_routes').map(line => {
+    const divider = line.indexOf('|');
+    return { path: (divider < 0 ? line : line.slice(0, divider)).trim(), owner: divider < 0 ? '' : line.slice(divider + 1).trim() };
+  }) : existing.external_routes;
+  const routesError = externalRoutesError(external_routes);
+  if (routesError) return new Response(routesError, { status: 400 });
   const seo_review = {
     forbidden_markers: lines('seo_review.forbidden_markers'),
     notes: lines('seo_review.notes'),
@@ -91,6 +97,7 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     robots_txt: String(form.get('robots_txt') ?? '') || undefined,
     sitewide_noindex: form.get('sitewide_noindex') === 'on',
     seo_review,
+    external_routes,
     sitewide_nofollow: form.get('sitewide_nofollow') === 'on',
     cookie_consent,
     colors,

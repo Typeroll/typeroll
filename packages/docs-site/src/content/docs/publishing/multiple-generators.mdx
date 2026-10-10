@@ -77,6 +77,43 @@ these resources using its own provider credentials. Typeroll's domain tools stil
 manage and verify the Site's website and media hosts; they do not discover or
 coordinate the other repository's releases.
 
+## Declare independently owned routes
+
+:::caution[Prepared change — requires the external route ownership release]
+The `external_routes` setting below is not available in earlier Core/Cloud
+versions. Do not configure it until your installation includes that release.
+:::
+
+After configuring and verifying the independent deployment, declare its exact
+public paths in **Site settings → SEO defaults → Routes served by another
+deployment**. Each line has the form `/docs/ | Documentation`. Include linked
+child paths explicitly; `/docs/` does not declare every path below it.
+
+Administrators can also use `update_site_settings` or PATCH
+`/api/v1/sites/{siteId}/settings`:
+
+```json
+{
+  "external_routes": [
+    { "path": "/docs/", "owner": "Documentation deployment" },
+    { "path": "/docs/llms.txt", "owner": "Documentation deployment" }
+  ]
+}
+```
+
+This is a path-ownership contract, not DNS configuration or proof of availability.
+Verify each URL through the other deployment, including its missing-page behavior.
+Generate the exact path list from that deployment's artifact where possible.
+Wildcards, the root path, reserved root files and paths owned by CMS output or
+redirects are rejected. Clear the declarations with `external_routes: []` when
+ownership returns to the CMS.
+
+The static publication freezes these declarations with its configuration. Links
+to them produce `external_route_owned_elsewhere` warnings identifying the page,
+block and deployment owner. Other missing targets remain errors. Declarations do
+not exempt sitemap entries, breadcrumb URLs, canonical rules or image link names.
+Each publisher must maintain its own sitemap and validate its own artifact.
+
 ## Keep releases independent
 
 Publish CMS content through Typeroll. Edit documentation in its own repository
@@ -113,9 +150,10 @@ that following `/docs/` from a version preview tests the production integration.
 
 After a release from either source, check a root page, a docs page, a missing
 docs page, assets, redirects, both sitemaps and agent text files. Review mobile
-navigation and search as well as HTTP status codes. The CMS link checker may
-report `/docs/` missing from its own route manifest; verify that external route
-at the public hostname rather than adding a duplicate CMS page.
+navigation and search as well as HTTP status codes. With external route ownership configured, the CMS link checker reports those
+exact paths as owned elsewhere. Verify them at the public hostname rather than
+adding duplicate CMS pages. On an older installation, publication can fail because
+those paths are absent from the root artifact; upgrade before using this setting.
 
 Retain previous artifacts for each publisher. Restore the affected artifact
 while keeping the path ownership and canonical hostname intact. Removing the

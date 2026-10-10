@@ -21,12 +21,12 @@ import { libraryProblems, readStyles } from '../../../../../lib/site-styles-stor
 import { customCssWarnings, customCssWriteError } from '../../../../../lib/custom-css-write';
 import { getStore } from '../../../../../lib/datastore';
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
-import { responsiveBreakpointsError, seoReviewError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, LATEST_RENDER_VERSION, paths, type SiteSettings } from '@typeroll/shared';
+import { responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, LATEST_RENDER_VERSION, paths, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
   'default_meta_description', 'language', 'robots_txt', 'image_sizes_default',
-  'sitewide_noindex', 'sitewide_nofollow', 'seo_review', 'render_version',
+  'sitewide_noindex', 'sitewide_nofollow', 'seo_review', 'external_routes', 'render_version',
   // Social sharing + Organization JSON-LD, as in the portal Settings form.
   'default_og_image', 'twitter_handle', 'organization',
   // Scriptable surfaces. Trusted because the caller has an API key.
@@ -88,6 +88,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return apiError('sitewide_noindex must be boolean', 400);
   }
   if (body.sitewide_nofollow !== undefined && typeof body.sitewide_nofollow !== 'boolean') return apiError('sitewide_nofollow must be boolean', 400);
+  if (body.external_routes !== undefined) { const error = externalRoutesError(body.external_routes); if (error) return apiError(error, 400); }
   if (body.seo_review !== undefined) { const error = seoReviewError(body.seo_review); if (error) return apiError(error, 400); }
   if (body.render_version !== undefined && !isRenderVersion(body.render_version)) {
     return apiError(`render_version must be an integer from 1 to ${LATEST_RENDER_VERSION}`, 400);

@@ -94,3 +94,34 @@ test('metadata, heading, list and navigation warnings never rewrite or reject co
   assert.equal(report.passed, true); assert.equal(JSON.stringify(f.files), original);
   for (const code of ['title_repeated_word', 'heading_jump', 'metadata_missing', 'generic_link_text', 'list_destination_repeated']) assert.ok(report.warnings.some(issue => issue.code === code), code);
 });
+
+test('declared independently hosted routes are outside this artifact, not unchecked prefixes', () => {
+  const f = fixture();
+  f.files['index.html'] += '<a href="/docs/?view=all#intro">Documentation</a>';
+  f.publication.settings.external_routes = [{ path: '/docs/', owner: 'Documentation deployment' }];
+  const report = validatePublication(f);
+  assert.deepEqual(report.errors, []);
+  assert.ok(report.warnings.some(issue => issue.code === 'external_route_owned_elsewhere'));
+  f.files['index.html'] += '<a href="/docs/missing/">Missing documentation</a><a href="/missing/">Missing page</a>';
+  assert.equal(validatePublication(f).errors.filter(issue => issue.code === 'internal_target_missing').length, 2);
+});
+test('external ownership cannot mask local pages, breadcrumbs, sitemap errors or malformed declarations', () => {
+  for (const external_routes of [[{ path: '/', owner: 'Other' }], [{ path: '/docs/*', owner: 'Other' }], [{ path: '/docs/', owner: '' }]]) {
+    const f = fixture(); f.publication.settings.external_routes = external_routes;
+    assert.ok(validatePublication(f).errors.some(issue => issue.code === 'external_route_invalid'));
+  }
+  const f = fixture();
+  f.publication.settings.external_routes = [{ path: '/companies/', owner: 'Other' }];
+  assert.ok(validatePublication(f).errors.some(issue => issue.code === 'external_route_conflict'));
+  f.publication.settings.external_routes = [{ path: '/docs/', owner: 'Docs' }];
+  f.files['sitemap.xml'] = `<urlset><url><loc>${origin}/docs/</loc></url></urlset>`;
+  assert.ok(validatePublication(f).errors.some(issue => issue.code === 'sitemap_route_invalid'));
+  f.files['companies/abc/index.html'] = f.files['companies/abc/index.html'].replace(`"item":"${origin}/companies/"`, `"item":"${origin}/docs/"`);
+  assert.ok(validatePublication(f).errors.some(issue => issue.code === 'breadcrumb_route'));
+});
+
+test('report reader accepts in-flight previous reports but not unknown validator versions', () => {
+  const report = validatePublication(fixture());
+  assert.equal(seoReport({ ...report, version: 1 }, report.publication_id).version, 1);
+  assert.throws(() => seoReport({ ...report, version: 999 }, report.publication_id), /report_invalid/);
+});

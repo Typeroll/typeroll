@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { digest } from './customer-publishing.mjs';
 import { projectPublicationBlocks, projectPublicationBlockTypes, projectPublicationData, projectPublicationSchema } from './publication-blocks.mjs';
 
+import { externalRoutesError } from '../../packages/shared/src/external-routes.mjs';
+
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const safeId = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
 const stringFields = {
@@ -132,6 +134,9 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     return projected;
   });
   const settings = projectStrings(input.settings, stringFields.settings);
+  const routesError = externalRoutesError(input.settings?.external_routes);
+  if (routesError) throw new Error(routesError);
+  if (input.settings?.external_routes !== undefined) settings.external_routes = input.settings.external_routes.map(route => projectStrings(route, ['path', 'owner']));
   if (input.settings?.contact) {
     settings.contact = projectStrings(input.settings.contact, ['email', 'phone']);
     const address = input.settings.contact.address;
