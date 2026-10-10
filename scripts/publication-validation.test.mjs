@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { validatePublication, outputDigest } from '../packages/site-template/src/lib/publication-validation.mjs';
 import { seoReport, outputDigest as trustedDigest } from '../packages/portal/src/lib/builds/contract.mjs';
@@ -124,4 +125,20 @@ test('report reader accepts in-flight previous reports but not unknown validator
   const report = validatePublication(fixture());
   assert.equal(seoReport({ ...report, version: 1 }, report.publication_id).version, 1);
   assert.throws(() => seoReport({ ...report, version: 999 }, report.publication_id), /report_invalid/);
+});
+
+// Use the actual installed-engine contract, not a restatement of its guard.
+test('current validator reports remain readable by the previously released customer executor', async () => {
+  const source = execFileSync('git', ['show', 'core-v0.2.74:packages/portal/src/lib/builds/contract.mjs'], { encoding: 'utf8' });
+  const previous = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+  const f = fixture();
+  f.files['index.html'] += '<a href="/docs/">Documentation</a>';
+  f.publication.settings.external_routes = [{ path: '/docs/', owner: 'Documentation deployment' }];
+  const current = validatePublication(f);
+  assert.throws(() => previous.seoReport({ ...current, version: 2 }, f.publication.publication_id), /report_invalid/);
+  const decoded = previous.seoReport(current, f.publication.publication_id);
+  assert.equal(decoded.passed, true);
+  assert.equal(decoded.artifact_tree_sha256, current.artifact_tree_sha256);
+  assert.equal(decoded.source_sha256, current.source_sha256);
+  assert.ok(decoded.warnings.some(issue => issue.code === 'external_route_owned_elsewhere'));
 });

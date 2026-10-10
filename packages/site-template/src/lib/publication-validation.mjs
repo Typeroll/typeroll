@@ -8,6 +8,9 @@ import { robotsAllows } from './robots-policy.mjs';
 
 // Change with every change in validation semantics; never cache a prior verdict.
 export const SEO_VALIDATOR_VERSION = 2;
+// This is the report's wire shape, not the validator semantics. Existing customer
+// executors read format 1; source/configuration/artifact hashes bind each verdict.
+const SEO_REPORT_FORMAT_VERSION = 1;
 const hash = value => createHash('sha256').update(value).digest('hex');
 export const outputDigest = files => hash(JSON.stringify(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)).map(([name, f]) => [name, f.sha256, f.size])));
 const children = node => node.children ?? [];
@@ -233,7 +236,7 @@ export function validatePublication({ files, publication, routes = [], sourceHas
       if (result.external || result.invalid || result.loop || !result.page || result.redirected || result.page.robots.includes('noindex') || publication.robots_blocked || publication.settings?.sitewide_noindex) add('error', 'sitemap_route_invalid', { file: sitemapFile, html: String(sitemap), url: href }, node, `Sitemap URL is missing, redirected, or not indexable: ${href}`, 'Include only actual indexable routes in the sitemap.', 'sitemap');
     }
   }
-  const report = { version: SEO_VALIDATOR_VERSION, publication_id: publication.publication_id, source_sha256: sourceHash,
+  const report = { version: SEO_REPORT_FORMAT_VERSION, publication_id: publication.publication_id, source_sha256: sourceHash,
     configuration_sha256: configurationHash ?? hash(JSON.stringify({ settings: publication.settings, contentTypes: publication.contentTypes })),
     artifact_tree_sha256: outputDigest(descriptors), checked_pages: pages.length, passed: errors.length === 0,
     error_count: errors.length, warning_count: warnings.length, errors: errors.slice(0, 100), warnings: warnings.slice(0, 100) };

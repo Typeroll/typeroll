@@ -10,17 +10,15 @@ const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const identity = value => typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(value);
 const ARTIFACT_MAGIC = Buffer.from('TYPEROLL-ARTIFACT-2\n');
 
-export const SEO_VALIDATOR_VERSION = 2;
+export const SEO_VALIDATOR_VERSION = 1;
 export const MAX_SEO_REPORT_CHARACTERS = 250000;
 // At most three UTF-8 bytes per UTF-16 code unit, plus the small attempt envelope.
 export const MAX_SEO_REPORT_BYTES = 3 * MAX_SEO_REPORT_CHARACTERS;
 export const MAX_RUNNER_RESULT_BYTES = MAX_SEO_REPORT_BYTES + 8192;
 export const outputDigest = files => sha256(JSON.stringify(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)).map(([name, f]) => [name, f.sha256, f.size])));
-/** Reports are bounded public diagnostics, bound to this attempt and its bytes.
- * Version 1 remains readable for in-flight publications frozen before the upgrade.
- */
+/** Reports are bounded public diagnostics, bound to this attempt and its bytes. */
 export function seoReport(value, publicationId) {
-  if (!value || ![1, SEO_VALIDATOR_VERSION].includes(value.version) || value.publication_id !== publicationId ||
+  if (!value || value.version !== SEO_VALIDATOR_VERSION || value.publication_id !== publicationId ||
       !['source_sha256', 'configuration_sha256', 'artifact_tree_sha256'].every(k => hash(value[k])) ||
       typeof value.passed !== 'boolean' || !['checked_pages', 'error_count', 'warning_count'].every(k => Number.isSafeInteger(value[k]) && value[k] >= 0) ||
       value.passed !== (value.error_count === 0) || !Array.isArray(value.errors) || !Array.isArray(value.warnings) ||
