@@ -5,9 +5,10 @@ type Tab = 'create' | 'join';
 interface Props {
   /** Pre-filled invite token from URL ?invite= param. */
   prefillToken?: string;
+  next?: string | null;
 }
 
-export default function OnboardingForm({ prefillToken }: Props) {
+export default function OnboardingForm({ prefillToken, next }: Props) {
   const [tab, setTab] = useState<Tab>(prefillToken ? 'join' : 'create');
 
   // Create org state
@@ -33,7 +34,7 @@ export default function OnboardingForm({ prefillToken }: Props) {
       });
       const data = (await res.json()) as { ok?: boolean; error?: string; };
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-      window.location.href = '/app';
+      window.location.href = next ?? '/app';
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -53,7 +54,7 @@ export default function OnboardingForm({ prefillToken }: Props) {
       });
       const data = (await res.json()) as { ok?: boolean; error?: string; };
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-      window.location.href = '/app';
+      window.location.href = next ?? '/app';
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -67,7 +68,7 @@ export default function OnboardingForm({ prefillToken }: Props) {
       <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
         <button
           type="button"
-          disabled={!hydrated}
+          disabled={busy || !hydrated}
           onClick={() => { setTab('create'); setError(null); }}
           style={{
             background: 'none',
@@ -83,7 +84,7 @@ export default function OnboardingForm({ prefillToken }: Props) {
         </button>
         <button
           type="button"
-          disabled={!hydrated}
+          disabled={busy || !hydrated}
           onClick={() => { setTab('join'); setError(null); }}
           style={{
             background: 'none',
@@ -103,7 +104,7 @@ export default function OnboardingForm({ prefillToken }: Props) {
       {tab === 'create' && (
         <form onSubmit={handleCreate} className="stack">
           <p className="muted text-sm">
-            Create a new organization to start building sites. You can invite team members later.
+            Your organization is the workspace for your sites and team. Use your company name, project name or your own name. You can invite team members later.
           </p>
           <div className="field">
             <label htmlFor="org-name">Organization name</label>

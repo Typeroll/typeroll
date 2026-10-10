@@ -1,3 +1,4 @@
+import { limitAuthRequest } from '../../../lib/auth-request';
 import { getHostingGroup } from '../../../lib/publishing/hosting-groups';
 import type { APIRoute } from 'astro';
 import { json, requireSession } from '../../../lib/access';
@@ -12,6 +13,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const guard = await requireSession(cookies);
   if (!guard.ok) return guard.response;
   const { userId, email, displayName } = guard.value;
+  const limited = await limitAuthRequest(`create-org:${userId}`, 5, 3_600_000);
+  if (limited) return limited;
   if (guard.value.orgId) await rememberOrganization(userId, guard.value.orgId);
 
   let name: string;
@@ -51,23 +54,17 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const now = new Date().toISOString();
 
   // Reserve the slug atomically so concurrent creators cannot overwrite an organization.
-  const created = await store.createDocIfMissing(paths.org(orgId), {
+  const created = await store.compareAndReplaceDoc(paths.org(orgId), null, {
     name,
     slug: orgId,
     plan: 'free',
     roles_enforced: true,
     created_at: now,
-  } satisfies Omit<Organization, 'id'>);
+  } satisfies Omit<Organization, 'id'>, [{
+    path: `${paths.members(orgId)}/${userId}`, expected: null, replace: true,
+    data: { email, role: 'owner', firebase_uid: userId, ...(displayName ? { display_name: displayName } : {}), joined_at: now } satisfies Omit<Member, 'id'>,
+  }]);
   if (!created) return json({ error: 'Organization name was just taken. Please try again.' }, 409);
-
-  // Write the member doc (owner).
-  await store.setDoc(`${paths.members(orgId)}/${userId}`, {
-    email,
-    role: 'owner',
-    firebase_uid: userId,
-    display_name: displayName,
-    joined_at: now,
-  } satisfies Omit<Member, 'id'>);
 
   await getHostingGroup(orgId);
   await rememberOrganization(userId, orgId);

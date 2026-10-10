@@ -1,0 +1,58 @@
+import { test, expect } from '@playwright/test';
+import crypto from 'node:crypto';
+import { authenticatePersona } from './helpers/auth';
+const origin = 'http://127.0.0.1:4322';
+const verifier = 'synthetic-pkce-verifier-for-browser-consent-test';
+const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+
+for (const width of [375, 768, 1280]) test(`MCP consent scopes access and cancels safely at ${width}px`, async ({ page }, testInfo) => {
+  await authenticatePersona(page, 'owner');
+  await page.setViewportSize({ width, height: 1000 });
+  const registered = await page.request.post('/api/mcp/oauth/register', { data: { redirect_uris: ['https://client.example.test/callback'] } });
+  expect(registered.status()).toBe(201);
+  const { client_id } = await registered.json();
+  const query = new URLSearchParams({ response_type: 'code', client_id, redirect_uri: 'https://client.example.test/callback', code_challenge: challenge, code_challenge_method: 'S256', state: 'test-state' });
+  await page.goto(`/api/mcp/oauth/authorize?${query}`);
+  await expect(page.getByRole('heading', { name: 'Connect your AI tool' })).toBeVisible();
+  await expect(page.getByText('Signed in as E2E owner.')).toBeVisible();
+  await expect(page.getByText('This grants administrator access', { exact: false })).toBeVisible();
+  await expect(page.locator('input[type=password]')).toHaveCount(0);
+  await page.locator('#site').selectOption('e2e-core-site');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath(`mcp-consent-${width}.png`), fullPage: true });
+  const callbackResponse = page.waitForResponse(response => response.url().endsWith('/api/mcp/oauth/complete'));
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  const callback = await callbackResponse;
+  expect(callback.status()).toBe(302);
+  const location = new URL(callback.headers().location);
+  expect(location.origin).toBe('https://client.example.test');
+  expect(location.searchParams.get('error')).toBe('access_denied');
+  expect(location.searchParams.get('state')).toBe('test-state');
+});
+
+test('MCP browser approval reaches a usable site-scoped token and revocation', async ({ page }) => {
+  await authenticatePersona(page, 'owner');
+  const { client_id } = await (await page.request.post('/api/mcp/oauth/register', { data: { redirect_uris: ['https://client.example.test/callback'] } })).json();
+  await page.goto(`/api/mcp/oauth/authorize?${new URLSearchParams({ response_type: 'code', client_id, redirect_uri: 'https://client.example.test/callback', code_challenge: challenge, code_challenge_method: 'S256' })}`);
+  await page.locator('#site').selectOption('e2e-core-site');
+  const callbackResponse = page.waitForResponse(response => response.url().endsWith('/api/mcp/oauth/complete'));
+  await page.getByRole('button', { name: 'Allow access', exact: true }).click();
+  const callback = await callbackResponse;
+  expect(callback.status()).toBe(302);
+  const code = new URL(callback.headers().location).searchParams.get('code')!;
+  expect(code).toBeTruthy();
+  const response = await page.request.post(`${origin}/api/mcp/oauth/token`, { form: { grant_type: 'authorization_code', client_id, code, code_verifier: verifier, redirect_uri: 'https://client.example.test/callback' } });
+  expect(response.status()).toBe(200);
+  const tokens = await response.json();
+  const mcp = await page.request.post(`${origin}/api/mcp`, { headers: { Authorization: `Bearer ${tokens.access_token}`, Accept: 'application/json, text/event-stream' }, data: { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'synthetic-browser-client', version: '1' } } } });
+  expect(mcp.status()).toBe(200);
+  const keysResponse = await page.request.get(`${origin}/api/sites/e2e-core-site/api-keys`);
+  expect(keysResponse.status()).toBe(200);
+  const { keys } = await keysResponse.json();
+  const grant = keys.find((key: { name: string }) => key.name === 'MCP: client.example.test');
+  expect(grant).toBeTruthy();
+  const revoked = await page.request.delete(`${origin}/api/sites/e2e-core-site/api-keys/${grant.id}`, { headers: { Origin: origin } });
+  expect(revoked.status()).toBe(200);
+  const denied = await page.request.post(`${origin}/api/mcp`, { headers: { Authorization: `Bearer ${tokens.access_token}`, Accept: 'application/json, text/event-stream' }, data: { jsonrpc: '2.0', id: 2, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'synthetic-browser-client', version: '1' } } } });
+  expect(denied.status()).toBe(401);
+});

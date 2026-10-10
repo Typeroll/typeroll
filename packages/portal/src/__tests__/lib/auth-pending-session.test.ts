@@ -28,6 +28,7 @@ describe('auth: pending session (no org_id claim)', () => {
     const mockAuth = {
       createSessionCookie: vi.fn().mockResolvedValue('mock-cookie'),
       verifyIdToken: vi.fn().mockResolvedValue({
+        auth_time: Math.floor(Date.now() / 1000),
         uid: 'user-1',
         email: 'new@example.com',
         name: 'New User',
@@ -56,6 +57,7 @@ describe('auth: pending session (no org_id claim)', () => {
     const mockAuth = {
       createSessionCookie: vi.fn().mockResolvedValue('mock-cookie'),
       verifyIdToken: vi.fn().mockResolvedValue({
+        auth_time: Math.floor(Date.now() / 1000),
         uid: 'user-2',
         email: 'member@example.com',
         name: 'Member',
@@ -75,6 +77,7 @@ describe('auth: pending session (no org_id claim)', () => {
     const { getAuth } = await import('firebase-admin/auth');
     const mockAuth = {
       verifySessionCookie: vi.fn().mockResolvedValue({
+        auth_time: Math.floor(Date.now() / 1000),
         uid: 'user-3',
         email: 'pending@example.com',
         // No org_id claim
@@ -128,4 +131,18 @@ describe('isPendingSession', () => {
     const { isPendingSession } = await import('../../lib/auth');
     expect(isPendingSession({ userId: 'u', email: 'e@e.com', orgId: 'my-org' })).toBe(false);
   });
+});
+
+it('refuses stale, missing or revoked identity before setting any cookie', async () => {
+  const { getAuth } = await import('firebase-admin/auth');
+  const { setSessionFromIdToken } = await import('../../lib/auth');
+  for (const auth_time of [undefined, Math.floor(Date.now() / 1000) - 301, Math.floor(Date.now() / 1000) + 120]) {
+    const auth = { verifyIdToken: vi.fn().mockResolvedValue({ uid: 'u', auth_time }), createSessionCookie: vi.fn() };
+    (getAuth as ReturnType<typeof vi.fn>).mockReturnValue(auth);
+    const cookies = { set: vi.fn() } as any;
+    await expect(setSessionFromIdToken(cookies, 'id-token')).rejects.toThrow('Recent sign-in');
+    expect(auth.verifyIdToken).toHaveBeenCalledWith('id-token', true);
+    expect(cookies.set).not.toHaveBeenCalled();
+    expect(auth.createSessionCookie).not.toHaveBeenCalled();
+  }
 });

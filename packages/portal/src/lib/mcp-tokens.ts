@@ -1,6 +1,6 @@
-// Access and refresh tokens remain signed JWTs. Verification of the embedded
-// API key checks live revocation on every use. Authorization codes are opaque
-// one-time handles backed by encrypted, short-lived server-side grants.
+// New client-bound access and refresh tokens are authenticated encrypted envelopes.
+// Legacy unbound JWTs remain readable until expiry. Embedded API keys are checked
+// for live revocation on every use; authorization codes are opaque single-use grants.
 
 import crypto from 'node:crypto';
 import { paths } from '@typeroll/shared';
@@ -16,6 +16,7 @@ interface TokenPayload {
   /** The underlying typeroll_live_... key. Embedded so the MCP route can
    *  loopback into /api/v1/* without a separate store lookup. */
   api_key: string;
+  client_id?: string;
   /** Audience (this portal's MCP endpoint URL). RFC 8707. */
   aud: string;
   /** Distinguishes access credentials from refresh credentials. */
@@ -55,22 +56,32 @@ export interface IssueArgs {
   apiKey: string;
   audience: string;
   kind: TokenKind;
+  clientId?: string;
+  expiresAt?: number;
 }
 
-/** Sign and return a JWT. Audience is the portal's MCP endpoint URL. */
+/** Issue a credential bound to this portal's MCP endpoint audience. */
 export function issueToken(args: IssueArgs): { token: string; expiresIn: number } {
   if (args.kind !== 'access' && args.kind !== 'refresh') throw new Error('Unsupported token kind');
   const now = Math.floor(Date.now() / 1000);
-  const exp = now + ttlFor(args.kind);
+  const exp = Math.min(now + ttlFor(args.kind), args.expiresAt ?? Infinity);
   const header = { alg: 'HS256', typ: 'JWT' };
   const payload: TokenPayload = {
     api_key: args.apiKey,
+    ...(args.clientId ? { client_id: args.clientId } : {}),
     aud: args.audience,
     kind: args.kind,
     iat: now,
     exp,
     jti: crypto.randomBytes(8).toString('hex'),
   };
+  if (args.clientId) {
+    const nonce = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', grantEncryptionKey(), nonce);
+    cipher.setAAD(Buffer.from('typeroll-mcp-token-v1'));
+    const encrypted = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final()]);
+    return { token: 'trm1_' + Buffer.concat([nonce, cipher.getAuthTag(), encrypted]).toString('base64url'), expiresIn: exp - now };
+  }
   const head = b64urlJSON(header);
   const body = b64urlJSON(payload);
   const sig = crypto
@@ -84,6 +95,7 @@ export interface VerifiedToken {
   apiKey: string;
   audience: string;
   kind: TokenKind;
+  clientId?: string;
   /** Random token identifier. */
   jti: string;
   /** Expiry in seconds since the epoch. */
@@ -91,11 +103,23 @@ export interface VerifiedToken {
 }
 
 /**
- * Verify a JWT minted by this server. Returns null on any failure —
+ * Verify a credential minted by this server. Returns null on any failure —
  * including audience mismatch and expiry. Callers MUST treat null as
  * "401 invalid token" without leaking which check failed.
  */
 export function verifyToken(token: string, expectedAudience?: string): VerifiedToken | null {
+  if (token.startsWith('trm1_')) {
+    try {
+      const sealed = Buffer.from(token.slice(5), 'base64url');
+      const decipher = crypto.createDecipheriv('aes-256-gcm', grantEncryptionKey(), sealed.subarray(0, 12));
+      decipher.setAAD(Buffer.from('typeroll-mcp-token-v1'));
+      decipher.setAuthTag(sealed.subarray(12, 28));
+      const payload = JSON.parse(Buffer.concat([decipher.update(sealed.subarray(28)), decipher.final()]).toString('utf8')) as TokenPayload;
+      if (!payload.client_id || !payload.api_key || !payload.jti || !Number.isFinite(payload.exp) || payload.exp <= Date.now() / 1000 ||
+          (expectedAudience && payload.aud !== expectedAudience) || !['access', 'refresh'].includes(payload.kind)) return null;
+      return { apiKey: payload.api_key, audience: payload.aud, kind: payload.kind, clientId: payload.client_id, jti: payload.jti, exp: payload.exp };
+    } catch { return null; }
+  }
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   const [head, body, sig] = parts as [string, string, string];
@@ -229,6 +253,7 @@ interface AuthorizationGrant {
   audience: string;
   pkce: string;
   redirect_uri: string;
+  client_id?: string;
   expires_at: number;
   consumed: boolean;
 }
@@ -238,7 +263,7 @@ function grantEncryptionKey(): Buffer {
 }
 
 export async function issueAuthorizationCode(args: {
-  apiKey: string; audience: string; pkce: string; redirectUri: string;
+  apiKey: string; audience: string; pkce: string; redirectUri: string; clientId?: string;
 }): Promise<{ token: string; expiresIn: number }> {
   const token = crypto.randomBytes(32).toString('base64url');
   const id = crypto.createHash('sha256').update(token).digest('hex');
@@ -252,6 +277,7 @@ export async function issueAuthorizationCode(args: {
     audience: args.audience,
     pkce: args.pkce,
     redirect_uri: args.redirectUri,
+    ...(args.clientId ? { client_id: args.clientId } : {}),
     expires_at: Date.now() + CODE_TTL_SECONDS * 1000,
     consumed: false,
   } satisfies AuthorizationGrant);
@@ -261,7 +287,7 @@ export async function issueAuthorizationCode(args: {
 
 /** Validate all bindings and claim the grant in the same transaction. */
 export async function exchangeAuthorizationCode(args: {
-  code: string; audience: string; codeVerifier: string; redirectUri: string;
+  code: string; audience: string; codeVerifier: string; redirectUri: string; clientId?: string;
 }): Promise<string | null> {
   if (typeof args.code !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(args.code)) return null;
   if (typeof args.codeVerifier !== 'string' || typeof args.redirectUri !== 'string') return null;
@@ -270,7 +296,7 @@ export async function exchangeAuthorizationCode(args: {
     paths.mcpAuthorizationCode(id),
     (current) => !current.consumed && current.expires_at > Date.now() &&
       current.audience === args.audience && current.redirect_uri === args.redirectUri &&
-      verifyPkce(args.codeVerifier, current.pkce),
+      (!current.client_id || (current.client_id === args.clientId && /^[A-Za-z0-9._~-]{43,128}$/.test(args.codeVerifier))) && verifyPkce(args.codeVerifier, current.pkce),
     { consumed: true, sealed_key: null },
   );
   if (!grant?.sealed_key) return null;
@@ -283,4 +309,9 @@ export async function exchangeAuthorizationCode(args: {
   } catch {
     return null;
   }
+}
+
+/** A refresh credential is consumed once across every portal instance. */
+export async function consumeRefreshToken(token: VerifiedToken): Promise<boolean> {
+  return getStore().createDocIfMissing(`mcp_refresh_uses/${crypto.createHash('sha256').update(token.jti).digest('hex')}`, { expires_at: token.exp * 1000 });
 }

@@ -1,3 +1,4 @@
+import { authClientAddress, limitAuthRequest, readAuthBody } from '../../../../lib/auth-request';
 // RFC 7591 Dynamic Client Registration endpoint for the MCP OAuth shim.
 //
 // Open registration (per the MCP auth spec) — anyone can register. The
@@ -7,6 +8,7 @@
 // registered without us keeping any server-side client table. See
 // lib/mcp-tokens.signClientId for the format.
 
+import { validRedirectUri } from '../../../../lib/mcp-consent';
 import type { APIRoute } from 'astro';
 import { signClientId } from '../../../../lib/mcp-tokens';
 
@@ -21,15 +23,17 @@ interface RegisterRequest {
 const MAX_REDIRECT_URIS = 8;
 const MAX_REDIRECT_URI_LEN = 2048;
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, clientAddress }) => {
+  const limited = await limitAuthRequest(`mcp-register:${authClientAddress(request, clientAddress || 'unknown')}`, 60);
+  if (limited) return limited;
   let body: RegisterRequest;
   try {
-    body = (await request.json()) as RegisterRequest;
+    body = (JSON.parse(await readAuthBody(request))) as RegisterRequest;
   } catch {
     return json({ error: 'invalid_request', error_description: 'Body must be JSON' }, 400);
   }
 
-  const redirectUris = Array.isArray(body.redirect_uris)
+  const redirectUris = Array.isArray(body?.redirect_uris)
     ? body.redirect_uris.filter((u): u is string => typeof u === 'string')
     : [];
   if (redirectUris.length === 0) {
@@ -47,9 +51,8 @@ export const POST: APIRoute = async ({ request }) => {
       400,
     );
   }
-  // Reject obviously malformed URIs up-front so the signed payload stays
-  // tidy. Permissive on scheme/host because self-hosted MCP clients use
-  // custom schemes (e.g. `cursor://oauth/callback`) and any host.
+  // Allow HTTPS, loopback HTTP and reverse-domain native callback schemes.
+  // Reject unsafe callbacks before signing the registered client identity.
   for (const uri of redirectUris) {
     if (uri.length > MAX_REDIRECT_URI_LEN) {
       return json(
@@ -61,7 +64,7 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
     try {
-      new URL(uri);
+      if (!validRedirectUri(uri)) throw new Error('Unsafe callback');
     } catch {
       return json(
         { error: 'invalid_redirect_uri', error_description: `Malformed redirect_uri: ${uri}` },
