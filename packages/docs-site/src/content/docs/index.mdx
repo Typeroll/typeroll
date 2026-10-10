@@ -7,7 +7,7 @@ head:
     content: Typeroll CMS documentation — editing, AI agents and publishing
 hero:
   title: Typeroll CMS
-  tagline: One documentation site for Typeroll Cloud and self-hosted Typeroll CMS.
+  tagline: Build with your agent. Edit in the browser. Documentation for Typeroll Cloud and self-hosted Typeroll CMS.
   actions:
     - text: Edit your first page
       link: guides/the-editor/
@@ -19,7 +19,14 @@ hero:
       variant: minimal
 ---
 
-import { LinkCard, CardGrid } from "@astrojs/starlight/components";
+import { LinkCard, CardGrid, Aside } from "@astrojs/starlight/components";
+
+<Aside title="Typeroll is in beta" type="note">
+  The CMS, Cloud and Extension ecosystem are actively evolving. Cloud beta
+  access starts with a conversation. [Explore Typeroll and contact
+  us](https://typeroll.com/#beta). Typeroll Apps is a separate offering in
+  development; there is no finished public app catalog yet.
+</Aside>
 
 Typeroll CMS is an open-source CMS with a visual editor, a REST API and an MCP
 server. Use the browser editor for content changes, or connect your own AI agent
@@ -84,7 +91,7 @@ guides and explains differences in setup, availability and responsibility.
 ## Software, hosting and connected services
 
 The open-source edition is free to self-host. Infrastructure and connected
-services have their own costs. [Typeroll Cloud](https://typeroll.com/) is the
+services have their own costs. [Typeroll Cloud](https://typeroll.com/#editions) is the
 managed service; its user guides live here alongside the shared CMS and
 self-hosting instructions. Cloud access and service limits are separate from
 the open-source license.
