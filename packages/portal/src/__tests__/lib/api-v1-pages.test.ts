@@ -776,4 +776,17 @@ describe('native presentation metadata', () => {
     expect((await read.json()).settings.responsive_breakpoints).toEqual(widths);
     expect((await write(null)).status).toBe(200);
   });
+  it('stores exact external route ownership and rejects invalid settings without replacing the saved declaration', async () => {
+    const { token } = await setup();
+    const endpoint = `http://localhost/api/v1/sites/${SITE}/settings`;
+    const route = import('../../pages/api/v1/sites/[siteId]/settings');
+    const write = (external_routes: unknown) => callRoute(route, 'PATCH', endpoint, { siteId: SITE }, { headers: bearer(token), body: { external_routes } });
+    const declared = [{ path: '/docs/', owner: 'Documentation deployment' }];
+    expect((await write(declared)).status).toBe(200);
+    expect((await write([{ path: '/docs/*', owner: 'Docs' }])).status).toBe(400);
+    const read = await callRoute(route, 'GET', endpoint, { siteId: SITE }, { headers: bearer(token) });
+    expect((await read.json()).settings.external_routes).toEqual(declared);
+    expect((await write([])).status).toBe(200);
+  });
+
 });

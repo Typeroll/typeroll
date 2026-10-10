@@ -573,3 +573,16 @@ further than the caller. Nothing here returns a new secret.
   own authorization (renewal, account access, Cloudflare Pages access, granted
   permissions) and stores the result; for an unfinished connection the
   organization's state is returned. No tokens or provider bodies are returned.
+
+### Independently hosted paths (prepared release)
+
+`PATCH /api/v1/sites/{siteId}/settings` accepts `external_routes`, an array of
+`{ path, owner }` objects (at most 1000). It requires site admin access, as do
+other settings changes. `path` is an exact same-origin path, not a URL prefix or
+wildcard. `owner` names the independent deployment. Empty arrays clear it.
+Invalid paths, duplicates and unsupported fields return HTTP 400. Artifact
+validation additionally rejects ownership collisions with generated files, Pages
+and redirects. This does not provision hosting or prove external availability;
+the owning deployment must verify its public URLs. Declared links produce
+source-located warnings; sitemap and breadcrumb validation remain strict.
+The setting is available through `update_site_settings` and the Site settings UI.

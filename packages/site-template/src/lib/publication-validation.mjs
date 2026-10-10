@@ -3,10 +3,11 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createReadStream, readFileSync } from 'node:fs';
+import { externalRoutesError } from '../../../shared/src/external-routes.mjs';
 import { robotsAllows } from './robots-policy.mjs';
 
 // Change with every change in validation semantics; never cache a prior verdict.
-export const SEO_VALIDATOR_VERSION = 1;
+export const SEO_VALIDATOR_VERSION = 2;
 const hash = value => createHash('sha256').update(value).digest('hex');
 export const outputDigest = files => hash(JSON.stringify(Object.entries(files).sort(([a], [b]) => a.localeCompare(b)).map(([name, f]) => [name, f.sha256, f.size])));
 const children = node => node.children ?? [];
@@ -101,6 +102,15 @@ export function validatePublication({ files, publication, routes = [], sourceHas
     try { file = index.get(key(url.pathname)); } catch { return { invalid: true, url }; }
     return { file, page: byFile.get(file), url, redirected };
   }
+  const externalRoutes = new Map();
+  const externalError = externalRoutesError(publication.settings?.external_routes);
+  const configPage = { file: 'content/settings.json', html: '', url: base.href };
+  if (externalError) add('error', 'external_route_invalid', configPage, null, externalError, 'Declare exact paths and deployment owners.', 'external_routes');
+  else for (const entry of publication.settings?.external_routes ?? []) {
+    const resolved = target(entry.path, base);
+    if (resolved.file || resolved.redirected || resolved.loop || routeInfo.has(key(entry.path))) add('error', 'external_route_conflict', configPage, null, `External route ${entry.path} conflicts with this artifact.`, 'Give each path one owner; remove the conflicting declaration, page or redirect.', 'external_routes');
+    else externalRoutes.set(entry.path, entry.owner);
+  }
   for (const entry of redirects) {
     const probe = entry.from.replace(/\*/g, 'typeroll-route-probe').replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, 'typeroll-route-probe');
     if (target(probe, base).loop) add('error', 'redirect_loop', { file: '_redirects', html: String(read('_redirects')), url: new URL(entry.from, base).href }, null, `Redirect loop at ${entry.from}`, 'Remove the cyclic redirect.', 'redirects');
@@ -161,7 +171,9 @@ export function validatePublication({ files, publication, routes = [], sourceHas
       // Client-side filters and generated anchors are not new routes.
       if (!href.startsWith('#')) {
         const result = target(href, page.url);
-        if (result.invalid || result.loop || (!result.external && !result.file)) add('error', 'internal_target_missing', page, link, `Broken internal target: ${href}`, 'Fix the link or create the intended route.');
+        const otherOwner = !result.invalid && !result.loop && !result.redirected && !result.external && !result.file ? externalRoutes.get(result.url.pathname) : undefined;
+        if (otherOwner) add('warning', 'external_route_owned_elsewhere', page, link, `Target ${result.url.pathname} is owned by ${otherOwner}; it was not checked in this artifact.`, 'Verify this exact public URL through the owning deployment.');
+        else if (result.invalid || result.loop || (!result.external && !result.file)) add('error', 'internal_target_missing', page, link, `Broken internal target: ${href}`, 'Fix the link or create the intended route.');
         else if (result.redirected) add('warning', 'internal_redirect', page, link, `Link redirects: ${href}`, 'Use the final destination where appropriate.');
       }
       const descendants = nodes(link), images = descendants.filter(n => n.name === 'img');

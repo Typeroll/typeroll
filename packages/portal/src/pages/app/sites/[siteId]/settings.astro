@@ -164,6 +164,11 @@ const domainBlocksArchiving =
     <div class="card stack">
       <h2 style="font-size: 1.125rem;">SEO defaults</h2>
       <details>
+        <summary>Routes served by another deployment</summary>
+        <p class="muted text-sm">For sections hosted separately under this domain. List each exact path and its deployment owner, for example /docs/ | Documentation. This does not configure hosting or verify the other deployment. Verify those public URLs separately. Wildcards are not supported.</p>
+        <div class="field"><label for="external-routes">Path | deployment owner (one per line)</label><textarea id="external-routes" name="external_routes">{settings.external_routes?.map(route => `${route.path} | ${route.owner}`).join('\n') ?? ''}</textarea></div>
+      </details>
+      <details>
         <summary>Editorial publication checks</summary>
         <p class="muted text-sm">Rules apply to every built page, including unchanged pages. Matches are warnings for review; Typeroll does not rewrite your content.</p>
         <div class="field"><label for="seo-markers">Internal phrases to flag (one per line)</label><textarea id="seo-markers" name="seo_review.forbidden_markers">{settings.seo_review?.forbidden_markers?.join('\n') ?? ''}</textarea></div>

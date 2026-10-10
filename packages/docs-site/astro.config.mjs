@@ -12,7 +12,12 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Typeroll CMS',
-      components: { Head: './src/components/DocsHead.astro', PageTitle: './src/components/DocsPageTitle.astro' },
+      components: {
+        Head: './src/components/DocsHead.astro',
+        PageTitle: './src/components/DocsPageTitle.astro',
+        SiteTitle: './src/components/DocsSiteTitle.astro',
+        SocialIcons: './src/components/DocsSocialLinks.astro',
+      },
       plugins: [starlightLlmsTxt({
         projectName: 'Typeroll CMS',
         minify: { whitespace: false },

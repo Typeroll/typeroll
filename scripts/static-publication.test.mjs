@@ -357,3 +357,12 @@ test('frozen content types preserve mapped-only schema without hidden field mapp
   assert.equal(type.schema_field_mode, 'mapped');
   assert.deepEqual(type.schema_field_map, { title: 'name' });
 });
+
+test('frozen publication preserves declared external ownership and rejects invalid paths', () => {
+  const value = input();
+  value.settings.external_routes = [{ path: '/docs/', owner: 'Documentation deployment' }];
+  const publication = projectStaticPublication(value, identity);
+  assert.deepEqual(publication.settings.external_routes, value.settings.external_routes);
+  value.settings.external_routes = [{ path: '/docs/*', owner: 'Docs' }];
+  assert.throws(() => projectStaticPublication(value, identity), /external_routes/);
+});

@@ -13,8 +13,8 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
   const page = (id, extra = {}) => ({ id, title: id, slug: id, status: 'published', content_mode: 'html', html_content: `<h1>${id}</h1>`, ...extra });
   for (const slash of ['always', 'never']) {
     const input = {
-      site: { name: 'Example', domain: 'example.test' }, settings: { site_name: 'Example', trailing_slash: slash, colors: {}, fonts: {} },
-      pages: [page('home', { slug: '', html_content: '<h1>Home</h1><a href="/states/">States</a><img alt="" src="/decorative.svg">' }), page('companies'),
+      site: { name: 'Example', domain: 'example.test' }, settings: { site_name: 'Example', trailing_slash: slash, colors: {}, fonts: {}, external_routes: [{ path: "/docs/", owner: "Documentation deployment" }] },
+      pages: [page('home', { slug: '', html_content: '<h1>Home</h1><a href="/states/">States</a><a href="https://example.test/docs/">Documentation</a><img alt="" src="/decorative.svg">' }), page('companies'),
         page('abc', { content_type: 'supplier', fields: { company: 'ABC', city: 'Town' } }),
         page('nested', { content_type: 'supplier', slug: 'nested/profile' }), page('explicit', { path: '/special/nested/' }),
         page('states', { noindex: true }), page('strict', { noindex: true, nofollow: true }),
@@ -35,6 +35,7 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     const first = await run();
     assert.equal(first.result.status, 0, first.result.stderr + first.result.stdout);
     assert.equal(first.report.passed, true);
+    assert.ok(first.report.warnings.some(issue => issue.code === 'external_route_owned_elsewhere'));
     const suffix = slash === 'always' ? '/' : '';
     const html = await fs.readFile(path.join(destination, 'dist/companies/abc/index.html'), 'utf8');
     const schemas = [...html.matchAll(/<script type="application\/ld\+json">([^<]+)<\/script>/g)].map(match => JSON.parse(match[1]));
@@ -71,9 +72,9 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     assert.equal(cold.reused, 0); assert.equal(cold.reason, 'no_valid_cache');
     const validatorPath = path.join(destination, 'packages/site-template/src/lib/publication-validation.mjs');
     const validator = await fs.readFile(validatorPath, 'utf8');
-    await fs.writeFile(validatorPath, validator.replace('SEO_VALIDATOR_VERSION = 1', 'SEO_VALIDATOR_VERSION = 2'));
+    await fs.writeFile(validatorPath, validator.replace(/SEO_VALIDATOR_VERSION = (\d+)/, (_, version) => `SEO_VALIDATOR_VERSION = ${Number(version) + 1}`));
     const revised = await run();
-    assert.equal(revised.report.version, 2);
+    assert.equal(revised.report.version, Number(validator.match(/SEO_VALIDATOR_VERSION = (\d+)/)[1]) + 1);
     assert.equal(JSON.parse(await fs.readFile(path.join(destination, '.publication-work/render-report.json'), 'utf8')).reused, 0);
     await fs.writeFile(validatorPath, validator);
     // Deliberately recreate the old mapping bug in the frozen source. No output

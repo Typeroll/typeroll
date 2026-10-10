@@ -418,6 +418,8 @@ export interface SiteSettings {
    */
   sitewide_noindex?: boolean;
   sitewide_nofollow?: boolean;
+  /** Same-origin paths served by another deployment; each exact path has one owner. */
+  external_routes?: Array<{ path: string; owner: string }>;
   /** Editorial review constraints. Rechecked against the complete publication, never used to rewrite content. */
   seo_review?: { forbidden_markers?: string[]; claims?: Array<{ phrase: string; guidance: string }>; notes?: string[] };
 }
