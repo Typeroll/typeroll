@@ -74,7 +74,7 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     const validator = await fs.readFile(validatorPath, 'utf8');
     await fs.writeFile(validatorPath, validator.replace(/SEO_VALIDATOR_VERSION = (\d+)/, (_, version) => `SEO_VALIDATOR_VERSION = ${Number(version) + 1}`));
     const revised = await run();
-    assert.equal(revised.report.version, Number(validator.match(/SEO_VALIDATOR_VERSION = (\d+)/)[1]) + 1);
+    assert.equal(revised.report.version, first.report.version); // Semantics change without breaking installed executors.
     assert.equal(JSON.parse(await fs.readFile(path.join(destination, '.publication-work/render-report.json'), 'utf8')).reused, 0);
     await fs.writeFile(validatorPath, validator);
     // Deliberately recreate the old mapping bug in the frozen source. No output
