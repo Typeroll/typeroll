@@ -26,8 +26,10 @@ it('creates another organization with enforced roles and preserves the original 
   expect(await getStore().listDocs('user_organizations/existing-member/organizations')).toHaveLength(2);
 });
 it('does not overwrite a slug reserved by a concurrent creator', async () => {
-  const spy = vi.spyOn(getStore(), 'createDocIfMissing');
-  spy.mockImplementation(async (key) => key !== paths.org('collision'));
+  const store = getStore();
+  const original = store.compareAndReplaceDoc.bind(store);
+  const spy = vi.spyOn(store, 'compareAndReplaceDoc');
+  spy.mockImplementation(async (key, ...args) => key === paths.org('collision') ? false : original(key, ...args));
   expect((await createOrg(request({ name: 'Collision' })) as Response).status).toBe(409);
   expect(await getStore().getDoc(`${paths.members('collision')}/${session.userId}`)).toBeNull();
   spy.mockRestore();

@@ -38,6 +38,8 @@ import crypto from 'node:crypto';
 import { paths } from '@typeroll/shared';
 import type { SiteApiKey } from '@typeroll/shared';
 import { getStore } from './datastore';
+import { organizationMembership } from './organization-session';
+import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
 
 const KEY_VARIANT = 'live';
 const PREFIX_BYTES = 6;  // hex-encoded → 12 chars
@@ -55,6 +57,8 @@ export interface ApiKeyLookupEntry {
   site_id: string | null;
   key_hash: string;
   revoked_at?: string;
+  oauth_user_id?: string;
+  oauth_created_at?: string;
 }
 
 export interface NewKey {
@@ -111,6 +115,7 @@ export interface CreateKeyArgs {
   siteId: string | null;
   name: string;
   createdBy: string;
+  oauthUserId?: string;
 }
 
 export interface CreateKeyResult {
@@ -152,6 +157,7 @@ export async function createApiKey(args: CreateKeyArgs): Promise<CreateKeyResult
     org_id: args.orgId,
     site_id: args.siteId,
     key_hash: keyHash,
+    ...(args.oauthUserId ? { oauth_user_id: args.oauthUserId, oauth_created_at: createdAt } : {}),
   };
 
   // Write metadata first, lookup second. If metadata fails we never created
@@ -279,6 +285,19 @@ export async function verifyApiToken(token: string): Promise<VerifiedKey | null>
   if (!lookup) return null;
   if (lookup.revoked_at) return null;
   if (!constantTimeHexEquals(lookup.key_hash, hashSecret(parsed.secret))) return null;
+  if (lookup.oauth_user_id) {
+    const member = await organizationMembership(lookup.oauth_user_id, lookup.org_id);
+    const createdAt = Date.parse(lookup.oauth_created_at || '');
+    if (!Number.isFinite(createdAt) || Date.now() >= createdAt + 30 * 24 * 60 * 60 * 1000) return null;
+    if (!member || !['owner', 'admin'].includes(member.role)) return null;
+    if (isFirebaseAdminConfigured()) {
+      try {
+        const { getAuth } = await import('firebase-admin/auth');
+        const user = await getAuth(await getFirebaseAdminApp()).getUser(lookup.oauth_user_id);
+        if (user.disabled || Date.parse(user.tokensValidAfterTime || '') > Date.parse(lookup.oauth_created_at || '')) return null;
+      } catch { return null; }
+    }
+  }
   return { orgId: lookup.org_id, siteId: lookup.site_id, prefix: parsed.prefix };
 }
 

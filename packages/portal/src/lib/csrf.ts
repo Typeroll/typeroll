@@ -1,3 +1,4 @@
+import { requireAuthOrigin } from './auth-request';
 // Hand-rolled CSRF / origin protection. Replaces Astro's built-in
 // `checkOrigin` because that middleware unconditionally blocked
 // bearer-authed API DELETE calls (no Origin header on a curl/MCP
@@ -14,8 +15,7 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 //     this endpoint is intentionally called by customer sites, not the portal
 //   /api/extensions/token — server-to-server launch-code exchange authenticated
 //     with an Extension client secret and a short-lived single-use code
-//   /api/auth/session, /api/auth/dev-session — bootstrap auth; validate
-//     credentials themselves and have no cookie state yet to abuse
+//   /api/auth/dev-session — local-only test authentication
 //   /api/internal/deploy-worker — Cloud Tasks POSTs here with a Google
 //     OIDC token (Bearer eyJ...) verified inside the route. Without
 //     this exemption the CSRF check rejected the worker's invocation
@@ -28,7 +28,6 @@ const CSRF_EXEMPT_PATHS = new Set([
   '/api/forms/submit',
   '/api/analytics/events',
   '/api/extensions/token',
-  '/api/auth/session',
   '/api/auth/dev-session',
   // MCP Streamable HTTP transport — Bearer-authed, not browser-driven.
   '/api/mcp',
@@ -36,12 +35,11 @@ const CSRF_EXEMPT_PATHS = new Set([
 
 // Prefix-based exemptions. MCP endpoints (hosted-MCP transport + OAuth
 // shim) are not browser-driven — they're posted to by Claude Desktop /
-// claude.ai / custom connectors that authenticate via a JWT issued by
+// claude.ai / custom connectors that authenticate via a credential issued by
 // /token, or by passing a raw typeroll_live_ key. Either way they have no
 // cookie surface to abuse, so CSRF is moot. The consent form's POST
-// /api/mcp/oauth/complete IS browser-driven but its Origin matches the
-// portal, so it would pass the host allowlist on its own — we exempt the
-// whole prefix here for clarity.
+// /api/mcp/oauth/complete IS browser-driven and requires the exact configured
+// portal Origin before these protocol exemptions are evaluated.
 const CSRF_EXEMPT_PREFIXES = [
   // Build runner endpoints exclusively validate revocable runner/attempt tokens.
   '/api/builds/runner/',
@@ -127,6 +125,7 @@ function originAllowed(origin: string): boolean {
 export function enforceCsrf(args: { request: Request; url: URL }): Response | null {
   const { request, url } = args;
   if (SAFE_METHODS.has(request.method)) return null;
+  if (url.pathname === '/api/auth/session' || url.pathname === '/api/mcp/oauth/complete') return requireAuthOrigin(request);
   if (CSRF_EXEMPT_PATHS.has(url.pathname)) return null;
   if (CSRF_EXEMPT_PREFIXES.some((p) => url.pathname.startsWith(p))) return null;
 

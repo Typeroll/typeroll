@@ -49,13 +49,23 @@ No local Node.js installation is required.
 1. Add a remote MCP server in your agent client's integration settings.
 2. Enter `https://app.typeroll.com/api/mcp` for Typeroll Cloud, or
    `https://<your-portal-host>/api/mcp` for a self-hosted portal.
-3. Complete the Typeroll consent screen with the API key and select **Grant access**.
+3. Sign in to Typeroll, choose an Organization and either one Site or all its
+   Sites, then select **Allow access**. You must be an Organization owner or
+   administrator. No API key needs to be copied.
 4. Return to the client and confirm that Typeroll's tools are available.
 
 Client menus and supported authentication methods vary. Use your client's MCP
-instructions for adding a server. The hosted endpoint supports organization and
-site keys; the underlying key's permissions continue to apply after consent.
-Revoking it also invalidates the issued authorization on subsequent checks.
+instructions for adding a server. Consent explicitly grants administrator
+access: the agent can edit and publish within the chosen scope. It is not a
+read-only connection. A separate connection appears as **MCP: [client host]**
+in Organization → API keys, or the selected Site's API keys. Revoke that entry
+to disconnect. Removing or demoting the approving member also ends access.
+Connections expire after 30 days and require consent again; clients rotate
+refresh credentials automatically during that period.
+
+The signed-in consent flow requires Core 0.2.76 or later on your
+portal. Older deployments still ask for an API key on the consent page.
+Updating the local stdio package alone does not update a hosted portal.
 
 For a client that supports explicit bearer headers instead of OAuth, configure
 `Authorization: Bearer <your-api-key>` in its private connection settings. Never

@@ -8,6 +8,8 @@ import { createApiKey, revokeApiKey } from '../../lib/api-keys';
 import { POST as complete } from '../../pages/api/mcp/oauth/complete';
 import { POST as exchange } from '../../pages/api/mcp/oauth/token';
 
+vi.mock('../../lib/auth', () => ({ getSession: async () => ({ userId: 'test-user', orgId: 'test-org', email: 'test@example.test' }) }));
+
 const audience = 'https://portal.test/api/mcp';
 const redirectUri = 'https://client.test/callback';
 const codeVerifier = 'synthetic-verifier-that-is-long-enough-for-pkce';
@@ -18,6 +20,8 @@ beforeEach(async () => {
   await resetDatastore();
   process.env.MCP_OAUTH_SIGNING_KEY = 'synthetic-signing-key-at-least-32-characters';
   process.env.PORTAL_PUBLIC_URL = 'https://portal.test';
+  await getStore().setDoc(paths.org('test-org'), { name: 'Test' });
+  await getStore().setDoc(`${paths.members('test-org')}/test-user`, { role: 'owner' });
   apiKey = (await createApiKey({ orgId: 'test-org', siteId: null, name: 'Test', createdBy: 'test-user' })).token;
 });
 afterEach(() => vi.restoreAllMocks());
@@ -25,10 +29,11 @@ const issue = () => issueAuthorizationCode({ apiKey, audience, pkce, redirectUri
 const redeem = (code: string, overrides = {}) => exchangeAuthorizationCode({ code, audience, redirectUri, codeVerifier, ...overrides });
 
 it('keeps the API key out of the callback and encrypts the stored grant', async () => {
+  const clientId = signClientId([redirectUri]);
   const response = await complete({ url: new URL('https://portal.test/api/mcp/oauth/complete'), request: new Request('https://portal.test/api/mcp/oauth/complete', {
-    method: 'POST', body: new URLSearchParams({
-      api_key: apiKey, client_id: signClientId([redirectUri]), redirect_uri: redirectUri,
-      code_challenge: pkce, state: 'test-state',
+    method: 'POST', headers: { Origin: 'https://portal.test' }, body: new URLSearchParams({
+      org_id: 'test-org', decision: 'allow', client_id: clientId, redirect_uri: redirectUri,
+      code_challenge: pkce, code_challenge_method: 'S256', state: 'test-state',
     }),
   }) } as never) as Response;
   expect(response.status).toBe(302);
@@ -41,7 +46,9 @@ it('keeps the API key out of the callback and encrypts the stored grant', async 
   expect(Buffer.from(code, 'base64url').toString()).not.toContain(apiKey);
   const id = crypto.createHash('sha256').update(code).digest('hex');
   expect(JSON.stringify(await getStore().getDoc(paths.mcpAuthorizationCode(id)))).not.toContain(apiKey);
-  expect(await redeem(code)).toBe(apiKey);
+  const delegated = await redeem(code, { clientId });
+  expect(delegated).toMatch(/^typeroll_live_/);
+  expect(delegated).not.toBe(apiKey);
   expect(await getStore().getDoc(paths.mcpAuthorizationCode(id))).toMatchObject({ consumed: true, sealed_key: null });
 });
 

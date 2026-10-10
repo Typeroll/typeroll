@@ -121,13 +121,13 @@ describe('middleware CSRF — exempt paths', () => {
     expect(res.status).toBe(200);
   });
 
-  it('/api/auth/session passes without Origin', async () => {
+  it('/api/auth/session rejects without Origin', async () => {
     const res = await callMiddleware({
       method: 'POST',
       pathname: '/api/auth/session',
       contentType: 'application/json',
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
   });
 
   it('/api/internal/deploy-worker passes with Google OIDC bearer (eyJ...)', async () => {
