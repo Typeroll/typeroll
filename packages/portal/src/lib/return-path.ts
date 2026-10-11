@@ -4,11 +4,11 @@
  * to another site after authentication.
  */
 export function safeReturnPath(value: unknown): string | null {
-  if (typeof value !== 'string' || value.length > 512 || !value.startsWith('/app/') || /[\\\x00-\x1f]/.test(value)) return null;
+  if (typeof value !== 'string' || value.length > 8192 || !value.startsWith('/') || /[\\\x00-\x1f]/.test(value)) return null;
   try {
     const base = 'https://portal.invalid';
     const url = new URL(value, base);
-    if (url.origin !== base || !url.pathname.startsWith('/app/')) return null;
+    if (url.origin !== base || !(url.pathname === '/app' || url.pathname.startsWith('/app/') || url.pathname === '/onboarding' || url.pathname === '/mcp/consent')) return null;
     return `${url.pathname}${url.search}${url.hash}`;
   } catch { return null; }
 }

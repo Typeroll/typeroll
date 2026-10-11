@@ -654,7 +654,13 @@ server credentials in secret configuration fields. Private keys and GitHub
 tokens are rejected even in public configuration. Fields that are private,
 secret or absent from the published schema are excluded from the runtime.
 
-A generated site repository is not a full CMS backup.
+Content is committed as one file per record under `content/`, with sorted keys
+and indentation. A text change produces a readable field-level diff. The first
+publication using this format rewrites the existing compact JSON files once.
+
+A generated site repository is not a full CMS backup. It includes published
+public content, not drafts, unpublished versions, form delivery actions,
+private or secret Extension configuration, or image originals.
 
 ## API and MCP
 

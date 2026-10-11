@@ -7,6 +7,7 @@ import { paths, type ExtensionInstallation, type ExtensionScope } from '@typerol
 import { json } from '../../../../../../lib/access';
 import { apiResponse, requireApiKey, withApiIdentity } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
+import { versionedExtensionInstallation } from '../../../../../../lib/extensions/version-config';
 import { maskExtensionConfig } from '../../../../../../lib/extensions/config';
 import { resolveExtensionVersion } from '../../../../../../lib/extensions/resolution';
 import {
@@ -23,8 +24,9 @@ async function load(ownerOrgId: string, siteId: string, installationId: string |
   );
 }
 
-async function safeInstallation(installation: ExtensionInstallation) {
+async function safeInstallation(installation: ExtensionInstallation, siteVersionId = 'main') {
   const resolution = await resolveExtensionVersion(installation);
+  installation = await versionedExtensionInstallation(installation, resolution.version?.manifest.config_schema, siteVersionId);
   return {
     installation: {
       ...installation,
@@ -53,7 +55,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   if (guard.value.permission !== 'admin') return withApiIdentity(guard.value, json({ error: 'Admin permission required' }, 403));
   const installation = await load(guard.value.orgId, guard.value.siteId, params.installationId);
   if (!installation) return withApiIdentity(guard.value, json({ error: 'Installation not found' }, 404));
-  return withApiIdentity(guard.value, json(await safeInstallation(installation)));
+  return withApiIdentity(guard.value, json(await safeInstallation(installation, guard.value.versionId)));
 };
 
 export const PATCH: APIRoute = async ({ request, params }) => {
@@ -65,6 +67,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!body) return withApiIdentity(guard.value, json({ error: 'Invalid JSON body' }, 400));
 
   try {
+    if (guard.value.versionId !== 'main' && body.status !== undefined) throw new ExtensionRegistryError('Manage installation status on main.');
     if (body.status === 'enabled' || body.status === 'disabled') {
       await setExtensionInstallationStatus({
         ownerOrgId: guard.value.orgId,
@@ -75,6 +78,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       });
     }
     const installation = await updateExtensionInstallation({
+      siteVersionId: guard.value.versionId,
       ownerOrgId: guard.value.orgId,
       siteId: guard.value.siteId,
       installationId: params.installationId,
@@ -87,7 +91,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         ? body.config as Record<string, unknown>
         : undefined,
     });
-    return withApiIdentity(guard.value, json(await safeInstallation(installation)));
+    return withApiIdentity(guard.value, json(await safeInstallation(installation, guard.value.versionId)));
   } catch (error) {
     if (error instanceof ExtensionRegistryError) return withApiIdentity(guard.value, json({ error: error.message }, error.status));
     return withApiIdentity(guard.value, json({ error: 'Failed to update Extension installation' }, 500));
@@ -104,6 +108,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     return withApiIdentity(guard.value, json({ error: 'Admin permission required' }, 403));
   }
   if (!params.installationId) return withApiIdentity(guard.value, json({ error: 'Missing installationId' }, 400));
+  if (guard.value.versionId !== 'main') return withApiIdentity(guard.value, json({ error: 'Uninstall Extensions on main.' }, 400));
   try {
     await uninstallExtension({
       ownerOrgId: guard.value.orgId,

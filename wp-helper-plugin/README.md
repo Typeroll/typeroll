@@ -29,6 +29,14 @@ All authenticated via `X-Typeroll-Key` header or `?key=` query parameter.
 | `GET /wp-json/typeroll/v1/acf/groups/{post_id}` | ACF field-group schema applicable to a post — for inferring the matching Typeroll Content type schema. |
 | `GET /wp-json/typeroll/v1/menus` | Navigation menus and their items, hierarchical. |
 
+| `GET /wp-json/typeroll/v1/urls` | Public post, term and other source URLs for migration discovery. |
+| `GET /wp-json/typeroll/v1/redirects` | Redirect rules detected from supported redirect plugins. |
+| `GET /wp-json/typeroll/v1/seo` | Site-level SEO settings detected from supported SEO plugins. |
+| `GET /wp-json/typeroll/v1/postmeta/{id}/{key}` | Read one post-meta key when a builder stores data outside normalized item fields. |
+
+These routes use the same authenticated, read-only access as the item routes.
+Prefer the `X-Typeroll-Key` header so the key is not placed in URL logs.
+
 ## Import storage prerequisite
 
 Before starting an import, connect and verify the Organization's own R2 in
@@ -52,7 +60,7 @@ The plugin is just PHP — no build step. To package it as a WP-installable zip:
 
 ```bash
 cd wp-helper-plugin
-zip -r ../typeroll-helper-0.1.0.zip . -x "*.git*" -x "*.DS_Store"
+zip -r ../typeroll-helper-0.3.2.zip . -x "*.git*" -x "*.DS_Store"
 ```
 
 ## Repo layout

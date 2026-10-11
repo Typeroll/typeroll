@@ -1,3 +1,14 @@
+/**
+ * Sorted keys and indentation keep the published history reviewable: a diff shows the
+ * fields that changed instead of one rewritten line. Readers parse JSON, so the format
+ * is free to change; sorting also makes the bytes independent of CMS key order.
+ */
+export function stableJson(value) {
+  const ordered = (_, entry) => entry && typeof entry === 'object' && !Array.isArray(entry)
+    ? Object.fromEntries(Object.keys(entry).sort().map(key => [key, entry[key]])) : entry;
+  return `${JSON.stringify(value, ordered, 2)}\n`;
+}
+
 /** Stable per-record files keep a one-page edit from resending every page to Git. */
 export function publicationContentFiles(publication) {
   const metadata = { ...publication }, files = {}, contentFiles = {};
@@ -9,13 +20,13 @@ export function publicationContentFiles(publication) {
       if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(record.id) || seen.has(record.id)) throw Error('Invalid publication record identity');
       seen.add(record.id);
       const name = `content/${kind}/${record.id}.json`;
-      files[name] = `${JSON.stringify(record)}\n`;
+      files[name] = stableJson(record);
       names.push(name);
     }
     delete metadata[kind];
     contentFiles[kind] = names;
   }
-  return { ...files, 'publication.json': `${JSON.stringify({ ...metadata, content_files: contentFiles })}\n` };
+  return { ...files, 'publication.json': stableJson({ ...metadata, content_files: contentFiles }) };
 }
 
 export async function readPublicationContent(metadata, readFile, manifest) {

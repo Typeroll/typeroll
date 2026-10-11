@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
+import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
 
 export const extensionTools: ToolDef[] = [
   {
@@ -19,8 +19,9 @@ export const extensionTools: ToolDef[] = [
     name: 'list_extension_installations',
     description:
       'List the site\'s installed Extensions, including installation ids, manifests, config schemas, and masked current config. Read this before updating installation config. Admin permission required.',
-    handler: withErrorBoundary(async (_args, { client, siteId }) => {
-      return ok(await client.get(siteId, 'extensions'));
+    inputSchema: { version: versionParam },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      return ok(await client.get(siteId, 'extensions', { version: args.version }));
     }),
   },
   {
@@ -28,10 +29,11 @@ export const extensionTools: ToolDef[] = [
     description:
       'Read one Extension installation, its manifest config schema, and its masked current config. Secret values are never returned. Admin permission required.',
     inputSchema: {
+      version: versionParam,
       installation_id: z.string().min(1).describe('Installation id returned by list_extension_installations.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
-      return ok(await client.get(siteId, `extensions/${encodeURIComponent(args.installation_id)}`));
+      return ok(await client.get(siteId, `extensions/${encodeURIComponent(args.installation_id)}`, { version: args.version }));
     }),
   },
   {
@@ -51,24 +53,26 @@ export const extensionTools: ToolDef[] = [
   {
     name: 'update_extension_installation_config',
     description:
-      'Update schema-defined config for an installed Extension. Call read_extension_installation first and send only keys declared by manifest.config_schema. Omitted fields preserve their current values, including masked secrets. This can update public content such as consent text, policy-link text, and policy URLs. A production deploy is queued by default; pass deploy:false only when batching changes and deploy later. Admin permission required.',
+      'Update schema-defined config for an installed Extension. Call read_extension_installation first and send only keys declared by manifest.config_schema. Omitted fields preserve their current values, including masked secrets. This can update public content such as consent text, policy-link text, and policy URLs. Public fields are versioned; private configuration and credentials can only change on main. A deploy of the selected version is queued by default (main: production, other versions: staging); pass deploy:false only when batching changes and deploy later. Admin permission required.',
     inputSchema: {
+      version: versionParam,
       installation_id: z.string().min(1).describe('Installation id returned by list_extension_installations.'),
       config: z.record(z.unknown()).describe('Config keys and values declared by the installation manifest config schema.'),
-      deploy: z.boolean().optional().describe('Queue a production deploy after saving. Defaults to true.'),
+      deploy: z.boolean().optional().describe('Queue a deploy of the selected site version after saving. Defaults to true.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const updated = await client.patch<Record<string, unknown>>(
         siteId,
         `extensions/${encodeURIComponent(args.installation_id)}`,
         { config: args.config },
+        { version: args.version },
       );
       if (args.deploy === false) return ok(updated);
       try {
         const deploy = await client.post<Record<string, unknown>>(
           siteId,
           'deploy',
-          { environment: 'production' },
+          { environment: args.version && args.version !== 'main' ? 'staging' : 'production', ...(args.version ? { version: args.version } : {}) },
         );
         return ok({ ...updated, deploy });
       } catch (error) {

@@ -396,7 +396,10 @@ export const FORM_BLOCK_TYPES: BlockType[] = [
   formHelp,
   formConsent,
   formHidden,
-];
+].map((block): BlockType => block.schema.some(field => field.name === 'name') && block.id !== 'form/hidden'
+  ? { ...block, schema: [...block.schema, { name: 'required_message', type: 'text', label: 'Required field message', help: 'Optional. Uses the site language default when empty.' }] }
+  : block);
+
 
 /** Complete transitive field stylesheet for forms referenced by core/form. */
 export const FORM_BLOCKS_CSS = FORM_BLOCK_TYPES

@@ -132,6 +132,54 @@ describe('Extension control plane', () => {
     expect(JSON.stringify(snapshot)).not.toContain('stale-value');
   });
 
+  it('isolates public branch configuration through preview, static projection, reset and promotion', async () => {
+    const { installation } = await registeredInstallation();
+    const { getStore } = await import('../../lib/datastore');
+    const { promoteBranch, resetBranch } = await import('../../lib/version-promote');
+    const { publicationRuntime } = await import('../../lib/publishing/runtime-projection');
+    const { versionedExtensionInstallation } = await import('../../lib/extensions/version-config');
+    const store = getStore();
+    await store.setDoc(paths.version(OWNER_ORG, SITE, 'redesign'), { name: 'Redesign', base_version_id: 'main' });
+    const original = await store.getDoc(paths.extensionInstallation(OWNER_ORG, SITE, installation.id));
+    const change = () => updateExtensionInstallation({ ownerOrgId: OWNER_ORG, siteId: SITE,
+      installationId: installation.id, actorId: 'test', siteVersionId: 'redesign', config: { price_list_id: 'branch-prices' } });
+    await change();
+    expect(await store.getDoc(paths.extensionInstallation(OWNER_ORG, SITE, installation.id))).toEqual(original);
+    const main = await publicationRuntime(OWNER_ORG, SITE, 'main');
+    const branch = await publicationRuntime(OWNER_ORG, SITE, 'redesign');
+    expect(main.extensions.installations[0].public_config.price_list_id).toBe('prices-eu');
+    expect(branch.extensions.installations[0].public_config.price_list_id).toBe('branch-prices');
+    const preview = await buildExtensionRuntimeSnapshot(OWNER_ORG, SITE, { versionId: 'redesign' });
+    expect(preview.installations[0].public_config.price_list_id).toBe('branch-prices');
+    expect(JSON.stringify(branch)).not.toContain('secret-value');
+    await resetBranch(OWNER_ORG, SITE, 'redesign');
+    expect((await publicationRuntime(OWNER_ORG, SITE, 'redesign')).extensions.installations[0].public_config.price_list_id).toBe('prices-eu');
+    await change();
+    await promoteBranch(OWNER_ORG, SITE, 'redesign');
+    expect((await publicationRuntime(OWNER_ORG, SITE)).extensions.installations[0].public_config.price_list_id).toBe('branch-prices');
+    // Provider reads and subsequent partial main edits must retain promoted fields.
+    expect((await versionedExtensionInstallation(installation, manifest().config_schema)).public_config.price_list_id).toBe('branch-prices');
+    await updateExtensionInstallation({ ownerOrgId: OWNER_ORG, siteId: SITE,
+      installationId: installation.id, actorId: 'test', config: { consent_text: 'Updated main' } });
+    expect((await publicationRuntime(OWNER_ORG, SITE)).extensions.installations[0].public_config).toMatchObject({ price_list_id: 'branch-prices', consent_text: 'Updated main' });
+    expect(main.extensions.installations[0].public_config.price_list_id).toBe('prices-eu');
+  });
+
+  it('rejects branch credentials, private fields, release changes and missing branches without touching main', async () => {
+    const { installation } = await registeredInstallation();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.version(OWNER_ORG, SITE, 'redesign'), { name: 'Redesign', base_version_id: 'main' });
+    const original = await getStore().getDoc(paths.extensionInstallation(OWNER_ORG, SITE, installation.id));
+    for (const patch of [{ config: { api_secret: 'rejected' } }, { config: { internal_queue: 'rejected' } },
+      { version: '2.0.0', config: {} }, { grantedScopes: [], config: {} }, { config: { undeclared: true } },
+      { siteVersionId: 'missing', config: { price_list_id: 'rejected' } }]) {
+      await expect(updateExtensionInstallation({ ownerOrgId: OWNER_ORG, siteId: SITE,
+        installationId: installation.id, actorId: 'test', siteVersionId: 'redesign', ...patch })).rejects.toThrow();
+    }
+    expect(await getStore().getDoc(paths.extensionInstallation(OWNER_ORG, SITE, installation.id))).toEqual(original);
+    expect(await getStore().getDoc(paths.settings(OWNER_ORG, SITE, 'redesign'))).toBeNull();
+  });
+
   it('registers, publishes, installs and provisions a private component', async () => {
     const { installation } = await registeredInstallation();
     const { getStore } = await import('../../lib/datastore');
@@ -446,6 +494,34 @@ describe('Extension control plane', () => {
       }), params: { siteId: SITE },
     } as never);
     expect(installed.status).toBe(201);
+  });
+
+  it('keeps bearer API branch reads and writes isolated and rejects unknown versions and shared status changes', async () => {
+    const { installation } = await registeredInstallation();
+    const { createApiKey } = await import('../../lib/api-keys');
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.site(OWNER_ORG, SITE), { name: 'Synthetic', created_at: new Date().toISOString() });
+    await getStore().setDoc(paths.version(OWNER_ORG, SITE, 'redesign'), { name: 'Redesign', base_version_id: 'main' });
+    const { token } = await createApiKey({ orgId: OWNER_ORG, siteId: SITE, name: 'Synthetic', createdBy: 'test' });
+    const route = await import('../../pages/api/v1/sites/[siteId]/extensions/[installationId]');
+    const call = (method: 'GET' | 'PATCH' | 'DELETE', version: string, body?: unknown) => route[method]!({
+      request: new Request(`https://portal.example/api/v1/sites/${SITE}/extensions/${installation.id}?version=${version}`, {
+        method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      }), params: { siteId: SITE, installationId: installation.id },
+    } as never);
+    expect((await call('PATCH', 'redesign', { config: { price_list_id: 'branch-prices' } })).status).toBe(200);
+    expect((await (await call('GET', 'redesign')).json()).config.price_list_id).toBe('branch-prices');
+    expect((await (await call('GET', 'main')).json()).config.price_list_id).toBe('prices-eu');
+    expect((await call('PATCH', 'missing', { config: { price_list_id: 'rejected' } })).status).toBe(404);
+    expect((await call('PATCH', 'redesign', { status: 'disabled' })).status).toBe(400);
+    expect((await call('DELETE', 'redesign')).status).toBe(400);
+    expect((await (await call('GET', 'main')).json()).installation.status).toBe('enabled');
+    const listing = await import('../../pages/api/v1/sites/[siteId]/extensions');
+    const listed = await listing.GET({ request: new Request(`https://portal.example/api/v1/sites/${SITE}/extensions?version=redesign`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }), params: { siteId: SITE } } as never);
+    expect((await listed.json()).extensions[0].config.price_list_id).toBe('branch-prices');
   });
 
   it('updates installation config through the bearer-authenticated v1 route', async () => {

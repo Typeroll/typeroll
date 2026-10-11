@@ -9,7 +9,7 @@ import { safeReturnPath } from '../lib/return-path';
 // or back to the application page that asked them to sign in again.
 const next = safeReturnPath(Astro.url.searchParams.get('next'));
 const session = await getSession(Astro.cookies);
-if (session) return Astro.redirect(session.orgId ? next ?? '/app' : '/onboarding');
+if (session) return Astro.redirect(session.orgId ? next ?? '/app' : next?.startsWith('/onboarding') ? next : `/onboarding${next ? `?next=${encodeURIComponent(next)}` : ''}`);
 
 const firebaseReady = isFirebaseConfigured();
 const devAuthEnabled = isDevAuthEnabled();
@@ -17,7 +17,7 @@ const devAuthEnabled = isDevAuthEnabled();
 <MarketingLayout title="Sign in — Typeroll">
   <section class="container--narrow" style="padding: 4rem 1.5rem;">
     <div class="card stack">
-      <h1 style="font-size: 1.5rem;">Sign in to Typeroll</h1>
+      <h1 style="font-size: 1.5rem;">Welcome to Typeroll</h1>
       {firebaseReady ? (
         <LoginForm client:load next={next} />
       ) : devAuthEnabled ? (

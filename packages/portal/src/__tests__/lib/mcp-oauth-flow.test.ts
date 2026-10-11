@@ -13,6 +13,8 @@ beforeAll(() => {
   process.env.PORTAL_PUBLIC_URL = 'https://portal.test';
 });
 
+beforeEach(async () => { makeTmpFixtures(); await resetDatastore(); });
+
 const ORG = 'default';
 const SITE = 'mysite';
 
@@ -33,6 +35,17 @@ async function setupSiteAndKey(): Promise<{ apiKey: string }> {
 }
 
 describe('OAuth shim — DCR', () => {
+  it('advertises only the supported public client method and refuses secret authentication', async () => {
+    const metadata = await import('../../pages/.well-known/oauth-authorization-server');
+    const response = await metadata.GET({ request: new Request('https://portal.test/.well-known/oauth-authorization-server') } as any) as Response;
+    expect((await response.json()).token_endpoint_auth_methods_supported).toEqual(['none']);
+    const register = await import('../../pages/api/mcp/oauth/register');
+    const denied = await register.POST({ request: new Request('https://portal.test/api/mcp/oauth/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ redirect_uris: ['https://client.test/callback'], token_endpoint_auth_method: 'client_secret_post' }),
+    }) } as any) as Response;
+    expect(denied.status).toBe(400);
+    expect((await denied.json()).error).toBe('invalid_client_metadata');
+  });
   it('returns a signed client_id binding redirect_uris', async () => {
     const mod = await import('../../pages/api/mcp/oauth/register');
     const req = new Request('https://portal.test/api/mcp/oauth/register', {
@@ -87,7 +100,8 @@ describe('OAuth shim — /authorize redirect binding', () => {
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('client_id', clientId);
     url.searchParams.set('redirect_uri', 'https://evil.example/cb');
-    url.searchParams.set('code_challenge', 'xyz');
+    url.searchParams.set('code_challenge', 'a'.repeat(43));
+    url.searchParams.set('code_challenge_method', 'S256');
     const res = await (mod.GET as APIRoute)({ url, request: new Request(url) } as any) as Response;
     expect(res.status).toBe(400);
     const data = await res.json();
@@ -104,11 +118,12 @@ describe('OAuth shim — /authorize redirect binding', () => {
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('client_id', tampered);
     url.searchParams.set('redirect_uri', 'https://claude.ai/api/mcp/auth_callback');
-    url.searchParams.set('code_challenge', 'xyz');
+    url.searchParams.set('code_challenge', 'a'.repeat(43));
+    url.searchParams.set('code_challenge_method', 'S256');
     const res = await (mod.GET as APIRoute)({ url, request: new Request(url) } as any) as Response;
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error).toBe('invalid_client');
+    expect(data.error).toBe('invalid_request');
   });
 
   it('accepts an /authorize request when redirect_uri matches a registered URI', async () => {
@@ -119,7 +134,8 @@ describe('OAuth shim — /authorize redirect binding', () => {
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('client_id', clientId);
     url.searchParams.set('redirect_uri', 'https://claude.ai/api/mcp/auth_callback');
-    url.searchParams.set('code_challenge', 'xyz');
+    url.searchParams.set('code_challenge', 'a'.repeat(43));
+    url.searchParams.set('code_challenge_method', 'S256');
     const res = await (mod.GET as APIRoute)({ url, request: new Request(url) } as any) as Response;
     expect(res.status).toBe(302);
     expect(res.headers.get('Location')).toContain('/mcp/consent');
@@ -140,7 +156,8 @@ describe('OAuth shim — /authorize redirect binding', () => {
     url.searchParams.set('response_type', 'code');
     url.searchParams.set('client_id', clientId);
     url.searchParams.set('redirect_uri', 'https://claude.ai/api/mcp/auth_callback');
-    url.searchParams.set('code_challenge', 'xyz');
+    url.searchParams.set('code_challenge', 'a'.repeat(43));
+    url.searchParams.set('code_challenge_method', 'S256');
     const res = await (mod.GET as APIRoute)({ url, request: new Request(url) } as any) as Response;
     expect(res.status).toBe(302);
     const location = res.headers.get('Location') ?? '';
@@ -153,7 +170,7 @@ describe('OAuth shim — /authorize redirect binding', () => {
     expect(onSelfHost.pathname).toBe('/mcp/consent');
     // Query params from the /authorize request are preserved for the form POST.
     expect(onSelfHost.searchParams.get('client_id')).toBe(clientId);
-    expect(onSelfHost.searchParams.get('code_challenge')).toBe('xyz');
+    expect(onSelfHost.searchParams.get('code_challenge')).toBe('a'.repeat(43));
   });
 });
 
@@ -373,17 +390,8 @@ describe('OAuth shim — /complete defense-in-depth binding', () => {
       url: new URL(req.url),
     } as any) as Response;
 
-    // Bounces back to the consent page with an error param — never 302s to
-    // the attacker's host. The Location is relative (same-origin), so it can't
-    // navigate off the portal regardless of host; it preserves the form params
-    // so the user can retry, and no `code` was minted.
-    expect(res.status).toBe(302);
-    const location = res.headers.get('Location') ?? '';
-    expect(location.startsWith('/mcp/consent?')).toBe(true);
-    const locationUrl = new URL(location, 'https://portal.test');
-    expect(locationUrl.pathname).toBe('/mcp/consent');
-    expect(locationUrl.searchParams.get('code')).toBeNull();
-    expect(locationUrl.searchParams.get('error')).toMatch(/tampered/i);
+    expect(res.status).toBe(403);
+    expect(res.headers.get('Location')).toBeNull();
   });
 });
 

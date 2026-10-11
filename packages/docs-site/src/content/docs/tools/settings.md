@@ -303,3 +303,15 @@ mobile defaults or theme typography thresholds. Set the menu threshold separatel
 when it must match, and use explicit responsive `cols` for exact listing columns.
 Check one pixel below and at each threshold, including fractional widths for
 visibility. Do not hide layout overflow to make a test pass.
+
+## Scripts in previews
+
+Script-enabled signed previews include `scripts_head` and `scripts_body_end`
+from the selected version, as the static renderer does. They run in an
+opaque-origin sandbox and cannot access the portal session or storage. A widget
+that requires a real first-party origin may still need a test publication.
+Script-disabled preview surfaces omit these snippets. Custom scripts may make
+external requests, including analytics calls; only add code you intend to run
+in previews. Typeroll's built-in analytics remain excluded from previews.
+For a widget on one page, use a page-local `core/embed` block instead of a
+site-wide script with a pathname condition.

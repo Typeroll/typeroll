@@ -273,6 +273,8 @@ function respond(
 /** The site's language for visitor-facing messages; English when unset. */
 async function siteLanguage(store: ReturnType<typeof getStore>, orgId: string, siteId: string): Promise<string> {
   try {
+    const settings = await store.getDoc<{ language?: string }>(paths.settings(orgId, siteId));
+    if (typeof settings?.language === 'string' && settings.language) return settings.language;
     const site = await store.getDoc<{ language?: string }>(paths.site(orgId, siteId));
     if (typeof site?.language === 'string' && site.language) return site.language;
   } catch { /* en */ }

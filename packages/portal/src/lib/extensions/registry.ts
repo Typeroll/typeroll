@@ -13,6 +13,7 @@ import {
   type ExtensionVersion,
 } from '@typeroll/shared';
 import { getStore, generateDocId } from '../datastore';
+import { saveExtensionPublicConfig, versionedExtensionInstallation } from './version-config';
 import { buildExtensionConfig } from './config';
 import { provisionExtensionBlocks } from './provision';
 import { isForwardRelease, requiresExplicitActivation, resolveExtensionVersion } from './resolution';
@@ -461,6 +462,7 @@ export async function setExtensionInstallationStatus(args: {
 }
 
 export async function updateExtensionInstallation(args: {
+  siteVersionId?: string;
   ownerOrgId: string;
   siteId: string;
   installationId: string;
@@ -471,9 +473,23 @@ export async function updateExtensionInstallation(args: {
 }): Promise<ExtensionInstallation> {
   const store = getStore();
   const installationPath = paths.extensionInstallation(args.ownerOrgId, args.siteId, args.installationId);
-  const current = await store.getDoc<ExtensionInstallation>(installationPath);
+  let current = await store.getDoc<ExtensionInstallation>(installationPath);
   if (!current) throw new ExtensionRegistryError('Installation not found', 404);
   if (current.status === 'revoked') throw new ExtensionRegistryError('Installation is revoked', 409);
+  if (args.siteVersionId && args.siteVersionId !== 'main') {
+    if (args.version !== undefined || args.grantedScopes !== undefined || !args.config) {
+      throw new ExtensionRegistryError('Only public configuration can change on a site version. Manage releases and permissions on main.');
+    }
+    const release = (await resolveExtensionVersion(current)).version;
+    if (!release) throw new ExtensionRegistryError('No compatible Extension release is available', 409);
+    let next: ExtensionInstallation;
+    try { next = await saveExtensionPublicConfig(current, release.manifest.config_schema, args.config, args.siteVersionId); }
+    catch (error) { throw new ExtensionRegistryError(error instanceof Error ? error.message : 'Invalid version configuration'); }
+    await recordExtensionAudit({ ownerOrgId: args.ownerOrgId, siteId: args.siteId,
+      extensionId: current.extension_id, installationId: current.id, action: 'extension.config_updated',
+      actorId: args.actorId, metadata: { site_version: args.siteVersionId } });
+    return next;
+  }
   const developerOwned = current.developer_org_id === current.owner_org_id;
   const resolvedVersion = args.version ? null : (await resolveExtensionVersion(current)).version;
   const nextVersionName = args.version ?? resolvedVersion?.version ?? current.version;
@@ -501,6 +517,7 @@ export async function updateExtensionInstallation(args: {
   if (args.grantedScopes?.some((scope) => !requested.has(scope))) {
     throw new ExtensionRegistryError('Granted scopes must be requested by the manifest');
   }
+  current = await versionedExtensionInstallation(current, nextVersion.manifest.config_schema);
   const config = buildExtensionConfig(nextVersion.manifest.config_schema, args.config ?? {}, current);
   if (typeof config === 'string') throw new ExtensionRegistryError(config);
   const previousVersion = current.version !== nextVersionName ? current.version : current.previous_version;
@@ -521,6 +538,7 @@ export async function updateExtensionInstallation(args: {
   }
   const { id: _id, ...body } = next;
   await store.setDoc(installationPath, body);
+  await saveExtensionPublicConfig(next, nextVersion.manifest.config_schema, config.public_config, 'main');
   if (next.status === 'enabled') await provisionExtensionBlocks(args.ownerOrgId, args.siteId, next, nextVersion.manifest, true);
   await recordExtensionAudit({
     ownerOrgId: args.ownerOrgId,

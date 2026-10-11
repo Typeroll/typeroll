@@ -1,3 +1,4 @@
+import { limitAuthRequest } from '../../../../lib/auth-request';
 import type { APIRoute } from 'astro';
 import { json, requireSession } from '../../../../lib/access';
 import { verifyInviteToken, extractTokenFromInput } from '../../../../lib/invite';
@@ -10,6 +11,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const guard = await requireSession(cookies);
   if (!guard.ok) return guard.response;
   const session = guard.value;
+  const limited = await limitAuthRequest(`join-org:${session.userId}`, 20, 600_000);
+  if (limited) return limited;
 
   let rawToken: string;
   try {

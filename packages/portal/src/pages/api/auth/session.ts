@@ -1,19 +1,30 @@
 import type { APIRoute } from 'astro';
-import { setSessionFromIdToken, isFirebaseConfigured } from '../../../lib/auth';
+import { isFirebaseConfigured, setSessionFromIdToken } from '../../../lib/auth';
+import { authClientAddress, limitAuthRequest, requireAuthOrigin, readAuthBody } from '../../../lib/auth-request';
 
-export const POST: APIRoute = async ({ request, cookies }) => {
-  if (!isFirebaseConfigured()) {
-    return new Response(JSON.stringify({ error: 'Firebase not configured' }), { status: 500 });
-  }
-  const { idToken } = (await request.json()) as { idToken: string };
-  if (!idToken) return new Response(JSON.stringify({ error: 'Missing idToken' }), { status: 400 });
+export const prerender = false;
+const json = (body: unknown, status: number) => new Response(JSON.stringify(body), {
+  status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+});
 
+export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
+  const origin = requireAuthOrigin(request);
+  if (origin) return origin;
+  const limited = await limitAuthRequest(`session:${authClientAddress(request, clientAddress)}`);
+  if (limited) return limited;
+  if (!isFirebaseConfigured()) return json({ error: 'Sign-in is currently unavailable.' }, 503);
+  let body: unknown;
+  try {
+    const text = await readAuthBody(request, 16_384);
+    if (text.length > 16_384) return json({ error: 'Invalid sign-in request.' }, 400);
+    body = JSON.parse(text);
+  } catch { return json({ error: 'Invalid sign-in request.' }, 400); }
+  const idToken = (body as { idToken?: unknown } | null)?.idToken;
+  if (typeof idToken !== 'string' || !idToken || idToken.length > 12_000) return json({ error: 'Invalid sign-in request.' }, 400);
   try {
     const session = await setSessionFromIdToken(cookies, idToken);
-    return new Response(JSON.stringify({ ok: true, session }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : 'Auth failed' }), { status: 401 });
+    return json({ ok: true, session }, 200);
+  } catch {
+    return json({ error: 'Could not finish signing in. Please sign in again.' }, 401);
   }
 };

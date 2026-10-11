@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { collectStepFields, validateFieldValues, getStep, nextStep, normalizeFormAnswers, isCheckboxGroupField } from '../form-fields.js';
+import { collectStepFields, validateFieldValues, getStep, nextStep, normalizeFormAnswers, isCheckboxGroupField, fieldsToStepBlocks } from '../form-fields.js';
 import type { Block, Form } from '../types.js';
 
 const blocks: Block[] = [
@@ -95,4 +95,12 @@ describe('step navigation', () => {
     expect(nextStep(form, form.steps![1])?.id).toBe('s4'); // hoppar s3
     expect(nextStep(form, form.steps![3])).toBeUndefined();
   });
+});
+
+
+it('roundtrips custom errors and lets the native required message override required', () => {
+  const blocks = fieldsToStepBlocks([{ name: 'email', type: 'email', label: 'Email', error_messages: { required: 'Enter email', invalid_email: 'Check email' } }]);
+  expect(collectStepFields(blocks)[0].error_messages).toEqual({ required: 'Enter email', invalid_email: 'Check email' });
+  blocks[0].data.required_message = 'Ange e-post';
+  expect(collectStepFields(blocks)[0].error_messages).toEqual({ required: 'Ange e-post', invalid_email: 'Check email' });
 });

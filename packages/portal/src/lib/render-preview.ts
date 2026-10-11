@@ -114,24 +114,14 @@ export interface PreviewOptions {
    *  edits. */
   includeWorkingCopies?: boolean;
   /**
-   * Emit block JavaScript (per-type `script` + per-instance `script_fields`)
+   * Emit site script snippets and block JavaScript (per-type `script` + per-instance `script_fields`)
    * into the preview. **Defaults to OFF**, which is the opposite of the
    * published site.
    *
-   * Preview HTML renders on the PORTAL's origin, next to the session cookie,
-   * so block JS here runs with the viewer's portal authority rather than as
-   * an ordinary visitor. The read-only preview surfaces answer that with an
-   * opaque-origin sandbox (lib/preview-headers.ts); the editor iframe can't
-   * use one because inline editing and block drag-and-drop read
-   * `iframe.contentDocument`.
-   *
-   * So the editor gates on ownership instead: scripts render only when the
-   * viewer's own org owns the site (`session.orgId === owner_org_id`). An
-   * author previewing their own work sees it run; a shared-in collaborator or
-   * a platform operator viewing someone else's site gets the markup without
-   * the code, because there the author and the session holder are different
-   * people. Fully closing it means moving the editor's DOM access to
-   * postMessage — see docs/directory-app-plan.md §7c.
+   * Read-only previews use an opaque-origin response sandbox. The editor's
+   * isolated canvas uses its postMessage bridge and nested Extension host.
+   * Callers must preserve that isolation when enabling scripts. Site scripts
+   * may still contact external services, so preview is not a network sandbox.
    */
   allowScripts?: boolean;
   /** Enables the authority-free postMessage bridge used by the isolated
@@ -345,7 +335,7 @@ export async function renderPreview(
               },
             }
           : {}),
-      })
+      }, versionId)
     : '';
   const previewNavigationBridge = buildPreviewNavigationBridgeScript(opts);
   const cookieConsentHtml = opts.allowScripts === true
@@ -615,6 +605,7 @@ ${page.custom_css ? `<style data-page-css="1">${styleElementText(page.custom_css
 }
 .tr-banner a.tr-banner__btn:hover{background:#fff;color:#1f1f23}
 </style>
+${allowScripts ? settings.scripts_head ?? '' : ''}
 ${cookieConsentHtml ? `<script data-cookie-consent-early="1">${buildConsentEarlyPaintRuntime()}</script>` : ''}
 </head>
 <body${Object.entries(args.bodyAttributes ?? {}).map(([name, value]) => ` ${name}="${escapeAttr(value)}"`).join('')}>
@@ -628,6 +619,7 @@ ${blockJs ? `<script data-blocks="1">(function(){var registry={};window.Typeroll
 ${extensionRuntime ? `<script data-extension-runtime="1">${extensionRuntime}</script>` : ''}
 ${editorExtensionRuntime ? `<script data-editor-extension-runtime="1">${editorExtensionRuntime}</script>` : ''}
 ${editorCanvasId ? `<script data-editor-canvas-bridge="1">${editorCanvasBridgeScript(editorCanvasId, editorCanvasInteractive === true)}</script>` : ''}
+${allowScripts ? settings.scripts_body_end ?? '' : ''}
 ${cookieConsentHtml ?? ''}
 </body>
 </html>`;

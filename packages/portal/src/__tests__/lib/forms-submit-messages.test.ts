@@ -137,3 +137,17 @@ describe('pre-submit check failures', () => {
     }
   });
 });
+
+
+it('uses settings language and custom messages instead of the site document language', async () => {
+  const { token } = await setup('en');
+  const { getStore } = await import('../../lib/datastore');
+  await getStore().setDoc(paths.settings(ORG, SITE), { language: 'sv' });
+  const response = await runtimePost({ _token: token });
+  expect((await response.json()).errors[0].message).toBe('Name måste fyllas i');
+  const custom = structuredClone(FORM);
+  custom.steps![0].blocks![0].data.required_message = 'Ange ditt namn';
+  await getStore().setDoc(`${paths.forms(ORG, SITE)}/lead`, custom);
+  const customResponse = await runtimePost({ _token: token });
+  expect((await customResponse.json()).errors[0].message).toBe('Ange ditt namn');
+});

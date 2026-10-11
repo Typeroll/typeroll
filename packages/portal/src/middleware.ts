@@ -118,7 +118,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   if (isAppOrRoot && !ONBOARDING_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p))) {
     const session = await getSession(context.cookies);
     if (session && !session.orgId) {
-      return context.redirect('/onboarding');
+      return context.redirect(pathname === '/app' ? '/onboarding' : `/onboarding?next=${encodeURIComponent(context.url.pathname + context.url.search)}`);
     }
 
     // Rolling session refresh: Firebase caps one session cookie at 14 days,

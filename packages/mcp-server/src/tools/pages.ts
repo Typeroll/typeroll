@@ -301,10 +301,26 @@ export const pageTools: ToolDef[] = [
         author: src.author,
         json_ld: undefined,  // structured data is usually page-specific; force re-author
         template: src.template,
+        parent: src.parent,
+        custom_css: src.custom_css,
+        language: src.language,
+        image_sizes_default: src.image_sizes_default,
         status: 'draft',
       };
       if (args.slug) body.slug = args.slug;
-      // 3. Create. The server auto-uniques the slug if it clashes.
+      if (typeof src.path === 'string' && src.path) {
+        // Keep an explicit route's directory, never its old final segment.
+        // Match the API's title-derived slug. A conflicting explicit path is
+        // rejected by the API rather than silently moving the clone elsewhere.
+        const slug = (args.slug ?? args.title.toLowerCase().normalize('NFKD')
+          .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '').slice(0, 80)) || 'page';
+        body.slug = slug;
+        const segments = src.path.replace(/^\/+|\/+$/g, '').split('/');
+        segments.pop();
+        body.path = '/' + [...segments, slug.replace(/^\/+|\/+$/g, '')].join('/');
+      }
+      // 3. Create. The API auto-uniques generated routes; explicit conflicts return 409.
       const created = await client.post(siteId, 'pages', body, v(args.version));
       return ok(created);
     }),

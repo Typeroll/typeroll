@@ -17,10 +17,10 @@ interface EditorAsset {
 export async function buildExtensionEditorRuntimeScript(
   orgId: string,
   siteId: string,
-  _versionId: string,
+  versionId: string,
   canvasId: string,
 ): Promise<string> {
-  const snapshot = await buildExtensionPreviewSnapshot(orgId, siteId);
+  const snapshot = await buildExtensionPreviewSnapshot(orgId, siteId, versionId);
   if (!snapshot.installations.length) return '';
   const assets: Record<string, EditorAsset> = {};
   for (const installation of snapshot.installations) {

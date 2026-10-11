@@ -301,6 +301,8 @@ export interface Site {
 // ─── Site Settings ───────────────────────────────────────────────────────
 
 export interface SiteSettings {
+  /** Public Extension settings follow the site version; secrets and grants remain site-wide. */
+  extension_public_config?: Record<string, Record<string, unknown>>;
   site_name: string;
   /** Exact widths for authored block styles and visibility; null restores defaults. */
   responsive_breakpoints?: import('./breakpoints.js').ResponsiveBreakpoints | null;

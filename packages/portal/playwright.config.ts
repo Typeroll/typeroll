@@ -47,6 +47,7 @@ const webServer = target.isRemote ? undefined : {
     FIREBASE_SERVICE_ACCOUNT: '',
     ANTHROPIC_API_KEY: '',
     FORMS_HMAC_SECRET: 'e2e-only-form-signing-secret-32-characters-minimum',
+    MCP_OAUTH_SIGNING_KEY: 'e2e-only-mcp-signing-secret-at-least-32-characters',
     PREVIEW_HMAC_SECRET: 'e2e-only-preview-signing-secret-32-characters-minimum',
     DEPLOY_QUEUE: 'in_process',
     TYPEROLL_FIXTURES_DIR: E2E_FIXTURES_DIR,

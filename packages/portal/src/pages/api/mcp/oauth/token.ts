@@ -1,3 +1,4 @@
+import { authClientAddress, limitAuthRequest, readAuthBody } from '../../../../lib/auth-request';
 // OAuth 2.1 /token endpoint for the MCP shim.
 //
 // Two grant types supported:
@@ -10,8 +11,8 @@
 //     key invalidates the refresh chain.
 
 import type { APIRoute } from 'astro';
-import { verifyApiToken } from '../../../../lib/api-keys';
-import { issueToken, verifyToken, exchangeAuthorizationCode } from '../../../../lib/mcp-tokens';
+import { verifyApiToken, revokeApiKey } from '../../../../lib/api-keys';
+import { issueToken, verifyToken, exchangeAuthorizationCode, consumeRefreshToken } from '../../../../lib/mcp-tokens';
 
 export const prerender = false;
 
@@ -28,7 +29,9 @@ function err(code: string, description: string, status = 400): Response {
   });
 }
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, clientAddress }) => {
+  const limited = await limitAuthRequest(`mcp-token:${authClientAddress(request, clientAddress || 'unknown')}`, 120);
+  if (limited) return limited;
   // RFC 6749 §3.2: token endpoint accepts application/x-www-form-urlencoded.
   // We tolerate JSON too because some MCP clients send that even though
   // the spec calls for form-encoded.
@@ -36,20 +39,23 @@ export const POST: APIRoute = async ({ request }) => {
   const ctype = request.headers.get('content-type') ?? '';
   if (ctype.includes('application/json')) {
     try {
-      body = (await request.json()) as Record<string, string>;
+      body = (JSON.parse(await readAuthBody(request))) as Record<string, string>;
     } catch {
       return err('invalid_request', 'Body must be JSON or x-www-form-urlencoded');
     }
   } else {
-    const form = await request.formData();
+    let form: URLSearchParams;
+    try { form = new URLSearchParams(await readAuthBody(request)); } catch { return err('invalid_request', 'Body must be JSON or x-www-form-urlencoded'); }
     body = {};
     form.forEach((v, k) => {
       body[k] = String(v);
     });
   }
 
+  if (!body || typeof body !== 'object' || Object.values(body).some(v => typeof v !== 'string')) return err('invalid_request', 'Expected string form fields');
   const grant = body.grant_type;
   const audience = publicMcpUrl(request);
+  if (body.resource && body.resource !== audience) return err('invalid_target', 'Resource does not match this MCP server');
 
   if (grant === 'authorization_code') {
     const code = body.code;
@@ -58,7 +64,7 @@ export const POST: APIRoute = async ({ request }) => {
     if (!code || !codeVerifier || !redirectUri) {
       return err('invalid_request', 'code, code_verifier, redirect_uri required');
     }
-    const apiKey = await exchangeAuthorizationCode({ code, audience, codeVerifier, redirectUri });
+    const apiKey = await exchangeAuthorizationCode({ code, audience, codeVerifier, redirectUri, clientId: body.client_id });
     if (!apiKey) return err('invalid_grant', 'Code is invalid, expired, already used, or does not match the request');
     // Re-validate the api_key so a key revoked between consent and token
     // exchange can't slip through.
@@ -66,8 +72,8 @@ export const POST: APIRoute = async ({ request }) => {
     if (!live) {
       return err('invalid_grant', 'Underlying API key has been revoked');
     }
-    const access = issueToken({ apiKey, audience, kind: 'access' });
-    const refresh = issueToken({ apiKey, audience, kind: 'refresh' });
+    const access = issueToken({ apiKey, audience, kind: 'access', clientId: body.client_id });
+    const refresh = issueToken({ apiKey, audience, kind: 'refresh', clientId: body.client_id });
     return new Response(
       JSON.stringify({
         token_type: 'Bearer',
@@ -87,16 +93,23 @@ export const POST: APIRoute = async ({ request }) => {
     if (!verified || verified.kind !== 'refresh') {
       return err('invalid_grant', 'Refresh token is invalid or expired');
     }
+    if (verified.clientId && body.client_id !== verified.clientId) return err('invalid_grant', 'Client does not match this connection');
     const live = await verifyApiToken(verified.apiKey);
     if (!live) {
       return err('invalid_grant', 'Underlying API key has been revoked');
     }
-    const access = issueToken({ apiKey: verified.apiKey, audience, kind: 'access' });
+    if (verified.clientId && !await consumeRefreshToken(verified)) {
+      await revokeApiKey(live.orgId, live.siteId, live.prefix);
+      return err('invalid_grant', 'Refresh token already used; reconnect your tool');
+    }
+    const access = issueToken({ apiKey: verified.apiKey, audience, kind: 'access', clientId: verified.clientId });
+    const refresh = verified.clientId ? issueToken({ apiKey: verified.apiKey, audience, kind: 'refresh', clientId: verified.clientId, expiresAt: verified.exp }) : null;
     return new Response(
       JSON.stringify({
         token_type: 'Bearer',
         access_token: access.token,
         expires_in: access.expiresIn,
+        ...(refresh ? { refresh_token: refresh.token } : {}),
         scope: 'mcp',
       }),
       { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } },

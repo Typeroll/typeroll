@@ -3,6 +3,7 @@ import { paths, type ExtensionInstallation } from '@typeroll/shared';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { resolveExtensionVersion } from '../../../../../../lib/extensions/resolution';
+import { versionedExtensionInstallation } from '../../../../../../lib/extensions/version-config';
 import { buildExtensionConfig } from '../../../../../../lib/extensions/config';
 import { extensionSiteOrigins } from '../../../../../../lib/extensions/public-token';
 
@@ -15,7 +16,8 @@ export const GET: APIRoute = async ({ request, params }) => {
   if (!installation || installation.status !== 'enabled') return apiError('Installation unavailable', 404);
   const version = (await resolveExtensionVersion(installation)).version;
   if (!version) return apiError('Release unavailable', 409);
-  const config = buildExtensionConfig(version.manifest.config_schema, {}, installation);
+  const effective = await versionedExtensionInstallation(installation, version.manifest.config_schema, ctx.versionId);
+  const config = buildExtensionConfig(version.manifest.config_schema, {}, effective);
   if (typeof config === 'string') return apiError('Installation configuration is invalid', 409);
   const response = apiResponse(ctx, { installation_id: installation.id, extension_id: installation.extension_id, version: version.version,
     status: installation.status, config: { ...config.public_config, ...config.private_config },

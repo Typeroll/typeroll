@@ -105,8 +105,10 @@ export async function setSessionFromIdToken(
   const app = await getFirebaseAdminApp();
 
   const expiresIn = SESSION_LIFETIME_MS;
+  const decoded = await getAuth(app).verifyIdToken(idToken, true);
+  const age = Date.now() / 1000 - decoded.auth_time;
+  if (!Number.isFinite(age) || age < -60 || age > 300) throw new Error('Recent sign-in required');
   const sessionCookie = await getAuth(app).createSessionCookie(idToken, { expiresIn });
-  const decoded = await getAuth(app).verifyIdToken(idToken);
 
   cookies.set(SESSION_COOKIE, sessionCookie, {
     httpOnly: true,
