@@ -30,7 +30,7 @@ release. See the [model guide](https://typeroll.com/docs/tools/content-types/) a
 - **Remote MCP — enter a URL.** Use a client with Streamable HTTP support
   and OAuth or bearer-header authentication. The Cloud endpoint is
   `https://app.typeroll.com/api/mcp`; self-hosted portals use
-  `https://<your-portal-host>/api/mcp`. On Core 0.2.76+, sign in to the portal,
+  `https://<your-portal-host>/api/mcp`. On Core 0.2.77+, sign in to the portal,
   choose an Organization and Site scope, and approve access. No key needs to
   be copied. The approving user must be an Organization owner or administrator.
   Revoke the resulting **MCP: [client host]** entry in the corresponding API
