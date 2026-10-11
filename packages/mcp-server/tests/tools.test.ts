@@ -482,3 +482,26 @@ it('retries verification with the same job and version without requesting a buil
   await find(deployTools, 'retry_deploy_verification').handler({ job_id: 'same-job', version: 'main' } as never, { client, siteId });
   expect(calls).toEqual([{ method: 'POST', url: 'https://example.test/api/v1/sites/mysite/deploy?version=main', body: JSON.stringify({ retry_verification_job_id: 'same-job' }) }]);
 });
+
+
+describe('clone_page route and presentation preservation', () => {
+  it.each([
+    ['/offers/summer/', 'autumn', '/offers/autumn'],
+    ['/offers/summer', undefined, '/offers/hosterbjudande'],
+    ['/', 'copy', '/copy'],
+    [undefined, 'copy', undefined],
+  ])('clones %s without reusing the source route', async (path, slug, expectedPath) => {
+    const source = { path, parent: 'offers', custom_css: '.offer{color:red}', language: 'sv',
+      image_sizes_default: '50vw', content_mode: 'blocks', blocks: [], template: 'offer',
+      content_type: 'offer', fields: { price: 100 }, status: 'published', canonical_url: 'https://old.test/', json_ld: '{}' };
+    const { client, siteId, calls } = setup(req => jsonResponse(req.method === 'GET' ? { page: source } : { page: { id: 'copy' } }));
+    const result = await find(pageTools, 'clone_page').handler({ source_page_id: 'source', title: 'Hösterbjudande', slug, version: 'design' } as never, { client, siteId });
+    expect(result.isError).toBeFalsy();
+    const body = JSON.parse(calls[1].body!);
+    expect(body.path).toBe(expectedPath);
+    expect(body).toMatchObject({ parent: 'offers', custom_css: source.custom_css, language: 'sv', image_sizes_default: '50vw', template: 'offer', fields: { price: 100 }, status: 'draft' });
+    expect(body).not.toHaveProperty('canonical_url');
+    expect(body).not.toHaveProperty('json_ld');
+    expect(calls.every(call => call.url.endsWith('?version=design'))).toBe(true);
+  });
+});

@@ -52,7 +52,8 @@ const frameName = `tr-extension-${installationId}-${pageId}`;
       </div>
       <a class="btn btn--secondary" href={`/app/sites/${site.id}/settings/extensions`}>Extension settings</a>
     </div>
-    {native ? <div data-native-admin data-site-id={site.id} data-installation-id={installation.id} data-page-id={page.id}>Loading app…</div> : <>
+    {ctx.versionId !== 'main' && <p class="alert">Editing public configuration for version <strong>{ctx.versionId}</strong>. Credentials, permissions and provider-owned data remain shared. Publish this version to test, then promote it to main.</p>}
+    {native ? <div data-native-admin data-site-version={ctx.versionId} data-site-id={site.id} data-installation-id={installation.id} data-page-id={page.id}>Loading app…</div> : <>
     <iframe
       name={frameName}
       title={page.label}

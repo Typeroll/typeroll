@@ -11,6 +11,7 @@ import { formEmbedInfo, POW_BITS } from '../forms-signing';
 import { extensionBlockTypeId, provisionExtensionBlocks } from './provision';
 import { resolveExtensionVersion } from './resolution';
 import { buildExtensionConfig } from './config';
+import { versionedExtensionInstallation } from './version-config';
 
 function assetBase(extensionId: string, version: string, componentId: string): string {
   const safe = (value: string) => value.replace(/[^A-Za-z0-9_.-]+/g, '-');
@@ -20,7 +21,7 @@ function assetBase(extensionId: string, version: string, componentId: string): s
 export async function buildExtensionRuntimeSnapshot(
   orgId: string,
   siteId: string,
-  options: { reconcileBlocks?: boolean; strict?: boolean } = {},
+  options: { reconcileBlocks?: boolean; strict?: boolean; versionId?: string } = {},
 ): Promise<ExtensionRuntimeSnapshot> {
   const store = getStore();
   const installations = await store.listDocs<ExtensionInstallation>(paths.extensionInstallations(orgId, siteId));
@@ -38,7 +39,8 @@ export async function buildExtensionRuntimeSnapshot(
     } catch {
       console.warn(`Could not reconcile editor blocks for Extension ${installation.extension_id}`);
     }
-    const config = buildExtensionConfig(version.manifest.config_schema, {}, installation);
+    const effective = await versionedExtensionInstallation(installation, version.manifest.config_schema, options.versionId);
+    const config = buildExtensionConfig(version.manifest.config_schema, {}, effective);
     if (typeof config === 'string') throw new Error('An enabled Extension has invalid configuration for its published release');
     const handoffGranted = installation.granted_scopes.includes('page_handoff:read');
     const components: PublicExtensionComponent[] = (version.manifest.frontend?.components ?? []).map(({ page_handoff, ...component }) => {

@@ -790,3 +790,13 @@ describe('native presentation metadata', () => {
   });
 
 });
+
+
+it('read_page exposes the saved parent and presentation needed by cloning', async () => {
+  const { token } = await setup();
+  const { getStore } = await import('../../lib/datastore');
+  await getStore().setDoc(paths.page(ORG, SITE, 'source'), { title: 'Source', slug: 'source', path: '/offers/source', parent: 'offers', custom_css: '.offer{color:red}', status: 'draft', content_mode: 'html', html_content: '<p>Source</p>' });
+  const response = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/[pageId]'), 'GET', `http://localhost/api/v1/sites/${SITE}/pages/source`, { siteId: SITE, pageId: 'source' }, { headers: bearer(token) });
+  expect(response.status).toBe(200);
+  expect((await response.json()).page).toMatchObject({ parent: 'offers', path: '/offers/source', custom_css: '.offer{color:red}' });
+});

@@ -182,12 +182,13 @@ function previewErrors(step,fd){var errs=[];((step&&step.fields)||[]).forEach(fu
   }
   if(code)errs.push({field:f.name,code:code,message:(f.messages&&f.messages[code])||code});
 });return errs}
+function revealDone(region){var done=$(".form-done",region)||region;if(!done.hasAttribute("tabindex"))done.setAttribute("tabindex","-1");if(done.focus)done.focus({preventScroll:true});if(done.scrollIntoView)done.scrollIntoView({block:"center",behavior:"auto"})}
 function previewDone(form){
   var region=wrapOf(form)||form,notice=$(".form-preview-notice",form),redirect=form.getAttribute("data-redirect")||"";
   var done=document.createElement("div");done.className="form-done";done.setAttribute("role","status");
   if(redirect)done.textContent=msg(form,"redirect","Preview – would redirect to")+" "+redirect;
   else done.innerHTML=msg(form,"done","Thanks!");
-  region.replaceChildren();if(notice)region.append(notice);region.append(done);
+  region.replaceChildren();if(notice)region.append(notice);region.append(done);revealDone(region);
 }
 function previewSubmit(form){
   var visible=$all("[data-form-step]",form).filter(function(el){return !el.hidden})[0];
@@ -270,6 +271,7 @@ function init(form){
         if(/^(https?:\/\/|\/(?![\/\\]))/i.test(redirect)){location.assign(redirect);return}
         var region=form.closest("[data-tr-form]")||form;
         if(out.message){region.replaceChildren();var message=document.createElement("div");message.className="form-done";message.setAttribute("role","status");message.textContent=out.message;region.append(message)}else if(out.html){region.innerHTML=out.html}else{region.innerHTML='<div class="form-done" role="status">'+msg(form,"done","Thanks!")+"</div>"}
+        revealDone(region);
         return;
       }
       if(out.html)goToDynamic(form,out.html,out);

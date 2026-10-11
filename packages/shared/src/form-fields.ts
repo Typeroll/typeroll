@@ -52,6 +52,13 @@ export function collectStepFields(blocks: Block[] | undefined): FormField[] {
             pattern: typeof d.pattern === 'string' ? d.pattern : undefined,
             min: typeof d.min === 'number' ? d.min : undefined,
             max: typeof d.max === 'number' ? d.max : undefined,
+            error_messages: {
+              ...Object.fromEntries(Object.entries(
+                d.error_messages && typeof d.error_messages === 'object' && !Array.isArray(d.error_messages)
+                  ? d.error_messages : {},
+              ).filter(([key, value]) => ['required', 'invalid_email', 'pattern', 'min', 'max', 'invalid_boolean'].includes(key) && typeof value === 'string' && value.trim())),
+              ...(typeof d.required_message === 'string' && d.required_message.trim() ? { required: d.required_message } : {}),
+            },
           });
         }
       }
@@ -264,6 +271,7 @@ export function fieldsToStepBlocks(fields: FormField[]): Block[] {
       label: f.label,
       ...(f.placeholder ? { placeholder: f.placeholder } : {}),
       ...(f.required !== undefined ? { required: f.required } : {}),
+      ...(f.error_messages ? { error_messages: { ...f.error_messages } } : {}),
     };
     const choices = (f.options ?? []).map((o) => ({ value: o, label: o }));
     switch (f.type) {
@@ -282,7 +290,7 @@ export function fieldsToStepBlocks(fields: FormField[]): Block[] {
         ? { id, type: 'form/checkbox_group', data: { ...base, choices } }
         : { id, type: 'form/toggle', data: base };
       case 'hidden': return { id, type: 'form/hidden', data: { name: f.name, value: String(f.default ?? '') } };
-      case 'gdpr_consent': return { id, type: 'form/consent', data: { name: f.name, text: f.label } };
+      case 'gdpr_consent': return { id, type: 'form/consent', data: { ...base, text: f.label } };
       case 'url': return { id, type: 'form/url', data: base };
       case 'text':
       default:

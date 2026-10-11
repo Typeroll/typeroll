@@ -42,6 +42,7 @@ function project(p: Page, hasUnsaved: boolean): Record<string, unknown> {
     title: p.title,
     slug: p.slug,
     path: p.path,
+    parent: p.parent,
     content_type: p.content_type ?? 'page',
     fields: p.fields ?? {},
     status: p.status,

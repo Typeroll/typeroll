@@ -5,8 +5,9 @@ import {
   type ExtensionScope,
   type TrustedExtensionIssuer,
 } from '@typeroll/shared';
-import { json, requirePermission, requireSiteAccess } from '../../../../../lib/access';
+import { json, requirePermission, requireSiteAccess, resolveRequestedVersion, unknownVersionResponse } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
+import { versionedExtensionInstallation } from '../../../../../lib/extensions/version-config';
 import { maskExtensionConfig } from '../../../../../lib/extensions/config';
 import { ExtensionRegistryError, installExtension } from '../../../../../lib/extensions/registry';
 import { extensionBlockTypeId, provisionExtensionBlocks } from '../../../../../lib/extensions/provision';
@@ -14,16 +15,19 @@ import { extensionIssuer } from '../../../../../lib/extensions/auth';
 import { trustedExtensionIssuerId } from '../../../../../lib/extensions/trust-pairing';
 import { resolveExtensionVersion } from '../../../../../lib/extensions/resolution';
 
-export const GET: APIRoute = async ({ cookies, params, locals }) => {
+export const GET: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
   const admin = requirePermission(guard.value, 'admin');
   if (!admin.ok) return admin.response;
   const { owner_org_id, site } = guard.value;
+  const selected = await resolveRequestedVersion(owner_org_id, site.id, new URL(request.url).searchParams.get('version') ?? guard.value.versionId);
+  if (!selected.ok) return unknownVersionResponse(selected.requested);
   const installations = await getStore().listDocs<ExtensionInstallation>(paths.extensionInstallations(owner_org_id, site.id));
   const safe = await Promise.all(installations.map(async (installation) => {
     const resolution = await resolveExtensionVersion(installation);
     const version = resolution.version;
+    installation = await versionedExtensionInstallation(installation, version?.manifest.config_schema, selected.versionId);
     if (version && installation.status === 'enabled') {
       try {
         await provisionExtensionBlocks(owner_org_id, site.id, installation, version.manifest, true);
@@ -81,6 +85,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!guard.ok) return guard.response;
   const admin = requirePermission(guard.value, 'admin');
   if (!admin.ok) return admin.response;
+  if (guard.value.versionId !== 'main') return json({ error: 'Install Extensions on main.' }, 400);
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return json({ error: 'Invalid JSON body' }, 400);
   try {

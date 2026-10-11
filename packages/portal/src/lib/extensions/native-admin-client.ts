@@ -6,7 +6,7 @@ export interface AdminDescriptor {
 
 export interface PortalAppSdk {
   version: 1;
-  context: Readonly<Omit<AdminDescriptor, 'token' | 'expires_at' | 'native'>>;
+  context: Readonly<Omit<AdminDescriptor, 'token' | 'expires_at' | 'native'> & { site_version: string }>;
   signal: AbortSignal;
   request(path: string, options?: { method?: string; body?: unknown }): Promise<unknown>;
   configuration: { read(): Promise<Record<string, unknown>>; save(config: Record<string, unknown>): Promise<void> };
@@ -43,9 +43,10 @@ export async function verifiedModuleSource(response: Response, expected: string)
 }
 
 export async function mountNativeAdmin(root: HTMLElement): Promise<() => void> {
-  const { siteId, installationId, pageId } = root.dataset;
+  const { siteId, installationId, pageId, siteVersion = 'main' } = root.dataset;
   if (!siteId || !installationId || !pageId) throw Error('Missing app context');
   const endpoint = `/api/sites/${encodeURIComponent(siteId)}/extensions/${encodeURIComponent(installationId)}`;
+  const configEndpoint = `${endpoint}?version=${encodeURIComponent(siteVersion)}`;
   const abort = new AbortController(); let dirty = false; let cleanup: (() => void) | undefined;
   const beforeUnload = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = ''; } };
   const links = (event: MouseEvent) => {
@@ -79,7 +80,7 @@ export async function mountNativeAdmin(root: HTMLElement): Promise<() => void> {
     const content = document.createElement('div'); root.replaceChildren(notices, content);
     const sdk: PortalAppSdk = {
       version: 1, context: Object.freeze({ issuer: initial.issuer, org_id: initial.org_id, site_id: siteId,
-        installation_id: installationId, version: initial.version, permission: initial.permission }), signal: abort.signal,
+        installation_id: installationId, version: initial.version, site_version: siteVersion, permission: initial.permission }), signal: abort.signal,
       async request(path, options = {}) {
         const current = await checkedSession();
         return readJson(await fetch(appApiUrl(current.native.api_base_url, path), {
@@ -89,10 +90,10 @@ export async function mountNativeAdmin(root: HTMLElement): Promise<() => void> {
         }));
       },
       configuration: {
-        async read() { await checkedSession(); return (await readJson(await fetch(endpoint, { signal: abort.signal, redirect: 'error' }))).config; },
+        async read() { await checkedSession(); return (await readJson(await fetch(configEndpoint, { signal: abort.signal, redirect: 'error' }))).config; },
         async save(config) {
           await checkedSession();
-          await readJson(await fetch(endpoint, { method: 'PATCH', signal: abort.signal, redirect: 'error',
+          await readJson(await fetch(configEndpoint, { method: 'PATCH', signal: abort.signal, redirect: 'error',
             headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config }) }));
           dirty = false;
         },

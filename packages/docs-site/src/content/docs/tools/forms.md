@@ -287,3 +287,13 @@ Every submission passes three checks before it's accepted:
 The `submit_token` embedded in the form HTML expires after 24 hours. For forms on
 long-cached static pages, the AI agent can fetch a fresh token and redeploy. On the
 hosted plan, token refresh is automatic.
+
+## Validation messages and completion
+
+Validation uses the site's Settings language. Each native form field can set
+`required_message`; API field definitions can supply `error_messages` keyed by
+`required`, `invalid_email`, `pattern`, `min`, `max` or `invalid_boolean`.
+Custom messages survive conversion to native blocks and work in preview too.
+After completion, the browser focuses and scrolls to the confirmation. The
+site's sticky-header clearance still applies; `--form-done-scroll-margin`
+(default `1rem`) adds optional spacing above it.

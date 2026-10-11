@@ -9,10 +9,10 @@ describe('Extension installation MCP tools', () => {
     const read = extensionTools.find((tool) => tool.name === 'read_extension_installation')!;
 
     await list.handler({}, { client, siteId: 'site-a' });
-    expect(get).toHaveBeenCalledWith('site-a', 'extensions');
+    expect(get).toHaveBeenCalledWith('site-a', 'extensions', { version: undefined });
 
     await read.handler({ installation_id: 'install/a' }, { client, siteId: 'site-a' });
-    expect(get).toHaveBeenCalledWith('site-a', 'extensions/install%2Fa');
+    expect(get).toHaveBeenCalledWith('site-a', 'extensions/install%2Fa', { version: undefined });
   });
 
   it('patches schema-defined installation config and deploys by default', async () => {
@@ -37,6 +37,7 @@ describe('Extension installation MCP tools', () => {
       'site-a',
       'extensions/install%2Fa',
       { config },
+      { version: undefined },
     );
     expect(post).toHaveBeenCalledWith('site-a', 'deploy', { environment: 'production' });
     expect(result.content[0].text).toContain('"redeploy_required": true');
@@ -66,4 +67,17 @@ it('explicit release activation only patches the selected installation and never
   await tool.handler({ installation_id: 'install/a', version: '2.0.0', config: { endpoint: 'new' } }, { client, siteId: 'one' } as any);
   expect(client.patch).toHaveBeenCalledWith('one', 'extensions/install%2Fa', { version: '2.0.0', config: { endpoint: 'new' } });
   expect(client.post).not.toHaveBeenCalled();
+});
+
+
+it('keeps branch configuration reads, writes and publication on that branch', async () => {
+  const client = { get: vi.fn().mockResolvedValue({}), patch: vi.fn().mockResolvedValue({}), post: vi.fn().mockResolvedValue({}) };
+  const ctx = { client, siteId: 'site-a' } as any;
+  await extensionTools.find(t => t.name === 'list_extension_installations')!.handler({ version: 'redesign' }, ctx);
+  await extensionTools.find(t => t.name === 'read_extension_installation')!.handler({ installation_id: 'inst', version: 'redesign' }, ctx);
+  await extensionTools.find(t => t.name === 'update_extension_installation_config')!.handler({ installation_id: 'inst', version: 'redesign', config: { heading: 'Test' } }, ctx);
+  expect(client.get).toHaveBeenCalledWith('site-a', 'extensions', { version: 'redesign' });
+  expect(client.get).toHaveBeenCalledWith('site-a', 'extensions/inst', { version: 'redesign' });
+  expect(client.patch).toHaveBeenCalledWith('site-a', 'extensions/inst', { config: { heading: 'Test' } }, { version: 'redesign' });
+  expect(client.post).toHaveBeenCalledExactlyOnceWith('site-a', 'deploy', { environment: 'staging', version: 'redesign' });
 });

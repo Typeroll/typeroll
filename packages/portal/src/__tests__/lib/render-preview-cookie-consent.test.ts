@@ -67,3 +67,20 @@ describe('renderPreview — branch cookie consent parity', () => {
     expect(html).not.toContain('window.previewOptional');
   });
 });
+
+
+it('includes site script snippets only in script-enabled previews', async () => {
+  await seed();
+  const { getStore } = await import('../../lib/datastore');
+  await getStore().setDoc(paths.settings(ORG, SITE), { scripts_head: '<script>window.headWidget=true</script>', scripts_body_end: '<script>window.endWidget=true</script>' });
+  const { renderPreview } = await import('../../lib/render-preview');
+  const on = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID, { allowScripts: true });
+  if (!on) throw new Error('Preview was not rendered');
+  expect(on).toContain('window.headWidget');
+  expect(on).toContain('window.endWidget');
+  expect(on.indexOf('window.headWidget')).toBeLessThan(on.indexOf('</head>'));
+  expect(on.indexOf('window.endWidget')).toBeGreaterThan(on.indexOf('<body'));
+  const off = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID, { allowScripts: false });
+  expect(off).not.toContain('window.headWidget');
+  expect(off).not.toContain('window.endWidget');
+});

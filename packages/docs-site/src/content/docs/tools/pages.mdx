@@ -189,3 +189,13 @@ For example, a hub titled “Our complete guide to moving” may have
 Republish after changing a parent label so affected descendants update too.
 MCP 0.45.24 exposes the optional field; Cloud/self-hosted servers require Core
 0.2.28.
+
+## Clone a page
+
+`clone_page` creates a draft, preserving body, Content type, template, parent,
+custom fields, language and page CSS. For an explicit path such as
+`/offers/summer/`, `slug: "autumn"` produces `/offers/autumn/` under the site's
+trailing-slash policy. Otherwise routing follows the Content type and parent.
+An occupied explicit path returns a conflict; choose another slug.
+Canonical overrides and custom JSON-LD are not copied. Pass `version` to keep
+both the source read and clone creation in the selected site version.

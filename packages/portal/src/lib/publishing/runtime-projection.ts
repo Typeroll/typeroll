@@ -7,11 +7,11 @@ import { resolveAppFormEndpoint } from '../apps/form-endpoint';
 import { parsePublicHttpsUrl } from '../extensions/public-http';
 
 /** Reuse the same public runtime contracts as preview and managed builds. No action credentials cross this boundary. */
-export async function publicationRuntime(orgId: string, siteId: string) {
+export async function publicationRuntime(orgId: string, siteId: string, versionId = 'main') {
   const store = getStore();
   const [storedApps, storedForms, extensions] = await Promise.all([
     store.getDoc<SiteApps>(paths.apps(orgId, siteId)), store.listDocs<Form>(paths.forms(orgId, siteId)),
-    buildExtensionRuntimeSnapshot(orgId, siteId, { reconcileBlocks: false, strict: true }),
+    buildExtensionRuntimeSnapshot(orgId, siteId, { reconcileBlocks: false, strict: true, versionId }),
   ]);
   const apps = publicAppsSnapshot(storedApps ?? undefined);
   if (apps.apps?.analytics?.enabled) {

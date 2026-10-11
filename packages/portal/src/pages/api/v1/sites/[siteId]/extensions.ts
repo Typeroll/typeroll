@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { paths, type ExtensionInstallation, type ExtensionScope } from '@typeroll/shared';
 import { json } from '../../../../../lib/access';
 import { requireApiKey, withApiIdentity } from '../../../../../lib/api-auth';
+import { versionedExtensionInstallation } from '../../../../../lib/extensions/version-config';
 import { maskExtensionConfig } from '../../../../../lib/extensions/config';
 import { ExtensionRegistryError, installExtension } from '../../../../../lib/extensions/registry';
 import { getStore } from '../../../../../lib/datastore';
@@ -21,6 +22,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const safe = await Promise.all(installations.map(async (installation) => {
     const resolution = await resolveExtensionVersion(installation);
     const version = resolution.version;
+    installation = await versionedExtensionInstallation(installation, version?.manifest.config_schema, guard.value.versionId);
     return {
       ...installation,
       private_config: undefined,
@@ -43,6 +45,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   if (!canAdmin(guard.value.permission)) return withApiIdentity(guard.value, json({ error: 'Admin permission required' }, 403));
+  if (guard.value.versionId !== 'main') return withApiIdentity(guard.value, json({ error: 'Install Extensions on main.' }, 400));
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return withApiIdentity(guard.value, json({ error: 'Invalid JSON body' }, 400));
   try {

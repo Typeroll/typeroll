@@ -629,6 +629,13 @@ They are not instructions for the current model.
 - Added localized `enum_labels`, richer nested prop editing, URL pickers, and
   more precise site capability discovery.
 
+## MCP 0.38.1 — 2026-08-26
+
+- Extension publishing and iframe runtime hardening, with CLI regression tests
+  and reference architecture documentation (tag `mcp-v0.38.1`, source `1143579c`).
+- This historical entry records the standalone MCP release; current Core and
+  MCP version numbers are tracked independently in the release entries above.
+
 ## 0.38.0
 
 - Standardized the product and protocol name on **Extensions**. Manifest
@@ -708,7 +715,7 @@ Versions before 0.29.0 predate this file; see the git history and the
 
 ---
 
-## 0.32.0 — unreleased
+## 0.32.0
 
 Migration tooling for moving a whole family of sites — a WordPress multisite,
 or a set of country/language domains — without losing URLs, plus the hreflang
@@ -831,7 +838,7 @@ Query strings still can't be matched: `_redirects` keys on the path, so an old
 
 ---
 
-## 0.31.0 — unreleased
+## 0.31.0
 
 Ships the directory app and the platform primitives under it, plus the
 `Site.status` removal and build-cost accounting that were staged as 0.30.0.

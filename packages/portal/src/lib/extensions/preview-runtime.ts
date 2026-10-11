@@ -72,9 +72,10 @@ export function prepareExtensionPreviewSnapshot(
 export async function buildExtensionPreviewSnapshot(
   orgId: string,
   siteId: string,
+  versionId = 'main',
 ): Promise<ExtensionRuntimeSnapshot> {
   const snapshot = prepareExtensionPreviewSnapshot(
-    await buildExtensionRuntimeSnapshot(orgId, siteId),
+    await buildExtensionRuntimeSnapshot(orgId, siteId, { versionId }),
   );
   const installationDocs = await getStore().listDocs<ExtensionInstallation>(
     paths.extensionInstallations(orgId, siteId),
@@ -111,8 +112,9 @@ export async function buildExtensionPreviewRuntimeScript(
   orgId: string,
   siteId: string,
   hostConfig: ExtensionRuntimeHostConfig = {},
+  versionId = 'main',
 ): Promise<string> {
-  const snapshot = await buildExtensionPreviewSnapshot(orgId, siteId);
+  const snapshot = await buildExtensionPreviewSnapshot(orgId, siteId, versionId);
   if (!snapshot.installations.length) return '';
 
   for (const installation of snapshot.installations) {

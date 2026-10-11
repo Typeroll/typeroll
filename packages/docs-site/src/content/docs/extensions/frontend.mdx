@@ -307,3 +307,33 @@ Bundled components receive `context.analytics`, either null or an object with
 token, never a service credential. Respect the site's optional-consent state
 before sending. The CMS accepts only the site's configured event rules; see
 [Events and conversions](../../apps/events/).
+
+## Public configuration and site versions
+
+Schema properties declared `public: true` can be edited independently on a site
+version. The portal app's configuration editor follows the selected version.
+For automation, pass the same `version` to `list_extension_installations`,
+`read_extension_installation`, and `update_extension_installation_config`.
+REST clients use `?version=redesign` on the installation GET or PATCH endpoint:
+
+```json
+{ "config": { "heading": "Try the new introduction" } }
+```
+
+Only schema-declared public fields can change on a branch. Credentials, private
+settings, permissions, installation status and app releases remain site-wide;
+manage those on main. `version` in an installation PATCH **body** still means an
+app release; the **query parameter** selects the site version. An unknown site
+version is rejected rather than falling back to main.
+
+The public configuration follows the existing Settings copy-on-write, diff,
+reset and promotion rules. Preview and static publication resolve the selected
+version. Frozen publications retain their saved configuration. A branch edit
+never changes the main installation or publishes production: the MCP config
+tool's automatic deploy targets staging for a branch, production for main.
+Use `deploy: false` to save several edits before an explicit publication.
+
+Native portal apps access this via `sdk.configuration.read()` and `.save()`;
+`sdk.context.site_version` identifies the selected site version, while
+`sdk.context.version` is the app release. This does not branch provider-owned
+records, forms, credentials, external sessions or arbitrary app API calls.

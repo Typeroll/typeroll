@@ -27,7 +27,7 @@ export async function previewPublicationImpact(orgId: string, siteId: string, ve
   if (!previous.source_impact_snapshot || previous.version_id !== versionId) return unavailable();
   const [site, domains, organization, group, resolved, runtime, media] = await Promise.all([
     store.getDoc<Site>(paths.site(orgId, siteId)), getSiteDomains(orgId, siteId), getOrganizationDomains(orgId), siteHostingGroup(orgId, siteId),
-    resolvePublicationVersion(orgId, siteId, versionId), publicationRuntime(orgId, siteId), store.listDocs<any>(paths.media(orgId, siteId)),
+    resolvePublicationVersion(orgId, siteId, versionId), publicationRuntime(orgId, siteId, versionId), store.listDocs<any>(paths.media(orgId, siteId)),
   ]);
   const prefix = digest(`${orgId}\0${siteId}`).slice(0, 16);
   const host = versionId === 'main' && domains.desired.website_host ||

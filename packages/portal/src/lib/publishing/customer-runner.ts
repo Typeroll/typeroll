@@ -205,7 +205,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         frozen.settings.sitewide_noindex = frozen.robots_blocked || frozen.authored_noindex === true;
       } else {
         const resolved = await resolvePublicationVersion(args.orgId, args.siteId, args.versionId);
-        const publicRuntime = await publicationRuntime(args.orgId, args.siteId);
+        const publicRuntime = await publicationRuntime(args.orgId, args.siteId, args.versionId);
         // Derived data is computed from the frozen content, before rendering,
         // and frozen into the artifact alongside it. A required provider that
         // fails throws here — which is how the previous live artifact keeps

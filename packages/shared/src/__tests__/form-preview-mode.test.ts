@@ -3,7 +3,7 @@
 // and the success message or redirect behave as in production, and nothing
 // is ever sent.
 import { Window } from 'happy-dom';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { buildCoreBlockRegistry } from '../index.js';
 import { formPreviewSteps, renderFormHtml, FORM_PREVIEW_FIELD } from '../render-form.js';
 import { FORMS_RUNTIME_JS } from '../forms-runtime.js';
@@ -155,4 +155,18 @@ describe('preview runtime', () => {
       await ctx.window.happyDOM.close();
     }
   });
+});
+
+
+it('focuses and reveals the success message after preview completion', async () => {
+  const form = { ...FORM, steps: [{ id: 'one', blocks: [] }] };
+  const ctx = await mount(form);
+  try {
+    const scroll = vi.spyOn(ctx.window.HTMLElement.prototype, 'scrollIntoView');
+    await ctx.submit();
+    const done = ctx.window.document.querySelector('.form-done');
+    expect(done).toBeTruthy();
+    expect(ctx.window.document.activeElement).toBe(done);
+    expect(scroll).toHaveBeenCalledWith({ block: 'center', behavior: 'auto' });
+  } finally { await ctx.window.happyDOM.close(); }
 });
