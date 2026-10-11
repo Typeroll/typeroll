@@ -25,7 +25,7 @@ export const GET: APIRoute = async ({ request }) => {
       // Self-hosters benefit from the canonical URI being the base, so the
       // RFC 8707 `aud` claim matches whatever portal host issued the token.
       scopes_supported: ['mcp'],
-      resource_documentation: `${base}/docs/getting-started/mcp-server`,
+      resource_documentation: 'https://typeroll.com/docs/getting-started/mcp-server/',
     }),
     {
       status: 200,

@@ -6,14 +6,16 @@ import MarketingLayout from '../layouts/MarketingLayout.astro';
 import OnboardingForm from '../components/OnboardingForm.tsx';
 import OrganizationSwitcher from '../components/OrganizationSwitcher.tsx';
 import { listOrganizations } from '../lib/organization-session';
+import { safeReturnPath } from '../lib/return-path';
 import { getSession } from '../lib/auth';
 
 const session = await getSession(Astro.cookies);
 
 // No session at all → send to login.
-if (!session) return Astro.redirect('/login');
+if (!session) return Astro.redirect(`/login?next=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`);
+const next = safeReturnPath(Astro.url.searchParams.get('next'));
 
-if (session.orgId && !Astro.url.searchParams.has('add') && !Astro.url.searchParams.has('invite')) return Astro.redirect('/app');
+if (session.orgId && !Astro.url.searchParams.has('add') && !Astro.url.searchParams.has('invite')) return Astro.redirect(next ?? '/app');
 const organizations = await listOrganizations(session);
 
 // Pick up a pre-filled invite token from ?invite= so the Join tab is
@@ -31,7 +33,7 @@ const prefillToken = Astro.url.searchParams.get('invite') ?? undefined;
       </div>
       {organizations.length > 0 && <OrganizationSwitcher client:load organizations={organizations} currentOrgId={session.orgId} />}
       {session.orgId && <a href="/app">Back to dashboard</a>}
-      <OnboardingForm client:load prefillToken={prefillToken} />
+      <OnboardingForm client:load prefillToken={prefillToken} next={next} />
     </div>
   </section>
 </MarketingLayout>
