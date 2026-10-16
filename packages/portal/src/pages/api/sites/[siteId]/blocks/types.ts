@@ -6,7 +6,7 @@
 //
 // Writes go through lib/block-type-write.ts, the one write path every surface
 // shares (shared validator, version chain, rename migration). Creating,
-// changing and deleting block types needs admin permission on the site;
+// changing and deleting block types needs write permission on the site;
 // editors place block types on pages and edit their fields. A portal admin
 // is the trusted author of `script` (see lib/block-script-gate.ts).
 //
@@ -35,8 +35,8 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
+  const writeCheck = requirePermission(guard.value, 'write');
+  if (!writeCheck.ok) return writeCheck.response;
   const { site, versionId, owner_org_id } = guard.value;
   const body = await request.json().catch(() => null);
   if (!body) return json({ error: 'Invalid JSON' }, 400);
@@ -48,8 +48,8 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
 export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
+  const writeCheck = requirePermission(guard.value, 'write');
+  if (!writeCheck.ok) return writeCheck.response;
   const { session, site, versionId, owner_org_id } = guard.value;
   const id = new URL(request.url).searchParams.get('id');
   if (!id) return json({ error: 'id query param required' }, 400);
@@ -65,8 +65,8 @@ export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
 export const DELETE: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
+  const writeCheck = requirePermission(guard.value, 'write');
+  if (!writeCheck.ok) return writeCheck.response;
   const { site, versionId, owner_org_id } = guard.value;
   const id = new URL(request.url).searchParams.get('id');
   if (!id) return json({ error: 'id query param required' }, 400);

@@ -301,6 +301,8 @@ export interface Site {
 // ─── Site Settings ───────────────────────────────────────────────────────
 
 export interface SiteSettings {
+  /** Site-specific agent guidance; read live, never an authorization grant. */
+  agent_instructions?: string;
   /** Public Extension settings follow the site version; secrets and grants remain site-wide. */
   extension_public_config?: Record<string, Record<string, unknown>>;
   site_name: string;

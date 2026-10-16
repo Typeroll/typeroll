@@ -64,7 +64,7 @@ interface Props {
   /** Permalink on the deployed site (null when the site has no live base). */
   liveUrl?: string | null;
   lastDeployedAt: string | null;
-  /** Site admins may create block types ("Turn into block type…"). */
+  /** Site editors and admins may create block types ("Turn into block type…"). */
   canManageBlockTypes?: boolean;
 }
 

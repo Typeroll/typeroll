@@ -1,0 +1,36 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import { getSession } from '../../../lib/auth';
+import { listPersonalConnections } from '../../../lib/api-keys';
+import { publicMcpUrl } from '../../../lib/mcp-consent';
+const session = await getSession(Astro.cookies);
+if (!session) return Astro.redirect('/login');
+Astro.response.headers.set('Cache-Control', 'no-store');
+const connections = await listPersonalConnections(session.userId);
+const endpoint = publicMcpUrl(Astro.request);
+---
+<AppLayout title="AI connections">
+  <div class="stack" style="max-width: 760px;">
+    <h1>AI connections</h1>
+    <p>Use your usual AI assistant to work on Typeroll. In its connector settings, add this MCP server, sign in and approve access:</p>
+    <code style="overflow-wrap:anywhere;">{endpoint}</code>
+    <p>Then tell your assistant which site to work on. It confirms the organization, site and version before reading or changing content. Each conversation keeps its own selection.</p>
+    <p>Your connection follows your current access across all organizations. Editors can create pages, custom block types and shared Page templates. Administrative settings still require administrator access.</p>
+    <p><a href="https://typeroll.com/docs/guides/ai-connections/" target="_blank" rel="noopener noreferrer">Connection instructions and workflow skills ↗</a></p>
+    {Astro.url.searchParams.has('revoked') && <p role="status">Connection revoked. Its access and refresh tokens no longer work.</p>}
+    <h2>Your connections</h2>
+    {connections.length === 0 && <p class="muted">No personal AI connections yet.</p>}
+    {connections.map(connection => {
+      const expired = Date.now() >= Date.parse(connection.created_at) + 30 * 24 * 60 * 60 * 1000;
+      return <section class="card stack">
+        <h3 style="overflow-wrap:anywhere;">{connection.name}</h3>
+        <p class="muted">Created {new Date(connection.created_at).toLocaleDateString('en-GB')} · {connection.revoked_at ? 'Revoked' : expired ? 'Expired — reconnect in your AI tool' : 'Active'}</p>
+        {!connection.revoked_at && <form action="/api/account/ai-connections" method="POST">
+          <input type="hidden" name="connection_id" value={connection.id} />
+          <button class="btn btn--ghost" type="submit">Revoke connection</button>
+        </form>}
+      </section>;
+    })}
+    <p>Manual keys remain available in <a href="/app/settings/api-keys">API keys</a>. Revoking a personal connection does not change other connections or API keys.</p>
+  </div>
+</AppLayout>

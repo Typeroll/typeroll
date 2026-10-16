@@ -5,6 +5,11 @@ description: Use when the user asks to write, draft, or rewrite a page on a Type
 
 # Write a page that fits the site
 
+Confirm the organization, site and version first. Personal OAuth calls require
+the `site_context` returned by `select_site`. Read `read_site_instructions`
+and the selected site's enabled App guidance before changing content.
+
+
 > **The buffer model (draft writes).** Every content write in this recipe
 > (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style

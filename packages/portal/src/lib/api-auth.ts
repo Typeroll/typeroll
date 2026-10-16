@@ -6,9 +6,8 @@
 // What this guard does:
 //   1. Reads the Authorization header.
 //   2. Verifies the token via verifyApiToken (timing-safe hash compare).
-//   3. Confirms the URL's siteId matches the token's owning siteId. A
-//      legitimate token only ever talks to its own site — cross-site reach
-//      is not in the v1 scope.
+//   3. Resolves site access from the manual key scope or the personal user's
+//      current membership/shares. Personal requests require an explicit org.
 //   4. Loads the Site doc so callers can use site.id + site.name.
 //   5. Resolves the optional ?version=<id> query into a trusted versionId,
 //      refusing with 404 when the id doesn't name a version of this site.
@@ -25,8 +24,11 @@ import { recordKeyUse, verifyApiToken } from './api-keys';
 import { rateLimit } from './rate-limit';
 import { recordAudit, previewBody, shouldAudit } from './api-audit';
 import { hydrateSharedSites } from './shares';
+import { resolvePersonalSite } from './personal-site-access';
+import { organizationMembership } from './organization-session';
 
 export interface ApiContext {
+  personalUserId?: string;
   /** Org that owns the resolved site (owner-side). For owned sites this is
    *  the token's org; for shared-in sites accessed via an org-scoped key
    *  it's the original owner. Always the org to use for datastore paths. */
@@ -44,9 +46,8 @@ export interface ApiContext {
   site: Site & { id: string };
   versionId: string;
   keyPrefix: string;
-  /** Permission level the token has on this site. `'admin'` for owned
-   *  sites and for any site under a site-scoped key; for shared-in sites
-   *  it's the share's permission. Mutating routes can gate on this. */
+  /** Effective site permission: manual key authority, a share's permission,
+   *  or the personal user's live portal role. Mutating routes gate on this. */
   permission: SharePermission;
   /** Original request — kept on the context so route handlers can build
    *  audit entries and rate-limit-aware responses without re-threading
@@ -277,6 +278,25 @@ export async function requireAnyApiKey(request: Request): Promise<GuardResult<Ap
   if (!verified) {
     return { ok: false, response: json({ error: 'Invalid or revoked token' }, 401) };
   }
+  if (verified.personalUserId) {
+    const pathname = new URL(request.url).pathname.replace(/\/$/, '');
+    const discovery = request.method === 'GET' && ['/api/v1/sites', '/api/v1/organizations'].includes(pathname);
+    const orgId = request.headers.get(ORGANIZATION_HEADER)?.trim() || '';
+    const membership = orgId ? await organizationMembership(verified.personalUserId, orgId) : null;
+    // Root routes historically trust org API keys as administrators. Keep that
+    // invariant; personal discovery is the only exception and never mutates.
+    if (!discovery && (!membership || !['owner', 'admin'].includes(membership.role))) {
+      return { ok: false, response: json({ error: 'Select an organization where you are an owner or administrator using Typeroll-Organization.' }, 403) };
+    }
+    const isWrite = request.method !== 'GET' && request.method !== 'HEAD';
+    const rl = rateLimit(`${isWrite ? 'w' : 'r'}:${verified.prefix}`, isWrite ? WRITE_LIMIT : READ_LIMIT, WINDOW_MS);
+    if (!rl.allowed) return { ok: false, response: json({ error: 'Rate limit exceeded' }, 429) };
+    return { ok: true, value: {
+      personalUserId: verified.personalUserId, orgId, tokenOrgId: orgId, tokenSiteId: null,
+      siteId: '', site: { id: '' } as Site & { id: string }, versionId: MAIN_VERSION_ID,
+      keyPrefix: verified.prefix, permission: discovery ? 'read' : 'admin', request, path: pathname,
+    } };
+  }
   // Checked against the token's own organization here: with no site in the
   // URL, "which organization am I on" is a question about the key itself, and
   // it is the question a caller listing sites is usually asking.
@@ -378,7 +398,13 @@ export async function requireApiKey(
   if (!verified) {
     return { ok: false, response: json({ error: 'Invalid or revoked token' }, 401) };
   }
-  const resolved = await resolveTokenSite(verified.orgId, verified.siteId, urlSiteId);
+  const declaredOrg = request.headers.get(ORGANIZATION_HEADER)?.trim();
+  if (verified.personalUserId && !declaredOrg) {
+    return { ok: false, response: json({ error: 'Select a site first. Personal connections require Typeroll-Organization.' }, 400) };
+  }
+  const resolved = verified.personalUserId
+    ? await resolvePersonalSite(verified.personalUserId, declaredOrg!, urlSiteId)
+    : await resolveTokenSite(verified.orgId, verified.siteId, urlSiteId);
   if (!resolved) {
     // Don't leak whether the key is valid for some other site — opaque 401.
     return { ok: false, response: json({ error: 'Invalid or revoked token' }, 401) };
@@ -452,7 +478,8 @@ export async function requireApiKey(
     ok: true,
     value: {
       orgId: ownerOrgId,
-      tokenOrgId: verified.orgId,
+      tokenOrgId: 'accessOrgId' in resolved && typeof resolved.accessOrgId === 'string' ? resolved.accessOrgId : verified.orgId,
+      personalUserId: verified.personalUserId,
       tokenSiteId: verified.siteId,
       siteId: urlSiteId,
       site,

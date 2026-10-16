@@ -5,18 +5,18 @@
 // shared validator; on a name conflict `on_conflict` decides: `skip`
 // (default) keeps the site's type, `rename` imports under a free name,
 // `replace` overwrites it. Answers per-type `results` with counts. Importing
-// block types needs admin permission on the site. Bearer token required.
+// block types needs write permission on the site. Bearer token required.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { unpackBlockPackage, BlockPackageError } from '../../../../../../lib/block-packages';
-import { BLOCK_TYPE_ADMIN_REQUIRED, importBlockTypePackage, parseConflictMode } from '../../../../../../lib/block-type-write';
+import { BLOCK_TYPE_WRITE_REQUIRED, importBlockTypePackage, parseConflictMode } from '../../../../../../lib/block-type-write';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  if (ctx.permission !== 'admin') return apiError(BLOCK_TYPE_ADMIN_REQUIRED, 403, ctx);
+  if (ctx.permission === 'read') return apiError(BLOCK_TYPE_WRITE_REQUIRED, 403, ctx);
 
   const ct = request.headers.get('content-type') ?? '';
   let buf: Buffer;

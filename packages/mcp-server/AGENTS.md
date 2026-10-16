@@ -183,8 +183,8 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   blocks — never hardcode block ids or field names, the available set is
   per-site.
 
-  **Building a block type** (needs **admin** permission on the site; editors
-  with write permission place block types on pages and edit their fields):
+  **Building a block type** (needs **write** permission on the site; editors
+  can define types as well as place them and edit their fields):
   - Prefer a core block, then a block template (a section people copy and
     adapt), then a global block (identical everywhere). Build a block type
     only for a recurring shape whose structure should stay fixed while
@@ -1213,7 +1213,7 @@ preview.
 | **Global blocks (partials)** | `list_partials` (summary by default), `read_partial`, `create_free_block` (`blocks` or `html_content`), `update_partial`, `replace_partial`, `set_partial_mode`, `delete_partial`, `find_pages_using_block`, `make_block_global`, `detach_global_block`. Block pages reference a global block with `core/global_block` (`global_block_id`); HTML pages use `<x-include>`. |
 | **Block templates** | `list_block_templates`, `read_block_template`, `save_block_template` (from `blocks` or `from: { page_id, block_id }`), `update_block_template`, `delete_block_template`, `insert_block_template` (copies with new ids). Per site, not per branch. |
 | **Styles** | `list_styles`, `create_style`, `update_style`, `delete_style`, `apply_standard_styles`. Blocks pick a style with `style_id` (heading parts: `eyebrow_style_id`, `subtitle_style_id`). Contrast below WCAG AA is refused. |
-| **Block types** | `list_block_types`, `read_block_type`, `find_pages_using_block_type`, `list_block_type_starters`, `validate_block_type`, `preview_block_type`, `create_block_type`, `update_block_type` (`renames`, `confirm_data_loss`), `delete_block_type`, `export_block_types`, `import_block_types` (`on_conflict`: skip, rename, replace). Authoring and import need admin. |
+| **Block types** | `list_block_types`, `read_block_type`, `find_pages_using_block_type`, `list_block_type_starters`, `validate_block_type`, `preview_block_type`, `create_block_type`, `update_block_type` (`renames`, `confirm_data_loss`), `delete_block_type`, `export_block_types`, `import_block_types` (`on_conflict`: skip, rename, replace). Authoring and import need write permission. |
 | **Content types** | `list_content_types`, `read_content_type`, `create_content_type`, `update_content_type`, `delete_content_type`, `change_page_content_type`, `page_completeness` |
 | **Page templates** | `list_page_templates`, `read_page_template`, `create_page_template`, `update_page_template`, `delete_page_template` |
 | **Media** | `get_media_upload_status`, `list_media`, `read_media`, `create_upload_url`, `upload_media_from_url`, `upload_media_inline`, `update_media`, `delete_media`, `finalize_media`, `finalize_all_media`, `generate_image_variants`, `suggest_alt_text_context` |
@@ -1338,3 +1338,15 @@ responsive `min_height_px`, and Post Card supports an action group and optional
 title icon. Use `read_block_type` for the exact current schemas. Set a Page's
 `breadcrumb_label` for a short navigation label without changing its title or
 route. Do not duplicate parent category information into each article body.
+
+
+## Personal OAuth and site selection
+
+Personal connections follow live memberships and shares across organizations.
+Confirm one site and version, call `select_site`, and pass its `site_context`
+on every site operation. Do not silently search or switch sites. Use
+`resolve_page_url` for a URL within the selected site. Read current guidance
+with `read_site_instructions` and enabled App guides with
+`read_app_documentation`. Use `tr-edit-site` for the editor workflow.
+Organization administration requires an explicit `organization_id` and a
+current owner/admin membership. Manual API keys keep their existing scope.

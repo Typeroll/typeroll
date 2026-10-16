@@ -331,9 +331,14 @@ const domainBlocksArchiving =
       </div>
     </div>
 
-    <div class="row">
-      <button type="submit" class="btn">Save settings</button>
-    </div>
+    <section class="card stack">
+      <h2>AI agent instructions</h2>
+      <p>Describe your audience, tone, terminology and editing conventions. Connected assistants can read these instructions for this site and version. Keep credentials and private personal information out.</p>
+      <label for="agent-instructions">Site instructions</label>
+      <textarea id="agent-instructions" name="agent_instructions" rows="6" maxlength="12000">{settings.agent_instructions ?? ''}</textarea>
+      <p class="muted text-sm">Guidance does not grant permission to publish or change another site. Save settings to apply it.</p>
+    </section>
+    <div class="row"><button type="submit" class="btn">Save settings</button></div>
   </form>
 
   <div style="max-width: 720px; margin-top: 2rem;">

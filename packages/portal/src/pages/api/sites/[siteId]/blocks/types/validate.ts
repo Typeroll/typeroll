@@ -18,7 +18,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (body === null) return json({ error: 'Invalid JSON' }, 400);
   const typeId = new URL(request.url).searchParams.get('type_id') ?? undefined;
   const outcome = await validateBlockTypeDraft({ orgId: owner_org_id, siteId: site.id, versionId }, body, {
-    typeId, allowScript: permission === 'admin',
+    typeId, allowScript: permission !== 'read',
   });
   return json(outcome.body, outcome.status);
 };

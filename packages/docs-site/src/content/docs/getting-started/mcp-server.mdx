@@ -36,7 +36,7 @@ Copy the key when it is shown and store it in your agent's private credential
 settings. Do not commit a real key to a repository. Revoke it from the same page
 when you no longer want it to grant access.
 
-An agent can also list, create and revoke keys through MCP or the API with the
+An agent can list and revoke keys through MCP or the API with the
 same permissions: a site key manages keys for its own Site only, and only an
 organization key manages organization keys. See
 [Organization, access and workflow tools](../../tools/organization/#api-keys).
@@ -49,23 +49,26 @@ No local Node.js installation is required.
 1. Add a remote MCP server in your agent client's integration settings.
 2. Enter `https://app.typeroll.com/api/mcp` for Typeroll Cloud, or
    `https://<your-portal-host>/api/mcp` for a self-hosted portal.
-3. Sign in to Typeroll, choose an Organization and either one Site or all its
-   Sites, then select **Allow access**. You must be an Organization owner or
-   administrator. No API key needs to be copied.
-4. Return to the client and confirm that Typeroll's tools are available.
+3. Sign in to Typeroll and select **Allow access**. From Core 0.2.78, all roles
+   connect personally, with access to the same sites and permissions as in the
+   portal. No API key needs to be copied.
+4. Return to the client, tell it which site to work on, and confirm the
+   organization, site and version before it calls `select_site`.
 
-Client menus and supported authentication methods vary. Use your client's MCP
-instructions for adding a server. Consent explicitly grants administrator
-access: the agent can edit and publish within the chosen scope. It is not a
-read-only connection. A separate connection appears as **MCP: [client host]**
-in Organization → API keys, or the selected Site's API keys. Revoke that entry
-to disconnect. Removing or demoting the approving member also ends access.
-Connections expire after 30 days and require consent again; clients rotate
-refresh credentials automatically during that period.
+Each site tool carries the returned `site_context`. Search stays inside that
+site; switching sites or versions requires a new selection. Personal connections
+start in compact mode to keep the initial context small. Manual key connections
+keep their previous tool mode and scope.
 
-The signed-in consent flow requires Core 0.2.77 or later on your
-portal. Older deployments still ask for an API key on the consent page.
-Updating the local stdio package alone does not update a hosted portal.
+Revoke personal connections in **Account → AI connections**. Connections expire
+after 30 days. Older OAuth grants remain in API keys until revoked or expired;
+reconnect to use personal access. See [Personal AI connections](../../guides/ai-connections/)
+for editor workflows, skills, site guidance and self-hosted setup.
+
+Core 0.2.77 introduced signed-in consent for organization administrators;
+Core 0.2.78 / MCP 0.45.60 introduce the personal flow. Cloud requires the matching
+portal deployment. Updating the local stdio package alone does not update a
+hosted portal.
 
 For a client that supports explicit bearer headers instead of OAuth, configure
 `Authorization: Bearer <your-api-key>` in its private connection settings. Never
@@ -89,7 +92,7 @@ Configure these values in the client:
 
 A stdio process targets one Site. If the key can access several Sites, set
 `TYPEROLL_SITE_ID` to the intended Site ID; a site-scoped key can discover its
-one Site automatically. Hosted multi-site connections select a Site per call.
+one Site automatically. Personal hosted connections explicitly select a context, then carry it per call.
 
 A JSON-style client configuration can look like this. The exact configuration
 file and schema depend on the client; the placeholder is not a working key.

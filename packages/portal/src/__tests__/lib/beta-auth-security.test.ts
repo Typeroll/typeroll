@@ -8,7 +8,8 @@ import { getStore } from '../../lib/datastore';
 import { issueToken, verifyToken, signClientId, issueAuthorizationCode, exchangeAuthorizationCode } from '../../lib/mcp-tokens';
 import { POST as complete } from '../../pages/api/mcp/oauth/complete';
 import { POST as token } from '../../pages/api/mcp/oauth/token';
-import { listApiKeys, verifyApiToken } from '../../lib/api-keys';
+import { listApiKeys, listPersonalConnections, verifyApiToken } from '../../lib/api-keys';
+import { resolvePersonalSite } from '../../lib/personal-site-access';
 const { session } = vi.hoisted(() => ({ session: vi.fn() }));
 vi.mock('../../lib/auth', () => ({ getSession: session }));
 
@@ -80,16 +81,17 @@ describe('beta authentication boundaries', () => {
 });
 
 describe('signed-in MCP consent', () => {
-  it('requires a session, same origin and administrator membership', async () => {
+  it('requires a session and same origin, while allowing editors to connect', async () => {
     expect((await approve(fields(), 'https://evil.test')).status).toBe(403);
     session.mockResolvedValueOnce(null);
     expect((await approve()).status).toBe(401);
     await getStore().setDoc('organizations/acme/members/owner', { role: 'editor' });
-    expect((await approve()).status).toBe(403);
+    expect((await approve()).status).toBe(302);
+    expect(await listPersonalConnections('owner')).toHaveLength(1);
     expect(await listApiKeys('acme', 'one')).toHaveLength(0);
   });
-  it('refuses cross-tenant sites, forged callback and foreign resources', async () => {
-    for (const [key, value] of [['site_id', 'other-site'], ['org_id', 'other-org'], ['redirect_uri', 'https://evil.test/cb'], ['resource', 'https://other.test/api/mcp'], ['code_challenge_method', 'plain']]) {
+  it('refuses forged callbacks, foreign resources and insecure PKCE', async () => {
+    for (const [key, value] of [['redirect_uri', 'https://evil.test/cb'], ['resource', 'https://other.test/api/mcp'], ['code_challenge_method', 'plain']]) {
       const form = fields(); form.set(key, value);
       expect((await approve(form)).status).toBeGreaterThanOrEqual(400);
     }
@@ -100,8 +102,9 @@ describe('signed-in MCP consent', () => {
     const response = await approve(form);
     expect(new URL(response.headers.get('location')!).searchParams.get('error')).toBe('access_denied');
     expect(await listApiKeys('acme', 'one')).toHaveLength(0);
+    expect(await listPersonalConnections('owner')).toHaveLength(0);
   });
-  it('approves, exchanges, rotates and revokes a site-scoped connection on refresh replay', async () => {
+  it('approves, exchanges, rotates and revokes a personal connection on refresh replay', async () => {
     const form = fields();
     const response = await approve(form);
     expect(response.status).toBe(302);
@@ -113,7 +116,7 @@ describe('signed-in MCP consent', () => {
     expect(tokens.access_token).toMatch(/^trm1_/);
     const verified = verifyToken(tokens.access_token, 'https://portal.test/api/mcp')!;
     expect(verified.kind).toBe('access');
-    expect(await verifyApiToken(verified.apiKey)).toMatchObject({ orgId: 'acme', siteId: 'one' });
+    expect(await verifyApiToken(verified.apiKey)).toMatchObject({ orgId: '', siteId: null, personalUserId: 'owner' });
     expect((await exchange(body)).status).toBe(400);
     const refreshBody = { grant_type: 'refresh_token', refresh_token: tokens.refresh_token, client_id: body.client_id };
     expect((await exchange({ ...refreshBody, client_id: 'wrong' })).status).toBe(400);
@@ -122,12 +125,14 @@ describe('signed-in MCP consent', () => {
     expect((await exchange(refreshBody)).status).toBe(400);
     expect(await verifyApiToken(verified.apiKey)).toBeNull();
   });
-  it('ends access when the approving membership is removed', async () => {
+  it('removes site access when membership is removed without destroying the personal connection', async () => {
     const form = fields(); const response = await approve(form);
     const tokens = await (await exchange({ grant_type: 'authorization_code', code: new URL(response.headers.get('location')!).searchParams.get('code')!, code_verifier: verifier, redirect_uri: callback, client_id: form.get('client_id')! })).json();
     const verified = verifyToken(tokens.access_token)!;
+    expect(await resolvePersonalSite('owner', 'acme', 'one')).not.toBeNull();
     await getStore().deleteDoc('organizations/acme/members/owner');
-    expect(await verifyApiToken(verified.apiKey)).toBeNull();
+    expect(await resolvePersonalSite('owner', 'acme', 'one')).toBeNull();
+    expect(await verifyApiToken(verified.apiKey)).toMatchObject({ personalUserId: 'owner' });
   });
   it('encrypts new credentials and detects tampering, wrong audience and expiry', () => {
     const issued = issueToken({ apiKey: 'private-secret', clientId: 'client', audience: 'resource', kind: 'access' });

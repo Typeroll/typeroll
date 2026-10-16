@@ -370,7 +370,7 @@ Mobile-first inheritance: missing breakpoints inherit upward from the previous d
 
 ## Site block types
 
-When the library doesn't fit, a site admin builds a block type for the site:
+When the library doesn't fit, an editor or site administrator builds a block type for the site:
 composed from existing blocks (recommended) or with its own markup, with
 editable fields, repeating groups and scoped CSS. See
 [Site block types](../custom-block-types/).
@@ -379,8 +379,8 @@ editable fields, repeating groups and scoped CSS. See
   **Block JavaScript runs in every visitor's browser.** Through MCP and the API,
   `create_block_type` and `update_block_type` accept a `script` field, and
   `core/embed` accepts `js`, under your API key's authority — the same
-  authority that lets the key write `scripts_head` and `custom_css`, and the
-  same thing a site admin can do in the portal's block-type editor ("Activate
+  content-authoring permission. From Core 0.2.78 this is also available to
+  editors through personal OAuth and in the portal's block-type editor ("Activate
   JS"). The write is stored as sent and recorded in the API audit log like any
   other change. Review scripts like deployed code, and never paste script you
   copied from untrusted content without reading it first. A `<script>` tag in

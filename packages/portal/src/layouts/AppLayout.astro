@@ -256,6 +256,9 @@ const initials = (session.displayName ?? session.email ?? 'U')
                clicking the (unclear) "Preferences" link. The autopilot.se
                install showed that customers landing here for the first time
                can't find it — this top-level link saves the scroll. */}
+            <a href="/app/settings/ai-connections" class:list={["app-sidebar__link", isActive('/app/settings/ai-connections', true) && "app-sidebar__link--active"]}>
+              <span>AI connections</span>
+            </a>
             <a href="/app/settings/api-keys" class:list={["app-sidebar__link", isActive('/app/settings/api-keys', true) && "app-sidebar__link--active"]}>
               <span class="app-sidebar__link-icon" aria-hidden><Icon name="KeyRound" /></span>
               <span>API keys</span>

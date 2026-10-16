@@ -8,7 +8,7 @@ instead of arranging its pieces. Each placed block keeps its own content; the
 type owns the shared structure and styling. This is a built-in CMS feature in
 Cloud and self-hosting, not a Typeroll App or Extension.
 
-You need **site admin** permission to create or change a type. Editors can place
+From Core 0.2.78, **write/editor** permission can create or change a type. Editors can also place
 available types and edit their values. No local development environment is
 required.
 
@@ -131,7 +131,7 @@ See the [full field and template syntax](../../tools/custom-block-types/).
 CSS is scoped to the block. Prefer the site's variables and
 [named styles](../../tools/styles/) so the component follows the site's design.
 Custom markup is sanitized; putting a script tag in it does not enable JavaScript.
-A separate `script` property is executable code and needs administrator review.
+A separate `script` property is executable code and needs deliberate code review.
 The unsaved block preview does not execute scripts, so verify interactions in
 an appropriate test deployment as well. See the
 [script permission rules](../../tools/blocks/#site-block-types).
@@ -147,3 +147,7 @@ type can require explicit data-loss confirmation.
 Export and import `.tcblocks` packages to reuse a type on another Site. Review
 imported HTML, CSS and scripts before accepting them. Deleting a type in use is
 blocked; replace its instances first.
+
+For a new type, an AI agent can propose its schema, composition and responsive
+behavior from your brief, then validate it and show a preview. Inspect existing
+uses before changing a shared definition. See [Personal AI connections](../ai-connections/).

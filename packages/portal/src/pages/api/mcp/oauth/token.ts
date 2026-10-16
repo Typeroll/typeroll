@@ -11,7 +11,7 @@ import { authClientAddress, limitAuthRequest, readAuthBody } from '../../../../l
 //     key invalidates the refresh chain.
 
 import type { APIRoute } from 'astro';
-import { verifyApiToken, revokeApiKey } from '../../../../lib/api-keys';
+import { verifyApiToken, revokeVerifiedConnection } from '../../../../lib/api-keys';
 import { issueToken, verifyToken, exchangeAuthorizationCode, consumeRefreshToken } from '../../../../lib/mcp-tokens';
 
 export const prerender = false;
@@ -99,7 +99,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
       return err('invalid_grant', 'Underlying API key has been revoked');
     }
     if (verified.clientId && !await consumeRefreshToken(verified)) {
-      await revokeApiKey(live.orgId, live.siteId, live.prefix);
+      await revokeVerifiedConnection(live);
       return err('invalid_grant', 'Refresh token already used; reconnect your tool');
     }
     const access = issueToken({ apiKey: verified.apiKey, audience, kind: 'access', clientId: verified.clientId });

@@ -19,7 +19,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const body = await request.json().catch(() => null);
   if (body === null) return json({ error: 'Invalid JSON' }, 400);
   const outcome = await previewBlockTypeDraft({ orgId: owner_org_id, siteId: site.id, versionId }, body, {
-    allowScript: permission === 'admin',
+    allowScript: permission !== 'read',
   });
   return json(outcome.body, outcome.status);
 };
