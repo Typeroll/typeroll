@@ -10,6 +10,33 @@ position and table of contents. Templates work in Cloud and self-hosted Typeroll
 If you want a section copied into a page instead, use a
 [block template](../../tools/reusable-blocks/#block-templates).
 
+## Recommended: build the template with your AI agent
+
+A connected [AI agent](../../getting-started/mcp-server/) can create and refine
+Page templates, define the Content type's fields and connect those fields to
+the layout. This is especially useful when a design needs several blocks,
+responsive settings or consistent styling across many Pages. Describe the
+result you want; let the agent handle the block structure and API calls.
+
+For example:
+
+```text
+For this Site and Version, inspect our Articles content type and its fields.
+Create an Article template using our existing styles, with one H1, a date,
+an optional featured image, the Page body and an automatic table of contents.
+Make it the default for Articles. Preview two articles with different content
+at mobile and desktop widths, including one without an image. Show me the
+result and which Pages will be affected. Do not deploy the site.
+```
+
+The agent should inspect existing templates before creating another one and use
+the same Site and Version throughout. It operates with the permissions you grant;
+review changes and publication impact before deploying. After setup, editors
+write each Page's content normally without rebuilding its layout.
+
+Use the editor to inspect and fine-tune the result, or follow the manual workflow
+below. [MCP and REST examples](#the-same-workflow-through-mcp-or-rest) follow it.
+
 ## 1. Create the layout
 
 Select the **Site** and intended **Version**, open **Templates → New template**,
