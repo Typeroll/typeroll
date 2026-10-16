@@ -30,13 +30,12 @@ release. See the [model guide](https://typeroll.com/docs/tools/content-types/) a
 - **Remote MCP — enter a URL.** Use a client with Streamable HTTP support
   and OAuth or bearer-header authentication. The Cloud endpoint is
   `https://app.typeroll.com/api/mcp`; self-hosted portals use
-  `https://<your-portal-host>/api/mcp`. On Core 0.2.77+, sign in to the portal,
-  choose an Organization and Site scope, and approve access. No key needs to
-  be copied. The approving user must be an Organization owner or administrator.
-  Revoke the resulting **MCP: [client host]** entry in the corresponding API
-  keys settings to disconnect. Connections expire after 30 days; removed or
-  demoted members lose their delegated access. Older portals still request an
-  API key during consent. Manual bearer keys remain supported.
+  `https://<your-portal-host>/api/mcp`. On Core 0.2.78+, sign in and approve
+  personal access with any role. No API key copying is needed. Confirm a site
+  and version, use `select_site`, and carry its `site_context` on site calls.
+  Revoke access in Account → AI connections. Permissions are checked live;
+  the connection expires after 30 days. Legacy OAuth grants remain scoped
+  as before until reconnecting. Manual bearer keys remain supported.
 - **Local stdio — launch the npm package.** Use a client that can run a local
   command with environment variables. Instructions below.
 
@@ -391,3 +390,11 @@ available. Read/write/admin wrappers share normal validation and authorization.
 
 See [Agent workspace](https://typeroll.com/docs/getting-started/agent-workspace/)
 for the folder layout, commands, version requirements and context-budget advice.
+
+## Personal connections and packaged workflows
+
+Personal OAuth defaults to compact discovery. Read `tr-edit-site` for the
+editing workflow and fetch site/App instructions live after selecting the site.
+The same flow works in Cloud and self-hosted Core.
+[Plugin package instructions](plugins/README.md) describe reproducible
+ChatGPT/Codex and Claude bundles; no catalog submission has been made.

@@ -188,10 +188,11 @@ test('an admin turns a section on a page into a block type and the page keeps it
   } finally {
     rmSync(pageFile, { force: true });
     rmSync(typeFile, { force: true });
+    rmSync(path.join(coreMain, 'block_types/editor_test.json'), { force: true });
   }
 });
 
-test('an editor cannot open the builder but fills in a placed composed block', async ({ page }, info) => {
+test('an editor opens the builder and edits a placed composed block', async ({ page }, info) => {
   const typeFile = path.join(coreMain, 'block_types/team_note.json');
   const pageFile = path.join(coreMain, 'pages/editor-composed.json');
   writeJson(typeFile, {
@@ -207,30 +208,31 @@ test('an editor cannot open the builder but fills in a placed composed block', a
     await authenticatePersona(page, 'editor');
     await page.setViewportSize({ width: 1440, height: 1000 });
     await gotoReady(page, '/app/sites/e2e-core-site/blocks');
-    await expect(page.getByText('Only Site admins can create and change block types.')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'New block type' })).toHaveCount(0);
-    await page.screenshot({ path: info.outputPath('editor-builder-denied-1440.png') });
+    await expect(page.getByRole('button', { name: 'New block type' }).first()).toBeVisible();
+    await page.screenshot({ path: info.outputPath('editor-builder-1440.png') });
     const origin = process.env.TYPEROLL_E2E_PORTAL_URL ?? 'http://127.0.0.1:4322';
-    const refused = await page.request.post('/api/sites/e2e-core-site/blocks/types', {
+    const created = await page.request.post('/api/sites/e2e-core-site/blocks/types', {
       headers: { Origin: origin },
-      data: { name: 'sneaky', label: 'Sneaky', schema: [], template: '<p>x</p>' },
+      data: { name: 'editor_test', label: 'Editor test', schema: [], template: '<p>x</p>' },
     });
-    expect(refused.status()).toBe(403);
+    expect(created.status()).toBe(200);
 
     await gotoReady(page, '/app/sites/e2e-core-site/pages/editor-composed');
     const preview = page.frameLocator('iframe[title="Preview"]');
     await page.getByRole('button', { name: 'Structure', exact: true }).click();
     await page.getByRole('button', { name: 'Edit Team note', exact: true }).click();
     await expect(page.getByText(/Built from 1 block\./)).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Edit the block type' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Edit the block type' })).toBeVisible();
     await expect(page.getByText('One sentence.')).toBeVisible();
     await page.getByText('Reuse', { exact: true }).click();
+    // This is already a custom type; only sections can be converted into a type.
     await expect(page.getByRole('button', { name: 'Turn into block type…' })).toHaveCount(0);
     await page.getByLabel('Note text', { exact: true }).fill('Office open on Friday');
     await expect(preview.locator('[data-block="team_note"]')).toHaveText('Office open on Friday', { timeout: 15_000 });
     await page.screenshot({ path: info.outputPath('editor-props-1440.png') });
   } finally {
     rmSync(typeFile, { force: true });
+    rmSync(path.join(coreMain, 'block_types/editor_test.json'), { force: true });
     rmSync(pageFile, { force: true });
   }
 });

@@ -39,6 +39,7 @@ export default defineConfig({
             { label: 'Using Typeroll Cloud', slug: 'guides/typeroll-cloud' },
             { label: 'Incoming email', slug: 'guides/incoming-email' },
             { label: 'Connect your AI agent', slug: 'getting-started/mcp-server' },
+            { label: 'Personal AI connections', slug: 'guides/ai-connections' },
             { label: 'Client compatibility', slug: 'getting-started/client-compatibility' },
             { label: 'Your First Site', slug: 'getting-started/first-site' },
             { label: 'Agent workspace', slug: 'getting-started/agent-workspace' },

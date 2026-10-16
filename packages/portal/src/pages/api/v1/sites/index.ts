@@ -9,13 +9,14 @@
 import type { APIRoute } from 'astro';
 import { requireAnyApiKey, listAllowedSites, apiResponse, apiError } from '../../../../lib/api-auth';
 import { publicUrlsFor } from '../../../../lib/site-public-urls';
+import { personalSites } from '../../../../lib/personal-site-access';
 import { createSite } from '../../../../lib/site-create';
 
 export const GET: APIRoute = async ({ request }) => {
   const guard = await requireAnyApiKey(request);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const allowed = await listAllowedSites(ctx.tokenOrgId, ctx.tokenSiteId);
+  const allowed = ctx.personalUserId ? await personalSites(ctx.personalUserId) : await listAllowedSites(ctx.tokenOrgId, ctx.tokenSiteId);
   return apiResponse(ctx, {
     // A site id is unique within an organization and not across them, and
     // listAllowedSites already knows which organization owns each entry. The
@@ -23,7 +24,8 @@ export const GET: APIRoute = async ({ request }) => {
     // call for a caller to learn where it is pointed was the one that could
     // not answer. It matters most for a shared-in site, whose owner is not
     // the token's organization.
-    sites: allowed.map(({ site, ownerOrgId }) => ({
+    sites: allowed.map(({ site, ownerOrgId, permission }) => ({
+      permission,
       id: site.id,
       organization_id: ownerOrgId,
       name: site.name,

@@ -1,5 +1,5 @@
 // Request shapes and permission classes for the block type tools: authoring
-// (admin), validation and preview (read: they write nothing), starters,
+// (write), validation and preview (read: they write nothing), starters,
 // usage and .tcblocks packages. Each tool is one REST call.
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -63,15 +63,15 @@ describe('block type tools', () => {
     });
   }
 
-  it('classifies authoring as admin, validation and preview as read', async () => {
+  it('classifies authoring as write, validation and preview as read', async () => {
     const { client } = await connect('compact');
     const effect = async (name: string) => JSON.parse((await client.callTool({ name: 'describe_tool', arguments: { name } }) as { content: Array<{ text: string }> }).content[0]!.text).effect;
-    for (const name of ['create_block_type', 'update_block_type', 'delete_block_type', 'import_block_types']) expect(await effect(name)).toBe('admin');
+    for (const name of ['create_block_type', 'update_block_type', 'delete_block_type', 'import_block_types']) expect(await effect(name)).toBe('write');
     for (const name of ['validate_block_type', 'preview_block_type', 'list_block_type_starters', 'list_block_types', 'read_block_type', 'find_pages_using_block_type']) expect(await effect(name)).toBe('read');
   });
 
-  it('refuses authoring on a write share before any request, but validates and previews', async () => {
-    const { client, calls } = await connect('full', { fixedSiteId: undefined, allowedSites: [{ siteId: 'shared', permission: 'write' }] });
+  it('refuses authoring on a read-only share before any request, but validates and previews', async () => {
+    const { client, calls } = await connect('full', { fixedSiteId: undefined, allowedSites: [{ siteId: 'shared', permission: 'read' }] });
     const denied = await client.callTool({ name: 'create_block_type', arguments: { site_id: 'shared', ...definition } });
     expect(denied.isError).toBe(true);
     expect(calls).toEqual([]);
@@ -92,9 +92,9 @@ describe('block type tools', () => {
     expect(JSON.parse(result.content[0]!.text)).toMatchObject({ status: 400, body: { problems } });
   });
 
-  it('describes composed and template types, bindings, sections, link fields, scoped CSS and admin', () => {
+  it('describes composed and template types, bindings, sections, link fields, scoped CSS and write permission', () => {
     const text = (name: string) => blockTypeTools.find(tool => tool.name === name)!.description;
-    for (const needle of ['{{props.title}}', '{{item.title}}', '{{#each items}}', '{{^field}}', '{{#link field class=', 'link (', ':scope', 'ADMIN', 'composition']) {
+    for (const needle of ['{{props.title}}', '{{item.title}}', '{{#each items}}', '{{^field}}', '{{#link field class=', 'link (', ':scope', 'WRITE', 'composition']) {
       expect(text('create_block_type')).toContain(needle);
     }
     expect(text('update_block_type')).toContain('renames');

@@ -5,6 +5,11 @@ description: Create or edit a reusable Page template for articles, checklists, p
 
 # Share a layout across Pages
 
+Confirm the organization, site and version first. Personal OAuth calls require
+the `site_context` returned by `select_site`. Read `read_site_instructions`
+and the selected site's enabled App guidance before changing content.
+
+
 Read capabilities, available block types, content types and Page templates first.
 Use a site version for substantial design changes. The Page owns its body blocks;
 the template owns the shared layout around that body. The content type selects a

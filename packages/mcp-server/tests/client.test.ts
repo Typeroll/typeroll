@@ -92,3 +92,21 @@ it('uses a workspace Version by default while preserving explicit tool overrides
   expect(calls[1].url).toContain('version=review');
   expect(calls[2].url).not.toContain('version=');
 });
+
+it('keeps organization/site/version contexts immutable and separates export package version', async () => {
+  const { fetch, calls } = mockFetch(() => json({ ok: true }));
+  const base = new TyperollClient({ baseUrl: 'https://portal.test', apiKey: 'test', fetchImpl: fetch });
+  const first = base.forOrganization('alpha', 'same-id', 'draft');
+  const second = base.forOrganization('beta', 'same-id', 'main');
+  await first.get('same-id', 'pages');
+  await second.get('same-id', 'pages');
+  expect((calls[0].init?.headers as Record<string, string>)['Typeroll-Organization']).toBe('alpha');
+  expect((calls[1].init?.headers as Record<string, string>)['Typeroll-Organization']).toBe('beta');
+  expect(calls[0].url).toContain('version=draft');
+  expect(calls[1].url).toContain('version=main');
+  expect(() => first.get('other', 'pages')).toThrow(/other site/);
+  expect(() => first.get('same-id', 'pages', { version: 'main' })).toThrow(/different version/);
+  await first.get('same-id', 'blocks/export', { version: '1.0.0' });
+  expect(calls[2].url).toContain('version_branch=draft');
+  expect(calls[2].url).toContain('version=1.0.0');
+});

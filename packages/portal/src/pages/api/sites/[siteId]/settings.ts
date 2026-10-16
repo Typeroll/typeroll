@@ -72,9 +72,12 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     : existing.responsive_breakpoints;
   const breakpointError = responsiveBreakpointsError(responsive_breakpoints);
   if (breakpointError) return new Response(breakpointError, { status: 400 });
+  const agentInstructions = form.has('agent_instructions') ? String(form.get('agent_instructions') || '') : existing.agent_instructions;
+  if (agentInstructions && agentInstructions.length > 12000) return new Response('Agent instructions must be at most 12000 characters.', { status: 400 });
   const next: SiteSettings = {
     ...existing,
     responsive_breakpoints,
+    agent_instructions: agentInstructions,
     site_name: String(form.get('site_name') ?? existing.site_name),
     tagline: String(form.get('tagline') ?? '') || undefined,
     logo: String(form.get('logo') ?? '') || undefined,

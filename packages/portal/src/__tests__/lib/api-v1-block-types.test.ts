@@ -1,5 +1,5 @@
 // Site block types over the public API: one write path with the shared
-// validator, admin-only authoring, validate/preview/starters, renames that
+// validator, editor authoring, validate/preview/starters, renames that
 // move page data, data-loss refusal, usage that follows compositions, and
 // lossless export/import with conflict modes.
 
@@ -163,18 +163,15 @@ describe('v1 block types: create, validate and preview', () => {
     expect(body.starters.map(s => s.id)).toContain('icon_list');
   });
 
-  it('needs admin to create, change, delete and import; a write share may validate and preview', async () => {
-    expect((await call('index', 'POST', { body: card })).status).toBe(200);
+  it('allows an editor to create, change, delete, validate and preview block types', async () => {
     const asEditor = { token: writeToken };
-    const refused = await call('index', 'POST', { ...asEditor, body: { ...card, name: 'other' } });
-    expect(refused.status).toBe(403);
-    expect((await refused.json() as { error: string }).error).toMatch(/admin/);
-    expect((await call('item', 'PATCH', { ...asEditor, typeId: 'card', body: { label: 'x' } })).status).toBe(403);
-    expect((await call('item', 'DELETE', { ...asEditor, typeId: 'card' })).status).toBe(403);
-    expect((await call('import', 'POST', { ...asEditor, body: { zip_base64: 'x' } })).status).toBe(403);
+    expect((await call('index', 'POST', { ...asEditor, body: card })).status).toBe(200);
+    expect((await call('item', 'PATCH', { ...asEditor, typeId: 'card', body: { label: 'Updated' } })).status).toBe(200);
     expect((await call('validate', 'POST', { ...asEditor, body: card })).status).toBe(200);
     expect((await call('preview', 'POST', { ...asEditor, body: { definition: card } })).status).toBe(200);
-    expect((await call('item', 'GET', { ...asEditor, typeId: 'card' })).status).toBe(200);
+    expect((await call('item', 'DELETE', { ...asEditor, typeId: 'card' })).status).toBe(200);
+    // Invalid package reaches validation rather than a false admin-only guard.
+    expect((await call('import', 'POST', { ...asEditor, body: { zip_base64: 'x' } })).status).toBe(400);
   });
 });
 

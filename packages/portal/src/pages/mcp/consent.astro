@@ -1,9 +1,7 @@
 ---
 import MarketingLayout from '../../layouts/MarketingLayout.astro';
-import { paths, isArchivedSite, type Site } from '@typeroll/shared';
 import { getSession } from '../../lib/auth';
 import { listOrganizations } from '../../lib/organization-session';
-import { getStore } from '../../lib/datastore';
 import { consentError, publicMcpUrl } from '../../lib/mcp-consent';
 
 Astro.response.headers.set('Cache-Control', 'no-store');
@@ -15,9 +13,7 @@ const session = error ? null : await getSession(Astro.cookies);
 const continuation = Astro.url.pathname + Astro.url.search;
 if (!error && !session) return Astro.redirect(`/login?next=${encodeURIComponent(continuation)}`);
 if (!error && session && !session.orgId) return Astro.redirect(`/onboarding?next=${encodeURIComponent(continuation)}`);
-const organizations = session ? (await listOrganizations(session)).filter(org => ['owner', 'admin'].includes(org.role)) : [];
-const selected = organizations.find(org => org.id === (params.get('org_id') || session?.orgId)) || organizations[0];
-const sites = selected ? (await getStore().listDocs<Site>(paths.sites(selected.id))).filter(site => !isArchivedSite(site)) : [];
+const organizations = session ? await listOrganizations(session) : [];
 const callback = error ? '' : new URL(params.get('redirect_uri')!);
 const oauthFields = [...params.entries()].filter(([name]) => ['client_id', 'redirect_uri', 'code_challenge', 'code_challenge_method', 'state', 'resource', 'scope'].includes(name));
 ---
@@ -28,29 +24,17 @@ const oauthFields = [...params.entries()].filter(([name]) => ['client_id', 'redi
       {error ? <p role="alert">{error}</p> : <>
         <p>Allow the tool at <strong style="overflow-wrap: anywhere;">{callback && (callback.host || callback.protocol)}</strong> to access Typeroll?</p>
         <p class="muted">Signed in as {session?.displayName || session?.email}. Continue only if you started this connection from a tool you trust.</p>
-        {!selected ? <p role="alert">An organization owner or administrator must approve MCP access. Ask yours to connect the tool.</p> : <>
-          <form method="GET" class="stack">
-            {oauthFields.map(([name, value]) => <input type="hidden" name={name} value={value} />)}
-            <div class="field"><label for="org">Organization</label><select id="org" name="org_id">
-              {organizations.map(org => <option value={org.id} selected={selected.id === org.id}>{org.name}</option>)}
-            </select></div>
-            {organizations.length > 1 && <button class="btn btn--ghost" type="submit">Change organization</button>}
-          </form>
-          <form method="POST" action="/api/mcp/oauth/complete" class="stack">
-            {oauthFields.map(([name, value]) => <input type="hidden" name={name} value={value} />)}
-            <input type="hidden" name="org_id" value={selected.id} />
-            <div class="field"><label for="site">Access in {selected.name}</label><select id="site" name="site_id">
-              <option value="">All sites in this organization, including future sites</option>
-              {sites.map(site => <option value={site.id}>{site.name}</option>)}
-            </select></div>
-            <p>The tool can read and change content, manage settings and publish within the chosen scope. This grants administrator access, not read-only access. Organization-wide connections also include shared sites at their existing permission levels.</p>
-            <p class="muted text-sm">A separate connection is created; you do not need to copy a key. Revoke it under Organization → API keys, or the selected site's API keys. Losing your administrator membership also ends access.</p>
-            <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
-              <button type="submit" class="btn" name="decision" value="allow">Allow access</button>
-              <button type="submit" class="btn btn--ghost" name="decision" value="deny">Cancel</button>
-            </div>
-          </form>
-        </>}
+        <p>This connection follows your personal access to all organizations and sites, including sites you gain access to later. It never grants more permission than you have in Typeroll. Removing your access takes effect on subsequent requests.</p>
+        {organizations.length > 0 && <p>Your organizations: {organizations.map(org => org.name).join(', ')}.</p>}
+        <p>Choose a site with your AI assistant before working. It can read content, make changes and perform actions allowed by your role. Review changes before saving or publishing.</p>
+        <form method="POST" action="/api/mcp/oauth/complete" class="stack">
+          {oauthFields.map(([name, value]) => <input type="hidden" name={name} value={value} />)}
+          <p class="muted text-sm">No API key copying is needed. Revoke this connection in Account → AI connections. Connections expire after 30 days; reconnect to continue.</p>
+          <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+            <button type="submit" class="btn" name="decision" value="allow">Allow access</button>
+            <button type="submit" class="btn btn--ghost" name="decision" value="deny">Cancel</button>
+          </div>
+        </form>
         <p class="muted text-sm">Prefer manual configuration? API keys still work with MCP and the REST API. You can close this window and create one in the portal.</p>
       </>}
     </div>

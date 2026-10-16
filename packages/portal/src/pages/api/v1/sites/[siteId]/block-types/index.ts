@@ -10,7 +10,7 @@
 // definitions, bindings, template sections and CSS are checked; each problem
 // has a JSON-pointer path), the version chain, and `id = name`. Origin is
 // 'ai' when the MCP adapter marks the request (`?origin=ai`), otherwise
-// 'user'. Needs admin permission on the site.
+// 'user'. Needs write permission on the site.
 //
 // 400 → `{ error, problems }`; 409 → the name exists. 200 → `{ block_type,
 // warnings }`. PATCH + DELETE per type live in [typeId].ts; validate,
@@ -20,7 +20,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
 import { CORE_BLOCK_TYPES, type BlockOrigin, type BlockType } from '@typeroll/shared';
-import { BLOCK_TYPE_ADMIN_REQUIRED, blockTypeView, createSiteBlockType } from '../../../../../../lib/block-type-write';
+import { BLOCK_TYPE_WRITE_REQUIRED, blockTypeView, createSiteBlockType } from '../../../../../../lib/block-type-write';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -47,7 +47,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  if (ctx.permission !== 'admin') return apiError(BLOCK_TYPE_ADMIN_REQUIRED, 403, ctx);
+  if (ctx.permission === 'read') return apiError(BLOCK_TYPE_WRITE_REQUIRED, 403, ctx);
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return apiError('Invalid JSON', 400, ctx);
 

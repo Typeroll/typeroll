@@ -12,6 +12,9 @@ export interface ClientConfig {
   /** typeroll_live_... bearer token */
   apiKey: string;
   defaultVersion?: string;
+  organizationId?: string;
+  selectedSiteId?: string;
+  lockVersion?: boolean;
   /** Override fetch (for tests). Defaults to global fetch. */
   fetchImpl?: typeof fetch;
 }
@@ -33,7 +36,7 @@ export class TyperollClient {
   private readonly apiKey: string;
   private readonly fetchImpl: typeof fetch;
 
-  constructor(config: ClientConfig) {
+  constructor(private readonly config: ClientConfig) {
     if (!config.baseUrl) throw new Error('baseUrl is required');
     if (!config.apiKey) throw new Error('apiKey is required');
     this.baseUrl = config.baseUrl.replace(/\/+$/, '');
@@ -42,15 +45,26 @@ export class TyperollClient {
     this.fetchImpl = config.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
+  /** Clone per call, so simultaneous chats never share mutable site selection. */
+  forOrganization(organizationId: string, siteId?: string, version?: string): TyperollClient {
+    return new TyperollClient({ ...this.config, organizationId, selectedSiteId: siteId,
+      defaultVersion: version, lockVersion: !!siteId });
+  }
+
   /** Build the full URL for a path (relative to /api/v1/sites/{siteId}/...) */
   private url(siteId: string, path: string, query?: Record<string, string | number | undefined>): string {
+    if (this.config.selectedSiteId && siteId !== this.config.selectedSiteId) throw new Error('Select the other site before accessing it.');
     const cleanPath = path.replace(/^\/+/, '');
     const url = new URL(`${this.baseUrl}/api/v1/sites/${encodeURIComponent(siteId)}/${cleanPath}`);
-    if (this.defaultVersion) url.searchParams.set('version', this.defaultVersion);
+    const versionKey = /^blocks\/export\/?$/.test(cleanPath) ? 'version_branch' : 'version';
+    if (this.defaultVersion) url.searchParams.set(versionKey, this.defaultVersion);
     if (query) {
       for (const [k, v] of Object.entries(query)) {
         if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
       }
+    }
+    if (this.config.lockVersion && url.searchParams.get(versionKey) !== this.defaultVersion) {
+      throw new Error('This call targets a different version. Use select_site again to select that version explicitly.');
     }
     return url.toString();
   }
@@ -72,6 +86,7 @@ export class TyperollClient {
       authorization: `Bearer ${this.apiKey}`,
       accept: 'application/json',
     };
+    if (this.config.organizationId) headers['Typeroll-Organization'] = this.config.organizationId;
     if (body !== undefined) headers['content-type'] = 'application/json';
 
     const res = await this.fetchImpl(url, {

@@ -24,7 +24,7 @@ import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } f
 import { responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, LATEST_RENDER_VERSION, paths, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
-  'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
+  'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
   'default_meta_description', 'language', 'robots_txt', 'image_sizes_default',
   'sitewide_noindex', 'sitewide_nofollow', 'seo_review', 'external_routes', 'render_version',
   // Social sharing + Organization JSON-LD, as in the portal Settings form.
@@ -60,6 +60,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (ctx.permission !== 'admin') return apiError('Insufficient permission (admin required)', 403, ctx);
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return apiError('Invalid JSON body');
+  if (body.agent_instructions !== undefined && (typeof body.agent_instructions !== 'string' || body.agent_instructions.length > 12000)) return apiError('agent_instructions must be text up to 12000 characters', 400);
   for (const key of CLEARABLE_STRINGS) {
     if (body[key] === undefined) continue;
     if (body[key] !== null && typeof body[key] !== 'string') return apiError(`${key} must be a string`, 400);

@@ -7,6 +7,11 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const siteTools: ToolDef[] = [
   {
+    name: 'list_organizations', noSite: true,
+    description: 'List organizations you belong to and your current role. Site work begins with list_sites and select_site; organization administration requires its explicit ID.',
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('organizations'))),
+  },
+  {
     name: 'list_sites', noSite: true,
     description: 'List accessible Sites without changing them. Use the returned IDs for site_id or your workspace binding. Results are paginated locally.',
     inputSchema: { offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(50).default(20) },

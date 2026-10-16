@@ -8,7 +8,7 @@
 // conflict `on_conflict` (query, multipart field or JSON body) decides:
 // `skip` (default) keeps the site's type, `rename` imports under a free name,
 // `replace` overwrites it. The response reports what happened per type
-// (`results`) with counts. Importing block types needs admin permission on
+// (`results`) with counts. Importing block types needs write permission on
 // the site.
 
 import type { APIRoute } from 'astro';
@@ -19,8 +19,8 @@ import { importBlockTypePackage, parseConflictMode } from '../../../../../lib/bl
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
+  const writeCheck = requirePermission(guard.value, 'write');
+  if (!writeCheck.ok) return writeCheck.response;
   const { site, versionId, owner_org_id } = guard.value;
 
   let buf: Buffer;

@@ -5,7 +5,7 @@ description: Build your own block types for one site, from existing blocks or wi
 
 import { Aside } from "@astrojs/starlight/components";
 
-When the core blocks are not enough, a site admin can create a block type for
+When the core blocks are not enough, an editor or site administrator can create a block type for
 the site. People then place it on pages like any other block and fill in its
 fields; they never see its structure, markup or CSS.
 
@@ -19,8 +19,8 @@ There are two kinds:
 | Use when           | Almost always: you keep named styles, image handling, links and accessibility | The markup cannot be built from existing blocks |
 
 Both are available in the portal (**Blocks**), the API and MCP, with the same
-checks. Creating, changing, deleting and importing block types needs **admin**
-permission on the site. Editors place block types and fill in their fields.
+checks. Creating, changing, deleting and importing block types needs **write**
+permission on the site from Core 0.2.78. Editors can author types as well as fill in their fields.
 A changed block type reaches the live site with the next deploy.
 
 For a first example, follow [Create your own block type](../../guides/create-block-type/).

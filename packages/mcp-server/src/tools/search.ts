@@ -7,6 +7,12 @@ function v(version?: string): Record<string, string | undefined> | undefined {
 
 export const searchTools: ToolDef[] = [
   {
+    name: 'resolve_page_url',
+    description: 'Find a Page by URL or path inside the selected site and version. Handles content-type routes and explicit page paths. Refuses other sites; never fetches the URL. Fragments identify positions within the returned page, not separate pages.',
+    inputSchema: { url: z.string().min(1).max(4096), version: versionParam },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, 'resolve-page', { url: args.url, ...v(args.version) }))),
+  },
+  {
     name: 'search_pages',
     description:
       'Search saved page content by literal substring or regex: block data in block-mode pages, html_content in HTML-mode pages, and content-type text fields (the same text bulk_replace_text edits). Returns up to 500 matches, each with the matching field (blocks, html_content or fields.<name>) and an excerpt around the first hit. Use this to scope a redesign or a bulk replacement before running it. ' +

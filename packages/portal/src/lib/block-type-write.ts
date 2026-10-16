@@ -10,7 +10,7 @@
 //   portal admins may; the chat never does, see lib/block-script-gate.ts);
 // - `actor` and `actorId` attribute the page writes a rename makes.
 //
-// Permission (admin on the site) is checked by each route before calling in.
+// Permission (write on the site) is checked by each route before calling in.
 
 import {
   BLOCK_TYPE_STARTERS,
@@ -39,7 +39,7 @@ import type { WriteActor } from './field-authority';
 
 export interface BlockTypeCtx { orgId: string; siteId: string; versionId: string }
 
-export const BLOCK_TYPE_ADMIN_REQUIRED = 'Creating, changing, deleting and importing block types requires admin permission on the site.';
+export const BLOCK_TYPE_WRITE_REQUIRED = 'Creating, changing, deleting and importing block types requires write permission on the site.';
 
 /** A stored site block type; `updated_at` is stamped on every write. */
 export type StoredBlockType = BlockType & { updated_at?: string };
