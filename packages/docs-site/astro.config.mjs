@@ -51,7 +51,20 @@ export default defineConfig({
             { label: 'Edit pages', slug: 'guides/the-editor' },
             { label: 'Drafts, saving and review', slug: 'tools/drafts-and-saving' },
             { label: 'Versions and branches', slug: 'tools/versions' },
-            { label: 'Blocks and templates', slug: 'tools/blocks' },
+            { label: 'Pages, blocks and templates', slug: 'guides/site-structure' },
+          ],
+        },
+        {
+          label: 'Build your site',
+          items: [
+            { label: 'Built-in block catalog', slug: 'guides/block-library' },
+            { label: 'Create a Page template', slug: 'guides/page-templates' },
+            { label: 'Create your own block type', slug: 'guides/create-block-type' },
+            { label: 'Content types and fields', slug: 'tools/content-types' },
+            { label: 'Global blocks and section starters', slug: 'tools/reusable-blocks' },
+            { label: 'Named styles', slug: 'tools/styles' },
+            { label: 'Responsive settings and block reference', slug: 'tools/blocks' },
+            { label: 'Media and images', slug: 'tools/media' },
           ],
         },
         {
@@ -64,6 +77,7 @@ export default defineConfig({
             { label: 'Website and media domains', slug: 'publishing/domains' },
             { label: 'Different generators on one website', slug: 'publishing/multiple-generators' },
             { label: 'Deploy and preview tools', slug: 'tools/deploy' },
+            { label: 'Publication checks', slug: 'guides/publication-validation' },
           ],
         },
         {
@@ -115,11 +129,6 @@ export default defineConfig({
             { label: 'Frontend & recipient links', slug: 'extensions/frontend' },
             { label: 'Provider backend & admin SSO', slug: 'extensions/backend' },
             { label: 'Manifest reference', slug: 'extensions/manifest' },
-          ],
-        },
-        {
-          label: 'Recipes',
-          items: [
           ],
         },
         {

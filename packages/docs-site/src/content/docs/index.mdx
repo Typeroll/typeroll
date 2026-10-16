@@ -22,10 +22,11 @@ hero:
 import { LinkCard, CardGrid, Aside } from "@astrojs/starlight/components";
 
 <Aside title="Typeroll is in beta" type="note">
-  The CMS, Cloud and Extension ecosystem are actively evolving. Cloud beta
-  access starts with a conversation. [Explore Typeroll and contact
-  us](https://typeroll.com/#beta). Typeroll Apps is a separate offering in
-  development; there is no finished public app catalog yet.
+  The CMS, Cloud and Extension ecosystem are actively evolving. You can [sign up
+  for Typeroll Cloud](https://app.typeroll.com/login), or run the open-source
+  CMS yourself. Follow [account setup](guides/typeroll-cloud/) to create your
+  Organization. Typeroll Apps is a separate offering; app-specific instructions
+  are available through authorized access to an enabled installation.
 </Aside>
 
 Typeroll CMS is an open-source CMS with a visual editor, a REST API and an MCP
@@ -44,6 +45,26 @@ guides and explains differences in setup, availability and responsibility.
 ## Choose a guide
 
 <CardGrid>
+  <LinkCard
+    title="Pages, blocks and templates"
+    href="guides/site-structure/"
+    description="Understand the pieces, choose how to reuse content and build your first shared layout."
+  />
+  <LinkCard
+    title="Built-in block catalog"
+    href="guides/block-library/"
+    description="Browse every built-in block, from headings and images to menus, forms and dynamic templates."
+  />
+  <LinkCard
+    title="Create a Page template"
+    href="guides/page-templates/"
+    description="Build one article layout, assign a Content type default and choose alternatives per Page."
+  />
+  <LinkCard
+    title="Create your own block type"
+    href="guides/create-block-type/"
+    description="Turn a recurring design into editable fields using existing blocks or your own HTML and CSS."
+  />
   <LinkCard
     title="Visual editor"
     href="guides/the-editor/"
@@ -72,7 +93,7 @@ guides and explains differences in setup, availability and responsibility.
   <LinkCard
     title="Self-host Typeroll CMS"
     href="guides/self-hosting/"
-    description="Run the CMS, API, Forms and Extension runtime on your own infrastructure."
+    description="Run the CMS, API and core services yourself; connect provider-owned Extensions separately."
   />
 </CardGrid>
 

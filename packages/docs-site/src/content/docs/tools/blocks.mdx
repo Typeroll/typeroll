@@ -1,11 +1,17 @@
 ---
 title: Blocks Tools
-description: Compose pages, partials, Page templates from a library of ~40 reusable blocks. Author custom blocks. Make layouts responsive.
+description: Technical reference for block editing, responsive settings, field lists, navigation, images and custom block types.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
 
 Pages, partials, Page templates all share one editing surface: a tree of **blocks**. The AI agent reaches for blocks instead of writing raw HTML — it's faster, more consistent, and the same edits the AI agent makes are what you see in the editor's drag-and-drop panel.
+
+For a guided introduction, start with [Pages, blocks and templates](../../guides/site-structure/).
+Browse the [complete built-in block catalog](../../guides/block-library/), follow
+[Create a Page template](../../guides/page-templates/) or
+[Create your own block type](../../guides/create-block-type/), then use this
+reference for detailed settings and tool behavior.
 
 ## The two verb families
 
@@ -18,7 +24,7 @@ There are two distinct kinds of block tools — keep them straight:
 
 ## Block containers
 
-A container is anything that holds a tree of blocks. Four kinds:
+A container is anything that holds a tree of blocks. Three kinds:
 
 | Kind       | What it is                                | `target.id`                                |
 | ---------- | ----------------------------------------- | ------------------------------------------ |
@@ -51,7 +57,7 @@ For pages, `page_id: "<id>"` is a shorthand for `target: { kind: "page", id: "<i
 
 ## The block library
 
-The AI agent calls `list_block_types` first to see what's available on the current site (core + custom + third-party in one list). Don't memorise ids — they're per-site. The library covers ~40 blocks across these groups:
+The AI agent calls `list_block_types` first to see the built-in and custom types available on the selected Site. Built-in type IDs are stable; custom types belong to a Site, and each placed block has a separate instance ID. The [catalog](../../guides/block-library/) lists all 77 built-in types in Core 0.2.77. The sections below explain common groups and their settings:
 
 ### Layout primitives
 
@@ -288,7 +294,7 @@ The repeater abstraction collapses what used to be a dozen specialised widgets i
 - `core/team_grid` — team_member grid
 - `core/page_list` — Pages of any content type, items become post_cards
 
-Each alias accepts `items: [{...}]` directly — the AI agent passes the per-item field values and the renderer expands the alias to a repeater with the right item-block type.
+The static aliases accept `items: [{...}]`: pass the per-item field values and the renderer expands the alias to a repeater with the right item block. `core/page_list` instead queries saved Pages using `content_type` and its query settings; it does not take a hand-maintained array of article data.
 
 From Core 0.2.34, frozen publications retain static rows against the selected item
 block’s public schema, including card field mappings and grouping labels.
@@ -344,13 +350,13 @@ and is rejected by whole-tree writes as well as block-instance tools.
 
 The five breakpoints are Tailwind-compatible:
 
-| Token     | Min width | Use                           |
-| --------- | --------- | ----------------------------- |
-| `mobile`  | 0         | Baseline                      |
-| `tablet`  | 640px     | Stora telefoner, små tablets  |
-| `laptop`  | 1024px    | Tablet landscape, små laptops |
-| `desktop` | 1280px    | Vanlig desktop                |
-| `wide`    | 1536px    | Stora skärmar                 |
+| Token     | Min width | Use                              |
+| --------- | --------- | -------------------------------- |
+| `mobile`  | 0         | Baseline                         |
+| `tablet`  | 640px     | Large phones, small tablets      |
+| `laptop`  | 1024px    | Landscape tablets, small laptops |
+| `desktop` | 1280px    | Desktop                          |
+| `wide`    | 1536px    | Large screens                    |
 
 Mobile-first inheritance: missing breakpoints inherit upward from the previous defined one.
 
@@ -561,7 +567,7 @@ succeed. Accepted jobs continue from their frozen source, not later edits.
 
 ### Precise native presentation
 
-The **Core 0.2.25 candidate** adds optional dimensions without requiring custom CSS.
+Core 0.2.25 added optional dimensions without requiring custom CSS.
 Use `read_block_type` to confirm that the connected runtime exposes these fields;
 Cloud and self-hosted installations gain them when upgraded. Existing size presets
 remain the default. Numeric dimensions accept a number or a responsive object,
@@ -650,7 +656,7 @@ source requires additional link semantics such as `sponsored`, `nofollow` or a
 forced download, do not assume that `new_tab` preserves them; verify support in
 the selected block before converting it.
 
-## Block menus and article cards (next Core release)
+## Block menus and article cards
 
 `core/navigation_menu` provides two editable block slots: **Desktop / shared**
 (slot 0) and optional **Mobile override** (slot 1). Leave slot 1 empty to reuse the
@@ -773,7 +779,7 @@ for exact authored breakpoints. Existing sites must be republished to use the
 new renderer. Cloud and self-hosted installations need Core 0.2.28; MCP schemas
 are available from 0.45.24.
 
-## Independent component controls (candidate)
+## Independent component controls
 
 These controls require template capability version `0.48.0` and the matching
 Core release. They are not available in Core 0.2.31. Inspect `read_block_type`

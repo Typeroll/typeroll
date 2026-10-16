@@ -1,249 +1,179 @@
 ---
-title: SEO & indexing
-description: How Typeroll's deploy pipeline produces clean canonical URLs, blocks duplicate-content indexing on the fallback subdomain, and emits the sitemap / robots / structured-data signals search engines expect.
+title: SEO and indexing
+description: Configure Page metadata, canonical routes, robots policies, sitemaps and structured data, then validate the actual static publication.
 ---
 
-import { Aside } from "@astrojs/starlight/components";
-
-This page documents what Typeroll emits at build time, what the runtime layer does on every request, and how it all interacts with custom domains. If you're trying to understand why your site looks the way it does in Search Console — start here.
-
-Current frozen publications also run [artifact-based publication checks](../../guides/publication-validation/) before activation.
-
-## The two-URL problem
-
-The fallback-domain and activation details below describe legacy managed hosting. For current customer-owned publishing, use [Website and media domains](../../publishing/domains/): the organization or Hosting Group supplies the address base, and a domain change prepares a candidate before traffic is moved. Creating a site alone does not give it a public Typeroll subdomain.
-
-In legacy managed hosting, a site can be reachable from two URLs:
-
-1. **The fallback subdomain** — `<slug>.sites.typeroll.com` (or your self-hosted equivalent). Auto-provisioned when the site is created. Never goes away.
-2. **The custom domain** — `www.example.com`. Optional. Declared through the [domain lifecycle](../../guides/custom-domain/) (domain-first: it becomes canonical the moment you declare it, before DNS).
-
-Both serve the same Cloudflare Pages build. Without deliberate effort, Google would treat them as duplicate content, split page rank between them, and possibly surface the wrong URL in SERPs.
-
-Typeroll's defense is layered: a strong canonical URL signal at the HTML layer, and a stricter `X-Robots-Tag` response header for crawlers that don't honour canonicals.
-
-## Canonical URL
-
-Every page in a Typeroll build carries a `<link rel="canonical">` tag in `<head>`. The href points at the URL the site should be indexed under:
-
-| Site state                                              | Canonical points at                        |
-| ------------------------------------------------------- | ------------------------------------------ |
-| No custom domain declared                               | `https://<slug>.sites.typeroll.com/<path>` |
-| Custom domain declared (any status: pending/verified/…) | `https://<custom-domain>/<path>`           |
-| Site with legacy `domain` field (no lifecycle metadata) | `https://<custom-domain>/<path>`           |
-
-This is the **domain-first** model: the moment a custom domain is declared it
-becomes the canonical host, regardless of DNS-verification status. The whole
-point is that the canonical is already correct when DNS lands — there's never a
-window where the public site advertises the internal `*.sites` fallback. (That
-window is exactly the autopilot.se leak that prompted this: a verified-but-not-
-activated domain shipped a sitemap full of `*.sites.typeroll.com` URLs.) The
-resolver is `isCanonicalReady(site) = !!site.domain` in `lib/site-public-urls.ts`.
-
-`domain_status` (`pending`/`verified`/`failed`) does **not** gate the canonical —
-it's a DNS-health diagnostic that gates only the agent-facing `production` /
-`live_url` (so agents don't send a customer to a domain that doesn't resolve
-yet — a separate, earlier autopilot report).
-
-The canonical is baked at build time from `Astro.site`, which the deploy runner sets based on the site doc. The URL also feeds into:
-
-- `sitemap.xml` — every page's `<loc>` is the canonical URL
-- `sitemap-images.xml` — image URLs and their parent page URLs
-- `<meta property="og:url">` — OpenGraph URL for social shares
-- JSON-LD `mainEntityOfPage.@id` — for Article schema and related types
-
-<Aside type="caution" title="Re-deploy applies the new canonical">
-  The canonical is baked into the static build, so changing the domain only
-  takes effect on the next deploy. Declaring a domain in the UI republishes by
-  default (the "Publish now" checkbox) — leave it checked unless you have
-  unpublished drafts you don't want to ship. There is no separate "activate"
-  step: declaring the domain is what cuts the canonical over.
-</Aside>
-
-## Fallback-subdomain de-indexing
-
-The canonical URL alone is enough for Google and the major Western search engines in clean duplicate-content scenarios — they consolidate ranking on the canonical and drop the duplicate from SERPs. But:
-
-- Smaller / regional crawlers don't always respect canonicals.
-- Bing and Yandex have historically been less consistent.
-- AI training crawlers (GPTBot, ClaudeBot, etc.) often skip canonical consolidation entirely.
-
-The deploy runner writes an absolute host pattern to the static Cloudflare
-Pages `_headers` file whenever `SITES_BASE_DOMAIN` is configured:
-
-```text
-https://:site.sites.typeroll.com/*
-  X-Robots-Tag: noindex, nofollow
-```
-
-Cloudflare Pages applies that header only when it serves the build on a matching
-platform fallback hostname. The same files remain indexable on the customer's
-custom domain. The placeholder also covers fallback aliases attached to the
-same Pages project. This works with DNS-only fallback CNAMEs and adds neither a
-Pages Function nor a per-request invocation.
-
-Self-hosted installations that do not configure `SITES_BASE_DOMAIN` receive
-only the portable cache and security headers. An operator who offers a shared
-fallback namespace can set the variable and gets the same host-scoped policy.
-
-This staging/indexing rule is hosting infrastructure. It is unrelated to
-Typeroll Apps, Extensions, Forms or provider APIs.
-
-Use `check_site_indexing` (or
-`GET /api/v1/sites/{siteId}/indexing-diagnostics`) before launch and after a
-domain or indexing-setting change. It requests the recorded fallback and live
-production roots plus each `robots.txt`, and reports edge headers, HTML robots
-meta, and crawl policy independently. A fallback is not considered protected
-unless the documented `X-Robots-Tag` header is present, even when its HTML also
-contains `noindex`.
-
-## robots.txt
-
-For a staging or review site that should remain crawlable but must not appear
-in search results, set `sitewide_noindex: true`. Typeroll then emits
-`<meta name="robots" content="noindex,follow">` on public HTML pages. Use
-`sitewide_nofollow: true` for an explicit link-following restriction. This is
-deliberately separate from `robots.txt`: blocking the crawler there can prevent
-it from seeing the noindex directive at all.
-
-Generated as a static file by the renderer at `/robots.txt`. The host-scoped
-`_headers` rule adds its response directive independently and never changes
-this file's customer-domain content. Default policy:
-
-```
-User-agent: *
-Allow: /
-
-Sitemap: https://<canonical-host>/sitemap.xml
-```
-
-Per-site overrides:
-
-- **Site setting `robots_txt`** — when non-empty, replaces the default body entirely. Use this for site-specific allow/disallow rules.
-- **Version flag `robots_blocked`** — when true, the renderer emits a hard `Disallow: /` regardless of the override. Branches default to `robots_blocked: true` so previews don't get crawled; main follows the page and site indexing settings.
-
-The `User-agent: *` block keeps it permissive by default — Typeroll doesn't enumerate specific bots. To block a specific crawler (e.g. AI training), add it explicitly via the `robots_txt` override:
-
-```
-User-agent: GPTBot
-Disallow: /
-
-User-agent: ClaudeBot
-Disallow: /
-
-User-agent: *
-Allow: /
-
-Sitemap: https://www.example.com/sitemap.xml
-```
-
-## Sitemap
-
-Two XML sitemaps emitted per build:
-
-- **`/sitemap.xml`** — every published Page whose content type produces a route. URLs use the canonical host.
-- **`/sitemap-images.xml`** — images referenced from published content, grouped by parent page.
-
-Both filter out items with `noindex: true` and emit no page entries when the site or version blocks indexing. Both honour the canonical URL rules above.
-
-The sitemap is referenced from `robots.txt` and is picked up automatically by Google Search Console / Bing Webmaster Tools when you verify ownership. You don't need to submit it manually after every deploy — search engines re-crawl it on their own schedule.
-
-## `llms.txt` — being readable to AI assistants
-
-Every build emits **`/llms.txt`**: a plain-text, machine-readable map of the site
-— what it is, and what's on it, with titles, URLs and descriptions.
-
-It's the emerging convention for the same job `robots.txt` and `sitemap.xml` do
-for crawlers, aimed at AI assistants. Where a
-sitemap says _which URLs exist_, `llms.txt` says _what this site is about_ in a
-form a model can consume without rendering pages or guessing from markup.
-
-Nothing to configure — it regenerates on every deploy from your published pages,
-so it can't drift from the site the way a hand-maintained file would.
-
-This matters more than it looks. Assistants increasingly answer "who should I
-hire for X in Y" directly, and a site they can parse confidently is a site
-they're more likely to cite. If you've enabled the
-[Analytics app](../../guides/apps-and-analytics/), the Insights page shows how many
-visits actually arrive from those assistants.
-
-## Structured data (JSON-LD)
-
-Pages can carry arbitrary JSON-LD via the `Page.json_ld` field. Common patterns:
-
-- **Article** — for blog posts, set `kind: "article"` on the page. The renderer emits Article schema with `headline`, `datePublished`, `dateModified`, `author`, `image`. Combines with the canonical URL via `mainEntityOfPage.@id`.
-- **Organization** — site-level. Configured under Settings → Organization (name, logo, sameAs profile URLs). Emitted on every page so search engines pick up the entity consistently.
-- **PostalAddress** — site-level. Configured under Settings → Contact → Address (either a single string or a structured `streetAddress` / `addressLocality` / `postalCode` / `addressCountry` object). The structured form emits a full Schema.org PostalAddress in the Organization block.
-- **Custom JSON-LD** — paste raw JSON into the page's `json_ld` field. The renderer escapes `</script` and `<!--` defensively before injecting.
-
-Per-page JSON-LD is added to the page's `<head>`; site-level JSON-LD is added by `SEOHead.astro` on every page automatically.
-
-## Meta tags emitted on every page
-
-```html
-<title>Page title — Site Name</title>
-<meta name="description" content="…" />
-<meta name="robots" content="index,follow" />
-<!-- or noindex,nofollow if blocked -->
-<link rel="canonical" href="https://www.example.com/path" />
-<meta name="generator" content="Typeroll" />
-
-<!-- OpenGraph (Facebook, LinkedIn, Slack previews) -->
-<meta property="og:title" content="Page title" />
-<meta property="og:description" content="…" />
-<meta property="og:type" content="website" />
-<!-- or "article" for article pages -->
-<meta property="og:url" content="https://www.example.com/path" />
-<meta property="og:image" content="https://www.example.com/og.png" />
-<meta property="og:locale" content="en_US" />
-<!-- derived from site language -->
-
-<!-- Twitter card -->
-<meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:site" content="@yoursitehandle" />
-<meta name="twitter:title" content="Page title" />
-<meta name="twitter:description" content="…" />
-<meta name="twitter:image" content="https://www.example.com/og.png" />
-
-<!-- Optional, when site-level fields are set -->
-<meta name="author" content="…" />
-
-<!-- Language cluster, when the page declares alternates -->
-<link rel="alternate" hreflang="sv" href="https://example.se/om-oss" />
-<link rel="alternate" hreflang="de" href="https://example.de/ueber-uns" />
-```
-
-The full set, plus per-page overrides, lives in [packages/site-template/src/components/SEOHead.astro](https://github.com/typeroll/typeroll/blob/main/packages/site-template/src/components/SEOHead.astro).
-
-## Multi-language sites and hreflang
-
-A Typeroll site serves one domain, so a family of language sites (`example.se`, `example.de`, `example.co.uk`) is a family of sites. Nothing can derive which page corresponds to which, so each page declares its equivalents:
-
-- Set them per page via `alternates` (the AI agent does this with `update_page`, or `batch_update_pages` for a whole cluster at once).
-- The renderer adds the page's **self-reference** automatically — Google ignores a cluster whose members don't list themselves.
-- Clusters must be **reciprocal**: every page lists every other one. Write all sides.
-- Use `x-default` for the language selector or fallback market.
-- Use the final domains, never the temporary `*.typeroll` URL.
-- Invalid tags or non-absolute URLs are refused at write time rather than emitted as broken markup.
-
-Pages with no equivalent elsewhere get no alternates — a cluster of one is meaningless. Per-page `language` also drives `<html lang>` and `og:locale`.
-
-## Custom domains and SEO timing
-
-The order of operations when bringing a new domain live:
-
-1. **Declare the domain** in Settings → Custom domain. With "Publish now" on (default) a build is immediately enqueued that bakes the custom domain into canonical / sitemap / OG. The platform's zone-level rule independently keeps the fallback subdomain `noindex, nofollow`. No DNS required yet. Status starts `pending`.
-2. **Point DNS** at the registrar — CNAME (or A/AAAA for an apex) to the target the dialog shows. This is the **last** step: your published site already claims the domain as canonical, so doing DNS last means visitors and Google never see the fallback.
-3. **Cloudflare verifies + issues the SSL cert.** Click "Check DNS status" to refresh. Status: `verified` — the site is now reachable on the domain, and the agent-facing `live_url` switches to it.
-4. **Wait for Google to recrawl.** Recrawl and canonical selection times vary; verify the result in Search Console. To accelerate, request indexing of the homepage manually in Search Console and submit the new sitemap if needed.
-
-Changing the domain without re-deploying leaves the canonical pointing at the previous URL until the next build, so declaring a domain republishes by default. See [Custom Domain guide](../../guides/custom-domain/) for the user-facing walkthrough.
-
-### Build-report delivery
-
-Core 0.2.24 fixes a report-delivery limit that could stop large publications even
-when their build and validation had finished. Install that release and update the
-shared engine in **Publishing → Builds** before retrying an affected publication.
-No page-content migration is needed. The current live site remains active when a
-candidate fails. A report that exceeds the supported bound produces a build error;
-it never bypasses artifact validation or starts a replacement build automatically.
+Typeroll generates SEO metadata in the static build. Saved settings do not
+change a live website until it is published. The same content and rendering
+rules apply to Typeroll Cloud and self-hosting; the hosting provider can add
+response headers or access rules of its own.
+
+Start with a Page's **Meta** panel and the Site settings. Before launch, review
+the [publication check report](../../guides/publication-validation/) and the
+actual public URLs. Technical correctness does not guarantee indexing, rankings
+or traffic.
+
+## Titles, descriptions and social previews
+
+| Output           | Value selection                                                                                   |
+| ---------------- | ------------------------------------------------------------------------------------------------- |
+| Document title   | `Page.seo_title`, otherwise `Page.title`, with the configured suffix unless disabled for the Page |
+| Description      | `Page.seo_description`, then `default_meta_description`, then the Site tagline                    |
+| Social image     | `Page.og_image`, then `default_og_image`, then the Site logo                                      |
+| Social image alt | `Page.seo_image_alt`, otherwise the first available image alt in the Page HTML                    |
+| Language         | `Page.language`, otherwise the Site language, otherwise English                                   |
+
+The renderer emits OpenGraph and Twitter card metadata alongside ordinary HTML
+metadata. Use specific descriptions for important Pages; a Site-wide fallback
+avoids empty output but does not make every description useful or unique.
+
+A visible heading and a document title are different. Keep one H1 in the Page
+layout; a [Page template](../../guides/page-templates/) can supply it from the
+Page title. Use H2 and H3 for the body structure, with visual sizing controlled
+independently of heading level.
+
+## Routes and canonicals
+
+The renderer resolves a Page's route from its explicit `path`, Content type
+route pattern and hierarchy as applicable. It does not assume that a simple
+`slug` is the complete route. The Site's `trailing_slash` policy determines the
+normal slash form.
+
+The default canonical combines the resolved path with the publication's website
+origin. An intentional `Page.canonical_url` overrides it, including for a
+cross-domain canonical. Configure that explicitly; do not add a second canonical
+through custom markup. The artifact validator checks canonical output against
+that configuration.
+
+For current customer-owned publishing, the Hosting Group supplies the temporary
+site address base. A Site can later use its own website host. Creating a Site
+does not provision a permanent public `typeroll.com` subdomain.
+
+Follow [Website and media domains](../../publishing/domains/) to prepare a
+verified build with the intended URLs **before switching traffic**. Current
+publishing separates preparation, verification and cutover. Merely entering a
+hostname is not proof that the new address is live. Older managed sites have a
+separate [legacy domain workflow](../../guides/custom-domain/).
+
+## Indexing and following links are independent
+
+| Intended public behavior                            | Page settings                     | HTML robots value  |
+| --------------------------------------------------- | --------------------------------- | ------------------ |
+| Index the Page and follow its links                 | Neither flag set                  | `index,follow`     |
+| Keep the Page out of search, but follow its links   | `noindex: true`                   | `noindex,follow`   |
+| Keep it out of search and request no link following | `noindex: true`, `nofollow: true` | `noindex,nofollow` |
+
+`sitewide_noindex` and `sitewide_nofollow` apply the corresponding restrictions
+across the Site. Private previews and versions configured with `robots_blocked`
+use strict restrictions; an ordinary Page flag does not override them.
+
+A public noindex Page may remain internally linked. It is not a broken link
+simply because it is absent from the indexable sitemap. **Noindex is not access
+control**: use authenticated or expiring previews for private review, and never
+publish secrets in a noindex Page.
+
+## robots.txt and hosting headers
+
+A normal build emits `/robots.txt` with a permissive default and references to
+`/sitemap.xml` and `/sitemap-images.xml`. `settings.robots_txt` supplies custom
+crawl rules; the renderer ensures the generated sitemap references are present.
+A version with `robots_blocked` instead emits `Disallow: /`.
+
+Crawl permission in robots.txt and indexability in HTML are different settings.
+If you want a public Page crawled but excluded from results, use noindex; blocking
+fetches can prevent crawlers from reading that directive.
+
+Hosting headers are a third layer. Managed fallback protection can emit
+host-scoped `X-Robots-Tag: noindex, nofollow` rules in the Cloudflare Pages
+`_headers` artifact. A matching fallback header can be stricter than the Page's
+HTML. Self-hosted operators configuring a shared fallback namespace use
+`SITES_BASE_DOMAIN`; operators without it must verify their hosting policy.
+Do not assume that any arbitrary alias is protected just because the preferred
+hostname is configured.
+
+Call `check_site_indexing`, or
+`GET /api/v1/sites/{siteId}/indexing-diagnostics`, before launch and after domain
+or indexing changes. It reports the recorded fallback and production roots,
+response headers, HTML robots and robots.txt separately. Also inspect provider
+firewall, bot and access settings when requests are blocked. An HTTP check does
+not prove how a verified search-engine crawler is treated.
+
+## Sitemaps and agent discovery
+
+A build emits:
+
+- **`/sitemap.xml`:** published, indexable Page routes using the publication's
+  origin and slash policy. Drafts, review content, unlisted Pages and noindex
+  Pages are excluded. Site-wide or version indexing restrictions suppress entries.
+- **`/sitemap-images.xml`:** eligible Page image references, grouped by Page.
+- **`/llms.txt`:** a text map of published, listed Pages with titles, URLs and
+  descriptions; Page-level noindex content is excluded. This is discovery data,
+  not authentication or a guarantee that an AI service will use it.
+
+`Page.lastmod_override` can supply a sitemap date. An empty string suppresses
+`lastmod`; otherwise the renderer uses the available updated/published timestamp.
+Use a meaningful date rather than making unchanged content appear newly revised.
+
+Inspect the generated artifact after importing HTML or changing media sources,
+especially when images are introduced by custom markup or scripts. Do not assume
+that syntactically valid XML establishes complete image coverage.
+
+## Structured data
+
+| Output              | Configuration and scope                                                                                                |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `Organization`      | Homepage only; Site `organization`, contact and social settings describe the website's brand, not the Typeroll account |
+| `WebSite`           | Homepage only; Site name, origin and optional tagline                                                                  |
+| `Article`           | Pages with `kind: "article"`; title, dates, author and available image/description                                     |
+| `BreadcrumbList`    | Non-home routes, using resolved breadcrumbs and the intended canonical for the final item                              |
+| Content type schema | The type's `schema_type`, field mode and supported field map                                                           |
+| Custom JSON-LD      | Explicit `Page.json_ld`, for information genuinely represented by that Page                                            |
+
+The visible breadcrumbs and generated schema use resolved routes, including
+Content type prefixes. Do not paste a second BreadcrumbList to repair a route.
+
+Content type `schema_field_map` supports **direct properties only**. For example,
+`{ "website": "url" }` is supported; `"address.addressLocality"` is rejected
+rather than emitted as a literal dotted JSON key. Reserved prototype names are
+also rejected. Use `schema_field_mode: "mapped"` to restrict automatic output
+to explicitly mapped fields. Fields marked `rendered: false` remain private.
+
+A Site's structured contact address uses `street_address`, `postal_code`,
+`address_locality`, `address_region` and `address_country`. The renderer converts
+these to Schema.org's PostalAddress keys in the homepage Organization object.
+A plain address string is not expanded into invented structured fields.
+For more complex Page-specific graphs, author and review explicit JSON-LD.
+
+## Language alternatives
+
+Declare equivalents with `Page.alternates`, using the public final URLs and
+language tags. The renderer adds the Page's self-reference when a cluster exists.
+Keep the cluster reciprocal across the participating Pages. `x-default` can
+identify a language selector or fallback. Use `Page.language` when the Page's
+language differs from the Site default.
+
+Do not generate alternate URLs from a slug alone; equivalent content can have
+different paths on different sites. Invalid tags and non-absolute alternate
+URLs are rejected when saved.
+
+## Publication checks and troubleshooting
+
+[Artifact checks](../../guides/publication-validation/) inspect the actual HTML,
+routes, redirects, JSON-LD, sitemaps and robots settings before activation.
+Blocking technical errors leave the current live site intact. Editorial
+warnings require review; they do not authorize automatic copy changes.
+
+| Problem                                  | First checks                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Wrong canonical host                     | Publication origin, explicit Page override and whether the domain candidate was successfully activated |
+| Missing sitemap entry                    | Page status, route availability, Page/Site noindex and version restrictions                            |
+| Public Page unexpectedly noindex         | HTML robots, response headers and selected version; inspect them separately                            |
+| Wrong breadcrumb path                    | Parent Pages, Content type route and explicit Page path; do not duplicate schema                       |
+| Stale metadata after an edit             | Saved content, the deployment result and the served artifact                                           |
+| Duplicate descriptions or awkward titles | Review the reported Pages and edit their content deliberately                                          |
+
+On an older installation, update the matching Core and shared build engine
+before relying on newer validation behavior. Updating MCP alone cannot change
+the renderer. The [source renderer](https://github.com/typeroll/typeroll/blob/main/packages/site-template/src/components/SEOHead.astro)
+and the [publication-check guide](../../guides/publication-validation/) describe
+the technical contract and its limitations.

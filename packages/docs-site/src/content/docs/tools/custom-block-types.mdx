@@ -23,6 +23,10 @@ checks. Creating, changing, deleting and importing block types needs **admin**
 permission on the site. Editors place block types and fill in their fields.
 A changed block type reaches the live site with the next deploy.
 
+For a first example, follow [Create your own block type](../../guides/create-block-type/).
+The [built-in catalog](../../guides/block-library/) helps you check whether an
+existing type already meets the need.
+
 ## Fields
 
 `schema` lists the fields people edit. Every field has `name`, `type` and
@@ -200,8 +204,9 @@ Every write is checked before it is stored. Problems come back with a path
 | Where it is used                           | `find_pages_using_block_type`                                 | `GET /block-types/{id}/usage`                           |
 | Export and import                          | `export_block_types`, `import_block_types`                    | `.tcblocks` files                                       |
 
-The preview renders exactly as the published site does: the site's render
-version, theme, named styles and other block types.
+The preview uses the same rendering pipeline, Site render version, theme, named
+styles and other block types as publication. It does **not** execute block
+scripts; test scripted behavior in a suitable deployment before launch.
 
 Linked items, such as those in the icon list and feature card starters, need
 render version 4 or later. Before it, an item without an address is still a
