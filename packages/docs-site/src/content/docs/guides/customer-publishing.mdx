@@ -598,7 +598,7 @@ are never copied from the cache. Image preparation and verified variant reuse
 remain a separate process; partial HTML rendering does not eliminate dependency
 installation, media transfer, static upload or provider startup time.
 
-Core 0.2.18 (release candidate) adds reuse of unchanged media files already
+Core 0.2.18 adds reuse of unchanged media files already
 available in the target Pages project. Updated shared engines compare the
 current image completion records with a completed upload receipt, then check
 Cloudflare's stored asset hashes before omitting downloads from R2. They combine

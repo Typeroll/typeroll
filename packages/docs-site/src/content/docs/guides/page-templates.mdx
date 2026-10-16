@@ -1,0 +1,138 @@
+---
+title: Create a Page template
+description: Build a shared article layout, insert the Page body, assign a default to a Content type and override it for an individual Page.
+---
+
+A Page template defines the layout around each Page's content. For example,
+write an article once, then let the template supply its title, date, body
+position and table of contents. Templates work in Cloud and self-hosted Typeroll CMS.
+
+If you want a section copied into a page instead, use a
+[block template](../../tools/reusable-blocks/#block-templates).
+
+## 1. Create the layout
+
+Select the **Site** and intended **Version**, open **Templates → New template**,
+and enter:
+
+- **Template ID:** `article-layout` (a stable machine name).
+- **Label:** `Article` (the name editors see).
+- **Starting layout:** `Article`.
+
+Open the created template. Starting layouts are editable block trees, not locked
+themes. Other starters include Blog, Checklist, Team, Events, Products, Profile,
+Landing and Custom. A starter may reference sample fields: match those to your
+content type before using it.
+
+## 2. Keep the content dynamic
+
+In the template editor, use the block library to arrange the layout:
+
+| Block               | What it reads                                           |
+| ------------------- | ------------------------------------------------------- |
+| Page title          | The current Page's title; normally your single H1       |
+| Page date           | The selected date field, such as `date_published`       |
+| Page featured image | The field selected in its **Image field** setting       |
+| Page content        | The Page's own body blocks                              |
+| Table of contents   | The headings actually rendered on that Page             |
+| Page field list     | Public custom fields, with empty rows hidden by default |
+
+The Article starter already includes a title, date, breadcrumbs, a content slot
+and a table of contents. Add a featured image if you need one. If your Content
+type stores the image in `fields.featured_image`, set the image block's **Image
+field** to `featured_image`; its own default is `og_image`.
+
+Keep a **Page content** slot wherever the article body should appear. Without
+it, a template can show metadata but will not show the Page's body. Set its
+**Content spacing** to **Article** for article rhythm. Choose which heading
+levels the table of contents includes; do not maintain a separate list of links.
+
+When the template supplies the H1, start body sections at H2. Use visual size
+controls to adjust appearance without changing the semantic heading level.
+
+Template changes save in the editor. Wait for **Saved**, then set the template's
+status to **Published** to make it available in Page template choices. This
+makes the template usable in the CMS; it does not deploy the website.
+
+## 3. Assign it to a Content type
+
+Open **Content types**, select your Articles type, and find **Page templates**.
+Choose **Article** as its **Default template**. If you enable **Limit the templates
+editors can choose**, include the default and any alternatives in that selection.
+
+A type defines fields, routes and listing defaults. It can allow several Page
+templates. A template can be shared across compatible types; its `applies_to`
+restriction controls compatibility.
+
+## 4. Write and preview two Pages
+
+Create two Pages with the Articles content type and different titles and bodies.
+Open **Meta → Template** on each and choose **Use content type’s default template**.
+Save, then preview both Pages at a narrow and wide viewport.
+
+Check that each has its own title, body and contents links. Try an empty optional
+image or field to see how the layout behaves. A `core/field_list` hides its
+heading too when no rows are visible.
+
+To give one Page a different layout, select an allowed alternative under
+**Template** and save. That Page keeps its explicit choice if the type's default
+changes later. Choose the inherited option again to follow the default.
+
+## 5. Publish when ready
+
+Save Page working copies, review the selected Version and deploy through the
+normal publication flow. Template edits can affect many Pages; inspect the
+publication impact before deploying. A template cannot be deleted while Pages
+or Content types still reference it.
+
+## The same workflow through MCP or REST
+
+Call `create_page_template` with:
+
+```json
+{
+  "name": "article-layout",
+  "label": "Article",
+  "starter": "article",
+  "status": "published",
+  "version": "main"
+}
+```
+
+For REST, send the same definition without `version` to
+`POST /api/v1/sites/{siteId}/page-templates?version=main`. You may supply `blocks`
+instead of `starter`, but not both. Retain the returned template ID.
+
+Set an existing Content type's default with `update_content_type`:
+
+```json
+{
+  "name": "articles",
+  "patch": { "template": "article-layout" },
+  "version": "main"
+}
+```
+
+If the type has an explicit `allowed_templates` list, include the template there
+too. Use a Page's `template` for an override; set it to `null` to restore
+inheritance. Those Page changes follow Save/Discard.
+
+Use `read_page_template` before editing, and address its blocks with
+`target: { kind: "template", id: "article-layout" }`. For isolated work, replace
+`main` with the same site version on every supported operation. Definition
+writes save immediately; inspect tool results for any working-copy changes.
+
+## Troubleshooting
+
+| Symptom                                     | Check                                                                             |
+| ------------------------------------------- | --------------------------------------------------------------------------------- |
+| Template is absent from the Page picker     | Its Published status, selected Version, compatibility and the type's allowed list |
+| Title appears twice                         | Keep H1 in the template; remove the duplicate body heading or make it H2          |
+| Body is missing                             | Add `template_content_slot` to the template                                       |
+| Image is missing or the wrong image appears | Match the template image block's `field` to the Page field holding the image      |
+| A Page ignores the new default              | Clear its explicit template override                                              |
+| Preview changed but the live site did not   | Save the intended content and complete a successful deployment                    |
+
+See the [Content type and template reference](../../tools/content-types/) for
+sorting, field permissions and template restrictions, and the
+[block catalog](../block-library/#page-and-site-context) for all dynamic blocks.

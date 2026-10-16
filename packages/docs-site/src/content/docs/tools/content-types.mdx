@@ -12,6 +12,10 @@ This model requires Core 0.2.0 and MCP 0.45.0. Existing installations must
 complete the [unified Pages migration](../../guides/unified-pages-upgrade/)
 before starting that Core version.
 
+For the concepts, read [Pages, blocks and templates](../../guides/site-structure/).
+For a complete walkthrough, follow [Create a Page template](../../guides/page-templates/).
+This reference covers the schema, permissions and API details.
+
 ## In the editor
 
 Open your site and choose **Pages** to see all content. Filter by content type
@@ -90,7 +94,7 @@ link needs `override_reason` on the write, in the portal and the API alike.
 ## Shared templates
 
 Use **Templates → New template** or `create_page_template`. Choose a starting
-layout (`article`, `blog`, `checklist`, `team`, `events`, `products` or `custom`)
+layout (`article`, `blog`, `checklist`, `team`, `events`, `products`, `profile`, `landing` or `custom`)
 or supply a block tree. Templates use `template/page_title`,
 `template/page_featured_image`, `template/page_date` and `template_content_slot`.
 The content slot renders the Page's own body blocks; its width is configurable.

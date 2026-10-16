@@ -1,0 +1,152 @@
+---
+title: Built-in block catalog
+description: Every built-in Typeroll CMS block, grouped by purpose, with names, type IDs and advice on choosing the right block.
+---
+
+Typeroll CMS includes **77 built-in block types** in Core 0.2.77. This catalog
+covers ordinary blocks, reusable list/card blocks, form fields and dynamic
+Page-template blocks. It applies to Cloud and self-hosting; an older installation
+or Site render version can expose fewer settings. Custom Site blocks and blocks
+supplied by an enabled Extension are additional to this list.
+
+In the page editor, open **Add** and search by the block’s label. Form fields
+belong in Form steps; dynamic Page blocks are most useful in Page templates.
+The picker can filter blocks by editing context, so it does not always show all
+77 entries together.
+
+For an agent, call `list_block_types`, then `read_block_type` for the chosen
+ID. That returns the installed schema, defaults, allowed values and responsive
+fields. Built-in type IDs are stable; each placed instance has its own unique
+block ID. Do not confuse the two.
+
+## Start with these
+
+Build an ordinary section with **Section**, **Heading**, **Text**, **Image** and
+**Button**. Use **Page content** and **Page title** in a shared template. Use
+**Content type List** for an archive instead of copying cards by hand. When the
+library cannot express a recurring design, [create a custom block type](../create-block-type/).
+
+## Layout and shared content
+
+- **Section** (`core/section`) — A full-width section background with a constrained inner content area. Start here for distinct page sections.
+- **Container** (`core/container`) — Group blocks; control direction, alignment, spacing and optional linked or sticky behavior.
+- **Grid** (`core/grid`) — Arrange child blocks in a responsive grid.
+- **Two columns** (`core/columns`) — Two independently editable columns with a ratio and stacking threshold.
+- **Spacer** (`core/spacer`) — An intentional blank gap; prefer layout spacing controls for normal rhythm.
+- **Divider** (`core/divider`) — Separate content with a line.
+- **Global block** (`core/global_block`) — Insert a reference to shared content; changes follow the global source.
+
+## Text, facts and actions
+
+- **Heading** (`core/heading`) — A plain heading with semantic level, visual size, eyebrow and subtitle controls.
+- **Formatted heading** (`core/rich_heading`) — A heading with inline formatting.
+- **Text** (`core/prose`) — Formatted paragraphs and rich text. The editor calls this Text.
+- **Text line** (`core/text`) — Plain field text in a chosen element; useful for bindings in custom blocks.
+- **List** (`core/list`) — A semantic ordered or unordered list.
+- **Table** (`core/table`) — Tabular information with headers and rows.
+- **Page field list** (`core/field_list`) — Labels and typed Page field values. Empty rows and an entirely empty section disappear by default.
+- **Button** (`core/button`) — A styled link or call to action.
+- **Icon** (`core/icon`) — An icon with size, color and optional link.
+- **Icon Box** (`core/icon_box`) — An icon, heading and supporting text, optionally linked.
+- **Table of contents** (`core/table_of_contents`) — Automatic links to the current Page’s headings; usually placed in a Page template.
+
+## Images, media and composed sections
+
+- **Image** (`core/image`) — An image with alt text, caption, optional link and framing controls. Defaults to preserving the whole image.
+- **Video** (`core/video`) — A supported video embed with layout controls.
+- **Hero** (`core/hero`) — A prominent introduction with heading, supporting text, image and actions.
+- **CTA** (`core/cta`) — A call-to-action section.
+- **Media card** (`core/media_card`) — An image or icon alongside text and links.
+- **Feature row** (`core/feature_row`) — A media-and-text section with selectable layout.
+- **Accordion** (`core/accordion`) — Expandable sections for questions or supporting detail.
+- **Tabs and links** (`core/tabs`) — Tabs and links, including navigation to distinct destinations.
+
+## Navigation and search
+
+- **Navigation** (`core/navigation`) — A simple menu from structured navigation items.
+- **Block menu** (`core/navigation_menu`) — A block-based menu with desktop/shared and optional independent mobile content slots.
+- **Navigation links** (`core/navigation_links`) — A semantic list of links for menus, footers and other navigation areas.
+- **Navigation inputs** (`core/navigation_form`) — Inputs that navigate to another Page with URL values, for example a form-entry banner; not a submission form.
+- **Search** (`core/search`) — Client-side search backed by the static Pagefind index produced during publication.
+
+## Lists, cards and repeaters
+
+- **Repeater** (`core/repeater`) — Repeat a block or child composition over static rows, Pages or supported relationship sources.
+- **Content type List** (`core/page_list`) — List saved Pages of a Content type, with sorting, filtering and card mapping.
+- **Gallery** (`core/gallery`) — Repeat image items as a gallery.
+- **Logo Cloud** (`core/logo_cloud`) — Repeat logos.
+- **Testimonials** (`core/testimonials`) — Repeat testimonials.
+- **Feature Grid** (`core/feature_grid`) — Repeat icon-and-text features.
+- **Pricing Table** (`core/pricing_table`) — Repeat pricing plans.
+- **Team** (`core/team_grid`) — Repeat team profiles.
+- **Post Card** (`core/post_card`) — A Page card with title, excerpt, image and optional metadata/actions.
+- **Testimonial** (`core/testimonial`) — One quotation with attribution.
+- **Team Member** (`core/team_member`) — One person’s profile card.
+- **Pricing Plan** (`core/pricing_plan`) — One plan with price, features and action.
+- **Logo** (`core/logo_item`) — One logo, optionally linked.
+- **Step Card** (`core/step_card`) — One numbered step.
+
+## Forms
+
+- **Form** (`core/form`) — Place a saved Form on a Page; its configured steps supply the fields.
+- **Text field** (`form/text`) — Single-line text input.
+- **Email field** (`form/email`) — Email input.
+- **Phone field** (`form/phone`) — Phone input.
+- **URL field** (`form/url`) — URL input.
+- **Number field** (`form/number`) — Numeric input with optional limits.
+- **Text area** (`form/textarea`) — Multi-line text input.
+- **Select** (`form/select`) — Choose one option from a dropdown.
+- **Radio group** (`form/radio_group`) — Choose one visible option.
+- **Yes / No answer** (`form/boolean`) — Yes, No or an explicitly cleared answer.
+- **Checkbox group** (`form/checkbox_group`) — Choose multiple options.
+- **Toggle** (`form/toggle`) — A toggle/checkbox value.
+- **Slider** (`form/slider`) — Select a numeric value on a scale.
+- **Date field** (`form/date`) — Date input.
+- **Form section heading** (`form/heading`) — A heading inside a form step.
+- **Expandable help** (`form/help`) — Expandable help text.
+- **Consent checkbox** (`form/consent`) — A consent checkbox.
+- **Hidden field** (`form/hidden`) — A hidden submitted value; never a place to store a secret.
+
+## Page and Site context
+
+- **Page content** (`template_content_slot`) — Insert the current Page’s body in a Page template. This ID has no slash.
+- **Page title** (`template/page_title`) — Read the current Page title, normally as the single H1.
+- **Page featured image** (`template/page_featured_image`) — Read an image from a selected Page field.
+- **Page excerpt** (`template/page_excerpt`) — Read the current Page excerpt.
+- **Page date** (`template/page_date`) — Read and format a selected date field.
+- **Page author** (`template/page_author`) — Read the Page author.
+- **Breadcrumbs** (`template/page_breadcrumbs`) — Render the resolved Page hierarchy and routes as breadcrumbs.
+- **Previous / next page** (`template/page_navigation`) — Previous/next links using the applicable Page ordering.
+- **Site logo** (`template/site_logo`) — Read the Site logo.
+- **Site title** (`template/site_title`) — Read the Site name.
+- **Site tagline** (`template/site_tagline`) — Read the Site tagline.
+- **Show if…** (`template/show_if`) — Show child blocks when the selected context value satisfies the condition.
+
+## Custom markup and embeds
+
+- **HTML** (`core/html`) — A limited one-off HTML fragment. Prefer native blocks for regularly edited content.
+- **Embed / Script** (`core/embed`) — Reviewed custom markup, CSS and optional JavaScript. Treat scripts as deployed code.
+
+## Settings and examples
+
+- [Block reference](../../tools/blocks/) covers field lists, responsive settings,
+  navigation, card mapping, image framing and script permissions.
+- [Page templates](../page-templates/) shows how to combine dynamic blocks with
+  each Page’s body and custom fields.
+- [Forms](../../apps/forms/) explains steps, validation and delivery. Adding
+  individual input blocks to an ordinary Page is not a substitute for a saved Form.
+- [Named styles](../../tools/styles/) sets shared typography and component styles.
+- [Global blocks and block templates](../../tools/reusable-blocks/) covers reuse.
+
+## Defaults worth knowing
+
+Images preserve their whole subject unless you choose cropping. Grid-based Page
+lists and repeaters use one column below 768px unless you explicitly configure
+`mobile_cols`. Navigation collapse widths and column stacking are separate
+controls from general responsive field breakpoints; inspect the chosen block’s
+schema rather than assuming every component changes at the same width.
+
+Section backgrounds can span the viewport while their inner content keeps a
+readable width and gutters. Prefer section/container spacing and named styles
+to inserting spacer blocks everywhere. Preview narrow and wide layouts with
+real content before publication.

@@ -99,7 +99,7 @@ New images and changed media paths still need preparation. The first publication
 after upgrading creates these records; subsequent publications reuse them. This
 works with both Cloudflare and GitHub build execution.
 
-Core 0.2.18 (release candidate) also lets updated shared build engines reuse
+Core 0.2.18 also lets updated shared build engines reuse
 unchanged media files already stored in the target Pages project. The engine
 checks the previous file hashes with Cloudflare before skipping their R2
 downloads, and checks availability again before upload. Only files required by

@@ -1,0 +1,72 @@
+---
+title: Pages, blocks and templates
+description: Choose between a Page, Content type, Page template, global block, block template and custom block type, with a practical example.
+---
+
+A Typeroll website has one kind of content record: a **Page**. Your homepage,
+articles and product profiles all use the same editor, history and publication
+workflow. Content types organize those Pages; templates control their presentation.
+This guide applies to Typeroll Cloud and self-hosted Typeroll CMS.
+
+## Choose the right building piece
+
+- **Page:** write one article or landing page. It owns its content and metadata.
+- **Content type:** share extra fields, a URL pattern and listing defaults across
+  a group of Pages.
+- **Page template:** share the full-page layout, reading each Page's own title,
+  image and body. Changes reach all Pages using it on their next publication.
+- **Block:** place a heading, image, button or layout inside a Page or template.
+  Each instance has its own values.
+- **Global block:** keep exactly the same content in several places. Editing the
+  source changes every reference at the next publication.
+- **Block template:** copy a section starter into a Page and edit it independently.
+  Changing the starter affects future inserts, not existing copies.
+- **Custom block type:** define a reusable design with editable fields. Structure
+  and styling are shared; each instance keeps its own values.
+
+A Page template and a block template are different. A Page template wraps a
+Page's body. A block template is a section starter copied into that body.
+A custom block type defines a new component, not a new kind of Page.
+
+## Example: a small advice website
+
+1. Create an **Articles** content type with a summary, cover image and related
+   Pages field. Set its route pattern to `/articles/{slug}`.
+2. Create an **Article** Page template with **Page title**, **Page featured
+   image**, **Page content**, and an automatic **Table of contents**.
+3. Select that template as the content type's default. Write each article's
+   body with headings, text, images, lists and tables.
+4. Create an ordinary **Advice** Page containing a **Content type List** block
+   filtered to Articles. It reads the saved articles at build time.
+5. Put the shared contact strip in a **Global block**. Keep the website's
+   navigation in the header and its contact links in the footer.
+
+An article's title and cover image remain on the article. Changing the shared
+layout does not require copying those values into the template, or editing
+all article bodies. The listing's card design is independent of the article's
+full-page template.
+
+## What editors and administrators do
+
+Editors work in **Pages**, add available blocks and fill in their fields.
+Site administrators define custom block types and other settings their role
+permits. The portal, REST API and MCP operate on the same stored content and
+permission checks. A custom block does not require a local development server.
+
+The CMS is the editing source of truth. A generated Git repository contains
+build inputs; editing that repository does not update the CMS.
+
+## Save, preview and publish are separate
+
+Page edits go to a working copy until saved. Template definitions and other
+structural settings can save immediately; a saved change still needs a
+publication to reach the public static site. Preview the selected Site and
+Version before deploying. Use a site version for changes you want to isolate
+from `main`, and check each tool's version support.
+
+- [Your first site](../../getting-started/first-site/) walks through editing and publishing.
+- [Built-in block catalog](../block-library/) helps you choose a block.
+- [Create a Page template](../page-templates/) builds the shared article layout.
+- [Create your own block type](../create-block-type/) builds an editable component.
+- [Global blocks and block templates](../../tools/reusable-blocks/) explains references versus copies.
+- [Content types](../../tools/content-types/) covers fields, routes, ordering and template restrictions.

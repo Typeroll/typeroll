@@ -7,13 +7,13 @@ These tools wrap `/api/v1/sites/{siteId}/partials`, with `/{partialId}`, `/{part
 The same API key works over REST; see
 [calling the same operations over REST](../overview/#calling-the-same-operations-over-rest).
 
-Partials are shared content included on every page. The two built-in partials are `header` and `footer`. You can create additional partials for reusable components (e.g. a cookie banner, a CTA section).
+The two built-in partials, `header` and `footer`, are shared content included on every page. Additional partials are global blocks and appear only where referenced (for example a contact strip or CTA section). The portal calls these **Global blocks**; the API retains the technical name `partials`.
 
 Like pages, partials have a `content_mode` of either `"html"` or `"blocks"`. The `replace_partial` tool below is for HTML-mode partials. For block-mode partials, the [block instance tools](../blocks/) take a `target: { kind: "partial", id: "<partial_id>" }` and edit individual blocks just like they do on pages:
 
 ```
-"Add a feature_grid to the header that appears on every page."
-  → add_block target={kind:"partial", id:"header"} block={type:"core/feature_grid", ...}
+"Add a navigation menu to the header."
+  → add_block target={kind:"partial", id:"header"} block={type:"core/navigation_menu", ...}
 ```
 
 ## `read_partial`
@@ -21,7 +21,7 @@ Like pages, partials have a `content_mode` of either `"html"` or `"blocks"`. The
 Reads a partial's current HTML content.
 
 ```
-Read the header partial
+Read the header global block
 ```
 
 The AI agent always reads a partial before modifying it, so it can make targeted changes rather than replacing the whole thing.
@@ -42,7 +42,7 @@ Returns all partials with their IDs and a content preview.
 
 ## Navigation lives in the header partial
 
-The site's navigation is part of the `header` partial — not in any individual page. When the AI agent adds a new page, it also updates the header to include a link to it.
+The site's navigation is part of the `header` partial — not in any individual page. Ask the agent to add a navigation link when the Page belongs in the menu. Creating a Page does not itself require a new header link.
 
 ## Typical header structure
 
@@ -50,7 +50,7 @@ The site's navigation is part of the `header` partial — not in any individual 
 <header class="site-header">
   <div class="header-inner">
     <a href="/" class="site-logo">
-      <img src="https://cdn.typeroll.com/..." alt="Acme Studio" />
+      <img src="https://media.example.com/logo.svg" alt="Acme Studio" />
     </a>
     <nav class="site-nav">
       <a href="/">Start</a>

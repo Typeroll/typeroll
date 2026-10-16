@@ -103,7 +103,7 @@ control and rotate it from the Extension installation settings.
 
 See the [manifest reference](../manifest/) for the declared surfaces.
 
-## Owner proposals, delivery and form actions (next Core release)
+## Owner proposals, delivery and form actions
 
 A provider may request `content:owner`, `email:send` and `forms:execute` scopes
 with explicit reasons. All require administrator approval. Use an installation
@@ -115,7 +115,7 @@ Relative to `/api/v1/sites/{siteId}`:
 - `GET /extensions/self` returns the own enabled installation's resolved
   version, validated non-secret config and verified site origins.
 - `GET/PUT /pages/{pageId}/owner-fields` reads typed owner-writable fields and a revision. PUT creates an isolated pending proposal using `{changes,base_revision,request_id}` and a server-derived `X-Typeroll-Owner-Subject` digest. It never writes accepted Page content directly. Authenticate the visitor and bind its record in the provider. See [Owner answers and review](../../guides/owner-review/). This replaces the direct-write contract in Core 0.2.24 and earlier.
-- `POST /delivery/email` sends `{ to, subject, text }` through the site's
+- `POST /delivery/email` sends `{ idempotency_key, to, subject, text }` through the site's
   configured connector. It supports one recipient and returns delivery errors
   without exposing connector credentials.
 - `POST /forms/{formId}/actions` accepts `{ phase: "before" | "after", data,
@@ -266,7 +266,7 @@ are rejected; credentials remain server-side. Installation credentials cannot
 invoke this operation. A call does not automatically publish the site. Follow the
 app's documented idempotency rules; inspect status before retrying an uncertain write.
 
-## Transactional mail (next release)
+## Transactional mail
 
 An enabled installation with `email:send` can POST
 `/api/v1/sites/{siteId}/delivery/email` using its installation credential and

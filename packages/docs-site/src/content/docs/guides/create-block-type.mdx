@@ -1,0 +1,149 @@
+---
+title: Create your own block type
+description: Make an editable callout from built-in blocks, validate and preview it, then reuse it across a site with the portal, MCP or REST.
+---
+
+Use a custom block type when a design recurs and editors should fill in fields
+instead of arranging its pieces. Each placed block keeps its own content; the
+type owns the shared structure and styling. This is a built-in CMS feature in
+Cloud and self-hosting, not a Typeroll App or Extension.
+
+You need **site admin** permission to create or change a type. Editors can place
+available types and edit their values. No local development environment is
+required.
+
+## First choose the simplest approach
+
+- For a one-off layout, combine [built-in blocks](../block-library/).
+- For the same content everywhere, use a [global block](../../tools/reusable-blocks/).
+- For a section copied and edited independently, use a **block template**.
+- For a reusable design with editable fields, create a **block type**.
+
+Prefer a **composed** type, built from existing blocks. It keeps their image,
+link, named-style and responsive behavior. Use a **template** type with your own
+HTML when built-in pieces cannot express the markup you need. A template block
+type is unrelated to a full [Page template](../page-templates/).
+
+## Create it in the portal
+
+1. Select the Site and open **Blocks**. Create a block type and choose a starter
+   such as an icon list, feature cards or numbered steps.
+2. Give it a machine name and a clear label. Define the fields editors should
+   change, rather than exposing the entire layout as HTML.
+3. Adapt its composition, or use **Turn into block type…** on an existing section
+   in the page editor and select which values become fields.
+4. Use **Preview** with realistic text, empty optional fields and long values.
+   Check the available narrow and wide preview sizes. Resolve validation errors.
+5. Save the type, return to a Page and add it from the block library. Edit its
+   fields, save the Page and preview it in context before publishing.
+
+## Example: an editable advice callout
+
+This definition exposes a heading and a paragraph. The heading remains an H2;
+editors do not need to rebuild the design. It can be passed directly to
+`create_block_type`, or to `POST /api/v1/sites/{siteId}/block-types`.
+
+```json
+{
+  "name": "advice_callout",
+  "label": "Advice callout",
+  "category": "content",
+  "schema": [
+    { "name": "heading", "type": "text", "label": "Heading", "required": true },
+    { "name": "message", "type": "text", "label": "Advice", "required": true }
+  ],
+  "composition": [
+    {
+      "id": "callout",
+      "type": "core/container",
+      "data": {
+        "direction": "column",
+        "gap": "sm",
+        "css_class": "advice-callout"
+      },
+      "children": [
+        {
+          "id": "heading",
+          "type": "core/heading",
+          "data": { "text": "{{props.heading}}", "level": "h2" }
+        },
+        {
+          "id": "message",
+          "type": "core/text",
+          "data": { "text": "{{props.message}}" }
+        }
+      ]
+    }
+  ],
+  "styles": ".advice-callout { border-inline-start: 4px solid var(--color-primary); padding: 1.25rem; }"
+}
+```
+
+A binding such as `{{props.heading}}` connects an editor field to an inner block.
+Whole-value bindings preserve types: arrays remain arrays and booleans remain
+booleans. Use `core/text` for plain field values and `core/prose` for rich text.
+
+### Validate, preview, then save
+
+1. Call `list_block_types` and `read_block_type` for the blocks you will use.
+   `list_block_type_starters` returns complete definitions you can adapt.
+2. Call `validate_block_type` with the definition under `definition`.
+   Errors include paths such as `/schema/0/name`; fix them before continuing.
+3. Call `preview_block_type` with the same `definition` and sample
+   `data: { "heading": "Before you begin", "message": "Measure the doorway." }`.
+   Inspect the returned `document` visually. Try long and missing values too.
+4. Call `create_block_type` with the definition's top-level properties. Use the
+   returned `block_type.id` when placing an instance.
+5. Call `add_block` for the intended Page, using:
+
+```json
+{
+  "page_id": "YOUR_PAGE_ID",
+  "block": {
+    "type": "advice_callout",
+    "data": { "heading": "Before you begin", "message": "Measure the doorway." }
+  }
+}
+```
+
+Read the Page again, save its working copy and preview before deployment.
+For a site version, pass the same `version` to all supported tools.
+
+## When you need custom HTML
+
+Use the same fields, but replace `composition` with `template`:
+
+```html
+<aside class="advice-callout">
+  {{#heading}}
+  <h2>{{heading}}</h2>
+  {{/heading}} {{#message}}
+  <p>{{message}}</p>
+  {{/message}}
+</aside>
+```
+
+`{{heading}}` is escaped text; the surrounding section omits its markup when
+empty. Rich-text fields can use triple braces. Repeating groups use
+`{{#each items}}`; link fields support a helper that avoids empty links.
+See the [full field and template syntax](../../tools/custom-block-types/).
+
+CSS is scoped to the block. Prefer the site's variables and
+[named styles](../../tools/styles/) so the component follows the site's design.
+Custom markup is sanitized; putting a script tag in it does not enable JavaScript.
+A separate `script` property is executable code and needs administrator review.
+The unsaved block preview does not execute scripts, so verify interactions in
+an appropriate test deployment as well. See the
+[script permission rules](../../tools/blocks/#site-block-types).
+
+## Maintain and share the type
+
+Changing the definition affects every instance at the next deployment. Before
+an update, inspect **Usage** or call `find_pages_using_block_type`. Rename fields
+with the supported `renames` mapping so stored values follow the change; do not
+silently remove and recreate fields. Removing populated fields or changing their
+type can require explicit data-loss confirmation.
+
+Export and import `.tcblocks` packages to reuse a type on another Site. Review
+imported HTML, CSS and scripts before accepting them. Deleting a type in use is
+blocked; replace its instances first.
