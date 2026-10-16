@@ -14,7 +14,7 @@ export function verifySiteContext(token: string, credential: string): SelectedSi
   const [body, mac, extra] = token.split('.');
   if (!body || !mac || extra) return null;
   const expected = signature(body, credential);
-  if (mac.length !== expected.length || !timingSafeEqual(Buffer.from(mac), Buffer.from(expected))) return null;
+  if (!/^[A-Za-z0-9_-]+$/.test(mac) || mac.length !== expected.length || !timingSafeEqual(Buffer.from(mac), Buffer.from(expected))) return null;
   try {
     const data = JSON.parse(Buffer.from(body, 'base64url').toString());
     if (typeof data.expires !== 'number' || data.expires <= Date.now()) return null;

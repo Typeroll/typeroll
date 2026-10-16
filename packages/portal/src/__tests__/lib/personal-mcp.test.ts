@@ -101,6 +101,7 @@ describe('stateless site selection', () => {
     const context = issueSiteContext(site, token);
     expect(verifySiteContext(context, token)).toEqual(site);
     expect(verifySiteContext(context, 'another-connection')).toBeNull();
+    expect(verifySiteContext(context.split('.')[0] + '.' + 'é'.repeat(43), token)).toBeNull();
     expect(verifySiteContext(context.replace(/^./, context[0] === 'a' ? 'b' : 'a'), token)).toBeNull();
     const now = Date.now();
     const spy = vi.spyOn(Date, 'now').mockReturnValue(now + 25 * 60 * 60 * 1000);
