@@ -258,6 +258,8 @@ describe('every core block field changes what renders', () => {
     'template/page_author.prefix': 'needs an author',
     'template/site_logo.link_to_home': 'needs a site logo',
     'template/show_if.condition': 'needs page values the condition can test',
+    ...Object.fromEntries(['text', 'email', 'phone', 'url', 'number', 'textarea', 'select', 'radio_group', 'boolean', 'checkbox_group', 'toggle', 'slider', 'date', 'consent']
+      .map(name => [`form/${name}.required_message`, 'the form\'s validation message for a required field (form-fields.ts, tested in form-fields.test.ts); not part of the field markup'])),
   };
   /**
    * Fields that are accepted and never rendered. Each is a defect: fix it and
