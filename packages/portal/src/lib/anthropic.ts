@@ -699,6 +699,7 @@ const tools: Anthropic.Tool[] = [
             heading: { type: 'string' },
             body: { type: 'string' },
             size_base: { type: 'number' },
+            smoothing: { type: 'string', enum: ['auto', 'antialiased'] },
           },
         },
         contact: {

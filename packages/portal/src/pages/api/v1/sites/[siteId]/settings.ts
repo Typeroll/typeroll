@@ -21,7 +21,7 @@ import { libraryProblems, readStyles } from '../../../../../lib/site-styles-stor
 import { customCssWarnings, customCssWriteError } from '../../../../../lib/custom-css-write';
 import { getStore } from '../../../../../lib/datastore';
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
-import { responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, LATEST_RENDER_VERSION, paths, type SiteSettings } from '@typeroll/shared';
+import { responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
@@ -94,6 +94,14 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (body.render_version !== undefined && !isRenderVersion(body.render_version)) {
     return apiError(`render_version must be an integer from 1 to ${LATEST_RENDER_VERSION}`, 400);
   }
+  if (body.fonts !== undefined) {
+    if (!body.fonts || typeof body.fonts !== 'object' || Array.isArray(body.fonts)) return apiError('fonts must be an object', 400);
+    const fonts = body.fonts as Record<string, unknown>;
+    // null clears the choice back to the render version's default.
+    if (fonts.smoothing !== undefined && fonts.smoothing !== null && !isFontSmoothing(fonts.smoothing)) {
+      return apiError(`fonts.smoothing must be one of: ${FONT_SMOOTHING_VALUES.join(', ')} (or null to use the default)`, 400);
+    }
+  }
   { const error = customCssWriteError(body.custom_css); if (error) return apiError(error, 400); }
   if (body.iframe_allowed_hosts !== undefined) {
     const checked = normalizeIframeAllowedHosts(body.iframe_allowed_hosts);
@@ -128,6 +136,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       // caller sent — the renderer + JSON-LD generator branch on the type.
       const before = (existing[k] as Record<string, unknown> | undefined) ?? {};
       update[k] = { ...before, ...(v as Record<string, unknown>) };
+      // null removes an optional nested value (fonts.smoothing) instead of storing null.
+      for (const [field, value] of Object.entries(update[k] as Record<string, unknown>)) if (value === null && k === 'fonts') delete (update[k] as Record<string, unknown>)[field];
     } else if (TOP_LEVEL.has(k)) {
       // null clears an optional field; the store drops undefined values.
       update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization').includes(k) ? undefined : v;

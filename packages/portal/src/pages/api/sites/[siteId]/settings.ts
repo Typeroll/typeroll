@@ -117,6 +117,9 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   if (typeof bodyFont === 'string' && bodyFont) fonts.body = bodyFont;
   const sizeBase = form.get('fonts.size_base');
   if (typeof sizeBase === 'string' && sizeBase) fonts.size_base = Number(sizeBase) || 16;
+  const smoothing = form.get('fonts.smoothing');
+  if (smoothing === 'auto' || smoothing === 'antialiased') fonts.smoothing = smoothing;
+  else if (smoothing === '') delete fonts.smoothing;
 
   await store.setDoc(paths.settings(owner_org_id, site.id, versionId), next as unknown as Record<string, unknown>);
 

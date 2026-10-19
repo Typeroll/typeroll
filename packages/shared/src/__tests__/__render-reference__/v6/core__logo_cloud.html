@@ -1,0 +1,89 @@
+<div data-block="repeater" data-presentation="core%2Frepeater" data-bid="ref" data-layout="grid" style="--cols:6;--mobile-cols:1;--gap:lg;--align:center;"></div>
+
+/* css */
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+[data-presentation="core%2Flogo_cloud"]{--gap_px:initial}
+
+/* core/logo_item */
+[data-block="logo_item"] { display: flex; align-items: center; justify-content: center; min-height: 4rem; }
+[data-block="logo_item"] .block-logo-link { display: block; line-height: 0; }
+[data-block="logo_item"] .block-logo-link[href=""] { pointer-events: none; }
+[data-block="logo_item"] img { max-width: 100%; max-height: 3rem; width: auto; transition: filter 0.2s, opacity 0.2s; }
+[data-block="logo_item"][data-grayscale="true"] img { filter: grayscale(1); opacity: 0.6; }
+[data-block="logo_item"][data-grayscale="true"] img:hover { filter: none; opacity: 1; }
+
+[data-presentation="core%2Frepeater"]{--gap_px:initial}
+
+/* core/repeater */
+[data-block="repeater"] { --rep-gap: var(--grid-gap, 1rem); }
+[data-block="repeater"][style*="--gap:none"] { --rep-gap: 0; }
+[data-block="repeater"][style*="--gap:xs"]   { --rep-gap: 0.25rem; }
+[data-block="repeater"][style*="--gap:sm"]   { --rep-gap: 0.5rem; }
+[data-block="repeater"][style*="--gap:md"]   { --rep-gap: 1rem; }
+[data-block="repeater"][style*="--gap:lg"]   { --rep-gap: 2rem; }
+[data-block="repeater"][style*="--gap:xl"]   { --rep-gap: 3rem; }
+
+[data-block="repeater"][data-layout="grid"] {
+  /* Read --cols directly so the responsive @media compiler's per-breakpoint
+     --cols overrides take effect. (The old [style*="--cols:N"] overrides were
+     redundant with this rule AND shadowed the responsive values via higher
+     specificity — an attribute-substring match can't see a computed var.) */
+  display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+  gap: var(--gap_px, var(--rep-gap)); align-items: var(--align, stretch);
+}
+
+[data-block="repeater"][data-layout="justified"] {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--gap_px, var(--rep-gap)); align-items: var(--align, stretch);
+}
+
+[data-block="repeater"][data-layout="list"] {
+  display: flex; flex-direction: column; gap: var(--gap_px, var(--rep-gap));
+}
+
+[data-block="repeater"][data-layout="stack"] {
+  display: flex; flex-wrap: wrap; gap: var(--gap_px, var(--rep-gap)); align-items: var(--align, center);
+}
+
+[data-block="repeater"][data-layout="masonry"] {
+  column-count: var(--cols, 3); column-gap: var(--gap_px, var(--rep-gap));
+}
+[data-block="repeater"][data-layout="masonry"] > * { break-inside: avoid; margin-bottom: var(--gap_px, var(--rep-gap)); }
+
+[data-block="repeater"][data-layout="carousel"] {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: var(--gap_px, var(--rep-gap));
+  scrollbar-width: thin;
+}
+[data-block="repeater"][data-layout="carousel"] > * { flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap))) / var(--cols, 3)); scroll-snap-align: start; }
+
+.tr-repeater-group + .tr-repeater-group { margin-top: 2rem; }
+.tr-repeater-group-title { margin: 0 0 0.75rem; }
+
+@media (max-width: 767px) {
+  /* The mobile count is independent of desktop/tablet column defaults. */
+  [data-block="repeater"][data-layout="grid"]:not([data-responsive-cols]) { grid-template-columns: repeat(var(--mobile-cols, 1), minmax(0, 1fr)); }
+  [data-block="repeater"][data-layout="masonry"]:not([data-responsive-cols]) { column-count: var(--mobile-cols, 1); }
+}

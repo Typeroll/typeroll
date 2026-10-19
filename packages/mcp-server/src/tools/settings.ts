@@ -82,7 +82,7 @@ export const settingsTools: ToolDef[] = [
       staging_url: z.string().nullable().optional().describe('URL of a staging environment for this site, reported as urls.staging. Stored on the Site, not per version. Trailing slashes are dropped; empty string or null clears.'),
       render_version: z.number().int().min(1).optional().describe('Platform render version. Platform output changes ship as new versions so existing sites never change look on their own. Upgrade only after previewing (get_preview_link render_version) and with the user\'s approval; the tr-upgrade-rendering skill compares every page. Lowering it returns to an earlier version.'),
       colors: z.record(z.string()).optional(),
-      fonts: z.record(z.unknown()).optional(),
+      fonts: z.record(z.unknown()).optional().describe('heading, body (Google Fonts family or "system"), size_base (px) and smoothing: "auto" (browser default) or "antialiased" (thinner text on macOS, for light text on dark backgrounds); null clears smoothing. Unset smoothing is auto from render version 6.'),
       contact: z
         .object({
           email: z.string().optional(),

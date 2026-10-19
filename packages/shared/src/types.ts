@@ -334,6 +334,13 @@ export interface SiteSettings {
     heading: string;
     body: string;
     size_base: number;
+    /**
+     * Text rendering on `<body>`. `auto` is the browser default; `antialiased`
+     * draws thinner text on macOS, which can suit light text on a dark
+     * background. Unset means `auto` from render version 6 and the earlier
+     * reset's `antialiased` before it. See `fontSmoothingCss`.
+     */
+    smoothing?: 'auto' | 'antialiased';
   };
   contact?: {
     email?: string;

@@ -93,6 +93,7 @@ remove it.
 | `heading`   | `"Inter"` | Heading font family (Google Fonts name) |
 | `body`      | `"Inter"` | Body font family                        |
 | `size_base` | `16`      | Base font size in px                    |
+| `smoothing` | unset     | `auto` (browser default) or `antialiased`. Unset is `auto` from render version 6 and `antialiased` before it. `antialiased` draws thinner text on macOS and can suit light text on a dark background; `null` clears it. |
 
 ### `contact` object
 
@@ -275,6 +276,7 @@ deploy. Sites created before render versions existed render with version 1.
 | 3       | Theme tokens that blocks reference (`--color-bg`, `--color-bg-subtle`, `--color-border`, `--color-secondary-fg`) come from the site palette. Subtle panels such as table headers, code and tabs use the Surface colour instead of a fixed light grey, borders stay visible on dark backgrounds, and text on secondary-coloured buttons is black or white, whichever reads better. |
 | 4       | Lists in core blocks render: accordion items (with **Default open**), pricing plan features and team member social links. An icon without a link no longer sits in an empty link, a team member card is a link only when it has one, and a container set to link without an address renders as a plain container, so icons and cards work inside linked items.                    |
 | 5       | Multi-step forms: the button reads "Continue" ("Fortsätt" on Swedish sites) on every step but the last, which keeps the form's submit text; a "Back" button returns to the previous step with the answers kept; a step that starts with a form heading no longer also shows its step title. See [Multi-step forms](../forms/#multi-step-forms).                                   |
+| 6       | Text uses the browser's default font smoothing and text rendering. Earlier versions set `-webkit-font-smoothing: antialiased` and `text-rendering: optimizeLegibility` on every page, which on macOS draws dark text on a light background thinner and lighter than other sites at the same weight. Choose **Typography → Font smoothing → Antialiased** (`fonts.smoothing`) to keep the thinner rendering, for example for light text on a dark background; the choice applies on every version. |
 
 ## Site-specific responsive widths (Core 0.2.28)
 

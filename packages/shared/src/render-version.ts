@@ -70,6 +70,15 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'A step that starts with a form heading block no longer also shows the step title above it.',
     ],
   },
+  {
+    version: 6,
+    core_version: '0.2.75',
+    title: 'Browser-default font smoothing',
+    changes: [
+      'Text uses the browser\'s default font smoothing and text rendering. Earlier versions set `-webkit-font-smoothing: antialiased` and `text-rendering: optimizeLegibility` on every page, which on macOS draws dark text on a light background thinner and lighter than other sites at the same font weight.',
+      'A site that wants the thinner rendering, for example for light text on a dark background, sets Typography → Font smoothing to "Antialiased" (`fonts.smoothing: "antialiased"`). The setting applies on every render version.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

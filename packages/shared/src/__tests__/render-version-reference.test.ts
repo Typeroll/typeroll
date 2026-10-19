@@ -22,6 +22,8 @@ import {
   FORM_SHELL_CSS,
   WEBFONT_FALLBACK_CSS,
   RENDER_VERSIONS,
+  defaultSiteSettings,
+  siteThemeCss,
 } from '../index.js';
 import type { Block, BlockType, FieldDefinition } from '../types.js';
 
@@ -92,6 +94,8 @@ for (const { version } of RENDER_VERSIONS) {
         ['CONTENT_WELL_CSS', CONTENT_WELL_CSS],
         ['FORM_SHELL_CSS', FORM_SHELL_CSS],
         ['WEBFONT_FALLBACK_CSS', WEBFONT_FALLBACK_CSS],
+        // Head CSS that depends on the render version (font smoothing from v6).
+        ['siteThemeCss (default settings)', siteThemeCss({ ...defaultSiteSettings, render_version: version })],
         ['site-template reset.css', templateCss('reset.css')],
         ['site-template global.css', templateCss('global.css')],
       ].map(([name, value]) => `/* ${name} */\n${value}`).join('\n\n');

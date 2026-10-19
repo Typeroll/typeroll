@@ -160,6 +160,8 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   };
   settings.colors = projectStrings(input.settings?.colors, ['primary', 'secondary', 'accent', 'background', 'surface', 'text', 'text_light']);
   settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
+  // A rendered setting left out of this projection is stored, previewed and never published.
+  if (['auto', 'antialiased'].includes(input.settings?.fonts?.smoothing)) settings.fonts.smoothing = input.settings.fonts.smoothing;
   // Site-specific responsive widths drive block responsive fields and styles.
   if (input.settings?.responsive_breakpoints) settings.responsive_breakpoints = projectNumbers(input.settings.responsive_breakpoints, ['tablet', 'laptop', 'desktop', 'wide']);
   // The site's style library: structured values, re-validated at render.
