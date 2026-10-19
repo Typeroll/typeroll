@@ -146,12 +146,22 @@ export function updateBlock(
     responsive?: Block['responsive'];
     /** Editorial tree label. Empty/whitespace clears it back to the derived label. */
     name?: string;
+    /**
+     * A `null` data value removes the key instead of storing null (the v1
+     * update_block contract). Off for the editor route, whose null keeps
+     * meaning "authored empty" over the field default.
+     */
+    null_removes?: boolean;
   },
 ): Block[] {
   const tree = cloneTree(blocks);
   const found = findBlock(tree, args.block_id);
   if (!found) throw new BlockMutationError(`Block not found: ${args.block_id}`, 'not_found');
-  if (args.data) found.block.data = { ...found.block.data, ...args.data };
+  if (args.data) {
+    const data: Record<string, unknown> = { ...found.block.data, ...args.data };
+    if (args.null_removes) for (const [key, value] of Object.entries(args.data)) if (value === null) delete data[key];
+    found.block.data = data;
+  }
   if (args.style_overrides !== undefined) found.block.style_overrides = args.style_overrides;
   if (args.responsive !== undefined) found.block.responsive = args.responsive;
   if (args.name !== undefined) {

@@ -16,18 +16,23 @@
 
 import { STYLE_OVERRIDE_KEYS, type BlockType } from './types.js';
 import { blockFieldTypeWarnings } from './block-field-types.js';
+import { unknownTreeFields } from './block-unknown-fields.js';
 import { buildCoreBlockRegistry } from './core-blocks.js';
 
 let coreRegistry: Map<string, BlockType> | undefined;
 
 export interface BlockTreeWarning {
-  code: 'unknown_style_override' | 'heading_part_as_text' | 'field_type_mismatch';
+  code: 'unknown_style_override' | 'heading_part_as_text' | 'field_type_mismatch' | 'unknown_field';
   /** The block's id where it has one; a tree may be written before ids exist. */
   block_id?: string;
   /** Path to the offending key, e.g. `blocks[0].style_overrides.class`. */
   path: string;
-  /** The key that will be stored and never read (unknown_style_override). */
+  /** The key that will be stored and never read (unknown_style_override, unknown_field). */
   key?: string;
+  /** The block's type (unknown_field). */
+  block_type?: string;
+  /** Where the key probably belongs (unknown_field), e.g. `item_overrides.placeholder_background`. */
+  suggestions?: string[];
   /** The schema field and the type it needs (field_type_mismatch). */
   field?: string;
   expected?: string;
@@ -37,12 +42,14 @@ export interface BlockTreeWarning {
 /**
  * Unknown `style_overrides` keys anywhere in a block tree.
  *
- * Only this set is checked, because only this set is closed: the renderer
- * enumerates it in one place, so an unknown key here is certainly inert. A
- * block type's `data` is not checked for unknown keys — its fields vary per
- * type and forward compatibility there is worth more than strictness — but a
- * known field whose value has the wrong type is (field_type_mismatch). Core
- * block types are always known; pass `registry` to include site block types.
+ * The renderer enumerates the override keys in one place, so an unknown key
+ * there is certainly inert. A block's `data` key that no field of its type
+ * (or the type it expands to) declares and the renderer does not read is
+ * reported as `unknown_field`, with where it probably belongs
+ * (block-unknown-fields.ts); a known field whose value has the wrong type is
+ * `field_type_mismatch`. Core block types are always known; pass `registry`
+ * to include site block types. Blocks of a type the registry does not know
+ * are not checked.
  */
 export function blockTreeWarnings(value: unknown, root = 'blocks', registry?: ReadonlyMap<string, BlockType>): BlockTreeWarning[] {
   const known = new Set<string>(STYLE_OVERRIDE_KEYS);
@@ -89,7 +96,9 @@ export function blockTreeWarnings(value: unknown, root = 'blocks', registry?: Re
   };
 
   visit(value, root);
-  warnings.push(...blockFieldTypeWarnings(value, registry ?? (coreRegistry ??= buildCoreBlockRegistry()), root));
+  const types = registry ?? (coreRegistry ??= buildCoreBlockRegistry());
+  warnings.push(...unknownTreeFields(value, types, root));
+  warnings.push(...blockFieldTypeWarnings(value, types, root));
   return warnings;
 }
 

@@ -72,7 +72,7 @@ export const pageBlockTools: ToolDef[] = [
   {
     name: 'add_block',
     description:
-      'Insert a block into a container (page, partial, or page template). BUFFER MODEL: block mutations on pages/partials edit the unsaved DRAFT — commit_working_copy is the explicit save. With no parent_id, inserts at the top level of the container. Otherwise inserts as a child (or into a slot for slot-containers). Position defaults to "end". Slot containers (core/columns, core/tabs — container: "slots"): slot_index picks the slot (0-based; defaults to 0) and works even if the parent instance has no slots array yet; a freshly added slot container gets its slots initialised to the type\'s arity. You can also pass the whole subtree inline via block.slots: [[...],[...]]. Pass `target: { kind: "partial", id: "header" }` to drop a block into the header on every page, etc. `page_id` is the legacy shorthand.',
+      'Insert a block into a container (page, partial, or page template). BUFFER MODEL: block mutations on pages/partials edit the unsaved DRAFT — commit_working_copy is the explicit save. With no parent_id, inserts at the top level of the container. Otherwise inserts as a child (or into a slot for slot-containers). Position defaults to "end". Slot containers (core/columns, core/tabs — container: "slots"): slot_index picks the slot (0-based; defaults to 0) and works even if the parent instance has no slots array yet; a freshly added slot container gets its slots initialised to the type\'s arity. You can also pass the whole subtree inline via block.slots: [[...],[...]]. Pass `target: { kind: "partial", id: "header" }` to drop a block into the header on every page, etc. `page_id` is the legacy shorthand. A `data` key that no field of the block\'s type declares (read_block_type) is rejected with 400 `unknown_field`, for the block and every child; nothing is written, and `unknown_fields[].suggestions` says where it belongs (e.g. `item_overrides.<key>` for an item-block field on a repeater or its aliases, or the closest field names).',
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),
@@ -96,12 +96,12 @@ export const pageBlockTools: ToolDef[] = [
   {
     name: 'update_block',
     description:
-      'Update a block\'s data fields (shallow merge), style overrides, or responsive settings. Works on pages, partials, and page templates — use `target` to address non-page containers. Does not modify children or slots; use move/add/remove for structural changes. For appearance, prefer a named style (`data.style_id`, see list_styles) over custom_class or custom_css. From render version 2, custom_class lands on the heading or button link element itself instead of the block wrapper. Send values in the field\'s type (numbers as numbers); a value the block will not render comes back in `warnings` (`field_type_mismatch`) with its path.',
+      'Update a block\'s data fields (shallow merge), style overrides, or responsive settings. Works on pages, partials, and page templates — use `target` to address non-page containers. Does not modify children or slots; use move/add/remove for structural changes. For appearance, prefer a named style (`data.style_id`, see list_styles) over custom_class or custom_css. From render version 2, custom_class lands on the heading or button link element itself instead of the block wrapper. Send values in the field\'s type (numbers as numbers); a value the block will not render comes back in `warnings` (`field_type_mismatch`) with its path. A `null` value removes that key from data (the field renders its default); use it to clean up a key stored by mistake. A written key that no field of the block\'s type declares is rejected with 400 `unknown_field` and nothing is written; `unknown_fields[].suggestions` says where it belongs: on core/repeater and its aliases (core/testimonials, core/page_list, ...) a field of the item block goes in `item_overrides.<key>`, otherwise the closest field names.',
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),
       block_id: z.string(),
-      data: z.record(z.unknown()).optional(),
+      data: z.record(z.unknown()).optional().describe('Field values to merge into block.data. null removes the key.'),
       style_overrides: z.object({
         spacing_before: z.string().optional(),
         spacing_after: z.string().optional(),

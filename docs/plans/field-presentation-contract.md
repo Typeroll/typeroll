@@ -67,6 +67,15 @@ setting changes what a visitor sees.
 8. **Migrations report gaps.** `tr-migration-evidence` tells agents to report a
    missing or ignored capability, in a fixed format, instead of patching it
    with site CSS.
+9. **A key no field declares is not a setting.** `add_block`/`update_block`
+   reject a `data` key that the block type (or the type it expands to) does
+   not declare and the renderer does not read, with where it probably belongs
+   (`item_overrides.<key>` on a repeater, else the closest field names); tree
+   writes report it as `unknown_field`. The keys the renderer reads without a
+   declaration are listed in `UNDECLARED_BLOCK_DATA_KEYS`, and
+   `block-unknown-fields.test.ts` renders every core block to prove the check
+   never rejects a key the renderer reads. `null` in `update_block` removes a
+   key.
 
 ## Defects these guards found
 

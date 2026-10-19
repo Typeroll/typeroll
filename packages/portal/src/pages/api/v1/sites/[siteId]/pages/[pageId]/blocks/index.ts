@@ -25,7 +25,13 @@ import {
   readWorkingCopy,
 } from '../../../../../../../../lib/working-copy';
 import type { Block, Page } from '@typeroll/shared';
-import { singleBlockWriteWarnings } from '../../../../../../../../lib/block-write-warnings';
+import {
+  addBlockUnknownFields,
+  singleBlockWriteWarnings,
+  siteBlockRegistry,
+  unknownFieldsBody,
+  updateBlockUnknownFields,
+} from '../../../../../../../../lib/block-write-warnings';
 
 // Buffer model: mutations read from and write to the page's WORKING COPY
 // (the draft layer). Nothing lands on the saved page until an explicit
@@ -84,6 +90,9 @@ export const POST: APIRoute = async ({ request, params }) => {
 
   const draft = await loadDraft(ctx, pageId);
   if (!draft) return apiError('Page not found', 404);
+  const registry = await siteBlockRegistry(ctx);
+  const unknown = addBlockUnknownFields(body.block, registry);
+  if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
 
   try {
     const result = addBlock(draft.tree, {
@@ -95,7 +104,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     await persistDraft(ctx, pageId, result.blocks);
     const warnings = await singleBlockWriteWarnings(ctx, result.blocks, result.added_id, {
       data: body.block.data, style_overrides: body.block.style_overrides,
-    });
+    }, registry);
     return apiResponse(ctx, {
       added_id: result.added_id, blocks: result.blocks, ...(warnings.length ? { warnings } : {}),
     });
@@ -123,20 +132,29 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     requireOneOf: ['data', 'style_overrides'],
   });
   if (shapeError) return apiError(shapeError, 400);
+  if (body.data !== undefined && (!body.data || typeof body.data !== 'object' || Array.isArray(body.data))) {
+    return apiError('data must be an object of field values; a null value removes that key.', 400);
+  }
 
   const draft = await loadDraft(ctx, pageId);
   if (!draft) return apiError('Page not found', 404);
+  // A key no field of the block's type declares would be stored and never
+  // rendered; reject it, naming where it probably belongs.
+  const registry = await siteBlockRegistry(ctx);
+  const unknown = updateBlockUnknownFields(draft.tree, body.block_id, body.data, registry);
+  if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
   try {
     const blocks = updateBlock(draft.tree, {
       block_id: body.block_id,
       data: body.data,
       style_overrides: body.style_overrides,
+      null_removes: true,
     });
     await persistDraft(ctx, pageId, blocks);
     // A misspelled override is stored, returned and built without comment.
     // The caller cannot read our logs, so it travels in the body.
     // Field values the schema will not render travel the same way.
-    const overrideWarnings = await singleBlockWriteWarnings(ctx, blocks, body.block_id, body);
+    const overrideWarnings = await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry);
     return apiResponse(ctx, {
       ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}), blocks });
   } catch (e) {

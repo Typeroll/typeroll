@@ -440,7 +440,7 @@ lists where it is used.
 | ---------------------- | ---------------------------------------------------------------------- |
 | `get_page_blocks`      | Read the block tree of any container                                   |
 | `add_block`            | Insert a block (at top level, in a parent's children, or a named slot) |
-| `update_block`         | Shallow-merge new field values into `block.data`                       |
+| `update_block`         | Shallow-merge new field values into `block.data`; `null` removes a key |
 | `move_block`           | Re-parent or reorder a block                                           |
 | `remove_block`         | Remove a block + its subtree                                           |
 | `duplicate_block`      | Clone a block + insert the copy right after                            |
@@ -1396,17 +1396,84 @@ is not.
 `class` instead of `custom_class` stores the key, returns 200, builds and
 deploys, and never reaches the markup.
 
-Warnings are returned by `PATCH /pages/{pageId}`, `PATCH /partials/{partialId}`,
-`POST /pages/batch-write` and the block routes (`add_block`, `update_block`), where each entry carries its own so a sweep says
-which page was affected. The field is absent when there is nothing to report.
+Warnings are returned by `PUT`/`PATCH /pages/{pageId}`, `PUT`/`PATCH
+/partials/{partialId}`, `POST /pages/batch-write` (where each entry carries its
+own, so a sweep says which page was affected), the working copy
+`PUT /working-copy/{target}` and the block routes (`add_block`,
+`update_block`). The field is absent when there is nothing to report.
 
 **They do not reject the write.** A write that is otherwise right should land,
 and the caller has already spent the round trip. Check for `warnings` after a
-successful write; the absence of the field is the only clean signal.
+successful write; the absence of the field is the only clean signal. The one
+exception is an unknown `data` key in `add_block` or `update_block`, which is
+rejected (see below).
 
-A block type's `data` is deliberately not checked for unknown keys. Its fields
-vary per type and evolve, so an unknown field there is forward compatibility
-rather than a mistake.
+### Unknown data fields (next Core release)
+
+A `data` key that no field of the block's type declares is stored and never
+rendered. Tree writes (`PUT`/`PATCH /pages/{pageId}`, `PUT`/`PATCH
+/partials/{partialId}`, `POST /pages/batch-write` and the working copy `PUT`)
+still land and report it as `unknown_field`:
+
+```json
+{
+  "code": "unknown_field",
+  "block_id": "related-list",
+  "block_type": "core/repeater",
+  "path": "blocks[3].data.placeholder_background",
+  "key": "placeholder_background",
+  "suggestions": ["item_overrides.placeholder_background"],
+  "message": "blocks[3].data.placeholder_background is not a field of core/repeater; it is a field of the item block core/post_card. Did you mean item_overrides.placeholder_background? The key would be stored and never rendered."
+}
+```
+
+`add_block` and `update_block` (`POST`/`PATCH .../blocks`, for pages and other
+containers) **reject** the write with `400` instead, because they name one
+block and its type. Nothing is written, valid keys in the same request
+included. The body lists every unknown key:
+
+```json
+{
+  "error": "data.placeholder_background is not a field of core/repeater; it is a field of the item block core/post_card. Did you mean item_overrides.placeholder_background? The key would be stored and never rendered. Nothing was written.",
+  "code": "unknown_field",
+  "unknown_fields": [{ "code": "unknown_field", "block_id": "related-list", "block_type": "core/repeater", "path": "data.placeholder_background", "key": "placeholder_background", "suggestions": ["item_overrides.placeholder_background"], "message": "..." }]
+}
+```
+
+`add_block` checks the whole inserted block, children and slots included
+(`block.children[0].data.colour`). `update_block` checks only the keys it
+writes, so a key stored earlier does not block an unrelated write.
+
+The suggestions say where the value probably belongs:
+
+- On a repeater, or an alias of one such as `core/testimonials`,
+  `core/page_list` or `core/gallery`, a field of the item block
+  (`item_block`, or the alias default) belongs in `item_overrides.<key>`.
+- A style override name (`custom_class`, `html_id`, ...) belongs in
+  `style_overrides`.
+- Otherwise the closest field names of the type, e.g. `level` for `levle`.
+
+What counts as a field: the type's schema, and for an alias the schema of the
+type it expands to (a `core/testimonials` block accepts every `core/repeater`
+field). The renderer also reads a few keys that a schema need not declare, so
+they are always accepted: `responsive_breakpoints` on any block, the names a
+site block type's templates and composition read (`{{subtitle}}`,
+`{{#each rows}}`, `{{props.title}}`), and the names a conditional block's
+condition reads. Blocks of a type the site does not know, and extension
+blocks, whose component receives all of their data, are not checked.
+`read_block_type` lists a type's fields.
+
+#### Removing a key
+
+In `update_block`, a `null` value removes the key from `block.data` instead of
+storing `null`; the field then renders its default. Use it to clean up a key
+stored by mistake:
+
+```json
+{ "block_id": "related-list", "data": { "placeholder_background": null } }
+```
+
+Removing is always allowed, also for a key the type does not declare.
 
 ### Field types (Core 0.2.75)
 
