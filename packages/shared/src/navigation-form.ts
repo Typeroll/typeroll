@@ -506,7 +506,8 @@ export const navigationForm: BlockType = {
   ],
   template:
     '<div id="navigation-{{navigation_id}}" data-block="navigation_form" role="form" aria-label="{{aria_label}}" data-handoff-key="{{handoff_key}}" data-mode="{{mode}}" data-show-labels="{{show_labels}}" data-font="{{font}}" data-button-nowrap="{{button_nowrap}}" data-address-country="{{address_country}}" style="--columns:{{columns}};{{navigation_colors}}">{{{navigation_fields_html}}}{{{navigation_action_html}}}</div>{{{navigation_layout_html}}}',
-  styles: `[data-block="navigation_form"]{display:grid;grid-template-columns:repeat(var(--columns,1),minmax(0,1fr));gap:var(--gap_px,12px);align-items:end;font-size:var(--font_size_px,1rem);line-height:var(--line_height,1.4)}
+  styles: `[data-block="navigation_form"]{--tr-field-min-height:var(--input_height_px,44px);--tr-field-padding-y:var(--input_padding_y_px,10px);--tr-field-padding-x:var(--input_padding_x_px,12px);--tr-field-border-width:var(--input_border_width_px,1px);--tr-field-border-color:var(--navigation-input-border,#bbc1c9);--tr-field-radius:var(--radius_px,6px);--tr-field-background:var(--navigation-input-bg,#fff);--tr-field-color:var(--navigation-input-color,#20242a)}
+[data-block="navigation_form"]{display:grid;grid-template-columns:repeat(var(--columns,1),minmax(0,1fr));gap:var(--gap_px,12px);align-items:end;font-size:var(--font_size_px,1rem);line-height:var(--line_height,1.4)}
 [data-block="navigation_form"][data-font="body"]{font-family:var(--font-body,inherit)}
 [data-block="navigation_form"][data-font="heading"]{font-family:var(--font-heading,inherit)}
 [data-block="navigation_form"] .navigation-field{display:flex;flex-direction:column;gap:6px;min-width:0}

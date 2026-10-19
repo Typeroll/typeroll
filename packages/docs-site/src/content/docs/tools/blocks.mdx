@@ -1191,6 +1191,25 @@ The provider script loads only on pages that have a field asking for it, once
 per page however many fields ask, and it is held by the site's cookie-consent
 gate as a `functional` integration.
 
+From Core 0.2.75 the suggestion field looks like the block's other fields: the
+same border, radius, height, padding, background, text colour, font, size and
+placeholder colour, from the block's own input settings, at every breakpoint.
+It follows the site's colour scheme, so a light site keeps a light field in a
+browser set to dark mode, and it keeps a magnifier icon in the field's text
+colour. The suggestion list uses the block's font, and the Maps API's own Roboto
+and Google Sans stylesheets are not loaded. Focus ring, keyboard selection and
+the handoff are unchanged. The Maps JavaScript API loads from Google's
+`quarterly` release channel, so Google's changes to the element arrive once a
+quarter rather than weekly.
+
+The field reads these CSS custom properties, which `core/navigation_form` sets
+from its settings; site CSS can override them on the block or a field:
+`--tr-field-min-height`, `--tr-field-padding-x`, `--tr-field-padding-y`,
+`--tr-field-border-width`, `--tr-field-border-color`, `--tr-field-radius`,
+`--tr-field-background`, `--tr-field-color`, `--tr-field-icon-color` and
+`--tr-field-icon-size`. The placeholder colour is the browser's default, as on
+the plain fields; Google's element offers no supported way to change it.
+
 With no key configured, or a key that fails validation, the field is an
 ordinary text input. Navigation and the handoff still work. That is also what
 you see in the editor canvas and in preview, which cannot run a provider
