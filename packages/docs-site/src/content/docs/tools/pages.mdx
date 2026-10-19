@@ -48,7 +48,8 @@ The homepage has `slug: ""` and is stored with `id: "home"`. The AI agent uses t
 
 <Aside type="caution">
   There can only be one homepage per site. Creating a second page with `slug:
-  ""` returns a 409 error.
+  ""` returns a 409 error with `code: "slug_in_use"` and the existing homepage's
+  id.
 </Aside>
 
 ## `create_page`
@@ -58,6 +59,53 @@ Creates a new page. Required: `title`. Pass `content_type` and `fields` for arti
 ```
 Create a page titled "Tjänster" at slug "tjanster" with three service sections.
 ```
+
+### Slug and address conflicts
+
+A requested address is never changed silently. Creation compares the new
+page's address with every page in the version — drafts, review and unlisted
+pages included, and the address an unsaved page draft will take when it is
+saved. The address comes from the content type's URL pattern, or from an
+explicit `path`.
+
+- **Explicit `slug` or `path` already in use:** the call is refused with
+  `409` and a stable `code` — `slug_in_use`, or `path_in_use` when you passed
+  `path` or the content type builds its URL from fields other than the slug.
+  `details` names the page that holds the address:
+
+  ```json
+  {
+    "error": "Slug \"tack\" is already in use: /tack belongs to page tack. Choose another slug, or edit the existing page.",
+    "code": "slug_in_use",
+    "details": { "page_id": "tack", "path": "/tack" }
+  }
+  ```
+
+  Edit that page, or choose another slug. Nothing is created.
+
+- **Slug derived from the title** (no `slug` passed): the page is created with
+  a numbered slug, such as `tack-2`, and the response carries a warning:
+
+  ```json
+  "warnings": [{
+    "code": "slug_adjusted",
+    "requested": "tack",
+    "slug": "tack-2",
+    "path": "/tack-2",
+    "conflicting_page_id": "tack",
+    "message": "…"
+  }]
+  ```
+
+  Scripts that link to the new page should use the returned `slug` and `url`,
+  or pass an explicit `slug` to be told about the conflict instead.
+
+`clone_page` follows the same rule: a `slug` you pass must be free, and a slug
+derived from the new title is numbered with a warning. The portal's **New
+page** form names only a title, so it numbers the slug and the editor says
+which page already uses the requested address. Two pages may share a slug when
+their addresses differ, for example under different `path` prefixes or content
+types.
 
 ## `set_page_mode`
 
