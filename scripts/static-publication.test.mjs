@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -137,6 +138,65 @@ test('projects nested public settings and permits publication after the last pag
   assert.equal(publication.settings.cookie_consent.scripts_optional, '<script>window.example=true</script>');
   assert.ok(!JSON.stringify(publication).includes('private-value'));
   assert.match(publication.publication_id, /^[a-f0-9]{64}$/);
+});
+
+test('publishes the font smoothing setting and drops unknown values', () => {
+  const value = input();
+  value.settings.fonts.smoothing = 'antialiased';
+  assert.equal(projectStaticPublication(value, identity).settings.fonts.smoothing, 'antialiased');
+  value.settings.fonts.smoothing = 'subpixel';
+  assert.equal(projectStaticPublication(value, identity).settings.fonts.smoothing, undefined);
+});
+
+// Every SiteSettings field, read from the type itself, and whether a
+// publication carries it. A new setting fails here until someone decides:
+// add it to FULL_SETTINGS (and to the projection), or list it as unpublished
+// with the reason. Without this, a setting can be stored and previewed and
+// never reach a published page (fonts.smoothing nearly did).
+const NOT_PUBLISHED = {
+  // Nothing yet: every SiteSettings field reaches the published renderer.
+};
+const FULL_SETTINGS = {
+  site_name: 'Site', tagline: 'Tagline', logo: '/logo.png', favicon: '/favicon.ico', apple_touch_icon: '/apple.png', icon_192: '/icon-192.png',
+  responsive_breakpoints: { tablet: 600, laptop: 1000, desktop: 1300, wide: 1600 },
+  trailing_slash: 'never', iframe_allowed_hosts: ['www.youtube.com'],
+  colors: { primary: '#111111', secondary: '#222222', accent: '#333333', background: '#ffffff', surface: '#eeeeee', text: '#000000', text_light: '#555555' },
+  fonts: { heading: 'Inter', body: 'Inter', size_base: 17, smoothing: 'antialiased' },
+  contact: { email: 'hello@example.invalid', phone: '+46 0', address: 'Street 1' },
+  social: { facebook: 'https://example.invalid/f', instagram: 'https://example.invalid/i', linkedin: 'https://example.invalid/l', x: 'https://example.invalid/x', youtube: 'https://example.invalid/y' },
+  scripts_head: '<meta name="a">', scripts_body_end: '<meta name="b">', custom_css: 'body{}', render_version: 6,
+  styles: [], cookie_consent: { enabled: true, text: 'Consent' }, language: 'sv', twitter_handle: '@site',
+  default_seo_suffix: ' | Site', default_meta_description: 'Description', image_sizes_default: '100vw', default_og_image: '/og.png',
+  organization: { name: 'Org', logo: '/org.png', same_as: ['https://example.invalid/org'] },
+  robots_txt: 'User-agent: *', sitewide_noindex: true, sitewide_nofollow: true,
+  seo_review: { forbidden_markers: ['TODO'], claims: [{ phrase: 'best', guidance: 'Check' }], notes: ['Note'] },
+};
+
+function siteSettingsFields() {
+  const source = readFileSync(new URL('../packages/shared/src/types.ts', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('export interface SiteSettings {'));
+  const lines = body.slice(0, body.indexOf('\n}\n')).split('\n');
+  const fields = [];
+  let parent = null;
+  for (const line of lines) {
+    const top = line.match(/^ {2}([a-z0-9_]+)\??:\s*(\{)?/);
+    if (top) { fields.push(top[1]); parent = top[2] ? top[1] : null; continue; }
+    const nested = parent && line.match(/^ {4}([a-z0-9_]+)\??:/);
+    if (nested) fields.push(`${parent}.${nested[1]}`);
+  }
+  return fields;
+}
+
+test('every SiteSettings field is published or deliberately left out', () => {
+  const fields = siteSettingsFields();
+  assert.ok(fields.length > 30, 'the SiteSettings parser found the fields');
+  const value = input(); value.settings = structuredClone(FULL_SETTINGS);
+  const published = projectStaticPublication(value, identity).settings;
+  const at = (object, path) => path.split('.').reduce((node, key) => node?.[key], object);
+  const unaccounted = fields.filter(field => !NOT_PUBLISHED[field] && at(FULL_SETTINGS, field) === undefined);
+  assert.deepEqual(unaccounted, [], 'add these fields to FULL_SETTINGS, or to NOT_PUBLISHED with a reason');
+  const dropped = fields.filter(field => !NOT_PUBLISHED[field] && at(published, field) === undefined);
+  assert.deepEqual(dropped, [], 'the publication drops these fields; project them or list them in NOT_PUBLISHED');
 });
 
 test('publication rejects unsafe document paths and expiring credential-bearing media URLs', () => {
