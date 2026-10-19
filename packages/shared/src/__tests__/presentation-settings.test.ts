@@ -266,7 +266,7 @@ describe('every core block field changes what renders', () => {
   const KNOWN_DEAD: Record<string, string> = {
     // Empty: core/video, core/hero.video_url, core/testimonial.rating,
     // core/form.submit_label and the carousel controls render from
-    // render version 7 / Core 0.2.75.
+    // render version 7 / Core 0.2.79.
   };
 
   const answering = (prefix: string): Record<string, unknown> => new Proxy({ title: `${prefix} title`, url: `/${prefix}/`, content_mode: 'blocks', blocks: [] } as Record<string, unknown>, {

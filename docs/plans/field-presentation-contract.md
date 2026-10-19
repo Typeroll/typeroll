@@ -1,6 +1,6 @@
 # Settings that reach the page
 
-Status: accepted (Core 0.2.75)
+Status: accepted (Core 0.2.79)
 
 ## The failure class
 
@@ -85,7 +85,7 @@ The field test found eleven fields that were accepted and never rendered:
 exist), `core/hero.video_url`, `core/testimonial.rating`,
 `core/form.submit_label` and the repeater carousel's `autoplay`, `show_arrows`
 and `show_dots`. Radio and checkbox groups enforced `required` only at
-submission. All are fixed in Core 0.2.75: markup changes in render version 7,
+submission. All are fixed in Core 0.2.79: markup changes in render version 7,
 the form label and group validation as bug fixes. `render_versions[].script`
 lets a block's runtime arrive with the version that needs it.
 

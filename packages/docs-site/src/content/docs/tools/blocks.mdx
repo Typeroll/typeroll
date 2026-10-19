@@ -82,7 +82,7 @@ The AI agent calls `list_block_types` first to see the built-in and custom types
 
 ### Video, hero video and ratings (render version 7)
 
-From [render version 7](../settings/#render-versions) (Core 0.2.75) these
+From [render version 7](../settings/#render-versions) (Core 0.2.79) these
 options render; earlier versions ignore them.
 
 - `core/video`: a YouTube or Vimeo page address (`watch?v=`, `youtu.be/`,
@@ -448,7 +448,7 @@ lists where it is used.
 
 All accept `target: { kind, id }` or the `page_id` shorthand.
 
-### Compact write answers (Core 0.2.75)
+### Compact write answers (Core 0.2.79)
 
 The write tools (`add_block`, `update_block`, `move_block`, `remove_block`,
 `duplicate_block`, `set_block_responsive`) answer with the block they changed
@@ -1243,7 +1243,7 @@ weight. `button_icon` adds an icon after the label: a core icon name (`core_icon
 such as `arrow-right`, or text such as `→`. It is hidden from assistive
 technology, so the label alone names the action. `button_icon_size_px`
 (responsive) sizes it and `button_icon_gap_px` sets the space after the label
-(default 0.4em). Without an icon the button markup is unchanged (Core 0.2.75).
+(default 0.4em). Without an icon the button markup is unchanged (Core 0.2.79).
 Number fields support `min`, `max` and positive `step` constraints.
 `columns` includes the continue button.
 For unequal widths use `column_widths`, such as `"1fr 180px"` or
@@ -1276,7 +1276,7 @@ The provider script loads only on pages that have a field asking for it, once
 per page however many fields ask, and it is held by the site's cookie-consent
 gate as a `functional` integration.
 
-From Core 0.2.75 the suggestion field looks like the block's other fields: the
+From Core 0.2.79 the suggestion field looks like the block's other fields: the
 same border, radius, height, padding, background, text colour, font, size and
 placeholder colour, from the block's own input settings, at every breakpoint.
 It follows the site's colour scheme, so a light site keeps a light field in a
@@ -1459,7 +1459,7 @@ successful write; the absence of the field is the only clean signal. The one
 exception is an unknown `data` key in `add_block` or `update_block`, which is
 rejected (see below).
 
-### Unknown data fields (Core 0.2.75)
+### Unknown data fields (Core 0.2.79)
 
 A `data` key that no field of the block's type declares is stored and never
 rendered. Tree writes (`PUT`/`PATCH /pages/{pageId}`, `PUT`/`PATCH
@@ -1526,7 +1526,7 @@ stored by mistake:
 
 Removing is always allowed, also for a key the type does not declare.
 
-### Field types (Core 0.2.75)
+### Field types (Core 0.2.79)
 
 A known field whose value has the wrong type is reported as
 `field_type_mismatch`, with the path, the field and the type it needs:

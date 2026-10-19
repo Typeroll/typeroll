@@ -103,11 +103,11 @@ publication validation.
   semantic element; `style` was already a variant field on other blocks.
 - Derived `on_primary`, `on_secondary`, `on_accent` text colours pick black or
   white for contrast. The default primary became `#2563eb`; `#3b82f6` fails AA.
-  Core 0.2.75 lets a site set them (`colors.on_*`) and picks them by APCA
+  Core 0.2.79 lets a site set them (`colors.on_*`) and picks them by APCA
   from render version 8; see "Text contrast".
 - Adding standard styles adapts a palette colour that is unreadable on the
   site background to the body text colour instead of failing. From Core
-  0.2.75 each adaptation is reported in `warnings` with both measures.
+  0.2.79 each adaptation is reported in `warnings` with both measures.
 
 ## Phase 3: semantics in core blocks (render version 2)
 
@@ -194,7 +194,7 @@ Both work in the UI, API and MCP, and both use styles rather than raw HTML.
   Global blocks page lists usage and templates. API: `make-global`, `detach`,
   `insert-template`, `/block-templates`. MCP: matching tools.
 
-## Text contrast (Core 0.2.75, render version 8)
+## Text contrast (Core 0.2.79, render version 8)
 
 Migrating moveria.se showed the WCAG 2 ratio choosing the wrong text colour.
 Its secondary `#00a19c` with white text is WCAG 2 3.19:1 / APCA Lc 63.9; with

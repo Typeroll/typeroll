@@ -72,7 +72,7 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
   },
   {
     version: 6,
-    core_version: '0.2.75',
+    core_version: '0.2.79',
     title: 'Browser-default font smoothing',
     changes: [
       'Text uses the browser\'s default font smoothing and text rendering. Earlier versions set `-webkit-font-smoothing: antialiased` and `text-rendering: optimizeLegibility` on every page, which on macOS draws dark text on a light background thinner and lighter than other sites at the same font weight.',
@@ -81,7 +81,7 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
   },
   {
     version: 7,
-    core_version: '0.2.75',
+    core_version: '0.2.79',
     title: 'Video, ratings and carousel controls',
     changes: [
       'Video blocks play: a YouTube or Vimeo address becomes the provider\'s embed address (YouTube without cookies), and a file address plays in the browser\'s own player. Poster, autoplay (always muted), loop, muted, controls and lazy loading apply; the player has an accessible title ("title", default "Video").',
@@ -92,7 +92,7 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
   },
   {
     version: 8,
-    core_version: '0.2.75',
+    core_version: '0.2.79',
     title: 'Text colour on theme colours by APCA',
     changes: [
       'The automatic text colour on primary, secondary and accent (buttons, badges, tabs, call-to-action sections and styles using "on primary", "on secondary" or "on accent") is black or white by APCA, the perceptual contrast measure, instead of the WCAG 2 ratio. On mid-dark saturated colours such as teal, green or medium blue, text that was near-black becomes white, which reads better; for example white on #00a19c (APCA Lc 63.9) instead of #111827 (Lc 44).',
