@@ -164,7 +164,8 @@ test('publishes explicit text colours on theme colours and drops invalid ones', 
 // with the reason. Without this, a setting can be stored and previewed and
 // never reach a published page (fonts.smoothing nearly did).
 const NOT_PUBLISHED = {
-  // Nothing yet: every SiteSettings field reaches the published renderer.
+  agent_instructions: 'guidance for agents, read live through the API; never rendered',
+  extension_public_config: 'resolved into each Extension installation\'s public config (extensions/version-config.ts), which the publication carries in its runtime snapshot',
 };
 const FULL_SETTINGS = {
   site_name: 'Site', tagline: 'Tagline', logo: '/logo.png', favicon: '/favicon.ico', apple_touch_icon: '/apple.png', icon_192: '/icon-192.png',
@@ -179,6 +180,7 @@ const FULL_SETTINGS = {
   default_seo_suffix: ' | Site', default_meta_description: 'Description', image_sizes_default: '100vw', default_og_image: '/og.png',
   organization: { name: 'Org', logo: '/org.png', same_as: ['https://example.invalid/org'] },
   robots_txt: 'User-agent: *', sitewide_noindex: true, sitewide_nofollow: true,
+  external_routes: [{ path: '/app', owner: 'Separate deployment' }],
   seo_review: { forbidden_markers: ['TODO'], claims: [{ phrase: 'best', guidance: 'Check' }], notes: ['Note'] },
 };
 
