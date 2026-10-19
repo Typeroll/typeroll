@@ -448,6 +448,57 @@ lists where it is used.
 
 All accept `target: { kind, id }` or the `page_id` shorthand.
 
+### Compact write answers (next Core release)
+
+The write tools (`add_block`, `update_block`, `move_block`, `remove_block`,
+`duplicate_block`, `set_block_responsive`) answer with the block they changed
+instead of the container's whole tree, which ran to tens of kilobytes for one
+`add_block` on an article page:
+
+```json
+{
+  "added_id": "blk_3f2a9c1d7e4b",
+  "block": { "id": "blk_3f2a9c1d7e4b", "type": "core/heading", "data": { "text": "Related articles", "level": "h2" } },
+  "parent_id": "sec_main",
+  "slot_index": null,
+  "position": 2,
+  "has_unsaved_changes": true
+}
+```
+
+| Field                 | Meaning                                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `block`               | The block after the write, with its own children and slots (the copy for `duplicate_block`)                  |
+| `parent_id`           | The containing block, or `null` at the container's top level                                                 |
+| `slot_index`          | The parent's slot holding the block (slot containers such as `core/columns`), else `null`                    |
+| `position`            | 0-based index in that list                                                                                   |
+| `has_unsaved_changes` | The working copy differs from the saved page or partial. Always `false` for a template, which has no draft   |
+| `warnings`            | As described under [Write warnings](#write-warnings-core-0248); absent when there is nothing to report       |
+
+`add_block` also returns `added_id` and `duplicate_block` `duplicate_id`.
+`remove_block` returns `removed_id` and the `parent_id`, `slot_index` and
+`position` the block was removed from, without `block`. `move_block` reports
+where the block now sits.
+
+MCP asks for this by default. Pass `response: "tree"` to get the whole tree
+instead, or read it with `get_page_blocks`.
+
+Over HTTP the default stays the tree, so existing callers see no change. Ask
+for the compact answer with `response: "summary"` as a body key (`POST`,
+`PATCH`, `PUT`) or a query parameter (any method, including `DELETE`):
+
+```
+POST   /api/v1/sites/{siteId}/pages/{pageId}/blocks?response=summary
+PATCH  /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks        { "block_id": "...", "data": {...}, "response": "summary" }
+DELETE /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks?block_id=...&response=summary
+POST   /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks/duplicate?response=summary
+POST   /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks/responsive?response=summary
+```
+
+The body key wins over the query parameter. Any other value is refused with
+`400`. A Core release without compact answers ignores the query parameter and
+answers with the tree, which is why MCP sends it that way.
+
 ### Headings with an eyebrow and subtitle
 
 A small label above a heading belongs to the heading block, not to a separate

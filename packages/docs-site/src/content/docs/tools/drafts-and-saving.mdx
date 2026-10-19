@@ -87,6 +87,9 @@ through the draft layer.
 - Writes (`update_page`, block mutations, `update_partial`,
   batch and bulk tools) stage a draft.
 - Reads return the **draft view** plus `has_unsaved_changes`.
+- Block write tools in MCP answer with the changed block and
+  `has_unsaved_changes`, true while the draft differs from the saved content
+  (see [compact write answers](../blocks/#compact-write-answers-next-core-release)).
 - Commit with `commit_working_copy`, or pass `save: true` on the write call to
   write and commit in one step.
 - `discard_working_copy` drops the draft; `read_working_copy` inspects it.

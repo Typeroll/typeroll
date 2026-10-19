@@ -229,6 +229,30 @@ export function mergePageDraftFields(base: Record<string, unknown>, patch: Recor
   return next;
 }
 
+/**
+ * True when the working copy would change the saved doc: some field it
+ * carries differs from the saved value (a page's custom fields per key).
+ * A copy that an edit and its undo brought back to the saved state is not
+ * an unsaved change. Values compare as stored JSON.
+ */
+export function workingCopyDiffers(saved: object, wc: WorkingCopy | null | undefined): boolean {
+  if (!wc?.fields) return false;
+  const json = (value: unknown) => value === undefined ? undefined : JSON.parse(JSON.stringify(value)) as unknown;
+  const base = saved as Record<string, unknown>;
+  for (const [key, value] of Object.entries(wc.fields)) {
+    if (key === 'fields' && wc.kind === 'page' && value && typeof value === 'object' && !Array.isArray(value)) {
+      const savedFields = (base.fields ?? {}) as Record<string, unknown>;
+      for (const [name, fieldValue] of Object.entries(value)) {
+        if (!isDeepStrictEqual(json(savedFields[name] ?? null), json(fieldValue ?? null))) return true;
+      }
+      continue;
+    }
+    const savedValue = key === 'blocks' ? base.blocks ?? [] : base[key];
+    if (!isDeepStrictEqual(json(savedValue ?? null), json(value ?? null))) return true;
+  }
+  return false;
+}
+
 export interface CommitResult {
   committed: boolean;
   seo_warnings: string[];

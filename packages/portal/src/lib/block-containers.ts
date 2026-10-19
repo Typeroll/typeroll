@@ -16,7 +16,7 @@
 import { paths, ensureBlockIds, type Block, type Page, type Partial as PartialDoc, type PageTemplate } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { vstore } from './version-store';
-import { mergeWorkingCopy, readWorkingCopy, type WcTarget } from './working-copy';
+import { mergeWorkingCopy, readWorkingCopy, workingCopyDiffers, type WcTarget } from './working-copy';
 
 export type BlockContainerKind = 'page' | 'partial' | 'template';
 
@@ -150,13 +150,17 @@ export async function loadContainer(
  * plumbing); partials and templates write directly to the datastore
  * with date_updated stamped on partials so the "pending deploy" UI
  * picks them up.
+ *
+ * Returns whether the container now has unsaved changes: its working copy
+ * differs from the saved doc. Templates have no working copy and are
+ * always saved.
  */
 export async function writeContainer(
   target: BlockContainerTarget,
   blocks: Block[],
   ctx: { orgId: string; siteId: string; versionId: string },
   raw: Page | PartialDoc | PageTemplate,
-): Promise<void> {
+): Promise<{ has_unsaved_changes: boolean }> {
   // Every container write funnels through here — normalise missing block
   // ids (hand-authored trees) so the renderer + per-block tools can
   // address every block.
@@ -166,8 +170,8 @@ export async function writeContainer(
     // Buffer model: page/partial block trees land in the working copy;
     // an explicit commit (editor Save / commit_working_copy / save:true)
     // promotes them through the canonical write.
-    await mergeWorkingCopy(ctx, wcTarget, { blocks });
-    return;
+    const wc = await mergeWorkingCopy(ctx, wcTarget, { blocks });
+    return { has_unsaved_changes: workingCopyDiffers(raw, wc) };
   }
 
   const store = getStore();
@@ -181,7 +185,7 @@ export async function writeContainer(
       paths.pageTemplate(ctx.orgId, ctx.siteId, target.id, ctx.versionId),
       next,
     );
-    return;
+    return { has_unsaved_changes: false };
   }
 
   throw new ContainerError('Unknown container kind', 400);
