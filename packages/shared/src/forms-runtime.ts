@@ -209,6 +209,9 @@ function fillCampaign(form){var q;try{q=new URLSearchParams(location.search)}cat
   $all('input[type="hidden"]',form).forEach(function(el){if(!/^utm_[A-Za-z0-9_]{1,64}$/.test(el.name))return;var v=(q.get(el.name)||"").trim();if(v)el.value=v.slice(0,255)})}
 function init(form){
   $all("[data-required]",form).forEach(function(el){el.required=el.getAttribute("data-required")==="true"});
+  // A required checkbox group needs one checked box: every box is required
+  // until one is checked, so the browser's own message and focus apply.
+  $all('[data-block="form_checkbox_group"]',form).forEach(function(g){var boxes=$all("input[data-required-group]",g);if(!boxes.length||g.__trRequired)return;g.__trRequired=true;var sync=function(){var any=boxes.some(function(b){return b.checked});boxes.forEach(function(b){b.required=!any})};g.addEventListener("change",sync);sync()});
   $all('[data-block="form_slider"]',form).forEach(function(w){var inp=$("input[type=range]",w),out=$(".form-slider-value",w),unit=w.getAttribute("data-unit")||"";if(!inp||!out||w.__trReady)return;w.__trReady=true;var upd=function(){out.textContent=inp.value+(unit?" "+unit:"")};inp.addEventListener("input",upd);upd()});
   $all('[data-clear-answer]',form).forEach(function(button){if(button.__trReady)return;button.__trReady=true;button.addEventListener("click",function(){var name=button.getAttribute("data-clear-answer");$all('input[type=radio]',button.parentElement).forEach(function(input){input.checked=false});form.__cleared=form.__cleared||{};form.__cleared[name]=true;form.dispatchEvent(new Event("input",{bubbles:true}))})});
   fillCampaign(form);

@@ -8,6 +8,7 @@ import { pixels } from './presentation-fields.js';
 // with curated defaults — see `BlockType.expand_to`.
 
 import type { BlockType } from './types.js';
+import { CAROUSEL_RUNTIME } from './block-media.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
 
@@ -445,6 +446,33 @@ const collectionList: BlockType = {
 /**
  * Ordered for the editor's block picker.
  */
+// Render version 7: the carousel's items scroll in a track inside the block,
+// with arrows, dots and autoplay controls after it (block-media.ts). The
+// block root stays the first element, so visibility and style overrides land
+// where they did.
+const CAROUSEL_V6 = `[data-block="repeater"][data-layout="carousel"] {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: var(--gap_px, var(--rep-gap));
+  scrollbar-width: thin;
+}
+[data-block="repeater"][data-layout="carousel"] > * { flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap))) / var(--cols, 3)); scroll-snap-align: start; }`;
+const CAROUSEL_V7 = `[data-block="repeater"][data-layout="carousel"] { position: relative; }
+[data-block="repeater"][data-layout="carousel"] > .tr-carousel-track {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: var(--gap_px, var(--rep-gap));
+  scrollbar-width: thin; scroll-behavior: smooth;
+}
+[data-block="repeater"][data-layout="carousel"] > .tr-carousel-track > * { flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap))) / var(--cols, 3)); scroll-snap-align: start; }
+[data-block="repeater"] > .tr-carousel-controls { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; }
+[data-block="repeater"] > .tr-carousel-controls[hidden], [data-block="repeater"] .tr-carousel-button[hidden] { display: none; }
+[data-block="repeater"] .tr-carousel-button { inline-size: 2.5rem; block-size: 2.5rem; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid currentColor; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
+[data-block="repeater"] .tr-carousel-button:disabled { opacity: 0.4; cursor: default; }
+[data-block="repeater"] .tr-carousel-dots { display: flex; flex-wrap: wrap; justify-content: center; }
+[data-block="repeater"] .tr-carousel-dot { inline-size: 24px; block-size: 24px; padding: 7px; border: 0; border-radius: 50%; background: currentColor; background-clip: content-box; opacity: 0.35; cursor: pointer; }
+[data-block="repeater"] .tr-carousel-dot[aria-current="true"] { opacity: 1; }
+[data-block="repeater"] .tr-carousel-button:focus-visible, [data-block="repeater"] .tr-carousel-dot:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { [data-block="repeater"][data-layout="carousel"] > .tr-carousel-track { scroll-behavior: auto; } }`;
+if (!repeater.styles!.includes(CAROUSEL_V6)) throw new Error('repeater carousel styles changed; update CAROUSEL_V6');
+repeater.render_versions = [{ from: 7, styles: repeater.styles!.replace(CAROUSEL_V6, CAROUSEL_V7), script: CAROUSEL_RUNTIME }];
+
 export const REPEATER_BLOCK_TYPES: readonly BlockType[] = [
   repeater,
   gallery,

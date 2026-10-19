@@ -95,12 +95,20 @@ describe('preview runtime', () => {
   it('validates like the server, follows the step graph and completes without sending', async () => {
     const ctx = await mount(FORM);
     try {
-      // Natively valid (a@b) but refused by the server's address rule; the
-      // empty checkbox group is a server-only requirement.
+      // An empty required checkbox group stops the browser itself, as an
+      // empty required input does: nothing is validated or shown yet.
       ctx.el('[name=email]').value = 'a@b';
       await ctx.submit();
+      expect(ctx.el('[data-error-for=email]').textContent).toBe('');
+      const boxes = [...ctx.window.document.querySelectorAll('[name=topics]')] as unknown as Array<{ required: boolean; checked: boolean; dispatchEvent(e: unknown): void }>;
+      expect(boxes.map(box => box.required)).toEqual([true, true]);
+      // One checked box satisfies the group.
+      boxes[0].checked = true;
+      boxes[0].dispatchEvent(new ctx.window.Event('change', { bubbles: true }));
+      expect(boxes.map(box => box.required)).toEqual([false, false]);
+      // Natively valid (a@b) but refused by the server's address rule.
+      await ctx.submit();
       expect(ctx.el('[data-error-for=email]').textContent).toBe("Email doesn't look like a valid email address");
-      expect(ctx.el('[data-error-for=topics]').textContent).toBe('Topics is required');
       expect(ctx.el('[data-form-step=contact]').hidden).toBe(false);
 
       ctx.el('[name=email]').value = 'ada@example.test';

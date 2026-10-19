@@ -540,7 +540,7 @@ export async function buildFormSource(
   lang?: string,
   onRender?: (blocks: Block[]) => void,
   renderVersion?: number,
-): Promise<(formId: string) => string | undefined> {
+): Promise<(formId: string, block?: import('@typeroll/shared').FormBlockOptions) => string | undefined> {
   const { renderFormHtml } = await import('@typeroll/shared');
   type EnrichedForm = import('@typeroll/shared').Form & {
     submit_url?: string;
@@ -555,14 +555,15 @@ export async function buildFormSource(
     forms = [];
   }
   const byId = new Map(forms.map((f) => [f.id, f]));
-  return (formId: string) => {
+  return (formId: string, block?: import('@typeroll/shared').FormBlockOptions) => {
     const form = byId.get(formId);
     if (!form || (form.steps?.length ?? 0) === 0) return undefined;
     onRender?.(form.steps!.flatMap((step) => step.blocks ?? []));
     return renderFormHtml(
       form,
       { submit_url: form.submit_url ?? '/api/forms/submit', submit_token: form.submit_token ?? null },
-      { registry, pow_bits: form.pow_bits ?? 0, lang, renderVersion },
+      // A core/form block's own submit label wins over the form's.
+      { registry, pow_bits: form.pow_bits ?? 0, lang, renderVersion, submit_label: block?.submit_label },
     );
   };
 }

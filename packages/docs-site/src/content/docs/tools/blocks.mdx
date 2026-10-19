@@ -80,6 +80,26 @@ The AI agent calls `list_block_types` first to see the built-in and custom types
 - `core/search` — see [Site search](#site-search) below
 - `core/html` — the raw-HTML escape hatch for one-offs no block covers. Output is sanitised the same way HTML-mode pages are, so it isn't a script vector.
 
+### Video, hero video and ratings (render version 7)
+
+From [render version 7](../settings/#render-versions) (Core 0.2.75) these
+options render; earlier versions ignore them.
+
+- `core/video`: a YouTube or Vimeo page address (`watch?v=`, `youtu.be/`,
+  `shorts/`, `vimeo.com/123`) becomes the provider's embed address, YouTube on
+  its no-cookie host. With `source: "url"` a video file plays in the browser's
+  own player. `poster` (files), `autoplay` (always muted), `loop`, `muted`
+  (files; embeds start muted only when autoplaying), `controls` and
+  `lazy_load` apply, and `title` (default "Video") names the player for
+  screen readers. Embeds are limited to the iframe host allowlist.
+- `core/hero`: `video_url` with a video file plays muted and looping behind
+  the text, with `image` as its poster, a pause button, and nothing at all when
+  the visitor prefers reduced motion. YouTube and Vimeo addresses are not used
+  as background video.
+- `core/testimonial`: `rating` (0–5) shows as whole stars with "Rating: 4 out
+  of 5" ("Betyg: 4 av 5" on Swedish sites) for screen readers. Set
+  `--testimonial-rating-color` to change the star colour.
+
 ### Article content and automatic contents
 
 Use `core/table`, `core/list`, `core/image`, `core/video` and formatted headings
@@ -289,6 +309,14 @@ The repeater abstraction collapses what used to be a dozen specialised widgets i
 - `core/gallery` — image grid
 - `core/logo_cloud` — client logos (greyscale by default)
 - `core/testimonials` — testimonial carousel
+
+From render version 7, a repeater with `layout: "carousel"` (testimonials by
+default) has previous and next buttons (`show_arrows`), a dot per item
+(`show_dots`) and, with `autoplay: true`, advances every 5 seconds with a pause
+button. Autoplay stops while the visitor points at or focuses the carousel and
+never runs when they prefer reduced motion. Items scroll in a track inside the
+block; without JavaScript the track still scrolls and the controls stay
+hidden. The controls name themselves in the site language.
 - `core/feature_grid` — icon_box grid
 - `core/pricing_table` — pricing_plan grid
 - `core/team_grid` — team_member grid
