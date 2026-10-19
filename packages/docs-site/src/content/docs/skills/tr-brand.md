@@ -75,6 +75,14 @@ text_light: #9ca3af
 
 Fonts: **Cormorant Garamond** (headings) + **Inter** (body)
 
+## Text on theme colours
+
+Text on primary, secondary and accent (buttons, badges, tabs, call-to-action
+sections) is black or white automatically. When the brand specifies it, the
+agent sets `colors.on_primary`, `colors.on_secondary` or `colors.on_accent`
+instead of writing custom CSS, and reports the contrast the response returns.
+See [Settings](../../tools/settings/#text-on-theme-colours).
+
 ## Typography pairings
 
 | Heading            | Body           | Character            |

@@ -140,7 +140,9 @@ Set the site's look as named styles before building any page:
    `apply_standard_styles`.
 2. Adjust them to the brand with `update_style`: the font, the type scale and
    spacing for `base` (phones) and `at.tablet`/`at.desktop`, and colours from
-   palette tokens. Keep text at WCAG AA contrast; failing styles are refused.
+   palette tokens. Keep text readable: contrast is checked with APCA and
+   WCAG 2; text that fails both is refused, and text below its APCA level
+   comes back as a warning.
 3. Add a named style for every look the design repeats: a card title, a price
    note, a highlighted section, a CTA button variant. Use the site's language
    for names.

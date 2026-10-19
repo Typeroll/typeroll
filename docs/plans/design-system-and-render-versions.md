@@ -31,9 +31,9 @@ Rebuilding autopilot.se on blocks exposed platform gaps, not site mistakes:
 - Existing sites never change appearance without an explicit, previewed
   upgrade.
 - Everything the UI can do, the authenticated API and MCP can do.
-- Text must meet WCAG AA contrast (4.5:1, 3:1 for large text) against its
-  background. Light grey on white is never acceptable, in sites or in the
-  portal.
+- Text must be readable against its background, measured with APCA and the
+  WCAG 2 ratio (see "Text contrast" below). Light grey on white is never
+  acceptable, in sites or in the portal.
 
 ## Phase 1: render versions
 
@@ -103,8 +103,11 @@ publication validation.
   semantic element; `style` was already a variant field on other blocks.
 - Derived `on_primary`, `on_secondary`, `on_accent` text colours pick black or
   white for contrast. The default primary became `#2563eb`; `#3b82f6` fails AA.
+  Core 0.2.75 lets a site set them (`colors.on_*`) and picks them by APCA
+  from render version 8; see "Text contrast".
 - Adding standard styles adapts a palette colour that is unreadable on the
-  site background to the body text colour instead of failing.
+  site background to the body text colour instead of failing. From Core
+  0.2.75 each adaptation is reported in `warnings` with both measures.
 
 ## Phase 3: semantics in core blocks (render version 2)
 
@@ -191,3 +194,84 @@ Both work in the UI, API and MCP, and both use styles rather than raw HTML.
   Global blocks page lists usage and templates. API: `make-global`, `detach`,
   `insert-template`, `/block-templates`. MCP: matching tools.
 
+## Text contrast (Core 0.2.75, render version 8)
+
+Migrating moveria.se showed the WCAG 2 ratio choosing the wrong text colour.
+Its secondary `#00a19c` with white text is WCAG 2 3.19:1 / APCA Lc 63.9; with
+`#111827` it is 5.56:1 / Lc 44. Typeroll picked `#111827`, but white reads
+better and is the brand's choice, and a site may not patch it with custom CSS.
+
+### Measures
+
+`packages/shared/src/contrast.ts` implements APCA-W3 0.0.98G-4g (constants and
+formula of the reference library `apca-w3` 0.1.9) and keeps the WCAG 2 ratio.
+Tests use the reference library's own vectors (`#888` on `#fff` is Lc
+63.056469930209424, `#fff` on `#888` is -68.54146436644962, and so on, to nine
+decimals) plus the two moveria.se pairs. Every message gives both measures.
+
+### Levels
+
+APCA's conformance levels are the APCA Readability Criterion (ARC). Bronze has
+no lookup table: body text Lc 75 (preferred 90), other content text from 16px
+Lc 60, large fluent text above 32px Lc 45. Silver allows sub-fluent text (for
+example bylines, captions, footer matter) Lc 15 less than body text, never
+below Lc 40. The APCA guidance ("APCA in a nutshell") gives size and weight
+minimums: Lc 60 for 24px/400, 21px/500, 18px/600, 16px/700; Lc 45 for 36px/400
+or 24px bold; Lc 75 for non-body text from 15px/400; Lc 90 for thin fonts.
+
+`requiredContrast()` combines them:
+
+| Text                                                             | Lc |
+| ---------------------------------------------------------------- | -- |
+| Body text (body, lead, quote, link, list, section)                | 75 |
+| Sub-fluent text (the small style)                                 | 60 |
+| Non-body text from 16px/600, 21px/500 or 24px/400                 | 60 |
+| Non-body text from 24px/700 or 36px                               | 45 |
+| Other non-body text (headings, eyebrows, buttons, smaller/lighter) | 75 |
+
+Body and sub-fluent text below 14px, and weight 300 or lighter, need the next
+level. Lc is compared rounded to a whole number (the default `#2563eb` link
+on white is Lc 74.86).
+
+Why 16px/600 at Lc 60 and not the lookup table: the `apca-w3` font lookup
+table (fontMatrixAscend, May 2022) asks 18px at weight 600 for Lc 60 (as the
+nutshell list does) and, interpolated, about 17px at Lc 63.9, so a strict
+reading fails a 16px semibold button by about a pixel. ARC Bronze, APCA's own simplest
+conformance level, requires Lc 60 for content text from 16px without a weight
+condition. Typeroll applies that Bronze rule to non-body text at weight 600
+and above, and keeps the nutshell weights for 400 and 500, where a 16px label
+needs Lc 75. The lookup table also assumes a reference font with an x-height
+of 0.52; Typeroll does not know the rendered font's metrics, which is another
+reason not to claim Silver precision.
+
+### Decisions
+
+- **Acceptance.** A style passes when it meets its APCA level. One that misses
+  it but meets WCAG 2 AA is saved with a warning: WCAG 2.x AA is the legal
+  baseline many sites must meet (EN 301 549, the European Accessibility Act,
+  public-sector rules), and no library accepted before APCA becomes unsavable.
+  One that fails both is refused. Text that passes APCA but not WCAG 2 AA, such
+  as white 16px/600 on `#00a19c`, is accepted silently; both measures are shown
+  in the Settings palette, so a site bound to WCAG 2 AA can see it.
+- **Automatic on-colours.** Render version 8 picks black or white by the larger
+  APCA |Lc|; versions 1–7 keep the WCAG 2 choice byte for byte (references in
+  `__render-reference__/v*/site-styles.css`, recorded before the change).
+  Checks measure the colour the site's version renders, and a WCAG-only pass
+  of an automatic on-colour on an older version says what version 8 would pick.
+- **Explicit on-colours.** `colors.on_primary`, `on_secondary` and `on_accent`
+  are opaque hex colours (so contrast can be measured) and apply on every
+  version, including `--color-primary-fg`/`--color-secondary-fg` before
+  versions 2 and 3 define them. A choice below Lc 60 for button text is kept
+  and returned as a warning with both measures and the automatic alternative.
+  An invalid stored value falls back to the automatic choice at render and is
+  dropped by the static publication.
+- **Standard styles.** Adding standard styles still replaces a palette text
+  colour that fails both measures with the body text colour: added unchanged,
+  the style would be refused and block the whole set, and the platform must
+  not add unreadable text. It never changes an existing style, and each
+  replacement is reported in `warnings` (and `adjusted`) with the measures.
+
+Sources: APCA-W3 reference implementation, github.com/Myndex/apca-w3
+(src/apca-w3.js, test/index.js); APCA Readability Criterion,
+readtech.org/ARC/tests/visual-readability-contrast/; APCA in a nutshell,
+git.apcacontrast.com/documentation/APCA_in_a_Nutshell.
