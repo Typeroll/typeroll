@@ -1159,6 +1159,12 @@ Use `line_height`, `input_padding_x_px`, `input_padding_y_px`,
 `input_border_width_px` and `input_border_color` for native input styling.
 `button_nowrap`, `button_padding_x_px` and `button_padding_y_px` control
 tight continue buttons; verify the longest label at the narrowest width.
+`button_font_weight` (100–900, responsive, default 600) sets the button text
+weight. `button_icon` adds an icon after the label: a core icon name (`core_icon_names` in Site capabilities)
+such as `arrow-right`, or text such as `→`. It is hidden from assistive
+technology, so the label alone names the action. `button_icon_size_px`
+(responsive) sizes it and `button_icon_gap_px` sets the space after the label
+(default 0.4em). Without an icon the button markup is unchanged (Core 0.2.75).
 Number fields support `min`, `max` and positive `step` constraints.
 `columns` includes the continue button.
 For unequal widths use `column_widths`, such as `"1fr 180px"` or
