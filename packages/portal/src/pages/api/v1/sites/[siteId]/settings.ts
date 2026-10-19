@@ -17,11 +17,11 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
 import { vstore } from '../../../../../lib/version-store';
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
-import { libraryProblems, readStyles } from '../../../../../lib/site-styles-store';
+import { libraryProblems, libraryWarnings, readStyles } from '../../../../../lib/site-styles-store';
 import { customCssWarnings, customCssWriteError } from '../../../../../lib/custom-css-write';
 import { getStore } from '../../../../../lib/datastore';
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
-import { responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, type SiteSettings } from '@typeroll/shared';
+import { responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
@@ -102,6 +102,17 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       return apiError(`fonts.smoothing must be one of: ${FONT_SMOOTHING_VALUES.join(', ')} (or null to use the default)`, 400);
     }
   }
+  if (body.colors !== undefined) {
+    if (!body.colors || typeof body.colors !== 'object' || Array.isArray(body.colors)) return apiError('colors must be an object', 400);
+    for (const [key, value] of Object.entries(body.colors as Record<string, unknown>)) {
+      if ((ON_COLOR_TOKENS as readonly string[]).includes(key)) {
+        // null clears the choice back to the automatic black or white.
+        if (value !== null && !isOnColorValue(value)) return apiError(`colors.${key} must be a hex colour such as "#ffffff" (#rgb or #rrggbb), or null for the automatic choice`, 400);
+      } else if (value === null) {
+        return apiError(`colors.${key} cannot be cleared; only on_primary, on_secondary and on_accent are optional`, 400);
+      }
+    }
+  }
   { const error = customCssWriteError(body.custom_css); if (error) return apiError(error, 400); }
   if (body.iframe_allowed_hosts !== undefined) {
     const checked = normalizeIframeAllowedHosts(body.iframe_allowed_hosts);
@@ -136,8 +147,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       // caller sent — the renderer + JSON-LD generator branch on the type.
       const before = (existing[k] as Record<string, unknown> | undefined) ?? {};
       update[k] = { ...before, ...(v as Record<string, unknown>) };
-      // null removes an optional nested value (fonts.smoothing) instead of storing null.
-      for (const [field, value] of Object.entries(update[k] as Record<string, unknown>)) if (value === null && k === 'fonts') delete (update[k] as Record<string, unknown>)[field];
+      // null removes an optional nested value (fonts.smoothing, colors.on_*) instead of storing null.
+      for (const [field, value] of Object.entries(update[k] as Record<string, unknown>)) if (value === null && (k === 'fonts' || k === 'colors')) delete (update[k] as Record<string, unknown>)[field];
     } else if (TOP_LEVEL.has(k)) {
       // null clears an optional field; the store drops undefined values.
       update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization').includes(k) ? undefined : v;
@@ -170,10 +181,20 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   };
   const warnings: string[] = [];
   if (unknown_keys.length > 0) warnings.push(`Unrecognized keys were ignored: ${unknown_keys.join(', ')}`);
-  // A palette change can make existing styles unreadable; say so instead of failing the palette write.
-  if (update.colors) {
-    const { styles, colors } = await readStyles(ctx);
-    warnings.push(...libraryProblems(styles, colors).map(problem => `Style contrast with the new colours: ${problem}`));
+  // A palette or render version change can make existing styles unreadable
+  // (the render version picks the automatic on_* colours); say so instead of
+  // failing the write. An explicit on_* colour is kept even when it is hard to
+  // read: it is the site's choice, reported with both measures.
+  if (update.colors || update.render_version !== undefined) {
+    const { styles, colors, renderVersion } = await readStyles(ctx);
+    warnings.push(...onColorWarnings(colors, renderVersion));
+    warnings.push(...libraryProblems(styles, colors, renderVersion).map(problem => `Style contrast with the new colours: ${problem}`));
+    warnings.push(...libraryWarnings(styles, colors, renderVersion).map(note => `Style readability: ${note}`));
+    resp.on_colors = onColorContrasts(colors, renderVersion).map(item => ({
+      token: item.token, color: item.text, background: item.background, explicit: item.explicit,
+      apca_lc: Math.round(item.lc * 10) / 10, wcag_ratio: Math.round(item.wcag * 100) / 100,
+      button_text_ok: item.apca_pass,
+    }));
   }
   warnings.push(...customCssWarnings(update.custom_css).map(problem => `Custom CSS line ${problem.line}: ${problem.message}`));
   if (warnings.length) resp.warnings = warnings;

@@ -148,6 +148,16 @@ test('publishes the font smoothing setting and drops unknown values', () => {
   assert.equal(projectStaticPublication(value, identity).settings.fonts.smoothing, undefined);
 });
 
+test('publishes explicit text colours on theme colours and drops invalid ones', () => {
+  const value = input();
+  value.settings.colors.on_secondary = '#ffffff';
+  value.settings.colors.on_accent = 'red;}</style>';
+  const colors = projectStaticPublication(value, identity).settings.colors;
+  assert.equal(colors.on_secondary, '#ffffff');
+  assert.equal(colors.on_accent, undefined);
+  assert.equal(colors.on_primary, undefined);
+});
+
 // Every SiteSettings field, read from the type itself, and whether a
 // publication carries it. A new setting fails here until someone decides:
 // add it to FULL_SETTINGS (and to the projection), or list it as unpublished
@@ -160,7 +170,7 @@ const FULL_SETTINGS = {
   site_name: 'Site', tagline: 'Tagline', logo: '/logo.png', favicon: '/favicon.ico', apple_touch_icon: '/apple.png', icon_192: '/icon-192.png',
   responsive_breakpoints: { tablet: 600, laptop: 1000, desktop: 1300, wide: 1600 },
   trailing_slash: 'never', iframe_allowed_hosts: ['www.youtube.com'],
-  colors: { primary: '#111111', secondary: '#222222', accent: '#333333', background: '#ffffff', surface: '#eeeeee', text: '#000000', text_light: '#555555' },
+  colors: { primary: '#111111', secondary: '#222222', accent: '#333333', background: '#ffffff', surface: '#eeeeee', text: '#000000', text_light: '#555555', on_primary: '#ffffff', on_secondary: '#fff', on_accent: '#111827' },
   fonts: { heading: 'Inter', body: 'Inter', size_base: 17, smoothing: 'antialiased' },
   contact: { email: 'hello@example.invalid', phone: '+46 0', address: 'Street 1' },
   social: { facebook: 'https://example.invalid/f', instagram: 'https://example.invalid/i', linkedin: 'https://example.invalid/l', x: 'https://example.invalid/x', youtube: 'https://example.invalid/y' },

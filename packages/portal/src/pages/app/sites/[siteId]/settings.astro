@@ -5,6 +5,7 @@ import { loadSiteContext } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
 import { defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, paths, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS } from '@typeroll/shared';
 import RenderVersionSettings from '../../../../components/RenderVersionSettings';
+import OnColorFields from '../../../../components/OnColorFields';
 import type { Site, SiteSettings } from '@typeroll/shared';
 import DomainManager from '../../../../components/DomainManager.tsx';
 import { SiteHostingGroup } from '../../../../components/HostingGroups';
@@ -135,6 +136,7 @@ const domainBlocksArchiving =
           </div>
         ))}
       </div>
+      <OnColorFields client:load colors={settings.colors} renderVersion={resolveRenderVersion(settings.render_version)} />
     </div>
 
     <div class="card stack">
