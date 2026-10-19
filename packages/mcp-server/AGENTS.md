@@ -64,6 +64,16 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   or let the content type's `route_template` derive it. All articles and
   directory entries are Pages created with `create_page`.
 
+  A requested address is never changed silently. If the `slug` (or `path`)
+  you pass to `create_page`/`clone_page` is already in use — drafts and
+  unsaved drafts included — the call fails with 409 `slug_in_use` (or
+  `path_in_use`) and `details: { page_id, path }` of the existing page: edit
+  that page or choose another slug. Only a slug derived from the title is
+  numbered (`tack` → `tack-2`), and the response then carries
+  `warnings: [{ code: "slug_adjusted", requested, slug, path,
+  conflicting_page_id }]`. Link to the returned `url`, not the slug you
+  expected.
+
 - **Partials = global blocks.** Three kinds:
   - `header` — auto-injected at the top of every page.
   - `footer` — auto-injected at the bottom of every page.

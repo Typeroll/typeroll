@@ -73,6 +73,9 @@ Then the ordinary preconditions:
   appearance unless a redesign is explicitly requested.
 - If the target already has content, you must NOT clobber it — always
   `list_pages` first and only write to slugs that don't already exist.
+  Pass the slug explicitly: `create_page` then refuses an address that is
+  already in use (409 `slug_in_use` naming the existing page) instead of
+  numbering it.
 
 ## Recipe
 
