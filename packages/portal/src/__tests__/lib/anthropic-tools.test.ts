@@ -242,6 +242,16 @@ describe('create_page slug validation (regression — docs/page-slug-audit.md)',
     expect(r.error).toBeFalsy();
     expect((r.page as Record<string, unknown>).slug).toBe('about');
   });
+
+  it('refuses a taken explicit slug and numbers only a title-derived one', async () => {
+    const { ctx, runTool } = await setup();
+    await seedPage('tack', '<p>Tack</p>');
+    const explicit = (await runTool('create_page', { title: 'Tack', slug: 'tack' }, ctx)).result as Record<string, unknown>;
+    expect(explicit).toMatchObject({ code: 'slug_in_use', details: { page_id: 'tack', path: '/tack' } });
+    const derived = (await runTool('create_page', { title: 'Tack' }, ctx)).result as Record<string, unknown>;
+    expect((derived.page as Record<string, unknown>).slug).toBe('tack-2');
+    expect(derived.warnings).toEqual([expect.objectContaining({ code: 'slug_adjusted', requested: 'tack', conflicting_page_id: 'tack' })]);
+  });
 });
 
 // BlockType authoring via chat tools. These tools must (a) write to the

@@ -63,9 +63,21 @@ export const PARTIAL_WC_FIELDS = [
 ] as const;
 
 export class WorkingCopyError extends Error {
-  constructor(message: string, public readonly status: number) {
+  constructor(
+    message: string,
+    public readonly status: number,
+    /** Stable machine-readable reason, e.g. `slug_in_use`. */
+    public readonly code?: string,
+    /** Structured context for `code`, e.g. the page that holds an address. */
+    public readonly details?: Record<string, unknown>,
+  ) {
     super(message);
     this.name = 'WorkingCopyError';
+  }
+
+  /** JSON error body: `{ error, code?, details? }`. */
+  toBody(): { error: string; code?: string; details?: Record<string, unknown> } {
+    return { error: this.message, ...(this.code ? { code: this.code } : {}), ...(this.details ? { details: this.details } : {}) };
   }
 }
 

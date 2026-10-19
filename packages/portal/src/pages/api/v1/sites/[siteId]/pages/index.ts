@@ -2,7 +2,10 @@
 //
 // GET — list pages. Supports ?status= (draft|review|unlisted|published|all)
 // and ?limit= (default 50, max 200) and ?cursor=<opaque> for pagination.
-// POST — create a new page.
+// POST — create a new page. An explicit slug or path that is already in use
+// answers 409 { error, code: 'slug_in_use' | 'path_in_use', details: { page_id, path } }.
+// Only a title-derived slug is numbered; the 201 then carries
+// warnings: [{ code: 'slug_adjusted', requested, slug, path, conflicting_page_id }].
 
 import type { APIRoute } from 'astro';
 import { pageSort, comparePageValues, pageContentValues, DEFAULT_CONTENT_TYPE, type Page } from '@typeroll/shared';
@@ -129,7 +132,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     const result = await createPage(ctx, input, authority.actor, `api-key:${ctx.keyPrefix}`);
     return apiResponse(ctx, { ...result, page: { ...projectPage(result.page, true), url: await pageAddress(ctx, result.page) } }, 201, body);
   } catch (error) {
-    if (error instanceof WorkingCopyError) return apiError(error.message, error.status);
+    if (error instanceof WorkingCopyError) return apiError(error.message, error.status, ctx, error);
     throw error;
   }
 };
