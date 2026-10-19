@@ -448,7 +448,7 @@ lists where it is used.
 
 All accept `target: { kind, id }` or the `page_id` shorthand.
 
-### Compact write answers (next Core release)
+### Compact write answers (Core 0.2.75)
 
 The write tools (`add_block`, `update_block`, `move_block`, `remove_block`,
 `duplicate_block`, `set_block_responsive`) answer with the block they changed
@@ -1459,7 +1459,7 @@ successful write; the absence of the field is the only clean signal. The one
 exception is an unknown `data` key in `add_block` or `update_block`, which is
 rejected (see below).
 
-### Unknown data fields (next Core release)
+### Unknown data fields (Core 0.2.75)
 
 A `data` key that no field of the block's type declares is stored and never
 rendered. Tree writes (`PUT`/`PATCH /pages/{pageId}`, `PUT`/`PATCH
