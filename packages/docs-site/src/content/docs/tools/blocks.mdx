@@ -317,6 +317,7 @@ button. Autoplay stops while the visitor points at or focuses the carousel and
 never runs when they prefer reduced motion. Items scroll in a track inside the
 block; without JavaScript the track still scrolls and the controls stay
 hidden. The controls name themselves in the site language.
+
 - `core/feature_grid` — icon_box grid
 - `core/pricing_table` — pricing_plan grid
 - `core/team_grid` — team_member grid
@@ -458,7 +459,11 @@ instead of the container's whole tree, which ran to tens of kilobytes for one
 ```json
 {
   "added_id": "blk_3f2a9c1d7e4b",
-  "block": { "id": "blk_3f2a9c1d7e4b", "type": "core/heading", "data": { "text": "Related articles", "level": "h2" } },
+  "block": {
+    "id": "blk_3f2a9c1d7e4b",
+    "type": "core/heading",
+    "data": { "text": "Related articles", "level": "h2" }
+  },
   "parent_id": "sec_main",
   "slot_index": null,
   "position": 2,
@@ -466,14 +471,14 @@ instead of the container's whole tree, which ran to tens of kilobytes for one
 }
 ```
 
-| Field                 | Meaning                                                                                                      |
-| --------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `block`               | The block after the write, with its own children and slots (the copy for `duplicate_block`)                  |
-| `parent_id`           | The containing block, or `null` at the container's top level                                                 |
-| `slot_index`          | The parent's slot holding the block (slot containers such as `core/columns`), else `null`                    |
-| `position`            | 0-based index in that list                                                                                   |
-| `has_unsaved_changes` | The working copy differs from the saved page or partial. Always `false` for a template, which has no draft   |
-| `warnings`            | As described under [Write warnings](#write-warnings-core-0248); absent when there is nothing to report       |
+| Field                 | Meaning                                                                                                    |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `block`               | The block after the write, with its own children and slots (the copy for `duplicate_block`)                |
+| `parent_id`           | The containing block, or `null` at the container's top level                                               |
+| `slot_index`          | The parent's slot holding the block (slot containers such as `core/columns`), else `null`                  |
+| `position`            | 0-based index in that list                                                                                 |
+| `has_unsaved_changes` | The working copy differs from the saved page or partial. Always `false` for a template, which has no draft |
+| `warnings`            | As described under [Write warnings](#write-warnings-core-0248); absent when there is nothing to report     |
 
 `add_block` also returns `added_id` and `duplicate_block` `duplicate_id`.
 `remove_block` returns `removed_id` and the `parent_id`, `slot_index` and
@@ -1487,7 +1492,17 @@ included. The body lists every unknown key:
 {
   "error": "data.placeholder_background is not a field of core/repeater; it is a field of the item block core/post_card. Did you mean item_overrides.placeholder_background? The key would be stored and never rendered. Nothing was written.",
   "code": "unknown_field",
-  "unknown_fields": [{ "code": "unknown_field", "block_id": "related-list", "block_type": "core/repeater", "path": "data.placeholder_background", "key": "placeholder_background", "suggestions": ["item_overrides.placeholder_background"], "message": "..." }]
+  "unknown_fields": [
+    {
+      "code": "unknown_field",
+      "block_id": "related-list",
+      "block_type": "core/repeater",
+      "path": "data.placeholder_background",
+      "key": "placeholder_background",
+      "suggestions": ["item_overrides.placeholder_background"],
+      "message": "..."
+    }
+  ]
 }
 ```
 

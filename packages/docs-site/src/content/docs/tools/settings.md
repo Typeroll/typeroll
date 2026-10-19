@@ -76,18 +76,18 @@ remove it.
 
 ### `colors` object
 
-| Field          | Default   | Description                                                   |
-| -------------- | --------- | ------------------------------------------------------------- |
-| `primary`      | `#2563eb` | Main brand colour                                             |
-| `secondary`    | `#1e293b` | Supporting colour                                             |
-| `accent`       | `#f59e0b` | Pop colour for CTAs                                           |
-| `background`   | `#ffffff` | Page background                                               |
-| `surface`      | `#f8fafc` | Card/panel background                                         |
-| `text`         | `#0f172a` | Main body text                                                |
-| `text_light`   | `#64748b` | Muted text                                                    |
-| `on_primary`   | unset     | Text colour on primary; unset is automatic. See below.        |
-| `on_secondary` | unset     | Text colour on secondary; unset is automatic. See below.      |
-| `on_accent`    | unset     | Text colour on accent; unset is automatic. See below.         |
+| Field          | Default   | Description                                              |
+| -------------- | --------- | -------------------------------------------------------- |
+| `primary`      | `#2563eb` | Main brand colour                                        |
+| `secondary`    | `#1e293b` | Supporting colour                                        |
+| `accent`       | `#f59e0b` | Pop colour for CTAs                                      |
+| `background`   | `#ffffff` | Page background                                          |
+| `surface`      | `#f8fafc` | Card/panel background                                    |
+| `text`         | `#0f172a` | Main body text                                           |
+| `text_light`   | `#64748b` | Muted text                                               |
+| `on_primary`   | unset     | Text colour on primary; unset is automatic. See below.   |
+| `on_secondary` | unset     | Text colour on secondary; unset is automatic. See below. |
+| `on_accent`    | unset     | Text colour on accent; unset is automatic. See below.    |
 
 ### Text on theme colours
 
@@ -115,11 +115,11 @@ together with the automatic alternative.
 
 ### `fonts` object
 
-| Field       | Default   | Description                             |
-| ----------- | --------- | --------------------------------------- |
-| `heading`   | `"Inter"` | Heading font family (Google Fonts name) |
-| `body`      | `"Inter"` | Body font family                        |
-| `size_base` | `16`      | Base font size in px                    |
+| Field       | Default   | Description                                                                                                                                                                                                             |
+| ----------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `heading`   | `"Inter"` | Heading font family (Google Fonts name)                                                                                                                                                                                 |
+| `body`      | `"Inter"` | Body font family                                                                                                                                                                                                        |
+| `size_base` | `16`      | Base font size in px                                                                                                                                                                                                    |
 | `smoothing` | unset     | `auto` (browser default) or `antialiased`. Unset is `auto` from render version 6 and `antialiased` before it. `antialiased` draws thinner text on macOS and can suit light text on a dark background; `null` clears it. |
 
 ### `contact` object
@@ -296,16 +296,16 @@ sites start on the latest version.
 The preview reflects the change at once; the live site changes at the next
 deploy. Sites created before render versions existed render with version 1.
 
-| Version | What changes                                                                                                                                                                                                                                                                                                                                                                      |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1       | Baseline: block markup and platform CSS as in Core 0.2.56.                                                                                                                                                                                                                                                                                                                        |
-| 2       | Heading eyebrow and subtitle are grouped with the heading (`<hgroup>`), take named styles and are never faded. A custom class on a heading or button block lands on the `<h2>` or link itself, so `.my-class .block-heading-text` becomes `.my-class`. Text on primary-coloured buttons is black or white, whichever reads better.                                                |
-| 3       | Theme tokens that blocks reference (`--color-bg`, `--color-bg-subtle`, `--color-border`, `--color-secondary-fg`) come from the site palette. Subtle panels such as table headers, code and tabs use the Surface colour instead of a fixed light grey, borders stay visible on dark backgrounds, and text on secondary-coloured buttons is black or white, whichever reads better. |
-| 4       | Lists in core blocks render: accordion items (with **Default open**), pricing plan features and team member social links. An icon without a link no longer sits in an empty link, a team member card is a link only when it has one, and a container set to link without an address renders as a plain container, so icons and cards work inside linked items.                    |
-| 5       | Multi-step forms: the button reads "Continue" ("Fortsätt" on Swedish sites) on every step but the last, which keeps the form's submit text; a "Back" button returns to the previous step with the answers kept; a step that starts with a form heading no longer also shows its step title. See [Multi-step forms](../forms/#multi-step-forms).                                   |
-| 6       | Text uses the browser's default font smoothing and text rendering. Earlier versions set `-webkit-font-smoothing: antialiased` and `text-rendering: optimizeLegibility` on every page, which on macOS draws dark text on a light background thinner and lighter than other sites at the same weight. Choose **Typography → Font smoothing → Antialiased** (`fonts.smoothing`) to keep the thinner rendering, for example for light text on a dark background; the choice applies on every version. |
+| Version | What changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1       | Baseline: block markup and platform CSS as in Core 0.2.56.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 2       | Heading eyebrow and subtitle are grouped with the heading (`<hgroup>`), take named styles and are never faded. A custom class on a heading or button block lands on the `<h2>` or link itself, so `.my-class .block-heading-text` becomes `.my-class`. Text on primary-coloured buttons is black or white, whichever reads better.                                                                                                                                                                 |
+| 3       | Theme tokens that blocks reference (`--color-bg`, `--color-bg-subtle`, `--color-border`, `--color-secondary-fg`) come from the site palette. Subtle panels such as table headers, code and tabs use the Surface colour instead of a fixed light grey, borders stay visible on dark backgrounds, and text on secondary-coloured buttons is black or white, whichever reads better.                                                                                                                  |
+| 4       | Lists in core blocks render: accordion items (with **Default open**), pricing plan features and team member social links. An icon without a link no longer sits in an empty link, a team member card is a link only when it has one, and a container set to link without an address renders as a plain container, so icons and cards work inside linked items.                                                                                                                                     |
+| 5       | Multi-step forms: the button reads "Continue" ("Fortsätt" on Swedish sites) on every step but the last, which keeps the form's submit text; a "Back" button returns to the previous step with the answers kept; a step that starts with a form heading no longer also shows its step title. See [Multi-step forms](../forms/#multi-step-forms).                                                                                                                                                    |
+| 6       | Text uses the browser's default font smoothing and text rendering. Earlier versions set `-webkit-font-smoothing: antialiased` and `text-rendering: optimizeLegibility` on every page, which on macOS draws dark text on a light background thinner and lighter than other sites at the same weight. Choose **Typography → Font smoothing → Antialiased** (`fonts.smoothing`) to keep the thinner rendering, for example for light text on a dark background; the choice applies on every version.  |
 | 7       | Video, ratings and carousels: `core/video` embeds YouTube (no-cookie) and Vimeo addresses and plays video files with poster, autoplay, loop, muted, controls and lazy loading; a hero plays a video file as a muted background with a pause button; a testimonial rating shows as stars; carousels get previous/next buttons, dots and optional autoplay with pause. Nothing moves for visitors who prefer reduced motion. See [Blocks](../blocks/#video-hero-video-and-ratings-render-version-7). |
-| 8       | Text on primary, secondary and accent (buttons, badges, tabs, call-to-action sections) is black or white by APCA instead of the WCAG 2 ratio. On mid-dark saturated colours such as teal, green or medium blue, near-black text becomes white, which reads better: white on `#00a19c` is APCA Lc 63.9 against Lc 44 for `#111827`. A text colour chosen in `colors.on_*` applies on every version and does not change. See [Text on theme colours](#text-on-theme-colours). |
+| 8       | Text on primary, secondary and accent (buttons, badges, tabs, call-to-action sections) is black or white by APCA instead of the WCAG 2 ratio. On mid-dark saturated colours such as teal, green or medium blue, near-black text becomes white, which reads better: white on `#00a19c` is APCA Lc 63.9 against Lc 44 for `#111827`. A text colour chosen in `colors.on_*` applies on every version and does not change. See [Text on theme colours](#text-on-theme-colours).                        |
 
 ## Site-specific responsive widths (Core 0.2.28)
 
