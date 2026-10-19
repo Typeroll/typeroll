@@ -1,6 +1,7 @@
 export * from './types.js';
 export * from './block-ids.js';
 export * from './block-tree-warnings.js';
+export * from './block-field-types.js';
 export * from './breakpoints.js';
 export * from './defaults.js';
 export * from './global-blocks.js';

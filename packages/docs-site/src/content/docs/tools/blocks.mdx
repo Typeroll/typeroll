@@ -1368,14 +1368,39 @@ is not.
 `class` instead of `custom_class` stores the key, returns 200, builds and
 deploys, and never reaches the markup.
 
-Warnings are returned by `PATCH /pages/{pageId}`, `PATCH /partials/{partialId}`
-and `POST /pages/batch-write`, where each entry carries its own so a sweep says
+Warnings are returned by `PATCH /pages/{pageId}`, `PATCH /partials/{partialId}`,
+`POST /pages/batch-write` and the block routes (`add_block`, `update_block`), where each entry carries its own so a sweep says
 which page was affected. The field is absent when there is nothing to report.
 
 **They do not reject the write.** A write that is otherwise right should land,
 and the caller has already spent the round trip. Check for `warnings` after a
 successful write; the absence of the field is the only clean signal.
 
-A block type's `data` is deliberately not checked this way. Its fields vary per
-type and evolve, so an unknown field there is forward compatibility rather than
-a mistake.
+A block type's `data` is deliberately not checked for unknown keys. Its fields
+vary per type and evolve, so an unknown field there is forward compatibility
+rather than a mistake.
+
+### Field types (Core 0.2.75)
+
+A known field whose value has the wrong type is reported as
+`field_type_mismatch`, with the path, the field and the type it needs:
+
+```json
+{
+  "code": "field_type_mismatch",
+  "block_id": "tabs-1",
+  "path": "tabs-1.data.active_font_weight",
+  "field": "active_font_weight",
+  "expected": "a number",
+  "message": "tabs-1.data.active_font_weight is \"bold\", but active_font_weight must be a number. The value is stored and will not render."
+}
+```
+
+Number fields need a number; a string that is exactly a number, such as
+`"600"`, is rendered as that number, including values already stored. Boolean
+fields need `true` or `false`, not the text `"true"`. A select field needs one
+of its options. Responsive values are checked per breakpoint and array items
+per item. `add_block` and `update_block` (`POST`/`PATCH .../blocks`, for pages
+and other containers) return these warnings for the fields they write; page,
+partial and batch writes return them for the whole tree. Both check the site's
+own block types as well as core.

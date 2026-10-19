@@ -16,7 +16,8 @@ import {
   readWorkingCopy,
   WorkingCopyError,
 } from '../../../../../../lib/working-copy';
-import { blockTreeWarnings, ensureBlockIds } from '@typeroll/shared';
+import { ensureBlockIds } from '@typeroll/shared';
+import { treeWriteWarnings } from '../../../../../../lib/block-write-warnings';
 import type { Partial as PartialDoc } from '@typeroll/shared';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 import { pathParam } from '../../../../../../lib/path-param';
@@ -115,7 +116,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       ctx, { kind: 'partial', id: partialId }, update,
       { save: body.save === true, updatedBy: `api-key:${ctx.keyPrefix}` },
     );
-    const warnings = blockTreeWarnings(body.blocks);
+    const warnings = await treeWriteWarnings(ctx, body.blocks);
     const response = writeResponse(await draftView(ctx, partialId), result);
     return apiResponse(ctx, warnings.length ? { ...response, warnings } : response, 200, body);
   } catch (e) {
@@ -147,7 +148,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
       ctx, { kind: 'partial', id: partialId }, update,
       { save: body.save === true, updatedBy: `api-key:${ctx.keyPrefix}` },
     );
-    const warnings = blockTreeWarnings(body.blocks);
+    const warnings = await treeWriteWarnings(ctx, body.blocks);
     const response = writeResponse(await draftView(ctx, partialId), result);
     return apiResponse(ctx, warnings.length ? { ...response, warnings } : response, 200, body);
   } catch (e) {

@@ -96,7 +96,7 @@ export const pageBlockTools: ToolDef[] = [
   {
     name: 'update_block',
     description:
-      'Update a block\'s data fields (shallow merge), style overrides, or responsive settings. Works on pages, partials, and page templates — use `target` to address non-page containers. Does not modify children or slots; use move/add/remove for structural changes. For appearance, prefer a named style (`data.style_id`, see list_styles) over custom_class or custom_css. From render version 2, custom_class lands on the heading or button link element itself instead of the block wrapper.',
+      'Update a block\'s data fields (shallow merge), style overrides, or responsive settings. Works on pages, partials, and page templates — use `target` to address non-page containers. Does not modify children or slots; use move/add/remove for structural changes. For appearance, prefer a named style (`data.style_id`, see list_styles) over custom_class or custom_css. From render version 2, custom_class lands on the heading or button link element itself instead of the block wrapper. Send values in the field\'s type (numbers as numbers); a value the block will not render comes back in `warnings` (`field_type_mismatch`) with its path.',
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),

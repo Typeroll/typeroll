@@ -33,7 +33,7 @@ import {
   BlockMutationError,
 } from '../../../../../../../../../lib/block-mutations';
 import type { Block } from '@typeroll/shared';
-import { styleOverrideWarnings } from '@typeroll/shared';
+import { singleBlockWriteWarnings } from '../../../../../../../../../lib/block-write-warnings';
 
 function parseTarget(params: Record<string, string | undefined>):
   | { ok: true; target: { kind: BlockContainerKind; id: string } }
@@ -101,8 +101,11 @@ export const POST: APIRoute = async ({ request, params }) => {
       position: body.position,
     });
     await writeContainer(t.target, result.blocks, ctx, loaded.raw);
+    const warnings = await singleBlockWriteWarnings(ctx, result.blocks, result.added_id, {
+      data: body.block.data, style_overrides: body.block.style_overrides,
+    });
     return apiResponse(ctx, {
-      added_id: result.added_id, blocks: result.blocks,
+      added_id: result.added_id, blocks: result.blocks, ...(warnings.length ? { warnings } : {}),
     });
   } catch (e) {
     return mutError(e);
@@ -139,7 +142,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     await writeContainer(t.target, blocks, ctx, loaded.raw);
     // A misspelled override is stored, returned and built without comment.
     // The caller cannot read our logs, so it travels in the body.
-    const overrideWarnings = styleOverrideWarnings(body.style_overrides, body.block_id);
+    // Field values the schema will not render travel the same way.
+    const overrideWarnings = await singleBlockWriteWarnings(ctx, blocks, body.block_id, body);
     return apiResponse(ctx, {
       ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}), blocks });
   } catch (e) {

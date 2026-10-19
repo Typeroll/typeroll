@@ -1,5 +1,6 @@
 import { prepareTabs } from './tabs.js';
 import { prepareNavigationForm } from './navigation-form.js';
+import { coerceFieldValue } from './block-field-types.js';
 // Block-tree → HTML renderer.
 //
 // Pure function used by both the SSG renderer (packages/site-template) and
@@ -1720,6 +1721,10 @@ function compileResponsiveData(
       .map(field => [field.name, structuredClone(field.default)]),
   );
   for (const [name, value] of Object.entries(block.data ?? {})) if (value !== undefined) data[name] = value;
+  // Numeric text in a number field renders as that number (block-field-types.ts).
+  for (const field of blockType.schema ?? []) {
+    if (data[field.name] !== undefined) data[field.name] = coerceFieldValue(field, data[field.name]);
+  }
   const flatData: Record<string, unknown> = { ...data };
   const cssVars: Partial<Record<Breakpoint, Record<string, string>>> = {};
   const mappedCss: Partial<Record<Breakpoint, string>> = {};

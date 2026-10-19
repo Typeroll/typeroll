@@ -14,16 +14,23 @@
 // the response body, because a caller driving the API cannot read our logs, and
 // a warning nobody receives is the same as no warning.
 
-import { STYLE_OVERRIDE_KEYS } from './types.js';
+import { STYLE_OVERRIDE_KEYS, type BlockType } from './types.js';
+import { blockFieldTypeWarnings } from './block-field-types.js';
+import { buildCoreBlockRegistry } from './core-blocks.js';
+
+let coreRegistry: Map<string, BlockType> | undefined;
 
 export interface BlockTreeWarning {
-  code: 'unknown_style_override' | 'heading_part_as_text';
+  code: 'unknown_style_override' | 'heading_part_as_text' | 'field_type_mismatch';
   /** The block's id where it has one; a tree may be written before ids exist. */
   block_id?: string;
   /** Path to the offending key, e.g. `blocks[0].style_overrides.class`. */
   path: string;
   /** The key that will be stored and never read (unknown_style_override). */
   key?: string;
+  /** The schema field and the type it needs (field_type_mismatch). */
+  field?: string;
+  expected?: string;
   message: string;
 }
 
@@ -32,10 +39,12 @@ export interface BlockTreeWarning {
  *
  * Only this set is checked, because only this set is closed: the renderer
  * enumerates it in one place, so an unknown key here is certainly inert. A
- * block type's `data` is deliberately not checked the same way — its fields
- * vary per type and forward compatibility there is worth more than strictness.
+ * block type's `data` is not checked for unknown keys — its fields vary per
+ * type and forward compatibility there is worth more than strictness — but a
+ * known field whose value has the wrong type is (field_type_mismatch). Core
+ * block types are always known; pass `registry` to include site block types.
  */
-export function blockTreeWarnings(value: unknown, root = 'blocks'): BlockTreeWarning[] {
+export function blockTreeWarnings(value: unknown, root = 'blocks', registry?: ReadonlyMap<string, BlockType>): BlockTreeWarning[] {
   const known = new Set<string>(STYLE_OVERRIDE_KEYS);
   const warnings: BlockTreeWarning[] = [];
   const seen = new Set<object>();
@@ -80,6 +89,7 @@ export function blockTreeWarnings(value: unknown, root = 'blocks'): BlockTreeWar
   };
 
   visit(value, root);
+  warnings.push(...blockFieldTypeWarnings(value, registry ?? (coreRegistry ??= buildCoreBlockRegistry()), root));
   return warnings;
 }
 
