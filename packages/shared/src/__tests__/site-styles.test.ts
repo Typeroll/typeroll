@@ -5,11 +5,16 @@ import {
   contrastRatio,
   defaultSiteSettings,
   onColor,
+  onColorContrasts,
+  onColorValue,
+  onColorWarnings,
   renderBlocks,
   resolveBreakpointWidths,
   siteStyleLibraryErrors,
   siteStylesCss,
   styleContrastErrors,
+  styleContrastReport,
+  styleTextUse,
   stylesForTarget,
   validateSiteStyle,
 } from '../index.js';
@@ -54,7 +59,7 @@ describe('contrast', () => {
 
   it('never allows light grey on white', () => {
     const grey: SiteStyle = { id: 'note', name: 'Note', targets: ['text'], base: { color: '#c0c0c0' } };
-    expect(styleContrastErrors(grey, colors).join()).toMatch(/below 4.5:1/);
+    expect(styleContrastErrors(grey, colors).join()).toMatch(/#c0c0c0 on #ffffff is APCA Lc 3\d\.\d, WCAG 2 1\.\d\d:1\. 16px\/400 body text needs APCA Lc 75 or WCAG 2 4\.5:1/);
     expect(styleContrastErrors({ ...grey, base: { color: '#c0c0c0', background: '#1f2937' } }, colors)).toEqual([]);
   });
 
@@ -69,10 +74,86 @@ describe('contrast', () => {
     expect(onColor('#1e293b')).toBe('#ffffff');
   });
 
+  it('chooses the automatic on-colour by APCA from render version 8', () => {
+    for (const version of [1, 2, 3, 4, 5, 6, 7]) expect(onColor('#00a19c', version)).toBe('#111827');
+    expect(onColor('#00a19c', 8)).toBe('#ffffff');
+    expect(onColor('#3b82f6', 8)).toBe('#ffffff');
+    expect(onColor('#f59e0b', 8)).toBe('#111827');
+  });
+
+  it('uses an explicit on-colour on every render version', () => {
+    const moveria = { ...colors, secondary: '#00a19c', on_secondary: '#ffffff' };
+    for (const version of [1, 7, 8]) expect(onColorValue('on_secondary', moveria, version)).toBe('#ffffff');
+    // Anything that is not an opaque hex colour falls back to the automatic choice.
+    expect(onColorValue('on_secondary', { ...moveria, on_secondary: 'red;}' }, 7)).toBe('#111827');
+    expect(onColorValue('on_secondary', { ...moveria, on_secondary: '#ffffff80' }, 7)).toBe('#111827');
+  });
+
+  it('classifies how a style is read', () => {
+    expect(styleTextUse({ role: 'button', targets: ['button'] })).toBe('content');
+    expect(styleTextUse({ role: 'h3', targets: [] })).toBe('content');
+    expect(styleTextUse({ role: 'small', targets: ['text'] })).toBe('sub_fluent');
+    expect(styleTextUse({ role: 'link', targets: [] })).toBe('body');
+    expect(styleTextUse({ targets: ['heading', 'button'] })).toBe('content');
+    expect(styleTextUse({ targets: ['heading', 'text'] })).toBe('body');
+    expect(styleTextUse({ targets: [] })).toBe('body');
+  });
+
+  it('accepts white 16px/600 button text on #00a19c, chosen or automatic (version 8)', () => {
+    const teal = { ...colors, primary: '#00a19c' };
+    const button = STANDARD_STYLES.find(style => style.role === 'button')!;
+    expect(styleContrastReport(button, { ...teal, on_primary: '#ffffff' })).toEqual({ errors: [], warnings: [] });
+    expect(styleContrastReport(button, teal, { renderVersion: 8 })).toEqual({ errors: [], warnings: [] });
+    // White as body text on it is below Lc 75 and below WCAG 2 AA: refused.
+    const panel: SiteStyle = { id: 'panel', name: 'Panel', targets: ['container'], base: { color: '#ffffff', background: 'primary' } };
+    expect(styleContrastErrors(panel, teal).join()).toMatch(/#ffffff on #00a19c is APCA Lc 63\.9, WCAG 2 3\.19:1\. 16px\/400 body text needs APCA Lc 75/);
+  });
+
+  it('warns, without refusing, when only WCAG 2 accepts a pair', () => {
+    const teal = { ...colors, primary: '#00a19c' };
+    const button = STANDARD_STYLES.find(style => style.role === 'button')!;
+    // Render version 7 picks #111827 by WCAG 2 (5.56:1, Lc 44).
+    const report = styleContrastReport(button, teal, { renderVersion: 7 });
+    expect(report.errors).toEqual([]);
+    expect(report.warnings).toEqual([
+      'Button (base): #111827 on #00a19c is APCA Lc 44.0, WCAG 2 5.56:1: below APCA Lc 60 for 16px/600 non-body text, accepted because it meets WCAG 2 AA (4.5:1). Render version 8 chooses #ffffff for on_primary here; or set colors.on_primary.',
+    ]);
+    expect(styleContrastReport(button, { ...teal, on_primary: '#111827' }).warnings[0]).not.toContain('Render version 8');
+  });
+
+  it('checks hover colours with the style\'s size and weight', () => {
+    const button = STANDARD_STYLES.find(style => style.role === 'button')!;
+    const hover = { ...button, hover: { background: '#9ca3af' } };
+    expect(styleContrastReport(hover, colors).errors.join()).toMatch(/Button \(hover\): #ffffff on #9ca3af/);
+  });
+
   it('ships standard styles that pass on the default palette', () => {
-    for (const style of STANDARD_STYLES) expect(styleContrastErrors(style, colors), style.id).toEqual([]);
+    for (const version of [1, 8]) for (const style of STANDARD_STYLES) expect(styleContrastReport(style, colors, { renderVersion: version }), style.id).toEqual({ errors: [], warnings: [] });
     expect(siteStyleLibraryErrors([...STANDARD_STYLES])).toEqual([]);
     for (const style of STANDARD_STYLES) expect(validateSiteStyle(style).errors, style.id).toEqual([]);
+  });
+});
+
+describe('on-colour contrast', () => {
+  it('reports the measures of every on-colour', () => {
+    const report = onColorContrasts({ ...colors, secondary: '#00a19c', on_secondary: '#ffffff' }, 8);
+    expect(report.map(item => [item.token, item.text, item.explicit, item.apca_pass])).toEqual([
+      ['on_primary', '#ffffff', false, true],
+      ['on_secondary', '#ffffff', true, true],
+      ['on_accent', '#111827', false, true],
+    ]);
+    expect(report[1].wcag).toBeCloseTo(3.19, 2);
+  });
+
+  it('warns about a clearly unreadable explicit choice and keeps it', () => {
+    expect(onColorWarnings({ ...colors, secondary: '#00a19c', on_secondary: '#ffffff' }, 8)).toEqual([]);
+    expect(onColorWarnings({ ...colors, secondary: '#00a19c', on_secondary: '#111827' }, 8)).toEqual([
+      'colors.on_secondary #111827 on secondary #00a19c is APCA Lc 44.0, WCAG 2 5.56:1, below APCA Lc 60 for 16px/600 non-body text such as buttons. The automatic choice would be #ffffff (APCA Lc 63.9, WCAG 2 3.19:1).',
+    ]);
+    // The automatic choice is not the site's: no warning.
+    expect(onColorWarnings({ ...colors, primary: '#9ca3af' }, 8)).toEqual([]);
+    const css = siteStylesCss([], { ...opts, renderVersion: 8, colors: { ...colors, secondary: '#00a19c', on_secondary: '#111827' } });
+    expect(css).toContain('--color-on-secondary:#111827');
   });
 });
 
@@ -167,6 +248,20 @@ describe('render version 2', () => {
     const css = siteStylesCss([], { ...opts, renderVersion: 2, colors: { ...colors, primary: '#facc15' } });
     expect(css).toContain(':where(:root){--color-primary-fg:var(--color-on-primary)}');
     expect(css).toContain('--color-on-primary:#111827');
+  });
+
+  it('emits an explicit on-colour on every render version', () => {
+    const moveria = { ...colors, primary: '#00a19c', secondary: '#00a19c', on_primary: '#ffffff', on_secondary: '#fff' };
+    const v1 = siteStylesCss([], { ...opts, colors: moveria });
+    expect(v1).toContain('--color-on-primary:#ffffff;--color-on-secondary:#fff;--color-on-accent:#111827');
+    // Blocks read --color-primary-fg and --color-secondary-fg, which versions 1 and 2 do not define otherwise.
+    expect(v1).toContain(':where(:root){--color-primary-fg:var(--color-on-primary)}');
+    expect(v1).toContain(':where(:root){--color-secondary-fg:var(--color-on-secondary)}');
+    const v3 = siteStylesCss([], { ...opts, colors: moveria, renderVersion: 3 });
+    expect(v3.match(/--color-secondary-fg/g)).toHaveLength(1);
+    expect(siteStylesCss([], { ...opts, colors: { ...colors, on_accent: '#000' } })).toBe(':root{--color-on-primary:#ffffff;--color-on-secondary:#ffffff;--color-on-accent:#000}');
+    // A stored value that is not an opaque hex colour never reaches the stylesheet.
+    expect(siteStylesCss([], { ...opts, colors: { ...colors, on_primary: 'red}</style>' } })).toBe('');
   });
 
   it('defines the theme tokens blocks reference from the palette in version 3', () => {

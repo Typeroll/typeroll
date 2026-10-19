@@ -329,6 +329,16 @@ export interface SiteSettings {
     surface: string;
     text: string;
     text_light: string;
+    /**
+     * Text colour on primary, secondary and accent (buttons, badges, tabs,
+     * call-to-action sections, styles using the on_* tokens): an opaque hex
+     * colour. Unset means automatic: near-black or white, whichever reads
+     * better (by APCA from render version 8, by the WCAG 2 ratio before).
+     * An explicit value applies on every render version. See `onColorValue`.
+     */
+    on_primary?: string;
+    on_secondary?: string;
+    on_accent?: string;
   };
   fonts: {
     heading: string;

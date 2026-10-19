@@ -59,6 +59,7 @@ export * from './fonts.js';
 export * from './render-version.js';
 export * from './custom-css.js';
 export * from './reusable-blocks.js';
+export * from './contrast.js';
 export * from './site-styles.js';
 export * from './block-fields.js';
 export * from './template-sections.js';

@@ -90,6 +90,15 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Carousels (repeater layout "carousel", for example testimonials) get previous and next buttons, a dot per item and optional autoplay with a pause button, as their settings say. Items scroll inside the carousel; autoplay stops while the visitor points at or focuses the carousel, and never runs when they prefer reduced motion. Without JavaScript the carousel still scrolls.',
     ],
   },
+  {
+    version: 8,
+    core_version: '0.2.75',
+    title: 'Text colour on theme colours by APCA',
+    changes: [
+      'The automatic text colour on primary, secondary and accent (buttons, badges, tabs, call-to-action sections and styles using "on primary", "on secondary" or "on accent") is black or white by APCA, the perceptual contrast measure, instead of the WCAG 2 ratio. On mid-dark saturated colours such as teal, green or medium blue, text that was near-black becomes white, which reads better; for example white on #00a19c (APCA Lc 63.9) instead of #111827 (Lc 44).',
+      'A text colour chosen for a theme colour (Colors → Text on primary/secondary/accent, `colors.on_primary`, `colors.on_secondary`, `colors.on_accent`) applies on every render version and is not changed by this upgrade.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;
