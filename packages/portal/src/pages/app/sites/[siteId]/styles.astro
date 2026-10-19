@@ -15,7 +15,7 @@ const { site, versionId, owner_org_id: orgId } = ctx;
 const settings = (await vstore.settings(orgId, site.id, versionId)) ?? defaultSiteSettings;
 const { styles, colors, renderVersion } = await readStyles({ orgId, siteId: site.id, versionId });
 // The preview renders with the site's own tokens and base CSS, in the same order as a page.
-const baseCss = [siteThemeCss({ ...settings, colors }), CONTENT_WELL_CSS, siteResetCss, siteGlobalCss].join('\n');
+const baseCss = [siteThemeCss({ ...settings, colors: { ...settings.colors, ...colors } }), CONTENT_WELL_CSS, siteResetCss, siteGlobalCss].join('\n');
 const canEdit = ctx.permission !== 'read';
 const canEditCss = ctx.permission === 'admin';
 ---
