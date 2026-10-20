@@ -2,8 +2,14 @@
 
 ## Core 0.2.80 / MCP 0.45.62
 
+- **Block parts: style any part of a core block with a named style, without site CSS.** An audit found 421 presentational values (size, weight, radius, spacing, opacity, underline, shadow, colours) in the CSS of 49 core blocks that no field, style or variable reached; moveria.se's underlined category heading links were one. Every core block now declares its parts (`BlockType.parts`: name, selector, style kind), 229 in all, listed by `read_block_type` and in the docs.
+  - Choose a style for a part on one block (`data.part_styles: { <part>: <style id> }`, or the block's existing style field such as `eyebrow_style_id`), or for every block of a type (a style's `parts: ["core/rich_heading.link"]`). The block's choice wins. Blocks whose surface is the block itself got a `style_id` (card, CTA, accordion, table of contents, search, divider, icon, columns, tabs, form fields, template blocks); the repeater got `group_title_style_id` and `pager_link_style_id`.
+  - Part rules are scoped to the block, beat its own CSS and the shared text-link rules without `!important`, follow declaration order where parts overlap, and are emitted identically on published pages, previews and the editor. With no part style chosen, markup and CSS are unchanged: the render-version references did not change, so no render version is needed.
+  - Every write checks part styles: unknown parts are `unknown_field` with suggestions, wrong style kinds and unreadable contrast (APCA, on the part's surface) are refused by `add_block`/`update_block` and reported by tree writes; the styles API checks part targets. Styles gain link and image kinds and `opacity`, `shadow` and `gap`.
+  - A form field's invalid border wins over any chosen input style; focus indicators cannot be removed by a style.
+  - Guards: a test fails on any new presentational value no part, style or variable reaches (12 documented exceptions remain, such as the hero video pause control), on any declared part that does not render, and when the documented parts table differs from the definitions. See `docs/plans/block-parts.md`.
 - `core/rich_heading`: `link_decoration` and `link_hover_decoration` (`inherit` | `none` | `underline`) set the underline of the heading's links, so a category heading can link to its page without an underline while body links keep the site's Link style. Unset, the links follow the Link style (`--link-decoration`) as before; the focus outline stays visible. The attributes appear only when set, so existing markup is unchanged and the block's CSS reference is updated for every render version instead of gating it.
-- MCP: version follows the shared block contract (the new `core/rich_heading` fields).
+- MCP: `read_block_type` lists parts; `update_block` takes `part_styles`; style tools take part targets and the new properties.
 
 ## Core 0.2.79 / MCP 0.45.61
 
