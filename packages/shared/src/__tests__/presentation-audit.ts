@@ -175,6 +175,7 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
   'form/checkbox_group': { choices: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] },
   'form/help': { body: '<p>See <a href="/help/">the guide</a></p>' },
   'core/field_list': { title: 'Facts', fields: [{ field: 'city' }, { field: 'website' }, { field: 'tags' }] },
+  'core/navigation_form': { destination: '/quote/', button_icon: '→', fields: [{ name: 'address', label: 'Address' }] },
 };
 
 /** Render context a block's sample needs besides its data (a field list reads the Page's fields). */

@@ -156,13 +156,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="navigation"] .block-navigation-toggle { border: 1px solid color-mix(in srgb, currentColor 22%, transparent) }': NO_PARTS_YET,
     '[data-block="navigation"] .block-navigation-toggle { border-radius: 0.4rem }': NO_PARTS_YET,
   },
-  'core/navigation_form': {
-    '[data-block="navigation_form"] .navigation-field { gap: 6px }': NO_PARTS_YET,
-    '[data-block="navigation_form"] label { font-weight: 600 }': NO_PARTS_YET,
-    '[data-block="navigation_form"][data-show-labels="false"] label { margin: -1px }': NO_PARTS_YET,
-    '[data-block="navigation_form"] .navigation-actions>* { text-decoration: none }': NO_PARTS_YET,
-    '[data-block="navigation_form"] .navigation-button-icon { line-height: 1 }': NO_PARTS_YET,
-  },
   'core/navigation_links': {
     '[data-block="navigation_links"] > li > a { text-decoration: none }': NO_PARTS_YET,
     '[data-block="navigation_links"] .block-nav-icon { line-height: 1 }': NO_PARTS_YET,
