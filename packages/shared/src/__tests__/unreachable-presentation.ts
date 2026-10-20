@@ -96,12 +96,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '.tr-repeater-group + .tr-repeater-group { margin-top: 2rem }': NO_PARTS_YET,
     '.tr-repeater-group-title { margin: 0 0 0.75rem }': NO_PARTS_YET,
   },
-  'core/search': {
-    '[data-block="search"] { padding: 1rem }': NO_PARTS_YET,
-    '[data-block="search"] .block-search-note { opacity: 0.6 }': NO_PARTS_YET,
-    '[data-block="search"] .block-search-note { font-size: 0.9rem }': NO_PARTS_YET,
-    '[data-block="search"] .block-search-note { padding: 0.5rem 0 }': NO_PARTS_YET,
-  },
   'core/table': {
     '[data-block="table"] td { padding: .65rem }': NO_PARTS_YET,
     '[data-block="table"] th { padding: .65rem }': NO_PARTS_YET,

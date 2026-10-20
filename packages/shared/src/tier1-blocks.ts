@@ -1543,7 +1543,19 @@ const search: BlockType = {
   icon: 'search',
   category: 'content',
   container: false,
+  // The script mounts Pagefind's UI (its class names are Pagefind's stable
+  // markup), or a note where the index cannot load. The block's frame (its
+  // padding) takes a container style through `style_id`.
+  parts: [
+    { name: 'input', label: 'Search field', selector: '.pagefind-ui__search-input', target: 'text' },
+    { name: 'message', label: 'Result count', selector: '.pagefind-ui__message', target: 'text' },
+    { name: 'result_link', label: 'Result titles', selector: '.pagefind-ui__result-link', target: 'link' },
+    { name: 'result_excerpt', label: 'Result excerpts', selector: '.pagefind-ui__result-excerpt', target: 'text' },
+    { name: 'more_button', label: 'More results button', selector: '.pagefind-ui__button', target: 'button' },
+    { name: 'note', label: 'Unavailable note', selector: '.block-search-note', target: 'text' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Search style', style_target: 'container', editor_group: 'content' },
     { name: 'placeholder', type: 'text', label: 'Placeholder', default: 'Search…' },
   ],
   template: `<div data-block="search" data-placeholder="{{placeholder}}">
