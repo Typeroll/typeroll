@@ -14,6 +14,9 @@ const NO_PARTS_YET = 'parts not declared yet (docs/plans/block-parts.md)';
 /** The hero video pause control: an accessibility control, not design. */
 const VIDEO_CONTROL = 'the background video pause control keeps one accessible look on every site (WCAG 2.2.2); it is not a design element';
 
+/** The space between two columns: the block's own fields set it on the root. */
+const COLUMN_GAP = 'the Gap (sm, md, lg) and Column gap (px) fields set the space between the columns on every instance; a part style cannot reach the block root';
+
 export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = {
   'core/accordion': {
     '[data-block="accordion"][data-style="bordered"] { border: 1px solid rgba(0,0,0,0.1) }': NO_PARTS_YET,
@@ -30,9 +33,9 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="accordion"] details > div { line-height: 1.6 }': NO_PARTS_YET,
   },
   'core/columns': {
-    '[data-block="columns"] { gap: 2rem }': NO_PARTS_YET,
-    '[data-block="columns"][data-gap="sm"] { gap: 1rem }': NO_PARTS_YET,
-    '[data-block="columns"][data-gap="lg"] { gap: 3rem }': NO_PARTS_YET,
+    '[data-block="columns"] { gap: 2rem }': COLUMN_GAP,
+    '[data-block="columns"][data-gap="sm"] { gap: 1rem }': COLUMN_GAP,
+    '[data-block="columns"][data-gap="lg"] { gap: 3rem }': COLUMN_GAP,
   },
   'core/container': {
     ':is([data-block="container"], [data-block="semantic-container"])[data-shadow="subtle"] { box-shadow: 0 2px 8px rgb(0 0 0 / 12%) }': NO_PARTS_YET,
@@ -117,14 +120,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="icon_box"] .block-iconbox-link { font-weight: 600 }': NO_PARTS_YET,
     '[data-block="icon_box"][data-shadow="subtle"] { box-shadow: 0 2px 12px rgb(0 0 0 / .1) }': NO_PARTS_YET,
     '[data-block="icon_box"] .block-iconbox-heading a { text-decoration: none }': NO_PARTS_YET,
-  },
-  'core/image': {
-    '[data-block="image"][data-radius="md"] img { border-radius: 0.5rem }': NO_PARTS_YET,
-    '[data-block="image"][data-radius="lg"] img { border-radius: 1.25rem }': NO_PARTS_YET,
-    '[data-block="image"][data-radius="xl"] img { border-radius: 1.75rem }': NO_PARTS_YET,
-    '[data-block="image"] .block-image-caption { padding: 0.5rem 0 }': NO_PARTS_YET,
-    '[data-block="image"] .block-image-caption { font-size: 0.875rem }': NO_PARTS_YET,
-    '[data-block="image"] .block-image-caption { opacity: 0.7 }': NO_PARTS_YET,
   },
   'core/list': {
     '[data-block="list"] ul { padding-inline-start: 1.5rem }': NO_PARTS_YET,
@@ -227,19 +222,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="pricing_plan"] .block-pricing-features li::before { font-weight: 700 }': NO_PARTS_YET,
     '[data-block="pricing_plan"] .block-pricing-features li[data-included="false"] { opacity: 0.55 }': NO_PARTS_YET,
     '[data-block="pricing_plan"] .block-pricing-features li[data-included="false"] { text-decoration: line-through }': NO_PARTS_YET,
-  },
-  'core/prose': {
-    '[data-block="prose"] h1 { margin: 1.5em 0 0.5em }': NO_PARTS_YET,
-    '[data-block="prose"] h2 { margin: 1.5em 0 0.5em }': NO_PARTS_YET,
-    '[data-block="prose"] h3 { margin: 1.5em 0 0.5em }': NO_PARTS_YET,
-    '[data-block="prose"] h4 { margin: 1.5em 0 0.5em }': NO_PARTS_YET,
-    '[data-block="prose"] ul { margin: 0 0 1em 1.5em }': NO_PARTS_YET,
-    '[data-block="prose"] ol { margin: 0 0 1em 1.5em }': NO_PARTS_YET,
-    '[data-block="prose"] a { text-underline-offset: .15em }': NO_PARTS_YET,
-    '[data-block="prose"] th { padding: 0.5rem }': NO_PARTS_YET,
-    '[data-block="prose"] td { padding: 0.5rem }': NO_PARTS_YET,
-    '[data-block="prose"] th { border: 1px solid color-mix(in srgb, currentColor 16%, transparent) }': NO_PARTS_YET,
-    '[data-block="prose"] td { border: 1px solid color-mix(in srgb, currentColor 16%, transparent) }': NO_PARTS_YET,
   },
   'core/repeater': {
     '[data-block="repeater"] > .tr-carousel-controls { gap: 0.5rem }': NO_PARTS_YET,

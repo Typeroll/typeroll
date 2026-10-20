@@ -164,6 +164,12 @@ export function unreachablePresentation(type: BlockType, block: Block, registry:
  * an entry here, so the part guards see each part element.
  */
 export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
+  'core/prose': {
+    html: '<h1>Title</h1><h2>Section</h2><h3>Topic</h3><h4>Detail</h4><p>Read <a href="/guide/">the guide</a> and run <code>npm test</code>.</p>'
+      + '<ul><li>One</li></ul><ol><li>Two</li></ol><blockquote><p>Quote</p></blockquote><pre><code>npm test</code></pre>'
+      + '<table><thead><tr><th>Name</th></tr></thead><tbody><tr><td>Value</td></tr></tbody></table><p><img src="/media/sample.jpg" alt=""></p>',
+  },
+  'core/image': { src: '/media/sample.jpg', caption_html: 'Photo: <a href="/credits/">Studio</a>' },
   'core/rich_heading': { level: 'h2', html: 'Read <a href="/guide/">the guide</a>' },
   'core/heading': { level: 'h2', eyebrow: 'Eyebrow', text: 'Heading', subtitle: 'Subtitle' },
   'core/button': { label: 'Get started', href: '/start/' },
