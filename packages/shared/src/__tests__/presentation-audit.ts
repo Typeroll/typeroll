@@ -170,6 +170,16 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
       + '<table><thead><tr><th>Name</th></tr></thead><tbody><tr><td>Value</td></tr></tbody></table><p><img src="/media/sample.jpg" alt=""></p>',
   },
   'core/image': { src: '/media/sample.jpg', caption_html: 'Photo: <a href="/credits/">Studio</a>' },
+  'core/list': { items: [{ html: 'Read <a href="/guide/">the guide</a>' }, { html: 'Steps<ol><li>Nested</li></ol>' }] },
+  'core/table': {
+    caption: 'Plans',
+    rows: [
+      { cells: [{ html: 'Plan', header: true }, { html: 'Price', header: true }] },
+      { cells: [{ html: '<a href="/basic/">Basic</a>' }, { html: '10' }] },
+      { cells: [{ html: 'Pro' }, { html: '20' }] },
+    ],
+    source: 'Source: <a href="/prices/">price list</a>',
+  },
   'core/rich_heading': { level: 'h2', html: 'Read <a href="/guide/">the guide</a>' },
   'core/heading': { level: 'h2', eyebrow: 'Eyebrow', text: 'Heading', subtitle: 'Subtitle' },
   'core/button': { label: 'Get started', href: '/start/' },

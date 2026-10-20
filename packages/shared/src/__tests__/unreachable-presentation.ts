@@ -121,14 +121,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="icon_box"][data-shadow="subtle"] { box-shadow: 0 2px 12px rgb(0 0 0 / .1) }': NO_PARTS_YET,
     '[data-block="icon_box"] .block-iconbox-heading a { text-decoration: none }': NO_PARTS_YET,
   },
-  'core/list': {
-    '[data-block="list"] ul { padding-inline-start: 1.5rem }': NO_PARTS_YET,
-    '[data-block="list"] ol { padding-inline-start: 1.5rem }': NO_PARTS_YET,
-    '[data-block="list"] ul { margin: 1rem 0 }': NO_PARTS_YET,
-    '[data-block="list"] ol { margin: 1rem 0 }': NO_PARTS_YET,
-    '[data-block="list"] li { margin: .35rem 0 }': NO_PARTS_YET,
-    '[data-block="list"][data-marker="check"] li { padding-inline-start: 1.5em }': NO_PARTS_YET,
-  },
   'core/logo_item': {
     '[data-block="logo_item"][data-grayscale="true"] img { opacity: 0.6 }': NO_PARTS_YET,
     '[data-block="logo_item"][data-grayscale="true"] img:hover { opacity: 1 }': NO_PARTS_YET,
@@ -255,17 +247,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="step_card"] .block-step-title { line-height: 1.3 }': NO_PARTS_YET,
     '[data-block="step_card"] .block-step-text { line-height: 1.5 }': NO_PARTS_YET,
     '[data-block="step_card"] .block-step-text { opacity: 0.85 }': NO_PARTS_YET,
-  },
-  'core/table': {
-    '[data-block="table"] td { padding: .65rem }': NO_PARTS_YET,
-    '[data-block="table"] th { padding: .65rem }': NO_PARTS_YET,
-    '[data-block="table"] caption { margin-bottom: .5rem }': NO_PARTS_YET,
-    '[data-block="table"][data-density="compact"] td { padding: .3rem }': NO_PARTS_YET,
-    '[data-block="table"][data-density="compact"] th { padding: .3rem }': NO_PARTS_YET,
-    '[data-block="table"][data-density="relaxed"] td { padding: 1rem }': NO_PARTS_YET,
-    '[data-block="table"][data-density="relaxed"] th { padding: 1rem }': NO_PARTS_YET,
-    '[data-block="table"][data-borders="rows"] td { border-width: 0 0 1px }': NO_PARTS_YET,
-    '[data-block="table"][data-borders="rows"] th { border-width: 0 0 1px }': NO_PARTS_YET,
   },
   'core/table_of_contents': {
     '[data-block="table_of_contents"] { border: 1px solid color-mix(in srgb, currentColor 18%, transparent) }': NO_PARTS_YET,
