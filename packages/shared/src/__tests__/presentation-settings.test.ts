@@ -433,3 +433,24 @@ describe('platform base CSS has no unreachable opinions', () => {
     expect(Object.keys(DELIBERATE).filter(key => !used.has(key)), 'stale DELIBERATE entries').toEqual([]);
   });
 });
+
+describe('documented block parts', () => {
+  // docs-site tools/blocks.mdx lists every core block part; this keeps it true.
+  it('match the block definitions', () => {
+    const docs = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../docs-site/src/content/docs/tools/blocks.mdx'), 'utf8');
+    const section = docs.slice(docs.indexOf('### Parts of the core blocks'));
+    const lines = section.split('\n');
+    const first = lines.findIndex(line => line.startsWith('|'));
+    const end = lines.findIndex((line, index) => index > first && !line.startsWith('|'));
+    const rows = lines.slice(first + 2, end).map(line => line.split('|').slice(1, -1).map(cell => cell.trim()));
+    const documented: string[] = [];
+    let block = '';
+    for (const [name, part, , target, field] of rows) {
+      if (name) block = name.match(/`([^`]+)`/)?.[1] ?? '';
+      documented.push(`${block}.${part.replace(/`/g, '')} ${target} ${field.replace(/`/g, '')}`);
+    }
+    const declared = [...registry.values()].flatMap(type => (type.parts ?? [])
+      .map(part => `${type.id}.${part.name} ${part.target} ${part.style_field ?? 'part_styles'}`));
+    expect(documented.sort()).toEqual(declared.sort());
+  });
+});
