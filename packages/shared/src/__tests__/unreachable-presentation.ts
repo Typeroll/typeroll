@@ -23,22 +23,11 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="columns"][data-gap="sm"] { gap: 1rem }': NO_PARTS_YET,
     '[data-block="columns"][data-gap="lg"] { gap: 3rem }': NO_PARTS_YET,
   },
-  'core/divider': {
-    '[data-block="divider"] { border: none }': NO_PARTS_YET,
-    '[data-block="divider"] { opacity: 0.3 }': NO_PARTS_YET,
-  },
   'core/hero': {
     '[data-block="hero"][style*="--layout:full-image"]:not([style*="--bg-image:url()"]) { color: white }': 'text over the full-width image; the eyebrow, heading, subheading and button parts each take a style with their own colour, and the overlay part sets how dark the image is',
     '[data-block="hero"] > .block-hero-video-toggle { border-radius: 50% }': VIDEO_CONTROL,
     '[data-block="hero"] > .block-hero-video-toggle { background: rgba(0,0,0,0.6) }': VIDEO_CONTROL,
     '[data-block="hero"] > .block-hero-video-toggle { color: #fff }': VIDEO_CONTROL,
-  },
-  'core/icon': {
-    '[data-block="icon"] { line-height: 1 }': NO_PARTS_YET,
-    '[data-block="icon"][style*="--size:sm"] { font-size: 1rem }': NO_PARTS_YET,
-    '[data-block="icon"][style*="--size:md"] { font-size: 1.5rem }': NO_PARTS_YET,
-    '[data-block="icon"][style*="--size:lg"] { font-size: 2rem }': NO_PARTS_YET,
-    '[data-block="icon"][style*="--size:xl"] { font-size: 3rem }': NO_PARTS_YET,
   },
   'core/icon_box': {
     '[data-block="icon_box"] .block-iconbox-heading a { text-decoration: none }': 'the heading link renders only when the whole card is the link (whole_card_link), instead of the link part; it takes the heading part\'s look: colour inherits, and the heading part\'s decoration underlines it (a parent\'s underline draws through the link)',

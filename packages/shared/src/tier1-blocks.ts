@@ -272,6 +272,8 @@ const divider: BlockType = {
   category: 'layout',
   container: false,
   schema: [
+    // The line is the root: a style sets its opacity, spacing or border.
+    { name: 'style_id', type: 'style', label: 'Divider style', style_target: 'container', editor_group: 'content' },
     { name: 'style', type: 'select', label: 'Line style', options: ['solid', 'dashed', 'dotted'], default: 'solid' },
     { name: 'width', type: 'select', label: 'Width', options: ['full', 'narrow', 'normal'], default: 'full' },
     { name: 'color', type: 'color', label: 'Color' },
@@ -313,6 +315,8 @@ const icon: BlockType = {
   category: 'content',
   container: false,
   schema: [
+    // The icon is the root: a style sets its size, colour or a surface behind it.
+    { name: 'style_id', type: 'style', label: 'Icon style', style_target: 'container', editor_group: 'content' },
     { name: 'icon', type: 'icon', label: 'Icon' },
     { name: 'size', type: 'select', label: 'Size', options: ['sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
     pixels('size_px', 'Icon size (px)', 8, 256),
