@@ -60,7 +60,8 @@ const FIELD_BASE_CSS = `
   padding: var(--form-field-pad, 0.65rem 0.85rem);
 }
 .form-input:focus-visible { outline: 2px solid var(--form-focus-color, var(--color-primary, #1a1a2e)); outline-offset: 1px; }
-.form-field[data-invalid] .form-input { border-color: var(--form-error-color, #b3261e); }
+/* The invalid state wins over any style chosen for the input (part styles reach (2,1,0)). */
+.form-field[data-invalid] .form-input:not(#\\#):not(#\\#):not(#\\#) { border-color: var(--form-error-color, #b3261e); }
 `.trim();
 
 function inputBlock(args: {
