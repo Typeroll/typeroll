@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   LATEST_RENDER_VERSION,
   blockFieldTypeWarnings,
+  blockPartQuery,
   blockPartSelector,
   blockPartSelectorError,
   blockPartStylesCss,
@@ -34,13 +35,13 @@ const assets = (blocks: Block[], styles: unknown[] | undefined) => collectBlockA
 
 describe('part selectors', () => {
   it('accepts plain selectors relative to the block root', () => {
-    for (const selector of ['a', '.block-hero-heading', '.block-hero-media img', 'li > a', '.x:first-child', 'a[href]', 'p.lead, .note', 'td:nth-child(2n+1)']) {
+    for (const selector of ['a', '.block-hero-heading', '.block-hero-media img', 'li > a', '.x:first-child', 'a[href]', 'p.lead, .note', 'td:nth-child(2n+1)', '> .col', '> .strip > a, > .links a']) {
       expect(blockPartSelectorError(selector), selector).toBeNull();
     }
   });
 
   it('rejects anything that could reach outside the generated rule', () => {
-    for (const selector of ['', 'a{color:red}', 'a;b', '@media', 'a::before', 'a:hover', 'a /* x */', '<a>', '* ', '> a', 'a >', 'a\\b', 'a, b, c, d, e', "a[href='x']", 'x'.repeat(201)]) {
+    for (const selector of ['', 'a{color:red}', 'a;b', '@media', 'a::before', 'a:hover', 'a /* x */', '<a>', '* ', '+ a', '~ a', '>', '> > a', 'a >', 'a\\b', 'a, b, c, d, e', "a[href='x']", 'x'.repeat(201)]) {
       expect(blockPartSelectorError(selector), selector).not.toBeNull();
     }
   });
@@ -51,6 +52,8 @@ describe('part selectors', () => {
     expect(blockPartSelector(type, part)).toBe(':where([data-block="rich_heading"]:not([data-part-link]) a):not([class^="s-"],[class*=" s-"]):not(#\\#):not(#\\#)');
     expect(blockPartSelector(type, part, 'quiet-link')).toBe(':where([data-block="rich_heading"][data-part-link="quiet-link"] a):not([class^="s-"],[class*=" s-"]):not(#\\#):not(#\\#)');
     expect(blockPartSelector(type, part, 'Bad id')).toBeNull();
+    expect(blockPartSelector(type, { ...part, selector: '> .a' })).toBe(':where([data-block="rich_heading"]:not([data-part-link]) > .a):not([class^="s-"],[class*=" s-"]):not(#\\#):not(#\\#)');
+    expect(blockPartQuery('> .a, .b c')).toBe(':scope > .a, :scope .b c');
     expect(blockPartSelector(type, { ...part, selector: '.a, .b' })).toBe(':where([data-block="rich_heading"]:not([data-part-link]) .a,[data-block="rich_heading"]:not([data-part-link]) .b):not([class^="s-"],[class*=" s-"]):not(#\\#):not(#\\#)');
   });
 });
@@ -95,6 +98,38 @@ describe('part style CSS', () => {
     const repeater: Block = { id: 'r', type: 'core/repeater', data: { source_type: 'static', item_block: 'core/hero', items: [{ heading: 'A' }], item_overrides: { part_styles: { heading: 'big' } } } };
     const css = blockPartStylesCss([repeater], registry, ['core/repeater', 'core/hero'], { styles: [{ id: 'big', name: 'Big', targets: ['heading'], base: { size: '2rem' } }], breakpoints });
     expect(css).toContain('[data-part-heading="big"]');
+  });
+
+  it('marks every repeater root, groups and aliases included, and anchors at it', () => {
+    const pill: SiteStyle = { id: 'pill', name: 'Pill', targets: ['button'], base: { radius: '999px' } };
+    const items = [{ html: '<p>A</p>', kind: 'x' }, { html: '<p>B</p>', kind: 'y' }];
+    const carousel: Block = { id: 'r', type: 'core/repeater', data: { item_block: 'core/prose', layout: 'carousel', items, part_styles: { carousel_button: 'pill' } } };
+    expect(renderBlocks([carousel], { registry, renderVersion: LATEST_RENDER_VERSION })).toMatch(/^<div data-block="repeater"[^>]* data-part-carousel_button="pill">/);
+    expect(assets([carousel], [pill])).toContain(':where([data-block="repeater"][data-part-carousel_button="pill"] > .tr-carousel-controls > .tr-carousel-button)');
+    const grouped: Block = { ...carousel, data: { ...carousel.data, group_by: 'kind' } };
+    expect(renderBlocks([grouped], { registry, renderVersion: LATEST_RENDER_VERSION }).match(/<div data-block="repeater"[^>]* data-part-carousel_button="pill"/g)).toHaveLength(2);
+    // Group titles sit outside the roots; their own style field reaches them.
+    expect(renderBlocks([{ ...grouped, data: { ...grouped.data, group_title_style_id: 'eyebrow' } }], { registry }).match(/class="tr-repeater-group-title s-eyebrow"/g)).toHaveLength(2);
+    expect(renderBlocks([grouped], { registry })).toContain('class="tr-repeater-group-title">');
+    // An alias renders as core/repeater and shares its parts.
+    const testimonials: Block = { id: 't', type: 'core/testimonials', data: { layout: 'carousel', items: [{ quote: 'A' }, { quote: 'B' }], part_styles: { carousel_button: 'pill' } } };
+    expect(unknownBlockDataFields(testimonials, registry)).toEqual([]);
+    expect(renderBlocks([testimonials], { registry, renderVersion: LATEST_RENDER_VERSION })).toContain('data-part-carousel_button="pill"');
+    expect(assets([testimonials], [pill])).toContain('[data-part-carousel_button="pill"] > .tr-carousel-controls > .tr-carousel-button');
+    expect(treePartStyleIssues([{ ...testimonials, data: { ...testimonials.data, part_styles: { carousel_button: 'missing' } } }], registry, [pill])).toEqual([expect.objectContaining({ code: 'unknown_style', block_type: 'core/repeater' })]);
+    // Without a choice the markup is unchanged.
+    expect(renderBlocks([{ ...carousel, data: { ...carousel.data, part_styles: undefined } }], { registry })).not.toContain('data-part-');
+  });
+
+  it('orders rules by part, so a later part wins where parts overlap', () => {
+    const nav: Block = { id: 'n', type: 'core/navigation_links', data: { links: [{ label: 'Home', href: '/' }], part_styles: { link: 'loud-link' } } };
+    const current: SiteStyle = { id: 'current', name: 'Current', targets: ['link'], base: { weight: 800 }, parts: ['core/navigation_links.current_link'] };
+    // The library lists the current-link style first; its rule still follows every link rule.
+    const css = assets([nav], [current, { ...quietLink, parts: ['core/navigation_links.link'] }, loudLink]);
+    const at = (needle: string) => css.indexOf(needle);
+    expect(at(':not([data-part-link]) > li > a)')).toBeGreaterThan(-1);
+    expect(at('[data-part-link="loud-link"] > li > a)')).toBeGreaterThan(at(':not([data-part-link]) > li > a)'));
+    expect(at('> li > a[aria-current="page"])')).toBeGreaterThan(at('[data-part-link="loud-link"] > li > a)'));
   });
 
   it('skips a part before its render version', () => {

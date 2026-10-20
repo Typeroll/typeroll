@@ -48,6 +48,16 @@ ${['h1','h2','h3','h4','h5','h6'].map(level => `[data-block="rich_heading"][data
   },
   {
     id: 'core/table', name: 'table', label: 'Table', icon: 'table', category: 'content', container: false,
+    // A cell's own Background and Text color fields still win over its part style.
+    parts: [
+      { name: 'table', label: 'Table', selector: 'table', target: 'container', decorative: true },
+      { name: 'caption', label: 'Caption', selector: 'caption', target: 'text' },
+      { name: 'header_cell', label: 'Header cells', selector: 'th', target: 'text' },
+      { name: 'cell', label: 'Cells', selector: 'td', target: 'text' },
+      { name: 'even_row', label: 'Even rows (stripes)', selector: 'tr:nth-child(even)', target: 'container' },
+      { name: 'link', label: 'Links', selector: 'td a, th a, caption a, figcaption a', target: 'link' },
+      { name: 'source', label: 'Source / credit', selector: '> figcaption', target: 'text' },
+    ],
     schema: [
       { name: 'caption', type: 'richtext', label: 'Caption' },
       { name: 'rows', type: 'array', label: 'Rows', fields: [
@@ -64,6 +74,13 @@ ${['h1','h2','h3','h4','h5','h6'].map(level => `[data-block="rich_heading"][data
   },
   {
     id: 'core/list', name: 'list', label: 'List', icon: 'list', category: 'content', container: false,
+    // style_id styles the block; a marker (::marker, the check) follows its item's colour and size.
+    // A list nested in an item's text is styled like the list itself.
+    parts: [
+      { name: 'list', label: 'List', selector: 'ul, ol', target: 'list' },
+      { name: 'item', label: 'Items', selector: 'li', target: 'text' },
+      { name: 'link', label: 'Links', selector: 'li a', target: 'link' },
+    ],
     schema: [
       { name: 'style_id', type: 'style', label: 'Style', style_target: 'list', editor_group: 'content' },
       { name: 'marker', type: 'select', label: 'List marker', options: ['auto', 'none', 'check'], option_labels: ['Bullet or number', 'Custom / no marker', 'Checkmark'], default: 'auto' },

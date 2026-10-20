@@ -24,6 +24,7 @@ import {
   renderClientCapabilityScripts,
   integrationConfigKey,
   instanceStyleParts,
+  blockPartQuery,
   blockPartsAt,
   blockPartsProblems,
   siteThemeCss,
@@ -262,6 +263,7 @@ describe('every core block field changes what renders', () => {
     'template/page_date.format': 'needs a real page date',
     'template/page_author.show_avatar': 'needs an author with an avatar',
     'template/page_author.prefix': 'needs an author',
+    'template/page_author.part_styles': 'needs an author (presentation-audit PART_SAMPLE_CONTEXTS)',
     'template/site_logo.link_to_home': 'needs a site logo',
     'template/show_if.condition': 'needs page values the condition can test',
     ...Object.fromEntries(['text', 'email', 'phone', 'url', 'number', 'textarea', 'select', 'radio_group', 'boolean', 'checkbox_group', 'toggle', 'slider', 'date', 'consent']
@@ -370,7 +372,7 @@ describe('every presentational value a core block writes is reachable', () => {
         const parts = blockPartsAt(type, version);
         if (!parts.length) continue;
         const dom = sampleDom(partSampleBlock(type), registry, version);
-        for (const part of parts) if (!dom?.root.querySelector(part.selector)) missing.push(`${type.id}.${part.name}@v${version}: ${part.selector}`);
+        for (const part of parts) if (!dom?.root.querySelector(blockPartQuery(part.selector))) missing.push(`${type.id}.${part.name}@v${version}: ${part.selector}`);
       }
     }
     expect(missing, 'fix the selector, give the part a min_render_version, or extend PART_SAMPLES so the sample renders it').toEqual([]);

@@ -15,6 +15,7 @@ import {
   buildCoreBlockRegistry,
   defaultSiteSettings,
   partStyleIssues,
+  partsTypeOf,
   resolveRenderVersion,
   treePartStyleIssues,
   validateSiteStyle,
@@ -167,7 +168,8 @@ export async function singleBlockPartStyleCheck(
   registry: Registry,
   path = 'data',
 ): Promise<{ errors: PartStyleIssue[]; warnings: BlockTreeWarning[] }> {
-  const type = registry.get(block.type);
+  // An alias (core/gallery) is checked against the parts of the block it renders as.
+  const type = partsTypeOf(registry.get(block.type), registry);
   if (!type?.parts?.length || !written) return { errors: [], warnings: [] };
   const touched = Object.hasOwn(written, PART_STYLES_FIELD) || type.parts.some(part => part.background_field && Object.hasOwn(written, part.background_field));
   if (!touched) return { errors: [], warnings: [] };

@@ -62,8 +62,9 @@ export interface BlockPart {
    * CSS selector of the part's element(s), relative to the block root, e.g.
    * `.block-hero-heading` or `a`. Simple selectors only: tags, classes,
    * attributes, structural pseudo-classes and combinators (see
-   * `blockPartSelectorError`). In a container block, anchor it with `>` so it
-   * never reaches a nested block's elements.
+   * `blockPartSelectorError`). A leading `>` starts at the block root's
+   * children (`> .block-columns-col`): in a container block, anchor it that
+   * way so it never reaches a nested block's elements.
    */
   selector: string;
   /** The kind of style that fits the part; pickers and checks list only styles with this target. */
@@ -110,7 +111,8 @@ const MAX_SELECTOR_LENGTH = 200;
  * embeds it inside `:where(…)`, so it must be plain selector text: no
  * braces, at-rules, comments, escapes, pseudo-elements or state
  * pseudo-classes (hover and focus come from the style), at most four
- * comma-separated selectors of at most six compounds.
+ * comma-separated selectors of at most six compounds. A selector may start
+ * with `>`: a child of the block root.
  */
 export function blockPartSelectorError(selector: unknown): string | null {
   if (typeof selector !== 'string' || !selector.trim()) return 'selector is required';
@@ -125,7 +127,9 @@ export function blockPartSelectorError(selector: unknown): string | null {
     for (let index = 0; index < tokens.length; index++) {
       const token = tokens[index]!;
       if (['>', '+', '~'].includes(token)) {
-        if (index === 0 || index === tokens.length - 1 || ['>', '+', '~'].includes(tokens[index - 1]!)) return `selector "${item.trim()}" has a combinator without an element on both sides`;
+        // A leading `>` anchors at the block root (a child of it); nothing else may start or end the selector.
+        const anchor = index === 0 && token === '>' && tokens.length > 1;
+        if ((index === 0 && !anchor) || index === tokens.length - 1 || (index > 0 && ['>', '+', '~'].includes(tokens[index - 1]!))) return `selector "${item.trim()}" has a combinator without an element on both sides`;
         continue;
       }
       if (!token || !COMPOUND.test(token)) return `selector "${item.trim()}" uses "${token}": write tags, .classes, [attributes] and structural pseudo-classes such as :first-child`;
@@ -188,6 +192,15 @@ export function blockPartsProblems(parts: unknown, schema: readonly FieldDefinit
   return problems;
 }
 
+/**
+ * A part selector relative to an element, for `element.querySelectorAll`:
+ * each item scoped with `:scope`, so a leading `>` means a child of that
+ * element, as in the generated CSS.
+ */
+export function blockPartQuery(selector: string): string {
+  return selector.split(',').map(item => `:scope ${item.trim()}`).join(', ');
+}
+
 /** Parts of a type that exist at a render version. */
 export function blockPartsAt(type: Pick<BlockType, 'parts'>, renderVersion?: number): BlockPart[] {
   const version = resolveRenderVersion(renderVersion);
@@ -222,6 +235,16 @@ export function parseBlockPartRef(ref: string): { type: string; part: string } |
 type Registry = ReadonlyMap<string, BlockType> | Record<string, BlockType>;
 const lookup = (registry: Registry, id: string): BlockType | undefined => registry instanceof Map ? registry.get(id) : (registry as Record<string, BlockType>)[id];
 const registryTypes = (registry: Registry): BlockType[] => registry instanceof Map ? [...registry.values()] : Object.values(registry as Record<string, BlockType>);
+
+/**
+ * The type whose parts a block of `type` renders: the type itself, or for an
+ * alias (`expand_to`, e.g. core/gallery) the type it expands to.
+ */
+export function partsTypeOf(type: BlockType | undefined, registry: Registry): BlockType | undefined {
+  let current = type;
+  for (let depth = 0; current?.expand_to && !current.parts?.length && depth < 5; depth++) current = lookup(registry, current.expand_to.target);
+  return current;
+}
 
 /** Every declared part in a registry, keyed by reference. */
 export function blockPartIndex(registry: Registry): Map<string, { type: BlockType; part: BlockPart }> {
@@ -288,7 +311,7 @@ function collectInstanceChoices(blocks: readonly Block[], registry: Registry, re
   for (const block of blocks) {
     if (!block || typeof block !== 'object') continue;
     const type = lookup(registry, block.type);
-    add(type, block.data);
+    add(partsTypeOf(type, registry), block.data);
     // Repeater items render as their item block with item_overrides merged in.
     const itemId = block.data?.item_block ?? type?.expand_to?.defaults?.item_block;
     const itemType = typeof itemId === 'string' ? lookup(registry, itemId) : undefined;
@@ -313,7 +336,10 @@ export function blockPartStylesCss(blocks: readonly Block[], registry: Registry,
   if (!styles.length) return '';
   const byId = new Map(styles.map(style => [style.id, style]));
   const present = new Set(typeIds);
-  const rules: string[] = [];
+  // Where two parts of a type overlap (a menu's links and its current link),
+  // the part declared later wins: rules are ordered by part, not by style.
+  const entries: Array<{ type: string; index: number; scope: number; key: string; rules: string[] }> = [];
+  const indexOf = (type: BlockType, part: BlockPart) => (type.parts ?? []).indexOf(part);
   for (const style of styles) {
     for (const ref of style.parts ?? []) {
       const parsed = parseBlockPartRef(ref);
@@ -322,17 +348,20 @@ export function blockPartStylesCss(blocks: readonly Block[], registry: Registry,
       const part = type && blockPartsAt(type, opts.renderVersion).find(candidate => candidate.name === parsed.part);
       if (!type || !part || !styleFitsPart(style, part)) continue;
       const selector = blockPartSelector(type, part);
-      if (selector) rules.push(...styleRules(style, [selector], opts.breakpoints));
+      if (selector) entries.push({ type: type.id, index: indexOf(type, part), scope: 0, key: '', rules: styleRules(style, [selector], opts.breakpoints) });
     }
   }
   const choices = new Map<string, { type: BlockType; part: BlockPart; style: string }>();
   collectInstanceChoices(blocks, registry, opts.renderVersion, choices);
-  for (const { type, part, style: id } of [...choices.values()].sort((a, b) => `${a.type.id}|${a.part.name}|${a.style}`.localeCompare(`${b.type.id}|${b.part.name}|${b.style}`))) {
+  for (const { type, part, style: id } of choices.values()) {
     const style = byId.get(id);
     if (!style || !styleFitsPart(style, part)) continue;
     const selector = blockPartSelector(type, part, id);
-    if (selector) rules.push(...styleRules(style, [selector], opts.breakpoints));
+    if (selector) entries.push({ type: type.id, index: indexOf(type, part), scope: 1, key: id, rules: styleRules(style, [selector], opts.breakpoints) });
   }
+  // Stable: site-wide entries keep the library order among themselves.
+  entries.sort((a, b) => a.type.localeCompare(b.type) || a.index - b.index || a.scope - b.scope || a.key.localeCompare(b.key));
+  const rules = entries.flatMap(entry => entry.rules);
   return rules.join('\n');
 }
 
@@ -467,7 +496,7 @@ export function treePartStyleIssues(value: unknown, registry: Registry, styles: 
     node.forEach((block, index) => {
       if (!isRecord(block) || typeof block.type !== 'string') return;
       const at = `${path}[${index}]`;
-      const type = lookup(registry, block.type);
+      const type = partsTypeOf(lookup(registry, block.type), registry);
       if (type?.parts?.length) {
         const issues = partStyleIssues(block as { type: string }, type, styles, { ...options, path: `${at}.data` });
         out.push(...issues.errors, ...issues.warnings);

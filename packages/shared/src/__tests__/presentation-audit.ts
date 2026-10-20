@@ -17,6 +17,7 @@
 import { Window } from 'happy-dom';
 import {
   blockOutputForVersion,
+  blockPartQuery,
   blockPartsAt,
   renderBlocks,
   type Block,
@@ -124,7 +125,7 @@ export function sampleDom(block: Block, registry: Map<string, BlockType>, render
 /** Elements in the sample that a style reaches: declared parts and the style element. */
 function styledElements(type: BlockType, dom: SampleDom, renderVersion: number): { parts: Set<Element>; styleElement: Element | null } {
   const parts = new Set<Element>();
-  for (const part of blockPartsAt(type, renderVersion)) for (const element of dom.root.querySelectorAll(part.selector)) parts.add(element);
+  for (const part of blockPartsAt(type, renderVersion)) for (const element of dom.root.querySelectorAll(blockPartQuery(part.selector))) parts.add(element);
   const hasStyleField = type.schema.some(field => field.type === 'style' && field.name === 'style_id');
   const styleElement = !hasStyleField ? null
     : type.style_element_class ? dom.root.querySelector(`.${type.style_element_class}`) ?? null : dom.root;
@@ -166,6 +167,28 @@ export function unreachablePresentation(type: BlockType, block: Block, registry:
  * an entry here, so the part guards see each part element.
  */
 export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
+  'core/prose': {
+    html: '<h1>Title</h1><h2>Section</h2><h3>Topic</h3><h4>Detail</h4><p>Read <a href="/guide/">the guide</a> and run <code>npm test</code>.</p>'
+      + '<ul><li>One</li></ul><ol><li>Two</li></ol><blockquote><p>Quote</p></blockquote><pre><code>npm test</code></pre>'
+      + '<table><thead><tr><th>Name</th></tr></thead><tbody><tr><td>Value</td></tr></tbody></table><p><img src="/media/sample.jpg" alt=""></p>',
+  },
+  'core/image': { src: '/media/sample.jpg', caption_html: 'Photo: <a href="/credits/">Studio</a>' },
+  'core/list': { items: [{ html: 'Read <a href="/guide/">the guide</a>' }, { html: 'Steps<ol><li>Nested</li></ol>' }] },
+  'core/table': {
+    caption: 'Plans',
+    rows: [
+      { cells: [{ html: 'Plan', header: true }, { html: 'Price', header: true }] },
+      { cells: [{ html: '<a href="/basic/">Basic</a>' }, { html: '10' }] },
+      { cells: [{ html: 'Pro' }, { html: '20' }] },
+    ],
+    source: 'Source: <a href="/prices/">price list</a>',
+  },
+  'core/repeater': {
+    item_block: 'core/prose', layout: 'carousel', autoplay: true,
+    items: [{ html: '<p>One</p>' }, { html: '<p>Two</p>' }],
+  },
+  'core/tabs': { headline: 'Plans', labels: [{ label: 'Monthly', icon: 'star' }, { label: 'Yearly' }, { label: 'Compare', href: '/compare/', icon: 'check' }] },
+  'core/navigation_links': { links: [{ label: 'Home', href: '/' }, { label: 'About', href: '/about/', icon: 'star' }] },
   'core/rich_heading': { level: 'h2', html: 'Read <a href="/guide/">the guide</a>' },
   'core/heading': { level: 'h2', eyebrow: 'Eyebrow', text: 'Heading', subtitle: 'Subtitle' },
   'core/button': { label: 'Get started', href: '/start/' },
@@ -218,7 +241,7 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
   },
 };
 
-/** Render context a block's sample needs besides its data (repeater item data, a field list's Page fields). */
+/** Render context a block's sample needs besides its data (repeater item data, a field list's Page fields, template page and site values). */
 export const PART_SAMPLE_CONTEXTS: Record<string, RenderContext> = {
   'core/post_card': { item: { pdf: '/media/notes.pdf' } },
   'core/field_list': {
@@ -231,6 +254,11 @@ export const PART_SAMPLE_CONTEXTS: Record<string, RenderContext> = {
   },
   // The table of contents lists the page's headings.
   'core/table_of_contents': { page: { body: '<h2>One</h2><h3>Two</h3><h2>Three</h2>' } },
+  // Template blocks read the page and the site.
+  'template/page_date': { page: { date_published: '2026-01-02' } },
+  'template/page_author': { page: { author: { name: 'Ada Lovelace', avatar: '/media/ada.jpg' } } },
+  'template/page_breadcrumbs': { page: { breadcrumbs: [{ label: 'Blog', href: '/blog/' }, { label: 'Post', current: true }] } },
+  'template/site_logo': { site: { name: 'Acme', logo: '/media/logo.svg' } },
 };
 
 /**
@@ -250,6 +278,7 @@ export const PART_SAMPLE_MARKUP: Record<string, (root: Element) => void> = {
   // The sample plays a file (<video>); YouTube and Vimeo play in an iframe.
   'core/video': root => { if (!root.querySelector('iframe')) root.insertAdjacentHTML('beforeend', '<iframe src="https://www.youtube-nocookie.com/embed/sample" title="Video"></iframe>'); },
 };
+
 
 /** A sample block: field defaults, required fields filled in, then PART_SAMPLES. */
 export function partSampleBlock(type: BlockType): Block {

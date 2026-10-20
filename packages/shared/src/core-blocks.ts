@@ -117,7 +117,15 @@ const columns: BlockType = {
   container: 'slots',
   slot_count: 2,
   slot_labels: ['Left', 'Right'],
+  // Anchored at the root so a nested columns block keeps its own columns.
+  // One style may list both parts to style both columns alike.
+  parts: [
+    { name: 'left_column', label: 'Left column', selector: '> .block-columns-col:first-child', target: 'container', decorative: true },
+    { name: 'right_column', label: 'Right column', selector: '> .block-columns-col:last-child', target: 'container', decorative: true },
+  ],
   schema: [
+    // Styles the block root: the gap between the columns, a surface behind both.
+    { name: 'style_id', type: 'style', label: 'Columns style', style_target: 'container', editor_group: 'content' },
     {
       name: 'ratio',
       type: 'select',
@@ -171,6 +179,22 @@ const prose: BlockType = {
   icon: 'type',
   category: 'content',
   container: false,
+  // Elements of the authored HTML; style_id styles the text block as a whole.
+  parts: [
+    { name: 'heading_1', label: 'Heading 1', selector: 'h1', target: 'heading' },
+    { name: 'heading_2', label: 'Heading 2', selector: 'h2', target: 'heading' },
+    { name: 'heading_3', label: 'Heading 3', selector: 'h3', target: 'heading' },
+    { name: 'heading_4', label: 'Heading 4', selector: 'h4', target: 'heading' },
+    { name: 'link', label: 'Links', selector: 'a', target: 'link', color: 'primary' },
+    { name: 'list', label: 'Lists', selector: 'ul, ol', target: 'list' },
+    { name: 'list_item', label: 'List items', selector: 'li', target: 'text' },
+    { name: 'quote', label: 'Quotes', selector: 'blockquote', target: 'text' },
+    { name: 'code', label: 'Inline code', selector: 'p code, li code, td code, th code', target: 'text' },
+    { name: 'code_block', label: 'Code blocks', selector: 'pre', target: 'text' },
+    { name: 'table_header', label: 'Table header cells', selector: 'th', target: 'text' },
+    { name: 'table_cell', label: 'Table cells', selector: 'td', target: 'text' },
+    { name: 'image', label: 'Images', selector: 'img', target: 'image' },
+  ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'text', editor_group: 'content' },
     { name: 'html', type: 'richtext', label: 'Content' },
@@ -391,6 +415,12 @@ const image: BlockType = {
   icon: 'image',
   category: 'media',
   container: false,
+  parts: [
+    { name: 'frame', label: 'Image frame', selector: '.block-image-frame', target: 'image' },
+    { name: 'image', label: 'Image', selector: '.block-image-frame img', target: 'image' },
+    { name: 'caption', label: 'Caption', selector: '.block-image-caption', target: 'text' },
+    { name: 'caption_link', label: 'Caption links', selector: '.block-image-caption a', target: 'link' },
+  ],
   schema: [
     { name: 'src', type: 'image', label: 'Image', required: true },
     { name: 'alt', type: 'text', label: 'Alt text' },

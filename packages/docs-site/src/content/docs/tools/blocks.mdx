@@ -316,7 +316,16 @@ default) has previous and next buttons (`show_arrows`), a dot per item
 button. Autoplay stops while the visitor points at or focuses the carousel and
 never runs when they prefer reduced motion. Items scroll in a track inside the
 block; without JavaScript the track still scrolls and the controls stay
-hidden. The controls name themselves in the site language.
+hidden. The controls name themselves in the site language. Styles reach them
+as the repeater's parts `carousel_controls`, `carousel_button` and
+`carousel_dot` (an alias's carousel shares them: `core/repeater.carousel_dot`);
+the current dot is `&[aria-current="true"]` in the dot style's advanced CSS.
+
+Grouped and paginated repeaters render their group titles and archive pager
+next to the repeater element, where parts do not reach, so each has a style
+field: `group_title_style_id` (a heading style on every group title) and
+`pager_link_style_id` (a button style on every page link and the current page,
+`&[aria-current="page"]` for the current one).
 
 - `core/feature_grid` — icon_box grid
 - `core/pricing_table` — pricing_plan grid
@@ -575,7 +584,11 @@ with `create_block_type` or `update_block_type` (which replaces the list):
 
 Selectors may not contain braces, `;`, `@`, comments, pseudo-elements
 (`::before`) or state pseudo-classes such as `:hover` and `:focus`: hover comes
-from the style. A type has at most 16 parts. A selector class that the template
+from the style. A selector that starts with `>` selects a child of the block
+element (`> .gallery-item`); in a block that holds other blocks, anchor every
+part that way so it never reaches into a nested block. Where two parts overlap
+(all links, and the link to the current page), the part listed later wins. A
+type has at most 16 parts. A selector class that the template
 never writes is reported as a warning, because the part would match nothing.
 The type gets the `part_styles` field automatically when a part has no
 `style_field`, so do not declare a field of that name yourself. Parts are for
