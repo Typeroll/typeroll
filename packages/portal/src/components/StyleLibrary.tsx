@@ -142,8 +142,11 @@ export default function StyleLibrary({ siteId, initialStyles, colors, breakpoint
   return (
     <div className="stack" style={{ gap: '1rem' }}>
     {errors.length > 0 && <ul role="alert" className="card" style={{ margin: 0, paddingLeft: '2rem', color: 'var(--color-danger)' }}>{errors.map(e => <li key={e}>{e}</li>)}</ul>}
-    {message && <p role="status" className="card" style={{ margin: 0, color: 'var(--color-success)' }}>{message}</p>}
-    {notes.length > 0 && <ul role="status" className="card" style={{ margin: 0, paddingLeft: '2rem' }}>{notes.map(note => <li key={note}>{note}</li>)}</ul>}
+    {/* One live region: the result and its notes are announced together. */}
+    {(message || notes.length > 0) && <div role="status" className="stack" style={{ gap: '0.5rem' }}>
+      {message && <p className="card" style={{ margin: 0, color: 'var(--color-success)' }}>{message}</p>}
+      {notes.length > 0 && <ul className="card" style={{ margin: 0, paddingLeft: '2rem' }}>{notes.map(note => <li key={note}>{note}</li>)}</ul>}
+    </div>}
     <style>{`.style-library{display:grid;grid-template-columns:minmax(220px,280px) minmax(0,1fr);gap:1.5rem;align-items:start}@media (max-width:900px){.style-library{grid-template-columns:minmax(0,1fr)}}`}</style>
     <div className="style-library">
       <aside className="card stack" style={{ gap: '.75rem' }}>
