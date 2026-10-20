@@ -45,6 +45,14 @@ describe('validateSiteStyle', () => {
     for (const [input, message] of cases) expect(validateSiteStyle(input).errors.join('\n')).toMatch(message);
   });
 
+  it('sets opacity, a shadow preset and gap', () => {
+    const style = validateSiteStyle({ id: 'soft', name: 'Soft', targets: ['container', 'link', 'image'], base: { opacity: 0.8, shadow: 'none', gap: '1rem 2rem' } }).style!;
+    expect(siteStylesCss([style], opts)).toContain('.s-soft:not(#\\#){opacity:0.8;box-shadow:none;gap:1rem 2rem}');
+    expect(validateSiteStyle({ ...style, base: { opacity: 2 } }).errors).toEqual(['base.opacity must be a number from 0 to 1']);
+    expect(validateSiteStyle({ ...style, base: { shadow: '0 0 4px red' } }).errors[0]).toContain('base.shadow must be one of none, sm, md, lg');
+    expect(validateSiteStyle({ ...style, base: { gap: '1rem 2rem 3rem' } }).errors).toEqual(['base.gap must be one or two CSS lengths']);
+  });
+
   it('flags duplicate ids and roles in a library', () => {
     expect(siteStyleLibraryErrors([eyebrow, { ...eyebrow }]).join()).toMatch(/Duplicate style id/);
     expect(siteStyleLibraryErrors([{ ...eyebrow, role: 'eyebrow' }, { ...eyebrow, id: 'kicker', role: 'eyebrow' }]).join()).toMatch(/role "eyebrow"/);
