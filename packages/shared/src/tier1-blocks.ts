@@ -26,6 +26,65 @@ const ISO_EPOCH = '1970-01-01T00:00:00Z';
 // ─── Layout primitives ───────────────────────────────────────────────────
 
 /**
+ * Container CSS. From render version 9 (`raised`) a container with a shadow
+ * is raised above the blocks after it (position:relative; z-index:10, as a
+ * typical site header does), so the next block's background no longer paints
+ * over the shadow, and the header shadow is 0 2px 6px. Sticky containers keep
+ * z-index 100. 10 stays above block-internal layers such as the hero's content
+ * (z-index 2) that form no stacking context of their own, so menus opening
+ * from a shadowed header land above the next block.
+ */
+const containerStyles = (raised: boolean) => `
+ :is([data-block="container"], [data-block="semantic-container"]) { --surface-gradient:initial;border-radius:var(--radius_px,0px); }
+:is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] { overflow:clip; }
+:is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] :focus-visible { outline-offset:-3px; }
+:is([data-block="container"], [data-block="semantic-container"])[data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }
+:is([data-block="container"], [data-block="semantic-container"])[data-shadow="header"] { box-shadow:0 2px ${raised ? 6 : 5}px rgb(0 0 0 / 20%); }
+${raised ? `:is([data-block="container"], [data-block="semantic-container"]):is([data-shadow="subtle"], [data-shadow="header"]):not([data-sticky="true"]) { position:relative; z-index:10; }\n` : ''}/* Only an explicitly authored scale overrides theme-sized headings. */
+${[1,2,3,4,5,6].map(level => `:is([data-block="container"], [data-block="semantic-container"])[style*="--h${level}_size_px:"] [data-block="heading"][data-level="h${level}"][data-size="theme"] .block-heading-text { font-size:var(--font_size_px,var(--h${level}_size_px)); }`).join('\n')}
+/* Opt-in article flow; never change heading spacing in unrelated layouts. */
+[data-block="semantic-container"][data-rhythm="article"] { display:flow-root; }
+:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="heading"],
+:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="rich_heading"] { margin-block:var(--heading_before_px,var(--heading-space-before,2rem)) var(--heading_after_px,var(--heading-space-after,.65rem)); }
+:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > :first-child { margin-top:0; }
+[data-block="container"] {
+  display: flex; flex-direction: var(--direction, column); flex-wrap: var(--wrap, wrap);
+  --container-gap:initial;gap: var(--gap_px, var(--container-gap,var(--block-gap,1rem))); justify-content: var(--align_main, flex-start); align-items: var(--align_cross, stretch);
+  padding-block: var(--padding_top_px, var(--padding_y_px, var(--block-py, 2rem))) var(--padding_bottom_px, var(--padding_y_px, var(--block-py, 2rem))); padding-inline: var(--padding_x_px, var(--block-px, 1rem));
+  background: var(--bg, transparent);
+}
+:is([data-block="container"], [data-block="semantic-container"]) { background-image:var(--surface-gradient,var(--bg-image,none)); background-size:cover; background-position:center; }
+[data-block="container"][data-width="narrow"] { max-width: var(--max_width_px, 42rem); margin-inline: auto; }
+[data-block="container"][data-width="normal"] { max-width: var(--max_width_px, 65rem); margin-inline: auto; }
+[data-block="container"][data-width="wide"]   { max-width: var(--max_width_px, 80rem); margin-inline: auto; }
+[data-block="container"][data-width="full"]   { max-width: var(--max_width_px, none); }
+[data-block="container"][data-min-h="sm"]     { min-height: 30vh; }
+[data-block="container"][data-min-h="md"]     { min-height: 50vh; }
+[data-block="container"][data-min-h="lg"]     { min-height: 70vh; }
+[data-block="container"][data-min-h="screen"] { min-height: 100vh; }
+:is([data-block="container"], [data-block="semantic-container"])[style*="--min_height_px:"] { min-height:var(--min_height_px); }
+[data-block="container"][style*="--gap:none"]       { --container-gap: 0; }
+[data-block="container"][style*="--gap:xs"]         { --container-gap: 0.25rem; }
+[data-block="container"][style*="--gap:sm"]         { --container-gap: 0.5rem; }
+[data-block="container"][style*="--gap:md"]         { --container-gap: 1rem; }
+[data-block="container"][style*="--gap:lg"]         { --container-gap: 2rem; }
+[data-block="container"][style*="--gap:xl"]         { --container-gap: 3rem; }
+[data-block="container"][style*="--padding_y:none"] { --block-py: 0; }
+[data-block="container"][style*="--padding_y:sm"]   { --block-py: 2rem; }
+[data-block="container"][style*="--padding_y:md"]   { --block-py: 4rem; }
+[data-block="container"][style*="--padding_y:lg"]   { --block-py: 6rem; }
+[data-block="container"][style*="--padding_y:xl"]   { --block-py: 8rem; }
+[data-block="container"][style*="--padding_x:none"] { --block-px: 0; }
+[data-block="container"][style*="--padding_x:sm"]   { --block-px: 0.5rem; }
+[data-block="container"][style*="--padding_x:md"]   { --block-px: 1rem; }
+[data-block="container"][style*="--padding_x:lg"]   { --block-px: 2rem; }
+[data-block="container"][style*="--padding_x:xl"]   { --block-px: 3rem; }
+[data-block="semantic-container"] { display: flow-root; max-width:var(--max_width_px, none); padding-inline:var(--padding_x_px, 0); padding-block:var(--padding_top_px, var(--padding_y_px, 0)) var(--padding_bottom_px, var(--padding_y_px, 0)); }
+:is([data-block="container"], [data-block="semantic-container"])[data-sticky="true"] { position:sticky; top:var(--sticky_top_px,0px); z-index:100; }
+[data-block="semantic-container"][style*="--gap_px:"] > * + * { margin-top:var(--gap_px, 0); }
+`.trim();
+
+/**
  * `container` — flex container. Friendlier than `section` when you need
  * direct flex control. Pair with `grid` for tabular layouts.
  */
@@ -83,55 +142,8 @@ const container: BlockType = {
   // Layout-control CSS reads `var(--gap)` etc. and maps the token (sm/md/lg)
   // to a real rem value via attribute-selectors against the inline style.
   template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-shadow="{{shadow}}" data-overflow="{{overflow}}" data-rhythm="{{rhythm}}" data-sticky="{{sticky}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{surface_gradient_css}}{{inline_style}}">{{children}}</{{=tag}}>`,
-  styles: `
- :is([data-block="container"], [data-block="semantic-container"]) { --surface-gradient:initial;border-radius:var(--radius_px,0px); }
-:is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] { overflow:clip; }
-:is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] :focus-visible { outline-offset:-3px; }
-:is([data-block="container"], [data-block="semantic-container"])[data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }
-:is([data-block="container"], [data-block="semantic-container"])[data-shadow="header"] { box-shadow:0 2px 5px rgb(0 0 0 / 20%); }
-/* Only an explicitly authored scale overrides theme-sized headings. */
-${[1,2,3,4,5,6].map(level => `:is([data-block="container"], [data-block="semantic-container"])[style*="--h${level}_size_px:"] [data-block="heading"][data-level="h${level}"][data-size="theme"] .block-heading-text { font-size:var(--font_size_px,var(--h${level}_size_px)); }`).join('\n')}
-/* Opt-in article flow; never change heading spacing in unrelated layouts. */
-[data-block="semantic-container"][data-rhythm="article"] { display:flow-root; }
-:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="heading"],
-:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="rich_heading"] { margin-block:var(--heading_before_px,var(--heading-space-before,2rem)) var(--heading_after_px,var(--heading-space-after,.65rem)); }
-:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > :first-child { margin-top:0; }
-[data-block="container"] {
-  display: flex; flex-direction: var(--direction, column); flex-wrap: var(--wrap, wrap);
-  --container-gap:initial;gap: var(--gap_px, var(--container-gap,var(--block-gap,1rem))); justify-content: var(--align_main, flex-start); align-items: var(--align_cross, stretch);
-  padding-block: var(--padding_top_px, var(--padding_y_px, var(--block-py, 2rem))) var(--padding_bottom_px, var(--padding_y_px, var(--block-py, 2rem))); padding-inline: var(--padding_x_px, var(--block-px, 1rem));
-  background: var(--bg, transparent);
-}
-:is([data-block="container"], [data-block="semantic-container"]) { background-image:var(--surface-gradient,var(--bg-image,none)); background-size:cover; background-position:center; }
-[data-block="container"][data-width="narrow"] { max-width: var(--max_width_px, 42rem); margin-inline: auto; }
-[data-block="container"][data-width="normal"] { max-width: var(--max_width_px, 65rem); margin-inline: auto; }
-[data-block="container"][data-width="wide"]   { max-width: var(--max_width_px, 80rem); margin-inline: auto; }
-[data-block="container"][data-width="full"]   { max-width: var(--max_width_px, none); }
-[data-block="container"][data-min-h="sm"]     { min-height: 30vh; }
-[data-block="container"][data-min-h="md"]     { min-height: 50vh; }
-[data-block="container"][data-min-h="lg"]     { min-height: 70vh; }
-[data-block="container"][data-min-h="screen"] { min-height: 100vh; }
-:is([data-block="container"], [data-block="semantic-container"])[style*="--min_height_px:"] { min-height:var(--min_height_px); }
-[data-block="container"][style*="--gap:none"]       { --container-gap: 0; }
-[data-block="container"][style*="--gap:xs"]         { --container-gap: 0.25rem; }
-[data-block="container"][style*="--gap:sm"]         { --container-gap: 0.5rem; }
-[data-block="container"][style*="--gap:md"]         { --container-gap: 1rem; }
-[data-block="container"][style*="--gap:lg"]         { --container-gap: 2rem; }
-[data-block="container"][style*="--gap:xl"]         { --container-gap: 3rem; }
-[data-block="container"][style*="--padding_y:none"] { --block-py: 0; }
-[data-block="container"][style*="--padding_y:sm"]   { --block-py: 2rem; }
-[data-block="container"][style*="--padding_y:md"]   { --block-py: 4rem; }
-[data-block="container"][style*="--padding_y:lg"]   { --block-py: 6rem; }
-[data-block="container"][style*="--padding_y:xl"]   { --block-py: 8rem; }
-[data-block="container"][style*="--padding_x:none"] { --block-px: 0; }
-[data-block="container"][style*="--padding_x:sm"]   { --block-px: 0.5rem; }
-[data-block="container"][style*="--padding_x:md"]   { --block-px: 1rem; }
-[data-block="container"][style*="--padding_x:lg"]   { --block-px: 2rem; }
-[data-block="container"][style*="--padding_x:xl"]   { --block-px: 3rem; }
-[data-block="semantic-container"] { display: flow-root; max-width:var(--max_width_px, none); padding-inline:var(--padding_x_px, 0); padding-block:var(--padding_top_px, var(--padding_y_px, 0)) var(--padding_bottom_px, var(--padding_y_px, 0)); }
-:is([data-block="container"], [data-block="semantic-container"])[data-sticky="true"] { position:sticky; top:var(--sticky_top_px,0px); z-index:100; }
-[data-block="semantic-container"][style*="--gap_px:"] > * + * { margin-top:var(--gap_px, 0); }
-`.trim(),
+  styles: containerStyles(false),
+  render_versions: [{ from: 9, styles: containerStyles(true) }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
