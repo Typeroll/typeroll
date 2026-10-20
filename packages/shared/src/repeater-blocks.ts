@@ -26,6 +26,14 @@ const repeater: BlockType = {
   icon: 'list-tree',
   category: 'layout',
   container: 'repeater',
+  // The carousel controls after the track (render version 7), anchored at
+  // the root so a carousel nested in an item keeps its own. The aliases
+  // (core/gallery, core/testimonials …) render as this block and share them.
+  parts: [
+    { name: 'carousel_controls', label: 'Carousel controls', selector: '> .tr-carousel-controls', target: 'container', decorative: true, min_render_version: 7 },
+    { name: 'carousel_button', label: 'Carousel arrow and pause buttons', selector: '> .tr-carousel-controls > .tr-carousel-button', target: 'button', min_render_version: 7 },
+    { name: 'carousel_dot', label: 'Carousel dots', selector: '> .tr-carousel-controls > .tr-carousel-dots > .tr-carousel-dot', target: 'button', decorative: true, min_render_version: 7 },
+  ],
   schema: [
     // SOURCE
     { name: 'source_type', type: 'select', label: 'Source',
@@ -47,6 +55,9 @@ const repeater: BlockType = {
     // `limit`. One paginated listing per page (the first found drives the
     // routes).
     { name: 'paginate', type: 'number', label: 'Items per page (archive)', min: 1 },
+    // Each page link and the current page, styled like a button; the current
+    // page is `&[aria-current="page"]` in the style's advanced CSS.
+    { name: 'pager_link_style_id', type: 'style', label: 'Page link style (archive)', style_target: 'button' },
     { name: 'sort_by', type: 'text', label: 'Sort field (empty = content type default)', default: '' },
     { name: 'sort_order', type: 'select', label: 'Sort direction', options: ['', 'asc', 'desc'], default: '' },
     { name: 'filter_field', type: 'text', label: 'Filter on field' },
@@ -55,6 +66,7 @@ const repeater: BlockType = {
     { name: 'group_by', type: 'text', label: 'Group by field' },
     { name: 'group_sort_order', type: 'select', label: 'Group order', options: ['asc', 'desc'], default: 'asc' },
     { name: 'group_heading_level', type: 'select', label: 'Group heading level', options: ['h2', 'h3', 'h4'], default: 'h2' },
+    { name: 'group_title_style_id', type: 'style', label: 'Group title style', style_target: 'heading' },
     { name: 'ungrouped_label', type: 'text', label: 'Ungrouped label', default: 'Other' },
 
     // ITEM BLOCK

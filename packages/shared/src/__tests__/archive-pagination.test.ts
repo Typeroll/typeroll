@@ -65,6 +65,21 @@ describe('paginated repeater rendering', () => {
     expect(html).toContain('href="/blog/page/3" rel="next"');
   });
 
+  it('puts the page link style on every link and the current page', () => {
+    const render = (data: Record<string, unknown>) => renderBlock(repeaterBlock({ paginate: 2, ...data }), {
+      registry,
+      pageSource: () => ITEMS,
+      context: { pagination: { current: 2, base_url: '/blog/' } },
+    });
+    const styled = render({ pager_link_style_id: 'button-secondary' });
+    expect(styled).toContain('href="/blog/" rel="prev" class="s-button-secondary">');
+    expect(styled).toContain('<span class="tr-pager-current s-button-secondary" aria-current="page">2<');
+    expect(styled.match(/class="s-button-secondary"/g)).toHaveLength(4); // prev, 1, 3, next
+    // Without a style (or with an invalid id) the pager is unchanged.
+    expect(render({ pager_link_style_id: 'Not an id' })).toBe(render({}));
+    expect(render({})).not.toContain('s-button-secondary');
+  });
+
   it('paginate supersedes limit — the source is queried unbounded', () => {
     let received: { limit?: number } | null = null;
     renderBlock(repeaterBlock({ paginate: 2, limit: 3 }), {

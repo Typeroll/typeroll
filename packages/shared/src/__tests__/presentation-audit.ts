@@ -180,6 +180,10 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     ],
     source: 'Source: <a href="/prices/">price list</a>',
   },
+  'core/repeater': {
+    item_block: 'core/prose', layout: 'carousel', autoplay: true,
+    items: [{ html: '<p>One</p>' }, { html: '<p>Two</p>' }],
+  },
   'core/rich_heading': { level: 'h2', html: 'Read <a href="/guide/">the guide</a>' },
   'core/heading': { level: 'h2', eyebrow: 'Eyebrow', text: 'Heading', subtitle: 'Subtitle' },
   'core/button': { label: 'Get started', href: '/start/' },

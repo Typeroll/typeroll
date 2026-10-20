@@ -14,6 +14,10 @@ const NO_PARTS_YET = 'parts not declared yet (docs/plans/block-parts.md)';
 /** The hero video pause control: an accessibility control, not design. */
 const VIDEO_CONTROL = 'the background video pause control keeps one accessible look on every site (WCAG 2.2.2); it is not a design element';
 
+/** Grouped repeater output: each group is a section holding its title and its own repeater root, outside the reach of parts. */
+const REPEATER_GROUP_TITLE = 'the Group title style field (group_title_style_id) puts its style class on every group title, margins included; the title renders outside the repeater root, where no part reaches';
+const REPEATER_GROUP_SPACE = 'the space between two group sections, outside every repeater root, where neither a part nor style_overrides reach; a Group title style adds space above each title (space_before)';
+
 export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = {
   'core/accordion': {
     '[data-block="accordion"][data-style="bordered"] { border: 1px solid rgba(0,0,0,0.1) }': NO_PARTS_YET,
@@ -208,17 +212,8 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="pricing_plan"] .block-pricing-features li[data-included="false"] { text-decoration: line-through }': NO_PARTS_YET,
   },
   'core/repeater': {
-    '[data-block="repeater"] > .tr-carousel-controls { gap: 0.5rem }': NO_PARTS_YET,
-    '[data-block="repeater"] > .tr-carousel-controls { margin-top: 0.75rem }': NO_PARTS_YET,
-    '[data-block="repeater"] .tr-carousel-button { border: 1px solid currentColor }': NO_PARTS_YET,
-    '[data-block="repeater"] .tr-carousel-button { border-radius: 50% }': NO_PARTS_YET,
-    '[data-block="repeater"] .tr-carousel-button:disabled { opacity: 0.4 }': NO_PARTS_YET,
-    '[data-block="repeater"] .tr-carousel-dot { padding: 7px }': NO_PARTS_YET,
-    '[data-block="repeater"] .tr-carousel-dot { border-radius: 50% }': NO_PARTS_YET,
-    '[data-block="repeater"] .tr-carousel-dot { opacity: 0.35 }': NO_PARTS_YET,
-    '[data-block="repeater"] .tr-carousel-dot[aria-current="true"] { opacity: 1 }': NO_PARTS_YET,
-    '.tr-repeater-group + .tr-repeater-group { margin-top: 2rem }': NO_PARTS_YET,
-    '.tr-repeater-group-title { margin: 0 0 0.75rem }': NO_PARTS_YET,
+    '.tr-repeater-group + .tr-repeater-group { margin-top: 2rem }': REPEATER_GROUP_SPACE,
+    '.tr-repeater-group-title { margin: 0 0 0.75rem }': REPEATER_GROUP_TITLE,
   },
   'core/search': {
     '[data-block="search"] { padding: 1rem }': NO_PARTS_YET,

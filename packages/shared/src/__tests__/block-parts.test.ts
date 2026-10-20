@@ -100,6 +100,27 @@ describe('part style CSS', () => {
     expect(css).toContain('[data-part-heading="big"]');
   });
 
+  it('marks every repeater root, groups and aliases included, and anchors at it', () => {
+    const pill: SiteStyle = { id: 'pill', name: 'Pill', targets: ['button'], base: { radius: '999px' } };
+    const items = [{ html: '<p>A</p>', kind: 'x' }, { html: '<p>B</p>', kind: 'y' }];
+    const carousel: Block = { id: 'r', type: 'core/repeater', data: { item_block: 'core/prose', layout: 'carousel', items, part_styles: { carousel_button: 'pill' } } };
+    expect(renderBlocks([carousel], { registry, renderVersion: LATEST_RENDER_VERSION })).toMatch(/^<div data-block="repeater"[^>]* data-part-carousel_button="pill">/);
+    expect(assets([carousel], [pill])).toContain(':where([data-block="repeater"][data-part-carousel_button="pill"] > .tr-carousel-controls > .tr-carousel-button)');
+    const grouped: Block = { ...carousel, data: { ...carousel.data, group_by: 'kind' } };
+    expect(renderBlocks([grouped], { registry, renderVersion: LATEST_RENDER_VERSION }).match(/<div data-block="repeater"[^>]* data-part-carousel_button="pill"/g)).toHaveLength(2);
+    // Group titles sit outside the roots; their own style field reaches them.
+    expect(renderBlocks([{ ...grouped, data: { ...grouped.data, group_title_style_id: 'eyebrow' } }], { registry }).match(/class="tr-repeater-group-title s-eyebrow"/g)).toHaveLength(2);
+    expect(renderBlocks([grouped], { registry })).toContain('class="tr-repeater-group-title">');
+    // An alias renders as core/repeater and shares its parts.
+    const testimonials: Block = { id: 't', type: 'core/testimonials', data: { layout: 'carousel', items: [{ quote: 'A' }, { quote: 'B' }], part_styles: { carousel_button: 'pill' } } };
+    expect(unknownBlockDataFields(testimonials, registry)).toEqual([]);
+    expect(renderBlocks([testimonials], { registry, renderVersion: LATEST_RENDER_VERSION })).toContain('data-part-carousel_button="pill"');
+    expect(assets([testimonials], [pill])).toContain('[data-part-carousel_button="pill"] > .tr-carousel-controls > .tr-carousel-button');
+    expect(treePartStyleIssues([{ ...testimonials, data: { ...testimonials.data, part_styles: { carousel_button: 'missing' } } }], registry, [pill])).toEqual([expect.objectContaining({ code: 'unknown_style', block_type: 'core/repeater' })]);
+    // Without a choice the markup is unchanged.
+    expect(renderBlocks([{ ...carousel, data: { ...carousel.data, part_styles: undefined } }], { registry })).not.toContain('data-part-');
+  });
+
   it('skips a part before its render version', () => {
     const style: SiteStyle = { id: 'sub', name: 'Sub', targets: ['text'], base: { size: '1rem' }, parts: ['core/heading.subtitle'] };
     const blocks: Block[] = [{ id: 'h', type: 'core/heading', data: { text: 'H' } }];
