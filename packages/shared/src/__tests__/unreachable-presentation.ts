@@ -250,17 +250,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="table_of_contents"][data-list-style="chevron"] li::before { border-right: 1.5px solid }': NO_PARTS_YET,
     '[data-block="table_of_contents"][data-list-style="chevron"] li::before { border-top: 1.5px solid }': NO_PARTS_YET,
   },
-  'core/tabs': {
-    '[data-block="tabs"] .block-tabs-strip { border-bottom: 1px solid #8884 }': NO_PARTS_YET,
-    '[data-block="tabs"] .block-tabs-choice { gap: 8px }': NO_PARTS_YET,
-    '[data-block="tabs"]>.block-tabs-toggle { gap: 8px }': NO_PARTS_YET,
-    '[data-block="tabs"] .block-tabs-choice { text-decoration: none }': NO_PARTS_YET,
-    '[data-block="tabs"]>.block-tabs-toggle { text-decoration: none }': NO_PARTS_YET,
-    '[data-block="tabs"] .block-tabs-icon { line-height: 1 }': NO_PARTS_YET,
-    '[data-block="tabs"][data-style="underline"] [aria-selected="true"] { box-shadow: inset 0 -3px currentColor }': NO_PARTS_YET,
-    '[data-block="tabs"][data-style="boxed"] .block-tabs-choice { border: 1px solid #8884 }': NO_PARTS_YET,
-    '[data-block="tabs"][data-collapse-mode="panels"] [aria-selected="true"][aria-expanded="false"] { box-shadow: none }': NO_PARTS_YET,
-  },
   'core/team_member': {
     '[data-block="team_member"] .block-team-link { text-decoration: none }': NO_PARTS_YET,
     '[data-block="team_member"] .block-team-photo { border-radius: 0.5rem }': NO_PARTS_YET,
