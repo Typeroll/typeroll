@@ -336,7 +336,10 @@ export function blockPartStylesCss(blocks: readonly Block[], registry: Registry,
   if (!styles.length) return '';
   const byId = new Map(styles.map(style => [style.id, style]));
   const present = new Set(typeIds);
-  const rules: string[] = [];
+  // Where two parts of a type overlap (a menu's links and its current link),
+  // the part declared later wins: rules are ordered by part, not by style.
+  const entries: Array<{ type: string; index: number; scope: number; key: string; rules: string[] }> = [];
+  const indexOf = (type: BlockType, part: BlockPart) => (type.parts ?? []).indexOf(part);
   for (const style of styles) {
     for (const ref of style.parts ?? []) {
       const parsed = parseBlockPartRef(ref);
@@ -345,17 +348,20 @@ export function blockPartStylesCss(blocks: readonly Block[], registry: Registry,
       const part = type && blockPartsAt(type, opts.renderVersion).find(candidate => candidate.name === parsed.part);
       if (!type || !part || !styleFitsPart(style, part)) continue;
       const selector = blockPartSelector(type, part);
-      if (selector) rules.push(...styleRules(style, [selector], opts.breakpoints));
+      if (selector) entries.push({ type: type.id, index: indexOf(type, part), scope: 0, key: '', rules: styleRules(style, [selector], opts.breakpoints) });
     }
   }
   const choices = new Map<string, { type: BlockType; part: BlockPart; style: string }>();
   collectInstanceChoices(blocks, registry, opts.renderVersion, choices);
-  for (const { type, part, style: id } of [...choices.values()].sort((a, b) => `${a.type.id}|${a.part.name}|${a.style}`.localeCompare(`${b.type.id}|${b.part.name}|${b.style}`))) {
+  for (const { type, part, style: id } of choices.values()) {
     const style = byId.get(id);
     if (!style || !styleFitsPart(style, part)) continue;
     const selector = blockPartSelector(type, part, id);
-    if (selector) rules.push(...styleRules(style, [selector], opts.breakpoints));
+    if (selector) entries.push({ type: type.id, index: indexOf(type, part), scope: 1, key: id, rules: styleRules(style, [selector], opts.breakpoints) });
   }
+  // Stable: site-wide entries keep the library order among themselves.
+  entries.sort((a, b) => a.type.localeCompare(b.type) || a.index - b.index || a.scope - b.scope || a.key.localeCompare(b.key));
+  const rules = entries.flatMap(entry => entry.rules);
   return rules.join('\n');
 }
 

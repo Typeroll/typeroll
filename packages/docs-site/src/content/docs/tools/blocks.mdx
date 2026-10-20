@@ -586,7 +586,9 @@ Selectors may not contain braces, `;`, `@`, comments, pseudo-elements
 (`::before`) or state pseudo-classes such as `:hover` and `:focus`: hover comes
 from the style. A selector that starts with `>` selects a child of the block
 element (`> .gallery-item`); in a block that holds other blocks, anchor every
-part that way so it never reaches into a nested block. A type has at most 16 parts. A selector class that the template
+part that way so it never reaches into a nested block. Where two parts overlap
+(all links, and the link to the current page), the part listed later wins. A
+type has at most 16 parts. A selector class that the template
 never writes is reported as a warning, because the part would match nothing.
 The type gets the `part_styles` field automatically when a part has no
 `style_field`, so do not declare a field of that name yourself. Parts are for

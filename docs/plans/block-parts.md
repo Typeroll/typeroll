@@ -70,6 +70,10 @@ The specificity is always (2,1,0). Lowest first:
    `eyebrow_style_id`, a button's `style_id`, a class from the rich-text
    editor), which the `:not([class…="s-"])` filter leaves alone.
 
+Where two parts of a type overlap (`core/navigation_links` `link` and
+`current_link`), the part declared later wins: rules are emitted in part
+order, whatever the order of the styles in the library.
+
 No `!important` is used. A part style also wins over the block's own fields
 for the properties it sets, as a chosen `style_id` always has: to differ on
 one instance, choose another style for the part there.
