@@ -25,15 +25,22 @@ export const ARTICLE_BLOCK_TYPES: BlockType[] = [
       { name: 'font_weight', type: 'select', label: 'Weight', options: ['400', '500', '600', '700', '800'], default: '600', responsive: true },
       { name: 'font', type: 'select', label: 'Font', options: ['heading', 'body', 'inherit'], default: 'heading' },
       { name: 'color', type: 'color', label: 'Text color' },
+      // Unset (or inherit) keeps the site's Link style; text links elsewhere are unaffected.
+      { name: 'link_decoration', type: 'select', label: 'Link underline', options: ['inherit', 'none', 'underline'], option_labels: ['Site link style', 'None', 'Underline'] },
+      { name: 'link_hover_decoration', type: 'select', label: 'Link underline on hover', options: ['inherit', 'none', 'underline'], option_labels: ['Same as link', 'None', 'Underline'] },
     ],
-    template: '<{{=level}} data-block="rich_heading" data-level="{{level}}" data-font="{{font}}" {{{heading_anchor_attr}}} style="--align:{{align}};--font_weight:{{font_weight}};--heading-color:{{color}}">{{{html}}}</{{=level}}>',
+    template: '<{{=level}} data-block="rich_heading" data-level="{{level}}" data-font="{{font}}"{{#link_decoration}} data-link-decoration="{{link_decoration}}"{{/link_decoration}}{{#link_hover_decoration}} data-link-hover="{{link_hover_decoration}}"{{/link_hover_decoration}} {{{heading_anchor_attr}}} style="--align:{{align}};--font_weight:{{font_weight}};--heading-color:{{color}}">{{{html}}}</{{=level}}>',
     styles: `[data-block="rich_heading"][data-level] { margin:0;text-align:var(--align,left);font-size:var(--font_size_px,var(--rich-heading-size,var(--type-h2,1.375rem)));line-height:var(--line_height,1.25);font-weight:var(--font_weight,600);color:var(--heading-color,inherit);overflow-wrap:anywhere; }
 [data-block="rich_heading"][data-font="heading"] { font-family:var(--font-heading,inherit); }
 [data-block="rich_heading"][data-font="body"] { font-family:var(--font-body,inherit); }
 [data-block="rich_heading"][data-font="inherit"] { font-family:inherit; }
 ${['h1','h2','h3','h4','h5','h6'].map(level => `[data-block="rich_heading"][data-level="${level}"] { --rich-heading-size:var(--${level}_size_px,var(--type-${level},1.25rem)); }`).join('\n')}
 [data-block="rich_heading"] a { color:inherit;text-decoration:underline;text-underline-offset:.15em; }
-[data-block="rich_heading"] a:focus-visible { outline:2px solid currentColor;outline-offset:3px; }`,
+[data-block="rich_heading"] a:focus-visible { outline:2px solid currentColor;outline-offset:3px; }
+[data-block="rich_heading"][data-link-decoration="none"] a[href] { text-decoration:none; }
+[data-block="rich_heading"][data-link-decoration="underline"] a[href] { text-decoration:underline;text-underline-offset:.15em; }
+[data-block="rich_heading"][data-link-hover="none"] a[href]:hover { text-decoration:none; }
+[data-block="rich_heading"][data-link-hover="underline"] a[href]:hover { text-decoration:underline;text-underline-offset:.15em; }`,
     origin: 'core', created_at: '1970-01-01T00:00:00Z',
   },
   {

@@ -1028,7 +1028,12 @@ restores the block default. Required content fields remain visible.
 
 Formatted headings (`core/rich_heading`) support linked rich text with the same
 responsive size, line height, weight, font and alignment controls as ordinary
-headings. A container with rounded corners clips child backgrounds only when
+headings. Its links follow the site's Link style (`--link-decoration`) unless
+the block sets `link_decoration` (`inherit`, `none` or `underline`) and
+`link_hover_decoration` (`inherit`, `none` or `underline`), for example
+`link_decoration: "none"` with `link_hover_decoration: "underline"` for a
+category heading that links to its page while body links stay underlined. The
+focus outline stays visible either way (Core 0.2.80). A container with rounded corners clips child backgrounds only when
 `overflow: "clip"` is explicitly selected; the default remains `visible` for
 menus, focus and other overflowing content. Mobile menus include an inner inset;
 `panel_padding: "none"` deliberately removes it. PDF text links use the theme's
