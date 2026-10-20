@@ -158,29 +158,17 @@ jobs:
             echo "::error::Could not safely determine whether $IMAGE exists: $RESULT"
             exit 1
           fi
-      - uses: docker/setup-buildx-action@v4
-        if: needs.plan.outputs.publish_core == 'true' && steps.registry.outputs.exists != 'true'
       - name: Build and publish immutable image
         id: image
         if: needs.plan.outputs.publish_core == 'true' && steps.registry.outputs.exists != 'true'
-        uses: docker/build-push-action@v7
+        uses: ./.github/actions/core-image
         with:
-          context: .
+          source_sha: ${{ needs.plan.outputs.source_sha }}
+          core_tag: ${{ needs.plan.outputs.core_tag }}
           push: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
           tags: |
             ghcr.io/typeroll/typeroll:${{ needs.plan.outputs.core_tag }}
             ghcr.io/typeroll/typeroll:sha-${{ needs.plan.outputs.source_sha }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ needs.plan.outputs.source_sha }}
-            org.opencontainers.image.version=${{ needs.plan.outputs.core_tag }}
-          build-args: |
-            TYPEROLL_SOURCE_SHA=${{ needs.plan.outputs.source_sha }}
-          platforms: linux/amd64
-          cache-from: type=gha,scope=core
-          cache-to: type=gha,scope=core,mode=max
-          sbom: true
-          provenance: mode=max
       - name: Resolve release digest
         id: digest
         env:

@@ -132,3 +132,16 @@ test('unchanged packages do not reinstall build dependencies during publication'
   assert.doesNotMatch(core, /run: npm ci/);
   assert.match(workflow, /Install MCP build dependencies\n        if: needs\.plan\.outputs\.publish_mcp == 'true'/);
 });
+
+test('every Core image build uses the one shared build definition', () => {
+  const action = readFileSync(new URL('../.github/actions/core-image/action.yml', import.meta.url), 'utf8');
+  for (const source of [workflow, testWorkflow]) {
+    assert.doesNotMatch(source, /docker\/build-push-action|docker\/setup-buildx-action/);
+  }
+  assert.match(workflow, /uses: \.\/\.github\/actions\/core-image/);
+  assert.match(action, /using: composite/);
+  assert.match(action, /org\.opencontainers\.image\.revision=\$\{\{ inputs\.source_sha \}\}/);
+  assert.match(action, /org\.opencontainers\.image\.version=\$\{\{ inputs\.core_tag \}\}/);
+  assert.match(action, /TYPEROLL_SOURCE_SHA=\$\{\{ inputs\.source_sha \}\}/);
+  assert.match(action, /platforms: linux\/amd64\n\s+cache-from: type=gha,scope=core\n\s+cache-to: type=gha,scope=core,mode=max\n\s+sbom: true\n\s+provenance: mode=max/);
+});
