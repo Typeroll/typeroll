@@ -1585,7 +1585,17 @@ const tableOfContents: BlockType = {
   icon: 'list-tree',
   category: 'content',
   container: false,
+  // The card itself (border, shadow) takes a container style through
+  // `style_id`. The script marks the link of the heading in view as current.
+  parts: [
+    { name: 'title', label: 'Title', selector: 'strong', target: 'text' },
+    { name: 'list', label: 'List', selector: 'ol', target: 'list' },
+    { name: 'item', label: 'Item', selector: 'li', target: 'text' },
+    { name: 'link', label: 'Links', selector: 'a', target: 'link', color: 'primary' },
+    { name: 'current_link', label: 'Current link', selector: 'a[aria-current="location"]', target: 'link', color: 'primary' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Table of contents style', style_target: 'container', editor_group: 'content' },
     pixels('padding_px', 'Padding (px)', 0, 120),
     pixels('radius_px', 'Corner radius (px)', 0, 120),
     { name: 'link_color', type: 'select', label: 'Link color', options: ['theme', 'neutral'], default: 'theme' },

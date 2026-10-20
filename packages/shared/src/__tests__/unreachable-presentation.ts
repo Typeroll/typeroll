@@ -14,15 +14,14 @@ const NO_PARTS_YET = 'parts not declared yet (docs/plans/block-parts.md)';
 /** The hero video pause control: an accessibility control, not design. */
 const VIDEO_CONTROL = 'the background video pause control keeps one accessible look on every site (WCAG 2.2.2); it is not a design element';
 
+/** The table of contents indents subheadings under their heading. */
+const TOC_INDENT = 'the indent shows which heading a subheading belongs to; the indent field turns it off, and a style sets no inline margins (the item part takes the rest of the item\'s look)';
+
 export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = {
   'core/columns': {
     '[data-block="columns"] { gap: 2rem }': NO_PARTS_YET,
     '[data-block="columns"][data-gap="sm"] { gap: 1rem }': NO_PARTS_YET,
     '[data-block="columns"][data-gap="lg"] { gap: 3rem }': NO_PARTS_YET,
-  },
-  'core/container': {
-    ':is([data-block="container"], [data-block="semantic-container"])[data-shadow="subtle"] { box-shadow: 0 2px 8px rgb(0 0 0 / 12%) }': NO_PARTS_YET,
-    ':is([data-block="container"], [data-block="semantic-container"])[data-shadow="header"] { box-shadow: 0 2px 5px rgb(0 0 0 / 20%) }': NO_PARTS_YET,
   },
   'core/divider': {
     '[data-block="divider"] { border: none }': NO_PARTS_YET,
@@ -123,19 +122,8 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="table"][data-borders="rows"] th { border-width: 0 0 1px }': NO_PARTS_YET,
   },
   'core/table_of_contents': {
-    '[data-block="table_of_contents"] { border: 1px solid color-mix(in srgb, currentColor 18%, transparent) }': NO_PARTS_YET,
-    '[data-block="table_of_contents"] a[aria-current="location"] { font-weight: 700 }': NO_PARTS_YET,
-    '[data-block="table_of_contents"] a[aria-current="location"] { text-decoration: underline }': NO_PARTS_YET,
-    '[data-block="table_of_contents"] ol { margin: 0.65rem 0 0 }': NO_PARTS_YET,
-    '[data-block="table_of_contents"] ol { padding-left: 1.25rem }': NO_PARTS_YET,
-    '[data-block="table_of_contents"] li + li { margin-top: 0.5rem }': NO_PARTS_YET,
-    '[data-block="table_of_contents"]:not([data-indent="false"]) li[data-level="3"] { margin-left: 1rem }': NO_PARTS_YET,
-    '[data-block="table_of_contents"]:not([data-indent="false"]) li[data-level="4"] { margin-left: 2rem }': NO_PARTS_YET,
-    '[data-block="table_of_contents"] a { text-underline-offset: 0.15em }': NO_PARTS_YET,
-    '[data-block="table_of_contents"][data-shadow="subtle"] { box-shadow: 0 2px 12px rgb(0 0 0 / .1) }': NO_PARTS_YET,
-    '[data-block="table_of_contents"][data-list-style="chevron"] li { padding-inline-start: 1em }': NO_PARTS_YET,
-    '[data-block="table_of_contents"][data-list-style="chevron"] li::before { border-right: 1.5px solid }': NO_PARTS_YET,
-    '[data-block="table_of_contents"][data-list-style="chevron"] li::before { border-top: 1.5px solid }': NO_PARTS_YET,
+    '[data-block="table_of_contents"]:not([data-indent="false"]) li[data-level="3"] { margin-left: 1rem }': TOC_INDENT,
+    '[data-block="table_of_contents"]:not([data-indent="false"]) li[data-level="4"] { margin-left: 2rem }': TOC_INDENT,
   },
   'core/tabs': {
     '[data-block="tabs"] .block-tabs-strip { border-bottom: 1px solid #8884 }': NO_PARTS_YET,
