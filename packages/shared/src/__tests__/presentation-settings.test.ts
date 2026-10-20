@@ -23,12 +23,19 @@ import {
   renderBlocks,
   renderClientCapabilityScripts,
   integrationConfigKey,
+  instanceStyleParts,
+  blockPartQuery,
+  blockPartsAt,
+  blockPartsProblems,
   siteThemeCss,
   defaultSiteSettings,
   type Block,
   type BlockType,
   type FieldDefinition,
 } from '../index.js';
+
+import { declarationKey, partSampleBlock, sampleDom, unreachablePresentation } from './presentation-audit.js';
+import { UNREACHABLE_PRESENTATION } from './unreachable-presentation.js';
 
 const registry = buildCoreBlockRegistry();
 const templateCss = (name: string) => readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../site-template/src/styles', name), 'utf8');
@@ -246,7 +253,7 @@ describe('every core block field changes what renders', () => {
   const CONTEXT: Record<string, string> = {
     ...Object.fromEntries(['h1_size_px', 'h2_size_px', 'h3_size_px', 'h4_size_px', 'h5_size_px', 'h6_size_px', 'heading_before_px', 'heading_after_px', 'max_width', 'font_size', 'line_height', 'paragraph_spacing', 'rhythm']
       .map(name => [`template_content_slot.${name}`, 'applied when a page is composed into its template (template-blocks tests)'])),
-    ...Object.fromEntries(['title', 'fields', 'layout'].map(name => [`core/field_list.${name}`, 'needs the content type field definitions (field-list.test.ts)'])),
+    ...Object.fromEntries(['title', 'fields', 'layout', 'part_styles'].map(name => [`core/field_list.${name}`, 'needs the content type field definitions (field-list.test.ts)'])),
     'core/repeater.derived_source': 'needs app-computed derived data (derived-repeater.test.ts)',
     'core/repeater.field': 'needs a page with reference fields (related source)',
     'core/repeater.show_pagination': 'needs archive pagination context',
@@ -256,6 +263,7 @@ describe('every core block field changes what renders', () => {
     'template/page_date.format': 'needs a real page date',
     'template/page_author.show_avatar': 'needs an author with an avatar',
     'template/page_author.prefix': 'needs an author',
+    'template/page_author.part_styles': 'needs an author (presentation-audit PART_SAMPLE_CONTEXTS)',
     'template/site_logo.link_to_home': 'needs a site logo',
     'template/show_if.condition': 'needs page values the condition can test',
     ...Object.fromEntries(['text', 'email', 'phone', 'url', 'number', 'textarea', 'select', 'radio_group', 'boolean', 'checkbox_group', 'toggle', 'slider', 'date', 'consent']
@@ -312,7 +320,8 @@ describe('every core block field changes what renders', () => {
         if (SKIP_TYPES.has(field.type) || CONTEXT[key]) continue;
         const block = base(type, WHEN[key]);
         const current = block.data?.[field.name];
-        let value = sample(field, field.required === true && field.default === undefined);
+        let value = field.type === 'part_styles' ? { [instanceStyleParts(type, LATEST)[0]!.name]: 'sample-style' }
+          : sample(field, field.required === true && field.default === undefined);
         if (JSON.stringify(value) === JSON.stringify(current)) value = sample(field, true);
         if (value === undefined) continue;
         const changed = output(block) !== output({ ...block, data: { ...block.data, [field.name]: value } });
@@ -322,6 +331,59 @@ describe('every core block field changes what renders', () => {
     }
     expect(inert, 'fields that change nothing when set').toEqual([]);
     expect(revived, 'KNOWN_DEAD entries that now render: remove them').toEqual([]);
+  });
+});
+
+describe('every presentational value a core block writes is reachable', () => {
+  // A literal in a block's CSS (a link underline, an eyebrow's tracking, a
+  // button radius) that no field, style or variable reaches can only be
+  // changed with site CSS against platform markup. Each must read a
+  // variable, style an element a style reaches (a declared part, the style
+  // element) with a property a style sets, or be listed in
+  // UNREACHABLE_PRESENTATION with a reason. Blocks without parts yet are
+  // listed whole; declaring parts (docs/plans/block-parts.md) removes their
+  // entries, and a stale entry fails here so the list stays true.
+  const LATEST = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;
+
+  it(`at render version ${LATEST}`, () => {
+    const added: string[] = [];
+    const stale: string[] = [];
+    for (const type of registry.values()) {
+      const found = new Set(unreachablePresentation(type, partSampleBlock(type), registry, LATEST).map(declarationKey));
+      const listed = UNREACHABLE_PRESENTATION[type.id] ?? {};
+      for (const key of found) if (!listed[key]) added.push(`${type.id}: ${key}`);
+      for (const key of Object.keys(listed)) if (!found.has(key)) stale.push(`${type.id}: ${key}`);
+    }
+    expect(added, 'declare a part for these elements (docs/plans/block-parts.md), read a variable, or list them in UNREACHABLE_PRESENTATION with a reason').toEqual([]);
+    expect(stale, 'reachable now or no longer in the CSS: remove them from UNREACHABLE_PRESENTATION').toEqual([]);
+  });
+
+  it('lists only core blocks, each entry with a reason', () => {
+    for (const [id, entries] of Object.entries(UNREACHABLE_PRESENTATION)) {
+      expect(registry.has(id), id).toBe(true);
+      for (const [key, reason] of Object.entries(entries)) expect(reason.trim().length, `${id}: ${key}`).toBeGreaterThan(10);
+    }
+  });
+
+  it('every declared part matches an element in the sample markup', () => {
+    const missing: string[] = [];
+    for (const { version } of RENDER_VERSIONS) {
+      for (const type of registry.values()) {
+        const parts = blockPartsAt(type, version);
+        if (!parts.length) continue;
+        const dom = sampleDom(partSampleBlock(type), registry, version);
+        for (const part of parts) if (!dom?.root.querySelector(blockPartQuery(part.selector))) missing.push(`${type.id}.${part.name}@v${version}: ${part.selector}`);
+      }
+    }
+    expect(missing, 'fix the selector, give the part a min_render_version, or extend PART_SAMPLES so the sample renders it').toEqual([]);
+  });
+
+  it('declares valid parts whose style fields exist', () => {
+    for (const type of registry.values()) {
+      expect(blockPartsProblems(type.parts, type.schema), type.id).toEqual([]);
+      const hasField = type.schema.some(field => field.name === 'part_styles');
+      expect(hasField, `${type.id} has the part_styles field exactly when an instance can style a part`).toBe(instanceStyleParts(type, LATEST).length > 0);
+    }
   });
 });
 
@@ -369,5 +431,26 @@ describe('platform base CSS has no unreachable opinions', () => {
     }
     expect(unreachable, 'make it a setting or a style variable, or list it in DELIBERATE with how a site changes it').toEqual([]);
     expect(Object.keys(DELIBERATE).filter(key => !used.has(key)), 'stale DELIBERATE entries').toEqual([]);
+  });
+});
+
+describe('documented block parts', () => {
+  // docs-site tools/blocks.mdx lists every core block part; this keeps it true.
+  it('match the block definitions', () => {
+    const docs = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../docs-site/src/content/docs/tools/blocks.mdx'), 'utf8');
+    const section = docs.slice(docs.indexOf('### Parts of the core blocks'));
+    const lines = section.split('\n');
+    const first = lines.findIndex(line => line.startsWith('|'));
+    const end = lines.findIndex((line, index) => index > first && !line.startsWith('|'));
+    const rows = lines.slice(first + 2, end).map(line => line.split('|').slice(1, -1).map(cell => cell.trim()));
+    const documented: string[] = [];
+    let block = '';
+    for (const [name, part, , target, field] of rows) {
+      if (name) block = name.match(/`([^`]+)`/)?.[1] ?? '';
+      documented.push(`${block}.${part.replace(/`/g, '')} ${target} ${field.replace(/`/g, '')}`);
+    }
+    const declared = [...registry.values()].flatMap(type => (type.parts ?? [])
+      .map(part => `${type.id}.${part.name} ${part.target} ${part.style_field ?? 'part_styles'}`));
+    expect(documented.sort()).toEqual(declared.sort());
   });
 });

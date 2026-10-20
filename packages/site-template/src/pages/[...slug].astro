@@ -44,7 +44,7 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
   pageIdentityAttributes,
 } from '@typeroll/shared';
 import type { Block, RenderContext } from '@typeroll/shared';
-import { resolveRenderVersion } from '@typeroll/shared';
+import { resolveBreakpointWidths, resolveRenderVersion } from '@typeroll/shared';
 import { getPageTemplate } from '../lib/content';
 
 import { getChangedSiteRoutes, type PageProps } from '../lib/routes';
@@ -199,7 +199,11 @@ let formsRuntimeTag = '';
     ...(header?.content_mode === 'blocks' ? header.blocks ?? [] : []),
     ...(footer?.content_mode === 'blocks' ? footer.blocks ?? [] : []),
   ];
-  const assets = collectBlockAssets([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks], blockRegistry, { renderVersion, globalBlockSource });
+  const assets = collectBlockAssets([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks], blockRegistry, {
+    renderVersion, globalBlockSource,
+    // Block part styles (site-wide and per instance), the same CSS the preview emits.
+    siteStyles: { styles: settings.styles, breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints) },
+  });
   // Same tree as the asset pass — a header banner and a footer banner both
   // asking for addresses must produce one loader, not two.
   clientCapabilities = [...collectClientCapabilities(withGlobalBlockContent([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks], globalBlockSource))];

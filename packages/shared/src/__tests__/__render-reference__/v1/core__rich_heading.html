@@ -40,3 +40,7 @@
 [data-block="rich_heading"][data-level="h6"] { --rich-heading-size:var(--h6_size_px,var(--type-h6,1.25rem)); }
 [data-block="rich_heading"] a { color:inherit;text-decoration:underline;text-underline-offset:.15em; }
 [data-block="rich_heading"] a:focus-visible { outline:2px solid currentColor;outline-offset:3px; }
+[data-block="rich_heading"][data-link-decoration="none"] a[href] { text-decoration:none; }
+[data-block="rich_heading"][data-link-decoration="underline"] a[href] { text-decoration:underline;text-underline-offset:.15em; }
+[data-block="rich_heading"][data-link-hover="none"] a[href]:hover { text-decoration:none; }
+[data-block="rich_heading"][data-link-hover="underline"] a[href]:hover { text-decoration:underline;text-underline-offset:.15em; }

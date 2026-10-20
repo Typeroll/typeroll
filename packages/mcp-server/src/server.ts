@@ -197,8 +197,11 @@ The full playbook ships with this server — use it:
    style through a block's style_id, and create_style for any look that could
    recur. Use one-off block values only for something clearly unique, never
    classed raw HTML. Text must meet WCAG AA contrast. A heading's small label
-   is its eyebrow field. For what styles cannot express, use page or site
-   custom_css on s-<style> or block custom_class selectors, not [data-block].
+   is its eyebrow field. A block's sub-elements (links, a hero's heading or
+   buttons) are parts (read_block_type): style them site-wide with a style's
+   parts or on one block with data.part_styles. For what styles cannot
+   express, use page or site custom_css on s-<style> or block custom_class
+   selectors, not [data-block].
 7. Reuse: content that must stay identical on many pages is a global block
    (make_block_global; core/global_block references it). A section people
    start from and then adapt is a block template (list_block_templates,

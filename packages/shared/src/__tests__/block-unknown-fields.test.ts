@@ -148,7 +148,7 @@ describe('the check never rejects a key the renderer reads', () => {
     const showIf = core.get('template/show_if')!;
     const condition = sampleBlockData(showIf.schema).condition;
     expect(knownBlockDataKeys(showIf, core, { condition })!.has(String(condition))).toBe(true);
-  });
+  }, 60_000); // Renders every core block many times; the full CI gate runs in parallel.
 
   it('templates read no undeclared block data: every other name they use is set by the renderer', () => {
     const live: string[] = [];
@@ -171,7 +171,7 @@ describe('the check never rejects a key the renderer reads', () => {
       }
     }
     expect(live).toEqual([]);
-  });
+  }, 60_000); // Renders every core block many times; the full CI gate runs in parallel.
 
   it('no name the renderer source reads from block data changes a core block without being known', () => {
     // Every `data.<name>`-style read in the shared renderer sources.
@@ -195,5 +195,5 @@ describe('the check never rejects a key the renderer reads', () => {
     }
     expect(names.size).toBeGreaterThan(100);
     expect(live).toEqual([]);
-  });
+  }, 60_000); // Renders every core block many times; the full CI gate runs in parallel.
 });

@@ -1,6 +1,8 @@
 import { useContext, useEffect, useId, useState } from 'react';
-import type { Breakpoint, FieldDefinition, ResponsiveBreakpoints, SiteStyle } from '@typeroll/shared';
-import { BREAKPOINTS, BREAKPOINTS_ABOVE_MOBILE, resolveBreakpointWidths, responsiveBreakpointsError, stylesForTarget } from '@typeroll/shared';
+import type { BlockPart, BlockType, Breakpoint, FieldDefinition, ResponsiveBreakpoints, SiteStyle } from '@typeroll/shared';
+import {
+  BREAKPOINTS, BREAKPOINTS_ABOVE_MOBILE, blockPartRef, instanceStyleParts, resolveBreakpointWidths, responsiveBreakpointsError, styleFitsPart, stylesForTarget,
+} from '@typeroll/shared';
 import { Monitor } from 'lucide-react';
 import RichTextInput from './RichTextInput';
 import ContentReferenceInput from './ContentReferenceInput';
@@ -10,8 +12,8 @@ import LinkFieldInput from './LinkFieldInput';
 import MediaPicker from './MediaPicker';
 import { loadInternalPages, type InternalPageOption } from './internal-pages';
 
-import { GlobalBlocksContext, SiteStylesContext } from './editor-context';
-export { fieldAvailable, GlobalBlocksContext, RenderVersionContext, SiteStylesContext } from './editor-context';
+import { EditedBlockTypeContext, GlobalBlocksContext, RenderVersionContext, SiteStylesContext } from './editor-context';
+export { EditedBlockTypeContext, fieldAvailable, GlobalBlocksContext, RenderVersionContext, SiteStylesContext } from './editor-context';
 
 export default function FieldInput({
   siteId, field, value, onChange, responsive, activeBp, hasOwn, triState = false, siteWidths,
@@ -43,7 +45,13 @@ export default function FieldInput({
   const v = (value ?? '') as string;
   const siteStyles = useContext(SiteStylesContext);
   const globalBlocks = useContext(GlobalBlocksContext);
+  const editedType = useContext(EditedBlockTypeContext);
+  const renderVersion = useContext(RenderVersionContext);
   switch (field.type) {
+    case 'part_styles':
+      // Generated for block types with parts; never a free-text value.
+      return <PartStylesInput id={fieldId} siteId={siteId} field={field} value={value} onChange={onChange} help={help} describedBy={describedBy}
+        type={editedType} styles={siteStyles ?? []} parts={editedType ? stylableParts(editedType, renderVersion) : []} />;
     case 'global_block': {
       const options = globalBlocks?.blocks ?? [];
       const current = options.find(block => block.id === v);
@@ -250,6 +258,73 @@ export default function FieldInput({
         style={textInput}
       />
     </div>
+  );
+}
+
+/** Parts an instance may style at the site's render version; every one when no editor sets the version. */
+export function stylableParts(type: Pick<BlockType, 'parts'>, renderVersion: number | null): BlockPart[] {
+  return renderVersion === null ? (type.parts ?? []).filter(part => !part.style_field) : instanceStyleParts(type, renderVersion);
+}
+
+/**
+ * The `part_styles` value after choosing `styleId` for `part` (empty: the
+ * site default). Only parts the instance may style are kept, and an empty
+ * map becomes undefined so the field is removed from the block data.
+ */
+export function setPartStyle(current: unknown, part: string, styleId: string, parts: readonly string[]): Record<string, string> | undefined {
+  const next: Record<string, string> = {};
+  if (current && typeof current === 'object' && !Array.isArray(current)) {
+    for (const name of parts) {
+      const id = (current as Record<string, unknown>)[name];
+      if (typeof id === 'string' && id) next[name] = id;
+    }
+  }
+  if (styleId && parts.includes(part)) next[part] = styleId;
+  else delete next[part];
+  return Object.keys(next).length ? next : undefined;
+}
+
+/** One style picker per part of the block that an instance may style (`part_styles`). */
+function PartStylesInput({ id, siteId, field, value, onChange, help, describedBy, type, styles, parts }: {
+  id: string;
+  siteId?: string;
+  field: FieldDefinition;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  help: React.ReactNode;
+  describedBy?: string;
+  type: Pick<BlockType, 'id' | 'parts'> | null;
+  styles: readonly SiteStyle[];
+  parts: readonly BlockPart[];
+}) {
+  if (!type || !parts.length) return null;
+  const current = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const names = parts.map(part => part.name);
+  return (
+    <fieldset style={{ ...fieldGroup, border: 0, padding: 0, margin: '0 0 0.75rem' }} aria-describedby={describedBy}>
+      <legend style={{ ...fieldLabel, padding: 0 }}>{field.label}</legend>
+      {help}
+      {parts.map(part => {
+        const controlId = `${id}-${part.name}`;
+        const options = stylesForTarget(styles, part.target);
+        const stored = current[part.name];
+        const selected = typeof stored === 'string' ? stored : '';
+        const missing = selected && !options.some(style => style.id === selected);
+        const ref = blockPartRef(type.id, part.name);
+        const siteWide = styles.find(style => style.parts?.includes(ref) && styleFitsPart(style, part));
+        return (
+          <div key={part.name} style={{ marginBottom: 6 }}>
+            <label htmlFor={controlId} style={fieldLabel}>{part.label}</label>
+            <select id={controlId} value={selected} onChange={(e) => onChange(setPartStyle(current, part.name, e.target.value, names))} style={selectInput}>
+              <option value="">{siteWide ? `Site default (${siteWide.name})` : 'Site default'}</option>
+              {options.map(style => <option key={style.id} value={style.id}>{style.name}</option>)}
+              {missing && <option value={selected}>{selected} (missing style)</option>}
+            </select>
+          </div>
+        );
+      })}
+      {siteId && <a href={`/app/sites/${siteId}/styles`} target="_blank" rel="noopener" style={{ fontSize: '.75rem', color: '#a5b4fc' }}>Manage styles</a>}
+    </fieldset>
   );
 }
 

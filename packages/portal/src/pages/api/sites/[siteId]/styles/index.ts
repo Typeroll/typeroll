@@ -10,8 +10,8 @@ const ctxOf = (value: { site: { id: string }; versionId: string; owner_org_id: s
 export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const { styles, colors, renderVersion } = await readStyles(ctxOf(guard.value));
-  return json({ styles, colors, render_version: renderVersion, problems: libraryProblems(styles, colors, renderVersion), warnings: libraryWarnings(styles, colors, renderVersion) });
+  const { styles, colors, renderVersion, registry } = await readStyles(ctxOf(guard.value));
+  return json({ styles, colors, render_version: renderVersion, problems: libraryProblems(styles, colors, renderVersion, registry), warnings: libraryWarnings(styles, colors, renderVersion, registry) });
 };
 
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {

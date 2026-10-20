@@ -272,6 +272,8 @@ const divider: BlockType = {
   category: 'layout',
   container: false,
   schema: [
+    // The line is the root: a style sets its opacity, spacing or border.
+    { name: 'style_id', type: 'style', label: 'Divider style', style_target: 'container', editor_group: 'content' },
     { name: 'style', type: 'select', label: 'Line style', options: ['solid', 'dashed', 'dotted'], default: 'solid' },
     { name: 'width', type: 'select', label: 'Width', options: ['full', 'narrow', 'normal'], default: 'full' },
     { name: 'color', type: 'color', label: 'Color' },
@@ -313,6 +315,8 @@ const icon: BlockType = {
   category: 'content',
   container: false,
   schema: [
+    // The icon is the root: a style sets its size, colour or a surface behind it.
+    { name: 'style_id', type: 'style', label: 'Icon style', style_target: 'container', editor_group: 'content' },
     { name: 'icon', type: 'icon', label: 'Icon' },
     { name: 'size', type: 'select', label: 'Size', options: ['sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
     pixels('size_px', 'Icon size (px)', 8, 256),
@@ -353,7 +357,14 @@ const iconBox: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'icon', label: 'Icon', selector: '.block-iconbox-icon', target: 'container', decorative: true },
+    { name: 'heading', label: 'Heading', selector: '.block-iconbox-heading', target: 'heading', background_field: 'background' },
+    { name: 'text', label: 'Body text', selector: '.block-iconbox-text', target: 'text', background_field: 'background' },
+    { name: 'link', label: 'Link', selector: '.block-iconbox-link', target: 'link', color: 'primary', background_field: 'background' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     pixels('icon_size_px', 'Icon size (px)', 16, 160),
     pixels('heading_size_px', 'Heading size (px)', 12, 80),
     pixels('min_height_px', 'Minimum height (px)', 0, 800),
@@ -437,6 +448,17 @@ const hero: BlockType = {
   icon: 'panel-top',
   category: 'layout',
   container: false,
+  parts: [
+    { name: 'eyebrow', label: 'Eyebrow', selector: '.block-hero-eyebrow', target: 'text', background_field: 'background' },
+    { name: 'heading', label: 'Heading', selector: '.block-hero-heading', target: 'heading', background_field: 'background' },
+    { name: 'subheading', label: 'Subheading', selector: '.block-hero-sub', target: 'text', background_field: 'background' },
+    { name: 'primary_button', label: 'Primary button', selector: '.block-btn-primary', target: 'button', color: 'on_primary', background: 'primary' },
+    { name: 'secondary_button', label: 'Secondary button', selector: '.block-btn-secondary', target: 'button', color: 'primary', background_field: 'background' },
+    { name: 'media', label: 'Image', selector: '.block-hero-media img', target: 'image' },
+    { name: 'layout', label: 'Text and image columns', selector: '.block-hero-inner', target: 'container', decorative: true },
+    { name: 'actions', label: 'Button row', selector: '.block-hero-actions', target: 'container', decorative: true },
+    { name: 'overlay', label: 'Image overlay', selector: '.block-hero-overlay', target: 'container', decorative: true },
+  ],
   schema: [
     { name: 'eyebrow', type: 'text', label: 'Eyebrow' },
     { name: 'heading', type: 'text', label: 'Heading' },
@@ -533,7 +555,19 @@ const cta: BlockType = {
   icon: 'megaphone',
   category: 'content',
   container: false,
+  // The band is the primary colour with on-primary text unless `background`
+  // sets another; the primary button inverts it. The band itself (its
+  // padding) takes a container style through `style_id`.
+  parts: [
+    { name: 'eyebrow', label: 'Eyebrow', selector: '.block-cta-eyebrow', target: 'text', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'heading', label: 'Heading', selector: '.block-cta-heading', target: 'heading', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'subheading', label: 'Subheading', selector: '.block-cta-sub', target: 'text', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'primary_button', label: 'Primary button', selector: '.block-btn-primary', target: 'button', color: 'primary', background: 'on_primary' },
+    { name: 'secondary_button', label: 'Secondary button', selector: '.block-btn-secondary', target: 'button', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'actions', label: 'Button row', selector: '.block-cta-actions', target: 'container', decorative: true },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'CTA style', style_target: 'container', editor_group: 'content' },
     { name: 'eyebrow', type: 'text', label: 'Eyebrow' },
     { name: 'heading', type: 'text', label: 'Heading' },
     { name: 'subheading', type: 'richtext', label: 'Subheading' },
@@ -600,7 +634,18 @@ const testimonial: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  // Measured on the default card surface.
+  parts: [
+    { name: 'quote', label: 'Quote', selector: '.block-testimonial-quote', target: 'text', background: 'surface' },
+    { name: 'rating', label: 'Rating', selector: '.block-testimonial-rating', target: 'text', background: 'surface', min_render_version: 7 },
+    { name: 'attribution', label: 'Attribution row', selector: '.block-testimonial-cite', target: 'text', background: 'surface' },
+    { name: 'avatar', label: 'Avatar', selector: '.block-testimonial-avatar', target: 'image' },
+    { name: 'name', label: 'Name', selector: '.block-testimonial-name', target: 'text', background: 'surface' },
+    { name: 'role', label: 'Role and company', selector: '.block-testimonial-role', target: 'text', background: 'surface' },
+    { name: 'logo', label: 'Company logo', selector: '.block-testimonial-logo', target: 'image' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'quote', type: 'richtext', label: 'Quote', required: true },
     { name: 'name', type: 'text', label: 'Name' },
     { name: 'role', type: 'text', label: 'Role / title' },
@@ -657,6 +702,16 @@ const teamMember: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'card', label: 'Card', selector: '.block-team-link', target: 'container' },
+    { name: 'photo', label: 'Photo', selector: '.block-team-photo', target: 'image' },
+    { name: 'body', label: 'Text panel', selector: '.block-team-body', target: 'container' },
+    { name: 'name', label: 'Name', selector: '.block-team-name', target: 'heading' },
+    { name: 'role', label: 'Role', selector: '.block-team-role', target: 'text' },
+    { name: 'bio', label: 'Bio', selector: '.block-team-bio', target: 'text' },
+    { name: 'socials', label: 'Social links list', selector: '.block-team-socials', target: 'list' },
+    { name: 'social_link', label: 'Social link', selector: '.block-team-social', target: 'link', min_render_version: 4 },
+  ],
   schema: [
     { name: 'name', type: 'text', label: 'Name', required: true },
     { name: 'role', type: 'text', label: 'Role' },
@@ -728,7 +783,19 @@ const pricingPlan: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'badge', label: 'Badge', selector: '.block-pricing-badge', target: 'text', color: 'on_primary', background: 'primary' },
+    { name: 'name', label: 'Plan name', selector: '.block-pricing-name', target: 'heading' },
+    { name: 'price', label: 'Price', selector: '.block-pricing-price', target: 'text' },
+    { name: 'period', label: 'Period', selector: '.block-pricing-period', target: 'text' },
+    { name: 'description', label: 'Tagline', selector: '.block-pricing-description', target: 'text' },
+    { name: 'features', label: 'Feature list', selector: '.block-pricing-features', target: 'list' },
+    { name: 'included_feature', label: 'Included feature', selector: '.block-pricing-features li[data-included="true"]', target: 'text', min_render_version: 4 },
+    { name: 'excluded_feature', label: 'Excluded feature', selector: '.block-pricing-features li[data-included="false"]', target: 'text', min_render_version: 4 },
+    { name: 'button', label: 'Button', selector: '.block-pricing-cta', target: 'button', color: 'on_primary', background: 'primary' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'name', type: 'text', label: 'Plan name', required: true },
     { name: 'price', type: 'text', label: 'Price' },
     { name: 'period', type: 'text', label: 'Period (e.g. /month)' },
@@ -799,7 +866,20 @@ const postCard: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'image', label: 'Image or placeholder', selector: '.block-postcard-image', target: 'image' },
+    { name: 'image_link', label: 'Image link', selector: '.block-postcard-media > .block-postcard-link', target: 'link', decorative: true },
+    { name: 'placeholder_icon', label: 'Placeholder icon', selector: '.block-postcard-placeholder > span', target: 'text', decorative: true },
+    { name: 'title', label: 'Title', selector: '.block-postcard-title', target: 'heading', background_field: 'background' },
+    { name: 'title_link', label: 'Title link', selector: '.block-postcard-title > .block-postcard-link', target: 'link', background_field: 'background' },
+    { name: 'title_icon', label: 'Title icon', selector: '.block-postcard-title-icon', target: 'text', decorative: true },
+    { name: 'excerpt', label: 'Excerpt', selector: '.block-postcard-excerpt', target: 'text', background_field: 'background' },
+    { name: 'meta', label: 'Date and author', selector: '.block-postcard-meta', target: 'text', background_field: 'background' },
+    { name: 'action', label: 'Page action link', selector: '.block-postcard-action', target: 'link', background_field: 'background' },
+    { name: 'download', label: 'Download link', selector: '.block-postcard-download', target: 'link', color: 'primary', background_field: 'background' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'title', type: 'text', label: 'Title' },
     { name: 'excerpt', type: 'text', label: 'Excerpt' },
     { name: 'image', type: 'image', label: 'Featured image' },
@@ -975,6 +1055,9 @@ const logoItem: BlockType = {
   category: 'media',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'logo', label: 'Logo image', selector: '.block-logo-link > img', target: 'image' },
+  ],
   schema: [
     { name: 'src', type: 'image', label: 'Logo image', required: true },
     { name: 'alt', type: 'text', label: 'Alt text' },
@@ -1008,7 +1091,15 @@ const stepCard: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'marker', label: 'Number and icon row', selector: '.block-step-marker', target: 'container', decorative: true },
+    { name: 'number', label: 'Step number', selector: '.block-step-number', target: 'text', color: 'on_primary', background: 'primary' },
+    { name: 'icon', label: 'Icon', selector: '.block-step-icon', target: 'text', decorative: true },
+    { name: 'title', label: 'Title', selector: '.block-step-title', target: 'heading' },
+    { name: 'text', label: 'Description', selector: '.block-step-text', target: 'text' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'number', type: 'text', label: 'Step number / label' },
     { name: 'icon', type: 'icon', label: 'Icon' },
     { name: 'title', type: 'text', label: 'Title', required: true },
@@ -1047,6 +1138,13 @@ const navigation: BlockType = {
   icon: 'menu',
   category: 'content',
   container: false,
+  // The current page's link is a link too; its own part sets how it differs.
+  parts: [
+    { name: 'list', label: 'Link list', selector: '.block-navigation-list', target: 'list' },
+    { name: 'link', label: 'Links', selector: '.block-navigation-list a', target: 'link' },
+    { name: 'current_link', label: 'Current page link', selector: '.block-navigation-list a[aria-current="page"]', target: 'link' },
+    { name: 'toggle', label: 'Menu button', selector: '.block-navigation-toggle', target: 'button' },
+  ],
   schema: [
     { name: 'aria_label', type: 'text', label: 'Accessible label', default: 'Main navigation' },
     { name: 'menu_label', type: 'text', label: 'Mobile menu label', default: 'Menu' },
@@ -1107,7 +1205,16 @@ const accordion: BlockType = {
   icon: 'list-collapse',
   category: 'content',
   container: false,
+  // Items render from version 4. The outer frame (the bordered style's
+  // border, the separated style's gap) takes a container style through
+  // `style_id`.
+  parts: [
+    { name: 'item', label: 'Item', selector: 'details', target: 'container', min_render_version: 4 },
+    { name: 'title', label: 'Item title', selector: 'summary', target: 'text', min_render_version: 4 },
+    { name: 'panel', label: 'Item content', selector: 'details > div', target: 'text', min_render_version: 4 },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Accordion style', style_target: 'container', editor_group: 'content' },
     { name: 'items', type: 'array', label: 'Items',
       fields: [
         { name: 'title', type: 'text', label: 'Title', required: true },
@@ -1154,6 +1261,10 @@ const video: BlockType = {
   icon: 'video',
   category: 'media',
   container: false,
+  // The embed (YouTube, Vimeo) or the file player, whichever the source renders.
+  parts: [
+    { name: 'player', label: 'Player', selector: 'iframe, video', target: 'image', decorative: true },
+  ],
   schema: [
     { name: 'source', type: 'select', label: 'Source', options: ['youtube', 'vimeo', 'url'], default: 'youtube' },
     { name: 'video_url', type: 'url', label: 'Video URL' },
@@ -1235,7 +1346,15 @@ const mediaCard: BlockType = {
   icon: 'image-plus',
   category: 'content',
   container: false,
+  parts: [
+    { name: 'body', label: 'Text column', selector: '.block-mediacard-body', target: 'container', decorative: true },
+    { name: 'heading', label: 'Heading', selector: '.block-mediacard-heading', target: 'heading', background_field: 'background' },
+    { name: 'text', label: 'Text', selector: '.block-mediacard-text', target: 'text', background_field: 'background' },
+    { name: 'button', label: 'Button', selector: '.block-mediacard-button', target: 'button', color: 'on_primary', background: 'primary' },
+    { name: 'media', label: 'Image', selector: '.block-mediacard-media img', target: 'image' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'image', type: 'image', label: 'Image', required: true },
     { name: 'image_fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
     { name: 'image_alt', type: 'text', label: 'Image alt text' },
@@ -1303,7 +1422,18 @@ const featureRow: BlockType = {
   icon: 'layout-list',
   category: 'content',
   container: false,
+  parts: [
+    { name: 'eyebrow', label: 'Eyebrow', selector: '.block-frow-eyebrow', target: 'text', background_field: 'background' },
+    { name: 'heading', label: 'Heading', selector: '.block-frow-heading', target: 'heading', background_field: 'background' },
+    { name: 'text', label: 'Text', selector: '.block-frow-text', target: 'text', background_field: 'background' },
+    { name: 'primary_button', label: 'Primary button', selector: '.block-btn-primary', target: 'button', color: 'on_primary', background: 'primary' },
+    { name: 'secondary_button', label: 'Secondary button', selector: '.block-btn-secondary', target: 'button', color: 'primary', background_field: 'background' },
+    { name: 'media', label: 'Image', selector: '.block-frow-media img', target: 'image' },
+    { name: 'layout', label: 'Image and text columns', selector: '.block-frow-inner', target: 'container', decorative: true },
+    { name: 'actions', label: 'Button row', selector: '.block-frow-actions', target: 'container', decorative: true },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Row style', style_target: 'container', editor_group: 'content' },
     { name: 'eyebrow', type: 'text', label: 'Eyebrow' },
     { name: 'heading', type: 'text', label: 'Heading' },
     { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3'], default: 'h2' },
@@ -1421,7 +1551,19 @@ const search: BlockType = {
   icon: 'search',
   category: 'content',
   container: false,
+  // The script mounts Pagefind's UI (its class names are Pagefind's stable
+  // markup), or a note where the index cannot load. The block's frame (its
+  // padding) takes a container style through `style_id`.
+  parts: [
+    { name: 'input', label: 'Search field', selector: '.pagefind-ui__search-input', target: 'text' },
+    { name: 'message', label: 'Result count', selector: '.pagefind-ui__message', target: 'text' },
+    { name: 'result_link', label: 'Result titles', selector: '.pagefind-ui__result-link', target: 'link' },
+    { name: 'result_excerpt', label: 'Result excerpts', selector: '.pagefind-ui__result-excerpt', target: 'text' },
+    { name: 'more_button', label: 'More results button', selector: '.pagefind-ui__button', target: 'button' },
+    { name: 'note', label: 'Unavailable note', selector: '.block-search-note', target: 'text' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Search style', style_target: 'container', editor_group: 'content' },
     { name: 'placeholder', type: 'text', label: 'Placeholder', default: 'Search…' },
   ],
   template: `<div data-block="search" data-placeholder="{{placeholder}}">
@@ -1470,7 +1612,17 @@ const tableOfContents: BlockType = {
   icon: 'list-tree',
   category: 'content',
   container: false,
+  // The card itself (border, shadow) takes a container style through
+  // `style_id`. The script marks the link of the heading in view as current.
+  parts: [
+    { name: 'title', label: 'Title', selector: 'strong', target: 'text' },
+    { name: 'list', label: 'List', selector: 'ol', target: 'list' },
+    { name: 'item', label: 'Item', selector: 'li', target: 'text' },
+    { name: 'link', label: 'Links', selector: 'a', target: 'link', color: 'primary' },
+    { name: 'current_link', label: 'Current link', selector: 'a[aria-current="location"]', target: 'link', color: 'primary' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Table of contents style', style_target: 'container', editor_group: 'content' },
     pixels('padding_px', 'Padding (px)', 0, 120),
     pixels('radius_px', 'Corner radius (px)', 0, 120),
     { name: 'link_color', type: 'select', label: 'Link color', options: ['theme', 'neutral'], default: 'theme' },

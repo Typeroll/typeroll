@@ -44,6 +44,8 @@ const cases: Array<[string, Record<string, unknown>, string, string, unknown?]> 
   ['preview_block_type', { type_id: 'icon_list' }, 'POST', '/api/v1/sites/site/block-types/preview', { type_id: 'icon_list', definition: {} }],
   ['create_block_type', { ...definition, description: 'Benefits', styles: ':scope { gap: 1rem }' }, 'POST', '/api/v1/sites/site/block-types?origin=ai', { ...definition, description: 'Benefits', styles: ':scope { gap: 1rem }' }],
   ['update_block_type', { type_id: 'icon_list', schema: definition.schema, renames: { 'items.label': 'title' }, confirm_data_loss: true }, 'PATCH', '/api/v1/sites/site/block-types/icon_list', { schema: definition.schema, renames: { 'items.label': 'title' }, confirm_data_loss: true }],
+  ['update_block_type', { type_id: 'card', parts: [{ name: 'title', label: 'Title', selector: '.card-title', target: 'heading' }] }, 'PATCH', '/api/v1/sites/site/block-types/card', { parts: [{ name: 'title', label: 'Title', selector: '.card-title', target: 'heading' }] }],
+  ['create_block_type', { name: 'card', label: 'Card', template: '<h3 class="card-title">{{title}}</h3>', parts: [{ name: 'title', label: 'Title', selector: '.card-title', target: 'heading', background: 'surface' }] }, 'POST', '/api/v1/sites/site/block-types?origin=ai', { name: 'card', label: 'Card', template: '<h3 class="card-title">{{title}}</h3>', parts: [{ name: 'title', label: 'Title', selector: '.card-title', target: 'heading', background: 'surface' }] }],
   ['delete_block_type', { type_id: 'icon_list' }, 'DELETE', '/api/v1/sites/site/block-types/icon_list'],
   ['find_pages_using_block_type', { type_id: 'icon_list' }, 'GET', '/api/v1/sites/site/block-types/icon_list/usage'],
   ['import_block_types', { zip_base64: 'UEs=', on_conflict: 'rename' }, 'POST', '/api/v1/sites/site/blocks/import', { zip_base64: 'UEs=', on_conflict: 'rename' }],
@@ -101,6 +103,8 @@ describe('block type tools', () => {
     expect(text('update_block_type')).toContain('confirm_data_loss');
     expect(text('find_pages_using_block_type')).not.toContain('HTML-mode');
     expect(text('find_pages_using_block_type')).toContain('block_types');
+    expect(text('read_block_type')).toContain('parts');
+    expect(text('read_block_type')).toContain('part_styles');
   });
 
   it('list_block_types summarises composed types without their composition', async () => {

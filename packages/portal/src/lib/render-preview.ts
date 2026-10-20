@@ -315,6 +315,8 @@ export async function renderPreview(
     includeScripts: opts.allowScripts === true,
     renderVersion,
     globalBlockSource,
+    // Block part styles, as the published build emits them.
+    siteStyles: { styles: settings.styles, breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints) },
   });
   blockCss = assets.css;
   blockJs = assets.js;
@@ -437,7 +439,10 @@ export async function renderBlockTypePreview(
     renderBlocks([block], { registry, context, pageSource, onMissingType, renderVersion, globalBlockSource }),
     settings.iframe_allowed_hosts,
   );
-  const css = collectBlockAssets([block], registry, { includeScripts: false, renderVersion, globalBlockSource }).css;
+  const css = collectBlockAssets([block], registry, {
+    includeScripts: false, renderVersion, globalBlockSource,
+    siteStyles: { styles: settings.styles, breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints) },
+  }).css;
   const page = {
     id: 'block-preview', title: `${type.label} preview`, slug: 'block-preview', status: 'draft',
     content_mode: 'blocks', blocks: [block], noindex: true,

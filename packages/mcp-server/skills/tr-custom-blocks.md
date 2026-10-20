@@ -87,6 +87,13 @@ When the markup cannot be built from blocks, use `template` instead of
 `{{@number}}`, `{{@first}}`, `{{@last}}`, and `{{#link field class="x"}}…{{/link}}`.
 A type has a composition or a template, never both.
 
+Declare `parts` for the elements of the markup a site may want to restyle:
+`parts: [{ name: "title", label: "Title", selector: ".icon-list-title", target: "heading" }]`.
+Selectors are tags, classes, attributes and structural pseudo-classes, never
+`:hover` or `::before`. Styles then reach the part site-wide
+(`parts: ["icon_list.title"]` on the style) or on one block
+(`data.part_styles: { title: "card-title" }`, a field added automatically).
+
 ## Changing a type in use
 
 - Rename a field with `renames: { "old": "new" }` (`"items.old": "new"` inside a

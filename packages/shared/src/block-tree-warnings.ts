@@ -22,7 +22,12 @@ import { buildCoreBlockRegistry } from './core-blocks.js';
 let coreRegistry: Map<string, BlockType> | undefined;
 
 export interface BlockTreeWarning {
-  code: 'unknown_style_override' | 'heading_part_as_text' | 'field_type_mismatch' | 'unknown_field';
+  /**
+   * `unknown_style`, `style_target_mismatch` and `part_style_contrast` concern a
+   * block's `part_styles` and need the site's styles (block-parts.ts
+   * `partStyleIssues`); the portal adds them to tree writes.
+   */
+  code: 'unknown_style_override' | 'heading_part_as_text' | 'field_type_mismatch' | 'unknown_field' | 'unknown_style' | 'style_target_mismatch' | 'part_style_contrast';
   /** The block's id where it has one; a tree may be written before ids exist. */
   block_id?: string;
   /** Path to the offending key, e.g. `blocks[0].style_overrides.class`. */
@@ -31,7 +36,7 @@ export interface BlockTreeWarning {
   key?: string;
   /** The block's type (unknown_field). */
   block_type?: string;
-  /** Where the key probably belongs (unknown_field), e.g. `item_overrides.placeholder_background`. */
+  /** Where the key probably belongs (unknown_field), e.g. `item_overrides.placeholder_background`; styles that fit a part (unknown_style, style_target_mismatch). */
   suggestions?: string[];
   /** The schema field and the type it needs (field_type_mismatch). */
   field?: string;

@@ -26,6 +26,10 @@
 // (block-tree-warnings.ts).
 
 import { STYLE_OVERRIDE_KEYS, type Block, type BlockType } from './types.js';
+import { closestFieldNames } from './closest-names.js';
+import { PART_STYLES_FIELD } from './block-parts.js';
+
+export { closestFieldNames };
 
 /**
  * Keys the renderer reads from the data of any block, declared or not.
@@ -120,36 +124,6 @@ function repeaterItemType(type: BlockType, registry: Registry, data: Record<stri
   return typeof itemId === 'string' && itemId ? registry.get(itemId) : undefined;
 }
 
-function editDistance(a: string, b: string): number {
-  const row = Array.from({ length: b.length + 1 }, (_, index) => index);
-  for (let i = 1; i <= a.length; i++) {
-    let previous = row[0]!;
-    row[0] = i;
-    for (let j = 1; j <= b.length; j++) {
-      const current = row[j]!;
-      row[j] = Math.min(row[j]! + 1, row[j - 1]! + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
-      previous = current;
-    }
-  }
-  return row[b.length]!;
-}
-
-/** Up to three declared names that look like `key`: small edit distance or one containing the other. */
-export function closestFieldNames(key: string, names: Iterable<string>): string[] {
-  const lower = key.toLowerCase();
-  const limit = Math.max(2, Math.floor(lower.length / 3));
-  return [...new Set(names)]
-    .map(name => {
-      const distance = editDistance(lower, name.toLowerCase());
-      const contains = lower.length >= 3 && name.length >= 3 && (name.includes(lower) || lower.includes(name));
-      return { name, score: distance <= limit ? distance : contains ? limit + 1 : Infinity };
-    })
-    .filter(candidate => Number.isFinite(candidate.score))
-    .sort((a, b) => a.score - b.score || a.name.localeCompare(b.name))
-    .slice(0, 3)
-    .map(candidate => candidate.name);
-}
-
 /**
  * Unknown keys in one block's own data. `keys` limits the check to the keys
  * a write set (update_block); by default every key is checked. `data` is the
@@ -171,6 +145,10 @@ export function unknownBlockDataFields(
   const issues: UnknownFieldIssue[] = [];
   let itemType: BlockType | undefined | null = null;
   for (const key of options.keys ?? Object.keys(data)) {
+    if (key === PART_STYLES_FIELD && known.has(key)) {
+      issues.push(...unknownPartStyleKeys(resolveAlias(type, registry).types, data[key], `${path}.${key}`, blockId));
+      continue;
+    }
     if (known.has(key)) continue;
     itemType = itemType === null ? repeaterItemType(type, registry, data) : itemType;
     const itemKnown = itemType ? knownBlockDataKeys(itemType, registry) : null;
@@ -182,6 +160,10 @@ export function unknownBlockDataFields(
     } else if ((STYLE_OVERRIDE_KEYS as readonly string[]).includes(key)) {
       suggestions = [`style_overrides.${key}`];
       message = `${path}.${key} is not a field of ${type.id}. Did you mean style_overrides.${key}?`;
+    } else if (key === PART_STYLES_FIELD && type.parts?.some(part => part.style_field)) {
+      // Every part of this type is chosen through a style field of its own.
+      suggestions = [...new Set(type.parts.flatMap(part => part.style_field ? [part.style_field] : []))];
+      message = `${path}.${key} is not a field of ${type.id}: its parts are styled per block with ${type.parts.map(part => `${part.style_field} (${part.name})`).join(', ')}.`;
     } else {
       suggestions = closestFieldNames(key, [...known].filter(name => !Object.hasOwn(UNDECLARED_BLOCK_DATA_KEYS, name)));
       message = `${path}.${key} is not a field of ${type.id}${suggestions.length ? `. Did you mean ${suggestions.join(', ')}?` : '. read_block_type lists its fields.'}`;
@@ -194,6 +176,37 @@ export function unknownBlockDataFields(
       key,
       suggestions,
       message: `${message} The key would be stored and never rendered.`,
+    });
+  }
+  return issues;
+}
+
+/**
+ * Part names in `part_styles` that the block type does not let an instance
+ * style: not a part at all (with the closest part names), or a part chosen
+ * through its own style field (e.g. core/heading's eyebrow, `eyebrow_style_id`).
+ */
+function unknownPartStyleKeys(types: readonly BlockType[], value: unknown, path: string, blockId: string | undefined): UnknownFieldIssue[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  const type = [...types].reverse().find(candidate => candidate.parts?.length) ?? types[types.length - 1]!;
+  const parts = type.parts ?? [];
+  const open = parts.filter(part => !part.style_field).map(part => part.name);
+  const issues: UnknownFieldIssue[] = [];
+  for (const key of Object.keys(value)) {
+    if (open.includes(key)) continue;
+    const own = parts.find(part => part.name === key && part.style_field);
+    const suggestions = own ? [own.style_field!] : closestFieldNames(key, open);
+    const reason = own
+      ? `the ${key} part of ${type.id} is styled per block with ${own.style_field}`
+      : `${key} is not a part of ${type.id} that a block can style${open.length ? ` (parts: ${open.join(', ')})` : ''}`;
+    issues.push({
+      code: 'unknown_field',
+      ...(blockId ? { block_id: blockId } : {}),
+      block_type: type.id,
+      path: `${path}.${key}`,
+      key: `${PART_STYLES_FIELD}.${key}`,
+      suggestions,
+      message: `${path}.${key}: ${reason}.${suggestions.length ? ` Did you mean ${suggestions.join(', ')}?` : ''} The key would be stored and never rendered.`,
     });
   }
   return issues;

@@ -86,4 +86,16 @@ describe('block write tools', () => {
     expect(tool('update_block').description).toContain('item_overrides.<key>');
     expect(tool('add_block').description).toContain('unknown_field');
   });
+
+  it('documents per-block part styles and their errors', () => {
+    for (const name of ['add_block', 'update_block']) {
+      for (const needle of ['data.part_styles', 'read_block_type', 'unknown_style', 'style_target_mismatch', 'part_style_contrast']) expect(tool(name).description).toContain(needle);
+    }
+  });
+
+  it('sends part_styles in block data as given', async () => {
+    const { deps, calls } = setup();
+    await tool('update_block').handler({ page_id: 'home', block_id: 'b', data: { part_styles: { link: 'quiet-link' } } } as never, deps);
+    expect(JSON.parse(calls[0]!.body!)).toMatchObject({ block_id: 'b', data: { part_styles: { link: 'quiet-link' } } });
+  });
 });

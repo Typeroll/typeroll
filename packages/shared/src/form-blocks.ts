@@ -17,9 +17,34 @@
 //
 // See docs/plans/forms-funnels.md.
 
+import type { BlockPart } from './block-parts.js';
 import type { BlockType } from './types.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00.000Z';
+
+// Block parts (docs/plans/block-parts.md): the elements of a field a site
+// styles with its style library instead of CSS against this markup. The root
+// (`.form-field`) is not a part; it takes `style_id`. Focus outlines stay the platform's: no style
+// property sets an outline. The error message and the invalid border read
+// --form-error-color; a style chosen for the error part replaces the
+// message's colour, and an input style that sets a border also replaces the
+// invalid border colour (part styles outrank the block's state rules).
+
+/** The field's label (text inputs, select, slider). */
+const LABEL_PART: BlockPart = { name: 'label', label: 'Label', selector: 'label', target: 'text' };
+/** A group's question. */
+const LEGEND_PART: BlockPart = { name: 'label', label: 'Label', selector: 'legend', target: 'text' };
+/** The input box, on --form-field-bg (the surface colour by default). */
+const INPUT_PART: BlockPart = { name: 'input', label: 'Input', selector: '.form-input', target: 'container', color: 'text', background: 'surface' };
+const HELP_PART: BlockPart = { name: 'help', label: 'Help text', selector: '.form-field-help', target: 'text', color: 'text_light' };
+const ERROR_PART: BlockPart = { name: 'error', label: 'Error message', selector: '.form-field-error', target: 'text' };
+/** One answer of a radio or checkbox group: the row, its mark and its text. */
+const CHOICE_PARTS: BlockPart[] = [
+  { name: 'choice', label: 'Choice row', selector: '.form-choice', target: 'container' },
+  { name: 'choice_mark', label: 'Choice mark', selector: '.form-choice > input', target: 'container', decorative: true },
+  { name: 'choice_label', label: 'Choice text', selector: '.form-choice > span', target: 'text' },
+];
+const TEXT_FIELD_PARTS: BlockPart[] = [LABEL_PART, INPUT_PART, HELP_PART, ERROR_PART];
 
 /** Shared styles emitted once per bundle via the form/text block. */
 const FIELD_BASE_CSS = `
@@ -35,7 +60,8 @@ const FIELD_BASE_CSS = `
   padding: var(--form-field-pad, 0.65rem 0.85rem);
 }
 .form-input:focus-visible { outline: 2px solid var(--form-focus-color, var(--color-primary, #1a1a2e)); outline-offset: 1px; }
-.form-field[data-invalid] .form-input { border-color: var(--form-error-color, #b3261e); }
+/* The invalid state wins over any style chosen for the input (part styles reach (2,1,0)). */
+.form-field[data-invalid] .form-input:not(#\\#):not(#\\#):not(#\\#) { border-color: var(--form-error-color, #b3261e); }
 `.trim();
 
 function inputBlock(args: {
@@ -54,6 +80,7 @@ function inputBlock(args: {
     icon: args.icon,
     category: 'content',
     container: false,
+    parts: TEXT_FIELD_PARTS,
     schema: [
       { name: 'name', type: 'text', label: 'Field name (wire name)', required: true },
       { name: 'label', type: 'text', label: 'Label', required: true },
@@ -98,6 +125,7 @@ const formTextarea: BlockType = {
   icon: 'file-text',
   category: 'content',
   container: false,
+  parts: TEXT_FIELD_PARTS,
   schema: [
     { name: 'name', type: 'text', label: 'Field name (wire name)', required: true },
     { name: 'label', type: 'text', label: 'Label', required: true },
@@ -130,6 +158,7 @@ function choicesBlock(args: {
     icon: args.icon,
     category: 'content',
     container: false,
+    parts: args.markup === 'select' ? TEXT_FIELD_PARTS : [LEGEND_PART, ...CHOICE_PARTS, HELP_PART, ERROR_PART],
     schema: [
       { name: 'name', type: 'text', label: 'Field name (wire name)', required: true },
       { name: 'label', type: 'text', label: 'Label', required: true },
@@ -197,6 +226,15 @@ const formToggle: BlockType = {
   icon: 'check',
   category: 'content',
   container: false,
+  // The switch's on/off colours are --form-toggle-off and --form-accent-color;
+  // a track style with a background replaces both (the knob still moves).
+  parts: [
+    { name: 'choice', label: 'Toggle row', selector: '.form-toggle', target: 'container' },
+    { name: 'track', label: 'Switch', selector: '.form-toggle-track', target: 'container', decorative: true },
+    { name: 'label', label: 'Label', selector: '.form-toggle > span:last-child', target: 'text' },
+    HELP_PART,
+    ERROR_PART,
+  ],
   schema: [
     { name: 'name', type: 'text', label: 'Field name (wire name)', required: true },
     { name: 'label', type: 'text', label: 'Label', required: true },
@@ -238,6 +276,12 @@ const formSlider: BlockType = {
   icon: 'minus',
   category: 'content',
   container: false,
+  parts: [
+    LABEL_PART,
+    { name: 'value', label: 'Value', selector: '.form-slider-value', target: 'text' },
+    HELP_PART,
+    ERROR_PART,
+  ],
   schema: [
     { name: 'name', type: 'text', label: 'Field name (wire name)', required: true },
     { name: 'label', type: 'text', label: 'Label', required: true },
@@ -272,6 +316,10 @@ const formHeading: BlockType = {
   icon: 'heading',
   category: 'content',
   container: false,
+  parts: [
+    { name: 'heading', label: 'Heading', selector: 'h3', target: 'heading' },
+    { name: 'description', label: 'Intro line', selector: 'p', target: 'text', color: 'text_light' },
+  ],
   schema: [
     { name: 'text', type: 'text', label: 'Heading', required: true },
     { name: 'description', type: 'text', label: 'Intro line' },
@@ -296,6 +344,11 @@ const formHelp: BlockType = {
   icon: 'circle-help',
   category: 'content',
   container: false,
+  parts: [
+    { name: 'summary', label: 'Question', selector: 'summary', target: 'text' },
+    { name: 'body', label: 'Help content', selector: '.form-help-body', target: 'text' },
+    { name: 'link', label: 'Links', selector: '.form-help-body a', target: 'link' },
+  ],
   schema: [
     { name: 'summary', type: 'text', label: 'Question / summary', required: true },
     { name: 'body', type: 'richtext', label: 'Help content' },
@@ -321,6 +374,13 @@ const formConsent: BlockType = {
   icon: 'shield-check',
   category: 'content',
   container: false,
+  parts: [
+    { name: 'choice', label: 'Checkbox row', selector: '.form-choice', target: 'container' },
+    { name: 'choice_mark', label: 'Checkbox', selector: '.form-choice > input', target: 'container', decorative: true },
+    { name: 'text', label: 'Consent text', selector: '.form-consent-text', target: 'text' },
+    { name: 'link', label: 'Links', selector: '.form-consent-text a', target: 'link' },
+    ERROR_PART,
+  ],
   schema: [
     { name: 'name', type: 'text', label: 'Field name (wire name)', required: true, default: 'consent' },
     { name: 'text', type: 'richtext', label: 'Consent text (may contain links)', required: true },
@@ -361,6 +421,14 @@ const formHidden: BlockType = {
 
 const formBoolean: BlockType = {
   id: 'form/boolean', name: 'form_boolean', label: 'Yes / No answer', icon: 'circle-check', category: 'content', container: false,
+  parts: [
+    LEGEND_PART,
+    { name: 'choice', label: 'Answer row', selector: 'label', target: 'container' },
+    { name: 'choice_mark', label: 'Answer mark', selector: 'label > input', target: 'container', decorative: true },
+    { name: 'clear_button', label: 'Clear answer button', selector: 'button', target: 'button' },
+    HELP_PART,
+    ERROR_PART,
+  ],
   schema: [
     { name: 'name', type: 'text', label: 'Field name', required: true },
     { name: 'label', type: 'text', label: 'Question', required: true },
@@ -396,9 +464,15 @@ export const FORM_BLOCK_TYPES: BlockType[] = [
   formHelp,
   formConsent,
   formHidden,
-].map((block): BlockType => block.schema.some(field => field.name === 'name') && block.id !== 'form/hidden'
-  ? { ...block, schema: [...block.schema, { name: 'required_message', type: 'text', label: 'Required field message', help: 'Optional. Uses the site language default when empty.' }] }
-  : block);
+]
+  // The root (the field's flex column, the help box) takes a named style the
+  // way core/container does: parts never reach the root.
+  .map((block): BlockType => block.template?.includes('class="form-field') || block.id === 'form/help'
+    ? { ...block, schema: [...block.schema, { name: 'style_id', type: 'style', label: block.id === 'form/help' ? 'Help box style' : 'Field style', style_target: 'container', editor_group: 'content' }] }
+    : block)
+  .map((block): BlockType => block.schema.some(field => field.name === 'name') && block.id !== 'form/hidden'
+    ? { ...block, schema: [...block.schema, { name: 'required_message', type: 'text', label: 'Required field message', help: 'Optional. Uses the site language default when empty.' }] }
+    : block);
 
 
 /** Complete transitive field stylesheet for forms referenced by core/form. */

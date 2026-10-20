@@ -931,6 +931,7 @@ export type FieldType =
   | 'page_ref_list'
   // Added by Forms 2.0 (form/* field blocks):
   | 'style'           // a named style from SiteSettings.styles (see style_target)
+  | 'part_styles'     // { <part name>: <style id> } for BlockType.parts, see block-parts.ts
   | 'global_block'    // id of a free partial (global block), see reusable-blocks.ts
   | 'link'            // { page_id?, url?, new_tab? }; resolves to href/target/rel, see block-fields.ts
   | 'choices';         // array of {value,label}; renderer derives
@@ -1060,6 +1061,13 @@ export interface BlockPackageRef {
 }
 
 export interface BlockType {
+  /**
+   * Named sub-elements of the block that a site style can style: per
+   * instance through `data.part_styles` (a `part_styles` field the type
+   * gets automatically) and site-wide through a style's `parts`. See
+   * block-parts.ts and docs/plans/block-parts.md.
+   */
+  parts?: import('./block-parts.js').BlockPart[];
   /**
    * Class of the element that receives a selected style (`data.style_id`), when
    * it is not the block's root, e.g. the `<h2>` inside a heading block.

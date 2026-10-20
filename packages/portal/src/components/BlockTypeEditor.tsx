@@ -396,7 +396,7 @@ export default function BlockTypeEditor({ siteId, saved, initial, registry, rend
             </>}
           />
         )}
-        {tab === 'preview' && <BlockTypePreview siteId={siteId} definition={definition} schema={schema} renderVersion={renderVersion} />}
+        {tab === 'preview' && <BlockTypePreview siteId={siteId} typeId={draft.id} definition={definition} schema={schema} renderVersion={renderVersion} />}
         {tab === 'usage' && (
           <div className="bb-card">
             <h3>Where it is used</h3>

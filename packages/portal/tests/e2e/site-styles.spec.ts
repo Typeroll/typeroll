@@ -34,7 +34,7 @@ test('style library: add standard styles, edit one, refuse low contrast, and app
 
     await page.setViewportSize({ width: 390, height: 900 });
     // One column on phones: the editor is as wide as the page, not squeezed beside the list.
-    const editorWidth = await page.getByLabel('Name', { exact: true }).evaluate(el => el.getBoundingClientRect().width);
+    const editorWidth = await page.getByRole('textbox', { name: 'Name', exact: true }).evaluate(el => el.getBoundingClientRect().width);
     expect(editorWidth).toBeGreaterThan(250);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await page.screenshot({ path: info.outputPath('styles-390.png') });

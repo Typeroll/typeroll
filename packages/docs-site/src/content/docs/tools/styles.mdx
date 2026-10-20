@@ -32,16 +32,26 @@ Open **Styles** in the site menu. Each style has:
 
 - **Name** and **When to use it**, which editors and AI agents see.
 - **Class**, a stable id (`s-<class>`) for custom CSS. It cannot change later.
-- **Can be chosen for**: text, headings, lists, buttons, or sections and
-  containers.
+- **Can be chosen for**: text, headings, lists, buttons, sections and
+  containers, links or images. Links and images are chosen for
+  [block parts](#style-parts-of-a-block), such as the links in a formatted
+  heading or a hero's image.
+- **Block parts**: parts of blocks this style applies to on every block of
+  that type (see [below](#apply-a-style-to-a-part-on-every-block)).
 - **Values per screen size.** **Mobile** applies everywhere. **Tablet**,
   **Laptop**, **Desktop** and **Wide** override from that width up. An empty
   field keeps the smaller screen's value, shown as a hint.
 - Font, size, weight, line height, letter spacing, case, italic, text and
   background colour, alignment, underline, spacing before and after, padding,
-  max width, corner radius and border.
+  max width, corner radius, border, opacity, shadow and gap.
 - **Advanced CSS**, scoped to the style: bare declarations, or rules where `&`
   stands for the style, such as `&::before { content: "—" }`.
+
+| Property  | Values                                                                                                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `opacity` | A number from `0` (invisible) to `1` (opaque), such as `0.8`.                                                                                                                   |
+| `shadow`  | `none`, `sm`, `md` or `lg`. `none` removes a shadow the block draws itself, such as the inset ring of an outline button.                                                        |
+| `gap`     | Space between the children of a flex or grid element: one length (`1rem`), or row and column (`1rem 2rem`). Useful for a block's layout parts, such as a hero's row of buttons. |
 
 The preview shows the style at the selected screen width with the site's own
 colours. Fonts load on the site itself.
@@ -125,12 +135,98 @@ appearance for the properties it sets.
   not a heading of its own.
 </Aside>
 
+## Style parts of a block
+
+Blocks draw some of their elements with a fixed look of their own: the
+underline on links in a formatted heading, the size of a hero's heading, the
+corners of its buttons. A **part** is such an element, named on the block type:
+`link` in a formatted heading, `heading`, `primary_button` and `media` in a
+hero. A style can be given to a part, so you change that look with a named
+style instead of CSS against the block's markup.
+
+Each part has a kind, and only styles that can be chosen for that kind are
+offered: a link part takes link styles, a hero's image takes image styles. The
+parts of the core blocks are listed in
+[Block parts](../blocks/#block-parts); `read_block_type` lists the parts of any
+block type.
+
+### Apply a style to a part on one block
+
+Select the block and open **Appearance → Part styles**. Each part has a picker
+with the styles of its kind; **Site default** keeps the site-wide style for
+the part (named in the option when there is one), or else the block's own
+look.
+
+Through MCP or the API, set the block's `part_styles` field, a map from part
+name to style id:
+
+```
+update_block page_id=… block_id=… data={ part_styles: { link: "quiet-link" } }
+```
+
+`update_block` replaces the whole map, so send every part you want to keep;
+`null` removes it. A heading's eyebrow, heading text and subtitle, and a
+button's link, are parts too, but they keep their own style fields
+(`eyebrow_style_id`, `style_id`, `subtitle_style_id`) instead of
+`part_styles`.
+
+### Apply a style to a part on every block
+
+In a style's **Block parts**, tick the parts it applies to, for example
+**Formatted heading · Links**. The list shows the parts of the kinds the style
+can be chosen for, grouped by block, and says which other style already holds
+a part. Through MCP or the API it is the style's `parts`, as
+`<block type>.<part>`:
+
+```
+create_style id="quiet-link" name="Quiet link" targets=["link"] base={ decoration: "none" } parts=["core/rich_heading.link"]
+```
+
+A part takes one site-wide style. The style's **Can be chosen for** must
+include the part's kind, and a part the site's block types do not have is
+refused with the closest part names. Element roles (body, Heading 1–6, link)
+already style every matching element and cannot list parts. `update_style`
+replaces `parts`; `[]` or `null` removes the style from every part.
+
+### Which style wins
+
+From lowest to highest:
+
+1. The block's own look, including its field values.
+2. The default role style, such as the site's Eyebrow style on an eyebrow.
+3. The part style: the block's own **Part styles** choice, else the site-wide
+   style for the part. A block's choice replaces the site-wide style entirely;
+   nothing of the site-wide style remains on that block.
+4. A style class on the element itself: a heading's eyebrow style, a button's
+   style, or a paragraph style from the text editor.
+
+A part style sets only the properties it has values for. It wins over the
+block's own fields for those properties, as a chosen style always does: to
+look different on one block, choose another style for the part there.
+
+### Readable parts
+
+A part style's text is measured against the part's background with the same
+APCA and WCAG 2 levels as other styles. The background is the block's own
+background colour where the block has one (a hero's **Background**), the
+colour the block paints behind the part (a primary button on primary), or
+else the site background. Parts without text of their own, such as a hero's
+overlay or button row, are not measured.
+
+- Choosing a style for a part on one block is refused when its text fails
+  both APCA and WCAG 2 AA there (`part_style_contrast`), and saved with a
+  warning when it misses only its APCA level.
+- A style that lists parts is measured on each part's background when it is
+  saved.
+
 ## Styles and custom CSS
 
 Site-wide body, heading and link styles set variables that the platform's own
 CSS reads. Other styles are classes (`s-<class>`). Write custom CSS against
 those classes instead of platform internals such as `[data-block]` or
-`.block-*`, which can change between render versions.
+`.block-*`, which can change between render versions. To change an element a
+block draws itself, such as the underline on a formatted heading's links, give
+its [part](#style-parts-of-a-block) a style instead.
 
 ## Site CSS and page CSS
 
@@ -167,7 +263,10 @@ page's blocks as selectors to insert. Prefer them: `.s-eyebrow` or
 | `apply_standard_styles` | `POST /api/v1/sites/{siteId}/styles/standard` | Add missing standard styles (`overwrite` resets) |
 
 Set a block's style with its `style_id` field, for example
-`update_block … data: { style_id: "eyebrow" }`. Styles are versioned with the
+`update_block … data: { style_id: "eyebrow" }`, a part's style on one block
+with `data.part_styles`, and a part's style on every block with the style's
+`parts` (see [Style parts of a block](#style-parts-of-a-block)). Styles are
+versioned with the
 site settings, so a branch can try new styles without changing the live site.
 
 AI agents follow the same rule as people: a look that could recur becomes a

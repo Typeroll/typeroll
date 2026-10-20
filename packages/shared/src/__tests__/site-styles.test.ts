@@ -45,6 +45,14 @@ describe('validateSiteStyle', () => {
     for (const [input, message] of cases) expect(validateSiteStyle(input).errors.join('\n')).toMatch(message);
   });
 
+  it('sets opacity, a shadow preset and gap', () => {
+    const style = validateSiteStyle({ id: 'soft', name: 'Soft', targets: ['container', 'link', 'image'], base: { opacity: 0.8, shadow: 'none', gap: '1rem 2rem' } }).style!;
+    expect(siteStylesCss([style], opts)).toContain('.s-soft:not(#\\#){opacity:0.8;box-shadow:none;gap:1rem 2rem}');
+    expect(validateSiteStyle({ ...style, base: { opacity: 2 } }).errors).toEqual(['base.opacity must be a number from 0 to 1']);
+    expect(validateSiteStyle({ ...style, base: { shadow: '0 0 4px red' } }).errors[0]).toContain('base.shadow must be one of none, sm, md, lg');
+    expect(validateSiteStyle({ ...style, base: { gap: '1rem 2rem 3rem' } }).errors).toEqual(['base.gap must be one or two CSS lengths']);
+  });
+
   it('flags duplicate ids and roles in a library', () => {
     expect(siteStyleLibraryErrors([eyebrow, { ...eyebrow }]).join()).toMatch(/Duplicate style id/);
     expect(siteStyleLibraryErrors([{ ...eyebrow, role: 'eyebrow' }, { ...eyebrow, id: 'kicker', role: 'eyebrow' }]).join()).toMatch(/role "eyebrow"/);
@@ -198,9 +206,14 @@ describe('block style_id', () => {
     expect(button).toContain('class="block-button-link s-button"');
   });
 
-  it('ignores invalid ids and blocks whose own "style" field is a variant', () => {
+  it('ignores invalid ids and blocks without a style_id field', () => {
     expect(renderBlocks([{ id: 'h', type: 'core/heading', data: { text: 'Hi', style_id: 'Bad id"' } }], { registry })).not.toContain('s-');
-    expect(renderBlocks([{ id: 't', type: 'core/testimonial', data: { quote: 'q', style: 'card', style_id: 'lead' } }], { registry })).not.toContain('s-lead');
+    expect(renderBlocks([{ id: 'l', type: 'core/logo_item', data: { src: '/media/logo.svg', style_id: 'lead' } }], { registry })).not.toContain('s-lead');
+  });
+
+  it('keeps a block\'s own "style" variant next to its style_id', () => {
+    const card = renderBlocks([{ id: 't', type: 'core/testimonial', data: { quote: 'q', style: 'bordered', style_id: 'quote-card' } }], { registry });
+    expect(card).toMatch(/^<figure data-block="testimonial" data-style="bordered"[^>]*class="s-quote-card"/);
   });
 });
 

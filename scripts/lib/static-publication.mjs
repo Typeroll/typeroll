@@ -19,7 +19,7 @@ const stringFields = {
 
 // Mirrors SiteStyle (packages/shared/src/site-styles.ts): only known keys and
 // primitive values travel; the renderer validates every value again.
-const STYLE_PROP_KEYS = ['font', 'size', 'weight', 'line_height', 'letter_spacing', 'transform', 'italic', 'color', 'background', 'align', 'decoration', 'space_before', 'space_after', 'padding', 'max_width', 'radius'];
+const STYLE_PROP_KEYS = ['font', 'size', 'weight', 'line_height', 'letter_spacing', 'transform', 'italic', 'color', 'background', 'align', 'decoration', 'space_before', 'space_after', 'padding', 'max_width', 'radius', 'opacity', 'shadow', 'gap'];
 function projectStyleProps(value) {
   if (value === undefined) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid public style properties');
@@ -36,6 +36,8 @@ function projectStyle(style) {
   if (!style || typeof style !== 'object' || Array.isArray(style)) throw new Error('Invalid public style');
   const output = projectStrings(style, ['id', 'name', 'role', 'description', 'css']);
   output.targets = projectStringArray(style.targets ?? [], 'style.targets');
+  // Block parts the style applies to site-wide (block-parts.ts).
+  if (style.parts !== undefined) output.parts = projectStringArray(style.parts, 'style.parts');
   output.base = projectStyleProps(style.base ?? {});
   if (style.at !== undefined) output.at = Object.fromEntries(['tablet', 'laptop', 'desktop', 'wide'].filter(bp => style.at?.[bp] !== undefined).map(bp => [bp, projectStyleProps(style.at[bp])]));
   if (style.hover !== undefined) output.hover = projectStyleProps(style.hover);

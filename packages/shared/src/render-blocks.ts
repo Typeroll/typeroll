@@ -62,6 +62,7 @@ import { GLOBAL_BLOCK_MAX_DEPTH, GLOBAL_BLOCK_TYPE_ID, withGlobalBlockContent, t
 import { parseSections, renderSections, usesExtendedSections } from './template-sections.js';
 import { deriveFieldValues, pageUrlResolverFromSource } from './block-fields.js';
 import { scopeBlockCss } from './block-css-scope.js';
+import { blockPartStylesCss, partStyleAttributes } from './block-parts.js';
 import { COMPOSITION_MAX_DEPTH, instanceTree, isComposedBlockType, walkComposition, withFieldDefaults } from './composed-blocks.js';
 
 /**
@@ -538,6 +539,8 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     return typeof v === 'string' && v.trim() !== '';
   });
   if (compiled.hasOverrides || carriesInstanceScript || columnThreshold !== null) rootAttrs['data-bid'] = bid;
+  // The instance's own part styles (block-parts.ts); absent without a choice.
+  if (blockType.parts?.length) Object.assign(rootAttrs, partStyleAttributes(blockType, effectiveBlock.data, options.renderVersion));
   // Block provenance — lets an agent map the rendered element back to the
   // authored block it should edit. Uses the original (pre-alias-expansion)
   // id + type so it matches what get_page_blocks returns.
@@ -747,7 +750,7 @@ function renderRepeater(
       const baseUrl = options.context?.pagination?.base_url ?? '';
       items = items.slice((current - 1) * perPage, current * perPage);
       const pager = totalPages > 1
-        ? renderPager(current, totalPages, baseUrl, options.context?.pagination?.trailing_slash)
+        ? renderPager(current, totalPages, baseUrl, options.context?.pagination?.trailing_slash, data.pager_link_style_id)
         : '';
       return renderRepeaterItems(block, blockType, itemBlockType, data, items, options) + pager;
     }
@@ -872,13 +875,17 @@ function renderRepeaterItems(
   const direction = data.group_sort_order === 'desc' ? -1 : 1;
   const level = ['h2', 'h3', 'h4'].includes(String(data.group_heading_level))
     ? String(data.group_heading_level) : 'h2';
+  // The titles sit outside each group's repeater root, where no block part
+  // reaches; their style field puts the chosen style class on every title.
+  const titleStyle = typeof data.group_title_style_id === 'string' && STYLE_ID_PATTERN.test(data.group_title_style_id)
+    ? ` ${styleClassName(data.group_title_style_id)}` : '';
   let offset = 0;
   return [...groups.entries()]
     .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }) * direction)
     .map(([label, group]) => {
       const inner = renderItems(group, offset);
       offset += group.length;
-      return `<section class="tr-repeater-group" data-repeater-group="${escapeHtml(label)}"><${level} class="tr-repeater-group-title">${escapeHtml(label)}</${level}>${wrapRepeater(block, blockType, data, inner, options, group.length)}</section>`;
+      return `<section class="tr-repeater-group" data-repeater-group="${escapeHtml(label)}"><${level} class="tr-repeater-group-title${titleStyle}">${escapeHtml(label)}</${level}>${wrapRepeater(block, blockType, data, inner, options, group.length)}</section>`;
     })
     .join('');
 }
@@ -891,13 +898,17 @@ function renderPager(
   totalPages: number,
   baseUrl: string,
   trailingSlash: TrailingSlashPolicy = 'always',
+  linkStyle?: unknown,
 ): string {
   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const urlFor = (n: number) => applyTrailingSlash(n <= 1 ? base : `${base}page/${n}`, trailingSlash);
+  // The pager follows the repeater root, where no block part reaches; the
+  // repeater's pager link style puts its class on every link and the current page.
+  const style = typeof linkStyle === 'string' && STYLE_ID_PATTERN.test(linkStyle) ? styleClassName(linkStyle) : '';
   const link = (n: number, label: string, rel?: string, current_ = false) =>
     current_
-      ? `<span class="tr-pager-current" aria-current="page">${label}</span>`
-      : `<a href="${escapeHtml(urlFor(n))}"${rel ? ` rel="${rel}"` : ''}>${label}</a>`;
+      ? `<span class="tr-pager-current${style ? ` ${style}` : ''}" aria-current="page">${label}</span>`
+      : `<a href="${escapeHtml(urlFor(n))}"${rel ? ` rel="${rel}"` : ''}${style ? ` class="${style}"` : ''}>${label}</a>`;
 
   const parts: string[] = [];
   if (current > 1) parts.push(link(current - 1, '‹', 'prev'));
@@ -944,15 +955,19 @@ function wrapRepeater(
   // the additional layouts (list, carousel, stack, masonry) get inline
   // CSS classes that the runtime CSS bundle styles.
   const style = `--cols:${escapeHtml(cols)};--mobile-cols:${mobileCols};--gap:${escapeHtml(gap)};--align:${escapeHtml(align)};${dimensions}`;
+  // The instance's own part styles (block-parts.ts) mark every repeater root,
+  // one per group; absent without a choice, so output is otherwise unchanged.
+  const partAttrs = blockType.parts?.length ? partStyleAttributes(blockType, data, options?.renderVersion) : {};
+  const marked = (html: string) => Object.keys(partAttrs).length ? injectAttrsIntoFirstTag(html, partAttrs) : html;
   // Render version 7: a carousel's items scroll in a track, followed by the
   // controls its settings ask for (block-media.ts).
   if (layout === 'carousel' && resolveRenderVersion(options?.renderVersion) >= 7) {
     const language = options?.context?.page?.language ?? options?.context?.site?.language;
     const controls = carouselControlsHtml(data, count, language);
     const hooks = controls ? ` data-block-type="core/repeater" data-carousel-autoplay="${data.autoplay === true}" role="region" aria-roledescription="carousel" aria-label="${escapeHtml(carouselRegionLabel(language))}"` : '';
-    return `<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="carousel"${hooks} style="${style}"><div class="tr-carousel-track">${inner}</div>${controls}</div>`;
+    return marked(`<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="carousel"${hooks} style="${style}"><div class="tr-carousel-track">${inner}</div>${controls}</div>`);
   }
-  return `<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="${escapeHtml(layout)}" style="${style}">${inner}</div>`;
+  return marked(`<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="${escapeHtml(layout)}" style="${style}">${inner}</div>`);
 }
 
 /**
@@ -2030,6 +2045,12 @@ export interface CollectAssetsOptions {
   renderVersion?: number;
   /** Includes the assets of referenced global blocks, like RenderBlocksOptions.globalBlockSource. */
   globalBlockSource?: GlobalBlockSource;
+  /**
+   * The site style library and breakpoints, for block part styles
+   * (block-parts.ts): site-wide part styles of the block types on the page
+   * and each instance's `part_styles`. Without it no part CSS is emitted.
+   */
+  siteStyles?: { styles: readonly unknown[] | undefined; breakpoints: BreakpointWidths };
 }
 
 export function collectBlockAssets(
@@ -2060,6 +2081,11 @@ export function collectBlockAssets(
     const btStyles = rawStyles && bt.css_scope === 'block' ? scopeBlockCss(rawStyles, bt.name).css : rawStyles;
     if (btStyles) css.push(`/* ${id} */\n${styleElementText(btStyles)}`);
     if (output.script) js.push(`/* ${id} */\n${output.script}`);
+  }
+
+  if (opts?.siteStyles) {
+    const partCss = blockPartStylesCss(blocks, registry, used, { ...opts.siteStyles, renderVersion: opts.renderVersion });
+    if (partCss) css.push(`/* block parts */\n${partCss}`);
   }
 
   for (const block of collectInstanceStyles(blocks)) {
