@@ -119,6 +119,21 @@ test('an interrupted Core publication can recover only from the same source comm
   assert.match(workflow, /EXISTING_DIGEST: \$\{\{ steps\.registry\.outputs\.image_digest \}\}/);
 });
 
+test('a prebuilt Core image is reused only for the exact source and release, after the same contract check', () => {
+  const core = jobSource(workflow, 'core');
+  const steps = ['Inspect existing Core release', 'Inspect prebuilt Core image', 'Build and publish immutable image',
+    'Resolve release digest', 'Verify published image contract', 'Tag verified prebuilt image', 'Create verified Core tag']
+    .map(name => core.indexOf(`- name: ${name}\n`));
+  assert.ok(steps.every((index, position) => index > 0 && (position === 0 || index > steps[position - 1])), String(steps));
+  assert.match(core, /Inspect prebuilt Core image\n        id: prebuilt\n        if: needs\.plan\.outputs\.publish_core == 'true' && steps\.registry\.outputs\.exists != 'true'/);
+  assert.match(core, /IMAGE="ghcr\.io\/typeroll\/typeroll:sha-\$SOURCE_SHA"/);
+  assert.match(core, /if \[ "\$REVISION" = "\$SOURCE_SHA" \] && \[ "\$VERSION" = "\$CORE_TAG" \]; then/);
+  assert.match(core, /steps\.registry\.outputs\.exists != 'true' &&\s+steps\.prebuilt\.outputs\.exists != 'true'\n\s+uses: \.\/\.github\/actions\/core-image/);
+  assert.match(core, /PREBUILT_DIGEST: \$\{\{ steps\.prebuilt\.outputs\.image_digest \}\}/);
+  assert.match(core, /crane tag "ghcr\.io\/typeroll\/typeroll@\$IMAGE_DIGEST" "\$CORE_TAG"/);
+  assert.match(jobSource(workflow, 'manifest'), /--image-digest "\$\{\{ needs\.core\.outputs\.image_digest \}\}"/);
+});
+
 test('documentation publication verifies its source without redeploying the retired host', () => {
   const deploy = workflow.indexOf('- name: Publish static documentation at typeroll.com/docs');
   const verify = workflow.indexOf('- name: Verify published documentation');

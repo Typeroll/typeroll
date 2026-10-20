@@ -158,9 +158,38 @@ jobs:
             echo "::error::Could not safely determine whether $IMAGE exists: $RESULT"
             exit 1
           fi
+      # Main Tests prebuild sha-SOURCE with the shared build definition. Only an
+      # image labelled with this exact source and release is reused; any other
+      # answer, including a registry error, builds as before.
+      - name: Inspect prebuilt Core image
+        id: prebuilt
+        if: needs.plan.outputs.publish_core == 'true' && steps.registry.outputs.exists != 'true'
+        env:
+          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/typeroll/typeroll:sha-$SOURCE_SHA"
+          DIGEST=$(crane digest "$IMAGE" 2>/dev/null || true)
+          if [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            LABELS=$(crane config "$IMAGE@$DIGEST" 2>/dev/null || true)
+            REVISION=$(jq -r '.config.Labels["org.opencontainers.image.revision"] // empty' <<<"$LABELS" 2>/dev/null || true)
+            VERSION=$(jq -r '.config.Labels["org.opencontainers.image.version"] // empty' <<<"$LABELS" 2>/dev/null || true)
+            if [ "$REVISION" = "$SOURCE_SHA" ] && [ "$VERSION" = "$CORE_TAG" ]; then
+              echo "Reusing $IMAGE at $DIGEST."
+              echo 'exists=true' >> "$GITHUB_OUTPUT"
+              echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::warning::$IMAGE at $DIGEST is labelled ${REVISION:-unknown}/${VERSION:-unknown}, not $SOURCE_SHA/$CORE_TAG; building instead."
+          fi
+          echo 'exists=false' >> "$GITHUB_OUTPUT"
       - name: Build and publish immutable image
         id: image
-        if: needs.plan.outputs.publish_core == 'true' && steps.registry.outputs.exists != 'true'
+        if: >-
+          needs.plan.outputs.publish_core == 'true' &&
+          steps.registry.outputs.exists != 'true' &&
+          steps.prebuilt.outputs.exists != 'true'
         uses: ./.github/actions/core-image
         with:
           source_sha: ${{ needs.plan.outputs.source_sha }}
@@ -176,10 +205,13 @@ jobs:
           CORE_TAG: ${{ needs.plan.outputs.core_tag }}
           PUBLISH_CORE: ${{ needs.plan.outputs.publish_core }}
           EXISTING_DIGEST: ${{ steps.registry.outputs.image_digest }}
+          PREBUILT_DIGEST: ${{ steps.prebuilt.outputs.image_digest }}
         run: |
           set -euo pipefail
           if [ -n "$EXISTING_DIGEST" ]; then
             DIGEST="$EXISTING_DIGEST"
+          elif [ -n "$PREBUILT_DIGEST" ]; then
+            DIGEST="$PREBUILT_DIGEST"
           elif [ "$PUBLISH_CORE" = 'true' ]; then
             test -n "$BUILT_DIGEST"
             DIGEST="$BUILT_DIGEST"
@@ -214,6 +246,18 @@ jobs:
           test "$(jq -r '.source_sha' <<<"$RELEASE")" = "$SOURCE_SHA"
           test "$(jq -r '.image_digest' <<<"$RELEASE")" = "$IMAGE_DIGEST"
           test "$(jq -r '.core_version' <<<"$RELEASE")" = "$CORE_VERSION"
+      # The release name points at the digest just verified, never a rebuild.
+      - name: Tag verified prebuilt image
+        if: >-
+          steps.prebuilt.outputs.exists == 'true' &&
+          (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+        env:
+          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
+          IMAGE_DIGEST: ${{ steps.digest.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          crane tag "ghcr.io/typeroll/typeroll@$IMAGE_DIGEST" "$CORE_TAG"
+          test "$(crane digest "ghcr.io/typeroll/typeroll:$CORE_TAG")" = "$IMAGE_DIGEST"
       - name: Create verified Core tag
         if: >-
           needs.plan.outputs.publish_core == 'true' &&
