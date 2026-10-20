@@ -191,6 +191,13 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
   },
   'core/logo_item': { src: '/media/logo.svg', alt: 'Acme', link: 'https://acme.example/' },
   'core/step_card': { number: '1', icon: 'check', title: 'Sign up', text: '<p>Create an account.</p>' },
+  'core/media_card': { image: '/media/card.jpg', heading: 'Heading', text: '<p>Text</p>', button_label: 'Start', button_url: '/start/' },
+  'core/feature_row': {
+    eyebrow: 'Eyebrow', heading: 'Heading', text: '<p>Text</p>', image: '/media/feature.jpg',
+    primary_label: 'Start', primary_url: '/start/', secondary_label: 'More', secondary_url: '/more/',
+  },
+  // The separate link renders when the card itself is not the link.
+  'core/icon_box': { icon: 'star', heading: 'Heading', text: '<p>Text</p>', link: '/more/', link_label: 'Learn more' },
 };
 
 /** Render context a block's sample needs to show every part (repeater item data). */
