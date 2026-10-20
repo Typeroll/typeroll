@@ -121,6 +121,17 @@ describe('part style CSS', () => {
     expect(renderBlocks([{ ...carousel, data: { ...carousel.data, part_styles: undefined } }], { registry })).not.toContain('data-part-');
   });
 
+  it('orders rules by part, so a later part wins where parts overlap', () => {
+    const nav: Block = { id: 'n', type: 'core/navigation_links', data: { links: [{ label: 'Home', href: '/' }], part_styles: { link: 'loud-link' } } };
+    const current: SiteStyle = { id: 'current', name: 'Current', targets: ['link'], base: { weight: 800 }, parts: ['core/navigation_links.current_link'] };
+    // The library lists the current-link style first; its rule still follows every link rule.
+    const css = assets([nav], [current, { ...quietLink, parts: ['core/navigation_links.link'] }, loudLink]);
+    const at = (needle: string) => css.indexOf(needle);
+    expect(at(':not([data-part-link]) > li > a)')).toBeGreaterThan(-1);
+    expect(at('[data-part-link="loud-link"] > li > a)')).toBeGreaterThan(at(':not([data-part-link]) > li > a)'));
+    expect(at('> li > a[aria-current="page"])')).toBeGreaterThan(at('[data-part-link="loud-link"] > li > a)'));
+  });
+
   it('skips a part before its render version', () => {
     const style: SiteStyle = { id: 'sub', name: 'Sub', targets: ['text'], base: { size: '1rem' }, parts: ['core/heading.subtitle'] };
     const blocks: Block[] = [{ id: 'h', type: 'core/heading', data: { text: 'H' } }];

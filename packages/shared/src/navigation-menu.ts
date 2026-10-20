@@ -95,6 +95,13 @@ window.TyperollBlocks.register('core/navigation_menu', el => {
 /** A semantic, styleable link group usable in a menu, footer or repeated item. */
 export const navigationLinks: BlockType = {
   id:'core/navigation_links', name:'navigation_links', label:'Navigation links', icon:'list', category:'content', container:false,
+  // The current page's link is declared after the links, so its style wins
+  // where both set a property; hover comes from the link style.
+  parts:[
+    { name:'link', label:'Links', selector:'> li > a', target:'link' },
+    { name:'current_link', label:'Link to the current page', selector:'> li > a[aria-current="page"]', target:'link' },
+    { name:'icon', label:'Link icons', selector:'> li > a > .block-nav-icon', target:'text', decorative:true },
+  ],
   schema:[
     { name:'links', type:'array', label:'Links', fields:[{ name:'label', type:'text', label:'Label', required:true },{ name:'href', type:'url', label:'Link', required:true },{ name:'icon', type:'icon', label:'Icon (optional)' }] },
     { name:'direction', type:'select', label:'Direction', options:['row','column'], default:'column', responsive:true },

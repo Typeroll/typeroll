@@ -153,11 +153,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="navigation_form"] .navigation-actions>* { text-decoration: none }': NO_PARTS_YET,
     '[data-block="navigation_form"] .navigation-button-icon { line-height: 1 }': NO_PARTS_YET,
   },
-  'core/navigation_links': {
-    '[data-block="navigation_links"] > li > a { text-decoration: none }': NO_PARTS_YET,
-    '[data-block="navigation_links"] .block-nav-icon { line-height: 1 }': NO_PARTS_YET,
-    '[data-block="navigation_links"] a:hover { text-decoration: underline }': NO_PARTS_YET,
-  },
   'core/post_card': {
     '[data-block="post_card"] { gap: 0.75rem }': NO_PARTS_YET,
     '[data-block="post_card"][data-appearance="card"] { box-shadow: 0 2px 8px rgb(0 0 0 / 12%) }': NO_PARTS_YET,

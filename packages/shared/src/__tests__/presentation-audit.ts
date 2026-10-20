@@ -185,6 +185,7 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     items: [{ html: '<p>One</p>' }, { html: '<p>Two</p>' }],
   },
   'core/tabs': { headline: 'Plans', labels: [{ label: 'Monthly', icon: 'star' }, { label: 'Yearly' }, { label: 'Compare', href: '/compare/', icon: 'check' }] },
+  'core/navigation_links': { links: [{ label: 'Home', href: '/' }, { label: 'About', href: '/about/', icon: 'star' }] },
   'core/rich_heading': { level: 'h2', html: 'Read <a href="/guide/">the guide</a>' },
   'core/heading': { level: 'h2', eyebrow: 'Eyebrow', text: 'Heading', subtitle: 'Subtitle' },
   'core/button': { label: 'Get started', href: '/start/' },
