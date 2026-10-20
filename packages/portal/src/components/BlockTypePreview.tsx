@@ -4,9 +4,9 @@
 // the schema and is edited with the same field widgets as the page editor.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { sampleBlockData, type BlockTypeProblem, type FieldDefinition } from '@typeroll/shared';
+import { STYLE_TARGETS, sampleBlockData, type BlockPart, type BlockTypeProblem, type FieldDefinition } from '@typeroll/shared';
 import { Monitor, Smartphone, Tablet } from 'lucide-react';
-import FieldInput from './FieldInput';
+import FieldInput, { EditedBlockTypeContext } from './FieldInput';
 
 type Width = 'mobile' | 'tablet' | 'desktop';
 const WIDTHS: Record<Width, { px: number; label: string; icon: typeof Monitor }> = {
@@ -32,6 +32,14 @@ body{padding:1.25rem}img{max-width:100%;height:auto}a{color:#3730a3}
 ${result.css.replace(/<\/style/gi, '<\\/style')}</style></head><body>${result.html}</body></html>`;
 }
 
+/** The well-formed parts of a draft definition, for the sample's part style pickers. */
+export function draftParts(value: unknown): BlockPart[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((part): part is BlockPart => !!part && typeof part === 'object'
+    && typeof part.name === 'string' && typeof part.label === 'string' && typeof part.selector === 'string'
+    && (STYLE_TARGETS as readonly unknown[]).includes(part.target));
+}
+
 /** Keep sample values for fields that still exist with the same type; new fields get samples. */
 function mergeSample(schema: FieldDefinition[], previous: Record<string, unknown>, previousSchema: FieldDefinition[]): Record<string, unknown> {
   const fresh = sampleBlockData(schema);
@@ -43,8 +51,10 @@ function mergeSample(schema: FieldDefinition[], previous: Record<string, unknown
   return out;
 }
 
-export default function BlockTypePreview({ siteId, definition, schema, renderVersion }: {
+export default function BlockTypePreview({ siteId, typeId, definition, schema, renderVersion }: {
   siteId: string;
+  /** The saved type's id, once it has one. */
+  typeId?: string;
   /** The definition as the API takes it. */
   definition: Record<string, unknown>;
   schema: FieldDefinition[];
@@ -53,6 +63,8 @@ export default function BlockTypePreview({ siteId, definition, schema, renderVer
   const [width, setWidth] = useState<Width>('desktop');
   const [data, setData] = useState<Record<string, unknown>>(() => sampleBlockData(schema));
   const lastSchema = useRef(schema);
+  const partsKey = JSON.stringify(definition.parts ?? null);
+  const editedType = useMemo(() => ({ id: typeId ?? '', parts: draftParts(definition.parts) }), [typeId, partsKey]);
   const [result, setResult] = useState<PreviewResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [frameHeight, setFrameHeight] = useState(320);
@@ -134,10 +146,12 @@ export default function BlockTypePreview({ siteId, definition, schema, renderVer
         <h3>Sample content</h3>
         <p className="bb-help" style={{ margin: '0 0 .75rem' }}>Only for this preview; nothing here is saved. Fill it in as an editor would on a page.</p>
         {schema.length === 0 && <p className="bb-help">This block type has no fields.</p>}
-        {schema.map(field => (
-          <FieldInput key={field.name} siteId={siteId} field={field} value={data[field.name]}
-            onChange={value => setData(current => ({ ...current, [field.name]: value }))} />
-        ))}
+        <EditedBlockTypeContext.Provider value={editedType}>
+          {schema.map(field => (
+            <FieldInput key={field.name} siteId={siteId} field={field} value={data[field.name]}
+              onChange={value => setData(current => ({ ...current, [field.name]: value }))} />
+          ))}
+        </EditedBlockTypeContext.Provider>
         <button type="button" className="bb-btn bb-btn--small" onClick={() => setData(sampleBlockData(schema))}>Reset sample content</button>
       </section>
     </div>

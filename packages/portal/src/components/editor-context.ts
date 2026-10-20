@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import type { FieldDefinition, SiteStyle } from '@typeroll/shared';
+import type { BlockType, FieldDefinition, SiteStyle } from '@typeroll/shared';
 
 /** The site's style library, for `type: 'style'` fields. Null when no editor provides it. */
 export const SiteStylesContext = createContext<SiteStyle[] | null>(null);
@@ -16,3 +16,10 @@ export interface GlobalBlockSummary { id: string; name: string; status: 'draft' 
 
 /** The site's global blocks (free partials), for `type: 'global_block'` fields and the block library. */
 export const GlobalBlocksContext = createContext<{ siteId: string; blocks: GlobalBlockSummary[] } | null>(null);
+
+/**
+ * The block type whose fields are being edited, for the `part_styles` field
+ * (one style picker per part an instance may style). Null outside a block's
+ * field form; the field then shows nothing.
+ */
+export const EditedBlockTypeContext = createContext<Pick<BlockType, 'id' | 'parts'> | null>(null);
