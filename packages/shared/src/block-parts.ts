@@ -37,7 +37,7 @@
 import type { BreakpointWidths } from './breakpoints.js';
 import type { TextUse } from './contrast.js';
 import { closestFieldNames } from './closest-names.js';
-import { resolveRenderVersion } from './render-version.js';
+import { LATEST_RENDER_VERSION, resolveRenderVersion } from './render-version.js';
 import {
   COLOR_TOKENS,
   STYLE_ELEMENT_ROLES,
@@ -236,6 +236,16 @@ type Registry = ReadonlyMap<string, BlockType> | Record<string, BlockType>;
 const lookup = (registry: Registry, id: string): BlockType | undefined => registry instanceof Map ? registry.get(id) : (registry as Record<string, BlockType>)[id];
 const registryTypes = (registry: Registry): BlockType[] => registry instanceof Map ? [...registry.values()] : Object.values(registry as Record<string, BlockType>);
 
+/**
+ * The type whose parts a block of `type` renders: the type itself, or for an
+ * alias (`expand_to`, e.g. core/gallery) the type it expands to.
+ */
+export function partsTypeOf(type: BlockType | undefined, registry: Registry): BlockType | undefined {
+  let current = type;
+  for (let depth = 0; current?.expand_to && !current.parts?.length && depth < 5; depth++) current = lookup(registry, current.expand_to.target);
+  return current;
+}
+
 /** Every declared part in a registry, keyed by reference. */
 export function blockPartIndex(registry: Registry): Map<string, { type: BlockType; part: BlockPart }> {
   const index = new Map<string, { type: BlockType; part: BlockPart }>();
@@ -301,7 +311,7 @@ function collectInstanceChoices(blocks: readonly Block[], registry: Registry, re
   for (const block of blocks) {
     if (!block || typeof block !== 'object') continue;
     const type = lookup(registry, block.type);
-    add(type, block.data);
+    add(partsTypeOf(type, registry), block.data);
     // Repeater items render as their item block with item_overrides merged in.
     const itemId = block.data?.item_block ?? type?.expand_to?.defaults?.item_block;
     const itemType = typeof itemId === 'string' ? lookup(registry, itemId) : undefined;
@@ -447,7 +457,9 @@ export function partStyleIssues(
   const blockId = typeof block.id === 'string' && block.id ? block.id : undefined;
   const base = options.path ?? 'data';
   const byId = new Map(styles.map(style => [style.id, style]));
-  for (const [part, id] of instancePartStyles(type, data)) {
+  // Every declared part, as unknownBlockDataFields accepts them: a part that a
+  // later render version adds (the carousel controls) is checked all the same.
+  for (const [part, id] of instancePartStyles(type, data, LATEST_RENDER_VERSION)) {
     const path = `${base}.${PART_STYLES_FIELD}.${part.name}`;
     const issue = { ...(blockId ? { block_id: blockId } : {}), block_type: type.id, path, part: part.name, style_id: id };
     const fitting = styles.filter(style => styleFitsPart(style, part)).map(style => style.id);
@@ -479,7 +491,7 @@ export function treePartStyleIssues(value: unknown, registry: Registry, styles: 
     node.forEach((block, index) => {
       if (!isRecord(block) || typeof block.type !== 'string') return;
       const at = `${path}[${index}]`;
-      const type = lookup(registry, block.type);
+      const type = partsTypeOf(lookup(registry, block.type), registry);
       if (type?.parts?.length) {
         const issues = partStyleIssues(block as { type: string }, type, styles, { ...options, path: `${at}.data` });
         out.push(...issues.errors, ...issues.warnings);

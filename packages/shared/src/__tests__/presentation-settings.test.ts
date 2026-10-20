@@ -319,7 +319,7 @@ describe('every core block field changes what renders', () => {
         if (SKIP_TYPES.has(field.type) || CONTEXT[key]) continue;
         const block = base(type, WHEN[key]);
         const current = block.data?.[field.name];
-        let value = field.type === 'part_styles' ? { [instanceStyleParts(type)[0]!.name]: 'sample-style' }
+        let value = field.type === 'part_styles' ? { [instanceStyleParts(type, LATEST)[0]!.name]: 'sample-style' }
           : sample(field, field.required === true && field.default === undefined);
         if (JSON.stringify(value) === JSON.stringify(current)) value = sample(field, true);
         if (value === undefined) continue;
@@ -381,7 +381,7 @@ describe('every presentational value a core block writes is reachable', () => {
     for (const type of registry.values()) {
       expect(blockPartsProblems(type.parts, type.schema), type.id).toEqual([]);
       const hasField = type.schema.some(field => field.name === 'part_styles');
-      expect(hasField, `${type.id} has the part_styles field exactly when an instance can style a part`).toBe(instanceStyleParts(type).length > 0);
+      expect(hasField, `${type.id} has the part_styles field exactly when an instance can style a part`).toBe(instanceStyleParts(type, LATEST).length > 0);
     }
   });
 });
