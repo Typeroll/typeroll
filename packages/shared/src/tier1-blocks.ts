@@ -551,7 +551,19 @@ const cta: BlockType = {
   icon: 'megaphone',
   category: 'content',
   container: false,
+  // The band is the primary colour with on-primary text unless `background`
+  // sets another; the primary button inverts it. The band itself (its
+  // padding) takes a container style through `style_id`.
+  parts: [
+    { name: 'eyebrow', label: 'Eyebrow', selector: '.block-cta-eyebrow', target: 'text', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'heading', label: 'Heading', selector: '.block-cta-heading', target: 'heading', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'subheading', label: 'Subheading', selector: '.block-cta-sub', target: 'text', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'primary_button', label: 'Primary button', selector: '.block-btn-primary', target: 'button', color: 'primary', background: 'on_primary' },
+    { name: 'secondary_button', label: 'Secondary button', selector: '.block-btn-secondary', target: 'button', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'actions', label: 'Button row', selector: '.block-cta-actions', target: 'container', decorative: true },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
     { name: 'eyebrow', type: 'text', label: 'Eyebrow' },
     { name: 'heading', type: 'text', label: 'Heading' },
     { name: 'subheading', type: 'richtext', label: 'Subheading' },

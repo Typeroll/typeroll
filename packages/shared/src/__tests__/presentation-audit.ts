@@ -203,6 +203,10 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
   'form/help': { body: '<p>See <a href="/help/">the guide</a></p>' },
   'core/field_list': { title: 'Facts', fields: [{ field: 'city' }, { field: 'website' }, { field: 'tags' }] },
   'core/navigation_form': { destination: '/quote/', button_icon: '→', fields: [{ name: 'address', label: 'Address' }] },
+  'core/cta': {
+    eyebrow: 'Eyebrow', heading: 'Heading', subheading: '<p>Subheading</p>',
+    primary_label: 'Start', primary_url: '/start/', secondary_label: 'More', secondary_url: '/more/',
+  },
 };
 
 /** Render context a block's sample needs besides its data (repeater item data, a field list's Page fields). */
