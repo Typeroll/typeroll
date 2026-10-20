@@ -194,6 +194,9 @@ still cause browser navigation. Default is navigate, no proxy.
 Columns expose `left_width_px:150` and `stack_below_px:481` (stack through480).
 Set one fixed side; left wins if both set. Custom stacking overrides the preset.
 Container `radius_px` and `shadow` (none/subtle/header) style a composed group.
+From render version 9 a shadowed container sits above the next block (z-index
+10, sticky keeps 100), so its shadow shows over a following hero; do not add
+`inline_style` z-index for that.
 Menus use matching SVG symbols; `close_size_px` overrides the close symbol size
 without shrinking the44px hit area. Compare exact threshold boundaries in real
 preview and static output before deleting corrective CSS.
