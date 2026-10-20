@@ -12,7 +12,7 @@
 const NO_PARTS_YET = 'parts not declared yet (docs/plans/block-parts.md)';
 
 /** The hero video pause control: an accessibility control, not design. */
-const VIDEO_CONTROL = 'the background video pause control keeps one accessible look on every site (WCAG 2.2.2); it is not a design element';
+const VIDEO_CONTROL = 'the background video pause control (WCAG 2.2.2) sits on moving video: its dark disc and white icon stay visible on any frame, which no contrast check of a style can measure, so every site keeps this look';
 
 /** The table of contents indents subheadings under their heading. */
 const TOC_INDENT = 'the indent shows which heading a subheading belongs to; the indent field turns it off, and a style sets no inline margins (the item part takes the rest of the item\'s look)';
