@@ -1,7 +1,10 @@
 // Style library tools. A site's look is a library of NAMED styles
 // (SiteSettings.styles): element roles (body, h1–h6, link) style every
 // matching element, and every other style is chosen per block through the
-// block's `style_id` field. Reuse beats one-off values.
+// block's `style_id` field. A style can also style a block PART (a named
+// sub-element such as core/rich_heading's links): site-wide through the
+// style's `parts`, on one block through its `part_styles` data. Reuse beats
+// one-off values.
 
 import { z } from 'zod';
 import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
@@ -37,6 +40,9 @@ const propsSchema = z.object({
     color: color.optional(),
     sides: z.enum(['all', 'top', 'right', 'bottom', 'left', 'block', 'inline']).optional(),
   }).optional(),
+  opacity: z.number().min(0).max(1).optional().describe('0 (invisible) to 1 (opaque)'),
+  shadow: z.enum(['none', 'sm', 'md', 'lg']).optional().describe('Shadow preset; none removes a shadow the block draws'),
+  gap: z.string().optional().describe('Space between the children of a flex or grid element: one CSS length, or row and column'),
 }).describe('Style properties. Mobile-first: `base` applies everywhere, `at.<breakpoint>` from that width up.');
 
 const atSchema = z.object({
@@ -50,13 +56,15 @@ const styleFields = {
   name: z.string().describe('Author-facing name, in the site\'s language, e.g. "Överrubrik" or "Hero title".'),
   role: z.enum(['body', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'link', 'lead', 'eyebrow', 'small', 'quote', 'button', 'button_secondary', 'section']).optional()
     .describe('Standard role. body/h1–h6/link style every matching element on the site; the others mark the standard style for that purpose. One style per role.'),
-  targets: z.array(z.enum(['text', 'heading', 'list', 'button', 'container'])).optional()
-    .describe('Block kinds that can select this style via style_id (text = core/prose, heading = core/heading and core/rich_heading, list, button, container = core/section and core/container).'),
+  targets: z.array(z.enum(['text', 'heading', 'list', 'button', 'container', 'link', 'image'])).optional()
+    .describe('Kinds of element that can select this style: through a block\'s style_id (text = core/prose, heading = core/heading and core/rich_heading, list, button, container = core/section and core/container) and through a block part with that target (link and image exist for parts, e.g. core/rich_heading.link, core/hero.media).'),
   description: z.string().optional().describe('When to use it; shown to editors and agents.'),
   base: propsSchema.optional(),
   at: atSchema.optional(),
   hover: z.object({ color: color.optional(), background: color.optional(), decoration: z.enum(['none', 'underline']).optional() }).optional(),
   css: z.string().optional().describe('Advanced CSS scoped to the style: bare declarations, or rules where `&` is the style selector (e.g. "&::before { content: \'—\' }"). Prefer structured properties.'),
+  parts: z.array(z.string()).optional()
+    .describe('Block parts this style applies to SITE-WIDE, on every instance, as "<block type>.<part>" (e.g. "core/rich_heading.link", "core/hero.primary_button"); read_block_type lists a block\'s `parts` with their targets. The style\'s targets must include each part\'s target; a part takes one site-wide style; not for element roles (body, h1–h6, link). Unknown parts are refused with the closest names. Precedence, lowest first: the block\'s own CSS and fields; this site-wide part style, replaced on one block by its `data.part_styles` choice; a style class on the element itself (a heading\'s eyebrow_style_id, a button\'s style_id).'),
 };
 
 export const styleTools: ToolDef[] = [
@@ -70,7 +78,7 @@ export const styleTools: ToolDef[] = [
   {
     name: 'create_style',
     description:
-      'Create a named style. Do this whenever a look could recur — an eyebrow, a lead paragraph, a card title, a quote, a button variant, a section rhythm — then apply it with the block\'s `style_id` field. Only a clearly unique one-off may use block settings instead. Set values for phones in `base` and grow them in `at.tablet`/`at.desktop`. Text contrast against its background is measured with APCA by use, size and weight (body text Lc 75; secondary/small text Lc 60; headings, eyebrows and buttons Lc 60 from 16px at weight 600+, Lc 45 from 24px bold or 36px; smaller or lighter non-body text Lc 75) and with the WCAG 2 ratio. Text that fails both is refused; text below its APCA level that meets WCAG 2 AA (4.5:1, 3:1 for ≥24px or bold ≥18.7px) is saved and returned in `warnings`. Never light grey on white.',
+      'Create a named style. Do this whenever a look could recur — an eyebrow, a lead paragraph, a card title, a quote, a button variant, a section rhythm — then apply it with the block\'s `style_id` field. Only a clearly unique one-off may use block settings instead. Set values for phones in `base` and grow them in `at.tablet`/`at.desktop`. Text contrast against its background is measured with APCA by use, size and weight (body text Lc 75; secondary/small text Lc 60; headings, eyebrows and buttons Lc 60 from 16px at weight 600+, Lc 45 from 24px bold or 36px; smaller or lighter non-body text Lc 75) and with the WCAG 2 ratio. Text that fails both is refused; text below its APCA level that meets WCAG 2 AA (4.5:1, 3:1 for ≥24px or bold ≥18.7px) is saved and returned in `warnings`. Never light grey on white. To restyle a sub-element of a block (rich-heading links, a hero\'s buttons or image), list it in `parts` (site-wide) or choose the style in that block\'s `data.part_styles`.',
     inputSchema: {
       id: z.string().regex(/^[a-z][a-z0-9-]{0,47}$/).describe('Stable slug; the CSS class becomes s-<id>. Cannot change later.'),
       ...styleFields,
@@ -85,7 +93,7 @@ export const styleTools: ToolDef[] = [
   {
     name: 'update_style',
     description:
-      'Update a style. `base`, `hover` and each breakpoint in `at` merge property by property (pass null to remove one); name, targets, description and css replace. Every page using the style changes at once — tell the user which pages that affects when it matters.',
+      'Update a style. `base`, `hover` and each breakpoint in `at` merge property by property (pass null to remove one); name, targets, description, css and parts replace (parts: [] removes the style from every part). Every page using the style changes at once — tell the user which pages that affects when it matters.',
     inputSchema: {
       style_id: z.string(),
       name: styleFields.name.optional(),
@@ -96,6 +104,7 @@ export const styleTools: ToolDef[] = [
       at: z.record(z.unknown()).optional().describe('Per-breakpoint property patches; null removes a breakpoint or property.'),
       hover: z.record(z.unknown()).optional(),
       css: z.string().optional(),
+      parts: styleFields.parts,
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {

@@ -77,6 +77,14 @@ setting changes what a visitor sees.
    never rejects a key the renderer reads. `null` in `update_block` removes a
    key.
 
+10. **Block CSS holds no unreachable literals.** A presentational declaration
+    with a literal value in a core block's CSS must read a variable, style a
+    declared block part or the block's style element with a property a style
+    sets, or be listed with a reason in `unreachable-presentation.ts`. Parts
+    let the style library reach those elements site-wide and per block
+    (`docs/plans/block-parts.md`) instead of a field per case; blocks without
+    parts yet are listed until they declare them.
+
 ## Defects these guards found
 
 The field test found eleven fields that were accepted and never rendered:

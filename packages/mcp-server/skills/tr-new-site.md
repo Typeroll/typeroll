@@ -150,6 +150,12 @@ Set the site's look as named styles before building any page:
 Pages then choose styles with each block's `style_id` field. A per-block
 font size, colour or class is only for something clearly unique.
 
+To change a sub-element a block styles itself (the underline on formatted
+heading links, a hero's heading or buttons), use its parts:
+`read_block_type` lists them. A style with `parts: ["core/rich_heading.link"]`
+applies to that part on every block; `data.part_styles` on one block replaces
+it there.
+
 ### 3. Header + footer partials
 
 **Start from the native preset — don't hand-roll navigation.** Read

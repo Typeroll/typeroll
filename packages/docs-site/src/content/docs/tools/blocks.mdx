@@ -427,6 +427,160 @@ Core blocks (id starts with `core/`) are managed in platform code and can't be
 changed. A block type in use cannot be deleted; `find_pages_using_block_type`
 lists where it is used.
 
+## Block parts
+
+A **part** is a named element inside a block that a [named style](../styles/)
+can style: the links in a formatted heading, a hero's heading or buttons. It
+replaces CSS against the block's markup (`[data-block="rich_heading"] a`) with
+a style the editor shows, that follows the site's palette and is checked for
+contrast. `read_block_type` returns a type's `parts`:
+
+```json
+{
+  "id": "core/rich_heading",
+  "parts": [
+    { "name": "link", "label": "Links", "selector": "a", "target": "link" }
+  ]
+}
+```
+
+Each part has a `target`, the kind of style that fits it (`text`, `heading`,
+`list`, `button`, `container`, `link` or `image`); only styles that can be
+chosen for that kind apply.
+
+### Parts of the core blocks
+
+| Block                                   | Part               | Element                    | Style kind | Chosen per block with |
+| --------------------------------------- | ------------------ | -------------------------- | ---------- | --------------------- |
+| Formatted heading (`core/rich_heading`) | `link`             | Links in the heading       | link       | `part_styles`         |
+| Heading (`core/heading`)                | `eyebrow`          | The eyebrow                | text       | `eyebrow_style_id`    |
+|                                         | `text`             | The heading                | heading    | `style_id`            |
+|                                         | `subtitle`         | The subtitle (render v2)   | text       | `subtitle_style_id`   |
+| Button (`core/button`)                  | `link`             | The button link            | button     | `style_id`            |
+| Hero (`core/hero`)                      | `eyebrow`          | The eyebrow                | text       | `part_styles`         |
+|                                         | `heading`          | The heading                | heading    | `part_styles`         |
+|                                         | `subheading`       | The supporting text        | text       | `part_styles`         |
+|                                         | `primary_button`   | The primary button         | button     | `part_styles`         |
+|                                         | `secondary_button` | The secondary button       | button     | `part_styles`         |
+|                                         | `media`            | The image                  | image      | `part_styles`         |
+|                                         | `layout`           | The text and image columns | container  | `part_styles`         |
+|                                         | `actions`          | The row of buttons         | container  | `part_styles`         |
+|                                         | `overlay`          | The overlay over the image | container  | `part_styles`         |
+
+Parts of a heading and a button already had style fields; declaring them as
+parts lets a style apply to them on every block. Other blocks list their parts
+in `read_block_type` as they gain them.
+
+### Choose a style for a part on one block
+
+In the editor: select the block, then **Appearance → Part styles**. Through MCP
+or the API: the block's `part_styles` data, a map from part name to style id.
+Every block type with a part that has no style field of its own gets this field
+automatically.
+
+```
+update_block page_id=… block_id=… data={ part_styles: { heading: "hero-title", primary_button: "button-pill" } }
+```
+
+Like other object fields, `update_block` replaces the whole map rather than
+merging it, so send every part you want to keep; `null` removes the map. A
+chosen style replaces the site-wide style for that part on this block.
+
+`add_block` and `update_block` refuse a write with `400`, writing nothing,
+when:
+
+| Code                    | When                                                                                                                                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unknown_field`         | The block has no such part, or the part has its own style field. The path is `data.part_styles.<part>`, and the suggestions name the closest parts or the field to use (`eyebrow_style_id`). See [Unknown data fields](#unknown-data-fields-core-0279). |
+| `unknown_style`         | The site has no style with that id. `suggestions` lists styles of the part's kind.                                                                                                                                                                      |
+| `style_target_mismatch` | The style cannot be chosen for the part's kind. `suggestions` lists styles that can.                                                                                                                                                                    |
+| `part_style_contrast`   | The style's text fails both APCA and WCAG 2 AA on the part's background.                                                                                                                                                                                |
+
+The style issues are listed in `part_style_issues`, each with its `path`,
+`part` and `style_id`. A value that is not a style id at all is a
+`field_type_mismatch` warning, and a contrast that misses only its APCA level a
+`part_style_contrast` warning. Page, partial and batch writes, which carry a
+whole tree, store the tree and return all of these as `warnings`.
+
+The background a part is measured on is the block's own background colour
+where it has one (a hero's `background`), else the colour the block paints
+behind the part (the primary colour behind a primary button), else the site
+background. Layout parts and the overlay hold no text and are not measured.
+
+### Apply a style to a part on every block
+
+A style's `parts` (**Block parts** in the style editor) lists parts as
+`<block type>.<part>`, and the style then applies to that part of every block
+of the type:
+
+```
+update_style style_id="quiet-link" targets=["link"] parts=["core/rich_heading.link"]
+```
+
+A part takes one site-wide style, and the style's `targets` must include the
+part's kind. A reference the site's block types do not have is refused with the
+closest names. Precedence, from lowest: the block's own look and fields, the
+default role style, the part style (the block's `part_styles` choice, else the
+site-wide one), and a style class on the element itself (a heading's
+`eyebrow_style_id`, a button's `style_id`). See
+[Style parts of a block](../styles/#style-parts-of-a-block).
+
+Part styles change nothing on a site that does not set one: the published
+markup and CSS stay the same, and no render version is involved.
+
+### Parts on site block types
+
+A [site block type](../custom-block-types/) declares its own parts in `parts`
+with `create_block_type` or `update_block_type` (which replaces the list):
+
+```json
+{
+  "name": "price_card",
+  "label": "Price card",
+  "schema": [
+    { "name": "title", "type": "text", "label": "Title" },
+    { "name": "price", "type": "text", "label": "Price" }
+  ],
+  "template": "<div class=\"price-card\"><h3 class=\"price-card-title\">{{title}}</h3><p class=\"price-card-price\">{{price}}</p></div>",
+  "parts": [
+    {
+      "name": "title",
+      "label": "Title",
+      "selector": ".price-card-title",
+      "target": "heading"
+    },
+    {
+      "name": "price",
+      "label": "Price",
+      "selector": ".price-card-price",
+      "target": "text",
+      "background": "surface"
+    }
+  ]
+}
+```
+
+| Property             | Meaning                                                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`               | `a-z`, `0-9` and `_`, up to 32 characters, starting with a letter; unique in the type. Do not rename a part in use: `part_styles` and styles refer to it.                            |
+| `label`              | Shown in the editor.                                                                                                                                                                 |
+| `selector`           | The part's element(s) relative to the block: tags, classes, attributes, structural pseudo-classes (`:first-child`, `:nth-child(2)`) and combinators, up to four separated by commas. |
+| `target`             | The kind of style that fits: `text`, `heading`, `list`, `button`, `container`, `link` or `image`.                                                                                    |
+| `style_field`        | A `style` field of the type that already chooses the part's style on each block. `part_styles` then leaves the part out.                                                             |
+| `color`              | The colour token of the part's text in the block's CSS, for contrast checks. Default `text`.                                                                                         |
+| `background`         | The colour token behind the part, for contrast checks. Default the site background.                                                                                                  |
+| `background_field`   | A `color` field of the type that holds the background behind the part.                                                                                                               |
+| `decorative`         | `true` for a part without text of its own (an overlay, a layout row): its style is not checked for contrast.                                                                         |
+| `min_render_version` | The render version from which the element exists.                                                                                                                                    |
+
+Selectors may not contain braces, `;`, `@`, comments, pseudo-elements
+(`::before`) or state pseudo-classes such as `:hover` and `:focus`: hover comes
+from the style. A type has at most 16 parts. A selector class that the template
+never writes is reported as a warning, because the part would match nothing.
+The type gets the `part_styles` field automatically when a part has no
+`style_field`, so do not declare a field of that name yourself. Parts are for
+template types; a composed type's inner blocks keep their own parts.
+
 ## Reorganising blocks
 
 - `move_block` — re-parent or reorder inside the same container. Cycles rejected.
@@ -544,7 +698,7 @@ into blocks.
 | Tool                                        | Purpose                                           |
 | ------------------------------------------- | ------------------------------------------------- |
 | `list_block_types`                          | Every type usable on this site                    |
-| `read_block_type`                           | Full schema + template + styles for one type      |
+| `read_block_type`                           | Full schema, parts, template and styles of a type |
 | `create_block_type`                         | New custom type (origin=ai, optional `script`)    |
 | `update_block_type`                         | Patch a custom or third-party type                |
 | `delete_block_type`                         | Remove a custom/third-party type (core protected) |
