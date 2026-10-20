@@ -28,7 +28,7 @@ parts: [
 | --- | --- |
 | `name` | Stable name, `a-z0-9_`, unique in the type. Never rename a released part: stored `part_styles` and styles refer to it. |
 | `label` | Shown in the editor. |
-| `selector` | The part's element(s), relative to the block root. Tags, classes, attributes, structural pseudo-classes (`:first-child`, `:nth-child()`), combinators, up to four comma-separated selectors. No state pseudo-classes or pseudo-elements: hover comes from the style. In a container block, anchor with `>` so the part never reaches a nested block. |
+| `selector` | The part's element(s), relative to the block root. Tags, classes, attributes, structural pseudo-classes (`:first-child`, `:nth-child()`), combinators, up to four comma-separated selectors. No state pseudo-classes or pseudo-elements: hover comes from the style. A leading `>` selects a child of the block root (`> .block-columns-col`); in a container block, anchor with it so the part never reaches a nested block. |
 | `target` | The style kind that fits: `text`, `heading`, `list`, `button`, `container`, `link`, `image`. Pickers and checks list only styles with that target. |
 | `style_field` | The block's own `style` field that already chooses this part's style per instance (`core/heading` `eyebrow_style_id`). `part_styles` does not take the part. |
 | `color`, `background` | Colour tokens the block's CSS gives the part (a primary button: `on_primary` on `primary`), for contrast checks. Default: site text on site background. |
@@ -142,7 +142,9 @@ One block per change; each is mechanical.
    - Give `color`/`background` when the block paints the part
      (a filled button) and `background_field` when a block field does.
    - Mark layout wrappers and overlays `decorative: true`.
-   - In a container block, anchor selectors with `>`.
+   - In a container block, anchor selectors at the root with a leading `>`
+     (`> .block-tabs-content > .block-tabs-strip …`), so they never reach a
+     nested block, a nested block of the same type included.
 3. **Render every part in the sample.** If the default sample leaves a part
    empty, add the block to `PART_SAMPLES` in `presentation-audit.ts`.
 4. **Run the guards**: `npx vitest run src/__tests__/presentation-settings.test.ts`

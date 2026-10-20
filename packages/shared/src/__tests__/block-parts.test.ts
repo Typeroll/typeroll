@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   LATEST_RENDER_VERSION,
   blockFieldTypeWarnings,
+  blockPartQuery,
   blockPartSelector,
   blockPartSelectorError,
   blockPartStylesCss,
@@ -34,13 +35,13 @@ const assets = (blocks: Block[], styles: unknown[] | undefined) => collectBlockA
 
 describe('part selectors', () => {
   it('accepts plain selectors relative to the block root', () => {
-    for (const selector of ['a', '.block-hero-heading', '.block-hero-media img', 'li > a', '.x:first-child', 'a[href]', 'p.lead, .note', 'td:nth-child(2n+1)']) {
+    for (const selector of ['a', '.block-hero-heading', '.block-hero-media img', 'li > a', '.x:first-child', 'a[href]', 'p.lead, .note', 'td:nth-child(2n+1)', '> .col', '> .strip > a, > .links a']) {
       expect(blockPartSelectorError(selector), selector).toBeNull();
     }
   });
 
   it('rejects anything that could reach outside the generated rule', () => {
-    for (const selector of ['', 'a{color:red}', 'a;b', '@media', 'a::before', 'a:hover', 'a /* x */', '<a>', '* ', '> a', 'a >', 'a\\b', 'a, b, c, d, e', "a[href='x']", 'x'.repeat(201)]) {
+    for (const selector of ['', 'a{color:red}', 'a;b', '@media', 'a::before', 'a:hover', 'a /* x */', '<a>', '* ', '+ a', '~ a', '>', '> > a', 'a >', 'a\\b', 'a, b, c, d, e', "a[href='x']", 'x'.repeat(201)]) {
       expect(blockPartSelectorError(selector), selector).not.toBeNull();
     }
   });
@@ -51,6 +52,8 @@ describe('part selectors', () => {
     expect(blockPartSelector(type, part)).toBe(':where([data-block="rich_heading"]:not([data-part-link]) a):not([class^="s-"],[class*=" s-"]):not(#\\#):not(#\\#)');
     expect(blockPartSelector(type, part, 'quiet-link')).toBe(':where([data-block="rich_heading"][data-part-link="quiet-link"] a):not([class^="s-"],[class*=" s-"]):not(#\\#):not(#\\#)');
     expect(blockPartSelector(type, part, 'Bad id')).toBeNull();
+    expect(blockPartSelector(type, { ...part, selector: '> .a' })).toBe(':where([data-block="rich_heading"]:not([data-part-link]) > .a):not([class^="s-"],[class*=" s-"]):not(#\\#):not(#\\#)');
+    expect(blockPartQuery('> .a, .b c')).toBe(':scope > .a, :scope .b c');
     expect(blockPartSelector(type, { ...part, selector: '.a, .b' })).toBe(':where([data-block="rich_heading"]:not([data-part-link]) .a,[data-block="rich_heading"]:not([data-part-link]) .b):not([class^="s-"],[class*=" s-"]):not(#\\#):not(#\\#)');
   });
 });

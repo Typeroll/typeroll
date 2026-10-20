@@ -17,6 +17,7 @@
 import { Window } from 'happy-dom';
 import {
   blockOutputForVersion,
+  blockPartQuery,
   blockPartsAt,
   renderBlocks,
   type Block,
@@ -121,7 +122,7 @@ export function sampleDom(block: Block, registry: Map<string, BlockType>, render
 /** Elements in the sample that a style reaches: declared parts and the style element. */
 function styledElements(type: BlockType, dom: SampleDom, renderVersion: number): { parts: Set<Element>; styleElement: Element | null } {
   const parts = new Set<Element>();
-  for (const part of blockPartsAt(type, renderVersion)) for (const element of dom.root.querySelectorAll(part.selector)) parts.add(element);
+  for (const part of blockPartsAt(type, renderVersion)) for (const element of dom.root.querySelectorAll(blockPartQuery(part.selector))) parts.add(element);
   const hasStyleField = type.schema.some(field => field.type === 'style' && field.name === 'style_id');
   const styleElement = !hasStyleField ? null
     : type.style_element_class ? dom.root.querySelector(`.${type.style_element_class}`) ?? null : dom.root;

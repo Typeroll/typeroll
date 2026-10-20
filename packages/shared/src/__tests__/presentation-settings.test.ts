@@ -24,6 +24,7 @@ import {
   renderClientCapabilityScripts,
   integrationConfigKey,
   instanceStyleParts,
+  blockPartQuery,
   blockPartsAt,
   blockPartsProblems,
   siteThemeCss,
@@ -370,7 +371,7 @@ describe('every presentational value a core block writes is reachable', () => {
         const parts = blockPartsAt(type, version);
         if (!parts.length) continue;
         const dom = sampleDom(partSampleBlock(type), registry, version);
-        for (const part of parts) if (!dom?.root.querySelector(part.selector)) missing.push(`${type.id}.${part.name}@v${version}: ${part.selector}`);
+        for (const part of parts) if (!dom?.root.querySelector(blockPartQuery(part.selector))) missing.push(`${type.id}.${part.name}@v${version}: ${part.selector}`);
       }
     }
     expect(missing, 'fix the selector, give the part a min_render_version, or extend PART_SAMPLES so the sample renders it').toEqual([]);

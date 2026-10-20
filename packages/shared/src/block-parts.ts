@@ -62,8 +62,9 @@ export interface BlockPart {
    * CSS selector of the part's element(s), relative to the block root, e.g.
    * `.block-hero-heading` or `a`. Simple selectors only: tags, classes,
    * attributes, structural pseudo-classes and combinators (see
-   * `blockPartSelectorError`). In a container block, anchor it with `>` so it
-   * never reaches a nested block's elements.
+   * `blockPartSelectorError`). A leading `>` starts at the block root's
+   * children (`> .block-columns-col`): in a container block, anchor it that
+   * way so it never reaches a nested block's elements.
    */
   selector: string;
   /** The kind of style that fits the part; pickers and checks list only styles with this target. */
@@ -110,7 +111,8 @@ const MAX_SELECTOR_LENGTH = 200;
  * embeds it inside `:where(…)`, so it must be plain selector text: no
  * braces, at-rules, comments, escapes, pseudo-elements or state
  * pseudo-classes (hover and focus come from the style), at most four
- * comma-separated selectors of at most six compounds.
+ * comma-separated selectors of at most six compounds. A selector may start
+ * with `>`: a child of the block root.
  */
 export function blockPartSelectorError(selector: unknown): string | null {
   if (typeof selector !== 'string' || !selector.trim()) return 'selector is required';
@@ -125,7 +127,9 @@ export function blockPartSelectorError(selector: unknown): string | null {
     for (let index = 0; index < tokens.length; index++) {
       const token = tokens[index]!;
       if (['>', '+', '~'].includes(token)) {
-        if (index === 0 || index === tokens.length - 1 || ['>', '+', '~'].includes(tokens[index - 1]!)) return `selector "${item.trim()}" has a combinator without an element on both sides`;
+        // A leading `>` anchors at the block root (a child of it); nothing else may start or end the selector.
+        const anchor = index === 0 && token === '>' && tokens.length > 1;
+        if ((index === 0 && !anchor) || index === tokens.length - 1 || (index > 0 && ['>', '+', '~'].includes(tokens[index - 1]!))) return `selector "${item.trim()}" has a combinator without an element on both sides`;
         continue;
       }
       if (!token || !COMPOUND.test(token)) return `selector "${item.trim()}" uses "${token}": write tags, .classes, [attributes] and structural pseudo-classes such as :first-child`;
@@ -186,6 +190,15 @@ export function blockPartsProblems(parts: unknown, schema: readonly FieldDefinit
     if (part.min_render_version !== undefined && (!Number.isInteger(part.min_render_version) || (part.min_render_version as number) < 1)) problems.push([`${at}/min_render_version`, 'min_render_version must be a whole number from 1.']);
   });
   return problems;
+}
+
+/**
+ * A part selector relative to an element, for `element.querySelectorAll`:
+ * each item scoped with `:scope`, so a leading `>` means a child of that
+ * element, as in the generated CSS.
+ */
+export function blockPartQuery(selector: string): string {
+  return selector.split(',').map(item => `:scope ${item.trim()}`).join(', ');
 }
 
 /** Parts of a type that exist at a render version. */
