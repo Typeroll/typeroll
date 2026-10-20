@@ -563,7 +563,7 @@ const cta: BlockType = {
     { name: 'actions', label: 'Button row', selector: '.block-cta-actions', target: 'container', decorative: true },
   ],
   schema: [
-    { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
+    { name: 'style_id', type: 'style', label: 'CTA style', style_target: 'container', editor_group: 'content' },
     { name: 'eyebrow', type: 'text', label: 'Eyebrow' },
     { name: 'heading', type: 'text', label: 'Heading' },
     { name: 'subheading', type: 'richtext', label: 'Subheading' },
@@ -1203,7 +1203,7 @@ const accordion: BlockType = {
     { name: 'panel', label: 'Item content', selector: 'details > div', target: 'text', min_render_version: 4 },
   ],
   schema: [
-    { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
+    { name: 'style_id', type: 'style', label: 'Accordion style', style_target: 'container', editor_group: 'content' },
     { name: 'items', type: 'array', label: 'Items',
       fields: [
         { name: 'title', type: 'text', label: 'Title', required: true },
