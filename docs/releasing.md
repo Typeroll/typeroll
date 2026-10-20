@@ -55,8 +55,9 @@ steps:
 
 1. verify the exact qualified documentation artifact, then validate versions,
    tags, and changed product scopes;
-2. in parallel, build the Core image once, publish it by immutable digest,
-   verify `/api/version`, then create `core-vX.Y.Z`;
+2. in parallel, take the Core image `Tests` prebuilt (or build it once), verify
+   `/api/version` for its immutable digest, point the `core-vX.Y.Z` image tag
+   at that digest, then create the `core-vX.Y.Z` Git tag;
 3. in the same parallel phase, build and inspect MCP, publish with npm Trusted
    Publishing, verify npm, then create `mcp-vX.Y.Z`;
 4. in the same parallel phase, deploy the already built documentation from the
@@ -74,7 +75,27 @@ package build and dry-run inspection, and documentation artifact integrity.
 An already released unchanged Core or MCP version is verified and reused. If an
 image reached GHCR but the workflow stopped before creating its Core tag, a
 rerun reuses it only when its embedded source revision exactly matches the
-candidate commit. A manual workflow dispatch is dry-run-only by default; a real
+candidate commit.
+
+### Core image prebuild
+
+On a push to `main` whose `release:plan` publishes Core, `Tests` builds
+`ghcr.io/typeroll/typeroll:sha-SOURCE_SHA` in parallel with qualification. That
+job alone has `packages: write`; the workflow default stays read-only. Pull
+requests and commits that publish no Core never build, and `Tests` creates no
+release tag. A failed image build fails `Tests`, just as it would fail the
+release.
+
+Both callers use `.github/actions/core-image`, so labels, the
+`TYPEROLL_SOURCE_SHA` build argument, platform, BuildKit cache, SBOM and
+provenance cannot drift. When `core-vX.Y.Z` does not exist yet, the release job
+reuses `sha-SOURCE_SHA` only if its `org.opencontainers.image.revision` label is
+the source SHA and its `org.opencontainers.image.version` label is the release
+tag. It verifies the container contract for that digest, points the release
+image tag at the same digest with `crane tag`, and the manifest records it. A
+missing image, other labels or any registry error builds exactly as before.
+
+A manual workflow dispatch is dry-run-only by default; a real
 manual release also requires `RELEASE_TYPEROLL_OSS`. The npm trusted publisher
 must remain bound to `publish-mcp.yml`.
 
@@ -166,6 +187,6 @@ never substitute for those checks. Workflow/helper-only changes are explicitly
 classified as release infrastructure and do not require a fictitious Core/MCP
 version bump; changes to runtime source still do.
 
-The Core release job uses built-in version checks and its Docker build, without
-a redundant host `npm ci`. An unchanged MCP package is verified in the registry
+The Core release job uses built-in version checks and the prebuilt image or its
+own Docker build, without a redundant host `npm ci`. An unchanged MCP package is verified in the registry
 without reinstalling build dependencies or the publishing client.
