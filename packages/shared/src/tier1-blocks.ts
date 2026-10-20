@@ -1257,6 +1257,10 @@ const video: BlockType = {
   icon: 'video',
   category: 'media',
   container: false,
+  // The embed (YouTube, Vimeo) or the file player, whichever the source renders.
+  parts: [
+    { name: 'player', label: 'Player', selector: 'iframe, video', target: 'image', decorative: true },
+  ],
   schema: [
     { name: 'source', type: 'select', label: 'Source', options: ['youtube', 'vimeo', 'url'], default: 'youtube' },
     { name: 'video_url', type: 'url', label: 'Video URL' },

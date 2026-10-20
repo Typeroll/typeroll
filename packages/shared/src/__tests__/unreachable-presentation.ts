@@ -122,11 +122,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="tabs"][data-style="boxed"] .block-tabs-choice { border: 1px solid #8884 }': NO_PARTS_YET,
     '[data-block="tabs"][data-collapse-mode="panels"] [aria-selected="true"][aria-expanded="false"] { box-shadow: none }': NO_PARTS_YET,
   },
-  'core/video': {
-    '[data-block="video"] iframe { border-radius: 0.5rem }': NO_PARTS_YET,
-    '[data-block="video"] video { border-radius: 0.5rem }': NO_PARTS_YET,
-    '[data-block="video"] video { background: #000 }': NO_PARTS_YET,
-  },
   'form/slider': {
     '[data-block="form_slider"] .form-slider-value { margin-left: 0.4rem }': 'the space between the label and its inline value is horizontal; a style sets vertical space only (space_before, space_after), and the value part\'s padding adds to it',
   },

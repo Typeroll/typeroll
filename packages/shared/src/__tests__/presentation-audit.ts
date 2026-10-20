@@ -209,6 +209,8 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     eyebrow: 'Eyebrow', heading: 'Heading', subheading: '<p>Subheading</p>',
     primary_label: 'Start', primary_url: '/start/', secondary_label: 'More', secondary_url: '/more/',
   },
+  // A file plays in <video>; PART_SAMPLE_MARKUP adds the embed player.
+  'core/video': { source: 'url', video_url: '/media/sample.mp4' },
   // Without a page, the link to / is the current page's.
   'core/navigation': { links: [{ label: 'Home', href: '/' }, { label: 'About', href: '/about/' }] },
   'core/accordion': {
