@@ -170,6 +170,18 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     eyebrow: 'Eyebrow', heading: 'Heading', subheading: '<p>Subheading</p>', image: '/media/hero.jpg',
     primary_label: 'Start', primary_url: '/start/', secondary_label: 'More', secondary_url: '/more/',
   },
+  'core/pricing_plan': {
+    name: 'Pro', price: '$29', period: '/month', description: 'For growing teams', badge: 'Popular', cta_href: '/start/',
+    features: [{ text: 'Unlimited pages', included: true }, { text: 'Priority support', included: false }],
+  },
+  'core/team_member': {
+    name: 'Ada Lovelace', role: 'Engineer', bio: '<p>Writes the first programs.</p>', photo: '/media/ada.jpg', link: '/team/ada/',
+    socials: [{ network: 'github', url: 'https://github.com/ada' }],
+  },
+  'core/testimonial': {
+    quote: '<p>It changed how we work.</p>', name: 'Grace Hopper', role: 'CTO', company: 'Acme',
+    avatar: '/media/grace.jpg', logo: '/media/acme.svg', rating: 5,
+  },
 };
 
 /** A sample block: field defaults, required fields filled in, then PART_SAMPLES. */

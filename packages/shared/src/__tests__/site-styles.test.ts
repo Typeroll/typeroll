@@ -206,9 +206,14 @@ describe('block style_id', () => {
     expect(button).toContain('class="block-button-link s-button"');
   });
 
-  it('ignores invalid ids and blocks whose own "style" field is a variant', () => {
+  it('ignores invalid ids and blocks without a style_id field', () => {
     expect(renderBlocks([{ id: 'h', type: 'core/heading', data: { text: 'Hi', style_id: 'Bad id"' } }], { registry })).not.toContain('s-');
-    expect(renderBlocks([{ id: 't', type: 'core/testimonial', data: { quote: 'q', style: 'card', style_id: 'lead' } }], { registry })).not.toContain('s-lead');
+    expect(renderBlocks([{ id: 'l', type: 'core/logo_item', data: { src: '/media/logo.svg', style_id: 'lead' } }], { registry })).not.toContain('s-lead');
+  });
+
+  it('keeps a block\'s own "style" variant next to its style_id', () => {
+    const card = renderBlocks([{ id: 't', type: 'core/testimonial', data: { quote: 'q', style: 'bordered', style_id: 'quote-card' } }], { registry });
+    expect(card).toMatch(/^<figure data-block="testimonial" data-style="bordered"[^>]*class="s-quote-card"/);
   });
 });
 
