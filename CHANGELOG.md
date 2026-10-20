@@ -1,5 +1,10 @@
 # Changelog
 
+## Core 0.2.80 / MCP 0.45.62
+
+- `core/rich_heading`: `link_decoration` and `link_hover_decoration` (`inherit` | `none` | `underline`) set the underline of the heading's links, so a category heading can link to its page without an underline while body links keep the site's Link style. Unset, the links follow the Link style (`--link-decoration`) as before; the focus outline stays visible. The attributes appear only when set, so existing markup is unchanged and the block's CSS reference is updated for every render version instead of gating it.
+- MCP: version follows the shared block contract (the new `core/rich_heading` fields).
+
 ## Core 0.2.79 / MCP 0.45.61
 
 - **Render version 6: browser-default font smoothing.** The template reset no longer sets `-webkit-font-smoothing: antialiased` and `text-rendering: optimizeLegibility` on every site. On macOS that drew dark text on a light background thinner and lighter than other sites at the same weight, so migrated sites looked lighter than their originals. New sites and sites upgraded to render version 6 use the browser default (`auto`). Versions 1–5 render as before: the rule moved from `reset.css` to the theme CSS for those versions, so their computed styles are unchanged and the platform CSS reference changed in text only.
