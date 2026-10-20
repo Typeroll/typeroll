@@ -15,6 +15,9 @@ const cellFields: FieldDefinition[] = [
 export const ARTICLE_BLOCK_TYPES: BlockType[] = [
   {
     id: 'core/rich_heading', name: 'rich_heading', label: 'Formatted heading', icon: 'heading', category: 'content', container: false,
+    parts: [
+      { name: 'link', label: 'Links', selector: 'a', target: 'link' },
+    ],
     schema: [
       { name: 'style_id', type: 'style', label: 'Style', style_target: 'heading', editor_group: 'content' },
       { name: 'html', type: 'richtext', label: 'Heading', required: true },

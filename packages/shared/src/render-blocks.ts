@@ -62,6 +62,7 @@ import { GLOBAL_BLOCK_MAX_DEPTH, GLOBAL_BLOCK_TYPE_ID, withGlobalBlockContent, t
 import { parseSections, renderSections, usesExtendedSections } from './template-sections.js';
 import { deriveFieldValues, pageUrlResolverFromSource } from './block-fields.js';
 import { scopeBlockCss } from './block-css-scope.js';
+import { blockPartStylesCss, partStyleAttributes } from './block-parts.js';
 import { COMPOSITION_MAX_DEPTH, instanceTree, isComposedBlockType, walkComposition, withFieldDefaults } from './composed-blocks.js';
 
 /**
@@ -538,6 +539,8 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     return typeof v === 'string' && v.trim() !== '';
   });
   if (compiled.hasOverrides || carriesInstanceScript || columnThreshold !== null) rootAttrs['data-bid'] = bid;
+  // The instance's own part styles (block-parts.ts); absent without a choice.
+  if (blockType.parts?.length) Object.assign(rootAttrs, partStyleAttributes(blockType, effectiveBlock.data, options.renderVersion));
   // Block provenance — lets an agent map the rendered element back to the
   // authored block it should edit. Uses the original (pre-alias-expansion)
   // id + type so it matches what get_page_blocks returns.
@@ -2030,6 +2033,12 @@ export interface CollectAssetsOptions {
   renderVersion?: number;
   /** Includes the assets of referenced global blocks, like RenderBlocksOptions.globalBlockSource. */
   globalBlockSource?: GlobalBlockSource;
+  /**
+   * The site style library and breakpoints, for block part styles
+   * (block-parts.ts): site-wide part styles of the block types on the page
+   * and each instance's `part_styles`. Without it no part CSS is emitted.
+   */
+  siteStyles?: { styles: readonly unknown[] | undefined; breakpoints: BreakpointWidths };
 }
 
 export function collectBlockAssets(
@@ -2060,6 +2069,11 @@ export function collectBlockAssets(
     const btStyles = rawStyles && bt.css_scope === 'block' ? scopeBlockCss(rawStyles, bt.name).css : rawStyles;
     if (btStyles) css.push(`/* ${id} */\n${styleElementText(btStyles)}`);
     if (output.script) js.push(`/* ${id} */\n${output.script}`);
+  }
+
+  if (opts?.siteStyles) {
+    const partCss = blockPartStylesCss(blocks, registry, used, { ...opts.siteStyles, renderVersion: opts.renderVersion });
+    if (partCss) css.push(`/* block parts */\n${partCss}`);
   }
 
   for (const block of collectInstanceStyles(blocks)) {

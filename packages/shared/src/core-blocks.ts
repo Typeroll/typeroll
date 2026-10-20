@@ -19,6 +19,7 @@ import { FORM_BLOCK_TYPES } from './form-blocks.js';
 import { TEMPLATE_BLOCK_TYPES } from './template-blocks.js';
 import { TIER1_BLOCK_TYPES } from './tier1-blocks.js';
 import { FIELD_LIST_BLOCK } from './field-list.js';
+import { withPartStylesField } from './block-parts.js';
 import type { BlockType } from './types.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
@@ -258,6 +259,12 @@ const heading: BlockType = {
   category: 'content',
   container: false,
   style_element_class: 'block-heading-text',
+  // Each part already has a style field per instance; parts add the site-wide default.
+  parts: [
+    { name: 'eyebrow', label: 'Eyebrow', selector: '.block-heading-eyebrow', target: 'text', style_field: 'eyebrow_style_id' },
+    { name: 'text', label: 'Heading', selector: '.block-heading-text', target: 'heading', style_field: 'style_id' },
+    { name: 'subtitle', label: 'Subtitle', selector: '.block-heading-subtitle', target: 'text', style_field: 'subtitle_style_id', min_render_version: 2 },
+  ],
   schema: [
     { name: 'eyebrow', type: 'text', label: 'Eyebrow', placeholder: 'Short label above the heading' },
     { name: 'eyebrow_style_id', type: 'style', label: 'Eyebrow style', style_target: 'text', style_default_role: 'eyebrow', min_render_version: 2 },
@@ -460,6 +467,10 @@ const button: BlockType = {
   category: 'content',
   container: false,
   style_element_class: 'block-button-link',
+  // Measured on the primary variant's colours, the default.
+  parts: [
+    { name: 'link', label: 'Button', selector: '.block-button-link', target: 'button', style_field: 'style_id', color: 'on_primary', background: 'primary' },
+  ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'button', editor_group: 'content' },
     { name: 'label', type: 'text', label: 'Button text', required: true, default: 'Learn more' },
@@ -579,7 +590,8 @@ export const CORE_BLOCK_TYPES: readonly BlockType[] = [
   // (page/site/item). Used inside PageTemplates so a blog template can
   // bind {{page.title}} once and every blog post renders correctly.
   ...TEMPLATE_BLOCK_TYPES,
-].map(block => ({ ...block, schema: [...block.schema, componentBreakpointsField].map(groupPresentationField) }));
+  // A type with parts gets the part_styles field (block-parts.ts).
+].map(block => withPartStylesField(block)).map(block => ({ ...block, schema: [...block.schema, componentBreakpointsField].map(groupPresentationField) }));
 
 /**
  * Build a registry Map for use with `renderBlocks`. Custom block types

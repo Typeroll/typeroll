@@ -437,6 +437,17 @@ const hero: BlockType = {
   icon: 'panel-top',
   category: 'layout',
   container: false,
+  parts: [
+    { name: 'eyebrow', label: 'Eyebrow', selector: '.block-hero-eyebrow', target: 'text', background_field: 'background' },
+    { name: 'heading', label: 'Heading', selector: '.block-hero-heading', target: 'heading', background_field: 'background' },
+    { name: 'subheading', label: 'Subheading', selector: '.block-hero-sub', target: 'text', background_field: 'background' },
+    { name: 'primary_button', label: 'Primary button', selector: '.block-btn-primary', target: 'button', color: 'on_primary', background: 'primary' },
+    { name: 'secondary_button', label: 'Secondary button', selector: '.block-btn-secondary', target: 'button', color: 'primary', background_field: 'background' },
+    { name: 'media', label: 'Image', selector: '.block-hero-media img', target: 'image' },
+    { name: 'layout', label: 'Text and image columns', selector: '.block-hero-inner', target: 'container', decorative: true },
+    { name: 'actions', label: 'Button row', selector: '.block-hero-actions', target: 'container', decorative: true },
+    { name: 'overlay', label: 'Image overlay', selector: '.block-hero-overlay', target: 'container', decorative: true },
+  ],
   schema: [
     { name: 'eyebrow', type: 'text', label: 'Eyebrow' },
     { name: 'heading', type: 'text', label: 'Heading' },

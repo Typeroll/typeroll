@@ -15,6 +15,7 @@
 //   same reason as the other block-tree warnings (block-tree-warnings.ts).
 
 import { BREAKPOINT_ORDER, isResponsiveValue } from './breakpoints.js';
+import { STYLE_ID_PATTERN } from './site-styles.js';
 import type { Block, BlockType, FieldDefinition } from './types.js';
 
 const NUMBER_TEXT = /^\s*-?(?:\d+(?:\.\d+)?|\.\d+)\s*$/;
@@ -89,6 +90,10 @@ function fieldWarnings(
       });
       continue;
     }
+    if (field.type === 'part_styles') {
+      partStylesWarnings(field, value, at, blockId, out);
+      continue;
+    }
     const entries: Array<[string, unknown]> = field.responsive && isResponsiveValue(value)
       ? BREAKPOINT_ORDER.filter(point => point in (value as object)).map(point => [`${at}.${point}`, (value as Record<string, unknown>)[point]])
       : [[at, value]];
@@ -104,6 +109,21 @@ function fieldWarnings(
         message: `${valuePath} is ${describe(entry)}, but ${field.name} must be ${expected}. The value is stored and will not render.`,
       });
     }
+  }
+}
+
+/** `part_styles` is an object of part names to style ids (block-parts.ts); unknown part names are `unknown_field`. */
+function partStylesWarnings(field: FieldDefinition, value: unknown, at: string, blockId: string | undefined, out: FieldTypeWarning[]): void {
+  if (value === undefined || value === null) return;
+  const push = (path: string, entry: unknown, expected: string) => out.push({
+    code: 'field_type_mismatch',
+    ...(blockId ? { block_id: blockId } : {}),
+    path, field: field.name, expected,
+    message: `${path} is ${describe(entry)}, but ${path === at ? field.name : 'a part style'} must be ${expected}. The value is stored and will not render.`,
+  });
+  if (typeof value !== 'object' || Array.isArray(value)) { push(at, value, 'an object of part names to style ids, e.g. { "link": "quiet-link" }'); return; }
+  for (const [part, id] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof id !== 'string' || !STYLE_ID_PATTERN.test(id)) push(`${at}.${part}`, id, 'a style id (list_styles)');
   }
 }
 

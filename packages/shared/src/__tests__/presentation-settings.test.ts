@@ -23,12 +23,18 @@ import {
   renderBlocks,
   renderClientCapabilityScripts,
   integrationConfigKey,
+  instanceStyleParts,
+  blockPartsAt,
+  blockPartsProblems,
   siteThemeCss,
   defaultSiteSettings,
   type Block,
   type BlockType,
   type FieldDefinition,
 } from '../index.js';
+
+import { declarationKey, partSampleBlock, sampleDom, unreachablePresentation } from './presentation-audit.js';
+import { UNREACHABLE_PRESENTATION } from './unreachable-presentation.js';
 
 const registry = buildCoreBlockRegistry();
 const templateCss = (name: string) => readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../site-template/src/styles', name), 'utf8');
@@ -312,7 +318,8 @@ describe('every core block field changes what renders', () => {
         if (SKIP_TYPES.has(field.type) || CONTEXT[key]) continue;
         const block = base(type, WHEN[key]);
         const current = block.data?.[field.name];
-        let value = sample(field, field.required === true && field.default === undefined);
+        let value = field.type === 'part_styles' ? { [instanceStyleParts(type)[0]!.name]: 'sample-style' }
+          : sample(field, field.required === true && field.default === undefined);
         if (JSON.stringify(value) === JSON.stringify(current)) value = sample(field, true);
         if (value === undefined) continue;
         const changed = output(block) !== output({ ...block, data: { ...block.data, [field.name]: value } });
@@ -322,6 +329,59 @@ describe('every core block field changes what renders', () => {
     }
     expect(inert, 'fields that change nothing when set').toEqual([]);
     expect(revived, 'KNOWN_DEAD entries that now render: remove them').toEqual([]);
+  });
+});
+
+describe('every presentational value a core block writes is reachable', () => {
+  // A literal in a block's CSS (a link underline, an eyebrow's tracking, a
+  // button radius) that no field, style or variable reaches can only be
+  // changed with site CSS against platform markup. Each must read a
+  // variable, style an element a style reaches (a declared part, the style
+  // element) with a property a style sets, or be listed in
+  // UNREACHABLE_PRESENTATION with a reason. Blocks without parts yet are
+  // listed whole; declaring parts (docs/plans/block-parts.md) removes their
+  // entries, and a stale entry fails here so the list stays true.
+  const LATEST = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;
+
+  it(`at render version ${LATEST}`, () => {
+    const added: string[] = [];
+    const stale: string[] = [];
+    for (const type of registry.values()) {
+      const found = new Set(unreachablePresentation(type, partSampleBlock(type), registry, LATEST).map(declarationKey));
+      const listed = UNREACHABLE_PRESENTATION[type.id] ?? {};
+      for (const key of found) if (!listed[key]) added.push(`${type.id}: ${key}`);
+      for (const key of Object.keys(listed)) if (!found.has(key)) stale.push(`${type.id}: ${key}`);
+    }
+    expect(added, 'declare a part for these elements (docs/plans/block-parts.md), read a variable, or list them in UNREACHABLE_PRESENTATION with a reason').toEqual([]);
+    expect(stale, 'reachable now or no longer in the CSS: remove them from UNREACHABLE_PRESENTATION').toEqual([]);
+  });
+
+  it('lists only core blocks, each entry with a reason', () => {
+    for (const [id, entries] of Object.entries(UNREACHABLE_PRESENTATION)) {
+      expect(registry.has(id), id).toBe(true);
+      for (const [key, reason] of Object.entries(entries)) expect(reason.trim().length, `${id}: ${key}`).toBeGreaterThan(10);
+    }
+  });
+
+  it('every declared part matches an element in the sample markup', () => {
+    const missing: string[] = [];
+    for (const { version } of RENDER_VERSIONS) {
+      for (const type of registry.values()) {
+        const parts = blockPartsAt(type, version);
+        if (!parts.length) continue;
+        const dom = sampleDom(partSampleBlock(type), registry, version);
+        for (const part of parts) if (!dom?.root.querySelector(part.selector)) missing.push(`${type.id}.${part.name}@v${version}: ${part.selector}`);
+      }
+    }
+    expect(missing, 'fix the selector, give the part a min_render_version, or extend PART_SAMPLES so the sample renders it').toEqual([]);
+  });
+
+  it('declares valid parts whose style fields exist', () => {
+    for (const type of registry.values()) {
+      expect(blockPartsProblems(type.parts, type.schema), type.id).toEqual([]);
+      const hasField = type.schema.some(field => field.name === 'part_styles');
+      expect(hasField, `${type.id} has the part_styles field exactly when an instance can style a part`).toBe(instanceStyleParts(type).length > 0);
+    }
   });
 });
 

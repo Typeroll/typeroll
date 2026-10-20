@@ -13,6 +13,7 @@
  */
 
 import { blockTreeError } from './block-tree-validation.js';
+import { PART_STYLES_FIELD, blockPartsProblems, withPartStylesField, type BlockPart } from './block-parts.js';
 import { scopeBlockCss } from './block-css-scope.js';
 import { COMPOSITION_MAX_DEPTH, walkComposition } from './composed-blocks.js';
 import { CUSTOM_CSS_MAX_LENGTH, checkCustomCss } from './custom-css.js';
@@ -45,7 +46,7 @@ const FIELD_KEYS = new Set(['name', 'type', 'label', 'help', 'required', 'defaul
   'responsive_css', 'css_unit', 'item_key', 'style_default_role', 'min_render_version']);
 /** Properties a block type definition may carry. */
 export const BLOCK_TYPE_WRITABLE = ['name', 'label', 'icon', 'category', 'container', 'slot_count', 'slot_labels', 'item_compatible',
-  'expand_to', 'schema', 'template', 'styles', 'script', 'composition', 'description'] as const;
+  'expand_to', 'schema', 'template', 'styles', 'script', 'composition', 'description', 'parts'] as const;
 export const MAX_FIELD_DEPTH = 3;
 export const MAX_TEMPLATE_LENGTH = 100_000;
 export const MAX_COMPOSITION_BYTES = 500_000;
@@ -142,8 +143,10 @@ export function validateBlockTypeDefinition(input: unknown, options: ValidateBlo
   if (has('schema') || !partial) {
     if (!Array.isArray(input.schema)) error('/schema', 'schema must be a list of fields.');
     else {
-      checkFields(input.schema, '/schema', 1, error, warn);
-      value.schema = input.schema as FieldDefinition[];
+      // The part_styles field follows `parts` (added below); a definition read back may carry it.
+      const fields = input.schema.filter(field => !(isRecord(field) && field.name === PART_STYLES_FIELD && field.type === 'part_styles'));
+      checkFields(fields, '/schema', 1, error, warn);
+      value.schema = fields as FieldDefinition[];
     }
   }
   if (has('script')) {
@@ -170,8 +173,26 @@ export function validateBlockTypeDefinition(input: unknown, options: ValidateBlo
     }
   }
   if (!partial) value.css_scope = 'block';
+  if (has('parts')) {
+    const schema = value.schema ?? options.existing?.schema ?? [];
+    const partProblems = blockPartsProblems(input.parts, schema);
+    for (const [path, message] of partProblems) error(path, message);
+    if (!partProblems.length) value.parts = (input.parts as BlockPart[]).map(normalizePart);
+  }
 
   const merged = { ...(options.existing ?? empty), ...value } as BlockType;
+  // A type with parts an instance can style gets the part_styles field; one without loses it.
+  if (value.schema !== undefined || value.parts !== undefined) {
+    if (value.schema?.some(field => field.name === PART_STYLES_FIELD) && (merged.parts ?? []).some(part => !part.style_field)) {
+      error('/schema', `"${PART_STYLES_FIELD}" is the field for this type's parts; name your field differently.`);
+    } else {
+      const schema = (merged.schema ?? []).filter(field => !(field.name === PART_STYLES_FIELD && field.type === 'part_styles'));
+      const normalized = withPartStylesField({ parts: merged.parts, schema }).schema;
+      if (value.schema !== undefined || JSON.stringify(normalized) !== JSON.stringify(merged.schema ?? [])) value.schema = normalized;
+      merged.schema = normalized;
+    }
+  }
+  if (value.parts !== undefined || (value.template !== undefined && merged.parts?.length)) checkPartSelectors(merged, warn);
   if (!partial || options.existing) {
     const id = merged.id || merged.name;
     // Older stored types may have neither; only a create or a write of the
@@ -189,6 +210,22 @@ export function validateBlockTypeDefinition(input: unknown, options: ValidateBlo
     if (value.styles !== undefined) checkStyles(merged.styles ?? '', merged.name, error, warn);
   }
   return { value, merged, problems };
+}
+
+/** Only known part properties are stored. */
+function normalizePart(part: BlockPart): BlockPart {
+  const keys = ['name', 'label', 'selector', 'target', 'style_field', 'color', 'background', 'background_field', 'decorative', 'min_render_version'] as const;
+  return Object.fromEntries(keys.filter(key => part[key] !== undefined).map(key => [key, key === 'label' || key === 'selector' ? String(part[key]).trim() : part[key]])) as unknown as BlockPart;
+}
+
+/** A part whose classes the template never writes styles nothing. */
+function checkPartSelectors(type: BlockType, warn: (path: string, message: string) => void): void {
+  if (type.composition?.length) return;
+  const markup = [type.template ?? '', ...(type.render_versions ?? []).map(version => version.template ?? '')].join('\n');
+  (type.parts ?? []).forEach((part, index) => {
+    const missing = [...part.selector.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map(match => match[1]!).filter(name => !markup.includes(name));
+    if (missing.length) warn(`/parts/${index}/selector`, `The template never writes the class ${missing.map(name => `"${name}"`).join(', ')}, so the ${part.name} part matches nothing.`);
+  });
 }
 
 function checkFields(
