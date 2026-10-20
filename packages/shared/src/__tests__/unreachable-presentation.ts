@@ -15,20 +15,6 @@ const NO_PARTS_YET = 'parts not declared yet (docs/plans/block-parts.md)';
 const VIDEO_CONTROL = 'the background video pause control keeps one accessible look on every site (WCAG 2.2.2); it is not a design element';
 
 export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = {
-  'core/accordion': {
-    '[data-block="accordion"][data-style="bordered"] { border: 1px solid rgba(0,0,0,0.1) }': NO_PARTS_YET,
-    '[data-block="accordion"][data-style="bordered"] { border-radius: 0.5rem }': NO_PARTS_YET,
-    '[data-block="accordion"][data-style="separated"] { gap: 0.5rem }': NO_PARTS_YET,
-    '[data-block="accordion"][data-style="separated"] details { border: 1px solid rgba(0,0,0,0.1) }': NO_PARTS_YET,
-    '[data-block="accordion"][data-style="separated"] details { border-radius: 0.5rem }': NO_PARTS_YET,
-    '[data-block="accordion"] details { padding: 1rem 1.25rem }': NO_PARTS_YET,
-    '[data-block="accordion"] details { border-bottom: 1px solid rgba(0,0,0,0.05) }': NO_PARTS_YET,
-    '[data-block="accordion"] details:last-child { border-bottom: none }': NO_PARTS_YET,
-    '[data-block="accordion"] summary { font-weight: 600 }': NO_PARTS_YET,
-    '[data-block="accordion"] summary::after { font-size: 1.25rem }': NO_PARTS_YET,
-    '[data-block="accordion"] details > div { margin-top: 0.75rem }': NO_PARTS_YET,
-    '[data-block="accordion"] details > div { line-height: 1.6 }': NO_PARTS_YET,
-  },
   'core/columns': {
     '[data-block="columns"] { gap: 2rem }': NO_PARTS_YET,
     '[data-block="columns"][data-gap="sm"] { gap: 1rem }': NO_PARTS_YET,

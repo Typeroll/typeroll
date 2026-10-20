@@ -207,6 +207,9 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     eyebrow: 'Eyebrow', heading: 'Heading', subheading: '<p>Subheading</p>',
     primary_label: 'Start', primary_url: '/start/', secondary_label: 'More', secondary_url: '/more/',
   },
+  'core/accordion': {
+    items: [{ title: 'Question', content: '<p>Answer</p>' }, { title: 'Another question', content: '<p>Another answer</p>' }],
+  },
 };
 
 /** Render context a block's sample needs besides its data (repeater item data, a field list's Page fields). */

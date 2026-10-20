@@ -143,6 +143,9 @@ describe('part_styles data', () => {
     expect(textCheck().errors).toHaveLength(1);
     expect(textCheck('#111111').errors).toEqual([]);
     expect(treePartStyleIssues([{ id: 'h', type: 'core/hero', data: { part_styles: { eyebrow: 'nope' } } }], registry, styles)[0]?.path).toBe('blocks[0].data.part_styles.eyebrow');
+    // Parts a newer render version adds are checked too (core/accordion renders its items from version 4).
+    expect(partStyleIssues({ type: 'core/accordion', data: { part_styles: { item: 'nope' } } }, registry.get('core/accordion')!, styles).errors[0])
+      .toEqual(expect.objectContaining({ code: 'unknown_style', path: 'data.part_styles.item' }));
   });
 });
 

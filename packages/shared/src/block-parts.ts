@@ -37,7 +37,7 @@
 import type { BreakpointWidths } from './breakpoints.js';
 import type { TextUse } from './contrast.js';
 import { closestFieldNames } from './closest-names.js';
-import { resolveRenderVersion } from './render-version.js';
+import { LATEST_RENDER_VERSION, resolveRenderVersion } from './render-version.js';
 import {
   COLOR_TOKENS,
   STYLE_ELEMENT_ROLES,
@@ -434,7 +434,8 @@ export function partStyleIssues(
   const blockId = typeof block.id === 'string' && block.id ? block.id : undefined;
   const base = options.path ?? 'data';
   const byId = new Map(styles.map(style => [style.id, style]));
-  for (const [part, id] of instancePartStyles(type, data)) {
+  // Every part a choice can name, including parts newer render versions add.
+  for (const [part, id] of instancePartStyles(type, data, LATEST_RENDER_VERSION)) {
     const path = `${base}.${PART_STYLES_FIELD}.${part.name}`;
     const issue = { ...(blockId ? { block_id: blockId } : {}), block_type: type.id, path, part: part.name, style_id: id };
     const fitting = styles.filter(style => styleFitsPart(style, part)).map(style => style.id);

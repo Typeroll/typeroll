@@ -1194,7 +1194,16 @@ const accordion: BlockType = {
   icon: 'list-collapse',
   category: 'content',
   container: false,
+  // Items render from version 4. The outer frame (the bordered style's
+  // border, the separated style's gap) takes a container style through
+  // `style_id`.
+  parts: [
+    { name: 'item', label: 'Item', selector: 'details', target: 'container', min_render_version: 4 },
+    { name: 'title', label: 'Item title', selector: 'summary', target: 'text', min_render_version: 4 },
+    { name: 'panel', label: 'Item content', selector: 'details > div', target: 'text', min_render_version: 4 },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
     { name: 'items', type: 'array', label: 'Items',
       fields: [
         { name: 'title', type: 'text', label: 'Title', required: true },
