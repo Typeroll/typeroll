@@ -95,6 +95,8 @@ const pageDate: BlockType = {
   category: 'content',
   container: false,
   schema: [
+    // The date is the block root: a text style (size, colour, opacity) styles it.
+    { name: 'style_id', type: 'style', label: 'Date style', style_target: 'text', editor_group: 'content' },
     { name: 'field', type: 'select', label: 'Field',
       options: ['date_published', 'date_updated', 'created_at'], default: 'date_published' },
     { name: 'format', type: 'text', label: 'Format', default: 'MMM D, YYYY' },
@@ -114,7 +116,14 @@ const pageAuthor: BlockType = {
   icon: 'user',
   category: 'content',
   container: false,
+  parts: [
+    { name: 'avatar', label: 'Avatar', selector: '.block-author-avatar', target: 'image' },
+    { name: 'prefix', label: 'Prefix', selector: '.block-author-prefix', target: 'text' },
+    { name: 'name', label: 'Author name', selector: '.block-author-name', target: 'text' },
+  ],
   schema: [
+    // Styles the block root: text size and the space between avatar, prefix and name.
+    { name: 'style_id', type: 'style', label: 'Author style', style_target: 'container', editor_group: 'content' },
     { name: 'show_avatar', type: 'boolean', label: 'Show avatar', default: true },
     { name: 'prefix', type: 'text', label: 'Prefix', default: 'By' },
   ],
@@ -140,7 +149,16 @@ const pageBreadcrumbs: BlockType = {
   icon: 'chevron-right',
   category: 'content',
   container: false,
+  // The separator is each item's ::after: an item style sets it with
+  // `&:not(:last-child)::after` in its advanced CSS.
+  parts: [
+    { name: 'item', label: 'Items', selector: 'ol > li', target: 'text' },
+    { name: 'link', label: 'Links', selector: 'ol > li > a', target: 'link', color: 'primary' },
+    { name: 'current', label: 'Current page', selector: 'ol > li > [aria-current="page"]', target: 'text' },
+  ],
   schema: [
+    // Styles the block root: text size, colour and the bottom divider.
+    { name: 'style_id', type: 'style', label: 'Breadcrumbs style', style_target: 'container', editor_group: 'content' },
     pixels('padding_before_px', 'Space above (px)', 0, 160),
     pixels('padding_after_px', 'Space below (px)', 0, 160),
     { name: 'divider', type: 'boolean', label: 'Bottom divider', default: false },
@@ -174,7 +192,12 @@ const siteLogo: BlockType = {
   icon: 'image-square',
   category: 'media',
   container: false,
+  parts: [
+    { name: 'logo', label: 'Logo image', selector: 'img', target: 'image' },
+  ],
   schema: [
+    // The root is the home link; without a logo image it shows the site name.
+    { name: 'style_id', type: 'style', label: 'Logo link style', style_target: 'link', editor_group: 'content' },
     pixels('height_px', 'Height (px)', 16, 240),
     { name: 'height', type: 'select', label: 'Height', options: ['sm', 'md', 'lg'], default: 'md' },
     { name: 'link_to_home', type: 'boolean', label: 'Link to home', default: true },
@@ -250,7 +273,15 @@ const pageNavigation: BlockType = {
   icon: 'arrow-left-right',
   category: 'content',
   container: false,
+  parts: [
+    { name: 'previous_link', label: 'Previous link', selector: '> .page-navigation-previous', target: 'button' },
+    { name: 'next_link', label: 'Next link', selector: '> .page-navigation-next', target: 'button' },
+    { name: 'label', label: 'Previous and Next labels', selector: '> a > small', target: 'text' },
+    { name: 'title', label: 'Page titles', selector: '> a > span', target: 'text' },
+  ],
   schema: [
+    // Styles the block root: the space between the two links.
+    { name: 'style_id', type: 'style', label: 'Navigation style', style_target: 'container', editor_group: 'content' },
     { name: 'previous_label', type: 'text', label: 'Previous label', default: 'Previous' },
     { name: 'next_label', type: 'text', label: 'Next label', default: 'Next' },
     { name: 'aria_label', type: 'text', label: 'Accessible navigation label', default: 'Item navigation' },

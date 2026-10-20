@@ -114,7 +114,7 @@ export interface SampleDom {
 export function sampleDom(block: Block, registry: Map<string, BlockType>, renderVersion: number): SampleDom | null {
   const window = new Window();
   const container = window.document.createElement('div');
-  container.innerHTML = renderBlocks([block], { registry, renderVersion });
+  container.innerHTML = renderBlocks([block], { registry, renderVersion, context: PART_SAMPLE_CONTEXTS[block.type] as never });
   const root = container.firstElementChild as unknown as Element | null;
   return root ? { root, container: container as unknown as Element } : null;
 }
@@ -193,6 +193,17 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     eyebrow: 'Eyebrow', heading: 'Heading', subheading: '<p>Subheading</p>', image: '/media/hero.jpg',
     primary_label: 'Start', primary_url: '/start/', secondary_label: 'More', secondary_url: '/more/',
   },
+};
+
+/**
+ * Render context a block needs before every part renders (breadcrumbs from
+ * the page, the logo from the site). Used by `sampleDom`.
+ */
+export const PART_SAMPLE_CONTEXTS: Record<string, Record<string, unknown>> = {
+  'template/page_date': { page: { date_published: '2026-01-02' } },
+  'template/page_author': { page: { author: { name: 'Ada Lovelace', avatar: '/media/ada.jpg' } } },
+  'template/page_breadcrumbs': { page: { breadcrumbs: [{ label: 'Blog', href: '/blog/' }, { label: 'Post', current: true }] } },
+  'template/site_logo': { site: { name: 'Acme', logo: '/media/logo.svg' } },
 };
 
 /** A sample block: field defaults, required fields filled in, then PART_SAMPLES. */

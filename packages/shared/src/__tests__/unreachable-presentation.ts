@@ -18,6 +18,9 @@ const VIDEO_CONTROL = 'the background video pause control keeps one accessible l
 const REPEATER_GROUP_TITLE = 'the Group title style field (group_title_style_id) puts its style class on every group title, margins included; the title renders outside the repeater root, where no part reaches';
 const REPEATER_GROUP_SPACE = 'the space between two group sections, outside every repeater root, where neither a part nor style_overrides reach; a Group title style adds space above each title (space_before)';
 
+/** The breadcrumb separator: generated content, spaced inline. */
+const BREADCRUMB_SEPARATOR = 'the separator is each item\'s ::after, and no style property sets inline margins; the item part\'s style sets it in its advanced CSS (&:not(:last-child)::after)';
+
 export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = {
   'core/accordion': {
     '[data-block="accordion"][data-style="bordered"] { border: 1px solid rgba(0,0,0,0.1) }': NO_PARTS_YET,
@@ -340,32 +343,7 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="form_toggle"] .form-toggle-track::after { border-radius: 50% }': NO_PARTS_YET,
     '[data-block="form_toggle"] .form-toggle-track::after { background: #fff }': NO_PARTS_YET,
   },
-  'template/page_author': {
-    '[data-block="page-author"] { gap: 0.5rem }': NO_PARTS_YET,
-    '[data-block="page-author"] { font-size: 0.875rem }': NO_PARTS_YET,
-    '[data-block="page-author"] .block-author-avatar { border-radius: 50% }': NO_PARTS_YET,
-  },
   'template/page_breadcrumbs': {
-    '[data-block="breadcrumbs"] { font-size: 0.875rem }': NO_PARTS_YET,
-    '[data-block="breadcrumbs"][data-divider="true"] { border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent) }': NO_PARTS_YET,
-    '[data-block="breadcrumbs"] li:not(:last-child)::after { margin-inline: 0.35rem }': NO_PARTS_YET,
-    '[data-block="breadcrumbs"] li:not(:last-child)::after { opacity: 0.55 }': NO_PARTS_YET,
-    '[data-block="breadcrumbs"] a { text-underline-offset: 0.15em }': NO_PARTS_YET,
-    '[data-block="breadcrumbs"] [aria-current="page"] { font-weight: 600 }': NO_PARTS_YET,
-  },
-  'template/page_date': {
-    '[data-block="page-date"] { font-size: 0.875rem }': NO_PARTS_YET,
-    '[data-block="page-date"] { opacity: 0.7 }': NO_PARTS_YET,
-  },
-  'template/page_navigation': {
-    '[data-block="page_navigation"] { gap: 1rem }': NO_PARTS_YET,
-    '[data-block="page_navigation"] a { padding: 0.85rem 1rem }': NO_PARTS_YET,
-    '[data-block="page_navigation"] a { border: 1px solid color-mix(in srgb, currentColor 16%, transparent) }': NO_PARTS_YET,
-    '[data-block="page_navigation"] a { border-radius: 0.5rem }': NO_PARTS_YET,
-    '[data-block="page_navigation"] a { text-decoration: none }': NO_PARTS_YET,
-  },
-  'template/site_logo': {
-    '[data-block="site-logo"] { font-weight: 600 }': NO_PARTS_YET,
-    '[data-block="site-logo"] { text-decoration: none }': NO_PARTS_YET,
+    '[data-block="breadcrumbs"] li:not(:last-child)::after { margin-inline: 0.35rem }': BREADCRUMB_SEPARATOR,
   },
 };

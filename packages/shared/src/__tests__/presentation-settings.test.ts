@@ -263,6 +263,7 @@ describe('every core block field changes what renders', () => {
     'template/page_date.format': 'needs a real page date',
     'template/page_author.show_avatar': 'needs an author with an avatar',
     'template/page_author.prefix': 'needs an author',
+    'template/page_author.part_styles': 'needs an author (presentation-audit PART_SAMPLE_CONTEXTS)',
     'template/site_logo.link_to_home': 'needs a site logo',
     'template/show_if.condition': 'needs page values the condition can test',
     ...Object.fromEntries(['text', 'email', 'phone', 'url', 'number', 'textarea', 'select', 'radio_group', 'boolean', 'checkbox_group', 'toggle', 'slider', 'date', 'consent']
