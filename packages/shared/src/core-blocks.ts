@@ -124,6 +124,8 @@ const columns: BlockType = {
     { name: 'right_column', label: 'Right column', selector: '> .block-columns-col:last-child', target: 'container', decorative: true },
   ],
   schema: [
+    // Styles the block root: the gap between the columns, a surface behind both.
+    { name: 'style_id', type: 'style', label: 'Columns style', style_target: 'container', editor_group: 'content' },
     {
       name: 'ratio',
       type: 'select',

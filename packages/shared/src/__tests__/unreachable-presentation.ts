@@ -14,9 +14,6 @@ const NO_PARTS_YET = 'parts not declared yet (docs/plans/block-parts.md)';
 /** The hero video pause control: an accessibility control, not design. */
 const VIDEO_CONTROL = 'the background video pause control keeps one accessible look on every site (WCAG 2.2.2); it is not a design element';
 
-/** The space between two columns: the block's own fields set it on the root. */
-const COLUMN_GAP = 'the Gap (sm, md, lg) and Column gap (px) fields set the space between the columns on every instance; a part style cannot reach the block root';
-
 export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = {
   'core/accordion': {
     '[data-block="accordion"][data-style="bordered"] { border: 1px solid rgba(0,0,0,0.1) }': NO_PARTS_YET,
@@ -31,11 +28,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="accordion"] summary::after { font-size: 1.25rem }': NO_PARTS_YET,
     '[data-block="accordion"] details > div { margin-top: 0.75rem }': NO_PARTS_YET,
     '[data-block="accordion"] details > div { line-height: 1.6 }': NO_PARTS_YET,
-  },
-  'core/columns': {
-    '[data-block="columns"] { gap: 2rem }': COLUMN_GAP,
-    '[data-block="columns"][data-gap="sm"] { gap: 1rem }': COLUMN_GAP,
-    '[data-block="columns"][data-gap="lg"] { gap: 3rem }': COLUMN_GAP,
   },
   'core/container': {
     ':is([data-block="container"], [data-block="semantic-container"])[data-shadow="subtle"] { box-shadow: 0 2px 8px rgb(0 0 0 / 12%) }': NO_PARTS_YET,
