@@ -60,15 +60,7 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="list"][data-marker="check"] li { padding-inline-start: 1.5em }': NO_PARTS_YET,
   },
   'core/navigation': {
-    '[data-block="navigation"] .block-navigation-list { gap: 0.4rem 1.25rem }': NO_PARTS_YET,
-    '[data-block="navigation"] a { padding-block: 0.45rem }': NO_PARTS_YET,
-    '[data-block="navigation"] a { text-underline-offset: 0.2em }': NO_PARTS_YET,
-    '[data-block="navigation"] a[aria-current="page"] { font-weight: 700 }': NO_PARTS_YET,
-    '[data-block="navigation"] a[aria-current="page"] { text-decoration-thickness: 0.14em }': NO_PARTS_YET,
-    '[data-block="navigation"] .block-navigation-toggle { gap: 1rem }': NO_PARTS_YET,
-    '[data-block="navigation"] .block-navigation-toggle { padding: 0.65rem 0.8rem }': NO_PARTS_YET,
-    '[data-block="navigation"] .block-navigation-toggle { border: 1px solid color-mix(in srgb, currentColor 22%, transparent) }': NO_PARTS_YET,
-    '[data-block="navigation"] .block-navigation-toggle { border-radius: 0.4rem }': NO_PARTS_YET,
+    '[data-block="navigation"] a[aria-current="page"] { text-decoration-thickness: 0.14em }': 'the underline weight of the current page link shows only when a style underlines it (navigation links have no underline of their own); that style\'s advanced CSS can set the thickness',
   },
   'core/navigation_links': {
     '[data-block="navigation_links"] > li > a { text-decoration: none }': NO_PARTS_YET,

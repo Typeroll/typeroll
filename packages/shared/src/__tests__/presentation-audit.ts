@@ -209,6 +209,8 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     eyebrow: 'Eyebrow', heading: 'Heading', subheading: '<p>Subheading</p>',
     primary_label: 'Start', primary_url: '/start/', secondary_label: 'More', secondary_url: '/more/',
   },
+  // Without a page, the link to / is the current page's.
+  'core/navigation': { links: [{ label: 'Home', href: '/' }, { label: 'About', href: '/about/' }] },
   'core/accordion': {
     items: [{ title: 'Question', content: '<p>Answer</p>' }, { title: 'Another question', content: '<p>Another answer</p>' }],
   },

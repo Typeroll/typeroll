@@ -1134,6 +1134,13 @@ const navigation: BlockType = {
   icon: 'menu',
   category: 'content',
   container: false,
+  // The current page's link is a link too; its own part sets how it differs.
+  parts: [
+    { name: 'list', label: 'Link list', selector: '.block-navigation-list', target: 'list' },
+    { name: 'link', label: 'Links', selector: '.block-navigation-list a', target: 'link' },
+    { name: 'current_link', label: 'Current page link', selector: '.block-navigation-list a[aria-current="page"]', target: 'link' },
+    { name: 'toggle', label: 'Menu button', selector: '.block-navigation-toggle', target: 'button' },
+  ],
   schema: [
     { name: 'aria_label', type: 'text', label: 'Accessible label', default: 'Main navigation' },
     { name: 'menu_label', type: 'text', label: 'Mobile menu label', default: 'Menu' },
