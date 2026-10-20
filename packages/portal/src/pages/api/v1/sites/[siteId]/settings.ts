@@ -186,10 +186,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // failing the write. An explicit on_* colour is kept even when it is hard to
   // read: it is the site's choice, reported with both measures.
   if (update.colors || update.render_version !== undefined) {
-    const { styles, colors, renderVersion } = await readStyles(ctx);
+    const { styles, colors, renderVersion, registry } = await readStyles(ctx);
     warnings.push(...onColorWarnings(colors, renderVersion));
-    warnings.push(...libraryProblems(styles, colors, renderVersion).map(problem => `Style contrast with the new colours: ${problem}`));
-    warnings.push(...libraryWarnings(styles, colors, renderVersion).map(note => `Style readability: ${note}`));
+    warnings.push(...libraryProblems(styles, colors, renderVersion, registry).map(problem => `Style contrast with the new colours: ${problem}`));
+    warnings.push(...libraryWarnings(styles, colors, renderVersion, registry).map(note => `Style readability: ${note}`));
     resp.on_colors = onColorContrasts(colors, renderVersion).map(item => ({
       token: item.token, color: item.text, background: item.background, explicit: item.explicit,
       apca_lc: Math.round(item.lc * 10) / 10, wcag_ratio: Math.round(item.wcag * 100) / 100,

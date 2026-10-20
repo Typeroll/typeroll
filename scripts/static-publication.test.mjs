@@ -148,6 +148,26 @@ test('publishes the font smoothing setting and drops unknown values', () => {
   assert.equal(projectStaticPublication(value, identity).settings.fonts.smoothing, undefined);
 });
 
+test('publishes block part styles: style part targets, instance part_styles and site block type parts', () => {
+  const value = input();
+  value.settings.styles = [{ id: 'quiet-link', name: 'Quiet link', targets: ['link'], base: { decoration: 'none', opacity: 0.9, shadow: 'none', gap: '1rem' }, parts: ['core/rich_heading.link', 'promo.label'], editor: 'private-value' }];
+  value.blockTypes = [{ id: 'promo', name: 'promo', label: 'Promo', container: false, template: '<div data-block="promo"><p class="promo-label">{{label}}</p></div>',
+    schema: [{ name: 'label', type: 'text' }, { name: 'part_styles', type: 'part_styles' }],
+    parts: [{ name: 'label', label: 'Label', selector: '.promo-label', target: 'text', decorative: false, note: 'private-value' }] }];
+  value.pages[0] = { ...value.pages[0], content_mode: 'blocks', blocks: [
+    { id: 'promo-one', type: 'promo', data: { label: 'New', part_styles: { label: 'quiet-link' } } },
+    { id: 'rich-one', type: 'core/rich_heading', data: { html: '<a href="/x/">X</a>', part_styles: { link: 'quiet-link' } } },
+  ] };
+  delete value.pages[0].html_content;
+  const publication = projectStaticPublication(value, { ...identity, coreBlockTypes: [...coreBlockTypes, { id: 'core/rich_heading', schema: [{ name: 'html', type: 'richtext' }, { name: 'part_styles', type: 'part_styles' }] }] });
+  const [style] = publication.settings.styles;
+  assert.deepEqual(style.parts, ['core/rich_heading.link', 'promo.label']);
+  assert.deepEqual(style.base, { decoration: 'none', opacity: 0.9, shadow: 'none', gap: '1rem' });
+  assert.deepEqual(publication.pages[0].blocks.map(block => block.data.part_styles), [{ label: 'quiet-link' }, { link: 'quiet-link' }]);
+  assert.deepEqual(publication.blockTypes[0].parts, [{ name: 'label', label: 'Label', selector: '.promo-label', target: 'text', decorative: false }]);
+  assert.ok(!JSON.stringify(publication).includes('private-value'));
+});
+
 test('publishes explicit text colours on theme colours and drops invalid ones', () => {
   const value = input();
   value.settings.colors.on_secondary = '#ffffff';
@@ -281,8 +301,15 @@ test('real Core blocks build portable assets and last-page removal produces an e
   value.pages[0] = { ...value.pages[0], content_mode: 'blocks', blocks: [{
     id: 'public-section', type: 'core/section', data: { width: 'normal', padding_y: 'md' }, children: [{
       id: 'public-heading', type: 'core/heading', data: { text: 'Portable real Core blocks', level: 'h1', align: 'left', size: 'auto', editor_note: 'private-value' },
+    }, {
+      id: 'linked-heading', type: 'core/rich_heading', data: { level: 'h2', html: '<a href="/">Home</a>', part_styles: { link: 'loud-link' } },
     }],
   }] };
+  // Block part styles: a site-wide style for a part and an instance choice.
+  value.settings.styles = [
+    { id: 'quiet-link', name: 'Quiet link', targets: ['link'], base: { decoration: 'none' }, parts: ['core/rich_heading.link'] },
+    { id: 'loud-link', name: 'Loud link', targets: ['link'], base: { weight: 700 } },
+  ];
   for (const [name, pages] of [['blocks', value.pages], ['branch', value.pages], ['empty', []]]) {
     const destination = path.join(tmp, name);
     const publication = projectStaticPublication({ ...value, pages }, { ...identity, coreBlockTypes: CORE_BLOCK_TYPES, versionId: name === 'branch' ? 'design' : 'main', noindex: name !== 'branch' });
@@ -306,6 +333,9 @@ test('real Core blocks build portable assets and last-page removal produces an e
       assert.match(html, /<h1[^>]*>Portable real Core blocks<\/h1>/);
       assert.match(html, /\[data-block="heading"\]/);
       assert.match(html, /\[data-block="section"\]/);
+      assert.match(html, /<h2 data-block="rich_heading"[^>]* data-part-link="loud-link"/);
+      assert.ok(html.includes(':where([data-block="rich_heading"]:not([data-part-link]) a)'), 'site-wide part style');
+      assert.ok(html.includes(':where([data-block="rich_heading"][data-part-link="loud-link"] a)'), 'instance part style');
       assert.ok(!html.includes('private-value'));
       assert.deepEqual(marker.paths, ['/']);
       const expectedVersion = name === 'branch' ? 'design' : 'main';

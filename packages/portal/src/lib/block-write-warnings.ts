@@ -9,15 +9,24 @@
 // probably belongs (`unknownFieldsBody`). Tree writes only warn about them
 // (`unknown_field`), so a bulk write that is mostly right still lands.
 import {
+  PART_STYLES_FIELD,
   blockDataTypeWarnings,
   blockTreeWarnings,
   buildCoreBlockRegistry,
+  defaultSiteSettings,
+  partStyleIssues,
+  resolveRenderVersion,
+  treePartStyleIssues,
+  validateSiteStyle,
   styleOverrideWarnings,
   unknownBlockDataFields,
   unknownBlockFields,
   type Block,
   type BlockTreeWarning,
   type BlockType,
+  type PartStyleIssue,
+  type SiteColors,
+  type SiteStyle,
   type UnknownFieldIssue,
 } from '@typeroll/shared';
 import { findBlock } from './block-mutations';
@@ -105,7 +114,7 @@ export function unknownFieldsBody(issues: UnknownFieldIssue[]): { error: string;
 /**
  * Warnings for a write that replaced a block tree (page, partial, batch,
  * working copy). The site's block types are read only when the write
- * carried a tree.
+ * carried a tree; its styles only when a block in it sets part_styles.
  */
 export async function treeWriteWarnings(
   ctx: Ctx,
@@ -113,5 +122,76 @@ export async function treeWriteWarnings(
   registry?: Registry,
 ): Promise<BlockTreeWarning[]> {
   if (blocks === undefined) return [];
-  return blockTreeWarnings(blocks, 'blocks', registry ?? await siteBlockRegistry(ctx));
+  const types = registry ?? await siteBlockRegistry(ctx);
+  const warnings = blockTreeWarnings(blocks, 'blocks', types);
+  if (JSON.stringify(blocks).includes(`"${PART_STYLES_FIELD}"`)) {
+    const site = await partStyleSite(ctx);
+    warnings.push(...treePartStyleIssues(blocks, types, site.styles, { contrast: site }).map(partStyleWarning));
+  }
+  return warnings;
+}
+
+// ─── Block part styles ───────────────────────────────────────────────────
+
+/** The site's styles, palette and render version, for part style checks. */
+async function partStyleSite(ctx: Ctx): Promise<{ styles: SiteStyle[]; colors: SiteColors; renderVersion: number }> {
+  const settings = (await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? defaultSiteSettings;
+  const styles = (Array.isArray(settings.styles) ? settings.styles : []).flatMap(value => validateSiteStyle(value).style ?? []);
+  const colors = { ...defaultSiteSettings.colors, ...((settings.colors && typeof settings.colors === 'object') ? settings.colors : {}) } as SiteColors;
+  return { styles, colors, renderVersion: resolveRenderVersion(settings.render_version) };
+}
+
+function partStyleWarning(issue: PartStyleIssue): BlockTreeWarning {
+  return {
+    code: issue.code,
+    ...(issue.block_id ? { block_id: issue.block_id } : {}),
+    path: issue.path,
+    key: `${PART_STYLES_FIELD}.${issue.part}`,
+    block_type: issue.block_type,
+    ...(issue.suggestions?.length ? { suggestions: issue.suggestions } : {}),
+    message: issue.message,
+  };
+}
+
+/**
+ * Part style checks for a single-block write (add_block, update_block) that
+ * set `part_styles` or the background field of a part: `errors` refuse the
+ * write (a style the site lacks, one of another kind, text unreadable on the
+ * part's background by both APCA and WCAG 2 AA), `warnings` travel with it.
+ * `data` is the block's data after the write.
+ */
+export async function singleBlockPartStyleCheck(
+  ctx: Ctx,
+  block: { id?: unknown; type: string; data?: unknown },
+  written: Record<string, unknown> | undefined,
+  registry: Registry,
+  path = 'data',
+): Promise<{ errors: PartStyleIssue[]; warnings: BlockTreeWarning[] }> {
+  const type = registry.get(block.type);
+  if (!type?.parts?.length || !written) return { errors: [], warnings: [] };
+  const touched = Object.hasOwn(written, PART_STYLES_FIELD) || type.parts.some(part => part.background_field && Object.hasOwn(written, part.background_field));
+  if (!touched) return { errors: [], warnings: [] };
+  const site = await partStyleSite(ctx);
+  const issues = partStyleIssues(block, type, site.styles, { path, contrast: site });
+  return { errors: issues.errors, warnings: issues.warnings.map(partStyleWarning) };
+}
+
+/** singleBlockPartStyleCheck for the block `blockId` in a tree after the write. */
+export async function updatedBlockPartStyleCheck(
+  ctx: Ctx,
+  blocks: Block[],
+  blockId: string,
+  written: Record<string, unknown> | undefined,
+  registry: Registry,
+): Promise<{ errors: PartStyleIssue[]; warnings: BlockTreeWarning[] }> {
+  const found = written ? findBlock(blocks, blockId) : null;
+  if (!found) return { errors: [], warnings: [] };
+  return singleBlockPartStyleCheck(ctx, found.block, written, registry);
+}
+
+/** The 400 body for a single-block write whose part styles cannot render as asked. */
+export function partStyleErrorsBody(issues: PartStyleIssue[]): { error: string; code: PartStyleIssue['code']; part_style_issues: PartStyleIssue[] } {
+  const first = issues[0]!;
+  const more = issues.length > 1 ? ` (and ${issues.length - 1} more, listed in part_style_issues)` : '';
+  return { error: `${first.message}${more} Nothing was written.`, code: first.code, part_style_issues: issues };
 }

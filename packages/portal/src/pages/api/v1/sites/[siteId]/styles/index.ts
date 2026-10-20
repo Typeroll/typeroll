@@ -16,13 +16,13 @@ export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const { styles, colors, renderVersion } = await readStyles(ctx);
+  const { styles, colors, renderVersion, registry } = await readStyles(ctx);
   const roles = new Set(styles.map(style => style.role).filter(Boolean));
   return apiResponse(ctx, {
     styles,
     missing_standard_roles: STANDARD_STYLES.map(style => style.role!).filter(role => !roles.has(role)),
-    problems: libraryProblems(styles, colors, renderVersion),
-    warnings: libraryWarnings(styles, colors, renderVersion),
+    problems: libraryProblems(styles, colors, renderVersion, registry),
+    warnings: libraryWarnings(styles, colors, renderVersion, registry),
   });
 };
 

@@ -40,6 +40,9 @@ import type { Block } from '@typeroll/shared';
 import { blockLocation, blockWriteResponse, blockWriteSummary } from '../../../../../../../../../lib/block-write-response';
 import {
   addBlockUnknownFields,
+  partStyleErrorsBody,
+  singleBlockPartStyleCheck,
+  updatedBlockPartStyleCheck,
   singleBlockWriteWarnings,
   siteBlockRegistry,
   unknownFieldsBody,
@@ -111,6 +114,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     const registry = await siteBlockRegistry(ctx);
     const unknown = addBlockUnknownFields(body.block, registry);
     if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
+    const partStyles = await singleBlockPartStyleCheck(ctx, body.block as { type: string; data?: unknown }, body.block.data, registry, 'block.data');
+    if (partStyles.errors.length) return apiResponse(ctx, partStyleErrorsBody(partStyles.errors), 400, body);
     const result = addBlock(loaded.blocks, {
       block: { id: '', data: {}, ...body.block } as Block,
       parent_id: body.parent_id,
@@ -121,6 +126,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     const warnings = await singleBlockWriteWarnings(ctx, result.blocks, result.added_id, {
       data: body.block.data, style_overrides: body.block.style_overrides,
     }, registry);
+    warnings.push(...partStyles.warnings);
     return apiResponse(ctx, {
       added_id: result.added_id,
       ...(mode === 'summary' ? blockWriteSummary(result.blocks, result.added_id, written.has_unsaved_changes) : { blocks: result.blocks }),
@@ -170,11 +176,15 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       style_overrides: body.style_overrides,
       null_removes: true,
     });
+    // Part styles are checked on the block as written: a style the site lacks,
+    // of another kind, or unreadable on the part's background is refused.
+    const partStyles = await updatedBlockPartStyleCheck(ctx, blocks, body.block_id, body.data, registry);
+    if (partStyles.errors.length) return apiResponse(ctx, partStyleErrorsBody(partStyles.errors), 400, body);
     const written = await writeContainer(t.target, blocks, ctx, loaded.raw);
     // A misspelled override is stored, returned and built without comment.
     // The caller cannot read our logs, so it travels in the body.
     // Field values the schema will not render travel the same way.
-    const overrideWarnings = await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry);
+    const overrideWarnings = [...await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry), ...partStyles.warnings];
     return apiResponse(ctx, {
       ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}),
       ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, written.has_unsaved_changes) : { blocks }),

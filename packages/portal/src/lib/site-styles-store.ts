@@ -2,7 +2,9 @@
 // version. Every write validates each style, the library as a whole and text
 // contrast against the site's colours (APCA, with WCAG 2 AA as the floor of
 // acceptance; see styleContrastReport), so the UI, the v1 API and MCP enforce
-// the same rules.
+// the same rules. A style that lists block parts is checked against the
+// site's block types (the part exists, the style targets its kind) and
+// measured on each part's background (block-parts.ts).
 
 import {
   STANDARD_STYLES,
@@ -12,12 +14,16 @@ import {
   resolveStyleColor,
   siteStyleLibraryErrors,
   styleContrastReport,
+  stylePartErrors,
+  stylePartSurfaces,
   validateSiteStyle,
+  type BlockType,
   type SiteColors,
   type SiteStyle,
   type StyleProps,
 } from '@typeroll/shared';
 import { vstore } from './version-store';
+import { siteBlockRegistry } from './block-write-warnings';
 
 export interface StyleCtx { orgId: string; siteId: string; versionId: string }
 
@@ -25,36 +31,66 @@ export class StyleError extends Error {
   constructor(message: string, readonly status: number, readonly errors: string[] = [message]) { super(message); }
 }
 
-/** What the contrast checks measure against: the palette and the render version that picks automatic on_* colours. */
+type Registry = ReadonlyMap<string, BlockType>;
+
+/**
+ * What the checks measure against: the palette, the render version that picks
+ * automatic on_* colours, and the site's block types for styles that list
+ * block parts.
+ */
 export interface StyleSite {
   colors: SiteColors;
   renderVersion: number;
+  registry?: Registry;
 }
 
-export async function readStyles(ctx: StyleCtx): Promise<StyleSite & { styles: SiteStyle[] }> {
+export async function readStyles(ctx: StyleCtx): Promise<StyleSite & { styles: SiteStyle[]; registry: Registry }> {
   const settings = (await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? defaultSiteSettings;
   const styles = (Array.isArray(settings.styles) ? settings.styles : []).flatMap(value => validateSiteStyle(value).style ?? []);
-  return { styles, colors: siteColors(settings.colors), renderVersion: resolveRenderVersion(settings.render_version) };
+  const registry = await siteBlockRegistry(ctx);
+  return { styles, colors: siteColors(settings.colors), renderVersion: resolveRenderVersion(settings.render_version), registry };
+}
+
+/** A style's contrast on the site background and, for block parts it lists, on each part. */
+function contrastOf(style: SiteStyle, colors: SiteColors, renderVersion: number, registry?: Registry) {
+  return styleContrastReport(style, colors, { renderVersion, surfaces: registry ? stylePartSurfaces(style, registry) : [] });
 }
 
 function siteColors(colors: unknown): SiteColors {
   return { ...defaultSiteSettings.colors, ...((colors && typeof colors === 'object') ? colors as Record<string, string> : {}) };
 }
 
-/** Problems a library would have on this site; empty when it can be saved. */
-export function libraryProblems(styles: SiteStyle[], colors: SiteColors, renderVersion = 1): string[] {
-  return [...siteStyleLibraryErrors(styles), ...styles.flatMap(style => styleContrastReport(style, colors, { renderVersion }).errors)];
+/**
+ * Problems a library would have on this site; empty when it can be saved.
+ * With the site's block types, block parts a style lists must exist and fit
+ * the style, and its text is measured on each part.
+ */
+export function libraryProblems(styles: SiteStyle[], colors: SiteColors, renderVersion = 1, registry?: Registry): string[] {
+  return [
+    ...siteStyleLibraryErrors(styles),
+    ...(registry ? styles.flatMap(style => stylePartErrors(style, registry).map(error => `${style.name}: ${error}`)) : []),
+    ...styles.flatMap(style => contrastOf(style, colors, renderVersion, registry).errors),
+  ];
 }
 
 /** Readability notes that do not block saving: text below its APCA level that meets WCAG 2 AA. */
-export function libraryWarnings(styles: SiteStyle[], colors: SiteColors, renderVersion = 1): string[] {
-  return styles.flatMap(style => styleContrastReport(style, colors, { renderVersion }).warnings);
+export function libraryWarnings(styles: SiteStyle[], colors: SiteColors, renderVersion = 1, registry?: Registry): string[] {
+  return styles.flatMap(style => contrastOf(style, colors, renderVersion, registry).warnings);
 }
 
-const warningsFor = (style: SiteStyle, site: StyleSite) => styleContrastReport(style, site.colors, { renderVersion: site.renderVersion }).warnings;
+const warningsFor = (style: SiteStyle, site: StyleSite) => contrastOf(style, site.colors, site.renderVersion, site.registry).warnings;
 
-async function save(ctx: StyleCtx, styles: SiteStyle[], site: StyleSite): Promise<void> {
-  const problems = libraryProblems(styles, site.colors, site.renderVersion);
+/**
+ * Save a library. The block parts of the written style must exist; a stale
+ * part reference elsewhere (a site block type deleted since) is reported by
+ * libraryProblems but does not block an unrelated write.
+ */
+async function save(ctx: StyleCtx, styles: SiteStyle[], site: StyleSite, written?: SiteStyle): Promise<void> {
+  const problems = [
+    ...siteStyleLibraryErrors(styles),
+    ...(written && site.registry ? stylePartErrors(written, site.registry).map(error => `${written.name}: ${error}`) : []),
+    ...styles.flatMap(style => contrastOf(style, site.colors, site.renderVersion, site.registry).errors),
+  ];
   if (problems.length) throw new StyleError(problems[0], 400, problems);
   await vstore.writeSettings(ctx.orgId, ctx.siteId, ctx.versionId, { styles });
 }
@@ -70,7 +106,7 @@ export async function createStyle(ctx: StyleCtx, input: unknown): Promise<{ styl
   const style = parse(input);
   const site = await readStyles(ctx);
   if (site.styles.some(existing => existing.id === style.id)) throw new StyleError(`A style with id "${style.id}" already exists`, 409);
-  await save(ctx, [...site.styles, style], site);
+  await save(ctx, [...site.styles, style], site, style);
   return { style, warnings: warningsFor(style, site) };
 }
 
@@ -109,11 +145,11 @@ export async function updateStyle(ctx: StyleCtx, id: string, patch: unknown): Pr
     ...(Object.keys(at).length ? { at } : { at: undefined }),
     ...(p.hover === undefined ? {} : { hover: p.hover === null ? undefined : mergeProps(current.hover, p.hover) }),
   };
-  for (const key of ['description', 'css', 'role'] as const) if ((merged as Record<string, unknown>)[key] === null) delete (merged as Record<string, unknown>)[key];
+  for (const key of ['description', 'css', 'role', 'parts'] as const) if ((merged as Record<string, unknown>)[key] === null) delete (merged as Record<string, unknown>)[key];
   const style = parse(JSON.parse(JSON.stringify(merged)));
   const next = [...styles];
   next[index] = style;
-  await save(ctx, next, site);
+  await save(ctx, next, site, style);
   return { style, warnings: warningsFor(style, site) };
 }
 
