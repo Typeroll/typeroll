@@ -4,6 +4,14 @@ import { test } from 'node:test';
 
 const workflow = readFileSync(new URL('../.github/workflows/publish-mcp.yml', import.meta.url), 'utf8');
 const testWorkflow = readFileSync(new URL('../.github/workflows/test.yml', import.meta.url), 'utf8');
+// One top-level job, up to the next job key.
+function jobSource(source, name) {
+  const start = source.indexOf(`\n  ${name}:\n`);
+  assert.ok(start >= 0, `job ${name} is missing`);
+  const rest = source.slice(start + 1);
+  const end = rest.search(/\n  [a-z][a-z-]*:\n/);
+  return end < 0 ? rest : rest.slice(0, end + 1);
+}
 
 test('MCP publication waits for successful main Tests', () => {
   assert.match(workflow, /workflow_run:\s*\n\s+workflows:\s*\n\s+- Tests/);
@@ -25,8 +33,25 @@ test('documentation-only skips are bound to the conservative source plan and sti
   assert.match(testWorkflow, /Validate documentation candidate[\s\S]*npm run release:plan[\s\S]*npm run security:audit[\s\S]*--docs-only --release-artifacts/);
   for (const name of ['dependencies', 'e2e']) {
     const job = testWorkflow.slice(testWorkflow.indexOf(`\n  ${name}:`));
-    assert.match(job, /needs: plan\n    if: needs.plan.outputs.docs_only != 'true'/);
+    assert.match(job, /needs: plan\n    if: needs.plan.outputs.lane != 'docs'/);
   }
+});
+
+test('main reuses only a recorded pull request qualification and still probes dependencies and seals docs', () => {
+  const job = name => jobSource(testWorkflow, name);
+  // Unknown or missing lanes fall back to the complete gate.
+  assert.match(job('unit'), /Validate release candidate\n        if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.lane != 'reuse'/);
+  assert.match(job('unit'), /Validate documentation candidate\n        if: needs.plan.outputs.lane == 'docs' \|\| needs.plan.outputs.lane == 'reuse'/);
+  assert.match(job('e2e'), /if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.lane != 'reuse'/);
+  assert.match(job('dependencies'), /if: needs.plan.outputs.lane != 'docs'\n/);
+  assert.match(job('unit'), /name: docs-\$\{\{ github\.sha \}\}/);
+  // Only same-repository full-lane pull request runs record a tree, and never fail on it.
+  const plan = job('plan');
+  assert.match(plan, /fetch-depth: 0/);
+  assert.match(plan, /github\.event_name == 'pull_request' &&\s+steps\.plan\.outputs\.lane == 'full' &&\s+github\.event\.pull_request\.head\.repo\.full_name == github\.repository/);
+  assert.match(plan, /source-check-plan\.mjs record temp\/pr-qualification/);
+  assert.match(plan, /name: \$\{\{ steps\.record\.outputs\.name \}\}/);
+  assert.equal(plan.match(/continue-on-error: true/g)?.length, 2);
 });
 
 test('the OSS release train is serialized and uses pinned Trusted Publishing tooling', () => {
