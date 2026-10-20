@@ -170,6 +170,9 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     eyebrow: 'Eyebrow', heading: 'Heading', subheading: '<p>Subheading</p>', image: '/media/hero.jpg',
     primary_label: 'Start', primary_url: '/start/', secondary_label: 'More', secondary_url: '/more/',
   },
+  'form/radio_group': { choices: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] },
+  'form/checkbox_group': { choices: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] },
+  'form/help': { body: '<p>See <a href="/help/">the guide</a></p>' },
 };
 
 /** A sample block: field defaults, required fields filled in, then PART_SAMPLES. */
