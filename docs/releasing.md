@@ -88,7 +88,8 @@ whose previous commit already passed the exact repository's `Tests` workflow.
 The complete Git diff must contain only Markdown/MDX under `docs/` or
 `packages/docs-site/src/content/`, or the named top-level Markdown guides.
 Renames include both paths. Unknown paths, dependencies, CI changes, incomplete
-history, missing baseline proof and pull requests all use the full source gate.
+history, missing baseline proof and pull requests all use the full source gate,
+unless a push qualifies for pull request reuse below.
 
 The short lane still installs locked dependencies, validates the release plan,
 audits dependencies, checks documentation schema/types and formatting, builds
@@ -96,7 +97,45 @@ production docs and seals the exact artifact. It skips application tests,
 application/browser builds and external customer-builder download probes.
 Core and MCP versions remain unchanged; documentation work needs no Cloud rollout.
 A docs-only CI success can serve as the baseline for the next docs-only delta.
-The first change to this selection logic always receives full qualification.
+A change to this selection logic is never documentation-only, so it always
+receives full qualification, in its pull request run or on `main`.
+
+## Pull request qualification reuse
+
+A push to `main` whose Git tree is byte-identical to a tree that a pull request
+run already fully qualified counts as the exact source. Because the tree includes
+`.github/`, both runs used the same workflow definition. For `pull_request`
+events `GITHUB_SHA` is the test merge commit, which the run API does not expose,
+so a same-repository full-lane run uploads `pr-qualified-TREE` (kept 7 days)
+from `Select source checks`. It records that commit, its tree and a hash of the
+`core-v*`/`mcp-v*` tags the run saw. Recording never fails a pull request; a
+missing record only costs the full gate on `main`.
+
+`source-check-plan.mjs` on `main` looks the record up by its own tree and selects
+the `reuse` lane only when every check holds:
+
+- the record's run is a completed, successful `pull_request` run of
+  `.github/workflows/test.yml` in this repository from a branch of this
+  repository, not a fork;
+- the record is version 1, from the full lane, names this repository, this
+  tree and the release tags `main` sees now;
+- `git/commits/SHA` on GitHub returns the recorded commit with this tree and
+  the run's pull request head as a parent.
+
+A run that is still finishing is awaited for up to one minute. Any API or
+download error, expired record, failed, cancelled or running run, fork, other
+workflow file, different tree (main moved after pull request CI) or tag change
+(a release happened in between) selects the full gate. Pushes without a
+qualifying record, including those that fail the documentation-only rules,
+also run it.
+
+The `reuse` lane skips the release-candidate check and Playwright, which already
+passed for this tree. It still verifies the pinned build dependencies, and runs
+the documentation lane (`release:plan`, `security:audit`, docs checks and
+build) to seal `docs-SOURCE_SHA`, because the artifact and its `release.json`
+name the `main` commit. The successful `push` run for the exact SHA remains the
+proof `Release OSS` requires, and it can serve as the baseline for a following
+documentation-only push.
 
 ## Qualified artifact reuse
 
