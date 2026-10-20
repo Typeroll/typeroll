@@ -1,0 +1,102 @@
+<section data-block="feature_row" data-image-side="left" data-image-max="lg" data-valign="center" data-stack-order="image-first" data-width="normal" style="--gap:lg;--padding_y:lg;--bg:">
+  <div class="block-frow-inner">
+    <div class="block-frow-media"><img src="/media/sample.jpg" alt="" loading="lazy" decoding="async" /></div>
+    <div class="block-frow-body">
+      <span class="block-frow-eyebrow"></span>
+      <h2 class="block-frow-heading"></h2>
+      <div class="block-frow-text"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div>
+      <div class="block-frow-actions">
+        <a class="block-btn block-btn-primary" href=""></a>
+        <a class="block-btn block-btn-secondary" href=""></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+/* css */
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+/* core/feature_row */
+[data-block="feature_row"] { padding-block: var(--block-py, 4rem); padding-inline: 1rem; background: var(--bg, transparent); }
+[data-block="feature_row"] .block-frow-inner {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--block-gap, 2rem);
+  align-items: center; max-width: 65rem; margin-inline: auto;
+}
+[data-block="feature_row"][data-width="wide"] .block-frow-inner { max-width: 80rem; }
+[data-block="feature_row"][data-valign="top"] .block-frow-inner { align-items: start; }
+/* Both halves hug the center gutter: a capped image in the left column
+   pushes right, a capped text column in the right column stays left. This
+   is what keeps wide viewports from opening a void between the halves. */
+[data-block="feature_row"] .block-frow-media img {
+  display: block; width: 100%; max-width: var(--frow-img-max, 34rem); height: auto;
+  border-radius: 0.5rem; margin-left: auto;
+}
+[data-block="feature_row"] .block-frow-body { max-width: 34rem; margin-right: auto; min-width: 0; }
+/* image right: swap column order and mirror the gutter-hugging margins */
+[data-block="feature_row"][data-image-side="right"] .block-frow-media { order: 2; }
+[data-block="feature_row"][data-image-side="right"] .block-frow-body  { order: 1; }
+[data-block="feature_row"][data-image-side="right"] .block-frow-media img { margin-left: 0; margin-right: auto; }
+[data-block="feature_row"][data-image-side="right"] .block-frow-body { margin-right: 0; margin-left: auto; }
+[data-block="feature_row"][data-image-max="sm"]   { --frow-img-max: 20rem; }
+[data-block="feature_row"][data-image-max="md"]   { --frow-img-max: 28rem; }
+[data-block="feature_row"][data-image-max="full"] { --frow-img-max: none; }
+/* no image yet → don't render a half-empty grid */
+[data-block="feature_row"] .block-frow-media:has(img[src=""]) { display: none; }
+[data-block="feature_row"]:has(.block-frow-media img[src=""]) .block-frow-inner { grid-template-columns: 1fr; }
+[data-block="feature_row"] .block-frow-eyebrow { display: inline-block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.5rem; }
+[data-block="feature_row"] .block-frow-eyebrow:empty { display: none; }
+[data-block="feature_row"] .block-frow-heading { font-size: clamp(1.5rem, 0.875rem + 2vw, 2.25rem); margin: 0 0 1rem; font-weight: 700; line-height: 1.2; }
+[data-block="feature_row"] .block-frow-text { line-height: 1.65; }
+[data-block="feature_row"] .block-frow-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.5rem; }
+[data-block="feature_row"] .block-frow-actions:not(:has(a:not(:empty))) { display: none; }
+[data-block="feature_row"] .block-btn { display: inline-block; padding: 0.75rem 1.75rem; border-radius: 999px; font-weight: 600; text-decoration: none; }
+[data-block="feature_row"] .block-btn-primary { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); }
+[data-block="feature_row"] .block-btn-secondary { background: transparent; color: var(--color-primary, #111); box-shadow: inset 0 0 0 2px currentColor; }
+[data-block="feature_row"] .block-btn:empty { display: none; }
+[data-block="feature_row"][style*="--gap:sm"] { --block-gap: 1rem; }
+[data-block="feature_row"][style*="--gap:md"] { --block-gap: 1.5rem; }
+[data-block="feature_row"][style*="--gap:lg"] { --block-gap: 2.5rem; }
+[data-block="feature_row"][style*="--gap:xl"] { --block-gap: 4rem; }
+[data-block="feature_row"][style*="--padding_y:none"] { --block-py: 0; }
+[data-block="feature_row"][style*="--padding_y:sm"]   { --block-py: 2rem; }
+[data-block="feature_row"][style*="--padding_y:md"]   { --block-py: 3rem; }
+[data-block="feature_row"][style*="--padding_y:lg"]   { --block-py: 4rem; }
+[data-block="feature_row"][style*="--padding_y:xl"]   { --block-py: 6rem; }
+@media (max-width: 720px) {
+  /* Mobile stack. Selectors are enumerated at >= the specificity of every
+     desktop order/margin rule above (see the core/columns collapse
+     regression: a bare data-block rule inside a media query silently loses
+     to an attribute-qualified base rule). stack_order rules come last so
+     they win the order tie against the image-side rules by source order. */
+  [data-block="feature_row"] .block-frow-inner { grid-template-columns: 1fr; gap: 1.5rem; }
+  [data-block="feature_row"] .block-frow-media,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-media { order: 1; }
+  [data-block="feature_row"] .block-frow-body,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-body { order: 2; margin-inline: 0; max-width: none; }
+  [data-block="feature_row"] .block-frow-media img,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-media img { margin-inline: auto; }
+  [data-block="feature_row"][data-stack-order="text-first"] .block-frow-media { order: 2; }
+  [data-block="feature_row"][data-stack-order="text-first"] .block-frow-body  { order: 1; }
+}

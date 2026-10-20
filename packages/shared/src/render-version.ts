@@ -99,6 +99,16 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'A text colour chosen for a theme colour (Colors → Text on primary/secondary/accent, `colors.on_primary`, `colors.on_secondary`, `colors.on_accent`) applies on every render version and is not changed by this upgrade.',
     ],
   },
+  {
+    version: 9,
+    core_version: '0.2.81',
+    title: 'Container shadows above the next block',
+    changes: [
+      'A container with a shadow ("subtle" or "header") is raised above the blocks after it (`position: relative; z-index: 10`), so its shadow shows over the next block instead of being painted over by that block\'s background or image. A sticky container keeps z-index 100, and menus that open from a shadowed header land above the next block.',
+      'A container with a shadow is now the containing block of its absolutely positioned content.',
+      'The "header" shadow is `0 2px 6px rgb(0 0 0 / 20%)` instead of `0 2px 5px`, as common site header CSS draws it.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

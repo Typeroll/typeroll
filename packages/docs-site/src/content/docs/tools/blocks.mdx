@@ -1346,7 +1346,10 @@ do not change sibling columns or the Site's responsive widths.
 
 Wrap the icon, heading and link cards in `core/container` with `radius_px: 6`
 and `shadow: "subtle"`. A header can instead use `shadow: "header"`. Container
-shadows default to `none`. Its child icon panel can independently use
+shadows default to `none`. From render version 9 a container with a shadow is
+raised above the blocks after it (`z-index: 10`; a sticky container keeps 100),
+so a hero or image section that follows no longer covers the shadow, and the
+header shadow is `0 2px 6px rgb(0 0 0 / 20%)`. No `inline_style` is needed. Its child icon panel can independently use
 `min_height_px: { "mobile": 120, "tablet": 150 }` with tablet starting at 481px.
 An image link remains a normal accessible link.
 

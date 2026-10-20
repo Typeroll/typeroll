@@ -1,5 +1,9 @@
 # Changelog
 
+## Core 0.2.81 / MCP 0.45.63
+
+- **Render version 9: container shadows above the next block.** A `core/container` with `shadow: "subtle"` or `"header"` was `position: static` without a z-index, so the next block, such as a hero with a background or image (`position: relative`), painted over its shadow; on moveria.se the header banner's shadow did not show on `/` or `/tips-om-flytt/`, and the only workaround was `inline_style`. From render version 9 such a container is `position: relative; z-index: 10`, so its shadow shows over the following blocks. A sticky container keeps z-index 100, and 10 stays above block-internal layers that form no stacking context (the hero's content is z-index 2), so a menu opening from a shadowed header lands above the next block. The `header` shadow becomes `0 2px 6px rgb(0 0 0 / 20%)` instead of `0 2px 5px`, as legacy headers draw it. A shadowed container is now the containing block of its absolutely positioned content. Versions 1–8 render as before; a browser test checks the shadow, a dropdown over a hero, sticky and unshadowed containers, and the old behaviour on version 8.
+
 ## Core 0.2.80 / MCP 0.45.62
 
 - **Block parts: style any part of a core block with a named style, without site CSS.** An audit found 421 presentational values (size, weight, radius, spacing, opacity, underline, shadow, colours) in the CSS of 49 core blocks that no field, style or variable reached; moveria.se's underlined category heading links were one. Every core block now declares its parts (`BlockType.parts`: name, selector, style kind), 229 in all, listed by `read_block_type` and in the docs.
