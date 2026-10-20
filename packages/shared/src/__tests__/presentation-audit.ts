@@ -21,6 +21,7 @@ import {
   renderBlocks,
   type Block,
   type BlockType,
+  type RenderContext,
 } from '../index.js';
 
 /** Properties whose value is a visible opinion of the block. */
@@ -113,7 +114,7 @@ export interface SampleDom {
 export function sampleDom(block: Block, registry: Map<string, BlockType>, renderVersion: number): SampleDom | null {
   const window = new Window();
   const container = window.document.createElement('div');
-  container.innerHTML = renderBlocks([block], { registry, renderVersion });
+  container.innerHTML = renderBlocks([block], { registry, renderVersion, context: PART_SAMPLE_CONTEXTS[block.type] });
   const root = container.firstElementChild as unknown as Element | null;
   return root ? { root, container: container as unknown as Element } : null;
 }
@@ -173,6 +174,19 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
   'form/radio_group': { choices: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] },
   'form/checkbox_group': { choices: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] },
   'form/help': { body: '<p>See <a href="/help/">the guide</a></p>' },
+  'core/field_list': { title: 'Facts', fields: [{ field: 'city' }, { field: 'website' }, { field: 'tags' }] },
+};
+
+/** Render context a block's sample needs besides its data (a field list reads the Page's fields). */
+export const PART_SAMPLE_CONTEXTS: Record<string, RenderContext> = {
+  'core/field_list': {
+    content_type: { fields: [
+      { name: 'city', type: 'text', label: 'City' },
+      { name: 'website', type: 'url', label: 'Website' },
+      { name: 'tags', type: 'multiselect', label: 'Tags', options: ['a', 'b'] },
+    ] },
+    page: { fields: { city: 'Stockholm', website: 'https://example.com/', tags: ['a', 'b'] } },
+  },
 };
 
 /** A sample block: field defaults, required fields filled in, then PART_SAMPLES. */

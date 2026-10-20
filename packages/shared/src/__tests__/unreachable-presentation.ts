@@ -84,13 +84,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="feature_row"] .block-btn-secondary { box-shadow: inset 0 0 0 2px currentColor }': NO_PARTS_YET,
     '[data-block="feature_row"] .block-frow-inner { gap: 1.5rem }': NO_PARTS_YET,
   },
-  'core/field_list': {
-    '[data-block="field_list"] > h2 { margin: 0 0 1rem }': NO_PARTS_YET,
-    '[data-block="field_list"] > dl { gap: .7rem 2rem }': NO_PARTS_YET,
-    '[data-block="field_list"] dt { font-weight: 600 }': NO_PARTS_YET,
-    '[data-block="field_list"] dd { margin: .25rem 0 0 }': NO_PARTS_YET,
-    '[data-block="field_list"] ul { padding-left: 1.25em }': NO_PARTS_YET,
-  },
   'core/hero': {
     '[data-block="hero"][style*="--layout:full-image"]:not([style*="--bg-image:url()"]) { color: white }': 'text over the full-width image; the eyebrow, heading, subheading and button parts each take a style with their own colour, and the overlay part sets how dark the image is',
     '[data-block="hero"] > .block-hero-video-toggle { border-radius: 50% }': VIDEO_CONTROL,

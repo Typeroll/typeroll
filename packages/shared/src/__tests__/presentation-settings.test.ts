@@ -252,7 +252,7 @@ describe('every core block field changes what renders', () => {
   const CONTEXT: Record<string, string> = {
     ...Object.fromEntries(['h1_size_px', 'h2_size_px', 'h3_size_px', 'h4_size_px', 'h5_size_px', 'h6_size_px', 'heading_before_px', 'heading_after_px', 'max_width', 'font_size', 'line_height', 'paragraph_spacing', 'rhythm']
       .map(name => [`template_content_slot.${name}`, 'applied when a page is composed into its template (template-blocks tests)'])),
-    ...Object.fromEntries(['title', 'fields', 'layout'].map(name => [`core/field_list.${name}`, 'needs the content type field definitions (field-list.test.ts)'])),
+    ...Object.fromEntries(['title', 'fields', 'layout', 'part_styles'].map(name => [`core/field_list.${name}`, 'needs the content type field definitions (field-list.test.ts)'])),
     'core/repeater.derived_source': 'needs app-computed derived data (derived-repeater.test.ts)',
     'core/repeater.field': 'needs a page with reference fields (related source)',
     'core/repeater.show_pagination': 'needs archive pagination context',

@@ -6,6 +6,16 @@ import { applyTrailingSlash } from './url-policy.js';
 export const FIELD_LIST_BLOCK: BlockType = {
   id: 'core/field_list', name: 'field_list', label: 'Page field list', icon: 'list',
   category: 'content', container: false,
+  // A row's own HTML, CSS and class fields stay per row; parts style every row.
+  parts: [
+    { name: 'title', label: 'Heading', selector: 'h2', target: 'heading' },
+    { name: 'list', label: 'Field list', selector: 'dl', target: 'list' },
+    { name: 'row', label: 'Row', selector: '.field-list-row', target: 'container' },
+    { name: 'label', label: 'Field label', selector: 'dt', target: 'text' },
+    { name: 'value', label: 'Field value', selector: 'dd', target: 'text' },
+    { name: 'values', label: 'Value list', selector: '.field-list-values', target: 'list' },
+    { name: 'link', label: 'Links', selector: 'dd a', target: 'link' },
+  ],
   schema: [
     { name: 'title', type: 'text', label: 'Heading (optional)' },
     { name: 'fields', type: 'array', label: 'Fields', fields: [
