@@ -329,11 +329,28 @@ export interface SiteSettings {
     surface: string;
     text: string;
     text_light: string;
+    /**
+     * Text colour on primary, secondary and accent (buttons, badges, tabs,
+     * call-to-action sections, styles using the on_* tokens): an opaque hex
+     * colour. Unset means automatic: near-black or white, whichever reads
+     * better (by APCA from render version 8, by the WCAG 2 ratio before).
+     * An explicit value applies on every render version. See `onColorValue`.
+     */
+    on_primary?: string;
+    on_secondary?: string;
+    on_accent?: string;
   };
   fonts: {
     heading: string;
     body: string;
     size_base: number;
+    /**
+     * Text rendering on `<body>`. `auto` is the browser default; `antialiased`
+     * draws thinner text on macOS, which can suit light text on a dark
+     * background. Unset means `auto` from render version 6 and the earlier
+     * reset's `antialiased` before it. See `fontSmoothingCss`.
+     */
+    smoothing?: 'auto' | 'antialiased';
   };
   contact?: {
     email?: string;
@@ -1053,7 +1070,7 @@ export interface BlockType {
    * below the site's render version replaces `template` and/or `styles`;
    * older sites keep the base output unchanged.
    */
-  render_versions?: Array<{ from: number; template?: string; styles?: string }>;
+  render_versions?: Array<{ from: number; template?: string; styles?: string; script?: string }>;
   /**
    * A composed block type: a tree of existing blocks rendered in place of a
    * template. `schema` declares the props people edit; inner blocks read them

@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths } from '@typeroll/shared';
+import { responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
 
@@ -111,12 +111,25 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     const v = form.get(`colors.${key}`);
     if (typeof v === 'string' && v) colors[key] = v;
   }
+  // Text on theme colours: "auto" clears the choice, "custom" stores the picked colour.
+  for (const key of ON_COLOR_TOKENS) {
+    const mode = form.get(`colors.${key}.mode`);
+    const value = form.get(`colors.${key}`);
+    if (mode === 'auto') delete colors[key];
+    else if (mode === 'custom') {
+      if (!isOnColorValue(value)) return new Response(`colors.${key} must be a hex colour such as #ffffff`, { status: 400 });
+      colors[key] = value.trim();
+    }
+  }
   const headingFont = form.get('fonts.heading');
   if (typeof headingFont === 'string' && headingFont) fonts.heading = headingFont;
   const bodyFont = form.get('fonts.body');
   if (typeof bodyFont === 'string' && bodyFont) fonts.body = bodyFont;
   const sizeBase = form.get('fonts.size_base');
   if (typeof sizeBase === 'string' && sizeBase) fonts.size_base = Number(sizeBase) || 16;
+  const smoothing = form.get('fonts.smoothing');
+  if (smoothing === 'auto' || smoothing === 'antialiased') fonts.smoothing = smoothing;
+  else if (smoothing === '') delete fonts.smoothing;
 
   await store.setDoc(paths.settings(owner_org_id, site.id, versionId), next as unknown as Record<string, unknown>);
 

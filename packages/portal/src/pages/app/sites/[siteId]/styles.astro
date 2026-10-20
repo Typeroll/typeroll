@@ -13,9 +13,9 @@ const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
 const { site, versionId, owner_org_id: orgId } = ctx;
 const settings = (await vstore.settings(orgId, site.id, versionId)) ?? defaultSiteSettings;
-const { styles, colors } = await readStyles({ orgId, siteId: site.id, versionId });
+const { styles, colors, renderVersion } = await readStyles({ orgId, siteId: site.id, versionId });
 // The preview renders with the site's own tokens and base CSS, in the same order as a page.
-const baseCss = [siteThemeCss({ ...settings, colors }), CONTENT_WELL_CSS, siteResetCss, siteGlobalCss].join('\n');
+const baseCss = [siteThemeCss({ ...settings, colors: { ...settings.colors, ...colors } }), CONTENT_WELL_CSS, siteResetCss, siteGlobalCss].join('\n');
 const canEdit = ctx.permission !== 'read';
 const canEditCss = ctx.permission === 'admin';
 ---
@@ -26,8 +26,8 @@ const canEditCss = ctx.permission === 'admin';
   <p class="muted" style="max-width: 760px; margin-bottom: 1.5rem;">
     Named styles define how text, headings, buttons and sections look across the site. Body text, headings and links apply
     everywhere automatically; other styles are chosen per block under <em>Style</em>. Change a style once and every page using it
-    follows. Text must stay readable: styles below WCAG AA contrast cannot be saved.
+    follows. Text must stay readable: contrast is measured with APCA and the WCAG 2 ratio, and a style that fails both cannot be saved.
   </p>
-  <StyleLibrary client:load siteId={site.id} initialStyles={styles} colors={colors} breakpoints={resolveBreakpointWidths(settings.responsive_breakpoints)} baseCss={baseCss} canEdit={canEdit} />
+  <StyleLibrary client:load siteId={site.id} initialStyles={styles} colors={colors} breakpoints={resolveBreakpointWidths(settings.responsive_breakpoints)} renderVersion={renderVersion} baseCss={baseCss} canEdit={canEdit} />
   <SiteCssEditor client:load siteId={site.id} initialCss={settings.custom_css ?? ''} styles={styles} canEdit={canEditCss} />
 </AppLayout>

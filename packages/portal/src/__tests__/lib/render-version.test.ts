@@ -69,6 +69,29 @@ describe('render_version setting', () => {
   });
 });
 
+describe('fonts.smoothing setting', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('accepts auto and antialiased, clears with null and rejects anything else', async () => {
+    await setup();
+    const patch = (fonts: unknown) => call(settingsRoute, 'PATCH', `/api/v1/sites/${SITE}/settings`, { fonts });
+    const { vstore } = await import('../../lib/version-store');
+    const stored = async () => (await vstore.settings(ORG, SITE, MAIN_VERSION_ID))?.fonts;
+    for (const bad of ['subpixel', 1, true]) expect((await patch({ smoothing: bad })).status).toBe(400);
+    expect((await patch('auto')).status).toBe(400);
+    expect((await patch({ smoothing: 'antialiased' })).status).toBe(200);
+    expect((await stored())?.smoothing).toBe('antialiased');
+    expect((await patch({ smoothing: null })).status).toBe(200);
+    expect(await stored()).not.toHaveProperty('smoothing');
+  });
+
+  it('renders the choice into the preview head', async () => {
+    await setup({ render_version: LATEST_RENDER_VERSION, fonts: { ...defaultSiteSettings.fonts, smoothing: 'antialiased' } });
+    const { renderPreview } = await import('../../lib/render-preview');
+    expect(await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID)).toContain('-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale');
+  });
+});
+
 describe('upgrade preview', () => {
   beforeEach(async () => { await resetDatastore(); });
 

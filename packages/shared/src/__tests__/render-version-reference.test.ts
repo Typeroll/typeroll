@@ -22,6 +22,11 @@ import {
   FORM_SHELL_CSS,
   WEBFONT_FALLBACK_CSS,
   RENDER_VERSIONS,
+  defaultSiteSettings,
+  newSiteStyles,
+  resolveBreakpointWidths,
+  siteStylesCss,
+  siteThemeCss,
 } from '../index.js';
 import type { Block, BlockType, FieldDefinition } from '../types.js';
 
@@ -84,6 +89,22 @@ function render(type: BlockType, renderVersion: number, sample?: Block): string 
 
 const coreTypes = [...registry.values()].sort((a, b) => a.id.localeCompare(b.id));
 
+/**
+ * A palette where WCAG 2 and APCA pick different text colours for the
+ * derived on_* tokens (dark text by WCAG 2, white by APCA).
+ */
+const SATURATED_COLORS = { ...defaultSiteSettings.colors, primary: '#3b82f6', secondary: '#00a19c', accent: '#e11d48' };
+
+/** Site style and theme colour CSS (the derived on_* text colours, theme tokens). */
+function themeColorCss(version: number): string {
+  const breakpoints = resolveBreakpointWidths(undefined);
+  return [
+    ['siteStylesCss (standard styles, default palette)', siteStylesCss(newSiteStyles(), { breakpoints, colors: defaultSiteSettings.colors, renderVersion: version })],
+    ['siteStylesCss (no styles, saturated palette)', siteStylesCss([], { breakpoints, colors: SATURATED_COLORS, renderVersion: version })],
+    ['siteStylesCss (standard styles, saturated palette)', siteStylesCss(newSiteStyles(), { breakpoints, colors: SATURATED_COLORS, renderVersion: version })],
+  ].map(([name, value]) => `/* ${name} */\n${value}`).join('\n\n') + '\n';
+}
+
 for (const { version } of RENDER_VERSIONS) {
   describe(`render version ${version}`, () => {
     it('keeps the shared platform CSS', async () => {
@@ -92,10 +113,16 @@ for (const { version } of RENDER_VERSIONS) {
         ['CONTENT_WELL_CSS', CONTENT_WELL_CSS],
         ['FORM_SHELL_CSS', FORM_SHELL_CSS],
         ['WEBFONT_FALLBACK_CSS', WEBFONT_FALLBACK_CSS],
+        // Head CSS that depends on the render version (font smoothing from v6).
+        ['siteThemeCss (default settings)', siteThemeCss({ ...defaultSiteSettings, render_version: version })],
         ['site-template reset.css', templateCss('reset.css')],
         ['site-template global.css', templateCss('global.css')],
       ].map(([name, value]) => `/* ${name} */\n${value}`).join('\n\n');
       await expect(css).toMatchFileSnapshot(`./__render-reference__/v${version}/platform.css`);
+    });
+
+    it('keeps the site style and theme colour CSS', async () => {
+      await expect(themeColorCss(version)).toMatchFileSnapshot(`./__render-reference__/v${version}/site-styles.css`);
     });
 
     for (const type of coreTypes) {

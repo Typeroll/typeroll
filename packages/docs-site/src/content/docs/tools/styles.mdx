@@ -48,19 +48,63 @@ colours. Fonts load on the site itself.
 
 Colours are best chosen from the palette (primary, secondary, accent,
 background, surface, text, text light). A palette change then flows through
-every style. `on primary`, `on secondary` and `on accent` pick black or white
-text, whichever reads better on that colour.
+every style. `on primary`, `on secondary` and `on accent` are the text colour
+on that palette colour: the site's own choice when one is set (see
+[Text on theme colours](../settings/#text-on-theme-colours)), else black or
+white, whichever reads better.
 
-## Readable text is enforced
+## Readable text
 
-A style cannot be saved when its text fails WCAG AA contrast against its
-background: 4.5:1, or 3:1 for large text (24px, or 18.7px bold). This is
-checked at every screen size, including hover colours. Light grey on white is
-never accepted.
+Every style's text is measured against its background at every screen size,
+including hover colours, with two measures:
 
-When standard styles are added to a site whose palette colour is too light to
-read on the background, those styles use the body text colour instead, and the
-result says which ones.
+- **APCA** (Accessible Perceptual Contrast Algorithm, APCA-W3 0.0.98G-4g), a
+  lightness contrast `Lc` that models how people perceive brightness and
+  polarity. It decides.
+- **The WCAG 2 contrast ratio**, which WCAG 2.x AA conformance (and EN 301 549)
+  uses: 4.5:1, or 3:1 for large text (24px, or 18.7px bold).
+
+The WCAG 2 ratio overrates dark text on mid-dark saturated colours. On teal
+`#00a19c`, `#111827` is 5.56:1 but APCA Lc 44, while white is 3.19:1 but
+Lc 63.9, and white reads better.
+
+The APCA level a text needs depends on how it is read, its size and its
+weight. Typeroll uses the
+[APCA Readability Criterion](https://readtech.org/ARC/) Bronze levels, with
+the size and weight minimums of the APCA guidance for non-body text:
+
+| Text                                                                        | APCA Lc |
+| --------------------------------------------------------------------------- | ------- |
+| Body text: body, lead, quote, link and section styles; text and list styles | 75      |
+| Secondary text: the small text style (notes, captions, fine print)          | 60      |
+| Headings, eyebrows and buttons from 16px at weight 600, 21px at 500 or 24px | 60      |
+| Headings, eyebrows and buttons from 24px at weight 700, or 36px             | 45      |
+| Smaller or lighter headings, eyebrows and buttons                           | 75      |
+
+Body text under 14px, and any text at weight 300 or lighter, needs the next
+level (Lc 15 more, up to 90). A style without a standard role counts as a
+heading or button only when it can be chosen for headings and buttons alone.
+Sizes are read from the style (px, rem or em); without a size, 16px is
+assumed, and without a weight, 400 (700 for headings). Lc is compared after
+rounding to a whole number.
+
+- **Refused:** text that misses its APCA level and WCAG 2 AA. Light grey on
+  white is never accepted.
+- **Saved with a warning:** text that misses its APCA level but meets WCAG 2
+  AA. Every style accepted before APCA stays accepted.
+- **Accepted:** text that meets its APCA level, such as white 16px semibold
+  button text on `#00a19c`. Its WCAG 2 ratio can be lower than 4.5:1: a site
+  that must conform to WCAG 2.x AA should keep that ratio, shown next to each
+  colour in Settings and in every message.
+
+Messages give both measures, for example "`#111827` on `#00a19c` is APCA Lc
+44.0, WCAG 2 5.56:1". The API and MCP return warnings as `warnings`.
+
+When standard styles are added to a site whose palette colour is unreadable
+on the background (it fails both measures), those styles use the body text
+colour instead, because adding them unchanged would be refused. The result
+lists them in `adjusted` and says in `warnings` which colour was replaced and
+why, with both measures. Existing styles are never changed.
 
 ## Apply a style to a block
 

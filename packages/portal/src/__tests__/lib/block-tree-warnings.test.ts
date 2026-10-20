@@ -48,10 +48,13 @@ describe('unknown style overrides', () => {
     expect(blockTreeWarnings([])).toEqual([]);
   });
 
-  it('does not warn about block data, where unknown fields are forward compatibility', () => {
-    // A block type's fields vary and evolve; only style_overrides is a closed
-    // set the renderer enumerates in one place.
-    expect(blockTreeWarnings([block({ data: { invented_field: 'y' } })])).toEqual([]);
+  it('warns about a block data key no field declares, and only for known block types', () => {
+    // The tree still lands; single-block writes reject the same key.
+    expect(blockTreeWarnings([block({ data: { invented_field: 'y' } })])).toEqual([
+      expect.objectContaining({ code: 'unknown_field', block_id: 'b1', path: 'blocks[0].data.invented_field', key: 'invented_field' }),
+    ]);
+    expect(blockTreeWarnings([block({ data: { html: '<p>x</p>' } })])).toEqual([]);
+    expect(blockTreeWarnings([{ id: 'x', type: 'user/not-in-registry', data: { invented_field: 'y' } }])).toEqual([]);
   });
 
   it('survives a tree that refers to itself', () => {

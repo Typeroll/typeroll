@@ -583,12 +583,13 @@ export function apiResponse(
 
 /** Convenience for "this argument was malformed" responses that DON'T need
  *  to go through the audit log (no write was attempted). */
-export function apiError(message: string, status = 400, ctx?: Pick<ApiContext, 'orgId' | 'siteId'>): Response {
+export function apiError(message: string, status = 400, ctx?: Pick<ApiContext, 'orgId' | 'siteId'>, extra?: { code?: string; details?: Record<string, unknown> }): Response {
   // `ctx` is optional because many callers raise before a site is resolved.
   // Pass it wherever one exists: a 404 is precisely when the caller wants to
   // know which site was consulted, since the thing they asked for may well
-  // exist on the site they meant.
-  return ctx ? withApiIdentity(ctx, json({ error: message }, status)) : json({ error: message }, status);
+  // exist on the site they meant. `extra` adds a stable `code` and `details`.
+  const body = { error: message, ...(extra?.code ? { code: extra.code } : {}), ...(extra?.details ? { details: extra.details } : {}) };
+  return ctx ? withApiIdentity(ctx, json(body, status)) : json(body, status);
 }
 
 /**

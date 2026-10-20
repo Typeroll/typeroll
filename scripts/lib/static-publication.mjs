@@ -159,7 +159,14 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     claims: (input.settings.seo_review.claims ?? []).map(rule => projectStrings(rule, ['phrase', 'guidance'])),
   };
   settings.colors = projectStrings(input.settings?.colors, ['primary', 'secondary', 'accent', 'background', 'surface', 'text', 'text_light']);
+  // Explicit text colours on theme colours: opaque hex only, as the renderer accepts (isOnColorValue).
+  for (const token of ['on_primary', 'on_secondary', 'on_accent']) {
+    const value = input.settings?.colors?.[token];
+    if (typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim())) settings.colors[token] = value.trim();
+  }
   settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
+  // A rendered setting left out of this projection is stored, previewed and never published.
+  if (['auto', 'antialiased'].includes(input.settings?.fonts?.smoothing)) settings.fonts.smoothing = input.settings.fonts.smoothing;
   // Site-specific responsive widths drive block responsive fields and styles.
   if (input.settings?.responsive_breakpoints) settings.responsive_breakpoints = projectNumbers(input.settings.responsive_breakpoints, ['tablet', 'laptop', 'desktop', 'wide']);
   // The site's style library: structured values, re-validated at render.

@@ -283,7 +283,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'create_page',
-    description: 'Create a Page of any content type. Blocks are the default body format. Slug is derived from the title if omitted.',
+    description: 'Create a Page of any content type. Blocks are the default body format. Slug is derived from the title if omitted; a derived slug whose address is taken gets a number (e.g. tack-2) and the result carries a slug_adjusted warning. An explicit slug or path that is already in use is refused (code slug_in_use or path_in_use, with the existing page id and path) — edit that page or choose another slug.',
     input_schema: {
       type: 'object',
       properties: {
@@ -699,6 +699,7 @@ const tools: Anthropic.Tool[] = [
             heading: { type: 'string' },
             body: { type: 'string' },
             size_base: { type: 'number' },
+            smoothing: { type: 'string', enum: ['auto', 'antialiased'] },
           },
         },
         contact: {
@@ -1523,10 +1524,10 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       const inputKeys = ['title', 'slug', 'path', 'content_type', 'fields', 'content_mode', 'html_content', 'blocks', 'seo_title', 'seo_description', 'status'];
       const permitted = Object.fromEntries(inputKeys.filter(key => key in input).map(key => [key, input[key]]));
       try {
-        const { page } = await createPage(ctx, permitted, 'agent', 'chat-ai');
-        return { result: { page, page_id: page.id }, action: { type: 'create_page', target: page.id, description: `Created "${page.title}".`, preview_url: absolutePreviewUrl(ctx, page), ...chatEditLink(ctx.siteId, 'page', page.id) } };
+        const { page, warnings } = await createPage(ctx, permitted, 'agent', 'chat-ai');
+        return { result: { page, page_id: page.id, ...(warnings ? { warnings } : {}) }, action: { type: 'create_page', target: page.id, description: `Created "${page.title}".`, preview_url: absolutePreviewUrl(ctx, page), ...chatEditLink(ctx.siteId, 'page', page.id) } };
       } catch (error) {
-        if (error instanceof WorkingCopyError) return { result: { error: error.message } };
+        if (error instanceof WorkingCopyError) return { result: error.toBody() };
         throw error;
       }
     }

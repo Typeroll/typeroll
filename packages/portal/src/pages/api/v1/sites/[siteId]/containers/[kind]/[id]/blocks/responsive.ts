@@ -2,6 +2,10 @@
 //
 // Set a per-breakpoint value on a single field of one block, in any
 // container (page, partial, or page template).
+//
+// A field no field of the block's type declares is rejected (unknown_field).
+// The answer is the whole tree, or for `response: "summary"` the block and
+// where it sits (block-write-response.ts).
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../../../lib/api-auth';
@@ -11,6 +15,8 @@ import {
   type BlockContainerKind,
 } from '../../../../../../../../../lib/block-containers';
 import { setBlockResponsiveField, BlockMutationError } from '../../../../../../../../../lib/block-mutations';
+import { blockWriteResponse, blockWriteSummary } from '../../../../../../../../../lib/block-write-response';
+import { siteBlockRegistry, unknownFieldsBody, updateBlockUnknownFields } from '../../../../../../../../../lib/block-write-warnings';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -29,21 +35,26 @@ export const POST: APIRoute = async ({ request, params }) => {
     field?: string;
     value?: unknown;
     working_copy?: boolean;
+    response?: string;
   } | null;
   if (!body?.block_id) return apiError('block_id is required', 400);
   if (!body.field) return apiError('field is required', 400);
-  const shapeError = bodyShapeError(body, ['block_id', 'field', 'value', 'working_copy']);
+  const shapeError = bodyShapeError(body, ['block_id', 'field', 'value', 'working_copy', 'response']);
   if (shapeError) return apiError(shapeError, 400);
+  const mode = blockWriteResponse(request, body);
+  if (typeof mode !== 'string') return apiError(mode.error, 400);
 
   try {
     const loaded = await loadContainer(target, ctx);
+    const unknown = updateBlockUnknownFields(loaded.blocks, body.block_id, { [body.field]: body.value ?? '' }, await siteBlockRegistry(ctx));
+    if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
     const blocks = setBlockResponsiveField(loaded.blocks, {
       block_id: body.block_id,
       field: body.field,
       value: body.value,
     });
-    await writeContainer(target, blocks, ctx, loaded.raw);
-    return apiResponse(ctx, { blocks });
+    const written = await writeContainer(target, blocks, ctx, loaded.raw);
+    return apiResponse(ctx, mode === 'summary' ? blockWriteSummary(blocks, body.block_id, written.has_unsaved_changes) : { blocks });
   } catch (e) {
     if (e instanceof ContainerError) return apiError(e.message, e.status);
     if (e instanceof BlockMutationError) {

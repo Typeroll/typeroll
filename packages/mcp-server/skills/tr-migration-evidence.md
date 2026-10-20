@@ -62,6 +62,41 @@ behavior or other semantics unsupported by the chosen block: record the gap
 and use a supported composition or stop for native support.
 Do not apply a template to hundreds of Pages until its prototype passes.
 
+## Report platform gaps, do not patch them
+
+Matching the source sometimes needs something the platform does not offer.
+Never close that with site or page `custom_css`, raw HTML or a generic custom
+block: the next site hits the same gap and the workaround breaks on the next
+Core change. Record it and report it instead. Check these five causes first,
+because each has looked like a site problem:
+
+1. **A platform default no setting reaches.** Compare computed text rendering
+   and base styles on `body`, links and headings (`-webkit-font-smoothing`,
+   `line-height`, `text-decoration`) with the source. If the difference comes
+   from Typeroll's base CSS, check Site settings and the render versions first
+   (`read_site_settings` → `render.upgrades`).
+2. **A replaced control ignores the block's settings.** A capability can swap a
+   field for a provider element (address suggestions). Compare that control
+   with a plain field in the same block: border, radius, height, background,
+   text colour, font, placeholder, icon and colour scheme in light and dark mode.
+3. **A missing part.** The source has a part (icon, badge, second label) the
+   block has no field for. Check `read_block_type` for a field before
+   concluding it is missing.
+4. **A value that is stored and ignored.** Read every write response's
+   `warnings` (`field_type_mismatch`, `unknown_style_override`): a wrong type or
+   key is saved and never rendered. Measure the computed result, not the
+   read-back.
+5. **Preview differs from the published page.** A setting that shows in preview
+   but not in a fresh hosted build is a publication gap; report both URLs.
+
+Report each gap with: site ID, Organization, Core version and render version;
+source and target URL; viewport (actual `innerWidth`), browser and DPR; the
+block ID and type or the setting; source and target computed values; what is
+missing, ignored or wrong; the proposed setting or fix; and acceptance
+criteria a reviewer can measure. State that no workaround CSS is in place.
+Mark the affected recipe `waiting_for_native_support`, continue independent
+work, and verify against the source again after the release.
+
 ## Separate files, addresses and business behavior
 
 Inventory both file bytes and every discovered historical asset URL, including

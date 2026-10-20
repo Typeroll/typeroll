@@ -7,7 +7,7 @@ import {
   STYLE_TARGETS,
   breakpointPreviewWidth,
   siteStylesCss,
-  styleContrastErrors,
+  styleContrastReport,
   validateSiteStyle,
 } from '@typeroll/shared';
 
@@ -16,6 +16,8 @@ interface Props {
   initialStyles: SiteStyle[];
   colors: SiteColors;
   breakpoints: BreakpointWidths;
+  /** The site's render version: it decides the automatic on_* colours. */
+  renderVersion: number;
   /** Theme tokens, content well and site base CSS, as the site renders them. */
   baseCss: string;
   canEdit: boolean;
@@ -46,7 +48,7 @@ function emptyStyle(): SiteStyle {
   return { id: '', name: '', targets: ['text'], base: {} };
 }
 
-export default function StyleLibrary({ siteId, initialStyles, colors, breakpoints, baseCss, canEdit }: Props) {
+export default function StyleLibrary({ siteId, initialStyles, colors, breakpoints, renderVersion, baseCss, canEdit }: Props) {
   const [styles, setStyles] = useState(initialStyles);
   const [selected, setSelected] = useState<string | null>(initialStyles[0]?.id ?? null);
   const [draft, setDraft] = useState<SiteStyle | null>(initialStyles[0] ? structuredClone(initialStyles[0]) : null);
@@ -55,21 +57,24 @@ export default function StyleLibrary({ siteId, initialStyles, colors, breakpoint
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
+  const [notes, setNotes] = useState<string[]>([]);
 
   const select = (style: SiteStyle) => { setSelected(style.id); setDraft(structuredClone(style)); setIsNew(false); setErrors([]); setMessage(''); };
   const startNew = () => { setSelected(null); setDraft(emptyStyle()); setIsNew(true); setTab('base'); setErrors([]); setMessage(''); };
 
-  const liveErrors = useMemo(() => {
-    if (!draft) return [];
+  const [liveErrors, liveWarnings] = useMemo(() => {
+    if (!draft) return [[], []];
     const { style, errors: shape } = validateSiteStyle(draft);
-    return style ? styleContrastErrors(style, colors) : shape;
-  }, [draft, colors]);
+    if (!style) return [shape, []];
+    const report = styleContrastReport(style, colors, { renderVersion });
+    return [report.errors, report.warnings];
+  }, [draft, colors, renderVersion]);
 
   const previewDoc = useMemo(() => {
     if (!draft?.id) return '';
-    const css = siteStylesCss([draft], { breakpoints, colors });
+    const css = siteStylesCss([draft], { breakpoints, colors, renderVersion });
     return `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${baseCss}</style><style>${css}</style><style>body{margin:0;padding:16px}</style></head><body><main class="page-content">${sampleMarkup(draft)}</main></body></html>`;
-  }, [draft, baseCss, breakpoints, colors]);
+  }, [draft, baseCss, breakpoints, colors, renderVersion]);
 
   const previewWidth = tab === 'base' ? 390 : breakpointPreviewWidth(tab, breakpoints);
   const props: StyleProps = draft ? (tab === 'base' ? draft.base : draft.at?.[tab] ?? {}) : {};
@@ -87,7 +92,7 @@ export default function StyleLibrary({ siteId, initialStyles, colors, breakpoint
 
   async function save() {
     if (!draft) return;
-    setBusy(true); setErrors([]); setMessage('');
+    setBusy(true); setErrors([]); setNotes([]); setMessage('');
     const body = JSON.parse(JSON.stringify({ ...draft, updated_at: undefined }));
     const response = await fetch(isNew ? `/api/sites/${siteId}/styles` : `/api/sites/${siteId}/styles/${encodeURIComponent(draft.id)}`, {
       method: isNew ? 'POST' : 'PATCH',
@@ -102,6 +107,7 @@ export default function StyleLibrary({ siteId, initialStyles, colors, breakpoint
     setStyles(current => isNew ? [...current, saved] : current.map(s => s.id === saved.id ? saved : s));
     setSelected(saved.id); setDraft(structuredClone(saved)); setIsNew(false);
     setMessage('Saved. Pages using this style show the change in preview now and on the live site after the next deploy.');
+    setNotes(result.warnings ?? []);
   }
 
   async function remove() {
@@ -116,15 +122,16 @@ export default function StyleLibrary({ siteId, initialStyles, colors, breakpoint
   }
 
   async function addStandard() {
-    setBusy(true); setErrors([]);
+    setBusy(true); setErrors([]); setNotes([]);
     const response = await fetch(`/api/sites/${siteId}/styles/standard`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     const result = await response.json().catch(() => ({}));
     setBusy(false);
     if (!response.ok) { setErrors(result.errors ?? [result.error ?? 'Could not add the standard styles.']); return; }
     setStyles(result.styles);
     if (!draft && result.styles[0]) select(result.styles[0]);
-    const adjusted = result.adjusted?.length ? ` ${result.adjusted.length} use the body text colour because a palette colour is too light to read on the background.` : '';
+    const adjusted = result.adjusted?.length ? ` ${result.adjusted.length} use the body text colour because a palette colour is unreadable on the background; see below.` : '';
     setMessage((result.added.length ? `Added ${result.added.length} standard styles.` : 'All standard styles are already here.') + adjusted);
+    setNotes(result.warnings ?? []);
   }
 
   const groups: [string, SiteStyle[]][] = [
@@ -135,7 +142,11 @@ export default function StyleLibrary({ siteId, initialStyles, colors, breakpoint
   return (
     <div className="stack" style={{ gap: '1rem' }}>
     {errors.length > 0 && <ul role="alert" className="card" style={{ margin: 0, paddingLeft: '2rem', color: 'var(--color-danger)' }}>{errors.map(e => <li key={e}>{e}</li>)}</ul>}
-    {message && <p role="status" className="card" style={{ margin: 0, color: 'var(--color-success)' }}>{message}</p>}
+    {/* One live region: the result and its notes are announced together. */}
+    {(message || notes.length > 0) && <div role="status" className="stack" style={{ gap: '0.5rem' }}>
+      {message && <p className="card" style={{ margin: 0, color: 'var(--color-success)' }}>{message}</p>}
+      {notes.length > 0 && <ul className="card" style={{ margin: 0, paddingLeft: '2rem' }}>{notes.map(note => <li key={note}>{note}</li>)}</ul>}
+    </div>}
     <style>{`.style-library{display:grid;grid-template-columns:minmax(220px,280px) minmax(0,1fr);gap:1.5rem;align-items:start}@media (max-width:900px){.style-library{grid-template-columns:minmax(0,1fr)}}`}</style>
     <div className="style-library">
       <aside className="card stack" style={{ gap: '.75rem' }}>
@@ -201,6 +212,7 @@ export default function StyleLibrary({ siteId, initialStyles, colors, breakpoint
           <PropsEditor props={props} inherited={inherited} disabled={!canEdit} onChange={setProp} />
 
           {liveErrors.length > 0 && <ul role="alert" style={{ margin: 0, color: 'var(--color-danger)' }}>{liveErrors.map(e => <li key={e}>{e}</li>)}</ul>}
+          {liveWarnings.length > 0 && <ul role="status" style={{ margin: 0 }}>{liveWarnings.map(w => <li key={w}>{w}</li>)}</ul>}
 
           <div>
             <p className="muted text-sm" style={{ margin: '0 0 .25rem' }}>Preview at {previewWidth}px (fonts load on the site)</p>

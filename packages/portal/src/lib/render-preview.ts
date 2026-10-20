@@ -62,6 +62,7 @@ import {
   siteContext,
   STICKY_HEADER_RUNTIME_JS,
   pageIdentityAttributes,
+  type FormBlockOptions,
 } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { paths } from '@typeroll/shared';
@@ -695,7 +696,7 @@ async function previewFormSource(orgId: string, siteId: string, blockRegistry: R
       try { return [form.id, await resolveAppFormEndpoint(form, { orgId, siteId, portalUrl: (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '') })] as const; }
       catch (error) { return [form.id, error instanceof Error ? error : new Error('Form app unavailable')] as const; }
     })));
-    return (formId: string) => {
+    return (formId: string, block?: FormBlockOptions) => {
       const form = byId.get(formId);
       if (!form || (form.steps?.length ?? 0) === 0) return undefined;
       assetBlocks.push(...form.steps!.flatMap((step) => step.blocks ?? []));
@@ -712,6 +713,7 @@ async function previewFormSource(orgId: string, siteId: string, blockRegistry: R
         registry: blockRegistry,
         lang: (settings as { language?: string }).language,
         renderVersion: resolveRenderVersion(settings.render_version),
+        submit_label: block?.submit_label,
       });
     };
 

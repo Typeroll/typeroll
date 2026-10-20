@@ -70,6 +70,35 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'A step that starts with a form heading block no longer also shows the step title above it.',
     ],
   },
+  {
+    version: 6,
+    core_version: '0.2.79',
+    title: 'Browser-default font smoothing',
+    changes: [
+      'Text uses the browser\'s default font smoothing and text rendering. Earlier versions set `-webkit-font-smoothing: antialiased` and `text-rendering: optimizeLegibility` on every page, which on macOS draws dark text on a light background thinner and lighter than other sites at the same font weight.',
+      'A site that wants the thinner rendering, for example for light text on a dark background, sets Typography → Font smoothing to "Antialiased" (`fonts.smoothing: "antialiased"`). The setting applies on every render version.',
+    ],
+  },
+  {
+    version: 7,
+    core_version: '0.2.79',
+    title: 'Video, ratings and carousel controls',
+    changes: [
+      'Video blocks play: a YouTube or Vimeo address becomes the provider\'s embed address (YouTube without cookies), and a file address plays in the browser\'s own player. Poster, autoplay (always muted), loop, muted, controls and lazy loading apply; the player has an accessible title ("title", default "Video").',
+      'A hero with a video file address plays it as a muted, looping background behind the text, with the image as its poster and a pause button. It does not play when the visitor prefers reduced motion.',
+      'A testimonial with a rating shows it as whole stars, with "Rating: 4 out of 5" ("Betyg: 4 av 5" on Swedish sites) for screen readers.',
+      'Carousels (repeater layout "carousel", for example testimonials) get previous and next buttons, a dot per item and optional autoplay with a pause button, as their settings say. Items scroll inside the carousel; autoplay stops while the visitor points at or focuses the carousel, and never runs when they prefer reduced motion. Without JavaScript the carousel still scrolls.',
+    ],
+  },
+  {
+    version: 8,
+    core_version: '0.2.79',
+    title: 'Text colour on theme colours by APCA',
+    changes: [
+      'The automatic text colour on primary, secondary and accent (buttons, badges, tabs, call-to-action sections and styles using "on primary", "on secondary" or "on accent") is black or white by APCA, the perceptual contrast measure, instead of the WCAG 2 ratio. On mid-dark saturated colours such as teal, green or medium blue, text that was near-black becomes white, which reads better; for example white on #00a19c (APCA Lc 63.9) instead of #111827 (Lc 44).',
+      'A text colour chosen for a theme colour (Colors → Text on primary/secondary/accent, `colors.on_primary`, `colors.on_secondary`, `colors.on_accent`) applies on every render version and is not changed by this upgrade.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;
@@ -105,17 +134,21 @@ export function renderVersionStatus(stored: unknown): RenderVersionStatus {
 
 /** The template and styles a block type renders with at a render version. */
 export function blockOutputForVersion(
-  blockType: Pick<import('./types.js').BlockType, 'template' | 'styles' | 'render_versions'>,
+  blockType: Pick<import('./types.js').BlockType, 'template' | 'styles' | 'render_versions'> & { script?: string },
   version: number | undefined,
-): { template: string; styles: string } {
+): { template: string; styles: string; script: string } {
   const resolved = resolveRenderVersion(version);
   let template = blockType.template ?? '';
   let styles = blockType.styles ?? '';
+  // A script added in a later version must not reach older sites either: it
+  // also adds the runtime hook (data-block-type) to every instance.
+  let script = blockType.script ?? '';
   const entries = [...(blockType.render_versions ?? [])].sort((a, b) => a.from - b.from);
   for (const entry of entries) {
     if (entry.from > resolved) break;
     if (entry.template !== undefined) template = entry.template;
     if (entry.styles !== undefined) styles = entry.styles;
+    if (entry.script !== undefined) script = entry.script;
   }
-  return { template, styles };
+  return { template, styles, script };
 }

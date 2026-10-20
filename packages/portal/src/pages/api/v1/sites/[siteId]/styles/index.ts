@@ -2,23 +2,27 @@
 // POST /api/v1/sites/{siteId}/styles  — create a style
 //
 // Styles live in SiteSettings.styles and are versioned with the settings.
-// Writes validate values, unique ids/roles and text contrast (WCAG AA).
+// Writes validate values, unique ids/roles and text contrast: APCA, with
+// WCAG 2 AA as the floor of acceptance. Text that fails both is refused;
+// text below its APCA level that meets WCAG 2 AA is saved and reported in
+// `warnings` (both measures in every message).
 
 import type { APIRoute } from 'astro';
 import { apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
-import { createStyle, libraryProblems, readStyles, StyleError } from '../../../../../../lib/site-styles-store';
+import { createStyle, libraryProblems, libraryWarnings, readStyles, StyleError } from '../../../../../../lib/site-styles-store';
 import { STANDARD_STYLES } from '@typeroll/shared';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const { styles, colors } = await readStyles(ctx);
+  const { styles, colors, renderVersion } = await readStyles(ctx);
   const roles = new Set(styles.map(style => style.role).filter(Boolean));
   return apiResponse(ctx, {
     styles,
     missing_standard_roles: STANDARD_STYLES.map(style => style.role!).filter(role => !roles.has(role)),
-    problems: libraryProblems(styles, colors),
+    problems: libraryProblems(styles, colors, renderVersion),
+    warnings: libraryWarnings(styles, colors, renderVersion),
   });
 };
 
@@ -28,8 +32,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const body = await request.json().catch(() => null);
   try {
-    const style = await createStyle(ctx, body);
-    return apiResponse(ctx, { style }, 201, body);
+    const { style, warnings } = await createStyle(ctx, body);
+    return apiResponse(ctx, { style, ...(warnings.length ? { warnings } : {}) }, 201, body);
   } catch (error) {
     if (error instanceof StyleError) return apiResponse(ctx, { error: error.message, errors: error.errors }, error.status, body);
     throw error;

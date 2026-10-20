@@ -30,7 +30,7 @@ import {
   readWorkingCopy,
   WorkingCopyError,
 } from '../../../../../../lib/working-copy';
-import { blockTreeWarnings } from '@typeroll/shared';
+import { treeWriteWarnings } from '../../../../../../lib/block-write-warnings';
 import { checkAlternates } from '../../../../../../lib/page-alternates';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 import { pickWritable, REPLACEABLE } from '../../../../../../lib/page-writable';
@@ -158,7 +158,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Reported, not rejected: the write is otherwise fine and the caller has
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.
-    const warnings = blockTreeWarnings(body.blocks);
+    const warnings = await treeWriteWarnings(ctx, body.blocks);
     const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
     return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
   } catch (e) {
@@ -203,7 +203,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
     // Reported, not rejected: the write is otherwise fine and the caller has
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.
-    const warnings = blockTreeWarnings(body.blocks);
+    const warnings = await treeWriteWarnings(ctx, body.blocks);
     const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
     return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
   } catch (e) {

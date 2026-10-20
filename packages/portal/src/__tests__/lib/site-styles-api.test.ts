@@ -108,3 +108,91 @@ describe('palette changes', () => {
     expect(((await res.json()) as { warnings: string[] }).warnings.join()).toMatch(/Överrubrik.*contrast/);
   });
 });
+
+describe('text colour on theme colours', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  const teal = { primary: '#00a19c', secondary: '#1e293b', accent: '#f59e0b', background: '#ffffff', surface: '#f8fafc', text: '#0f172a', text_light: '#64748b' };
+  type SettingsResponse = { warnings?: string[]; on_colors?: Record<string, unknown>[] };
+
+  async function patchSettings(body: unknown): Promise<Response> {
+    const mod = (await import('../../pages/api/v1/sites/[siteId]/settings')) as Partial<Record<string, APIRoute>>;
+    const req = new Request(`http://localhost/api/v1/sites/${SITE}/settings`, { method: 'PATCH', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+    return mod.PATCH!({ request: req, params: { siteId: SITE }, cookies: { get: () => undefined }, locals: {} } as never) as Promise<Response>;
+  }
+  async function storedColors(): Promise<Record<string, string>> {
+    const { vstore } = await import('../../lib/version-store');
+    return (await vstore.settings(ORG, SITE, MAIN_VERSION_ID))?.colors as unknown as Record<string, string>;
+  }
+
+  it('validates, stores and clears an explicit on-colour', async () => {
+    await setup();
+    for (const bad of ['white', '#fff8', 'rgb(255,255,255)', 12, '#ffffff;}']) {
+      const res = await patchSettings({ colors: { on_secondary: bad } });
+      expect(res.status, String(bad)).toBe(400);
+      expect(((await res.json()) as { error: string }).error).toMatch(/colors\.on_secondary must be a hex colour/);
+    }
+    expect((await patchSettings({ colors: { primary: null } })).status).toBe(400);
+    const res = await patchSettings({ colors: { secondary: '#00a19c', on_secondary: '#ffffff' } });
+    expect(res.status).toBe(200);
+    const body = await res.json() as SettingsResponse;
+    expect(body.warnings).toBeUndefined();
+    expect(body.on_colors?.find(item => item.token === 'on_secondary')).toEqual({ token: 'on_secondary', color: '#ffffff', background: '#00a19c', explicit: true, apca_lc: -63.9, wcag_ratio: 3.19, button_text_ok: true });
+    expect((await storedColors()).on_secondary).toBe('#ffffff');
+    expect((await storedColors()).primary).toBe('#1d4ed8');
+    expect((await patchSettings({ colors: { on_secondary: null } })).status).toBe(200);
+    expect(await storedColors()).not.toHaveProperty('on_secondary');
+    expect((await storedColors()).secondary).toBe('#00a19c');
+  });
+
+  it('keeps a clearly unreadable choice and warns with both measures', async () => {
+    await setup({ render_version: 8 });
+    const res = await patchSettings({ colors: { secondary: '#00a19c', on_secondary: '#111827' } });
+    expect(res.status).toBe(200);
+    const body = await res.json() as SettingsResponse;
+    expect(body.warnings).toEqual(['colors.on_secondary #111827 on secondary #00a19c is APCA Lc 44.0, WCAG 2 5.56:1, below APCA Lc 60 for 16px/600 non-body text such as buttons. The automatic choice would be #ffffff (APCA Lc 63.9, WCAG 2 3.19:1).']);
+    expect((await storedColors()).on_secondary).toBe('#111827');
+  });
+
+  it('renders an explicit on-colour on every render version', async () => {
+    const { renderPreview } = await import('../../lib/render-preview');
+    for (const version of [1, 7, 8]) {
+      await setup({ render_version: version, colors: { ...teal, on_primary: '#ffffff' } });
+      const html = (await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID))!;
+      expect(html, `version ${version}`).toContain('--color-on-primary:#ffffff');
+      expect(html, `version ${version}`).toContain(':where(:root){--color-primary-fg:var(--color-on-primary)}');
+    }
+  });
+
+  it('chooses the automatic on-colour by APCA from render version 8 only', async () => {
+    const { renderPreview } = await import('../../lib/render-preview');
+    await setup({ render_version: 7, colors: teal });
+    expect(await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID)).toContain('--color-on-primary:#111827');
+    await setup({ render_version: 8, colors: teal });
+    expect(await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID)).toContain('--color-on-primary:#ffffff');
+  });
+
+  it('accepts a white 16px/600 button on #00a19c and reports a WCAG-only pass', async () => {
+    const button = STANDARD_STYLES.find(style => style.role === 'button')!;
+    await setup({ render_version: 7, colors: { ...teal, on_primary: '#ffffff' } });
+    const white = await call('index', 'POST', '', {}, { ...button, id: 'cta' });
+    expect(white.status).toBe(201);
+    expect(await white.json()).not.toHaveProperty('warnings');
+    // Version 7's automatic #111827 meets WCAG 2 AA (5.56:1) but not APCA Lc 60: saved, with a warning.
+    await setup({ render_version: 7, colors: teal });
+    const dark = await call('index', 'POST', '', {}, { ...button, id: 'cta' });
+    expect(dark.status).toBe(201);
+    expect(((await dark.json()) as { warnings: string[] }).warnings.join()).toMatch(/#111827 on #00a19c is APCA Lc 44\.0, WCAG 2 5\.56:1: below APCA Lc 60 .* Render version 8 chooses #ffffff for on_primary here; or set colors\.on_primary\./);
+    const list = await (await call('index', 'GET', '')).json() as { problems: string[]; warnings: string[] };
+    expect(list.problems).toEqual([]);
+    expect(list.warnings).toHaveLength(1);
+  });
+
+  it('reports each standard style it adds with the body text colour', async () => {
+    await setup({ colors: { ...teal, primary: '#fde047' } });
+    const res = await (await call('standard', 'POST', '/standard', {}, {})).json() as { adjusted: string[]; warnings: string[]; styles: { id: string; base: { color?: string } }[] };
+    expect(res.adjusted).toEqual(expect.arrayContaining(['link', 'eyebrow']));
+    expect(res.styles.find(style => style.id === 'eyebrow')?.base.color).toBe('text');
+    expect(res.warnings.find(note => note.startsWith('Eyebrow (base)'))).toMatch(/#fde047 on #ffffff is APCA Lc \d+\.\d, WCAG 2 1\.\d\d:1\. .* Added with the body text colour \(text, #0f172a\) instead of primary/);
+  });
+});

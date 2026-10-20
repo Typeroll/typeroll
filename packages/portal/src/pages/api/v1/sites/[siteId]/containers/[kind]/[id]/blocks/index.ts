@@ -3,9 +3,13 @@
 //
 //   GET    → read the block tree
 //   POST   → add a block (body: { block, parent_id?, slot_index?, position? })
-//   PATCH  → update a block's data (body: { block_id, data })
+//   PATCH  → update a block's data (body: { block_id, data }); null removes a key
 //   PUT    → move a block (body: { block_id, target_parent_id, ... })
 //   DELETE → remove a block (?block_id=…)
+//
+// Writes answer with the whole tree by default. `response: "summary"` (body
+// key or query parameter) answers with the changed block, where it sits and
+// has_unsaved_changes instead (block-write-response.ts).
 //
 // kind ∈ { page, partial, template }. The page kind is functionally
 // equivalent to the legacy /pages/{pageId}/blocks endpoints — added here
@@ -33,7 +37,14 @@ import {
   BlockMutationError,
 } from '../../../../../../../../../lib/block-mutations';
 import type { Block } from '@typeroll/shared';
-import { styleOverrideWarnings } from '@typeroll/shared';
+import { blockLocation, blockWriteResponse, blockWriteSummary } from '../../../../../../../../../lib/block-write-response';
+import {
+  addBlockUnknownFields,
+  singleBlockWriteWarnings,
+  siteBlockRegistry,
+  unknownFieldsBody,
+  updateBlockUnknownFields,
+} from '../../../../../../../../../lib/block-write-warnings';
 
 function parseTarget(params: Record<string, string | undefined>):
   | { ok: true; target: { kind: BlockContainerKind; id: string } }
@@ -85,24 +96,35 @@ export const POST: APIRoute = async ({ request, params }) => {
     slot_index?: number;
     position?: number;
     working_copy?: boolean;
+    response?: string;
   } | null;
   if (!body?.block?.type) return apiError('block.type is required', 400);
   if (body.block.responsive !== undefined) {
     return apiError('block.responsive is not a rendered field. Put breakpoint values in block.data (for example data.cols={mobile:1,tablet:2,desktop:3}) or use the /responsive endpoint.', 400);
   }
-  const shapeError = bodyShapeError(body, ['block', 'parent_id', 'slot_index', 'position', 'working_copy']);
+  const shapeError = bodyShapeError(body, ['block', 'parent_id', 'slot_index', 'position', 'working_copy', 'response']);
   if (shapeError) return apiError(shapeError, 400);
+  const mode = blockWriteResponse(request, body);
+  if (typeof mode !== 'string') return apiError(mode.error, 400);
   try {
     const loaded = await loadContainer(t.target, ctx);
+    const registry = await siteBlockRegistry(ctx);
+    const unknown = addBlockUnknownFields(body.block, registry);
+    if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
     const result = addBlock(loaded.blocks, {
       block: { id: '', data: {}, ...body.block } as Block,
       parent_id: body.parent_id,
       slot_index: body.slot_index,
       position: body.position,
     });
-    await writeContainer(t.target, result.blocks, ctx, loaded.raw);
+    const written = await writeContainer(t.target, result.blocks, ctx, loaded.raw);
+    const warnings = await singleBlockWriteWarnings(ctx, result.blocks, result.added_id, {
+      data: body.block.data, style_overrides: body.block.style_overrides,
+    }, registry);
     return apiResponse(ctx, {
-      added_id: result.added_id, blocks: result.blocks,
+      added_id: result.added_id,
+      ...(mode === 'summary' ? blockWriteSummary(result.blocks, result.added_id, written.has_unsaved_changes) : { blocks: result.blocks }),
+      ...(warnings.length ? { warnings } : {}),
     });
   } catch (e) {
     return mutError(e);
@@ -120,28 +142,43 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     data?: Record<string, unknown>;
     style_overrides?: Block['style_overrides'];
     working_copy?: boolean;
+    response?: string;
   } | null;
   if (!body?.block_id) return apiError('block_id is required', 400);
   if (body && 'responsive' in body) {
     return apiError('responsive is not writable here. Put breakpoint values in data or use the /responsive endpoint.', 400);
   }
-  const shapeError = bodyShapeError(body, ['block_id', 'data', 'style_overrides', 'working_copy'], {
+  const shapeError = bodyShapeError(body, ['block_id', 'data', 'style_overrides', 'working_copy', 'response'], {
     requireOneOf: ['data', 'style_overrides'],
   });
   if (shapeError) return apiError(shapeError, 400);
+  const mode = blockWriteResponse(request, body);
+  if (typeof mode !== 'string') return apiError(mode.error, 400);
+  if (body.data !== undefined && (!body.data || typeof body.data !== 'object' || Array.isArray(body.data))) {
+    return apiError('data must be an object of field values; a null value removes that key.', 400);
+  }
   try {
     const loaded = await loadContainer(t.target, ctx);
+    // A key no field of the block's type declares would be stored and never
+    // rendered; reject it, naming where it probably belongs.
+    const registry = await siteBlockRegistry(ctx);
+    const unknown = updateBlockUnknownFields(loaded.blocks, body.block_id, body.data, registry);
+    if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
     const blocks = updateBlock(loaded.blocks, {
       block_id: body.block_id,
       data: body.data,
       style_overrides: body.style_overrides,
+      null_removes: true,
     });
-    await writeContainer(t.target, blocks, ctx, loaded.raw);
+    const written = await writeContainer(t.target, blocks, ctx, loaded.raw);
     // A misspelled override is stored, returned and built without comment.
     // The caller cannot read our logs, so it travels in the body.
-    const overrideWarnings = styleOverrideWarnings(body.style_overrides, body.block_id);
+    // Field values the schema will not render travel the same way.
+    const overrideWarnings = await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry);
     return apiResponse(ctx, {
-      ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}), blocks });
+      ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}),
+      ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, written.has_unsaved_changes) : { blocks }),
+    });
   } catch (e) {
     return mutError(e);
   }
@@ -159,13 +196,16 @@ export const PUT: APIRoute = async ({ request, params }) => {
     target_slot_index?: number;
     target_position?: number;
     working_copy?: boolean;
+    response?: string;
   } | null;
   if (!body?.block_id) return apiError('block_id is required', 400);
   const shapeError = bodyShapeError(
     body,
-    ['block_id', 'target_parent_id', 'target_slot_index', 'target_position', 'working_copy'],
+    ['block_id', 'target_parent_id', 'target_slot_index', 'target_position', 'working_copy', 'response'],
   );
   if (shapeError) return apiError(shapeError, 400);
+  const mode = blockWriteResponse(request, body);
+  if (typeof mode !== 'string') return apiError(mode.error, 400);
   try {
     const loaded = await loadContainer(t.target, ctx);
     const blocks = moveBlock(loaded.blocks, {
@@ -174,8 +214,8 @@ export const PUT: APIRoute = async ({ request, params }) => {
       target_slot_index: body.target_slot_index,
       target_position: body.target_position,
     });
-    await writeContainer(t.target, blocks, ctx, loaded.raw);
-    return apiResponse(ctx, { blocks });
+    const written = await writeContainer(t.target, blocks, ctx, loaded.raw);
+    return apiResponse(ctx, mode === 'summary' ? blockWriteSummary(blocks, body.block_id, written.has_unsaved_changes) : { blocks });
   } catch (e) {
     return mutError(e);
   }
@@ -190,11 +230,14 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const url = new URL(request.url);
   const blockId = url.searchParams.get('block_id');
   if (!blockId) return apiError('block_id query param required', 400);
+  const mode = blockWriteResponse(request);
+  if (typeof mode !== 'string') return apiError(mode.error, 400);
   try {
     const loaded = await loadContainer(t.target, ctx);
+    const location = blockLocation(loaded.blocks, blockId);
     const blocks = removeBlock(loaded.blocks, blockId);
-    await writeContainer(t.target, blocks, ctx, loaded.raw);
-    return apiResponse(ctx, { blocks });
+    const written = await writeContainer(t.target, blocks, ctx, loaded.raw);
+    return apiResponse(ctx, mode === 'summary' ? { removed_id: blockId, ...location, has_unsaved_changes: written.has_unsaved_changes } : { blocks });
   } catch (e) {
     return mutError(e);
   }

@@ -1,3 +1,4 @@
+import { resolveRenderVersion } from './render-version.js';
 /** The reserved system family never triggers a network font request. */
 export const SYSTEM_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 export function isSystemFont(value: string): boolean {
@@ -9,12 +10,37 @@ export function fontFamilyCss(value: string): string {
   return `'${value.replace(/[\\'\r\n<>;{}]/g, '')}'`;
 }
 
+/** Values for `SiteSettings.fonts.smoothing`. */
+export const FONT_SMOOTHING_VALUES = ['auto', 'antialiased'] as const;
+export type FontSmoothing = (typeof FONT_SMOOTHING_VALUES)[number];
+export function isFontSmoothing(value: unknown): value is FontSmoothing {
+  return typeof value === 'string' && (FONT_SMOOTHING_VALUES as readonly string[]).includes(value);
+}
+
+/**
+ * Text rendering on `<body>`.
+ *
+ * Until render version 6 the template reset set `-webkit-font-smoothing:
+ * antialiased` and `text-rendering: optimizeLegibility` on every site. On
+ * macOS that drops stem darkening, so dark text on a light background draws
+ * thinner and lighter than the browser default at the same weight, and a
+ * migrated site looked lighter than its original. From version 6 the browser
+ * default applies unless the site chooses `antialiased` (for example for light
+ * text on a dark background). Older versions keep the reset's rule unless the
+ * site chose a value.
+ */
+export function fontSmoothingCss(smoothing: unknown, renderVersion: number): string {
+  if (smoothing === 'antialiased') return 'body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}';
+  if (smoothing === 'auto' || renderVersion >= 6) return '';
+  return 'body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}';
+}
+
 /**
  * Theme tokens written into every page head from SiteSettings. Missing optional
  * values fall back so older settings documents never emit "undefined" CSS.
  * Published pages and preview emit the same block.
  */
-export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, 'colors' | 'fonts'>): string {
+export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, 'colors' | 'fonts'> & { render_version?: unknown }): string {
   const colors = settings.colors ?? ({} as Partial<import('./types.js').SiteSettings['colors']>);
   const fonts = settings.fonts ?? ({} as Partial<import('./types.js').SiteSettings['fonts']>);
   return `:root{
@@ -28,7 +54,7 @@ export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, '
   --font-heading:${fontFamilyCss(fonts.heading ?? 'Inter')};
   --font-body:${fontFamilyCss(fonts.body ?? 'Inter')};
   --font-size-base:${fonts.size_base ?? 16}px;
-}`;
+}${fontSmoothingCss(fonts.smoothing, resolveRenderVersion(settings.render_version))}`;
 }
 
 /** Webfont families a site loads from Google Fonts (system families excluded). */

@@ -10,7 +10,7 @@ function v(version?: string): Record<string, string | undefined> | undefined {
   return version ? { version } : undefined;
 }
 
-const COLOR_HELP = 'A palette token (primary, secondary, accent, background, surface, text, text_light), a derived readable text colour for a palette background (on_primary, on_secondary, on_accent), or a hex/rgb/hsl colour. Prefer tokens so a palette change flows through.';
+const COLOR_HELP = 'A palette token (primary, secondary, accent, background, surface, text, text_light), the text colour for a palette background (on_primary, on_secondary, on_accent: the site\'s colors.on_* when set, else black or white, whichever reads better), or a hex/rgb/hsl colour. Prefer tokens so a palette change flows through.';
 const length = z.string().describe('CSS length: px, rem, em, %, vw, ch, or clamp()/min()/max()');
 const color = z.string().describe(COLOR_HELP);
 
@@ -63,14 +63,14 @@ export const styleTools: ToolDef[] = [
   {
     name: 'list_styles',
     description:
-      'List the site\'s named style library: element roles (body, h1–h6, link) that style every matching element, and the styles blocks select with `style_id`. Also returns missing_standard_roles and contrast/library problems. READ THIS BEFORE STYLING ANY PAGE: reuse an existing style for a recurring look (eyebrows, leads, card titles, buttons, section spacing) instead of per-block values, raw HTML classes or page CSS.',
+      'List the site\'s named style library: element roles (body, h1–h6, link) that style every matching element, and the styles blocks select with `style_id`. Also returns missing_standard_roles, contrast/library problems and readability warnings (both APCA Lc and WCAG 2 ratio). READ THIS BEFORE STYLING ANY PAGE: reuse an existing style for a recurring look (eyebrows, leads, card titles, buttons, section spacing) instead of per-block values, raw HTML classes or page CSS.',
     inputSchema: { version: versionParam },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, 'styles', v(args.version)))),
   },
   {
     name: 'create_style',
     description:
-      'Create a named style. Do this whenever a look could recur — an eyebrow, a lead paragraph, a card title, a quote, a button variant, a section rhythm — then apply it with the block\'s `style_id` field. Only a clearly unique one-off may use block settings instead. Set values for phones in `base` and grow them in `at.tablet`/`at.desktop`. Text must meet WCAG AA contrast (4.5:1, 3:1 for ≥24px or bold ≥18.7px) against its background; a failing style is refused. Never light grey on white.',
+      'Create a named style. Do this whenever a look could recur — an eyebrow, a lead paragraph, a card title, a quote, a button variant, a section rhythm — then apply it with the block\'s `style_id` field. Only a clearly unique one-off may use block settings instead. Set values for phones in `base` and grow them in `at.tablet`/`at.desktop`. Text contrast against its background is measured with APCA by use, size and weight (body text Lc 75; secondary/small text Lc 60; headings, eyebrows and buttons Lc 60 from 16px at weight 600+, Lc 45 from 24px bold or 36px; smaller or lighter non-body text Lc 75) and with the WCAG 2 ratio. Text that fails both is refused; text below its APCA level that meets WCAG 2 AA (4.5:1, 3:1 for ≥24px or bold ≥18.7px) is saved and returned in `warnings`. Never light grey on white.',
     inputSchema: {
       id: z.string().regex(/^[a-z][a-z0-9-]{0,47}$/).describe('Stable slug; the CSS class becomes s-<id>. Cannot change later.'),
       ...styleFields,
@@ -112,7 +112,7 @@ export const styleTools: ToolDef[] = [
   {
     name: 'apply_standard_styles',
     description:
-      'Add the standard styles the site is missing (body, H1–H6, link, lead, eyebrow, small text, quote, primary/secondary button, section), with considered sizes and spacing for phones, tablets and desktops. The natural first step when building a new site, before pages: then adjust them to the brand (fonts, colours, scale) with update_style. New sites already have them. overwrite:true resets the standard roles to the defaults and changes the site\'s look — ask first.',
+      'Add the standard styles the site is missing (body, H1–H6, link, lead, eyebrow, small text, quote, primary/secondary button, section), with considered sizes and spacing for phones, tablets and desktops. The natural first step when building a new site, before pages: then adjust them to the brand (fonts, colours, scale) with update_style. New sites already have them. overwrite:true resets the standard roles to the defaults and changes the site\'s look — ask first. A standard style whose palette colour is unreadable on the background is added with the body text colour instead; `adjusted` lists those and `warnings` says what changed, with the measures — tell the user.',
     inputSchema: { overwrite: z.boolean().optional(), version: versionParam },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'styles/standard', { overwrite: args.overwrite === true }, v(args.version)))),
   },

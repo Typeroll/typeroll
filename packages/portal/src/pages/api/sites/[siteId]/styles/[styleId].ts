@@ -11,7 +11,7 @@ export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
   const check = requirePermission(guard.value, 'write');
   if (!check.ok) return check.response;
   try {
-    return json({ style: await updateStyle(ctxOf(guard.value), params.styleId ?? '', await request.json().catch(() => null)) });
+    return json(await updateStyle(ctxOf(guard.value), params.styleId ?? '', await request.json().catch(() => null)));
   } catch (error) {
     if (error instanceof StyleError) return json({ error: error.message, errors: error.errors }, error.status);
     throw error;

@@ -18,6 +18,7 @@ import type { BlockType } from './types.js';
 import { pixels, articleHeadingFields, focalPointFields, postCardImageSizing } from './presentation-fields.js';
 import { backgroundGradientField } from './surface-presentation.js';
 import { navigationForm } from './navigation-form.js';
+import { HERO_VIDEO_RUNTIME } from './block-media.js';
 import { navigationMenu, navigationLinks } from './navigation-menu.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
@@ -1164,10 +1165,12 @@ const video: BlockType = {
     { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio',
       options: ['16:9', '4:3', '1:1', '9:16'], default: '16:9', responsive: true },
     { name: 'lazy_load', type: 'boolean', label: 'Lazy-load', default: true },
+    { name: 'title', type: 'text', label: 'Accessible title', default: 'Video', min_render_version: 7 },
   ],
-  // Embed URL conversion happens in the build pipeline (site-template
-  // intercepts the video block and rewrites video_url to an embed-ready
-  // URL). Until then this template renders an iframe with the URL as-is.
+  // Up to render version 6 this is a bare iframe with the authored URL, and
+  // no option applies. From version 7 the renderer builds the player
+  // (block-media.ts): embed addresses for YouTube/Vimeo, a native <video>
+  // for a file, and every option.
   template: `<div data-block="video" data-source="{{source}}" style="--aspect_ratio:{{aspect_ratio}}">
   <iframe src="{{video_url}}" loading="lazy" allowfullscreen></iframe>
 </div>`,
@@ -1676,6 +1679,33 @@ pricingPlan.render_versions![0]!.styles = `${pricingPlan.styles}
 [data-block="pricing_plan"] .block-pricing-features li::before { content: "✓"; color: var(--color-primary, currentColor); font-weight: 700; }
 [data-block="pricing_plan"] .block-pricing-features li[data-included="false"] { opacity: 0.55; text-decoration: line-through; }
 [data-block="pricing_plan"] .block-pricing-features li[data-included="false"]::before { content: "–"; color: inherit; }`;
+
+// Render version 7: the options these blocks declared now render
+// (block-media.ts). Earlier versions keep the templates above.
+video.render_versions = [{
+  from: 7,
+  template: `<div data-block="video" data-source="{{source}}" style="--aspect_ratio:{{aspect_ratio}}">{{{video_html}}}</div>`,
+  styles: `${video.styles}
+[data-block="video"]:empty { display: none; }
+[data-block="video"] video { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0.5rem; background: #000; object-fit: contain; }`,
+}];
+hero.render_versions = [{
+  from: 7,
+  template: hero.template!.replace('<div class="block-hero-inner">', '{{{hero_video_html}}}<div class="block-hero-inner">'),
+  styles: `${hero.styles}
+[data-block="hero"] > .block-hero-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; pointer-events: none; }
+[data-block="hero"] > .block-hero-video-toggle { position: absolute; right: 1rem; bottom: 1rem; z-index: 3; inline-size: 2.75rem; block-size: 2.75rem; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; cursor: pointer; }
+[data-block="hero"] > .block-hero-video-toggle[hidden] { display: none; }
+[data-block="hero"] > .block-hero-video-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; box-shadow: 0 0 0 4px #000; }
+@media (prefers-reduced-motion: reduce) { [data-block="hero"] > .block-hero-video, [data-block="hero"] > .block-hero-video-toggle { display: none; } }`,
+  script: HERO_VIDEO_RUNTIME,
+}];
+testimonial.render_versions = [{
+  from: 7,
+  template: testimonial.template!.replace('<blockquote class="block-testimonial-quote">', '{{{rating_html}}}<blockquote class="block-testimonial-quote">'),
+  styles: `${testimonial.styles}
+[data-block="testimonial"] .block-testimonial-rating { margin: 0 0 0.75rem; font-size: 1.125rem; line-height: 1; letter-spacing: 0.1em; color: var(--testimonial-rating-color, #b45309); }`,
+}];
 
 export const TIER1_BLOCK_TYPES: readonly BlockType[] = [
   // Layout

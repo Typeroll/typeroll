@@ -12,13 +12,17 @@ export const POST: APIRoute = async ({ request, cookies, redirect, params, local
 
   const form = await request.formData();
   try {
-    const { page } = await createPage({ orgId: owner_org_id, siteId: site.id, versionId }, {
+    // The form names only a title, so the slug is derived and may be numbered
+    // when its address is taken; the editor then says which page holds it.
+    const { page, warnings } = await createPage({ orgId: owner_org_id, siteId: site.id, versionId }, {
       title: String(form.get('title') ?? ''), content_type: String(form.get('content_type') ?? 'page'),
       content_mode: form.get('content_mode') === 'html' ? 'html' : 'blocks',
     }, 'portal', session.email ?? 'portal');
-    return redirect(`/app/sites/${site.id}/pages/${page.id}`);
+    const adjusted = warnings?.find(warning => warning.code === 'slug_adjusted');
+    const notice = adjusted ? `?${new URLSearchParams({ slug_adjusted: adjusted.requested, conflicting_page_id: adjusted.conflicting_page_id })}` : '';
+    return redirect(`/app/sites/${site.id}/pages/${page.id}${notice}`);
   } catch (error) {
-    if (error instanceof WorkingCopyError) return json({ error: error.message }, error.status);
+    if (error instanceof WorkingCopyError) return json(error.toBody(), error.status);
     throw error;
   }
 };
