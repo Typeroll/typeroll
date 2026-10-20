@@ -133,12 +133,26 @@ test('unchanged packages do not reinstall build dependencies during publication'
   assert.match(workflow, /Install MCP build dependencies\n        if: needs\.plan\.outputs\.publish_mcp == 'true'/);
 });
 
+test('main Tests prebuild only the sha- image of a planned Core release, with the only write grant', () => {
+  const image = jobSource(testWorkflow, 'image');
+  assert.match(image, /needs: plan\n/);
+  assert.match(image, /github\.event_name == 'push' &&\s+github\.ref == 'refs\/heads\/main' &&\s+github\.repository == 'Typeroll\/typeroll' &&\s+needs\.plan\.outputs\.publish_core == 'true'/);
+  assert.match(image, /permissions:\n      contents: read\n      packages: write\n/);
+  assert.match(image, /source_sha: \$\{\{ github\.sha \}\}\n\s+core_tag: \$\{\{ needs\.plan\.outputs\.core_tag \}\}\n\s+tags: ghcr\.io\/typeroll\/typeroll:sha-\$\{\{ github\.sha \}\}\n/);
+  assert.doesNotMatch(image, /core-v|git tag|crane/);
+  // The workflow default stays read-only; no other job can write packages.
+  assert.match(testWorkflow, /^permissions:\n  contents: read\n  actions: read\n\njobs:/m);
+  assert.equal(testWorkflow.match(/packages: write/g).length, 1);
+  assert.match(jobSource(testWorkflow, 'plan'), /Plan Core publication\n        id: release\n        if: github\.event_name == 'push'\n        run: node scripts\/oss-release-plan\.mjs --github-output/);
+});
+
 test('every Core image build uses the one shared build definition', () => {
   const action = readFileSync(new URL('../.github/actions/core-image/action.yml', import.meta.url), 'utf8');
   for (const source of [workflow, testWorkflow]) {
     assert.doesNotMatch(source, /docker\/build-push-action|docker\/setup-buildx-action/);
   }
   assert.match(workflow, /uses: \.\/\.github\/actions\/core-image/);
+  assert.match(testWorkflow, /uses: \.\/\.github\/actions\/core-image/);
   assert.match(action, /using: composite/);
   assert.match(action, /org\.opencontainers\.image\.revision=\$\{\{ inputs\.source_sha \}\}/);
   assert.match(action, /org\.opencontainers\.image\.version=\$\{\{ inputs\.core_tag \}\}/);
