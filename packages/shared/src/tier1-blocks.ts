@@ -843,7 +843,20 @@ const postCard: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'image', label: 'Image or placeholder', selector: '.block-postcard-image', target: 'image' },
+    { name: 'image_link', label: 'Image link', selector: '.block-postcard-media > .block-postcard-link', target: 'link', decorative: true },
+    { name: 'placeholder_icon', label: 'Placeholder icon', selector: '.block-postcard-placeholder > span', target: 'text', decorative: true },
+    { name: 'title', label: 'Title', selector: '.block-postcard-title', target: 'heading', background_field: 'background' },
+    { name: 'title_link', label: 'Title link', selector: '.block-postcard-title > .block-postcard-link', target: 'link', background_field: 'background' },
+    { name: 'title_icon', label: 'Title icon', selector: '.block-postcard-title-icon', target: 'text', decorative: true },
+    { name: 'excerpt', label: 'Excerpt', selector: '.block-postcard-excerpt', target: 'text', background_field: 'background' },
+    { name: 'meta', label: 'Date and author', selector: '.block-postcard-meta', target: 'text', background_field: 'background' },
+    { name: 'action', label: 'Page action link', selector: '.block-postcard-action', target: 'link', background_field: 'background' },
+    { name: 'download', label: 'Download link', selector: '.block-postcard-download', target: 'link', color: 'primary', background_field: 'background' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'title', type: 'text', label: 'Title' },
     { name: 'excerpt', type: 'text', label: 'Excerpt' },
     { name: 'image', type: 'image', label: 'Featured image' },
@@ -1019,6 +1032,9 @@ const logoItem: BlockType = {
   category: 'media',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'logo', label: 'Logo image', selector: '.block-logo-link > img', target: 'image' },
+  ],
   schema: [
     { name: 'src', type: 'image', label: 'Logo image', required: true },
     { name: 'alt', type: 'text', label: 'Alt text' },
@@ -1052,7 +1068,15 @@ const stepCard: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'marker', label: 'Number and icon row', selector: '.block-step-marker', target: 'container', decorative: true },
+    { name: 'number', label: 'Step number', selector: '.block-step-number', target: 'text', color: 'on_primary', background: 'primary' },
+    { name: 'icon', label: 'Icon', selector: '.block-step-icon', target: 'text', decorative: true },
+    { name: 'title', label: 'Title', selector: '.block-step-title', target: 'heading' },
+    { name: 'text', label: 'Description', selector: '.block-step-text', target: 'text' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'number', type: 'text', label: 'Step number / label' },
     { name: 'icon', type: 'icon', label: 'Icon' },
     { name: 'title', type: 'text', label: 'Title', required: true },

@@ -21,6 +21,7 @@ import {
   renderBlocks,
   type Block,
   type BlockType,
+  type RenderContext,
 } from '../index.js';
 
 /** Properties whose value is a visible opinion of the block. */
@@ -113,7 +114,7 @@ export interface SampleDom {
 export function sampleDom(block: Block, registry: Map<string, BlockType>, renderVersion: number): SampleDom | null {
   const window = new Window();
   const container = window.document.createElement('div');
-  container.innerHTML = renderBlocks([block], { registry, renderVersion });
+  container.innerHTML = renderBlocks([block], { registry, renderVersion, context: PART_SAMPLE_CONTEXTS[block.type] });
   const root = container.firstElementChild as unknown as Element | null;
   return root ? { root, container: container as unknown as Element } : null;
 }
@@ -182,6 +183,19 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     quote: '<p>It changed how we work.</p>', name: 'Grace Hopper', role: 'CTO', company: 'Acme',
     avatar: '/media/grace.jpg', logo: '/media/acme.svg', rating: 5,
   },
+  // No image, so the placeholder (also the image part) and its icon render; the download comes from the item.
+  'core/post_card': {
+    title: 'Release notes', excerpt: 'What changed', date: '2026-01-01', author: 'Ada', show_author: true, href: '/notes/',
+    missing_image: 'placeholder', placeholder_icon: 'image', title_icon: 'file-text', action_label: 'Read more',
+    download_url_field: 'pdf',
+  },
+  'core/logo_item': { src: '/media/logo.svg', alt: 'Acme', link: 'https://acme.example/' },
+  'core/step_card': { number: '1', icon: 'check', title: 'Sign up', text: '<p>Create an account.</p>' },
+};
+
+/** Render context a block's sample needs to show every part (repeater item data). */
+export const PART_SAMPLE_CONTEXTS: Record<string, RenderContext> = {
+  'core/post_card': { item: { pdf: '/media/notes.pdf' } },
 };
 
 /** A sample block: field defaults, required fields filled in, then PART_SAMPLES. */
