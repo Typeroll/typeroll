@@ -198,11 +198,24 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
   },
   // The separate link renders when the card itself is not the link.
   'core/icon_box': { icon: 'star', heading: 'Heading', text: '<p>Text</p>', link: '/more/', link_label: 'Learn more' },
+  'form/radio_group': { choices: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] },
+  'form/checkbox_group': { choices: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] },
+  'form/help': { body: '<p>See <a href="/help/">the guide</a></p>' },
+  'core/field_list': { title: 'Facts', fields: [{ field: 'city' }, { field: 'website' }, { field: 'tags' }] },
+  'core/navigation_form': { destination: '/quote/', button_icon: '→', fields: [{ name: 'address', label: 'Address' }] },
 };
 
-/** Render context a block's sample needs to show every part (repeater item data). */
+/** Render context a block's sample needs besides its data (repeater item data, a field list's Page fields). */
 export const PART_SAMPLE_CONTEXTS: Record<string, RenderContext> = {
   'core/post_card': { item: { pdf: '/media/notes.pdf' } },
+  'core/field_list': {
+    content_type: { fields: [
+      { name: 'city', type: 'text', label: 'City' },
+      { name: 'website', type: 'url', label: 'Website' },
+      { name: 'tags', type: 'multiselect', label: 'Tags', options: ['a', 'b'] },
+    ] },
+    page: { fields: { city: 'Stockholm', website: 'https://example.com/', tags: ['a', 'b'] } },
+  },
 };
 
 /** A sample block: field defaults, required fields filled in, then PART_SAMPLES. */

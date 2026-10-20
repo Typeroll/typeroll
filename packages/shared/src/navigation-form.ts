@@ -337,6 +337,17 @@ export const navigationForm: BlockType = {
   icon: "arrow-right",
   category: "content",
   container: false,
+  // The colour fields stay per instance and are the backgrounds the parts'
+  // contrast is checked on. The input part also reaches the address
+  // suggestion field that replaces an input (integrations.ts), which
+  // otherwise follows the --tr-field-* contract on the root.
+  parts: [
+    { name: "field", label: "Field", selector: ".navigation-field", target: "container", decorative: true },
+    { name: "label", label: "Labels", selector: "label", target: "text" },
+    { name: "input", label: "Inputs", selector: ".navigation-input, gmp-place-autocomplete[data-typeroll-field]", target: "container", background_field: "input_background" },
+    { name: "button", label: "Button", selector: ".navigation-actions > a, .navigation-actions > button", target: "button", color: "on_primary", background: "primary", background_field: "button_background" },
+    { name: "button_icon", label: "Button icon", selector: ".navigation-button-icon", target: "text", decorative: true },
+  ],
   schema: [
     {
       name: "button_nowrap",

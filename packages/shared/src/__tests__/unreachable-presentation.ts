@@ -62,13 +62,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="divider"] { border: none }': NO_PARTS_YET,
     '[data-block="divider"] { opacity: 0.3 }': NO_PARTS_YET,
   },
-  'core/field_list': {
-    '[data-block="field_list"] > h2 { margin: 0 0 1rem }': NO_PARTS_YET,
-    '[data-block="field_list"] > dl { gap: .7rem 2rem }': NO_PARTS_YET,
-    '[data-block="field_list"] dt { font-weight: 600 }': NO_PARTS_YET,
-    '[data-block="field_list"] dd { margin: .25rem 0 0 }': NO_PARTS_YET,
-    '[data-block="field_list"] ul { padding-left: 1.25em }': NO_PARTS_YET,
-  },
   'core/hero': {
     '[data-block="hero"][style*="--layout:full-image"]:not([style*="--bg-image:url()"]) { color: white }': 'text over the full-width image; the eyebrow, heading, subheading and button parts each take a style with their own colour, and the overlay part sets how dark the image is',
     '[data-block="hero"] > .block-hero-video-toggle { border-radius: 50% }': VIDEO_CONTROL,
@@ -111,13 +104,6 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="navigation"] .block-navigation-toggle { padding: 0.65rem 0.8rem }': NO_PARTS_YET,
     '[data-block="navigation"] .block-navigation-toggle { border: 1px solid color-mix(in srgb, currentColor 22%, transparent) }': NO_PARTS_YET,
     '[data-block="navigation"] .block-navigation-toggle { border-radius: 0.4rem }': NO_PARTS_YET,
-  },
-  'core/navigation_form': {
-    '[data-block="navigation_form"] .navigation-field { gap: 6px }': NO_PARTS_YET,
-    '[data-block="navigation_form"] label { font-weight: 600 }': NO_PARTS_YET,
-    '[data-block="navigation_form"][data-show-labels="false"] label { margin: -1px }': NO_PARTS_YET,
-    '[data-block="navigation_form"] .navigation-actions>* { text-decoration: none }': NO_PARTS_YET,
-    '[data-block="navigation_form"] .navigation-button-icon { line-height: 1 }': NO_PARTS_YET,
   },
   'core/navigation_links': {
     '[data-block="navigation_links"] > li > a { text-decoration: none }': NO_PARTS_YET,
@@ -201,55 +187,8 @@ export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = 
     '[data-block="video"] video { border-radius: 0.5rem }': NO_PARTS_YET,
     '[data-block="video"] video { background: #000 }': NO_PARTS_YET,
   },
-  'form/boolean': {
-    '[data-block="form_boolean"] legend { font-weight: 600 }': NO_PARTS_YET,
-    '[data-block="form_boolean"] label { gap: .65rem }': NO_PARTS_YET,
-  },
-  'form/checkbox_group': {
-    '[data-block="form_checkbox_group"] legend { font-weight: 600 }': NO_PARTS_YET,
-    '[data-block="form_checkbox_group"] legend { font-size: 0.95rem }': NO_PARTS_YET,
-    '[data-block="form_checkbox_group"] legend { padding: 0 0 0.35rem }': NO_PARTS_YET,
-  },
-  'form/consent': {
-    '[data-block="form_consent"] input { margin-top: 0.2rem }': NO_PARTS_YET,
-    '[data-block="form_consent"] .form-consent-text { font-size: 0.9rem }': NO_PARTS_YET,
-  },
-  'form/heading': {
-    '[data-block="form_heading"] h3 { margin: 1.4rem 0 0.2rem }': NO_PARTS_YET,
-    '[data-block="form_heading"] h3 { font-size: 1.15rem }': NO_PARTS_YET,
-    '[data-block="form_heading"] p { margin: 0 0 0.8rem }': NO_PARTS_YET,
-  },
-  'form/help': {
-    '[data-block="form_help"] { padding: 0.6rem 0.85rem }': NO_PARTS_YET,
-    '[data-block="form_help"] summary { font-weight: 600 }': NO_PARTS_YET,
-    '[data-block="form_help"] summary { font-size: 0.95rem }': NO_PARTS_YET,
-    '[data-block="form_help"] .form-help-body { padding-top: 0.5rem }': NO_PARTS_YET,
-    '[data-block="form_help"] .form-help-body { font-size: 0.9rem }': NO_PARTS_YET,
-  },
-  'form/radio_group': {
-    '[data-block="form_radio_group"] legend { font-weight: 600 }': NO_PARTS_YET,
-    '[data-block="form_radio_group"] legend { font-size: 0.95rem }': NO_PARTS_YET,
-    '[data-block="form_radio_group"] legend { padding: 0 0 0.35rem }': NO_PARTS_YET,
-    '.form-choice { gap: 0.5rem }': NO_PARTS_YET,
-    '.form-choice { padding: 0.25rem 0 }': NO_PARTS_YET,
-  },
   'form/slider': {
-    '[data-block="form_slider"] .form-slider-value { font-weight: 700 }': NO_PARTS_YET,
-    '[data-block="form_slider"] .form-slider-value { margin-left: 0.4rem }': NO_PARTS_YET,
-  },
-  'form/text': {
-    '.form-field { gap: 0.35rem }': NO_PARTS_YET,
-    '.form-field > label { font-weight: 600 }': NO_PARTS_YET,
-    '.form-field > label { font-size: 0.95rem }': NO_PARTS_YET,
-    '.form-field-help { font-size: 0.85rem }': NO_PARTS_YET,
-    '.form-field-error { font-size: 0.85rem }': NO_PARTS_YET,
-    '.form-field-error { font-weight: 600 }': NO_PARTS_YET,
-  },
-  'form/toggle': {
-    '[data-block="form_toggle"] .form-toggle { gap: 0.6rem }': NO_PARTS_YET,
-    '[data-block="form_toggle"] .form-toggle-track { border-radius: 999px }': NO_PARTS_YET,
-    '[data-block="form_toggle"] .form-toggle-track::after { border-radius: 50% }': NO_PARTS_YET,
-    '[data-block="form_toggle"] .form-toggle-track::after { background: #fff }': NO_PARTS_YET,
+    '[data-block="form_slider"] .form-slider-value { margin-left: 0.4rem }': 'the space between the label and its inline value is horizontal; a style sets vertical space only (space_before, space_after), and the value part\'s padding adds to it',
   },
   'template/page_author': {
     '[data-block="page-author"] { gap: 0.5rem }': NO_PARTS_YET,
