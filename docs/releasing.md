@@ -55,8 +55,9 @@ steps:
 
 1. verify the exact qualified documentation artifact, then validate versions,
    tags, and changed product scopes;
-2. in parallel, build the Core image once, publish it by immutable digest,
-   verify `/api/version`, then create `core-vX.Y.Z`;
+2. in parallel, take the Core image `Tests` prebuilt (or build it once), verify
+   `/api/version` for its immutable digest, point the `core-vX.Y.Z` image tag
+   at that digest, then create the `core-vX.Y.Z` Git tag;
 3. in the same parallel phase, build and inspect MCP, publish with npm Trusted
    Publishing, verify npm, then create `mcp-vX.Y.Z`;
 4. in the same parallel phase, deploy the already built documentation from the
@@ -74,7 +75,27 @@ package build and dry-run inspection, and documentation artifact integrity.
 An already released unchanged Core or MCP version is verified and reused. If an
 image reached GHCR but the workflow stopped before creating its Core tag, a
 rerun reuses it only when its embedded source revision exactly matches the
-candidate commit. A manual workflow dispatch is dry-run-only by default; a real
+candidate commit.
+
+### Core image prebuild
+
+On a push to `main` whose `release:plan` publishes Core, `Tests` builds
+`ghcr.io/typeroll/typeroll:sha-SOURCE_SHA` in parallel with qualification. That
+job alone has `packages: write`; the workflow default stays read-only. Pull
+requests and commits that publish no Core never build, and `Tests` creates no
+release tag. A failed image build fails `Tests`, just as it would fail the
+release.
+
+Both callers use `.github/actions/core-image`, so labels, the
+`TYPEROLL_SOURCE_SHA` build argument, platform, BuildKit cache, SBOM and
+provenance cannot drift. When `core-vX.Y.Z` does not exist yet, the release job
+reuses `sha-SOURCE_SHA` only if its `org.opencontainers.image.revision` label is
+the source SHA and its `org.opencontainers.image.version` label is the release
+tag. It verifies the container contract for that digest, points the release
+image tag at the same digest with `crane tag`, and the manifest records it. A
+missing image, other labels or any registry error builds exactly as before.
+
+A manual workflow dispatch is dry-run-only by default; a real
 manual release also requires `RELEASE_TYPEROLL_OSS`. The npm trusted publisher
 must remain bound to `publish-mcp.yml`.
 
@@ -88,7 +109,8 @@ whose previous commit already passed the exact repository's `Tests` workflow.
 The complete Git diff must contain only Markdown/MDX under `docs/` or
 `packages/docs-site/src/content/`, or the named top-level Markdown guides.
 Renames include both paths. Unknown paths, dependencies, CI changes, incomplete
-history, missing baseline proof and pull requests all use the full source gate.
+history, missing baseline proof and pull requests all use the full source gate,
+unless a push qualifies for pull request reuse below.
 
 The short lane still installs locked dependencies, validates the release plan,
 audits dependencies, checks documentation schema/types and formatting, builds
@@ -96,7 +118,45 @@ production docs and seals the exact artifact. It skips application tests,
 application/browser builds and external customer-builder download probes.
 Core and MCP versions remain unchanged; documentation work needs no Cloud rollout.
 A docs-only CI success can serve as the baseline for the next docs-only delta.
-The first change to this selection logic always receives full qualification.
+A change to this selection logic is never documentation-only, so it always
+receives full qualification, in its pull request run or on `main`.
+
+## Pull request qualification reuse
+
+A push to `main` whose Git tree is byte-identical to a tree that a pull request
+run already fully qualified counts as the exact source. Because the tree includes
+`.github/`, both runs used the same workflow definition. For `pull_request`
+events `GITHUB_SHA` is the test merge commit, which the run API does not expose,
+so a same-repository full-lane run uploads `pr-qualified-TREE` (kept 7 days)
+from `Select source checks`. It records that commit, its tree and a hash of the
+`core-v*`/`mcp-v*` tags the run saw. Recording never fails a pull request; a
+missing record only costs the full gate on `main`.
+
+`source-check-plan.mjs` on `main` looks the record up by its own tree and selects
+the `reuse` lane only when every check holds:
+
+- the record's run is a completed, successful `pull_request` run of
+  `.github/workflows/test.yml` in this repository from a branch of this
+  repository, not a fork;
+- the record is version 1, from the full lane, names this repository, this
+  tree and the release tags `main` sees now;
+- `git/commits/SHA` on GitHub returns the recorded commit with this tree and
+  the run's pull request head as a parent.
+
+A run that is still finishing is awaited for up to one minute. Any API or
+download error, expired record, failed, cancelled or running run, fork, other
+workflow file, different tree (main moved after pull request CI) or tag change
+(a release happened in between) selects the full gate. Pushes without a
+qualifying record, including those that fail the documentation-only rules,
+also run it.
+
+The `reuse` lane skips the release-candidate check and Playwright, which already
+passed for this tree. It still verifies the pinned build dependencies, and runs
+the documentation lane (`release:plan`, `security:audit`, docs checks and
+build) to seal `docs-SOURCE_SHA`, because the artifact and its `release.json`
+name the `main` commit. The successful `push` run for the exact SHA remains the
+proof `Release OSS` requires, and it can serve as the baseline for a following
+documentation-only push.
 
 ## Qualified artifact reuse
 
@@ -127,6 +187,6 @@ never substitute for those checks. Workflow/helper-only changes are explicitly
 classified as release infrastructure and do not require a fictitious Core/MCP
 version bump; changes to runtime source still do.
 
-The Core release job uses built-in version checks and its Docker build, without
-a redundant host `npm ci`. An unchanged MCP package is verified in the registry
+The Core release job uses built-in version checks and the prebuilt image or its
+own Docker build, without a redundant host `npm ci`. An unchanged MCP package is verified in the registry
 without reinstalling build dependencies or the publishing client.
