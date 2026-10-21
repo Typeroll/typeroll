@@ -107,6 +107,14 @@ for editable article content. Tables support header cells, spans, colors,
 column widths and horizontal scrolling. Images support original dimensions,
 alignment, a separate mobile image, a link and formatted photo credits.
 
+The mobile image (`mobile_src`) replaces the main image below 640px. To switch
+at another width, set `mobile_src_below` to a breakpoint (`tablet`, `laptop`,
+`desktop` or `wide`). The width comes from the block's `responsive_breakpoints`,
+else the Site's. For example, `laptop` with a laptop width of 768px shows the
+mobile image up to 767px. `mobile_src_below_px` sets an exact width instead
+(320–2560) and takes precedence. Existing images without either field keep the
+640px switch.
+
 Place **`core/table_of_contents` in the Page template**, next to its
 `template_content_slot`. It derives links from the current Page's headings;
 there is no editable list or source content field. Choose `h2`, `h2-h3` or
