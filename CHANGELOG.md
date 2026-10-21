@@ -1,5 +1,9 @@
 # Changelog
 
+## Core 0.2.84
+
+- Fixed: a publication whose build failed validation could be reported as failed without its validation report (`seo_report`). A status read that found the failed build marked the job failed before the publication runner attached the report, so the portal, the API and MCP could show "validation failed" without the errors that explain it until a later read. The failure now carries the report from the first read.
+
 ## Core 0.2.83 / MCP 0.45.64
 
 - `core/image`: the mobile image (`mobile_src`) can switch at the block's or Site's breakpoint instead of the fixed 640px. `mobile_src_below` (`640` | `tablet` | `laptop` | `desktop` | `wide`) resolves against the block's `responsive_breakpoints`, else the Site's, and switches below that width (`(width < 768px)` for a laptop width of 768px). `mobile_src_below_px` (320–2560) sets an exact width and takes precedence. Unset, the markup is unchanged (`(max-width: 640px)`), so no render version is needed. On moveria.se the mid-article banner switched at 640px while legacy switched below 768px, so 641–767px showed the wrong image.
