@@ -436,6 +436,10 @@ const image: BlockType = {
     { name: 'original_width', type: 'number', label: 'Original width (px)', min: 1 },
     { name: 'original_height', type: 'number', label: 'Original height (px)', min: 1 },
     { name: 'mobile_src', type: 'image', label: 'Mobile image (optional)' },
+    // Where the mobile image takes over. Unset keeps the original 640px switch;
+    // a breakpoint name resolves against the block's or site's responsive widths.
+    { name: 'mobile_src_below', type: 'select', label: 'Use mobile image below', options: ['640', 'tablet', 'laptop', 'desktop', 'wide'], option_labels: ['640 px', 'Tablet width', 'Laptop width', 'Desktop width', 'Wide width'], default: '640' },
+    { name: 'mobile_src_below_px', type: 'number', label: 'Use mobile image below (px, overrides the width above)', min: 320, max: 2560 },
     { name: 'link', type: 'url', label: 'Link to (optional)' },
     { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide', 'full', 'original'], default: 'normal' },
     { name: 'radius', type: 'select', label: 'Corner radius', options: ['none', 'md', 'lg', 'xl'], default: 'none' },

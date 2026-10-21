@@ -1,5 +1,9 @@
 # Changelog
 
+## Core 0.2.83 / MCP 0.45.64
+
+- `core/image`: the mobile image (`mobile_src`) can switch at the block's or Site's breakpoint instead of the fixed 640px. `mobile_src_below` (`640` | `tablet` | `laptop` | `desktop` | `wide`) resolves against the block's `responsive_breakpoints`, else the Site's, and switches below that width (`(width < 768px)` for a laptop width of 768px). `mobile_src_below_px` (320–2560) sets an exact width and takes precedence. Unset, the markup is unchanged (`(max-width: 640px)`), so no render version is needed. On moveria.se the mid-article banner switched at 640px while legacy switched below 768px, so 641–767px showed the wrong image.
+
 ## Core 0.2.82
 
 - Security: sanitize-html 2.18.1 (from 2.17.7), the sanitizer Core uses for rich text. It fixes content rendering after an implied close in non-text tags such as `<noscript>` ([GHSA-x3q4-9hxx-gx8m](https://github.com/advisories/GHSA-x3q4-9hxx-gx8m)), a SMIL animation namespace-prefix bypass that allowed `javascript:` URLs ([GHSA-374f-7chj-9948](https://github.com/advisories/GHSA-374f-7chj-9948)) and `javascript:`/`data:` URLs in `meta http-equiv="refresh"` content ([GHSA-cv27-6wvh-8x7j](https://github.com/advisories/GHSA-cv27-6wvh-8x7j)).

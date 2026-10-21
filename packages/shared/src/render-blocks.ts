@@ -471,7 +471,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     const maximum = positive(d.max_width) || (d.width === 'original' ? w : 0);
     d.image_size_style = maximum ? `max-width:min(100%,${maximum}px)` : '';
     const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''} loading="lazy" decoding="async" />`;
-    const picture = d.mobile_src ? `<picture><source media="(max-width: 640px)" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
+    const picture = d.mobile_src ? `<picture><source media="${mobileImageMedia(effectiveBlock.data, options)}" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
     const frame = `<span class="block-image-frame">${picture}</span>`;
     d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link">${frame}</a>` : frame;
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
@@ -2230,6 +2230,23 @@ export function findPaginatedListing(
     if (nested) return nested;
   }
   return null;
+}
+
+/**
+ * Media query for core/image's mobile image. Unset keeps the original
+ * `(max-width: 640px)`. An exact `mobile_src_below_px` wins; otherwise a
+ * breakpoint name in `mobile_src_below` switches below that breakpoint's
+ * width from the block's or site's responsive widths.
+ */
+function mobileImageMedia(data: Record<string, unknown> | undefined, options: RenderBlocksOptions): string {
+  const px = Number(data?.mobile_src_below_px);
+  if (data?.mobile_src_below_px != null && data.mobile_src_below_px !== '' && Number.isInteger(px) && px >= 320 && px <= 2560) return `(width < ${px}px)`;
+  const below = data?.mobile_src_below;
+  if (typeof below === 'string' && (BREAKPOINTS_ABOVE_MOBILE as readonly string[]).includes(below)) {
+    const widths = resolveBreakpointWidths(data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints);
+    return `(width < ${widths[below as keyof typeof widths]}px)`;
+  }
+  return '(max-width: 640px)';
 }
 
 function applyVisibility(html: string, block: Block, options: RenderBlocksOptions): string {
