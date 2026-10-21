@@ -70,6 +70,23 @@ describe('article content blocks', () => {
     expect(html).toContain('href="/credit"');
     expect(html).toContain('href="/offer"');
   });
+  it('switches to the mobile image at 640px unless a breakpoint or width is chosen', () => {
+    const media = (data: Record<string, unknown>, site?: Record<string, unknown>) => {
+      const html = renderBlock({ id: 'photo', type: 'core/image', data: { src: '/large.png', mobile_src: '/small.png', ...data } }, { registry, context: site ? { site } : undefined });
+      return /<source media="([^"]+)"/.exec(html)?.[1];
+    };
+    expect(media({})).toBe('(max-width: 640px)');
+    expect(media({ mobile_src_below: '640' })).toBe('(max-width: 640px)');
+    // Unset keeps 640px even when the site has its own widths.
+    expect(media({}, { responsive_breakpoints: { tablet: 577, laptop: 768, desktop: 1280, wide: 1536 } })).toBe('(max-width: 640px)');
+    expect(media({ mobile_src_below: 'laptop' })).toBe('(width < 1024px)');
+    expect(media({ mobile_src_below: 'laptop' }, { responsive_breakpoints: { tablet: 600, laptop: 900, desktop: 1280, wide: 1536 } })).toBe('(width < 900px)');
+    // The block's own widths win over the site's.
+    expect(media({ mobile_src_below: 'laptop', responsive_breakpoints: { tablet: 577, laptop: 768, desktop: 1280, wide: 1536 } }, { responsive_breakpoints: { tablet: 600, laptop: 900, desktop: 1280, wide: 1536 } })).toBe('(width < 768px)');
+    expect(media({ mobile_src_below: 'tablet', mobile_src_below_px: 700 })).toBe('(width < 700px)');
+    for (const invalid of [100, 4000, 700.5, 'x', '']) expect(media({ mobile_src_below_px: invalid })).toBe('(max-width: 640px)');
+    expect(media({ mobile_src_below: 'mobile' })).toBe('(max-width: 640px)');
+  });
   it('renders page blocks instead of stale HTML and preserves legacy heading anchors', () => {
     const options = { registry, context: { page: { content_mode: 'blocks', body: 'stale', blocks: [
       { id: 'h', type: 'core/heading', data: { text: 'Budget', level: 'h2', anchor_id: 'legacy-budget' } },
