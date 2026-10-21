@@ -43,6 +43,39 @@ Do not create release tags manually. A manual dry run is available through
 **Release OSS** when artifacts need inspection without publication. The full
 maintainer procedure is in `docs/releasing.md`.
 
+### Change routine
+
+The routine from change to published release:
+
+1. Branch from an up-to-date `main` and commit as you go, one logical change
+   per commit with its tests and documentation.
+2. Before pushing, run `git fetch origin --tags`, then
+   `node scripts/oss-release-check.mjs --release-artifacts`. Then run the portal
+   browser suite in Chromium: `cd packages/portal && npx playwright test
+   --project=chromium`. CI runs that suite, but the local gate does not. Run new
+   browser specs in WebKit too. CI also runs Firefox for the specs in
+   `CROSS_ENGINE_TESTS`.
+3. Run `npm run release:plan` and bump exactly the versions it asks for, with a
+   `CHANGELOG.md` entry. Check `git tag -l 'core-v*'` and `origin/main` first:
+   `main` may have released while the branch was open.
+4. Open a pull request. Merge it with a merge commit once every check is green.
+   The repository does not allow auto-merge.
+5. If main's tree is identical to a tree a pull request run fully qualified,
+   main reuses that qualification and takes about a minute and a half (see
+   [Pull request qualification reuse](docs/releasing.md#pull-request-qualification-reuse)).
+   If `main` moved after the pull request's checks, main runs the full gate,
+   which takes about seven minutes. **Release OSS** then publishes what the plan
+   says.
+6. Typeroll Cloud picks up the release manifest through its own release
+   process. Cloud production needs explicit approval for each release.
+
+When the dependency audit fails on a newly published advisory, it blocks every
+pull request and `main` until it is fixed. Upgrade the dependency, preferring
+the smallest fixed version, in its own pull request. A runtime dependency
+change is a Core release. Add an entry to `APPROVED_ADVISORIES` in
+`scripts/audit-dependencies.mjs` only with a rationale and an expiry, when no
+fixed version can be used.
+
 ## Public documentation for Cloud and self-hosting
 
 `packages/docs-site/` owns all public user documentation at
