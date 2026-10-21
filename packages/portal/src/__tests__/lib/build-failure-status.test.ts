@@ -70,3 +70,11 @@ it('reports the cause a build engine sent when a status read finds the failure',
   expect(result.error).toContain('Cause: Error: Invalid media completion receipt.');
 });
 
+
+it('carries the validation report when a status read finds a failed publication build', async () => {
+  const seo_report = { version: 1, passed: false, error_count: 1, warning_count: 0, errors: [{ code: 'internal_target_missing' }], warnings: [], publication_id: 'publication' };
+  await getStore().updateDoc(taskPath, { status: 'failed', error_code: 'rendering_publication_validation_failed', seo_report });
+  const result = await refreshBuildFailure('org','site',(await getStore().getDoc<any>(jobPath))!);
+  expect(result).toMatchObject({ status: 'failed', seo_report });
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ seo_report });
+});
