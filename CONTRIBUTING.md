@@ -49,12 +49,18 @@ The routine from change to published release:
 
 1. Branch from an up-to-date `main` and commit as you go, one logical change
    per commit with its tests and documentation.
-2. Before pushing, run `git fetch origin --tags`, then
-   `node scripts/oss-release-check.mjs --release-artifacts`. Then run the portal
-   browser suite in Chromium: `cd packages/portal && npx playwright test
---project=chromium`. CI runs that suite, but the local gate does not. Run new
-   browser specs in WebKit too. CI also runs Firefox for the specs in
+2. Before pushing, run the local gate and the portal browser suite in Chromium.
+   CI runs that suite, but the local gate does not:
+
+   ```sh
+   git fetch origin --tags
+   node scripts/oss-release-check.mjs --release-artifacts
+   cd packages/portal && npx playwright test --project=chromium
+   ```
+
+   Run new browser specs in WebKit too. CI also runs Firefox for the specs in
    `CROSS_ENGINE_TESTS`.
+
 3. Run `npm run release:plan` and bump exactly the versions it asks for, with a
    `CHANGELOG.md` entry. Check `git tag -l 'core-v*'` and `origin/main` first:
    `main` may have released while the branch was open.
