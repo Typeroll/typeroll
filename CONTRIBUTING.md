@@ -52,7 +52,7 @@ The routine from change to published release:
 2. Before pushing, run `git fetch origin --tags`, then
    `node scripts/oss-release-check.mjs --release-artifacts`. Then run the portal
    browser suite in Chromium: `cd packages/portal && npx playwright test
-   --project=chromium`. CI runs that suite, but the local gate does not. Run new
+--project=chromium`. CI runs that suite, but the local gate does not. Run new
    browser specs in WebKit too. CI also runs Firefox for the specs in
    `CROSS_ENGINE_TESTS`.
 3. Run `npm run release:plan` and bump exactly the versions it asks for, with a
