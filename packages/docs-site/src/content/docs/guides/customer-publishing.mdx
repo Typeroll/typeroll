@@ -162,6 +162,12 @@ It opens Cloudflare's approval screen and keeps the existing account and R2 setu
 Typeroll will not replace an existing DNS destination or an existing shared media
 hostname through this setup action.
 
+The [Analytics module](../../apps/analytics/#which-cloudflare-account-is-used)
+creates each site's Cloudflare Web Analytics site in its Hosting Group account
+and reads Insights from there. That needs separate permissions: select
+**Approve Analytics access** on the site's Analytics module when it asks, and
+approve Account Settings (edit) and Account Analytics (read) in Cloudflare.
+
 For external DNS or agent-managed settings, open **Manual settings or external
 DNS**. Enter the complete **Site address base** and **Shared media host**, choose
 **Me or my AI agent**, and save. Read **Setup instructions**, apply the records,

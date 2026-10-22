@@ -3,9 +3,15 @@
 // build-snapshot projection are all driven from an app's declared field
 // schema, so no per-app code is needed here.
 
-import type { AppId, AppState, AppStateMap, SiteApps } from '@typeroll/shared';
+import type { AppId, AppSetupStatus, AppState, AppStateMap, SiteApps } from '@typeroll/shared';
 import { encryptSecret, decryptSecret, SECRET_MASK } from '../secret-crypto';
+import { analyticsSetupView } from './analytics-setup';
 import { getAppDef, listAppDefs } from './registry';
+
+/** Provider setup of an app (Analytics' Cloudflare Web Analytics site), as returned by read and write surfaces. */
+export function appSetupView(appId: string, state: AppState | undefined): AppSetupStatus | null {
+  return appId === 'analytics' ? analyticsSetupView(state) : null;
+}
 
 function isNewSecret(v: unknown): v is string {
   return typeof v === 'string' && v.length > 0 && v !== SECRET_MASK;
@@ -81,6 +87,8 @@ export interface MaskedAppState {
   enabled_at?: string;
   /** field key → raw value (non-secret) or { set: boolean } (secret). */
   config: Record<string, unknown>;
+  /** Present when an enabled app's provider setup is known: ready, or the cause and next step. */
+  setup?: AppSetupStatus;
 }
 
 /** AppState → UI-safe shape; never includes ciphertext or plaintext secrets. */
@@ -91,7 +99,8 @@ export function maskAppState(appId: string, s: AppState | undefined): MaskedAppS
     if (f.secret) config[f.key] = { set: Boolean(s?.config?.[`${f.key}_enc`]) };
     else config[f.key] = s?.config?.[f.key] ?? '';
   }
-  return { enabled: Boolean(s?.enabled), enabled_at: s?.enabled_at, config };
+  const setup = appSetupView(appId, s);
+  return { enabled: Boolean(s?.enabled), enabled_at: s?.enabled_at, config, ...(setup ? { setup } : {}) };
 }
 
 /** AppState → decrypted config for server-side use (dashboard, provisioning). */
