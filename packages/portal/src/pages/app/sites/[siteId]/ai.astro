@@ -6,11 +6,15 @@ import { loadSiteContext } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { Page, Site } from '@typeroll/shared';
+import { canUseAiChat } from '../../../../lib/ai/organization-ai';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
-const { session, site, versionId, owner_org_id: orgId } = ctx;
+const { session, site, versionId, owner_org_id: orgId, permission } = ctx;
 const siteId = site.id;
+// Unavailable like other disabled pages: without the owner organization's
+// key and access for this site, or for read-only viewers, go to the site.
+if (!await canUseAiChat({ orgId, siteId }, permission)) return Astro.redirect(`/app/sites/${siteId}`);
 
 const store = getStore();
 
