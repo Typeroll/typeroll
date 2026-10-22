@@ -37,10 +37,15 @@ create the branch, then work on it with `version=<id>`.
 
 Typeroll is a static-site CMS: content lives in a database, the user
 edits it through an in-app editor, and a deploy step compiles everything
-to a fast static site hosted on Cloudflare Pages. The in-app chat handles
-single-page or single-block edits by the editor audience. You — through
-this MCP — handle the work that doesn't fit there: site-wide redesigns,
-bulk content updates, structural migrations, directory imports.
+to a fast static site hosted on Cloudflare Pages. The portal's built-in AI
+chat is optional: it needs the Organization's own AI key and appears only on
+the Sites chosen for it, so you are often the only AI working on the site.
+Everything the chat can do is available to you here — everyday edits
+(`tr-edit-site`, "Everyday requests"), structured data (`add_faq_schema`,
+`add_recipe_schema`, `add_event_schema`) and the starter design reference
+(`tr-starter-design`) — along with the work that doesn't fit a chat:
+site-wide redesigns, bulk content updates, structural migrations, directory
+imports.
 
 The MCP server is a thin wrapper around the public REST API. Each tool
 maps to one HTTP endpoint; the actual logic runs in the customer's portal
@@ -574,6 +579,10 @@ can't create sites (it's bound to one) and gets a 403.
 
 ## Common operations
 
+Everyday requests — page links and preview links, images the user hands you,
+menu and footer edits, site-wide changes, settings, analytics, redirects,
+forms and structured data — are collected in `read_skill name="tr-edit-site"`.
+
 ### "Replace this string across the whole site"
 
 ```
@@ -637,7 +646,10 @@ update_page page_id=… patch={ html_content: "<…><x-include name=\"newsletter
 ```
 
 Edits to the block update every page that includes it. Use
-`find_pages_using_block` before changing it.
+`find_pages_using_block` before changing it. A request phrased as a bulk
+edit ("every page", "all hero sections") is usually this: check
+`list_partials` for a block that already fits before proposing a new one, and
+edit pages one by one only for content that really differs per page.
 
 ### "Build a page using blocks (the default for new pages)"
 
@@ -1222,7 +1234,9 @@ preview.
   more work than asking "ok to proceed?" first.
 - **Match the site's design.** Read a partial or two before designing
   new components. CSS variables (`var(--color-primary)`) are common
-  but not universal — mirror what's already in use.
+  but not universal — mirror what's already in use. On a blank site, or one
+  that still follows the starter design, `read_skill name="tr-starter-design"`
+  lists the variables and header/footer conventions.
 
 ## Reference: tool families
 
@@ -1237,6 +1251,7 @@ preview.
 | **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics in the account that hosts the site; a non-ok `status` carries a `reason` with the next step. Conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |
 | **Pages — reads** | `list_pages`, `read_page`, `batch_read_pages` |
 | **Pages — writes** | `create_page`, `update_page`, `replace_page`, `batch_update_pages`, `delete_page`, `clone_page` |
+| **Pages — structured data** | `add_faq_schema`, `add_recipe_schema`, `add_event_schema`: validated FAQPage, Recipe and Event JSON-LD merged into the page's `json_ld` (same type replaced, other nodes kept), as a draft. Other types: `update_page` `json_ld`. See `tr-seo`. |
 | **Pages — blocks** | `get_page_blocks`, `add_block`, `update_block`, `move_block`, `remove_block`, `duplicate_block`, `set_block_responsive`, `set_page_mode` (never converts HTML into blocks) |
 | **Pages — meta** | `get_page_preview` |
 | **Global blocks (partials)** | `list_partials` (summary by default), `read_partial`, `create_free_block` (`blocks` or `html_content`), `update_partial`, `replace_partial`, `set_partial_mode`, `delete_partial`, `find_pages_using_block`, `make_block_global`, `detach_global_block`. Block pages reference a global block with `core/global_block` (`global_block_id`); HTML pages use `<x-include>`. |

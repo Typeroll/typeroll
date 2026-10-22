@@ -256,6 +256,17 @@ describe('structured-data tools (shared with MCP)', () => {
   });
 });
 
+describe('read_design_notes', () => {
+  it('serves the MCP tr-starter-design skill without its frontmatter', async () => {
+    const { ctx, runTool } = await setup();
+    const out = await runTool('read_design_notes', {}, ctx);
+    const text = JSON.stringify(out.result);
+    expect(text).toContain('# Starter design system');
+    expect(text).toContain('--container-medium');
+    expect(text).not.toContain('name: tr-starter-design');
+  });
+});
+
 describe('create_page slug validation (regression — docs/page-slug-audit.md)', () => {
   beforeEach(async () => { await resetDatastore(); });
 

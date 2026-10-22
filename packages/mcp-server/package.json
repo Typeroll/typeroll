@@ -22,7 +22,8 @@
     "./client": "./src/client.ts",
     "./version": "./src/version.ts",
     "./tools/helpers": "./src/tools/helpers.ts",
-    "./structured-data": "./src/structured-data.ts"
+    "./structured-data": "./src/structured-data.ts",
+    "./bundled-content": "./src/bundled-content.ts"
   },
   "files": [
     "dist",

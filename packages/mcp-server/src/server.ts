@@ -174,7 +174,9 @@ The full playbook ships with this server — use it:
 0. First confirm the site, organization and version with the user. Personal
    connections require select_site and its site_context on subsequent calls.
    Use list_skills and read_skill for only the relevant recipe. Use read_guide
-   sections when needed; do not load the whole manual by default.
+   sections when needed; do not load the whole manual by default. Everyday
+   edits (links, images, menus, site-wide changes, settings, analytics,
+   structured data) are in tr-edit-site.
 1. When the task is "build / migrate / redesign / brand a site", call
    list_skills FIRST, then read_skill <name> for the step-by-step recipe
    (tr-new-site, tr-migrate-wp, tr-brand, tr-blog, tr-responsive, …). These are

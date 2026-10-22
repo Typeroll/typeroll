@@ -30,6 +30,8 @@ instructions. Read the relevant recipe when the task calls for it.
 
 | File | When it triggers | What it does |
 |---|---|---|
+| `tr-edit-site.md`      | "change this page", "add a link to the menu", "put our phone number on every page" | Confirm the site, find the page, everyday requests (links, images, menus, site-wide changes as global blocks, settings, analytics), preview and save. |
+| `tr-starter-design.md` | blank site, or one that still follows the starter design | The default CSS variables, spacing, radii, container and header/footer conventions to match. |
 | `tr-new-site.md`       | "create a new site", "bootstrap a site for…"        | Settings → header/footer partials → homepage → inner pages → deploy. Full setup recipe. |
 | `tr-brand.md`          | "create a brand", "choose colors", "design the look"| Palette recipes by mood, typography pairings, CSS variable setup, preview. |
 | `tr-redesign-branch.md`| "redesign", "modernize", anything site-wide-design   | Branch-isolated work with preview links, merge when approved. |
@@ -45,7 +47,7 @@ instructions. Read the relevant recipe when the task calls for it.
 | `tr-forms.md`             | "contact form", "add a form", "booking form"           | Form definition → embed HTML with signed token → inline JS feedback → deploy. |
 | `tr-custom-blocks.md` | "make a block for…", "icon list", a section shape the core blocks lack | Starter or composition from core blocks with fields and bindings → validate → preview → create → place. |
 | `tr-page-template.md` | Reusable Page templates: audio players, chapter lists, guest cards, image galleries — anything needing loops/nested data | Compose native blocks around `template_content_slot`; bind Page metadata, structured fields and references. |
-| `tr-seo.md`               | "SEO", "meta descriptions", "structured data"          | Audit → fix titles/descriptions → OG images → JSON-LD → robots.txt → deploy. |
+| `tr-seo.md`               | "SEO", "meta descriptions", "structured data", "FAQ schema" | Audit → fix titles/descriptions → URL conventions → OG images → JSON-LD (`add_faq_schema`, `add_recipe_schema`, `add_event_schema`) → robots.txt → deploy. |
 
 ### Import content
 
