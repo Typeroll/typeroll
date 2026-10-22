@@ -5,6 +5,7 @@ import { connectionFailure, privateJson, publishingAdmin } from '../../../../lib
 import { cloudflareChoices } from '../../../../lib/publishing/cloudflare-oauth';
 import { currentCloudflareDiagnosis } from '../../../../lib/publishing/cloudflare-diagnosis';
 import { organizationConnectionsStatus } from '../../../../lib/publishing/organization-connections';
+import { cloudflarePermissionReport } from '../../../../lib/publishing/cloudflare-capabilities';
 
 // The shared status is also served by GET /api/v1/publishing/connections.
 // Choices, the unfinished attempt and its return state belong to the signed-in person's own OAuth flow.
@@ -15,6 +16,7 @@ export const GET: APIRoute = async (context) => {
     return privateJson({ ...await organizationConnectionsStatus(guard.value.orgId),
       cloudflare_choices: await cloudflareChoices(guard.value),
       cloudflare_diagnosis: await currentCloudflareDiagnosis(guard.value.orgId, 'default', guard.value),
+      cloudflare_permissions: await cloudflarePermissionReport(guard.value.orgId, 'default'),
       github_choices: await githubChoices(guard.value),
       github_diagnosis: await currentGithubDiagnosis(guard.value.orgId, guard.value),
       github_attempt: await githubReturnState(guard.value) });

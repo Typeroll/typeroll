@@ -12,12 +12,17 @@
 // unfinished connection it returns the organization's state, and the person
 // completes it at connect_url.
 //
+// `permissions` reports the connection's optional capabilities (Analytics
+// provisioning and reports, redirect rules): granted, missing scopes, and the
+// one permission update an owner or admin approves at its connect_url.
+//
 // Organization API key required, matching the organization owner/admin rule
 // of the portal Publishing page. No tokens or provider responses are returned.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireAnyApiKey } from '../../../../lib/api-auth';
 import { currentCloudflareDiagnosis } from '../../../../lib/publishing/cloudflare-diagnosis';
+import { cloudflarePermissionReport } from '../../../../lib/publishing/cloudflare-capabilities';
 import { recheckCloudflareDiagnosis } from '../../../../lib/publishing/cloudflare-oauth';
 import { getHostingGroup, hostingGroupId } from '../../../../lib/publishing/hosting-groups';
 import { connectionFailure } from '../../../../lib/publishing/http';
@@ -37,7 +42,7 @@ export const GET: APIRoute = async ({ request }) => {
       : await currentCloudflareDiagnosis(ctx.tokenOrgId, groupId);
     const base = (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '');
     const connectUrl = `${base}${PUBLISHING_SETTINGS_PATH}${groupId === 'default' ? '#cloudflare' : `#hosting-${groupId}`}`;
-    const response = apiResponse(ctx, { diagnosis, connect_url: connectUrl });
+    const response = apiResponse(ctx, { diagnosis, permissions: await cloudflarePermissionReport(ctx.tokenOrgId, groupId), connect_url: connectUrl });
     response.headers.set('Cache-Control', 'no-store');
     return response;
   } catch (error) { return connectionFailure(error); }
