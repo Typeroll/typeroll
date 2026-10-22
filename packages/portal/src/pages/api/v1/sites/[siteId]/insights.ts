@@ -1,7 +1,7 @@
 // GET /api/v1/sites/{siteId}/insights — bearer-key read of the site's
 // traffic + AI-referral breakdown (analytics app). Same payload as the
-// cookie route; returns a status the caller can interpret when the app is
-// off or unconfigured rather than erroring.
+// cookie route; returns a status, and a reason with the next step, when
+// traffic cannot be read rather than erroring.
 
 import type { APIRoute } from 'astro';
 import { apiResponse, requireApiKey } from '../../../../../lib/api-auth';
@@ -19,6 +19,6 @@ export const GET: APIRoute = async ({ request, params }) => {
   const days = [7, 30, 90].includes(daysRaw) ? daysRaw : 30;
 
   const appsDoc = await getStore().getDoc<SiteApps>(paths.apps(ctx.orgId, ctx.siteId));
-  const result = await getInsights(appsDoc ?? undefined, days);
+  const result = await getInsights({ orgId: ctx.orgId, siteId: ctx.siteId, site: ctx.site, appsDoc: appsDoc ?? undefined, days });
   return apiResponse(ctx, result);
 };

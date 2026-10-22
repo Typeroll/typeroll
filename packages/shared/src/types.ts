@@ -1558,6 +1558,31 @@ export interface AppState {
   enabled: boolean;
   config: Record<string, unknown>;
   enabled_at?: string;
+  /** Result of the last server-side provider setup, for apps that provision external resources. Never public. */
+  setup?: AppSetupStatus;
+}
+
+/**
+ * Which provider account an app's external resource lives in. `organization`: the Cloudflare account of the
+ * site's Hosting Group (customer publishing). `installation`: the account configured for this Typeroll
+ * installation (managed hosting on Typeroll Cloud, or a self-hosted install's own account).
+ */
+export interface AppProviderAccount {
+  owner: 'organization' | 'installation';
+  account_id: string | null;
+  hosting_group_id?: string;
+}
+
+export interface AppSetupStatus {
+  status: 'ready' | 'action_required';
+  /** Stable machine-readable cause when action is required. */
+  code?: string;
+  message?: string;
+  next_step?: string;
+  settings_url?: string;
+  /** The account the resource belongs to (ready) or should be created in (action_required). */
+  account?: AppProviderAccount;
+  checked_at: string;
 }
 
 /**
