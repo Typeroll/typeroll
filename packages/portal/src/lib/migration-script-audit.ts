@@ -88,7 +88,7 @@ function firstMatch(text: string, rules: Array<[RegExp, string]>): string | null
  * Integrations app: `cookie_consent.scripts_optional`, held until consent.
  */
 export function auditMigrationScripts(input: {
-  settings: SiteSettings | null | undefined;
+  settings: Partial<SiteSettings> | null | undefined;
   apps: SiteApps | null | undefined;
   sources: ScriptAuditSource[];
 }): ScriptFinding[] {
