@@ -35,8 +35,12 @@ const SECRET_KEYS = new Set([
   'MCP_OAUTH_SIGNING_KEY',
   'TYPEROLL_BACKUP_KEY',
   'EXTENSION_SIGNING_PRIVATE_JWK',
-  'ANTHROPIC_API_KEY',
 ]);
+
+// Variables earlier releases read and this one ignores, with what replaced them.
+const OBSOLETE_KEYS = {
+  ANTHROPIC_API_KEY: 'no longer read. Each organization adds its own Anthropic key in the portal (Organization settings → AI assistant); remove the variable',
+};
 
 const SHA256 = /^sha256:[a-f0-9]{64}$/;
 const IMAGE_BY_DIGEST = /^\S+@sha256:[a-f0-9]{64}$/;
@@ -150,7 +154,9 @@ export function validateSelfHostEnvironment(env) {
     }
   }
 
-  if (!value(env, 'ANTHROPIC_API_KEY')) warnings.push('ANTHROPIC_API_KEY: AI chat will be disabled');
+  for (const [key, message] of Object.entries(OBSOLETE_KEYS)) {
+    if (value(env, key)) warnings.push(`${key}: ${message}`);
+  }
 
   return {
     ok: errors.length === 0,
