@@ -155,9 +155,12 @@ in any page's html_content. Don't paste the HTML inline on each page.
 image. The customer must have already uploaded it (see \`list_media\`).
 
 ### "Add Google Analytics" / "add a chat widget script"
-These live in \`scripts_head\` or \`scripts_body_end\` site settings — but the
-chat tools DO NOT have write access to those fields. Tell the user to paste
-the snippet themselves in **Settings → Scripts**.
+Analytics, advertising pixels and chat widgets are set by ID in the
+**Integrations** app (**Settings → Apps → Integrations**), not pasted as scripts. Tell the
+user to add the ID there and to turn on the cookie banner (**Settings**, "Enable cookie
+consent on this site") so analytics and advertising wait for the visitor's
+consent. The chat tools cannot write either. Only a tag the Integrations
+catalog lacks goes in the cookie banner's optional scripts.
 
 ## Redirects
 

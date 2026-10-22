@@ -146,6 +146,9 @@ a. Fetch from WP. Prefer the helper plugin's authenticated endpoint
 b. Clean the HTML. Strip Elementor / Gutenberg / Breakdance class
    soup. Drop empty `<div>` and `<span>` wrappers. Keep semantic tags,
    tables, iframes from known hosts (YouTube / Vimeo / Calendly).
+   Remove every `<script>`: plugin and theme JavaScript is never copied.
+   Analytics and advertising tags move to the Integrations app behind the
+   cookie banner (tr-migration-evidence, "Scripts, tracking and consent").
 
 c. Migrate referenced images with `upload_media_from_url`. The customer's
    transfer Worker copies and verifies them directly in R2. Use the returned
@@ -291,6 +294,11 @@ get_deploy_status job_id=<id>    # poll
 - **Image bandwidth.** R2 upload is metered. Use `find_pages_matching`
   contains="<old-domain>" on already-imported content to spot images
   that weren't transferred.
+- **Plugin JavaScript.** Never copy scripts from plugins, the theme or
+  WordPress core into settings, pages, partials or block types, and never
+  copy the cookie plugin. Carry analytics and advertising over by ID in the
+  Integrations app with `cookie_consent.enabled: true`. The launch report
+  fails on copied source scripts and on tracking outside consent.
 - **WP-specific JSON-LD** (Yoast, Rank Math) is usually wrong after a
   redesign because it references old URLs. Strip it; let Typeroll
   emit fresh Article/Page schemas via `kind: 'article'` + `author`.

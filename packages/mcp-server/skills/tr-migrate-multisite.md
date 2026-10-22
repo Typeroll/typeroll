@@ -163,6 +163,11 @@ language and attribution. Use authorized synthetic tests with a safe recipient;
 record delivery UNVERIFIED when it cannot be tested safely. Never create real
 leads or send mail to third parties as a routine migration test.
 
+Scripts follow tr-migration-evidence, "Scripts, tracking and consent": copy no
+source JavaScript, and carry each market's own analytics and advertising IDs
+over in that site's Integrations app with its cookie banner enabled. Never
+reuse one market's tracking IDs on another.
+
 ## Phase 5 — Redirects for everything you didn't preserve
 
 Work the coverage report, not your memory:
@@ -271,6 +276,7 @@ new canonical build and is not an inventory-only operation):
 - [ ] Complete `verify_migration_urls` → 0 `missing`, 0 `broken_redirect`, 0 `error`, 0 untested variants
 - [ ] `record_migration_seo_acceptance` is accepted for the latest deploy
 - [ ] `get_migration_launch_report` → `launch_ready: true`
+- [ ] No source JavaScript copied; analytics/advertising via the Integrations app with the cookie banner on (`scripts.status: "clean"` in the launch report)
 - [ ] hreflang cluster written on both/all sides, absolute, final domains
 - [ ] `language` set on the site; `<html lang>` correct in the deployed HTML
 - [ ] Internal links rewritten (no lingering absolute links to the old domain)

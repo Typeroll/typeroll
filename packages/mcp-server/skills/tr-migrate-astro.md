@@ -50,6 +50,9 @@ assume that a filename alone determines the production URL.
 - Browser scripts, integrations and server-rendered endpoints need separate
   review. A static Page cannot inherit a private server runtime by copying its
   source text. Configure the supported Forms/Extension runtime explicitly.
+  Do not copy client scripts; analytics and advertising tags move to the
+  Integrations app behind the cookie banner (tr-migration-evidence, "Scripts,
+  tracking and consent").
 
 Create templates with `create_page_template`, types with `create_content_type`,
 then one `create_page` per source record. Use returned Page IDs, not source IDs

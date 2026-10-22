@@ -170,6 +170,31 @@ in reusable blocks or templates. Missing native features must be resolved before
 converting the remaining pages. Source styles and interactive scripts are not
 ported automatically.
 
+### Scripts, analytics and cookie consent
+
+JavaScript from the WordPress site is not copied. Plugins and themes add their
+own scripts, such as jQuery, sliders, form and cookie plugins, page builders and
+calls to `admin-ajax.php`. On the new site they would load from, or send data
+to, the old site. What they did is rebuilt with blocks, Forms and site settings,
+or reported as a missing feature.
+
+Analytics and advertising tags are the exception. They are carried over by ID,
+not as pasted code:
+
+1. Open **Settings → Apps → Integrations** and enter the IDs the old site used,
+   for example the Google Analytics 4 measurement ID or the Meta Pixel ID.
+2. In **Settings**, turn on **Enable cookie consent on this site**, with your
+   own text and a link to the privacy policy. Analytics and advertising tags
+   then wait until the visitor accepts. The old site's cookie plugin is not
+   copied.
+3. A tag that the Integrations list doesn't cover goes in the cookie banner's
+   optional scripts, never in the site-wide head or body scripts.
+
+The launch report (`get_migration_launch_report`) is not ready to launch while
+the site carries scripts from the old platform, tracking code outside the
+consent gate, or analytics and advertising integrations with the cookie banner
+off. Its `scripts` section lists each finding and where it is.
+
 The launch report requires current URL/SEO evidence **and** recorded fidelity
 review. Use `record_migration_seo_acceptance` with `fidelity.desktop`, `mobile`,
 `shared_data` and `integrations` plus an `evidence` description. These are review

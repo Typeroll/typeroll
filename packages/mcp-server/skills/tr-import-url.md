@@ -194,8 +194,11 @@ get_deploy_status job_id=<id>
   several. Fix it.
 - **Squarespace/Wix forms.** They won't work after import — the backend
   is vendor-locked. Create a Typeroll form instead: `create_form`.
-- **Analytics/tracking code.** If the source has GA4 or similar, don't
-  copy it into pages. Set it via `update_site_settings scripts_head="..."`.
+- **Scripts and tracking.** Never copy the source's JavaScript. Carry
+  analytics and advertising tags (GA4, GTM, Meta Pixel and others) over by
+  ID in the Integrations app, with the cookie banner enabled so they wait for
+  consent; never paste the vendor snippet into `scripts_head`. See
+  tr-migration-evidence, "Scripts, tracking and consent".
 - **Videos.** YouTube/Vimeo embeds are fine (`<iframe>` is allowed).
   Hosted MP4s need re-uploading if the source URL won't persist.
 

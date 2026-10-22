@@ -115,6 +115,33 @@ interaction and conversion separately; only use an authorized synthetic mode and
 safe recipient. Unavailable delivery remains UNVERIFIED. No real leads or mail
 to third parties merely to fill a checklist.
 
+## Scripts, tracking and consent
+
+Do not copy JavaScript from the source site. WordPress plugins and themes
+inject their own runtime: jQuery, sliders, lightboxes, form and cookie
+plugins, page builders (Elementor, Breakdance, Divi), emoji and AJAX calls to
+`admin-ajax.php` or `/wp-json/`. It loads from, or posts to, a site that is
+about to be switched off. Inventory every `<script>` on representative source
+pages (head and body, inline and external, and which plugin or theme it
+belongs to), then decide each one:
+
+| Source script | Decision |
+| --- | --- |
+| WordPress core, theme or plugin runtime | Never copy. Rebuild what it did with native blocks, Forms or settings, or report a platform gap (see "Report platform gaps"). |
+| Cookie plugin (CookieYes, Complianz, Cookiebot, Borlabs, …) | Never copy. Enable the site's cookie banner (`cookie_consent.enabled: true`) with Swedish or local text and the privacy policy URL. |
+| Analytics or advertising tag in the Integrations catalog (GA4, GTM, Meta Pixel, LinkedIn, TikTok, Hotjar, Clarity, Pinterest, Snap, Reddit, X, Microsoft Ads, HubSpot, Plausible, Fathom, Matomo) | Carry over the ID only: enable the Integrations app with the source's ID (`list_apps`, `update_app`). Enable the cookie banner; analytics and advertising integrations wait for the visitor's consent. Never paste the vendor snippet. |
+| Tracking tag the catalog does not cover | Only with the owner's approval, in `cookie_consent.scripts_optional` with the banner enabled. Never in `scripts_head`, `scripts_body_end`, `scripts_necessary`, pages or partials. |
+| Partner widget or embed the page needs to work | Prefer a native block or an iframe from an allowlisted host. Keep custom code minimal, record why, and do not load it from the source site. |
+
+Ask the owner to confirm the analytics IDs; never invent or reuse one from
+another market. Before launch, `get_migration_launch_report` must show
+`scripts.status: "clean"`: it fails on copied source-platform scripts
+(`source_runtime_script`), tracking outside consent
+(`tracking_outside_consent`) and analytics or advertising integrations without
+the banner (`tracking_without_consent_banner`). In the hosted preview, check
+that no request goes to the source host or `/wp-content/`, no tracking request
+fires before consent, and the tags fire after "accept all".
+
 ## Evidence record (repeat per recipe, viewport and state)
 
 - Source URL/date and target URL; Page/template IDs; exact publication ID.
