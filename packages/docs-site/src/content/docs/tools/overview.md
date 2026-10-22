@@ -43,7 +43,9 @@ Use `get_site_capabilities` to read platform capabilities. In compact mode, call
 `search_tools` and `describe_tool` for the current schema instead of loading the
 whole tool list. Call `read_app_documentation` for the guides of enabled apps;
 private app behavior is documented by its provider, not in the Core tool index.
-Core modules expose `list_apps`, `read_app` and `update_app`; Extensions expose
+Core modules expose `list_apps`, `read_app` and `update_app`, and
+`list_organization_analytics` and `set_organization_analytics` choose the Sites
+that measure traffic across an Organization; Extensions expose
 the installation tools above. Historical private funnel tools have been removed.
 
 ## Authentication

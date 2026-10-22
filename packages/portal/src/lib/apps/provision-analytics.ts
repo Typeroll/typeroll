@@ -9,7 +9,7 @@ import type { AppProviderAccount, AppSetupStatus, AppState, Site } from '@typero
 import { ConnectionError } from '../publishing/connections';
 import { claimCloudflareResource, cloudflareResourceOwner } from '../publishing/cloudflare-account-claims';
 import {
-  accountRef, analyticsAccessNextStep, analyticsHostForSite, AnalyticsSetupError, ANALYTICS_SETTINGS_URL, describeAccount, hasScope,
+  accountRef, analyticsAccessNextStep, analyticsAccessSettingsUrl, analyticsHostForSite, AnalyticsSetupError, ANALYTICS_SETTINGS_URL, describeAccount, hasScope,
   resolveAnalyticsAccount, type AnalyticsAccount,
 } from './analytics-account';
 import { webAnalyticsApi, WebAnalyticsProviderError, type WebAnalyticsSite } from './web-analytics-api';
@@ -57,7 +57,8 @@ export function providerSetupError(error: unknown, account: AnalyticsAccount, pu
           : purpose === 'provision'
             ? `Cloudflare refused to create a Web Analytics site in ${where} (HTTP ${error.status}). The connection needs Account Settings (edit).`
             : `Cloudflare refused to list Web Analytics sites in ${where} (HTTP ${error.status}). The connection needs Account Settings (read).`,
-        analyticsAccessNextStep(purpose === 'reports' ? 'reports' : 'provision'), ref, account.owner === 'organization' ? ANALYTICS_SETTINGS_URL : undefined);
+        analyticsAccessNextStep(purpose === 'reports' ? 'reports' : 'provision', account), ref,
+        account.owner === 'organization' ? analyticsAccessSettingsUrl(purpose === 'reports' ? 'reports' : 'provision', account) : undefined);
     }
     const codes = error.codes.length ? `, Cloudflare codes ${error.codes.join(', ')}` : '';
     if (error.kind === 'rate_limited') {
@@ -187,7 +188,7 @@ export async function reconcileWebAnalytics(args: {
   if (!hasScope(account, 'provision')) {
     return actionRequired(new AnalyticsSetupError('analytics_cloudflare_access_required',
       `The Cloudflare connection for ${where} has not been allowed to create Web Analytics sites (Account Settings edit).`,
-      analyticsAccessNextStep('provision'), ref, ANALYTICS_SETTINGS_URL));
+      analyticsAccessNextStep('provision', account), ref, analyticsAccessSettingsUrl('provision', account)));
   }
   const host = await analyticsHostForSite(orgId, siteId, site);
   if (!host) {

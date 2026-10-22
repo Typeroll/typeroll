@@ -193,7 +193,8 @@ the full reference + concrete operation recipes.
   `diagnose_organization_github_connection` (why GitHub is not connected,
   every account with the App, and who must act with one fix each),
   `diagnose_organization_cloudflare_connection` (why a Hosting Group's
-  Cloudflare connection is not working, who must act and one fix each),
+  Cloudflare connection is not working, who must act and one fix each, and
+  which optional permissions for Analytics and redirect rules it is missing),
   `disconnect_organization_publishing_provider`,
   `connect_organization_cloudflare` (customer API token),
   `prepare_organization_media_storage`, `save_organization_media_access`.
@@ -284,7 +285,9 @@ the full reference + concrete operation recipes.
   state, and enable, configure, or disable any module with the same admin API key used for content
   and deploys. Secret fields are encrypted server-side and never returned;
   Analytics provisioning runs on the platform. Deploy after updates whose
-  response has `affects_build: true`.
+  response has `affects_build: true`. `list_organization_analytics` and
+  `set_organization_analytics` show and change Analytics for chosen Sites
+  across the Organization (organization key).
 - **Search + link integrity** — `search_pages` plus `check_internal_links`,
   which resolves saved database content against pages, Page/facet routes,
   media and redirect chains without crawling the public site.

@@ -148,7 +148,12 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   creates its Cloudflare Web Analytics site in the account that hosts the site;
   `read_app` and `update_app` return `setup` with the result. A 409 from
   `update_app` carries `code` and `details.next_step`: relay that step to the
-  person (for example approving Analytics access in Cloudflare) and retry.
+  person (for example approving the Cloudflare permission update) and retry.
+- **Analytics across Sites.** `list_organization_analytics` lists every Site
+  with Analytics on or off, its setup and each Hosting Group's Cloudflare
+  permissions; `set_organization_analytics` turns it on or off for chosen
+  Sites (one result each). A Cloudflare approval enables Analytics nowhere:
+  ask which Sites to measure, then enable those. Organization key only.
 
 - **Extension installations.** `list_extension_installations`,
   `read_extension_installation`, and `update_extension_installation_config`
@@ -1115,6 +1120,17 @@ authorized and their account choice stay in their own Cloudflare card. Relay
 the message and link; `sign_in` and `retry` happen at `connect_url`. Pass
 `recheck: true` only to re-verify a saved connection.
 
+Before enabling Analytics (`update_app`) or saving `redirect_hosts`
+(`set_publishing_domains`), read `permissions` from
+`diagnose_organization_cloudflare_connection` (or `cloudflare_permissions`
+from `read_organization_publishing_connections`). Each capability
+(`analytics_provisioning`, `analytics_reports`, `redirect_rules`) has a
+`status`: `available`, `approval_required` (relay `permission_update.next_step`:
+an owner or admin selects **Approve update** at `connect_url` once per
+Cloudflare account), `not_offered` (this installation does not request the
+scope; use the fallback in `next_step`), `unknown` (API token, checked on use)
+or `connection_required`, with the exact `missing_scopes`.
+
 ## Safety boundaries
 
 - **HTML is sanitized at save.** No `<script>`, no `onclick`, no
@@ -1286,7 +1302,7 @@ preview.
 | **Forms** | `list_forms`, `read_form`, `create_form`, `update_form`, `delete_form`, `get_form_capabilities`, `list_form_submissions`, `read_form_submission`, `delete_form_submission` (removes one submission — e.g. cleaning up a test entry; `delete_form` with `delete_submissions` is the bulk path). **Steps (form/* block trees) are the ONLY stored model**: pass `steps` for funnels, or `fields` for simple forms — the server converts a flat field list to a single static step. Place with a `core/form` block on block-mode pages or `<x-form id="…" />` in HTML mode. Both expand server-side to the same complete signed shell and initial state. `read_form` shows the form's actions (email notifications, webhooks; secrets masked) and `create_form`/`update_form` set them with `actions`, with admin permission as in the portal; `get_form_capabilities` lists the action types (including app-provided ones) and their config fields. |
 | **Email (admin)** | `get_email_settings`, `set_email_settings`, `delete_email_settings`, `send_test_email` — the outgoing provider (Postmark, SMTP, SES) that form notifications send through, as in Settings → Email & notifications; secrets are write-only (reads show `{ set: true }`; omit a secret to keep it). Without a provider, form email actions are skipped. `get_incoming_email_settings`, `set_incoming_email_forwarding` (enable/disable a host-approved route by `route_id` + current `revision`; cannot create aliases or change targets), `read_incoming_email_receipt`. |
 | **Settings** | `update_site_settings` (admin; every field the portal Settings form accepts, including `sitewide_noindex`, `default_og_image`, `twitter_handle`, `organization`, `staging_url` and shallow-merged native `cookie_consent`), `check_site_indexing` (live fallback/production headers, meta robots, and robots.txt diagnostics) |
-| **Core modules** | `list_apps`, `read_app`, `update_app` (legacy API name; admin; schema-driven config, masked secrets, redeploy when `affects_build` is true) |
+| **Core modules** | `list_apps`, `read_app`, `update_app` (legacy API name; admin; schema-driven config, masked secrets, redeploy when `affects_build` is true); `list_organization_analytics`, `set_organization_analytics` (Analytics for chosen Sites; organization key) |
 | **Extension installations** | `list_extension_installations`, `read_extension_installation`, `update_extension_installation_config` (admin; schema-driven config, masked secrets preserved, production deploy queued by default) |
 | **Search + bulk** | `search_pages`, `check_internal_links`, `bulk_replace_text`. The link check is database-driven. Bulk replace defaults to pages but can target partials, Pages or all resources, always dry-run first. |
 | **Branches** | `create_branch`, `read_version`, `delete_branch`, `merge_branch` |

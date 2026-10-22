@@ -174,9 +174,16 @@ Organization-owned resources so Organizations sharing an account cannot link
 each other's sites.
 
 OAuth consent asks for `account-settings.write` (create the site) and
-`account-analytics.read` (reports) only when a person selects **Approve
-Analytics access**, and keeps them on later reconnects; publishing never
-depends on them. API token connections need Account Settings Edit and Account
+`account-analytics.read` (reports) with every Connect Cloudflare when the
+deployment lists them in `TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES` (together
+with `dynamic-redirect.read` / `dynamic-redirect.write` for redirect rules).
+Otherwise they are requested only when a person selects **Approve Analytics
+access**. Later reconnects keep them; publishing never depends on them. An
+existing connection gets newly enabled scopes through **Approve update**
+(`action: "approve_update"`), which continues with every other connection of
+the Organization that uses the same Cloudflare account. Each connection keeps
+its own grant: refresh tokens rotate, so a grant is never shared between
+connections or Organizations. Approving enables Analytics for no Site. API token connections need Account Settings Edit and Account
 Analytics Read. Missing access returns `analytics_cloudflare_access_required`
 with the next step from `update_app`, `read_app` and Insights. The scope
 identifiers must be allowed on the publisher's OAuth client before release.

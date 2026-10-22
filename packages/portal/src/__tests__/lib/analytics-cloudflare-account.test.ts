@@ -161,6 +161,49 @@ describe('customer publishing: the Organization’s Cloudflare account', () => {
     expect(incompleteSetupError('analytics', result.state, result.setup)).toMatchObject({ status: 409, code: 'analytics_cloudflare_access_required' });
   });
 
+  it('points to the one Publishing approval when the deployment requests the Analytics scopes', async () => {
+    vi.stubEnv('TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES', 'account-settings.write account-analytics.read');
+    const { saveHostingGroup } = await import('../../lib/publishing/hosting-groups');
+    const group = await saveHostingGroup(ORG, { name: 'Moveria hosting', dns_mode: 'automatic' });
+    await oauthConnection(BASE_SCOPES, group.id, GROUP_ACCOUNT);
+    await customerSite({ hosting_group_id: group.id });
+    const cf = cloudflare(() => ok({}));
+
+    const result = await save({}, cf.fetchImpl);
+
+    expect(cf.calls).toHaveLength(0);
+    expect(result.setup).toMatchObject({ code: 'analytics_cloudflare_access_required', settings_url: `/app/settings/publishing#hosting-${group.id}` });
+    expect(result.setup?.next_step).toContain('“Approve update” on the Hosting Group “Moveria hosting” card');
+    expect(result.setup?.next_step).not.toContain('Approve Analytics access');
+    expect(await insights(cf.fetchImpl)).toMatchObject({ status: 'no_site_tag' });
+  });
+
+  it('provisions on the first update_app after a Connect Cloudflare that granted the onboarding scopes', async () => {
+    vi.stubEnv('TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES', 'account-settings.write account-analytics.read dynamic-redirect.read dynamic-redirect.write');
+    vi.stubEnv('PORTAL_PUBLIC_URL', 'http://localhost');
+    vi.stubEnv('TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_ID', 'synthetic-client');
+    vi.stubEnv('TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET', 'synthetic-client-secret');
+    await customerSite();
+    const { startCloudflareConnection, finishCloudflareConnection } = await import('../../lib/publishing/cloudflare-oauth');
+    const session = { orgId: ORG, userId: 'u1', email: 'admin@example.com' } as never;
+    const started = await startCloudflareConnection(session);
+    const requested = new URL(started.url).searchParams.get('scope')!;
+    const oauth = vi.fn<typeof fetch>(async (url) => {
+      const path = new URL(String(url)).pathname;
+      if (path === '/oauth2/token') return Response.json({ access_token: 'oauth-default', refresh_token: 'r', expires_in: 3600, token_type: 'Bearer', scope: requested });
+      if (path === '/client/v4/accounts') return ok([{ id: ORG_ACCOUNT, name: 'Shop AB' }]);
+      if (path === `/client/v4/accounts/${ORG_ACCOUNT}`) return ok({ id: ORG_ACCOUNT, name: 'Shop AB' });
+      if (path.endsWith('/pages/projects')) return ok([]);
+      throw new Error(`unexpected ${path}`);
+    });
+    expect(await finishCloudflareConnection(session, { state: new URL(started.url).searchParams.get('state')!, browser: started.browser, code: 'c' }, oauth)).toBe('connected');
+
+    const cf = cloudflare(call => call.method === 'POST' && call.url.endsWith(`/accounts/${ORG_ACCOUNT}/rum/site_info`) ? ok(site(ORG_TAG, ORG_TOKEN, call.body.host)) : undefined);
+    const result = await save({}, cf.fetchImpl);
+    expect(result.setup).toMatchObject({ status: 'ready' });
+    expect(result.state.config).toMatchObject({ beacon_token: ORG_TOKEN, site_tag: ORG_TAG });
+  });
+
   it('refuses to fall back to the installation account when the Hosting Group is not connected', async () => {
     await customerSite();
     const cf = cloudflare(() => ok(site(ORG_TAG, ORG_TOKEN, 'x')));

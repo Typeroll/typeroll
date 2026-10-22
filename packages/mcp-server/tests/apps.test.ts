@@ -27,6 +27,19 @@ describe('generic app MCP tools', () => {
     });
   });
 
+  it('reads and changes Analytics for chosen Sites through the organization route', async () => {
+    const rootGet = vi.fn().mockResolvedValue({ sites: [] });
+    const rootPost = vi.fn().mockResolvedValue({ results: [] });
+    const client = { rootGet, rootPost } as never;
+    const list = appTools.find((tool) => tool.name === 'list_organization_analytics')!;
+    const set = appTools.find((tool) => tool.name === 'set_organization_analytics')!;
+    expect(list.noSite && set.noSite).toBe(true);
+    await list.handler({}, { client, siteId: '' });
+    expect(rootGet).toHaveBeenCalledWith('organization/analytics');
+    await set.handler({ sites: [{ site_id: 'alpha', enabled: true }] }, { client, siteId: '' });
+    expect(rootPost).toHaveBeenCalledWith('organization/analytics', { sites: [{ site_id: 'alpha', enabled: true }] });
+  });
+
   it('URL-encodes registry ids at the transport boundary', async () => {
     const get = vi.fn().mockResolvedValue({});
     const client = { get } as never;

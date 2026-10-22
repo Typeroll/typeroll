@@ -1,5 +1,13 @@
 # Changelog
 
+## Core 0.2.87 / MCP 0.45.67
+
+- **Cloudflare permissions for Analytics and redirects are part of onboarding.** When the deployment lists them in `TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES` (and the OAuth client allows them), Connect Cloudflare requests Account Settings Write and Account Analytics Read (Analytics) and Dynamic URL Redirects read/write (redirect hosts) together with the publishing permissions. Unset, Connect Cloudflare requests exactly what it did before.
+  - Existing connections show **Approve update** on their Cloudflare card. One approval renews every connection in the Organization that uses the same Cloudflare account (each keeps its own grant; Cloudflare may show its consent page once per connection); existing permissions, keys and Sites are kept. The approval enables Analytics on no Site.
+  - New Publishing → **Analytics** overview lists the Organization's Sites with Analytics on/off and setup status and enables or disables several at once; the same through `GET/POST /api/v1/organization/analytics` and MCP `list_organization_analytics` / `set_organization_analytics`, with a result per Site. Analytics stays opt-in per Site.
+  - With the redirect permissions, the `www` redirect rule is created automatically; without them `redirect_rule_required` names the update.
+  - `read_organization_publishing_connections` (`cloudflare_permissions`) and `diagnose_organization_cloudflare_connection` (`permissions`) report analytics provisioning, analytics reports and redirect rules with the exact missing scopes and the one next step.
+
 ## Core 0.2.86 / MCP 0.45.66
 
 - **Everything the built-in chat knew is available to your own agent.** With the portal assistant now optional per Organization and Site, its help moved to MCP:

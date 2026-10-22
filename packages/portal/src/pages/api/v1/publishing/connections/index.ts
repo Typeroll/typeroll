@@ -1,7 +1,10 @@
 // GET /api/v1/publishing/connections — the organization's GitHub and
 // Cloudflare publishing connections: status, revision (needed to disconnect
 // or change them), account identity, media readiness and media migration.
-// No credentials are returned.
+// No credentials are returned. cloudflare_permissions lists, per Hosting
+// Group, the optional capabilities (analytics_provisioning, analytics_reports,
+// redirect_rules) its Cloudflare connection has, the exact missing scopes and
+// the one permission update that adds them.
 //
 // OAuth sign-in to GitHub or Cloudflare needs a person in a browser.
 // connect_urls point at the provider cards on the portal Publishing page,
@@ -16,6 +19,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireAnyApiKey } from '../../../../../lib/api-auth';
 import { connectionFailure } from '../../../../../lib/publishing/http';
 import { organizationConnectionsStatus, publishingConnectUrl } from '../../../../../lib/publishing/organization-connections';
+import { cloudflarePermissionReports } from '../../../../../lib/publishing/cloudflare-capabilities';
 
 export const GET: APIRoute = async ({ request }) => {
   const guard = await requireAnyApiKey(request);
@@ -27,6 +31,7 @@ export const GET: APIRoute = async ({ request }) => {
   try {
     const response = apiResponse(ctx, {
       ...await organizationConnectionsStatus(ctx.tokenOrgId),
+      cloudflare_permissions: await cloudflarePermissionReports(ctx.tokenOrgId),
       connect_urls: { github: publishingConnectUrl('github'), cloudflare: publishingConnectUrl('cloudflare') },
     });
     response.headers.set('Cache-Control', 'no-store');

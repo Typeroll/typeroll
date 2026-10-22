@@ -51,6 +51,20 @@ it('shows the cause and next step, and approves Analytics access for the site’
   expect(assign).toHaveBeenCalledWith('https://dash.cloudflare.com/oauth2/auth?x=1');
 });
 
+it('points to the one Publishing approval instead of a per-Site sign-in when the installation requests the permissions', async () => {
+  const { container, posts } = await render({
+    status: 'action_required', code: 'analytics_cloudflare_access_required', message: 'Cloudflare needs Account Settings (edit).',
+    next_step: 'Select “Approve update” on the Hosting Group card.', settings_url: '/app/settings/publishing#hosting-group-2',
+    account: { owner: 'organization', account_id: 'a'.repeat(32), hosting_group_id: 'group-2' },
+  });
+  const setup = container.querySelector('[data-app-setup="action_required"]')!;
+  expect(setup.querySelector('button')).toBeNull();
+  const link = setup.querySelector('a')!;
+  expect(link.getAttribute('href')).toBe('/app/settings/publishing#hosting-group-2');
+  expect(link.textContent).toContain('Approve the update in Publishing');
+  expect(posts).toEqual([]);
+});
+
 it('names the account a ready setup uses', async () => {
   const { container } = await render({ status: 'ready', account: { owner: 'organization', account_id: 'a'.repeat(32), hosting_group_id: 'default' } });
   expect(container.querySelector('[data-app-setup="ready"]')?.textContent).toContain(`your organization’s Cloudflare account (${'a'.repeat(32)})`);

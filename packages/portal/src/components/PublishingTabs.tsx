@@ -4,6 +4,7 @@ import PublishingConnections from './PublishingConnections';
 import PublishingBuilds from './PublishingBuilds';
 import HostingGroups from './HostingGroups';
 import PublishingDomains from './PublishingDomains';
+import OrganizationAnalytics from './OrganizationAnalytics';
 import './PublishingTabs.css';
 
 const TABS: Array<{ id: PublishingTab; label: string }> = [
@@ -12,6 +13,7 @@ const TABS: Array<{ id: PublishingTab; label: string }> = [
   { id: 'builds', label: 'Builds' },
   { id: 'hosting', label: 'Hosting Groups' },
   { id: 'domains', label: 'Domains' },
+  { id: 'analytics', label: 'Analytics' },
 ];
 const CONNECTION_TABS: PublishingTab[] = ['github', 'cloudflare'];
 const RANK: PublishingState[] = ['error', 'waiting', 'ready', 'neutral'];
@@ -95,5 +97,6 @@ export default function PublishingTabs({ initialTab = 'github', refreshAfterClou
     <div {...panel('builds')}><PublishingBuilds refreshAfterCloudflareReturn={refreshAfterCloudflareReturn} /></div>
     <div {...panel('hosting')}><HostingGroups /></div>
     <div {...panel('domains')}><PublishingDomains /></div>
+    <div {...panel('analytics')}><div style={{ maxWidth: 760 }}><OrganizationAnalytics /></div></div>
   </PublishingTabContext.Provider>;
 }

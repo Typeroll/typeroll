@@ -11,7 +11,7 @@ export async function hostingDns(orgId: string, groupId: string, hostname: strin
     const provider = await cloudflareClient(orgId, fetch, undefined, id);
     try {
       await findPublishingZone(provider, connection.cloudflare.account_id, hostname);
-      return { provider, accountId: connection.cloudflare.account_id };
+      return { provider, accountId: connection.cloudflare.account_id, groupId: id };
     } catch (error) {
       if (error instanceof ConnectionError && error.code === 'domain_zone_required') { if (error.details?.zone) inactive ??= error; continue; }
       // Missing consent must stay actionable; do not hide an authorization failure.

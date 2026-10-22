@@ -73,9 +73,21 @@ Cloudflare Pages cannot redirect by hostname, and customer sites have no
 server-side code, so a **Single Redirect rule** in the zone answers at Cloudflare's
 edge. Its record becomes proxied with Cloudflare's placeholder address `192.0.2.1`.
 With automatic DNS, Typeroll creates the rule while the host still points at your
-current website, where the rule has no effect. If the Cloudflare authorization
-cannot create redirect rules, the domain panel shows the rule to add under
-**Rules → Redirect Rules**. A publication is live only after every redirect host
+current website, where the rule has no effect. Creating it needs the Cloudflare
+permission **Dynamic URL Redirects** (OAuth scopes `dynamic-redirect.read` and
+`dynamic-redirect.write`; for an API token, **Zone → Single Redirect → Edit**)
+on the connection whose account holds the zone. The Zone Transform Rules
+permission does not cover redirect rules.
+
+When the installation requests Dynamic URL Redirects during onboarding, a new
+connection includes it and the rule is created automatically. A connection made
+earlier gets it with one **Approve update** on its Cloudflare card in
+**Publishing**. Without the permission, preparation returns
+`redirect_rule_required` and the domain panel shows the rule to add under
+**Rules → Redirect Rules**; its message also names the permission update when
+one is available. An agent can read the `redirect_rules` capability from
+`diagnose_organization_cloudflare_connection` before calling
+`set_publishing_domains`. A publication is live only after every redirect host
 answers 301 to the website host.
 
 A media item's `public_path` can retain an old path such as

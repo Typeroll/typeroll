@@ -183,8 +183,23 @@ owner or admin of that Organization connects it in a browser and confirms
 sharing it. A
 person's unfinished sign-in and the accounts they authorized stay in their
 Cloudflare card. `recheck: true` re-verifies a saved connection with its own
-authorization. Every code is explained in
+authorization. Its `permissions` (and `cloudflare_permissions` in
+`read_organization_publishing_connections`) report the optional capabilities
+`analytics_provisioning`, `analytics_reports` and `redirect_rules` with their
+missing scopes and the one **Approve update** that adds them; see
+[Cloudflare permissions](../../guides/customer-publishing/#cloudflare-permissions). Every code is explained in
 [Cloudflare connection troubleshooting](../../guides/cloudflare-troubleshooting/).
+
+## Analytics across Sites
+
+| Action                          | MCP tool                      | API route below `/api/v1`      | Permission       |
+| ------------------------------- | ----------------------------- | ------------------------------ | ---------------- |
+| List Sites with Analytics state | `list_organization_analytics` | `GET /organization/analytics`  | Organization key |
+| Turn Analytics on or off        | `set_organization_analytics`  | `POST /organization/analytics` | Organization key |
+
+Approving Cloudflare permissions enables Analytics for no Site. Changes apply
+only to the listed Sites, each as `update_app` would, with one result per Site.
+Details are in [Analytics](../../apps/analytics/#choose-sites-across-the-organization).
 
 ## What stays in the portal
 

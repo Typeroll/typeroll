@@ -74,8 +74,20 @@ async function readRule(provider: Provider, zoneId: string, spec: RedirectRuleSp
   return { status: rules.some(rule => equivalent(rule, spec)) ? 'configured' as const : 'required' as const, ruleset };
 }
 
-export function manualRuleMessage(spec: RedirectRuleSpec, host: string, target: string) {
-  return `Create a Single Redirect rule in Cloudflare → ${spec.zone_name ?? 'the domain'} → Rules → Redirect Rules: custom filter expression ${spec.expression}, dynamic URL ${spec.target_url_expression}, status 301, preserve query string. It sends https://${host}/path?query to https://${target}/path?query. The connected authorization cannot create redirect rules (Cloudflare permission Zone → Single Redirect → Edit).`;
+/** `accessStep`: how the connection can get the redirect permission, when this deployment requests it. */
+export function manualRuleMessage(spec: RedirectRuleSpec, host: string, target: string, accessStep?: string | null) {
+  return `Create a Single Redirect rule in Cloudflare → ${spec.zone_name ?? 'the domain'} → Rules → Redirect Rules: custom filter expression ${spec.expression}, dynamic URL ${spec.target_url_expression}, status 301, preserve query string. It sends https://${host}/path?query to https://${target}/path?query. The connected authorization cannot create redirect rules (Cloudflare permission Zone → Single Redirect → Edit, OAuth scopes dynamic-redirect.read and dynamic-redirect.write).` +
+    (accessStep ? ` Instead of creating it yourself: ${accessStep} Then prepare again; Typeroll creates the rule.` : '');
+}
+
+/** The permission update that lets the connection holding the zone create redirect rules, or null. */
+async function redirectAccessStep(orgId: string, groupId: string): Promise<string | null> {
+  try {
+    const { cloudflarePermissionReport } = await import('./cloudflare-capabilities');
+    const report = await cloudflarePermissionReport(orgId, groupId);
+    const rules = report.capabilities.find(item => item.capability === 'redirect_rules');
+    return rules?.status === 'approval_required' ? rules.next_step : null;
+  } catch { return null; }
 }
 
 /** Create the redirect rule unless an equivalent rule exists. Never edits or removes another rule. */
@@ -113,7 +125,7 @@ const certificateReady = (state: RedirectPreparation['edge_certificate']) => sta
  * Prepare one host that answers 301 to the website host. The rule is created only while the
  * host has no proxied traffic, when it cannot change what visitors see; the record waits for approval.
  */
-export async function prepareRedirectHost(dns: Provider | null, input: { host: string; target: string; dnsMode: 'automatic' | 'external'; dnsAccountId?: string; configureTraffic?: boolean; orgId?: string }): Promise<RedirectPreparation> {
+export async function prepareRedirectHost(dns: Provider | null, input: { host: string; target: string; dnsMode: 'automatic' | 'external'; dnsAccountId?: string; configureTraffic?: boolean; orgId?: string; dnsGroupId?: string }): Promise<RedirectPreparation> {
   const traffic: DnsRequirement = { phase: 'traffic', type: 'A', name: input.host, content: REDIRECT_PLACEHOLDER_ADDRESS, proxied: true, status: 'required' };
   const result: RedirectPreparation = { hostname: input.host, target_host: input.target, provider_status: 'redirect', certificate_ready: false,
     requirements: [traffic], dns_fingerprint: null, action: 'configure_dns', validation_blocker: null, edge_certificate: 'unknown',
@@ -159,7 +171,10 @@ export async function prepareRedirectHost(dns: Provider | null, input: { host: s
   }
   if (result.rule.status === 'conflict') result.blocker = { code: 'redirect_rule_conflict', message: `A redirect rule named ${result.rule.ref} in ${zone.name} differs from the saved redirect. Review it in Cloudflare → Rules → Redirect Rules.` };
   // `unverifiable`: the connection can neither read nor create rules. The manual rule is shown and the public 301 is checked after the switch.
-  else if (!result.rule.managed && result.rule.status === 'required') result.blocker = { code: 'redirect_rule_required', message: manualRuleMessage(result.rule, input.host, input.target) };
+  else if (!result.rule.managed && result.rule.status === 'required') {
+    const step = input.orgId && input.dnsGroupId ? await redirectAccessStep(input.orgId, input.dnsGroupId) : null;
+    result.blocker = { code: 'redirect_rule_required', message: manualRuleMessage(result.rule, input.host, input.target, step) };
+  }
   return result;
 }
 
@@ -176,7 +191,7 @@ export async function prepareRedirectHosts(orgId: string, groupId: string, input
       result.push({ ...preparation, action: 'configure_dns', blocker: { code: error.details?.zone ? 'zone_not_active' : 'redirect_zone_required', message: error.message } });
       continue;
     }
-    result.push(await prepareRedirectHost(dns.provider, { host, target: input.target, dnsMode: 'automatic', dnsAccountId: dns.accountId, configureTraffic: input.configureTraffic, orgId }));
+    result.push(await prepareRedirectHost(dns.provider, { host, target: input.target, dnsMode: 'automatic', dnsAccountId: dns.accountId, configureTraffic: input.configureTraffic, orgId, dnsGroupId: dns.groupId }));
   }
   return result;
 }

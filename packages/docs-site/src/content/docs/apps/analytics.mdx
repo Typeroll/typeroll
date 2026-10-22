@@ -53,21 +53,47 @@ the account as `setup.account`; its `owner` is `organization` or
 
 ### Permissions for customer publishing
 
-| Task                            | OAuth connection                                         | API token permission               |
-| ------------------------------- | -------------------------------------------------------- | ---------------------------------- |
-| Create the Web Analytics site   | Account Settings (edit), approved with Analytics access  | Account → Account Settings → Edit  |
-| Find the site of a pasted token | Included in every connection (Account Settings read)     | Account → Account Settings → Read  |
-| Read reports for Insights       | Account Analytics (read), approved with Analytics access | Account → Account Analytics → Read |
+| Task                            | OAuth connection (scope)                             | API token permission               |
+| ------------------------------- | ---------------------------------------------------- | ---------------------------------- |
+| Create the Web Analytics site   | Account Settings (edit), `account-settings.write`    | Account → Account Settings → Edit  |
+| Find the site of a pasted token | Included in every connection (Account Settings read) | Account → Account Settings → Read  |
+| Read reports for Insights       | Account Analytics (read), `account-analytics.read`   | Account → Account Analytics → Read |
 
-Cloudflare connections do not include the Analytics permissions until they
-are approved. In the site's **Settings → Core modules**, select **Approve
-Analytics access** on Analytics. An owner or admin of the Organization signs in
-to Cloudflare again for the site's Hosting Group account and approves the
-permissions; the existing account, sites and media stay connected. Return to
-the module and select **Save settings**, or call `update_app` again. Later
-reconnects keep the approval. A connection made with an API token needs the
-token permissions above instead: edit the token in Cloudflare, then enable
-Analytics again.
+When the installation requests these permissions during onboarding,
+**Connect Cloudflare** includes them, and enabling Analytics on a new Site
+creates its Web Analytics site at once, without another approval. A
+connection made earlier gets them with one **Approve update** on its
+Cloudflare card in **Publishing**, per Cloudflare account and not per Site (see
+[Cloudflare permissions](../../guides/customer-publishing/#cloudflare-permissions)).
+The `analytics_cloudflare_access_required` setup then names that card in
+`next_step` and links it as `settings_url`; return and enable Analytics again.
+
+On an installation that does not request them during onboarding, select
+**Approve Analytics access** on Analytics in the site's **Settings → Core
+modules**. An owner or admin of the Organization signs in to Cloudflare again
+for the site's Hosting Group account and approves the permissions; the
+existing account, sites and media stay connected. Return to the module and
+select **Save settings**, or call `update_app` again. Later reconnects keep
+the approval. A connection made with an API token needs the token permissions
+above instead: edit the token in Cloudflare, then enable Analytics again.
+
+Approving permissions turns Analytics on for no Site. Measurement is chosen
+per Site.
+
+### Choose Sites across the Organization
+
+**Publishing → Analytics** lists the Organization's Sites with Analytics on or
+off and each one's setup. Owners and admins select the Sites that should
+measure traffic and save; only Sites whose choice changed are updated, each in
+the same way as enabling the module on that Site. The tab also says when a
+Hosting Group's Cloudflare account still needs its permission update. Agents
+use `list_organization_analytics` (`GET /api/v1/organization/analytics`) and
+`set_organization_analytics` (`POST /api/v1/organization/analytics` with
+`{"sites": [{"site_id": "…", "enabled": true}]}`, at most 50 Sites) with an
+organization API key. The answer has one result per Site: `ready`,
+`action_required` with `code`, `message`, `next_step` and `settings_url`,
+`disabled`, or `error` when nothing changed for that Site. Publish each Site
+you turned on to add the beacon to its pages.
 
 If you prefer not to grant Account Settings (edit), create a Web Analytics site
 yourself in the same Cloudflare account (**Analytics & Logs → Web Analytics**,
@@ -87,7 +113,10 @@ the Organization that created or first linked it.
   `CLOUDFLARE_API_TOKEN`, with the API token permissions above, to create Web
   Analytics sites automatically and show Insights. Operators of a Cloudflare
   OAuth client must allow the `account-settings.write` and
-  `account-analytics.read` scopes before people can approve Analytics access.
+  `account-analytics.read` scopes before people can approve Analytics access,
+  and list them in `TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES` to request them
+  during onboarding; see
+  [Self-hosting](../../guides/self-hosting/#cloudflare-sign-in-for-customer-publishing).
 </Aside>
 
 ### Setup results and failure messages
@@ -99,19 +128,19 @@ call answers `409` with a `code`, a message and `details.next_step`
 is safe to repeat. A pasted token that cannot be used is refused with `409` and
 `details.saved: false`. `read_app` and the module card show the same `setup`.
 
-| `code`                                       | Meaning and next step                                                                                                          |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `analytics_cloudflare_access_required`       | The hosting account's connection may not create sites or read reports. Approve Analytics access, or add the token permissions. |
-| `analytics_cloudflare_connection_required`   | The site's Hosting Group has no usable Cloudflare connection. Connect or check it in **Account → Publishing**.                 |
-| `analytics_host_required`                    | The site has no address yet. Set a website host, or a site address base for its Hosting Group.                                 |
-| `analytics_provider_error`                   | Cloudflare did not complete the request. The message names the HTTP status and Cloudflare error codes. Try again.              |
-| `analytics_provider_rate_limited`            | Cloudflare rate-limited the request. Wait a minute and try again.                                                              |
-| `analytics_token_not_in_account`             | The pasted token is not in the hosting account. Paste a token from that account, or clear the fields to create one.            |
-| `analytics_site_tag_mismatch`                | The supplied `site_tag` does not belong to the token. Omit `site_tag`.                                                         |
-| `analytics_site_owned_by_other_organization` | Another Organization sharing the account owns that Web Analytics site. Clear the fields to create one for this site.           |
-| `analytics_account_mismatch`                 | The saved site is in another account than the one hosting the site, for example after leaving managed hosting.                 |
-| `analytics_account_not_configured`           | Managed or self-hosted: the installation has no Cloudflare account configured. Paste a token, or configure the account.        |
-| `analytics_not_provisioned`                  | Enabled earlier without a token. Enable Analytics again to create the Web Analytics site.                                      |
+| `code`                                       | Meaning and next step                                                                                                               |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `analytics_cloudflare_access_required`       | The hosting account's connection may not create sites or read reports. Approve the permission update, or add the token permissions. |
+| `analytics_cloudflare_connection_required`   | The site's Hosting Group has no usable Cloudflare connection. Connect or check it in **Account → Publishing**.                      |
+| `analytics_host_required`                    | The site has no address yet. Set a website host, or a site address base for its Hosting Group.                                      |
+| `analytics_provider_error`                   | Cloudflare did not complete the request. The message names the HTTP status and Cloudflare error codes. Try again.                   |
+| `analytics_provider_rate_limited`            | Cloudflare rate-limited the request. Wait a minute and try again.                                                                   |
+| `analytics_token_not_in_account`             | The pasted token is not in the hosting account. Paste a token from that account, or clear the fields to create one.                 |
+| `analytics_site_tag_mismatch`                | The supplied `site_tag` does not belong to the token. Omit `site_tag`.                                                              |
+| `analytics_site_owned_by_other_organization` | Another Organization sharing the account owns that Web Analytics site. Clear the fields to create one for this site.                |
+| `analytics_account_mismatch`                 | The saved site is in another account than the one hosting the site, for example after leaving managed hosting.                      |
+| `analytics_account_not_configured`           | Managed or self-hosted: the installation has no Cloudflare account configured. Paste a token, or configure the account.             |
+| `analytics_not_provisioned`                  | Enabled earlier without a token. Enable Analytics again to create the Web Analytics site.                                           |
 
 To replace the saved Web Analytics site with a new one in the hosting account,
 send `{"enabled": true, "config": {"beacon_token": "", "site_tag": ""}}`, then

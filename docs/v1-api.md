@@ -88,6 +88,7 @@ Organization routes need an organization-scoped key; a site-scoped key gets
 |---|---|
 | Organization API keys | `GET /organization/api-keys`, `DELETE /organization/api-keys/{keyId}` (keys are created in the portal) |
 | Invites | `POST /organization/invites` |
+| Analytics across Sites | `GET/POST /organization/analytics` (every active Site with Analytics on or off and its setup; `POST { sites: [{ site_id, enabled }] }` changes only those Sites, at most 50, with one result each) |
 | Built-in AI assistant | `GET /organization/ai`, `PUT/DELETE /organization/ai/key`, `PUT /organization/ai/site-access` (the Organization's own Anthropic key, never returned, and the Sites that show the portal AI chat) |
 | Publishing connections | `GET /publishing/connections`, `GET /publishing/github-diagnosis`, `GET /publishing/cloudflare-diagnosis`, `POST /publishing/connections/cloudflare`, `DELETE /publishing/connections/{provider}` |
 | Publishing builds, domains, Hosting Groups, media migration | `/publishing/builds`, `/publishing/domains`, `/publishing/zones`, `/publishing/hosting-groups`, `/publishing/media-migration`, `/publishing/github-permissions` |
@@ -505,7 +506,13 @@ further than the caller. Nothing here returns a new secret.
   (`{ name, business_description }`) need an organization key and return
   `201 { site, workflow }`.
 - **Publishing connections.** `GET /publishing/connections` returns connection
-  summaries with `revision` and `connect_urls` for the browser-only OAuth steps.
+  summaries with `revision` and `connect_urls` for the browser-only OAuth steps,
+  and `cloudflare_permissions`: per Hosting Group, `capabilities`
+  (`analytics_provisioning`, `analytics_reports`, `redirect_rules`, each with
+  `status` `available`, `approval_required`, `not_offered`, `unknown` or
+  `connection_required`, `required_scopes`, `missing_scopes`, `next_step`) and
+  `permission_update` (`required`, `missing_scopes`, `hosting_group_ids`,
+  `action`, `next_step`, `connect_url`).
   `POST /publishing/connections/cloudflare` accepts `action` `connect`
   (`revision`, `account_id`, `bucket`, `api_token`, `access_key_id`,
   `secret_access_key`), `prepare_media` (`revision`) or `save_media`
@@ -547,8 +554,8 @@ further than the caller. Nothing here returns a new secret.
   key cannot act as a person on GitHub, so for an unfinished connection the
   organization's state is returned. No tokens or provider bodies are returned.
 - **Cloudflare connection diagnosis.** `GET /publishing/cloudflare-diagnosis`
-  returns `{ diagnosis, connect_url }` for an organization key (site keys get
-  `403`). `?hosting_group={id}` selects a Hosting Group (default `default`, the
+  returns `{ diagnosis, permissions, connect_url }` for an organization key (site keys get
+  `403`); `permissions` is that Hosting Group's entry of `cloudflare_permissions`. `?hosting_group={id}` selects a Hosting Group (default `default`, the
   organization connection; an unknown group is `404`, an invalid id `400`);
   `connect_url` points to that group's card. It is the organization's state: a
   person's unfinished sign-in and the Cloudflare accounts they authorized stay
