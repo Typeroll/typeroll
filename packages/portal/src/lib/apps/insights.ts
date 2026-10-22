@@ -12,7 +12,7 @@ import { aggregateAiReferrals, type RefererRow } from './ai-referrers';
 import type { ConversionInsights } from './analytics-events';
 import { analyticsSetupView } from './analytics-setup';
 import {
-  accountRef, analyticsAccessNextStep, AnalyticsSetupError, ANALYTICS_SETTINGS_URL, describeAccount, hasScope, resolveAnalyticsAccount, type AnalyticsAccount,
+  accountRef, analyticsAccessNextStep, analyticsAccessSettingsUrl, AnalyticsSetupError, describeAccount, hasScope, resolveAnalyticsAccount, type AnalyticsAccount,
 } from './analytics-account';
 import { ownedByOtherOrganization, providerSetupError } from './provision-analytics';
 import { webAnalyticsApi } from './web-analytics-api';
@@ -128,7 +128,7 @@ export async function getInsights(args: {
   if (!hasScope(account, 'reports')) {
     return fail('access_required', new AnalyticsSetupError('analytics_cloudflare_access_required',
       `The Cloudflare connection for ${where} has not been allowed to read Web Analytics reports (Account Analytics read).`,
-      analyticsAccessNextStep('reports'), ref, ANALYTICS_SETTINGS_URL));
+      analyticsAccessNextStep('reports', account), ref, analyticsAccessSettingsUrl('reports', account)));
   }
 
   try {

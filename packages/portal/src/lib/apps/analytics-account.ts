@@ -14,7 +14,8 @@
 import { paths, type AppProviderAccount, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getConnection, openCredentials } from '../publishing/connections';
-import { CLOUDFLARE_ANALYTICS_PROVISION_SCOPE, CLOUDFLARE_ANALYTICS_READ_SCOPE } from '../publishing/cloudflare-config';
+import { CLOUDFLARE_ANALYTICS_PROVISION_SCOPE, CLOUDFLARE_ANALYTICS_READ_SCOPE, CLOUDFLARE_ANALYTICS_SCOPES, enabledCloudflareOptionalScopes } from '../publishing/cloudflare-config';
+import { cloudflareCardPath, permissionUpdateStep } from '../publishing/cloudflare-capabilities';
 import { generatedCloudflareNames } from '../publishing/cloudflare-account-claims';
 import { getSiteDomains } from '../publishing/domain-config';
 import { getHostingGroup } from '../publishing/hosting-groups';
@@ -59,15 +60,35 @@ export function describeAccount(account: Pick<AnalyticsAccount, 'owner' | 'accou
   return `the Cloudflare account ${name} of Hosting Group “${account.hosting_group_name ?? 'Default'}”`;
 }
 
-export function analyticsAccessNextStep(purpose: 'provision' | 'reports'): string {
+type AccessAccount = Pick<AnalyticsAccount, 'owner' | 'scopes'> & { hosting_group_id?: string; hosting_group_name?: string };
+const purposeScopes = (purpose: 'provision' | 'reports') => purpose === 'provision' ? CLOUDFLARE_ANALYTICS_SCOPES : [CLOUDFLARE_ANALYTICS_READ_SCOPE];
+
+/** True when this deployment requests the scopes with Connect Cloudflare, so one permission update on Publishing adds them. */
+export function analyticsApprovedInPublishing(purpose: 'provision' | 'reports', account?: Pick<AccessAccount, 'owner'>): boolean {
+  if (account && account.owner !== 'organization') return false;
+  const enabled = enabledCloudflareOptionalScopes();
+  return purposeScopes(purpose).every(scope => enabled.includes(scope));
+}
+
+/** Where the person approves Analytics access: the Hosting Group's Publishing card, or (older deployments) the Site's module. */
+export function analyticsAccessSettingsUrl(purpose: 'provision' | 'reports', account?: AccessAccount): string {
+  return analyticsApprovedInPublishing(purpose, account) ? cloudflareCardPath(account?.hosting_group_id ?? 'default') : ANALYTICS_SETTINGS_URL;
+}
+
+export function analyticsAccessNextStep(purpose: 'provision' | 'reports', account?: AccessAccount): string {
+  const token = 'A connection made with an API token needs the token permissions Account → Account Settings → Edit and Account → Account Analytics → Read instead. ';
+  const then = purpose === 'provision'
+    ? 'Then enable Analytics again (update_app with app_id "analytics" and enabled: true). Without Account Settings (edit), you can instead create a Web Analytics site in that Cloudflare account and paste its token as beacon_token.'
+    : 'Then reload Insights.';
+  if (analyticsApprovedInPublishing(purpose, account)) {
+    const missing = purposeScopes(purpose).filter(scope => !account?.scopes?.includes(scope));
+    return `${permissionUpdateStep(account?.hosting_group_id ?? 'default', account?.hosting_group_name ?? 'Default', missing.length ? missing : purposeScopes(purpose))} ${token}${then}`;
+  }
   const permissions = purpose === 'provision'
     ? 'Account Settings (edit) to create the Web Analytics site and Account Analytics (read) for Insights'
     : 'Account Analytics (read)';
   return `In the site’s Settings → Core modules, select “Approve Analytics access” on Analytics; an organization owner or admin signs in to Cloudflare again and approves ${permissions} for the hosting account. ` +
-    'A connection made with an API token needs the token permissions Account → Account Settings → Edit and Account → Account Analytics → Read instead. ' +
-    (purpose === 'provision'
-      ? 'Then enable Analytics again (update_app with app_id "analytics" and enabled: true). Without Account Settings (edit), you can instead create a Web Analytics site in that Cloudflare account and paste its token as beacon_token.'
-      : 'Then reload Insights.');
+    token + then;
 }
 
 /** Scopes are only known for OAuth connections; API tokens are checked by the provider's answer. */
