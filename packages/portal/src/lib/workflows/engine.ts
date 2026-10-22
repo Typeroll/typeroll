@@ -123,6 +123,9 @@ export class WorkflowEngine {
           status: 'failed',
           failed_at: new Date().toISOString(),
           failure_reason: `${step.name}: ${msg}`,
+          // A stable code for errors that carry one (e.g. ai_not_enabled), so
+          // API and MCP callers need not parse the message.
+          ...(failureCode(e) ? { failure_code: failureCode(e) } : {}),
           log,
         });
         const finalWf = await this.store.getDoc<WorkflowRecord>(wfPath);
@@ -168,4 +171,10 @@ export class WorkflowEngine {
     const finalWf = await this.store.getDoc<WorkflowRecord>(wfPath);
     return finalWf!;
   }
+}
+
+/** The application error code of a failed step (snake_case, e.g. ai_not_enabled); never a system code. */
+function failureCode(error: unknown): string | undefined {
+  const code = error instanceof Error ? (error as { code?: unknown }).code : undefined;
+  return typeof code === 'string' && /^[a-z][a-z0-9_]*$/.test(code) ? code : undefined;
 }
