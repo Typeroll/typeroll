@@ -18,7 +18,8 @@ export const appTools: ToolDef[] = [
   {
     name: 'read_app',
     description:
-      'Read one Typeroll app by registry id, including its field schema and masked state. Use list_apps to discover ids and required config fields. Secret values are never returned. For setup guidance without admin access, use read_app_documentation. Admin permission required.',
+      'Read one Typeroll app by registry id, including its field schema and masked state. Use list_apps to discover ids and required config fields. Secret values are never returned. For setup guidance without admin access, use read_app_documentation. Admin permission required. ' +
+      'For analytics, `setup` reports its Cloudflare Web Analytics site: status "ready" with the account it lives in (`account.owner` "organization" = the Cloudflare account of the site\'s Hosting Group, used for customer publishing; "installation" = the installation\'s own account, used for managed and self-hosted sites), or "action_required" with `code`, `message`, `next_step` and optional `settings_url`.',
     inputSchema: {
       app_id: z.string().min(1).describe('Registry id returned by list_apps, for example analytics or integrations.'),
     },
@@ -29,7 +30,9 @@ export const appTools: ToolDef[] = [
   {
     name: 'update_app',
     description:
-      'Enable, configure, or disable any registered Typeroll app through the same admin API key used for publishing. Read the app first and send config keys from its field schema. Omitted fields preserve existing values, including encrypted secrets; secret values are masked on reads and encrypted server-side on writes. Analytics provisioning runs server-side when enabled. If affects_build is true, trigger_deploy is required to publish the change. For setup guidance without admin access, use read_app_documentation. Admin permission required.',
+      'Enable, configure, or disable any registered Typeroll app through the same admin API key used for publishing. Read the app first and send config keys from its field schema. Omitted fields preserve existing values, including encrypted secrets; secret values are masked on reads and encrypted server-side on writes. If affects_build is true, trigger_deploy is required to publish the change. For setup guidance without admin access, use read_app_documentation. Admin permission required. ' +
+      'Analytics: enabling creates the Cloudflare Web Analytics site in the account that hosts the site (customer publishing: the Hosting Group\'s Cloudflare connection, never the installation\'s account) and fills beacon_token and site_tag; a pasted beacon_token is resolved to its site_tag in that same account. ' +
+      'When no beacon could be set up, the call fails with HTTP 409, a stable `code` (for example analytics_cloudflare_access_required, analytics_cloudflare_connection_required, analytics_host_required, analytics_provider_error, analytics_token_not_in_account) and `details.next_step`; `details.saved` says whether the enabled state was stored. Relay the next step to the person (approving Analytics access needs an organization owner or admin in the browser), then call update_app again. A 200 response carries `setup` too.',
     inputSchema: {
       app_id: z.string().min(1).describe('Registry id returned by list_apps.'),
       enabled: z.boolean(),

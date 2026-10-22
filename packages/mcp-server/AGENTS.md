@@ -139,7 +139,11 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   compatibility) through the same admin API key used for content
   and deploys. Read the schema before writing. Secret fields stay masked on
   reads and encrypted at rest; omitted fields preserve their current values.
-  When `affects_build` is true, deploy after the update.
+  When `affects_build` is true, deploy after the update. Enabling Analytics
+  creates its Cloudflare Web Analytics site in the account that hosts the site;
+  `read_app` and `update_app` return `setup` with the result. A 409 from
+  `update_app` carries `code` and `details.next_step`: relay that step to the
+  person (for example approving Analytics access in Cloudflare) and retry.
 
 - **Extension installations.** `list_extension_installations`,
   `read_extension_installation`, and `update_extension_installation_config`
@@ -1215,7 +1219,7 @@ preview.
 | **Workflows** | `list_workflows`, `start_workflow` (write; `rebuild_deploy` admin), `get_workflow`, `approve_workflow` (only `paused_for_review`, with the user's consent) |
 | **Access** | `list_api_keys`, `revoke_api_key` (site admin), `list_organization_api_keys`, `revoke_organization_api_key` (organization key; new keys are created only in the portal), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite` (organization key) |
 | **Organization publishing** | `read_organization_publishing_connections`, `diagnose_organization_github_connection`, `diagnose_organization_cloudflare_connection`, `disconnect_organization_publishing_provider`, `connect_organization_cloudflare`, `prepare_organization_media_storage`, `save_organization_media_access`, plus builds, Hosting Groups, domains and media migration tools (organization key) |
-| **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics; conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |
+| **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics in the account that hosts the site; a non-ok `status` carries a `reason` with the next step. Conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |
 | **Pages — reads** | `list_pages`, `read_page`, `batch_read_pages` |
 | **Pages — writes** | `create_page`, `update_page`, `replace_page`, `batch_update_pages`, `delete_page`, `clone_page` |
 | **Pages — blocks** | `get_page_blocks`, `add_block`, `update_block`, `move_block`, `remove_block`, `duplicate_block`, `set_block_responsive`, `set_page_mode` (never converts HTML into blocks) |
