@@ -27,6 +27,7 @@ import { discoverSitemap } from '../wp/sitemap';
 import { addInventoryUrl, addWordPressBareSlugGuess, analyzeCoverage, pathFromUrl } from '../wp/url-inventory';
 import { WPHelperClient, type HelperItem } from '../wp/helper-client';
 import { normalizeWordPressPlainText } from '../wp/plain-text';
+import { wordpressDate } from '../wp/dates';
 import { reviewGate, type WorkflowDef } from './types';
 
 // REST `content.rendered` shorter than this triggers the public-page fallback —
@@ -662,7 +663,7 @@ export const migrationWorkflow: WorkflowDef = {
             seo_title: seoTitle, seo_description: seoDesc, og_image: ogImage, canonical_url: seoCanon, noindex,
             kind: sourceType === 'page' ? 'page' : 'article', status: 'review',
             old_wp_url: item.link, ai_generated: false,
-            date_published: item.date, date_updated: item.modified,
+            date_published: wordpressDate(item.date, item.date_gmt), date_updated: wordpressDate(item.modified, item.modified_gmt),
           };
           await ctx.store.createDocIfMissing(paths.page(ctx.orgId, ctx.siteId, pageId, migrationVersion(ctx)), doc);
           slugMap[item.link] = path;
@@ -852,6 +853,9 @@ function helperToWP(h: HelperItem): WPPage {
     link: h.link,
     date: h.date,
     modified: h.modified,
+    // Helper exports post_*_gmt; versions before 0.3.3 omitted the UTC suffix.
+    date_gmt: h.date,
+    modified_gmt: h.modified,
     parent: h.parent,
     menu_order: h.menu_order,
     featured_media: h.featured_image?.id ?? 0,

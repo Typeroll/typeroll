@@ -1,5 +1,13 @@
 # Changelog
 
+## Core 0.2.88 / MCP 0.45.68
+
+- Update Astro to the corrected 7.3 patch line and ip-address to 10.7.4 for the release security gate.
+
+- Indexing diagnostics recognize the intentional robots block on customer temporary hosts when no future website host is saved, and report the expectation reason.
+- WordPress imports prefer UTC date fields; Helper 0.3.3 labels GMT values explicitly. Generated Article and Content type dates retain known offsets; legacy timestamps with unknown timezone use date-only precision rather than invented UTC. Existing content is not rewritten.
+- Hosted MCP regression coverage verifies domain redirect/cutover fields in full and compact catalogs and calls; document refreshing stale client catalogs. Both fields were already served by production MCP 0.45.67 at verification time.
+
 ## Core 0.2.87 / MCP 0.45.67
 
 - **Cloudflare permissions for Analytics and redirects are part of onboarding.** When the deployment lists them in `TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES` (and the OAuth client allows them), Connect Cloudflare requests Account Settings Write and Account Analytics Read (Analytics) and Dynamic URL Redirects read/write (redirect hosts) together with the publishing permissions. Unset, Connect Cloudflare requests exactly what it did before.

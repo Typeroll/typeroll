@@ -30,7 +30,7 @@
     "@typeroll/mcp-server": "*",
     "@typeroll/shared": "*",
     "@uiw/react-codemirror": "^4.25.9",
-    "astro": "^7.2.10",
+    "astro": "7.3.3",
     "dotenv": "^17.4.2",
     "entities": "^7.0.1",
     "firebase": "^12.19.0",

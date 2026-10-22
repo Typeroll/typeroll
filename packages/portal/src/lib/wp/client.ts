@@ -14,6 +14,8 @@ export interface WPPage {
   link: string;
   date: string;
   modified: string;
+  date_gmt?: string | null;
+  modified_gmt?: string | null;
   parent?: number;
   menu_order?: number;
   featured_media?: number;

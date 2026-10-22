@@ -8,6 +8,7 @@ export interface IndexingTargetDiagnostic {
   kind: IndexingTargetKind;
   origin: string;
   expected: 'noindex' | 'indexable';
+  expectation_reason: 'fallback_protection' | 'platform_robots_blocked' | 'sitewide_noindex' | 'public_site';
   reachable: boolean;
   head_status: number | null;
   get_status: number | null;
@@ -31,6 +32,8 @@ export interface SiteIndexingDiagnosticReport {
 }
 
 export interface SiteIndexingDiagnosticOptions {
+  /** Publishing policy supplied by the authenticated route, never inferred from the response being tested. */
+  robotsBlocked?: boolean;
   fetchImpl?: typeof fetch;
   validateDestination?: (url: URL) => Promise<void>;
   now?: () => Date;
@@ -49,13 +52,14 @@ export async function diagnoseSiteIndexing(
   opts: SiteIndexingDiagnosticOptions = {},
 ): Promise<SiteIndexingDiagnosticReport> {
   const urls = publicUrlsFor(site);
-  const entries: Array<{ kind: IndexingTargetKind; origin: string; expected: 'noindex' | 'indexable' }> = [];
-  if (urls.fallback) entries.push({ kind: 'fallback', origin: urls.fallback, expected: 'noindex' });
+  const entries: IndexingTarget[] = [];
+  if (urls.fallback) entries.push({ kind: 'fallback', origin: urls.fallback, expected: 'noindex', expectation_reason: 'fallback_protection' });
   if (urls.production && urls.production !== urls.fallback) {
     entries.push({
       kind: 'production',
       origin: urls.production,
-      expected: settings.sitewide_noindex === true ? 'noindex' : 'indexable',
+      expected: opts.robotsBlocked || settings.sitewide_noindex === true ? 'noindex' : 'indexable',
+      expectation_reason: opts.robotsBlocked ? 'platform_robots_blocked' : settings.sitewide_noindex === true ? 'sitewide_noindex' : 'public_site',
     });
   }
 
@@ -72,8 +76,10 @@ export async function diagnoseSiteIndexing(
   };
 }
 
+type IndexingTarget = Pick<IndexingTargetDiagnostic, 'kind' | 'origin' | 'expected' | 'expectation_reason'>;
+
 async function probeTarget(
-  target: { kind: IndexingTargetKind; origin: string; expected: 'noindex' | 'indexable' },
+  target: IndexingTarget,
   opts: SiteIndexingDiagnosticOptions,
 ): Promise<IndexingTargetDiagnostic> {
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -123,6 +129,7 @@ async function probeTarget(
     kind: target.kind,
     origin: target.origin,
     expected: target.expected,
+    expectation_reason: target.expectation_reason,
     reachable,
     head_status: head.response?.status ?? null,
     get_status: get.response?.status ?? null,
@@ -139,7 +146,7 @@ async function probeTarget(
 }
 
 function emptyDiagnostic(
-  target: { kind: IndexingTargetKind; origin: string; expected: 'noindex' | 'indexable' },
+  target: IndexingTarget,
   issues: string[],
 ): IndexingTargetDiagnostic {
   return {

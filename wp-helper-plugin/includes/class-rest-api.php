@@ -201,7 +201,7 @@ class Typeroll_Helper_Rest_API {
 							'url'   => $permalink,
 							'type'  => $slug,
 							'id'    => (int) $post_id,
-							'date'  => mysql_to_rfc3339( get_post_field( 'post_date_gmt', $post_id ) ),
+							'date'  => mysql_to_rfc3339( get_post_field( 'post_date_gmt', $post_id ) ) . 'Z',
 						);
 					}
 				}

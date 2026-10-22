@@ -90,6 +90,15 @@ one is available. An agent can read the `redirect_rules` capability from
 `set_publishing_domains`. A publication is live only after every redirect host
 answers 301 to the website host.
 
+For MCP, `set_publishing_domains.redirect_hosts` is an optional array of up to
+four hostnames. `approve_publishing_domain_cutover.accept_validation_window` is an
+optional boolean; it is not blanket permission to interrupt traffic. Both are
+available in Core 0.2.87 / MCP 0.45.67. If a connector rejects them as unknown
+before making a request, compare its advertised schema with a fresh `tools/list`
+on the same portal endpoint (or `describe_tool` in compact mode). Start a fresh
+client conversation after refreshing the connector catalog. Do not bypass schema
+validation, change domain settings or reconnect Cloudflare merely to refresh MCP.
+
 A media item's `public_path` can retain an old path such as
 `/wp-content/uploads/2024/photo.jpg`. The next publication uses the selected
 preferred host and paths. Existing organization media links and previously

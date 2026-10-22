@@ -19,6 +19,8 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
         page('nested', { content_type: 'supplier', slug: 'nested/profile' }), page('explicit', { path: '/special/nested/' }),
         page('states', { noindex: true }), page('strict', { noindex: true, nofollow: true }),
         page('syndicated', { canonical_url: 'https://original.test/article/' }),
+        page('dated-article', { kind: 'article', date_published: '2024-05-02T10:01:08Z', date_updated: '2024-05-03T11:01:08+01:00' }),
+        page('legacy-dated-article', { kind: 'article', date_published: '2024-05-02T11:01:08' }),
       ], contentTypes: [{ id: 'supplier', name: 'supplier', label_singular: 'Supplier', label_plural: 'Companies', route_template: '/companies/{slug}/', schema_type: 'Organization', schema_field_map: { company: 'name' }, fields: [{ name: 'company', type: 'text' }, { name: 'city', type: 'text' }] }],
       forms: [], extensions: [], partials: [], blockTypes: [], pageTemplates: [], media: [], redirects: [],
     };
@@ -43,6 +45,12 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     assert.equal(crumbs.length, 1);
     assert.deepEqual(crumbs[0].itemListElement.map(item => item.item), ['https://example.test/', 'https://example.test/companies' + suffix, 'https://example.test/companies/abc' + suffix]);
     assert.ok(!schemas.some(schema => Object.keys(schema).some(key => key.includes('.'))));
+    const datedHtml = await fs.readFile(path.join(destination, 'dist/dated-article/index.html'), 'utf8');
+    assert.match(datedHtml, /"datePublished":"2024-05-02T10:01:08Z"/);
+    assert.match(datedHtml, /"dateModified":"2024-05-03T11:01:08\+01:00"/);
+    const legacyHtml = await fs.readFile(path.join(destination, 'dist/legacy-dated-article/index.html'), 'utf8');
+    assert.match(legacyHtml, /"datePublished":"2024-05-02"/);
+    assert.ok(!legacyHtml.includes('"datePublished":"2024-05-02T11:01:08'));
     assert.match(await fs.readFile(path.join(destination, 'dist/states/index.html'), 'utf8'), /content="noindex,follow"/);
     assert.match(await fs.readFile(path.join(destination, 'dist/strict/index.html'), 'utf8'), /content="noindex,nofollow"/);
     assert.ok(!(await fs.readFile(path.join(destination, 'dist/sitemap.xml'), 'utf8')).includes('/states'));
@@ -61,7 +69,7 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     // A warm partial build still validates every generated/reused HTML file.
     const second = await run(); assert.equal(second.report.checked_pages, first.report.checked_pages);
     const render = JSON.parse(await fs.readFile(path.join(destination, '.publication-work/render-report.json'), 'utf8'));
-    assert.equal(render.reused, 8);
+    assert.equal(render.reused, input.pages.length);
     assert.equal(second.report.artifact_tree_sha256, first.report.artifact_tree_sha256);
     // Previous renderer cache format and validator code cannot inherit a pass.
     const cachePath = path.join(destination, '.publication-cache.json');

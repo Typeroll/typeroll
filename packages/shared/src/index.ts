@@ -30,6 +30,7 @@ export * from './consent-scripts.js';
 export * from './cookie-consent.js';
 export * from './robots-sitemap.js';
 export * from './schema-generators.js';
+export * from './schema-dates.js';
 export * from './seo-transform.js';
 export * from './hreflang.js';
 export * from './redirect-patterns.js';

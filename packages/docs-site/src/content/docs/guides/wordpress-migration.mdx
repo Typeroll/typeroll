@@ -19,6 +19,15 @@ assistant in the portal has no migration tools.
 The shared-taxonomy and fidelity-review changes described below require Core 0.2.5 and Helper 0.3.2. Cloud availability follows its Core
 rollout; self-hosted installations must update Core and the helper plugin.
 
+Core 0.2.88 preserves publication/update instants from WordPress REST's
+`date_gmt` and `modified_gmt`, adding `Z` when those UTC fields omit it. Helper
+0.3.3 explicitly labels its GMT dates with `Z`; Core also understands earlier
+Helper exports. A local timestamp without a known timezone cannot establish an
+instant: only its calendar date is retained when no valid GMT field is available.
+Existing imports are not overwritten. Repair their dates from the original GMT
+fields or another timestamp with an explicit offset, then publish; do not append
+`Z` to an old local clock value. See [publication dates](../../technical/seo-and-indexing/#publication-dates).
+
 The migration workflow imports accessible WordPress content (pages, posts and supported custom post types) into a new Typeroll site, transfers your media directly to your organization’s Cloudflare R2 storage, and generates redirects from old URLs to new slugs.
 
 **What it does:**

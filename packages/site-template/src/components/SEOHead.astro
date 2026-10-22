@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, Page, PostalAddress, SiteSettings } from '@typeroll/shared';
-import { ogLocale, resolveAlternates, pageRobots, breadcrumbJsonLd as buildBreadcrumbJsonLd } from '@typeroll/shared';
+import { ogLocale, resolveAlternates, pageRobots, schemaDate, breadcrumbJsonLd as buildBreadcrumbJsonLd } from '@typeroll/shared';
 import { isVersionRobotsBlocked } from '../lib/content';
 
 interface Props {
@@ -20,6 +20,8 @@ interface Props {
 }
 
 const { page, settings, extraJsonLd, breadcrumbs = [] } = Astro.props;
+const publishedDate = schemaDate(page.date_published);
+const modifiedDate = schemaDate(page.date_updated);
 
 const isHome = Astro.url.pathname === '/';
 const isArticle = page.kind === 'article';
@@ -165,8 +167,8 @@ function articleSchema(): string | null {
   };
   if (description) obj.description = description;
   if (ogImage) obj.image = ogImage;
-  if (page.date_published) obj.datePublished = page.date_published;
-  if (page.date_updated) obj.dateModified = page.date_updated;
+  if (publishedDate) obj.datePublished = publishedDate;
+  if (modifiedDate) obj.dateModified = modifiedDate;
   if (page.author) obj.author = { '@type': 'Person', name: page.author };
   if (settings.organization?.name) {
     obj.publisher = {
@@ -210,11 +212,11 @@ const breadcrumbJsonLd = breadcrumbSchema();
 {ogImage && <meta property="og:image" content={ogImage} />}
 {ogImage && ogImageAlt && <meta property="og:image:alt" content={ogImageAlt} />}
 
-{isArticle && page.date_published && (
-  <meta property="article:published_time" content={page.date_published} />
+{isArticle && publishedDate && (
+  <meta property="article:published_time" content={publishedDate} />
 )}
-{isArticle && page.date_updated && (
-  <meta property="article:modified_time" content={page.date_updated} />
+{isArticle && modifiedDate && (
+  <meta property="article:modified_time" content={modifiedDate} />
 )}
 {isArticle && page.author && (
   <meta property="article:author" content={page.author} />
