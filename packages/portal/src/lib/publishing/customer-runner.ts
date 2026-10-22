@@ -18,7 +18,8 @@ import { getConnection, ConnectionError } from './connections';
 import { githubConfiguration } from './github-connection';
 import { cloudflareClient } from './cloudflare-oauth';
 import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment, digest, ProviderError, ProviderTransportError } from './providers.mjs';
-import { getSiteDomains, samePublicationHosts, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
+import { getSiteDomains, samePublicationHosts, sameRedirectHosts, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
+import { prepareRedirectHosts, redirectApprovalBlocker, ensureApprovedRedirectRule, applyRedirectTraffic, verifyRedirectHost, type RedirectPreparation } from './redirect-hosts';
 import { resolvePublicationVersion } from './publication-version';
 import { assertPublishingReady } from './readiness';
 import { publicationSourceTree } from './source-tree';
@@ -51,6 +52,8 @@ interface GitPublication extends CustomerVerification {
   publication_id: string; snapshot_chunks: number; snapshot_digest: string; snapshot_format?: 1; content_cutoff: string;
   domain_revision: string; website_host: string; commit?: string | null; deployment_id?: string | null;
   release_branch?: 'main' | null; snapshot_job_id?: string; cache_purged_deployment?: string; cache_purged_hosts?: string[];
+  /** Hosts frozen with this publication that must answer 301 to website_host before it is live. */
+  redirect_hosts?: string[]; redirect_preparations?: RedirectPreparation[] | null;
 }
 function projectCreationMessage(error: ProviderError, publication?: GitPublication) {
   const detail = `Cloudflare could not create the Pages project${publication ? ` in hosting account ${publication.account_id}` : ''}: HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''}.`;
@@ -62,6 +65,20 @@ function projectCreationMessage(error: ProviderError, publication?: GitPublicati
   if (error.status >= 500) return `${detail} Cloudflare is temporarily unable to create the project. Retry publishing after the service recovers.`;
   if (error.status === 400 || error.status === 409) return `${detail} Check this account's GitHub connection and Pages project limits. In Cloudflare, select the hosting account → Workers & Pages → Create application → Pages → Connect to Git → + Add account. Authorize Cloudflare's GitHub App for ${publication?.owner ?? 'the connected GitHub account'} and its generated repositories, then retry. Include the Cloudflare code above when contacting support.`;
   return `${detail} Check the selected account in ${connection} and the Cloudflare project settings, then retry publishing.`;
+}
+
+/** Every frozen redirect host must answer 301 to the website host before the publication is live. Returns the host still failing. */
+async function pendingRedirect(jobPath: string, publication: GitPublication, preparations: RedirectPreparation[] = publication.redirect_preparations ?? []): Promise<string | null> {
+  if (!publication.redirect_hosts?.length) return null;
+  const checks = [];
+  for (const host of publication.redirect_hosts) checks.push({ host, ...await verifyRedirectHost(host, publication.website_host, publication.publication_id.slice(0, 16)) });
+  const failing = checks.find(check => !check.ok);
+  const preparation = preparations.find(item => item.hostname === failing?.host);
+  await getStore().updateDoc(jobPath, { redirect_checks: checks, ...(failing ? {
+    phase: `waiting for ${failing.host} to redirect to ${publication.website_host}`,
+    verification_message: `https://${failing.host} must answer 301 to https://${publication.website_host} with the same path and query; it answered ${failing.status ?? 'no response'}${failing.location ? ` (Location: ${failing.location})` : ''}. ${preparation?.blocker?.message ?? 'Apply the redirect record and rule shown in Publishing → domains.'} Public verification will retry automatically.`,
+  } : {}) });
+  return failing?.host ?? null;
 }
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
@@ -197,6 +214,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const generated = generatedCloudflareNames(args.orgId, args.siteId);
       const host = args.versionId === 'main' && domains.desired.website_host ||
         `${args.versionId === 'main' ? '' : `v-${digest(args.versionId).slice(0, 8)}-`}${generated.site_label}.${group.sites_domain}`;
+      // Redirect hosts belong to the live website host only, never to version addresses.
+      const redirectHosts = args.versionId === 'main' && domains.desired.website_host === host ? domains.desired.redirect_hosts ?? [] : [];
       let frozen: Record<string, any>;
       if (job.publication_intent === 'domain_prepare') {
         if (!prior) throw new ConnectionError('The last public snapshot is missing. Publish the site before preparing domains.', 409);
@@ -241,7 +260,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences });
       // Compare the exact media records frozen into the manifest, without a second datastore read.
       const impactSnapshot = job.publication_intent === 'domain_prepare' ? null : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
-      const previousOrigins = [site?.domain ? `https://${site.domain}` : '', prior?.site_url ?? '', ...(prior?.reference_mapping?.website_origins ?? [])].filter(Boolean);
+      // Links to a redirect host (for example https://www.example.com/page) are frozen as links to the website host.
+      const previousOrigins = [site?.domain ? `https://${site.domain}` : '', prior?.site_url ?? '', ...(prior?.reference_mapping?.website_origins ?? []),
+        ...redirectHosts.map(redirect => `https://${redirect}`)].filter(Boolean);
       frozen = deferReferences ? { ...mapped.content, reference_mapping: { format: 1, media: (mapped.content as any).reference_mapping?.media ?? [], website_origins: [...new Set(previousOrigins)] } }
         : retargetWebsite(mapped.content, previousOrigins, `https://${host}`);
       frozen = { ...frozen, site_url: `https://${host}`, site: { ...frozen.site, domain: host }, media: mapped.media, media_manifest: mapped.manifest };
@@ -268,14 +289,14 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       }
       publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: generated.pages_project!, project: site?.publishing_migration?.project ?? generated.pages_project!, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
-        domain_revision: domains.revision, website_host: host, snapshot_job_id: args.jobId, ...await saveSnapshot(args, frozen) };
+        domain_revision: domains.revision, website_host: host, snapshot_job_id: args.jobId, ...(redirectHosts.length ? { redirect_hosts: redirectHosts } : {}), ...await saveSnapshot(args, frozen) };
       const selectedProvider = await selectedBuildProvider(args.orgId);
       const engine = await readEngineConfiguration(args.orgId, selectedProvider);
       if (site?.publishing_migration && engine?.status !== 'ready') throw new ConnectionError('Restore the shared build engine before publishing this migrated site.', 409, 'shared_build_setup_required');
       if (selectedProvider === 'github' && !engine) throw new ConnectionError('Finish build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
       if (engine && engine.status !== 'ready') throw new ConnectionError('Finish shared build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
       if (engine?.status === 'ready') { publication.build_engine_revision = engine.revision; publication.build_provider = engine.provider ?? 'cloudflare'; }
-      if (args.versionId === 'main' && domains.active && !samePublicationHosts(domains.active, { ...domains.desired, website_host: host })) {
+      if (args.versionId === 'main' && domains.active && (!samePublicationHosts(domains.active, { ...domains.desired, website_host: host }) || !sameRedirectHosts(domains.active, domains.desired))) {
         publication.branch = `version-domain-${domains.revision.replaceAll('-', '').slice(0, 16)}`;
         publication.release_branch = 'main';
       }
@@ -310,6 +331,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
           return await waitForPublicationCondition(jobPath, 'retrying public verification');
         }
       }
+      if (await pendingRedirect(jobPath, publication)) return await waitForPublicationCondition(jobPath, 'retrying public verification');
       await assertLease();
       return await finishPublication(publication, domains, frozen);
     }
@@ -471,30 +493,56 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         branch: publication.release_branch ?? publication.branch, hostname: mediaManifest.media_host, dnsMode: domains.dns_mode,
         dnsProvider: mediaDns?.provider, dnsAccountId: mediaDns?.accountId, configureTraffic: !publication.release_branch, orgId: args.orgId });
     }
+    // Redirect hosts never reach Pages: a zone redirect rule answers them once their record is proxied.
+    const redirectPreparations: RedirectPreparation[] = publication.redirect_preparations ?? (publication.redirect_hosts?.length
+      ? await prepareRedirectHosts(args.orgId, group.id, { hosts: publication.redirect_hosts, target: publication.website_host, dnsMode, configureTraffic: !publication.release_branch })
+      : []);
+    const redirectBlockers = redirectPreparations.map(redirectApprovalBlocker).filter((blocker): blocker is { code: string; message: string } => Boolean(blocker));
     if (preparation.action === 'verify' && preparation.certificate_ready) {
       publication = { ...publication, website_preparation: preparation, ...(mediaPreparation?.action === 'verify' && mediaPreparation.certificate_ready ? { media_preparation: mediaPreparation } : {}) };
       await store.updateDoc(jobPath, { git_publication: publication });
     }
+    if (redirectPreparations.length && !publication.redirect_preparations && redirectPreparations.every(item => item.action === 'verify')) {
+      publication = { ...publication, redirect_preparations: redirectPreparations };
+      await store.updateDoc(jobPath, { git_publication: publication });
+    }
+    const requirements = [...preparation.requirements, ...redirectPreparations.flatMap(item => item.requirements)];
     if (args.versionId === 'main') await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === publication!.domain_revision,
-      { media_preparation: mediaPreparation, state: preparation.action === 'complete_validation' ? 'preparing' : 'ready_to_switch', preparation,
+      { media_preparation: mediaPreparation, state: preparation.action === 'complete_validation' || redirectBlockers.length ? 'preparing' : 'ready_to_switch', preparation,
+        redirect_preparations: redirectPreparations.length ? redirectPreparations : null,
         candidate: { id: publication.publication_id, revision: publication.domain_revision, commit: publication.commit,
         deployment_id: deployment.id, verified_at: new Date().toISOString(), job_id: args.jobId } });
     if (publication.release_branch) {
-      const blocker = preparation.validation_blocker ?? mediaPreparation?.validation_blocker;
+      const blocker = preparation.validation_blocker ?? mediaPreparation?.validation_blocker ??
+        redirectBlockers.find(item => !['redirect_certificate_pending', 'redirect_rule_required'].includes(item.code));
       if (blocker) throw new ConnectionError(blocker.message, 409, blocker.code);
       if (domains.cutover_approved_revision !== domains.revision) {
         if ((!preparation.certificate_ready && preparation.has_existing_traffic !== false) || (mediaPreparation && !mediaPreparation.certificate_ready && mediaPreparation.has_existing_traffic !== false)) {
-          await store.updateDoc(jobPath, { phase: 'waiting for domain validation', dns_requirements: preparation.requirements });
+          await store.updateDoc(jobPath, { phase: 'waiting for domain validation', dns_requirements: requirements });
           return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
         }
-        await store.updateDoc(jobPath, { phase: 'awaiting domain cutover approval', dns_requirements: preparation.requirements });
+        if (redirectBlockers.length) {
+          // A missing manual rule or an unissued Universal SSL certificate can be completed while this check repeats.
+          await store.updateDoc(jobPath, { phase: `waiting for redirect setup: ${redirectBlockers[0].message}`, dns_requirements: requirements });
+          return await waitForPublicationCondition(jobPath, 'waiting for redirect setup');
+        }
+        await store.updateDoc(jobPath, { phase: 'awaiting domain cutover approval', dns_requirements: requirements });
         // Human approval can take days. Consume this observation task; approval queues a continuation.
         return 'ran';
       }
       // Explicit nulls replace nested Firestore fields; omission leaves old values merged in.
-      publication = { ...publication, branch: 'main', commit: null, deployment_id: null, release_branch: null, build_task_key: null, static_checks_key: null, verification_task_key: null, verification_checks_key: null, probe_checks_key: null, static_controls_sha256: null, candidate_verified_id: null, deployment_receipt: null, website_preparation: null, media_preparation: null, traffic_applied: false };
+      publication = { ...publication, branch: 'main', commit: null, deployment_id: null, release_branch: null, build_task_key: null, static_checks_key: null, verification_task_key: null, verification_checks_key: null, probe_checks_key: null, static_controls_sha256: null, candidate_verified_id: null, deployment_receipt: null, website_preparation: null, media_preparation: null, redirect_preparations: null, traffic_applied: false };
       await store.updateDoc(jobPath, { git_publication: publication, phase: 'promoting verified source' });
       return await schedulePublication(jobPath, 'domain_source_promoted');
+    }
+    const approvedRedirects = !publication.traffic_applied && domains.cutover_approved_revision === domains.revision && domains.dns_mode === 'automatic'
+      ? (domains.approved_redirect_preparations ?? []).filter(item => item.zone_id) : [];
+    const redirectDns = new Map<string, Awaited<ReturnType<typeof hostingDns>>>();
+    // Rules first: they do nothing until a record is proxied, and a missing permission stops here before any traffic changes.
+    for (const approved of approvedRedirects) {
+      const access = await hostingDns(args.orgId, group.id, approved.hostname);
+      redirectDns.set(approved.hostname, access);
+      await ensureApprovedRedirectRule(access.provider, approved);
     }
     if (!publication.traffic_applied && domains.cutover_approved_revision === domains.revision && domains.approved_preparation && domains.dns_mode === 'automatic') {
       await applyPreparedTraffic(dns!.provider, domains.approved_preparation);
@@ -502,6 +550,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (!publication.traffic_applied && domains.cutover_approved_revision === domains.revision && domains.approved_media_preparation && mediaDns) {
       await applyPreparedTraffic(mediaDns.provider, domains.approved_media_preparation);
     }
+    for (const approved of approvedRedirects) await applyRedirectTraffic(redirectDns.get(approved.hostname)!.provider, approved);
     if (!publication.traffic_applied) {
       publication = { ...publication, traffic_applied: true };
       await store.updateDoc(jobPath, { git_publication: publication });
@@ -542,6 +591,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         }
       }
     }
+    if (await pendingRedirect(jobPath, publication, redirectPreparations)) return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
     return await finishPublication(publication, domains, frozen);
   } catch (error) {
     const target = await store.getDoc<Target>(targetPath);

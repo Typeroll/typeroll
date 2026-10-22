@@ -72,6 +72,27 @@ it('requires a matching verified candidate and certificate before approving exis
   expect(approved.active).toBeNull();
 });
 
+it('approves redirect hosts only with their prepared rule and certificate, and freezes them with the approval', async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getStore } = await import('../../lib/datastore');
+  const { getSiteDomains, saveSiteDomains, approveDomainCutover, siteDomainConfigPath } = await import('../../lib/publishing/domain-config');
+  const initial = await getSiteDomains('org', 'site');
+  const saved = await saveSiteDomains('org', 'site', { revision: initial.revision, website_host: 'moveria.se', redirect_hosts: ['www.moveria.se'], dns_mode: 'automatic' });
+  const candidate = { id: 'publication', revision: saved.revision, commit: 'sha', deployment_id: 'deployment', verified_at: new Date().toISOString() };
+  const preparation = { hostname: 'moveria.se', provider_status: 'active', certificate_ready: true, requirements: [], dns_fingerprint: 'apex', action: 'approve_cutover', has_existing_traffic: true };
+  const redirect = { hostname: 'www.moveria.se', target_host: 'moveria.se', provider_status: 'redirect', certificate_ready: true, edge_certificate: 'active', requirements: [], dns_fingerprint: 'www', zone_id: 'zone', zone_name: 'moveria.se',
+    action: 'approve_cutover', has_existing_traffic: true, blocker: { code: 'redirect_rule_required', message: 'Create a Single Redirect rule' },
+    rule: { zone_name: 'moveria.se', phase: 'http_request_dynamic_redirect', ref: 'typeroll_redirect_x', expression: 'http.host eq "www.moveria.se"', target_url_expression: 'x', status_code: 301, preserve_query_string: true, status: 'required', managed: false } };
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { candidate, preparation });
+  await expect(approveDomainCutover('org', 'site', { revision: saved.revision, candidate_id: 'publication' })).rejects.toMatchObject({ code: 'redirect_preparation_pending' });
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { redirect_preparations: [redirect] });
+  await expect(approveDomainCutover('org', 'site', { revision: saved.revision, candidate_id: 'publication' })).rejects.toMatchObject({ code: 'redirect_rule_required' });
+  const ready = { ...redirect, blocker: null, rule: { ...redirect.rule, status: 'configured', managed: true } };
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { redirect_preparations: [ready] });
+  const approved = await approveDomainCutover('org', 'site', { revision: saved.revision, candidate_id: 'publication' });
+  expect(approved.approved_redirect_preparations).toEqual([ready]);
+});
+
 it('separates organization site addresses from shared media and preserves legacy configurations', async () => {
   makeTmpFixtures(); await resetDatastore();
   const { getStore } = await import('../../lib/datastore');

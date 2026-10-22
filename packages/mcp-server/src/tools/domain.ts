@@ -192,7 +192,7 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'approve_publishing_domain_cutover',
-    description: 'Approve switching website traffic to the verified frozen deployment. Read publishing domains first and review DNS requirements and certificate readiness. Existing traffic is preserved until validation succeeds. External DNS management remains the caller’s responsibility.',
+    description: 'Approve switching website traffic to the verified frozen deployment. Read publishing domains first and review DNS requirements, certificate readiness and redirect_preparations. Existing traffic is preserved until validation succeeds. With automatic DNS, redirect hosts switch after the website host: Typeroll ensures their zone redirect rule, then changes their reviewed record to a proxied placeholder. The publication goes live only after every redirect host answers 301 to the website host with the same path and query. External DNS management remains the caller’s responsibility.',
     inputSchema: { revision: z.string(), candidate_id: z.string() },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/cutover', args))),
   },

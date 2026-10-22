@@ -205,9 +205,17 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
   if (!preparation || (!preparation.certificate_ready && preparation.has_existing_traffic !== false)) {
     throw new ConnectionError('Cloudflare has not confirmed a working certificate. Complete validation while keeping current DNS in place. Traffic cannot be switched safely yet.', 409, 'domain_certificate_pending');
   }
+  const redirectPreparations = current.redirect_preparations ?? null;
+  const { redirectApprovalBlocker } = await import('./redirect-hosts');
+  if ((current.desired.redirect_hosts?.length ?? 0) !== (redirectPreparations?.length ?? 0)) throw new ConnectionError('The redirect hosts have not been prepared yet. Wait for domain verification to finish.', 409, 'redirect_preparation_pending');
+  for (const redirect of redirectPreparations ?? []) {
+    const blocker = redirectApprovalBlocker(redirect);
+    if (blocker) throw new ConnectionError(blocker.message, 409, blocker.code);
+  }
   const saved = await getStore().compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
-    value => value.revision === current.revision && value.candidate?.id === current.candidate!.id && JSON.stringify(value.preparation) === JSON.stringify(preparation) && JSON.stringify(value.media_preparation) === JSON.stringify(mediaPreparation),
-    { cutover_approved_revision: current.revision, approved_preparation: preparation, approved_media_preparation: mediaPreparation ?? null, state: 'distributing' });
+    value => value.revision === current.revision && value.candidate?.id === current.candidate!.id && JSON.stringify(value.preparation) === JSON.stringify(preparation) && JSON.stringify(value.media_preparation) === JSON.stringify(mediaPreparation) &&
+      JSON.stringify(value.redirect_preparations ?? null) === JSON.stringify(redirectPreparations),
+    { cutover_approved_revision: current.revision, approved_preparation: preparation, approved_media_preparation: mediaPreparation ?? null, approved_redirect_preparations: redirectPreparations, state: 'distributing' });
   if (!saved) throw new ConnectionError('Domain verification changed. Reload before switching traffic.', 409, 'domain_revision_conflict');
   if (current.candidate.job_id) {
     const { getDeployQueue } = await import('../deploy/queue');

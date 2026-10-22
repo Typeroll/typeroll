@@ -4,6 +4,7 @@ import { ProviderError } from './providers.mjs';
 import { findZone, inactiveZoneMessage, applyPreparedTraffic, trafficFingerprint, type DnsRequirement, type DomainPreparation, type ZoneSummary } from './domain-provider';
 import { coveredByUniversalSsl } from './host-checks';
 import { assertTrafficNotOwnedByOtherOrganization } from './cloudflare-account-claims';
+import { hostingDns } from './hosting-dns';
 import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
 
 // A redirect host never reaches Cloudflare Pages. Pages serves the same static
@@ -159,6 +160,24 @@ export async function prepareRedirectHost(dns: Provider | null, input: { host: s
   if (result.rule.status === 'conflict') result.blocker = { code: 'redirect_rule_conflict', message: `A redirect rule named ${result.rule.ref} in ${zone.name} differs from the saved redirect. Review it in Cloudflare → Rules → Redirect Rules.` };
   // `unverifiable`: the connection can neither read nor create rules. The manual rule is shown and the public 301 is checked after the switch.
   else if (!result.rule.managed && result.rule.status === 'required') result.blocker = { code: 'redirect_rule_required', message: manualRuleMessage(result.rule, input.host, input.target) };
+  return result;
+}
+
+/** Prepare every redirect host of a publication with the DNS access that can see its zone. */
+export async function prepareRedirectHosts(orgId: string, groupId: string, input: { hosts: string[]; target: string; dnsMode: 'automatic' | 'external'; configureTraffic?: boolean }): Promise<RedirectPreparation[]> {
+  const result: RedirectPreparation[] = [];
+  for (const host of input.hosts) {
+    if (input.dnsMode === 'external') { result.push(await prepareRedirectHost(null, { host, target: input.target, dnsMode: 'external' })); continue; }
+    let dns: Awaited<ReturnType<typeof hostingDns>>;
+    try { dns = await hostingDns(orgId, groupId, host); }
+    catch (error) {
+      if (!(error instanceof ConnectionError) || error.code !== 'domain_zone_required') throw error;
+      const preparation = await prepareRedirectHost(null, { host, target: input.target, dnsMode: 'external' });
+      result.push({ ...preparation, action: 'configure_dns', blocker: { code: error.details?.zone ? 'zone_not_active' : 'redirect_zone_required', message: error.message } });
+      continue;
+    }
+    result.push(await prepareRedirectHost(dns.provider, { host, target: input.target, dnsMode: 'automatic', dnsAccountId: dns.accountId, configureTraffic: input.configureTraffic, orgId }));
+  }
   return result;
 }
 
