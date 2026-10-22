@@ -44,7 +44,9 @@ short and long text, and place an example on a draft Page for me to review.
 Do not deploy the site.
 ```
 
-The agent needs the same site-admin permission as a person creating a type.
+The agent uses your current Site permissions. From Core 0.2.78, write/editor
+access is enough to create or change a block type; administrator access is not
+required. Read-only access cannot save changes.
 The optional [tr-custom-blocks recipe](../../skills/tr-custom-blocks/) guides this
 workflow. With compact MCP discovery, ask the agent to discover the relevant
 tools as needed. A local repository or development server is not required.
