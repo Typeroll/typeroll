@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import LoginForm from '../../components/LoginForm';
 const auth = vi.hoisted(() => ({
   signInWithEmailAndPassword: vi.fn(), createUserWithEmailAndPassword: vi.fn(), updateProfile: vi.fn(),
-  sendPasswordResetEmail: vi.fn(), setPersistence: vi.fn(), signOut: vi.fn(), inMemoryPersistence: {},
+  sendPasswordResetEmail: vi.fn(), sendEmailVerification: vi.fn(), setPersistence: vi.fn(), signOut: vi.fn(), inMemoryPersistence: {},
 }));
 vi.mock('firebase/auth', () => auth);
 vi.mock('../../lib/firebase-client', () => ({ getFirebaseAuth: () => ({}) }));
@@ -55,4 +55,33 @@ it('sets name before session exchange and removes Firebase client state on failu
   expect(auth.updateProfile.mock.invocationCallOrder[0]).toBeLessThan(request.mock.invocationCallOrder[0]);
   expect(auth.signOut).toHaveBeenCalled();
   expect(container.textContent).toContain('Too many attempts');
+});
+it('sends an email confirmation after sign-up and continues to "Check your email"', async () => {
+  const user = { emailVerified: false, getIdToken: vi.fn().mockResolvedValue('synthetic-token') };
+  auth.createUserWithEmailAndPassword.mockResolvedValueOnce({ user });
+  const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, verificationRequired: true }), { status: 200 }));
+  vi.stubGlobal('fetch', request);
+  await click('Sign up'); await input('login-name', 'Test Person'); await input('login-email', 'test@example.test'); await input('login-password', 'long-password-123'); await submit();
+  expect(auth.sendEmailVerification).toHaveBeenCalledWith(user, { url: `${window.location.origin}/verify-email` });
+  expect(auth.sendEmailVerification.mock.invocationCallOrder[0]).toBeLessThan(request.mock.invocationCallOrder[0]);
+  expect(auth.signOut).toHaveBeenCalled();
+  expect(window.location.pathname).toBe('/verify-email');
+  expect(window.location.search).toBe('?sent=1');
+});
+it('still creates the account when Firebase rejects the continue URL', async () => {
+  const user = { emailVerified: false, getIdToken: vi.fn().mockResolvedValue('synthetic-token') };
+  auth.createUserWithEmailAndPassword.mockResolvedValueOnce({ user });
+  auth.sendEmailVerification.mockRejectedValueOnce({ code: 'auth/unauthorized-continue-uri' });
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, verificationRequired: true }))));
+  await click('Sign up'); await input('login-name', 'Test Person'); await input('login-email', 'test@example.test'); await input('login-password', 'long-password-123'); await submit();
+  expect(auth.sendEmailVerification).toHaveBeenLastCalledWith(user);
+  expect(window.location.pathname).toBe('/verify-email');
+});
+it('does not send a confirmation on sign-in and follows the server decision', async () => {
+  const user = { emailVerified: true, getIdToken: vi.fn().mockResolvedValue('synthetic-token') };
+  auth.signInWithEmailAndPassword.mockResolvedValueOnce({ user });
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, verificationRequired: false }))));
+  await input('login-email', 'test@example.test'); await input('login-password', 'password'); await submit();
+  expect(auth.sendEmailVerification).not.toHaveBeenCalled();
+  expect(window.location.pathname).toBe('/app');
 });

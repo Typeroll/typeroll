@@ -4,15 +4,36 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   sendPasswordResetEmail,
+  sendEmailVerification,
   setPersistence,
   inMemoryPersistence,
   signOut,
+  type User,
 } from 'firebase/auth';
 import { getFirebaseAuth } from '../lib/firebase-client';
 
 import { authErrorMessage } from '../lib/auth-errors';
 
 type Mode = 'signin' | 'signup' | 'reset';
+
+/** Firebase's confirmation page links back to "Check your email" on this portal. */
+function verificationContinueUrl(next: string | null): string {
+  const url = new URL('/verify-email', window.location.origin);
+  if (next) url.searchParams.set('next', next);
+  return url.toString();
+}
+
+/** Best effort: the "Check your email" page can always send another link. */
+async function sendConfirmation(user: User, next: string | null): Promise<boolean> {
+  try {
+    await sendEmailVerification(user, { url: verificationContinueUrl(next) });
+    return true;
+  } catch {
+    // A portal domain missing from Firebase's authorized domains rejects the
+    // continue URL; Firebase's default confirmation page still works.
+    try { await sendEmailVerification(user); return true; } catch { return false; }
+  }
+}
 
 export default function LoginForm({ next = null }: { next?: string | null }) {
   const [mode, setMode] = useState<Mode>('signin');
@@ -26,13 +47,24 @@ export default function LoginForm({ next = null }: { next?: string | null }) {
 
   useEffect(() => setHydrated(true), []);
 
-  async function exchangeIdToken(idToken: string) {
+  async function exchangeIdToken(idToken: string, verificationSent = false) {
     const res = await fetch('/api/auth/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken }),
     });
     if (!res.ok) throw Object.assign(new Error('Session exchange failed'), { code: res.status === 429 ? 'auth/too-many-requests' : 'auth/session-failed' });
+    const data = await res.json().catch(() => ({})) as { verificationRequired?: boolean };
+    // The server decides from the verified ID token: an account without a
+    // confirmed email only gets the "Check your email" page.
+    if (data.verificationRequired) {
+      const params = new URLSearchParams();
+      if (next) params.set('next', next);
+      if (verificationSent) params.set('sent', '1');
+      const query = params.toString();
+      window.location.href = `/verify-email${query ? `?${query}` : ''}`;
+      return;
+    }
     window.location.href = next ?? '/app';
   }
 
@@ -69,9 +101,13 @@ export default function LoginForm({ next = null }: { next?: string | null }) {
         ? await signInWithEmailAndPassword(auth, email.trim(), password)
         : await createUserWithEmailAndPassword(auth, email.trim(), password);
       try {
-        if (mode === 'signup') await updateProfile(result.user, { displayName: name.trim() });
+        let sent = false;
+        if (mode === 'signup') {
+          await updateProfile(result.user, { displayName: name.trim() });
+          if (!result.user.emailVerified) sent = await sendConfirmation(result.user, next);
+        }
         const idToken = await result.user.getIdToken(true);
-        await exchangeIdToken(idToken);
+        await exchangeIdToken(idToken, sent);
       } finally {
         await signOut(auth);
       }
@@ -83,7 +119,7 @@ export default function LoginForm({ next = null }: { next?: string | null }) {
       <h2 style={{ fontSize: '1.125rem' }}>{mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create your account' : 'Reset your password'}</h2>
       <form onSubmit={handleEmail} className="stack" data-login-ready={hydrated ? 'true' : 'false'}>
         {mode === 'signup' && <>
-          <p className="muted text-sm">First, create your personal account. Next, name your organization or join one with an invitation.</p>
+          <p className="muted text-sm">First, create your personal account and confirm your email address. Next, name your organization or join one with an invitation.</p>
           <div className="field"><label htmlFor="login-name">Your name</label><input id="login-name" autoComplete="name" value={name} onChange={e => setName(e.target.value)} required maxLength={80} disabled={busy || !hydrated} /></div>
         </>}
         {mode === 'reset' && <p className="muted text-sm">Request a password reset link. This also works if you previously signed in with Google using this address.</p>}
