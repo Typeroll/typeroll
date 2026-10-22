@@ -88,6 +88,11 @@ A connection expires after 30 days; reconnect from your assistant. Site contexts
 expire after 24 hours, at which point the assistant selects the site again.
 Older organization-scoped connections are still revoked from **API keys**.
 
+Personal connections work on every Site you can reach and do not depend on the
+built-in AI chat in the portal, which uses the Organization's own Anthropic key
+on the Sites an owner or admin chooses. See
+[Set up the built-in AI assistant](../ai-assistant/).
+
 ## Self-hosted Typeroll
 
 The same Core implementation provides personal OAuth, role checks, site

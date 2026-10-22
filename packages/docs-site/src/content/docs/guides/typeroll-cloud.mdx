@@ -61,9 +61,15 @@ Review the affected pages and preview the result before publishing.
 
 This is separate from connecting your own development agent. Editors can use the
 built-in assistant in the browser without installing an MCP client or a local
-development environment. AI availability depends on the service configuration.
-AI edits still use the normal saving and publication workflow; a chat response is
-not evidence that a change has been deployed.
+development environment. AI edits still use the normal saving and publication
+workflow; a chat response is not evidence that a change has been deployed.
+
+The assistant uses your Organization's own Anthropic API key; Typeroll Cloud has
+no platform AI key. Starting with the Core release that introduces organization
+AI keys, **AI Chat** appears only after an Organization owner or admin adds a key
+and allows the Site, including for existing Organizations. See
+[Set up the built-in AI assistant](../ai-assistant/). Your own agent works over
+MCP on every Site either way.
 
 ## Connect your AI agent
 

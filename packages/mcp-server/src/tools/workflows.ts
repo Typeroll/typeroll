@@ -55,7 +55,7 @@ export const workflowTools: ToolDef[] = [
   {
     name: 'create_site_and_plan',
     noSite: true,
-    description: 'Create a new Site in the Organization and start AI site planning from a business description, like "Plan a new site with AI" on the New site page. Requires an organization API key. The plan pauses for review: read it with get_workflow and approve_workflow only after the user agrees.',
+    description: 'Create a new Site in the Organization and start AI site planning from a business description, like "Plan a new site with AI" on the New site page. Requires an organization API key. Needs the Organization\'s own AI key with site access "all" (read_organization_ai_settings); otherwise it answers 403 ai_not_enabled and creates nothing — then create a blank Site and do the planning yourself, or ask an owner or admin to enable it. The plan pauses for review: read it with get_workflow and approve_workflow only after the user agrees.',
     inputSchema: {
       name: z.string().min(1),
       business_description: z.string().min(1).describe('What the business does, for whom, and what sets it apart.'),

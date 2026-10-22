@@ -1,7 +1,8 @@
-// Access tools — API keys, cross-organization site sharing and organization
-// invites. Each wraps the authenticated public API with the same permission
-// checks as the portal: a key never mints a key or a grant that reaches
-// further than it does.
+// Access tools — API keys, cross-organization site sharing, organization
+// invites and the Organization's own AI key for the portal assistant. Each
+// wraps the authenticated public API with the same permission checks as the
+// portal: a key never mints a key or a grant that reaches further than it
+// does.
 
 import { z } from 'zod';
 import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
@@ -74,5 +75,37 @@ export const accessTools: ToolDef[] = [
     description: 'Create a signed invite link to the Organization (organization API key required). The invited person opens invite_url, signs in and joins as an editor; the link works until expires_at (ttl_days 1–30, default 7) and cannot be revoked early. Send it only to the person the user named.',
     inputSchema: { ttl_days: z.number().int().min(1).max(30).optional() },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('organization/invites', args))),
+  },
+  {
+    name: 'read_organization_ai_settings',
+    noSite: true,
+    description: 'Read the Organization\'s built-in AI assistant settings: whether its own Anthropic API key is set (last four characters, verified_at, who set it and when — never the key), site_access ({ mode: "all" | "selected", site_ids }) and every Site of the Organization with ai_enabled. The portal AI chat appears only on Sites with ai_enabled. This setting never limits MCP or the API: you can edit every Site you have access to. Requires an organization API key, or a personal connection in an Organization where the person is an owner or admin.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('organization/ai'))),
+  },
+  {
+    name: 'set_organization_ai_key',
+    noSite: true,
+    description: 'Add or replace the Organization\'s own Anthropic API key for the portal\'s built-in AI assistant. Typeroll checks the key with Anthropic before saving: a rejected key returns 422 ai_key_rejected and an unreachable Anthropic 502 ai_key_unverified, and nothing is stored. The key is stored encrypted and never returned. A first key enables no Sites; replacing a key keeps the Site choice. Only call this with a key the user gave you for this purpose and their explicit go-ahead; prefer that an owner or admin enters it in the portal (Organization settings → AI assistant) so it does not pass through this conversation. Never repeat the key back. Requires an organization API key.',
+    inputSchema: { api_key: z.string().min(20).max(512).describe('The Anthropic API key (starts with sk-ant-).') },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPut('organization/ai/key', { api_key: args.api_key }))),
+  },
+  {
+    name: 'remove_organization_ai_key',
+    noSite: true,
+    description: 'Remove the Organization\'s Anthropic API key. The portal AI chat disappears from every Site and the Site choice starts over; MCP and the API are unaffected. Requires an organization API key and the user\'s explicit go-ahead.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootDelete('organization/ai/key'))),
+  },
+  {
+    name: 'set_organization_ai_site_access',
+    noSite: true,
+    description: 'Choose which of the Organization\'s own Sites show the portal AI chat: mode "all" (every Site, including Sites created later) or mode "selected" with site_ids from read_organization_ai_settings (an empty list turns it off everywhere). A Site shared in from another Organization follows that owner\'s setting. Needs a key first (409 ai_key_required). Requires an organization API key.',
+    inputSchema: {
+      mode: z.enum(['all', 'selected']),
+      site_ids: z.array(z.string()).max(1000).optional().describe('Required when mode is "selected".'),
+    },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPut('organization/ai/site-access',
+      args.mode === 'all' ? { mode: 'all' } : { mode: 'selected', site_ids: args.site_ids ?? [] }))),
   },
 ];

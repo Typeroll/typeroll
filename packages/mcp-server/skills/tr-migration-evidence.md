@@ -5,6 +5,10 @@ description: Source-first design baseline, native capability mapping and evidenc
 
 # Migration evidence contract
 
+**Who runs this:** this recipe is for the user's own AI agent (Claude Code, Codex or
+another MCP client) working through MCP and the public API. The portal's built-in
+AI assistant has no migration tools: it does not import, convert or verify sites.
+
 Use this shared contract with WordPress, Astro, URL and multisite recipes.
 Default to preserving the source appearance and behavior. A redesign requires
 explicit scope. A partly migrated target is not the design reference.

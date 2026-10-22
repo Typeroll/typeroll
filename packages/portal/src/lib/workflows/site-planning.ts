@@ -45,7 +45,7 @@ Respond with JSON of the shape:
           site_name: string;
           tagline: string;
           pages: PlannedPage[];
-        }>(ctx.orgId, system, `Business description:\n${business}`);
+        }>(ctx, system, `Business description:\n${business}`);
 
         ctx.log(`Proposed ${proposal.pages.length} pages for "${proposal.site_name}"`);
 
@@ -79,7 +79,7 @@ Respond with JSON of the shape:
           ctx.log(`Writing "${p.title}"…`);
 
           const html = await generateText(
-            ctx.orgId,
+            ctx,
             `You are writing a single page for the website "${proposal.site_name}" (${proposal.tagline}). Output only the HTML body, no <html>/<body> wrapper. Use semantic tags (h1, h2, p, ul, etc.). Inline styles are OK but you can use the site's CSS variables: var(--color-primary), var(--color-accent), var(--spacing-md), var(--spacing-lg).`,
             `Page title: ${p.title}
 Page purpose: ${p.description}

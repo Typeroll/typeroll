@@ -11,7 +11,8 @@ interface ImportMetaEnv {
   // Server-side
   readonly FIREBASE_PROJECT_ID?: string;
   readonly FIREBASE_SERVICE_ACCOUNT?: string;
-  readonly ANTHROPIC_API_KEY: string;
+  /** Optional Anthropic-compatible endpoint. AI keys are per organization, not server variables. */
+  readonly ANTHROPIC_BASE_URL?: string;
   readonly R2_ACCOUNT_ID: string;
   readonly R2_ACCESS_KEY_ID: string;
   readonly R2_SECRET_ACCESS_KEY: string;

@@ -1,0 +1,39 @@
+.org-ai { max-width: 760px; }
+.org-ai h2 { font-size: 1.125rem; margin: 0; }
+.org-ai p { margin: 0; overflow-wrap: anywhere; }
+.org-ai__status {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+.org-ai__status > * + * { margin-top: 0.25rem; }
+.org-ai__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.org-ai .btn { min-height: 44px; }
+.org-ai .field input { min-height: 44px; }
+.org-ai__fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.org-ai__fieldset legend { font-size: 0.875rem; font-weight: 500; padding: 0; margin-bottom: 0.25rem; }
+.org-ai__choice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+.org-ai__choice input { width: 1.125rem; height: 1.125rem; flex: 0 0 auto; margin: 0; }
+.org-ai__choice span { overflow-wrap: anywhere; min-width: 0; }
+.org-ai__sites { list-style: none; margin: 0; padding: 0; }
+.org-ai__error { color: var(--color-danger); }
+.org-ai__success { color: var(--color-text); }
+.org-ai [tabindex="-1"]:focus { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.org-ai__visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

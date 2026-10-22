@@ -176,6 +176,30 @@ export async function requireOrgAdmin(
 }
 
 /**
+ * A signed-in organization owner or admin, for organization settings that
+ * hold credentials (publishing accounts, the AI key). Stricter than
+ * requireOrgAdmin: the member role must be owner or admin even when the
+ * organization has not opted into role enforcement, so new credential
+ * surfaces never inherit the legacy "every member is admin" behaviour.
+ */
+export async function requireOrganizationOwnerOrAdmin(
+  cookies: AstroCookies,
+  refusal: string,
+): Promise<GuardResult<FullSession>> {
+  const session = await requireFullSession(cookies);
+  if (!session.ok) return session;
+  const admin = await requireOrgAdmin(session.value);
+  if (!admin.ok) return admin;
+  const member = await getStore().getDoc<{ role: string }>(`${paths.members(session.value.orgId)}/${session.value.userId}`);
+  if (member?.role !== 'owner' && member?.role !== 'admin') {
+    const response = json({ error: refusal }, 403);
+    response.headers.set('Cache-Control', 'no-store');
+    return { ok: false, response };
+  }
+  return session;
+}
+
+/**
  * Permission ordering — higher number = more authority. Used by
  * requirePermission to compare a context's permission against the level a
  * mutating route demands. Owner-org users always carry `'admin'` here.

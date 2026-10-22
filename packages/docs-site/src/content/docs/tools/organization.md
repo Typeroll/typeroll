@@ -88,6 +88,12 @@ the portal form, and returns `workflow_id` with `202`:
 | `rebuild_deploy`                                                | `environment`: `staging` or `production`                              |
 | `seo_audit`, `link_check`, `performance_audit`, `schema_markup` | none                                                                  |
 
+`site_planning`, `content_generation`, `content_improvement` and
+`schema_markup` call the model with the Organization's own Anthropic key and
+need AI access for the Site; without it they stop with "AI is not enabled for
+this site". `seo_audit` still returns its issue list without AI
+prioritization. See [Built-in AI assistant](#built-in-ai-assistant).
+
 `rebuild_deploy` publishes the Site and therefore needs admin permission, like
 every other deploy route. `migration` needs the Organization's verified import
 storage and returns `409 import_storage_required` until it is ready. Add
@@ -113,7 +119,26 @@ with an organization key:
 
 The two workflow starts return `201` with `site` and `workflow`; follow the run
 with `get_workflow` on the new Site. A migration start checks import storage
-before anything is created.
+before anything is created. An AI plan start checks that the Organization's own
+AI key covers new Sites (a key and site access **All sites**); otherwise it
+returns `403` with code `ai_not_enabled` and creates nothing.
+
+## Built-in AI assistant
+
+The portal's AI chat uses the Organization's own Anthropic API key on the Sites
+an owner or admin chooses. MCP and the API never depend on it.
+
+| Action               | MCP tool                          | API route below `/api/v1`          | Permission       |
+| -------------------- | --------------------------------- | ---------------------------------- | ---------------- |
+| Read status          | `read_organization_ai_settings`   | `GET /organization/ai`             | Organization key |
+| Add or replace a key | `set_organization_ai_key`         | `PUT /organization/ai/key`         | Organization key |
+| Remove the key       | `remove_organization_ai_key`      | `DELETE /organization/ai/key`      | Organization key |
+| Choose Sites         | `set_organization_ai_site_access` | `PUT /organization/ai/site-access` | Organization key |
+
+A personal connection needs an Organization where the person is an owner or
+admin. The key is verified with Anthropic before it is stored and is never
+returned; prefer entering it in the portal. Details and error codes are in
+[Set up the built-in AI assistant](../../guides/ai-assistant/).
 
 ## Publishing connections
 

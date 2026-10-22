@@ -88,6 +88,7 @@ Organization routes need an organization-scoped key; a site-scoped key gets
 |---|---|
 | Organization API keys | `GET /organization/api-keys`, `DELETE /organization/api-keys/{keyId}` (keys are created in the portal) |
 | Invites | `POST /organization/invites` |
+| Built-in AI assistant | `GET /organization/ai`, `PUT/DELETE /organization/ai/key`, `PUT /organization/ai/site-access` (the Organization's own Anthropic key, never returned, and the Sites that show the portal AI chat) |
 | Publishing connections | `GET /publishing/connections`, `GET /publishing/github-diagnosis`, `GET /publishing/cloudflare-diagnosis`, `POST /publishing/connections/cloudflare`, `DELETE /publishing/connections/{provider}` |
 | Publishing builds, domains, Hosting Groups, media migration | `/publishing/builds`, `/publishing/domains`, `/publishing/zones`, `/publishing/hosting-groups`, `/publishing/media-migration`, `/publishing/github-permissions` |
 
