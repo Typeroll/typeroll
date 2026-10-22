@@ -56,3 +56,12 @@ it('sets name before session exchange and removes Firebase client state on failu
   expect(auth.signOut).toHaveBeenCalled();
   expect(container.textContent).toContain('Too many attempts');
 });
+it('opens account creation directly when asked to (login?mode=signup)', async () => {
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await act(async () => root.render(createElement(LoginForm, { initialMode: 'signup' })));
+  expect(container.querySelector('h2')?.textContent).toBe('Create your account');
+  expect(container.querySelector('#login-name')).not.toBeNull();
+  await click('Already have an account? Sign in');
+  expect(container.querySelector('h2')?.textContent).toBe('Sign in');
+});

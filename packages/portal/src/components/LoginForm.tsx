@@ -14,8 +14,8 @@ import { authErrorMessage } from '../lib/auth-errors';
 
 type Mode = 'signin' | 'signup' | 'reset';
 
-export default function LoginForm({ next = null }: { next?: string | null }) {
-  const [mode, setMode] = useState<Mode>('signin');
+export default function LoginForm({ next = null, initialMode = 'signin' }: { next?: string | null; initialMode?: 'signin' | 'signup' }) {
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [name, setName] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [email, setEmail] = useState('');
