@@ -133,9 +133,19 @@ describe('confirmation email and re-check', () => {
     expect(await confirmEmailVerification(cookies as never, pending)).toBe(false);
     expect(cookies.set).not.toHaveBeenCalled();
 
+    // A fresh token that still lacks the claim never replaces the cookie.
     admin.getUser.mockResolvedValueOnce({ email: 'person@example.test', emailVerified: true, disabled: false });
+    admin.verifyIdToken.mockResolvedValueOnce({ uid: 'person', email: 'person@example.test', firebase: { sign_in_provider: 'custom' } });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ idToken: 'stale-id-token' }))));
+    await expect(confirmEmailVerification(cookies as never, pending)).rejects.toThrow('no confirmed email');
+    expect(admin.createSessionCookie).not.toHaveBeenCalled();
+    expect(cookies.set).not.toHaveBeenCalled();
+
+    admin.getUser.mockResolvedValueOnce({ email: 'person@example.test', emailVerified: true, disabled: false });
+    admin.verifyIdToken.mockResolvedValueOnce({ uid: 'person', email: 'person@example.test', email_verified: true, firebase: { sign_in_provider: 'custom' } });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ idToken: 'fresh-id-token' }))));
     expect(await confirmEmailVerification(cookies as never, pending)).toBe(true);
+    expect(admin.verifyIdToken).toHaveBeenLastCalledWith('fresh-id-token');
     expect(admin.createSessionCookie).toHaveBeenCalledWith('fresh-id-token', expect.any(Object));
     expect(cookies.set).toHaveBeenCalledWith('typeroll_session', 'minted-cookie', expect.objectContaining({ httpOnly: true, sameSite: 'lax' }));
     vi.unstubAllGlobals();

@@ -223,6 +223,13 @@ export async function refreshSessionForUser(
   const app = await getFirebaseAdminApp();
   const idToken = await idTokenForUser(userId, firebaseApiKey);
 
+  // Every caller refreshes a confirmed account (rolling refresh, new
+  // Organization claims, a just-confirmed email). Never replace a working
+  // cookie with one the email gate would reject.
+  if (!hasConfirmedEmail(await getAuth(app).verifyIdToken(idToken))) {
+    throw new Error('Refreshed identity has no confirmed email');
+  }
+
   // Create a long-lived session cookie from the fresh ID token and set it on
   // the response. This replaces the old cookie and its claims.
   const expiresIn = SESSION_LIFETIME_MS;
