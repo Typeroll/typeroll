@@ -79,6 +79,7 @@ export function workflowSummary(wf: WorkflowRecord) {
     completed_at: wf.completed_at ?? null,
     failed_at: wf.failed_at ?? null,
     failure_reason: wf.failure_reason ?? null,
+    failure_code: wf.failure_code ?? null,
     triggered_by: wf.triggered_by,
     created_by: wf.created_by,
   };

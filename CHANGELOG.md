@@ -1,5 +1,15 @@
 # Changelog
 
+## Core 0.2.86 / MCP 0.45.66
+
+- **Everything the built-in chat knew is available to your own agent.** With the portal assistant now optional per Organization and Site, its help moved to MCP:
+  - New MCP tools `add_faq_schema`, `add_recipe_schema` and `add_event_schema` build validated schema.org JSON-LD (ISO 8601 dates and durations, currency with prices, absolute URLs) and merge it into the page's draft `json_ld`: a node of the same `@type` is replaced and other nodes are kept, and invalid existing JSON-LD is refused instead of overwritten. The portal chat uses the same builder, so it no longer replaces a page's whole `json_ld` when adding an FAQ.
+  - The chat's playbook (preview links, images, page edits, site-wide changes and reusable sections, header and footer, settings, analytics with the cookie banner, URL and SEO conventions) is now in the `tr-edit-site` and `tr-seo` recipes and the agent guide. The starter design notes are the new `tr-starter-design` recipe, which the chat also reads.
+  - AI workflows (content generation and improvement, schema markup, site planning) say what to do on `ai_not_enabled`: don't retry; do the same work with `tr-content-write`, `tr-seo` or `tr-new-site`. Failed workflow runs record a stable `failure_code`.
+  - Fixed: `schema_markup` without AI access skipped every page and reported success; it now fails with `ai_not_enabled`.
+  - The agent workspace starter points agents at the everyday-request recipes.
+- **"Check your email" continues by itself.** Only the server knows whether an address is confirmed, so the page now asks it when it opens (including after the confirmation link brings you back), when the tab is shown again, and every 10 seconds for 15 minutes while it is visible, then continues automatically. The "I've confirmed my email" button is gone; **Send confirmation email** is the main action.
+
 ## Core 0.2.85 / MCP 0.45.65
 
 - **Breaking: no platform AI key. Each Organization adds its own and chooses its Sites.** The built-in AI assistant used one server-wide `ANTHROPIC_API_KEY`, so every editor in every Organization used the platform's account. Owners and admins now add the Organization's own Anthropic key in Organization settings → AI assistant (or `PUT /api/v1/organization/ai/key`, MCP `set_organization_ai_key`). The key is verified with Anthropic, encrypted with `INTEGRATIONS_SECRET_KEY`, never returned (only its last four characters) and used only on the Sites the admin selects (all Sites, or a list; none by default). On a Site without access the chat, its entry points and the AI workflows are hidden or refused with `ai_not_enabled`; "Plan a new site with AI" refuses before creating anything. A shared Site uses its owner Organization's key. MCP, the public API, OAuth connections and API keys are never affected: people's own agents work on every Site. `ANTHROPIC_API_KEY` is no longer read; self-hosters see a warning if it is still set. After upgrading, nobody has the built-in assistant until an owner or admin adds a key.

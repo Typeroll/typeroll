@@ -67,8 +67,10 @@ relevant tool, reads its schema and calls the appropriate read/write/admin
 dispatcher. It need not load every tool or the complete documentation.
 
 - `list_skills` and `read_skill` provide reusable workflows. Start with
-  `tr-edit-site` for ordinary editing; load design or migration recipes only
-  when needed.
+  `tr-edit-site` for ordinary editing: it covers page and preview links,
+  images, menus, site-wide changes as shared blocks, settings and analytics.
+  Load design (`tr-starter-design`, `tr-brand`), SEO (`tr-seo`) or migration
+  recipes only when needed.
 - **Site settings → AI agent instructions** stores your audience, tone and
   editing conventions for the selected version. Administrators can update it
   in the portal or with `update_site_settings({ agent_instructions: "…" })`.

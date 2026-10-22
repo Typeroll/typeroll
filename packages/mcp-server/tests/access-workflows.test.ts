@@ -154,6 +154,22 @@ describe('workflow tools', () => {
       expect(s.calls[0]!.body).toEqual({ name: 'Old Blog', wp_url: 'https://wp.example' });
     } finally { await s.close(); }
   });
+
+  it('tell an agent without portal AI to do AI workflows itself with the matching recipe', async () => {
+    const s = await session();
+    try {
+      const { tools } = await s.client.listTools();
+      const describe = (name: string) => tools.find(t => t.name === name)!.description!;
+      const start = describe('start_workflow');
+      expect(start).toContain('ai_not_enabled');
+      for (const pair of ['site_planning: tr-new-site', 'content_generation: tr-content-write', 'content_improvement: tr-content-write', 'schema_markup: tr-seo']) {
+        expect(start).toContain(pair);
+      }
+      expect(start).toMatch(/Do not retry/);
+      expect(describe('get_workflow')).toContain('failure_code');
+      expect(describe('create_site_and_plan')).toContain('tr-new-site');
+    } finally { await s.close(); }
+  });
 });
 
 describe('organization AI assistant tools', () => {

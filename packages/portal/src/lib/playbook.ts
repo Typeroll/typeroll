@@ -6,6 +6,11 @@
  * solve inconsistently. Add to this file as transcripts surface new cases;
  * keep entries short — the AI is smart, it just needs the convention, not a
  * tutorial.
+ *
+ * External agents get the same recipes over MCP, rewritten for MCP tool
+ * names: packages/mcp-server/skills/tr-edit-site.md ("Everyday requests") and
+ * tr-seo.md (URL conventions, structured data). Change both when a convention
+ * changes. The design reference is shared verbatim (design-notes.ts).
  */
 export const PLAYBOOK_STARTER = `# Typeroll chat playbook
 

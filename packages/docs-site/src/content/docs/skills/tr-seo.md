@@ -43,7 +43,14 @@ You don't need to configure these — they work out of the box:
 - Sets the site-wide `organization` (name, logo, `same_as` profiles) with `update_site_settings`
 - Adds `LocalBusiness` or `Organization` JSON-LD to the homepage
 - Adds `ContactPage` to contact pages
+- Adds FAQ, recipe and event structured data with `add_faq_schema`, `add_recipe_schema` and `add_event_schema`, which validate the input and keep other JSON-LD on the page; see [structured data tools](../../tools/pages/#structured-data-tools)
 - `json_ld` field takes the schema as a JSON string (not a nested object)
+- Does this itself when the `schema_markup` workflow is unavailable because the Site has no built-in AI access
+
+### URLs and articles
+
+- Keeps slugs lowercase and hyphenated, and nests addresses (`/team/jane-doe`) so breadcrumbs follow the hierarchy
+- Sets `kind: "article"` and an `author` on blog posts and news for Article structured data
 
 ### Headings
 
@@ -63,6 +70,10 @@ Address: Kungsgatan 5, Stockholm. Phone: 08-123 456.
 
 ```
 Set a default title suffix and write meta descriptions for all pages.
+```
+
+```
+Add FAQ structured data to the FAQ page from the questions it shows.
 ```
 
 ## Common pitfalls

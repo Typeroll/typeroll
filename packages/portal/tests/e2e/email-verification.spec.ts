@@ -54,10 +54,12 @@ test('an account without a confirmed email reaches only "Check your email"', asy
     await page.screenshot({ path: testInfo.outputPath(`verify-email-${width}.png`), fullPage: true });
   }
 
-  await page.getByRole('button', { name: "I've confirmed my email", exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('not confirmed yet');
+  // Only the server knows: there is no "I've confirmed" button, and an
+  // unconfirmed account stays on the page without an error.
+  await expect(page.getByRole('button', { name: "I've confirmed my email" })).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
   await page.getByRole('button', { name: 'Send confirmation email', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('We sent a new confirmation link to owner@e2e.typeroll.local');
+  await expect(page.getByRole('status')).toContainText('We sent a confirmation link to owner@e2e.typeroll.local');
   await expect(page.getByRole('button', { name: 'Resend confirmation email', exact: true })).toBeEnabled();
 
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();

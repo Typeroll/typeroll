@@ -34,7 +34,13 @@ read_app_documentation when needed; do not bundle private app guides locally.
 No Site yet? Use hosted MCP with an Organization key and create_site, or create it
 in the portal. To start from an AI site plan instead of a blank Site, use
 create_site_and_plan, poll get_workflow and approve its structure review only
-with the user's consent. Read back its ID before editing. Use one explicit Site/Version for
+with the user's consent. That AI plan needs the Organization's own portal AI
+key for new Sites; without it the call answers `403 ai_not_enabled` and the
+`site_planning` workflow fails with `failure_code: "ai_not_enabled"`. Then plan
+it yourself: `create_site`, propose the site name, tagline and page list (title,
+slug, purpose, target keywords) from the business description, get the
+user's approval, and build with this recipe. Tell the user you planned it
+yourself; don't retry the workflow. Read back its ID before editing. Use one explicit Site/Version for
 related operations. Larger changes to an existing site should use a branch.
 
 Before importing content or a media library, require get_import_readiness to pass.
