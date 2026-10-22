@@ -1,4 +1,4 @@
-// POST /api/auth/verification-status — "I've confirmed my email". Re-checks
+// POST /api/auth/verification-status — asked automatically by "Check your email". Re-checks
 // the account in Firebase and, once the address is confirmed, replaces the
 // pending session cookie with one carrying `email_verified: true`.
 
@@ -18,7 +18,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const identity = await getSessionIdentity(cookies);
   if (!identity) return json({ error: 'Sign in again to continue.' }, 401);
   if (identity.emailVerified) return json({ ok: true, verified: true }, 200);
-  const limited = await limitAuthRequest(`verify-status:${identity.userId}`, 30, 10 * 60_000);
+  const limited = await limitAuthRequest(`verify-status:${identity.userId}`, 120, 10 * 60_000);
   if (limited) return limited;
   try {
     return json({ ok: true, verified: await confirmEmailVerification(cookies, identity) }, 200);

@@ -40,7 +40,7 @@ Core 0.2.0 uses one Page model for all content. See [Content types](../content-t
 | `language`        | string                                                   | Per-page language override (e.g. `"en"`, `"sv"`).                                                                                                       |
 | `author`          | string                                                   | Article author. Used in Article JSON-LD.                                                                                                                |
 | `date_published`  | string                                                   | ISO 8601 date. Used in Article JSON-LD.                                                                                                                 |
-| `json_ld`         | string                                                   | Custom JSON-LD schema as a JSON string.                                                                                                                 |
+| `json_ld`         | string                                                   | Custom JSON-LD schema as a JSON string. For FAQ, recipe and event pages, use the [structured data tools](#structured-data-tools).                       |
 
 ## Homepage
 
@@ -123,6 +123,40 @@ Updates one or more fields on an existing page. Pass only the fields you want to
 ```
 Update the Services page: change the seo_description to "..."
 ```
+
+## Structured data tools
+
+`add_faq_schema`, `add_recipe_schema` and `add_event_schema` add schema.org JSON-LD to a page without hand-writing `json_ld`.
+They validate the input, build the JSON-LD and merge it into the page's
+`json_ld` field: an existing node of the same type is replaced, other
+structured data on the page is kept in an `@graph`. A page whose existing
+`json_ld` is not valid JSON-LD is refused rather than overwritten. Like other
+content edits, the result is a draft; pass `save: true` or save it afterwards.
+They need write permission and accept `version`.
+
+| Tool                | Required                                         | Optional                                                                                                                                |
+| ------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `add_faq_schema`    | `page_id`, `items` (`question`, `answer`)        | —                                                                                                                                       |
+| `add_recipe_schema` | `page_id`, `name`, `ingredients`, `instructions` | `description`, `image_url`, `author`, `prep_time`, `cook_time`, `total_time` (ISO 8601 durations such as `PT30M`), `recipe_yield`       |
+| `add_event_schema`  | `page_id`, `name`, `start_date`                  | `description`, `end_date`, `location_name`, `location_address`, `image_url`, `offers_url`, `offers_price`, `offers_currency` (ISO 4217) |
+
+Validation rules: FAQ items need a question and an answer; recipes need at least
+one ingredient and one step, and URLs must be absolute; event dates are ISO 8601
+(include the UTC offset), the end is not before the start, and a price needs a
+currency. The response lists `warnings` when the data is valid but not eligible
+for Google's rich results, such as a recipe without an image or an event
+without a location.
+
+```
+The FAQ page shows five questions. Add FAQ structured data for them.
+  → add_faq_schema page_id=faq items=[…]
+```
+
+Use FAQ markup only on a page that visibly shows those questions and answers.
+The built-in AI chat has tools with the same names, inputs and rules. Over the
+REST API, write the JSON-LD string to `json_ld` with `PATCH
+/api/v1/sites/{siteId}/pages/{pageId}`; for other types, use `update_page` with
+`json_ld` in the same way. See [SEO and indexing](../../technical/seo-and-indexing/#structured-data).
 
 ## `batch_update_pages`
 

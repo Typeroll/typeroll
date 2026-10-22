@@ -72,6 +72,22 @@ my-site/
 - **Lock:** generator version and hashes of managed starter files. Commit it with
   the workspace. It does not pin the hosted CMS or its content.
 
+The generated `AGENTS.md` also tells the agent where everyday help lives, so it
+does not depend on the portal's optional built-in AI chat:
+
+- `tr-edit-site` for page and preview links, images, menus, site-wide changes as
+  shared blocks, settings and analytics.
+- `add_faq_schema`, `add_recipe_schema` and `add_event_schema` for FAQ, recipe
+  and event structured data ([Pages tools](../../tools/pages/#structured-data-tools)).
+- `tr-starter-design` for a blank Site or one that keeps the starter design.
+- When an AI workflow fails with `ai_not_enabled`, the agent does the same work
+  itself with the matching recipe and says so
+  ([Workflows](../../tools/organization/#workflows)).
+
+An existing workspace receives this text with `init --update` when its
+`AGENTS.md` is unchanged; an edited `AGENTS.md` is kept, so add the pointers
+yourself.
+
 You may version this workspace in your own private Git repository. Keep it
 separate from the CMS-generated publication repository: changes to a site are
 made through Typeroll, not by editing exported build source.

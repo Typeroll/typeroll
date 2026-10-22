@@ -90,9 +90,22 @@ the portal form, and returns `workflow_id` with `202`:
 
 `site_planning`, `content_generation`, `content_improvement` and
 `schema_markup` call the model with the Organization's own Anthropic key and
-need AI access for the Site; without it they stop with "AI is not enabled for
-this site". `seo_audit` still returns its issue list without AI
+need AI access for the Site. Without it the run fails: `get_workflow` returns
+`status: "failed"`, `failure_code: "ai_not_enabled"` and a `failure_reason`
+saying the AI assistant is not enabled for this site. (Earlier Core versions
+report only `failure_reason`, and their `schema_markup` completes with every
+page skipped.) `seo_audit` still returns its issue list without AI
 prioritization. See [Built-in AI assistant](#built-in-ai-assistant).
+
+Your own agent does not need that key. The MCP tool descriptions tell an agent
+that meets `ai_not_enabled` to do the same work itself instead of retrying:
+
+| Workflow                                 | What your agent does instead                                                              |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `site_planning` / `create_site_and_plan` | Plans the pages with the [new-site recipe](../../skills/tr-new-site/), with your approval |
+| `content_generation`                     | Writes the page as a draft with the `tr-content-write` recipe                             |
+| `content_improvement`                    | Rewrites the weakest published pages as drafts for review (`tr-content-write`)            |
+| `schema_markup`                          | Adds structured data with the [structured data tools](../pages/#structured-data-tools)    |
 
 `rebuild_deploy` publishes the Site and therefore needs admin permission, like
 every other deploy route. `migration` needs the Organization's verified import

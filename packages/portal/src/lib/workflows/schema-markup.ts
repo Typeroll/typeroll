@@ -9,6 +9,7 @@ import { vstore } from '../version-store';
 import type { Page, SiteSettings } from '@typeroll/shared';
 import { type WorkflowDef } from './types';
 import { generateJson } from '../ai/claude';
+import { AiNotEnabledError } from '../ai/organization-ai';
 
 interface SchemaProposal {
   page_id: string;
@@ -50,6 +51,9 @@ Return { "type": "<schema-type>", "json_ld": <object> }`
             );
             proposal = { page_id: p.id, ...result };
           } catch (e) {
+            // No AI access fails the run like the other AI workflows, instead
+            // of "completing" with every page skipped.
+            if (e instanceof AiNotEnabledError) throw e;
             ctx.log(`Skipped ${p.title}: ${e instanceof Error ? e.message : e}`);
             continue;
           }

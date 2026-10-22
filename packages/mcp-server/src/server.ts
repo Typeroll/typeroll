@@ -13,6 +13,7 @@ import { z, type ZodRawShape } from 'zod';
 import { TyperollClient } from './client.js';
 import { ownerReviewTools } from './tools/owner-review.js';
 import { pageTools } from './tools/pages.js';
+import { structuredDataTools } from './tools/structured-data.js';
 import { partialTools } from './tools/partials.js';
 import { contentTypeTools } from './tools/content-types.js';
 import { pageTemplateTools } from './tools/page-templates.js';
@@ -173,7 +174,9 @@ The full playbook ships with this server — use it:
 0. First confirm the site, organization and version with the user. Personal
    connections require select_site and its site_context on subsequent calls.
    Use list_skills and read_skill for only the relevant recipe. Use read_guide
-   sections when needed; do not load the whole manual by default.
+   sections when needed; do not load the whole manual by default. Everyday
+   edits (links, images, menus, site-wide changes, settings, analytics,
+   structured data) are in tr-edit-site.
 1. When the task is "build / migrate / redesign / brand a site", call
    list_skills FIRST, then read_skill <name> for the step-by-step recipe
    (tr-new-site, tr-migrate-wp, tr-brand, tr-blog, tr-responsive, …). These are
@@ -210,6 +213,10 @@ The full playbook ships with this server — use it:
    start from and then adapt is a block template (list_block_templates,
    insert_block_template copies it). Never duplicate shared content by hand.
 8. No site yet? With an org-scoped key, create_site bootstraps one.
+9. AI workflows (site_planning, content_generation, content_improvement,
+   schema_markup, create_site_and_plan) need the Organization's portal AI
+   key for the Site. On ai_not_enabled don't retry: do the work yourself
+   with the recipe named in start_workflow and tell the user you did.
 
 If anything here conflicts with what a tool returns, trust the tool. Every
 tool's own description carries its specifics.
@@ -229,6 +236,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
     ...skillTools,
     ...siteTools,
     ...pageTools,
+    ...structuredDataTools,
     ...ownerReviewTools,
     ...partialTools,
     ...blockTypeTools,
