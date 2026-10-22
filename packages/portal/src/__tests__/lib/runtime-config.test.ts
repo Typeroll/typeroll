@@ -5,6 +5,7 @@ import {
 } from '../../lib/runtime-config';
 import {
   firebaseApiKey,
+  githubSignInEnabled,
   publicRuntimeConfigFromEnv,
   serializePublicRuntimeConfig,
 } from '../../lib/runtime-config-server';
@@ -64,5 +65,13 @@ describe('public runtime config', () => {
     expect(parsePublicRuntimeConfig('{')).toEqual({ firebase: {} });
     expect(parsePublicRuntimeConfig('{"firebase":"wrong"}')).toEqual({ firebase: {} });
     expect(RUNTIME_CONFIG_ELEMENT_ID).toBe('typeroll-runtime-config');
+  });
+
+  it('enables GitHub sign-in only with an explicit true flag', () => {
+    expect(githubSignInEnabled({})).toBe(false);
+    expect(githubSignInEnabled({ PUBLIC_FIREBASE_GITHUB_SIGNIN: 'false' })).toBe(false);
+    expect(githubSignInEnabled({ PUBLIC_FIREBASE_GITHUB_SIGNIN: '1' })).toBe(false);
+    expect(githubSignInEnabled({ PUBLIC_FIREBASE_GITHUB_SIGNIN: 'true' })).toBe(true);
+    expect(githubSignInEnabled({ PUBLIC_FIREBASE_GITHUB_SIGNIN: ' TRUE ' })).toBe(true);
   });
 });

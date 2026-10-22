@@ -3,6 +3,7 @@ import MarketingLayout from '../layouts/MarketingLayout.astro';
 import LoginForm from '../components/LoginForm.tsx';
 import { isDevAuthEnabled, isFirebaseConfigured, getSessionIdentity } from '../lib/auth';
 import { safeReturnPath } from '../lib/return-path';
+import { githubSignInEnabled } from '../lib/runtime-config-server';
 
 // If already signed in, send where they need to go.
 // Accounts without a confirmed email go to "Check your email". Pending
@@ -15,13 +16,14 @@ if (session) return Astro.redirect(session.orgId ? next ?? '/app' : next?.starts
 
 const firebaseReady = isFirebaseConfigured();
 const devAuthEnabled = isDevAuthEnabled();
+const githubSignIn = firebaseReady && githubSignInEnabled();
 ---
 <MarketingLayout title="Sign in — Typeroll">
   <section class="container--narrow" style="padding: 4rem 1.5rem;">
     <div class="card stack">
       <h1 style="font-size: 1.5rem;">Welcome to Typeroll</h1>
       {firebaseReady ? (
-        <LoginForm client:load next={next} />
+        <LoginForm client:load next={next} githubSignIn={githubSignIn} />
       ) : devAuthEnabled ? (
         <>
           <p class="muted text-sm">
