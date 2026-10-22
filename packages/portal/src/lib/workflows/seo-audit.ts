@@ -10,6 +10,7 @@ import { vstore } from '../version-store';
 import type { Page } from '@typeroll/shared';
 import { type WorkflowDef } from './types';
 import { generateJson } from '../ai/claude';
+import { isAiEnabledForSite } from '../ai/organization-ai';
 
 interface PageAudit {
   page_id: string;
@@ -127,13 +128,13 @@ export const seoAuditWorkflow: WorkflowDef = {
           return { results: { recommendations: [], audits, overall_score: ctx.state.overall_score } };
         }
 
-        if (!process.env.ANTHROPIC_API_KEY) {
-          ctx.log('No Anthropic key — returning per-page issue list without AI prioritization.');
+        if (!await isAiEnabledForSite({ orgId: ctx.orgId, siteId: ctx.siteId })) {
+          ctx.log('AI is not enabled for this site (Organization settings → AI assistant) — returning the per-page issue list without AI prioritization.');
           return { results: { recommendations: top, audits, overall_score: ctx.state.overall_score } };
         }
 
         const recs = await generateJson<Array<{ page_id: string; recommendation: string; impact: 'high' | 'medium' | 'low' }>>(
-          ctx.orgId,
+          ctx,
           'You are an SEO expert. Produce one prioritized, actionable recommendation per page. Be specific.',
           `Pages with issues:\n${JSON.stringify(top, null, 2)}\n\nReturn an array of { page_id, recommendation, impact }.`
         );

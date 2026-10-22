@@ -1,29 +1,29 @@
 // Workflow-friendly helpers around the Anthropic SDK.
 //
 // These wrap a single non-streaming request and return either text or
-// parsed JSON. They use the platform default key and the same model the
-// chat does. BYOT keys per org will be supported by passing orgId here.
+// parsed JSON, with the same model the chat uses. The key is the Site owner
+// organization's own key (organization-ai.ts); there is no platform key.
+// Without access for the Site they throw AiNotEnabledError, which fails the
+// workflow step with a message that points to Organization settings.
 
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { AiNotEnabledError, getAnthropicForSite, type AiScope } from './organization-ai';
 
 const MODEL_ID = 'claude-sonnet-4-6';
 
-let cachedClient: Anthropic | null = null;
-function client(): Anthropic {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error('ANTHROPIC_API_KEY is not configured');
-  if (cachedClient) return cachedClient;
-  cachedClient = new Anthropic({ apiKey: key });
-  return cachedClient;
+async function client(scope: AiScope): Promise<Anthropic> {
+  const c = await getAnthropicForSite({ orgId: scope.orgId, siteId: scope.siteId });
+  if (!c) throw new AiNotEnabledError();
+  return c;
 }
 
 export async function generateText(
-  _orgId: string,
+  scope: AiScope,
   system: string,
   user: string,
   opts: { maxTokens?: number } = {}
 ): Promise<string> {
-  const c = client();
+  const c = await client(scope);
   const res = await c.messages.create({
     model: MODEL_ID,
     max_tokens: opts.maxTokens ?? 4096,
@@ -38,13 +38,13 @@ export async function generateText(
 }
 
 export async function generateJson<T>(
-  orgId: string,
+  scope: AiScope,
   system: string,
   user: string,
   opts: { maxTokens?: number } = {}
 ): Promise<T> {
   const text = await generateText(
-    orgId,
+    scope,
     `${system}\n\nRespond with valid JSON only. Do not wrap in markdown code fences. Do not include any text before or after the JSON.`,
     user,
     opts
