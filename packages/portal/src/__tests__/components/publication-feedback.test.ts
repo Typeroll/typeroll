@@ -29,7 +29,7 @@ it('keeps DNS instructions collapsed and confirms the observed domain blocker on
   expect(container.querySelector('table')).toBeNull();
   const refresh = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Refresh verification')!;
   await act(async () => refresh.click());
-  expect(container.querySelector('[role="status"]')?.textContent).toContain('Checked: the domain transition still needs assistance.');
+  expect(container.querySelector('[role="status"]')?.textContent).toContain('Checked: Cloudflare can validate the website host only after its record changes.');
   expect(request.mock.calls).toHaveLength(2);
 });
 
