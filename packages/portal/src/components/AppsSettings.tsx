@@ -222,7 +222,12 @@ export default function AppsSettings({ siteId }: { siteId: string }) {
                   <>
                     <p className="text-sm" style={{ margin: 0, fontWeight: 600 }}>Action needed: {app.state.setup.message}</p>
                     {app.state.setup.next_step && <p className="text-sm muted" style={{ margin: 0 }}>{app.state.setup.next_step}</p>}
-                    {app.state.setup.code === 'analytics_cloudflare_access_required' && app.state.setup.account?.owner === 'organization' ? (
+                    {/* When the installation requests these permissions with Connect Cloudflare, settings_url is the Hosting
+                        Group's Publishing card, where one Approve update covers every Site; only older deployments
+                        approve per Site here. */}
+                    {app.state.setup.code === 'analytics_cloudflare_access_required' && app.state.setup.settings_url?.includes('#') ? (
+                      <p className="text-sm" style={{ margin: 0 }}><a href={app.state.setup.settings_url}>Approve the update in Publishing →</a></p>
+                    ) : app.state.setup.code === 'analytics_cloudflare_access_required' && app.state.setup.account?.owner === 'organization' ? (
                       <div>
                         <button type="button" className="btn" disabled={busy !== null} onClick={() => void approveAnalyticsAccess(app.state.setup!)}>
                           {busy === 'analytics' ? 'Opening Cloudflare…' : 'Approve Analytics access'}
