@@ -8,6 +8,7 @@
   - AI workflows (content generation and improvement, schema markup, site planning) say what to do on `ai_not_enabled`: don't retry; do the same work with `tr-content-write`, `tr-seo` or `tr-new-site`. Failed workflow runs record a stable `failure_code`.
   - Fixed: `schema_markup` without AI access skipped every page and reported success; it now fails with `ai_not_enabled`.
   - The agent workspace starter points agents at the everyday-request recipes.
+- **"Check your email" continues by itself.** Only the server knows whether an address is confirmed, so the page now asks it when it opens (including after the confirmation link brings you back), when the tab is shown again, and every 10 seconds for 15 minutes while it is visible, then continues automatically. The "I've confirmed my email" button is gone; **Send confirmation email** is the main action.
 
 ## Core 0.2.85 / MCP 0.45.65
 
