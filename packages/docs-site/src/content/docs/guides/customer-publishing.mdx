@@ -413,6 +413,7 @@ website host and, optionally, a separate media host. For example:
 | ------------------------------ | ----------------------------------------------------------------------- |
 | Organization shared media host | `media.example.com`                                                     |
 | Site website host              | `www.customer.com`                                                      |
+| Site redirect hosts            | `customer.com`, answering 301 to the website host                       |
 | Site media host                | `images.customer.com`                                                   |
 | Media path prefix              | Empty for a separate media host; `/media` when sharing the website host |
 
@@ -446,11 +447,55 @@ images are not moved into GitHub.
 5. Typeroll checks the public address before marking it live.
 
 Cloudflare Pages may require traffic DNS to validate a hostname. Typeroll does
-not overwrite an existing destination while its certificate is unverified. If
-validation cannot finish with current DNS, the change stays blocked and needs a
-provider-specific migration arrangement; it is not a promise of a zero-downtime
-cutover for every external DNS setup. Reviewed DNS changes also stop if another
-administrator changed the records in the meantime.
+not overwrite an existing destination while its certificate is unverified,
+unless you accept a validation window (below). Reviewed DNS changes also stop if
+another administrator changed the records in the meantime.
+
+Redirect hosts are prepared, approved and switched with the website host. The
+approval also freezes their reviewed records. At the switch, Typeroll makes sure
+each redirect rule exists before it changes any record, switches the website host,
+then makes each redirect record proxied. The deployment is marked live only after
+every redirect host answers `301` with the same path and query on the website host.
+
+### Switch an apex from an existing host
+
+Cloudflare Pages validates a hostname that already serves another website only
+after its record points at Pages. Cloudflare reports `CNAME record not set` and
+offers no way to validate the hostname in advance, so Typeroll reports
+`domain_prevalidation_unavailable`. The switch has a window in which the
+hostname does not answer until Cloudflare finishes validation. Cloudflare does not
+document how long that takes; plan for a quiet period. There is no zero-downtime
+method for this case.
+
+Recommended order, for example for `example.com` with `www.example.com`
+redirecting to it, moving from another host:
+
+1. Add `example.com` in the Cloudflare account of the site's Hosting Group. Keep
+   the existing `A` records for `example.com` and `www` pointing at the current
+   host, set to **DNS only**.
+2. Change the nameservers at the registrar to the two Cloudflare assigned. The
+   zone stays **pending** until Cloudflare sees them; the website keeps working
+   from the current host because the records are unchanged.
+3. When the zone is **active**, wait until **SSL/TLS → Edge Certificates** shows
+   the Universal SSL certificate as active. Cloudflare issues it 15 minutes to
+   24 hours after activation, and keeps it unused while records are DNS only.
+4. Publish the site once on its generated site address if it has never been
+   published, so the change can be prepared and approved. Save `example.com` as
+   the website host and `www.example.com` as a redirect host. Resolve any
+   blockers shown, then prepare the domain change. Typeroll
+   builds the candidate with the new addresses and, with automatic DNS, adds the
+   `www` redirect rule, which does nothing while `www` is DNS only.
+5. At a quiet time, select **Switch website traffic** and accept the validation
+   window. With one reviewed record, Typeroll replaces it with the proxied CNAME to
+   Pages after the final build is verified, makes `www` proxied, waits for
+   Cloudflare's validation and checks the public site and the `www` redirect.
+6. If the site is not live when the 45-minute observation window ends, restore the
+   previous records listed in the message (`previous_records` in the API).
+
+With several address records on the hostname, or with external DNS management,
+replace them with the proxied CNAME from the requirements yourself or through your
+AI agent at a quiet time, then prepare again. Typeroll waits for validation and
+asks for approval before it marks the change live.
 
 ## Media migration and independent builds
 
@@ -713,6 +758,20 @@ the **Publishing** page; a site key gets 403 there and uses the site routes abov
 Domain writes include the current `revision`. Cutover also includes `candidate_id`.
 A stale revision returns 409. Use the normal deploy-status API to inspect build
 progress and `read_publishing_domains` for structured DNS requirements.
+
+Site domain settings accept `redirect_hosts`, a list of hostnames. Reads and saves
+return `host_checks` with `blockers` and `warnings`, each with `code`, `host` and
+`message`: for example `apex_zone_required`, `apex_zone_in_other_account`,
+`zone_not_active` (with the zone's nameservers), `redirect_zone_required` or
+`redirect_host_certificate_unavailable`. Preparing a domain change returns 409 with
+the first blocker's code until they are resolved. After preparation,
+`redirect_preparations` holds each redirect host's record, its Single Redirect rule
+(`expression`, `target_url_expression`, `status`, `managed`) and certificate state.
+An agent with its own Cloudflare access can create the rule and record, then
+prepare again; Typeroll verifies the public 301. When
+`preparation.validation_blocker.resolution` is `accept_validation_window`, approve
+with `accept_validation_window: true` only after the person responsible for the
+website agrees to the window.
 
 ## Build completion and publication status
 
