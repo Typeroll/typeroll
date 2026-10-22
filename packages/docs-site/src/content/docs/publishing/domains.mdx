@@ -12,6 +12,7 @@ subdomains on other services.
 | Organization  | Shared media host   | `media.example.com`                         |
 | Hosting Group | Site address base   | `sites.example.com` or `sites2.example.com` |
 | Site          | Website host        | `www.customer.example`                      |
+| Site          | Redirect hosts      | `customer.example` → `www.customer.example` |
 | Site          | Optional media host | `images.customer.example`                   |
 
 A site address base is a parent for generated site and version addresses. It does
@@ -42,6 +43,41 @@ website host and optional media host. Choose the media path prefix: a separate
 media hostname can use an empty prefix, while sharing the website host can use
 `/media`.
 
+**Redirect hosts** answer every request with a permanent redirect (301) to the
+website host and keep the path and query, for example
+`https://www.example.com/about?ref=1` → `https://example.com/about?ref=1`.
+Enter them separated by commas.
+
+### Apex domains and www
+
+A website host that is the domain itself, such as `example.com`, is an apex.
+Cloudflare Pages serves an apex only when the domain is an **active** Cloudflare
+zone in the Cloudflare account of the site's Hosting Group, with Cloudflare's
+nameservers at the registrar. A domain whose DNS stays at another provider can use
+a subdomain such as `www.example.com` as the website host instead.
+
+A zone that you have just added is **pending**: Cloudflare has not yet seen its
+assigned nameservers at the registrar. A pending zone does not proxy records or get
+certificates, so neither the apex nor a redirect host in it can serve traffic.
+Change the nameservers at the registrar and wait until Cloudflare shows the zone as
+active. Records that point at your current host can stay **DNS only** meanwhile.
+
+Typeroll checks the saved hosts against the zones it can read and shows
+blockers, such as a pending zone or an apex outside the hosting account, before
+you prepare a change.
+
+A redirect host, typically `www.example.com` for an apex website, needs an active
+zone in a connected Cloudflare account and must be the zone apex or one level below
+it, which Cloudflare's Universal SSL certificate covers. It does not serve pages.
+Cloudflare Pages cannot redirect by hostname, and customer sites have no
+server-side code, so a **Single Redirect rule** in the zone answers at Cloudflare's
+edge. Its record becomes proxied with Cloudflare's placeholder address `192.0.2.1`.
+With automatic DNS, Typeroll creates the rule while the host still points at your
+current website, where the rule has no effect. If the Cloudflare authorization
+cannot create redirect rules, the domain panel shows the rule to add under
+**Rules → Redirect Rules**. A publication is live only after every redirect host
+answers 301 to the website host.
+
 A media item's `public_path` can retain an old path such as
 `/wp-content/uploads/2024/photo.jpg`. The next publication uses the selected
 preferred host and paths. Existing organization media links and previously
@@ -61,11 +97,13 @@ them. Referenced media is included in static output, not committed as images to 
    change through your provider or AI agent.
 5. Wait for Typeroll to verify the actual public address.
 
-Some Pages hostname validations require traffic DNS to point at Cloudflare
-before a certificate can be issued. Typeroll keeps the change blocked when it
-cannot verify a safe candidate. The workflow does not guarantee a seamless
-cutover for every provider configuration. See the
-[full domain-change procedure](../../guides/customer-publishing/#prepare-a-domain-change-before-switching-traffic).
+When a host already serves another website, Cloudflare Pages validates it only
+after its record points at Pages. Typeroll then asks you to accept a short
+**validation window**: the host does not answer until Cloudflare finishes, and
+Cloudflare does not document how long that takes. Typeroll never changes the
+record without that acceptance. See
+[switch an apex from an existing host](../../guides/customer-publishing/#switch-an-apex-from-an-existing-host)
+and the [full domain-change procedure](../../guides/customer-publishing/#prepare-a-domain-change-before-switching-traffic).
 
 ## Use your own AI agent
 
