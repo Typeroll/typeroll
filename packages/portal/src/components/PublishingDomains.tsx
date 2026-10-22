@@ -5,18 +5,30 @@ import OrganizationDomainStatus from './OrganizationDomainStatus';
 import OrganizationDomainSetup from './OrganizationDomainSetup';
 import type { OrganizationDomainStatus as DomainStatus } from '../lib/publishing/organization-domain-status';
 
-type Preparation = { validation_blocker?: { code: string; message: string } | null; certificate_ready: boolean; has_existing_traffic?: boolean; requirements: Array<{ phase: string; type: string; name: string; content: string; status: string }> };
+type Preparation = { hostname?: string; validation_blocker?: { code: string; message: string; resolution?: string } | null; certificate_ready: boolean; has_existing_traffic?: boolean; requirements: Array<{ phase: string; type: string; name: string; content: string; status: string }> };
+type RedirectPreparation = Preparation & { hostname: string; target_host: string; action: string; zone_id?: string; blocker?: { code: string; message: string } | null;
+  rule: { zone_name: string | null; expression: string; target_url_expression: string; status: string; managed: boolean } };
+type HostCheckItem = { code: string; severity: 'blocking' | 'warning'; host: string; message: string };
 type DomainData = {
   domain_status?: DomainStatus;
   media_host_change_allowed?: boolean;
   sites_domain?: string | null; media_host?: string | null;
   revision: string; default_domain?: string | null; dns_mode: 'automatic' | 'external'; verified_at?: string | null;
-  desired?: { website_host: string | null; media_host: string | null; media_path_prefix: string };
-  active?: { website_host: string | null }; state?: string;
+  desired?: { website_host: string | null; media_host: string | null; media_path_prefix: string; redirect_hosts?: string[] };
+  active?: { website_host: string | null; redirect_hosts?: string[] }; state?: string;
   candidate?: { id: string } | null;
   preparation?: Preparation | null;
   media_preparation?: Preparation | null;
+  redirect_preparations?: RedirectPreparation[] | null;
+  host_checks?: { blockers: HostCheckItem[]; warnings: HostCheckItem[] } | null;
 };
+
+/** The same readiness rule as the server's redirect approval check. */
+function redirectBlocker(preparation: RedirectPreparation) {
+  if (preparation.blocker) return preparation.blocker.message;
+  if (preparation.zone_id && preparation.has_existing_traffic && preparation.action !== 'verify' && !preparation.certificate_ready) return `Waiting for the Universal SSL certificate of ${preparation.rule.zone_name ?? preparation.hostname}.`;
+  return null;
+}
 
 export default function PublishingDomains({ siteId }: { siteId?: string }) {
   const FormContainer = siteId ? 'div' : 'details';
@@ -29,6 +41,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [dnsMode, setDnsMode] = useState<'automatic' | 'external'>('automatic');
+  const [acceptWindow, setAcceptWindow] = useState(false);
   useEffect(() => {
     let cancelled = false;
     fetch(endpoint, { cache: 'no-store' }).then(async response => {
@@ -115,7 +128,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     try {
       const current = await refresh();
       const blocker = current.preparation?.validation_blocker ?? current.media_preparation?.validation_blocker;
-      setNotice(blocker ? 'Checked: the domain transition still needs assistance. See the explanation below.'
+      setNotice(blocker ? 'Checked: Cloudflare can validate the website host only after its record changes. See the explanation below.'
         : current.preparation?.certificate_ready && (!current.media_preparation || current.media_preparation.certificate_ready)
         ? 'Checked: Cloudflare has confirmed the website and media certificates.'
         : 'Checked: domain validation is still pending. Keep existing traffic in place.');
@@ -126,7 +139,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     if (!data?.candidate) return;
     setBusy(true); setError('');
     try {
-      const response = await fetch(endpoint.replace(/domains$/, 'cutover'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: data.revision, candidate_id: data.candidate.id }) });
+      const response = await fetch(endpoint.replace(/domains$/, 'cutover'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: data.revision, candidate_id: data.candidate.id, ...(windowRequired ? { accept_validation_window: acceptWindow } : {}) }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not switch website traffic.');
       setData(result); setNotice('Traffic switch approved. Typeroll will verify the deployment at your website address before showing its live link.');
@@ -147,20 +160,34 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     {error && <p role="alert">{error}</p>}
   </div>;
   const validationBlocker = data?.preparation?.validation_blocker ?? data?.media_preparation?.validation_blocker;
+  const windowRequired = data?.preparation?.validation_blocker?.resolution === 'accept_validation_window' && !data?.media_preparation?.validation_blocker;
+  const redirectPreparations = data?.redirect_preparations ?? [];
+  const redirectWaiting = redirectPreparations.some(item => redirectBlocker(item));
+  const hostBlockers = data?.host_checks?.blockers ?? [];
+  const hostWarnings = data?.host_checks?.warnings ?? [];
+  const alertStyle = { borderLeft: '4px solid var(--color-danger)', background: 'color-mix(in srgb, var(--color-danger) 6%, var(--color-surface))', padding: '1rem', borderRadius: 6 };
   const content = <>
     <p>{siteId ? 'Choose the website host and the host used for images and other media. Saving these addresses prepares a future change; your current website stays live at its existing address.' : 'Choose addresses for your sites and media. Each site can also use its own domain.'}</p>
     {error && (siteId || !feedbackLocation) && <p role="alert">{error}</p>}
     {siteId && notice && <p role="status">{notice}</p>}
     {!data && !error && <p role="status">Loading domain settings…</p>}
-    {siteId && data?.active && data.state !== 'live' && <button type="button" className="btn" disabled={busy} onClick={() => void prepare()}>Prepare domain change from published content</button>}
+    {siteId && hostBlockers.length > 0 && <div role="alert" style={alertStyle}>
+      <strong>Resolve before preparing the domain change</strong>
+      <ul>{hostBlockers.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul>
+    </div>}
+    {siteId && hostWarnings.length > 0 && <div className="muted"><strong>Check before preparing</strong><ul>{hostWarnings.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul></div>}
+    {siteId && data?.active && data.state !== 'live' && <button type="button" className="btn" disabled={busy || hostBlockers.length > 0} onClick={() => void prepare()}>Prepare domain change from published content</button>}
     {data?.preparation && <div className="stack">
       <h3>Domain verification</h3>
-      {validationBlocker && <div role="alert" style={{ borderLeft: '4px solid var(--color-danger)', background: 'color-mix(in srgb, var(--color-danger) 6%, var(--color-surface))', padding: '1rem', borderRadius: 6 }}><strong>Domain transition needs assistance</strong><p>{validationBlocker.message}</p></div>}
+      {validationBlocker && <div role="alert" style={alertStyle}><strong>{windowRequired ? 'The switch has a short validation window' : 'Domain transition needs a DNS change outside Typeroll'}</strong><p>{validationBlocker.message}</p></div>}
+      {redirectPreparations.map(item => <p key={item.hostname}>{redirectBlocker(item)
+        ? <>Redirect from <strong>{item.hostname}</strong>: {redirectBlocker(item)}</>
+        : <>Redirect from <strong>{item.hostname}</strong> to {item.target_host} is {item.action === 'verify' ? 'active' : 'ready to switch with the website'}.</>}</p>)}
       {!validationBlocker && data.media_preparation && <p>{data.media_preparation.certificate_ready ? 'Media domain certificate confirmed.' : 'Media domain validation is still pending. Keep existing media DNS in place.'}</p>}
       {!validationBlocker && <p>{data.preparation.certificate_ready ? 'Cloudflare has confirmed the certificate.' : 'Waiting for Cloudflare to confirm the certificate. Keep existing website DNS in place until validation is complete.'}</p>}
       <details>
         <summary>DNS records and instructions</summary>
-        {[...data.preparation.requirements, ...(data.media_preparation?.requirements ?? [])].map(record => <div key={record.phase + record.name} style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.75rem', marginTop: '0.75rem' }}>
+        {[...data.preparation.requirements, ...(data.media_preparation?.requirements ?? []), ...redirectPreparations.flatMap(item => item.requirements)].map(record => <div key={record.phase + record.name} style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.75rem', marginTop: '0.75rem' }}>
           <strong>{record.phase === 'traffic' ? 'Traffic — after approval' : 'Certificate validation'}</strong>
           <dl style={{ display: 'grid', gridTemplateColumns: '4rem minmax(0, 1fr)', gap: '0.5rem', margin: '0.75rem 0 0' }}>
             <dt>Type</dt><dd style={{ margin: 0 }}><code>{record.type}</code></dd>
@@ -168,12 +195,25 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
             <dt>Value</dt><dd style={{ margin: 0, overflowWrap: 'anywhere' }}><code>{record.content}</code></dd>
           </dl>
         </div>)}
-        {!validationBlocker && <p className="muted">In Cloudflare, select your domain → DNS → Records. Add validation records first. Apply the website CNAME only after the prepared deployment is ready. Version addresses require a proxied Cloudflare CNAME.</p>}
+        {redirectPreparations.map(item => <div key={`rule-${item.hostname}`} style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '0.75rem', marginTop: '0.75rem' }}>
+          <strong>Redirect rule — {item.rule.status === 'configured' ? 'present' : item.rule.managed ? 'created by Typeroll' : 'create in Cloudflare'}</strong>
+          <dl style={{ display: 'grid', gridTemplateColumns: '6rem minmax(0, 1fr)', gap: '0.5rem', margin: '0.75rem 0 0' }}>
+            <dt>Where</dt><dd style={{ margin: 0, overflowWrap: 'anywhere' }}>{item.rule.zone_name ?? item.hostname} → Rules → Redirect Rules</dd>
+            <dt>Expression</dt><dd style={{ margin: 0, overflowWrap: 'anywhere' }}><code>{item.rule.expression}</code></dd>
+            <dt>Dynamic URL</dt><dd style={{ margin: 0, overflowWrap: 'anywhere' }}><code>{item.rule.target_url_expression}</code></dd>
+            <dt>Status</dt><dd style={{ margin: 0 }}>301, preserve query string</dd>
+          </dl>
+        </div>)}
+        {!validationBlocker && <p className="muted">In Cloudflare, select your domain → DNS → Records. Add validation records first. Apply the website CNAME only after the prepared deployment is ready. Version addresses require a proxied Cloudflare CNAME. A redirect host needs its proxied record and redirect rule; it does not serve pages.</p>}
       </details>
       <button type="button" className="btn" disabled={busy || checking} onClick={() => void checkSiteDomain()}>{checking ? 'Checking…' : 'Refresh verification'}</button>
       {data.candidate && data.state === 'ready_to_switch' && <>
         <p>The prepared build uses the future website and media addresses. Switching traffic makes this build public.</p>
-        <button type="button" className="btn" disabled={busy || (!data.preparation.certificate_ready && data.preparation.has_existing_traffic !== false) || Boolean(data.media_preparation && !data.media_preparation.certificate_ready && data.media_preparation.has_existing_traffic !== false)} onClick={() => void switchTraffic()}>Switch website traffic</button>
+        {windowRequired && <label className="field" style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+          <input type="checkbox" checked={acceptWindow} onChange={event => setAcceptWindow(event.target.checked)} style={{ width: 'auto', marginTop: '0.25rem' }} />
+          <span>I am switching at a quiet time and accept that {data.preparation.hostname ?? 'the website'} does not answer until Cloudflare validates it.</span>
+        </label>}
+        <button type="button" className="btn" disabled={busy || redirectWaiting || (windowRequired ? !acceptWindow : (!data.preparation.certificate_ready && data.preparation.has_existing_traffic !== false)) || Boolean(data.media_preparation && !data.media_preparation.certificate_ready && data.media_preparation.has_existing_traffic !== false)} onClick={() => void switchTraffic()}>Switch website traffic</button>
       </>}
     </div>}
     {!siteId && data && <OrganizationDomainSetup data={data} busy={busy || checking} onSetup={setupOrganization} feedback={feedbackLocation === 'setup' ? organizationFeedback : undefined} />}
@@ -182,6 +222,8 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     <form className="stack" onSubmit={save} key={data.revision}>
       {siteId ? <>
         <label className="field">Website host<input name="website_host" defaultValue={data.desired?.website_host ?? ''} placeholder="www.example.com" autoCapitalize="none" spellCheck={false} /></label>
+        <label className="field">Redirect hosts<input name="redirect_hosts" defaultValue={(data.desired?.redirect_hosts ?? []).join(', ')} placeholder="www.example.com when the website host is example.com" autoCapitalize="none" spellCheck={false} /></label>
+        <p className="muted">Each redirect host answers with a permanent redirect to the website host and keeps the path and query. It needs an active Cloudflare zone; a website host on the domain itself, such as example.com, must be an active zone in the hosting account.</p>
         <label className="field">Media host<input name="media_host" defaultValue={data.desired?.media_host ?? ''} placeholder="Leave empty to serve images with the website" autoCapitalize="none" spellCheck={false} /></label>
         <label className="field">Media path prefix<input name="media_path_prefix" defaultValue={data.desired?.media_path_prefix ?? ''} placeholder="/media when using the website host" autoCapitalize="none" spellCheck={false} /></label>
         <p className="muted">Leave the media path prefix empty for a separate media host. Use /media when the website and media share a host. Existing media addresses remain available after the change.</p>

@@ -473,8 +473,10 @@ redirecting to it, moving from another host:
 3. When the zone is **active**, wait until **SSL/TLS → Edge Certificates** shows
    the Universal SSL certificate as active. Cloudflare issues it 15 minutes to
    24 hours after activation, and keeps it unused while records are DNS only.
-4. Save `example.com` as the website host and `www.example.com` as a redirect
-   host. Resolve any blockers shown, then prepare the domain change. Typeroll
+4. Publish the site once on its generated site address if it has never been
+   published, so the change can be prepared and approved. Save `example.com` as
+   the website host and `www.example.com` as a redirect host. Resolve any
+   blockers shown, then prepare the domain change. Typeroll
    builds the candidate with the new addresses and, with automatic DNS, adds the
    `www` redirect rule, which does nothing while `www` is DNS only.
 5. At a quiet time, select **Switch website traffic** and accept the validation
