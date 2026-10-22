@@ -131,10 +131,22 @@ function capabilityStatus(id: CloudflareCapabilityId, granted: string[] | null |
   return { ...base, status: 'not_offered', missing_scopes: missing, next_step: notOfferedStep(id, missing) };
 }
 
-/** Hosting Groups of this Organization whose connected OAuth connections use `accountId`, `first` first. */
+/**
+ * Hosting Groups of this Organization whose connected OAuth connections use `accountId`, `first` first. Other than
+ * `first`, only connections that lack a scope this deployment requests are included: they are the ones an update renews.
+ */
 export async function groupsSharingAccount(orgId: string, accountId: string, first: string): Promise<string[]> {
   const groups = await listHostingGroups(orgId);
-  const matching = groups.filter(group => group.connection.status === 'connected' && group.connection.auth_method === 'oauth' && group.connection.cloudflare?.account_id === accountId).map(group => group.id);
+  const enabled = enabledCloudflareOptionalScopes();
+  const matching: string[] = [];
+  for (const group of groups) {
+    if (group.connection.status !== 'connected' || group.connection.auth_method !== 'oauth' || group.connection.cloudflare?.account_id !== accountId) continue;
+    if (group.id !== first) {
+      const granted = grantedScopes(orgId, group.id, await getConnection(orgId, 'cloudflare', group.id));
+      if (Array.isArray(granted) && enabled.every(scope => granted.includes(scope))) continue;
+    }
+    matching.push(group.id);
+  }
   return [first, ...matching.filter(id => id !== first)].filter(id => matching.includes(id));
 }
 

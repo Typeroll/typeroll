@@ -111,6 +111,9 @@ describe('Approve update for an existing connection', () => {
     await oauthConnection('default', BASE);
     await oauthConnection(same.id, BASE);
     await oauthConnection(other.id, BASE, OTHER);
+    // A connection to the same account that already has every requested scope needs no second consent.
+    const done = await saveHostingGroup(ORG, { name: 'Already updated', dns_mode: 'automatic' });
+    await oauthConnection(done.id, `${BASE} ${ENABLE_ALL}`);
     // Another Organization on the same Cloudflare account is never part of this Organization's update.
     await getStore().setDoc(connectionPath('another-org', 'cloudflare'), { status: 'connected', revision: 'r', auth_method: 'oauth', cloudflare: { account_id: ACCOUNT.id, account_name: ACCOUNT.name, bucket: '', endpoint: '' } });
 
