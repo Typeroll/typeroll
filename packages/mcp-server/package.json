@@ -21,7 +21,8 @@
     "./server": "./src/server.ts",
     "./client": "./src/client.ts",
     "./version": "./src/version.ts",
-    "./tools/helpers": "./src/tools/helpers.ts"
+    "./tools/helpers": "./src/tools/helpers.ts",
+    "./structured-data": "./src/structured-data.ts"
   },
   "files": [
     "dist",

@@ -13,6 +13,7 @@ import { z, type ZodRawShape } from 'zod';
 import { TyperollClient } from './client.js';
 import { ownerReviewTools } from './tools/owner-review.js';
 import { pageTools } from './tools/pages.js';
+import { structuredDataTools } from './tools/structured-data.js';
 import { partialTools } from './tools/partials.js';
 import { contentTypeTools } from './tools/content-types.js';
 import { pageTemplateTools } from './tools/page-templates.js';
@@ -229,6 +230,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
     ...skillTools,
     ...siteTools,
     ...pageTools,
+    ...structuredDataTools,
     ...ownerReviewTools,
     ...partialTools,
     ...blockTypeTools,
