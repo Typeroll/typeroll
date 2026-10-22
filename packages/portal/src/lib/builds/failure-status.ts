@@ -45,9 +45,13 @@ export async function refreshBuildFailure(org: string, site: string, job: Deploy
   }
   if (!task || !['failed', 'cancelled'].includes(task.status)) return job;
   const code = task.error_code ?? 'shared_build_failed', diagnostic = task.error_detail ?? undefined;
+  // Carry the validation report with the failure. This read can mark the job
+  // failed before the publication runner copies the report over, and a caller
+  // that stops at the first terminal status would otherwise never see why.
   const patch = { status: 'failed', finished_at: new Date(now).toISOString(),
     error: buildFailureMessage(code, diagnostic),
-    failure: { stage: job.phase ?? 'building', code, ...(diagnostic ? { diagnostic } : {}) } };
+    failure: { stage: job.phase ?? 'building', code, ...(diagnostic ? { diagnostic } : {}) },
+    ...(task.seo_report ? { seo_report: task.seo_report } : {}) };
   await store.compareAndUpdateDoc<any>(paths.deploy(org, site, job.id), current => ['queued', 'running'].includes(current.status) &&
     (current.git_publication?.verification_task_key ?? current.git_publication?.build_task_key) === key, patch);
   return (await store.getDoc<DeployJob>(paths.deploy(org, site, job.id))) ?? job;

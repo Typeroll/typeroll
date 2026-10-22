@@ -159,3 +159,31 @@ fresh query returned 404. No custom cache rule explained the difference.
 This remains unresolved: do not treat a successful marker probe or purge API
 response as evidence that page removal has passed. Do not purge unrelated
 customer hosts or switch traffic to bypass this failure.
+
+## Analytics in the hosting account
+
+The Analytics app's Cloudflare Web Analytics site belongs to the account that
+hosts the site, and Insights reads that same account. For customer publishing
+this is the site's Hosting Group connection (Default reuses the Organization
+connection); managed and self-hosted sites use the installation's configured
+account. A customer publishing site never falls back to the installation's
+account. The account a verified beacon belongs to is recorded in the app's
+`setup`; a site that later changes accounts reports `analytics_account_mismatch`
+instead of an empty report. Web Analytics sites are recorded as
+Organization-owned resources so Organizations sharing an account cannot link
+each other's sites.
+
+OAuth consent asks for `account-settings.write` (create the site) and
+`account-analytics.read` (reports) with every Connect Cloudflare when the
+deployment lists them in `TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES` (together
+with `dynamic-redirect.read` / `dynamic-redirect.write` for redirect rules).
+Otherwise they are requested only when a person selects **Approve Analytics
+access**. Later reconnects keep them; publishing never depends on them. An
+existing connection gets newly enabled scopes through **Approve update**
+(`action: "approve_update"`), which continues with every other connection of
+the Organization that uses the same Cloudflare account. Each connection keeps
+its own grant: refresh tokens rotate, so a grant is never shared between
+connections or Organizations. Approving enables Analytics for no Site. API token connections need Account Settings Edit and Account
+Analytics Read. Missing access returns `analytics_cloudflare_access_required`
+with the next step from `update_app`, `read_app` and Insights. The scope
+identifiers must be allowed on the publisher's OAuth client before release.

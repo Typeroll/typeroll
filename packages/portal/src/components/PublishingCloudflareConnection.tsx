@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { ExternalLink } from 'lucide-react';
 import PublishingSetupStep from './PublishingSetupStep';
+import CloudflarePermissionUpdate from './CloudflarePermissionUpdate';
+import type { CloudflarePermissionReport } from '../lib/publishing/cloudflare-capabilities';
 import type { PublishingState } from './PublishingCard';
 import type {
   CloudflareBlocker, CloudflareConnectionDiagnosis, CloudflareDiagnosisAccount, CloudflareDiagnosisAction,
@@ -55,8 +57,10 @@ export function useCloudflareClock(diagnosis: Pick<CloudflareConnectionDiagnosis
  * The connection part of a Cloudflare card for one Hosting Group: the next step with its one primary action,
  * the account chooser when several accounts were authorized, and the steps of the connection.
  */
-export default function PublishingCloudflareConnection({ groupId, connection, diagnosis: served, choices = [], available, returned, disabled, onRefresh }: {
+export default function PublishingCloudflareConnection({ groupId, connection, diagnosis: served, choices = [], available, returned, disabled, onRefresh, permissions }: {
   groupId: string; connection: CloudflareConnectionStatus; diagnosis?: CloudflareConnectionDiagnosis; choices?: Choice[];
+  /** Optional permissions this installation requests and the connection lacks: one Approve update per Cloudflare account. */
+  permissions?: CloudflarePermissionReport;
   available: boolean;
   /** Value of ?cloudflare= when the person just came back from Cloudflare to this card. */
   returned: string | null;
@@ -221,6 +225,8 @@ export default function PublishingCloudflareConnection({ groupId, connection, di
       <p className="cloudflare-connection__visually-hidden" data-cloudflare-announcement aria-live="polite" aria-atomic="true">{announcement}</p>
       {error && <p role="alert" className="cloudflare-connection__error">{error}</p>}
     </div>
+
+    {connected && available && permissions && <CloudflarePermissionUpdate groupId={groupId} report={permissions} disabled={working} />}
 
     <ol className="publishing-setup-steps" aria-label="Cloudflare connection steps">
       {step('publisher', '1. Publisher ready', available ? 'ready' : 'error', available ? 'Ready · Cloudflare sign-in is configured' : 'Publisher must configure Cloudflare sign-in')}

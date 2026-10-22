@@ -18,11 +18,71 @@ import type { BlockType } from './types.js';
 import { pixels, articleHeadingFields, focalPointFields, postCardImageSizing } from './presentation-fields.js';
 import { backgroundGradientField } from './surface-presentation.js';
 import { navigationForm } from './navigation-form.js';
+import { HERO_VIDEO_RUNTIME } from './block-media.js';
 import { navigationMenu, navigationLinks } from './navigation-menu.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
 
 // ─── Layout primitives ───────────────────────────────────────────────────
+
+/**
+ * Container CSS. From render version 9 (`raised`) a container with a shadow
+ * is raised above the blocks after it (position:relative; z-index:10, as a
+ * typical site header does), so the next block's background no longer paints
+ * over the shadow, and the header shadow is 0 2px 6px. Sticky containers keep
+ * z-index 100. 10 stays above block-internal layers such as the hero's content
+ * (z-index 2) that form no stacking context of their own, so menus opening
+ * from a shadowed header land above the next block.
+ */
+const containerStyles = (raised: boolean) => `
+ :is([data-block="container"], [data-block="semantic-container"]) { --surface-gradient:initial;border-radius:var(--radius_px,0px); }
+:is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] { overflow:clip; }
+:is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] :focus-visible { outline-offset:-3px; }
+:is([data-block="container"], [data-block="semantic-container"])[data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }
+:is([data-block="container"], [data-block="semantic-container"])[data-shadow="header"] { box-shadow:0 2px ${raised ? 6 : 5}px rgb(0 0 0 / 20%); }
+${raised ? `:is([data-block="container"], [data-block="semantic-container"]):is([data-shadow="subtle"], [data-shadow="header"]):not([data-sticky="true"]) { position:relative; z-index:10; }\n` : ''}/* Only an explicitly authored scale overrides theme-sized headings. */
+${[1,2,3,4,5,6].map(level => `:is([data-block="container"], [data-block="semantic-container"])[style*="--h${level}_size_px:"] [data-block="heading"][data-level="h${level}"][data-size="theme"] .block-heading-text { font-size:var(--font_size_px,var(--h${level}_size_px)); }`).join('\n')}
+/* Opt-in article flow; never change heading spacing in unrelated layouts. */
+[data-block="semantic-container"][data-rhythm="article"] { display:flow-root; }
+:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="heading"],
+:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="rich_heading"] { margin-block:var(--heading_before_px,var(--heading-space-before,2rem)) var(--heading_after_px,var(--heading-space-after,.65rem)); }
+:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > :first-child { margin-top:0; }
+[data-block="container"] {
+  display: flex; flex-direction: var(--direction, column); flex-wrap: var(--wrap, wrap);
+  --container-gap:initial;gap: var(--gap_px, var(--container-gap,var(--block-gap,1rem))); justify-content: var(--align_main, flex-start); align-items: var(--align_cross, stretch);
+  padding-block: var(--padding_top_px, var(--padding_y_px, var(--block-py, 2rem))) var(--padding_bottom_px, var(--padding_y_px, var(--block-py, 2rem))); padding-inline: var(--padding_x_px, var(--block-px, 1rem));
+  background: var(--bg, transparent);
+}
+:is([data-block="container"], [data-block="semantic-container"]) { background-image:var(--surface-gradient,var(--bg-image,none)); background-size:cover; background-position:center; }
+[data-block="container"][data-width="narrow"] { max-width: var(--max_width_px, 42rem); margin-inline: auto; }
+[data-block="container"][data-width="normal"] { max-width: var(--max_width_px, 65rem); margin-inline: auto; }
+[data-block="container"][data-width="wide"]   { max-width: var(--max_width_px, 80rem); margin-inline: auto; }
+[data-block="container"][data-width="full"]   { max-width: var(--max_width_px, none); }
+[data-block="container"][data-min-h="sm"]     { min-height: 30vh; }
+[data-block="container"][data-min-h="md"]     { min-height: 50vh; }
+[data-block="container"][data-min-h="lg"]     { min-height: 70vh; }
+[data-block="container"][data-min-h="screen"] { min-height: 100vh; }
+:is([data-block="container"], [data-block="semantic-container"])[style*="--min_height_px:"] { min-height:var(--min_height_px); }
+[data-block="container"][style*="--gap:none"]       { --container-gap: 0; }
+[data-block="container"][style*="--gap:xs"]         { --container-gap: 0.25rem; }
+[data-block="container"][style*="--gap:sm"]         { --container-gap: 0.5rem; }
+[data-block="container"][style*="--gap:md"]         { --container-gap: 1rem; }
+[data-block="container"][style*="--gap:lg"]         { --container-gap: 2rem; }
+[data-block="container"][style*="--gap:xl"]         { --container-gap: 3rem; }
+[data-block="container"][style*="--padding_y:none"] { --block-py: 0; }
+[data-block="container"][style*="--padding_y:sm"]   { --block-py: 2rem; }
+[data-block="container"][style*="--padding_y:md"]   { --block-py: 4rem; }
+[data-block="container"][style*="--padding_y:lg"]   { --block-py: 6rem; }
+[data-block="container"][style*="--padding_y:xl"]   { --block-py: 8rem; }
+[data-block="container"][style*="--padding_x:none"] { --block-px: 0; }
+[data-block="container"][style*="--padding_x:sm"]   { --block-px: 0.5rem; }
+[data-block="container"][style*="--padding_x:md"]   { --block-px: 1rem; }
+[data-block="container"][style*="--padding_x:lg"]   { --block-px: 2rem; }
+[data-block="container"][style*="--padding_x:xl"]   { --block-px: 3rem; }
+[data-block="semantic-container"] { display: flow-root; max-width:var(--max_width_px, none); padding-inline:var(--padding_x_px, 0); padding-block:var(--padding_top_px, var(--padding_y_px, 0)) var(--padding_bottom_px, var(--padding_y_px, 0)); }
+:is([data-block="container"], [data-block="semantic-container"])[data-sticky="true"] { position:sticky; top:var(--sticky_top_px,0px); z-index:100; }
+[data-block="semantic-container"][style*="--gap_px:"] > * + * { margin-top:var(--gap_px, 0); }
+`.trim();
 
 /**
  * `container` — flex container. Friendlier than `section` when you need
@@ -82,55 +142,8 @@ const container: BlockType = {
   // Layout-control CSS reads `var(--gap)` etc. and maps the token (sm/md/lg)
   // to a real rem value via attribute-selectors against the inline style.
   template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-shadow="{{shadow}}" data-overflow="{{overflow}}" data-rhythm="{{rhythm}}" data-sticky="{{sticky}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{surface_gradient_css}}{{inline_style}}">{{children}}</{{=tag}}>`,
-  styles: `
- :is([data-block="container"], [data-block="semantic-container"]) { --surface-gradient:initial;border-radius:var(--radius_px,0px); }
-:is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] { overflow:clip; }
-:is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] :focus-visible { outline-offset:-3px; }
-:is([data-block="container"], [data-block="semantic-container"])[data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }
-:is([data-block="container"], [data-block="semantic-container"])[data-shadow="header"] { box-shadow:0 2px 5px rgb(0 0 0 / 20%); }
-/* Only an explicitly authored scale overrides theme-sized headings. */
-${[1,2,3,4,5,6].map(level => `:is([data-block="container"], [data-block="semantic-container"])[style*="--h${level}_size_px:"] [data-block="heading"][data-level="h${level}"][data-size="theme"] .block-heading-text { font-size:var(--font_size_px,var(--h${level}_size_px)); }`).join('\n')}
-/* Opt-in article flow; never change heading spacing in unrelated layouts. */
-[data-block="semantic-container"][data-rhythm="article"] { display:flow-root; }
-:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="heading"],
-:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > [data-block="rich_heading"] { margin-block:var(--heading_before_px,var(--heading-space-before,2rem)) var(--heading_after_px,var(--heading-space-after,.65rem)); }
-:is([data-block="container"], [data-block="semantic-container"])[data-rhythm="article"] > :first-child { margin-top:0; }
-[data-block="container"] {
-  display: flex; flex-direction: var(--direction, column); flex-wrap: var(--wrap, wrap);
-  --container-gap:initial;gap: var(--gap_px, var(--container-gap,var(--block-gap,1rem))); justify-content: var(--align_main, flex-start); align-items: var(--align_cross, stretch);
-  padding-block: var(--padding_top_px, var(--padding_y_px, var(--block-py, 2rem))) var(--padding_bottom_px, var(--padding_y_px, var(--block-py, 2rem))); padding-inline: var(--padding_x_px, var(--block-px, 1rem));
-  background: var(--bg, transparent);
-}
-:is([data-block="container"], [data-block="semantic-container"]) { background-image:var(--surface-gradient,var(--bg-image,none)); background-size:cover; background-position:center; }
-[data-block="container"][data-width="narrow"] { max-width: var(--max_width_px, 42rem); margin-inline: auto; }
-[data-block="container"][data-width="normal"] { max-width: var(--max_width_px, 65rem); margin-inline: auto; }
-[data-block="container"][data-width="wide"]   { max-width: var(--max_width_px, 80rem); margin-inline: auto; }
-[data-block="container"][data-width="full"]   { max-width: var(--max_width_px, none); }
-[data-block="container"][data-min-h="sm"]     { min-height: 30vh; }
-[data-block="container"][data-min-h="md"]     { min-height: 50vh; }
-[data-block="container"][data-min-h="lg"]     { min-height: 70vh; }
-[data-block="container"][data-min-h="screen"] { min-height: 100vh; }
-:is([data-block="container"], [data-block="semantic-container"])[style*="--min_height_px:"] { min-height:var(--min_height_px); }
-[data-block="container"][style*="--gap:none"]       { --container-gap: 0; }
-[data-block="container"][style*="--gap:xs"]         { --container-gap: 0.25rem; }
-[data-block="container"][style*="--gap:sm"]         { --container-gap: 0.5rem; }
-[data-block="container"][style*="--gap:md"]         { --container-gap: 1rem; }
-[data-block="container"][style*="--gap:lg"]         { --container-gap: 2rem; }
-[data-block="container"][style*="--gap:xl"]         { --container-gap: 3rem; }
-[data-block="container"][style*="--padding_y:none"] { --block-py: 0; }
-[data-block="container"][style*="--padding_y:sm"]   { --block-py: 2rem; }
-[data-block="container"][style*="--padding_y:md"]   { --block-py: 4rem; }
-[data-block="container"][style*="--padding_y:lg"]   { --block-py: 6rem; }
-[data-block="container"][style*="--padding_y:xl"]   { --block-py: 8rem; }
-[data-block="container"][style*="--padding_x:none"] { --block-px: 0; }
-[data-block="container"][style*="--padding_x:sm"]   { --block-px: 0.5rem; }
-[data-block="container"][style*="--padding_x:md"]   { --block-px: 1rem; }
-[data-block="container"][style*="--padding_x:lg"]   { --block-px: 2rem; }
-[data-block="container"][style*="--padding_x:xl"]   { --block-px: 3rem; }
-[data-block="semantic-container"] { display: flow-root; max-width:var(--max_width_px, none); padding-inline:var(--padding_x_px, 0); padding-block:var(--padding_top_px, var(--padding_y_px, 0)) var(--padding_bottom_px, var(--padding_y_px, 0)); }
-:is([data-block="container"], [data-block="semantic-container"])[data-sticky="true"] { position:sticky; top:var(--sticky_top_px,0px); z-index:100; }
-[data-block="semantic-container"][style*="--gap_px:"] > * + * { margin-top:var(--gap_px, 0); }
-`.trim(),
+  styles: containerStyles(false),
+  render_versions: [{ from: 9, styles: containerStyles(true) }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
@@ -271,6 +284,8 @@ const divider: BlockType = {
   category: 'layout',
   container: false,
   schema: [
+    // The line is the root: a style sets its opacity, spacing or border.
+    { name: 'style_id', type: 'style', label: 'Divider style', style_target: 'container', editor_group: 'content' },
     { name: 'style', type: 'select', label: 'Line style', options: ['solid', 'dashed', 'dotted'], default: 'solid' },
     { name: 'width', type: 'select', label: 'Width', options: ['full', 'narrow', 'normal'], default: 'full' },
     { name: 'color', type: 'color', label: 'Color' },
@@ -312,6 +327,8 @@ const icon: BlockType = {
   category: 'content',
   container: false,
   schema: [
+    // The icon is the root: a style sets its size, colour or a surface behind it.
+    { name: 'style_id', type: 'style', label: 'Icon style', style_target: 'container', editor_group: 'content' },
     { name: 'icon', type: 'icon', label: 'Icon' },
     { name: 'size', type: 'select', label: 'Size', options: ['sm', 'md', 'lg', 'xl'], default: 'md', responsive: true },
     pixels('size_px', 'Icon size (px)', 8, 256),
@@ -352,7 +369,14 @@ const iconBox: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'icon', label: 'Icon', selector: '.block-iconbox-icon', target: 'container', decorative: true },
+    { name: 'heading', label: 'Heading', selector: '.block-iconbox-heading', target: 'heading', background_field: 'background' },
+    { name: 'text', label: 'Body text', selector: '.block-iconbox-text', target: 'text', background_field: 'background' },
+    { name: 'link', label: 'Link', selector: '.block-iconbox-link', target: 'link', color: 'primary', background_field: 'background' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     pixels('icon_size_px', 'Icon size (px)', 16, 160),
     pixels('heading_size_px', 'Heading size (px)', 12, 80),
     pixels('min_height_px', 'Minimum height (px)', 0, 800),
@@ -436,6 +460,17 @@ const hero: BlockType = {
   icon: 'panel-top',
   category: 'layout',
   container: false,
+  parts: [
+    { name: 'eyebrow', label: 'Eyebrow', selector: '.block-hero-eyebrow', target: 'text', background_field: 'background' },
+    { name: 'heading', label: 'Heading', selector: '.block-hero-heading', target: 'heading', background_field: 'background' },
+    { name: 'subheading', label: 'Subheading', selector: '.block-hero-sub', target: 'text', background_field: 'background' },
+    { name: 'primary_button', label: 'Primary button', selector: '.block-btn-primary', target: 'button', color: 'on_primary', background: 'primary' },
+    { name: 'secondary_button', label: 'Secondary button', selector: '.block-btn-secondary', target: 'button', color: 'primary', background_field: 'background' },
+    { name: 'media', label: 'Image', selector: '.block-hero-media img', target: 'image' },
+    { name: 'layout', label: 'Text and image columns', selector: '.block-hero-inner', target: 'container', decorative: true },
+    { name: 'actions', label: 'Button row', selector: '.block-hero-actions', target: 'container', decorative: true },
+    { name: 'overlay', label: 'Image overlay', selector: '.block-hero-overlay', target: 'container', decorative: true },
+  ],
   schema: [
     { name: 'eyebrow', type: 'text', label: 'Eyebrow' },
     { name: 'heading', type: 'text', label: 'Heading' },
@@ -532,7 +567,19 @@ const cta: BlockType = {
   icon: 'megaphone',
   category: 'content',
   container: false,
+  // The band is the primary colour with on-primary text unless `background`
+  // sets another; the primary button inverts it. The band itself (its
+  // padding) takes a container style through `style_id`.
+  parts: [
+    { name: 'eyebrow', label: 'Eyebrow', selector: '.block-cta-eyebrow', target: 'text', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'heading', label: 'Heading', selector: '.block-cta-heading', target: 'heading', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'subheading', label: 'Subheading', selector: '.block-cta-sub', target: 'text', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'primary_button', label: 'Primary button', selector: '.block-btn-primary', target: 'button', color: 'primary', background: 'on_primary' },
+    { name: 'secondary_button', label: 'Secondary button', selector: '.block-btn-secondary', target: 'button', color: 'on_primary', background: 'primary', background_field: 'background' },
+    { name: 'actions', label: 'Button row', selector: '.block-cta-actions', target: 'container', decorative: true },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'CTA style', style_target: 'container', editor_group: 'content' },
     { name: 'eyebrow', type: 'text', label: 'Eyebrow' },
     { name: 'heading', type: 'text', label: 'Heading' },
     { name: 'subheading', type: 'richtext', label: 'Subheading' },
@@ -599,7 +646,18 @@ const testimonial: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  // Measured on the default card surface.
+  parts: [
+    { name: 'quote', label: 'Quote', selector: '.block-testimonial-quote', target: 'text', background: 'surface' },
+    { name: 'rating', label: 'Rating', selector: '.block-testimonial-rating', target: 'text', background: 'surface', min_render_version: 7 },
+    { name: 'attribution', label: 'Attribution row', selector: '.block-testimonial-cite', target: 'text', background: 'surface' },
+    { name: 'avatar', label: 'Avatar', selector: '.block-testimonial-avatar', target: 'image' },
+    { name: 'name', label: 'Name', selector: '.block-testimonial-name', target: 'text', background: 'surface' },
+    { name: 'role', label: 'Role and company', selector: '.block-testimonial-role', target: 'text', background: 'surface' },
+    { name: 'logo', label: 'Company logo', selector: '.block-testimonial-logo', target: 'image' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'quote', type: 'richtext', label: 'Quote', required: true },
     { name: 'name', type: 'text', label: 'Name' },
     { name: 'role', type: 'text', label: 'Role / title' },
@@ -656,6 +714,16 @@ const teamMember: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'card', label: 'Card', selector: '.block-team-link', target: 'container' },
+    { name: 'photo', label: 'Photo', selector: '.block-team-photo', target: 'image' },
+    { name: 'body', label: 'Text panel', selector: '.block-team-body', target: 'container' },
+    { name: 'name', label: 'Name', selector: '.block-team-name', target: 'heading' },
+    { name: 'role', label: 'Role', selector: '.block-team-role', target: 'text' },
+    { name: 'bio', label: 'Bio', selector: '.block-team-bio', target: 'text' },
+    { name: 'socials', label: 'Social links list', selector: '.block-team-socials', target: 'list' },
+    { name: 'social_link', label: 'Social link', selector: '.block-team-social', target: 'link', min_render_version: 4 },
+  ],
   schema: [
     { name: 'name', type: 'text', label: 'Name', required: true },
     { name: 'role', type: 'text', label: 'Role' },
@@ -727,7 +795,19 @@ const pricingPlan: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'badge', label: 'Badge', selector: '.block-pricing-badge', target: 'text', color: 'on_primary', background: 'primary' },
+    { name: 'name', label: 'Plan name', selector: '.block-pricing-name', target: 'heading' },
+    { name: 'price', label: 'Price', selector: '.block-pricing-price', target: 'text' },
+    { name: 'period', label: 'Period', selector: '.block-pricing-period', target: 'text' },
+    { name: 'description', label: 'Tagline', selector: '.block-pricing-description', target: 'text' },
+    { name: 'features', label: 'Feature list', selector: '.block-pricing-features', target: 'list' },
+    { name: 'included_feature', label: 'Included feature', selector: '.block-pricing-features li[data-included="true"]', target: 'text', min_render_version: 4 },
+    { name: 'excluded_feature', label: 'Excluded feature', selector: '.block-pricing-features li[data-included="false"]', target: 'text', min_render_version: 4 },
+    { name: 'button', label: 'Button', selector: '.block-pricing-cta', target: 'button', color: 'on_primary', background: 'primary' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'name', type: 'text', label: 'Plan name', required: true },
     { name: 'price', type: 'text', label: 'Price' },
     { name: 'period', type: 'text', label: 'Period (e.g. /month)' },
@@ -798,7 +878,20 @@ const postCard: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'image', label: 'Image or placeholder', selector: '.block-postcard-image', target: 'image' },
+    { name: 'image_link', label: 'Image link', selector: '.block-postcard-media > .block-postcard-link', target: 'link', decorative: true },
+    { name: 'placeholder_icon', label: 'Placeholder icon', selector: '.block-postcard-placeholder > span', target: 'text', decorative: true },
+    { name: 'title', label: 'Title', selector: '.block-postcard-title', target: 'heading', background_field: 'background' },
+    { name: 'title_link', label: 'Title link', selector: '.block-postcard-title > .block-postcard-link', target: 'link', background_field: 'background' },
+    { name: 'title_icon', label: 'Title icon', selector: '.block-postcard-title-icon', target: 'text', decorative: true },
+    { name: 'excerpt', label: 'Excerpt', selector: '.block-postcard-excerpt', target: 'text', background_field: 'background' },
+    { name: 'meta', label: 'Date and author', selector: '.block-postcard-meta', target: 'text', background_field: 'background' },
+    { name: 'action', label: 'Page action link', selector: '.block-postcard-action', target: 'link', background_field: 'background' },
+    { name: 'download', label: 'Download link', selector: '.block-postcard-download', target: 'link', color: 'primary', background_field: 'background' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'title', type: 'text', label: 'Title' },
     { name: 'excerpt', type: 'text', label: 'Excerpt' },
     { name: 'image', type: 'image', label: 'Featured image' },
@@ -974,6 +1067,9 @@ const logoItem: BlockType = {
   category: 'media',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'logo', label: 'Logo image', selector: '.block-logo-link > img', target: 'image' },
+  ],
   schema: [
     { name: 'src', type: 'image', label: 'Logo image', required: true },
     { name: 'alt', type: 'text', label: 'Alt text' },
@@ -1007,7 +1103,15 @@ const stepCard: BlockType = {
   category: 'content',
   container: false,
   item_compatible: true,
+  parts: [
+    { name: 'marker', label: 'Number and icon row', selector: '.block-step-marker', target: 'container', decorative: true },
+    { name: 'number', label: 'Step number', selector: '.block-step-number', target: 'text', color: 'on_primary', background: 'primary' },
+    { name: 'icon', label: 'Icon', selector: '.block-step-icon', target: 'text', decorative: true },
+    { name: 'title', label: 'Title', selector: '.block-step-title', target: 'heading' },
+    { name: 'text', label: 'Description', selector: '.block-step-text', target: 'text' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'number', type: 'text', label: 'Step number / label' },
     { name: 'icon', type: 'icon', label: 'Icon' },
     { name: 'title', type: 'text', label: 'Title', required: true },
@@ -1046,6 +1150,13 @@ const navigation: BlockType = {
   icon: 'menu',
   category: 'content',
   container: false,
+  // The current page's link is a link too; its own part sets how it differs.
+  parts: [
+    { name: 'list', label: 'Link list', selector: '.block-navigation-list', target: 'list' },
+    { name: 'link', label: 'Links', selector: '.block-navigation-list a', target: 'link' },
+    { name: 'current_link', label: 'Current page link', selector: '.block-navigation-list a[aria-current="page"]', target: 'link' },
+    { name: 'toggle', label: 'Menu button', selector: '.block-navigation-toggle', target: 'button' },
+  ],
   schema: [
     { name: 'aria_label', type: 'text', label: 'Accessible label', default: 'Main navigation' },
     { name: 'menu_label', type: 'text', label: 'Mobile menu label', default: 'Menu' },
@@ -1106,7 +1217,16 @@ const accordion: BlockType = {
   icon: 'list-collapse',
   category: 'content',
   container: false,
+  // Items render from version 4. The outer frame (the bordered style's
+  // border, the separated style's gap) takes a container style through
+  // `style_id`.
+  parts: [
+    { name: 'item', label: 'Item', selector: 'details', target: 'container', min_render_version: 4 },
+    { name: 'title', label: 'Item title', selector: 'summary', target: 'text', min_render_version: 4 },
+    { name: 'panel', label: 'Item content', selector: 'details > div', target: 'text', min_render_version: 4 },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Accordion style', style_target: 'container', editor_group: 'content' },
     { name: 'items', type: 'array', label: 'Items',
       fields: [
         { name: 'title', type: 'text', label: 'Title', required: true },
@@ -1153,6 +1273,10 @@ const video: BlockType = {
   icon: 'video',
   category: 'media',
   container: false,
+  // The embed (YouTube, Vimeo) or the file player, whichever the source renders.
+  parts: [
+    { name: 'player', label: 'Player', selector: 'iframe, video', target: 'image', decorative: true },
+  ],
   schema: [
     { name: 'source', type: 'select', label: 'Source', options: ['youtube', 'vimeo', 'url'], default: 'youtube' },
     { name: 'video_url', type: 'url', label: 'Video URL' },
@@ -1164,10 +1288,12 @@ const video: BlockType = {
     { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio',
       options: ['16:9', '4:3', '1:1', '9:16'], default: '16:9', responsive: true },
     { name: 'lazy_load', type: 'boolean', label: 'Lazy-load', default: true },
+    { name: 'title', type: 'text', label: 'Accessible title', default: 'Video', min_render_version: 7 },
   ],
-  // Embed URL conversion happens in the build pipeline (site-template
-  // intercepts the video block and rewrites video_url to an embed-ready
-  // URL). Until then this template renders an iframe with the URL as-is.
+  // Up to render version 6 this is a bare iframe with the authored URL, and
+  // no option applies. From version 7 the renderer builds the player
+  // (block-media.ts): embed addresses for YouTube/Vimeo, a native <video>
+  // for a file, and every option.
   template: `<div data-block="video" data-source="{{source}}" style="--aspect_ratio:{{aspect_ratio}}">
   <iframe src="{{video_url}}" loading="lazy" allowfullscreen></iframe>
 </div>`,
@@ -1232,7 +1358,15 @@ const mediaCard: BlockType = {
   icon: 'image-plus',
   category: 'content',
   container: false,
+  parts: [
+    { name: 'body', label: 'Text column', selector: '.block-mediacard-body', target: 'container', decorative: true },
+    { name: 'heading', label: 'Heading', selector: '.block-mediacard-heading', target: 'heading', background_field: 'background' },
+    { name: 'text', label: 'Text', selector: '.block-mediacard-text', target: 'text', background_field: 'background' },
+    { name: 'button', label: 'Button', selector: '.block-mediacard-button', target: 'button', color: 'on_primary', background: 'primary' },
+    { name: 'media', label: 'Image', selector: '.block-mediacard-media img', target: 'image' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
     { name: 'image', type: 'image', label: 'Image', required: true },
     { name: 'image_fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
     { name: 'image_alt', type: 'text', label: 'Image alt text' },
@@ -1300,7 +1434,18 @@ const featureRow: BlockType = {
   icon: 'layout-list',
   category: 'content',
   container: false,
+  parts: [
+    { name: 'eyebrow', label: 'Eyebrow', selector: '.block-frow-eyebrow', target: 'text', background_field: 'background' },
+    { name: 'heading', label: 'Heading', selector: '.block-frow-heading', target: 'heading', background_field: 'background' },
+    { name: 'text', label: 'Text', selector: '.block-frow-text', target: 'text', background_field: 'background' },
+    { name: 'primary_button', label: 'Primary button', selector: '.block-btn-primary', target: 'button', color: 'on_primary', background: 'primary' },
+    { name: 'secondary_button', label: 'Secondary button', selector: '.block-btn-secondary', target: 'button', color: 'primary', background_field: 'background' },
+    { name: 'media', label: 'Image', selector: '.block-frow-media img', target: 'image' },
+    { name: 'layout', label: 'Image and text columns', selector: '.block-frow-inner', target: 'container', decorative: true },
+    { name: 'actions', label: 'Button row', selector: '.block-frow-actions', target: 'container', decorative: true },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Row style', style_target: 'container', editor_group: 'content' },
     { name: 'eyebrow', type: 'text', label: 'Eyebrow' },
     { name: 'heading', type: 'text', label: 'Heading' },
     { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3'], default: 'h2' },
@@ -1418,7 +1563,19 @@ const search: BlockType = {
   icon: 'search',
   category: 'content',
   container: false,
+  // The script mounts Pagefind's UI (its class names are Pagefind's stable
+  // markup), or a note where the index cannot load. The block's frame (its
+  // padding) takes a container style through `style_id`.
+  parts: [
+    { name: 'input', label: 'Search field', selector: '.pagefind-ui__search-input', target: 'text' },
+    { name: 'message', label: 'Result count', selector: '.pagefind-ui__message', target: 'text' },
+    { name: 'result_link', label: 'Result titles', selector: '.pagefind-ui__result-link', target: 'link' },
+    { name: 'result_excerpt', label: 'Result excerpts', selector: '.pagefind-ui__result-excerpt', target: 'text' },
+    { name: 'more_button', label: 'More results button', selector: '.pagefind-ui__button', target: 'button' },
+    { name: 'note', label: 'Unavailable note', selector: '.block-search-note', target: 'text' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Search style', style_target: 'container', editor_group: 'content' },
     { name: 'placeholder', type: 'text', label: 'Placeholder', default: 'Search…' },
   ],
   template: `<div data-block="search" data-placeholder="{{placeholder}}">
@@ -1467,7 +1624,17 @@ const tableOfContents: BlockType = {
   icon: 'list-tree',
   category: 'content',
   container: false,
+  // The card itself (border, shadow) takes a container style through
+  // `style_id`. The script marks the link of the heading in view as current.
+  parts: [
+    { name: 'title', label: 'Title', selector: 'strong', target: 'text' },
+    { name: 'list', label: 'List', selector: 'ol', target: 'list' },
+    { name: 'item', label: 'Item', selector: 'li', target: 'text' },
+    { name: 'link', label: 'Links', selector: 'a', target: 'link', color: 'primary' },
+    { name: 'current_link', label: 'Current link', selector: 'a[aria-current="location"]', target: 'link', color: 'primary' },
+  ],
   schema: [
+    { name: 'style_id', type: 'style', label: 'Table of contents style', style_target: 'container', editor_group: 'content' },
     pixels('padding_px', 'Padding (px)', 0, 120),
     pixels('radius_px', 'Corner radius (px)', 0, 120),
     { name: 'link_color', type: 'select', label: 'Link color', options: ['theme', 'neutral'], default: 'theme' },
@@ -1676,6 +1843,33 @@ pricingPlan.render_versions![0]!.styles = `${pricingPlan.styles}
 [data-block="pricing_plan"] .block-pricing-features li::before { content: "✓"; color: var(--color-primary, currentColor); font-weight: 700; }
 [data-block="pricing_plan"] .block-pricing-features li[data-included="false"] { opacity: 0.55; text-decoration: line-through; }
 [data-block="pricing_plan"] .block-pricing-features li[data-included="false"]::before { content: "–"; color: inherit; }`;
+
+// Render version 7: the options these blocks declared now render
+// (block-media.ts). Earlier versions keep the templates above.
+video.render_versions = [{
+  from: 7,
+  template: `<div data-block="video" data-source="{{source}}" style="--aspect_ratio:{{aspect_ratio}}">{{{video_html}}}</div>`,
+  styles: `${video.styles}
+[data-block="video"]:empty { display: none; }
+[data-block="video"] video { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0.5rem; background: #000; object-fit: contain; }`,
+}];
+hero.render_versions = [{
+  from: 7,
+  template: hero.template!.replace('<div class="block-hero-inner">', '{{{hero_video_html}}}<div class="block-hero-inner">'),
+  styles: `${hero.styles}
+[data-block="hero"] > .block-hero-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; pointer-events: none; }
+[data-block="hero"] > .block-hero-video-toggle { position: absolute; right: 1rem; bottom: 1rem; z-index: 3; inline-size: 2.75rem; block-size: 2.75rem; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; cursor: pointer; }
+[data-block="hero"] > .block-hero-video-toggle[hidden] { display: none; }
+[data-block="hero"] > .block-hero-video-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; box-shadow: 0 0 0 4px #000; }
+@media (prefers-reduced-motion: reduce) { [data-block="hero"] > .block-hero-video, [data-block="hero"] > .block-hero-video-toggle { display: none; } }`,
+  script: HERO_VIDEO_RUNTIME,
+}];
+testimonial.render_versions = [{
+  from: 7,
+  template: testimonial.template!.replace('<blockquote class="block-testimonial-quote">', '{{{rating_html}}}<blockquote class="block-testimonial-quote">'),
+  styles: `${testimonial.styles}
+[data-block="testimonial"] .block-testimonial-rating { margin: 0 0 0.75rem; font-size: 1.125rem; line-height: 1; letter-spacing: 0.1em; color: var(--testimonial-rating-color, #b45309); }`,
+}];
 
 export const TIER1_BLOCK_TYPES: readonly BlockType[] = [
   // Layout

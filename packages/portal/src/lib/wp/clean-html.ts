@@ -46,7 +46,7 @@ const SEMANTIC_TAGS = new Set([
 const STRIP_TAGS = new Set([
   'script', 'style', 'noscript', 'object', 'embed',
   'form', 'input', 'textarea', 'select', 'button', 'label', 'fieldset',
-  'svg', // usually decorative builder icons; AI can re-add real ones
+  'svg', // usually decorative builder icons; real ones can be re-added after import
   'meta', 'link', 'head', 'title',
 ]);
 

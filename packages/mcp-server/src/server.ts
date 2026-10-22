@@ -13,6 +13,7 @@ import { z, type ZodRawShape } from 'zod';
 import { TyperollClient } from './client.js';
 import { ownerReviewTools } from './tools/owner-review.js';
 import { pageTools } from './tools/pages.js';
+import { structuredDataTools } from './tools/structured-data.js';
 import { partialTools } from './tools/partials.js';
 import { contentTypeTools } from './tools/content-types.js';
 import { pageTemplateTools } from './tools/page-templates.js';
@@ -39,7 +40,7 @@ import { extensionTools, developerExtensionTools } from './tools/extensions.js';
 import { skillTools } from './tools/skills.js';
 import { accessTools } from './tools/access.js';
 import { workflowTools } from './tools/workflows.js';
-import { fail, type ToolDef, type ToolDeps } from './tools/helpers.js';
+import { fail, ok, type ToolDef, type ToolDeps } from './tools/helpers.js';
 import { VERSION } from './version.js';
 import { compactTools, COMPACT_INSTRUCTIONS, type CallableTool, type ToolEffect } from './compact-tools.js';
 
@@ -60,7 +61,7 @@ const PERM_RANK: Record<ToolEffect, number> = { read: 0, write: 1, admin: 2 };
  * mutates.
  */
 function effectFor(name: string): ToolEffect {
-  if (name === 'page_completeness') return 'read';
+  if (name === 'page_completeness' || name === 'resolve_page_url') return 'read';
   if (
     name === 'retry_deploy_verification'
     || name === 'list_apps'
@@ -100,6 +101,9 @@ function effectFor(name: string): ToolEffect {
     || name === 'revoke_site_share'
     || name === 'revoke_organization_api_key'
     || name === 'create_organization_invite'
+    || name === 'set_organization_ai_key'
+    || name === 'remove_organization_ai_key'
+    || name === 'set_organization_ai_site_access'
     || name === 'disconnect_organization_publishing_provider'
     || name === 'connect_organization_cloudflare'
     || name === 'prepare_organization_media_storage'
@@ -108,12 +112,6 @@ function effectFor(name: string): ToolEffect {
     || name === 'delete_email_settings'
     || name === 'send_test_email'
     || name === 'set_incoming_email_forwarding'
-    // Block type authoring is site administration (the portal and the v1
-    // routes require admin); placing and editing blocks on pages stays write.
-    || name === 'create_block_type'
-    || name === 'update_block_type'
-    || name === 'delete_block_type'
-    || name === 'import_block_types'
   ) return 'admin';
   // Compute an answer and write nothing, like the preview_* tools.
   if (name === 'validate_block_type' || name.startsWith('find_')) return 'read';
@@ -149,15 +147,19 @@ export interface BuildServerOptions {
   allowedSites?: AllowedSite[];
   info?: { name: string; version: string };
   toolMode?: 'full' | 'compact';
+  /** Stateless personal connections require an explicit organization/site/version selection. */
+  selection?: {
+    select(organizationId: string, siteId: string, version: string): Promise<Record<string, unknown>>;
+    resolve(context: string): Promise<{ client: TyperollClient; siteId: string; permission: ToolEffect }>;
+  };
 }
 
 const DEFAULT_INFO = { name: 'typeroll', version: VERSION };
 
 /**
  * Server-level instructions — returned in the MCP `initialize` response and
- * surfaced to the model by every client (Claude Code stdio AND the hosted
- * Desktop/claude.ai connector) with zero user setup. This is the one channel
- * that reaches every consumer automatically, so it carries the highest-value
+ * available to clients (Claude Code stdio AND the hosted
+ * Desktop/claude.ai connector) with zero user setup. Clients decide how to surface these instructions, so it carries the highest-value
  * conventions and POINTS at the deeper, on-demand content (the bundled skills,
  * reachable via list_skills/read_skill) rather than duplicating it.
  */
@@ -169,14 +171,17 @@ custom field schemas, URL patterns and default Page templates. Use Page IDs and
 list_pages with content_type filters; use the same version for all operations.
 The full playbook ships with this server — use it:
 
-0. For the complete operating context (data model, conventions, safety
-   boundaries, tool-family reference), call read_guide once. list_skills +
-   read_skill give the task-specific recipes on top of it.
+0. First confirm the site, organization and version with the user. Personal
+   connections require select_site and its site_context on subsequent calls.
+   Use list_skills and read_skill for only the relevant recipe. Use read_guide
+   sections when needed; do not load the whole manual by default. Everyday
+   edits (links, images, menus, site-wide changes, settings, analytics,
+   structured data) are in tr-edit-site.
 1. When the task is "build / migrate / redesign / brand a site", call
    list_skills FIRST, then read_skill <name> for the step-by-step recipe
    (tr-new-site, tr-migrate-wp, tr-brand, tr-blog, tr-responsive, …). These are
    the canonical how-to; don't improvise what a skill already covers.
-2. Discover before you write: read_app_documentation, get_site, get_site_capabilities,
+2. Discover before you write: read_site_instructions, read_app_documentation, get_site, get_site_capabilities,
    read_site_settings, list_pages, list_block_types. Never hardcode block ids
    or field names — they're per-site. For installed Extension config, call
    list_extension_installations then read_extension_installation before an
@@ -198,35 +203,40 @@ The full playbook ships with this server — use it:
    style through a block's style_id, and create_style for any look that could
    recur. Use one-off block values only for something clearly unique, never
    classed raw HTML. Text must meet WCAG AA contrast. A heading's small label
-   is its eyebrow field. For what styles cannot express, use page or site
-   custom_css on s-<style> or block custom_class selectors, not [data-block].
+   is its eyebrow field. A block's sub-elements (links, a hero's heading or
+   buttons) are parts (read_block_type): style them site-wide with a style's
+   parts or on one block with data.part_styles. For what styles cannot
+   express, use page or site custom_css on s-<style> or block custom_class
+   selectors, not [data-block].
 7. Reuse: content that must stay identical on many pages is a global block
    (make_block_global; core/global_block references it). A section people
    start from and then adapt is a block template (list_block_templates,
    insert_block_template copies it). Never duplicate shared content by hand.
 8. No site yet? With an org-scoped key, create_site bootstraps one.
+9. AI workflows (site_planning, content_generation, content_improvement,
+   schema_markup, create_site_and_plan) need the Organization's portal AI
+   key for the Site. On ai_not_enabled don't retry: do the work yourself
+   with the recipe named in start_workflow and tell the user you did.
 
 If anything here conflicts with what a tool returns, trust the tool. Every
 tool's own description carries its specifics.
 `.trim();
 
 export function buildServer(options: BuildServerOptions): McpServer {
-  if (!options.fixedSiteId && !options.allowedSites) {
-    throw new Error('buildServer: either fixedSiteId or allowedSites must be provided');
-  }
-  if (options.fixedSiteId && options.allowedSites) {
-    throw new Error('buildServer: provide only one of fixedSiteId / allowedSites');
+  if ([options.fixedSiteId, options.allowedSites, options.selection].filter(value => value !== undefined).length !== 1) {
+    throw new Error('buildServer: provide exactly one of fixedSiteId, allowedSites or selection');
   }
 
   const server = new McpServer(options.info ?? DEFAULT_INFO, {
     capabilities: { tools: {} },
-    instructions: options.toolMode === 'compact' ? COMPACT_INSTRUCTIONS : SERVER_INSTRUCTIONS,
+    instructions: (options.selection ? 'First ask which site to work on. List sites, confirm its organization/name with the user, then call select_site. Carry the returned site_context on every site call. Never search across sites or silently switch sites or versions. Select a new context to switch. Organization administration requires an explicit organization_id and the user’s permission. ' : '') + (options.toolMode === 'compact' ? COMPACT_INSTRUCTIONS : SERVER_INSTRUCTIONS),
   });
 
   const allTools: ToolDef[] = [
     ...skillTools,
     ...siteTools,
     ...pageTools,
+    ...structuredDataTools,
     ...ownerReviewTools,
     ...partialTools,
     ...blockTypeTools,
@@ -272,6 +282,16 @@ export function buildServer(options: BuildServerOptions): McpServer {
   );
 
   const catalog: CallableTool[] = [];
+  if (options.selection) {
+    catalog.push({ name: 'select_site', effect: 'read',
+      description: 'Select the organization, site and version confirmed by the user. Returns an opaque site_context for subsequent calls. This does not publish or change content. Other chats keep their own contexts.',
+      schema: { organization_id: z.string().min(1), site_id: z.string().min(1), version: z.string().default('main') },
+      invoke: async args => {
+        try { return ok(await options.selection!.select(String(args.organization_id), String(args.site_id), String(args.version))); }
+        catch (error) { return fail(error); }
+      },
+    });
+  }
   for (const tool of allTools) {
     const effect = effectFor(tool.name);
     // Skill-discovery tools (and any future site-less tool) operate without a
@@ -279,7 +299,12 @@ export function buildServer(options: BuildServerOptions): McpServer {
     const needsSite = !tool.noSite;
 
     let schema: ZodRawShape | undefined = tool.inputSchema;
-    if (isMultiSite && needsSite) {
+    const isDiscovery = ['list_sites', 'list_organizations', 'read_guide', 'list_skills', 'read_skill'].includes(tool.name);
+    if (options.selection && needsSite) {
+      schema = { ...(schema ?? {}), site_context: z.string().min(1).describe('Opaque context returned by select_site. Required; never reuse a context from another conversation.') };
+    } else if (options.selection && !isDiscovery) {
+      schema = { ...(schema ?? {}), organization_id: z.string().min(1).describe('Explicit organization for this administrative operation. Use list_organizations.') };
+    } else if (isMultiSite && needsSite) {
       // Append site_id to the tool's existing input schema. We mutate a copy
       // so we don't pollute the imported ToolDef.
       const siteIdField = {
@@ -296,6 +321,20 @@ export function buildServer(options: BuildServerOptions): McpServer {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       async (args: any) => {
         const rawArgs = { ...(args ?? {}) };
+        if (options.selection) {
+          try {
+            if (needsSite) {
+              const selected = await options.selection.resolve(String(rawArgs.site_context || ''));
+              if (PERM_RANK[selected.permission] < PERM_RANK[effect]) return fail(new Error(`This tool requires ${effect} permission; your access is ${selected.permission}.`));
+              delete rawArgs.site_context;
+              return await tool.handler(rawArgs, { client: selected.client, siteId: selected.siteId });
+            }
+            const client = isDiscovery ? options.client : options.client.forOrganization(String(rawArgs.organization_id || ''));
+            delete rawArgs.organization_id;
+            return await tool.handler(rawArgs, { client, siteId: '' });
+          } catch (error) { return fail(error); }
+        }
+
         let siteId: string;
         if (isMultiSite && needsSite) {
           const provided = typeof rawArgs.site_id === 'string' ? rawArgs.site_id.trim() : '';

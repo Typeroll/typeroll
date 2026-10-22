@@ -340,6 +340,7 @@ for production, staging, and local development; never copy live keys into tests.
 | `TYPEROLL_PUBLISH_GITHUB_PRIVATE_KEY` | App RSA private key in PEM form; secret-manager value |
 | `TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_ID` | Public Cloudflare OAuth Client ID for this environment |
 | `TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET` | Cloudflare OAuth client secret; secret-manager value |
+| `TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES` | Optional scopes the client allows and Connect Cloudflare requests: any of `account-settings.write account-analytics.read dynamic-redirect.read dynamic-redirect.write`. Unset requests none of them |
 | `INTEGRATIONS_SECRET_KEY` | Existing encryption key, at least 32 characters; retain during normal redeploys |
 
 Set these in the App's settings on GitHub (**General**):

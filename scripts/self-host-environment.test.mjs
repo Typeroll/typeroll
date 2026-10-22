@@ -71,6 +71,20 @@ test('accepts a complete immutable self-host environment', () => {
   assert.deepEqual(result.errors, []);
 });
 
+test('needs no AI key and warns that a leftover platform AI key is ignored', () => {
+  const env = validEnvironment();
+  let result = validateSelfHostEnvironment(env);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.warnings.filter((warning) => warning.includes('ANTHROPIC')), []);
+  assert.equal(result.secretKeys.includes('ANTHROPIC_API_KEY'), false);
+
+  env.ANTHROPIC_API_KEY = 'sk-ant-obviously-fake';
+  result = validateSelfHostEnvironment(env);
+  assert.equal(result.ok, true);
+  assert.ok(result.warnings.some((warning) => warning.startsWith('ANTHROPIC_API_KEY: no longer read') && warning.includes('AI assistant')));
+  assert.ok(result.warnings.every((warning) => !warning.includes('sk-ant-obviously-fake')));
+});
+
 test('accepts keyless Google credentials for self-host operations', () => {
   const env = validEnvironment();
   delete env.FIREBASE_SERVICE_ACCOUNT;

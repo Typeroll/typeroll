@@ -16,10 +16,20 @@ interface AppField {
   help?: string;
   options?: string[];
 }
+interface AppSetup {
+  status: 'ready' | 'action_required';
+  code?: string;
+  message?: string;
+  next_step?: string;
+  settings_url?: string;
+  account?: { owner: 'organization' | 'installation'; account_id: string | null; hosting_group_id?: string };
+}
 interface AppState {
   enabled: boolean;
   enabled_at?: string;
   config: Record<string, unknown>;
+  /** Provider setup (Analytics: the Cloudflare Web Analytics site). */
+  setup?: AppSetup;
 }
 interface AppEntry {
   id: string;
@@ -66,6 +76,27 @@ export default function AppsSettings({ siteId }: { siteId: string }) {
       .finally(() => setLoading(false));
   }, [siteId]);
 
+  /** Renew the hosting account's Cloudflare consent with the Analytics permissions (organization owners and admins). */
+  async function approveAnalyticsAccess(setup: AppSetup): Promise<void> {
+    setBusy('analytics');
+    setMsg(null);
+    try {
+      const groupId = setup.account?.hosting_group_id ?? 'default';
+      const res = await fetch('/api/orgs/publishing/cloudflare', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'start', analytics_access: true, ...(groupId === 'default' ? {} : { hosting_group_id: groupId }) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.authorization_url) throw new Error(data.error ?? 'Could not open Cloudflare. An organization owner or admin must approve Analytics access.');
+      window.location.assign(data.authorization_url);
+      return;
+    } catch (e) {
+      setMsg({ id: 'analytics', text: (e as Error).message, error: true });
+    }
+    setBusy(null);
+  }
+
   async function save(app: AppEntry, enabled: boolean): Promise<void> {
     setBusy(app.id);
     setMsg(null);
@@ -83,13 +114,19 @@ export default function AppsSettings({ siteId }: { siteId: string }) {
         body: JSON.stringify({ enabled, config }),
       });
       const data = await res.json();
+      // A 409 can still carry the saved state: the module is on, but its provider setup needs an action.
+      if (data.state) {
+        setApps((prev) => prev.map((a) => (a.id === app.id ? { ...a, state: data.state } : a)));
+        setValues((prev) => ({ ...prev, [app.id]: valuesFromState(app.fields, data.state) }));
+      }
       if (!res.ok) throw new Error(data.error ?? `Save failed (${res.status})`);
-      setApps((prev) => prev.map((a) => (a.id === app.id ? { ...a, state: data.state } : a)));
-      setValues((prev) => ({ ...prev, [app.id]: valuesFromState(app.fields, data.state) }));
+      const needsAction = data.state?.setup?.status === 'action_required';
       setMsg({
         id: app.id,
+        error: needsAction,
         text: enabled
-          ? (app.affects_build ? 'Enabled. Redeploy the site to activate it.' : 'Enabled.')
+          ? needsAction ? 'Saved. Setup needs an action — see below.'
+            : (app.affects_build ? 'Enabled. Redeploy the site to activate it.' : 'Enabled.')
           : 'Disabled.',
       });
     } catch (e) {
@@ -169,6 +206,38 @@ export default function AppsSettings({ siteId }: { siteId: string }) {
                     Save settings
                   </button>
                 </div>
+              </div>
+            )}
+
+            {enabled && app.state.setup && (
+              <div className="stack" data-app-setup={app.state.setup.status} data-app-setup-code={app.state.setup.code}
+                style={{ gap: 4, borderTop: '1px solid var(--border, #e5e7eb)', paddingTop: '0.75rem' }}>
+                {app.state.setup.status === 'ready' ? (
+                  <p className="text-sm" style={{ margin: 0 }}>
+                    Cloudflare Web Analytics is set up in {app.state.setup.account?.owner === 'organization'
+                      ? `your organization’s Cloudflare account${app.state.setup.account.account_id ? ` (${app.state.setup.account.account_id})` : ''}`
+                      : 'this installation’s Cloudflare account'}.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-sm" style={{ margin: 0, fontWeight: 600 }}>Action needed: {app.state.setup.message}</p>
+                    {app.state.setup.next_step && <p className="text-sm muted" style={{ margin: 0 }}>{app.state.setup.next_step}</p>}
+                    {/* When the installation requests these permissions with Connect Cloudflare, settings_url is the Hosting
+                        Group's Publishing card, where one Approve update covers every Site; only older deployments
+                        approve per Site here. */}
+                    {app.state.setup.code === 'analytics_cloudflare_access_required' && app.state.setup.settings_url?.includes('#') ? (
+                      <p className="text-sm" style={{ margin: 0 }}><a href={app.state.setup.settings_url}>Approve the update in Publishing →</a></p>
+                    ) : app.state.setup.code === 'analytics_cloudflare_access_required' && app.state.setup.account?.owner === 'organization' ? (
+                      <div>
+                        <button type="button" className="btn" disabled={busy !== null} onClick={() => void approveAnalyticsAccess(app.state.setup!)}>
+                          {busy === 'analytics' ? 'Opening Cloudflare…' : 'Approve Analytics access'}
+                        </button>
+                      </div>
+                    ) : app.state.setup.settings_url && (
+                      <p className="text-sm" style={{ margin: 0 }}><a href={app.state.setup.settings_url}>Open Publishing settings →</a></p>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

@@ -225,7 +225,10 @@ OAuth client in Cloudflare:
   Typeroll retries once with `client_secret_post` when Cloudflare rejects HTTP
   Basic for the client.
 - **Scopes**: every scope Typeroll requests must be allowed for the client,
-  otherwise Cloudflare answers `invalid_scope` before the consent page.
+  otherwise Cloudflare answers `invalid_scope` before the consent page. This
+  includes each optional scope listed in
+  `TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES`; see
+  [Self-hosting](../self-hosting/#cloudflare-sign-in-for-customer-publishing).
 - The client ID, secret and encrypted credential storage
   (`TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_ID`,
   `TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET`, `INTEGRATIONS_SECRET_KEY`) and

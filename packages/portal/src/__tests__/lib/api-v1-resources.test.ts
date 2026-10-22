@@ -373,3 +373,48 @@ describe('GET /pages/{pageId}/blocks', () => {
     expect(body.html_content).toBe('<h1>hi</h1>');
   });
 });
+
+describe('PATCH /pages/{pageId}/blocks field types', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('reports a written value the block will not render, naming the field', async () => {
+    const { token } = await setup();
+    await seedPage('home', { content_mode: 'blocks', blocks: [{ id: 'tabs', type: 'core/tabs', data: {}, slots: [[], []] }] });
+    const patch = (data: Record<string, unknown>) => callRoute(
+      import('../../pages/api/v1/sites/[siteId]/pages/[pageId]/blocks'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SITE}/pages/home/blocks`,
+      { siteId: SITE, pageId: 'home' },
+      { headers: { ...bearer(token), 'content-type': 'application/json' }, body: JSON.stringify({ block_id: 'tabs', data }) },
+    );
+    const bad = await (await patch({ active_font_weight: 'bold' })).json() as { warnings?: Array<{ code: string; field: string; path: string }> };
+    expect(bad.warnings).toEqual([expect.objectContaining({ code: 'field_type_mismatch', field: 'active_font_weight', path: 'tabs.data.active_font_weight' })]);
+    // Numeric text renders as the number, so it is not reported.
+    const numeric = await (await patch({ active_font_weight: '600' })).json() as { warnings?: unknown[] };
+    expect(numeric.warnings).toBeUndefined();
+  });
+});
+
+describe('PATCH /pages/{pageId} field types of site block types', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('checks a block tree against the site library as well as core', async () => {
+    const { token } = await setup();
+    await seedPage('home', { content_mode: 'blocks', blocks: [] });
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.blockType(ORG, SITE, 'promo', MAIN_VERSION_ID), {
+      id: 'promo', name: 'promo', label: 'Promo', category: 'content', container: false, origin: 'custom',
+      schema: [{ name: 'columns', type: 'number', label: 'Columns' }], template: '<div style="--c:{{columns}}"></div>', created_at: '2026-01-01T00:00:00Z',
+    });
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/pages/[pageId]'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SITE}/pages/home`,
+      { siteId: SITE, pageId: 'home' },
+      { headers: bearer(token), body: { blocks: [{ id: 'promo', type: 'promo', data: { columns: 'three' } }] } },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json() as { warnings?: Array<{ code: string; path: string }> };
+    expect(body.warnings).toEqual([expect.objectContaining({ code: 'field_type_mismatch', path: 'blocks[0].data.columns' })]);
+  });
+});

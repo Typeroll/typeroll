@@ -163,9 +163,13 @@ describe('BlockType CRUD via /api/sites/{id}/blocks/types', () => {
     expect(body.problems.map(p => p.path)).toEqual(expect.arrayContaining(['/name', '/category', '/extra']));
   });
 
-  it('requires admin permission to create, change and delete; editors may still read', async () => {
+  it('allows editors to create, change and delete; read-only users may only read', async () => {
     await call('types', 'POST', '', card);
     access.permission = 'write';
+    expect((await call('types', 'POST', '', { ...card, name: 'editor_card' })).status).toBe(200);
+    expect((await call('types', 'PATCH', '?id=editor_card', { label: 'Edited' })).status).toBe(200);
+    expect((await call('types', 'DELETE', '?id=editor_card')).status).toBe(200);
+    access.permission = 'read';
     expect((await call('types', 'POST', '', { ...card, name: 'other' })).status).toBe(403);
     expect((await call('types', 'PATCH', '?id=my_card', { label: 'x' })).status).toBe(403);
     expect((await call('types', 'DELETE', '?id=my_card')).status).toBe(403);

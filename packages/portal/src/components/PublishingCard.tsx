@@ -4,7 +4,7 @@ import './PublishingCard.css';
 
 export type PublishingState = 'error' | 'waiting' | 'ready' | 'neutral';
 
-export type PublishingTab = 'github' | 'cloudflare' | 'builds' | 'hosting' | 'domains';
+export type PublishingTab = 'github' | 'cloudflare' | 'builds' | 'hosting' | 'domains' | 'analytics';
 
 /** Maps a card id, or a link hash such as `media-title`, to its tab on the Publishing page. */
 export function publishingTabFor(id: string): PublishingTab | null {
@@ -13,7 +13,7 @@ export function publishingTabFor(id: string): PublishingTab | null {
   // Media storage lives in the organization's Cloudflare account, so it sits under the Cloudflare tab.
   if (key === 'media') return 'cloudflare';
   if (key === 'hosting' || key.startsWith('hosting-')) return 'hosting';
-  return (['github', 'cloudflare', 'domains'] as const).find(tab => tab === key) ?? null;
+  return (['github', 'cloudflare', 'domains', 'analytics'] as const).find(tab => tab === key) ?? null;
 }
 
 /** Provided by PublishingTabs. Cards outside the Publishing page render as before. */

@@ -1,5 +1,7 @@
 import { prepareTabs } from './tabs.js';
 import { prepareNavigationForm } from './navigation-form.js';
+import { coerceFieldValue } from './block-field-types.js';
+import { carouselControlsHtml, carouselRegionLabel, heroVideoHtml, ratingHtml, videoPlayerHtml } from './block-media.js';
 // Block-tree → HTML renderer.
 //
 // Pure function used by both the SSG renderer (packages/site-template) and
@@ -60,6 +62,7 @@ import { GLOBAL_BLOCK_MAX_DEPTH, GLOBAL_BLOCK_TYPE_ID, withGlobalBlockContent, t
 import { parseSections, renderSections, usesExtendedSections } from './template-sections.js';
 import { deriveFieldValues, pageUrlResolverFromSource } from './block-fields.js';
 import { scopeBlockCss } from './block-css-scope.js';
+import { blockPartStylesCss, partStyleAttributes } from './block-parts.js';
 import { COMPOSITION_MAX_DEPTH, instanceTree, isComposedBlockType, walkComposition, withFieldDefaults } from './composed-blocks.js';
 
 /**
@@ -72,6 +75,12 @@ import { COMPOSITION_MAX_DEPTH, instanceTree, isComposedBlockType, walkCompositi
  * `collection` change per-iteration inside a repeater loop (the renderer
  * pushes/pops these automatically).
  */
+/** What a `core/form` block instance passes to `formSource` besides the form id. */
+export interface FormBlockOptions {
+  /** The block's own submit label; it wins over the form's `submit_text`. */
+  submit_label?: string;
+}
+
 export interface RenderContext {
   page?: Record<string, unknown>;
   /** Build with `siteContext(settings)` — see the note there on `site.name`. */
@@ -166,7 +175,7 @@ export interface RenderBlocksOptions {
    * caller owns token minting + pow config), or undefined when the form
    * doesn't exist. Without a formSource, core/form renders a comment.
    */
-  formSource?: (formId: string) => string | undefined;
+  formSource?: (formId: string, block?: FormBlockOptions) => string | undefined;
   /**
    * When true, every block's root element is tagged with `data-block-id`
    * (the authored block id) and `data-block-type` (the authored type). Lets an
@@ -273,7 +282,8 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   // token minting and step prerendering live outside the pure renderer.
   if (effectiveBlock.type === 'core/form' && options.formSource) {
     const formId = String(effectiveBlock.data?.form_id ?? '');
-    const html = formId ? options.formSource(formId) : undefined;
+    const label = String(effectiveBlock.data?.submit_label ?? '').trim();
+    const html = formId ? options.formSource(formId, label ? { submit_label: label } : {}) : undefined;
     return html ?? `<!-- core/form: unknown form_id ${escapeHtml(formId)} -->`;
   }
 
@@ -392,6 +402,10 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     );
   }
   if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots);
+  // Read only by the render version 7 templates (block-media.ts).
+  if (effectiveBlock.type === 'core/video') compiled.flatData.video_html = videoPlayerHtml(compiled.flatData);
+  if (effectiveBlock.type === 'core/hero') compiled.flatData.hero_video_html = heroVideoHtml(compiled.flatData, options.context?.page?.language ?? options.context?.site?.language);
+  if (effectiveBlock.type === 'core/testimonial') compiled.flatData.rating_html = ratingHtml(compiled.flatData.rating, options.context?.page?.language ?? options.context?.site?.language);
   if (effectiveBlock.type === 'core/navigation_form') prepareNavigationForm(compiled.flatData, effectiveBlock.id, effectiveBlock.data, effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints);
   if (effectiveBlock.type === 'core/navigation_menu') compiled.flatData.menu_mobile_override = String(!!effectiveBlock.slots?.[1]?.length);
   if (['core/container', 'core/section'].includes(effectiveBlock.type)) {
@@ -430,6 +444,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
         effectiveBlock.data?.[field.name],
         field.choices_markup ?? 'select',
         String(effectiveBlock.data?.name ?? ''),
+        effectiveBlock.data?.required === true,
       );
     }
   }
@@ -456,7 +471,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     const maximum = positive(d.max_width) || (d.width === 'original' ? w : 0);
     d.image_size_style = maximum ? `max-width:min(100%,${maximum}px)` : '';
     const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''} loading="lazy" decoding="async" />`;
-    const picture = d.mobile_src ? `<picture><source media="(max-width: 640px)" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
+    const picture = d.mobile_src ? `<picture><source media="${mobileImageMedia(effectiveBlock.data, options)}" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
     const frame = `<span class="block-image-frame">${picture}</span>`;
     d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link">${frame}</a>` : frame;
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
@@ -524,6 +539,8 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     return typeof v === 'string' && v.trim() !== '';
   });
   if (compiled.hasOverrides || carriesInstanceScript || columnThreshold !== null) rootAttrs['data-bid'] = bid;
+  // The instance's own part styles (block-parts.ts); absent without a choice.
+  if (blockType.parts?.length) Object.assign(rootAttrs, partStyleAttributes(blockType, effectiveBlock.data, options.renderVersion));
   // Block provenance — lets an agent map the rendered element back to the
   // authored block it should edit. Uses the original (pre-alias-expansion)
   // id + type so it matches what get_page_blocks returns.
@@ -531,7 +548,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   if (options.annotate && block.id) {
     rootAttrs['data-block-id'] = block.id;
     rootAttrs['data-block-type'] = block.type;
-  } else if (blockType.script) {
+  } else if (blockOutputForVersion(blockType, options.renderVersion).script) {
     // Script-bearing blocks ALWAYS need the type attribute — it's the
     // selector the client runtime's init() uses to find instances
     // (window.TyperollBlocks.register(id, …) → querySelectorAll on
@@ -733,7 +750,7 @@ function renderRepeater(
       const baseUrl = options.context?.pagination?.base_url ?? '';
       items = items.slice((current - 1) * perPage, current * perPage);
       const pager = totalPages > 1
-        ? renderPager(current, totalPages, baseUrl, options.context?.pagination?.trailing_slash)
+        ? renderPager(current, totalPages, baseUrl, options.context?.pagination?.trailing_slash, data.pager_link_style_id)
         : '';
       return renderRepeaterItems(block, blockType, itemBlockType, data, items, options) + pager;
     }
@@ -786,7 +803,7 @@ function renderRepeater(
     // different block type" cases.
     const children = block.children ?? [];
     const inner = children.map((c) => renderBlock(c, options)).join('');
-    return wrapRepeater(block, blockType, data, inner);
+    return wrapRepeater(block, blockType, data, inner, options, children.length);
   }
 
   return renderRepeaterItems(block, blockType, itemBlockType, data, items, options);
@@ -838,11 +855,11 @@ function renderRepeaterItems(
     .join('');
 
   if (items.length === 0 && data.empty_state) {
-    return wrapRepeater(block, blockType, data, escapeHtml(data.empty_state));
+    return wrapRepeater(block, blockType, data, escapeHtml(data.empty_state), options, 0);
   }
 
   const groupBy = typeof data.group_by === 'string' ? data.group_by.trim() : '';
-  if (!groupBy) return wrapRepeater(block, blockType, data, renderItems(items));
+  if (!groupBy) return wrapRepeater(block, blockType, data, renderItems(items), options, items.length);
 
   const groups = new Map<string, Record<string, unknown>[]>();
   for (const item of items) {
@@ -858,13 +875,17 @@ function renderRepeaterItems(
   const direction = data.group_sort_order === 'desc' ? -1 : 1;
   const level = ['h2', 'h3', 'h4'].includes(String(data.group_heading_level))
     ? String(data.group_heading_level) : 'h2';
+  // The titles sit outside each group's repeater root, where no block part
+  // reaches; their style field puts the chosen style class on every title.
+  const titleStyle = typeof data.group_title_style_id === 'string' && STYLE_ID_PATTERN.test(data.group_title_style_id)
+    ? ` ${styleClassName(data.group_title_style_id)}` : '';
   let offset = 0;
   return [...groups.entries()]
     .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }) * direction)
     .map(([label, group]) => {
       const inner = renderItems(group, offset);
       offset += group.length;
-      return `<section class="tr-repeater-group" data-repeater-group="${escapeHtml(label)}"><${level} class="tr-repeater-group-title">${escapeHtml(label)}</${level}>${wrapRepeater(block, blockType, data, inner)}</section>`;
+      return `<section class="tr-repeater-group" data-repeater-group="${escapeHtml(label)}"><${level} class="tr-repeater-group-title${titleStyle}">${escapeHtml(label)}</${level}>${wrapRepeater(block, blockType, data, inner, options, group.length)}</section>`;
     })
     .join('');
 }
@@ -877,13 +898,17 @@ function renderPager(
   totalPages: number,
   baseUrl: string,
   trailingSlash: TrailingSlashPolicy = 'always',
+  linkStyle?: unknown,
 ): string {
   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const urlFor = (n: number) => applyTrailingSlash(n <= 1 ? base : `${base}page/${n}`, trailingSlash);
+  // The pager follows the repeater root, where no block part reaches; the
+  // repeater's pager link style puts its class on every link and the current page.
+  const style = typeof linkStyle === 'string' && STYLE_ID_PATTERN.test(linkStyle) ? styleClassName(linkStyle) : '';
   const link = (n: number, label: string, rel?: string, current_ = false) =>
     current_
-      ? `<span class="tr-pager-current" aria-current="page">${label}</span>`
-      : `<a href="${escapeHtml(urlFor(n))}"${rel ? ` rel="${rel}"` : ''}>${label}</a>`;
+      ? `<span class="tr-pager-current${style ? ` ${style}` : ''}" aria-current="page">${label}</span>`
+      : `<a href="${escapeHtml(urlFor(n))}"${rel ? ` rel="${rel}"` : ''}${style ? ` class="${style}"` : ''}>${label}</a>`;
 
   const parts: string[] = [];
   if (current > 1) parts.push(link(current - 1, '‹', 'prev'));
@@ -910,6 +935,8 @@ function wrapRepeater(
   blockType: BlockType,
   data: Record<string, unknown>,
   inner: string,
+  options?: RenderBlocksOptions,
+  count = 0,
 ): string {
   const bid = sanitizeCssId(block.id);
   const layout = String(data.layout ?? 'grid');
@@ -927,7 +954,20 @@ function wrapRepeater(
   // The repeater's own outer element. Tier 1 grid styles map --cols → grid;
   // the additional layouts (list, carousel, stack, masonry) get inline
   // CSS classes that the runtime CSS bundle styles.
-  return `<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="${escapeHtml(layout)}" style="--cols:${escapeHtml(cols)};--mobile-cols:${mobileCols};--gap:${escapeHtml(gap)};--align:${escapeHtml(align)};${dimensions}">${inner}</div>`;
+  const style = `--cols:${escapeHtml(cols)};--mobile-cols:${mobileCols};--gap:${escapeHtml(gap)};--align:${escapeHtml(align)};${dimensions}`;
+  // The instance's own part styles (block-parts.ts) mark every repeater root,
+  // one per group; absent without a choice, so output is otherwise unchanged.
+  const partAttrs = blockType.parts?.length ? partStyleAttributes(blockType, data, options?.renderVersion) : {};
+  const marked = (html: string) => Object.keys(partAttrs).length ? injectAttrsIntoFirstTag(html, partAttrs) : html;
+  // Render version 7: a carousel's items scroll in a track, followed by the
+  // controls its settings ask for (block-media.ts).
+  if (layout === 'carousel' && resolveRenderVersion(options?.renderVersion) >= 7) {
+    const language = options?.context?.page?.language ?? options?.context?.site?.language;
+    const controls = carouselControlsHtml(data, count, language);
+    const hooks = controls ? ` data-block-type="core/repeater" data-carousel-autoplay="${data.autoplay === true}" role="region" aria-roledescription="carousel" aria-label="${escapeHtml(carouselRegionLabel(language))}"` : '';
+    return marked(`<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="carousel"${hooks} style="${style}"><div class="tr-carousel-track">${inner}</div>${controls}</div>`);
+  }
+  return marked(`<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="${escapeHtml(layout)}" style="${style}">${inner}</div>`);
 }
 
 /**
@@ -1430,6 +1470,7 @@ function renderChoicesHtml(
   raw: unknown,
   markup: 'select' | 'radio' | 'checkbox',
   inputName: string,
+  required = false,
 ): string {
   if (!Array.isArray(raw)) return '';
   const items = raw.filter(
@@ -1446,10 +1487,15 @@ function renderChoicesHtml(
     );
   }
   const type = markup; // 'radio' | 'checkbox'
+  // A required group was enforced only by the server. A required radio
+  // makes the group required in the browser (the runtime promotes
+  // data-required); "at least one checkbox" is kept by the runtime
+  // (data-required-group). Unrequired groups render exactly as before.
+  const requiredAttr = !required ? '' : type === 'radio' ? ' data-required="true"' : ' data-required-group="true"';
   return items
     .map(
       (c) =>
-        `<label class="form-choice"><input type="${type}" name="${esc(inputName)}" value="${esc(String(c.value ?? c.label ?? ''))}" /><span>${esc(String(c.label ?? c.value ?? ''))}</span></label>`,
+        `<label class="form-choice"><input type="${type}" name="${esc(inputName)}" value="${esc(String(c.value ?? c.label ?? ''))}"${requiredAttr} /><span>${esc(String(c.label ?? c.value ?? ''))}</span></label>`,
     )
     .join('\n');
 }
@@ -1720,6 +1766,10 @@ function compileResponsiveData(
       .map(field => [field.name, structuredClone(field.default)]),
   );
   for (const [name, value] of Object.entries(block.data ?? {})) if (value !== undefined) data[name] = value;
+  // Numeric text in a number field renders as that number (block-field-types.ts).
+  for (const field of blockType.schema ?? []) {
+    if (data[field.name] !== undefined) data[field.name] = coerceFieldValue(field, data[field.name]);
+  }
   const flatData: Record<string, unknown> = { ...data };
   const cssVars: Partial<Record<Breakpoint, Record<string, string>>> = {};
   const mappedCss: Partial<Record<Breakpoint, string>> = {};
@@ -1995,6 +2045,12 @@ export interface CollectAssetsOptions {
   renderVersion?: number;
   /** Includes the assets of referenced global blocks, like RenderBlocksOptions.globalBlockSource. */
   globalBlockSource?: GlobalBlockSource;
+  /**
+   * The site style library and breakpoints, for block part styles
+   * (block-parts.ts): site-wide part styles of the block types on the page
+   * and each instance's `part_styles`. Without it no part CSS is emitted.
+   */
+  siteStyles?: { styles: readonly unknown[] | undefined; breakpoints: BreakpointWidths };
 }
 
 export function collectBlockAssets(
@@ -2019,11 +2075,17 @@ export function collectBlockAssets(
     used.push(id);
     const numericFields = bt.schema.filter(field => field.css_unit && /^[a-z][a-z0-9_]*$/.test(field.name));
     if (numericFields.length) css.push(`[data-presentation="${encodeURIComponent(bt.id)}"]{${numericFields.map(field => `--${field.name}:${/^(?:h[1-6]_size_px|heading_(?:before|after)_px)$/.test(field.name) ? 'inherit' : 'initial'}`).join(';')}}`);
-    const rawStyles = blockOutputForVersion(bt, opts?.renderVersion).styles;
+    const output = blockOutputForVersion(bt, opts?.renderVersion);
+    const rawStyles = output.styles;
     // Site block types written with block scope never style outside their blocks.
     const btStyles = rawStyles && bt.css_scope === 'block' ? scopeBlockCss(rawStyles, bt.name).css : rawStyles;
     if (btStyles) css.push(`/* ${id} */\n${styleElementText(btStyles)}`);
-    if (bt.script) js.push(`/* ${id} */\n${bt.script}`);
+    if (output.script) js.push(`/* ${id} */\n${output.script}`);
+  }
+
+  if (opts?.siteStyles) {
+    const partCss = blockPartStylesCss(blocks, registry, used, { ...opts.siteStyles, renderVersion: opts.renderVersion });
+    if (partCss) css.push(`/* block parts */\n${partCss}`);
   }
 
   for (const block of collectInstanceStyles(blocks)) {
@@ -2168,6 +2230,23 @@ export function findPaginatedListing(
     if (nested) return nested;
   }
   return null;
+}
+
+/**
+ * Media query for core/image's mobile image. Unset keeps the original
+ * `(max-width: 640px)`. An exact `mobile_src_below_px` wins; otherwise a
+ * breakpoint name in `mobile_src_below` switches below that breakpoint's
+ * width from the block's or site's responsive widths.
+ */
+function mobileImageMedia(data: Record<string, unknown> | undefined, options: RenderBlocksOptions): string {
+  const px = Number(data?.mobile_src_below_px);
+  if (data?.mobile_src_below_px != null && data.mobile_src_below_px !== '' && Number.isInteger(px) && px >= 320 && px <= 2560) return `(width < ${px}px)`;
+  const below = data?.mobile_src_below;
+  if (typeof below === 'string' && (BREAKPOINTS_ABOVE_MOBILE as readonly string[]).includes(below)) {
+    const widths = resolveBreakpointWidths(data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints);
+    return `(width < ${widths[below as keyof typeof widths]}px)`;
+  }
+  return '(max-width: 640px)';
 }
 
 function applyVisibility(html: string, block: Block, options: RenderBlocksOptions): string {

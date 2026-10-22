@@ -431,6 +431,44 @@ export const INTEGRATION_PROVIDERS: readonly IntegrationProvider[] = [
 const PLACES_LOADER = String.raw`<script>(function(){
 var W=window;if(W.TyperollClientCapabilities&&W.TyperollClientCapabilities.address_autocomplete)return;
 W.TyperollClientCapabilities=W.TyperollClientCapabilities||{};
+// The replacement field must look like the field it replaces. Blocks describe
+// their field with the --tr-field-* custom properties (the field contract in
+// docs/plans/field-presentation-contract.md); these rules map them onto the
+// element through the styling Google supports for PlaceAutocompleteElement:
+// properties on the host, ::part(input) and the prediction parts, and the
+// input-icon slot. Its shadow root is closed, so nothing else reaches inside.
+// The placeholder has no supported selector (::part(input)::placeholder does
+// not apply); it is the browser default, which matches a plain field once
+// color-scheme follows the page instead of Google's "light dark".
+var STYLE='gmp-place-autocomplete[data-typeroll-field]{display:block;box-sizing:border-box;width:100%;'+
+  'min-height:var(--tr-field-min-height,44px);'+
+  'height:max(var(--tr-field-min-height,44px),calc(1lh + 2 * var(--tr-field-padding-y,10px) + 2 * var(--tr-field-border-width,1px)));'+
+  'border:var(--tr-field-border-width,1px) solid var(--tr-field-border-color,#bbc1c9);border-radius:var(--tr-field-radius,6px);'+
+  'background-color:var(--tr-field-background,#fff);color:var(--tr-field-color,#20242a);color-scheme:inherit;font:inherit}'+
+  'gmp-place-autocomplete[data-typeroll-field]::part(input){padding:0 var(--tr-field-padding-x,12px) 0 0;font:inherit;color:inherit;background-color:transparent}'+
+  'gmp-place-autocomplete[data-typeroll-field]::part(prediction-list),gmp-place-autocomplete[data-typeroll-field]::part(prediction-item),'+
+  'gmp-place-autocomplete[data-typeroll-field]::part(prediction-item-main-text),gmp-place-autocomplete[data-typeroll-field]::part(prediction-item-secondary-text)'+
+  '{font-family:var(--tr-field-font-family,inherit)}'+
+  'gmp-place-autocomplete[data-typeroll-field]>[slot="input-icon"]{display:block;width:var(--tr-field-icon-size,1.25em);height:var(--tr-field-icon-size,1.25em);color:var(--tr-field-icon-color,currentColor)}';
+function addStyle(){
+  if(document.querySelector('style[data-typeroll-places]'))return;
+  var style=document.createElement('style');style.setAttribute('data-typeroll-places','');style.textContent=STYLE;
+  document.head.appendChild(style);
+}
+// The Maps API inserts Roboto and Google Sans stylesheets with
+// document.head.insertBefore when the element is first created; it has no
+// option to leave them out. The field uses the block's own font (above), so
+// those two exact requests are dropped and nothing else is touched. A site
+// whose own font is Roboto loads it through the css2 API, which this does
+// not match.
+var GOOGLE_FONTS=/^https?:\/\/fonts\.googleapis\.com\/css\?family=(?:Roboto|Google\+Sans)/;
+(function(head){
+  var insert=head.insertBefore;
+  head.insertBefore=function(node,ref){
+    if(node&&node.nodeName==='LINK'&&GOOGLE_FONTS.test(node.getAttribute('href')||''))return node;
+    return insert.call(this,node,ref);
+  };
+})(document.head);
 var PARTS={street_number:'street_number',route:'street',postal_code:'postal_code',locality:'locality',postal_town:'locality',country:'country'};
 function components(place){
   var out={};
@@ -457,7 +495,15 @@ function modern(input,options,onSelect){
   // The element is its own input. The block's own field stays in the DOM as
   // the value carrier, so the form, its name, its required flag and the
   // handoff all behave exactly as they do with no provider at all.
-  element.style.width='100%';
+  addStyle();
+  element.setAttribute('data-typeroll-field','');
+  // Our own magnifier in the supported slot, so it takes the field's colour.
+  // Google's icon has a fixed grey fill.
+  var icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  icon.setAttribute('slot','input-icon');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');icon.setAttribute('focusable','false');
+  icon.setAttribute('fill','none');icon.setAttribute('stroke','currentColor');icon.setAttribute('stroke-width','2');icon.setAttribute('stroke-linecap','round');icon.setAttribute('stroke-linejoin','round');
+  icon.innerHTML='<circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/>';
+  element.appendChild(icon);
   // The element replaces the visible input, so anything the author set on the
   // field has to travel with it. A placeholder that silently disappears the
   // moment address suggestions are switched on is a presentation regression
@@ -469,6 +515,10 @@ function modern(input,options,onSelect){
     try{element.setAttribute('placeholder',input.placeholder);}catch(e){}}
   input.style.display='none';
   input.parentNode.insertBefore(element,input.nextSibling);
+  // The suggestion rows set Google Sans on an inner list; a part rule can
+  // only replace it with a value, so the field's resolved family is passed
+  // down. The family is not responsive, so reading it once is enough.
+  try{element.style.setProperty('--tr-field-font-family',getComputedStyle(element).fontFamily);}catch(e){}
   element.addEventListener('gmp-select',function(event){
     var place=event&&event.placePrediction&&event.placePrediction.toPlace&&event.placePrediction.toPlace();
     if(!place){try{onSelect({});}catch(e){}return;}
@@ -516,7 +566,7 @@ W.__typerollPlacesReady=ready;
 var lang=(document.documentElement.getAttribute('lang')||'').slice(0,5);
 var el=document.createElement('script');
 el.async=true;
-el.src='https://maps.googleapis.com/maps/api/js?key=__KEY__&libraries=places&v=weekly&loading=async&callback=__typerollPlacesReady'+(/^[A-Za-z-]{2,5}$/.test(lang)?'&language='+encodeURIComponent(lang):'');
+el.src='https://maps.googleapis.com/maps/api/js?key=__KEY__&libraries=places&v=quarterly&loading=async&callback=__typerollPlacesReady'+(/^[A-Za-z-]{2,5}$/.test(lang)?'&language='+encodeURIComponent(lang):'');
 // A blocked or failed load leaves the capability unregistered, which is
 // exactly the no-key state: every field stays a plain input.
 el.onerror=function(){};

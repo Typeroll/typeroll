@@ -38,7 +38,7 @@ import TemplatePicker from './TemplatePicker';
 import PageContentTypePicker from './PageContentTypePicker';
 import './BlockPageEditor.css';
 import CustomCssEditor from './CustomCssEditor';
-import FieldInput, { fieldAvailable, fieldGroup, fieldLabel, GlobalBlocksContext, RenderVersionContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
+import FieldInput, { EditedBlockTypeContext, fieldAvailable, fieldGroup, fieldLabel, GlobalBlocksContext, RenderVersionContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
 import type { GlobalBlockSummary } from './editor-context';
 import TurnIntoBlockType, { type TurnIntoBlockTypeAction } from './TurnIntoBlockType';
 import { compositionFromSelection, detachComposedInstance, propCandidates } from '../lib/block-type-builder';
@@ -64,7 +64,7 @@ interface Props {
   /** Permalink on the deployed site (null when the site has no live base). */
   liveUrl?: string | null;
   lastDeployedAt: string | null;
-  /** Site admins may create block types ("Turn into block type…"). */
+  /** Site editors and admins may create block types ("Turn into block type…"). */
   canManageBlockTypes?: boolean;
 }
 
@@ -1705,6 +1705,7 @@ export function BlockFieldForm({
         Built from {composedCount} {composedCount === 1 ? 'block' : 'blocks'}. Edit its fields here; its layout is set in the block type.
         {blockTypeHref && <> <a href={blockTypeHref}>Edit the block type</a></>}
       </p>}
+      <EditedBlockTypeContext.Provider value={blockType}>
       <form onSubmit={(e) => e.preventDefault()}>
         {(['content', 'appearance', 'advanced'] as const).map(group => {
           const fields = blockType.schema.filter(field => (field.editor_group ?? 'content') === group && fieldAvailable(field, renderVersion));
@@ -1748,6 +1749,7 @@ export function BlockFieldForm({
           </details>;
         })}
       </form>
+      </EditedBlockTypeContext.Provider>
       {reuse && <ReusePanel key={block.id} block={block} actions={reuse} />}
     </div>
   );

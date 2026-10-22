@@ -135,7 +135,18 @@ describe('site workflows through the public API', () => {
 });
 
 describe('creating a site with its first workflow', () => {
+  // AI planning needs the Organization's own key covering new Sites. Only
+  // the stored state matters here: the planning steps themselves are stubbed.
+  async function allowAiForNewSites(mode: 'all' | 'selected' = 'all') {
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.organizationAiSettings(ORG), {
+      provider: 'anthropic', encrypted_api_key: 'synthetic-sealed-value-never-opened', key_last4: '0000',
+      site_access: { mode, site_ids: mode === 'all' ? [] : [SITE] }, updated_at: '2026-01-01', updated_by: 'seed',
+    });
+  }
+
   it('creates and plans a site with an organization key', async () => {
+    await allowAiForNewSites();
     const token = await key(ORG, null);
     const res = await call('plan', 'POST', token, {}, { name: 'Harbor Bakery', business_description: 'A bakery by the harbor.' });
     expect(res.status).toBe(201);
@@ -155,6 +166,20 @@ describe('creating a site with its first workflow', () => {
     expect((await call('migrate', 'POST', orgKey, {}, { name: 'Nope', wp_url: 'not a url' })).status).toBe(400);
     const { getStore } = await import('../../lib/datastore');
     expect(await getStore().getDoc<Site>(paths.site(ORG, 'nope'))).toBeNull();
+  });
+
+  it.each([['no key', null], ['selected Sites only', 'selected']] as const)('refuses AI planning with %s before creating anything', async (_label, mode) => {
+    if (mode) await allowAiForNewSites(mode);
+    const res = await call('plan', 'POST', await key(ORG, null), {}, { name: 'Harbor Bakery', business_description: 'A bakery by the harbor.' });
+    expect(res.status).toBe(403);
+    expect(res.json.code).toBe('ai_not_enabled');
+    expect(res.json.error).toContain('Organization settings → AI assistant');
+    expect(res.json.details).toEqual({ settings_path: '/app/settings/ai-assistant' });
+    expect(started.start).toEqual([]);
+    const { getStore } = await import('../../lib/datastore');
+    expect(await getStore().getDoc<Site>(paths.site(ORG, 'harbor-bakery'))).toBeNull();
+    expect((await getStore().listDocs<Site>(paths.sites(ORG))).map((site) => site.id)).toEqual([SITE]);
+    expect(await getStore().listDocs(paths.workflows(ORG))).toEqual([]);
   });
 
   it('requires verified import storage before creating a site to migrate into', async () => {

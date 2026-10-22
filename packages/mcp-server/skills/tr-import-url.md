@@ -5,6 +5,10 @@ description: Use when the user wants to import or migrate content from a non-Wor
 
 # Import content from a non-WordPress site
 
+**Who runs this:** this recipe is for the user's own AI agent (Claude Code, Codex or
+another MCP client) working through MCP and the public API. The portal's built-in
+AI assistant has no migration tools: it does not import, convert or verify sites.
+
 **Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
 Complete its source baseline and one verified prototype per active template.
 Read target content to protect edits, not to justify accidental target defaults.
@@ -194,8 +198,11 @@ get_deploy_status job_id=<id>
   several. Fix it.
 - **Squarespace/Wix forms.** They won't work after import — the backend
   is vendor-locked. Create a Typeroll form instead: `create_form`.
-- **Analytics/tracking code.** If the source has GA4 or similar, don't
-  copy it into pages. Set it via `update_site_settings scripts_head="..."`.
+- **Scripts and tracking.** Never copy the source's JavaScript. Carry
+  analytics and advertising tags (GA4, GTM, Meta Pixel and others) over by
+  ID in the Integrations app, with the cookie banner enabled so they wait for
+  consent; never paste the vendor snippet into `scripts_head`. See
+  tr-migration-evidence, "Scripts, tracking and consent".
 - **Videos.** YouTube/Vimeo embeds are fine (`<iframe>` is allowed).
   Hosted MP4s need re-uploading if the source URL won't persist.
 

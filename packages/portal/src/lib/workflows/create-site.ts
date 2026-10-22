@@ -10,6 +10,7 @@ import { defaultSiteSettings, newSiteStyles, paths } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { requireImportStorage } from '../media/import-policy';
+import { requireAiForNewSite } from '../ai/organization-ai';
 import { reserveSite } from '../site-create';
 import { WorkflowEngine } from './engine';
 import { migrationWorkflow } from './migration';
@@ -43,6 +44,9 @@ export function parseSiteWorkflowRequest(kind: 'migration' | 'site_planning', in
  * Reserve, provision and configure a site under `orgId`, then start the
  * requested workflow in the background. Migration checks the organization's
  * import storage before anything is created and throws its ConnectionError.
+ * AI site planning checks that the organization's AI key covers new sites
+ * (a key and "all sites") before anything is created and throws
+ * AiNotEnabledError (ai_not_enabled) otherwise.
  */
 export async function createSiteWithWorkflow(input: {
   orgId: string;
@@ -51,6 +55,7 @@ export async function createSiteWithWorkflow(input: {
 }): Promise<{ siteId: string; workflowId: string; site: Site & { id: string } }> {
   const { orgId, request } = input;
   if (request.kind === 'migration') await requireImportStorage(orgId);
+  if (request.kind === 'site_planning') await requireAiForNewSite(orgId);
 
   const store = getStore();
   const { siteId, site: reservedSite } = await reserveSite(orgId, request.name);

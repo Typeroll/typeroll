@@ -1,7 +1,7 @@
 // Block-type tools: discovery, authoring (validate, preview, create, update,
 // delete), usage, starters and .tcblocks packages. Every write goes through
 // the portal's one block type write path (shared validator, version chain,
-// rename migration), and authoring needs admin permission on the Site.
+// rename migration), and authoring needs write permission on the Site.
 
 import { z } from 'zod';
 import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
@@ -40,7 +40,8 @@ const AUTHORING_GUIDE =
   'TEMPLATE (advanced, when existing blocks cannot express the markup): `template` is HTML with {{field}} (escaped), {{{field}}} (raw: richtext fields and derived …_svg / …_html only), {{#field}}…{{/field}} (shown when set), {{^field}}…{{/field}} (shown when empty), {{#each items}}…{{/each}} (per array item; names resolve against the item first; {{@index}}, {{@number}}, {{@first}}, {{@last}}), {{#link field class="…"}}…{{/link}} (wraps the body in a safe <a href rel target> when the link resolves), plus {{children}} / {{slot:NAME}} for containers. ' +
   'Fields: text, textarea, richtext, image, icon (derived {name}_svg), select (options), boolean, number, url, link ({ page_id?, url?, new_tab? } — prefer page_id for a page on the Site, it survives slug changes; resolves to .href, .target, .rel), array (a repeating group: fields, item_label, min_items, max_items; nests 3 levels), object, style … each with name, type, label and optional help, required, default. ' +
   '`styles` is scoped to the block when written: every selector applies inside [data-block="<name>"], :scope is the block element itself, body/html/:root are refused; use the site\'s var(--color-*) and spacing tokens. The response returns `styles_compiled`, the CSS that ships. ' +
-  'Unknown properties are errors. Every problem has a JSON-pointer `path` (and a `line` for markup/CSS); a 400 lists them all in `problems`, warnings come back in `warnings`. Call validate_block_type / preview_block_type first, and list_block_type_starters for complete examples. Needs ADMIN permission on the Site; editors (write) place block types on pages and edit their fields.';
+  '`parts` names elements of the markup (a title, a button, links) so site styles can restyle them without CSS against the block: [{ name, label, selector, target }]. ' +
+  'Unknown properties are errors. Every problem has a JSON-pointer `path` (and a `line` for markup/CSS); a 400 lists them all in `problems`, warnings come back in `warnings`. Call validate_block_type / preview_block_type first, and list_block_type_starters for complete examples. Needs WRITE permission on the Site; editors can author types as well as place them on pages.';
 
 const definitionShape = {
   label: z.string().optional().describe('Display label in the block picker.'),
@@ -63,6 +64,18 @@ const definitionShape = {
   template: z.string().optional().describe('Markup of a template type (instead of composition); see the section syntax above.'),
   styles: z.string().optional().describe('CSS scoped to the block. Write selectors for the block\'s own markup; :scope is the block element.'),
   script: z.string().optional().describe("Client-side JS shipped with the block (runs on the published site's own origin). Accepted under your API key's authority — the write is audit-logged. Prefer a composed type without script."),
+  parts: z.array(z.object({
+    name: z.string().describe('Stable name: a-z, 0-9 and _ (max 32), starting with a letter. Never rename a part in use: part_styles and styles refer to it.'),
+    label: z.string().describe('Shown in the editor, e.g. "Primary button".'),
+    selector: z.string().describe('The element(s), relative to the block root: tags, .classes, [attributes], structural pseudo-classes (:first-child, :nth-child()) and combinators, up to four comma-separated. No braces, at-rules, pseudo-elements or :hover/:focus (hover comes from the style).'),
+    target: z.enum(['text', 'heading', 'list', 'button', 'container', 'link', 'image']).describe('The kind of style that fits the part.'),
+    style_field: z.string().optional().describe('A `style` field of this type that already chooses the part\'s style per instance; part_styles then skips the part.'),
+    color: z.string().optional().describe('Colour token of the part\'s text in the block\'s CSS, for contrast checks (default text).'),
+    background: z.string().optional().describe('Colour token behind the part, for contrast checks (default the site background).'),
+    background_field: z.string().optional().describe('A `color` field of this type holding the background behind the part.'),
+    decorative: z.boolean().optional().describe('The part holds no text (an overlay, a layout row): no text contrast check.'),
+    min_render_version: z.number().int().optional(),
+  }).passthrough()).optional().describe('Named sub-elements (at most 16) that site styles can reach: site-wide through a style\'s `parts` ("<type id>.<part>"), on one block through its `part_styles` data, a field added automatically when a part has no style_field. Mainly for template types; a warning names a selector class the template never writes. Composed types\' inner blocks keep their own parts. Replaces the whole list on update.'),
 };
 
 export const blockTypeTools: ToolDef[] = [
@@ -92,7 +105,7 @@ export const blockTypeTools: ToolDef[] = [
   {
     name: 'import_block_types',
     description:
-      'Install block types from a .tcblocks package (zip as base64). Needs ADMIN permission on the Site. Each definition is checked by the same validator as create_block_type; a definition with errors is reported as failed and not written. On a name conflict `on_conflict` decides: skip (default) keeps the Site\'s type, rename imports it under a free name (references inside the package follow), replace overwrites it. Returns `results` per type (created, renamed, replaced, skipped, failed with problems) and counts. Imported types may carry CSS and JS — only import packages you trust.',
+      'Install block types from a .tcblocks package (zip as base64). Needs WRITE permission on the Site. Each definition is checked by the same validator as create_block_type; a definition with errors is reported as failed and not written. On a name conflict `on_conflict` decides: skip (default) keeps the Site\'s type, rename imports it under a free name (references inside the package follow), replace overwrites it. Returns `results` per type (created, renamed, replaced, skipped, failed with problems) and counts. Imported types may carry CSS and JS — only import packages you trust.',
     inputSchema: {
       zip_base64: z.string().describe('Base64-encoded .tcblocks zip.'),
       on_conflict: z.enum(['skip', 'rename', 'replace']).optional().describe('What to do when the Site already has a block type with the same name. Default skip.'),
@@ -131,7 +144,7 @@ export const blockTypeTools: ToolDef[] = [
   {
     name: 'read_block_type',
     description:
-      "Full definition of one block type: the field schema, and its composition (composed types) or template (template types), styles with `styles_compiled` (the scoped CSS that ships), and optional script. Use this when list_block_types' summary isn't enough — before add_block on an unfamiliar block, or before update_block_type.",
+      "Full definition of one block type: the field schema, its `parts` (named sub-elements such as core/rich_heading's links or core/hero's heading and buttons, each with a target; style one with a style's `parts` site-wide or the block's `data.part_styles`, or the part's own style_field), and its composition (composed types) or template (template types), styles with `styles_compiled` (the scoped CSS that ships), and optional script. Use this when list_block_types' summary isn't enough — before add_block on an unfamiliar block, or before update_block_type.",
     inputSchema: {
       type_id: z.string(),
       version: versionParam,
@@ -236,7 +249,7 @@ export const blockTypeTools: ToolDef[] = [
   {
     name: 'update_block_type',
     description:
-      "Change a site block type (core/* types are read-only). Needs ADMIN permission. schema, composition, template and styles replace wholesale when sent; other properties merge. Changing a type in use: to RENAME a field, send the new schema with `renames` ({ \"title\": \"heading\", \"items.label\": \"text\" } — dotted paths of the OLD names, new name of the field) and the data moves in every block that uses the type (saved pages and drafts, page templates, header/footer/global blocks, block templates, other block types, repeater items), after a revision of each changed page; a composed type's own {{props.…}}/{{item.…}} bindings follow unless you send a composition. Removing or retyping a field that holds data answers 409 with the affected uses until you resend with confirm_data_loss: true (ask the user first). Returns { block_type, warnings, impact: { usages, renamed, removed, retyped } }. The same validation as create_block_type applies.",
+      "Change a site block type (core/* types are read-only). Needs WRITE permission. schema, composition, template, styles and parts replace wholesale when sent; other properties merge. Changing a type in use: to RENAME a field, send the new schema with `renames` ({ \"title\": \"heading\", \"items.label\": \"text\" } — dotted paths of the OLD names, new name of the field) and the data moves in every block that uses the type (saved pages and drafts, page templates, header/footer/global blocks, block templates, other block types, repeater items), after a revision of each changed page; a composed type's own {{props.…}}/{{item.…}} bindings follow unless you send a composition. Removing or retyping a field that holds data answers 409 with the affected uses until you resend with confirm_data_loss: true (ask the user first). Returns { block_type, warnings, impact: { usages, renamed, removed, retyped } }. The same validation as create_block_type applies.",
     inputSchema: {
       type_id: z.string().describe('Block type id (a site type). Cannot be a core/* block.'),
       ...definitionShape,
@@ -258,7 +271,7 @@ export const blockTypeTools: ToolDef[] = [
   {
     name: 'delete_block_type',
     description:
-      "Remove a site block type. Needs ADMIN permission; core blocks (core/*) cannot be deleted. Refused with 409 while anything uses the type — pages and drafts, page templates, header, footer, global blocks, block templates, other block types or repeaters — and the refusal lists the uses (as find_pages_using_block_type does). Remove those uses first and confirm with the user.",
+      "Remove a site block type. Needs WRITE permission; core blocks (core/*) cannot be deleted. Refused with 409 while anything uses the type — pages and drafts, page templates, header, footer, global blocks, block templates, other block types or repeaters — and the refusal lists the uses (as find_pages_using_block_type does). Remove those uses first and confirm with the user.",
     inputSchema: {
       type_id: z.string(),
       version: versionParam,

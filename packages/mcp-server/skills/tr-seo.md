@@ -36,7 +36,8 @@ read_site_settings
 ```
 
 For each page, check:
-- Is `seo_title` set? (if not, Google uses `title` + suffix — often fine)
+- Is `seo_title` set? (if not, Google uses `title` + suffix — often fine;
+  aim for 50–60 characters, longer gets truncated)
 - Is `seo_description` set? (150–160 chars, unique per page, includes keywords)
 - Is `og_image` set for the homepage and key landing pages?
 - Does the page have exactly one `<h1>`?
@@ -79,6 +80,20 @@ update_page page_id="home" patch={
 }
 ```
 
+### 3b. URL and article conventions
+
+When creating or moving pages:
+
+- Slugs are lowercase kebab-case: `our-services`, not `Our_Services`.
+- Reflect hierarchy in the address. A team member lives at `/team/jane-doe`
+  (set `path`, or use a content type whose `route_template` adds the
+  prefix), not at `/jane-doe`. Breadcrumbs and their BreadcrumbList schema
+  follow the resolved route.
+- Blog posts and news get `kind: "article"` and an `author`: that emits
+  Article JSON-LD and `og:type=article`. No author means no author in the
+  rich result.
+- Give shared pages, especially articles, their own `og_image`.
+
 ### 4. Add Open Graph images
 
 Set `og_image` on pages that get shared on social media. If the site has
@@ -116,6 +131,37 @@ repeating it on every page (`null` clears it):
 update_site_settings organization={"name":"Acme Studio","logo":"<cdn_url>","same_as":["https://www.linkedin.com/company/acme"]}
 ```
 
+**FAQ, recipe and event pages have tools.** They validate the input, build
+the schema.org JSON-LD and merge it into the page's `json_ld` (a node of the
+same type is replaced, anything else is kept). Use them instead of
+hand-writing JSON-LD, and copy the content from what the page visibly shows:
+
+```
+add_faq_schema page_id="faq" items=[
+  {"question": "Do you deliver on weekends?", "answer": "Yes, Saturdays 9–15."}
+]
+add_recipe_schema page_id="kanelbullar" name="Kanelbullar"
+  ingredients=["500 g vetemjöl", "2 tsk kanel"] instructions=["Blanda degen.", "Grädda i 225 °C."]
+  prep_time="PT1H30M" cook_time="PT10M" recipe_yield="24 bullar" image_url="<cdn_url>"
+add_event_schema page_id="sommarkonsert" name="Sommarkonsert"
+  start_date="2026-06-12T19:00:00+02:00" location_name="Stadshuset"
+  location_address="Storgatan 1, Sundsvall" offers_price=250 offers_currency="SEK"
+```
+
+Rules they enforce: FAQ needs at least one question with an answer; a recipe
+needs a name, ingredients and steps, durations are ISO 8601 (`PT30M`) and
+URLs absolute; an event needs a name and an ISO 8601 `start_date` (include
+the UTC offset), `end_date` not before it, and a price needs
+`offers_currency`. Read the returned `warnings`: a recipe without an image or
+an event without a location is valid but not eligible for Google's rich
+results. Like other content writes they land in the draft — `save: true` or
+`commit_working_copy` when approved.
+
+FAQ markup only belongs on a page that visibly presents those questions and
+answers; Google penalizes FAQ markup for content the page does not show.
+
+For other types write `json_ld` yourself:
+
 ```
 update_page page_id="home" patch={
   "json_ld": "{\"@context\":\"https://schema.org\",\"@type\":\"LocalBusiness\",\"name\":\"Acme Studio\",\"url\":\"https://acme.se\",\"telephone\":\"+46812345\",\"address\":{\"@type\":\"PostalAddress\",\"streetAddress\":\"Drottninggatan 1\",\"addressLocality\":\"Stockholm\",\"postalCode\":\"111 51\",\"addressCountry\":\"SE\"}}"
@@ -124,15 +170,24 @@ update_page page_id="home" patch={
 
 **Important:** JSON-LD goes in the `json_ld` field as a JSON *string*
 (not a nested object). The renderer injects it inside
-`<script type="application/ld+json">`.
+`<script type="application/ld+json">`. To keep several nodes on one page,
+store them as `{"@context":"https://schema.org","@graph":[…]}` — the
+`add_*_schema` tools do this for you. Read the page first: an update
+replaces the whole `json_ld` value.
 
 Common schemas worth adding:
 - Homepage: `LocalBusiness` or `Organization`
 - About: `AboutPage`
 - Contact: `ContactPage`
 - Blog articles: auto-generated from `kind:"article"` + `author`
-- Events: `Event` with `startDate`, `location`
+- FAQ, recipe and event pages: the `add_*_schema` tools above
 - Products: `Product` with `offers`
+
+**Instead of the `schema_markup` workflow.** That workflow runs the model with
+the Organization's own AI key; on a Site without that access it fails with
+`failure_code: "ai_not_enabled"`. Don't retry it. Do the same work here: read
+each published page, pick the one type it genuinely represents (or none),
+apply the tool or `json_ld` above, and tell the user you did it yourself.
 
 ### 6. robots.txt
 

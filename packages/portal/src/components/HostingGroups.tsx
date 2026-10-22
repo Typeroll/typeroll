@@ -3,10 +3,11 @@ import PublishingCard from './PublishingCard';
 import PublishingCloudflareConnection from './PublishingCloudflareConnection';
 import { CLOUDFLARE_STATUS, cloudflareCardState, readCloudflareReturn } from './cloudflare-return';
 import type { CloudflareConnectionDiagnosis } from '../lib/publishing/cloudflare-diagnosis';
+import type { CloudflarePermissionReport } from '../lib/publishing/cloudflare-capabilities';
 
 type Group = { id: string; name: string; revision: string; sites_domain: string | null; dns_mode: string;
   connection: { status: string; revision: string; cloudflare: { account_id?: string; account_name: string } | null };
-  account_choices?: Array<{ id: string; name: string }>; cloudflare_diagnosis?: CloudflareConnectionDiagnosis };
+  account_choices?: Array<{ id: string; name: string }>; cloudflare_diagnosis?: CloudflareConnectionDiagnosis; cloudflare_permissions?: CloudflarePermissionReport };
 async function request(path: string, method = 'GET', body?: unknown) {
   const response = await fetch(path, { method, cache: 'no-store', headers: { 'Content-Type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -62,7 +63,7 @@ export default function HostingGroups() {
             <button className="btn" disabled={busy}>Save Hosting Group</button>
           </form>
           <details><summary>Setup instructions</summary><p>The site address base may use a domain managed by your organization’s main Cloudflare account. Typeroll creates each site’s DNS record there and builds the site on this group’s account. Media storage remains shared.</p></details>
-          <PublishingCloudflareConnection groupId={group.id} connection={group.connection} diagnosis={group.cloudflare_diagnosis} choices={group.account_choices}
+          <PublishingCloudflareConnection groupId={group.id} connection={group.connection} diagnosis={group.cloudflare_diagnosis} choices={group.account_choices} permissions={group.cloudflare_permissions}
             available={setupAvailable} returned={returned?.groupId === group.id ? returned.result : null} disabled={busy} onRefresh={refresh} />
           {connected && <button className="btn btn--secondary" disabled={busy} onClick={() => void action(async () => {
             const result = await request(`${root}/cloudflare`, 'POST', { action: 'start', hosting_group_id: group.id });

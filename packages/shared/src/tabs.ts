@@ -69,7 +69,20 @@ export const tabs: BlockType = {
   container: "slots",
   slot_count: 6,
   slot_labels: ["Tab 1", "Tab 2", "Tab 3", "Tab 4", "Tab 5", "Tab 6"],
+  // Anchored at the root so tabs nested in a panel keep their own parts. The
+  // selected tab is the choice part's style with `&[aria-selected="true"]`.
+  parts: [
+    { name: "headline", label: "Inline headline", selector: "> .block-tabs-content > .block-tabs-strip > .block-tabs-headline", target: "text" },
+    { name: "strip", label: "Choice row", selector: "> .block-tabs-content > .block-tabs-strip", target: "container", decorative: true },
+    // The strip holds only the headline and the choices, never a nested block.
+    { name: "choice", label: "Tabs and links", selector: "> .block-tabs-content > .block-tabs-strip .block-tabs-choice", target: "button" },
+    { name: "choice_icon", label: "Choice icons", selector: "> .block-tabs-content > .block-tabs-strip .block-tabs-icon", target: "text", decorative: true },
+    { name: "toggle", label: "Open/close button", selector: "> .block-tabs-toggle", target: "button" },
+    { name: "panel", label: "Panels", selector: "> .block-tabs-content > .block-tabs-panels > .block-tabs-panel", target: "container", decorative: true },
+  ],
   schema: [
+    // Styles the block root: a surface around the choices and panels.
+    { name: "style_id", type: "style", label: "Tabs style", style_target: "container", editor_group: "content" },
     {
       name: "active_font_weight",
       type: "number",

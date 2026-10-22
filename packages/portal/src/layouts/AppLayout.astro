@@ -16,6 +16,8 @@ import SiteSwitcher from '../components/SiteSwitcher.tsx';
 import VersionPicker from '../components/VersionPicker.tsx';
 import Icon from '../components/Icon.astro';
 import RuntimeConfig from '../components/RuntimeConfig.astro';
+import { canUseAiChat, AI_SETTINGS_PATH } from '../lib/ai/organization-ai';
+import { resolveOwnerOrgAccess } from '../lib/member-role';
 
 interface Props {
   title?: string;
@@ -63,6 +65,16 @@ let currentVersionId: string = MAIN_VERSION_ID;
 if (siteId) {
   siteVersions = await listSiteVersions(activeOwnerOrgId, siteId);
   currentVersionId = await resolveVersionId(activeOwnerOrgId, siteId, Astro.locals.versionId);
+}
+
+// The AI assistant appears only when the site's OWNER organization has its
+// own key and allows this site, and never to read-only viewers.
+let aiChatEnabled = false;
+if (siteId) {
+  const chatPermission = activeOwnerOrgId === fullSession.orgId
+    ? (await resolveOwnerOrgAccess(fullSession.orgId, fullSession.userId)).permission
+    : activePermission;
+  aiChatEnabled = await canUseAiChat({ orgId: activeOwnerOrgId, siteId }, chatPermission);
 }
 
 // Insights nav appears only when the analytics app is enabled (opt-in) —
@@ -210,10 +222,12 @@ const initials = (session.displayName ?? session.email ?? 'U')
                   <span>{page.label}</span>
                 </a>
               ))}
-              <a href={`/app/sites/${siteId}/ai`} class:list={["app-sidebar__link app-sidebar__link--accent", isActive(`/app/sites/${siteId}/ai`) && "app-sidebar__link--active"]}>
-                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Sparkles" /></span>
-                <span>AI Chat</span>
-              </a>
+              {aiChatEnabled && (
+                <a href={`/app/sites/${siteId}/ai`} class:list={["app-sidebar__link app-sidebar__link--accent", isActive(`/app/sites/${siteId}/ai`) && "app-sidebar__link--active"]}>
+                  <span class="app-sidebar__link-icon" aria-hidden><Icon name="Sparkles" /></span>
+                  <span>AI Chat</span>
+                </a>
+              )}
               <a href={`/app/sites/${siteId}/settings`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/settings`) && "app-sidebar__link--active"]}>
                 <span class="app-sidebar__link-icon" aria-hidden><Icon name="Settings" /></span>
                 <span>Site settings</span>
@@ -251,11 +265,18 @@ const initials = (session.displayName ?? session.email ?? 'U')
               <span class="app-sidebar__link-icon" aria-hidden><Icon name="PlugZap" /></span>
               <span>Publishing</span>
             </a>}
+            {canManagePublishing && <a href={AI_SETTINGS_PATH} class:list={["app-sidebar__link", isActive(AI_SETTINGS_PATH, true) && "app-sidebar__link--active"]}>
+              <span class="app-sidebar__link-icon" aria-hidden><Icon name="Sparkles" /></span>
+              <span>AI assistant</span>
+            </a>}
             {/* Direct shortcut to the hosted-MCP / agent-connector keys.
                Was previously a button on /app/settings reachable only after
                clicking the (unclear) "Preferences" link. The autopilot.se
                install showed that customers landing here for the first time
                can't find it — this top-level link saves the scroll. */}
+            <a href="/app/settings/ai-connections" class:list={["app-sidebar__link", isActive('/app/settings/ai-connections', true) && "app-sidebar__link--active"]}>
+              <span>AI connections</span>
+            </a>
             <a href="/app/settings/api-keys" class:list={["app-sidebar__link", isActive('/app/settings/api-keys', true) && "app-sidebar__link--active"]}>
               <span class="app-sidebar__link-icon" aria-hidden><Icon name="KeyRound" /></span>
               <span>API keys</span>

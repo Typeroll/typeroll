@@ -5,6 +5,11 @@ description: Use when the user asks to write, draft, or rewrite a page on a Type
 
 # Write a page that fits the site
 
+Confirm the organization, site and version first. Personal OAuth calls require
+the `site_context` returned by `select_site`. Read `read_site_instructions`
+and the selected site's enabled App guidance before changing content.
+
+
 > **The buffer model (draft writes).** Every content write in this recipe
 > (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
@@ -109,6 +114,22 @@ shortening, adding a CTA, tweaking SEO description.
 
 Don't `update_page status:"published"` without an explicit "looks
 good, publish it" from the user. Same for `trigger_deploy`.
+
+## Instead of the content workflows
+
+`start_workflow` types `content_generation` and `content_improvement` run the
+model with the Organization's own AI key. On a Site without that access they
+fail with `failure_code: "ai_not_enabled"`; don't retry them. Do the work with
+this recipe and tell the user you did it yourself:
+
+- **Generate a page** (`content_generation { topic, tone?, audience? }`):
+  steps 1–5 for that topic, created as a draft.
+- **Improve content** (`content_improvement { limit? }`): `list_pages
+  status="published"` and `batch_read_pages`, rank the pages by thin text,
+  missing `seo_title`/`seo_description` and age (not updated for a year), and
+  rewrite the weakest few (five by default) in the site's voice. Keep facts,
+  URLs and structure; leave the rewrites as unsaved drafts and show previews
+  before anything is saved or published.
 
 ## SEO conventions worth knowing
 

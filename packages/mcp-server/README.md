@@ -30,13 +30,12 @@ release. See the [model guide](https://typeroll.com/docs/tools/content-types/) a
 - **Remote MCP — enter a URL.** Use a client with Streamable HTTP support
   and OAuth or bearer-header authentication. The Cloud endpoint is
   `https://app.typeroll.com/api/mcp`; self-hosted portals use
-  `https://<your-portal-host>/api/mcp`. On Core 0.2.77+, sign in to the portal,
-  choose an Organization and Site scope, and approve access. No key needs to
-  be copied. The approving user must be an Organization owner or administrator.
-  Revoke the resulting **MCP: [client host]** entry in the corresponding API
-  keys settings to disconnect. Connections expire after 30 days; removed or
-  demoted members lose their delegated access. Older portals still request an
-  API key during consent. Manual bearer keys remain supported.
+  `https://<your-portal-host>/api/mcp`. On Core 0.2.78+, sign in and approve
+  personal access with any role. No API key copying is needed. Confirm a site
+  and version, use `select_site`, and carry its `site_context` on site calls.
+  Revoke access in Account → AI connections. Permissions are checked live;
+  the connection expires after 30 days. Legacy OAuth grants remain scoped
+  as before until reconnecting. Manual bearer keys remain supported.
 - **Local stdio — launch the npm package.** Use a client that can run a local
   command with environment variables. Instructions below.
 
@@ -178,6 +177,11 @@ the full reference + concrete operation recipes.
   `create_organization_invite` (editor invite link). A share never reaches
   further than the caller. New API keys are created only in the portal, so the
   secret never passes through an agent conversation.
+- **Portal AI assistant** — `read_organization_ai_settings`,
+  `set_organization_ai_key`, `remove_organization_ai_key` and
+  `set_organization_ai_site_access`: the Organization's own Anthropic key
+  (verified, encrypted, never returned) and the Sites that show the built-in
+  AI chat. Organization key, owner/admin. MCP itself never depends on it.
 - **Workflows** — `list_workflows`, `start_workflow` (migration, site planning,
   SEO/link/performance audits, content generation and improvement, schema
   markup, URL parity, rebuild & deploy), `get_workflow`, `approve_workflow`.
@@ -189,7 +193,8 @@ the full reference + concrete operation recipes.
   `diagnose_organization_github_connection` (why GitHub is not connected,
   every account with the App, and who must act with one fix each),
   `diagnose_organization_cloudflare_connection` (why a Hosting Group's
-  Cloudflare connection is not working, who must act and one fix each),
+  Cloudflare connection is not working, who must act and one fix each, and
+  which optional permissions for Analytics and redirect rules it is missing),
   `disconnect_organization_publishing_provider`,
   `connect_organization_cloudflare` (customer API token),
   `prepare_organization_media_storage`, `save_organization_media_access`.
@@ -280,7 +285,9 @@ the full reference + concrete operation recipes.
   state, and enable, configure, or disable any module with the same admin API key used for content
   and deploys. Secret fields are encrypted server-side and never returned;
   Analytics provisioning runs on the platform. Deploy after updates whose
-  response has `affects_build: true`.
+  response has `affects_build: true`. `list_organization_analytics` and
+  `set_organization_analytics` show and change Analytics for chosen Sites
+  across the Organization (organization key).
 - **Search + link integrity** — `search_pages` plus `check_internal_links`,
   which resolves saved database content against pages, Page/facet routes,
   media and redirect chains without crawling the public site.
@@ -391,3 +398,11 @@ available. Read/write/admin wrappers share normal validation and authorization.
 
 See [Agent workspace](https://typeroll.com/docs/getting-started/agent-workspace/)
 for the folder layout, commands, version requirements and context-budget advice.
+
+## Personal connections and packaged workflows
+
+Personal OAuth defaults to compact discovery. Read `tr-edit-site` for the
+editing workflow and fetch site/App instructions live after selecting the site.
+The same flow works in Cloud and self-hosted Core.
+[Plugin package instructions](plugins/README.md) describe reproducible
+ChatGPT/Codex and Claude bundles; no catalog submission has been made.

@@ -88,6 +88,25 @@ the portal form, and returns `workflow_id` with `202`:
 | `rebuild_deploy`                                                | `environment`: `staging` or `production`                              |
 | `seo_audit`, `link_check`, `performance_audit`, `schema_markup` | none                                                                  |
 
+`site_planning`, `content_generation`, `content_improvement` and
+`schema_markup` call the model with the Organization's own Anthropic key and
+need AI access for the Site. Without it the run fails: `get_workflow` returns
+`status: "failed"`, `failure_code: "ai_not_enabled"` and a `failure_reason`
+saying the AI assistant is not enabled for this site. (Earlier Core versions
+report only `failure_reason`, and their `schema_markup` completes with every
+page skipped.) `seo_audit` still returns its issue list without AI
+prioritization. See [Built-in AI assistant](#built-in-ai-assistant).
+
+Your own agent does not need that key. The MCP tool descriptions tell an agent
+that meets `ai_not_enabled` to do the same work itself instead of retrying:
+
+| Workflow                                 | What your agent does instead                                                              |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `site_planning` / `create_site_and_plan` | Plans the pages with the [new-site recipe](../../skills/tr-new-site/), with your approval |
+| `content_generation`                     | Writes the page as a draft with the `tr-content-write` recipe                             |
+| `content_improvement`                    | Rewrites the weakest published pages as drafts for review (`tr-content-write`)            |
+| `schema_markup`                          | Adds structured data with the [structured data tools](../pages/#structured-data-tools)    |
+
 `rebuild_deploy` publishes the Site and therefore needs admin permission, like
 every other deploy route. `migration` needs the Organization's verified import
 storage and returns `409 import_storage_required` until it is ready. Add
@@ -113,7 +132,26 @@ with an organization key:
 
 The two workflow starts return `201` with `site` and `workflow`; follow the run
 with `get_workflow` on the new Site. A migration start checks import storage
-before anything is created.
+before anything is created. An AI plan start checks that the Organization's own
+AI key covers new Sites (a key and site access **All sites**); otherwise it
+returns `403` with code `ai_not_enabled` and creates nothing.
+
+## Built-in AI assistant
+
+The portal's AI chat uses the Organization's own Anthropic API key on the Sites
+an owner or admin chooses. MCP and the API never depend on it.
+
+| Action               | MCP tool                          | API route below `/api/v1`          | Permission       |
+| -------------------- | --------------------------------- | ---------------------------------- | ---------------- |
+| Read status          | `read_organization_ai_settings`   | `GET /organization/ai`             | Organization key |
+| Add or replace a key | `set_organization_ai_key`         | `PUT /organization/ai/key`         | Organization key |
+| Remove the key       | `remove_organization_ai_key`      | `DELETE /organization/ai/key`      | Organization key |
+| Choose Sites         | `set_organization_ai_site_access` | `PUT /organization/ai/site-access` | Organization key |
+
+A personal connection needs an Organization where the person is an owner or
+admin. The key is verified with Anthropic before it is stored and is never
+returned; prefer entering it in the portal. Details and error codes are in
+[Set up the built-in AI assistant](../../guides/ai-assistant/).
 
 ## Publishing connections
 
@@ -145,8 +183,23 @@ owner or admin of that Organization connects it in a browser and confirms
 sharing it. A
 person's unfinished sign-in and the accounts they authorized stay in their
 Cloudflare card. `recheck: true` re-verifies a saved connection with its own
-authorization. Every code is explained in
+authorization. Its `permissions` (and `cloudflare_permissions` in
+`read_organization_publishing_connections`) report the optional capabilities
+`analytics_provisioning`, `analytics_reports` and `redirect_rules` with their
+missing scopes and the one **Approve update** that adds them; see
+[Cloudflare permissions](../../guides/customer-publishing/#cloudflare-permissions). Every code is explained in
 [Cloudflare connection troubleshooting](../../guides/cloudflare-troubleshooting/).
+
+## Analytics across Sites
+
+| Action                          | MCP tool                      | API route below `/api/v1`      | Permission       |
+| ------------------------------- | ----------------------------- | ------------------------------ | ---------------- |
+| List Sites with Analytics state | `list_organization_analytics` | `GET /organization/analytics`  | Organization key |
+| Turn Analytics on or off        | `set_organization_analytics`  | `POST /organization/analytics` | Organization key |
+
+Approving Cloudflare permissions enables Analytics for no Site. Changes apply
+only to the listed Sites, each as `update_app` would, with one result per Site.
+Details are in [Analytics](../../apps/analytics/#choose-sites-across-the-organization).
 
 ## What stays in the portal
 

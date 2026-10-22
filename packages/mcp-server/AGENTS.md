@@ -37,10 +37,15 @@ create the branch, then work on it with `version=<id>`.
 
 Typeroll is a static-site CMS: content lives in a database, the user
 edits it through an in-app editor, and a deploy step compiles everything
-to a fast static site hosted on Cloudflare Pages. The in-app chat handles
-single-page or single-block edits by the editor audience. You — through
-this MCP — handle the work that doesn't fit there: site-wide redesigns,
-bulk content updates, structural migrations, directory imports.
+to a fast static site hosted on Cloudflare Pages. The portal's built-in AI
+chat is optional: it needs the Organization's own AI key and appears only on
+the Sites chosen for it, so you are often the only AI working on the site.
+Everything the chat can do is available to you here — everyday edits
+(`tr-edit-site`, "Everyday requests"), structured data (`add_faq_schema`,
+`add_recipe_schema`, `add_event_schema`) and the starter design reference
+(`tr-starter-design`) — along with the work that doesn't fit a chat:
+site-wide redesigns, bulk content updates, structural migrations, directory
+imports.
 
 The MCP server is a thin wrapper around the public REST API. Each tool
 maps to one HTTP endpoint; the actual logic runs in the customer's portal
@@ -63,6 +68,16 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   custom values. Slug is one segment; use an explicit `path` for a nested URL,
   or let the content type's `route_template` derive it. All articles and
   directory entries are Pages created with `create_page`.
+
+  A requested address is never changed silently. If the `slug` (or `path`)
+  you pass to `create_page`/`clone_page` is already in use — drafts and
+  unsaved drafts included — the call fails with 409 `slug_in_use` (or
+  `path_in_use`) and `details: { page_id, path }` of the existing page: edit
+  that page or choose another slug. Only a slug derived from the title is
+  numbered (`tack` → `tack-2`), and the response then carries
+  `warnings: [{ code: "slug_adjusted", requested, slug, path,
+  conflicting_page_id }]`. Link to the returned `url`, not the slug you
+  expected.
 
 - **Partials = global blocks.** Three kinds:
   - `header` — auto-injected at the top of every page.
@@ -129,7 +144,16 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   compatibility) through the same admin API key used for content
   and deploys. Read the schema before writing. Secret fields stay masked on
   reads and encrypted at rest; omitted fields preserve their current values.
-  When `affects_build` is true, deploy after the update.
+  When `affects_build` is true, deploy after the update. Enabling Analytics
+  creates its Cloudflare Web Analytics site in the account that hosts the site;
+  `read_app` and `update_app` return `setup` with the result. A 409 from
+  `update_app` carries `code` and `details.next_step`: relay that step to the
+  person (for example approving the Cloudflare permission update) and retry.
+- **Analytics across Sites.** `list_organization_analytics` lists every Site
+  with Analytics on or off, its setup and each Hosting Group's Cloudflare
+  permissions; `set_organization_analytics` turns it on or off for chosen
+  Sites (one result each). A Cloudflare approval enables Analytics nowhere:
+  ask which Sites to measure, then enable those. Organization key only.
 
 - **Extension installations.** `list_extension_installations`,
   `read_extension_installation`, and `update_extension_installation_config`
@@ -183,8 +207,8 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   blocks — never hardcode block ids or field names, the available set is
   per-site.
 
-  **Building a block type** (needs **admin** permission on the site; editors
-  with write permission place block types on pages and edit their fields):
+  **Building a block type** (needs **write** permission on the site; editors
+  can define types as well as place them and edit their fields):
   - Prefer a core block, then a block template (a section people copy and
     adapt), then a global block (identical everywhere). Build a block type
     only for a recurring shape whose structure should stay fixed while
@@ -560,6 +584,10 @@ can't create sites (it's bound to one) and gets a 403.
 
 ## Common operations
 
+Everyday requests — page links and preview links, images the user hands you,
+menu and footer edits, site-wide changes, settings, analytics, redirects,
+forms and structured data — are collected in `read_skill name="tr-edit-site"`.
+
 ### "Replace this string across the whole site"
 
 ```
@@ -623,7 +651,10 @@ update_page page_id=… patch={ html_content: "<…><x-include name=\"newsletter
 ```
 
 Edits to the block update every page that includes it. Use
-`find_pages_using_block` before changing it.
+`find_pages_using_block` before changing it. A request phrased as a bulk
+edit ("every page", "all hero sections") is usually this: check
+`list_partials` for a block that already fits before proposing a new one, and
+edit pages one by one only for content that really differs per page.
 
 ### "Build a page using blocks (the default for new pages)"
 
@@ -832,7 +863,7 @@ something is quietly wrong:
   page breaks at once.
 - **hosting adapter** (blocker) — without credentials, deploys return a job id
   and publish nothing, while reporting success.
-- verification origin, AI reconstruction, form notification email, and whether
+- verification origin, content preservation, form notification email, and whether
   the target actually has a design to rebuild INTO (warnings).
 
 `ready: false` means STOP and report the blockers, each of which carries a
@@ -1000,7 +1031,29 @@ site that starts with a WordPress migration or an AI plan is one call with an
 organization key: `create_site_and_migrate` or `create_site_and_plan` (the two
 non-blank options on the portal's New site page). Migration needs verified
 organization import storage (`409 import_storage_required` otherwise; nothing
-is created).
+is created). An AI plan needs the Organization's own AI key with site access
+`all` (`403 ai_not_enabled` otherwise; nothing is created): you can instead
+create a blank site and plan it yourself.
+
+**AI workflows without the portal's AI.** `site_planning`,
+`content_generation`, `content_improvement` and `schema_markup` run the
+model with the Organization's own AI key, and only on Sites an owner or admin
+allowed. Elsewhere the run fails: `get_workflow` shows `status: "failed"`
+with `failure_code: "ai_not_enabled"` (older Core: only a `failure_reason`
+saying the AI assistant is not enabled for this site). That is not an error
+to retry or escalate. You are an AI agent: do the same work yourself with the
+recipe and tell the user that you did, instead of the workflow:
+
+| Workflow | Do it yourself with |
+|---|---|
+| `site_planning` / `create_site_and_plan` | `create_site` if needed, then `tr-new-site`: propose the page structure, get approval, build |
+| `content_generation` | `tr-content-write`: a new page in the site's voice, as a draft |
+| `content_improvement` | `tr-content-write` on the weakest published pages (thin text, missing `seo_title`/`seo_description`, not updated for a year), left as unsaved drafts for review |
+| `schema_markup` | `tr-seo` step 5: `add_faq_schema`, `add_recipe_schema`, `add_event_schema` or `json_ld` per page |
+
+`seo_audit` needs no AI: without it the run returns the per-page issue list
+without prioritization. Turning on the portal AI is the Organization's
+choice; never ask for it as a prerequisite for your own work.
 
 ### "Give someone access" (keys, sharing, invites)
 
@@ -1017,6 +1070,19 @@ is created).
 - **A person joining your Organization:** `create_organization_invite` returns
   a link; the person signs in and joins as an editor. Creating Organizations,
   switching Organization and redeeming invites remain signed-in portal actions.
+
+### "Turn on the portal's AI assistant" (and why you don't need it)
+
+You are the user's own agent: MCP and the API work on every Site you can
+reach, whatever this setting says. The built-in AI chat in the portal is
+separate. It uses the Organization's own Anthropic API key and appears only
+on the Sites an owner or admin chooses. `read_organization_ai_settings` shows
+whether a key is set (last four characters only) and `ai_enabled` per Site;
+`set_organization_ai_site_access` (`mode: "all"` or `"selected"` with
+`site_ids`), `set_organization_ai_key` and `remove_organization_ai_key` change
+it (organization key, owner/admin). Prefer that the person enters the key in
+the portal (Organization settings → AI assistant) so it never passes through
+your conversation; never repeat a key back.
 
 ### "Connect GitHub or Cloudflare"
 
@@ -1053,6 +1119,17 @@ other Organization is named). The accounts a person
 authorized and their account choice stay in their own Cloudflare card. Relay
 the message and link; `sign_in` and `retry` happen at `connect_url`. Pass
 `recheck: true` only to re-verify a saved connection.
+
+Before enabling Analytics (`update_app`) or saving `redirect_hosts`
+(`set_publishing_domains`), read `permissions` from
+`diagnose_organization_cloudflare_connection` (or `cloudflare_permissions`
+from `read_organization_publishing_connections`). Each capability
+(`analytics_provisioning`, `analytics_reports`, `redirect_rules`) has a
+`status`: `available`, `approval_required` (relay `permission_update.next_step`:
+an owner or admin selects **Approve update** at `connect_url` once per
+Cloudflare account), `not_offered` (this installation does not request the
+scope; use the fallback in `next_step`), `unknown` (API token, checked on use)
+or `connection_required`, with the exact `missing_scopes`.
 
 ## Safety boundaries
 
@@ -1193,7 +1270,9 @@ preview.
   more work than asking "ok to proceed?" first.
 - **Match the site's design.** Read a partial or two before designing
   new components. CSS variables (`var(--color-primary)`) are common
-  but not universal — mirror what's already in use.
+  but not universal — mirror what's already in use. On a blank site, or one
+  that still follows the starter design, `read_skill name="tr-starter-design"`
+  lists the variables and header/footer conventions.
 
 ## Reference: tool families
 
@@ -1203,17 +1282,18 @@ preview.
 | **Discovery** | `get_site`, `create_site`, `create_site_and_migrate`, `create_site_and_plan` (org-scoped key only — see below), `update_site` (incl. `ai_scripts_enabled`, admin), `list_versions`, `read_site_settings` |
 | **Site lifecycle** | `archive_site`, `restore_site`, `purge_site_media` (archived sites only, irreversible). Owner-organization admin, as in the portal. |
 | **Workflows** | `list_workflows`, `start_workflow` (write; `rebuild_deploy` admin), `get_workflow`, `approve_workflow` (only `paused_for_review`, with the user's consent) |
-| **Access** | `list_api_keys`, `revoke_api_key` (site admin), `list_organization_api_keys`, `revoke_organization_api_key` (organization key; new keys are created only in the portal), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite` (organization key) |
+| **Access** | `list_api_keys`, `revoke_api_key` (site admin), `list_organization_api_keys`, `revoke_organization_api_key` (organization key; new keys are created only in the portal), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite` (organization key), `read_organization_ai_settings`, `set_organization_ai_key`, `remove_organization_ai_key`, `set_organization_ai_site_access` (the portal AI chat's own key and Sites; organization key) |
 | **Organization publishing** | `read_organization_publishing_connections`, `diagnose_organization_github_connection`, `diagnose_organization_cloudflare_connection`, `disconnect_organization_publishing_provider`, `connect_organization_cloudflare`, `prepare_organization_media_storage`, `save_organization_media_access`, plus builds, Hosting Groups, domains and media migration tools (organization key) |
-| **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics; conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |
+| **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics in the account that hosts the site; a non-ok `status` carries a `reason` with the next step. Conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |
 | **Pages — reads** | `list_pages`, `read_page`, `batch_read_pages` |
 | **Pages — writes** | `create_page`, `update_page`, `replace_page`, `batch_update_pages`, `delete_page`, `clone_page` |
+| **Pages — structured data** | `add_faq_schema`, `add_recipe_schema`, `add_event_schema`: validated FAQPage, Recipe and Event JSON-LD merged into the page's `json_ld` (same type replaced, other nodes kept), as a draft. Other types: `update_page` `json_ld`. See `tr-seo`. |
 | **Pages — blocks** | `get_page_blocks`, `add_block`, `update_block`, `move_block`, `remove_block`, `duplicate_block`, `set_block_responsive`, `set_page_mode` (never converts HTML into blocks) |
 | **Pages — meta** | `get_page_preview` |
 | **Global blocks (partials)** | `list_partials` (summary by default), `read_partial`, `create_free_block` (`blocks` or `html_content`), `update_partial`, `replace_partial`, `set_partial_mode`, `delete_partial`, `find_pages_using_block`, `make_block_global`, `detach_global_block`. Block pages reference a global block with `core/global_block` (`global_block_id`); HTML pages use `<x-include>`. |
 | **Block templates** | `list_block_templates`, `read_block_template`, `save_block_template` (from `blocks` or `from: { page_id, block_id }`), `update_block_template`, `delete_block_template`, `insert_block_template` (copies with new ids). Per site, not per branch. |
-| **Styles** | `list_styles`, `create_style`, `update_style`, `delete_style`, `apply_standard_styles`. Blocks pick a style with `style_id` (heading parts: `eyebrow_style_id`, `subtitle_style_id`). Contrast below WCAG AA is refused. |
-| **Block types** | `list_block_types`, `read_block_type`, `find_pages_using_block_type`, `list_block_type_starters`, `validate_block_type`, `preview_block_type`, `create_block_type`, `update_block_type` (`renames`, `confirm_data_loss`), `delete_block_type`, `export_block_types`, `import_block_types` (`on_conflict`: skip, rename, replace). Authoring and import need admin. |
+| **Styles** | `list_styles`, `create_style`, `update_style`, `delete_style`, `apply_standard_styles`. Blocks pick a style with `style_id` (heading parts: `eyebrow_style_id`, `subtitle_style_id`). Other named block parts (`read_block_type` → `parts`, e.g. `core/rich_heading.link`, `core/hero.primary_button`) take a style site-wide through the style's `parts`, or on one block through `data.part_styles`; the block's choice replaces the site-wide one, and a style class on the element wins over both. Contrast below WCAG AA is refused. |
+| **Block types** | `list_block_types`, `read_block_type`, `find_pages_using_block_type`, `list_block_type_starters`, `validate_block_type`, `preview_block_type`, `create_block_type`, `update_block_type` (`renames`, `confirm_data_loss`), `delete_block_type`, `export_block_types`, `import_block_types` (`on_conflict`: skip, rename, replace). Authoring and import need write permission. |
 | **Content types** | `list_content_types`, `read_content_type`, `create_content_type`, `update_content_type`, `delete_content_type`, `change_page_content_type`, `page_completeness` |
 | **Page templates** | `list_page_templates`, `read_page_template`, `create_page_template`, `update_page_template`, `delete_page_template` |
 | **Media** | `get_media_upload_status`, `list_media`, `read_media`, `create_upload_url`, `upload_media_from_url`, `upload_media_inline`, `update_media`, `delete_media`, `finalize_media`, `finalize_all_media`, `generate_image_variants`, `suggest_alt_text_context` |
@@ -1222,7 +1302,7 @@ preview.
 | **Forms** | `list_forms`, `read_form`, `create_form`, `update_form`, `delete_form`, `get_form_capabilities`, `list_form_submissions`, `read_form_submission`, `delete_form_submission` (removes one submission — e.g. cleaning up a test entry; `delete_form` with `delete_submissions` is the bulk path). **Steps (form/* block trees) are the ONLY stored model**: pass `steps` for funnels, or `fields` for simple forms — the server converts a flat field list to a single static step. Place with a `core/form` block on block-mode pages or `<x-form id="…" />` in HTML mode. Both expand server-side to the same complete signed shell and initial state. `read_form` shows the form's actions (email notifications, webhooks; secrets masked) and `create_form`/`update_form` set them with `actions`, with admin permission as in the portal; `get_form_capabilities` lists the action types (including app-provided ones) and their config fields. |
 | **Email (admin)** | `get_email_settings`, `set_email_settings`, `delete_email_settings`, `send_test_email` — the outgoing provider (Postmark, SMTP, SES) that form notifications send through, as in Settings → Email & notifications; secrets are write-only (reads show `{ set: true }`; omit a secret to keep it). Without a provider, form email actions are skipped. `get_incoming_email_settings`, `set_incoming_email_forwarding` (enable/disable a host-approved route by `route_id` + current `revision`; cannot create aliases or change targets), `read_incoming_email_receipt`. |
 | **Settings** | `update_site_settings` (admin; every field the portal Settings form accepts, including `sitewide_noindex`, `default_og_image`, `twitter_handle`, `organization`, `staging_url` and shallow-merged native `cookie_consent`), `check_site_indexing` (live fallback/production headers, meta robots, and robots.txt diagnostics) |
-| **Core modules** | `list_apps`, `read_app`, `update_app` (legacy API name; admin; schema-driven config, masked secrets, redeploy when `affects_build` is true) |
+| **Core modules** | `list_apps`, `read_app`, `update_app` (legacy API name; admin; schema-driven config, masked secrets, redeploy when `affects_build` is true); `list_organization_analytics`, `set_organization_analytics` (Analytics for chosen Sites; organization key) |
 | **Extension installations** | `list_extension_installations`, `read_extension_installation`, `update_extension_installation_config` (admin; schema-driven config, masked secrets preserved, production deploy queued by default) |
 | **Search + bulk** | `search_pages`, `check_internal_links`, `bulk_replace_text`. The link check is database-driven. Bulk replace defaults to pages but can target partials, Pages or all resources, always dry-run first. |
 | **Branches** | `create_branch`, `read_version`, `delete_branch`, `merge_branch` |
@@ -1338,3 +1418,15 @@ responsive `min_height_px`, and Post Card supports an action group and optional
 title icon. Use `read_block_type` for the exact current schemas. Set a Page's
 `breadcrumb_label` for a short navigation label without changing its title or
 route. Do not duplicate parent category information into each article body.
+
+
+## Personal OAuth and site selection
+
+Personal connections follow live memberships and shares across organizations.
+Confirm one site and version, call `select_site`, and pass its `site_context`
+on every site operation. Do not silently search or switch sites. Use
+`resolve_page_url` for a URL within the selected site. Read current guidance
+with `read_site_instructions` and enabled App guides with
+`read_app_documentation`. Use `tr-edit-site` for the editor workflow.
+Organization administration requires an explicit `organization_id` and a
+current owner/admin membership. Manual API keys keep their existing scope.

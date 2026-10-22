@@ -5,6 +5,11 @@ description: Use when a Typeroll site needs a block the core library does not ha
 
 # Build a site block type
 
+Confirm the organization, site and version first. Personal OAuth calls require
+the `site_context` returned by `select_site`. Read `read_site_instructions`
+and the selected site's enabled App guidance before changing content.
+
+
 A site block type is reusable: editors place it and fill in its fields, and
 every instance updates when the type changes. Build one when the same section
 shape recurs, or when editors should fill in fields rather than arrange
@@ -12,7 +17,7 @@ blocks. For a one-off section use plain blocks; for a section copied and then
 adapted per page use a block template; for content that must be identical
 everywhere use a global block.
 
-Creating, changing and deleting block types needs admin permission. A changed
+Creating, changing and deleting block types needs write permission. A changed
 block type reaches the live site with the next deploy.
 
 ## 1. Look before you build
@@ -81,6 +86,13 @@ When the markup cannot be built from blocks, use `template` instead of
 `{{^field}}…{{/field}}` (empty), `{{#each items}}…{{/each}}` with `{{@index}}`,
 `{{@number}}`, `{{@first}}`, `{{@last}}`, and `{{#link field class="x"}}…{{/link}}`.
 A type has a composition or a template, never both.
+
+Declare `parts` for the elements of the markup a site may want to restyle:
+`parts: [{ name: "title", label: "Title", selector: ".icon-list-title", target: "heading" }]`.
+Selectors are tags, classes, attributes and structural pseudo-classes, never
+`:hover` or `::before`. Styles then reach the part site-wide
+(`parts: ["icon_list.title"]` on the style) or on one block
+(`data.part_styles: { title: "card-title" }`, a field added automatically).
 
 ## Changing a type in use
 

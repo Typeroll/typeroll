@@ -5,6 +5,10 @@ description: Migrate an existing Astro site, including Astro Content Collections
 
 # Migrate an Astro site
 
+**Who runs this:** this recipe is for the user's own AI agent (Claude Code, Codex or
+another MCP client) working through MCP and the public API. The portal's built-in
+AI assistant has no migration tools: it does not import, convert or verify sites.
+
 **Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
 Complete its source baseline and one verified prototype per active template.
 Read target content to protect edits, not to justify accidental target defaults.
@@ -50,6 +54,9 @@ assume that a filename alone determines the production URL.
 - Browser scripts, integrations and server-rendered endpoints need separate
   review. A static Page cannot inherit a private server runtime by copying its
   source text. Configure the supported Forms/Extension runtime explicitly.
+  Do not copy client scripts; analytics and advertising tags move to the
+  Integrations app behind the cookie banner (tr-migration-evidence, "Scripts,
+  tracking and consent").
 
 Create templates with `create_page_template`, types with `create_content_type`,
 then one `create_page` per source record. Use returned Page IDs, not source IDs

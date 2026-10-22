@@ -1,0 +1,117 @@
+---
+title: Work with your usual AI assistant
+description: Connect with personal OAuth, choose one site, and edit Typeroll pages with the same access you have in the portal.
+---
+
+Use your usual AI assistant to edit content, create pages and build reusable
+components. You do not need a local development environment or a copied API key.
+The assistant uses your current Typeroll permissions.
+
+**Availability:** personal connections and explicit site selection are introduced
+in Core 0.2.78 / MCP 0.45.60. Cloud needs the matching Core deployment; updating a
+local npm package does not update a portal. Earlier OAuth connections remain
+organization/site-scoped until you reconnect. Catalog listing is not required
+for a custom MCP connection, and Typeroll's prepared plugin packages are not yet
+approved directory listings.
+
+## Connect once, then choose a site
+
+1. In Typeroll, open **Account → AI connections** and copy the server URL.
+   Cloud uses `https://app.typeroll.com/api/mcp`; self-hosted uses your portal's
+   `/api/mcp` address.
+2. Add that URL as a remote MCP server in your assistant's connector or plugin
+   settings. Choose OAuth when prompted. Client menus and access depend on the
+   client and workspace; see [client compatibility](../../getting-started/client-compatibility/).
+3. Sign in to Typeroll and select **Allow access**. Owners, administrators and
+   editors use this same flow. There is no organization picker or API key field
+   in consent: the connection belongs to you.
+4. Tell the assistant which site you want to work on. It lists accessible sites,
+   confirms the organization, site and version, and selects that context.
+
+For example:
+
+> Work on Example Site in Example Organization, on the main version. Find the
+> contact page, draft a clearer introduction and show me a preview before saving.
+
+The connection can discover every site you currently have access to, including
+future sites. Actual content operations stay within the selected site. The
+assistant must confirm a switch before working elsewhere. Separate conversations
+keep separate selections. A page URL can identify a page inside the selected
+site; it never authorizes switching to another site.
+
+## What the assistant can do
+
+| Access                   | Available work                                                                               |
+| ------------------------ | -------------------------------------------------------------------------------------------- |
+| Read                     | Read pages, inspect templates and preview permitted content.                                 |
+| Write / editor           | Also create and edit pages, custom block types, shared Page templates and reusable sections. |
+| Site admin               | Also perform site administration permitted by the existing site controls.                    |
+| Organization owner/admin | Also manage organization settings using an explicit organization selection.                  |
+
+Access is checked again for each request. Losing membership or a site share
+removes its access; changing a role changes the available actions. Existing
+organizations that have not enabled role enforcement retain their portal's
+legacy site permission policy. New organizations enforce roles. Operators of older installations should review
+their existing role configuration before granting editor access.
+
+Changing a shared block type or template can affect multiple pages. Ask the
+assistant to inspect uses and explain the impact first. Creating a custom block
+type is often easier with an AI agent: describe the appearance, editable fields
+and responsive behavior, then review its preview. The visual builder remains
+available for inspection and refinement.
+
+## Instructions without a large context
+
+Personal connections start with compact tool discovery. The assistant finds a
+relevant tool, reads its schema and calls the appropriate read/write/admin
+dispatcher. It need not load every tool or the complete documentation.
+
+- `list_skills` and `read_skill` provide reusable workflows. Start with
+  `tr-edit-site` for ordinary editing: it covers page and preview links,
+  images, menus, site-wide changes as shared blocks, settings and analytics.
+  Load design (`tr-starter-design`, `tr-brand`), SEO (`tr-seo`) or migration
+  recipes only when needed.
+- **Site settings → AI agent instructions** stores your audience, tone and
+  editing conventions for the selected version. Administrators can update it
+  in the portal or with `update_site_settings({ agent_instructions: "…" })`.
+  `read_site_instructions` retrieves that guidance and editorial constraints.
+- `read_app_documentation` retrieves current guides for the selected site's
+  enabled Apps. Private App instructions are not bundled in public skills.
+
+Site text and App instructions are guidance, not authorization to publish or
+change another site. Do not store credentials in instructions. A human still
+reviews changes. Saving a draft and publishing a site are separate actions.
+
+## Disconnect or reconnect
+
+Open **Account → AI connections → Revoke connection**. Revocation stops its
+access and refresh tokens. Other connections and manual API keys remain active.
+A connection expires after 30 days; reconnect from your assistant. Site contexts
+expire after 24 hours, at which point the assistant selects the site again.
+Older organization-scoped connections are still revoked from **API keys**.
+
+Personal connections work on every Site you can reach and do not depend on the
+built-in AI chat in the portal, which uses the Organization's own Anthropic key
+on the Sites an owner or admin chooses. See
+[Set up the built-in AI assistant](../ai-assistant/).
+
+## Self-hosted Typeroll
+
+The same Core implementation provides personal OAuth, role checks, site
+selection, instructions and API keys. Configure a stable public HTTPS portal URL,
+working user authentication and `MCP_OAUTH_SIGNING_KEY` as described in
+[self-hosting](../self-hosting/). The assistant provider must reach the endpoint
+and OAuth discovery routes; a private `localhost` address is not sufficient for
+a cloud-based client. Keep the signing key stable across instances and restarts.
+No Typeroll Cloud account or Cloud publishing provider is required for this flow.
+
+## Packaged workflows and catalogs
+
+The public repository contains a generator for ChatGPT/Codex and Claude plugin
+packages. Both include the same short editing skill and one remote MCP endpoint;
+additional recipes are read live. Self-hosted operators can generate the package
+with their own endpoint. See the
+[package and submission instructions](https://github.com/Typeroll/typeroll/tree/main/packages/mcp-server/plugins).
+Vendor approval and actual client testing are separate from building the package.
+Manual [API keys and stdio](../../getting-started/mcp-server/#local-mcp-process-stdio)
+remain available for automation and clients that require them.

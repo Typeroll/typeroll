@@ -76,6 +76,8 @@ export interface WorkflowRecord {
   completed_at?: string;
   failed_at?: string;
   failure_reason?: string;
+  /** Stable code of the error that failed the run, when it has one (e.g. ai_not_enabled). */
+  failure_code?: string;
   triggered_by: 'manual' | 'schedule' | 'webhook' | 'chat';
   created_by: string;
 }

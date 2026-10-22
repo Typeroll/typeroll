@@ -8,8 +8,10 @@ import { loadSiteContext } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
 import { pagePreviewUrl, pageLiveUrl } from '../../../../../lib/site-urls';
 import { readWorkingCopy } from '../../../../../lib/working-copy';
+import { pageAddress } from '../../../../../lib/page-fields';
 import { paths, resolveRenderVersion } from '@typeroll/shared';
 import type { Page, SiteVersion } from '@typeroll/shared';
+import { canUseAiChat } from '../../../../../lib/ai/organization-ai';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
@@ -47,11 +49,66 @@ const globalBlocks = (await vstore.partials(orgId, siteId, versionId)).filter(pa
   .map(partial => ({ id: partial.id, name: partial.name, status: partial.status, content_mode: partial.content_mode }))
   .sort((a, b) => a.name.localeCompare(b.name));
 const blockTemplates = await listBlockTemplates({ orgId, siteId });
+// The editor's AI panel follows the same rule as the AI chat page.
+const aiChatEnabled = await canUseAiChat({ orgId, siteId }, permission);
+
+// Set by the New page form when the title-derived slug was already in use.
+const requestedSlug = Astro.url.searchParams.get('slug_adjusted');
+const conflictingId = Astro.url.searchParams.get('conflicting_page_id');
+const conflictingPage = requestedSlug && conflictingId ? await vstore.page(orgId, siteId, versionId, conflictingId) : null;
+const slugNotice = requestedSlug && page.slug !== requestedSlug ? {
+  requested: requestedSlug,
+  address: await pageAddress({ orgId, siteId, versionId }, page),
+  conflicting: conflictingPage ? { title: conflictingPage.title, address: await pageAddress({ orgId, siteId, versionId }, conflictingPage), href: `/app/sites/${siteId}/pages/${encodeURIComponent(conflictingPage.id)}` } : null,
+} : null;
 ---
 <AppLayout title={`${page.title} — ${site.name}`} siteId={siteId} bare>
   {page.content_mode === 'blocks' ? (
-    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} globalBlocks={globalBlocks} blockTemplates={blockTemplates} canManageBlockTypes={permission === 'admin'} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} globalBlocks={globalBlocks} blockTemplates={blockTemplates} canManageBlockTypes={permission !== 'read'} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   ) : (
-    <HtmlPageEditor client:load siteId={siteId} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+    <HtmlPageEditor client:load siteId={siteId} aiChatEnabled={aiChatEnabled} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+  )}
+  {slugNotice && (
+    <div class="slug-adjusted-notice" role="status" id="slug-adjusted-notice">
+      <p>
+        The slug “{slugNotice.requested}” is already used by
+        {slugNotice.conflicting ? <> <a href={slugNotice.conflicting.href}>{slugNotice.conflicting.title || 'another page'}</a>{slugNotice.conflicting.address ? ` (${slugNotice.conflicting.address})` : ''}</> : ' another page'},
+        so this page was created as “{page.slug}”{slugNotice.address ? ` at ${slugNotice.address}` : ''}. Change the slug in the page settings if needed.
+      </p>
+      <button type="button" class="btn btn-secondary" data-dismiss>Dismiss</button>
+    </div>
   )}
 </AppLayout>
+
+<script>
+  const notice = document.getElementById('slug-adjusted-notice');
+  if (notice) {
+    notice.querySelector('[data-dismiss]')?.addEventListener('click', () => notice.remove());
+    // Keep the notice out of reloads and shared links.
+    const url = new URL(location.href);
+    url.searchParams.delete('slug_adjusted');
+    url.searchParams.delete('conflicting_page_id');
+    history.replaceState(history.state, '', url);
+  }
+</script>
+
+<style>
+  .slug-adjusted-notice {
+    position: fixed;
+    left: 50%;
+    bottom: 1.25rem;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    width: min(40rem, calc(100vw - 2rem));
+    padding: 0.75rem 1rem;
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+  }
+  .slug-adjusted-notice p { margin: 0; flex: 1; }
+</style>

@@ -7,6 +7,11 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const siteTools: ToolDef[] = [
   {
+    name: 'list_organizations', noSite: true,
+    description: 'List organizations you belong to and your current role. Site work begins with list_sites and select_site; organization administration requires its explicit ID.',
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('organizations'))),
+  },
+  {
     name: 'list_sites', noSite: true,
     description: 'List accessible Sites without changing them. Use the returned IDs for site_id or your workspace binding. Results are paginated locally.',
     inputSchema: { offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(50).default(20) },
@@ -54,7 +59,7 @@ export const siteTools: ToolDef[] = [
   {
     name: 'get_site_insights',
     description:
-      'Read Analytics insights over the last 7, 30, or 90 days: traffic, AI-assistant referrals, and first-party conversion events grouped by event, destination, source, and campaign. Traffic is powered by Cloudflare Web Analytics; conversions come from validated attribution-funnel click events. The response carries a traffic `status`: "ok" with numbers, or "app_disabled" / "not_configured" / "no_site_tag" / "no_data". Conversion data can still be present when the traffic provider is unavailable.',
+      'Read Analytics insights over the last 7, 30, or 90 days: traffic, AI-assistant referrals, and first-party conversion events grouped by event, destination, source, and campaign. Traffic is powered by Cloudflare Web Analytics; conversions come from validated attribution-funnel click events. The response carries a traffic `status`: "ok" with numbers, "no_data" for a linked site without traffic, or "app_disabled" / "not_configured" / "no_site_tag" / "connection_required" / "access_required" / "account_mismatch" / "provider_error" with a `reason` ({code, message, next_step, settings_url}). Traffic is read from the same Cloudflare account the beacon belongs to (`account`): the site\'s Hosting Group account for customer publishing, the installation\'s account otherwise. Conversion data can still be present when the traffic provider is unavailable.',
     inputSchema: {
       days: z.union([z.literal(7), z.literal(30), z.literal(90)]).optional().describe('Look-back window in days (default 30).'),
     },

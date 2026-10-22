@@ -20,11 +20,49 @@ Organization (your company, project or your own name) or join an existing one
 with an invitation. You do not need a separate company name field at signup.
 Invitation links remain attached while you sign in or create an account.
 
+A link to `/login?mode=signup`, such as
+[app.typeroll.com/login?mode=signup](https://app.typeroll.com/login?mode=signup),
+opens account creation directly (Core 0.2.86 or later).
+
 Sign in with email and password. If you previously used Google, choose
 **Forgot password?** with the same email address to set a password for that
 account. Do not create a second account. The reset message does not confirm
 whether an address is registered. If sign-in reports too many attempts, wait
 before retrying. Older portal releases may still show the Google button.
+
+### Confirm your email address
+
+In Core releases after 0.2.84, every account confirms its email address
+before it can do anything else. After you sign up, Typeroll sends a
+confirmation link and shows **Check your email**. Open the link: the page
+checks with Typeroll and continues by itself once the address is confirmed,
+also when you open the link on another device. If the message does not arrive, check your spam
+folder and choose **Resend confirmation email**; resending is limited to a
+few messages every ten minutes.
+
+Until your address is confirmed you cannot create or join an Organization,
+accept an invitation, open a Site, create or use API keys or connect an AI
+tool. An invitation or MCP connection link you opened is kept and continues
+after confirmation. Existing accounts with an unconfirmed address see the same
+page the next time they open the portal; their Organization memberships are
+kept and work again once the address is confirmed.
+
+### Continue with GitHub
+
+When **Continue with GitHub** is shown, you can sign in with your GitHub
+account instead of a password. Typeroll asks GitHub only for your email
+address and public profile, never for repository access. GitHub addresses
+are not confirmed for Typeroll, so a new GitHub sign-in also confirms its
+email address on the **Check your email** page.
+
+If your GitHub email address already has a Typeroll password account, the
+sign-in page asks for that password and then links GitHub to the same
+account. If you used Google before, choose **Forgot password?** first.
+
+Signing in with GitHub does not connect GitHub for publishing. Publishing uses
+the Organization's GitHub connection, which an owner or admin sets up under
+[publishing accounts](../customer-publishing/) with their own GitHub
+permissions.
 
 ## Open your Organization
 
@@ -57,9 +95,15 @@ Review the affected pages and preview the result before publishing.
 
 This is separate from connecting your own development agent. Editors can use the
 built-in assistant in the browser without installing an MCP client or a local
-development environment. AI availability depends on the service configuration.
-AI edits still use the normal saving and publication workflow; a chat response is
-not evidence that a change has been deployed.
+development environment. AI edits still use the normal saving and publication
+workflow; a chat response is not evidence that a change has been deployed.
+
+The assistant uses your Organization's own Anthropic API key; Typeroll Cloud has
+no platform AI key. Starting with the Core release that introduces organization
+AI keys, **AI Chat** appears only after an Organization owner or admin adds a key
+and allows the Site, including for existing Organizations. See
+[Set up the built-in AI assistant](../ai-assistant/). Your own agent works over
+MCP on every Site either way.
 
 ## Connect your AI agent
 

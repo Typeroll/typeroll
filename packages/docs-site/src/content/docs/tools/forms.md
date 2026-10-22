@@ -213,6 +213,12 @@ actions are skipped.
 
 Forms render through the `core/form` block: styled inputs, client-side
 validation, and the submit token wired in. You don't hand-write form HTML.
+The block's `submit_label` replaces the form's `submit_text` on that page
+(from Core 0.2.79; earlier it was ignored).
+
+A required radio group or checkbox group is checked by the browser too (Core
+0.2.79): a radio group needs a choice, and a checkbox group needs at least one
+checked box, before the step can be sent. The server still validates both.
 
 In a multi-step form the browser checks required fields and formats only for
 the step that is showing, so a required field in a later step never blocks an

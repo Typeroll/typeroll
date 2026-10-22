@@ -5,7 +5,7 @@ import { disconnectOrganizationProvider, isPublishingProvider } from '../../../.
 import { connectCloudflare, prepareCloudflareMedia, connectCloudflareMedia } from '../../../../lib/publishing/cloudflare-connection';
 import { GITHUB_COOKIE, startGithubConnection, startGithubInstallation, selectGithubOrganization } from '../../../../lib/publishing/github-connection';
 import { connectionBody, connectionFailure, privateJson, publishingAdmin } from '../../../../lib/publishing/http';
-import { CLOUDFLARE_COOKIE, startCloudflareConnection, selectCloudflareAccount } from '../../../../lib/publishing/cloudflare-oauth';
+import { CLOUDFLARE_COOKIE, startCloudflareConnection, startCloudflarePermissionUpdate, selectCloudflareAccount } from '../../../../lib/publishing/cloudflare-oauth';
 
 export const POST: APIRoute = async (context) => {
   const guard = await publishingAdmin(context);
@@ -15,17 +15,18 @@ export const POST: APIRoute = async (context) => {
     if (context.params.provider === 'cloudflare') {
       const groupId = hostingGroupId(body.hosting_group_id ?? 'default');
       await getHostingGroup(guard.value.orgId, groupId);
-      if (groupId !== 'default' && !['start', 'select'].includes(String(body.action))) throw new ConnectionError('Media storage belongs to the organization, not a Hosting Group.', 400);
+      if (groupId !== 'default' && !['start', 'select', 'approve_update'].includes(String(body.action))) throw new ConnectionError('Media storage belongs to the organization, not a Hosting Group.', 400);
       if (body.action === 'prepare_media' && typeof body.revision === 'string') return privateJson(await prepareCloudflareMedia(guard.value, body.revision));
       if (body.action === 'save_media') {
         await connectCloudflareMedia(guard.value, body);
         return privateJson({ media_ready: true });
       }
-      if (body.action === 'start') {
-        const result = await startCloudflareConnection(guard.value, groupId, body.build_access === true);
+      if (body.action === 'start' || body.action === 'approve_update') {
+        const result = body.action === 'approve_update' ? await startCloudflarePermissionUpdate(guard.value, groupId)
+          : await startCloudflareConnection(guard.value, groupId, body.build_access === true, body.analytics_access === true);
         context.cookies.set(CLOUDFLARE_COOKIE, result.browser, { path: '/api/orgs/publishing/cloudflare', httpOnly: true,
           secure: process.env.NODE_ENV === 'production' || context.url.protocol === 'https:', sameSite: 'lax', maxAge: result.maxAge });
-        return privateJson({ authorization_url: result.url });
+        return privateJson({ authorization_url: result.url, ...('hosting_group_ids' in result ? { hosting_group_ids: result.hosting_group_ids } : {}) });
       }
       if (body.action === 'select' && typeof body.account_id === 'string') {
         await selectCloudflareAccount(guard.value, body.account_id, fetch, groupId, { confirmShared: body.confirm_shared_account === true });

@@ -19,6 +19,7 @@ export const FIELD_TYPE_LABELS: Partial<Record<FieldType, string>> = {
   array: 'List of items (group)', object: 'Group of fields', style: 'Named style', page_ref: 'Page',
   page_ref_list: 'Pages', file: 'File', list: 'List of lines', list_simple: 'Simple list',
   block_type_ref: 'Block type', content_type_ref: 'Content type', global_block: 'Global block', choices: 'Form choices',
+  part_styles: 'Part styles (automatic)',
 };
 const COMMON_TYPES: FieldType[] = ['text', 'textarea', 'richtext', 'image', 'icon', 'link', 'select', 'boolean', 'number', 'array', 'object'];
 const ORDERED_TYPES: FieldType[] = [...COMMON_TYPES, ...BLOCK_TYPE_FIELD_TYPES.filter(type => !COMMON_TYPES.includes(type))];
@@ -120,6 +121,8 @@ function FieldCard({ id, field, siblings, depth, expanded, first, last, problems
   };
   const style: React.CSSProperties = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition, opacity: sortable.isDragging ? 0.6 : 1 };
   const isGroup = field.type === 'array' || field.type === 'object';
+  // Generated from the type's parts and kept in step on save: it cannot be edited or removed here.
+  const automatic = field.type === 'part_styles';
   return (
     <li ref={sortable.setNodeRef} style={style} className="bb-fieldcard">
       <div className="bb-fieldcard__head">
@@ -133,10 +136,15 @@ function FieldCard({ id, field, siblings, depth, expanded, first, last, problems
         </button>
         <button type="button" className="bb-iconbtn" aria-label={`Move ${field.label} up`} title="Move up" disabled={first} onClick={onUp}><ArrowUp size={14} aria-hidden="true" /></button>
         <button type="button" className="bb-iconbtn" aria-label={`Move ${field.label} down`} title="Move down" disabled={last} onClick={onDown}><ArrowDown size={14} aria-hidden="true" /></button>
-        <button type="button" className="bb-iconbtn" aria-label={`Remove ${field.label}`} title="Remove" onClick={onRemove}><Trash2 size={14} aria-hidden="true" /></button>
+        {!automatic && <button type="button" className="bb-iconbtn" aria-label={`Remove ${field.label}`} title="Remove" onClick={onRemove}><Trash2 size={14} aria-hidden="true" /></button>}
       </div>
       {problems.length > 0 && <ul className="bb-problems" style={{ margin: '0 .5rem .5rem' }}>{problems.map((message, i) => <li key={i} className="is-error">{message}</li>)}</ul>}
-      {expanded && (
+      {expanded && automatic && (
+        <div className="bb-fieldcard__body">
+          <p className="bb-help" style={{ margin: 0 }}>Added automatically because the block type has parts. Editors choose a named style for each part here; the field follows the parts when you save.</p>
+        </div>
+      )}
+      {expanded && !automatic && (
         <div className="bb-fieldcard__body">
           <div className="bb-grid" style={{ paddingBottom: 0 }}>
             <label className="bb-field"><span>Label</span><input value={field.label} onChange={e => setLabel(e.target.value)} /></label>

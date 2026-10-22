@@ -36,6 +36,27 @@ function v(version?: string): Record<string, string | undefined> | undefined {
   return version ? { version } : undefined;
 }
 
+/**
+ * Write tools answer compactly by default: the changed block, its parent id,
+ * slot index and position, has_unsaved_changes and any warnings, instead of
+ * the container's whole tree (tens of kB for an article). `response: "tree"`
+ * asks for the tree. Sent as a query parameter, which an older Core ignores
+ * and answers with the tree, where an unknown body key would be refused.
+ */
+const responseParam = z.enum(['summary', 'tree']).optional().describe(
+  'Answer shape. "summary" (default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree": the whole block tree of the container.',
+);
+
+function writeQuery(version: string | undefined, response: 'summary' | 'tree' | undefined): Record<string, string | undefined> {
+  return { ...v(version), response: response ?? 'summary' };
+}
+
+/** Block parts: per-instance part styles in block data. */
+const PART_STYLES =
+  ' `data.part_styles` ({ "<part>": "<style id>" }) gives named parts of the block a style on this block only, replacing a site-wide part style; read_block_type lists the type\'s `parts` and their targets (parts with a style_field, such as core/heading eyebrow → eyebrow_style_id, use that field instead). The map is replaced whole on update; null removes it. A part the block cannot style is 400 `unknown_field` at data.part_styles.<part> with suggestions; a value that is not a style id is `field_type_mismatch`; a style the site lacks (`unknown_style`) or of the wrong kind (`style_target_mismatch`) is refused with the styles that fit, as is text that fails both APCA and WCAG 2 AA on the part\'s background (`part_style_contrast`; an APCA-only miss is a warning).';
+
+const COMPACT_ANSWER = ' Answers with the changed block, `parent_id`, `slot_index`, `position` and `has_unsaved_changes` (the working copy differs from the saved content); pass `response: "tree"` for the whole tree, or call get_page_blocks.';
+
 
 /**
  * Resolve a (target | page_id) pair to a REST path prefix. Pages keep
@@ -72,7 +93,7 @@ export const pageBlockTools: ToolDef[] = [
   {
     name: 'add_block',
     description:
-      'Insert a block into a container (page, partial, or page template). BUFFER MODEL: block mutations on pages/partials edit the unsaved DRAFT — commit_working_copy is the explicit save. With no parent_id, inserts at the top level of the container. Otherwise inserts as a child (or into a slot for slot-containers). Position defaults to "end". Slot containers (core/columns, core/tabs — container: "slots"): slot_index picks the slot (0-based; defaults to 0) and works even if the parent instance has no slots array yet; a freshly added slot container gets its slots initialised to the type\'s arity. You can also pass the whole subtree inline via block.slots: [[...],[...]]. Pass `target: { kind: "partial", id: "header" }` to drop a block into the header on every page, etc. `page_id` is the legacy shorthand.',
+      'Insert a block into a container (page, partial, or page template). BUFFER MODEL: block mutations on pages/partials edit the unsaved DRAFT — commit_working_copy is the explicit save. With no parent_id, inserts at the top level of the container. Otherwise inserts as a child (or into a slot for slot-containers). Position defaults to "end". Slot containers (core/columns, core/tabs — container: "slots"): slot_index picks the slot (0-based; defaults to 0) and works even if the parent instance has no slots array yet; a freshly added slot container gets its slots initialised to the type\'s arity. You can also pass the whole subtree inline via block.slots: [[...],[...]]. Pass `target: { kind: "partial", id: "header" }` to drop a block into the header on every page, etc. `page_id` is the legacy shorthand. A `data` key that no field of the block\'s type declares (read_block_type) is rejected with 400 `unknown_field`, for the block and every child; nothing is written, and `unknown_fields[].suggestions` says where it belongs (e.g. `item_overrides.<key>` for an item-block field on a repeater or its aliases, or the closest field names).' + PART_STYLES + COMPACT_ANSWER + ' `added_id` is the new block\'s id.',
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),
@@ -80,6 +101,7 @@ export const pageBlockTools: ToolDef[] = [
       parent_id: z.string().optional().nullable(),
       slot_index: z.number().int().min(0).optional(),
       position: z.number().int().min(0).optional(),
+      response: responseParam,
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -89,19 +111,19 @@ export const pageBlockTools: ToolDef[] = [
         parent_id: args.parent_id,
         slot_index: args.slot_index,
         position: args.position,
-      }, v(args.version));
+      }, writeQuery(args.version, args.response));
       return ok(res);
     }),
   },
   {
     name: 'update_block',
     description:
-      'Update a block\'s data fields (shallow merge), style overrides, or responsive settings. Works on pages, partials, and page templates — use `target` to address non-page containers. Does not modify children or slots; use move/add/remove for structural changes. For appearance, prefer a named style (`data.style_id`, see list_styles) over custom_class or custom_css. From render version 2, custom_class lands on the heading or button link element itself instead of the block wrapper.',
+      'Update a block\'s data fields (shallow merge), style overrides, or responsive settings. Works on pages, partials, and page templates — use `target` to address non-page containers. Does not modify children or slots; use move/add/remove for structural changes. For appearance, prefer a named style (`data.style_id`, see list_styles) over custom_class or custom_css. From render version 2, custom_class lands on the heading or button link element itself instead of the block wrapper. Send values in the field\'s type (numbers as numbers); a value the block will not render comes back in `warnings` (`field_type_mismatch`) with its path. A `null` value removes that key from data (the field renders its default); use it to clean up a key stored by mistake. A written key that no field of the block\'s type declares is rejected with 400 `unknown_field` and nothing is written; `unknown_fields[].suggestions` says where it belongs: on core/repeater and its aliases (core/testimonials, core/page_list, ...) a field of the item block goes in `item_overrides.<key>`, otherwise the closest field names.' + PART_STYLES + COMPACT_ANSWER,
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),
       block_id: z.string(),
-      data: z.record(z.unknown()).optional(),
+      data: z.record(z.unknown()).optional().describe('Field values to merge into block.data. null removes the key.'),
       style_overrides: z.object({
         spacing_before: z.string().optional(),
         spacing_after: z.string().optional(),
@@ -109,6 +131,7 @@ export const pageBlockTools: ToolDef[] = [
         custom_class: z.string().optional(),
         html_id: z.string().optional(),
       }).optional(),
+      response: responseParam,
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -117,14 +140,14 @@ export const pageBlockTools: ToolDef[] = [
         block_id: args.block_id,
         data: args.data,
         style_overrides: args.style_overrides,
-      }, v(args.version));
+      }, writeQuery(args.version, args.response));
       return ok(res);
     }),
   },
   {
     name: 'move_block',
     description:
-      'Reparent or reorder a block inside its container. target_parent_id=null moves to top level. For slot containers, target_slot_index picks the slot. Cycles (moving a block into its own descendant) are rejected. Works for pages, partials, and templates.',
+      'Reparent or reorder a block inside its container. target_parent_id=null moves to top level. For slot containers, target_slot_index picks the slot. Cycles (moving a block into its own descendant) are rejected. Works for pages, partials, and templates.' + COMPACT_ANSWER + ' The location is where the block now sits.',
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),
@@ -132,6 +155,7 @@ export const pageBlockTools: ToolDef[] = [
       target_parent_id: z.string().optional().nullable(),
       target_slot_index: z.number().int().min(0).optional(),
       target_position: z.number().int().min(0).optional(),
+      response: responseParam,
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -141,63 +165,64 @@ export const pageBlockTools: ToolDef[] = [
         target_parent_id: args.target_parent_id,
         target_slot_index: args.target_slot_index,
         target_position: args.target_position,
-      }, v(args.version));
+      }, writeQuery(args.version, args.response));
       return ok(res);
     }),
   },
   {
     name: 'remove_block',
     description:
-      'Remove a block and everything inside it from its container. Works for pages, partials, and templates.',
+      'Remove a block and everything inside it from its container. Works for pages, partials, and templates. Answers with `removed_id`, the `parent_id`, `slot_index` and `position` it was removed from and `has_unsaved_changes`; pass `response: "tree"` for the whole remaining tree.',
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),
       block_id: z.string(),
+      response: responseParam,
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const path = pathFor(args.target, args.page_id);
-      const query: Record<string, string | undefined> = { block_id: args.block_id };
-      if (args.version) query.version = args.version;
-      const res = await client.del(siteId, path, query);
+      const res = await client.del(siteId, path, { block_id: args.block_id, ...writeQuery(args.version, args.response) });
       return ok(res);
     }),
   },
   {
     name: 'duplicate_block',
     description:
-      'Clone a block (subtree included) and insert the copy directly after the original within the same container. Returns the duplicate\'s new id. Useful for "add another card to this feature grid" — duplicate the existing one and then `update_block` on the new id to change its data. Works for pages, partials, and templates.',
+      'Clone a block (subtree included) and insert the copy directly after the original within the same container. Returns the duplicate\'s new id. Useful for "add another card to this feature grid" — duplicate the existing one and then `update_block` on the new id to change its data. Works for pages, partials, and templates.' + COMPACT_ANSWER + ' `duplicate_id` is the copy\'s id; `block` is the copy.',
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),
       block_id: z.string(),
+      response: responseParam,
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const path = pathFor(args.target, args.page_id);
       const res = await client.post(siteId, `${path}/duplicate`, {
         block_id: args.block_id,
-      }, v(args.version));
+      }, writeQuery(args.version, args.response));
       return ok(res);
     }),
   },
   {
     name: 'set_block_responsive',
     description:
-      'Set a per-breakpoint value on one responsive field of a block (in any container — page, partial, or template). The renderer reads { mobile, tablet, laptop, desktop, wide } objects on any field marked responsive in the BlockType schema (use read_block_type to see which). Mobile-first inheritance: missing breakpoints inherit upward. Pass a scalar value to clear responsive back to a single value. Example: setting `cols` on a feature_grid to { mobile: 1, tablet: 2, desktop: 3 } renders 1-col on phones, 2-col on tablets, 3-col on desktop+.',
+      'Set a per-breakpoint value on one responsive field of a block (in any container — page, partial, or template). The renderer reads { mobile, tablet, laptop, desktop, wide } objects on any field marked responsive in the BlockType schema (use read_block_type to see which). Mobile-first inheritance: missing breakpoints inherit upward. Pass a scalar value to clear responsive back to a single value. Example: setting `cols` on a feature_grid to { mobile: 1, tablet: 2, desktop: 3 } renders 1-col on phones, 2-col on tablets, 3-col on desktop+. A field the block type does not declare is rejected with 400 `unknown_field`.' + COMPACT_ANSWER,
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),
       block_id: z.string(),
       field: z.string().describe('Field name (must be marked responsive in the BlockType schema).'),
       value: z.any().describe('Scalar (applies to all BPs) or { mobile?, tablet?, laptop?, desktop?, wide? }.'),
+      response: responseParam,
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const path = pathFor(args.target, args.page_id);
       const res = await client.post(siteId, `${path}/responsive`, {
         block_id: args.block_id, field: args.field, value: args.value,
-      }, v(args.version));
+      }, writeQuery(args.version, args.response));
       return ok(res);
     }),
   },

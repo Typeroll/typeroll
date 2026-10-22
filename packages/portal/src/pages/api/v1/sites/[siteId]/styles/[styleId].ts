@@ -22,7 +22,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const body = await request.json().catch(() => null);
   try {
-    return apiResponse(ctx, { style: await updateStyle(ctx, params.styleId ?? '', body) }, 200, body);
+    const { style, warnings } = await updateStyle(ctx, params.styleId ?? '', body);
+    return apiResponse(ctx, { style, ...(warnings.length ? { warnings } : {}) }, 200, body);
   } catch (error) {
     if (error instanceof StyleError) return apiResponse(ctx, { error: error.message, errors: error.errors }, error.status, body);
     throw error;

@@ -4,7 +4,7 @@
 //
 // GET resolves core blocks (shipped in code) and the site's own types
 // uniformly. PATCH and DELETE only operate on site types — a core block
-// answers 403 — and need admin permission on the site.
+// answers 403 — and need write permission on the site.
 //
 // PATCH is validated by the shared validator against the stored type. It
 // also takes `renames: { "old.path": "new_name" }` and `confirm_data_loss`:
@@ -20,7 +20,7 @@ import { vstore } from '../../../../../../lib/version-store';
 import { CORE_BLOCK_TYPES } from '@typeroll/shared';
 import { pathParam } from '../../../../../../lib/path-param';
 import {
-  BLOCK_TYPE_ADMIN_REQUIRED,
+  BLOCK_TYPE_WRITE_REQUIRED,
   blockTypeView,
   deleteSiteBlockType,
   updateSiteBlockType,
@@ -51,7 +51,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (CORE_BLOCK_TYPES.some((b) => b.id === typeId)) {
     return apiError('Core block types are managed in code, not editable via API', 403, ctx);
   }
-  if (ctx.permission !== 'admin') return apiError(BLOCK_TYPE_ADMIN_REQUIRED, 403, ctx);
+  if (ctx.permission === 'read') return apiError(BLOCK_TYPE_WRITE_REQUIRED, 403, ctx);
 
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body) return apiError('Invalid JSON', 400, ctx);
@@ -77,7 +77,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   if (CORE_BLOCK_TYPES.some((b) => b.id === typeId)) {
     return apiError('Core block types are managed in code, not removable via API', 403, ctx);
   }
-  if (ctx.permission !== 'admin') return apiError(BLOCK_TYPE_ADMIN_REQUIRED, 403, ctx);
+  if (ctx.permission === 'read') return apiError(BLOCK_TYPE_WRITE_REQUIRED, 403, ctx);
   const outcome = await deleteSiteBlockType(ctx, typeId);
   return apiResponse(ctx, outcome.body, outcome.status);
 };

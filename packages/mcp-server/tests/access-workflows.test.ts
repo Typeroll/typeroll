@@ -154,6 +154,68 @@ describe('workflow tools', () => {
       expect(s.calls[0]!.body).toEqual({ name: 'Old Blog', wp_url: 'https://wp.example' });
     } finally { await s.close(); }
   });
+
+  it('tell an agent without portal AI to do AI workflows itself with the matching recipe', async () => {
+    const s = await session();
+    try {
+      const { tools } = await s.client.listTools();
+      const describe = (name: string) => tools.find(t => t.name === name)!.description!;
+      const start = describe('start_workflow');
+      expect(start).toContain('ai_not_enabled');
+      for (const pair of ['site_planning: tr-new-site', 'content_generation: tr-content-write', 'content_improvement: tr-content-write', 'schema_markup: tr-seo']) {
+        expect(start).toContain(pair);
+      }
+      expect(start).toMatch(/Do not retry/);
+      expect(describe('get_workflow')).toContain('failure_code');
+      expect(describe('create_site_and_plan')).toContain('tr-new-site');
+    } finally { await s.close(); }
+  });
+});
+
+describe('organization AI assistant tools', () => {
+  const FAKE = 'sk-ant-api03-obviously-fake-mcp-test-key';
+  it('read, set, scope and remove the Organization\u2019s AI key without a site', async () => {
+    const s = await session();
+    try {
+      const { tools } = await s.client.listTools();
+      for (const name of ['read_organization_ai_settings', 'set_organization_ai_key', 'remove_organization_ai_key', 'set_organization_ai_site_access']) {
+        const tool = tools.find(t => t.name === name);
+        expect(tool, name).toBeDefined();
+        expect(tool!.inputSchema.properties ?? {}, name).not.toHaveProperty('site_id');
+      }
+      await s.call('read_organization_ai_settings');
+      const set = await s.call('set_organization_ai_key', { api_key: FAKE });
+      await s.call('set_organization_ai_site_access', { mode: 'selected', site_ids: ['site-a'] });
+      await s.call('set_organization_ai_site_access', { mode: 'all', site_ids: ['ignored'] });
+      await s.call('remove_organization_ai_key');
+      expect(s.calls.map(c => `${c.method} ${c.url.replace('https://example.test/api/v1/', '')}`)).toEqual([
+        'GET organization/ai', 'PUT organization/ai/key', 'PUT organization/ai/site-access', 'PUT organization/ai/site-access', 'DELETE organization/ai/key',
+      ]);
+      expect(s.calls[1]!.body).toEqual({ api_key: FAKE });
+      expect(s.calls[2]!.body).toEqual({ mode: 'selected', site_ids: ['site-a'] });
+      expect(s.calls[3]!.body).toEqual({ mode: 'all' });
+      // The tool result is the API response, which never carries the key.
+      expect(JSON.stringify(set)).not.toContain(FAKE);
+    } finally { await s.close(); }
+  });
+
+  it('classifies the AI key changes as organization administration', async () => {
+    const api = new TyperollClient({ baseUrl: 'https://example.test', apiKey: 'synthetic', fetchImpl: async () => Response.json({}) });
+    const server = buildServer({ client: api, allowedSites: admin, toolMode: 'compact' });
+    const client = new Client({ name: 'ai-effects', version: '1' });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    await client.connect(b);
+    try {
+      for (const [name, effect] of [
+        ['read_organization_ai_settings', 'read'], ['set_organization_ai_key', 'admin'],
+        ['remove_organization_ai_key', 'admin'], ['set_organization_ai_site_access', 'admin'],
+      ] as const) {
+        const result = await client.callTool({ name: 'describe_tool', arguments: { name } }) as { content: Array<{ text: string }> };
+        expect(JSON.parse(result.content[0]!.text)).toMatchObject({ name, effect });
+      }
+    } finally { await client.close(); await server.close(); }
+  });
 });
 
 describe('organization publishing connection tools', () => {

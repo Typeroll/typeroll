@@ -51,6 +51,14 @@ A Typeroll site uses 7 color tokens:
 | `text` | Body copy. | ≥4.5:1 contrast ratio on `background`. |
 | `text_light` | Secondary labels, captions, placeholders. | ≥3:1 on `background`. |
 
+Text on `primary`, `secondary` and `accent` (buttons, badges, tabs,
+call-to-action sections, the `on_*` style tokens) is black or white
+automatically, chosen by APCA from render version 8. When the brand
+specifies it, set `colors.on_primary`, `colors.on_secondary` or
+`colors.on_accent` (a hex colour; `null` returns to automatic). The response
+lists `on_colors` with each one's APCA Lc and WCAG 2 ratio: button text needs
+Lc 60, body text Lc 75. Do not compensate with custom CSS.
+
 **Palette recipes by mood:**
 
 *Nordic / minimal:*

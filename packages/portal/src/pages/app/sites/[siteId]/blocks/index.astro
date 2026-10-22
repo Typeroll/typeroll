@@ -9,23 +9,23 @@ const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
 const { site, versionId, owner_org_id: orgId, permission } = ctx;
 const siteId = site.id;
-// Creating and changing block types needs admin permission on the Site;
+// Creating and changing block types needs write permission on the Site;
 // editors place block types on pages and edit their fields there.
-const isAdmin = permission === 'admin';
-const settings = isAdmin ? await vstore.settings(orgId, siteId, versionId) : null;
-const globalBlocks = isAdmin
+const canWrite = permission !== 'read';
+const settings = canWrite ? await vstore.settings(orgId, siteId, versionId) : null;
+const globalBlocks = canWrite
   ? (await vstore.partials(orgId, siteId, versionId)).filter(partial => partial.kind === 'free')
     .map(partial => ({ id: partial.id, name: partial.name, status: partial.status, content_mode: partial.content_mode }))
     .sort((a, b) => a.name.localeCompare(b.name))
   : [];
 ---
 <AppLayout title={`Block types — ${site.name}`} siteId={siteId}>
-  {isAdmin ? (
+  {canWrite ? (
     <BlockTypeManager client:load siteId={siteId} siteStyles={settings?.styles ?? []} renderVersion={resolveRenderVersion(settings?.render_version)} globalBlocks={globalBlocks} />
   ) : (
     <section class="block-types-denied" aria-labelledby="block-types-denied-title">
       <h1 id="block-types-denied-title">Block types</h1>
-      <p>Only Site admins can create and change block types. You can place this Site's block types on pages and fill in their fields in the page editor.</p>
+      <p>Read-only access lets you inspect block types. Editors and administrators can create and change them.</p>
       <p><a href={`/app/sites/${siteId}/pages`}>Go to pages</a></p>
     </section>
   )}

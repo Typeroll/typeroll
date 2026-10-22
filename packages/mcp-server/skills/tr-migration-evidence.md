@@ -5,6 +5,10 @@ description: Source-first design baseline, native capability mapping and evidenc
 
 # Migration evidence contract
 
+**Who runs this:** this recipe is for the user's own AI agent (Claude Code, Codex or
+another MCP client) working through MCP and the public API. The portal's built-in
+AI assistant has no migration tools: it does not import, convert or verify sites.
+
 Use this shared contract with WordPress, Astro, URL and multisite recipes.
 Default to preserving the source appearance and behavior. A redesign requires
 explicit scope. A partly migrated target is not the design reference.
@@ -62,6 +66,41 @@ behavior or other semantics unsupported by the chosen block: record the gap
 and use a supported composition or stop for native support.
 Do not apply a template to hundreds of Pages until its prototype passes.
 
+## Report platform gaps, do not patch them
+
+Matching the source sometimes needs something the platform does not offer.
+Never close that with site or page `custom_css`, raw HTML or a generic custom
+block: the next site hits the same gap and the workaround breaks on the next
+Core change. Record it and report it instead. Check these five causes first,
+because each has looked like a site problem:
+
+1. **A platform default no setting reaches.** Compare computed text rendering
+   and base styles on `body`, links and headings (`-webkit-font-smoothing`,
+   `line-height`, `text-decoration`) with the source. If the difference comes
+   from Typeroll's base CSS, check Site settings and the render versions first
+   (`read_site_settings` → `render.upgrades`).
+2. **A replaced control ignores the block's settings.** A capability can swap a
+   field for a provider element (address suggestions). Compare that control
+   with a plain field in the same block: border, radius, height, background,
+   text colour, font, placeholder, icon and colour scheme in light and dark mode.
+3. **A missing part.** The source has a part (icon, badge, second label) the
+   block has no field for. Check `read_block_type` for a field before
+   concluding it is missing.
+4. **A value that is stored and ignored.** Read every write response's
+   `warnings` (`field_type_mismatch`, `unknown_style_override`): a wrong type or
+   key is saved and never rendered. Measure the computed result, not the
+   read-back.
+5. **Preview differs from the published page.** A setting that shows in preview
+   but not in a fresh hosted build is a publication gap; report both URLs.
+
+Report each gap with: site ID, Organization, Core version and render version;
+source and target URL; viewport (actual `innerWidth`), browser and DPR; the
+block ID and type or the setting; source and target computed values; what is
+missing, ignored or wrong; the proposed setting or fix; and acceptance
+criteria a reviewer can measure. State that no workaround CSS is in place.
+Mark the affected recipe `waiting_for_native_support`, continue independent
+work, and verify against the source again after the release.
+
 ## Separate files, addresses and business behavior
 
 Inventory both file bytes and every discovered historical asset URL, including
@@ -79,6 +118,33 @@ attribution. Never clone recipients or partner IDs across markets. Test loading,
 interaction and conversion separately; only use an authorized synthetic mode and
 safe recipient. Unavailable delivery remains UNVERIFIED. No real leads or mail
 to third parties merely to fill a checklist.
+
+## Scripts, tracking and consent
+
+Do not copy JavaScript from the source site. WordPress plugins and themes
+inject their own runtime: jQuery, sliders, lightboxes, form and cookie
+plugins, page builders (Elementor, Breakdance, Divi), emoji and AJAX calls to
+`admin-ajax.php` or `/wp-json/`. It loads from, or posts to, a site that is
+about to be switched off. Inventory every `<script>` on representative source
+pages (head and body, inline and external, and which plugin or theme it
+belongs to), then decide each one:
+
+| Source script | Decision |
+| --- | --- |
+| WordPress core, theme or plugin runtime | Never copy. Rebuild what it did with native blocks, Forms or settings, or report a platform gap (see "Report platform gaps"). |
+| Cookie plugin (CookieYes, Complianz, Cookiebot, Borlabs, …) | Never copy. Enable the site's cookie banner (`cookie_consent.enabled: true`) with Swedish or local text and the privacy policy URL. |
+| Analytics or advertising tag in the Integrations catalog (GA4, GTM, Meta Pixel, LinkedIn, TikTok, Hotjar, Clarity, Pinterest, Snap, Reddit, X, Microsoft Ads, HubSpot, Plausible, Fathom, Matomo) | Carry over the ID only: enable the Integrations app with the source's ID (`list_apps`, `update_app`). Enable the cookie banner; analytics and advertising integrations wait for the visitor's consent. Never paste the vendor snippet. |
+| Tracking tag the catalog does not cover | Only with the owner's approval, in `cookie_consent.scripts_optional` with the banner enabled. Never in `scripts_head`, `scripts_body_end`, `scripts_necessary`, pages or partials. |
+| Partner widget or embed the page needs to work | Prefer a native block or an iframe from an allowlisted host. Keep custom code minimal, record why, and do not load it from the source site. |
+
+Ask the owner to confirm the analytics IDs; never invent or reuse one from
+another market. Before launch, `get_migration_launch_report` must show
+`scripts.status: "clean"`: it fails on copied source-platform scripts
+(`source_runtime_script`), tracking outside consent
+(`tracking_outside_consent`) and analytics or advertising integrations without
+the banner (`tracking_without_consent_banner`). In the hosted preview, check
+that no request goes to the source host or `/wp-content/`, no tracking request
+fires before consent, and the tags fire after "accept all".
 
 ## Evidence record (repeat per recipe, viewport and state)
 

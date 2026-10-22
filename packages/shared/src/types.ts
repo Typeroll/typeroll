@@ -27,8 +27,8 @@ export interface Organization {
    * explicit act per org. See lib/member-role.ts.
    */
   roles_enforced?: boolean;
+  /** Legacy and unused. The AI provider key is OrganizationAiSettings, encrypted. */
   api_keys?: {
-    anthropic?: string;
     dataforseo_login?: string;
     dataforseo_password?: string;
     google_service_account?: string;
@@ -42,6 +42,42 @@ export interface Organization {
     support_email?: string;
   };
   created_at: string;
+}
+
+/**
+ * Which of the Organization's own Sites may use its AI key. `all` includes
+ * Sites created later; `selected` names Site ids (none by default).
+ */
+export interface AiSiteAccess {
+  mode: 'all' | 'selected';
+  site_ids: string[];
+}
+
+/**
+ * The Organization's own AI provider key and its Site access. There is no
+ * platform-level key: without a key here the built-in AI assistant is off on
+ * every Site of the Organization, including Sites it shares with others. MCP
+ * and the public API never depend on it. Stored per Organization at
+ * `paths.organizationAiSettings`, not in versioned (branchable) site settings.
+ */
+export interface OrganizationAiSettings {
+  provider: 'anthropic';
+  /**
+   * Sealed with the portal's secret encryption (INTEGRATIONS_SECRET_KEY) and
+   * bound to this Organization. Never returned by any route or rendered.
+   */
+  encrypted_api_key: string | null;
+  /** Last four characters: the only part of the key that is ever shown. */
+  key_last4: string | null;
+  /** User id, or `api-key:<prefix>` when an API key set it. */
+  key_set_by: string | null;
+  key_set_by_email: string | null;
+  key_set_at: string | null;
+  /** When Anthropic accepted the key. A key is stored only after it did. */
+  key_verified_at: string | null;
+  site_access: AiSiteAccess;
+  updated_at: string;
+  updated_by: string;
 }
 
 export interface Member {
@@ -301,6 +337,8 @@ export interface Site {
 // ─── Site Settings ───────────────────────────────────────────────────────
 
 export interface SiteSettings {
+  /** Site-specific agent guidance; read live, never an authorization grant. */
+  agent_instructions?: string;
   /** Public Extension settings follow the site version; secrets and grants remain site-wide. */
   extension_public_config?: Record<string, Record<string, unknown>>;
   site_name: string;
@@ -327,11 +365,28 @@ export interface SiteSettings {
     surface: string;
     text: string;
     text_light: string;
+    /**
+     * Text colour on primary, secondary and accent (buttons, badges, tabs,
+     * call-to-action sections, styles using the on_* tokens): an opaque hex
+     * colour. Unset means automatic: near-black or white, whichever reads
+     * better (by APCA from render version 8, by the WCAG 2 ratio before).
+     * An explicit value applies on every render version. See `onColorValue`.
+     */
+    on_primary?: string;
+    on_secondary?: string;
+    on_accent?: string;
   };
   fonts: {
     heading: string;
     body: string;
     size_base: number;
+    /**
+     * Text rendering on `<body>`. `auto` is the browser default; `antialiased`
+     * draws thinner text on macOS, which can suit light text on a dark
+     * background. Unset means `auto` from render version 6 and the earlier
+     * reset's `antialiased` before it. See `fontSmoothingCss`.
+     */
+    smoothing?: 'auto' | 'antialiased';
   };
   contact?: {
     email?: string;
@@ -912,6 +967,7 @@ export type FieldType =
   | 'page_ref_list'
   // Added by Forms 2.0 (form/* field blocks):
   | 'style'           // a named style from SiteSettings.styles (see style_target)
+  | 'part_styles'     // { <part name>: <style id> } for BlockType.parts, see block-parts.ts
   | 'global_block'    // id of a free partial (global block), see reusable-blocks.ts
   | 'link'            // { page_id?, url?, new_tab? }; resolves to href/target/rel, see block-fields.ts
   | 'choices';         // array of {value,label}; renderer derives
@@ -1042,6 +1098,13 @@ export interface BlockPackageRef {
 
 export interface BlockType {
   /**
+   * Named sub-elements of the block that a site style can style: per
+   * instance through `data.part_styles` (a `part_styles` field the type
+   * gets automatically) and site-wide through a style's `parts`. See
+   * block-parts.ts and docs/plans/block-parts.md.
+   */
+  parts?: import('./block-parts.js').BlockPart[];
+  /**
    * Class of the element that receives a selected style (`data.style_id`), when
    * it is not the block's root, e.g. the `<h2>` inside a heading block.
    */
@@ -1051,7 +1114,7 @@ export interface BlockType {
    * below the site's render version replaces `template` and/or `styles`;
    * older sites keep the base output unchanged.
    */
-  render_versions?: Array<{ from: number; template?: string; styles?: string }>;
+  render_versions?: Array<{ from: number; template?: string; styles?: string; script?: string }>;
   /**
    * A composed block type: a tree of existing blocks rendered in place of a
    * template. `schema` declares the props people edit; inner blocks read them
@@ -1531,6 +1594,31 @@ export interface AppState {
   enabled: boolean;
   config: Record<string, unknown>;
   enabled_at?: string;
+  /** Result of the last server-side provider setup, for apps that provision external resources. Never public. */
+  setup?: AppSetupStatus;
+}
+
+/**
+ * Which provider account an app's external resource lives in. `organization`: the Cloudflare account of the
+ * site's Hosting Group (customer publishing). `installation`: the account configured for this Typeroll
+ * installation (managed hosting on Typeroll Cloud, or a self-hosted install's own account).
+ */
+export interface AppProviderAccount {
+  owner: 'organization' | 'installation';
+  account_id: string | null;
+  hosting_group_id?: string;
+}
+
+export interface AppSetupStatus {
+  status: 'ready' | 'action_required';
+  /** Stable machine-readable cause when action is required. */
+  code?: string;
+  message?: string;
+  next_step?: string;
+  settings_url?: string;
+  /** The account the resource belongs to (ready) or should be created in (action_required). */
+  account?: AppProviderAccount;
+  checked_at: string;
 }
 
 /**
@@ -1841,6 +1929,9 @@ export const paths = {
   org: (orgId: string) => `organizations/${orgId}`,
   members: (orgId: string) => `organizations/${orgId}/members`,
   sites: (orgId: string) => `organizations/${orgId}/sites`,
+  // The Organization's own AI key and Site access (OrganizationAiSettings).
+  // One unversioned doc; the key is encrypted and never returned.
+  organizationAiSettings: (orgId: string) => `organizations/${orgId}/ai_settings/default`,
   site: (orgId: string, siteId: string) => `organizations/${orgId}/sites/${siteId}`,
 
   // ─── Versions ─────────────────────────────────────────────────────────

@@ -57,3 +57,8 @@ label.cloudflare-connection__account { cursor: pointer; }
 .cloudflare-connection__confirm input[type='checkbox'] { width: 20px; height: 20px; margin: 2px 0 0; flex: none; }
 .cloudflare-connection__reasons { display: grid; gap: 10px; margin: 10px 0 0; padding: 0; list-style: none; }
 .cloudflare-connection__reasons > li { display: grid; gap: 8px; }
+.cloudflare-connection__update { display: grid; gap: 10px; min-width: 0; padding: 16px; border: 2px solid #b45309; border-radius: 10px; }
+.cloudflare-connection__update h3 { margin: 0; font-size: 1rem; line-height: 1.4; }
+.cloudflare-connection__update p { margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.cloudflare-connection__update ul { margin: 0; padding-inline-start: 20px; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.cloudflare-connection__confirm-update { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--color-border); border-left: 4px solid #4338ca; border-radius: 8px; }

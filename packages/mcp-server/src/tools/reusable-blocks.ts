@@ -56,7 +56,7 @@ export const reusableBlockTools: ToolDef[] = [
   {
     name: 'save_block_template',
     description:
-      'Save a block template: a section starter that editors and agents insert as an independent copy. Pass `from: { page_id, block_id }` to save a block from a page (its draft), or `blocks`. Prefer templates that use named styles (style_id) over one-off values, so copies stay consistent. Templates belong to the site, not a branch.',
+      'Save a block template: a section starter that editors and agents insert as an independent copy. Pass `from: { page_id, block_id }` to save a block from a page (its draft), or `blocks`. Prefer templates that use named styles (style_id, part_styles) over one-off values, so copies stay consistent. Templates belong to the site, not a branch.',
     inputSchema: {
       name: z.string(),
       description: z.string().optional().describe('When to use it.'),

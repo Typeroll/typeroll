@@ -1,19 +1,29 @@
 // Reads and writes the site style library (SiteSettings.styles) for one site
 // version. Every write validates each style, the library as a whole and text
-// contrast against the site's colours, so the UI, the v1 API and MCP enforce
-// the same rules.
+// contrast against the site's colours (APCA, with WCAG 2 AA as the floor of
+// acceptance; see styleContrastReport), so the UI, the v1 API and MCP enforce
+// the same rules. A style that lists block parts is checked against the
+// site's block types (the part exists, the style targets its kind) and
+// measured on each part's background (block-parts.ts).
 
 import {
   STANDARD_STYLES,
   STYLE_ELEMENT_ROLES,
   defaultSiteSettings,
+  resolveRenderVersion,
+  resolveStyleColor,
   siteStyleLibraryErrors,
-  styleContrastErrors,
+  styleContrastReport,
+  stylePartErrors,
+  stylePartSurfaces,
   validateSiteStyle,
+  type BlockType,
+  type SiteColors,
   type SiteStyle,
   type StyleProps,
 } from '@typeroll/shared';
 import { vstore } from './version-store';
+import { siteBlockRegistry } from './block-write-warnings';
 
 export interface StyleCtx { orgId: string; siteId: string; versionId: string }
 
@@ -21,26 +31,68 @@ export class StyleError extends Error {
   constructor(message: string, readonly status: number, readonly errors: string[] = [message]) { super(message); }
 }
 
-export async function readStyles(ctx: StyleCtx): Promise<{ styles: SiteStyle[]; colors: NonNullable<ReturnType<typeof siteColors>> }> {
-  const settings = (await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? defaultSiteSettings;
-  const styles = (Array.isArray(settings.styles) ? settings.styles : []).flatMap(value => validateSiteStyle(value).style ?? []);
-  return { styles, colors: siteColors(settings.colors) };
+type Registry = ReadonlyMap<string, BlockType>;
+
+/**
+ * What the checks measure against: the palette, the render version that picks
+ * automatic on_* colours, and the site's block types for styles that list
+ * block parts.
+ */
+export interface StyleSite {
+  colors: SiteColors;
+  renderVersion: number;
+  registry?: Registry;
 }
 
-function siteColors(colors: unknown) {
+export async function readStyles(ctx: StyleCtx): Promise<StyleSite & { styles: SiteStyle[]; registry: Registry }> {
+  const settings = (await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? defaultSiteSettings;
+  const styles = (Array.isArray(settings.styles) ? settings.styles : []).flatMap(value => validateSiteStyle(value).style ?? []);
+  const registry = await siteBlockRegistry(ctx);
+  return { styles, colors: siteColors(settings.colors), renderVersion: resolveRenderVersion(settings.render_version), registry };
+}
+
+/** A style's contrast on the site background and, for block parts it lists, on each part. */
+function contrastOf(style: SiteStyle, colors: SiteColors, renderVersion: number, registry?: Registry) {
+  return styleContrastReport(style, colors, { renderVersion, surfaces: registry ? stylePartSurfaces(style, registry) : [] });
+}
+
+function siteColors(colors: unknown): SiteColors {
   return { ...defaultSiteSettings.colors, ...((colors && typeof colors === 'object') ? colors as Record<string, string> : {}) };
 }
 
-/** Problems a library would have on this site; empty when it can be saved. */
-export function libraryProblems(styles: SiteStyle[], colors: Record<string, string>): string[] {
-  return [...siteStyleLibraryErrors(styles), ...styles.flatMap(style => styleContrastErrors(style, colors))];
+/**
+ * Problems a library would have on this site; empty when it can be saved.
+ * With the site's block types, block parts a style lists must exist and fit
+ * the style, and its text is measured on each part.
+ */
+export function libraryProblems(styles: SiteStyle[], colors: SiteColors, renderVersion = 1, registry?: Registry): string[] {
+  return [
+    ...siteStyleLibraryErrors(styles),
+    ...(registry ? styles.flatMap(style => stylePartErrors(style, registry).map(error => `${style.name}: ${error}`)) : []),
+    ...styles.flatMap(style => contrastOf(style, colors, renderVersion, registry).errors),
+  ];
 }
 
-async function save(ctx: StyleCtx, styles: SiteStyle[], colors: Record<string, string>): Promise<SiteStyle[]> {
-  const problems = libraryProblems(styles, colors);
+/** Readability notes that do not block saving: text below its APCA level that meets WCAG 2 AA. */
+export function libraryWarnings(styles: SiteStyle[], colors: SiteColors, renderVersion = 1, registry?: Registry): string[] {
+  return styles.flatMap(style => contrastOf(style, colors, renderVersion, registry).warnings);
+}
+
+const warningsFor = (style: SiteStyle, site: StyleSite) => contrastOf(style, site.colors, site.renderVersion, site.registry).warnings;
+
+/**
+ * Save a library. The block parts of the written style must exist; a stale
+ * part reference elsewhere (a site block type deleted since) is reported by
+ * libraryProblems but does not block an unrelated write.
+ */
+async function save(ctx: StyleCtx, styles: SiteStyle[], site: StyleSite, written?: SiteStyle): Promise<void> {
+  const problems = [
+    ...siteStyleLibraryErrors(styles),
+    ...(written && site.registry ? stylePartErrors(written, site.registry).map(error => `${written.name}: ${error}`) : []),
+    ...styles.flatMap(style => contrastOf(style, site.colors, site.renderVersion, site.registry).errors),
+  ];
   if (problems.length) throw new StyleError(problems[0], 400, problems);
   await vstore.writeSettings(ctx.orgId, ctx.siteId, ctx.versionId, { styles });
-  return styles;
 }
 
 function parse(input: unknown): SiteStyle {
@@ -49,12 +101,13 @@ function parse(input: unknown): SiteStyle {
   return { ...style, updated_at: new Date().toISOString() };
 }
 
-export async function createStyle(ctx: StyleCtx, input: unknown): Promise<SiteStyle> {
+/** Create a style. `warnings` are readability notes about it that do not block saving. */
+export async function createStyle(ctx: StyleCtx, input: unknown): Promise<{ style: SiteStyle; warnings: string[] }> {
   const style = parse(input);
-  const { styles, colors } = await readStyles(ctx);
-  if (styles.some(existing => existing.id === style.id)) throw new StyleError(`A style with id "${style.id}" already exists`, 409);
-  await save(ctx, [...styles, style], colors);
-  return style;
+  const site = await readStyles(ctx);
+  if (site.styles.some(existing => existing.id === style.id)) throw new StyleError(`A style with id "${style.id}" already exists`, 409);
+  await save(ctx, [...site.styles, style], site, style);
+  return { style, warnings: warningsFor(style, site) };
 }
 
 const mergeProps = (current: StyleProps | undefined, patch: unknown): StyleProps => {
@@ -69,11 +122,12 @@ const mergeProps = (current: StyleProps | undefined, patch: unknown): StyleProps
  * Update a style. `base`, `hover` and each breakpoint under `at` merge
  * property by property (null removes one); other fields replace.
  */
-export async function updateStyle(ctx: StyleCtx, id: string, patch: unknown): Promise<SiteStyle> {
+export async function updateStyle(ctx: StyleCtx, id: string, patch: unknown): Promise<{ style: SiteStyle; warnings: string[] }> {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new StyleError('Body must be an object', 400);
   const p = patch as Record<string, unknown>;
   if (p.id !== undefined && p.id !== id) throw new StyleError('A style id cannot be changed; create a new style instead', 400);
-  const { styles, colors } = await readStyles(ctx);
+  const site = await readStyles(ctx);
+  const { styles } = site;
   const index = styles.findIndex(style => style.id === id);
   if (index < 0) throw new StyleError(`Style "${id}" not found`, 404);
   const current = styles[index];
@@ -91,37 +145,44 @@ export async function updateStyle(ctx: StyleCtx, id: string, patch: unknown): Pr
     ...(Object.keys(at).length ? { at } : { at: undefined }),
     ...(p.hover === undefined ? {} : { hover: p.hover === null ? undefined : mergeProps(current.hover, p.hover) }),
   };
-  for (const key of ['description', 'css', 'role'] as const) if ((merged as Record<string, unknown>)[key] === null) delete (merged as Record<string, unknown>)[key];
+  for (const key of ['description', 'css', 'role', 'parts'] as const) if ((merged as Record<string, unknown>)[key] === null) delete (merged as Record<string, unknown>)[key];
   const style = parse(JSON.parse(JSON.stringify(merged)));
   const next = [...styles];
   next[index] = style;
-  await save(ctx, next, colors);
-  return style;
+  await save(ctx, next, site, style);
+  return { style, warnings: warningsFor(style, site) };
 }
 
 export async function deleteStyle(ctx: StyleCtx, id: string): Promise<void> {
-  const { styles, colors } = await readStyles(ctx);
-  if (!styles.some(style => style.id === id)) throw new StyleError(`Style "${id}" not found`, 404);
-  await save(ctx, styles.filter(style => style.id !== id), colors);
+  const site = await readStyles(ctx);
+  if (!site.styles.some(style => style.id === id)) throw new StyleError(`Style "${id}" not found`, 404);
+  await save(ctx, site.styles.filter(style => style.id !== id), site);
 }
 
 /**
  * Add the standard styles a site is missing (matched by role). With
  * `overwrite`, standard roles are reset to the platform defaults; styles
  * without a standard role are never touched.
+ *
+ * `adjusted` lists added or reset styles that use the body text colour
+ * because their palette colour is unreadable on this site; `warnings` says
+ * for each what changed and why, with both contrast measures, and reports
+ * added styles that are accepted below their APCA level.
  */
-export async function applyStandardStyles(ctx: StyleCtx, opts: { overwrite?: boolean } = {}): Promise<{ added: string[]; replaced: string[]; adjusted: string[]; styles: SiteStyle[] }> {
-  const { styles, colors } = await readStyles(ctx);
+export async function applyStandardStyles(ctx: StyleCtx, opts: { overwrite?: boolean } = {}): Promise<{ added: string[]; replaced: string[]; adjusted: string[]; warnings: string[]; styles: SiteStyle[] }> {
+  const site = await readStyles(ctx);
   const added: string[] = [];
   const replaced: string[] = [];
   const adjusted: string[] = [];
-  const next = [...styles];
+  const warnings: string[] = [];
+  const next = [...site.styles];
   for (const original of STANDARD_STYLES) {
-    const standard = readableOnPalette(original, colors);
-    if (standard !== original) adjusted.push(original.id);
-    const index = next.findIndex(style => style.role === standard.role);
+    const index = next.findIndex(style => style.role === original.role);
+    if (index >= 0 && !opts.overwrite) continue;
+    const { style: standard, notes } = readableOnPalette(original, site);
+    if (notes.length) adjusted.push(original.id);
+    warnings.push(...notes, ...warningsFor(standard, site));
     if (index >= 0) {
-      if (!opts.overwrite) continue;
       next[index] = { ...standard, id: next[index].id, name: next[index].name, updated_at: new Date().toISOString() };
       replaced.push(next[index].id);
       continue;
@@ -132,20 +193,32 @@ export async function applyStandardStyles(ctx: StyleCtx, opts: { overwrite?: boo
     next.push({ ...standard, id, updated_at: new Date().toISOString() });
     added.push(id);
   }
-  await save(ctx, next, colors);
-  return { added, replaced, adjusted, styles: next };
+  await save(ctx, next, site);
+  return { added, replaced, adjusted, warnings, styles: next };
 }
 
 /**
- * A standard style whose palette colour is unreadable on this site's
- * background falls back to the body text colour, so the standard set can
- * always be added. Links keep their underline, so they stay recognisable.
+ * A standard style whose palette text colour is unreadable on this site
+ * (fails both APCA and WCAG 2 AA) is added with the body text colour
+ * instead. Added unchanged it would be refused and block the whole standard
+ * set. This shapes only styles being added or reset, never an existing
+ * style, and every change is reported with its measures. Links keep their
+ * underline, so they stay recognisable.
  */
-function readableOnPalette(style: SiteStyle, colors: Record<string, string>): SiteStyle {
-  if (!styleContrastErrors(style, colors).length) return style;
-  const swap = (props: StyleProps | undefined) => props && props.color && !['text', 'on_primary', 'on_secondary', 'on_accent'].includes(props.color) ? { ...props, color: 'text' } : props;
+function readableOnPalette(style: SiteStyle, site: StyleSite): { style: SiteStyle; notes: string[] } {
+  const errors = styleContrastReport(style, site.colors, { renderVersion: site.renderVersion }).errors;
+  if (!errors.length) return { style, notes: [] };
+  const replaced = new Set<string>();
+  const swap = (props: StyleProps | undefined) => {
+    if (!props?.color || ['text', 'on_primary', 'on_secondary', 'on_accent'].includes(props.color)) return props;
+    replaced.add(props.color);
+    return { ...props, color: 'text' };
+  };
   const at = style.at ? Object.fromEntries(Object.entries(style.at).map(([bp, props]) => [bp, swap(props)])) : undefined;
-  return { ...style, base: swap(style.base)!, ...(at ? { at } : {}) };
+  const adapted = { ...style, base: swap(style.base)!, ...(at ? { at } : {}) };
+  const text = resolveStyleColor('text', site.colors, site.renderVersion);
+  const notes = errors.map(error => `${error} Added with the body text colour (text, ${text}) instead of ${[...replaced].join(', ')}; choose its colour again once the palette has a readable one.`);
+  return { style: adapted, notes };
 }
 
 export function isElementRole(style: SiteStyle): boolean {

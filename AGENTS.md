@@ -3,7 +3,12 @@
 - Use Node.js 22 or later.
 - Run focused local tests first. Main CI must pass the complete source gate,
   independent browser tests and pinned external dependency probes for the exact
-  source. The documentation-only lane in `docs/releasing.md` may reuse a qualified
+  source. A byte-identical Git tree that a successful same-repository
+  `pull_request` run of `.github/workflows/test.yml` fully qualified, with the
+  same release tags, counts as the exact source: main then still probes the
+  dependencies and seals docs for its own SHA. A missing, failed, incomplete,
+  fork, documentation-only or mismatched proof, or any API error, runs the
+  complete gate (`docs/releasing.md`). The documentation-only lane may reuse a qualified
   baseline and omit application checks only for the allowlisted documentation delta.
   Run `node scripts/oss-release-check.mjs --release-artifacts` locally
   for broad shared changes, release-infrastructure changes or unresolved risk;

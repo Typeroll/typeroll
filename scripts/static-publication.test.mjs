@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -139,6 +140,97 @@ test('projects nested public settings and permits publication after the last pag
   assert.match(publication.publication_id, /^[a-f0-9]{64}$/);
 });
 
+test('publishes the font smoothing setting and drops unknown values', () => {
+  const value = input();
+  value.settings.fonts.smoothing = 'antialiased';
+  assert.equal(projectStaticPublication(value, identity).settings.fonts.smoothing, 'antialiased');
+  value.settings.fonts.smoothing = 'subpixel';
+  assert.equal(projectStaticPublication(value, identity).settings.fonts.smoothing, undefined);
+});
+
+test('publishes block part styles: style part targets, instance part_styles and site block type parts', () => {
+  const value = input();
+  value.settings.styles = [{ id: 'quiet-link', name: 'Quiet link', targets: ['link'], base: { decoration: 'none', opacity: 0.9, shadow: 'none', gap: '1rem' }, parts: ['core/rich_heading.link', 'promo.label'], editor: 'private-value' }];
+  value.blockTypes = [{ id: 'promo', name: 'promo', label: 'Promo', container: false, template: '<div data-block="promo"><p class="promo-label">{{label}}</p></div>',
+    schema: [{ name: 'label', type: 'text' }, { name: 'part_styles', type: 'part_styles' }],
+    parts: [{ name: 'label', label: 'Label', selector: '.promo-label', target: 'text', decorative: false, note: 'private-value' }] }];
+  value.pages[0] = { ...value.pages[0], content_mode: 'blocks', blocks: [
+    { id: 'promo-one', type: 'promo', data: { label: 'New', part_styles: { label: 'quiet-link' } } },
+    { id: 'rich-one', type: 'core/rich_heading', data: { html: '<a href="/x/">X</a>', part_styles: { link: 'quiet-link' } } },
+  ] };
+  delete value.pages[0].html_content;
+  const publication = projectStaticPublication(value, { ...identity, coreBlockTypes: [...coreBlockTypes, { id: 'core/rich_heading', schema: [{ name: 'html', type: 'richtext' }, { name: 'part_styles', type: 'part_styles' }] }] });
+  const [style] = publication.settings.styles;
+  assert.deepEqual(style.parts, ['core/rich_heading.link', 'promo.label']);
+  assert.deepEqual(style.base, { decoration: 'none', opacity: 0.9, shadow: 'none', gap: '1rem' });
+  assert.deepEqual(publication.pages[0].blocks.map(block => block.data.part_styles), [{ label: 'quiet-link' }, { link: 'quiet-link' }]);
+  assert.deepEqual(publication.blockTypes[0].parts, [{ name: 'label', label: 'Label', selector: '.promo-label', target: 'text', decorative: false }]);
+  assert.ok(!JSON.stringify(publication).includes('private-value'));
+});
+
+test('publishes explicit text colours on theme colours and drops invalid ones', () => {
+  const value = input();
+  value.settings.colors.on_secondary = '#ffffff';
+  value.settings.colors.on_accent = 'red;}</style>';
+  const colors = projectStaticPublication(value, identity).settings.colors;
+  assert.equal(colors.on_secondary, '#ffffff');
+  assert.equal(colors.on_accent, undefined);
+  assert.equal(colors.on_primary, undefined);
+});
+
+// Every SiteSettings field, read from the type itself, and whether a
+// publication carries it. A new setting fails here until someone decides:
+// add it to FULL_SETTINGS (and to the projection), or list it as unpublished
+// with the reason. Without this, a setting can be stored and previewed and
+// never reach a published page (fonts.smoothing nearly did).
+const NOT_PUBLISHED = {
+  agent_instructions: 'guidance for agents, read live through the API; never rendered',
+  extension_public_config: 'resolved into each Extension installation\'s public config (extensions/version-config.ts), which the publication carries in its runtime snapshot',
+};
+const FULL_SETTINGS = {
+  site_name: 'Site', tagline: 'Tagline', logo: '/logo.png', favicon: '/favicon.ico', apple_touch_icon: '/apple.png', icon_192: '/icon-192.png',
+  responsive_breakpoints: { tablet: 600, laptop: 1000, desktop: 1300, wide: 1600 },
+  trailing_slash: 'never', iframe_allowed_hosts: ['www.youtube.com'],
+  colors: { primary: '#111111', secondary: '#222222', accent: '#333333', background: '#ffffff', surface: '#eeeeee', text: '#000000', text_light: '#555555', on_primary: '#ffffff', on_secondary: '#fff', on_accent: '#111827' },
+  fonts: { heading: 'Inter', body: 'Inter', size_base: 17, smoothing: 'antialiased' },
+  contact: { email: 'hello@example.invalid', phone: '+46 0', address: 'Street 1' },
+  social: { facebook: 'https://example.invalid/f', instagram: 'https://example.invalid/i', linkedin: 'https://example.invalid/l', x: 'https://example.invalid/x', youtube: 'https://example.invalid/y' },
+  scripts_head: '<meta name="a">', scripts_body_end: '<meta name="b">', custom_css: 'body{}', render_version: 6,
+  styles: [], cookie_consent: { enabled: true, text: 'Consent' }, language: 'sv', twitter_handle: '@site',
+  default_seo_suffix: ' | Site', default_meta_description: 'Description', image_sizes_default: '100vw', default_og_image: '/og.png',
+  organization: { name: 'Org', logo: '/org.png', same_as: ['https://example.invalid/org'] },
+  robots_txt: 'User-agent: *', sitewide_noindex: true, sitewide_nofollow: true,
+  external_routes: [{ path: '/app', owner: 'Separate deployment' }],
+  seo_review: { forbidden_markers: ['TODO'], claims: [{ phrase: 'best', guidance: 'Check' }], notes: ['Note'] },
+};
+
+function siteSettingsFields() {
+  const source = readFileSync(new URL('../packages/shared/src/types.ts', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('export interface SiteSettings {'));
+  const lines = body.slice(0, body.indexOf('\n}\n')).split('\n');
+  const fields = [];
+  let parent = null;
+  for (const line of lines) {
+    const top = line.match(/^ {2}([a-z0-9_]+)\??:\s*(\{)?/);
+    if (top) { fields.push(top[1]); parent = top[2] ? top[1] : null; continue; }
+    const nested = parent && line.match(/^ {4}([a-z0-9_]+)\??:/);
+    if (nested) fields.push(`${parent}.${nested[1]}`);
+  }
+  return fields;
+}
+
+test('every SiteSettings field is published or deliberately left out', () => {
+  const fields = siteSettingsFields();
+  assert.ok(fields.length > 30, 'the SiteSettings parser found the fields');
+  const value = input(); value.settings = structuredClone(FULL_SETTINGS);
+  const published = projectStaticPublication(value, identity).settings;
+  const at = (object, path) => path.split('.').reduce((node, key) => node?.[key], object);
+  const unaccounted = fields.filter(field => !NOT_PUBLISHED[field] && at(FULL_SETTINGS, field) === undefined);
+  assert.deepEqual(unaccounted, [], 'add these fields to FULL_SETTINGS, or to NOT_PUBLISHED with a reason');
+  const dropped = fields.filter(field => !NOT_PUBLISHED[field] && at(published, field) === undefined);
+  assert.deepEqual(dropped, [], 'the publication drops these fields; project them or list them in NOT_PUBLISHED');
+});
+
 test('publication rejects unsafe document paths and expiring credential-bearing media URLs', () => {
   const value = input(); value.pages[0].id = '../outside';
   assert.throws(() => projectStaticPublication(value, identity), /document ID/);
@@ -209,8 +301,15 @@ test('real Core blocks build portable assets and last-page removal produces an e
   value.pages[0] = { ...value.pages[0], content_mode: 'blocks', blocks: [{
     id: 'public-section', type: 'core/section', data: { width: 'normal', padding_y: 'md' }, children: [{
       id: 'public-heading', type: 'core/heading', data: { text: 'Portable real Core blocks', level: 'h1', align: 'left', size: 'auto', editor_note: 'private-value' },
+    }, {
+      id: 'linked-heading', type: 'core/rich_heading', data: { level: 'h2', html: '<a href="/">Home</a>', part_styles: { link: 'loud-link' } },
     }],
   }] };
+  // Block part styles: a site-wide style for a part and an instance choice.
+  value.settings.styles = [
+    { id: 'quiet-link', name: 'Quiet link', targets: ['link'], base: { decoration: 'none' }, parts: ['core/rich_heading.link'] },
+    { id: 'loud-link', name: 'Loud link', targets: ['link'], base: { weight: 700 } },
+  ];
   for (const [name, pages] of [['blocks', value.pages], ['branch', value.pages], ['empty', []]]) {
     const destination = path.join(tmp, name);
     const publication = projectStaticPublication({ ...value, pages }, { ...identity, coreBlockTypes: CORE_BLOCK_TYPES, versionId: name === 'branch' ? 'design' : 'main', noindex: name !== 'branch' });
@@ -234,6 +333,9 @@ test('real Core blocks build portable assets and last-page removal produces an e
       assert.match(html, /<h1[^>]*>Portable real Core blocks<\/h1>/);
       assert.match(html, /\[data-block="heading"\]/);
       assert.match(html, /\[data-block="section"\]/);
+      assert.match(html, /<h2 data-block="rich_heading"[^>]* data-part-link="loud-link"/);
+      assert.ok(html.includes(':where([data-block="rich_heading"]:not([data-part-link]) a)'), 'site-wide part style');
+      assert.ok(html.includes(':where([data-block="rich_heading"][data-part-link="loud-link"] a)'), 'instance part style');
       assert.ok(!html.includes('private-value'));
       assert.deepEqual(marker.paths, ['/']);
       const expectedVersion = name === 'branch' ? 'design' : 'main';

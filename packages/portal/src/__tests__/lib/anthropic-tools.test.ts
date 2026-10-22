@@ -203,6 +203,70 @@ describe('playbook covers site-wide changes', () => {
   });
 });
 
+describe('structured-data tools (shared with MCP)', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  async function draftJsonLd(ctx: Setup['ctx'], id: string): Promise<unknown> {
+    const { readWorkingCopy } = await import('../../lib/working-copy');
+    const wc = await readWorkingCopy(ctx, { kind: 'page', id });
+    return JSON.parse(String((wc?.fields as { json_ld?: string } | undefined)?.json_ld));
+  }
+
+  it('use the shared input schema and builder, keeping other JSON-LD on the page', async () => {
+    const { ctx, runTool } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.pages(ORG, SITE, MAIN_VERSION_ID)}/faq`, {
+      title: 'FAQ', slug: 'faq', content_mode: 'html', status: 'published', html_content: '<h1>FAQ</h1>',
+      json_ld: JSON.stringify({ '@context': 'https://schema.org', '@type': 'LocalBusiness', name: 'Acme' }),
+    });
+
+    const out = await runTool('add_faq_schema', { page_id: 'faq', items: [{ question: 'Open on Sundays?', answer: 'No.' }] }, ctx);
+    expect(out.result).toMatchObject({ ok: true, schema_type: 'FAQPage', kept_other_nodes: 1, draft: true });
+    expect(out.action?.description).toContain('FAQ schema (1 Q&A)');
+    expect(await draftJsonLd(ctx, 'faq')).toEqual({
+      '@context': 'https://schema.org',
+      '@graph': [
+        { '@type': 'LocalBusiness', name: 'Acme' },
+        { '@type': 'FAQPage', mainEntity: [{ '@type': 'Question', name: 'Open on Sundays?', acceptedAnswer: { '@type': 'Answer', text: 'No.' } }] },
+      ],
+    });
+
+    // A second run merges into the draft and replaces the FAQ, not the business.
+    await runTool('add_faq_schema', { page_id: 'faq', items: [{ question: 'Parking?', answer: 'Yes.' }] }, ctx);
+    const graph = (await draftJsonLd(ctx, 'faq') as { '@graph': Array<{ '@type': string; mainEntity?: Array<{ name: string }> }> })['@graph'];
+    expect(graph.map((n) => n['@type'])).toEqual(['LocalBusiness', 'FAQPage']);
+    expect(graph[1]!.mainEntity![0]!.name).toBe('Parking?');
+  });
+
+  it('return the validation issues instead of writing invalid JSON-LD', async () => {
+    const { ctx, runTool } = await setup();
+    await seedPage('concert', '<h1>Concert</h1>');
+    const out = await runTool('add_event_schema', { page_id: 'concert', name: 'Concert', start_date: '2026-06-12', offers_price: '100' }, ctx);
+    expect(out.result).toMatchObject({ issues: ['offers_currency: Required with offers_price.'] });
+    const { readWorkingCopy } = await import('../../lib/working-copy');
+    expect(await readWorkingCopy(ctx, { kind: 'page', id: 'concert' })).toBeNull();
+  });
+
+  it('advertise the same input schema as the MCP tools', async () => {
+    const { structuredDataInputSchema } = await import('@typeroll/mcp-server/structured-data');
+    const { chatToolInputSchema } = await import('../../lib/anthropic');
+    for (const kind of ['faq', 'recipe', 'event'] as const) {
+      expect(chatToolInputSchema(`add_${kind}_schema`)).toEqual(structuredDataInputSchema(kind));
+    }
+  });
+});
+
+describe('read_design_notes', () => {
+  it('serves the MCP tr-starter-design skill without its frontmatter', async () => {
+    const { ctx, runTool } = await setup();
+    const out = await runTool('read_design_notes', {}, ctx);
+    const text = JSON.stringify(out.result);
+    expect(text).toContain('# Starter design system');
+    expect(text).toContain('--container-medium');
+    expect(text).not.toContain('name: tr-starter-design');
+  });
+});
+
 describe('create_page slug validation (regression — docs/page-slug-audit.md)', () => {
   beforeEach(async () => { await resetDatastore(); });
 
@@ -241,6 +305,16 @@ describe('create_page slug validation (regression — docs/page-slug-audit.md)',
     const r = out.result as Record<string, unknown>;
     expect(r.error).toBeFalsy();
     expect((r.page as Record<string, unknown>).slug).toBe('about');
+  });
+
+  it('refuses a taken explicit slug and numbers only a title-derived one', async () => {
+    const { ctx, runTool } = await setup();
+    await seedPage('tack', '<p>Tack</p>');
+    const explicit = (await runTool('create_page', { title: 'Tack', slug: 'tack' }, ctx)).result as Record<string, unknown>;
+    expect(explicit).toMatchObject({ code: 'slug_in_use', details: { page_id: 'tack', path: '/tack' } });
+    const derived = (await runTool('create_page', { title: 'Tack' }, ctx)).result as Record<string, unknown>;
+    expect((derived.page as Record<string, unknown>).slug).toBe('tack-2');
+    expect(derived.warnings).toEqual([expect.objectContaining({ code: 'slug_adjusted', requested: 'tack', conflicting_page_id: 'tack' })]);
   });
 });
 

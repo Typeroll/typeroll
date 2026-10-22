@@ -5,10 +5,10 @@
 // route /api/v1/sites/{siteId}/apps/{appId} (MCP `read_app` / `update_app`).
 // The in-portal chat assistant has no app tools.
 //
-// On enabling the analytics app we best-effort auto-provision a Cloudflare
-// Web Analytics site (when CF creds + a site domain exist) so the owner
-// doesn't have to paste a token by hand; failures are non-fatal (they can
-// paste one).
+// On enabling the analytics app, saveAppState creates (or verifies) the
+// Cloudflare Web Analytics site in the account that hosts the site. When it
+// cannot, the response carries the cause and the next step (409 when no
+// beacon could be set up); see lib/apps/provision-analytics.ts.
 
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, requirePermission, json } from '../../../../../lib/access';
@@ -17,7 +17,7 @@ import { paths } from '@typeroll/shared';
 import type { SiteApps } from '@typeroll/shared';
 import { getAppDef } from '../../../../../lib/apps/registry';
 import { maskAppState } from '../../../../../lib/apps/config';
-import { AppManagementError, saveAppState } from '../../../../../lib/apps/manage';
+import { AppManagementError, incompleteSetupError, saveAppState } from '../../../../../lib/apps/manage';
 
 export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -65,12 +65,20 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
       enabled,
       config: body.config,
     });
+    const state = maskAppState(def.id, result.state);
+    const incomplete = incompleteSetupError(appId, result.state, result.setup);
+    if (incomplete) {
+      return json({ error: incomplete.message, code: incomplete.code, details: incomplete.details, saved: true, state, affects_build: result.affectsBuild }, incomplete.status);
+    }
     return json({
-      state: maskAppState(def.id, result.state),
+      state,
+      setup: result.setup,
       affects_build: result.affectsBuild,
     });
   } catch (error) {
-    if (error instanceof AppManagementError) return json({ error: error.message }, error.status);
+    if (error instanceof AppManagementError) {
+      return json({ error: error.message, ...(error.code ? { code: error.code, details: error.details, saved: false } : {}) }, error.status);
+    }
     return json({ error: 'Failed to save app config' }, 500);
   }
 };

@@ -18,6 +18,6 @@ it.each(['auth/user-disabled', 'auth/user-not-found', 'auth/insufficient-permiss
   },
 );
 it('accepts a successfully checked session', async () => {
-  verify.mockResolvedValue({ uid: 'test-user', org_id: 'test-org' });
+  verify.mockResolvedValue({ uid: 'test-user', org_id: 'test-org', email: 'test@example.invalid', email_verified: true });
   expect(await getSession(cookies as never)).toMatchObject({ userId: 'test-user', orgId: 'test-org' });
 });

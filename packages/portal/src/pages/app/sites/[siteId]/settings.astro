@@ -3,8 +3,9 @@ import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, paths, isArchivedSite, renderVersionStatus, RENDER_VERSIONS } from '@typeroll/shared';
+import { defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, paths, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS } from '@typeroll/shared';
 import RenderVersionSettings from '../../../../components/RenderVersionSettings';
+import OnColorFields from '../../../../components/OnColorFields';
 import type { Site, SiteSettings } from '@typeroll/shared';
 import DomainManager from '../../../../components/DomainManager.tsx';
 import { SiteHostingGroup } from '../../../../components/HostingGroups';
@@ -135,6 +136,7 @@ const domainBlocksArchiving =
           </div>
         ))}
       </div>
+      <OnColorFields client:load colors={settings.colors} renderVersion={resolveRenderVersion(settings.render_version)} />
     </div>
 
     <div class="card stack">
@@ -158,6 +160,15 @@ const domainBlocksArchiving =
       <div class="field">
         <label>Base font size (px)</label>
         <input name="fonts.size_base" type="number" min="12" max="24" value={settings.fonts.size_base} />
+      </div>
+      <div class="field">
+        <label for="fonts-smoothing">Font smoothing</label>
+        <select id="fonts-smoothing" name="fonts.smoothing">
+          <option value="" selected={!settings.fonts.smoothing}>Default for the render version ({resolveRenderVersion(settings.render_version) >= 6 ? 'browser default' : 'antialiased'})</option>
+          <option value="auto" selected={settings.fonts.smoothing === 'auto'}>Browser default (auto)</option>
+          <option value="antialiased" selected={settings.fonts.smoothing === 'antialiased'}>Antialiased (thinner text on macOS)</option>
+        </select>
+        <p class="muted text-sm">Antialiased can suit light text on a dark background. Dark text on a light background reads closer to other sites with the browser default.</p>
       </div>
     </div>
 
@@ -331,9 +342,14 @@ const domainBlocksArchiving =
       </div>
     </div>
 
-    <div class="row">
-      <button type="submit" class="btn">Save settings</button>
-    </div>
+    <section class="card stack">
+      <h2>AI agent instructions</h2>
+      <p>Describe your audience, tone, terminology and editing conventions. Connected assistants can read these instructions for this site and version. Keep credentials and private personal information out.</p>
+      <label for="agent-instructions">Site instructions</label>
+      <textarea id="agent-instructions" name="agent_instructions" rows="6" maxlength="12000">{settings.agent_instructions ?? ''}</textarea>
+      <p class="muted text-sm">Guidance does not grant permission to publish or change another site. Save settings to apply it.</p>
+    </section>
+    <div class="row"><button type="submit" class="btn">Save settings</button></div>
   </form>
 
   <div style="max-width: 720px; margin-top: 2rem;">

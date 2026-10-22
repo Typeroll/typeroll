@@ -38,12 +38,14 @@ interface Props {
   liveUrl?: string | null;
   /** ISO timestamp of this version's last successful deploy (null if never). */
   lastDeployedAt: string | null;
+  /** The site owner's organization allows the AI assistant here and the person may edit. */
+  aiChatEnabled?: boolean;
 }
 
 type Status = 'idle' | 'saving' | 'saved' | 'error';
 type Device = 'desktop' | 'tablet' | 'mobile';
 
-export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt }: Props) {
+export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, aiChatEnabled = false }: Props) {
   // Edits autosave to a server-side working copy; the canonical page only
   // changes on the deliberate Save (or a status change) in the Publish menu.
   const [draft, setDraft] = useState<Page>({ ...page, ...(workingCopy?.fields ?? {}) } as Page);
@@ -311,7 +313,7 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
         <aside id="html-editor-edit" className="editor__sidebar">
           <nav className="editor__tabs">
             <button className={activeTab === 'content' ? 'is-active' : ''} onClick={() => setActiveTab('content')}>Content</button>
-            <button className={activeTab === 'ai' ? 'is-active' : ''} onClick={() => setActiveTab('ai')}>AI</button>
+            {aiChatEnabled && <button className={activeTab === 'ai' ? 'is-active' : ''} onClick={() => setActiveTab('ai')}>AI</button>}
             <button className={activeTab === 'blocks' ? 'is-active' : ''} onClick={() => setActiveTab('blocks')}>Blocks</button>
             <button className={activeTab === 'seo' ? 'is-active' : ''} onClick={() => setActiveTab('seo')}>SEO</button>
             <button className={activeTab === 'settings' ? 'is-active' : ''} onClick={() => setActiveTab('settings')}>Settings</button>
@@ -355,13 +357,15 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
                   />
                 </div>
               </div>
-              <p className="muted text-sm">
-                Tip: use the AI chat to draft and edit this HTML by describing changes in plain English.
-              </p>
+              {aiChatEnabled && (
+                <p className="muted text-sm">
+                  Tip: use the AI chat to draft and edit this HTML by describing changes in plain English.
+                </p>
+              )}
             </div>
           )}
 
-          {activeTab === 'ai' && (
+          {aiChatEnabled && activeTab === 'ai' && (
             <div className="editor__ai">
               <ChatInterface
                 siteId={siteId}

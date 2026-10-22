@@ -89,6 +89,29 @@ describe('migration launch report', () => {
     expect(report.seo_parity.status).toBe('current');
   });
 
+  it('blocks launch on copied source-platform scripts and tracking without consent', async () => {
+    const site = await seedReadyEvidence();
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    await store.setDoc(paths.settings(ORG, SITE), {
+      site_name: 'Migration target', trailing_slash: 'always',
+      scripts_head: '<script src="https://old.example.test/wp-content/plugins/cookie-law-info/js/cookie-law-info-public.js"></script>',
+    });
+    await store.setDoc(paths.apps(ORG, SITE), { apps: { integrations: { enabled: true, config: { meta_pixel__pixel_id: '123456789012345' } } } });
+    const report = await buildMigrationLaunchReport({ store, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, site });
+    expect(report.launch_ready).toBe(false);
+    expect(report.issues.map(issue => issue.id)).toEqual(['source_runtime_script', 'tracking_without_consent_banner']);
+    expect(report.scripts).toMatchObject({ status: 'issues', findings: [
+      { id: 'source_runtime_script', location: 'settings.scripts_head' },
+      { id: 'tracking_without_consent_banner', location: 'apps.integrations', match: 'Meta Pixel (Facebook)' },
+    ] });
+
+    await store.setDoc(paths.settings(ORG, SITE), { site_name: 'Migration target', trailing_slash: 'always', cookie_consent: { enabled: true } });
+    const fixed = await buildMigrationLaunchReport({ store, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, site });
+    expect(fixed.launch_ready).toBe(true);
+    expect(fixed.scripts).toEqual({ status: 'clean', findings: [] });
+  });
+
   it('does not treat successful HTTP and SEO checks as visual fidelity evidence', async () => {
     const site = await seedReadyEvidence();
     const { getStore } = await import('../../lib/datastore');

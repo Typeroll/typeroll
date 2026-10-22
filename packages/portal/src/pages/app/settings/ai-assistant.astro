@@ -1,0 +1,22 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import OrganizationAiSettings from '../../../components/OrganizationAiSettings';
+import { requireOrganizationOwnerOrAdmin } from '../../../lib/access';
+import { aiSettingsSummary } from '../../../lib/ai/organization-ai';
+import { AI_SETTINGS_REFUSAL } from '../../../lib/ai/http';
+import { organizationMembership } from '../../../lib/organization-session';
+
+// Organization owners and admins only, like Publishing. The page carries the
+// masked summary; the key itself never reaches the browser.
+const guard = await requireOrganizationOwnerOrAdmin(Astro.cookies, AI_SETTINGS_REFUSAL);
+if (!guard.ok) return guard.response;
+Astro.response.headers.set('Cache-Control', 'no-store');
+const organization = await organizationMembership(guard.value.userId, guard.value.orgId);
+const summary = await aiSettingsSummary(guard.value.orgId);
+---
+<AppLayout title="AI assistant">
+  <div class="app-header"><h1>AI assistant</h1></div>
+  <p style="max-width: 760px;">The built-in AI assistant for <strong>{organization?.name ?? 'your organization'}</strong>. It is off until you add your organization’s own Anthropic API key and choose its sites.</p>
+  <p class="muted" style="max-width: 760px; margin-bottom: 1.5rem;">This setting does not affect MCP or the API. Anyone with access to a site can always connect their own AI agent under <a href="/app/settings/ai-connections">AI connections</a>.</p>
+  <OrganizationAiSettings client:load organizationName={organization?.name ?? 'your organization'} initial={summary} />
+</AppLayout>

@@ -45,7 +45,11 @@ const webServer = target.isRemote ? undefined : {
     PORT: '4322',
     PORTAL_PUBLIC_URL: target.portalUrl,
     FIREBASE_SERVICE_ACCOUNT: '',
-    ANTHROPIC_API_KEY: '',
+    // Organization AI keys are stored encrypted. The Anthropic key check goes
+    // to the stub that organization-ai.spec.ts serves on this port; no other
+    // spec reaches Anthropic, and there is no server-wide AI key.
+    INTEGRATIONS_SECRET_KEY: 'e2e-only-integrations-secret-key-at-least-32-characters',
+    ANTHROPIC_BASE_URL: 'http://127.0.0.1:4329',
     FORMS_HMAC_SECRET: 'e2e-only-form-signing-secret-32-characters-minimum',
     MCP_OAUTH_SIGNING_KEY: 'e2e-only-mcp-signing-secret-at-least-32-characters',
     PREVIEW_HMAC_SECRET: 'e2e-only-preview-signing-secret-32-characters-minimum',
@@ -56,7 +60,7 @@ const webServer = target.isRemote ? undefined : {
 };
 
 /** Specs that also run in Firefox and WebKit (`npm run test:e2e:install` installs both). */
-const CROSS_ENGINE_TESTS = /forms-multistep-validation\.spec\.ts/;
+const CROSS_ENGINE_TESTS = /(?:forms-multistep-validation|address-field-parity|media-and-carousel)\.spec\.ts/;
 const CROSS_ENGINE_SPECS = [
   { name: 'firefox', device: 'Desktop Firefox' },
   { name: 'webkit', device: 'Desktop Safari' },

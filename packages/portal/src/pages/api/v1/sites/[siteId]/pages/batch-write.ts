@@ -17,7 +17,8 @@ import { vstore } from '../../../../../../lib/version-store';
 import { applyContentWrite } from '../../../../../../lib/content-write';
 import { apiWriteAuthority } from '../../../../../../lib/field-authority';
 import { checkAlternates } from '../../../../../../lib/page-alternates';
-import { blockTreeWarnings, ensureBlockIds, type Page } from '@typeroll/shared';
+import { ensureBlockIds, type BlockTreeWarning, type BlockType, type Page } from '@typeroll/shared';
+import { siteBlockRegistry, treeWriteWarnings } from '../../../../../../lib/block-write-warnings';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 
 const BATCH_MAX = 200;
@@ -52,6 +53,9 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  // Read the site's block types once for the whole batch, and only if a patch carries blocks.
+  let siteRegistry: Promise<Map<string, BlockType>> | undefined;
+  const registry = () => (siteRegistry ??= siteBlockRegistry(ctx));
   const body = (await request.json().catch(() => null)) as unknown;
   if (!Array.isArray(body)) {
     return apiError('Body must be an array of { page_id, patch }');
@@ -59,7 +63,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (body.length > BATCH_MAX) return apiError(`Too many entries (max ${BATCH_MAX})`);
 
   const results = await Promise.all(
-    body.map(async (raw): Promise<{ page_id: string; ok: boolean; saved?: boolean; error?: string; warnings?: ReturnType<typeof blockTreeWarnings> }> => {
+    body.map(async (raw): Promise<{ page_id: string; ok: boolean; saved?: boolean; error?: string; warnings?: BlockTreeWarning[] }> => {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { page_id: '', ok: false, error: 'Each entry must be an object' };
       const item = raw as Item;
       const pageId = typeof item.page_id === 'string' ? item.page_id : '';
@@ -97,7 +101,7 @@ export const POST: APIRoute = async ({ request, params }) => {
         );
         // Per entry, beside its own result: a sweep of 200 pages must say
         // which page carried the inert key, not that one of them did.
-        const warnings = blockTreeWarnings((item.patch as { blocks?: unknown } | undefined)?.blocks);
+        const warnings = await treeWriteWarnings(ctx, (item.patch as { blocks?: unknown } | undefined)?.blocks, await registry());
         return { page_id: pageId, ok: true, saved: result.committed, ...(warnings.length ? { warnings } : {}) };
       } catch (e) {
         return { page_id: pageId, ok: false, error: e instanceof Error ? e.message : 'unknown error' };

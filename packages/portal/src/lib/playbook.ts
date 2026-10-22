@@ -6,6 +6,11 @@
  * solve inconsistently. Add to this file as transcripts surface new cases;
  * keep entries short — the AI is smart, it just needs the convention, not a
  * tutorial.
+ *
+ * External agents get the same recipes over MCP, rewritten for MCP tool
+ * names: packages/mcp-server/skills/tr-edit-site.md ("Everyday requests") and
+ * tr-seo.md (URL conventions, structured data). Change both when a convention
+ * changes. The design reference is shared verbatim (design-notes.ts).
  */
 export const PLAYBOOK_STARTER = `# Typeroll chat playbook
 
@@ -155,9 +160,12 @@ in any page's html_content. Don't paste the HTML inline on each page.
 image. The customer must have already uploaded it (see \`list_media\`).
 
 ### "Add Google Analytics" / "add a chat widget script"
-These live in \`scripts_head\` or \`scripts_body_end\` site settings — but the
-chat tools DO NOT have write access to those fields. Tell the user to paste
-the snippet themselves in **Settings → Scripts**.
+Analytics, advertising pixels and chat widgets are set by ID in the
+**Integrations** app (**Settings → Apps → Integrations**), not pasted as scripts. Tell the
+user to add the ID there and to turn on the cookie banner (**Settings**, "Enable cookie
+consent on this site") so analytics and advertising wait for the visitor's
+consent. The chat tools cannot write either. Only a tag the Integrations
+catalog lacks goes in the cookie banner's optional scripts.
 
 ## Redirects
 

@@ -3,8 +3,8 @@ import type { FullSession } from '../access';
 import { getStore } from '../datastore';
 import { ConnectionError, connectionPath, getConnection, openCredentials, saveConnection, sealCredentials, type Connection } from './connections';
 import {
-  CLOUDFLARE_BUILD_SCOPES, CLOUDFLARE_CALLBACK, CLOUDFLARE_MEDIA_SCOPES, CLOUDFLARE_OPTIONAL_DNS_SCOPES, CLOUDFLARE_SCOPES, cloudflareOAuthConfiguration,
-  cloudflareSetup, requiredCloudflareScopes,
+  CLOUDFLARE_ANALYTICS_SCOPES, CLOUDFLARE_BUILD_SCOPES, CLOUDFLARE_CALLBACK, CLOUDFLARE_MEDIA_SCOPES, CLOUDFLARE_ONBOARDING_OPTIONAL_SCOPES, CLOUDFLARE_OPTIONAL_DNS_SCOPES,
+  CLOUDFLARE_SCOPES, cloudflareOAuthConfiguration, cloudflareSetup, enabledCloudflareOptionalScopes, requiredCloudflareScopes,
 } from './cloudflare-config';
 import {
   CLOUDFLARE_CONSENT_TRUST_MS, CLOUDFLARE_SIGN_IN_TTL_MS, cloudflareBlocker, cloudflareBlockerFromError, CloudflareFlowError, cloudflareOrganizationView, composeCloudflareDiagnosis,
@@ -43,6 +43,11 @@ interface Grant {
   state_hash: string; browser_hash: string; encrypted_verifier: string | null;
   /** The scopes requested. Cloudflare may omit `scope` from the token response when it granted exactly these (RFC 6749 §5.1). */
   scope?: string;
+  /**
+   * A permission update: Hosting Groups of this Organization, using the same Cloudflare account, to renew next. Each
+   * connection keeps its own rotating grant, so each needs its own consent; the callback starts the next one.
+   */
+  then?: string[];
 }
 /**
  * One consent's tokens and the accounts it authorized, bound to a Typeroll user, Hosting Group and connection revision.
@@ -113,19 +118,25 @@ async function exchange(parameters: Record<string, string>, fetchImpl: typeof fe
   return { access_token: data.access_token, refresh_token: refresh, expires_at: Date.now() + data.expires_in * 1000, scope: granted.join(' ') };
 }
 
-export async function startCloudflareConnection(session: FullSession, groupId = 'default', buildAccess = false) {
+export async function startCloudflareConnection(session: FullSession, groupId = 'default', buildAccess = false, analyticsAccess = false, options: { then?: string[] } = {}) {
   const config = cloudflareOAuthConfiguration();
   await getHostingGroup(session.orgId, groupId);
   const connection = await getConnection(session.orgId, 'cloudflare', groupId);
   await getStore().deleteDoc(choicePath(session.orgId));
   const previousScopes = connection.encrypted_credentials ? openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', connection.encrypted_credentials, groupId).oauth?.scope.split(/\s+/) ?? [] : [];
   const buildScopes = groupId === 'default' ? CLOUDFLARE_BUILD_SCOPES.filter(scope => buildAccess || previousScopes.includes(scope)) : [];
-  const scope = [...new Set([...requiredCloudflareScopes(groupId), ...CLOUDFLARE_OPTIONAL_DNS_SCOPES, ...(groupId === 'default' ? CLOUDFLARE_MEDIA_SCOPES : []), ...buildScopes])].join(' ');
+  // Analytics and redirect rules work in each hosting account, so every Hosting Group asks for the optional scopes this
+  // deployment enables. Without that configuration Analytics is still asked for on request. A reconnect keeps what was granted.
+  const enabled = enabledCloudflareOptionalScopes();
+  const optionalScopes = CLOUDFLARE_ONBOARDING_OPTIONAL_SCOPES.filter(scope => enabled.includes(scope) || previousScopes.includes(scope)
+    || (analyticsAccess && CLOUDFLARE_ANALYTICS_SCOPES.includes(scope)));
+  const scope = [...new Set([...requiredCloudflareScopes(groupId), ...CLOUDFLARE_OPTIONAL_DNS_SCOPES, ...(groupId === 'default' ? CLOUDFLARE_MEDIA_SCOPES : []), ...buildScopes, ...optionalScopes])].join(' ');
   const state = nonce(), browser = nonce(), verifier = nonce();
   const startedAt = Date.now();
   await getStore().setDoc(grantPath(session.orgId), { user_id: session.userId, expires_at: startedAt + TTL,
     consumed: false, hosting_group_id: groupId, revision: connection.revision, state_hash: hash(state), browser_hash: hash(browser),
-    encrypted_verifier: sealCredentials(session.orgId, 'cloudflare', { verifier }, groupId), scope } satisfies Grant);
+    encrypted_verifier: sealCredentials(session.orgId, 'cloudflare', { verifier }, groupId), scope,
+    ...(options.then?.length ? { then: options.then } : {}) } satisfies Grant);
   // The card says that a sign-in is under way, and later that it never came back, instead of showing nothing.
   if (connection.status !== 'connected') {
     await recordCloudflareDiagnosis(session.orgId, composeCloudflareDiagnosis({ groupId, revision: connection.revision, attemptedBy: session.userId, signInStartedAt: startedAt }),
@@ -136,6 +147,36 @@ export async function startCloudflareConnection(session: FullSession, groupId = 
     response_type: 'code', scope, state,
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' }).toString();
   return { url: url.toString(), browser, maxAge: TTL / 1000 };
+}
+
+/**
+ * Approve update: renew the consent of this Hosting Group's connection with every optional scope the deployment
+ * requests, then of each other connection of this Organization that uses the same Cloudflare account. Grants are
+ * never copied between connections: refresh tokens rotate, so a shared grant would break the other connection.
+ */
+export async function startCloudflarePermissionUpdate(session: FullSession, groupId = 'default') {
+  const connection = await getConnection(session.orgId, 'cloudflare', groupId);
+  if (connection.status !== 'connected' || !connection.cloudflare) throw new ConnectionError('Connect Cloudflare for this Hosting Group first.', 409, 'cloudflare_required');
+  if (connection.auth_method !== 'oauth') throw new ConnectionError('This connection uses an API token. Add the permissions to the token in Cloudflare instead.', 409, 'api_token_connection');
+  const { groupsSharingAccount } = await import('./cloudflare-capabilities');
+  const groups = await groupsSharingAccount(session.orgId, connection.cloudflare.account_id, groupId);
+  const result = await startCloudflareConnection(session, groupId, false, false, { then: groups.filter(id => id !== groupId) });
+  return { ...result, hosting_group_ids: groups };
+}
+
+/**
+ * After a connected callback of a permission update: the next Hosting Group to renew, if it still uses the same
+ * account in this Organization. Only the sign-in this person started (matching state) continues.
+ */
+export async function cloudflareUpdateContinuation(session: Actor, state: string, finishedGroup: string): Promise<{ next: string; then: string[] } | null> {
+  const grant = /^[\w-]{43}$/.test(state) ? await getStore().getDoc<Grant>(grantPath(session.orgId)) : null;
+  if (!grant || grant.user_id !== session.userId || grant.state_hash !== hash(state) || !grant.consumed || !grant.then?.length) return null;
+  const finished = await getConnection(session.orgId, 'cloudflare', finishedGroup);
+  if (finished.status !== 'connected' || !finished.cloudflare) return null;
+  const { groupsSharingAccount } = await import('./cloudflare-capabilities');
+  const sharing = await groupsSharingAccount(session.orgId, finished.cloudflare.account_id, finishedGroup);
+  const remaining = grant.then.filter(id => id !== finishedGroup && sharing.includes(id));
+  return remaining.length ? { next: remaining[0], then: remaining.slice(1) } : null;
 }
 
 // ─── Diagnosis bookkeeping ───────────────────────────────────────────────
@@ -609,8 +650,8 @@ export async function cloudflareClient(orgId: string, fetchImpl: typeof fetch = 
   return Object.assign(client, { connectionRevision: access.revision });
 }
 
-/** Coordinator-only bridge to the official static uploader. Never exposed to a build runner. */
-export async function withCloudflareCredential<T>(orgId: string, groupId: string, work: (token: string) => Promise<T>): Promise<T> {
-  const access = await cloudflareAccess(orgId, fetch, undefined, groupId);
+/** Server-side bridge for the official static uploader and Analytics reports. Never exposed to a build runner or a response. */
+export async function withCloudflareCredential<T>(orgId: string, groupId: string, work: (token: string) => Promise<T>, fetchImpl: typeof fetch = fetch): Promise<T> {
+  const access = await cloudflareAccess(orgId, fetchImpl, undefined, groupId);
   return work(access.token);
 }

@@ -34,7 +34,13 @@ read_app_documentation when needed; do not bundle private app guides locally.
 No Site yet? Use hosted MCP with an Organization key and create_site, or create it
 in the portal. To start from an AI site plan instead of a blank Site, use
 create_site_and_plan, poll get_workflow and approve its structure review only
-with the user's consent. Read back its ID before editing. Use one explicit Site/Version for
+with the user's consent. That AI plan needs the Organization's own portal AI
+key for new Sites; without it the call answers `403 ai_not_enabled` and the
+`site_planning` workflow fails with `failure_code: "ai_not_enabled"`. Then plan
+it yourself: `create_site`, propose the site name, tagline and page list (title,
+slug, purpose, target keywords) from the business description, get the
+user's approval, and build with this recipe. Tell the user you planned it
+yourself; don't retry the workflow. Read back its ID before editing. Use one explicit Site/Version for
 related operations. Larger changes to an existing site should use a branch.
 
 Before importing content or a media library, require get_import_readiness to pass.
@@ -140,13 +146,21 @@ Set the site's look as named styles before building any page:
    `apply_standard_styles`.
 2. Adjust them to the brand with `update_style`: the font, the type scale and
    spacing for `base` (phones) and `at.tablet`/`at.desktop`, and colours from
-   palette tokens. Keep text at WCAG AA contrast; failing styles are refused.
+   palette tokens. Keep text readable: contrast is checked with APCA and
+   WCAG 2; text that fails both is refused, and text below its APCA level
+   comes back as a warning.
 3. Add a named style for every look the design repeats: a card title, a price
    note, a highlighted section, a CTA button variant. Use the site's language
    for names.
 
 Pages then choose styles with each block's `style_id` field. A per-block
 font size, colour or class is only for something clearly unique.
+
+To change a sub-element a block styles itself (the underline on formatted
+heading links, a hero's heading or buttons), use its parts:
+`read_block_type` lists them. A style with `parts: ["core/rich_heading.link"]`
+applies to that part on every block; `data.part_styles` on one block replaces
+it there.
 
 ### 3. Header + footer partials
 

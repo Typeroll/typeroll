@@ -2,6 +2,7 @@ import type { BlockType } from "./types.js";
 import { BREAKPOINT_ORDER, resolveBreakpointWidths } from "./breakpoints.js";
 import { pixels } from "./presentation-fields.js";
 import { surfaceColor } from "./surface-presentation.js";
+import { renderIconHtml } from "./icons.js";
 import {
   PAGE_HANDOFF_PART_NAMES,
   PAGE_HANDOFF_STORAGE_PREFIX,
@@ -169,9 +170,16 @@ export function prepareNavigationForm(
     ? data.handoff_key
     : "page-defaults";
   data.mode = data.mode === "receive" ? "receive" : "navigate";
+  // The icon follows the label and is decoration: the label alone names the
+  // action. Without an icon the markup is unchanged.
+  const icon =
+    typeof data.button_icon === "string" && data.button_icon.trim()
+      ? `<span class="navigation-button-icon" aria-hidden="true">${renderIconHtml(data.button_icon.trim().slice(0, 64))}</span>`
+      : "";
+  const buttonContent = `${escape(data.button_label || "Continue")}${icon}`;
   data.navigation_action_html =
     data.mode === "navigate" && data.destination
-      ? `<div class="navigation-actions"><a data-navigation-fallback href="${escape(data.destination)}">${escape(data.button_label || "Continue")}</a><button type="button" data-navigation-continue hidden>${escape(data.button_label || "Continue")}</button></div>`
+      ? `<div class="navigation-actions"><a data-navigation-fallback href="${escape(data.destination)}">${buttonContent}</a><button type="button" data-navigation-continue hidden>${buttonContent}</button></div>`
       : "";
   data.address_country = /^[A-Za-z]{2}$/.test(String(data.address_country ?? ""))
     ? String(data.address_country).toLowerCase()
@@ -329,6 +337,17 @@ export const navigationForm: BlockType = {
   icon: "arrow-right",
   category: "content",
   container: false,
+  // The colour fields stay per instance and are the backgrounds the parts'
+  // contrast is checked on. The input part also reaches the address
+  // suggestion field that replaces an input (integrations.ts), which
+  // otherwise follows the --tr-field-* contract on the root.
+  parts: [
+    { name: "field", label: "Field", selector: ".navigation-field", target: "container", decorative: true },
+    { name: "label", label: "Labels", selector: "label", target: "text" },
+    { name: "input", label: "Inputs", selector: ".navigation-input, gmp-place-autocomplete[data-typeroll-field]", target: "container", background_field: "input_background" },
+    { name: "button", label: "Button", selector: ".navigation-actions > a, .navigation-actions > button", target: "button", color: "on_primary", background: "primary", background_field: "button_background" },
+    { name: "button_icon", label: "Button icon", selector: ".navigation-button-icon", target: "text", decorative: true },
+  ],
   schema: [
     {
       name: "button_nowrap",
@@ -396,6 +415,23 @@ export const navigationForm: BlockType = {
       type: "text",
       label: "Continue button",
       default: "Continue",
+    },
+    {
+      name: "button_icon",
+      type: "icon",
+      label: "Button icon (after the label)",
+      placeholder: "arrow-right or →",
+    },
+    pixels("button_icon_size_px", "Button icon size", 8, 64),
+    pixels("button_icon_gap_px", "Space between label and icon", 0, 32),
+    {
+      name: "button_font_weight",
+      type: "number",
+      label: "Button font weight",
+      min: 100,
+      max: 900,
+      responsive: true,
+      css_unit: "number",
     },
     {
       name: "fields",
@@ -506,14 +542,16 @@ export const navigationForm: BlockType = {
   ],
   template:
     '<div id="navigation-{{navigation_id}}" data-block="navigation_form" role="form" aria-label="{{aria_label}}" data-handoff-key="{{handoff_key}}" data-mode="{{mode}}" data-show-labels="{{show_labels}}" data-font="{{font}}" data-button-nowrap="{{button_nowrap}}" data-address-country="{{address_country}}" style="--columns:{{columns}};{{navigation_colors}}">{{{navigation_fields_html}}}{{{navigation_action_html}}}</div>{{{navigation_layout_html}}}',
-  styles: `[data-block="navigation_form"]{display:grid;grid-template-columns:repeat(var(--columns,1),minmax(0,1fr));gap:var(--gap_px,12px);align-items:end;font-size:var(--font_size_px,1rem);line-height:var(--line_height,1.4)}
+  styles: `[data-block="navigation_form"]{--tr-field-min-height:var(--input_height_px,44px);--tr-field-padding-y:var(--input_padding_y_px,10px);--tr-field-padding-x:var(--input_padding_x_px,12px);--tr-field-border-width:var(--input_border_width_px,1px);--tr-field-border-color:var(--navigation-input-border,#bbc1c9);--tr-field-radius:var(--radius_px,6px);--tr-field-background:var(--navigation-input-bg,#fff);--tr-field-color:var(--navigation-input-color,#20242a)}
+[data-block="navigation_form"]{display:grid;grid-template-columns:repeat(var(--columns,1),minmax(0,1fr));gap:var(--gap_px,12px);align-items:end;font-size:var(--font_size_px,1rem);line-height:var(--line_height,1.4)}
 [data-block="navigation_form"][data-font="body"]{font-family:var(--font-body,inherit)}
 [data-block="navigation_form"][data-font="heading"]{font-family:var(--font-heading,inherit)}
 [data-block="navigation_form"] .navigation-field{display:flex;flex-direction:column;gap:6px;min-width:0}
 [data-block="navigation_form"] label{font-weight:600}
 [data-block="navigation_form"][data-show-labels="false"] label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 [data-block="navigation_form"] .navigation-input{width:100%;box-sizing:border-box;min-height:var(--input_height_px,44px);padding:var(--input_padding_y_px,10px) var(--input_padding_x_px,12px);border:var(--input_border_width_px,1px) solid var(--navigation-input-border,#bbc1c9);border-radius:var(--radius_px,6px);font:inherit;background:var(--navigation-input-bg,#fff);color:var(--navigation-input-color,#20242a)}
-[data-block="navigation_form"] .navigation-actions>*{box-sizing:border-box;width:100%;min-height:var(--input_height_px,44px);display:flex;align-items:center;justify-content:center;padding:var(--button_padding_y_px,10px) var(--button_padding_x_px,16px);font:inherit;font-weight:600;background:var(--navigation-button-bg,var(--color-primary,#17243a));color:var(--navigation-button-color,#fff);border:0;border-radius:var(--radius_px,6px);text-decoration:none;cursor:pointer}
+[data-block="navigation_form"] .navigation-actions>*{box-sizing:border-box;width:100%;min-height:var(--input_height_px,44px);display:flex;align-items:center;justify-content:center;padding:var(--button_padding_y_px,10px) var(--button_padding_x_px,16px);font:inherit;font-weight:var(--button_font_weight,600);gap:var(--button_icon_gap_px,0.4em);background:var(--navigation-button-bg,var(--color-primary,#17243a));color:var(--navigation-button-color,#fff);border:0;border-radius:var(--radius_px,6px);text-decoration:none;cursor:pointer}
+[data-block="navigation_form"] .navigation-button-icon{display:inline-flex;align-items:center;flex:none;font-size:var(--button_icon_size_px,1em);line-height:1}
 [data-block="navigation_form"][data-button-nowrap="true"] .navigation-actions>*{white-space:nowrap}
 [data-block="navigation_form"] [hidden]{display:none!important}
 [data-block="navigation_form"] :focus-visible{outline:2px solid currentColor;outline-offset:3px}`,

@@ -60,6 +60,17 @@ Public documentation: https://typeroll.com/docs/llms.txt
 - Never edit generated publishing source to change CMS content. Do not overwrite
   current CMS or owner answers from an old local snapshot.
 
+## Everyday requests
+
+- Links, images, menus, settings, analytics and site-wide changes: read the
+  tr-edit-site recipe. Shared content becomes one global block, not N edits.
+- FAQ, recipe and event pages: add_faq_schema, add_recipe_schema and
+  add_event_schema build validated JSON-LD (see tr-seo); don't hand-write it.
+- A blank site or the starter design: tr-starter-design lists its variables.
+- The portal's built-in AI is optional. When an AI workflow (site planning,
+  content generation or improvement, schema markup) reports ai_not_enabled,
+  do the work yourself with the recipe it names and say so; don't retry.
+
 Store credentials in the client's private settings or injected environment.
 Run the workspace doctor after setup and after changing the binding.
 `;
@@ -72,7 +83,7 @@ export const workspaceTemplates: Record<string, string> = {
   'decisions.md': '# Decisions\n\nRecord date, decision, reason, approved scope and alternatives when useful.\n',
   'sources/README.md': '# Sources\n\nStore research references and copy proposals. Record source URLs and dates.\nPrivate extracts belong in ignored private/ or an approved external store.\nDo not treat local drafts as current CMS content or commit media libraries.\n',
   'scripts/README.md': '# Project automation\n\nKeep repeatable imports and QA scripts here. Use the authenticated REST API\nfor scripted work; keep credentials outside files and inject them at runtime.\nMCP remains the interactive interface. Typeroll currently has no general site CRUD CLI.\n',
-  'qa/checklist.md': '# Verification\n\n- Confirm Site, Version and deployed/source identity.\n- Read back saved content and inspect desktop/mobile previews.\n- Exercise menus, keyboard focus, links and enabled app states.\n- Verify routes, metadata, media and publishing readiness before launch.\n- Record tested pages, viewports, results and unresolved issues.\n- Store screenshots and private runtime reports in ignored reports/.\n- Publishing validation does not prove visual or editorial completeness.\n',
+  'qa/checklist.md': '# Verification\n\n- Confirm Site, Version and deployed/source identity.\n- Read back saved content and inspect desktop/mobile previews.\n- Exercise menus, keyboard focus, links and enabled app states.\n- Verify routes, metadata, media and publishing readiness before launch.\n- Check that structured data (FAQ, recipe, event) matches what each page shows.\n- Record tested pages, viewports, results and unresolved issues.\n- Store screenshots and private runtime reports in ignored reports/.\n- Publishing validation does not prove visual or editorial completeness.\n',
 };
 
 export async function readWorkspace(dir: string): Promise<Workspace> {

@@ -120,14 +120,14 @@ that syntactically valid XML establishes complete image coverage.
 
 ## Structured data
 
-| Output              | Configuration and scope                                                                                                |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `Organization`      | Homepage only; Site `organization`, contact and social settings describe the website's brand, not the Typeroll account |
-| `WebSite`           | Homepage only; Site name, origin and optional tagline                                                                  |
-| `Article`           | Pages with `kind: "article"`; title, dates, author and available image/description                                     |
-| `BreadcrumbList`    | Non-home routes, using resolved breadcrumbs and the intended canonical for the final item                              |
-| Content type schema | The type's `schema_type`, field mode and supported field map                                                           |
-| Custom JSON-LD      | Explicit `Page.json_ld`, for information genuinely represented by that Page                                            |
+| Output              | Configuration and scope                                                                                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Organization`      | Homepage only; Site `organization`, contact and social settings describe the website's brand, not the Typeroll account                                                          |
+| `WebSite`           | Homepage only; Site name, origin and optional tagline                                                                                                                           |
+| `Article`           | Pages with `kind: "article"`; title, dates, author and available image/description                                                                                              |
+| `BreadcrumbList`    | Non-home routes, using resolved breadcrumbs and the intended canonical for the final item                                                                                       |
+| Content type schema | The type's `schema_type`, field mode and supported field map                                                                                                                    |
+| Custom JSON-LD      | Explicit `Page.json_ld`, for information genuinely represented by that Page. FAQ, recipe and event pages: the [structured data tools](../../tools/pages/#structured-data-tools) |
 
 The visible breadcrumbs and generated schema use resolved routes, including
 Content type prefixes. Do not paste a second BreadcrumbList to repair a route.

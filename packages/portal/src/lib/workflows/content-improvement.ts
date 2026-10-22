@@ -64,7 +64,7 @@ export const contentImprovementWorkflow: WorkflowDef = {
 
           ctx.log(`Improving "${page.title}"…`);
           const improvedHtml = await generateText(
-            ctx.orgId,
+            ctx,
             `You are improving an existing page. Keep the same topic and audience; rewrite for clarity, depth, and SEO. Use semantic HTML (h1, h2, h3, p, ul, etc.). Inline styles OK. Site CSS variables available: var(--color-primary), var(--color-accent), var(--spacing-md). Output only the HTML body — no <html>/<body> wrapper, no markdown fences.`,
             `Page title: ${page.title}\nCurrent HTML:\n${page.html_content ?? ''}\n\nProduce an improved HTML body.`,
             { maxTokens: 6000 }

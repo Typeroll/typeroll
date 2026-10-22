@@ -17,6 +17,8 @@ describe('agent-neutral workspace', () => {
     expect(await readWorkspace(dir)).toEqual(defaultWorkspace);
     expect(await read('AGENTS.md')).toContain('describe_tool');
     expect(await read('AGENTS.md')).not.toContain('loads them automatically');
+    // Help that used to live only in the portal chat reaches the workspace agent.
+    for (const pointer of ['tr-edit-site', 'add_faq_schema', 'tr-starter-design', 'ai_not_enabled']) expect(await read('AGENTS.md')).toContain(pointer);
     expect(await read('.gitignore')).toContain('.mcp.json');
     expect(await read('.gitignore')).toContain('.env');
     expect(await read('brief/site.md')).toContain('Editorial constraints');

@@ -14,6 +14,7 @@
  */
 
 import type { BreakpointWidths } from './breakpoints.js';
+import { apcaContrast, contrastRatio, formatContrast, onColorApca, onColorWcag, textContrast, type TextContrast, type TextSpec, type TextUse } from './contrast.js';
 
 export const STYLE_ELEMENT_ROLES = ['body', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'link'] as const;
 export type StyleElementRole = typeof STYLE_ELEMENT_ROLES[number];
@@ -22,14 +23,23 @@ export const STYLE_CLASS_ROLES = ['lead', 'eyebrow', 'small', 'quote', 'button',
 export type StyleClassRole = typeof STYLE_CLASS_ROLES[number];
 export type StyleRole = StyleElementRole | StyleClassRole;
 
-export const STYLE_TARGETS = ['text', 'heading', 'list', 'button', 'container'] as const;
+/**
+ * Kinds of element a style can be chosen for: a block's `style` field
+ * (`style_target`) and a block part (`BlockPart.target`, block-parts.ts)
+ * list the styles of their kind.
+ */
+export const STYLE_TARGETS = ['text', 'heading', 'list', 'button', 'container', 'link', 'image'] as const;
 export type StyleTarget = typeof STYLE_TARGETS[number];
 
 export const STYLE_BREAKPOINTS = ['tablet', 'laptop', 'desktop', 'wide'] as const;
 export type StyleBreakpoint = typeof STYLE_BREAKPOINTS[number];
 
 export const PALETTE_TOKENS = ['primary', 'secondary', 'accent', 'background', 'surface', 'text', 'text_light'] as const;
-/** Text colours derived for contrast on a palette colour: near-black or white, whichever reads better. */
+/**
+ * Text colours on a palette colour. Each is the site's explicit
+ * `colors.on_*` when set, else near-black or white, whichever reads better
+ * (see `onColorValue`).
+ */
 export const ON_COLOR_TOKENS = ['on_primary', 'on_secondary', 'on_accent'] as const;
 export const COLOR_TOKENS = [...PALETTE_TOKENS, ...ON_COLOR_TOKENS] as const;
 
@@ -58,7 +68,16 @@ export interface StyleProps {
   max_width?: string;
   radius?: string;
   border?: StyleBorder;
+  /** 0 (invisible) to 1 (opaque). */
+  opacity?: number;
+  /** A shadow preset; `none` removes one the block draws (e.g. an outline button's inset ring). */
+  shadow?: StyleShadow;
+  /** Space between the children of a flex or grid element: one length, or row and column. */
+  gap?: string;
 }
+
+export const STYLE_SHADOWS = { none: 'none', sm: '0 1px 2px rgb(0 0 0 / .08)', md: '0 4px 12px rgb(0 0 0 / .12)', lg: '0 12px 32px rgb(0 0 0 / .16)' } as const;
+export type StyleShadow = keyof typeof STYLE_SHADOWS;
 
 export interface SiteStyle {
   /** Stable slug; the class is `s-<id>`. */
@@ -78,10 +97,21 @@ export interface SiteStyle {
   /** Advanced CSS. `&` is the style's selector; only declarations and nested
    *  `&…` rules are allowed. */
   css?: string;
+  /**
+   * Block parts this style applies to on every instance by default, as
+   * `<block type id>.<part name>` (e.g. `core/rich_heading.link`). An
+   * instance's own choice (`part_styles`, or a style class on the element)
+   * wins. See block-parts.ts.
+   */
+  parts?: string[];
   updated_at?: string;
 }
 
 export const STYLE_ID_PATTERN = /^[a-z][a-z0-9-]{0,47}$/;
+/** A block part reference: `<block type id>.<part name>`, e.g. `core/rich_heading.link`. */
+export const BLOCK_PART_REF_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}(?:\/[a-z0-9][a-z0-9_-]{0,63})?\.[a-z][a-z0-9_]{0,31}$/;
+/** Most block parts one style may apply to site-wide. */
+export const MAX_STYLE_PARTS = 32;
 
 const LENGTH = /^(?:0|-?(?:\d+|\d*\.\d+)(?:px|rem|em|%|vw|vh|ch))$/;
 const CLAMP = /^(?:clamp|min|max)\([0-9a-z.%+\-*/,\s()]+\)$/;
@@ -94,12 +124,15 @@ const isColor = (value: unknown): value is string => typeof value === 'string' &
   (COLOR_TOKENS as readonly string[]).includes(value) || HEX.test(value) || FUNCTIONAL_COLOR.test(value) || ['transparent', 'inherit', 'currentColor'].includes(value));
 const isSpacing = (value: unknown): value is string => typeof value === 'string' && value.trim().split(/\s+/).length <= 4 && value.trim().split(/\s+/).every(part => isLength(part));
 
+/** Every style property, in the order generated CSS writes them. */
+export const STYLE_PROP_KEYS = ['font', 'size', 'weight', 'line_height', 'letter_spacing', 'transform', 'italic', 'color', 'background', 'align', 'decoration', 'space_before', 'space_after', 'padding', 'max_width', 'radius', 'border', 'opacity', 'shadow', 'gap'] as const;
+
 function propsErrors(props: unknown, where: string): string[] {
   if (props == null) return [];
   if (typeof props !== 'object' || Array.isArray(props)) return [`${where} must be an object`];
   const p = props as Record<string, unknown>;
   const errors: string[] = [];
-  const known = new Set(['font', 'size', 'weight', 'line_height', 'letter_spacing', 'transform', 'italic', 'color', 'background', 'align', 'decoration', 'space_before', 'space_after', 'padding', 'max_width', 'radius', 'border']);
+  const known = new Set<string>(STYLE_PROP_KEYS);
   for (const key of Object.keys(p)) if (!known.has(key)) errors.push(`${where}.${key} is not a style property`);
   const check = (key: string, ok: (value: unknown) => boolean, expected: string) => {
     if (p[key] !== undefined && !ok(p[key])) errors.push(`${where}.${key} must be ${expected}`);
@@ -117,6 +150,9 @@ function propsErrors(props: unknown, where: string): string[] {
   check('decoration', v => ['none', 'underline'].includes(v as string), 'none or underline');
   for (const key of ['space_before', 'space_after', 'max_width', 'radius']) check(key, isLength, 'a CSS length');
   check('padding', isSpacing, 'one to four CSS lengths');
+  check('opacity', v => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1, 'a number from 0 to 1');
+  check('shadow', v => typeof v === 'string' && Object.hasOwn(STYLE_SHADOWS, v), `one of ${Object.keys(STYLE_SHADOWS).join(', ')}`);
+  check('gap', v => isSpacing(v) && (v as string).trim().split(/\s+/).length <= 2, 'one or two CSS lengths');
   if (p.border !== undefined) {
     const b = p.border as Record<string, unknown>;
     if (!b || typeof b !== 'object' || Array.isArray(b)) errors.push(`${where}.border must be an object`);
@@ -150,7 +186,7 @@ export function validateSiteStyle(input: unknown): { style?: SiteStyle; errors: 
   if (!input || typeof input !== 'object' || Array.isArray(input)) return { errors: ['style must be an object'] };
   const s = input as Record<string, unknown>;
   const errors: string[] = [];
-  const known = new Set(['id', 'name', 'role', 'targets', 'description', 'base', 'at', 'hover', 'css', 'updated_at']);
+  const known = new Set(['id', 'name', 'role', 'targets', 'description', 'base', 'at', 'hover', 'css', 'parts', 'updated_at']);
   for (const key of Object.keys(s)) if (!known.has(key)) errors.push(`${key} is not a style field`);
   if (typeof s.id !== 'string' || !STYLE_ID_PATTERN.test(s.id)) errors.push('id must start with a letter and contain only a-z, 0-9 and - (max 48)');
   if (typeof s.name !== 'string' || !s.name.trim() || s.name.length > 80) errors.push('name is required (max 80 characters)');
@@ -173,6 +209,13 @@ export function validateSiteStyle(input: unknown): { style?: SiteStyle; errors: 
   }
   const cssError = cssFieldError(s.css);
   if (cssError) errors.push(cssError);
+  if (s.parts !== undefined) {
+    if (!Array.isArray(s.parts) || s.parts.length > MAX_STYLE_PARTS) errors.push(`parts must be a list of at most ${MAX_STYLE_PARTS} block parts`);
+    else {
+      for (const ref of s.parts) if (typeof ref !== 'string' || !BLOCK_PART_REF_PATTERN.test(ref)) errors.push(`parts: ${JSON.stringify(ref)} is not a block part; write <block type>.<part>, e.g. core/rich_heading.link (read_block_type lists a block's parts)`);
+      if (s.role && (STYLE_ELEMENT_ROLES as readonly string[]).includes(s.role as string) && s.parts.length) errors.push(`parts: a ${s.role} element role already styles every matching element; give the part a class style instead`);
+    }
+  }
   if (errors.length) return { errors };
   return {
     errors: [],
@@ -186,16 +229,18 @@ export function validateSiteStyle(input: unknown): { style?: SiteStyle; errors: 
       ...(s.at ? { at: s.at as SiteStyle['at'] } : {}),
       ...(s.hover ? { hover: s.hover as SiteStyle['hover'] } : {}),
       ...(s.css ? { css: s.css as string } : {}),
+      ...(Array.isArray(s.parts) && s.parts.length ? { parts: [...new Set(s.parts as string[])] } : {}),
       ...(typeof s.updated_at === 'string' ? { updated_at: s.updated_at } : {}),
     },
   };
 }
 
-/** Errors that concern the library as a whole (duplicate ids or roles). */
+/** Errors that concern the library as a whole (duplicate ids, roles or block parts). */
 export function siteStyleLibraryErrors(styles: SiteStyle[]): string[] {
   const errors: string[] = [];
   const ids = new Set<string>();
   const roles = new Set<string>();
+  const parts = new Map<string, string>();
   for (const style of styles) {
     if (ids.has(style.id)) errors.push(`Duplicate style id "${style.id}"`);
     ids.add(style.id);
@@ -203,63 +248,64 @@ export function siteStyleLibraryErrors(styles: SiteStyle[]): string[] {
       if (roles.has(style.role)) errors.push(`More than one style has the role "${style.role}"`);
       roles.add(style.role);
     }
+    for (const ref of style.parts ?? []) {
+      const owner = parts.get(ref);
+      if (owner) errors.push(`Both "${owner}" and "${style.id}" apply to the block part ${ref}; a part takes one site-wide style`);
+      else parts.set(ref, style.id);
+    }
   }
   return errors;
 }
 
 // ── Colour and contrast ─────────────────────────────────────────────────
 
-export type SiteColors = Partial<Record<typeof PALETTE_TOKENS[number], string>>;
+export type PaletteToken = typeof PALETTE_TOKENS[number];
+export type OnColorToken = typeof ON_COLOR_TOKENS[number];
+/** Palette colours plus the optional explicit text colours on primary, secondary and accent. */
+export type SiteColors = Partial<Record<PaletteToken | OnColorToken, string>>;
 
-const ON_LIGHT = '#111827';
-const ON_DARK = '#ffffff';
+/**
+ * From this render version the automatic on_* text colour is chosen by APCA
+ * instead of the WCAG 2 ratio. An explicit `colors.on_*` applies on every
+ * version.
+ */
+export const APCA_ON_COLOR_RENDER_VERSION = 8;
 
-function parseColor(value: string | undefined): [number, number, number, number] | null {
-  if (!value) return null;
-  const v = value.trim();
-  if (HEX.test(v)) {
-    let hex = v.slice(1);
-    if (hex.length <= 4) hex = [...hex].map(c => c + c).join('');
-    const n = (i: number) => parseInt(hex.slice(i, i + 2), 16);
-    return [n(0), n(2), n(4), hex.length === 8 ? n(6) / 255 : 1];
-  }
-  const rgb = v.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?\s*\)$/i);
-  if (rgb) {
-    const alpha = rgb[4] === undefined ? 1 : rgb[4].endsWith('%') ? parseFloat(rgb[4]) / 100 : parseFloat(rgb[4]);
-    return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), alpha];
-  }
-  return null;
+const ON_COLOR_VALUE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/** An explicit on_* colour: an opaque hex colour (#rgb or #rrggbb), so its contrast can be measured. */
+export function isOnColorValue(value: unknown): value is string {
+  return typeof value === 'string' && ON_COLOR_VALUE.test(value.trim());
+}
+
+/** The palette colour an on_* token is text on: on_primary → primary. */
+export function onColorBase(token: OnColorToken): PaletteToken {
+  return token.slice(3) as PaletteToken;
+}
+
+/**
+ * Near-black or white, whichever reads better on `background`: by the WCAG 2
+ * ratio before render version 8 (the output those versions always had), by
+ * APCA from version 8. WCAG 2 overrates dark text on mid-dark saturated
+ * colours: on #00a19c it picks #111827 (5.56:1, Lc 44) over white (3.19:1,
+ * Lc 63.9).
+ */
+export function onColor(background: string | undefined, renderVersion = 1): string {
+  return renderVersion >= APCA_ON_COLOR_RENDER_VERSION ? onColorApca(background) : onColorWcag(background);
+}
+
+/** The text colour an on_* token renders with: the site's explicit choice, else the automatic one. */
+export function onColorValue(token: OnColorToken, colors: SiteColors, renderVersion = 1): string {
+  const explicit = colors[token];
+  return isOnColorValue(explicit) ? explicit.trim() : onColor(colors[onColorBase(token)], renderVersion);
 }
 
 /** Resolve a style colour (token or literal) to a concrete colour string. */
-export function resolveStyleColor(value: string | undefined, colors: SiteColors): string | undefined {
+export function resolveStyleColor(value: string | undefined, colors: SiteColors, renderVersion = 1): string | undefined {
   if (!value) return undefined;
-  if ((ON_COLOR_TOKENS as readonly string[]).includes(value)) return onColor(colors[value.slice(3) as keyof SiteColors]);
-  if ((PALETTE_TOKENS as readonly string[]).includes(value)) return colors[value as keyof SiteColors];
+  if ((ON_COLOR_TOKENS as readonly string[]).includes(value)) return onColorValue(value as OnColorToken, colors, renderVersion);
+  if ((PALETTE_TOKENS as readonly string[]).includes(value)) return colors[value as PaletteToken];
   return value;
-}
-
-/** Near-black or white, whichever contrasts more with `background`. */
-export function onColor(background: string | undefined): string {
-  const light = contrastRatio(ON_LIGHT, background) ?? 0;
-  const dark = contrastRatio(ON_DARK, background) ?? 0;
-  return dark >= light ? ON_DARK : ON_LIGHT;
-}
-
-function luminance([r, g, b]: [number, number, number, number]): number {
-  const channel = (c: number) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
-  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-}
-
-/** WCAG contrast ratio, compositing a translucent foreground over the background. Null when unknown. */
-export function contrastRatio(foreground: string | undefined, background: string | undefined): number | null {
-  const bg = parseColor(background);
-  const fg = parseColor(foreground);
-  if (!bg || !fg || bg[3] < 1) return null;
-  const mix = (i: number) => fg[i] * fg[3] + bg[i] * (1 - fg[3]);
-  const blended: [number, number, number, number] = [mix(0), mix(1), mix(2), 1];
-  const [a, b] = [luminance(blended), luminance(bg)];
-  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
 function pxSize(size: string | undefined): number | null {
@@ -269,33 +315,151 @@ function pxSize(size: string | undefined): number | null {
   return m[2] === 'px' ? Number(m[1]) : Number(m[1]) * 16;
 }
 
+const HEADING_ROLES: readonly string[] = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+
 /**
- * Contrast problems for a style against the site's colours. Every breakpoint
- * is checked; large text (≥ 24px, or ≥ 18.66px bold) needs 3:1, other text
- * 4.5:1. Returns human-readable errors.
+ * How a style's text is read, for the contrast it needs. Headings, eyebrows
+ * and buttons are non-body text; small text is secondary (sub-fluent); body
+ * text, leads, quotes, links and sections are body text. A style without a
+ * standard role is non-body text only when it can be chosen for headings and
+ * buttons alone.
  */
-export function styleContrastErrors(style: SiteStyle, colors: SiteColors): string[] {
-  const errors: string[] = [];
+export function styleTextUse(style: Pick<SiteStyle, 'role' | 'targets'>): TextUse {
+  const role = style.role ?? '';
+  if (HEADING_ROLES.includes(role) || ['eyebrow', 'button', 'button_secondary'].includes(role)) return 'content';
+  if (role === 'small') return 'sub_fluent';
+  if (role) return 'body';
+  return style.targets.length && style.targets.every(target => target === 'heading' || target === 'button') ? 'content' : 'body';
+}
+
+export interface StyleContrastOptions {
+  /** Site render version: decides the automatic on_* colours. */
+  renderVersion?: number;
+  /**
+   * Where the style's text sits besides the site background: one entry per
+   * block part it styles (see `partContrastSurfaces` in block-parts.ts). A
+   * surface gives the text and background colour the part has when the style
+   * sets neither, and how its text is read.
+   */
+  surfaces?: readonly StyleContrastSurface[];
+  /** Measure only on `surfaces`, not also as a class style on the site background. */
+  surfacesOnly?: boolean;
+}
+
+/** The text and background a style's text has where it is used, when the style sets neither. */
+export interface StyleContrastSurface {
+  /** Shown in messages, e.g. `core/hero.primary_button`. */
+  label: string;
+  /** Colour token or colour of the text when the style sets none (default `text`). */
+  color?: string;
+  /** Colour token or colour behind the text when the style sets none (default `background`). */
+  background?: string;
+  /** How the text is read; defaults to the style's own use (`styleTextUse`). */
+  use?: TextUse;
+}
+
+export interface StyleContrastReport {
+  /** Fails both APCA and WCAG 2 AA: the style is refused. */
+  errors: string[];
+  /** Fails APCA but meets WCAG 2 AA: accepted, reported. */
+  warnings: string[];
+}
+
+/**
+ * Text contrast of a style against the site's colours, at every breakpoint
+ * and on hover.
+ *
+ * APCA decides (`requiredContrast`, by the text's use, size and weight). A
+ * style that misses its APCA level but meets WCAG 2 AA is accepted with a
+ * warning: WCAG 2 AA is the legal baseline many sites must meet, and every
+ * style accepted before APCA stays accepted. A style that fails both is
+ * clearly unreadable and refused. Messages give both measures.
+ *
+ * With `surfaces`, the style is also measured where each block part it
+ * styles sits, e.g. on a primary button's `primary` background unless the
+ * style sets its own.
+ */
+export function styleContrastReport(style: SiteStyle, colors: SiteColors, opts: StyleContrastOptions = {}): StyleContrastReport {
+  const renderVersion = opts.renderVersion ?? 1;
+  const report: StyleContrastReport = { errors: [], warnings: [] };
+  const ownUse = styleTextUse(style);
+  const defaultWeight = HEADING_ROLES.includes(style.role ?? '') ? 700 : 400;
+  const reported = new Set<string>();
+  const check = (where: string, colorToken: string, backgroundToken: string, props: StyleProps, use: TextUse) => {
+    const fg = resolveStyleColor(colorToken, colors, renderVersion);
+    const bg = resolveStyleColor(backgroundToken, colors, renderVersion);
+    const measured = textContrast(fg, bg, { use, px: pxSize(props.size), weight: props.weight ?? defaultWeight });
+    if (!measured || measured.apca_pass) return;
+    const { required } = measured;
+    const pair = `${style.name} (${where}): ${measured.text} on ${measured.background} is ${formatContrast(measured)}`;
+    if (reported.has(pair)) return;
+    reported.add(pair);
+    if (!measured.wcag_pass) {
+      report.errors.push(`${pair}. ${required.label} needs APCA Lc ${required.lc} or WCAG 2 ${required.wcag}:1. Choose a text colour with more contrast or a different background.`);
+      return;
+    }
+    let hint = '';
+    if ((ON_COLOR_TOKENS as readonly string[]).includes(colorToken) && !isOnColorValue(colors[colorToken as OnColorToken])) {
+      const apcaChoice = onColor(bg, APCA_ON_COLOR_RENDER_VERSION);
+      if (apcaChoice !== fg) hint = ` Render version ${APCA_ON_COLOR_RENDER_VERSION} chooses ${apcaChoice} for ${colorToken} here; or set colors.${colorToken}.`;
+    }
+    report.warnings.push(`${pair}: below APCA Lc ${required.lc} for ${required.label}, accepted because it meets WCAG 2 AA (${required.wcag}:1).${hint}`);
+  };
+  const surfaces: Array<{ label?: string; color: string; background: string; use: TextUse }> = [
+    ...(opts.surfacesOnly && opts.surfaces?.length ? [] : [{ color: 'text', background: 'background', use: ownUse }]),
+    ...(opts.surfaces ?? []).map(surface => ({ label: surface.label, color: surface.color ?? 'text', background: surface.background ?? 'background', use: surface.use ?? ownUse })),
+  ];
   const layers: [string, StyleProps][] = [['base', style.base], ...STYLE_BREAKPOINTS.filter(bp => style.at?.[bp]).map(bp => [bp, style.at![bp]!] as [string, StyleProps])];
-  let props: StyleProps = {};
-  for (const [where, layer] of layers) {
-    props = { ...props, ...layer };
-    const fg = resolveStyleColor(props.color ?? 'text', colors);
-    const bg = resolveStyleColor(props.background ?? 'background', colors);
-    const ratio = contrastRatio(fg, bg);
-    if (ratio === null) continue;
-    const px = pxSize(props.size);
-    const large = px !== null && (px >= 24 || (px >= 18.66 && (props.weight ?? 400) >= 700));
-    const required = large ? 3 : 4.5;
-    if (ratio < required) errors.push(`${style.name} (${where}): text contrast ${ratio.toFixed(2)}:1 is below ${required}:1. Choose a darker text colour or a different background.`);
+  for (const surface of surfaces) {
+    const at = (where: string) => surface.label ? `${where} on ${surface.label}` : where;
+    let props: StyleProps = {};
+    for (const [where, layer] of layers) {
+      props = { ...props, ...layer };
+      check(at(where), props.color ?? surface.color, props.background ?? surface.background, props, surface.use);
+    }
+    if (style.hover?.color || style.hover?.background) {
+      check(at('hover'), style.hover.color ?? props.color ?? surface.color, style.hover.background ?? props.background ?? surface.background, props, surface.use);
+    }
   }
-  if (style.hover?.color || style.hover?.background) {
-    const fg = resolveStyleColor(style.hover.color ?? props.color ?? 'text', colors);
-    const bg = resolveStyleColor(style.hover.background ?? props.background ?? 'background', colors);
-    const ratio = contrastRatio(fg, bg);
-    if (ratio !== null && ratio < 4.5) errors.push(`${style.name} (hover): text contrast ${ratio.toFixed(2)}:1 is below 4.5:1.`);
-  }
-  return errors;
+  return report;
+}
+
+/** Contrast errors for a style: text that fails both APCA and WCAG 2 AA. See `styleContrastReport`. */
+export function styleContrastErrors(style: SiteStyle, colors: SiteColors, opts: StyleContrastOptions = {}): string[] {
+  return styleContrastReport(style, colors, opts).errors;
+}
+
+export interface OnColorContrast extends TextContrast {
+  token: OnColorToken;
+  /** True when the site set the colour; false for the automatic choice. */
+  explicit: boolean;
+}
+
+/**
+ * The on_* text colours a site renders with and their contrast on their
+ * palette colour, measured as text on a button (16px at weight 600, APCA
+ * Lc 60).
+ */
+export function onColorContrasts(colors: SiteColors, renderVersion = 1): OnColorContrast[] {
+  return ON_COLOR_TOKENS.flatMap(token => {
+    const measured = textContrast(onColorValue(token, colors, renderVersion), colors[onColorBase(token)], ON_COLOR_TEXT);
+    return measured ? [{ ...measured, token, explicit: isOnColorValue(colors[token]) }] : [];
+  });
+}
+
+/** The text on_* colours are measured for: button text, 16px at weight 600. */
+export const ON_COLOR_TEXT: TextSpec = { use: 'content', px: 16, weight: 600 };
+
+/**
+ * Warnings for explicit on_* colours that do not reach the button level
+ * (APCA Lc 60 at 16px/600). The colour is kept: it is the site's choice.
+ */
+export function onColorWarnings(colors: SiteColors, renderVersion = 1): string[] {
+  return onColorContrasts(colors, renderVersion).filter(item => item.explicit && !item.apca_pass).map(item => {
+    const automatic = onColor(item.background, renderVersion);
+    const alternative = automatic.toLowerCase() === item.text.toLowerCase() ? '' : ` The automatic choice would be ${automatic} (${formatContrast({ lc: apcaContrast(automatic, item.background) ?? 0, wcag: contrastRatio(automatic, item.background) ?? 0 })}).`;
+    return `colors.${item.token} ${item.text} on ${onColorBase(item.token)} ${item.background} is ${formatContrast(item)}, below APCA Lc ${item.required.lc} for ${item.required.label} such as buttons.${alternative}`;
+  });
 }
 
 // ── CSS generation ──────────────────────────────────────────────────────
@@ -329,6 +493,9 @@ function declarations(p: StyleProps): string[] {
     const side = b.sides && b.sides !== 'all' ? `-${b.sides}` : '';
     out.push(`border${side}:${value}`);
   }
+  if (p.opacity !== undefined) out.push(`opacity:${p.opacity}`);
+  if (p.shadow) out.push(`box-shadow:${STYLE_SHADOWS[p.shadow]}`);
+  if (p.gap) out.push(`gap:${p.gap}`);
   return out;
 }
 
@@ -371,11 +538,34 @@ function scopedCss(css: string, selector: string): string {
   return trimmed.replace(/&/g, selector);
 }
 
+/**
+ * The rules of a class style for the given selectors: base values, each
+ * breakpoint upward, hover and the scoped advanced CSS. Each selector must be
+ * one complex selector (no top-level comma), since hover and `&` attach to it.
+ * Block parts reuse this with their own selectors (block-parts.ts).
+ */
+export function styleRules(style: SiteStyle, selectors: readonly string[], breakpoints: BreakpointWidths): string[] {
+  const rules: string[] = [];
+  const selector = selectors.join(',');
+  const base = declarations(style.base);
+  if (base.length) rules.push(`${selector}{${base.join(';')}}`);
+  for (const bp of STYLE_BREAKPOINTS) {
+    const decls = style.at?.[bp] ? declarations(style.at[bp]!) : [];
+    if (decls.length) rules.push(`@media (min-width:${breakpoints[bp]}px){${selector}{${decls.join(';')}}}`);
+  }
+  if (style.hover) {
+    const hover = declarations(style.hover);
+    if (hover.length) rules.push(`${selectors.map(one => `${one}:hover`).join(",")}{${hover.join(";")}}`);
+  }
+  if (style.css) for (const one of selectors) rules.push(scopedCss(style.css, one));
+  return rules;
+}
+
 export interface SiteStylesCssOptions {
   breakpoints: BreakpointWidths;
-  /** Site palette, used to derive the on_* text colours. */
+  /** Site palette, used to derive the on_* text colours (explicit `on_*` values win). */
   colors: SiteColors;
-  /** Site render version (render-version.ts); version 2 adds role defaults and a readable --color-primary-fg, version 3 palette-derived theme tokens. */
+  /** Site render version (render-version.ts); version 2 adds role defaults and a readable --color-primary-fg, version 3 palette-derived theme tokens, version 8 the APCA choice of on_* colours. */
   renderVersion?: number;
 }
 
@@ -387,15 +577,19 @@ export interface SiteStylesCssOptions {
 export const STYLE_DEFAULT_ROLE_CLASSES: readonly StyleClassRole[] = ['eyebrow', 'lead'];
 
 /**
- * CSS for a site's style library. Empty for a site without styles. Class
+ * CSS for a site's style library and its on_* text colours. Empty for a
+ * site on render version 1 without styles or explicit on_* colours. Class
  * styles get an id-level specificity boost so a chosen style wins over the
  * block's own default appearance (but not over `!important` utilities).
  */
 export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteStylesCssOptions): string {
   // Re-validate: stored data is rendered into a <style> element.
   const styles = (Array.isArray(input) ? input : []).flatMap(value => validateSiteStyle(value).style ?? []);
-  const v2 = (opts.renderVersion ?? 1) >= 2;
-  if (!styles.length && !v2) return '';
+  const renderVersion = opts.renderVersion ?? 1;
+  const v2 = renderVersion >= 2;
+  // An explicit on_* colour is the site's choice and applies on every version.
+  const explicit = new Set(ON_COLOR_TOKENS.filter(token => isOnColorValue(opts.colors[token])));
+  if (!styles.length && !v2 && !explicit.size) return '';
   const defaultRoles = new Set<string>();
   const rootByBp = new Map<string, string[]>();
   const rules: string[] = [];
@@ -413,27 +607,18 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
       defaultRoles.add(role);
       selectors.push(`.tr-role-${role}:not(#\\#)`);
     }
-    const selector = selectors.join(',');
-    const base = declarations(style.base);
-    if (base.length) rules.push(`${selector}{${base.join(';')}}`);
-    for (const bp of STYLE_BREAKPOINTS) {
-      const decls = style.at?.[bp] ? declarations(style.at[bp]!) : [];
-      if (decls.length) rules.push(`${media(bp)}{${selector}{${decls.join(';')}}}`);
-    }
-    if (style.hover) {
-      const hover = declarations(style.hover);
-      if (hover.length) rules.push(`${selectors.map(one => `${one}:hover`).join(",")}{${hover.join(";")}}`);
-    }
-    if (style.css) for (const one of selectors) rules.push(scopedCss(style.css, one));
+    rules.push(...styleRules(style, selectors, opts.breakpoints));
   }
   const root: string[] = [];
-  pushRoot('base', ON_COLOR_TOKENS.map(token => `--color-${token.replace('_', '-')}:${onColor(opts.colors[token.slice(3) as keyof SiteColors])}`));
+  pushRoot('base', ON_COLOR_TOKENS.map(token => `--color-${token.replace('_', '-')}:${onColorValue(token, opts.colors, renderVersion)}`));
   if (rootByBp.get('base')?.length) root.push(`:root{${rootByBp.get('base')!.join(';')}}`);
   // Zero specificity, so a site's own values still win.
-  if (v2) root.push(`:where(:root){--color-primary-fg:var(--color-on-primary)}`);
+  if (v2 || explicit.has('on_primary')) root.push(`:where(:root){--color-primary-fg:var(--color-on-primary)}`);
+  // An explicit on_secondary also reaches secondary buttons before version 3 defines the token.
+  if (renderVersion < 3 && explicit.has('on_secondary')) root.push(`:where(:root){--color-secondary-fg:var(--color-on-secondary)}`);
   // Version 3: theme tokens blocks reference but no version defined, derived
   // from the palette instead of each block's hard-coded fallback grey.
-  if ((opts.renderVersion ?? 1) >= 3) root.push(`:where(:root){--color-bg:var(--color-background);--color-bg-subtle:var(--color-surface);--color-border:color-mix(in srgb,var(--color-text) 18%,var(--color-background));--color-secondary-fg:var(--color-on-secondary)}`);
+  if (renderVersion >= 3) root.push(`:where(:root){--color-bg:var(--color-background);--color-bg-subtle:var(--color-surface);--color-border:color-mix(in srgb,var(--color-text) 18%,var(--color-background));--color-secondary-fg:var(--color-on-secondary)}`);
   for (const bp of STYLE_BREAKPOINTS) if (rootByBp.get(bp)?.length) root.push(`${media(bp)}{:root{${rootByBp.get(bp)!.join(';')}}}`);
   return [...root, ...rules].join('\n');
 }

@@ -62,6 +62,7 @@ import {
   siteContext,
   STICKY_HEADER_RUNTIME_JS,
   pageIdentityAttributes,
+  type FormBlockOptions,
 } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { paths } from '@typeroll/shared';
@@ -314,6 +315,8 @@ export async function renderPreview(
     includeScripts: opts.allowScripts === true,
     renderVersion,
     globalBlockSource,
+    // Block part styles, as the published build emits them.
+    siteStyles: { styles: settings.styles, breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints) },
   });
   blockCss = assets.css;
   blockJs = assets.js;
@@ -436,7 +439,10 @@ export async function renderBlockTypePreview(
     renderBlocks([block], { registry, context, pageSource, onMissingType, renderVersion, globalBlockSource }),
     settings.iframe_allowed_hosts,
   );
-  const css = collectBlockAssets([block], registry, { includeScripts: false, renderVersion, globalBlockSource }).css;
+  const css = collectBlockAssets([block], registry, {
+    includeScripts: false, renderVersion, globalBlockSource,
+    siteStyles: { styles: settings.styles, breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints) },
+  }).css;
   const page = {
     id: 'block-preview', title: `${type.label} preview`, slug: 'block-preview', status: 'draft',
     content_mode: 'blocks', blocks: [block], noindex: true,
@@ -695,7 +701,7 @@ async function previewFormSource(orgId: string, siteId: string, blockRegistry: R
       try { return [form.id, await resolveAppFormEndpoint(form, { orgId, siteId, portalUrl: (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '') })] as const; }
       catch (error) { return [form.id, error instanceof Error ? error : new Error('Form app unavailable')] as const; }
     })));
-    return (formId: string) => {
+    return (formId: string, block?: FormBlockOptions) => {
       const form = byId.get(formId);
       if (!form || (form.steps?.length ?? 0) === 0) return undefined;
       assetBlocks.push(...form.steps!.flatMap((step) => step.blocks ?? []));
@@ -712,6 +718,7 @@ async function previewFormSource(orgId: string, siteId: string, blockRegistry: R
         registry: blockRegistry,
         lang: (settings as { language?: string }).language,
         renderVersion: resolveRenderVersion(settings.render_version),
+        submit_label: block?.submit_label,
       });
     };
 

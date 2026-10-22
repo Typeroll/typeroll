@@ -138,6 +138,11 @@ await (async function sitewideNoindexScenario() {
 // to a temp tree, drop in an enabled apps doc, build, and assert the beacon +
 // its token appear in the output. This pins the getAppsPublic → BaseLayout
 // injection path.
+//
+// The cookie banner is ON here: Cloudflare Web Analytics is cookieless, so the
+// beacon must load directly — never held inert by the consent gate the way
+// cookie-setting integration tags are — and carry only its token (no options
+// that would add storage or change what it collects).
 await (async function analyticsBeaconScenario() {
   const tmpFixtures = mkdtempSync(join(tmpdir(), 'tr-smoke-fx-'));
   const tmpOut = mkdtempSync(join(tmpdir(), 'tr-smoke-out-'));
@@ -153,6 +158,13 @@ await (async function analyticsBeaconScenario() {
     join(appsDir, 'default.json'),
     JSON.stringify({ apps: { analytics: { enabled: true, config: { beacon_token: TOKEN } } } }),
   );
+  const settingsPath = join(
+    tmpFixtures, 'organizations', 'default', 'sites', 'default',
+    'versions', 'main', 'settings', 'default.json',
+  );
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  settings.cookie_consent = { enabled: true, text: 'We use cookies.' };
+  writeFileSync(settingsPath, JSON.stringify(settings));
 
   log('[apps-analytics-beacon] building with the analytics app enabled…');
   await new Promise((res) => {
@@ -178,7 +190,23 @@ await (async function analyticsBeaconScenario() {
       if (!html.includes(TOKEN)) {
         fail('[apps-analytics-beacon] beacon token missing from output');
       }
-      log('[apps-analytics-beacon] ✓ beacon injected with token');
+      if (!html.includes('tr-consent-needed')) {
+        fail('[apps-analytics-beacon] cookie banner missing, so independence from it was not exercised');
+      }
+      const tags = html.match(/<script\b[^>]*static\.cloudflareinsights\.com\/beacon\.min\.js[^>]*>/g) ?? [];
+      if (tags.length !== 1) fail(`[apps-analytics-beacon] expected one beacon script tag, found ${tags.length}`);
+      const tag = tags[0] ?? '';
+      if (/\btype=/.test(tag) || /data-tr-consent/.test(tag) ||
+          !/\bsrc="https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js"/.test(tag)) {
+        fail(`[apps-analytics-beacon] beacon must load directly, independent of the cookie banner: ${tag}`);
+      }
+      const config = (/data-cf-beacon="([^"]*)"/.exec(tag)?.[1] ?? '').replace(/&quot;|&#34;/g, '"');
+      let parsed = null;
+      try { parsed = JSON.parse(config); } catch { /* reported below */ }
+      if (!parsed || JSON.stringify(Object.keys(parsed)) !== '["token"]' || parsed.token !== TOKEN) {
+        fail(`[apps-analytics-beacon] beacon configuration must carry only its token: ${config}`);
+      }
+      log('[apps-analytics-beacon] ✓ beacon injected with token, independent of the cookie banner');
       res();
     });
   });

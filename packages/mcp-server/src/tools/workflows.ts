@@ -6,6 +6,11 @@
 import { z } from 'zod';
 import { ok, versionParam, withErrorBoundary, type ToolDef } from './helpers.js';
 
+// Run by the portal with the Organization's own AI key; without access for the
+// Site the run fails with failure_code ai_not_enabled. The agent then does the
+// work itself with the named recipe instead of retrying.
+const AI_WORKFLOWS = 'AI workflows — site_planning, content_generation, content_improvement and schema_markup — call the model with the Organization\'s own AI key and need AI access for this Site; without it the run fails with failure_code "ai_not_enabled" (failure_reason: the AI assistant is not enabled for this site). Do not retry or work around it: you are an AI agent, so do the same work yourself and tell the user you did — site_planning: tr-new-site (propose the page structure, get approval, then build); content_generation: tr-content-write (draft page); content_improvement: tr-content-write on the weakest published pages (thin text, missing seo_title/seo_description, stale), as unsaved drafts for review; schema_markup: tr-seo step 5 (add_faq_schema, add_recipe_schema, add_event_schema or json_ld). seo_audit still runs without AI and returns its issue list unprioritized. Enabling the portal AI is the Organization owner\'s or admin\'s choice, never a prerequisite for you.';
+
 const WORKFLOW_TYPES = [
   'migration', 'site_planning', 'seo_audit', 'content_improvement', 'link_check',
   'performance_audit', 'content_generation', 'schema_markup', 'url_parity', 'rebuild_deploy',
@@ -14,13 +19,13 @@ const WORKFLOW_TYPES = [
 export const workflowTools: ToolDef[] = [
   {
     name: 'list_workflows',
-    description: 'List the workflow types this Site can run (label, description, steps, required_permission) and its most recent runs with status. Read only. Migration, site planning and URL parity pause for review; check get_workflow for paused_for_review.',
+    description: 'List the workflow types this Site can run (label, description, steps, required_permission) and its most recent runs with status. Read only. Migration, site planning and URL parity pause for review; check get_workflow for paused_for_review. Site planning, content generation, content improvement and schema markup need the Organization\'s AI key for this Site (see start_workflow).',
     inputSchema: { limit: z.number().int().min(1).max(100).optional() },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, 'workflows', args.limit ? { limit: args.limit } : undefined))),
   },
   {
     name: 'start_workflow',
-    description: 'Start a server-side workflow on this Site; it runs in the background and returns workflow_id. Poll get_workflow. Config per type (same fields as the portal form): migration { wp_url, helper_api_key? } (needs verified organization import storage); site_planning { business_description }; content_generation { topic, tone?, audience? }; content_improvement { limit? }; url_parity { target_origin?, source_origin?, check_source?, statuses? }; rebuild_deploy { environment: staging | production }; seo_audit, link_check, performance_audit and schema_markup take none. Needs write permission; rebuild_deploy publishes and needs admin. Workflows that change content write to the given version (default main) — get the user\'s agreement first.',
+    description: 'Start a server-side workflow on this Site; it runs in the background and returns workflow_id. Poll get_workflow. Config per type (same fields as the portal form): migration { wp_url, helper_api_key? } (needs verified organization import storage); site_planning { business_description }; content_generation { topic, tone?, audience? }; content_improvement { limit? }; url_parity { target_origin?, source_origin?, check_source?, statuses? }; rebuild_deploy { environment: staging | production }; seo_audit, link_check, performance_audit and schema_markup take none. Needs write permission; rebuild_deploy publishes and needs admin. Workflows that change content write to the given version (default main) — get the user\'s agreement first. ' + AI_WORKFLOWS,
     inputSchema: {
       type: z.enum(WORKFLOW_TYPES),
       config: z.record(z.unknown()).optional(),
@@ -31,7 +36,7 @@ export const workflowTools: ToolDef[] = [
   },
   {
     name: 'get_workflow',
-    description: 'Read one workflow run: status (pending | running | paused_for_review | completed | failed), current step, progress, log, review_message/review_data when paused, results and failure_reason. Credential config is masked.',
+    description: 'Read one workflow run: status (pending | running | paused_for_review | completed | failed), current step, progress, log, review_message/review_data when paused, results, failure_reason and failure_code (newer Core; older Core reports failure_reason only). Credential config is masked. failure_code "ai_not_enabled" (or a failure_reason saying the AI assistant is not enabled for this site) means the Site has no portal AI access: do the work yourself with the recipe named in start_workflow instead of retrying.',
     inputSchema: { workflow_id: z.string() },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, `workflows/${encodeURIComponent(args.workflow_id)}`))),
   },
@@ -55,7 +60,7 @@ export const workflowTools: ToolDef[] = [
   {
     name: 'create_site_and_plan',
     noSite: true,
-    description: 'Create a new Site in the Organization and start AI site planning from a business description, like "Plan a new site with AI" on the New site page. Requires an organization API key. The plan pauses for review: read it with get_workflow and approve_workflow only after the user agrees.',
+    description: 'Create a new Site in the Organization and start AI site planning from a business description, like "Plan a new site with AI" on the New site page. Requires an organization API key. Needs the Organization\'s own AI key with site access "all" (read_organization_ai_settings); otherwise it answers 403 ai_not_enabled and creates nothing — then create_site a blank Site and plan it yourself with tr-new-site (propose the pages, get the user\'s approval, build), and say that you did; enabling the portal AI is the owner\'s or admin\'s choice, not a prerequisite. The plan pauses for review: read it with get_workflow and approve_workflow only after the user agrees.',
     inputSchema: {
       name: z.string().min(1),
       business_description: z.string().min(1).describe('What the business does, for whom, and what sets it apart.'),

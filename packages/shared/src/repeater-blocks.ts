@@ -8,6 +8,7 @@ import { pixels } from './presentation-fields.js';
 // with curated defaults — see `BlockType.expand_to`.
 
 import type { BlockType } from './types.js';
+import { CAROUSEL_RUNTIME } from './block-media.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
 
@@ -25,6 +26,14 @@ const repeater: BlockType = {
   icon: 'list-tree',
   category: 'layout',
   container: 'repeater',
+  // The carousel controls after the track (render version 7), anchored at
+  // the root so a carousel nested in an item keeps its own. The aliases
+  // (core/gallery, core/testimonials …) render as this block and share them.
+  parts: [
+    { name: 'carousel_controls', label: 'Carousel controls', selector: '> .tr-carousel-controls', target: 'container', decorative: true, min_render_version: 7 },
+    { name: 'carousel_button', label: 'Carousel arrow and pause buttons', selector: '> .tr-carousel-controls > .tr-carousel-button', target: 'button', min_render_version: 7 },
+    { name: 'carousel_dot', label: 'Carousel dots', selector: '> .tr-carousel-controls > .tr-carousel-dots > .tr-carousel-dot', target: 'button', decorative: true, min_render_version: 7 },
+  ],
   schema: [
     // SOURCE
     { name: 'source_type', type: 'select', label: 'Source',
@@ -46,6 +55,9 @@ const repeater: BlockType = {
     // `limit`. One paginated listing per page (the first found drives the
     // routes).
     { name: 'paginate', type: 'number', label: 'Items per page (archive)', min: 1 },
+    // Each page link and the current page, styled like a button; the current
+    // page is `&[aria-current="page"]` in the style's advanced CSS.
+    { name: 'pager_link_style_id', type: 'style', label: 'Page link style (archive)', style_target: 'button' },
     { name: 'sort_by', type: 'text', label: 'Sort field (empty = content type default)', default: '' },
     { name: 'sort_order', type: 'select', label: 'Sort direction', options: ['', 'asc', 'desc'], default: '' },
     { name: 'filter_field', type: 'text', label: 'Filter on field' },
@@ -54,6 +66,7 @@ const repeater: BlockType = {
     { name: 'group_by', type: 'text', label: 'Group by field' },
     { name: 'group_sort_order', type: 'select', label: 'Group order', options: ['asc', 'desc'], default: 'asc' },
     { name: 'group_heading_level', type: 'select', label: 'Group heading level', options: ['h2', 'h3', 'h4'], default: 'h2' },
+    { name: 'group_title_style_id', type: 'style', label: 'Group title style', style_target: 'heading' },
     { name: 'ungrouped_label', type: 'text', label: 'Ungrouped label', default: 'Other' },
 
     // ITEM BLOCK
@@ -445,6 +458,33 @@ const collectionList: BlockType = {
 /**
  * Ordered for the editor's block picker.
  */
+// Render version 7: the carousel's items scroll in a track inside the block,
+// with arrows, dots and autoplay controls after it (block-media.ts). The
+// block root stays the first element, so visibility and style overrides land
+// where they did.
+const CAROUSEL_V6 = `[data-block="repeater"][data-layout="carousel"] {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: var(--gap_px, var(--rep-gap));
+  scrollbar-width: thin;
+}
+[data-block="repeater"][data-layout="carousel"] > * { flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap))) / var(--cols, 3)); scroll-snap-align: start; }`;
+const CAROUSEL_V7 = `[data-block="repeater"][data-layout="carousel"] { position: relative; }
+[data-block="repeater"][data-layout="carousel"] > .tr-carousel-track {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: var(--gap_px, var(--rep-gap));
+  scrollbar-width: thin; scroll-behavior: smooth;
+}
+[data-block="repeater"][data-layout="carousel"] > .tr-carousel-track > * { flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap))) / var(--cols, 3)); scroll-snap-align: start; }
+[data-block="repeater"] > .tr-carousel-controls { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; }
+[data-block="repeater"] > .tr-carousel-controls[hidden], [data-block="repeater"] .tr-carousel-button[hidden] { display: none; }
+[data-block="repeater"] .tr-carousel-button { inline-size: 2.5rem; block-size: 2.5rem; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid currentColor; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
+[data-block="repeater"] .tr-carousel-button:disabled { opacity: 0.4; cursor: default; }
+[data-block="repeater"] .tr-carousel-dots { display: flex; flex-wrap: wrap; justify-content: center; }
+[data-block="repeater"] .tr-carousel-dot { inline-size: 24px; block-size: 24px; padding: 7px; border: 0; border-radius: 50%; background: currentColor; background-clip: content-box; opacity: 0.35; cursor: pointer; }
+[data-block="repeater"] .tr-carousel-dot[aria-current="true"] { opacity: 1; }
+[data-block="repeater"] .tr-carousel-button:focus-visible, [data-block="repeater"] .tr-carousel-dot:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { [data-block="repeater"][data-layout="carousel"] > .tr-carousel-track { scroll-behavior: auto; } }`;
+if (!repeater.styles!.includes(CAROUSEL_V6)) throw new Error('repeater carousel styles changed; update CAROUSEL_V6');
+repeater.render_versions = [{ from: 7, styles: repeater.styles!.replace(CAROUSEL_V6, CAROUSEL_V7), script: CAROUSEL_RUNTIME }];
+
 export const REPEATER_BLOCK_TYPES: readonly BlockType[] = [
   repeater,
   gallery,

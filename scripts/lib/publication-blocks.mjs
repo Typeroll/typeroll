@@ -173,6 +173,28 @@ export function projectPublicationBlockTypes(blockTypes, coreBlockTypes) {
       if (!Array.isArray(definition[name]) || definition[name].some(value => typeof value !== 'string')) throw new Error('Invalid publication block metadata');
       result[name] = [...definition[name]];
     }
+    // Block parts are public renderer declarations like the template; part
+    // styles in block data and site styles resolve against them.
+    if (definition.parts !== undefined) {
+      if (!Array.isArray(definition.parts) || definition.parts.some(part => !object(part))) throw new Error('Invalid publication block parts');
+      result.parts = definition.parts.map(part => {
+        const projected = {};
+        for (const name of ['name', 'label', 'selector', 'target', 'style_field', 'color', 'background', 'background_field']) {
+          if (part[name] === undefined) continue;
+          if (typeof part[name] !== 'string') throw new Error('Invalid publication block part');
+          projected[name] = part[name];
+        }
+        if (part.decorative !== undefined) {
+          if (typeof part.decorative !== 'boolean') throw new Error('Invalid publication block part');
+          projected.decorative = part.decorative;
+        }
+        if (part.min_render_version !== undefined) {
+          if (!Number.isInteger(part.min_render_version)) throw new Error('Invalid publication block part');
+          projected.min_render_version = part.min_render_version;
+        }
+        return projected;
+      });
+    }
     if (definition.expand_to !== undefined) {
       const target = definitions.find(candidate => candidate.id === definition.expand_to.target);
       if (!target) throw new Error('Publication block alias target is missing');

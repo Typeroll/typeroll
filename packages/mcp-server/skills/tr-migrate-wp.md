@@ -5,6 +5,10 @@ description: Use when the user asks to migrate a WordPress site to Typeroll, men
 
 # Migrate from WordPress to Typeroll
 
+**Who runs this:** this recipe is for the user's own AI agent (Claude Code, Codex or
+another MCP client) working through MCP and the public API. The portal's built-in
+AI assistant has no migration tools: it does not import, convert or verify sites.
+
 **Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
 Complete its source baseline and one verified prototype per active template.
 Read target content to protect edits, not to justify accidental target defaults.
@@ -73,6 +77,9 @@ Then the ordinary preconditions:
   appearance unless a redesign is explicitly requested.
 - If the target already has content, you must NOT clobber it — always
   `list_pages` first and only write to slugs that don't already exist.
+  Pass the slug explicitly: `create_page` then refuses an address that is
+  already in use (409 `slug_in_use` naming the existing page) instead of
+  numbering it.
 
 ## Recipe
 
@@ -143,6 +150,9 @@ a. Fetch from WP. Prefer the helper plugin's authenticated endpoint
 b. Clean the HTML. Strip Elementor / Gutenberg / Breakdance class
    soup. Drop empty `<div>` and `<span>` wrappers. Keep semantic tags,
    tables, iframes from known hosts (YouTube / Vimeo / Calendly).
+   Remove every `<script>`: plugin and theme JavaScript is never copied.
+   Analytics and advertising tags move to the Integrations app behind the
+   cookie banner (tr-migration-evidence, "Scripts, tracking and consent").
 
 c. Migrate referenced images with `upload_media_from_url`. The customer's
    transfer Worker copies and verifies them directly in R2. Use the returned
@@ -288,6 +298,11 @@ get_deploy_status job_id=<id>    # poll
 - **Image bandwidth.** R2 upload is metered. Use `find_pages_matching`
   contains="<old-domain>" on already-imported content to spot images
   that weren't transferred.
+- **Plugin JavaScript.** Never copy scripts from plugins, the theme or
+  WordPress core into settings, pages, partials or block types, and never
+  copy the cookie plugin. Carry analytics and advertising over by ID in the
+  Integrations app with `cookie_consent.enabled: true`. The launch report
+  fails on copied source scripts and on tracking outside consent.
 - **WP-specific JSON-LD** (Yoast, Rank Math) is usually wrong after a
   redesign because it references old URLs. Strip it; let Typeroll
   emit fresh Article/Page schemas via `kind: 'article'` + `author`.

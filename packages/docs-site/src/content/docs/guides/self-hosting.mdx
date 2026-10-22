@@ -52,7 +52,8 @@ reference profile.
 - **Firebase:** Firestore Native mode, Authentication, and a Firebase Web App
 - **Cloudflare account** with R2 for media and Pages for static site output
 - Two public DNS names for the portal and Forms origins
-- **Optional:** Anthropic API key for AI chat
+- **Optional:** each Organization's own Anthropic API key for the built-in AI
+  assistant, added in the portal (no server variable)
 
 ## Quick start (local dev)
 
@@ -313,6 +314,104 @@ All content is scoped under `organizations/{org_id}/` in Firestore.
 The portable Compose fallback instead accepts `FIREBASE_SERVICE_ACCOUNT` JSON
 because it does not have a GCP workload identity.
 
+### Email confirmation
+
+In Core releases after 0.2.84, the portal accepts a signed-in person only when
+Firebase reports a confirmed email address (`email_verified` in the ID token).
+Until then the account sees only **Check your email**: it cannot create or join
+an Organization, accept invitations, open Sites, use or create API keys,
+approve MCP access or call authenticated APIs. Delegated MCP connections of an
+account whose address is not confirmed stop working on the next request.
+Organization-wide API keys are Organization credentials and keep working.
+
+Firebase sends the confirmation messages; no mail service is required.
+
+1. In **Authentication → Settings → Authorized domains**, add the portal host
+   (for example `cms.your-domain.example`). The confirmation link returns to
+   the portal's `/verify-email` page only for an authorized domain; otherwise
+   Firebase shows its own confirmation page and the person returns manually.
+2. Optionally adjust **Authentication → Templates → Email address
+   verification** (sender name, reply-to, language).
+3. Set `PORTAL_PUBLIC_URL` and `PUBLIC_FIREBASE_API_KEY`. The portal uses the
+   public Web API key to send a new link and to refresh the session after
+   confirmation.
+
+**Upgrading existing installations.** Password accounts created before this
+release usually have an unconfirmed address, because earlier releases never
+sent a confirmation. Session cookies are re-checked on every request, so those
+people see **Check your email** the next time they open the portal, even with
+an active session. Their memberships are kept and work again after they confirm.
+Tell your users before upgrading. Mark an address as confirmed with the Admin
+SDK (`getAuth().updateUser(uid, { emailVerified: true })`) only when you know
+the person owns it.
+
+### GitHub sign-in (optional)
+
+**Continue with GitHub** appears only when `PUBLIC_FIREBASE_GITHUB_SIGNIN=true`.
+It is separate from the GitHub App that an Organization connects for
+publishing; a GitHub sign-in grants no repository access.
+
+1. In **Firebase console → Authentication → Sign-in method**, add the
+   **GitHub** provider and copy the callback URL it shows
+   (`https://<auth-domain>/__/auth/handler`).
+2. On GitHub, under **Settings → Developer settings → OAuth Apps**, create a
+   new OAuth App (not a GitHub App). Use the portal URL as the homepage URL
+   and paste the Firebase callback URL as the authorization callback URL.
+   Generate a client secret.
+3. Paste the OAuth App's client ID and client secret into the Firebase GitHub
+   provider and enable it. Keep the secret in Firebase only.
+4. Keep **One account per email address** enabled in Firebase. Set
+   `PUBLIC_FIREBASE_GITHUB_SIGNIN=true` in the portal environment and restart.
+
+The portal requests only the `user:email` scope and does not store the GitHub
+access token. Firebase does not treat GitHub as a trusted email provider, so
+GitHub identities report `email_verified: false`: a new GitHub account
+receives a confirmation email and must confirm its address like a password
+account. When the address already has a password account, Firebase reports a
+conflict; the sign-in page asks for that password and links GitHub to the
+existing account.
+
+The sign-in page uses a popup and falls back to a full-page redirect when the
+browser blocks popups. Browsers that partition third-party storage can break
+the redirect when `PUBLIC_FIREBASE_AUTH_DOMAIN` is on a different site than the
+portal; see Firebase's guidance on using `signInWithRedirect` with blocked
+third-party storage.
+
+## Cloudflare sign-in for customer publishing
+
+Customer publishing connects each Organization's Cloudflare account through
+your Cloudflare OAuth client (`TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_ID`,
+`TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET`, an HTTPS `PORTAL_PUBLIC_URL` and
+`INTEGRATIONS_SECRET_KEY`). Cloudflare refuses the whole sign-in
+(`invalid_scope`) when Typeroll asks for a scope the client is not allowed, so
+optional scopes are requested only when you list them.
+
+| Scope                    | Cloudflare name        | Enables                                                   |
+| ------------------------ | ---------------------- | --------------------------------------------------------- |
+| `account-settings.write` | Account Settings Write | Create a Site's Web Analytics site when Analytics is on   |
+| `account-analytics.read` | Account Analytics Read | Read Web Analytics reports for Insights                   |
+| `dynamic-redirect.read`  | Dynamic URL Redirects  | Read Single Redirect rules for redirect hosts such as www |
+| `dynamic-redirect.write` | Dynamic URL Redirects  | Create Single Redirect rules for redirect hosts           |
+
+To include them in **Connect Cloudflare**:
+
+1. Allow the scopes on your OAuth client in Cloudflare.
+2. List the same scopes, separated by spaces or commas, in
+   `TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES` and restart the portal:
+
+   ```sh
+   TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES="account-settings.write account-analytics.read dynamic-redirect.read dynamic-redirect.write"
+   ```
+
+Other values are ignored. You may list only some, for example only the two
+`dynamic-redirect` scopes. Unset, **Connect Cloudflare** requests exactly what
+earlier releases did; Analytics access is then approved per Site with
+**Approve Analytics access**, which requests the two Analytics scopes and still
+requires them on the client, and redirect rules are created by hand
+(`redirect_rule_required`). Existing connections keep working and get the
+listed scopes when an owner or admin selects **Approve update** on their
+Cloudflare card. Approving a scope enables Analytics for no Site.
+
 ## Backups and disaster recovery
 
 Typeroll's backup is one encrypted, authenticated snapshot of all three state
@@ -438,6 +537,17 @@ Requirements specific to this endpoint:
 - TLS for remotely hosted MCP clients.
 
 Agent clients with local process support can keep using the stdio install (`npx -y @typeroll/mcp-server` with `TYPEROLL_API_URL` pointed at your portal). Same tool surface, same API keys.
+
+## Built-in AI assistant
+
+There is no server-wide AI key. Each Organization adds its own Anthropic API key
+in the portal under **Account → AI assistant** and chooses its Sites; see
+[Set up the built-in AI assistant](../ai-assistant/). The portal stores the key
+encrypted with `INTEGRATIONS_SECRET_KEY`, which the reference profile already
+requires. `ANTHROPIC_API_KEY` is no longer read; `npm run self-host:check` warns
+when an old environment still sets it. The optional `ANTHROPIC_BASE_URL` points
+AI calls and key verification at a compatible endpoint, such as a gateway. MCP
+and the public API do not depend on any of this.
 
 ## Extensions
 

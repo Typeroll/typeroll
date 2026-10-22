@@ -3,6 +3,7 @@ import { publishingAdmin, privateJson, connectionBody, connectionFailure } from 
 import { listHostingGroups, saveHostingGroup } from '../../../../lib/publishing/hosting-groups';
 import { cloudflareChoices, cloudflareSetup } from '../../../../lib/publishing/cloudflare-oauth';
 import { currentCloudflareDiagnosis } from '../../../../lib/publishing/cloudflare-diagnosis';
+import { cloudflarePermissionReport } from '../../../../lib/publishing/cloudflare-capabilities';
 
 export const GET: APIRoute = async context => {
   const guard = await publishingAdmin(context);
@@ -11,7 +12,8 @@ export const GET: APIRoute = async context => {
     const groups = await listHostingGroups(guard.value.orgId);
     // Choices and an unfinished attempt belong to the signed-in person's own OAuth flow.
     return privateJson({ groups: await Promise.all(groups.map(async group => ({ ...group, account_choices: await cloudflareChoices(guard.value, group.id),
-      cloudflare_diagnosis: await currentCloudflareDiagnosis(guard.value.orgId, group.id, guard.value) }))), cloudflare_setup: cloudflareSetup() });
+      cloudflare_diagnosis: await currentCloudflareDiagnosis(guard.value.orgId, group.id, guard.value),
+      cloudflare_permissions: await cloudflarePermissionReport(guard.value.orgId, group.id) }))), cloudflare_setup: cloudflareSetup() });
   } catch (error) { return connectionFailure(error); }
 };
 export const POST: APIRoute = async context => {

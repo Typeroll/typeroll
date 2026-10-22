@@ -57,6 +57,7 @@ export interface ApiKeyLookupEntry {
   site_id: string | null;
   key_hash: string;
   revoked_at?: string;
+  personal_user_id?: string;
   oauth_user_id?: string;
   oauth_created_at?: string;
 }
@@ -262,6 +263,8 @@ export interface VerifiedKey {
    *  `allowedSiteIds` from sites + shares when this happens. */
   siteId: string | null;
   prefix: string;
+  /** Personal OAuth grants never confer an organization-wide API-key role. */
+  personalUserId?: string;
 }
 
 /**
@@ -285,6 +288,21 @@ export async function verifyApiToken(token: string): Promise<VerifiedKey | null>
   if (!lookup) return null;
   if (lookup.revoked_at) return null;
   if (!constantTimeHexEquals(lookup.key_hash, hashSecret(parsed.secret))) return null;
+  if (lookup.personal_user_id) {
+    const createdAt = Date.parse(lookup.oauth_created_at || '');
+    if (!Number.isFinite(createdAt) || Date.now() >= createdAt + 30 * 24 * 60 * 60 * 1000) return null;
+    if (isFirebaseAdminConfigured()) {
+      // Delegated credentials follow the person: a disabled account, revoked
+      // tokens or an unconfirmed email address (same rule as portal sessions)
+      // end access on the next request.
+      try {
+        const { getAuth } = await import('firebase-admin/auth');
+        const user = await getAuth(await getFirebaseAdminApp()).getUser(lookup.personal_user_id);
+        if (user.disabled || !user.emailVerified || Date.parse(user.tokensValidAfterTime || '') > createdAt) return null;
+      } catch { return null; }
+    }
+    return { orgId: '', siteId: null, prefix: parsed.prefix, personalUserId: lookup.personal_user_id };
+  }
   if (lookup.oauth_user_id) {
     const member = await organizationMembership(lookup.oauth_user_id, lookup.org_id);
     const createdAt = Date.parse(lookup.oauth_created_at || '');
@@ -294,7 +312,7 @@ export async function verifyApiToken(token: string): Promise<VerifiedKey | null>
       try {
         const { getAuth } = await import('firebase-admin/auth');
         const user = await getAuth(await getFirebaseAdminApp()).getUser(lookup.oauth_user_id);
-        if (user.disabled || Date.parse(user.tokensValidAfterTime || '') > Date.parse(lookup.oauth_created_at || '')) return null;
+        if (user.disabled || !user.emailVerified || Date.parse(user.tokensValidAfterTime || '') > Date.parse(lookup.oauth_created_at || '')) return null;
       } catch { return null; }
     }
   }
@@ -334,3 +352,45 @@ export async function recordKeyUse(
  * MCP transcript or tool log. The API and MCP can list and revoke keys.
  */
 export const CREATE_KEY_IN_PORTAL = 'API keys are created in the portal (Site settings → API keys, or Organization settings → API keys), so a new key is shown only to the person creating it and never lands in an agent conversation or log. Listing and revoking keys work through the API and MCP.';
+
+
+const personalConnectionsPath = (userId: string) => `personal_connections/${encodeURIComponent(userId)}/connections`;
+
+/** A connection belongs to a person, never to their currently selected organization. */
+export async function createPersonalConnection(userId: string, name: string): Promise<NewKey> {
+  const key = generateNewKey();
+  const createdAt = new Date().toISOString();
+  const store = getStore();
+  await store.createDocIfMissing(`personal_connections/${encodeURIComponent(userId)}`, { schema_version: 1 });
+  await store.setDoc(`${personalConnectionsPath(userId)}/${key.prefix}`, {
+    name: name.slice(0, 80), created_at: createdAt,
+  });
+  await store.setDoc(paths.apiKeyLookupEntry(key.prefix), {
+    org_id: '', site_id: null, personal_user_id: userId,
+    key_hash: hashSecret(parseKey(key.token)!.secret), oauth_created_at: createdAt,
+  });
+  return key;
+}
+
+export async function listPersonalConnections(userId: string) {
+  return getStore().listDocs<{ name: string; created_at: string; revoked_at?: string }>(personalConnectionsPath(userId));
+}
+
+export async function revokePersonalConnection(userId: string, prefix: string): Promise<boolean> {
+  if (!isApiKeyPrefix(prefix)) return false;
+  const store = getStore();
+  const lookup = await store.getDoc<ApiKeyLookupEntry>(paths.apiKeyLookupEntry(prefix));
+  if (!lookup || lookup.personal_user_id !== userId) return false;
+  const revokedAt = lookup.revoked_at || new Date().toISOString();
+  await store.setDoc(paths.apiKeyLookupEntry(prefix), { ...lookup, revoked_at: revokedAt });
+  const path = `${personalConnectionsPath(userId)}/${prefix}`;
+  const metadata = await store.getDoc(path);
+  if (metadata) await store.setDoc(path, { ...metadata, revoked_at: revokedAt });
+  return true;
+}
+
+export async function revokeVerifiedConnection(key: VerifiedKey): Promise<boolean> {
+  return key.personalUserId
+    ? revokePersonalConnection(key.personalUserId, key.prefix)
+    : revokeApiKey(key.orgId, key.siteId, key.prefix);
+}

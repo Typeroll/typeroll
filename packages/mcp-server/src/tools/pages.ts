@@ -86,6 +86,10 @@ export const pageTools: ToolDef[] = [
       'and seeds the tree with a heading + prose block so the editor is never blank. ' +
       'Pass html_content (or content_mode="html") to opt into raw-HTML mode instead. ' +
       'Slug is derived from the title when omitted. Default status is "draft". ' +
+      'Address conflicts: an explicit slug or path that another page already uses (drafts and unsaved drafts included) ' +
+      'fails with 409 { code: "slug_in_use" | "path_in_use", details: { page_id, path } } — edit that page or choose another slug; ' +
+      'the address is never changed silently. Only a title-derived slug is numbered (e.g. "tack" → "tack-2"), and the response then ' +
+      'carries warnings: [{ code: "slug_adjusted", requested, slug, path, conflicting_page_id }]. ' +
       'Homepage convention: pass slug="" (empty string) or omit slug and set title to "Home"; ' +
       'the server stores it under id "home" with slug "". ' +
       'Slug must be a single path segment (no slashes). For nested URLs like ' +
@@ -99,7 +103,7 @@ export const pageTools: ToolDef[] = [
       title: z.string().min(1),
       content_type: z.string().optional().describe('Content type ID; defaults to page.'),
       fields: z.record(z.unknown()).optional().describe('Custom field values defined by the content type.'),
-      slug: z.string().optional().describe('URL slug — single path segment, no slashes (e.g. "about", "kontakt"). Empty string "" = homepage. For nested URLs set the `path` field explicitly — `slug` stays a leaf id.'),
+      slug: z.string().optional().describe('URL slug — single path segment, no slashes (e.g. "about", "kontakt"). Empty string "" = homepage. For nested URLs set the `path` field explicitly — `slug` stays a leaf id. Already in use → 409 slug_in_use naming the existing page; omit it to derive one from the title (numbered with a slug_adjusted warning on conflict).'),
       path: z.string().optional().describe('Optional explicit URL path for nested pages (e.g. "/erbjudanden/sommar-2026"). When set, takes precedence over slug for routing. Must start with "/", lowercase a-z/0-9/-/_/ only, no "..", no "//", no trailing slash. Slug is still required as the leaf id but two pages CAN share a slug under different paths.'),
       content_mode: z.enum(['blocks', 'html']).optional().describe('Default "blocks". "blocks" stores a Block[] tree (the modern default — supports the full ~40-block library, page templates, and the responsive system). "html" stores raw markup in html_content (legacy path, still fully supported for imported content or hand-written HTML). Passing html_content without content_mode also opts into "html".'),
       html_content: z.string().optional().describe('Body HTML — only used when content_mode="html".'),
@@ -259,11 +263,11 @@ export const pageTools: ToolDef[] = [
   {
     name: 'clone_page',
     description:
-      'Duplicate an existing page under a new title + slug. Use this when you want a near-copy of an existing page as the starting point (e.g. duplicate "Privatflytt" → "Privatflytt Härnösand"). The new page is created as a draft regardless of the source\'s status. Returns the created page.',
+      'Duplicate an existing page under a new title + slug. Use this when you want a near-copy of an existing page as the starting point (e.g. duplicate "Privatflytt" → "Privatflytt Härnösand"). The new page is created as a draft regardless of the source\'s status. Returns the created page. Same address rule as create_page: a slug you pass that is already in use fails with 409 slug_in_use (details: { page_id, path }); a slug derived from the title is numbered and reported in warnings (code slug_adjusted).',
     inputSchema: {
       source_page_id: z.string(),
       title: z.string().min(1).describe('Title for the new page.'),
-      slug: z.string().optional().describe('Slug for the new page. Omit to auto-derive from title.'),
+      slug: z.string().optional().describe('Slug for the new page. Omit to derive it from the title. A slug already in use is refused (409 slug_in_use), never changed.'),
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -307,7 +311,7 @@ export const pageTools: ToolDef[] = [
         image_sizes_default: src.image_sizes_default,
         status: 'draft',
       };
-      if (args.slug) body.slug = args.slug;
+      if (args.slug !== undefined) body.slug = args.slug;
       if (typeof src.path === 'string' && src.path) {
         // Keep an explicit route's directory, never its old final segment.
         // Match the API's title-derived slug. A conflicting explicit path is
@@ -320,7 +324,9 @@ export const pageTools: ToolDef[] = [
         segments.pop();
         body.path = '/' + [...segments, slug.replace(/^\/+|\/+$/g, '')].join('/');
       }
-      // 3. Create. The API auto-uniques generated routes; explicit conflicts return 409.
+      // 3. Create. An explicit slug or path that is taken fails with 409
+      //    (slug_in_use / path_in_use); a title-derived slug is numbered and
+      //    reported in `warnings`.
       const created = await client.post(siteId, 'pages', body, v(args.version));
       return ok(created);
     }),

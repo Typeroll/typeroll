@@ -4,6 +4,7 @@ import PublishingGithubConnection, { type GithubPublishingData } from './Publish
 import PublishingCloudflareConnection, { useCloudflareClock } from './PublishingCloudflareConnection';
 import { CLOUDFLARE_STATUS, cloudflareCardState, cloudflareDiagnosisAt, fallbackCloudflareDiagnosis, readCloudflareReturn } from './cloudflare-return';
 import type { CloudflareConnectionDiagnosis } from '../lib/publishing/cloudflare-diagnosis';
+import type { CloudflarePermissionReport } from '../lib/publishing/cloudflare-capabilities';
 
 type Connection = {
   connected_at?: string | null;
@@ -12,7 +13,7 @@ type Connection = {
   github: { owner: string; account_type?: 'Organization' | 'User'; repository_creation_state?: 'ready' | 'reconnect_required' } | null;
   cloudflare: { account_id: string; account_name: string; bucket: string; public_bucket?: string } | null;
 };
-type Connections = Omit<GithubPublishingData, 'github'> & { media_transfer?: { state: string; code?: string; message?: string }; media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_diagnosis?: CloudflareConnectionDiagnosis; cloudflare_setup?: { available: boolean }; github: Connection; cloudflare: Connection; encryption_available: boolean };
+type Connections = Omit<GithubPublishingData, 'github'> & { media_transfer?: { state: string; code?: string; message?: string }; media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_diagnosis?: CloudflareConnectionDiagnosis; cloudflare_permissions?: CloudflarePermissionReport; cloudflare_setup?: { available: boolean }; github: Connection; cloudflare: Connection; encryption_available: boolean };
 const API = '/api/orgs/publishing';
 
 class PublishingRequestError extends Error {
@@ -213,7 +214,7 @@ export default function PublishingConnections() {
           <li>Stop at the repository list and return here. Typeroll creates each site’s repository and Pages project.</li>
         </ol><p>This authorization is separate from installing the Typeroll GitHub App. Future sites reuse it.</p></details>}
 
-        <PublishingCloudflareConnection groupId="default" connection={data.cloudflare} diagnosis={data.cloudflare_diagnosis} choices={data.cloudflare_choices}
+        <PublishingCloudflareConnection groupId="default" connection={data.cloudflare} diagnosis={data.cloudflare_diagnosis} choices={data.cloudflare_choices} permissions={data.cloudflare_permissions}
           available={Boolean(data.cloudflare_setup?.available)} returned={cloudflareReturn} disabled={busy || checkingMedia || disconnecting === 'cloudflare'}
           onRefresh={async () => { await refresh(); window.dispatchEvent(new Event('typeroll:publishing-connection-changed')); }} />
         {data.cloudflare_setup?.available && data.cloudflare.status === 'connected' && <form onSubmit={event => void submit('cloudflare', event)}><input type="hidden" name="action" value="start" />

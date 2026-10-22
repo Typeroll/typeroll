@@ -39,9 +39,16 @@ import {
   type BlockContainerTarget,
 } from './block-containers';
 import { AUTOMATIC_CONVERSION_REFUSAL } from './html-mode';
+import { AI_NOT_ENABLED_MESSAGE, getAnthropicForSite } from './ai/organization-ai';
 import { snapshotRevision } from './revisions';
 import { applyContentWrite } from './content-write';
 import { chatEditLink } from './chat-action-links';
+import {
+  mergeJsonLd,
+  STRUCTURED_DATA,
+  StructuredDataError,
+  structuredDataInputSchema,
+} from '@typeroll/mcp-server/structured-data';
 import {
   commitWorkingCopy,
   discardWorkingCopy,
@@ -105,14 +112,6 @@ function previewJson(value: unknown, max = TOOL_PREVIEW_MAX): string {
   }
   if (!str) return '';
   return str.length > max ? `${str.slice(0, max)}… (+${str.length - max})` : str;
-}
-
-export async function getAnthropic(_orgId: string): Promise<Anthropic | null> {
-  // TODO: load org-level BYOT key from organizations/{orgId} before falling
-  // back to the platform default. For now, only the platform default.
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return null;
-  return new Anthropic({ apiKey: key });
 }
 
 // ─── Tools ───────────────────────────────────────────────────────────────
@@ -179,69 +178,22 @@ const tools: Anthropic.Tool[] = [
       required: ['page_id'],
     },
   },
+  // FAQPage / Recipe / Event JSON-LD. Inputs, validation and builders are
+  // shared with the MCP tools of the same names (@typeroll/mcp-server/structured-data).
   {
     name: 'add_faq_schema',
-    description: 'Attach FAQPage JSON-LD to a page. Use this when the page actually presents an FAQ — Google flags pages that emit FAQ schema for content that isn\'t.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        page_id: { type: 'string' },
-        items: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              question: { type: 'string' },
-              answer: { type: 'string' },
-            },
-            required: ['question', 'answer'],
-          },
-        },
-      },
-      required: ['page_id', 'items'],
-    },
+    description: 'Attach FAQPage JSON-LD to a page. Use this when the page actually presents an FAQ — Google flags pages that emit FAQ schema for content that isn\'t. Merged into the page\'s json_ld: an FAQ already there is replaced, other structured data is kept.',
+    input_schema: structuredDataInputSchema('faq'),
   },
   {
     name: 'add_recipe_schema',
-    description: 'Attach Recipe JSON-LD to a recipe page. Required: name, recipeIngredient[], recipeInstructions[].',
-    input_schema: {
-      type: 'object',
-      properties: {
-        page_id: { type: 'string' },
-        name: { type: 'string' },
-        description: { type: 'string' },
-        image_url: { type: 'string' },
-        author: { type: 'string' },
-        prep_time: { type: 'string', description: 'ISO 8601 duration, e.g. PT30M.' },
-        cook_time: { type: 'string' },
-        total_time: { type: 'string' },
-        recipe_yield: { type: 'string', description: 'e.g. "4 servings".' },
-        ingredients: { type: 'array', items: { type: 'string' } },
-        instructions: { type: 'array', items: { type: 'string' } },
-      },
-      required: ['page_id', 'name', 'ingredients', 'instructions'],
-    },
+    description: 'Attach Recipe JSON-LD to a recipe page. Required: name, ingredients[], instructions[]. Durations are ISO 8601 (PT30M). Merged into the page\'s json_ld like add_faq_schema.',
+    input_schema: structuredDataInputSchema('recipe'),
   },
   {
     name: 'add_event_schema',
-    description: 'Attach Event JSON-LD to a page describing an upcoming event.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        page_id: { type: 'string' },
-        name: { type: 'string' },
-        description: { type: 'string' },
-        start_date: { type: 'string', description: 'ISO 8601, e.g. 2026-06-12T19:00:00+02:00.' },
-        end_date: { type: 'string' },
-        location_name: { type: 'string' },
-        location_address: { type: 'string' },
-        image_url: { type: 'string' },
-        offers_url: { type: 'string', description: 'Ticket URL.' },
-        offers_price: { type: 'string' },
-        offers_currency: { type: 'string', description: 'ISO 4217, e.g. EUR.' },
-      },
-      required: ['page_id', 'name', 'start_date'],
-    },
+    description: 'Attach Event JSON-LD to a page describing an upcoming event. start_date is ISO 8601 with UTC offset; a price needs offers_currency. Merged into the page\'s json_ld like add_faq_schema.',
+    input_schema: structuredDataInputSchema('event'),
   },
   {
     name: 'update_page_status',
@@ -283,7 +235,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'create_page',
-    description: 'Create a Page of any content type. Blocks are the default body format. Slug is derived from the title if omitted.',
+    description: 'Create a Page of any content type. Blocks are the default body format. Slug is derived from the title if omitted; a derived slug whose address is taken gets a number (e.g. tack-2) and the result carries a slug_adjusted warning. An explicit slug or path that is already in use is refused (code slug_in_use or path_in_use, with the existing page id and path) — edit that page or choose another slug.',
     input_schema: {
       type: 'object',
       properties: {
@@ -699,6 +651,7 @@ const tools: Anthropic.Tool[] = [
             heading: { type: 'string' },
             body: { type: 'string' },
             size_base: { type: 'number' },
+            smoothing: { type: 'string', enum: ['auto', 'antialiased'] },
           },
         },
         contact: {
@@ -777,6 +730,16 @@ const tools: Anthropic.Tool[] = [
   },
 ];
 
+/** Names of the tools the built-in assistant can call. */
+export function chatToolNames(): string[] {
+  return tools.map((tool) => tool.name);
+}
+
+/** The input schema the built-in assistant advertises for one tool. */
+export function chatToolInputSchema(name: string): Anthropic.Tool['input_schema'] | undefined {
+  return tools.find((tool) => tool.name === name)?.input_schema;
+}
+
 // ─── System prompt ───────────────────────────────────────────────────────
 
 export interface ActivePageContext {
@@ -792,6 +755,8 @@ export function buildChatSystemPrompt(
 ): string {
   const colors = settings?.colors;
   return `You are the AI assistant for the website "${siteName}". You help the user manage the site by calling tools. You can edit pages, the navigation, the footer, site settings, pages of different content types (articles, team members, events), media, and redirects.
+
+You do not migrate or import sites. You have no tools for WordPress or URL imports, URL inventories, migration workflows, parity checks or launch reports. When the user asks for a migration, explain that migrations are done with their own AI agent (Claude Code, Codex or another MCP client) connected to Typeroll through MCP, set up under Account → AI connections.
 
 # The system you're working in
 
@@ -1087,11 +1052,12 @@ export async function runChatTurn(args: {
   /** The person's permission on the site; block type authoring needs admin. */
   permission: SharePermission;
 }): Promise<ChatResult> {
-  const client = await getAnthropic(args.orgId);
+  // The Site owner's own key, only when this Site is allowed. The chat route
+  // refuses earlier with ai_not_enabled; this covers a key removed mid-turn.
+  const client = await getAnthropicForSite({ orgId: args.orgId, siteId: args.siteId });
   if (!client) {
     return {
-      reply:
-        "I'm not configured to chat yet — the server is missing an ANTHROPIC_API_KEY. Once that's set, I can edit your pages, navigation, content types, settings, and more directly.",
+      reply: AI_NOT_ENABLED_MESSAGE,
       actions: [],
       tool_calls: [],
       iterations: 0,
@@ -1343,115 +1309,37 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       };
     }
 
-    case 'add_faq_schema': {
-      const id = String(input.page_id);
-      const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, id);
-      if (!existing) return { result: { error: 'Page not found' } };
-      const items = (input.items as Array<{ question: string; answer: string }>) ?? [];
-      const ld = {
-        '@context': 'https://schema.org',
-        '@type': 'FAQPage',
-        mainEntity: items.map((it) => ({
-          '@type': 'Question',
-          name: it.question,
-          acceptedAnswer: { '@type': 'Answer', text: it.answer },
-        })),
-      };
-      await applyContentWrite(wcCtx(ctx), { kind: 'page', id }, {
-        json_ld: JSON.stringify(ld),
-      }, { updatedBy: 'chat-ai' });
-      return {
-        result: { ok: true, page_id: id, item_count: items.length, draft: true },
-        action: {
-          type: 'add_faq_schema',
-          description: `Attached FAQ schema (${items.length} Q&A) to "${existing.title}" (unsaved draft).`,
-          target: id,
-          ...chatEditLink(ctx.siteId, 'page', id),
-          preview_url: absolutePreviewUrl(ctx, existing),
-        },
-      };
-    }
-
-    case 'add_recipe_schema': {
-      const id = String(input.page_id);
-      const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, id);
-      if (!existing) return { result: { error: 'Page not found' } };
-      const ingredients = (input.ingredients as string[]) ?? [];
-      const instructionsRaw = (input.instructions as string[]) ?? [];
-      const ld: Record<string, unknown> = {
-        '@context': 'https://schema.org',
-        '@type': 'Recipe',
-        name: String(input.name ?? existing.title),
-        recipeIngredient: ingredients,
-        recipeInstructions: instructionsRaw.map((step, i) => ({
-          '@type': 'HowToStep',
-          position: i + 1,
-          text: step,
-        })),
-      };
-      for (const [k, v] of [
-        ['description', input.description],
-        ['image', input.image_url],
-        ['prepTime', input.prep_time],
-        ['cookTime', input.cook_time],
-        ['totalTime', input.total_time],
-        ['recipeYield', input.recipe_yield],
-      ] as const) {
-        if (v) ld[k] = v;
-      }
-      if (input.author) ld.author = { '@type': 'Person', name: input.author };
-      await applyContentWrite(wcCtx(ctx), { kind: 'page', id }, {
-        json_ld: JSON.stringify(ld),
-      }, { updatedBy: 'chat-ai' });
-      return {
-        result: { ok: true, page_id: id, draft: true },
-        action: {
-          type: 'add_recipe_schema',
-          description: `Attached Recipe schema to "${existing.title}" (unsaved draft).`,
-          target: id,
-          ...chatEditLink(ctx.siteId, 'page', id),
-          preview_url: absolutePreviewUrl(ctx, existing),
-        },
-      };
-    }
-
+    case 'add_faq_schema':
+    case 'add_recipe_schema':
     case 'add_event_schema': {
+      const kind = name === 'add_faq_schema' ? 'faq' : name === 'add_recipe_schema' ? 'recipe' : 'event';
+      const spec = STRUCTURED_DATA[kind];
       const id = String(input.page_id);
       const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, id);
       if (!existing) return { result: { error: 'Page not found' } };
-      const ld: Record<string, unknown> = {
-        '@context': 'https://schema.org',
-        '@type': 'Event',
-        name: String(input.name ?? existing.title),
-        startDate: String(input.start_date),
-      };
-      if (input.end_date) ld.endDate = input.end_date;
-      if (input.description) ld.description = input.description;
-      if (input.image_url) ld.image = input.image_url;
-      if (input.location_name || input.location_address) {
-        ld.location = {
-          '@type': 'Place',
-          name: input.location_name ?? undefined,
-          address: input.location_address ?? undefined,
-        };
-      }
-      if (input.offers_url || input.offers_price) {
-        ld.offers = {
-          '@type': 'Offer',
-          url: input.offers_url ?? undefined,
-          price: input.offers_price ?? undefined,
-          priceCurrency: input.offers_currency ?? undefined,
-          availability: 'https://schema.org/InStock',
-        };
+      // Merge into the draft view so an unsaved json_ld edit is kept.
+      const draft = overlayWorkingCopy(existing, await readWorkingCopy(wcCtx(ctx), { kind: 'page', id }));
+      const { page_id: _pageId, ...fields } = input;
+      let built: ReturnType<typeof spec.build>;
+      let merged: ReturnType<typeof mergeJsonLd>;
+      try {
+        built = spec.build(fields);
+        merged = mergeJsonLd(draft.json_ld, built.node);
+      } catch (error) {
+        if (error instanceof StructuredDataError) return { result: { error: error.message, issues: error.issues } };
+        throw error;
       }
       await applyContentWrite(wcCtx(ctx), { kind: 'page', id }, {
-        json_ld: JSON.stringify(ld),
+        json_ld: merged.json_ld,
       }, { updatedBy: 'chat-ai' });
+      const label = kind === 'faq'
+        ? `FAQ schema (${(built.node.mainEntity as unknown[]).length} Q&A)`
+        : `${spec.type} schema`;
       return {
-        result: { ok: true, page_id: id, draft: true },
+        result: { ok: true, page_id: id, schema_type: spec.type, replaced_same_type: merged.replaced, kept_other_nodes: merged.kept, warnings: built.warnings, draft: true },
         action: {
-          type: 'add_event_schema',
-          description: `Attached Event schema to "${existing.title}" (unsaved draft).`,
+          type: name,
+          description: `Attached ${label} to "${existing.title}" (unsaved draft).`,
           target: id,
           ...chatEditLink(ctx.siteId, 'page', id),
           preview_url: absolutePreviewUrl(ctx, existing),
@@ -1523,10 +1411,10 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       const inputKeys = ['title', 'slug', 'path', 'content_type', 'fields', 'content_mode', 'html_content', 'blocks', 'seo_title', 'seo_description', 'status'];
       const permitted = Object.fromEntries(inputKeys.filter(key => key in input).map(key => [key, input[key]]));
       try {
-        const { page } = await createPage(ctx, permitted, 'agent', 'chat-ai');
-        return { result: { page, page_id: page.id }, action: { type: 'create_page', target: page.id, description: `Created "${page.title}".`, preview_url: absolutePreviewUrl(ctx, page), ...chatEditLink(ctx.siteId, 'page', page.id) } };
+        const { page, warnings } = await createPage(ctx, permitted, 'agent', 'chat-ai');
+        return { result: { page, page_id: page.id, ...(warnings ? { warnings } : {}) }, action: { type: 'create_page', target: page.id, description: `Created "${page.title}".`, preview_url: absolutePreviewUrl(ctx, page), ...chatEditLink(ctx.siteId, 'page', page.id) } };
       } catch (error) {
-        if (error instanceof WorkingCopyError) return { result: { error: error.message } };
+        if (error instanceof WorkingCopyError) return { result: error.toBody() };
         throw error;
       }
     }

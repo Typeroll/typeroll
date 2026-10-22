@@ -6,7 +6,7 @@ import { requireCurrentDataSchema } from './lib/data-schema';
 import { defineMiddleware } from 'astro:middleware';
 import { MAIN_VERSION_ID } from '@typeroll/shared';
 import { enforceCsrf } from './lib/csrf';
-import { getSession, sessionNeedsRefresh, refreshSessionForUser } from './lib/auth';
+import { getSessionIdentity, sessionNeedsRefresh, refreshSessionForUser } from './lib/auth';
 import { firebaseApiKey } from './lib/runtime-config-server';
 import { serviceRole } from './lib/release';
 import { StorageDocumentError } from './lib/firestore-codec';
@@ -116,7 +116,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const pathname = context.url.pathname;
   const isAppOrRoot = pathname === '/' || pathname.startsWith('/app');
   if (isAppOrRoot && !ONBOARDING_EXEMPT_PREFIXES.some((p) => pathname.startsWith(p))) {
-    const session = await getSession(context.cookies);
+    // An account without a confirmed email may only see "Check your email".
+    // Everything else rejects it centrally because getSession() returns null.
+    const identity = await getSessionIdentity(context.cookies);
+    if (identity && !identity.emailVerified) {
+      return context.redirect(pathname === '/app' || pathname === '/' ? '/verify-email' : `/verify-email?next=${encodeURIComponent(context.url.pathname + context.url.search)}`);
+    }
+    const session = identity;
     if (session && !session.orgId) {
       return context.redirect(pathname === '/app' ? '/onboarding' : `/onboarding?next=${encodeURIComponent(context.url.pathname + context.url.search)}`);
     }

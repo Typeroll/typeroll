@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import {
-  CLOUDFLARE_COOKIE, cloudflareCallbackGroup, CloudflareFlowError, finishCloudflareConnection, recordCloudflareCallbackError, recordCloudflareFlowFailure,
+  CLOUDFLARE_COOKIE, cloudflareCallbackGroup, CloudflareFlowError, cloudflareUpdateContinuation, finishCloudflareConnection, recordCloudflareCallbackError,
+  recordCloudflareFlowFailure, startCloudflareConnection,
 } from '../../../../../lib/publishing/cloudflare-oauth';
 import { publishingAdmin } from '../../../../../lib/publishing/http';
 
@@ -46,5 +47,18 @@ export const GET: APIRoute = async (context) => {
     const diagnosis = error instanceof CloudflareFlowError ? error.diagnosis : await recordCloudflareFlowFailure(guard.value, error, groupId);
     result = diagnosis?.outcome ?? (error instanceof CloudflareFlowError && error.unrecorded ? 'state_expired' : 'retryable_error');
   } finally { context.cookies.delete(CLOUDFLARE_COOKIE, { path: COOKIE_PATH }); }
+  if (result === 'connected') {
+    // A permission update renews every connection of this Organization that uses the same Cloudflare account:
+    // continue with the next one. Any failure returns to the card of the connection that just finished.
+    try {
+      const continuation = await cloudflareUpdateContinuation(guard.value, state, groupId);
+      if (continuation) {
+        const next = await startCloudflareConnection(guard.value, continuation.next, false, false, { then: continuation.then });
+        context.cookies.set(CLOUDFLARE_COOKIE, next.browser, { path: COOKIE_PATH, httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' || context.url.protocol === 'https:', sameSite: 'lax', maxAge: next.maxAge });
+        return redirect(next.url);
+      }
+    } catch { /* The finished connection is saved; the other card still offers Approve update. */ }
+  }
   return redirect(card(result, groupId));
 };

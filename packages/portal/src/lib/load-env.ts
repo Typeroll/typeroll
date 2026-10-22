@@ -2,7 +2,7 @@
  * Server-side .env loader. Imported once at app boot so process.env reflects
  * the values in packages/portal/.env regardless of what's already in the
  * shell. We use `override: true` because dev shells often have empty
- * placeholder values exported (e.g. ANTHROPIC_API_KEY="" injected by
+ * placeholder values exported (e.g. FIREBASE_SERVICE_ACCOUNT="" injected by
  * desktop apps), which would otherwise mask the real value in .env.
  *
  * The lookup walks upward from cwd so the loader works no matter where the
