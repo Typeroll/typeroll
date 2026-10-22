@@ -119,7 +119,9 @@ with an organization key:
 
 The two workflow starts return `201` with `site` and `workflow`; follow the run
 with `get_workflow` on the new Site. A migration start checks import storage
-before anything is created.
+before anything is created. An AI plan start checks that the Organization's own
+AI key covers new Sites (a key and site access **All sites**); otherwise it
+returns `403` with code `ai_not_enabled` and creates nothing.
 
 ## Built-in AI assistant
 

@@ -1010,7 +1010,9 @@ site that starts with a WordPress migration or an AI plan is one call with an
 organization key: `create_site_and_migrate` or `create_site_and_plan` (the two
 non-blank options on the portal's New site page). Migration needs verified
 organization import storage (`409 import_storage_required` otherwise; nothing
-is created).
+is created). An AI plan needs the Organization's own AI key with site access
+`all` (`403 ai_not_enabled` otherwise; nothing is created): you can instead
+create a blank site and plan it yourself.
 
 ### "Give someone access" (keys, sharing, invites)
 

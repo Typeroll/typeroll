@@ -8,6 +8,7 @@ vi.mock('../../lib/hosting/site-provisioning', () => ({ provisionSiteHosting: pr
 vi.mock('../../lib/site-domain', () => ({ declareDomainAtCreation: vi.fn() }));
 vi.mock('../../lib/access', () => ({ requireFullSession: async () => ({ ok: true, value: { orgId: 'test-org', userId: 'test-user' } }) }));
 vi.mock('../../lib/media/import-policy', () => ({ requireImportStorage: vi.fn(async () => {}) }));
+vi.mock('../../lib/ai/organization-ai', () => ({ requireAiForNewSite: vi.fn(async () => {}), AiNotEnabledError: class extends Error {}, AI_SETTINGS_PATH: '/app/settings/ai-assistant' }));
 vi.mock('../../lib/workflows/engine', () => ({ WorkflowEngine: class {
   async create() { return 'test-workflow'; }
   async start() {}

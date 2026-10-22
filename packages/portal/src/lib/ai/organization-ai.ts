@@ -56,11 +56,16 @@ export class AiSettingsError extends Error {
   }
 }
 
+export const AI_NOT_ENABLED_FOR_NEW_SITES_MESSAGE =
+  'Planning a new site with AI needs the AI assistant on new sites. An organization owner or admin can add an '
+  + 'Anthropic API key and choose "All sites, including sites created later" under Organization settings → AI '
+  + 'assistant, or create a blank site, allow it there and start site planning on it. Nothing was created.';
+
 /** Thrown by AI helpers when the Site has no AI access. */
 export class AiNotEnabledError extends Error {
   readonly code = AI_NOT_ENABLED_CODE;
-  constructor() {
-    super(AI_NOT_ENABLED_MESSAGE);
+  constructor(message = AI_NOT_ENABLED_MESSAGE) {
+    super(message);
     this.name = 'AiNotEnabledError';
   }
 }
@@ -114,6 +119,19 @@ export function settingsAllowSite(settings: OrganizationAiSettings | null, siteI
   if (!settings?.encrypted_api_key || !siteId) return false;
   const access = normalizedAccess(settings.site_access);
   return access.mode === 'all' || access.site_ids.includes(siteId);
+}
+
+/**
+ * Whether a Site created now would have AI access: a stored key and "all
+ * sites". A selected list can never include a Site that does not exist yet.
+ */
+export function settingsCoverNewSites(settings: OrganizationAiSettings | null): boolean {
+  return Boolean(settings?.encrypted_api_key) && normalizedAccess(settings!.site_access).mode === 'all';
+}
+
+/** Refuse AI work for a Site that is about to be created, before creating it. */
+export async function requireAiForNewSite(orgId: string): Promise<void> {
+  if (!settingsCoverNewSites(await readAiSettings(orgId))) throw new AiNotEnabledError(AI_NOT_ENABLED_FOR_NEW_SITES_MESSAGE);
 }
 
 /** Whether the built-in AI features are available on a Site. */

@@ -11,6 +11,7 @@ import { ConnectionError } from '../publishing/connections';
 import { connectionFailure } from '../publishing/http';
 import { publicUrlsFor } from '../site-public-urls';
 import { createSiteWithWorkflow, parseSiteWorkflowRequest, SiteWorkflowInputError } from './create-site';
+import { AI_SETTINGS_PATH, AiNotEnabledError } from '../ai/organization-ai';
 
 export function createSiteWithWorkflowRoute(kind: 'migration' | 'site_planning'): APIRoute {
   return async ({ request }) => {
@@ -42,6 +43,9 @@ export function createSiteWithWorkflowRoute(kind: 'migration' | 'site_planning')
         : { name: parsed.name });
     } catch (error) {
       if (error instanceof SiteWorkflowInputError) return apiError(error.message, 400, ctx);
+      if (error instanceof AiNotEnabledError) {
+        return apiError(error.message, 403, ctx, { code: error.code, details: { settings_path: AI_SETTINGS_PATH } });
+      }
       if (error instanceof ConnectionError) return connectionFailure(error);
       throw error;
     }

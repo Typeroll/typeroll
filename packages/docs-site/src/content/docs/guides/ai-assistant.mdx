@@ -79,6 +79,10 @@ AI workflows use the same key and Site access:
 
 - **Site planning, content generation, content improvement and schema markup**
   stop with "AI is not enabled for this site" on a Site without access.
+- **Plan a new site with AI** (the New site page and `create_site_and_plan`)
+  needs the key with **All sites, including sites created later**. Otherwise the
+  button is disabled and the API answers `403 ai_not_enabled` without creating
+  anything. You can create a blank Site, allow it and start site planning there.
 - **SEO audit** still runs and returns its per-page issue list without AI
   prioritization.
 
