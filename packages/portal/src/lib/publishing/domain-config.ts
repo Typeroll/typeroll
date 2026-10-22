@@ -8,11 +8,18 @@ export interface PublicationHosts {
   website_host: string | null;
   media_host: string | null;
   media_path_prefix: string;
+  /** Hosts that answer 301 to website_host. Omitted when empty so existing configurations keep their identity. */
+  redirect_hosts?: string[];
 }
 
-/** Datastores may reorder map fields; host identity must depend on values only. */
+/** Datastores may reorder map fields; host identity must depend on values only. Media aliases compare these three values. */
 export function samePublicationHosts(left: PublicationHosts, right: PublicationHosts): boolean {
   return left.website_host === right.website_host && left.media_host === right.media_host && left.media_path_prefix === right.media_path_prefix;
+}
+
+/** A change of redirect hosts is a domain change that needs preparation and approval. */
+export function sameRedirectHosts(left: PublicationHosts, right: PublicationHosts): boolean {
+  return JSON.stringify([...left.redirect_hosts ?? []].sort()) === JSON.stringify([...right.redirect_hosts ?? []].sort());
 }
 
 export interface DomainConfiguration {
@@ -29,6 +36,10 @@ export interface DomainConfiguration {
   approved_media_preparation?: import('./domain-provider').DomainPreparation | null;
   cutover_approved_revision?: string | null;
   approved_preparation?: import('./domain-provider').DomainPreparation | null;
+  redirect_preparations?: import('./redirect-hosts').RedirectPreparation[] | null;
+  approved_redirect_preparations?: import('./redirect-hosts').RedirectPreparation[] | null;
+  /** Explicit acceptance that the website host is unavailable until Cloudflare validates it after the record change. */
+  approved_validation_window?: boolean | null;
 }
 
 export interface OrganizationDomains {
@@ -82,7 +93,22 @@ export function parsePublicationHosts(input: Record<string, unknown>): Publicati
   if (website_host && website_host === media_host && !media_path_prefix) {
     throw new ConnectionError('Media on the website host needs a path prefix, such as /media.', 400, 'media_prefix_required');
   }
-  return { website_host, media_host, media_path_prefix };
+  const redirect_hosts = parseRedirectHosts(input.redirect_hosts, website_host, media_host);
+  return { website_host, media_host, media_path_prefix, ...(redirect_hosts.length ? { redirect_hosts } : {}) };
+}
+
+/** Accept an array or a comma/space separated list of hostnames that redirect to the website host. */
+export function parseRedirectHosts(input: unknown, websiteHost: string | null, mediaHost: string | null): string[] {
+  if (input == null || input === '') return [];
+  const values = typeof input === 'string' ? input.split(/[\s,]+/).filter(Boolean) : input;
+  if (!Array.isArray(values)) throw new ConnectionError('Enter redirect hosts as a list of hostnames.', 400, 'invalid_hostname');
+  const hosts = [...new Set(values.map(value => publicationHostname(value)))].sort();
+  if (hosts.length && !websiteHost) throw new ConnectionError('Set a website host before adding hosts that redirect to it.', 400, 'website_host_required');
+  if (hosts.length > 4) throw new ConnectionError('Enter at most four redirect hosts.', 400, 'too_many_redirect_hosts');
+  for (const host of hosts) {
+    if (host === websiteHost || host === mediaHost) throw new ConnectionError(`${host} already serves the website or media, so it cannot redirect to the website host.`, 400, 'redirect_host_conflict');
+  }
+  return hosts;
 }
 
 export function siteDomainConfigPath(orgId: string, siteId: string): string {
@@ -159,7 +185,8 @@ export async function saveSiteDomains(orgId: string, siteId: string, input: Reco
   const revision = randomUUID();
   const changed = await getStore().compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
     current => current.revision === input.revision,
-    { revision, desired, dns_mode: input.dns_mode, state: 'declared', candidate: null, preparation: null, media_preparation: null, approved_media_preparation: null, cutover_approved_revision: null, approved_preparation: null });
+    { revision, desired, dns_mode: input.dns_mode, state: 'declared', candidate: null, preparation: null, media_preparation: null, approved_media_preparation: null, cutover_approved_revision: null, approved_preparation: null,
+      redirect_preparations: null, approved_redirect_preparations: null, approved_validation_window: null });
   if (!changed) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
   if (previous.candidate?.job_id) await getStore().compareAndUpdateDoc<any>(paths.deploy(orgId, siteId, previous.candidate.job_id),
     job => job.status === 'running' && job.phase === 'awaiting domain cutover approval',

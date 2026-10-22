@@ -7,7 +7,8 @@ import { siteHostingGroup } from './hosting-groups';
 import { paths, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getConnection, connectionSummary, ConnectionError } from './connections';
-import { getOrganizationDomains, getSiteDomains } from './domain-config';
+import { getOrganizationDomains, getSiteDomains, samePublicationHosts, sameRedirectHosts } from './domain-config';
+import { siteHostChecks } from './host-checks';
 
 export function newSitePublishingMode(): 'customer_git' | 'managed' {
   const mode = process.env.NEW_SITE_PUBLISHING_MODE ?? 'managed';
@@ -42,6 +43,13 @@ export async function publishingReadiness(orgId: string, siteId: string, version
   require(cloudflare.status === 'connected' && cloudflare.cloudflare, 'cloudflare_connection_required', 'Connect Cloudflare for this site’s Hosting Group.');
   require(versionId === 'main' && domains.desired.website_host || group.sites_domain,
     'publishing_domain_required', versionId === 'main' ? 'Set a site address base for the Hosting Group or a website host in site settings.' : 'Set a site address base for the Hosting Group to publish this version.');
+  // A future host Cloudflare cannot serve is reported before a build. Live hosts are not rechecked.
+  const changing = !domains.active || !samePublicationHosts(domains.active, domains.desired) || !sameRedirectHosts(domains.active, domains.desired);
+  if (options.checkBuild !== false && versionId === 'main' && domains.desired.website_host && changing) {
+    let checks: Awaited<ReturnType<typeof siteHostChecks>> = null;
+    try { checks = await siteHostChecks(orgId, siteId, domains); } catch { /* Provider outages are reported by the publication itself. */ }
+    for (const blocker of checks?.blockers ?? []) require(false, blocker.code, blocker.message, `/app/sites/${encodeURIComponent(siteId)}/settings`);
+  }
   // Accepted publications validate their frozen engine in the runner. Only new
   // admissions depend on the currently selected engine and its latest capabilities.
   if (options.checkBuild !== false) {

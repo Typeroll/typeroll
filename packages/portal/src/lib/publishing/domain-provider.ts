@@ -5,7 +5,7 @@ import { assertTrafficNotOwnedByOtherOrganization } from './cloudflare-account-c
 
 type Provider = (route: string, options?: { method?: string; body?: unknown; missing?: boolean }) => Promise<any>;
 export interface DnsRequirement {
-  phase: 'validation' | 'traffic'; type: 'TXT' | 'CNAME'; name: string; content: string;
+  phase: 'validation' | 'traffic'; type: 'TXT' | 'CNAME' | 'A'; name: string; content: string;
   proxied?: boolean; status: 'required' | 'configured';
 }
 export interface DomainPreparation {
@@ -22,15 +22,44 @@ export function trafficFingerprint(records: Array<{ id: string; type: string; co
   return digest(JSON.stringify(records.map(({ id, type, content, proxied }) => ({ id, type, content, proxied })).sort((a, b) => a.id.localeCompare(b.id))));
 }
 
+export interface ZoneSummary { id: string; name: string; status: string; name_servers?: string[]; activated_on?: string }
+
+function zoneSummary(zone: any): ZoneSummary {
+  return { id: String(zone.id), name: String(zone.name), status: String(zone.status ?? 'unknown'),
+    ...(Array.isArray(zone.name_servers) ? { name_servers: zone.name_servers.filter((server: unknown) => typeof server === 'string') } : {}),
+    ...(typeof zone.activated_on === 'string' ? { activated_on: zone.activated_on } : {}) };
+}
+
+/** The closest zone for a hostname in one account, whatever its status. */
+export async function findZone(provider: Provider, accountId: string, hostname: string): Promise<ZoneSummary | null> {
+  const parts = publicationHostname(hostname).split('.');
+  for (let offset = 0; offset < parts.length - 1; offset++) {
+    const name = parts.slice(offset).join('.');
+    const zones = await provider(`/zones?account.id=${encodeURIComponent(accountId)}&name=${encodeURIComponent(name)}&per_page=50`);
+    const zone = zones.find((zone: any) => zone.name === name && zone.account?.id === accountId);
+    if (zone) return zoneSummary(zone);
+  }
+  return null;
+}
+
+/** What a zone that is not active means, in Cloudflare's terms (pending = nameservers not seen yet). */
+export function inactiveZoneMessage(zone: Pick<ZoneSummary, 'name' | 'status' | 'name_servers'>) {
+  return `${zone.name} is in the Cloudflare account, but its status is ${zone.status}, not active. Cloudflare does not proxy records or issue certificates for a zone until it sees the assigned nameservers at the registrar${zone.name_servers?.length ? ` (${zone.name_servers.join(', ')})` : ''}. Change the nameservers at the registrar, keep the existing records DNS only, and wait until Cloudflare marks the zone active.`;
+}
+
 /** Resolve actual zone boundaries in the selected account, including multi-label public suffixes. */
 export async function findPublishingZone(provider: Provider, accountId: string, hostname: string) {
   const parts = publicationHostname(hostname).split('.');
+  let inactive: ZoneSummary | null = null;
   for (let offset = 0; offset < parts.length - 1; offset++) {
     const name = parts.slice(offset).join('.');
     const zones = await provider(`/zones?account.id=${encodeURIComponent(accountId)}&name=${encodeURIComponent(name)}&per_page=50`);
     const zone = zones.find((zone: any) => zone.name === name && zone.account?.id === accountId && zone.status === 'active');
     if (zone) return zone;
+    const other = zones.find((zone: any) => zone.name === name && zone.account?.id === accountId);
+    if (other && !inactive) inactive = zoneSummary(other);
   }
+  if (inactive) throw new ConnectionError(inactiveZoneMessage(inactive), 409, 'domain_zone_required', { zone: { name: inactive.name, status: inactive.status, name_servers: inactive.name_servers ?? [] } });
   throw new ConnectionError('This hostname is not in an active zone in the organization’s connected Cloudflare account. Add the domain to that account or use external DNS management.', 409, 'domain_zone_required');
 }
 
@@ -100,10 +129,10 @@ export async function applyPreparedTraffic(provider: Provider, approved: DomainP
   if (!requirement || requirement.name !== approved.hostname) throw new ConnectionError('Prepare domain verification again.', 409);
   const root = `/zones/${approved.zone_id}/dns_records`;
   const records = (await provider(`${root}?name=${encodeURIComponent(approved.hostname)}&per_page=100`)).filter((record: any) => ['A', 'AAAA', 'CNAME'].includes(record.type));
-  if (records.length === 1 && records[0].type === 'CNAME' && records[0].content === requirement.content && records[0].proxied === true) return;
+  if (records.length === 1 && records[0].type === requirement.type && records[0].content === requirement.content && records[0].proxied === true) return;
   if (trafficFingerprint(records) !== approved.dns_fingerprint) throw new ConnectionError('DNS changed after the traffic switch was reviewed. Verify the domain and approve the new records before retrying.', 409, 'dns_revision_conflict');
   if (records.length && !approved.certificate_ready) throw new ConnectionError('Cloudflare has not confirmed a working certificate. Keep current traffic in place and complete domain validation first.', 409, 'domain_certificate_pending');
   if (records.length > 1) throw new ConnectionError('This hostname has multiple address records. Your DNS administrator or AI agent must apply the reviewed change; Typeroll will not delete them automatically.', 409, 'external_dns_required');
-  const body = { type: 'CNAME', name: approved.hostname, content: requirement.content, proxied: true, ttl: 1, comment: 'Typeroll static publication' };
+  const body = { type: requirement.type, name: approved.hostname, content: requirement.content, proxied: true, ttl: 1, comment: 'Typeroll static publication' };
   await provider(records.length ? `${root}/${records[0].id}` : root, { method: records.length ? 'PATCH' : 'POST', body });
 }

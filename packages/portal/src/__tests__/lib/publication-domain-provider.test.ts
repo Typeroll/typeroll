@@ -65,3 +65,11 @@ it('reports the observed CNAME prevalidation conflict without changing existing 
   active = true;
   expect((await preparePagesDomain(provider, input)).validation_blocker).toBeNull();
 });
+
+it('explains a pending zone instead of reporting the domain as missing', async () => {
+  const provider = vi.fn(async (route: string) => route.includes('name=moveria.se') ? [{ id: 'zone', name: 'moveria.se', account: { id: 'account' }, status: 'pending', name_servers: ['ada.ns.cloudflare.com'] }] : []);
+  await expect(findPublishingZone(provider, 'account', 'moveria.se')).rejects.toMatchObject({
+    code: 'domain_zone_required', message: expect.stringContaining('status is pending'),
+    details: { zone: { name: 'moveria.se', status: 'pending', name_servers: ['ada.ns.cloudflare.com'] } },
+  });
+});
