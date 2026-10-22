@@ -21,21 +21,22 @@ export function adminDestination(base: string, input: AdminRequest): URL {
   }
   return url;
 }
-export async function requestApprovedAdmin(url: URL, input: AdminRequest, token: string, issuer: string) {
+export async function requestApprovedAdmin(url: URL, input: AdminRequest, token: string, issuer: string,
+  limits = { requestBytes: 262144, responseBytes: 262144 }) {
   await assertPublicDestination(url);
   const body = input.body === undefined ? undefined : JSON.stringify(input.body);
-  if (body && Buffer.byteLength(body) > 262144) throw new Error('App request exceeds 256 KiB');
+  if (body && Buffer.byteLength(body) > limits.requestBytes) throw new Error(`App request exceeds ${limits.requestBytes} bytes`);
   const response = await fetch(url, { method: input.method, body, redirect: 'manual', signal: AbortSignal.timeout(15_000),
     headers: { Authorization: `Bearer ${token}`, Origin: issuer, 'Content-Type': 'application/json', Accept: 'application/json' } });
   if (response.status >= 300 && response.status < 400) throw new Error('App redirects are not allowed');
-  if (Number(response.headers.get('content-length')) > 262144) throw new Error('App response exceeds 256 KiB');
+  if (Number(response.headers.get('content-length')) > limits.responseBytes) throw new Error(`App response exceeds ${limits.responseBytes} bytes`);
   const reader = response.body?.getReader();
   if (!reader) throw new Error('App returned no JSON');
   let size = 0; const chunks: Uint8Array[] = [];
   while (true) {
     const next = await reader.read(); if (next.done) break;
     size += next.value.byteLength;
-    if (size > 262144) { await reader.cancel(); throw new Error('App response exceeds 256 KiB'); }
+    if (size > limits.responseBytes) { await reader.cancel(); throw new Error(`App response exceeds ${limits.responseBytes} bytes`); }
     chunks.push(next.value);
   }
   return { status: response.status, data: JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown };

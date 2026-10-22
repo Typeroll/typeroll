@@ -229,19 +229,21 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         // and frozen into the artifact alongside it. A required provider that
         // fails throws here — which is how the previous live artifact keeps
         // serving, since activation only happens after every step succeeds.
+        frozen = projectStaticPublication({ ...resolved, site: { ...site, domain: host }, media: [], forms: publicRuntime.forms, extensions: publicRuntime.extensions.installations, publicRuntime }, {
+          siteUrl: `https://${host}`, coreCommit: process.env.TYPEROLL_SOURCE_SHA ?? '', publishedAt: contentCutoff,
+          noindex: args.versionId !== 'main' || !domains.desired.website_host, coreBlockTypes: CORE_BLOCK_TYPES,
+        });
+        // Project first: private fields, provenance and drafts must not reach a provider.
+        const content = { version_id: resolved.versionId, pages: frozen.pages, content_types: frozen.contentTypes };
         const derivation = await runBuildDerivations(
           {
             org_id: args.orgId, site_id: args.siteId, version_id: resolved.versionId,
-            content_digest: publicationContentDigest(resolved),
+            content_digest: publicationContentDigest(content), content,
             config_digest: publicationConfigDigest(publicRuntime),
             provider_version: '',
           },
           await derivationProvidersFor(args.orgId, args.siteId, publicRuntime.extensions),
         );
-        frozen = projectStaticPublication({ ...resolved, site: { ...site, domain: host }, media: [], forms: publicRuntime.forms, extensions: publicRuntime.extensions.installations, publicRuntime }, {
-          siteUrl: `https://${host}`, coreCommit: process.env.TYPEROLL_SOURCE_SHA ?? '', publishedAt: contentCutoff,
-          noindex: args.versionId !== 'main' || !domains.desired.website_host, coreBlockTypes: CORE_BLOCK_TYPES,
-        });
         frozen.authored_noindex = resolved.settings?.sitewide_noindex === true;
         if (derivation.sources.length > 0) {
           frozen.derived = Object.fromEntries(derivation.sources.map(source => [source.id, source.records]));
@@ -250,7 +252,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         // derived output depends on records outside the pages it rendered.
         // A zero-count receipt matters most: without it, adding the first
         // matching record leaves a stale empty listing nothing invalidates.
-        if (derivation.receipts.length > 0) {
+        if (derivation.receipts.length > 0 || derivation.skipped.length > 0) {
           frozen.derivation = { receipts: derivation.receipts, cache_keys: derivation.cache_keys,
             ...(derivation.skipped.length > 0 ? { skipped: derivation.skipped } : {}) };
         }

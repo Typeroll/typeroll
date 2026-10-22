@@ -242,6 +242,7 @@ export interface ExtensionManifest {
    * can act on it, instead of mid-publication.
    */
   build_derivation?: {
+    input_format: 'frozen_publication_v1';
     /** Relative path below `api.base_url`. Core POSTs the frozen input here. */
     path: string;
     /** Derived source ids this app produces, e.g. `directory.profiles`. */
@@ -681,13 +682,30 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
   rejectUnknown(manifest, [
     'schema_version', 'id', 'name', 'version', 'runtime_compatibility', 'distribution',
     'developer', 'permissions', 'auth', 'config_schema', 'frontend', 'admin',
-    'api', 'events', 'data_handling', 'documentation', 'activation_policy',
+    'api', 'events', 'data_handling', 'documentation', 'activation_policy', 'build_derivation',
   ], 'manifest', errors);
   if (manifest.schema_version !== EXTENSION_MANIFEST_SCHEMA_VERSION) {
     errors.push(`schema_version must be ${EXTENSION_MANIFEST_SCHEMA_VERSION}`);
   }
   if (manifest.activation_policy !== undefined && !['automatic', 'explicit'].includes(String(manifest.activation_policy))) {
     errors.push('activation_policy must be automatic or explicit');
+  }
+  if (manifest.build_derivation !== undefined) {
+    const derivation = asRecord(manifest.build_derivation, 'build_derivation', errors);
+    rejectUnknown(derivation, ['input_format', 'path', 'sources', 'required'], 'build_derivation', errors);
+    if (derivation.input_format !== 'frozen_publication_v1') errors.push('build_derivation.input_format must be frozen_publication_v1');
+    if (typeof derivation.path !== 'string' || !/^\/[a-zA-Z0-9_/-]+$/.test(derivation.path) || derivation.path.includes('//'))
+      errors.push('build_derivation.path must be an unencoded relative API path');
+    if (!Array.isArray(derivation.sources) || derivation.sources.length < 1 || derivation.sources.length > 64 ||
+        derivation.sources.some(source => typeof source !== 'string' || !/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/.test(source) ||
+          ['page', 'site', 'item', 'content_type', 'pagination', 'facet', 'backlinks', 'constructor', 'prototype'].includes(source.split('.')[0])) ||
+        new Set(derivation.sources).size !== derivation.sources.length)
+      errors.push('build_derivation.sources must contain 1–64 unique non-reserved source ids');
+    if (derivation.required !== undefined && typeof derivation.required !== 'boolean') errors.push('build_derivation.required must be boolean');
+    if (!isRecord(manifest.api) || !manifest.api.base_url || manifest.api.authentication === 'browser_key')
+      errors.push('build_derivation requires a signed installation API');
+    if (!Array.isArray(manifest.permissions) || !manifest.permissions.some(permission => isRecord(permission) && permission.scope === 'content:read'))
+      errors.push('build_derivation requires content:read permission');
   }
   const id = requireString(manifest.id, 'id', errors);
   if (id && !/^[a-z0-9]+(?:[.-][a-z0-9][a-z0-9-]*){2,}$/.test(id)) {
