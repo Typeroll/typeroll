@@ -32,6 +32,13 @@ const canManagePublishing = membership?.role === 'owner' || membership?.role ===
       <p class="muted">Ask an organization owner or admin to connect these accounts.</p>}
   </section>
 
+  <section class="card stack" style="max-width: 720px; margin-top: 1rem;">
+    <h2>AI assistant</h2>
+    <p>The built-in AI assistant uses the organization’s own Anthropic API key, on the sites an owner or admin chooses. Your own AI agent works through <a href="/app/settings/ai-connections">AI connections</a> on every site, with or without it.</p>
+    {canManagePublishing ? <div><a class="btn" href="/app/settings/ai-assistant">Open AI assistant settings</a></div> :
+      <p class="muted">Ask an organization owner or admin to set up the AI assistant.</p>}
+  </section>
+
   <p class="muted text-sm" style="margin-top: 1rem;">
     Looking for API keys? They have their own page in the sidebar now — <a href="/app/settings/api-keys">Account → API keys</a>.
   </p>

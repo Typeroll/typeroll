@@ -16,7 +16,7 @@ import SiteSwitcher from '../components/SiteSwitcher.tsx';
 import VersionPicker from '../components/VersionPicker.tsx';
 import Icon from '../components/Icon.astro';
 import RuntimeConfig from '../components/RuntimeConfig.astro';
-import { canUseAiChat } from '../lib/ai/organization-ai';
+import { canUseAiChat, AI_SETTINGS_PATH } from '../lib/ai/organization-ai';
 import { resolveOwnerOrgAccess } from '../lib/member-role';
 
 interface Props {
@@ -264,6 +264,10 @@ const initials = (session.displayName ?? session.email ?? 'U')
             {canManagePublishing && <a href="/app/settings/publishing" class:list={["app-sidebar__link", isActive('/app/settings/publishing', true) && "app-sidebar__link--active"]}>
               <span class="app-sidebar__link-icon" aria-hidden><Icon name="PlugZap" /></span>
               <span>Publishing</span>
+            </a>}
+            {canManagePublishing && <a href={AI_SETTINGS_PATH} class:list={["app-sidebar__link", isActive(AI_SETTINGS_PATH, true) && "app-sidebar__link--active"]}>
+              <span class="app-sidebar__link-icon" aria-hidden><Icon name="Sparkles" /></span>
+              <span>AI assistant</span>
             </a>}
             {/* Direct shortcut to the hosted-MCP / agent-connector keys.
                Was previously a button on /app/settings reachable only after
