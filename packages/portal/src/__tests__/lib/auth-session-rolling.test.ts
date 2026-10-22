@@ -22,7 +22,7 @@ vi.mock('firebase-admin/app', () => ({
   getApps: vi.fn(() => []),
 }));
 
-const DECODED = { uid: 'user-1', email: 'a@b.se', org_id: 'org-1', exp: Math.floor(Date.now() / 1000) + 14 * 86400 };
+const DECODED = { uid: 'user-1', email: 'a@b.se', email_verified: true, org_id: 'org-1', exp: Math.floor(Date.now() / 1000) + 14 * 86400 };
 
 function cookiesWith(value: string) {
   return { get: vi.fn(() => ({ value })), set: vi.fn(), delete: vi.fn() } as any;

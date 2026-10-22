@@ -9,11 +9,13 @@ import DeployBanner from '../../../../components/DeployBanner.tsx';
 import DeployHistory from '../../../../components/DeployHistory.tsx';
 import { siteDisplayHost, liveBaseFor } from '../../../../lib/site-urls';
 import { domainState, DOMAIN_STATE_LABEL } from '../../../../lib/site-public-urls';
+import { canUseAiChat } from '../../../../lib/ai/organization-ai';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
-const { session, site, versionId, owner_org_id: orgId } = ctx;
+const { session, site, versionId, owner_org_id: orgId, permission } = ctx;
 const siteId = site.id;
+const aiChatEnabled = await canUseAiChat({ orgId, siteId }, permission);
 
 const store = getStore();
 
@@ -74,7 +76,7 @@ const hostInfo = siteDisplayHost(site);
     <div class="row" style="flex-wrap: wrap;">
       <a href={`/app/sites/${siteId}/pages`} class="btn btn--secondary">Manage pages</a>
       <a href={`/api/sites/${siteId}/preview/browse/`} class="btn btn--secondary" target="_blank" rel="noopener">Preview site</a>
-      <a href={`/app/sites/${siteId}/ai`} class="btn">AI chat</a>
+      {aiChatEnabled && <a href={`/app/sites/${siteId}/ai`} class="btn">AI chat</a>}
     </div>
   </div>
 

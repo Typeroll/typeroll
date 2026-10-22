@@ -25,11 +25,97 @@ if traffic reporting or an external analytics provider is unavailable.
 | `beacon_token` | Identifies the site to the browser beacon             | Included in the published HTML |
 | `site_tag`     | Identifies the property when the portal reads reports | Server-side only               |
 
-Hosted installations can provision these identifiers automatically when the
-site has a usable domain and the platform has Cloudflare access. Self-hosted
-installations can supply them from Cloudflare. First-party conversion events
-also require a public portal or forms-service URL and the platform signing
-secret; without both, builds omit the event endpoint while traffic measurement continues to work.
+You normally leave both empty. Enabling Analytics creates a Cloudflare Web
+Analytics site for the site's address and fills both fields. `site_tag` is
+always derived from the token, so you never need to enter it. Redeploy the
+site after the token changes so published pages carry the beacon.
+
+First-party conversion events also require a public portal or forms-service
+URL and the platform signing secret; without both, builds omit the event
+endpoint while traffic measurement continues to work.
+
+## Which Cloudflare account is used
+
+Analytics lives in, and Insights reads from, the Cloudflare account that hosts
+the site:
+
+| Site publishing          | Cloudflare account                                                                              |
+| ------------------------ | ----------------------------------------------------------------------------------------------- |
+| Customer publishing      | The account of the site's Hosting Group. Default uses the Organization's Cloudflare connection. |
+| Managed hosting (Cloud)  | The installation's account, which also hosts the site.                                          |
+| Self-hosted installation | The account set in `CLOUDFLARE_ACCOUNT_ID` with `CLOUDFLARE_API_TOKEN`.                         |
+
+For customer publishing, Typeroll never falls back to another account. If the
+Hosting Group's connection is missing or lacks permission, Analytics reports
+why instead of creating the site elsewhere. `read_app` and `update_app` return
+the account as `setup.account`; its `owner` is `organization` or
+`installation`.
+
+### Permissions for customer publishing
+
+| Task                            | OAuth connection                                         | API token permission               |
+| ------------------------------- | -------------------------------------------------------- | ---------------------------------- |
+| Create the Web Analytics site   | Account Settings (edit), approved with Analytics access  | Account → Account Settings → Edit  |
+| Find the site of a pasted token | Included in every connection (Account Settings read)     | Account → Account Settings → Read  |
+| Read reports for Insights       | Account Analytics (read), approved with Analytics access | Account → Account Analytics → Read |
+
+Cloudflare connections do not include the Analytics permissions until they
+are approved. In the site's **Settings → Core modules**, select **Approve
+Analytics access** on Analytics. An owner or admin of the Organization signs in
+to Cloudflare again for the site's Hosting Group account and approves the
+permissions; the existing account, sites and media stay connected. Return to
+the module and select **Save settings**, or call `update_app` again. Later
+reconnects keep the approval. A connection made with an API token needs the
+token permissions above instead: edit the token in Cloudflare, then enable
+Analytics again.
+
+If you prefer not to grant Account Settings (edit), create a Web Analytics site
+yourself in the same Cloudflare account (**Analytics & Logs → Web Analytics**,
+without automatic setup) and paste its token as `beacon_token`. Typeroll finds
+its `site_tag` in that account. Insights still needs Account Analytics (read).
+
+A token from a different Cloudflare account is refused for customer
+publishing, because Insights could never read it. Managed and self-hosted sites
+still accept such a token for beacon-only measurement; their reports are then
+only available in the Cloudflare dashboard, and `setup` says so. When several
+Organizations share one Cloudflare account, each Web Analytics site belongs to
+the Organization that created or first linked it.
+
+<Aside>
+  Self-hosted installations without a configured Cloudflare account can paste a
+  token for beacon-only measurement. Set `CLOUDFLARE_ACCOUNT_ID` and
+  `CLOUDFLARE_API_TOKEN`, with the API token permissions above, to create Web
+  Analytics sites automatically and show Insights. Operators of a Cloudflare
+  OAuth client must allow the `account-settings.write` and
+  `account-analytics.read` scopes before people can approve Analytics access.
+</Aside>
+
+### Setup results and failure messages
+
+`update_app` answers `200` with `setup.status: "ready"` when the beacon is set
+up. When no beacon could be set up, Analytics is still saved as enabled and the
+call answers `409` with a `code`, a message and `details.next_step`
+(`details.saved` is `true`). Fix the cause and enable Analytics again; the call
+is safe to repeat. A pasted token that cannot be used is refused with `409` and
+`details.saved: false`. `read_app` and the module card show the same `setup`.
+
+| `code`                                       | Meaning and next step                                                                                                          |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `analytics_cloudflare_access_required`       | The hosting account's connection may not create sites or read reports. Approve Analytics access, or add the token permissions. |
+| `analytics_cloudflare_connection_required`   | The site's Hosting Group has no usable Cloudflare connection. Connect or check it in **Account → Publishing**.                 |
+| `analytics_host_required`                    | The site has no address yet. Set a website host, or a site address base for its Hosting Group.                                 |
+| `analytics_provider_error`                   | Cloudflare did not complete the request. The message names the HTTP status and Cloudflare error codes. Try again.              |
+| `analytics_provider_rate_limited`            | Cloudflare rate-limited the request. Wait a minute and try again.                                                              |
+| `analytics_token_not_in_account`             | The pasted token is not in the hosting account. Paste a token from that account, or clear the fields to create one.            |
+| `analytics_site_tag_mismatch`                | The supplied `site_tag` does not belong to the token. Omit `site_tag`.                                                         |
+| `analytics_site_owned_by_other_organization` | Another Organization sharing the account owns that Web Analytics site. Clear the fields to create one for this site.           |
+| `analytics_account_mismatch`                 | The saved site is in another account than the one hosting the site, for example after leaving managed hosting.                 |
+| `analytics_account_not_configured`           | Managed or self-hosted: the installation has no Cloudflare account configured. Paste a token, or configure the account.        |
+| `analytics_not_provisioned`                  | Enabled earlier without a token. Enable Analytics again to create the Web Analytics site.                                      |
+
+To replace the saved Web Analytics site with a new one in the hosting account,
+send `{"enabled": true, "config": {"beacon_token": "", "site_tag": ""}}`, then
+redeploy the site.
 
 ## Traffic insights
 
@@ -45,7 +131,9 @@ publishes to help search engines and assistants understand the site. See
 ## Runtime and privacy
 
 The beacon is emitted during the static build. Cloudflare Web Analytics is
-cookieless and intended for aggregate traffic measurement. Confirm the legal
+cookieless and intended for aggregate traffic measurement, so the beacon loads
+directly and is not held by the cookie banner. Typeroll configures it with its
+token only and sets no cookies or storage for it. Confirm the legal
 requirements that apply to your site and jurisdiction before relying on a
 particular consent treatment.
 
@@ -54,18 +142,23 @@ Core does not store campaign cookies or rewrite outbound links. Installed apps m
 
 ## Insights states
 
-The Insights surface distinguishes a disabled module, missing server
-configuration, a missing site tag, and a valid property with no data yet. This
-lets operators diagnose setup without treating every empty report as the same
-problem.
+Insights reads reports from the same account as the beacon and distinguishes
+missing setup, missing access and a property with no data yet, so an empty
+report is never ambiguous. Every state other than `ok`, `no_data` and
+`app_disabled` includes a `reason` with `code`, `message`, `next_step` and,
+where relevant, `settings_url`. The response also names the `account` it read.
 
-| State            | Meaning                                                           |
-| ---------------- | ----------------------------------------------------------------- |
-| `app_disabled`   | Analytics is not active for the site                              |
-| `not_configured` | The installation has no Cloudflare analytics credentials          |
-| `no_site_tag`    | Analytics is active but not linked to a Cloudflare property       |
-| `no_data`        | The property is linked but has no traffic for the selected period |
-| `ok`             | Traffic totals and breakdowns are available                       |
+| State                 | Meaning                                                                           |
+| --------------------- | --------------------------------------------------------------------------------- |
+| `app_disabled`        | Analytics is not active for the site                                              |
+| `not_configured`      | Managed or self-hosted: the installation has no Cloudflare account configured     |
+| `no_site_tag`         | Analytics is active but not linked to a Web Analytics site; the reason says why   |
+| `connection_required` | Customer publishing: the site's Hosting Group has no usable Cloudflare connection |
+| `access_required`     | The hosting account's connection may not read reports (Account Analytics read)    |
+| `account_mismatch`    | The linked Web Analytics site is not in the account that hosts the site           |
+| `provider_error`      | Cloudflare did not return reports; try again                                      |
+| `no_data`             | The property is linked but has no traffic for the selected period                 |
+| `ok`                  | Traffic totals and breakdowns are available                                       |
 
 The same surface reports first-party conversion events separately. Conversion
 reporting can continue to show data when Cloudflare traffic reporting is

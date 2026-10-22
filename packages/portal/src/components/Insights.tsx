@@ -12,7 +12,9 @@ interface AiReferral {
   total_ai_pageviews: number;
 }
 interface Insights {
-  status: 'ok' | 'app_disabled' | 'not_configured' | 'no_site_tag' | 'no_data';
+  status: 'ok' | 'app_disabled' | 'not_configured' | 'no_site_tag' | 'connection_required' | 'access_required' | 'account_mismatch' | 'provider_error' | 'no_data';
+  /** Why traffic is unavailable and what fixes it. */
+  reason?: { code: string; message: string; next_step: string; settings_url?: string };
   days: number;
   total_visits: number;
   total_pageviews: number;
@@ -39,8 +41,12 @@ const EMPTY_CONVERSIONS: Insights['conversions'] = {
 const STATUS_NOTE: Record<Insights['status'], string> = {
   ok: '',
   app_disabled: 'The Analytics module is off for this site. Enable it under Settings → Core modules.',
-  not_configured: 'Cloudflare analytics isn’t configured on this server yet. Stats will appear once it is.',
-  no_site_tag: 'Analytics is on, but not yet linked to a Cloudflare Web Analytics site. Add the token/site tag under Settings → Core modules, then redeploy.',
+  not_configured: 'This installation has no Cloudflare account configured for Analytics, so traffic can’t be read here.',
+  no_site_tag: 'Analytics is on, but not yet linked to a Cloudflare Web Analytics site.',
+  connection_required: 'Traffic is read from the Cloudflare account that hosts this site, and it isn’t connected.',
+  access_required: 'The Cloudflare connection for this site’s account isn’t allowed to read Web Analytics reports yet.',
+  account_mismatch: 'The linked Web Analytics site isn’t in the Cloudflare account that hosts this site.',
+  provider_error: 'Cloudflare didn’t return traffic reports. Try again shortly.',
   no_data: 'No visits recorded yet for this period. Data appears after your site gets traffic (allow a few minutes after deploy).',
 };
 
@@ -78,7 +84,16 @@ export default function Insights({ siteId }: { siteId: string }) {
 
       {!loading && data && data.status !== 'ok' && (
         <div className="card">
-          <p className="muted" style={{ margin: 0 }}>{STATUS_NOTE[data.status]}</p>
+          <p className="muted" style={{ margin: 0 }}>{STATUS_NOTE[data.status] ?? data.reason?.message}</p>
+          {data.reason && (
+            <div data-insights-reason={data.reason.code}>
+              <p className="text-sm" style={{ margin: '0.5rem 0 0' }}>{data.reason.message}</p>
+              <p className="text-sm muted" style={{ margin: '0.25rem 0 0' }}>{data.reason.next_step}</p>
+              {data.reason.settings_url && (
+                <p className="text-sm" style={{ margin: '0.25rem 0 0' }}><a href={data.reason.settings_url}>Open Publishing settings →</a></p>
+              )}
+            </div>
+          )}
           {data.status === 'app_disabled' && (
             <p style={{ margin: '0.5rem 0 0' }}>
               <a href={`/app/sites/${siteId}/settings/apps`} className="btn btn--primary">Manage modules →</a>

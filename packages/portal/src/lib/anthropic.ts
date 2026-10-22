@@ -39,6 +39,7 @@ import {
   type BlockContainerTarget,
 } from './block-containers';
 import { AUTOMATIC_CONVERSION_REFUSAL } from './html-mode';
+import { AI_NOT_ENABLED_MESSAGE, getAnthropicForSite } from './ai/organization-ai';
 import { snapshotRevision } from './revisions';
 import { applyContentWrite } from './content-write';
 import { chatEditLink } from './chat-action-links';
@@ -105,14 +106,6 @@ function previewJson(value: unknown, max = TOOL_PREVIEW_MAX): string {
   }
   if (!str) return '';
   return str.length > max ? `${str.slice(0, max)}… (+${str.length - max})` : str;
-}
-
-export async function getAnthropic(_orgId: string): Promise<Anthropic | null> {
-  // TODO: load org-level BYOT key from organizations/{orgId} before falling
-  // back to the platform default. For now, only the platform default.
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return null;
-  return new Anthropic({ apiKey: key });
 }
 
 // ─── Tools ───────────────────────────────────────────────────────────────
@@ -778,6 +771,11 @@ const tools: Anthropic.Tool[] = [
   },
 ];
 
+/** Names of the tools the built-in assistant can call. */
+export function chatToolNames(): string[] {
+  return tools.map((tool) => tool.name);
+}
+
 // ─── System prompt ───────────────────────────────────────────────────────
 
 export interface ActivePageContext {
@@ -793,6 +791,8 @@ export function buildChatSystemPrompt(
 ): string {
   const colors = settings?.colors;
   return `You are the AI assistant for the website "${siteName}". You help the user manage the site by calling tools. You can edit pages, the navigation, the footer, site settings, pages of different content types (articles, team members, events), media, and redirects.
+
+You do not migrate or import sites. You have no tools for WordPress or URL imports, URL inventories, migration workflows, parity checks or launch reports. When the user asks for a migration, explain that migrations are done with their own AI agent (Claude Code, Codex or another MCP client) connected to Typeroll through MCP, set up under Account → AI connections.
 
 # The system you're working in
 
@@ -1088,11 +1088,12 @@ export async function runChatTurn(args: {
   /** The person's permission on the site; block type authoring needs admin. */
   permission: SharePermission;
 }): Promise<ChatResult> {
-  const client = await getAnthropic(args.orgId);
+  // The Site owner's own key, only when this Site is allowed. The chat route
+  // refuses earlier with ai_not_enabled; this covers a key removed mid-turn.
+  const client = await getAnthropicForSite({ orgId: args.orgId, siteId: args.siteId });
   if (!client) {
     return {
-      reply:
-        "I'm not configured to chat yet — the server is missing an ANTHROPIC_API_KEY. Once that's set, I can edit your pages, navigation, content types, settings, and more directly.",
+      reply: AI_NOT_ENABLED_MESSAGE,
       actions: [],
       tool_calls: [],
       iterations: 0,

@@ -21,6 +21,15 @@ export function serializePublicRuntimeConfig(config: PublicRuntimeConfig): strin
     .replace(/\u2029/g, '\\u2029');
 }
 
+/**
+ * "Continue with GitHub" appears only when the operator enabled Firebase's
+ * GitHub provider with a GitHub OAuth App and set
+ * PUBLIC_FIREBASE_GITHUB_SIGNIN=true. Self-hosters without one get no button.
+ */
+export function githubSignInEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.PUBLIC_FIREBASE_GITHUB_SIGNIN?.trim().toLowerCase() === 'true';
+}
+
 export function firebaseApiKey(env: NodeJS.ProcessEnv = process.env): string | undefined {
   return env.PUBLIC_FIREBASE_API_KEY || undefined;
 }

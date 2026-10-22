@@ -1,0 +1,26 @@
+---
+// /verify-email — "Check your email". The only page an account without a
+// confirmed email address can open. Every other page and API treats it as
+// signed out (lib/auth.ts getSession), so it cannot create or join an
+// Organization, accept invitations, use API keys or approve MCP access.
+import MarketingLayout from '../layouts/MarketingLayout.astro';
+import VerifyEmailPanel from '../components/VerifyEmailPanel.tsx';
+import { getSessionIdentity } from '../lib/auth';
+import { safeReturnPath } from '../lib/return-path';
+
+Astro.response.headers.set('Cache-Control', 'no-store');
+const next = safeReturnPath(Astro.url.searchParams.get('next'));
+const identity = await getSessionIdentity(Astro.cookies);
+if (!identity) return Astro.redirect(`/login${next ? `?next=${encodeURIComponent(next)}` : ''}`);
+// Already confirmed: continue the same way /login does.
+if (identity.emailVerified) return Astro.redirect(identity.orgId ? next ?? '/app' : next?.startsWith('/onboarding') ? next : `/onboarding${next ? `?next=${encodeURIComponent(next)}` : ''}`);
+const sent = Astro.url.searchParams.get('sent') === '1';
+---
+<MarketingLayout title="Check your email — Typeroll">
+  <section class="container--narrow" style="padding: 4rem 1.5rem;">
+    <div class="card stack">
+      <h1 style="font-size: 1.5rem;">Check your email</h1>
+      <VerifyEmailPanel client:load email={identity.email} next={next} sent={sent} />
+    </div>
+  </section>
+</MarketingLayout>

@@ -3,7 +3,7 @@ import type { FullSession } from '../access';
 import { getStore } from '../datastore';
 import { ConnectionError, connectionPath, getConnection, openCredentials, saveConnection, sealCredentials, type Connection } from './connections';
 import {
-  CLOUDFLARE_BUILD_SCOPES, CLOUDFLARE_CALLBACK, CLOUDFLARE_MEDIA_SCOPES, CLOUDFLARE_OPTIONAL_DNS_SCOPES, CLOUDFLARE_SCOPES, cloudflareOAuthConfiguration,
+  CLOUDFLARE_ANALYTICS_SCOPES, CLOUDFLARE_BUILD_SCOPES, CLOUDFLARE_CALLBACK, CLOUDFLARE_MEDIA_SCOPES, CLOUDFLARE_OPTIONAL_DNS_SCOPES, CLOUDFLARE_SCOPES, cloudflareOAuthConfiguration,
   cloudflareSetup, requiredCloudflareScopes,
 } from './cloudflare-config';
 import {
@@ -113,14 +113,16 @@ async function exchange(parameters: Record<string, string>, fetchImpl: typeof fe
   return { access_token: data.access_token, refresh_token: refresh, expires_at: Date.now() + data.expires_in * 1000, scope: granted.join(' ') };
 }
 
-export async function startCloudflareConnection(session: FullSession, groupId = 'default', buildAccess = false) {
+export async function startCloudflareConnection(session: FullSession, groupId = 'default', buildAccess = false, analyticsAccess = false) {
   const config = cloudflareOAuthConfiguration();
   await getHostingGroup(session.orgId, groupId);
   const connection = await getConnection(session.orgId, 'cloudflare', groupId);
   await getStore().deleteDoc(choicePath(session.orgId));
   const previousScopes = connection.encrypted_credentials ? openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', connection.encrypted_credentials, groupId).oauth?.scope.split(/\s+/) ?? [] : [];
   const buildScopes = groupId === 'default' ? CLOUDFLARE_BUILD_SCOPES.filter(scope => buildAccess || previousScopes.includes(scope)) : [];
-  const scope = [...new Set([...requiredCloudflareScopes(groupId), ...CLOUDFLARE_OPTIONAL_DNS_SCOPES, ...(groupId === 'default' ? CLOUDFLARE_MEDIA_SCOPES : []), ...buildScopes])].join(' ');
+  // Analytics lives in each hosting account, so every Hosting Group can ask for it. A reconnect keeps what was granted.
+  const analyticsScopes = CLOUDFLARE_ANALYTICS_SCOPES.filter(scope => analyticsAccess || previousScopes.includes(scope));
+  const scope = [...new Set([...requiredCloudflareScopes(groupId), ...CLOUDFLARE_OPTIONAL_DNS_SCOPES, ...(groupId === 'default' ? CLOUDFLARE_MEDIA_SCOPES : []), ...buildScopes, ...analyticsScopes])].join(' ');
   const state = nonce(), browser = nonce(), verifier = nonce();
   const startedAt = Date.now();
   await getStore().setDoc(grantPath(session.orgId), { user_id: session.userId, expires_at: startedAt + TTL,
@@ -609,8 +611,8 @@ export async function cloudflareClient(orgId: string, fetchImpl: typeof fetch = 
   return Object.assign(client, { connectionRevision: access.revision });
 }
 
-/** Coordinator-only bridge to the official static uploader. Never exposed to a build runner. */
-export async function withCloudflareCredential<T>(orgId: string, groupId: string, work: (token: string) => Promise<T>): Promise<T> {
-  const access = await cloudflareAccess(orgId, fetch, undefined, groupId);
+/** Server-side bridge for the official static uploader and Analytics reports. Never exposed to a build runner or a response. */
+export async function withCloudflareCredential<T>(orgId: string, groupId: string, work: (token: string) => Promise<T>, fetchImpl: typeof fetch = fetch): Promise<T> {
+  const access = await cloudflareAccess(orgId, fetchImpl, undefined, groupId);
   return work(access.token);
 }

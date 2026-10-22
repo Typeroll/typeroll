@@ -38,7 +38,7 @@ export const schemaMarkupWorkflow: WorkflowDef = {
           let proposal: SchemaProposal;
           try {
             const result = await generateJson<{ type: string; json_ld: Record<string, unknown> }>(
-              ctx.orgId,
+              ctx,
               `You generate schema.org JSON-LD for individual web pages. Pick the single most appropriate type (Organization, LocalBusiness, Service, Article, FAQPage, Person, etc.) and produce a minimal but accurate JSON-LD object.`,
               `Site name: ${settings?.site_name ?? ''}
 Page title: ${p.title}

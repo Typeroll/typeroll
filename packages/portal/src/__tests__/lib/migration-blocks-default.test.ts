@@ -3,7 +3,6 @@ import { paths } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { migrationWorkflow } from '../../lib/workflows/migration';
-import { reconstructPage } from '../../lib/wp/ai-reconstruct';
 import { mediaTransferAvailability } from '../../lib/wp/media';
 
 const source = vi.hoisted(() => ({ categories: [] as number[], terms: [] as Array<Record<string, unknown>>, customItems: [] as Array<Record<string, unknown>> }));
@@ -15,14 +14,12 @@ vi.mock('../../lib/wp/client', () => ({ WPClient: class {
     async listPages() { return [{ id: 1, title: { rendered: 'About' }, slug: 'about', link: 'https://wp.example/about/', content: { rendered: '<h2 id="welcome">Welcome</h2><p>Original content</p>' }, date: '2026-01-01', modified: '2026-01-02' }]; }
     async listPosts() { return [{ id: 2, categories: source.categories, title: { rendered: 'Article' }, slug: 'article', link: 'https://wp.example/news/article/', content: { rendered: '<figure class="wp-block-table"><table><tr><th>Header</th></tr><tr><td>Value</td></tr></table></figure>' }, date: '2026-01-01', modified: '2026-01-02' }]; }
   } }));
-vi.mock('../../lib/wp/ai-reconstruct', () => ({ reconstructPage: vi.fn(), isAIReconstructAvailable: () => false }));
 vi.mock('../../lib/wp/media', () => ({ WPMediaTransfer: vi.fn(), mediaTransferAvailability: vi.fn(), buildMediaMap: () => new Map() }));
 
 beforeEach(async () => {
   source.categories = []; source.terms = []; source.customItems = [];
   makeTmpFixtures(); await resetDatastore();
   vi.stubEnv('DEPLOY_QUEUE', 'firestore');
-  vi.mocked(reconstructPage).mockImplementation(async (_design, input) => ({ html: input.cleaned_html, used_ai: false }));
   vi.mocked(mediaTransferAvailability).mockResolvedValue({ configured: true, destination: 'organization_r2' } as never);
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -35,7 +32,6 @@ it.each(['blocks', 'html'])('imports both WordPress pages and posts through the 
     orgId: 'org', siteId: 'site', workflowId: 'import', store,
     config: { version: 'redesign', target_content_mode: mode }, state: { wp_url: 'https://wp.example' }, log: () => {}, setProgress: () => {},
   });
-  expect(reconstructPage).not.toHaveBeenCalled();
   expect(result).toMatchObject({ state: { imported_count: 2 } });
   const pages = await store.listDocs(paths.pages('org', 'site', 'redesign'));
   expect(pages).toHaveLength(2);
@@ -134,7 +130,6 @@ it('uses the same body, custom-field and SEO rules for custom post types', async
     content_type: 'news', fields: { promoted: true }, seo_title: 'Custom SEO', seo_description: 'Original description', noindex: true, sort_order: 7,
     content_mode: 'html', status: 'review',
   });
-  expect(reconstructPage).not.toHaveBeenCalled();
 });
 
 it('requires updated helper support and never silently falls back after helper authorization fails', async () => {

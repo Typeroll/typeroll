@@ -177,6 +177,11 @@ the full reference + concrete operation recipes.
   `create_organization_invite` (editor invite link). A share never reaches
   further than the caller. New API keys are created only in the portal, so the
   secret never passes through an agent conversation.
+- **Portal AI assistant** — `read_organization_ai_settings`,
+  `set_organization_ai_key`, `remove_organization_ai_key` and
+  `set_organization_ai_site_access`: the Organization's own Anthropic key
+  (verified, encrypted, never returned) and the Sites that show the built-in
+  AI chat. Organization key, owner/admin. MCP itself never depends on it.
 - **Workflows** — `list_workflows`, `start_workflow` (migration, site planning,
   SEO/link/performance audits, content generation and improvement, schema
   markup, URL parity, rebuild & deploy), `get_workflow`, `approve_workflow`.

@@ -4,6 +4,7 @@ import { getDeployQueue } from '../deploy/queue';
 import { getSiteDomains } from './domain-config';
 import { assertPublishingReady } from './readiness';
 import { ConnectionError } from './connections';
+import { assertHostChecks, siteHostChecks } from './host-checks';
 
 /** A domain-only build always reuses the last public snapshot, never saved CMS changes. */
 export async function prepareDomainTransition(orgId: string, siteId: string, input: Record<string, unknown>) {
@@ -17,6 +18,8 @@ export async function prepareDomainTransition(orgId: string, siteId: string, inp
   if (!target?.last_publication?.snapshot_job_id) throw new ConnectionError('Publish the site once before preparing a domain-only change. The first publication uses the hosts saved here.', 409, 'first_publication_required');
   const active = jobs.find(job => job.version_id === 'main' && ['queued', 'running'].includes(job.status));
   if (active) return { job_id: active.id, already_running: true };
+  // A host Cloudflare cannot serve (apex outside an active zone, pending zone) fails here, not after a build.
+  assertHostChecks(await siteHostChecks(orgId, siteId, domains));
   await assertPublishingReady(orgId, siteId);
   const jobId = await store.addDoc(paths.deploys(orgId, siteId), { version_id: 'main', environment: 'production', status: 'queued', started_at: new Date().toISOString(),
     triggered_by: 'domain preparation', publication_intent: 'domain_prepare', domain_revision: domains.revision,

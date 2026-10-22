@@ -2,11 +2,17 @@
 import AppLayout from '../../../layouts/AppLayout.astro';
 import { importStorageStatus } from '../../../lib/media/import-policy';
 import { getSession } from '../../../lib/auth';
+import { readAiSettings, settingsCoverNewSites, AI_SETTINGS_PATH } from '../../../lib/ai/organization-ai';
+import { organizationMembership } from '../../../lib/organization-session';
 
 const session = await getSession(Astro.cookies);
 if (!session) return Astro.redirect('/login');
 if (!session.orgId) return Astro.redirect('/onboarding');
 const importStorage = await importStorageStatus(session.orgId);
+// AI planning needs the organization's own key for sites created later.
+const aiForNewSites = settingsCoverNewSites(await readAiSettings(session.orgId));
+const membership = await organizationMembership(session.userId, session.orgId);
+const canManageAi = membership?.role === 'owner' || membership?.role === 'admin';
 ---
 <AppLayout title="New site">
   <div class="app-header">
@@ -54,7 +60,12 @@ const importStorage = await importStorageStatus(session.orgId);
         <label for="plan_desc">Business description</label>
         <textarea id="plan_desc" name="business_description" required rows="3" placeholder="A small hair salon in downtown Portland…"></textarea>
       </div>
-      <button type="submit" class="btn">Plan & generate</button>
+      {!aiForNewSites && <div role="status" data-ai-planning-unavailable>
+        <p>Planning with AI needs your organization’s own Anthropic API key with “All sites, including sites created later” selected.</p>
+        {canManageAi ? <a class="btn btn--secondary" href={AI_SETTINGS_PATH}>Open AI assistant settings</a>
+          : <p class="muted text-sm">Ask an organization owner or admin to set up the AI assistant.</p>}
+      </div>}
+      <button type="submit" class="btn" disabled={!aiForNewSites}>Plan & generate</button>
     </form>
   </div>
 </AppLayout>

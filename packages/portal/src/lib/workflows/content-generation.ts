@@ -30,7 +30,7 @@ export const contentGenerationWorkflow: WorkflowDef = {
         ctx.log(`Generating "${topic}" for ${siteName}…`);
 
         const html = await generateText(
-          ctx.orgId,
+          ctx,
           `You are a writer producing a single web page for "${siteName}". Output HTML body only (no <html>/<body>, no markdown fences). Use semantic tags (h1, h2, p, ul). The site has these CSS variables you can use inline: var(--color-primary), var(--color-accent), var(--spacing-md), var(--spacing-lg). Write for ${audience} in a ${tone} tone. Be specific — no filler.`,
           `Topic: ${topic}\n\nWrite the page. Include a clear H1, scannable structure, and at least one call to action when relevant.`
         );

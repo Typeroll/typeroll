@@ -4,6 +4,8 @@
 import type { APIRoute } from 'astro';
 import { requireFullSession } from '../../../lib/access';
 import { createSiteWithWorkflow, parseSiteWorkflowRequest, SiteWorkflowInputError } from '../../../lib/workflows/create-site';
+import { AI_SETTINGS_PATH, AiNotEnabledError } from '../../../lib/ai/organization-ai';
+import { privateJson } from '../../../lib/ai/http';
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const guard = await requireFullSession(cookies);
@@ -22,6 +24,12 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     throw error;
   }
 
-  const { siteId, workflowId } = await createSiteWithWorkflow({ orgId: session.orgId, request: parsed, createdBy: session.userId });
-  return redirect(`/app/sites/${siteId}/workflows/${workflowId}`);
+  try {
+    const { siteId, workflowId } = await createSiteWithWorkflow({ orgId: session.orgId, request: parsed, createdBy: session.userId });
+    return redirect(`/app/sites/${siteId}/workflows/${workflowId}`);
+  } catch (error) {
+    // Refused before anything was created; the New site page explains it too.
+    if (error instanceof AiNotEnabledError) return privateJson({ error: error.message, code: error.code, settings_url: AI_SETTINGS_PATH }, 403);
+    throw error;
+  }
 };

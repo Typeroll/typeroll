@@ -1,25 +1,31 @@
 ---
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import LoginForm from '../components/LoginForm.tsx';
-import { isDevAuthEnabled, isFirebaseConfigured, getSession } from '../lib/auth';
+import { isDevAuthEnabled, isFirebaseConfigured, getSessionIdentity } from '../lib/auth';
 import { safeReturnPath } from '../lib/return-path';
+import { githubSignInEnabled } from '../lib/runtime-config-server';
 
 // If already signed in, send where they need to go.
-// Pending sessions (no org yet) go to onboarding; full sessions go to the app,
+// Accounts without a confirmed email go to "Check your email". Pending
+// sessions (no org yet) go to onboarding; full sessions go to the app,
 // or back to the application page that asked them to sign in again.
 const next = safeReturnPath(Astro.url.searchParams.get('next'));
-const session = await getSession(Astro.cookies);
+const session = await getSessionIdentity(Astro.cookies);
+if (session && !session.emailVerified) return Astro.redirect(`/verify-email${next ? `?next=${encodeURIComponent(next)}` : ''}`);
 if (session) return Astro.redirect(session.orgId ? next ?? '/app' : next?.startsWith('/onboarding') ? next : `/onboarding${next ? `?next=${encodeURIComponent(next)}` : ''}`);
 
+// `?mode=signup` opens account creation directly, e.g. from a "Create an account" link.
+const initialMode = Astro.url.searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
 const firebaseReady = isFirebaseConfigured();
 const devAuthEnabled = isDevAuthEnabled();
+const githubSignIn = firebaseReady && githubSignInEnabled();
 ---
 <MarketingLayout title="Sign in — Typeroll">
   <section class="container--narrow" style="padding: 4rem 1.5rem;">
     <div class="card stack">
       <h1 style="font-size: 1.5rem;">Welcome to Typeroll</h1>
       {firebaseReady ? (
-        <LoginForm client:load next={next} />
+        <LoginForm client:load next={next} initialMode={initialMode} githubSignIn={githubSignIn} />
       ) : devAuthEnabled ? (
         <>
           <p class="muted text-sm">

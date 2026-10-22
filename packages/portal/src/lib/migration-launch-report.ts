@@ -1,10 +1,12 @@
 import { paths } from '@typeroll/shared';
-import type { DeployJob, Site } from '@typeroll/shared';
+import type { DeployJob, Site, SiteApps } from '@typeroll/shared';
 import type { ReadWriteStore } from './datastore';
 import { checkInternalLinks } from './internal-link-check';
 import type { StoredSiteParityEvidence } from './wp/url-parity';
 import { analyzeCoverage } from './wp/url-inventory';
 import { publicUrlsFor } from './site-public-urls';
+import { auditMigrationScripts, scriptAuditIssues, type ScriptFinding } from './migration-script-audit';
+import { vstore } from './version-store';
 
 export interface MigrationSeoAcceptance {
   status: 'accepted' | 'rejected';
@@ -57,6 +59,11 @@ export interface MigrationLaunchReport {
     status: 'current' | 'stale' | 'missing' | 'rejected';
     evidence: MigrationSeoAcceptance | null;
   };
+  /** Copied source-platform scripts and tracking that bypasses consent (migration-script-audit.ts). */
+  scripts: {
+    status: 'clean' | 'issues';
+    findings: ScriptFinding[];
+  };
 }
 
 export async function buildMigrationLaunchReport(args: {
@@ -75,6 +82,7 @@ export async function buildMigrationLaunchReport(args: {
     store.getDoc<StoredSiteParityEvidence>(paths.migrationVerification(orgId, siteId, versionId)),
     store.getDoc<MigrationSeoAcceptance>(paths.migrationSeoAcceptance(orgId, siteId, versionId)),
   ]);
+  const scriptFindings = await loadScriptFindings(store, orgId, siteId, versionId);
   const issues: Array<{ id: string; detail: string }> = [];
   const exclusionsWithoutReason = urls.filter(
     (entry) => entry.status === 'excluded' && !entry.notes?.trim(),
@@ -87,6 +95,7 @@ export async function buildMigrationLaunchReport(args: {
   if (internalLinks.broken_links > 0) {
     issues.push({ id: 'broken_internal_links', detail: `${internalLinks.broken_links} internal link(s) are broken.` });
   }
+  issues.push(...scriptAuditIssues(scriptFindings));
 
   const latestDeploy = deploys
     .filter((job) => job.version_id === versionId && job.status === 'succeeded' && job.dry_run !== true)
@@ -162,7 +171,29 @@ export async function buildMigrationLaunchReport(args: {
         : null,
     },
     seo_parity: { status: seoStatus, evidence: seoEvidence ?? null },
+    scripts: { status: scriptFindings.length ? 'issues' : 'clean', findings: scriptFindings },
   };
+}
+
+/** Every surface that ships a script: settings, apps, live pages, partials, templates and site block types. */
+async function loadScriptFindings(store: ReadWriteStore, orgId: string, siteId: string, versionId: string): Promise<ScriptFinding[]> {
+  const [settings, apps, pages, partials, templates, blockTypes] = await Promise.all([
+    vstore.settings(orgId, siteId, versionId),
+    store.getDoc<SiteApps>(paths.apps(orgId, siteId)),
+    vstore.pages(orgId, siteId, versionId),
+    vstore.partials(orgId, siteId, versionId),
+    vstore.pageTemplates(orgId, siteId, versionId),
+    vstore.blockTypes(orgId, siteId, versionId),
+  ]);
+  const sources = [
+    ...pages.filter(page => page.status === 'published' || page.status === 'unlisted')
+      .map(page => ({ location: `page:${page.path ?? page.id}`, html: JSON.stringify(page) })),
+    ...partials.map(partial => ({ location: `partial:${partial.id}`, html: JSON.stringify(partial) })),
+    ...templates.map(template => ({ location: `page_template:${template.id}`, html: JSON.stringify(template) })),
+    ...blockTypes.filter(type => type.origin !== 'core')
+      .map(type => ({ location: `block_type:${type.id}`, html: type.template, script: type.script })),
+  ];
+  return auditMigrationScripts({ settings, apps, sources });
 }
 
 function normalizeOrigin(value: string): string {

@@ -7,7 +7,7 @@ import type { SiteApps } from '@typeroll/shared';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { maskAppState } from '../../../../../../lib/apps/config';
-import { AppManagementError, saveAppState } from '../../../../../../lib/apps/manage';
+import { AppManagementError, incompleteSetupError, saveAppState } from '../../../../../../lib/apps/manage';
 import { getAppDef } from '../../../../../../lib/apps/registry';
 
 export const GET: APIRoute = async ({ request, params }) => {
@@ -23,6 +23,8 @@ export const GET: APIRoute = async ({ request, params }) => {
   return apiResponse(ctx, {
     app_id: def.id,
     state,
+    // Provider setup (Analytics: Cloudflare Web Analytics site): ready, or the cause and next step.
+    setup: state.setup ?? null,
     app: {
       id: def.id,
       name: def.name,
@@ -57,17 +59,29 @@ export const PUT: APIRoute = async ({ request, params }) => {
       enabled: Boolean(body.enabled),
       config: body.config,
     });
+    const state = maskAppState(def.id, result.state);
+    // Saved, but the app cannot work yet (Analytics without a beacon): answer with the cause, not ok.
+    const incomplete = incompleteSetupError(appId, result.state, result.setup);
+    if (incomplete) {
+      return apiError(incomplete.message, incomplete.status, ctx, {
+        code: incomplete.code,
+        details: { ...incomplete.details, app_id: appId, saved: true, state, affects_build: result.affectsBuild },
+      });
+    }
     return apiResponse(ctx, {
       ok: true,
       app_id: appId,
-      state: maskAppState(def.id, result.state),
+      state,
+      setup: result.setup,
       affects_build: result.affectsBuild,
     }, 200, {
       enabled: Boolean(body.enabled),
       config_keys: Object.keys(body.config ?? {}),
     });
   } catch (error) {
-    if (error instanceof AppManagementError) return apiError(error.message, error.status);
+    if (error instanceof AppManagementError) {
+      return apiError(error.message, error.status, ctx, error.code ? { code: error.code, details: { ...error.details, app_id: appId, saved: false } } : undefined);
+    }
     return apiError('Failed to save app config', 500);
   }
 };

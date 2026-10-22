@@ -14,6 +14,7 @@ import { requireSiteAccess, json, requirePermission } from '../../../../lib/acce
 import { getStore } from '../../../../lib/datastore';
 import { runChatTurn, type ChatMessageInput, type ActivePageContext } from '../../../../lib/anthropic';
 import { vstore } from '../../../../lib/version-store';
+import { AI_NOT_ENABLED_CODE, AI_NOT_ENABLED_MESSAGE, isAiEnabledForSite } from '../../../../lib/ai/organization-ai';
 import { paths } from '@typeroll/shared';
 import type { ChatAttachment, ChatMessage, SiteVersion } from '@typeroll/shared';
 
@@ -26,6 +27,11 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!writeCheck.ok) return writeCheck.response;
   const { session, site, versionId, owner_org_id, permission } = guard.value;
   const siteId = site.id;
+  // The Site OWNER's key and allowlist decide, also for a shared-in Site.
+  // Refuse before anything is persisted. MCP and the API are never gated.
+  if (!await isAiEnabledForSite({ orgId: owner_org_id, siteId })) {
+    return json({ error: AI_NOT_ENABLED_MESSAGE, code: AI_NOT_ENABLED_CODE }, 403);
+  }
 
   const body = (await request.json().catch(() => ({}))) as {
     message?: string;

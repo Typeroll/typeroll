@@ -192,7 +192,7 @@ test('user can do the foo', async ({ page }) => {
 
 Local E2E specs run against `http://127.0.0.1:4322`. The config in
 `playwright.config.ts` builds the SSR server artifact and starts it with empty
-`FIREBASE_SERVICE_ACCOUNT` / `ANTHROPIC_API_KEY`; the default development
+`FIREBASE_SERVICE_ACCOUNT`; the default development
 session and the isolated E2E persona exchange are both available.
 
 ### E2E writes go to a throwaway fixtures copy

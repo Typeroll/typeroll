@@ -192,22 +192,26 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'approve_publishing_domain_cutover',
-    description: 'Approve switching website traffic to the verified frozen deployment. Read publishing domains first and review DNS requirements and certificate readiness. Existing traffic is preserved until validation succeeds. External DNS management remains the caller’s responsibility.',
-    inputSchema: { revision: z.string(), candidate_id: z.string() },
+    description: 'Approve switching website traffic to the verified frozen deployment. Read publishing domains first and review DNS requirements, certificate readiness and redirect_preparations. Existing traffic is preserved until validation succeeds. With automatic DNS, redirect hosts switch after the website host: Typeroll ensures their zone redirect rule, then changes their reviewed record to a proxied placeholder. The publication goes live only after every redirect host answers 301 to the website host with the same path and query. When preparation.validation_blocker.resolution is accept_validation_window, Cloudflare can validate the website host only after its one existing record points at Pages: approving with accept_validation_window: true lets Typeroll change that record, and the host does not answer until Cloudflare validates it (Cloudflare does not document how long; previous_records holds the rollback). Get the user\'s explicit go-ahead for that window and choose a quiet time. External DNS management remains the caller’s responsibility.',
+    inputSchema: {
+      revision: z.string(), candidate_id: z.string(),
+      accept_validation_window: z.boolean().optional().describe('Accept the interruption until Cloudflare validates the website host after its single reviewed record changes. Only valid when preparation.validation_blocker.resolution is accept_validation_window.'),
+    },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/cutover', args))),
   },
   {
     name: 'read_publishing_domains',
-    description: 'Read the desired and active website and media hosts, retained media aliases, DNS management mode and domain configuration revision. Saving intent does not switch traffic.',
+    description: 'Read the desired and active website, redirect and media hosts, retained media aliases, DNS management mode and domain configuration revision. host_checks lists each future host with its Cloudflare zone and structured blockers and warnings (code, host, message), for example apex_zone_required (an apex such as example.com needs an active Cloudflare zone in the hosting account), zone_not_active (the zone is pending until its nameservers change) or redirect_zone_required. Resolve blockers before preparing. preparation and redirect_preparations hold DNS records, the zone redirect rule and certificate state after preparation. Saving intent does not switch traffic.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'publishing/domains'))),
   },
   {
     name: 'set_publishing_domains',
-    description: 'Save future website and media hosts before preparing a deployment. Requires the current revision from read_publishing_domains. This does not publish content or change traffic DNS. Choose external DNS when your agent manages Cloudflare independently.',
+    description: 'Save future website, redirect and media hosts before preparing a deployment. Requires the current revision from read_publishing_domains. This does not publish content or change traffic DNS. Choose external DNS when your agent manages Cloudflare independently. redirect_hosts (for example www.example.com when example.com is the website host) answer 301 to the website host, keeping path and query, through a Single Redirect rule in the host\'s Cloudflare zone; they are switched and verified with the website. The response includes host_checks: resolve its blockers before preparing.',
     inputSchema: {
       revision: z.string(), website_host: z.string().nullable(), media_host: z.string().nullable(),
       media_path_prefix: z.string().optional().describe('Empty on a separate media host; /media when using the website host.'),
+      redirect_hosts: z.array(z.string()).max(4).optional().describe('Hostnames that redirect permanently to website_host, such as www.example.com. Omit or send [] for none.'),
       dns_mode: z.enum(['automatic', 'external']),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.put(siteId, 'publishing/domains', args))),

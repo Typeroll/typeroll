@@ -1,23 +1,13 @@
 import type { APIContext } from 'astro';
-import { json, requireFullSession, requireOrgAdmin } from '../access';
+import { json, requireOrganizationOwnerOrAdmin } from '../access';
 import { R2VerificationError } from './r2-verification-error';
 import { ConnectionError } from './connections';
 import { ProviderError } from './providers.mjs';
-import { getStore } from '../datastore';
-import { paths } from '@typeroll/shared';
 
 export async function publishingAdmin(context: Pick<APIContext, 'cookies'>) {
-  const session = await requireFullSession(context.cookies);
-  if (!session.ok) return session;
-  const admin = await requireOrgAdmin(session.value);
-  if (!admin.ok) return admin;
   // New account credentials never inherit the legacy roles_enforced=false
   // compatibility behavior, which treats every organization member as admin.
-  const member = await getStore().getDoc<{ role: string }>(`${paths.members(session.value.orgId)}/${session.value.userId}`);
-  if (member?.role !== 'owner' && member?.role !== 'admin') {
-    return { ok: false as const, response: privateJson({ error: 'An organization owner or admin must manage publishing accounts' }, 403) };
-  }
-  return session;
+  return requireOrganizationOwnerOrAdmin(context.cookies, 'An organization owner or admin must manage publishing accounts');
 }
 
 export function privateJson(data: unknown, status = 200): Response {

@@ -21,7 +21,13 @@ export function personaCredentials(persona: CorePersona) {
   return { email: required(keys.email), password: required(keys.password) };
 }
 
-export async function authenticatePersona(page: Page, persona: CorePersona): Promise<void> {
+export interface AuthenticateOptions {
+  /** false creates the same persona with an unconfirmed email address
+   *  ("Check your email" state). Local E2E sessions only. */
+  emailVerified?: boolean;
+}
+
+export async function authenticatePersona(page: Page, persona: CorePersona, { emailVerified = true }: AuthenticateOptions = {}): Promise<void> {
   const target = process.env.TYPEROLL_E2E_TARGET ?? 'local';
   const portalOrigin = process.env.TYPEROLL_E2E_PORTAL_URL ?? 'http://127.0.0.1:4322';
   if (target === 'local') {
@@ -30,11 +36,13 @@ export async function authenticatePersona(page: Page, persona: CorePersona): Pro
         Origin: portalOrigin,
         'x-typeroll-e2e-secret': required('TYPEROLL_E2E_AUTH_SECRET'),
       },
-      data: { persona },
+      data: emailVerified ? { persona } : { persona, emailVerified: false },
     });
     if (!response.ok()) throw new Error(`Local E2E session exchange failed with ${response.status()}`);
     return;
   }
+  // Remote personas are provisioned with confirmed addresses.
+  if (!emailVerified) throw new Error('Unconfirmed-email sessions are only available against the local E2E server');
 
   const { email, password } = personaCredentials(persona);
   const apiKey = required('TYPEROLL_E2E_FIREBASE_API_KEY');

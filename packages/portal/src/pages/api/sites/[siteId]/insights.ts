@@ -22,7 +22,7 @@ export const GET: APIRoute = async ({ cookies, params, locals, request }) => {
   const store = getStore();
   const appsDoc = await store.getDoc<SiteApps>(paths.apps(owner_org_id, site.id));
   const [result, conversions] = await Promise.all([
-    getInsights(appsDoc ?? undefined, days),
+    getInsights({ orgId: owner_org_id, siteId: site.id, site, appsDoc: appsDoc ?? undefined, days }),
     appsDoc?.apps?.analytics?.enabled
       ? getConversionInsights(store, owner_org_id, site.id, days)
       : Promise.resolve({ total_events: 0, by_event: [], by_source: [], by_campaign: [], truncated: false }),

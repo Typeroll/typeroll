@@ -11,6 +11,7 @@ import { readWorkingCopy } from '../../../../../lib/working-copy';
 import { pageAddress } from '../../../../../lib/page-fields';
 import { paths, resolveRenderVersion } from '@typeroll/shared';
 import type { Page, SiteVersion } from '@typeroll/shared';
+import { canUseAiChat } from '../../../../../lib/ai/organization-ai';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
@@ -48,6 +49,8 @@ const globalBlocks = (await vstore.partials(orgId, siteId, versionId)).filter(pa
   .map(partial => ({ id: partial.id, name: partial.name, status: partial.status, content_mode: partial.content_mode }))
   .sort((a, b) => a.name.localeCompare(b.name));
 const blockTemplates = await listBlockTemplates({ orgId, siteId });
+// The editor's AI panel follows the same rule as the AI chat page.
+const aiChatEnabled = await canUseAiChat({ orgId, siteId }, permission);
 
 // Set by the New page form when the title-derived slug was already in use.
 const requestedSlug = Astro.url.searchParams.get('slug_adjusted');
@@ -63,7 +66,7 @@ const slugNotice = requestedSlug && page.slug !== requestedSlug ? {
   {page.content_mode === 'blocks' ? (
     <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} globalBlocks={globalBlocks} blockTemplates={blockTemplates} canManageBlockTypes={permission !== 'read'} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   ) : (
-    <HtmlPageEditor client:load siteId={siteId} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+    <HtmlPageEditor client:load siteId={siteId} aiChatEnabled={aiChatEnabled} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   )}
   {slugNotice && (
     <div class="slug-adjusted-notice" role="status" id="slug-adjusted-notice">

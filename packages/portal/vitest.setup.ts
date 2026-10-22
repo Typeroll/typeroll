@@ -7,7 +7,7 @@ import { tmpDir } from './src/__tests__/helpers/tmp-fixtures';
 
 // Ensure the auto-loaded .env doesn't bleed real keys into tests.
 delete process.env.FIREBASE_SERVICE_ACCOUNT;
-delete process.env.ANTHROPIC_API_KEY;
+delete process.env.ANTHROPIC_BASE_URL;
 delete process.env.R2_ACCOUNT_ID;
 delete process.env.CLOUDFLARE_API_TOKEN;
 delete process.env.CF_IMAGE_ORIGIN;

@@ -86,7 +86,7 @@ src/
     ├── workflows/                 Workflow engine + 9 workflow types
     ├── wp/                        WordPress migration internals: REST client,
     │                              helper-plugin client, HTML cleaner,
-    │                              AI reconstruction, custom-types schema
+    │                              custom-types schema
     │                              inference, JIT media transfer, sitemap +
     │                              internal-links + URL inventory analyzer
     ├── deploy/                    runDeploy orchestrator

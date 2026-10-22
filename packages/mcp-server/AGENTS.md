@@ -139,7 +139,11 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   compatibility) through the same admin API key used for content
   and deploys. Read the schema before writing. Secret fields stay masked on
   reads and encrypted at rest; omitted fields preserve their current values.
-  When `affects_build` is true, deploy after the update.
+  When `affects_build` is true, deploy after the update. Enabling Analytics
+  creates its Cloudflare Web Analytics site in the account that hosts the site;
+  `read_app` and `update_app` return `setup` with the result. A 409 from
+  `update_app` carries `code` and `details.next_step`: relay that step to the
+  person (for example approving Analytics access in Cloudflare) and retry.
 
 - **Extension installations.** `list_extension_installations`,
   `read_extension_installation`, and `update_extension_installation_config`
@@ -842,7 +846,7 @@ something is quietly wrong:
   page breaks at once.
 - **hosting adapter** (blocker) — without credentials, deploys return a job id
   and publish nothing, while reporting success.
-- verification origin, AI reconstruction, form notification email, and whether
+- verification origin, content preservation, form notification email, and whether
   the target actually has a design to rebuild INTO (warnings).
 
 `ready: false` means STOP and report the blockers, each of which carries a
@@ -1010,7 +1014,9 @@ site that starts with a WordPress migration or an AI plan is one call with an
 organization key: `create_site_and_migrate` or `create_site_and_plan` (the two
 non-blank options on the portal's New site page). Migration needs verified
 organization import storage (`409 import_storage_required` otherwise; nothing
-is created).
+is created). An AI plan needs the Organization's own AI key with site access
+`all` (`403 ai_not_enabled` otherwise; nothing is created): you can instead
+create a blank site and plan it yourself.
 
 ### "Give someone access" (keys, sharing, invites)
 
@@ -1027,6 +1033,19 @@ is created).
 - **A person joining your Organization:** `create_organization_invite` returns
   a link; the person signs in and joins as an editor. Creating Organizations,
   switching Organization and redeeming invites remain signed-in portal actions.
+
+### "Turn on the portal's AI assistant" (and why you don't need it)
+
+You are the user's own agent: MCP and the API work on every Site you can
+reach, whatever this setting says. The built-in AI chat in the portal is
+separate. It uses the Organization's own Anthropic API key and appears only
+on the Sites an owner or admin chooses. `read_organization_ai_settings` shows
+whether a key is set (last four characters only) and `ai_enabled` per Site;
+`set_organization_ai_site_access` (`mode: "all"` or `"selected"` with
+`site_ids`), `set_organization_ai_key` and `remove_organization_ai_key` change
+it (organization key, owner/admin). Prefer that the person enters the key in
+the portal (Organization settings → AI assistant) so it never passes through
+your conversation; never repeat a key back.
 
 ### "Connect GitHub or Cloudflare"
 
@@ -1213,9 +1232,9 @@ preview.
 | **Discovery** | `get_site`, `create_site`, `create_site_and_migrate`, `create_site_and_plan` (org-scoped key only — see below), `update_site` (incl. `ai_scripts_enabled`, admin), `list_versions`, `read_site_settings` |
 | **Site lifecycle** | `archive_site`, `restore_site`, `purge_site_media` (archived sites only, irreversible). Owner-organization admin, as in the portal. |
 | **Workflows** | `list_workflows`, `start_workflow` (write; `rebuild_deploy` admin), `get_workflow`, `approve_workflow` (only `paused_for_review`, with the user's consent) |
-| **Access** | `list_api_keys`, `revoke_api_key` (site admin), `list_organization_api_keys`, `revoke_organization_api_key` (organization key; new keys are created only in the portal), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite` (organization key) |
+| **Access** | `list_api_keys`, `revoke_api_key` (site admin), `list_organization_api_keys`, `revoke_organization_api_key` (organization key; new keys are created only in the portal), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite` (organization key), `read_organization_ai_settings`, `set_organization_ai_key`, `remove_organization_ai_key`, `set_organization_ai_site_access` (the portal AI chat's own key and Sites; organization key) |
 | **Organization publishing** | `read_organization_publishing_connections`, `diagnose_organization_github_connection`, `diagnose_organization_cloudflare_connection`, `disconnect_organization_publishing_provider`, `connect_organization_cloudflare`, `prepare_organization_media_storage`, `save_organization_media_access`, plus builds, Hosting Groups, domains and media migration tools (organization key) |
-| **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics; conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |
+| **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics in the account that hosts the site; a non-ok `status` carries a `reason` with the next step. Conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |
 | **Pages — reads** | `list_pages`, `read_page`, `batch_read_pages` |
 | **Pages — writes** | `create_page`, `update_page`, `replace_page`, `batch_update_pages`, `delete_page`, `clone_page` |
 | **Pages — blocks** | `get_page_blocks`, `add_block`, `update_block`, `move_block`, `remove_block`, `duplicate_block`, `set_block_responsive`, `set_page_mode` (never converts HTML into blocks) |

@@ -59,11 +59,11 @@ function check(report: Awaited<ReturnType<typeof run>>, id: string) {
 
 describe('runMigrationPreflight', () => {
   beforeEach(async () => {
-    clearEnv(...Object.keys(R2_ENV), ...Object.keys(CF_ENV), 'ANTHROPIC_API_KEY', 'SITES_BASE_DOMAIN');
+    clearEnv(...Object.keys(R2_ENV), ...Object.keys(CF_ENV), 'SITES_BASE_DOMAIN');
     await seedSite();
   });
   afterEach(() => {
-    clearEnv(...Object.keys(R2_ENV), ...Object.keys(CF_ENV), 'ANTHROPIC_API_KEY', 'SITES_BASE_DOMAIN');
+    clearEnv(...Object.keys(R2_ENV), ...Object.keys(CF_ENV), 'SITES_BASE_DOMAIN');
   });
 
   it('blocks when media storage is unconfigured — the silent-failure case', async () => {

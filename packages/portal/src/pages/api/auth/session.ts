@@ -23,7 +23,9 @@ export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
   if (typeof idToken !== 'string' || !idToken || idToken.length > 12_000) return json({ error: 'Invalid sign-in request.' }, 400);
   try {
     const session = await setSessionFromIdToken(cookies, idToken);
-    return json({ ok: true, session }, 200);
+    // The server decides from the verified token. An unconfirmed account
+    // gets a cookie that only opens the "Check your email" page.
+    return json({ ok: true, session, verificationRequired: !session.emailVerified }, 200);
   } catch {
     return json({ error: 'Could not finish signing in. Please sign in again.' }, 401);
   }

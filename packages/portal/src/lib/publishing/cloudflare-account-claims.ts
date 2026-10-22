@@ -287,7 +287,7 @@ export function mediaTransferWorkerName(orgId: string, origin: string) {
   return `typeroll-media-${hex(`${origin}\0${orgId}`)}`;
 }
 
-export type CloudflareResourceKind = 'r2_bucket' | 'pages_project' | 'worker';
+export type CloudflareResourceKind = 'r2_bucket' | 'pages_project' | 'worker' | 'web_analytics_site';
 interface ResourceRecord { provider: 'cloudflare'; account_id: string; kind: CloudflareResourceKind; name: string; org_id: string; site_id: string | null; recorded_at: string }
 
 function resourcePath(accountId: string, kind: CloudflareResourceKind, name: string) {
@@ -300,7 +300,7 @@ export async function cloudflareResourceOwner(accountId: string, kind: Cloudflar
 }
 
 function resourceConflict(kind: CloudflareResourceKind, name: string) {
-  const label = kind === 'r2_bucket' ? 'R2 bucket' : kind === 'pages_project' ? 'Cloudflare Pages project' : 'Worker';
+  const label = kind === 'r2_bucket' ? 'R2 bucket' : kind === 'pages_project' ? 'Cloudflare Pages project' : kind === 'web_analytics_site' ? 'Web Analytics site' : 'Worker';
   return new ConnectionError(`The ${label} ${name} belongs to another Typeroll Organization that uses this Cloudflare account. Typeroll has not changed it. Choose another name or use the Organization that owns it.`, 409, 'cloudflare_resource_owned_by_other_organization');
 }
 

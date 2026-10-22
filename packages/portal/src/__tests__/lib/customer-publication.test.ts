@@ -29,6 +29,8 @@ vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completed
 vi.mock('../../lib/builds/upload', () => ({ uploadStaticBuild: mocks.upload, finalizeDirectUpload: mocks.direct }));
 vi.mock('../../lib/builds/publication', async original => ({ ...await original<object>(), saveStaticChecks: async () => 'builds/org/checks/verified.json', verifyStaticBatch: mocks.verify, verifyCustomerCandidate: mocks.candidateVerification, saveCustomerVerification: mocks.verificationPlan }));
 vi.mock('../../lib/deploy/availability', () => ({ probePublication: mocks.probe }));
+const redirectProbe = vi.hoisted(() => vi.fn(async () => ({ ok: true, status: 301, location: null as string | null })));
+vi.mock('../../lib/publishing/redirect-hosts', async original => ({ ...await original<object>(), verifyRedirectHost: redirectProbe }));
 const prefix = createHash('sha256').update('org\0site').digest('hex').slice(0, 16);
 const project = `typeroll-${prefix}`;
 const args = { orgId: 'org', siteId: 'site', versionId: 'main', jobId: 'job', environment: 'production' as const };
@@ -391,7 +393,7 @@ it('does not fall back to per-site Git builds when shared engine setup is unfini
   expect(mocks.push).not.toHaveBeenCalled();
 });
 
-it('keeps the candidate and existing traffic when the provider cannot prevalidate the domain', async () => {
+it('keeps the candidate and existing traffic when the provider cannot prevalidate several records', async () => {
   const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active });
   await executeCustomerPublication(args);
@@ -399,13 +401,52 @@ it('keeps the candidate and existing traffic when the provider cannot prevalidat
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => {
     if (route.includes('/domains/')) return { status: 'pending', validation_data: { method: 'http' }, verification_data: { error_message: 'CNAME record not set' } };
-    if (route.includes('/dns_records')) return [{ id: 'existing', type: 'A', content: '192.0.2.10' }];
+    if (route.includes('/dns_records')) return [{ id: 'existing', type: 'A', name: 'www.example.com', content: '192.0.2.10' }, { id: 'second', type: 'A', name: 'www.example.com', content: '192.0.2.11' }];
     return provider(route, options);
   });
   expect(await executeCustomerPublication(args)).toBe('ran');
-  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'domain_prevalidation_unavailable' }, error: expect.stringContaining('Keep the existing DNS records') });
-  expect(await getSiteDomains('org', 'site')).toMatchObject({ active, candidate: { commit: 'b'.repeat(40) }, preparation: { validation_blocker: { code: 'domain_prevalidation_unavailable' } } });
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'domain_prevalidation_unavailable' }, error: expect.stringContaining('replace the 2 current records') });
+  expect((await getStore().getDoc<any>(jobPath)).error).not.toContain('contact support');
+  expect(await getSiteDomains('org', 'site')).toMatchObject({ active, candidate: { commit: 'b'.repeat(40) }, preparation: { validation_blocker: { code: 'domain_prevalidation_unavailable', resolution: 'external_dns_change' } } });
   expect(mocks.cloudflare.mock.calls.some(([, options]) => options?.method === 'PATCH' && options?.body?.type === 'CNAME')).toBe(false);
+});
+
+it('switches one reviewed record only after the validation window is accepted, then waits for Cloudflare validation', async () => {
+  const store = getStore();
+  const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch);
+  let validated = false;
+  mocks.probe.mockImplementation(async origin => origin.includes('.pages.dev') || validated);
+  const records: Array<Record<string, unknown>> = [{ id: 'existing', type: 'A', name: 'www.example.com', content: '192.0.2.10', proxied: false }];
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.includes('/domains/')) return validated ? { status: 'active' } : { status: 'pending', validation_data: { method: 'http' }, verification_data: { error_message: 'CNAME record not set' } };
+    if (route === '/zones/zone/dns_records/existing' && options?.method === 'PATCH') { records.splice(0, 1, { id: 'existing', ...options.body }); return {}; }
+    if (route.includes('/dns_records') && !options?.method) return records;
+    return provider(route, options);
+  });
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'awaiting domain cutover approval', validation_blocker: { resolution: 'accept_validation_window' } });
+  const prepared = await getSiteDomains('org', 'site');
+  expect(prepared).toMatchObject({ state: 'ready_to_switch', preparation: { validation_blocker: { code: 'domain_prevalidation_unavailable', message: expect.stringContaining('restore A www.example.com 192.0.2.10 (DNS only)') } } });
+  expect(prepared.preparation!.validation_blocker!.message).toContain('15 minutes to 24 hours');
+  const { approveDomainCutover } = await import('../../lib/publishing/domain-config');
+  await expect(approveDomainCutover('org', 'site', { revision: prepared.revision, candidate_id: prepared.candidate!.id })).rejects.toMatchObject({ code: 'validation_window_acceptance_required' });
+  expect(records[0]).toMatchObject({ type: 'A', content: '192.0.2.10' });
+  // Approval with acceptance; the queue continuation is exercised by the next runner calls.
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { cutover_approved_revision: prepared.revision, approved_preparation: prepared.preparation, approved_validation_window: true });
+  await executeCustomerPublication(args);
+  await executeCustomerPublication(args);
+  complete('main');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(records[0]).toMatchObject({ type: 'CNAME', content: `${project}.pages.dev`, proxied: true });
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'waiting for Cloudflare to validate www.example.com after the approved switch',
+    verification_message: expect.stringContaining('restore A www.example.com 192.0.2.10 (DNS only)') });
+  validated = true;
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', deploy_url: 'https://www.example.com', verification_message: null });
 });
 
 it('explains the observed verification failure when the observation window expires', async () => {
@@ -551,4 +592,74 @@ it('resumes a timed-out public verification through the same job without provide
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', phase: 'live', git_publication: publication });
   expect(await store.getDoc<any>(paths.version('org', 'site', 'main'))).toMatchObject({ last_deployed_content_at: publication.content_cutoff });
   for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.upload, mocks.direct, mocks.cloudflare]) expect(mock).not.toHaveBeenCalled();
+});
+
+it('freezes a www redirect host, switches it after approval with the apex and verifies its 301 before going live', async () => {
+  const store = getStore();
+  const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  const saved = await getSiteDomains('org', 'site');
+  await saveSiteDomains('org', 'site', { revision: saved.revision, website_host: 'moveria.se', redirect_hosts: ['www.moveria.se'], dns_mode: 'automatic' });
+  const www: Array<Record<string, unknown>> = [{ id: 'www-a', type: 'A', name: 'www.moveria.se', content: '203.0.113.7', proxied: false }];
+  let ruleset: any = null;
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route: string, options?: any) => {
+    if (route.startsWith('/zones?')) return route.includes('name=moveria.se') ? [{ id: 'zone', name: 'moveria.se', status: 'active', account: { id: 'a'.repeat(32) } }] : [];
+    if (route === '/zones/zone/ssl/verification') return [{ certificate_status: 'active' }];
+    if (route === '/zones/zone/rulesets/phases/http_request_dynamic_redirect/entrypoint') return ruleset;
+    if (route === '/zones/zone/rulesets' && options?.method === 'POST') { ruleset = { id: 'rs', rules: options.body.rules }; return ruleset; }
+    if (route.startsWith('/zones/zone/dns_records?name=www.moveria.se')) return www;
+    if (route === '/zones/zone/dns_records/www-a' && options?.method === 'PATCH') { www.splice(0, 1, { ...www[0], ...options.body }); return {}; }
+    if (route.startsWith('/zones/zone/dns_records?name=moveria.se')) return [{ id: 'apex', name: 'moveria.se', type: 'CNAME', content: `${project}.pages.dev`, proxied: true }];
+    return provider(route, options);
+  });
+  await executeCustomerPublication(args);
+  const frozen = JSON.parse(mocks.push.mock.calls[0][1].files['publication.json']);
+  expect(frozen.reference_mapping.website_origins).toContain('https://www.moveria.se');
+  expect((await store.getDoc<any>(jobPath)).git_publication.redirect_hosts).toEqual(['www.moveria.se']);
+  complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ phase: 'awaiting domain cutover approval', dns_requirements: expect.arrayContaining([expect.objectContaining({ type: 'A', name: 'www.moveria.se', content: '192.0.2.1', proxied: true })]) });
+  // The rule exists while www is still DNS only at the old host; the record waits for approval.
+  expect(ruleset.rules[0]).toMatchObject({ expression: 'http.host eq "www.moveria.se"', action: 'redirect' });
+  expect(www[0]).toMatchObject({ content: '203.0.113.7', proxied: false });
+  const prepared = await getSiteDomains('org', 'site');
+  expect(prepared.redirect_preparations).toEqual([expect.objectContaining({ hostname: 'www.moveria.se', action: 'approve_cutover', certificate_ready: true, rule: expect.objectContaining({ status: 'configured' }) })]);
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { cutover_approved_revision: prepared.revision, approved_preparation: prepared.preparation, approved_redirect_preparations: prepared.redirect_preparations });
+  await executeCustomerPublication(args);
+  expect((await store.getDoc<any>(jobPath)).git_publication).toMatchObject({ branch: 'main', redirect_preparations: null });
+  await executeCustomerPublication(args);
+  complete('main');
+  redirectProbe.mockResolvedValueOnce({ ok: false, status: 200, location: null });
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(www[0]).toMatchObject({ type: 'A', content: '192.0.2.1', proxied: true });
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'waiting for www.moveria.se to redirect to moveria.se', verification_message: expect.stringContaining('must answer 301') });
+  expect(redirectProbe).toHaveBeenLastCalledWith('www.moveria.se', 'moveria.se', expect.any(String));
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', deploy_url: 'https://moveria.se', redirect_checks: [expect.objectContaining({ host: 'www.moveria.se', ok: true })] });
+  expect((await getSiteDomains('org', 'site')).active).toEqual({ website_host: 'moveria.se', media_host: null, media_path_prefix: '', redirect_hosts: ['www.moveria.se'] });
+});
+
+it('stops a redirect change with a conflicting zone rule before asking for approval', async () => {
+  const store = getStore();
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'www.example.com', media_host: null, media_path_prefix: '' } });
+  const saved = await getSiteDomains('org', 'site');
+  await saveSiteDomains('org', 'site', { revision: saved.revision, website_host: 'www.example.com', redirect_hosts: ['example.com'], dns_mode: 'automatic' });
+  const { redirectRuleSpec } = await import('../../lib/publishing/redirect-hosts');
+  const spec = redirectRuleSpec('example.com', 'www.example.com', 'example.com');
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route: string, options?: any) => {
+    if (route.startsWith('/zones?')) return route.includes('name=example.com') ? [{ id: 'zone', name: 'example.com', status: 'active', account: { id: 'a'.repeat(32) } }] : [];
+    if (route === '/zones/zone/ssl/verification') return [{ certificate_status: 'active' }];
+    if (route === '/zones/zone/rulesets/phases/http_request_dynamic_redirect/entrypoint') return { id: 'rs', rules: [{ ref: spec.ref, action: 'redirect', expression: spec.expression, action_parameters: { from_value: { target_url: { value: 'https://elsewhere.example' }, status_code: 302 } } }] };
+    if (route.startsWith('/zones/zone/dns_records?name=example.com')) return [{ id: 'apex', type: 'A', content: '192.0.2.44', proxied: false }];
+    if (route.startsWith('/zones/zone/dns_records?name=www.example.com')) return [{ id: 'dns', name: 'www.example.com', type: 'CNAME', content: `${project}.pages.dev`, proxied: true }];
+    return provider(route, options);
+  });
+  await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'redirect_rule_conflict' } });
+  expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/rulesets') && options?.method)).toBe(false);
+  expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/dns_records') && options?.method)).toBe(false);
 });
