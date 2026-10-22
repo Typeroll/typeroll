@@ -842,7 +842,7 @@ something is quietly wrong:
   page breaks at once.
 - **hosting adapter** (blocker) — without credentials, deploys return a job id
   and publish nothing, while reporting success.
-- verification origin, AI reconstruction, form notification email, and whether
+- verification origin, content preservation, form notification email, and whether
   the target actually has a design to rebuild INTO (warnings).
 
 `ready: false` means STOP and report the blockers, each of which carries a

@@ -5,6 +5,10 @@ description: Migrate an existing Astro site, including Astro Content Collections
 
 # Migrate an Astro site
 
+**Who runs this:** this recipe is for the user's own AI agent (Claude Code, Codex or
+another MCP client) working through MCP and the public API. The portal's built-in
+AI assistant has no migration tools: it does not import, convert or verify sites.
+
 **Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
 Complete its source baseline and one verified prototype per active template.
 Read target content to protect edits, not to justify accidental target defaults.

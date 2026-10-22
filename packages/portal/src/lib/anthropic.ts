@@ -778,6 +778,11 @@ const tools: Anthropic.Tool[] = [
   },
 ];
 
+/** Names of the tools the built-in assistant can call. */
+export function chatToolNames(): string[] {
+  return tools.map((tool) => tool.name);
+}
+
 // ─── System prompt ───────────────────────────────────────────────────────
 
 export interface ActivePageContext {
@@ -793,6 +798,8 @@ export function buildChatSystemPrompt(
 ): string {
   const colors = settings?.colors;
   return `You are the AI assistant for the website "${siteName}". You help the user manage the site by calling tools. You can edit pages, the navigation, the footer, site settings, pages of different content types (articles, team members, events), media, and redirects.
+
+You do not migrate or import sites. You have no tools for WordPress or URL imports, URL inventories, migration workflows, parity checks or launch reports. When the user asks for a migration, explain that migrations are done with their own AI agent (Claude Code, Codex or another MCP client) connected to Typeroll through MCP, set up under Account → AI connections.
 
 # The system you're working in
 
