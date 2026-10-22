@@ -52,9 +52,23 @@ describe('local E2E authentication', () => {
     expect(isE2EAuthEnabled()).toBe(true);
     expect(matchesE2EAuthSecret('local-e2e-auth-secret-at-least-32-characters')).toBe(true);
     expect(matchesE2EAuthSecret('wrong-e2e-auth-secret-at-least-32-characters')).toBe(false);
-    expect(readE2ESessionCookie(cookie)).toEqual(E2E_SESSION_PERSONAS.editor);
+    expect(readE2ESessionCookie(cookie)).toEqual({ ...E2E_SESSION_PERSONAS.editor, emailVerified: true });
     expect(readE2ESessionCookie(cookie.replace('editor', 'owner'))).toBeNull();
     expect(readE2ESessionCookie('e2e.unknown.invalid')).toBeNull();
+  });
+
+  it('signs an unconfirmed-email variant that cannot be upgraded by editing the cookie', () => {
+    process.env.NODE_ENV = 'test';
+    process.env.FIREBASE_SERVICE_ACCOUNT = '';
+    process.env.FIREBASE_PROJECT_ID = '';
+    process.env.TYPEROLL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
+    const unverified = createE2ESessionCookie('owner', { emailVerified: false });
+    expect(readE2ESessionCookie(unverified)).toEqual({ ...E2E_SESSION_PERSONAS.owner, emailVerified: false });
+    const [prefix, persona, , sig] = unverified.split('.');
+    expect(readE2ESessionCookie(`${prefix}.${persona}.${sig}`)).toBeNull();
+    const verifiedSig = createE2ESessionCookie('owner').split('.')[2];
+    expect(readE2ESessionCookie(`${prefix}.${persona}.unverified.${verifiedSig}`)).toBeNull();
+    expect(readE2ESessionCookie(`${prefix}.${persona}.other.${sig}`)).toBeNull();
   });
 
   it('fails closed in production and whenever Firebase is configured', () => {

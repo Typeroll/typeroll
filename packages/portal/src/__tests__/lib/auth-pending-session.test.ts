@@ -30,7 +30,7 @@ describe('auth: pending session (no org_id claim)', () => {
       verifyIdToken: vi.fn().mockResolvedValue({
         auth_time: Math.floor(Date.now() / 1000),
         uid: 'user-1',
-        email: 'new@example.com',
+        email: 'new@example.com', email_verified: true,
         name: 'New User',
         // Deliberately no org_id claim
       }),
@@ -59,7 +59,7 @@ describe('auth: pending session (no org_id claim)', () => {
       verifyIdToken: vi.fn().mockResolvedValue({
         auth_time: Math.floor(Date.now() / 1000),
         uid: 'user-2',
-        email: 'member@example.com',
+        email: 'member@example.com', email_verified: true,
         name: 'Member',
         org_id: 'acme-corp',
       }),
@@ -79,7 +79,7 @@ describe('auth: pending session (no org_id claim)', () => {
       verifySessionCookie: vi.fn().mockResolvedValue({
         auth_time: Math.floor(Date.now() / 1000),
         uid: 'user-3',
-        email: 'pending@example.com',
+        email: 'pending@example.com', email_verified: true,
         // No org_id claim
       }),
     };

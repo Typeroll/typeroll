@@ -11,6 +11,12 @@ export const E2E_SESSION_PERSONAS = {
 
 export type E2EPersonaId = keyof typeof E2E_SESSION_PERSONAS;
 
+/** Local E2E sessions have a confirmed email unless a spec explicitly asks
+ * for the "Check your email" state of the same persona. */
+export interface E2ESessionOptions { emailVerified?: boolean }
+
+const UNVERIFIED = 'unverified';
+
 function secret(): string | null {
   const value = process.env.TYPEROLL_E2E_AUTH_SECRET;
   return value && value.length >= 32 ? value : null;
@@ -30,29 +36,38 @@ export function matchesE2EAuthSecret(supplied: string | null): boolean {
   return suppliedBuffer.length === expectedBuffer.length && timingSafeEqual(suppliedBuffer, expectedBuffer);
 }
 
-function signature(persona: string, key: string): string {
-  return createHmac('sha256', key).update(`typeroll-e2e-session:${persona}`).digest('base64url');
+function signature(persona: string, key: string, emailVerified: boolean): string {
+  // Confirmed sessions keep the original signed payload; the unconfirmed
+  // variant signs a distinct value so one cannot be turned into the other.
+  const payload = emailVerified ? `typeroll-e2e-session:${persona}` : `typeroll-e2e-session:${persona}:${UNVERIFIED}`;
+  return createHmac('sha256', key).update(payload).digest('base64url');
 }
 
-export function createE2ESessionCookie(persona: E2EPersonaId): string {
+export function createE2ESessionCookie(persona: E2EPersonaId, { emailVerified = true }: E2ESessionOptions = {}): string {
   const key = secret();
   if (!isE2EAuthEnabled() || !key) throw new Error('E2E authentication is disabled');
-  return `e2e.${persona}.${signature(persona, key)}`;
+  return emailVerified
+    ? `e2e.${persona}.${signature(persona, key, true)}`
+    : `e2e.${persona}.${UNVERIFIED}.${signature(persona, key, false)}`;
 }
 
 export function readE2ESessionCookie(raw: string | undefined) {
   const key = secret();
   if (!raw || !isE2EAuthEnabled() || !key) return null;
-  const [prefix, persona, supplied] = raw.split('.');
+  const parts = raw.split('.');
+  const emailVerified = parts.length === 3;
+  if (!emailVerified && (parts.length !== 4 || parts[2] !== UNVERIFIED)) return null;
+  const [prefix, persona] = parts;
+  const supplied = parts[parts.length - 1];
   if (prefix !== 'e2e' || !(persona in E2E_SESSION_PERSONAS) || !supplied) return null;
-  const expected = Buffer.from(signature(persona, key));
+  const expected = Buffer.from(signature(persona, key, emailVerified));
   const actual = Buffer.from(supplied);
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
-  return E2E_SESSION_PERSONAS[persona as E2EPersonaId];
+  return { ...E2E_SESSION_PERSONAS[persona as E2EPersonaId], emailVerified };
 }
 
-export function setE2ESessionCookie(cookies: AstroCookies, persona: E2EPersonaId): void {
-  cookies.set('typeroll_session', createE2ESessionCookie(persona), {
+export function setE2ESessionCookie(cookies: AstroCookies, persona: E2EPersonaId, options: E2ESessionOptions = {}): void {
+  cookies.set('typeroll_session', createE2ESessionCookie(persona, options), {
     httpOnly: true,
     secure: false,
     sameSite: 'lax',

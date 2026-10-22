@@ -184,11 +184,15 @@ it('allows personal editor block authoring but keeps site instructions administr
 
 it('fails closed for disabled, deleted or revoked user accounts and provider failures', async () => {
   account.configured = true;
-  account.getUser.mockResolvedValue({ disabled: false, tokensValidAfterTime: '2020-01-01T00:00:00Z' });
+  account.getUser.mockResolvedValue({ disabled: false, emailVerified: true, tokensValidAfterTime: '2020-01-01T00:00:00Z' });
   expect(await verifyApiToken(token)).toMatchObject({ personalUserId: 'person' });
-  account.getUser.mockResolvedValue({ disabled: true });
+  account.getUser.mockResolvedValue({ disabled: false, emailVerified: false, tokensValidAfterTime: '2020-01-01T00:00:00Z' });
   expect(await verifyApiToken(token)).toBeNull();
-  account.getUser.mockResolvedValue({ disabled: false, tokensValidAfterTime: new Date(Date.now() + 1000).toISOString() });
+  account.getUser.mockResolvedValue({ disabled: false, tokensValidAfterTime: '2020-01-01T00:00:00Z' });
+  expect(await verifyApiToken(token)).toBeNull();
+  account.getUser.mockResolvedValue({ disabled: true, emailVerified: true });
+  expect(await verifyApiToken(token)).toBeNull();
+  account.getUser.mockResolvedValue({ disabled: false, emailVerified: true, tokensValidAfterTime: new Date(Date.now() + 1000).toISOString() });
   expect(await verifyApiToken(token)).toBeNull();
   for (const code of ['auth/user-not-found', 'auth/internal-error']) {
     account.getUser.mockRejectedValue(Object.assign(new Error('Synthetic account lookup failure'), { code }));

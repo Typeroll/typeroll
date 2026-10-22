@@ -1,14 +1,16 @@
 ---
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import LoginForm from '../components/LoginForm.tsx';
-import { isDevAuthEnabled, isFirebaseConfigured, getSession } from '../lib/auth';
+import { isDevAuthEnabled, isFirebaseConfigured, getSessionIdentity } from '../lib/auth';
 import { safeReturnPath } from '../lib/return-path';
 
 // If already signed in, send where they need to go.
-// Pending sessions (no org yet) go to onboarding; full sessions go to the app,
+// Accounts without a confirmed email go to "Check your email". Pending
+// sessions (no org yet) go to onboarding; full sessions go to the app,
 // or back to the application page that asked them to sign in again.
 const next = safeReturnPath(Astro.url.searchParams.get('next'));
-const session = await getSession(Astro.cookies);
+const session = await getSessionIdentity(Astro.cookies);
+if (session && !session.emailVerified) return Astro.redirect(`/verify-email${next ? `?next=${encodeURIComponent(next)}` : ''}`);
 if (session) return Astro.redirect(session.orgId ? next ?? '/app' : next?.startsWith('/onboarding') ? next : `/onboarding${next ? `?next=${encodeURIComponent(next)}` : ''}`);
 
 const firebaseReady = isFirebaseConfigured();
