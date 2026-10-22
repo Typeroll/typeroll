@@ -89,8 +89,10 @@ matching release. The stdio package update only updates its embedded guide.
 This is a targeted authentication/onboarding review, not a penetration test of
 all CMS routes. Thomas explicitly confirmed open registration on 2026-10-10. Signup remains
 open to anyone with access to the portal; the marketing beta-request form is
-not an admission gate. Email ownership verification is not yet a prerequisite
-for creating a workspace. Existing signed organization
+not an admission gate. Email ownership verification was not a prerequisite
+for creating a workspace in this review; releases after Core 0.2.84 require a
+confirmed email for every session (see the self-hosting guide's "Email
+confirmation" section). Existing signed organization
 invite links remain reusable bearer invitations until expiry and cannot be
 individually revoked. Keep that intentional sharing model visible to operators.
 

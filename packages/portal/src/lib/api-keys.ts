@@ -292,10 +292,13 @@ export async function verifyApiToken(token: string): Promise<VerifiedKey | null>
     const createdAt = Date.parse(lookup.oauth_created_at || '');
     if (!Number.isFinite(createdAt) || Date.now() >= createdAt + 30 * 24 * 60 * 60 * 1000) return null;
     if (isFirebaseAdminConfigured()) {
+      // Delegated credentials follow the person: a disabled account, revoked
+      // tokens or an unconfirmed email address (same rule as portal sessions)
+      // end access on the next request.
       try {
         const { getAuth } = await import('firebase-admin/auth');
         const user = await getAuth(await getFirebaseAdminApp()).getUser(lookup.personal_user_id);
-        if (user.disabled || Date.parse(user.tokensValidAfterTime || '') > createdAt) return null;
+        if (user.disabled || !user.emailVerified || Date.parse(user.tokensValidAfterTime || '') > createdAt) return null;
       } catch { return null; }
     }
     return { orgId: '', siteId: null, prefix: parsed.prefix, personalUserId: lookup.personal_user_id };
@@ -309,7 +312,7 @@ export async function verifyApiToken(token: string): Promise<VerifiedKey | null>
       try {
         const { getAuth } = await import('firebase-admin/auth');
         const user = await getAuth(await getFirebaseAdminApp()).getUser(lookup.oauth_user_id);
-        if (user.disabled || Date.parse(user.tokensValidAfterTime || '') > Date.parse(lookup.oauth_created_at || '')) return null;
+        if (user.disabled || !user.emailVerified || Date.parse(user.tokensValidAfterTime || '') > Date.parse(lookup.oauth_created_at || '')) return null;
       } catch { return null; }
     }
   }

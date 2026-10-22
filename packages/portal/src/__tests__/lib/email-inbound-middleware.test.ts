@@ -9,7 +9,7 @@ const receive = vi.hoisted(() => vi.fn());
 vi.mock('astro:middleware', () => ({ defineMiddleware: (handler: unknown) => handler }));
 vi.mock('../../lib/load-env', () => ({}));
 vi.mock('../../lib/data-schema', () => ({ requireCurrentDataSchema: vi.fn() }));
-vi.mock('../../lib/auth', () => ({ getSession: vi.fn(), sessionNeedsRefresh: vi.fn(), refreshSessionForUser: vi.fn() }));
+vi.mock('../../lib/auth', () => ({ getSessionIdentity: vi.fn(), sessionNeedsRefresh: vi.fn(), refreshSessionForUser: vi.fn() }));
 vi.mock('../../lib/email/inbound', () => ({
   inboundRoutes: () => [{ topic: 'arn:aws:sns:eu-central-1:123456789012:incoming' }], receiveSesEmail: receive,
 }));
