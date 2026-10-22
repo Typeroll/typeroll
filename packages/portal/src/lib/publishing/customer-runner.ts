@@ -26,7 +26,7 @@ import { publicationSourceTree } from './source-tree';
 import { projectStaticPublication } from '../../../../../scripts/lib/static-publication.mjs';
 import { probePublication } from '../deploy/availability';
 import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
-import { preparePagesDomain, applyPreparedTraffic } from './domain-provider';
+import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed } from './domain-provider';
 import { retainDistinctMediaManifests, publicationMediaManifest } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { publicationRuntime } from './runtime-projection';
@@ -508,16 +508,18 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     }
     const requirements = [...preparation.requirements, ...redirectPreparations.flatMap(item => item.requirements)];
     if (args.versionId === 'main') await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === publication!.domain_revision,
-      { media_preparation: mediaPreparation, state: preparation.action === 'complete_validation' || redirectBlockers.length ? 'preparing' : 'ready_to_switch', preparation,
+      { media_preparation: mediaPreparation, state: (preparation.action === 'complete_validation' && !validationWindowAllowed(preparation)) || redirectBlockers.length ? 'preparing' : 'ready_to_switch', preparation,
         redirect_preparations: redirectPreparations.length ? redirectPreparations : null,
         candidate: { id: publication.publication_id, revision: publication.domain_revision, commit: publication.commit,
         deployment_id: deployment.id, verified_at: new Date().toISOString(), job_id: args.jobId } });
     if (publication.release_branch) {
-      const blocker = preparation.validation_blocker ?? mediaPreparation?.validation_blocker ??
+      // Cloudflare cannot validate a single reviewed website record before it changes: the approval may accept that window.
+      const windowCandidate = validationWindowAllowed(preparation);
+      const blocker = (windowCandidate ? null : preparation.validation_blocker) ?? mediaPreparation?.validation_blocker ??
         redirectBlockers.find(item => !['redirect_certificate_pending', 'redirect_rule_required'].includes(item.code));
       if (blocker) throw new ConnectionError(blocker.message, 409, blocker.code);
       if (domains.cutover_approved_revision !== domains.revision) {
-        if ((!preparation.certificate_ready && preparation.has_existing_traffic !== false) || (mediaPreparation && !mediaPreparation.certificate_ready && mediaPreparation.has_existing_traffic !== false)) {
+        if ((!preparation.certificate_ready && preparation.has_existing_traffic !== false && !windowCandidate) || (mediaPreparation && !mediaPreparation.certificate_ready && mediaPreparation.has_existing_traffic !== false)) {
           await store.updateDoc(jobPath, { phase: 'waiting for domain validation', dns_requirements: requirements });
           return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
         }
@@ -526,7 +528,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
           await store.updateDoc(jobPath, { phase: `waiting for redirect setup: ${redirectBlockers[0].message}`, dns_requirements: requirements });
           return await waitForPublicationCondition(jobPath, 'waiting for redirect setup');
         }
-        await store.updateDoc(jobPath, { phase: 'awaiting domain cutover approval', dns_requirements: requirements });
+        await store.updateDoc(jobPath, { phase: 'awaiting domain cutover approval', dns_requirements: requirements, validation_blocker: windowCandidate ? preparation.validation_blocker : null });
         // Human approval can take days. Consume this observation task; approval queues a continuation.
         return 'ran';
       }
@@ -545,7 +547,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await ensureApprovedRedirectRule(access.provider, approved);
     }
     if (!publication.traffic_applied && domains.cutover_approved_revision === domains.revision && domains.approved_preparation && domains.dns_mode === 'automatic') {
-      await applyPreparedTraffic(dns!.provider, domains.approved_preparation);
+      await applyPreparedTraffic(dns!.provider, domains.approved_preparation, { acceptValidationWindow: domains.approved_validation_window === true });
     }
     if (!publication.traffic_applied && domains.cutover_approved_revision === domains.revision && domains.approved_media_preparation && mediaDns) {
       await applyPreparedTraffic(mediaDns.provider, domains.approved_media_preparation);
@@ -581,7 +583,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await store.updateDoc(jobPath, { public_probe: result });
       if (!result.ready) console.info(JSON.stringify({ event: 'customer_publication_pending', site_id: args.siteId, job_id: args.jobId, ...result }));
     } })) {
-      await store.updateDoc(jobPath, { phase: preparation.action === 'verify' ? 'distributing' : 'awaiting domain setup', dns_requirements: preparation.requirements });
+      const validationWindow = domains.approved_validation_window === true && domains.cutover_approved_revision === domains.revision && !preparation.certificate_ready;
+      const restore = (domains.approved_preparation?.previous_records ?? []).map(record => `${record.type} ${record.name} ${record.content} (${record.proxied ? 'proxied' : 'DNS only'})`).join(', ');
+      await store.updateDoc(jobPath, { phase: validationWindow ? `waiting for Cloudflare to validate ${publication.website_host} after the approved switch` : preparation.action === 'verify' ? 'distributing' : 'awaiting domain setup', dns_requirements: preparation.requirements,
+        ...(validationWindow ? { verification_message: `${publication.website_host} now points at Cloudflare Pages and does not answer until Cloudflare validates it. If it is not live when the 45-minute observation window ends, restore ${restore || 'the previous records'} in Cloudflare → DNS → Records. Public verification will retry automatically.` } : {}) });
       return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
     }
     if (publication.static_checks_key) {

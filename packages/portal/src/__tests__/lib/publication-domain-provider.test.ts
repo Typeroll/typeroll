@@ -66,6 +66,23 @@ it('reports the observed CNAME prevalidation conflict without changing existing 
   expect((await preparePagesDomain(provider, input)).validation_blocker).toBeNull();
 });
 
+it('changes a record before validation only for an accepted window on one reviewed record', async () => {
+  const { applyPreparedTraffic, trafficFingerprint } = await import('../../lib/publishing/domain-provider');
+  const records = [{ id: 'kinsta', type: 'A', name: 'moveria.se', content: '203.0.113.7', proxied: false }];
+  const provider = vi.fn(async (route: string, _options?: unknown) => route.includes('?') ? records : {});
+  const approved = {
+    hostname: 'moveria.se', provider_status: 'pending', certificate_ready: false, zone_id: 'zone', action: 'complete_validation' as const,
+    dns_fingerprint: trafficFingerprint(records), previous_records: records, has_existing_traffic: true,
+    validation_blocker: { code: 'domain_prevalidation_unavailable' as const, message: 'window', resolution: 'accept_validation_window' as const },
+    requirements: [{ phase: 'traffic' as const, type: 'CNAME' as const, name: 'moveria.se', content: 'project.pages.dev', proxied: true, status: 'required' as const }],
+  };
+  await expect(applyPreparedTraffic(provider, approved)).rejects.toMatchObject({ code: 'domain_certificate_pending' });
+  await expect(applyPreparedTraffic(provider, { ...approved, validation_blocker: null }, { acceptValidationWindow: true })).rejects.toMatchObject({ code: 'domain_certificate_pending' });
+  expect(provider.mock.calls.every(([, options]) => !(options as any)?.method)).toBe(true);
+  await applyPreparedTraffic(provider, approved, { acceptValidationWindow: true });
+  expect(provider).toHaveBeenLastCalledWith('/zones/zone/dns_records/kinsta', expect.objectContaining({ method: 'PATCH', body: expect.objectContaining({ type: 'CNAME', content: 'project.pages.dev', proxied: true }) }));
+});
+
 it('explains a pending zone instead of reporting the domain as missing', async () => {
   const provider = vi.fn(async (route: string) => route.includes('name=moveria.se') ? [{ id: 'zone', name: 'moveria.se', account: { id: 'account' }, status: 'pending', name_servers: ['ada.ns.cloudflare.com'] }] : []);
   await expect(findPublishingZone(provider, 'account', 'moveria.se')).rejects.toMatchObject({

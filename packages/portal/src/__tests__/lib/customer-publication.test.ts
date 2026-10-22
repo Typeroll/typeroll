@@ -393,7 +393,7 @@ it('does not fall back to per-site Git builds when shared engine setup is unfini
   expect(mocks.push).not.toHaveBeenCalled();
 });
 
-it('keeps the candidate and existing traffic when the provider cannot prevalidate the domain', async () => {
+it('keeps the candidate and existing traffic when the provider cannot prevalidate several records', async () => {
   const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active });
   await executeCustomerPublication(args);
@@ -401,13 +401,52 @@ it('keeps the candidate and existing traffic when the provider cannot prevalidat
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => {
     if (route.includes('/domains/')) return { status: 'pending', validation_data: { method: 'http' }, verification_data: { error_message: 'CNAME record not set' } };
-    if (route.includes('/dns_records')) return [{ id: 'existing', type: 'A', content: '192.0.2.10' }];
+    if (route.includes('/dns_records')) return [{ id: 'existing', type: 'A', name: 'www.example.com', content: '192.0.2.10' }, { id: 'second', type: 'A', name: 'www.example.com', content: '192.0.2.11' }];
     return provider(route, options);
   });
   expect(await executeCustomerPublication(args)).toBe('ran');
-  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'domain_prevalidation_unavailable' }, error: expect.stringContaining('Keep the existing DNS records') });
-  expect(await getSiteDomains('org', 'site')).toMatchObject({ active, candidate: { commit: 'b'.repeat(40) }, preparation: { validation_blocker: { code: 'domain_prevalidation_unavailable' } } });
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'domain_prevalidation_unavailable' }, error: expect.stringContaining('replace the 2 current records') });
+  expect((await getStore().getDoc<any>(jobPath)).error).not.toContain('contact support');
+  expect(await getSiteDomains('org', 'site')).toMatchObject({ active, candidate: { commit: 'b'.repeat(40) }, preparation: { validation_blocker: { code: 'domain_prevalidation_unavailable', resolution: 'external_dns_change' } } });
   expect(mocks.cloudflare.mock.calls.some(([, options]) => options?.method === 'PATCH' && options?.body?.type === 'CNAME')).toBe(false);
+});
+
+it('switches one reviewed record only after the validation window is accepted, then waits for Cloudflare validation', async () => {
+  const store = getStore();
+  const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch);
+  let validated = false;
+  mocks.probe.mockImplementation(async origin => origin.includes('.pages.dev') || validated);
+  const records: Array<Record<string, unknown>> = [{ id: 'existing', type: 'A', name: 'www.example.com', content: '192.0.2.10', proxied: false }];
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.includes('/domains/')) return validated ? { status: 'active' } : { status: 'pending', validation_data: { method: 'http' }, verification_data: { error_message: 'CNAME record not set' } };
+    if (route === '/zones/zone/dns_records/existing' && options?.method === 'PATCH') { records.splice(0, 1, { id: 'existing', ...options.body }); return {}; }
+    if (route.includes('/dns_records') && !options?.method) return records;
+    return provider(route, options);
+  });
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'awaiting domain cutover approval', validation_blocker: { resolution: 'accept_validation_window' } });
+  const prepared = await getSiteDomains('org', 'site');
+  expect(prepared).toMatchObject({ state: 'ready_to_switch', preparation: { validation_blocker: { code: 'domain_prevalidation_unavailable', message: expect.stringContaining('restore A www.example.com 192.0.2.10 (DNS only)') } } });
+  expect(prepared.preparation!.validation_blocker!.message).toContain('15 minutes to 24 hours');
+  const { approveDomainCutover } = await import('../../lib/publishing/domain-config');
+  await expect(approveDomainCutover('org', 'site', { revision: prepared.revision, candidate_id: prepared.candidate!.id })).rejects.toMatchObject({ code: 'validation_window_acceptance_required' });
+  expect(records[0]).toMatchObject({ type: 'A', content: '192.0.2.10' });
+  // Approval with acceptance; the queue continuation is exercised by the next runner calls.
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { cutover_approved_revision: prepared.revision, approved_preparation: prepared.preparation, approved_validation_window: true });
+  await executeCustomerPublication(args);
+  await executeCustomerPublication(args);
+  complete('main');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(records[0]).toMatchObject({ type: 'CNAME', content: `${project}.pages.dev`, proxied: true });
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'waiting for Cloudflare to validate www.example.com after the approved switch',
+    verification_message: expect.stringContaining('restore A www.example.com 192.0.2.10 (DNS only)') });
+  validated = true;
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', deploy_url: 'https://www.example.com', verification_message: null });
 });
 
 it('explains the observed verification failure when the observation window expires', async () => {

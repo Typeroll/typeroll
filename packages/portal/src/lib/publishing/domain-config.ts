@@ -202,7 +202,11 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
   const preparation = current.preparation;
   const mediaPreparation = current.media_preparation;
   if (mediaPreparation && !mediaPreparation.certificate_ready && mediaPreparation.has_existing_traffic !== false) throw new ConnectionError('The media hostname is not ready for a safe traffic switch. Complete media domain validation first.', 409, 'media_domain_certificate_pending');
-  if (!preparation || (!preparation.certificate_ready && preparation.has_existing_traffic !== false)) {
+  const { validationWindowAllowed } = await import('./domain-provider');
+  const acceptWindow = input.accept_validation_window === true;
+  if (acceptWindow && !validationWindowAllowed(preparation)) throw new ConnectionError('A validation window can be accepted only when Cloudflare cannot validate the website host before its single reviewed record changes.', 409, 'validation_window_not_applicable');
+  if (!acceptWindow && preparation?.validation_blocker) throw new ConnectionError(preparation.validation_blocker.message, 409, validationWindowAllowed(preparation) ? 'validation_window_acceptance_required' : preparation.validation_blocker.code);
+  if (!preparation || (!preparation.certificate_ready && preparation.has_existing_traffic !== false && !acceptWindow)) {
     throw new ConnectionError('Cloudflare has not confirmed a working certificate. Complete validation while keeping current DNS in place. Traffic cannot be switched safely yet.', 409, 'domain_certificate_pending');
   }
   const redirectPreparations = current.redirect_preparations ?? null;
@@ -215,7 +219,7 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
   const saved = await getStore().compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
     value => value.revision === current.revision && value.candidate?.id === current.candidate!.id && JSON.stringify(value.preparation) === JSON.stringify(preparation) && JSON.stringify(value.media_preparation) === JSON.stringify(mediaPreparation) &&
       JSON.stringify(value.redirect_preparations ?? null) === JSON.stringify(redirectPreparations),
-    { cutover_approved_revision: current.revision, approved_preparation: preparation, approved_media_preparation: mediaPreparation ?? null, approved_redirect_preparations: redirectPreparations, state: 'distributing' });
+    { cutover_approved_revision: current.revision, approved_preparation: preparation, approved_media_preparation: mediaPreparation ?? null, approved_redirect_preparations: redirectPreparations, approved_validation_window: acceptWindow || null, state: 'distributing' });
   if (!saved) throw new ConnectionError('Domain verification changed. Reload before switching traffic.', 409, 'domain_revision_conflict');
   if (current.candidate.job_id) {
     const { getDeployQueue } = await import('../deploy/queue');

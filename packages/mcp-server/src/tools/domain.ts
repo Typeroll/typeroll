@@ -192,8 +192,11 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'approve_publishing_domain_cutover',
-    description: 'Approve switching website traffic to the verified frozen deployment. Read publishing domains first and review DNS requirements, certificate readiness and redirect_preparations. Existing traffic is preserved until validation succeeds. With automatic DNS, redirect hosts switch after the website host: Typeroll ensures their zone redirect rule, then changes their reviewed record to a proxied placeholder. The publication goes live only after every redirect host answers 301 to the website host with the same path and query. External DNS management remains the caller’s responsibility.',
-    inputSchema: { revision: z.string(), candidate_id: z.string() },
+    description: 'Approve switching website traffic to the verified frozen deployment. Read publishing domains first and review DNS requirements, certificate readiness and redirect_preparations. Existing traffic is preserved until validation succeeds. With automatic DNS, redirect hosts switch after the website host: Typeroll ensures their zone redirect rule, then changes their reviewed record to a proxied placeholder. The publication goes live only after every redirect host answers 301 to the website host with the same path and query. When preparation.validation_blocker.resolution is accept_validation_window, Cloudflare can validate the website host only after its one existing record points at Pages: approving with accept_validation_window: true lets Typeroll change that record, and the host does not answer until Cloudflare validates it (Cloudflare does not document how long; previous_records holds the rollback). Get the user\'s explicit go-ahead for that window and choose a quiet time. External DNS management remains the caller’s responsibility.',
+    inputSchema: {
+      revision: z.string(), candidate_id: z.string(),
+      accept_validation_window: z.boolean().optional().describe('Accept the interruption until Cloudflare validates the website host after its single reviewed record changes. Only valid when preparation.validation_blocker.resolution is accept_validation_window.'),
+    },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/cutover', args))),
   },
   {
