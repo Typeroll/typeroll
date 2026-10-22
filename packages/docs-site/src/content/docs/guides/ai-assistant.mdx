@@ -1,0 +1,151 @@
+---
+title: Set up the built-in AI assistant
+description: Add your Organization's own Anthropic API key, choose which Sites may use the AI chat in the portal, and keep using your own AI agent everywhere.
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+Typeroll CMS includes an AI assistant in the portal: the **AI Chat** on a Site.
+Editors describe a content change in the browser and the assistant makes it
+within their permissions. The assistant uses your Organization's own Anthropic
+API key. There is no shared platform key, so usage is billed to the
+Organization's Anthropic account.
+
+The assistant is off until an Organization owner or admin adds a key and chooses
+the Sites that may use it. This setting only controls the built-in chat. Everyone
+can still use their own AI agent, such as Claude Code, ChatGPT, Codex or another
+MCP client, on every Site they can reach. See
+[Work with your usual AI assistant](../ai-connections/) and
+[Connect your AI agent](../../getting-started/mcp-server/).
+
+**Availability:** this applies to Typeroll Cloud and self-hosted Typeroll CMS.
+Starting with the Core release that introduces organization AI keys, no
+Organization has the built-in assistant until an owner or admin adds a key. See
+[Cloud and self-hosting differences](#cloud-and-self-hosting) below.
+
+## Add your Anthropic API key
+
+You need the owner or admin role in the Organization. Editors do not see the
+settings page.
+
+1. Create an API key in the
+   [Anthropic Console](https://console.anthropic.com/settings/keys). Anthropic is
+   the only supported provider.
+2. In Typeroll, open **Account → AI assistant** in the sidebar
+   (`/app/settings/ai-assistant`). The **Account** page links to it as well.
+3. Paste the key into **API key** and select **Verify and save key**.
+4. Choose the Sites that may use the assistant, then select **Save site access**.
+   A new key starts with no Sites selected.
+
+Typeroll checks the key with Anthropic before saving it. A key that Anthropic
+rejects is not saved. If Anthropic cannot be reached, nothing is saved either;
+try again later. Typeroll never stores an unverified key.
+
+The key is stored encrypted and is never shown again, returned by the API or
+written to logs. The page shows only its last four characters, when Anthropic
+verified it and who set it, and when.
+
+- **Replace a key:** paste a new key under **Replace with a new key**. The Site
+  selection is kept.
+- **Remove a key:** select **Remove key**. The assistant is turned off on every
+  Site and the Site selection is reset.
+
+## Choose Sites
+
+| Choice                                       | Effect                                                                                    |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **All sites, including sites created later** | Every Site the Organization owns can use the assistant, including Sites you create later. |
+| **Only selected sites**                      | Only the checked Sites can use it. A new Site stays off until you select it.              |
+
+The list contains the Organization's own Sites. A Site shared into another
+Organization follows its **owner** Organization's key and choice. Members of the
+other Organization see the assistant only when the owner Organization allows
+that Site, and the owner's key is used and billed.
+
+## What editors see
+
+On a Site with access, editors with write permission see **AI Chat** in the
+Site sidebar, an **AI chat** button on the Site overview, and the **AI** tab in
+the HTML page editor. Read-only viewers never get the chat.
+
+On a Site without access, these entries are hidden. Opening the chat page
+redirects to the Site overview. Nothing else changes: editors can still edit in
+the [visual editor](../the-editor/) and connect their own agent.
+
+AI changes use the normal [saving and review workflow](../../tools/drafts-and-saving/).
+A chat answer is not evidence that a change has been published.
+
+AI workflows use the same key and Site access:
+
+- **Site planning, content generation, content improvement and schema markup**
+  stop with "AI is not enabled for this site" on a Site without access.
+- **SEO audit** still runs and returns its per-page issue list without AI
+  prioritization.
+
+The built-in assistant has no migration tools. Migrate a website with your own
+agent over MCP; see [WordPress migration](../wordpress-migration/).
+
+## Manage the setting with the API or MCP
+
+The same settings are available to scripts and agents. Use an organization API
+key. A personal OAuth connection must select, with the `Typeroll-Organization`
+header, an Organization where the person is an owner or admin. A site-scoped API
+key receives `403`.
+
+| Action               | MCP tool                          | API route below `/api/v1`          |
+| -------------------- | --------------------------------- | ---------------------------------- |
+| Read status          | `read_organization_ai_settings`   | `GET /organization/ai`             |
+| Add or replace a key | `set_organization_ai_key`         | `PUT /organization/ai/key`         |
+| Remove the key       | `remove_organization_ai_key`      | `DELETE /organization/ai/key`      |
+| Choose Sites         | `set_organization_ai_site_access` | `PUT /organization/ai/site-access` |
+
+`GET /organization/ai` returns the provider (`anthropic`), whether a key is
+`configured`, the masked `key` (`last4`, `verified_at`, `set_at`, `set_by`,
+`set_by_email`) or `null`, `site_access` (`mode` and `site_ids`), every Site of
+the Organization with `ai_enabled`, `encryption_available` and the portal's
+`settings_path`. Every route returns the same summary with
+`Cache-Control: no-store`.
+
+```json
+{ "api_key": "sk-ant-..." }
+```
+
+```json
+{ "mode": "selected", "site_ids": ["site-id-1", "site-id-2"] }
+```
+
+Send `{ "mode": "all" }` to allow every Site, including future Sites.
+
+<Aside type="caution">
+  Prefer entering the key in the portal. A key sent through an agent passes
+  through that conversation and the client's history. Typeroll never returns the
+  key in responses, audit logs or error messages.
+</Aside>
+
+## Cloud and self-hosting
+
+| Topic       | Typeroll Cloud                                                                               | Self-hosting                                                                                            |
+| ----------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Setup       | An owner or admin adds the key in the portal. Existing Organizations must add their own key. | The same portal page. The server needs `INTEGRATIONS_SECRET_KEY` to store keys.                         |
+| Server key  | None. Typeroll Cloud has no platform AI key.                                                 | None. `ANTHROPIC_API_KEY` is no longer read; the self-host check warns when an old environment sets it. |
+| AI endpoint | Anthropic                                                                                    | Anthropic, or a compatible endpoint set with the optional `ANTHROPIC_BASE_URL`.                         |
+
+See [self-hosting](../self-hosting/) for the server environment.
+
+## Troubleshooting
+
+| Code                     | Status | Meaning and action                                                                                                   |
+| ------------------------ | ------ | -------------------------------------------------------------------------------------------------------------------- |
+| `ai_not_enabled`         | 403    | The Site has no AI access. An owner or admin adds a key and allows the Site. Your own agent can still work over MCP. |
+| `api_key_required`       | 400    | No key was sent. Send `api_key`.                                                                                     |
+| `api_key_invalid_format` | 400    | The value is not an Anthropic API key. Copy the whole key; it starts with `sk-ant-`.                                 |
+| `ai_key_rejected`        | 422    | Anthropic rejected the key. Check that it is active in the Anthropic Console and copied in full. Nothing was saved.  |
+| `ai_key_unverified`      | 502    | Anthropic could not be reached to verify the key. Nothing was saved. Try again later.                                |
+| `encryption_unavailable` | 503    | The server cannot store secrets. A self-hosting operator configures `INTEGRATIONS_SECRET_KEY`.                       |
+| `ai_key_required`        | 409    | Sites were chosen before a key exists. Add a key first.                                                              |
+| `unknown_site`           | 400    | A Site id does not belong to this Organization. Shared Sites follow their owner Organization's setting.              |
+| `invalid_site_access`    | 400    | `mode` must be `all` or `selected`, and `selected` needs a `site_ids` array.                                         |
+
+`ai_not_enabled` is returned by the portal's chat route
+(`POST /api/sites/{siteId}/chat`). MCP tools and the public API for content are
+never gated by this setting.

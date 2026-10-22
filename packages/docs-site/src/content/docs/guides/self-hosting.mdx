@@ -52,7 +52,8 @@ reference profile.
 - **Firebase:** Firestore Native mode, Authentication, and a Firebase Web App
 - **Cloudflare account** with R2 for media and Pages for static site output
 - Two public DNS names for the portal and Forms origins
-- **Optional:** Anthropic API key for AI chat
+- **Optional:** each Organization's own Anthropic API key for the built-in AI
+  assistant, added in the portal (no server variable)
 
 ## Quick start (local dev)
 
@@ -438,6 +439,17 @@ Requirements specific to this endpoint:
 - TLS for remotely hosted MCP clients.
 
 Agent clients with local process support can keep using the stdio install (`npx -y @typeroll/mcp-server` with `TYPEROLL_API_URL` pointed at your portal). Same tool surface, same API keys.
+
+## Built-in AI assistant
+
+There is no server-wide AI key. Each Organization adds its own Anthropic API key
+in the portal under **Account → AI assistant** and chooses its Sites; see
+[Set up the built-in AI assistant](../ai-assistant/). The portal stores the key
+encrypted with `INTEGRATIONS_SECRET_KEY`, which the reference profile already
+requires. `ANTHROPIC_API_KEY` is no longer read; `npm run self-host:check` warns
+when an old environment still sets it. The optional `ANTHROPIC_BASE_URL` points
+AI calls and key verification at a compatible endpoint, such as a gateway. MCP
+and the public API do not depend on any of this.
 
 ## Extensions
 
