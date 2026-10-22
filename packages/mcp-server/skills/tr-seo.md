@@ -183,6 +183,12 @@ Common schemas worth adding:
 - FAQ, recipe and event pages: the `add_*_schema` tools above
 - Products: `Product` with `offers`
 
+**Instead of the `schema_markup` workflow.** That workflow runs the model with
+the Organization's own AI key; on a Site without that access it fails with
+`failure_code: "ai_not_enabled"`. Don't retry it. Do the same work here: read
+each published page, pick the one type it genuinely represents (or none),
+apply the tool or `json_ld` above, and tell the user you did it yourself.
+
 ### 6. robots.txt
 
 The default robots.txt allows all crawlers. Update if needed:

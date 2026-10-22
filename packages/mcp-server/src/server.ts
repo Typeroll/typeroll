@@ -213,6 +213,10 @@ The full playbook ships with this server — use it:
    start from and then adapt is a block template (list_block_templates,
    insert_block_template copies it). Never duplicate shared content by hand.
 8. No site yet? With an org-scoped key, create_site bootstraps one.
+9. AI workflows (site_planning, content_generation, content_improvement,
+   schema_markup, create_site_and_plan) need the Organization's portal AI
+   key for the Site. On ai_not_enabled don't retry: do the work yourself
+   with the recipe named in start_workflow and tell the user you did.
 
 If anything here conflicts with what a tool returns, trust the tool. Every
 tool's own description carries its specifics.

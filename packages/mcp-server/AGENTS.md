@@ -1030,6 +1030,26 @@ is created). An AI plan needs the Organization's own AI key with site access
 `all` (`403 ai_not_enabled` otherwise; nothing is created): you can instead
 create a blank site and plan it yourself.
 
+**AI workflows without the portal's AI.** `site_planning`,
+`content_generation`, `content_improvement` and `schema_markup` run the
+model with the Organization's own AI key, and only on Sites an owner or admin
+allowed. Elsewhere the run fails: `get_workflow` shows `status: "failed"`
+with `failure_code: "ai_not_enabled"` (older Core: only a `failure_reason`
+saying the AI assistant is not enabled for this site). That is not an error
+to retry or escalate. You are an AI agent: do the same work yourself with the
+recipe and tell the user that you did, instead of the workflow:
+
+| Workflow | Do it yourself with |
+|---|---|
+| `site_planning` / `create_site_and_plan` | `create_site` if needed, then `tr-new-site`: propose the page structure, get approval, build |
+| `content_generation` | `tr-content-write`: a new page in the site's voice, as a draft |
+| `content_improvement` | `tr-content-write` on the weakest published pages (thin text, missing `seo_title`/`seo_description`, not updated for a year), left as unsaved drafts for review |
+| `schema_markup` | `tr-seo` step 5: `add_faq_schema`, `add_recipe_schema`, `add_event_schema` or `json_ld` per page |
+
+`seo_audit` needs no AI: without it the run returns the per-page issue list
+without prioritization. Turning on the portal AI is the Organization's
+choice; never ask for it as a prerequisite for your own work.
+
 ### "Give someone access" (keys, sharing, invites)
 
 - **API keys:** `list_api_keys` / `revoke_api_key` for this site (revoking
