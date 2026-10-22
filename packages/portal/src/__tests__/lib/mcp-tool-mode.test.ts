@@ -3,6 +3,7 @@ vi.mock('../../lib/api-keys', () => ({ verifyApiToken: vi.fn(async () => ({ site
 vi.mock('../../lib/mcp-tokens', () => ({ verifyToken: vi.fn(() => null) }));
 vi.mock('../../lib/api-auth', () => ({ listAllowedSites: vi.fn(async () => []) }));
 import { POST } from '../../pages/api/mcp/index';
+import { TyperollClient } from '@typeroll/mcp-server/client';
 beforeEach(() => { vi.stubEnv('PORTAL_PUBLIC_URL', 'https://portal.test'); });
 async function list(mode: string, authenticated = true, method = 'tools/list', params: Record<string, unknown> = {}) {
   return POST({ request: new Request(`https://portal.test/api/mcp?tools=${mode}`, {
@@ -33,4 +34,39 @@ it('exposes the same native presentation fields in Cloud full and compact schema
     expect(properties(fullSchema)[field]).toBeDefined();
     expect(properties(compactSchema)[field]).toEqual(properties(fullSchema)[field]);
   }
+});
+
+
+it('advertises and forwards the domain cutover fields through hosted full and compact MCP', async () => {
+  const full = await (await list('full')).json();
+  for (const [name, field, expected] of [
+    ['set_publishing_domains', 'redirect_hosts', { type: 'array', items: { type: 'string' }, maxItems: 4 }],
+    ['approve_publishing_domain_cutover', 'accept_validation_window', { type: 'boolean' }],
+  ] as const) {
+    const schema = full.result.tools.find((tool: { name: string }) => tool.name === name).inputSchema;
+    expect(schema.properties[field]).toMatchObject(expected);
+    expect(schema.additionalProperties).toBe(false);
+    const description = await (await list('compact', true, 'tools/call', { name: 'describe_tool', arguments: { name } })).json();
+    expect(JSON.parse(description.result.content[0].text).inputSchema.properties[field]).toMatchObject(expected);
+  }
+  const put = vi.spyOn(TyperollClient.prototype, 'put').mockResolvedValue({ saved: true });
+  const post = vi.spyOn(TyperollClient.prototype, 'post').mockResolvedValue({ accepted: true });
+  try {
+    const args = { revision: 'synthetic-revision', website_host: 'moveria.se', media_host: null,
+      dns_mode: 'external', redirect_hosts: ['www.moveria.se'] };
+    const result = await (await list('full', true, 'tools/call', { name: 'set_publishing_domains', arguments: args })).json();
+    expect(result.result.isError).not.toBe(true);
+    expect(put).toHaveBeenCalledWith('site', 'publishing/domains', args);
+    const approval = { revision: 'synthetic-revision', candidate_id: 'synthetic-candidate', accept_validation_window: true };
+    const compact = await (await list('compact', true, 'tools/call', {
+      name: 'call_write_tool', arguments: { name: 'approve_publishing_domain_cutover', arguments: approval },
+    })).json();
+    expect(compact.result.isError).not.toBe(true);
+    expect(post).toHaveBeenCalledWith('site', 'publishing/cutover', approval);
+    const invalid = await (await list('full', true, 'tools/call', {
+      name: 'set_publishing_domains', arguments: { ...args, redirect_hosts: Array(5).fill('www.moveria.se') },
+    })).json();
+    expect(invalid.result.isError).toBe(true);
+    expect(put).toHaveBeenCalledTimes(1);
+  } finally { put.mockRestore(); post.mockRestore(); }
 });

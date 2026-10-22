@@ -83,6 +83,20 @@ if (apiKey) {
     fail('authed initialize is missing serverInfo/protocolVersion', last.text);
   }
   console.log(`SMOKE OK (authed): /api/mcp initialize returned a valid MCP result.`);
+  // Exercise the deployed catalog, not just initialization or npm's source.
+  // Explicit full mode also works when personal OAuth defaults to compact.
+  const catalogResponse = await fetch(`${url}?tools=full`, { method: 'POST', headers,
+    body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) });
+  if (!catalogResponse.ok) fail(`authed tools/list returned ${catalogResponse.status}`);
+  const catalog = await catalogResponse.json();
+  const schema = name => catalog.result?.tools?.find(tool => tool.name === name)?.inputSchema;
+  const redirects = schema('set_publishing_domains')?.properties?.redirect_hosts;
+  const acceptance = schema('approve_publishing_domain_cutover')?.properties?.accept_validation_window;
+  if (redirects?.type !== 'array' || redirects?.items?.type !== 'string' || redirects?.maxItems !== 4) {
+    fail('tools/list is missing the redirect_hosts array contract (maxItems: 4)');
+  }
+  if (acceptance?.type !== 'boolean') fail('tools/list is missing the accept_validation_window boolean contract');
+  console.log('SMOKE OK (authed): domain cutover input schemas match the deployed contract.');
 } else {
   // Unauthed: 401 (or any non-5xx structured response) proves the route LOADS
   // — which is exactly the regression class we care about.

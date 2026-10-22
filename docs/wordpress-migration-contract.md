@@ -147,3 +147,21 @@ card geometry and accessible link names. Include null and empty image variants.
 Measure footer link box height plus inter-item gap, not text line-height alone.
 Use compact density/minimum height controls deliberately; preserve wrapping,
 focus, link order, list junction gaps and the agreed mobile column count.
+
+## Date precision (Core 0.2.88 / Helper 0.3.3)
+
+Native REST imports prefer `date_gmt` and `modified_gmt`. These fields establish
+UTC even when their serialized strings omit the suffix. Local `date`/`modified`
+never establish UTC by themselves. Helper exports use `post_date_gmt` and
+`post_modified_gmt`; 0.3.3 labels them with `Z`, and the importer recognizes that
+provenance in older Helper responses too.
+
+WordPress's [mysql_to_rfc3339](https://developer.wordpress.org/reference/functions/mysql_to_rfc3339/)
+explicitly omits timezone information despite its name. Do not use its output as
+an instant without identifying the input field's timezone.
+
+Keep explicit offsets. For unknown legacy local timestamps, generated schema
+uses the known calendar date; invalid dates are omitted. Restore exact time only
+from source evidence (GMT fields or a timestamp with an offset), using the normal
+Page API and publication flow. This release does not rewrite existing records,
+rerun imports over editorial work or automatically publish customer sites.

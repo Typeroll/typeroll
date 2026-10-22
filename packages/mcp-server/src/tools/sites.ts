@@ -71,7 +71,7 @@ export const siteTools: ToolDef[] = [
   {
     name: 'check_site_indexing',
     description:
-      'Probe the site\'s recorded fallback and live production origins and report indexing safety. Keeps X-Robots-Tag, HTML robots meta, and robots.txt crawl policy separate; fallback URLs must expose the documented edge noindex header, while production follows sitewide_noindex. Use before launch and after changing domains or indexing settings.',
+      'Probe the site\'s recorded fallback and live production origins and report indexing safety. Keeps X-Robots-Tag, HTML robots meta, and robots.txt crawl policy separate. expectation_reason identifies fallback_protection, platform_robots_blocked, sitewide_noindex or public_site. Customer publishing without a future website host intentionally blocks indexing even when sitewide_noindex is false; this is expected, not an error. Fallback URLs must expose the documented edge noindex header. Use before launch and after changing domains or indexing settings.',
     handler: withErrorBoundary(async (_args, { client, siteId }) => {
       const res = await client.get(siteId, 'indexing-diagnostics');
       return ok(res);

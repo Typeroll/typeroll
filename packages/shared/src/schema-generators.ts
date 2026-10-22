@@ -22,6 +22,7 @@
 // wrapper and for </script> escaping.
 
 import type { ContentType, Page, SiteSettings } from './types.js';
+import { schemaDate } from './schema-dates.js';
 
 type SchemaObj = Record<string, unknown>;
 
@@ -233,13 +234,13 @@ export function buildContentPageSchema(
         continue;
       }
     }
-    obj[prop] = value;
+    obj[prop] = prop === 'datePublished' || prop === 'dateModified' ? schemaDate(value) : value;
   }
 
   // updated_at / created_at fall back to schema-standard dateModified /
   // datePublished when the item didn't carry explicit fields.
-  if (!mappedOnly && !obj.dateModified && page.date_updated) obj.dateModified = page.date_updated;
-  if (!mappedOnly && !obj.datePublished && page.date_published) obj.datePublished = page.date_published;
+  if (!mappedOnly && !obj.dateModified && page.date_updated) obj.dateModified = schemaDate(page.date_updated);
+  if (!mappedOnly && !obj.datePublished && page.date_published) obj.datePublished = schemaDate(page.date_published);
 
   if (!mappedOnly && !obj.publisher && site.organization?.name) {
     obj.publisher = {

@@ -107,3 +107,15 @@ describe('indexing diagnostics', () => {
     expect(report.issues.join(' ')).toContain('non-public address');
   });
 });
+
+
+it('expects the platform robots block on a customer temporary host independently of authored noindex', async () => {
+  const temporary = { ...site, publishing_mode: 'customer_git' as const, domain: 'demo.sites.example.test' };
+  const options = { fetchImpl: mockFetch as typeof fetch, validateDestination: async () => undefined };
+  const blocked = await diagnoseSiteIndexing(temporary, { sitewide_noindex: false } as never, { ...options, robotsBlocked: true });
+  expect(blocked.ready).toBe(true);
+  expect(blocked.targets).toMatchObject([{ expected: 'noindex', expectation_reason: 'platform_robots_blocked', matches_expected: true }]);
+  const publicSite = await diagnoseSiteIndexing(temporary, { sitewide_noindex: false } as never, options);
+  expect(publicSite.ready).toBe(false);
+  expect(publicSite.issues.join(' ')).toContain('Expected an indexable document');
+});

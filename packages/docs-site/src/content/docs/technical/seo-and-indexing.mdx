@@ -98,6 +98,24 @@ response headers, HTML robots and robots.txt separately. Also inspect provider
 firewall, bot and access settings when requests are blocked. An HTTP check does
 not prove how a verified search-engine crawler is treated.
 
+In Core 0.2.88, `expectation_reason` explains the policy being checked.
+For customer publishing with no future website host saved, the platform's
+`robots_blocked` protection intentionally requires noindex, even when
+`sitewide_noindex` is false. This is expected on the temporary address. Saving a
+future host changes the intended policy; publish the prepared candidate before
+expecting its output to reflect that change. A site's own noindex setting remains
+independent, and an unexpected noindex on a public site still fails the check.
+
+### Publication dates
+
+Supply `date_published` and `date_updated` as ISO 8601 timestamps with `Z` or an
+explicit offset, for example `2024-05-02T10:01:08Z`. In Core 0.2.88,
+generated Article and Content type schema preserves that offset. A legacy local
+timestamp without a timezone is emitted at calendar-date precision instead of
+inventing an instant; invalid dates are omitted. To restore the exact time, correct
+the stored field from a trustworthy source timestamp and publish normally. This
+does not rewrite manually supplied JSON-LD or existing customer content.
+
 ## Sitemaps and agent discovery
 
 A build emits:

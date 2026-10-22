@@ -11,8 +11,8 @@ vi.mock('../../lib/wp/client', () => ({ WPClient: class {
     async listItemsOfType() { return source.customItems; }
     async listTaxonomies() { return source.terms.length ? [{ slug: 'category', name: 'Categories', rest_base: 'categories', types: ['post'], hierarchical: true }] : []; }
     async listTerms() { return source.terms; }
-    async listPages() { return [{ id: 1, title: { rendered: 'About' }, slug: 'about', link: 'https://wp.example/about/', content: { rendered: '<h2 id="welcome">Welcome</h2><p>Original content</p>' }, date: '2026-01-01', modified: '2026-01-02' }]; }
-    async listPosts() { return [{ id: 2, categories: source.categories, title: { rendered: 'Article' }, slug: 'article', link: 'https://wp.example/news/article/', content: { rendered: '<figure class="wp-block-table"><table><tr><th>Header</th></tr><tr><td>Value</td></tr></table></figure>' }, date: '2026-01-01', modified: '2026-01-02' }]; }
+    async listPages() { return [{ id: 1, title: { rendered: 'About' }, slug: 'about', link: 'https://wp.example/about/', content: { rendered: '<h2 id="welcome">Welcome</h2><p>Original content</p>' }, date: '2024-05-02T11:01:08', date_gmt: '2024-05-02T10:01:08', modified: '2024-05-03T11:01:08', modified_gmt: '2024-05-03T10:01:08' }]; }
+    async listPosts() { return [{ id: 2, categories: source.categories, title: { rendered: 'Article' }, slug: 'article', link: 'https://wp.example/news/article/', content: { rendered: '<figure class="wp-block-table"><table><tr><th>Header</th></tr><tr><td>Value</td></tr></table></figure>' }, date: '2024-05-02T11:01:08', date_gmt: '2024-05-02T10:01:08', modified: '2024-05-03T11:01:08', modified_gmt: '2024-05-03T10:01:08' }]; }
   } }));
 vi.mock('../../lib/wp/media', () => ({ WPMediaTransfer: vi.fn(), mediaTransferAvailability: vi.fn(), buildMediaMap: () => new Map() }));
 
@@ -38,6 +38,7 @@ it.each(['blocks', 'html'])('imports both WordPress pages and posts through the 
   expect(pages.find(page => page.id === 'wp-page-1')).toMatchObject({ content_type: 'page', path: '/about', content_mode: 'html', status: 'review' });
   const post = pages.find(page => page.id === 'wp-post-2');
   expect(post).toMatchObject({ content_type: 'posts', path: '/news/article', content_mode: 'html', status: 'review' });
+  expect(post).toMatchObject({ date_published: '2024-05-02T10:01:08Z', date_updated: '2024-05-03T10:01:08Z' });
   expect(post).toHaveProperty('html_content');
   expect(JSON.stringify(post)).toContain('<table>');
   expect(JSON.stringify(pages)).toContain('Welcome');
