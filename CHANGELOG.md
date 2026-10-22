@@ -1,5 +1,12 @@
 # Changelog
 
+## Core 0.2.85 / MCP 0.45.65
+
+- **Migrations carry no source scripts; analytics move by ID behind consent.** A migration had copied JavaScript from the source site's WordPress plugins, and nothing in the routine or the launch gate stopped it.
+  - `get_migration_launch_report` has a `scripts` section and is not `launch_ready` when a script loads or uses the source platform's runtime (`source_runtime_script`: wp-content plugins/themes, wp-includes, admin-ajax/REST, jQuery, emoji, page builders, form plugins, WooCommerce, cookie plugins), when tracking code (GA/GTM, Meta, LinkedIn, TikTok, Hotjar, Clarity and others) runs outside the consent gate (`tracking_outside_consent`), or when an analytics or advertising integration is enabled with the cookie banner off (`tracking_without_consent_banner`). It inspects settings and cookie-consent scripts, live pages, partials, page templates and site block types; only `<script>` elements and block type scripts count, so copied markup that mentions a plugin class is not a finding.
+  - The migration recipes (`tr-migration-evidence`, `tr-migrate-wp`, `tr-import-url`, `tr-migrate-astro`, `tr-migrate-multisite`) decide every source script: platform, theme, plugin and cookie-plugin JavaScript is never copied; analytics and advertising tags are set by ID in the Integrations app with the cookie banner on; a tag the catalog lacks goes only in `cookie_consent.scripts_optional`. `tr-import-url` no longer suggests pasting GA into `scripts_head`, and neither do the `scripts_head`/`scripts_body_end` tool descriptions or the portal assistant.
+  - The WordPress migration guide explains what happens to scripts, analytics and cookie consent.
+
 ## Core 0.2.84
 
 - Fixed: a publication whose build failed validation could be reported as failed without its validation report (`seo_report`). A status read that found the failed build marked the job failed before the publication runner attached the report, so the portal, the API and MCP could show "validation failed" without the errors that explain it until a later read. The failure now carries the report from the first read.
