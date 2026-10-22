@@ -79,11 +79,13 @@ manage these connections.
    confirms **Connected** when all checks pass; signing in alone is not completion.
    No account name or ID needs to be typed. If something blocks the connection,
    see [When Connect GitHub does not finish](#when-connect-github-does-not-finish).
-2. Select **Connect Cloudflare**, sign in and approve the account. Optional DNS
-   and URL rewrite permissions let Typeroll configure domains automatically.
-   You can decline these and let your administrator or AI agent manage DNS.
-   If you select several accounts on Cloudflare, choose one in the card. If
-   something blocks the connection, see
+2. Select **Connect Cloudflare**, sign in and approve the account. Cloudflare
+   lists the permissions Typeroll asks for; see
+   [Cloudflare permissions](#cloudflare-permissions) for what each one
+   enables. Optional DNS and URL rewrite permissions let Typeroll configure
+   domains automatically. You can decline these and let your administrator or
+   AI agent manage DNS. If you select several accounts on Cloudflare, choose
+   one in the card. If something blocks the connection, see
    [When Connect Cloudflare does not finish](#when-connect-cloudflare-does-not-finish).
 3. Typeroll checks R2 automatically. If activation is required, follow the
    account link to **Storage & databases → R2 object storage → Overview** and
@@ -162,11 +164,46 @@ It opens Cloudflare's approval screen and keeps the existing account and R2 setu
 Typeroll will not replace an existing DNS destination or an existing shared media
 hostname through this setup action.
 
+### Cloudflare permissions
+
+**Connect Cloudflare** asks for these permissions for the Organization's
+account and for each Hosting Group's account:
+
+| Cloudflare permission                                                   | What it enables                                                                               | Requested                         |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------- |
+| Cloudflare Pages (edit), Account Settings (read), offline access        | Create and publish each Site's Pages project and keep the connection signed in                | Always                            |
+| Workers R2 Storage (edit), Workers Scripts (edit)                       | Organization media storage and its upload service                                             | Organization connection only      |
+| Zone (read), DNS (edit), Cache Purge, Zone Transform Rules (read, edit) | Configure domains and DNS records automatically; optional                                     | Always; you may decline           |
+| Account Settings (edit)                                                 | Create a Site's Cloudflare Web Analytics site when you enable Analytics for that Site         | When the installation requests it |
+| Account Analytics (read)                                                | Read Web Analytics reports for Insights                                                       | When the installation requests it |
+| Dynamic URL Redirects (read, edit)                                      | Create the Single Redirect rule for [redirect hosts](../../publishing/domains/) such as `www` | When the installation requests it |
+
+The last three are part of onboarding when the installation's operator has
+enabled them for its Cloudflare sign-in; a self-hosted operator does this as
+described in [Self-hosting](../self-hosting/#cloudflare-sign-in-for-customer-publishing).
+Approving them turns Analytics on for no Site. You choose which Sites measure
+traffic under **Publishing → Analytics** or in a Site's **Settings → Core
+modules**; only those Sites get a Web Analytics site and a beacon after their
+next publication.
+
+A connection made before these permissions were requested shows **Permission
+update available** on its Cloudflare card (the **Cloudflare** tab for the
+Organization's account, the **Hosting Groups** tab for others). An owner or
+admin selects **Approve update** once. Typeroll first confirms that the
+approval only grants permission, then opens Cloudflare. The approval keeps
+every permission already granted, the account, Sites and media, and covers
+every current and future Site in that Hosting Group. When several connections
+of the Organization use the same Cloudflare account, one **Approve update**
+renews all of them: each connection keeps its own Cloudflare authorization, so
+Cloudflare may show its approval page once per connection, and Typeroll
+continues with the next one automatically.
+
 The [Analytics module](../../apps/analytics/#which-cloudflare-account-is-used)
 creates each site's Cloudflare Web Analytics site in its Hosting Group account
-and reads Insights from there. That needs separate permissions: select
-**Approve Analytics access** on the site's Analytics module when it asks, and
-approve Account Settings (edit) and Account Analytics (read) in Cloudflare.
+and reads Insights from there. On an installation that does not request the
+Analytics permissions during onboarding, select **Approve Analytics access**
+on the site's Analytics module when it asks, and approve Account Settings
+(edit) and Account Analytics (read) in Cloudflare.
 
 For external DNS or agent-managed settings, open **Manual settings or external
 DNS**. Enter the complete **Site address base** and **Shared media host**, choose
@@ -725,6 +762,8 @@ access to configure DNS and R2 rules, then ask Typeroll to verify them.
 | Read GitHub/Cloudflare connections | `read_organization_publishing_connections`    | `GET /publishing/connections`               |
 | Explain the GitHub connection      | `diagnose_organization_github_connection`     | `GET /publishing/github-diagnosis`          |
 | Explain a Cloudflare connection    | `diagnose_organization_cloudflare_connection` | `GET /publishing/cloudflare-diagnosis`      |
+| Read Analytics for every Site      | `list_organization_analytics`                 | `GET /organization/analytics`               |
+| Turn Analytics on for chosen Sites | `set_organization_analytics`                  | `POST /organization/analytics`              |
 | Disconnect GitHub or Cloudflare    | `disconnect_organization_publishing_provider` | `DELETE /publishing/connections/{provider}` |
 | Connect Cloudflare with a token    | `connect_organization_cloudflare`             | `POST /publishing/connections/cloudflare`   |
 | Prepare media buckets              | `prepare_organization_media_storage`          | `POST /publishing/connections/cloudflare`   |
@@ -739,6 +778,17 @@ access to configure DNS and R2 rules, then ask Typeroll to verify them.
 | Retry media migration              | `retry_organization_media_migration`          | `POST /publishing/media-migration`          |
 | Read a private image temporarily   | `read_private_media_url`                      | `GET /sites/{site}/media/{media}/content`   |
 | Revoke a preview                   | `revoke_preview_link`                         | `POST /sites/{site}/preview-link/revoke`    |
+
+Before enabling Analytics or saving redirect hosts, an agent reads
+`cloudflare_permissions` from `read_organization_publishing_connections` (one
+entry per Hosting Group) or `permissions` from
+`diagnose_organization_cloudflare_connection`. Each capability,
+`analytics_provisioning`, `analytics_reports` and `redirect_rules`, has a
+`status`: `available`, `approval_required`, `not_offered` (this installation
+does not request the scope), `unknown` (API token connection, checked when
+used) or `connection_required`, plus `missing_scopes` and `next_step`.
+`permission_update` names the missing scopes, the Hosting Groups one approval
+renews and its `connect_url`, where a person selects **Approve update**.
 
 Connection changes use the `revision` from the connections status. Signing in to
 GitHub, installing the GitHub App and Cloudflare OAuth sign-in need a person in a
