@@ -78,3 +78,10 @@ it('carries the validation report when a status read finds a failed publication 
   expect(result).toMatchObject({ status: 'failed', seo_report });
   expect(await getStore().getDoc(jobPath)).toMatchObject({ seo_report });
 });
+
+
+it('explains the control-file limit and the required build engine update', () => {
+  expect(buildFailureMessage('artifact_static_control_file_limit')).toContain('9 MiB');
+  expect(buildFailureMessage('artifact_static_control_file_limit')).toContain('Publishing → Builds');
+  expect(buildFailureMessage('artifact_static_control_file_limit')).toContain('Keep required migration redirects');
+});

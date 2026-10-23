@@ -69,3 +69,5 @@ export * from './block-css-scope.js';
 export * from './block-type-definition.js';
 export * from './block-type-starters.js';
 export * from './block-parts.js';
+
+export * from './pages-redirects.js';

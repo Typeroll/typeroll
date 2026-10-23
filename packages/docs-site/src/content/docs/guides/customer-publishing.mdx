@@ -441,6 +441,34 @@ pushing Git or starting an external build. It does **not** prove that Astro will
 build successfully. Other self-hosted deployment adapters may run a local build
 without uploading it. Check the job’s phase to see which validation completed.
 
+### Redirect capacity
+
+In the next Core release, customer publishing accepts `_redirects` files up to
+**9 MiB**; the earlier 128 KiB limit could reject otherwise valid migrations.
+`_headers` retains its separate 128 KiB safety limit. Update both Core and the
+organization's build engine in **Publishing → Builds** before retrying a failed
+publication; an already installed engine keeps its old limit until updated.
+
+Cloudflare Pages permits **2,000 static declarations, 100 dynamic declarations
+and 1,000 characters per declaration**. These limits apply to the **generated
+file**, not the number of redirects saved in the CMS. Slash aliases, named
+placeholders, wildcard rules and an apex/www hostname rule count too. Old
+WordPress media addresses count like any other redirects. Comments and blank
+lines do not count as declarations, but do occupy file bytes.
+
+The next release checks expanded redirect counts and line lengths during
+`dry_run` and before dispatching a customer build. The static renderer checks
+again against the actual output. Dry-run does not render generated archive or
+facet routes and conservatively counts rules that those routes might later
+suppress. It still does not prove future HTML or public URL coverage.
+
+If the provider limits are exceeded, consolidate only paths that genuinely share
+one destination pattern, or configure [Cloudflare Bulk Redirects](https://developers.cloudflare.com/rules/url-forwarding/bulk-redirects/)
+separately. Typeroll does not provision Bulk Redirects automatically. Verify every
+replaced URL before removing its CMS redirect; never discard migration URLs just
+to fit a limit. After publication, run `verify_migration_urls` against the deployed
+address and resolve every `missing` or `broken_redirect` result.
+
 ## Website and media hosts
 
 Open **Site settings → Publishing → Website and media addresses**. Set the

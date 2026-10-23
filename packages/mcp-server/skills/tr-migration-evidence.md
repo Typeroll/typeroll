@@ -180,7 +180,17 @@ Inventory both file bytes and every discovered historical asset URL, including
 PDF/download hrefs, image click targets, srcsets and backgrounds. Verify transfer
 and rendering separately from old-address preservation. Deduplicate by content
 identity, not similar filenames. Preflight expanded redirect artifact bytes and
-provider rule limits. A 200 at an unrelated destination is a failure. A source
+provider rule limits. In the next Core release, the shared build engine allows
+`_redirects` up to 9 MiB (`_headers` remains 128 KiB). Upgrade the organization
+build engine as well as Core; old engines retain the old 128 KiB redirect limit.
+Cloudflare Pages allows 2,000 static and 100 dynamic declarations, 1,000 characters
+per line. Count the generated file after slash aliases and hostname rules, not
+just saved redirects; WP media aliases also count. Run `trigger_deploy` with
+`dry_run: true` to check expanded rules before a real build. It does not render
+archive/facet routes or prove HTTP coverage. If limits are exceeded, consolidate
+safe patterns or arrange Bulk Redirects explicitly in Cloudflare; Core does not
+provision them. Do not drop URLs. Verify every old URL after publication.
+A 200 at an unrelated destination is a failure. A source
 404 is not permission to discard a URL with traffic/backlinks: record a decision.
 Query URLs need explicit routing support at the future host; keeping the old
 server does not preserve them when the same hostname moves.

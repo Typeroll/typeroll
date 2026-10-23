@@ -42,6 +42,7 @@ const REASONS: Array<[RegExp, (match: RegExpMatchArray) => Reason]> = [
   [/^coordinator_(\d{3})$/, match => ({ text: `Typeroll’s build coordinator answered HTTP ${match[1]}.` })],
   [/^build_transfer_(?:failed|limit)$/, () => ({ text: 'a build input could not be downloaded.' })],
   [/^artifact_upload_failed$/, () => ({ text: 'the built site could not be uploaded to build storage.' })],
+  [/^static_control_file_limit$/, () => ({ text: 'a generated _redirects or _headers file exceeds the build engine’s control-file limit.', action: 'Update the build engine in Publishing → Builds first. Current limits are 9 MiB for _redirects and 128 KiB for _headers; provider rule and line limits also apply. Keep required migration redirects and run a dry-run before retrying.' })],
   [/^static_output_size_limit$/, () => ({ text: 'the finished site exceeds the static output limit or contains a file larger than 25 MiB.', action: 'Reduce the published files, then retry publishing.' })],
   [/^(?:invalid_static_path|invalid_static_file|unsafe_build_output)$/, () => ({ text: 'the build produced a file that cannot be published.' })],
   [/^publication_validation_failed$/, () => ({ text: 'the built pages failed publication validation.', action: 'Fix the reported pages, then publish again.' })],

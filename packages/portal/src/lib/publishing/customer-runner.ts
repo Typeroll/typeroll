@@ -12,7 +12,7 @@ import { siteHostingGroup, lockSiteHostingGroup } from './hosting-groups';
 import { hostingDns } from './hosting-dns';
 import { purgePublicationHost } from './publication-cache';
 import { randomUUID } from 'node:crypto';
-import { paths, CORE_BLOCK_TYPES, type DeployJob, type Site } from '@typeroll/shared';
+import { paths, CORE_BLOCK_TYPES, buildPagesRedirects, pagesShadowedByRedirect, resolveContentPage, type DeployJob, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getConnection, ConnectionError } from './connections';
 import { githubConfiguration } from './github-connection';
@@ -277,6 +277,19 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       // Content identity excludes wall-clock metadata so an unchanged publication can reuse the previous build.
       const stable = { ...frozen, published_at: undefined, publication_id: undefined };
       frozen.publication_id = digest(JSON.stringify(stable));
+      // Validate the expanded control file before a dry-run succeeds or a provider build starts.
+      // Known Page routes use the same content-type resolution as the static renderer.
+      const livePaths = frozen.pages.flatMap((page: any) => {
+        const type = frozen.contentTypes.find((type: any) => type.id === page.content_type);
+        const resolved = type && resolveContentPage(page, type);
+        return resolved?.path ? [resolved.path] : [];
+      });
+      try {
+        buildPagesRedirects(frozen.site, frozen.redirects.filter((rule: any) =>
+          !pagesShadowedByRedirect(rule.from_path, rule.to_path, livePaths).length), frozen.settings.trailing_slash ?? 'always');
+      } catch (error) {
+        throw new ConnectionError(error instanceof Error ? error.message : 'Invalid generated redirects.', 422, 'publication_redirect_limit');
+      }
       if (args.dryRun) {
         await publicationSourceTree(frozen);
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'source verified (dry-run, no Git push)', dry_run: true, finished_at: contentCutoff });
