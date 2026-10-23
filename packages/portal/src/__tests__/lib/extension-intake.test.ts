@@ -74,3 +74,9 @@ it('maps only the authorized intake method to the installation execute scope', a
   expect(extensionScopeForApiRequest('/api/v1/sites/site/forms/survey/intake', 'POST')).toBe('forms:execute');
   expect(extensionScopeForApiRequest('/api/v1/sites/site/forms/survey/intake', 'GET')).not.toBe('forms:execute');
 });
+
+it('refuses an expired partial interview even before retention has removed it', async () => {
+  const ctx = setup(); await ctx.call();
+  for (const [path, record] of ctx.rows) if (path.startsWith(paths.submissions('o', 's'))) record.expires_at = '2000-01-01T00:00:00Z';
+  await expect(ctx.call()).rejects.toMatchObject({ status: 409 });
+});

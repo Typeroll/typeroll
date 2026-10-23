@@ -7,7 +7,7 @@ export interface IntakeCondition { source: 'context' | 'answers'; field: string;
 interface IntakeField extends FormField { option_labels?: string[] }
 interface IntakeStep { id: string; title: string; fields: IntakeField[]; when?: IntakeCondition }
 interface IntakeSnapshot { steps: IntakeStep[]; context: Record<string, unknown>; reference: Record<string, string>; revision: string }
-interface IntakeRecord { form_id: string; installation_id: string; data: Record<string, unknown>; status: 'partial' | 'complete'; intake: IntakeSnapshot; input_digest: string }
+interface IntakeRecord { form_id: string; installation_id: string; data: Record<string, unknown>; status: 'partial' | 'complete'; expires_at?: string | null; intake: IntakeSnapshot; input_digest: string }
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const plain = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const forbidden = new Set(['__proto__', 'prototype', 'constructor']);
@@ -103,6 +103,7 @@ export async function extensionIntake(store: ReadWriteStore, org: string, site: 
     saved = await store.getDoc<IntakeRecord>(path);
   }
   if (!saved || saved.installation_id !== installation || saved.input_digest !== inputDigest) throw new IntakeError('The intake context changed. Start a new questionnaire.', 409);
+  if (saved.status === 'partial' && saved.expires_at && Date.parse(saved.expires_at) <= Date.now()) throw new IntakeError('This questionnaire expired. Start a new interview.', 409);
   const revision = saved.intake.revision;
   if (input.action === 'complete' && input.revision !== revision) throw new IntakeError('Reload the questionnaire before submitting', 409);
   // Finish against the pinned questions, never silently change a respondent's
