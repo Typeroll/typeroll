@@ -176,7 +176,7 @@ export const STRUCTURED_DATA = {
  */
 export function structuredDataInputSchema(kind: StructuredDataKind): { type: 'object'; properties: Record<string, unknown>; required?: string[] } {
   const schema = z.toJSONSchema(
-    z.object({ page_id: z.string().min(1), ...STRUCTURED_DATA[kind].shape }), { target: 'draft-7', io: 'input' });
+    z.object({ page_id: z.string().min(1), ...STRUCTURED_DATA[kind].shape }).meta({ additionalProperties: false }), { target: 'draft-7', io: 'input' });
   const { $schema: _schema, ...rest } = schema;
   return rest as { type: 'object'; properties: Record<string, unknown>; required?: string[] };
 }

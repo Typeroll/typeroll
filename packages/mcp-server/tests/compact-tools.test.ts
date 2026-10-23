@@ -97,6 +97,8 @@ it('keeps full and compact schemas aligned after the validator upgrade', async (
   for (const name of ['set_publishing_domains', 'approve_publishing_domain_cutover', 'update_form', 'update_page']) {
     const listed = tools.find(tool => tool.name === name)!.inputSchema;
     const described = payload(await compact.client.callTool({ name: 'describe_tool', arguments: { name } })).inputSchema;
+    expect(described.additionalProperties).toBe(false);
+    expect(listed.additionalProperties).toBe(false);
     expect(described.properties).toEqual(listed.properties);
     expect(described.required ?? []).toEqual(listed.required ?? []);
   }
