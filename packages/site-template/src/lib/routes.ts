@@ -1,6 +1,6 @@
 import { selectChangedRoutes } from './publication-route-cache.mjs';
-import { buildBacklinks, buildPageSource, getAllPages, getAllMedia, getSiteSettings, getContentTypes, getBlockTypes, getPageTemplate, getPages, pageForFacet, isHomePage, urlFor } from './content';
-import { buildMediaLookup, pageNavigation, buildCoreBlockRegistry, composePageWithTemplate, findPaginatedListing, facetRoutes, pageBreadcrumbs, pageContentValues } from '@typeroll/shared';
+import { getDerivedDataUrl, getDerived, buildBacklinks, buildPageSource, getAllPages, getAllMedia, getSiteSettings, getContentTypes, getBlockTypes, getPageTemplate, getPages, pageForFacet, isHomePage, urlFor } from './content';
+import { queryDerivedSource, buildMediaLookup, pageNavigation, buildCoreBlockRegistry, composePageWithTemplate, findPaginatedListing, facetRoutes, pageBreadcrumbs, pageContentValues } from '@typeroll/shared';
 import type { Block, FacetRoute, Page } from '@typeroll/shared';
 
 // A taxonomy page IS a page — synthetic Page doc, optional PageTemplate,
@@ -95,7 +95,10 @@ export async function getChangedSiteRoutes() {
   const pages = await getAllPages();
   const types = await getContentTypes();
   const settings = await getSiteSettings();
+  const derived = await getDerived();
+  const dataUrl = await getDerivedDataUrl();
   return selectChangedRoutes(routes, {
+    derived: (config: Parameters<typeof queryDerivedSource>[1]) => config.source === '$data_url' ? [{ url: dataUrl }] : queryDerivedSource(derived, config),
     media: buildMediaLookup(await getAllMedia()),
     query: await buildPageSource(), backlinks: await buildBacklinks(),
     navigation: (id: string) => {

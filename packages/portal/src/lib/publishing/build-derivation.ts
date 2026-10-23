@@ -79,7 +79,7 @@ export class DerivationError extends Error {
 }
 
 /** Namespaces the renderer already owns. A derived source must not shadow one. */
-const RESERVED_NAMESPACES = new Set(['page', 'site', 'item', 'content_type', 'pagination', 'facet', 'backlinks']);
+const RESERVED_NAMESPACES = new Set(['page', 'site', 'item', 'content_type', 'pagination', 'facet', 'backlinks', 'constructor', 'prototype']);
 const SOURCE_ID = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 const MAX_SOURCES = 64;
 const MAX_RECORDS_PER_SOURCE = 50_000;

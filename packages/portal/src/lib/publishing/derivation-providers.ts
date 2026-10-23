@@ -145,7 +145,9 @@ export async function derivationProvidersFor(
           { requestBytes: 8 * 1024 * 1024, responseBytes: 16 * 1024 * 1024 },
         );
         if (status !== 200) {
-          throw new DerivationError(`Derivation provider answered ${status}`, installation.id);
+          const detail = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+            ? data.error.replace(/[\r\n]/g, ' ').slice(0, 500) : 'Check the app configuration and its published schema.';
+          throw new DerivationError(`App answered HTTP ${status}: ${detail}`, installation.id);
         }
         return data;
       },

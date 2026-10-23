@@ -30,7 +30,7 @@ import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed } fro
 import { retainDistinctMediaManifests, publicationMediaManifest } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { publicationRuntime } from './runtime-projection';
-import { runBuildDerivations } from './build-derivation';
+import { DerivationError, runBuildDerivations } from './build-derivation';
 import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
 import { preparePublicMediaDomains } from './media-domain';
 import { recordPublishingOrigin } from './runtime-origins';
@@ -619,13 +619,15 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       if (failedTask?.seo_report) await store.updateDoc(jobPath, { seo_report: failedTask.seo_report });
     }
     const failure = { stage: failedJob?.phase ?? 'connecting publishing accounts',
-      code: error instanceof ProviderTransportError ? error.code : error instanceof ConnectionError ? error.code : error instanceof ProviderError ? 'provider_request_failed' : 'publication_internal_error',
+      code: error instanceof DerivationError ? 'publication_derivation_failed' : error instanceof ProviderTransportError ? error.code : error instanceof ConnectionError ? error.code : error instanceof ProviderError ? 'provider_request_failed' : 'publication_internal_error',
+      ...(error instanceof DerivationError ? { provider: error.provider } : {}),
       ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes } : {}),
       ...(error instanceof ConnectionError && error.details?.build_diagnostic ? { diagnostic: error.details.build_diagnostic } : {}),
       ...(failedJob?.git_publication ? { hosting_group_id: failedJob.git_publication.hosting_group_id ?? 'default', hosting_account_id: failedJob.git_publication.account_id, project: failedJob.git_publication.project } : {}) };
     console.error(JSON.stringify({ event: 'customer_publication_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, ...failure }));
     const message = error instanceof ProviderError && error.provider === 'Cloudflare' && failure.stage === 'creating Cloudflare Pages project'
       ? projectCreationMessage(error, failedJob?.git_publication)
+      : error instanceof DerivationError ? `An app could not prepare publication data (${error.provider}). ${error.message} The live site has not changed.`
       : error instanceof ConnectionError ? error.message : error instanceof ProviderError
       ? `${error.provider} returned HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''} during ${failure.stage}. Open Publishing to check the connection and retry.`
       : `Publishing stopped during ${failure.stage}. Retry the deployment. If it fails again, contact support with deployment ${args.jobId}.`;

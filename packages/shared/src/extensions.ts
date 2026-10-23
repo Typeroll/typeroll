@@ -1,7 +1,7 @@
 import type { FieldDefinition, SharePermission } from './types.js';
 
 export const EXTENSION_MANIFEST_SCHEMA_VERSION = 3 as const;
-export const EXTENSION_RUNTIME_VERSION = '0.43.0';
+export const EXTENSION_RUNTIME_VERSION = '0.44.0';
 export const EXTENSION_HOST_PROTOCOL_VERSION = 3 as const;
 /**
  * Block data field in which the page author binds an Extension block instance

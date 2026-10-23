@@ -70,3 +70,13 @@ describe('derived repeater source', () => {
     expect(html).not.toContain('Acme');
   });
 });
+
+it('selects a stable derived record with a page-bound filter and preserves false and null', () => {
+  const html = render(listing({ filter_field: 'id', filter_value: '{{page.id}}' }), {
+    page: { id: 'second' }, derived: { 'directory.profiles': [
+      { id: 'first', text: 'Wrong record' }, { id: 'second', text: 'Correct record', answer: false },
+    ] },
+  });
+  expect(html).toContain('Correct record');
+  expect(html).not.toContain('Wrong record');
+});

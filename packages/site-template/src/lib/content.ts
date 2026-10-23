@@ -153,6 +153,11 @@ async function loadDerived(): Promise<Record<string, Array<Record<string, unknow
   return doc?.sources ?? {};
 }
 export let getDerived = buildMemo(loadDerived);
+export const getDerivedDataUrl = buildMemo(async (): Promise<string> => {
+  const { orgId, siteId } = ids();
+  const doc = await getStore().getDoc<{ url?: string }>(paths.derived(orgId, siteId));
+  return doc?.url ?? '';
+});
 
 async function loadExtensionsPublic(): Promise<import('@typeroll/shared').ExtensionRuntimeSnapshot> {
   const { orgId, siteId } = ids();

@@ -1,3 +1,4 @@
+import { queryDerivedSource, type DerivedQuery } from './derived-source.js';
 import { prepareTabs } from './tabs.js';
 import { prepareNavigationForm } from './navigation-form.js';
 import { coerceFieldValue } from './block-field-types.js';
@@ -121,6 +122,8 @@ export interface RenderContext {
    * them, rather than from mirrors something else had to refresh.
    */
   derived?: Record<string, Array<Record<string, unknown>>>;
+  /** Optional dependency-recording resolver for static publication. */
+  derivedSource?: (query: DerivedQuery) => Array<Record<string, unknown>>;
 }
 
 export interface RenderBlocksOptions {
@@ -702,13 +705,15 @@ function renderRepeater(
     // derived anything renders an empty listing, not a broken page. The
     // publication refuses to activate when a required provider fails, so an
     // empty source here means the app genuinely produced nothing.
-    const sourceId = String(data.derived_source ?? '');
-    const records = options.context?.derived?.[sourceId];
-    items = Array.isArray(records)
-      ? records.filter((x): x is Record<string, unknown> => x !== null && typeof x === 'object')
-      : [];
-    const limit = typeof data.limit === 'number' && data.limit > 0 ? Math.floor(data.limit) : 0;
-    if (limit > 0) items = items.slice(0, limit);
+    const query: DerivedQuery = {
+      source: String(data.derived_source ?? ''),
+      ...(typeof data.filter_field === 'string' && data.filter_field ? { filter_field: data.filter_field } : {}),
+      ...(typeof data.filter_value === 'string' ? { filter_value: data.filter_value } : {}),
+      ...(typeof data.limit === 'number' ? { limit: data.limit } : {}),
+    };
+    items = options.context?.derivedSource
+      ? options.context.derivedSource(query)
+      : queryDerivedSource(options.context?.derived ?? {}, query);
   } else if (sourceType === 'pages') {
     if (!options.pageSource) {
       return `<!-- repeater needs a pageSource for collection-backed sources -->`;

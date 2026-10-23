@@ -1,6 +1,6 @@
 # Frozen publication input draft
 
-Status: draft, not release-ready. Preserved from local work on 2026-10-22,
+Historical draft preserved from local work on 2026-10-22,
 based on main `7cf7d94` (Core 0.2.87 / MCP 0.45.67).
 
 ## Purpose and boundary
@@ -66,3 +66,24 @@ were bumped, artifacts published, customer data migrated or sites deployed.
 
 Keep provider implementation, private app guides and customer conversion work
 in their owning repositories. This branch contains only the generic contract.
+
+## Completion candidate on 2026-10-23
+
+Continued on `codex/derivation-publication-completion`: Core 0.2.91, MCP
+0.45.71, Extension runtime 0.44.0. The five draft requirements above now have
+implementation and local coverage: canonical schema/documentation, selected
+consumer dependencies, frozen provider admission, bounded transport, real
+proposal approval and stale-import protection, both build backends and
+fail-before-push behavior. The real frozen Astro build emits the accepted
+answers and content-addressed public JSON. Provider-specific qualification
+can inject its own test adapter without adding app code to Core.
+
+The partial-build fixture checks same-count membership changes and empty
+results. A changed profile and membership rerender their consumers while
+unrelated pages reuse output, then compare byte-for-byte with a full build.
+The render cache format advances to 6; a site's first build after this release
+may render fully. Signed preview has no publication snapshot and does not
+invoke providers: inspect derived output on a published test version.
+
+Local release qualification and hosted release evidence are recorded in the
+release PR. This note does not claim a deployed version or customer activation.

@@ -68,7 +68,9 @@ await writeDoc(`${base}/apps/default`, publication.apps ?? { apps: {} });
 // Build output an app derived from this publication's frozen content. One doc
 // rather than one per source: it is written and read whole, and source ids
 // contain dots, which are not document names.
-await writeDoc(`${base}/derived/default`, { sources: publication.derived ?? {} });
+const derivedBytes = JSON.stringify(publication.derived ?? {});
+const derivedUrl = `/_typeroll/derived/${createHash('sha256').update(derivedBytes).digest('hex')}.json`;
+await writeDoc(`${base}/derived/default`, { sources: publication.derived ?? {}, url: Object.keys(publication.derived ?? {}).length ? derivedUrl : null });
 await writeDoc(`${base}/extension_runtime/default`, publication.extensions ?? { installations: [] });
 for (const form of publication.forms ?? []) await writeDoc(`${base}/forms/${form.id}`, form);
 for (const type of publication.contentTypes) {
@@ -129,6 +131,11 @@ const report = { format: 1, mode: reused ? 'partial' : 'full', rendered, reused,
 await build({ entryPoints: [path.join(root, 'scripts/postprocess.ts')], outfile: path.join(work, 'postprocess.mjs'), bundle: true, platform: 'node', format: 'esm', packages: 'external', alias: { '@typeroll/shared': path.join(root, 'packages/shared/src/index.ts') } });
 const { postprocess } = await import(path.join(work, 'postprocess.mjs'));
 await postprocess(dist, publication);
+if (Object.keys(publication.derived ?? {}).length) {
+  const destination = path.join(dist, derivedUrl);
+  await fs.mkdir(path.dirname(destination), { recursive: true });
+  await fs.writeFile(destination, derivedBytes);
+}
 for (const file of new Map(sameHostMedia.map(file => [file.path, file])).values()) {
   const destination = path.resolve(dist, file.path.slice(1));
   if (!destination.startsWith(dist + path.sep)) throw new Error('Invalid public media path');
