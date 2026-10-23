@@ -85,6 +85,7 @@ export default defineConfig({
         {
           label: 'Migration',
           items: [
+            { label: 'Choose your approach', slug: 'guides/migration-approach' },
             { label: 'From WordPress', slug: 'guides/wordpress-migration' },
             { label: 'From Squarespace', slug: 'guides/migrate-from-squarespace' },
             { label: 'From Wix', slug: 'guides/migrate-from-wix' },

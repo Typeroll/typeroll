@@ -9,10 +9,12 @@ description: Use when the user wants to import or migrate content from a non-Wor
 another MCP client) working through MCP and the public API. The portal's built-in
 AI assistant has no migration tools: it does not import, convert or verify sites.
 
-**Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
-Complete its source baseline and one verified prototype per active template.
-Read target content to protect edits, not to justify accidental target defaults.
-Its shared evidence record is required for visual acceptance.
+**Before import or reconstruction:** read `tr-migration-evidence` with
+`read_skill`. Choose preserve (platform change) or renew (new design/content),
+record the brief and verify one prototype per active template before bulk writes.
+Use standard blocks first, reviewed custom types next, rare documented HTML last.
+Both paths must preserve or meaningfully redirect every old public URL. That
+shared contract defines acceptance; this recipe only adds source-specific steps.
 
 
 > **The buffer model (draft writes).** Every content write in this recipe
@@ -35,7 +37,9 @@ Its shared evidence record is required for visual acceptance.
 
 ## Preconditions
 
-- Target Typeroll site exists with working header/footer.
+- Target Site and Version are selected through OAuth or a scoped API key.
+- Run `get_import_readiness` before importing content or media; verify the
+  Organization storage first. Build shared header/footer against the chosen brief.
 - Source URL(s) accessible (check with a quick `fetch`; if blocked, mention
   it and ask the user for an HTML export or screenshot).
 
@@ -56,7 +60,7 @@ Parse `<a href>` links to discover internal pages. Build a list:
 - Any sub-pages that look important
 
 Exclude private/session/admin URLs deliberately. Inventory public pagination and
-query routes; decide preservation or retirement from their actual purpose.
+query routes and keep them working or map relevant redirects. Do not silently retire public routes.
 
 **Map source styling to named styles.** A class the source uses for a
 recurring treatment (`.eyebrow`, `.lead`, `.btn-outline`, `.section-dark`)
@@ -76,8 +80,9 @@ read_partial partial_id="header"
 list_pages limit=5
 ```
 
-Read existing target data to avoid overwriting work. Establish source geometry
-and validate native prototypes using `tr-migration-evidence` before mass writes.
+Read existing target data to avoid overwriting work. Compare prototypes to the
+source in preserve mode, or to the agreed new design in renew mode. Validate
+standard/custom blocks using `tr-migration-evidence` before mass writes.
 
 ### 3. Fetch and clean each source page
 
@@ -117,15 +122,16 @@ icons. A required file that fails transfer blocks acceptance; do not silently
 omit it. Inventory PDFs, download hrefs, srcsets and backgrounds as well.
 
 **d. Adapt to the target's design.**
-Use verified native fields from the source capability map. Preserve appearance
-by default; do not substitute target defaults or corrective tenant CSS.
+Use standard blocks first, then reusable custom types with editable fields.
+Preserve source appearance/text in preserve mode; use the approved new design
+and content plan in renew mode. Raw HTML is the documented last resort.
 
 ### 4. Create pages as drafts
 
 ```
 create_page title="Om oss" slug="om-oss"
-            html_content="<cleaned, adapted HTML>"
-            content_mode="html" status="draft"
+            path="/om-oss/" blocks=[<reviewed block tree>]
+            content_mode="blocks" status="draft"
             seo_title="Om oss — Acme"
             seo_description="..."
 ```
@@ -155,7 +161,7 @@ Walk through every imported page with the user. Common issues:
 
 ### 7. Publish + deploy
 
-After approval:
+After approval, save working copies and confirm publishing readiness:
 ```
 batch_update_pages updates=[
   {page_id: "om-oss",  patch: {status: "published"}},
@@ -163,7 +169,12 @@ batch_update_pages updates=[
 ]
 trigger_deploy
 get_deploy_status job_id=<id>
+verify_migration_urls
+get_migration_launch_report
 ```
+
+This is candidate verification, not permission to change traffic DNS. Every old
+public URL must serve its content or a relevant redirect before cutover.
 
 ## Platform-specific notes
 
@@ -171,7 +182,7 @@ get_deploy_status job_id=<id>
 - Main content is inside `.content-wrapper` or `[data-section-theme]` blocks
 - Portfolio images are usually high-resolution originals in `/universal/images/`
 - JSON-LD is Squarespace's own schema — strip it
-- Gallery blocks → convert to CSS grid with inline `<img>` tags
+- Gallery blocks → standard image/gallery layouts, or a reusable custom type
 
 ### Wix
 - Wix sites are React SPAs — `fetch` returns an empty shell
@@ -186,7 +197,7 @@ get_deploy_status job_id=<id>
 
 ### Static HTML / old sites
 - Often the cleanest import. Fetch, strip nav/footer, keep body.
-- Watch for table-based layouts (pre-2010 sites) — convert to CSS grid
+- Rebuild table-based layouts with layout blocks; keep actual tabular data as tables
 
 ## Pitfalls
 

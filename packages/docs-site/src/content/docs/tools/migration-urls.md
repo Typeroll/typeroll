@@ -17,11 +17,11 @@ Typeroll keeps a **URL inventory** per site for exactly this, and the AI agent c
 
 The AI agent calls `get_migration_readiness` first. It checks the things whose absence you would otherwise discover months later:
 
-| Check             | Why it blocks                                                                                                                                                                                                        |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Media storage** | Without it, imported pages keep their original image URLs. The new site looks perfect and is still being served images by the old host — invisible until that hosting is cancelled, when every image breaks at once. |
-| **Hosting**       | Without credentials, deploys return a job id and publish nothing, while reporting success.                                                                                                                           |
-| **The old site**  | If the host refuses our requests (bot protection, an IP allowlist, HTTP auth on a staging copy), the import produces empty pages — or pages containing the block page, which reads as real content.                  |
+| Check             | Why it blocks                                                                                                                                                                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Media storage** | Without it, imported pages keep their original image URLs. The new site looks perfect and is still being served images by the old host — invisible until that hosting is cancelled, when every image breaks at once.                              |
+| **Publishing**    | With verified Organization storage, customer publishing can import and preview before GitHub, builds or domains are connected. Legacy self-hosted setups may still report a missing hosting adapter. Publication readiness is checked separately. |
+| **The old site**  | If the host refuses our requests (bot protection, an IP allowlist, HTTP auth on a staging copy), the import produces empty pages — or pages containing the block page, which reads as real content.                                               |
 
 Warnings don't stop the job but are worth knowing: no verification URL for the pre-cutover check, forms with no notification address, or a target site with no design for the content to be rebuilt into.
 
@@ -67,7 +67,12 @@ Pass Search Console click counts along with the URLs and the coverage report sor
 
 Marks an entry `excluded` — the record that a URL is _meant_ to disappear. This is what distinguishes "we haven't looked at it" from "we decided", which is the whole value of the report.
 
-> "The old campaign landing pages are gone on purpose — mark them excluded with a note."
+> "Exclude these private source-admin/session URLs with a reason. Keep public campaign pages working or redirect them to relevant replacement content."
+
+The preserve/renew migration contract requires continuity for every old public
+URL. The API still supports intentional retirement, but using it for public
+content needs a separately agreed exception; exclusion is not a shortcut to
+launch readiness.
 
 ## `repair_migration_plain_text`
 
@@ -142,8 +147,51 @@ For a multi-site or multi-domain move, ask the AI agent to read the `tr-migrate-
 Core 0.2.5 also requires fidelity evidence for a ready
 launch report. `record_migration_seo_acceptance` accepts
 `fidelity: { desktop, mobile, shared_data, integrations, evidence }`.
-The four checks must be true, with a nonempty description of the source/target
-comparison and checks. Review representative articles, an archive and the home
+The four checks must be true, with a nonempty description of the chosen intent
+and comparison: source fidelity for preserve, approved design/content for renew.
+Record approved changes as intentional differences, not unresolved regressions. Review representative articles, an archive and the home
 page where applicable; document intentional differences. This records an actual
 review, not an automated visual test. Missing evidence reports
 `fidelity_review_missing`, even if HTTP and SEO checks succeeded.
+
+## Reviewed migration compositions
+
+`get_migration_readiness` accepts `compositions` for a read-only block/field
+review. Choose [preserve or renew](../../guides/migration-approach/) in the project
+brief; these intent labels are not migration API parameters.
+
+After reviewing standard-block alternatives, record an intentional custom type
+or exceptional HTML fragment on the composition:
+
+```json
+{
+  "name": "Article with an art-directed hero",
+  "blocks": [],
+  "reviewed_custom_block_types": [
+    {
+      "type": "layered_hero",
+      "reason": "Responsive layered hero with editable title, image and CTA; prototype reviewed."
+    }
+  ],
+  "reviewed_html_blocks": [
+    {
+      "block_id": "one-off-artwork",
+      "reason": "Unique layered hero animation; standard and custom alternatives reviewed, reduced motion and breakpoints tested."
+    }
+  ]
+}
+```
+
+Supply the actual proposed block tree instead of the empty example `blocks`.
+Each review list accepts up to 100 entries. Names/IDs and reasons must be nonempty;
+reasons allow up to 2,000 characters. HTML exceptions match an exact block ID,
+not every HTML block. The response retains them in `reviewed_exceptions`.
+Missing types, missing declared fields, unreviewed workarounds and per-instance
+CSS remain blockers. Reviews attest a decision; they do not establish visual
+quality, recursively validate custom implementations or authorize publishing.
+Validate custom types separately and inspect preview and static output.
+
+**Availability:** these review fields require Core **0.2.89** / MCP **0.45.69**.
+Cloud availability follows its Core rollout. Older installations do not accept
+them; inspect the deployed tool
+schema before calling. Standard block and URL verification tools are unchanged.

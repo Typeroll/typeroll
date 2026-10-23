@@ -13,12 +13,15 @@ assistant in the portal has no migration tools.
 
 For WordPress sources, use [tr-migrate-wp](../tr-migrate-wp/) instead.
 
+First [choose preserve or renew](../../guides/migration-approach/). Use standard
+blocks, then editable custom types, with raw HTML only as a documented exception.
+
 ## What it does
 
 1. Fetches the source site's homepage and sitemap to build a URL inventory
-2. Learns the target Typeroll site's design (settings, partials, example pages)
+2. Records the source baseline and chosen design/content brief; protects existing target edits
 3. Fetches each source page, strips platform-specific classes and structure, transfers images
-4. Creates pages as **drafts** in the target site
+4. Rebuilds editable blocks and templates, leaving Pages as **drafts** for review
 5. Creates redirects from old URLs to new slugs
 6. Shows a preview for review
 7. Publishes and deploys after approval
@@ -30,7 +33,7 @@ For WordPress sources, use [tr-migrate-wp](../tr-migrate-wp/) instead.
 - Content is inside `.content-wrapper` or `[data-section-theme]` blocks
 - Images are usually high-res originals — they transfer well
 - Strip all Squarespace JSON-LD (it's their own schema)
-- Gallery blocks → the AI agent converts to CSS grid with `<img>` tags
+- Galleries → standard image/layout blocks, or a reusable custom block type
 
 ### Wix
 
@@ -69,8 +72,8 @@ Here are the screenshots I exported.
 
 - Platform-specific CSS classes (`sqsrte-*`, `wf-*`, `elementor-*`, `fl-*`, `divi-*`, `vc_*`)
 - `<style>` blocks from the source (they reference external fonts and classes that don't exist in Typeroll)
-- Analytics and tracking scripts (set those via site settings → `scripts_head`)
-- Cookie banners, chat widgets, nav/header/footer
+- Source scripts; analytics/advertising move by ID to Integrations with the cookie banner, never `scripts_head`
+- Source runtime implementations; rebuild required consent, widgets and shared navigation explicitly
 
 ## What gets kept
 

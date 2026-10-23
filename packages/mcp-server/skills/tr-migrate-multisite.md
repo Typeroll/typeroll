@@ -9,10 +9,12 @@ description: Use when migrating SEVERAL sites at once — a WordPress multisite 
 another MCP client) working through MCP and the public API. The portal's built-in
 AI assistant has no migration tools: it does not import, convert or verify sites.
 
-**Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
-Complete its source baseline and one verified prototype per active template.
-Read target content to protect edits, not to justify accidental target defaults.
-Its shared evidence record is required for visual acceptance.
+**Before import or reconstruction:** read `tr-migration-evidence` with
+`read_skill`. Choose preserve (platform change) or renew (new design/content),
+record the brief and verify one prototype per active template before bulk writes.
+Use standard blocks first, reviewed custom types next, rare documented HTML last.
+Both paths must preserve or meaningfully redirect every old public URL. That
+shared contract defines acceptance; this recipe only adds source-specific steps.
 
 
 > **The buffer model (draft writes).** Every content write in this recipe
@@ -38,9 +40,9 @@ that is expensive to reverse (domains, deploys, and analytics all hang off
 it). The rest of this recipe assumes the common case: **N sites, one per
 domain**, sharing a design.
 
-Requires an **org-scoped API key** (`create_site` needs it, and one key
-reaching every site is the whole point here). With MCP you pass `site_id`
-per call; over stdio you'll be re-pointing `TYPEROLL_SITE_ID` per site.
+Use personal OAuth with the required Organization permissions or an org-scoped
+API key. Select each Site explicitly and use its returned context; never reuse
+another Site's OAuth context. Keep Site and Version explicit on batch calls.
 
 ## Phase 0 — Plan the batch (do this once, in writing)
 
@@ -61,15 +63,14 @@ Then once per market, with that market's own source:
 get_migration_readiness site_id=<de-site> source_url="https://example.de"
 ```
 
-The blockers (media storage, hosting credentials) are **platform-level, not
-per-site** — if they fail for one site they fail for all ten, and finding out
-after building three sites means redoing three sites' worth of image work.
-Get them fixed before Phase 1, and re-run the check per site once the sites
-exist (the warnings — verification URL, form email, design reference — are
-per-site).
+Check each target Site: storage is shared per Organization, but Hosting Groups,
+permissions and verification origins can differ. Verified customer storage is
+required before import; GitHub/build/domain readiness is checked separately for
+publication. Do not infer that every Site shares the same blockers.
 
 Ask explicitly:
-- Which site is the **design reference**? Build that one properly first.
+- Which intent applies per Site: preserve or renew? Which source or approved
+  prototype is the **design reference**? Build that one properly first.
 - Are the sites **translations of each other** (same page structure) or
   independent? This decides whether hreflang clusters are mechanical or
   hand-mapped.
@@ -117,10 +118,11 @@ Add every source you have, each with its own label — they merge per URL:
   the traffic sort to the top.
 - `source="crawl"` — anything you found by following internal links
 
-Mark the obvious throwaways immediately, so the work list is real:
+Exclude only private/admin/session noise, with reasons. Public tags and archives
+need working routes or relevant redirects, even when omitted from new navigation:
 
 ```
-add_migration_urls urls=[{ url: "/wp-admin", excluded: true }, { url: "/tag/nyheter", excluded: true }]
+add_migration_urls urls=[{ url: "/wp-admin", excluded: true, notes: "Private source administration" }, { url: "/wp-login.php", excluded: true, notes: "Private source login; not public content" }]
 ```
 
 Read it back and note the starting number:
@@ -183,7 +185,7 @@ list_migration_urls site_id=<de-site> status="unhandled"
 For each entry, one of three outcomes — no fourth option:
 
 - It moved → `create_redirect from_path="/alte-seite" to_path="/neue-seite"`
-- It's gone on purpose → `update_migration_url url_id=… excluded=true notes="Old campaign LP, signed off by <name>"`
+- It was merged → redirect to the relevant replacement, not the homepage
 - It should exist and doesn't → go back and migrate it
 
 Re-read the list. `unhandled` reaching zero is the exit condition for this

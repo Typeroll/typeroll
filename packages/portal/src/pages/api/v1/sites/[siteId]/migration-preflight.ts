@@ -37,13 +37,22 @@ interface PreflightBody {
 function isCompositionProposal(value: unknown): value is CompositionProposal {
   if (!value || typeof value !== 'object') return false;
   const proposal = value as Partial<CompositionProposal>;
-  return typeof proposal.name === 'string' && proposal.name.trim().length > 0 && Array.isArray(proposal.blocks);
+  const validReviews = (rows: unknown, key: string) => rows === undefined || (
+    Array.isArray(rows) && rows.length <= 100 && rows.every(row => (
+      row && typeof row === 'object'
+      && typeof row[key] === 'string' && row[key].trim().length > 0
+      && typeof row.reason === 'string' && row.reason.trim().length > 0 && row.reason.length <= 2000
+    ))
+  );
+  return typeof proposal.name === 'string' && proposal.name.trim().length > 0 && Array.isArray(proposal.blocks)
+    && validReviews(proposal.reviewed_custom_block_types, 'type')
+    && validReviews(proposal.reviewed_html_blocks, 'block_id');
 }
 
 /**
  * POST adds a read-only composition dependency review to the normal
  * infrastructure preflight. Migration agents use this before authoring so
- * generic CMS gaps become product work instead of tenant HTML/CSS debt.
+ * intentional custom presentation stays distinct from missing capabilities.
  */
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -56,7 +65,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
   if (body.compositions.length > 50) return apiError('Too many compositions (max 50)');
   if (!body.compositions.every(isCompositionProposal)) {
-    return apiError('Each composition requires a non-empty name and blocks array');
+    return apiError('Each composition requires a non-empty name and blocks array; reviewed_custom_block_types/reviewed_html_blocks require up to 100 entries with a non-empty type/block_id and reason (max 2000 characters)');
   }
   if (body.source_url !== undefined && typeof body.source_url !== 'string') {
     return apiError('source_url must be a string');

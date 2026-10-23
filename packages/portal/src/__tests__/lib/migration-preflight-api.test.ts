@@ -83,4 +83,29 @@ describe('POST /api/v1/sites/{siteId}/migration-preflight', () => {
     const response = await post(token, { compositions: [{ name: '', blocks: [] }] });
     expect(response.status).toBe(400);
   });
+
+  it('reports a reviewed HTML exception without bypassing infrastructure readiness', async () => {
+    const token = await setup();
+    const response = await post(token, { compositions: [{
+      name: 'Hero', blocks: [{ id: 'hero', type: 'core/html', data: { html: '<div>Artwork</div>' } }],
+      reviewed_html_blocks: [{ block_id: 'hero', reason: 'One-off layered hero with reviewed responsive behavior.' }],
+    }] });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.compositions_ready).toBe(true);
+    expect(body.ready).toBe(body.infrastructure_ready);
+    expect(body.composition_reviews[0].reviewed_exceptions[0].block_id).toBe('hero');
+  });
+
+  it.each([
+    { reviewed_html_blocks: [{ block_id: 'hero', reason: ' ' }] },
+    { reviewed_html_blocks: [{ block_id: '', reason: 'Reviewed' }] },
+    { reviewed_custom_block_types: [{ type: 'hero', reason: 42 }] },
+    { reviewed_custom_block_types: [{ type: 'hero', reason: 'x'.repeat(2001) }] },
+    { reviewed_custom_block_types: 'hero' },
+    { reviewed_html_blocks: Array.from({ length: 101 }, () => ({ block_id: 'hero', reason: 'Reviewed' })) },
+  ])('rejects invalid review records: %j', async review => {
+    const token = await setup();
+    expect((await post(token, { compositions: [{ name: 'Hero', blocks: [], ...review }] })).status).toBe(400);
+  });
 });

@@ -7,6 +7,9 @@ export interface CompositionProposal {
   blocks: Block[];
   /** Custom blocks whose behavior is genuinely specific to this business. */
   business_specific_block_types?: string[];
+  /** Reviewer decisions, not automatic proof of rendering or visual quality. */
+  reviewed_custom_block_types?: ReadonlyArray<{ type: string; reason: string }>;
+  reviewed_html_blocks?: ReadonlyArray<{ block_id: string; reason: string }>;
 }
 
 export type CompositionReviewStatus = 'ready' | 'waiting_for_native_support';
@@ -31,6 +34,7 @@ export interface CompositionReview {
   required_capabilities: string[];
   requires_hosted_verification: true;
   workarounds: CompositionWorkaround[];
+  reviewed_exceptions: Array<CompositionWorkaround & { reason: string }>;
 }
 
 const CONTEXT_BINDING = /^\s*\{\{\s*(?:page|item)\.([\w.-]+)\s*\}\}\s*$/;
@@ -108,6 +112,13 @@ export function reviewBlockComposition(
   const usedBusinessSpecific = new Set<string>();
   const genericCustom = new Set<string>();
   const workarounds: CompositionWorkaround[] = [];
+  const reviewedExceptions: CompositionReview['reviewed_exceptions'] = [];
+  const reviewedTypes = new Map((proposal.reviewed_custom_block_types ?? []).map(row => [row.type, row.reason.trim()]));
+  const reviewedHtml = new Map((proposal.reviewed_html_blocks ?? []).map(row => [row.block_id, row.reason.trim()]));
+  const recordWorkaround = (workaround: CompositionWorkaround, reason?: string) => {
+    if (reason) reviewedExceptions.push({ ...workaround, reason });
+    else workarounds.push(workaround);
+  };
   const requiredCapabilities = new Set<string>();
 
   walk(proposal.blocks, (block) => {
@@ -139,12 +150,12 @@ export function reviewBlockComposition(
         usedBusinessSpecific.add(block.type);
       } else {
         genericCustom.add(block.type);
-        workarounds.push({
+        recordWorkaround({
           kind: 'generic_custom_block',
           block_id: block.id,
           block_type: block.type,
-          detail: 'Custom block appears to replace reusable CMS behavior; add native support before migration build.',
-        });
+          detail: 'Review this custom block and its editable fields against standard blocks before migration build.',
+        }, reviewedTypes.get(block.type));
       }
     }
     if (block.type === 'core/navigation') {
@@ -163,12 +174,12 @@ export function reviewBlockComposition(
     }
 
     if (block.type === 'core/html') {
-      workarounds.push({
+      recordWorkaround({
         kind: 'raw_html',
         block_id: block.id,
         block_type: block.type,
-        detail: 'Raw HTML hides structure from native editing and should not be the migration fallback.',
-      });
+        detail: 'Raw HTML requires a specific last-resort rationale after considering standard and custom blocks.',
+      }, reviewedHtml.get(block.id));
     }
     if (typeof block.style_overrides?.custom_css === 'string' && block.style_overrides.custom_css.trim()) {
       requiredCapabilities.add('supports_block_instance_custom_css');
@@ -202,5 +213,6 @@ export function reviewBlockComposition(
     required_capabilities: sorted(requiredCapabilities),
     requires_hosted_verification: true,
     workarounds,
+    reviewed_exceptions: reviewedExceptions,
   };
 }

@@ -9,10 +9,12 @@ description: Use when the user asks to migrate a WordPress site to Typeroll, men
 another MCP client) working through MCP and the public API. The portal's built-in
 AI assistant has no migration tools: it does not import, convert or verify sites.
 
-**Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
-Complete its source baseline and one verified prototype per active template.
-Read target content to protect edits, not to justify accidental target defaults.
-Its shared evidence record is required for visual acceptance.
+**Before import or reconstruction:** read `tr-migration-evidence` with
+`read_skill`. Choose preserve (platform change) or renew (new design/content),
+record the brief and verify one prototype per active template before bulk writes.
+Use standard blocks first, reviewed custom types next, rare documented HTML last.
+Both paths must preserve or meaningfully redirect every old public URL. That
+shared contract defines acceptance; this recipe only adds source-specific steps.
 
 
 > **The buffer model (draft writes).** Every content write in this recipe
@@ -41,9 +43,9 @@ get_migration_readiness source_url="https://oldsite.com"
 
 When the migration includes reusable page/item layouts, include each proposed
 block composition and its content type fields in this same call. A
-`waiting_for_native_support` result means leave that template intact and do
-not replace the gap with generic custom blocks, raw HTML, or corrective site
-CSS. Independent content and SEO work may continue. Rerun the review after the
+`waiting_for_native_support` result means inspect the actual blocker. Review
+intentional custom types and rare HTML exceptions using `tr-migration-evidence`;
+fix missing types/fields and report renderer defects rather than masking them. Independent content and SEO work may continue. Rerun the review after the
 required Core version is deployed, then verify preview and a fresh hosted
 build.
 
@@ -60,8 +62,11 @@ once the work is done, so discovering it late means redoing the expensive part.
 - **Media storage** — without it, every `<img>` keeps its WordPress URL. The
   new site looks perfect and is still served images by the old host. It breaks
   the day the customer cancels that hosting, months later, all at once.
-- **Hosting adapter** — without credentials, deploys return a job id and
-  publish nothing, while reporting success.
+- **Publishing** — with verified Organization storage, customer publishing can
+  import and preview before GitHub, builds or website domains are connected.
+  Publishing readiness is a separate gate before a hosted build/cutover. Legacy
+  self-hosted configurations may report a missing hosting adapter; follow the
+  returned blocker rather than assuming all installations have the same setup.
 
 Warnings are worth relaying but don't stop you: no verification origin (the
 pre-cutover parity check can't run), forms without a
@@ -69,12 +74,13 @@ notification address, or a target site with no design to rebuild INTO.
 
 Then the ordinary preconditions:
 
-- `@typeroll/mcp-server` configured with a valid `TYPEROLL_API_KEY`.
+- MCP connected through personal OAuth or an appropriately scoped API key.
+  Select and confirm the Site/Version before writes; do not request pasted secrets.
 - The source WP site has `/wp-json` reachable (Google for "wordpress
   REST API disabled" if not — common for hardened hosts).
 - The target exists. Establish the source design baseline first, then prove
   representative target templates using `tr-migration-evidence`. Preserve
-  appearance unless a redesign is explicitly requested.
+  appearance in preserve mode; use the approved design/content brief in renew mode.
 - If the target already has content, you must NOT clobber it — always
   `list_pages` first and only write to slugs that don't already exist.
   Pass the slug explicitly: `create_page` then refuses an address that is
@@ -161,10 +167,11 @@ c. Migrate referenced images with `upload_media_from_url`. The customer's
 
 The managed importer stores cleaned HTML. Typeroll does not convert HTML into blocks, and `set_page_mode` never rewrites HTML. Pages move to blocks only when someone rebuilds them with blocks.
 
-d. Preserve exact text, headings, anchors, links, media and semantic structure with native blocks first. Read the
-   available block types and map headings, prose, images, buttons and layout
-   into their typed fields. Use HTML mode only for source-specific markup that
-   has no native representation and has passed the composition preflight.
+d. Rebuild into editable blocks according to the selected intent. Preserve exact
+   wording in preserve mode; track approved changes in renew mode. Map headings,
+   prose, images, buttons and layout to standard fields first, then create
+   reviewed custom types where needed. Use raw HTML only for a documented,
+   exceptional fragment. Preserve anchors and map every old URL in either mode.
 
 e. Write the page as a draft:
 
@@ -192,8 +199,10 @@ create_redirect from_path="/old-services" to_path="/services"
 
 Walk the inventory; for each URL: did it become a page with the same
 path? If yes, no redirect. If renamed, `create_redirect`. If
-intentionally dropped, mark it `excluded` via `update_migration_url` (the
-customer should sign off on every dropped URL).
+combined with another page, redirect to the relevant combined content. Do not
+mark a public page excluded just because the new design omits it. Public URL
+retirement requires a separately agreed exception; admin/session noise can be
+excluded with a recorded reason.
 
 Use a pattern only after verifying every affected source-to-destination mapping.
 For an explicitly approved prefix change, `/old-blog/:slug` → `/articles/:slug`

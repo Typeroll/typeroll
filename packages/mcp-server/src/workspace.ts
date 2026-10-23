@@ -60,6 +60,16 @@ Public documentation: https://typeroll.com/docs/llms.txt
 - Never edit generated publishing source to change CMS content. Do not overwrite
   current CMS or owner answers from an old local snapshot.
 
+## Migrations
+
+Read tr-migration-evidence, then the source-specific recipe (tr-migrate-wp,
+tr-import-url, tr-migrate-astro or tr-migrate-multisite). Record preserve or renew
+intent in brief/migration.md; ask if unclear. Standard blocks first, reviewed
+custom types next, documented HTML exceptions last. Preserve or meaningfully
+redirect every old public URL. Import completion is not block reconstruction
+or launch acceptance. Compare preserve work to the source, renew work to the
+approved design/content brief. Discover tools and recipes on demand.
+
 ## Everyday requests
 
 - Links, images, menus, settings, analytics and site-wide changes: read the
@@ -80,6 +90,7 @@ export const workspaceTemplates: Record<string, string> = {
   'brief/site.md': '# Site brief\n\n## Purpose and audience\n\n## Languages and scope\n\n## Primary user journeys\n\n## Content authority and sources\n\n## Editorial constraints and forbidden internal markers\n',
   'brief/brand.md': '# Brand\n\n## Voice and tone\n\n## Visual direction and references\n\n## Typography, colors and image policy\n\n## Desktop and mobile navigation\n\nRecord intent here; current design tokens belong in CMS settings.\n',
   'brief/content-model.md': '# Content model\n\n## Page types and routes\n\n## Fields and references\n\n## Shared templates and partials\n\n## Taxonomy and navigation\n\nUse the current CMS schema. This document describes decisions, not a second schema store.\n',
+  'brief/migration.md': '# Migration brief (when applicable)\n\n## Intent: preserve or renew\n\n## Source URLs, date and agreed scope\n\n## Design and content acceptance reference\n\n## Retained facts and approved content changes\n\n## Standard blocks, custom types and HTML exceptions\n\n## Old URL to preserved path or relevant redirect\n\n## Prototype and verification evidence\n\nKeep private extracts in sources/private/ and screenshots in qa/reports/.\n',
   'decisions.md': '# Decisions\n\nRecord date, decision, reason, approved scope and alternatives when useful.\n',
   'sources/README.md': '# Sources\n\nStore research references and copy proposals. Record source URLs and dates.\nPrivate extracts belong in ignored private/ or an approved external store.\nDo not treat local drafts as current CMS content or commit media libraries.\n',
   'scripts/README.md': '# Project automation\n\nKeep repeatable imports and QA scripts here. Use the authenticated REST API\nfor scripted work; keep credentials outside files and inject them at runtime.\nMCP remains the interactive interface. Typeroll currently has no general site CRUD CLI.\n',
