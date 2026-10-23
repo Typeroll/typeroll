@@ -36,7 +36,7 @@ export const appTools: ToolDef[] = [
     inputSchema: {
       app_id: z.string().min(1).describe('Registry id returned by list_apps.'),
       enabled: z.boolean(),
-      config: z.record(z.unknown()).optional().describe('Schema-driven app config. Omitted fields preserve their existing values.'),
+      config: z.record(z.string(), z.unknown()).optional().describe('Schema-driven app config. Omitted fields preserve their existing values.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       return ok(await client.put(siteId, `apps/${encodeURIComponent(args.app_id)}`, {

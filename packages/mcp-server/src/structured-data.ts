@@ -13,7 +13,6 @@
 // kept in an @graph, so an FAQ added later does not erase a LocalBusiness.
 
 import { z } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 
 export type JsonLdNode = Record<string, unknown>;
 export type StructuredDataKind = 'faq' | 'recipe' | 'event';
@@ -176,8 +175,8 @@ export const STRUCTURED_DATA = {
  * outside MCP (the portal chat passes it to the model as input_schema).
  */
 export function structuredDataInputSchema(kind: StructuredDataKind): { type: 'object'; properties: Record<string, unknown>; required?: string[] } {
-  const schema = (zodToJsonSchema as (schema: unknown, options: { $refStrategy: 'none' }) => Record<string, unknown>)(
-    z.object({ page_id: z.string().min(1), ...STRUCTURED_DATA[kind].shape }), { $refStrategy: 'none' });
+  const schema = z.toJSONSchema(
+    z.object({ page_id: z.string().min(1), ...STRUCTURED_DATA[kind].shape }).meta({ additionalProperties: false }), { target: 'draft-7', io: 'input' });
   const { $schema: _schema, ...rest } = schema;
   return rest as { type: 'object'; properties: Record<string, unknown>; required?: string[] };
 }

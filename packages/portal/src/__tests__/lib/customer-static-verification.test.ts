@@ -152,3 +152,23 @@ it('allows old native media variants only while their exact source remains in th
   expect(changedStaticChecks([source, old], [source], true)).toEqual([old]);
   expect(await verifyCandidateCheck(origin, old, { fetchImpl: async () => new Response('old variant') })).toBe(false);
 });
+
+it('allows retired content-addressed public datasets only when a verified replacement exists', async () => {
+  const current = check(`/_typeroll/derived/${sha256('new public data')}.json`, 'new public data');
+  const retired = { route: `/_typeroll/derived/${sha256('old public data')}.json`, status: 404 as const };
+  const removedPage = { route: '/removed/', status: 404 as const };
+  const required = ['/_typeroll/derived/latest.json', '/_typeroll/derived/private.json',
+    `/_typeroll/derived/${'a'.repeat(64)}.json?old=1`, `/_typeroll/other/${'a'.repeat(64)}.json`,
+    `/_typeroll/derived/${'a'.repeat(63)}.json`].map(route => ({ route, status: 404 as const }));
+  const checks = [current, retired, removedPage, ...required];
+  expect(publicStaticChecks(checks)).toEqual([current, removedPage, ...required]);
+  expect(publicStaticChecks([retired], [current])).toEqual([]);
+  expect(publicStaticChecks([retired], [])).toEqual([retired]);
+  expect(publicStaticChecks([retired], [{ route: '/', status: 200 }])).toEqual([retired]);
+  expect(publicStaticChecks([retired], [{ ...current, sha256: 'b'.repeat(64) }])).toEqual([retired]);
+  expect(selectStaticProbes(checks).some(value => value.route === retired.route)).toBe(false);
+  expect(selectStaticProbes(checks).some(value => value.route === current.route)).toBe(true);
+  expect(changedStaticChecks(checks, [], true)).toEqual(checks);
+  expect(await verifyCandidateCheck(origin, retired, { fetchImpl: async () => new Response('old public data') })).toBe(false);
+  expect(await verifyCandidateCheck(origin, current, { fetchImpl: async () => new Response('old public data') })).toBe(false);
+});

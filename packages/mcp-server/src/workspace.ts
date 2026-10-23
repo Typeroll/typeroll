@@ -17,7 +17,7 @@ export const workspaceSchema = z.object({
 }).strict();
 export type Workspace = z.infer<typeof workspaceSchema>;
 export const defaultWorkspace: Workspace = { schema_version: 1, portal: 'https://app.typeroll.com', organization_id: null, site_id: null, version: 'main', tool_mode: 'compact' };
-const lockSchema = z.object({ schema_version: z.literal(1), generator_version: z.string(), files: z.record(z.string().regex(/^[a-f0-9]{64}$/)) }).strict();
+const lockSchema = z.object({ schema_version: z.literal(1), generator_version: z.string(), files: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)) }).strict();
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 export const ignores = ['.typeroll/', '.env', '.env.*', '!.env.example', '.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json', 'qa/reports/', 'sources/private/'];
 

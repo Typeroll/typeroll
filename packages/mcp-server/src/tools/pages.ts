@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { ok, withErrorBoundary, versionParam, writeAuthority, type ToolDef } from './helpers.js';
 
-const answerSources = z.record(z.object({ source_url: z.string().url().optional(), import_run_id: z.string().max(200).optional() }).strict()).optional().describe('Evidence per schema leaf path. Actor and timestamp are always assigned by the server; unchanged answers are not confirmed.');
+const answerSources = z.record(z.string(), z.object({ source_url: z.string().url().optional(), import_run_id: z.string().max(200).optional() }).strict()).optional().describe('Evidence per schema leaf path. Actor and timestamp are always assigned by the server; unchanged answers are not confirmed.');
 
 function authorityBody(args: { override_reason?: string }): Record<string, string> {
   return args.override_reason ? { override_reason: args.override_reason } : {};
@@ -102,7 +102,7 @@ export const pageTools: ToolDef[] = [
     inputSchema: {
       title: z.string().min(1),
       content_type: z.string().optional().describe('Content type ID; defaults to page.'),
-      fields: z.record(z.unknown()).optional().describe('Custom field values defined by the content type.'),
+      fields: z.record(z.string(), z.unknown()).optional().describe('Custom field values defined by the content type.'),
       slug: z.string().optional().describe('URL slug — single path segment, no slashes (e.g. "about", "kontakt"). Empty string "" = homepage. For nested URLs set the `path` field explicitly — `slug` stays a leaf id. Already in use → 409 slug_in_use naming the existing page; omit it to derive one from the title (numbered with a slug_adjusted warning on conflict).'),
       path: z.string().optional().describe('Optional explicit URL path for nested pages (e.g. "/erbjudanden/sommar-2026"). When set, takes precedence over slug for routing. Must start with "/", lowercase a-z/0-9/-/_/ only, no "..", no "//", no trailing slash. Slug is still required as the leaf id but two pages CAN share a slug under different paths.'),
       content_mode: z.enum(['blocks', 'html']).optional().describe('Default "blocks". "blocks" stores a Block[] tree (the modern default — supports the full ~40-block library, page templates, and the responsive system). "html" stores raw markup in html_content (legacy path, still fully supported for imported content or hand-written HTML). Passing html_content without content_mode also opts into "html".'),
@@ -144,7 +144,7 @@ export const pageTools: ToolDef[] = [
       patch: z
         .object({
           title: z.string().optional(),
-      fields: z.record(z.unknown()).optional(),
+      fields: z.record(z.string(), z.unknown()).optional(),
           slug: z.string().optional(),
           html_content: z.string().optional(),
           blocks: z.array(z.any()).optional().describe('Block tree, only used when content_mode="blocks".'),
@@ -241,7 +241,7 @@ export const pageTools: ToolDef[] = [
         .array(
           z.object({
             page_id: z.string(),
-            patch: z.record(z.unknown()),
+            patch: z.record(z.string(), z.unknown()),
             save: z.boolean().optional(),
             answer_sources: answerSources,
             ...writeAuthority,

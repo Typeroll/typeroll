@@ -8,7 +8,7 @@ export const extensionTools: ToolDef[] = [
     inputSchema: {
       installation_id: z.string().min(1), page_id: z.string().min(1),
       path: z.string().describe('Relative operation below the approved native API base, from the installed app guide.'),
-      method: z.enum(['GET', 'POST']), query: z.record(z.string()).optional(), body: z.record(z.unknown()).optional(),
+      method: z.enum(['GET', 'POST']), query: z.record(z.string(), z.string()).optional(), body: z.record(z.string(), z.unknown()).optional(),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const { installation_id, ...operation } = args;
@@ -42,7 +42,7 @@ export const extensionTools: ToolDef[] = [
     inputSchema: {
       installation_id: z.string().min(1),
       version: z.string().min(1).describe('Pending published release to activate.'),
-      config: z.record(z.unknown()).optional(),
+      config: z.record(z.string(), z.unknown()).optional(),
       granted_scopes: z.array(z.string()).optional(),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -57,7 +57,7 @@ export const extensionTools: ToolDef[] = [
     inputSchema: {
       version: versionParam,
       installation_id: z.string().min(1).describe('Installation id returned by list_extension_installations.'),
-      config: z.record(z.unknown()).describe('Config keys and values declared by the installation manifest config schema.'),
+      config: z.record(z.string(), z.unknown()).describe('Config keys and values declared by the installation manifest config schema.'),
       deploy: z.boolean().optional().describe('Queue a deploy of the selected site version after saving. Defaults to true.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -90,7 +90,7 @@ export const extensionTools: ToolDef[] = [
       extension_id: z.string().min(1),
       version: z.string().min(1).describe('Release version to install.'),
       granted_scopes: z.array(z.string()).optional().describe('Approved scopes; defaults to none.'),
-      config: z.record(z.unknown()).optional(),
+      config: z.record(z.string(), z.unknown()).optional(),
       developer_org_id: z.string().optional().describe('Organization that publishes the Extension. Defaults to the key\'s own organization.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -189,7 +189,7 @@ export const developerExtensionTools: ToolDef[] = [
     description: 'Save (create or replace) a draft release from a full Extension manifest. Published releases are immutable; bump manifest.version instead. Validate locally with `typeroll extension validate` first. Requires an organization API key.',
     inputSchema: {
       extension_id: z.string().min(1),
-      manifest: z.record(z.unknown()).describe('Complete manifest; its id must equal extension_id.'),
+      manifest: z.record(z.string(), z.unknown()).describe('Complete manifest; its id must equal extension_id.'),
     },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.developer('POST', `${ext(args.extension_id)}/versions`, { manifest: args.manifest }))),
   },

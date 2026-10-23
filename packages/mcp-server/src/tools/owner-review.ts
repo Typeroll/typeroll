@@ -12,7 +12,7 @@ export const ownerReviewTools: ToolDef[] = [
   {
     name: 'override_owner_answers',
     description: 'Explicit administrator correction of protected answers. Supply the current revision from read_owner_answers, changed fields, and the factual reason. Does not publish. Never use this tool to bypass an import or scraping conflict without explicit authorization.',
-    inputSchema: { page_id: z.string(), base_revision: z.string(), fields: z.record(z.unknown()), reason: z.string().min(1), version: versionParam },
+    inputSchema: { page_id: z.string(), base_revision: z.string(), fields: z.record(z.string(), z.unknown()), reason: z.string().min(1), version: versionParam },
     handler: withErrorBoundary(async ({ version, ...input }, { client, siteId }) => ok(await client.post(siteId, 'owner-review', { ...input, action: 'override' }, versionQuery(version)))),
   },
   {
@@ -36,7 +36,7 @@ export const ownerReviewTools: ToolDef[] = [
   {
     name: 'decide_owner_proposal',
     description: 'Explicit site-administrator editorial decision: approve, reject, or approve with adjustments. Requires current content/schema and a stable request_id for retries. First decision wins. Approval updates accepted CMS content, never deploys; reviewer adjustments retain separate provenance.',
-    inputSchema: { proposal_id: z.string(), action: z.enum(['approve', 'reject']), request_id: z.string().min(16).max(100), adjustments: z.record(z.unknown()).optional(), version: versionParam },
+    inputSchema: { proposal_id: z.string(), action: z.enum(['approve', 'reject']), request_id: z.string().min(16).max(100), adjustments: z.record(z.string(), z.unknown()).optional(), version: versionParam },
     handler: withErrorBoundary(async ({ version, ...input }, { client, siteId }) => ok(await client.post(siteId, 'owner-review', input, versionQuery(version)))),
   },
   {

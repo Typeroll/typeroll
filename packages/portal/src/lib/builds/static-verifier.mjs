@@ -21,10 +21,11 @@ export function changedStaticChecks(current, previous = [], reuse = false) {
 }
 
 const nativeMediaVariant = route => /^(\/[^?#]+)\.v[1-9]\d*\.(?:w[1-9]\d*|original)\.([a-f0-9]{16})\.(?:avif|webp)$/.exec(route);
+const publicDataset = route => /^\/_typeroll\/derived\/([a-f0-9]{64})\.json$/.exec(route);
 
-/** Older bounded probes may omit the unchanged source that proves retention is safe. */
-export function needsMediaRetentionEvidence(checks) {
-  return checks.some(check => check.status === 404 && nativeMediaVariant(check.route));
+/** Older bounded probes may omit the current artifact that proves retention is safe. */
+export function needsArtifactRetentionEvidence(checks) {
+  return checks.some(check => check.status === 404 && (nativeMediaVariant(check.route) || publicDataset(check.route)));
 }
 
 /** Pages may retain retired immutable bundles on the public host for a week.
@@ -32,15 +33,19 @@ export function needsMediaRetentionEvidence(checks) {
  * to verify all current assets, removed Pages, media and unversioned files.
  * Native media variants may remain only when the same original bytes are still
  * in the frozen artifact; deleting or replacing the source retains the check.
+ * A retired public dataset may remain only with a content-addressed replacement
+ * in the candidate. Removing the dataset entirely still requires disappearance.
  */
 export function publicStaticChecks(checks, current = checks) {
   const sources = new Map(current.filter(check => check.status === 200).map(check => [check.route, check.sha256]));
+  const replacesDataset = current.some(check => check.status === 200 && typeof check.sha256 === 'string' && publicDataset(check.route)?.[1] === check.sha256);
   const immutableBundle = route =>
     /^\/_assets\/extensions\/[a-z0-9]+(?:[.-][a-z0-9]+)+\/\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\.(?:css|m?js)$/.test(route) ||
     /^\/_astro\/[a-zA-Z0-9._-]+[.-][a-zA-Z0-9_-]{8,}\.(?:css|m?js)$/.test(route);
   return checks.filter(check => {
     if (check.status !== 404) return true;
     if (immutableBundle(check.route)) return false;
+    if (replacesDataset && publicDataset(check.route)) return false;
     const variant = nativeMediaVariant(check.route), sourceHash = variant && sources.get(variant[1]);
     return !(typeof sourceHash === 'string' && /^[a-f0-9]{64}$/.test(sourceHash) && sourceHash.startsWith(variant[2]));
   });

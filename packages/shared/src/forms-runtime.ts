@@ -138,11 +138,21 @@ async function remoteInit(form,param){
   var one=param?url.searchParams.get(param):null;
   try{
     if(one){
-      var exchange=new URL(form.action,location.href);exchange.searchParams.set(param,one);
-      var res=await fetch(exchange.href,
-        {headers:{Accept:"application/json"}});
+      var exchange=new URL(form.action,location.href);
+      var wrapper=form.closest("[data-tr-session-exchange]");
+      var explicit=wrapper&&wrapper.getAttribute("data-tr-session-exchange")==="confirm_post";
+      url.searchParams.delete(param);
+      history.replaceState(null,"",url.pathname+(url.search||"")+url.hash);
+      if(explicit){
+        var start=document.createElement("button");start.type="button";start.textContent=document.documentElement.lang.indexOf("sv")===0?"Börja redigera":"Start editing";
+        start.style.cssText="font:inherit;min-height:44px;padding:.65rem 1rem";
+        form.prepend(start);
+        await new Promise(function(resolve){start.addEventListener("click",function(){start.disabled=true;resolve()},{once:true})});
+        start.remove();
+      }else exchange.searchParams.set(param,one);
+      var res=await fetch(exchange.href,explicit?{method:"POST",headers:{Accept:"application/json","Content-Type":"application/json"},body:JSON.stringify({action:"redeem",token:one})}:{headers:{Accept:"application/json"}});
       var data=await res.json().catch(function(){return null});
-      if(!res.ok||!data){topError(form,expiredMsg(form));return}
+      if(!res.ok||!data||data.ok===false){topError(form,expiredMsg(form));return}
       sessSet(form,data.session_token||"");
       // Drop the one-time token from the URL so it isn't left in history,
       // bookmarks, or the Referer of anything this page loads afterwards.

@@ -62,7 +62,7 @@ export const reusableBlockTools: ToolDef[] = [
       description: z.string().optional().describe('When to use it.'),
       id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).optional(),
       from: z.object({ page_id: z.string(), block_id: z.string() }).optional(),
-      blocks: z.array(z.record(z.unknown())).optional(),
+      blocks: z.array(z.record(z.string(), z.unknown())).optional(),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'block-templates', args))),
   },
@@ -73,7 +73,7 @@ export const reusableBlockTools: ToolDef[] = [
       template_id: z.string(),
       name: z.string().optional(),
       description: z.string().optional(),
-      blocks: z.array(z.record(z.unknown())).optional(),
+      blocks: z.array(z.record(z.string(), z.unknown())).optional(),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const { template_id, ...body } = args;
