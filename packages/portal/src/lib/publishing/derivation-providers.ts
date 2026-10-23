@@ -11,12 +11,11 @@
 // app being up.
 
 import { randomUUID } from 'node:crypto';
-import type { ExtensionInstallation, ExtensionRuntimeSnapshot } from '@typeroll/shared';
+import type { ExtensionInstallation, ExtensionRuntimeSnapshot, ExtensionVersion } from '@typeroll/shared';
 import { paths } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { signInstallationAssertion } from '../extensions/auth';
 import { adminDestination, requestApprovedAdmin } from '../extensions/admin-request';
-import { resolveExtensionVersion } from '../extensions/resolution';
 import {
   DerivationError,
   stableDigest,
@@ -33,20 +32,19 @@ import {
  * change — a rebuild that cannot possibly alter derived data.
  */
 export function publicationContentDigest(resolved: {
-  versionId: string;
+  versionId?: string;
+  version_id?: string;
   pages?: unknown;
   contentTypes?: unknown;
+  content_types?: unknown;
   blockTypes?: unknown;
   pageTemplates?: unknown;
   settings?: unknown;
 }): string {
   return stableDigest({
-    version: resolved.versionId,
+    version_id: resolved.version_id ?? resolved.versionId,
     pages: resolved.pages ?? null,
-    content_types: resolved.contentTypes ?? null,
-    block_types: resolved.blockTypes ?? null,
-    page_templates: resolved.pageTemplates ?? null,
-    settings: resolved.settings ?? null,
+    content_types: resolved.content_types ?? resolved.contentTypes ?? null,
   });
 }
 
@@ -89,11 +87,18 @@ export async function derivationProvidersFor(
     const installation = await store.getDoc<ExtensionInstallation>(
       paths.extensionInstallation(orgId, siteId, runtimeInstallation.installation_id),
     );
-    if (!installation || installation.status !== 'enabled') continue;
-    const resolution = await resolveExtensionVersion(installation);
-    const manifest = resolution.version?.manifest;
+    if (!installation || installation.status !== 'enabled' || installation.extension_id !== runtimeInstallation.extension_id)
+      throw new DerivationError('Installation changed while freezing publication', runtimeInstallation.installation_id);
+    // Resolve the exact frozen release, never a newer release registered mid-build.
+    const release = await store.getDoc<ExtensionVersion>(paths.extensionVersion(
+      installation.developer_org_id, installation.extension_id, runtimeInstallation.version));
+    if (!release || release.status === 'revoked' || release.manifest.version !== runtimeInstallation.version)
+      throw new DerivationError('Frozen app release is no longer available', installation.id);
+    const manifest = release.manifest;
     const derivation = manifest?.build_derivation;
     if (!derivation || !manifest?.api?.base_url) continue;
+    if (derivation.input_format !== 'frozen_publication_v1' || !installation.granted_scopes.includes('content:read'))
+      throw new DerivationError('App must support frozen publication input and have content:read permission', installation.id);
 
     // Declared collisions are refused here, before a build starts, so the
     // failure names two apps rather than appearing as missing data later.
@@ -115,7 +120,13 @@ export async function derivationProvidersFor(
       id: installation.id,
       version,
       required: derivation.required === true,
+      config: structuredClone(runtimeInstallation.public_config ?? {}),
+      sources: derivation.sources,
       request: async (input: DerivationInput) => {
+        if (!input.content || input.content.version_id !== input.version_id ||
+            publicationContentDigest(input.content) !== input.content_digest || !input.config ||
+            stableDigest(input.config) !== input.config_digest)
+          throw new DerivationError('Frozen public derivation input is missing or inconsistent', installation.id);
         const url = adminDestination(base, { page_id: 'build', path, method: 'POST', body: input });
         const token = signInstallationAssertion({
           installation,
@@ -131,9 +142,12 @@ export async function derivationProvidersFor(
           // The issuer, not a site origin: this is a server-to-server call
           // made once per publication, not a browser request.
           new URL(base).origin,
+          { requestBytes: 8 * 1024 * 1024, responseBytes: 16 * 1024 * 1024 },
         );
         if (status !== 200) {
-          throw new DerivationError(`Derivation provider answered ${status}`, installation.id);
+          const detail = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+            ? data.error.replace(/[\r\n]/g, ' ').slice(0, 500) : 'Check the app configuration and its published schema.';
+          throw new DerivationError(`App answered HTTP ${status}: ${detail}`, installation.id);
         }
         return data;
       },

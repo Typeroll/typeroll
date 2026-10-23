@@ -32,6 +32,10 @@ export interface DerivationInput {
   config_digest: string;
   /** The app release computing this. Part of the cache key — a new release must not reuse old output. */
   provider_version: string;
+  /** Public projected records only. Providers must never re-read live content. */
+  content?: { version_id: string; pages: Array<Record<string, unknown>>; content_types: Array<Record<string, unknown>> };
+  /** This provider's frozen public configuration, never another app's secrets. */
+  config?: Record<string, unknown>;
 }
 
 /** One derived dataset the site can render from. */
@@ -75,7 +79,7 @@ export class DerivationError extends Error {
 }
 
 /** Namespaces the renderer already owns. A derived source must not shadow one. */
-const RESERVED_NAMESPACES = new Set(['page', 'site', 'item', 'content_type', 'pagination', 'facet', 'backlinks']);
+const RESERVED_NAMESPACES = new Set(['page', 'site', 'item', 'content_type', 'pagination', 'facet', 'backlinks', 'constructor', 'prototype']);
 const SOURCE_ID = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 const MAX_SOURCES = 64;
 const MAX_RECORDS_PER_SOURCE = 50_000;
@@ -215,6 +219,8 @@ export interface DerivationProvider {
   request: DerivationTransport;
   /** A provider the site cannot publish without. A failure here fails the build. */
   required: boolean;
+  config?: Record<string, unknown>;
+  sources?: string[];
 }
 
 export interface DerivationOutcome {
@@ -248,10 +254,15 @@ export async function runBuildDerivations(
   const owners = new Map<string, string>();
 
   for (const provider of providers) {
-    const scoped: DerivationInput = { ...input, provider_version: provider.version };
+    const scoped: DerivationInput = structuredClone({ ...input, provider_version: provider.version,
+      ...(provider.config ? { config: provider.config, config_digest: stableDigest(provider.config) } : {}) });
     let result: DerivationResult;
     try {
       result = validateDerivationResult(await provider.request(scoped), scoped, provider.id);
+      if (provider.sources && (provider.sources.length !== result.sources.length ||
+          result.sources.some(source => !provider.sources!.includes(source.id)))) {
+        throw new DerivationError('Derivation must return exactly its declared sources, including empty sources', provider.id);
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Derivation failed';
       if (provider.required) throw new DerivationError(reason, provider.id);

@@ -380,3 +380,61 @@ test('a deferred-media build has exactly the same complete output as materializi
   // The complete manifest restores the already hosted bytes, not a local placeholder.
   assert.deepEqual({ ...deferred, 'photo.png': prepared.files[0].sha256 }, complete);
 });
+
+test('derived consumers invalidate on selected values and membership, not unrelated outputs', async () => {
+  const { trackedDerivedSource } = await import('../packages/site-template/src/lib/publication-dependencies.mjs');
+  const rows = { facts: [{ id: 'a', label: 'First' }, { id: 'b', label: 'Second' }], members: [] };
+  const resolve = config => rows[config.source].filter(row => !config.id || row.id === config.id);
+  const read = async config => (await captureDependencies(async () => trackedDerivedSource(resolve)(config))).dependencies;
+  const a = await read({ source: 'facts', id: 'a' });
+  const b = await read({ source: 'facts', id: 'b' });
+  const empty = await read({ source: 'members' });
+  rows.facts[0].label = 'Renamed';
+  assert.equal(dependenciesMatch(a, { derived: resolve }), false);
+  assert.equal(dependenciesMatch(b, { derived: resolve }), true);
+  assert.equal(dependenciesMatch(empty, { derived: resolve }), true);
+  rows.members.push({ id: 'a' });
+  assert.equal(dependenciesMatch(empty, { derived: resolve }), false);
+  const members = await read({ source: 'members' });
+  rows.members[0] = { id: 'b' };
+  assert.equal(dependenciesMatch(members, { derived: resolve }), false);
+  const before = publication(); before.derived = rows;
+  const key = createRenderPlan(before, manifest).keys.two.key;
+  before.derived.facts[0].label = 'Again'; before.derivation = { cache_keys: { provider: 'changed' } };
+  assert.equal(createRenderPlan(before, manifest).keys.two.key, key);
+});
+
+test('frozen derived output updates only its consumers and emits a content-addressed browser dataset', async t => {
+  const value = publication();
+  const derivedPage = (id, source, filter = '') => ({ ...page(id), content_mode: 'blocks', blocks: [
+    { id: `title-${id}`, type: 'core/heading', data: { text: id, level: 'h1' } },
+    { id: `list-${id}`, type: 'core/repeater', data: { source_type: 'derived', derived_source: source, filter_field: 'id', filter_value: filter, item_block: 'result' } },
+  ] });
+  value.blockTypes = [{ id: 'result', label: 'Result', schema: [], template: '<p>{{item.label}}</p>' },
+    { id: 'dataset', label: 'Dataset', schema: [], template: '<div data-dataset="{{site.derived_data_url}}"></div>' }];
+  value.pages = [{ ...page('home'), path: '/' }, derivedPage('a', 'example.profiles', 'a'), derivedPage('b', 'example.profiles', 'b'),
+    derivedPage('empty', 'example.memberships', 'empty'), { ...page('filter'), content_mode: 'blocks', blocks: [
+      { id: 'filter-title', type: 'core/heading', data: { text: 'Filter', level: 'h1' } }, { id: 'data', type: 'dataset', data: {} },
+    ] }];
+  value.derived = { 'example.profiles': [{ id: 'a', label: 'Original' }, { id: 'b', label: 'Unchanged' }], 'example.memberships': [] };
+  const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
+  await harness.run();
+  const first = await harness.output();
+  value.derived['example.profiles'][0].label = 'Renamed';
+  value.derived['example.memberships'] = [{ id: 'empty', label: 'First member' }];
+  const partial = await harness.run();
+  assert.equal(partial.report.rendered, 3);
+  const receipts = await harness.receipts();
+  assert.equal(receipts['/a/'].reused, false);
+  assert.equal(receipts['/b/'].reused, true);
+  assert.equal(receipts['/'].reused, true);
+  const output = await harness.output();
+  assert.notEqual(output['a/index.html'], first['a/index.html']);
+  assert.equal(output['b/index.html'], first['b/index.html']);
+  assert.notEqual(output['filter/index.html'], first['filter/index.html']);
+  const files = Object.keys(output).filter(file => file.startsWith('_typeroll/derived/'));
+  assert.equal(files.length, 1);
+  assert.notEqual(files[0], Object.keys(first).find(file => file.startsWith('_typeroll/derived/')));
+  await harness.run(true);
+  assert.deepEqual(await harness.output(), output);
+});

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { SEO_VALIDATOR_VERSION } from './publication-validation.mjs';
-export const RENDER_CACHE_FORMAT = 4;
+export const RENDER_CACHE_FORMAT = 6;
 export const MAX_RENDER_CACHE_BYTES = 32 * 1024 * 1024;
 export const digest = value => createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest('hex');
 

@@ -26,6 +26,14 @@ export function trackedPageSource(source) {
     } });
   };
 }
+/** Record the selected output, including an empty result; receipt counts alone are insufficient. */
+export function trackedDerivedSource(resolve) {
+  return config => {
+    const value = resolve(config);
+    active.getStore()?.push({ kind: 'derived', config: structuredClone(config), hash: digest(value) });
+    return value;
+  };
+}
 export function trackedBacklinks(index) {
   return new Proxy(index, { get(target, key, receiver) {
     const value = Reflect.get(target, key, receiver);
@@ -68,6 +76,7 @@ export function dependenciesMatch(dependencies, resolvers, queries = new Map()) 
           return query.hashes.get(index) === hash;
         });
       }
+      if (entry.kind === 'derived') return digest(resolvers.derived(entry.config)) === entry.hash;
       if (entry.kind === 'media') return digest(resolvers.media.byUrl.get(entry.url) ?? null) === entry.hash;
       if (entry.kind === 'backlinks') return digest(resolvers.backlinks[entry.id] ?? null) === entry.hash;
       if (entry.kind === 'navigation') return digest(resolvers.navigation(entry.id)) === entry.hash;

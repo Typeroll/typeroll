@@ -327,3 +327,70 @@ by the host; see
 subscriptions remain unavailable. A normal monitored Reply-To still works without
 changing a site's main MX records. Incoming mail is never verified ownership or
 authorization to approve changes.
+
+## Build-time derived data
+
+Core 0.2.91 / Extension runtime 0.44.0 adds `frozen_publication_v1`.
+An installed provider can compute public datasets during normal publication,
+without storing editable copies of the original Page fields. It requires
+`content:read` and a signed installation API:
+
+```json
+{
+  "build_derivation": {
+    "input_format": "frozen_publication_v1",
+    "path": "/derive",
+    "sources": ["example.facts", "example.memberships"],
+    "required": true
+  }
+}
+```
+
+This is part of the Extension manifest, not a separate publication endpoint.
+Core sends `org_id`, `site_id`, `version_id`, `provider_version`, `content`,
+`config`, `content_digest` and `config_digest`. Content contains the selected
+version's projected public `pages` and `content_types`; drafts, working copies,
+pending proposals, private fields and provenance are excluded. Configuration is
+only this installation's frozen public configuration. Authenticate the short-lived
+installation assertion with purpose `build_derivation` and verify the installation,
+site and version. Recheck authorization, but do not reread live Pages or live
+configuration to calculate output. An approval made during a build belongs to the
+next publication.
+
+Digests are the first 32 hex characters of SHA-256 of canonical JSON: recursively
+sort object keys lexically, preserve array order, omit undefined object values.
+Return `input_digest`, `sources: [{id, records}]` and dependency `receipts:
+[{kind, id, count}]`. The input digest covers
+`{config: config_digest, content: content_digest, org: org_id,
+provider: provider_version, site: site_id, version: version_id}` using the same
+canonical encoding. Return exactly the declared sources, including empty ones.
+Counts are nonnegative integers; zero-result dependencies are meaningful.
+
+Requests are bounded to 8 MiB, responses to 16 MiB, with a 15-second timeout.
+At most 64 sources and 50,000 records per source are accepted. The provider must
+bound its own request handling. There are no redirects to another API origin.
+A failed required provider stops the publication before activation; the current
+static website stays online. Marking a provider optional means its failure may
+omit its output and records an explicit skipped-provider result.
+
+A `core/repeater` uses `source_type: "derived"`, `derived_source`, and optional
+`filter_field`, `filter_value` and `limit`. For example, filter on `id` with
+`filter_value: "{{page.id}}"` to render one profile's derived facts. Bind custom
+item blocks to `{{item.*}}`; an AI agent can create an appropriate reusable item
+block. Empty results remain empty. Partial builds track the selected records,
+including membership changes with unchanged counts, rather than invalidating
+unrelated pages whenever any derived value changes.
+
+For browser filters, a custom block can place `{{site.derived_data_url}}` in a
+`data-*` attribute. Fetch that URL to read the source-id → records JSON object.
+The address contains the dataset's content hash, and it is shipped in the same
+static artifact as the HTML. Do not hardcode the hash or fetch live CMS records
+from a public filter. The dataset contains **public output only**. Changing it
+invalidates pages that reference its URL, while unrelated pages retain their
+render cache. Preview does not run external derivations: this URL and derived
+output are publication features; verify them in a test publication.
+
+The provider owns its domain rules; the project owns its field map, taxonomy
+and presentation. Approval and publication remain separate actions. Freeform
+editorial copy is not automatically rewritten when a structured answer changes;
+review claims based on those answers before publishing.

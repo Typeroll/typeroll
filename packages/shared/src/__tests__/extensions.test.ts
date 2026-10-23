@@ -479,7 +479,7 @@ describe('extension renderer capabilities', () => {
       supports_extension_form_bindings: true,
       supports_extension_page_handoff: true,
       extension_protocol_version: 3,
-      extension_runtime_version: '0.43.0',
+      extension_runtime_version: '0.44.0',
       supports_extension_installation_config_api: true,
       supports_indexing_diagnostics: true,
       supports_migration_launch_report: true,

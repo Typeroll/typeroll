@@ -1,5 +1,5 @@
 ---
-import { navigationContext, trackedMediaLookup } from '../lib/publication-dependencies.mjs';
+import { navigationContext, trackedMediaLookup, trackedDerivedSource } from '../lib/publication-dependencies.mjs';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
@@ -10,6 +10,7 @@ import { buildFormSource,
   getAllPages,
   getAppsPublic,
   getDerived,
+  getDerivedDataUrl,
   getExtensionsPublic,
   getBlockRegistry,
   getContentTypes,
@@ -19,6 +20,7 @@ import { buildFormSource,
 } from '../lib/content';
 import { sanitizeBody } from '../lib/sanitize';
 import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
+  queryDerivedSource,
   buildContentPageSchema,
   buildCoreBlockRegistry,
   buildMediaLookup,
@@ -57,6 +59,11 @@ const iframeAllowedHosts = settings.iframe_allowed_hosts ?? [];
 const renderVersion = resolveRenderVersion(settings.render_version);
 const appsPublic = await getAppsPublic();
 const derived = await getDerived();
+const dataUrl = await getDerivedDataUrl();
+const derivedDataUrl = () => {
+  trackedDerivedSource(() => [{ url: dataUrl }])({ source: '$data_url' });
+  return dataUrl;
+};
 const extensionsPublic = await getExtensionsPublic();
 const { header, footer, freeBlocks } = await getPartials();
 // Block-mode pages reference global blocks with core/global_block.
@@ -96,7 +103,7 @@ const contentType = (await getContentTypes()).find(type => type.id === (props.pa
 const navigationPages = await getAllPages();
 const renderCtx: RenderContext = {
   page: { ...pageContentValues(props.page), breadcrumbs: props.breadcrumbs },
-  site: siteContext(settings as unknown as Record<string, unknown>),
+  site: { ...siteContext(settings as unknown as Record<string, unknown>), get derived_data_url() { return derivedDataUrl(); } },
   content_type: contentType ? navigationContext(contentType, props.page.id, () => pageNavigation(props.page, contentType, navigationPages, settings.trailing_slash)) : undefined,
   // Archive pagination: which slice a paginating repeater renders + where
   // its pager links point. Present on every page render (current: 1 when
@@ -104,6 +111,7 @@ const renderCtx: RenderContext = {
   // Reverse reference index — lets a `backlinks` repeater on an item page
   // list "who points at me" without anyone maintaining that list by hand.
   derived,
+  derivedSource: trackedDerivedSource((config: Parameters<typeof queryDerivedSource>[1]) => queryDerivedSource(derived, config)),
   backlinks,
   // Taxonomy scope — a listing block that declares no filter of its own
   // inherits this, so the same block works on a normal page and on

@@ -30,7 +30,7 @@ import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed } fro
 import { retainDistinctMediaManifests, publicationMediaManifest } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { publicationRuntime } from './runtime-projection';
-import { runBuildDerivations } from './build-derivation';
+import { DerivationError, runBuildDerivations } from './build-derivation';
 import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
 import { preparePublicMediaDomains } from './media-domain';
 import { recordPublishingOrigin } from './runtime-origins';
@@ -229,19 +229,21 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         // and frozen into the artifact alongside it. A required provider that
         // fails throws here — which is how the previous live artifact keeps
         // serving, since activation only happens after every step succeeds.
+        frozen = projectStaticPublication({ ...resolved, site: { ...site, domain: host }, media: [], forms: publicRuntime.forms, extensions: publicRuntime.extensions.installations, publicRuntime }, {
+          siteUrl: `https://${host}`, coreCommit: process.env.TYPEROLL_SOURCE_SHA ?? '', publishedAt: contentCutoff,
+          noindex: args.versionId !== 'main' || !domains.desired.website_host, coreBlockTypes: CORE_BLOCK_TYPES,
+        });
+        // Project first: private fields, provenance and drafts must not reach a provider.
+        const content = { version_id: resolved.versionId, pages: frozen.pages, content_types: frozen.contentTypes };
         const derivation = await runBuildDerivations(
           {
             org_id: args.orgId, site_id: args.siteId, version_id: resolved.versionId,
-            content_digest: publicationContentDigest(resolved),
+            content_digest: publicationContentDigest(content), content,
             config_digest: publicationConfigDigest(publicRuntime),
             provider_version: '',
           },
           await derivationProvidersFor(args.orgId, args.siteId, publicRuntime.extensions),
         );
-        frozen = projectStaticPublication({ ...resolved, site: { ...site, domain: host }, media: [], forms: publicRuntime.forms, extensions: publicRuntime.extensions.installations, publicRuntime }, {
-          siteUrl: `https://${host}`, coreCommit: process.env.TYPEROLL_SOURCE_SHA ?? '', publishedAt: contentCutoff,
-          noindex: args.versionId !== 'main' || !domains.desired.website_host, coreBlockTypes: CORE_BLOCK_TYPES,
-        });
         frozen.authored_noindex = resolved.settings?.sitewide_noindex === true;
         if (derivation.sources.length > 0) {
           frozen.derived = Object.fromEntries(derivation.sources.map(source => [source.id, source.records]));
@@ -250,7 +252,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         // derived output depends on records outside the pages it rendered.
         // A zero-count receipt matters most: without it, adding the first
         // matching record leaves a stale empty listing nothing invalidates.
-        if (derivation.receipts.length > 0) {
+        if (derivation.receipts.length > 0 || derivation.skipped.length > 0) {
           frozen.derivation = { receipts: derivation.receipts, cache_keys: derivation.cache_keys,
             ...(derivation.skipped.length > 0 ? { skipped: derivation.skipped } : {}) };
         }
@@ -617,13 +619,15 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       if (failedTask?.seo_report) await store.updateDoc(jobPath, { seo_report: failedTask.seo_report });
     }
     const failure = { stage: failedJob?.phase ?? 'connecting publishing accounts',
-      code: error instanceof ProviderTransportError ? error.code : error instanceof ConnectionError ? error.code : error instanceof ProviderError ? 'provider_request_failed' : 'publication_internal_error',
+      code: error instanceof DerivationError ? 'publication_derivation_failed' : error instanceof ProviderTransportError ? error.code : error instanceof ConnectionError ? error.code : error instanceof ProviderError ? 'provider_request_failed' : 'publication_internal_error',
+      ...(error instanceof DerivationError ? { provider: error.provider } : {}),
       ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes } : {}),
       ...(error instanceof ConnectionError && error.details?.build_diagnostic ? { diagnostic: error.details.build_diagnostic } : {}),
       ...(failedJob?.git_publication ? { hosting_group_id: failedJob.git_publication.hosting_group_id ?? 'default', hosting_account_id: failedJob.git_publication.account_id, project: failedJob.git_publication.project } : {}) };
     console.error(JSON.stringify({ event: 'customer_publication_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, ...failure }));
     const message = error instanceof ProviderError && error.provider === 'Cloudflare' && failure.stage === 'creating Cloudflare Pages project'
       ? projectCreationMessage(error, failedJob?.git_publication)
+      : error instanceof DerivationError ? `An app could not prepare publication data (${error.provider}). ${error.message} The live site has not changed.`
       : error instanceof ConnectionError ? error.message : error instanceof ProviderError
       ? `${error.provider} returned HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''} during ${failure.stage}. Open Publishing to check the connection and retry.`
       : `Publishing stopped during ${failure.stage}. Retry the deployment. If it fails again, contact support with deployment ${args.jobId}.`;

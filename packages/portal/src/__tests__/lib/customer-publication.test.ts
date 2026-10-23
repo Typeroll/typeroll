@@ -19,12 +19,14 @@ async function executeCustomerPublication(args: Parameters<typeof executePublica
   throw new Error('Publication did not yield to its build provider');
 }
 
-const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi.fn(), probe: vi.fn(), source: vi.fn(), enqueue: vi.fn(), built: vi.fn(), upload: vi.fn(), verify: vi.fn(), candidateVerification: vi.fn(), verificationPlan: vi.fn(), direct: vi.fn(), deployment: null as any }));
+const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi.fn(), probe: vi.fn(), source: vi.fn(), enqueue: vi.fn(), built: vi.fn(), upload: vi.fn(), verify: vi.fn(), candidateVerification: vi.fn(), verificationPlan: vi.fn(), direct: vi.fn(), runtime: { forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] } as any, derive: vi.fn(), deployment: null as any }));
 vi.mock('../../lib/publishing/github-connection', () => ({ githubConfiguration: () => ({ appId: '12', privateKey: 'synthetic-only' }) }));
 vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: async () => mocks.cloudflare }));
 vi.mock('../../lib/publishing/providers.mjs', async importOriginal => ({ ...await importOriginal<object>(), githubInstallationClient: async () => mocks.github, publishTree: mocks.push }));
 vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source }));
-vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: async () => ({ forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] }) }));
+vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: async () => mocks.runtime }));
+vi.mock('../../lib/extensions/auth', async original => ({ ...await original<object>(), signInstallationAssertion: () => 'synthetic-proof' }));
+vi.mock('../../lib/extensions/admin-request', async original => ({ ...await original<object>(), requestApprovedAdmin: mocks.derive }));
 vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completedBuild: mocks.built }));
 vi.mock('../../lib/builds/upload', () => ({ uploadStaticBuild: mocks.upload, finalizeDirectUpload: mocks.direct }));
 vi.mock('../../lib/builds/publication', async original => ({ ...await original<object>(), saveStaticChecks: async () => 'builds/org/checks/verified.json', verifyStaticBatch: mocks.verify, verifyCustomerCandidate: mocks.candidateVerification, saveCustomerVerification: mocks.verificationPlan }));
@@ -38,6 +40,7 @@ const jobPath = paths.deploy('org', 'site', 'job');
 
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); vi.clearAllMocks();
+  mocks.runtime = { forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] };
   vi.stubEnv('TYPEROLL_SOURCE_SHA', 'a'.repeat(40));
   vi.stubEnv('PORTAL_PUBLIC_URL', 'https://cms.example.com');
   const store = getStore();
@@ -662,4 +665,53 @@ it('stops a redirect change with a conflicting zone rule before asking for appro
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'redirect_rule_conflict' } });
   expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/rulesets') && options?.method)).toBe(false);
   expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/dns_records') && options?.method)).toBe(false);
+});
+
+
+async function installSyntheticDerivation() {
+  const runtime = { installation_id: 'app', extension_id: 'org.example.provider', version: '1.0.0', public_config: { mapping: 'frozen' } };
+  mocks.runtime.extensions.installations = [runtime];
+  await getStore().setDoc(paths.extensionInstallation('org', 'site', 'app'), { id: 'app', developer_org_id: 'developer', extension_id: runtime.extension_id,
+    status: 'enabled', granted_scopes: ['content:read'] });
+  await getStore().setDoc(paths.extensionVersion('developer', runtime.extension_id, '1.0.0'), { status: 'published', manifest: {
+    id: runtime.extension_id, version: '1.0.0', api: { base_url: 'https://provider.example/v1' },
+    build_derivation: { input_format: 'frozen_publication_v1', path: '/derive', sources: ['example.records'], required: true },
+  } });
+  mocks.derive.mockImplementation(async (_url, request) => {
+    const { derivationInputDigest } = await import('../../lib/publishing/build-derivation');
+    return { status: 200, data: { input_digest: derivationInputDigest(request.body),
+      sources: [{ id: 'example.records', records: [{ id: 'home', text: request.body.content.pages[0].title }] }],
+      receipts: [{ kind: 'records', id: 'all', count: request.body.content.pages.length }] } };
+  });
+}
+it.each(['cloudflare', 'github'] as const)('freezes derived output once before dispatch to %s and preserves live output on provider failure', async provider => {
+  await installSyntheticDerivation();
+  const store = getStore();
+  await store.setDoc('organizations/org/publishing/build_selection', { provider, revision: 'selected' });
+  await store.setDoc(`organizations/org/publishing_private/${provider === 'github' ? 'github_build_engine' : 'build_engine'}`, {
+    status: 'ready', static_verification: true, provider, revision: 'engine', account_id: 'a'.repeat(32),
+  });
+  const cf = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}`
+    ? { name: project, production_branch: 'main' } : cf(route, options));
+  mocks.enqueue.mockResolvedValue({ key: 'derived-task' }); mocks.built.mockResolvedValue(null);
+  expect(await executePublicationPhase(args)).toBe('continue');
+  await store.updateDoc(paths.page('org', 'site', 'home'), { title: 'Concurrent edit' });
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(mocks.derive).toHaveBeenCalledTimes(1);
+  const frozen = JSON.parse(mocks.push.mock.calls[0][1].files['publication.json']);
+  expect(frozen.derived['example.records']).toEqual([{ id: 'home', text: 'Home' }]);
+  expect(frozen.pages[0].title).toBe('Home');
+  expect(frozen.derivation.cache_keys.app).toMatch(/^[a-f0-9]{32}$/);
+  // Finish the synthetic job without activating it, then exercise a new failure.
+  await store.updateDoc(jobPath, { status: 'failed' });
+  await store.updateDoc(`${paths.site('org', 'site')}/publishing_targets/main`, { job_id: null, lease_id: null, lease_until: 0 });
+  const failedArgs = { ...args, jobId: 'failed-derivation' };
+  await store.setDoc(paths.deploy('org', 'site', failedArgs.jobId), { version_id: 'main', status: 'queued', environment: 'production' });
+  const before = await store.getDoc(paths.site('org', 'site'));
+  mocks.derive.mockResolvedValue({ status: 422, data: { error: 'Mapped field is missing' } });
+  await executePublicationPhase(failedArgs);
+  expect(await store.getDoc(paths.deploy('org', 'site', failedArgs.jobId))).toMatchObject({ status: 'failed', failure: { code: 'publication_derivation_failed' }, error: expect.stringContaining('Mapped field is missing') });
+  expect(await store.getDoc(paths.site('org', 'site'))).toEqual(before);
+  expect(mocks.push).toHaveBeenCalledTimes(1); expect(mocks.enqueue).toHaveBeenCalledTimes(1);
 });
