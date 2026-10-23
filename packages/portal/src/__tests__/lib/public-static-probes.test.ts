@@ -58,3 +58,17 @@ it('does not exempt media probes without evidence from the current artifact', as
   await getStore().updateDoc(jobPath, { git_publication: { static_checks_key: 'full' } });
   await expect(verifyStaticBatch('org', jobPath, 'checks', origin, true)).rejects.toThrow('missing manifest');
 });
+
+it('recovers a saved dataset probe only with a verified replacement and a fresh checkpoint', async () => {
+  const old = { route: `/_typeroll/derived/${'b'.repeat(64)}.json`, status: 404 };
+  const current = { route: `/_typeroll/derived/${'c'.repeat(64)}.json`, status: 200, sha256: 'c'.repeat(64), size: 900000 };
+  fixture.checks = [marker, old]; fixture.full = [marker, old, current];
+  await getStore().updateDoc(jobPath, { git_publication: { static_checks_key: 'full' } });
+  await getStore().setDoc(`${jobPath}/build_verifications/${sha256(`checks\0${origin}\0public-v3`)}`, { cursor: 2, complete: true });
+  expect(await verifyStaticBatch('org', jobPath, 'checks', origin, true)).toBe(true);
+  expect(fixture.verify.mock.calls.map(call => call[1].route)).toEqual([marker.route]);
+  fixture.full = [marker, old];
+  expect(await verifyStaticBatch('org', jobPath, 'no-replacement', origin, true)).toBe(false);
+  fixture.full = null;
+  await expect(verifyStaticBatch('org', jobPath, 'missing-evidence', origin, true)).rejects.toThrow('missing manifest');
+});
