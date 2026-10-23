@@ -394,3 +394,66 @@ The provider owns its domain rules; the project owns its field map, taxonomy
 and presentation. Approval and publication remain separate actions. Freeform
 editorial copy is not automatically rewritten when a structured answer changes;
 review claims based on those answers before publishing.
+
+## Private questionnaire intake (next release)
+
+An enabled installation with `forms:execute` can collect private responses for a
+site-owned Form through `POST /api/v1/sites/{siteId}/forms/{formId}/intake`.
+The Form's `target.installation_id` must match the caller. This does not grant
+access to unrelated Forms or permission to publish content.
+
+The provider first verifies its respondent and completes its own primary workflow.
+It then sends `action: "describe"`, a stable SHA-256 `subject_id` for this interview,
+`answers: {}`, optional trusted `context`, optional string-valued `reference`, and
+optional step `conditions`. These are server-to-server calls; the browser must
+never choose its own trusted context, identity or references.
+
+```json
+{
+  "action": "describe",
+  "subject_id": "<64 lowercase hexadecimal characters>",
+  "context": { "uses_online_orders": true },
+  "reference": { "record_id": "record-123" },
+  "conditions": {
+    "online": {
+      "source": "context",
+      "field": "uses_online_orders",
+      "equals": true
+    },
+    "details": { "source": "answers", "field": "interested", "equals": true }
+  },
+  "answers": {}
+}
+```
+
+The response contains visible steps, typed fields and a revision. Call `describe`
+again with accumulated answers when moving forward. Conditions support exact
+`equals` or array `includes`; an answer condition can use only an earlier step's
+field. Hidden steps cannot supply answers to later conditions, and their answers
+are removed server-side. Finish with `action: "complete"`, the returned `revision`
+and the same identity, context, references and conditions.
+
+Questions and context are frozen on the first call. Later edits to the Form apply
+to new interviews. Completion is idempotent for the same answers and refuses a
+conflicting second response. Unknown fields, invalid choices and missing required
+answers are rejected. Responses are ordinary private Form submissions, accessible
+through the existing authorized submissions API and MCP tools. They are not Page
+content. Partial records expire after 30 days; this endpoint does not save partial
+answers between requests. The provider must recheck its respondent's authority.
+
+This first contract supports up to 30 ordered static steps and 100 fields: text,
+textarea, email, phone, URL, date, number, boolean, select, radio and checkbox lists.
+It returns field descriptors rather than arbitrary block HTML. Dynamic steps,
+explicit `next` branches, step actions and Form actions are rejected; the contract
+collects responses without sending mail or triggering content mutations. Configuration
+errors are explicit rather than silently ignoring unsupported behavior.
+
+### Explicit link exchange
+
+For native Forms backed by an extension, set
+`target.session_exchange: "confirm_post"` alongside `session_param`. The browser
+removes the token from its URL, waits for **Start editing**, and sends
+`{ "action": "redeem", "token": "…" }` by POST. The provider must refuse token
+redemption by GET. This avoids consuming single-use links during ordinary link
+previews. Existing targets without this option retain their previous exchange
+contract; migrate the provider and published form together.

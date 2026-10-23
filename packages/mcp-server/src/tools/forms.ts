@@ -44,7 +44,7 @@ const showProgressSchema = z.union([z.boolean(), z.enum(['text', 'bar'])]).optio
 
 const targetSchema = z.object({
   context_params: z.array(z.string()).max(8).optional().describe('Explicit URL query keys forwarded to the app hydration endpoint; reserved security keys are rejected.'),
-  installation_id: z.string(), path: z.string(), hydrate: z.boolean().optional(), session_param: z.string().optional(),
+  installation_id: z.string(), path: z.string(), hydrate: z.boolean().optional(), session_param: z.string().optional(), session_exchange: z.literal('confirm_post').optional().describe('Wait for a click and POST the one-time token; prevents GET link scanning from consuming it.'),
 }).optional().describe('Admin-only: bind to a declared POST route of an enabled app installation. Read its authenticated guide first.');
 
 // Actions run after a successful submission: email notifications, signed
